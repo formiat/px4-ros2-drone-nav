@@ -1,0 +1,69 @@
+# ROS 2 / colcon
+build/
+install/
+log/
+.colcon/
+*.colcon
+
+# CMake / C++
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+Testing/
+_deps/
+
+# Build outputs
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# PX4 / SITL build artifacts
+PX4-Autopilot/build/
+PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/build/
+px4/build/
+
+# Gazebo / Ignition / gz local runtime data
+.gazebo/
+.gz/
+fuel/
+*.log
+*.bag
+*.db3
+
+# ROS runtime data
+.ros/
+rosbag2_*/
+
+# Python cache produced by ROS 2 launch and tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDEs and editor state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
