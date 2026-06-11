@@ -54,7 +54,8 @@ ament_target_dependencies(
   px4_offboard_node
   nav_msgs
   px4_msgs
-  rclcpp)
+  rclcpp
+  std_msgs)
 enable_project_warnings(px4_offboard_node)
 
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)
@@ -63,7 +64,8 @@ target_link_libraries(mission_monitor_node drone_city_nav_core)
 ament_target_dependencies(
   mission_monitor_node
   px4_msgs
-  rclcpp)
+  rclcpp
+  std_msgs)
 enable_project_warnings(mission_monitor_node)
 
 install(

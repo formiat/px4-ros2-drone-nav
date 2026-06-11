@@ -111,10 +111,7 @@ void OccupancyGrid2D::setFree(const GridIndex cell) {
     return;
   }
 
-  const auto index = linearIndex(cell);
-  if (cells_[index] != CellState::kOccupied) {
-    cells_[index] = CellState::kFree;
-  }
+  cells_[linearIndex(cell)] = CellState::kFree;
 }
 
 void OccupancyGrid2D::setOccupied(const GridIndex cell) {

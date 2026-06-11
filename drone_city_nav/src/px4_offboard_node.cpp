@@ -7,6 +7,7 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 #include <algorithm>
 #include <array>
@@ -88,6 +89,8 @@ public:
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
+    const std::string emergency_stop_topic = declare_parameter<std::string>(
+        "emergency_stop_topic", "/drone_city_nav/emergency_stop");
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
@@ -104,6 +107,11 @@ public:
         vehicle_status_topic, px4_qos,
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
           onVehicleStatus(*msg);
+        });
+    emergency_stop_sub_ = create_subscription<std_msgs::msg::Bool>(
+        emergency_stop_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        [this](const std_msgs::msg::Bool::SharedPtr msg) {
+          onEmergencyStop(*msg);
         });
 
     offboard_control_mode_pub_ =
@@ -136,9 +144,9 @@ public:
         lookahead_distance_m_, mission_goal_.x, mission_goal_.y);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
-                "vehicle_status='%s'",
+                "vehicle_status='%s' emergency_stop='%s'",
                 path_topic.c_str(), local_position_topic.c_str(),
-                vehicle_status_topic.c_str());
+                vehicle_status_topic.c_str(), emergency_stop_topic.c_str());
   }
 
 private:
@@ -258,7 +266,24 @@ private:
     }
   }
 
+  void onEmergencyStop(const std_msgs::msg::Bool &msg) {
+    if (!msg.data || emergency_stop_requested_) {
+      return;
+    }
+
+    emergency_stop_requested_ = true;
+    path_valid_ = false;
+    RCLCPP_ERROR(get_logger(),
+                 "Emergency stop requested; stopping trajectory setpoints and "
+                 "sending disarm commands");
+  }
+
   void onTimer() {
+    if (emergency_stop_requested_) {
+      handleEmergencyStop();
+      return;
+    }
+
     publishOffboardControlMode();
     publishTrajectorySetpoint();
     logControlSummary();
@@ -290,6 +315,19 @@ private:
           1.0F);
       last_command_time_ = current_time;
     }
+  }
+
+  void handleEmergencyStop() {
+    const rclcpp::Time current_time = now();
+    if ((current_time - last_command_time_).seconds() <
+        command_resend_period_s_) {
+      return;
+    }
+
+    publishVehicleCommand(
+        px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0F,
+        21196.0F);
+    last_command_time_ = current_time;
   }
 
   void publishOffboardControlMode() {
@@ -480,6 +518,7 @@ private:
   bool local_position_seen_{false};
   bool auto_arm_{true};
   bool auto_offboard_{true};
+  bool emergency_stop_requested_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -496,6 +535,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr
       vehicle_status_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr

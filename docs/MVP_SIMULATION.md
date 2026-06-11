@@ -12,9 +12,10 @@ flight at a fixed altitude.
 - The planner starts without a prior map. It incrementally marks a 2D occupancy
   grid from `sensor_msgs/LaserScan`, inflates occupied cells, runs A*, smooths
   the result with line-of-sight checks, and republishes a waypoint path.
-- If the planner cannot find a path after a new obstacle update, fallback
-  behavior is parameterized. The simulation MVP enables direct-goal fallback to
-  keep the synthetic scenario moving; the real-drone template disables it.
+- If the planner cannot find a path after a new obstacle update, it publishes an
+  empty path by default so the offboard node holds position instead of following
+  stale waypoints. Direct-goal fallback and stale-path reuse remain explicitly
+  parameterized for experiments, but the simulation MVP keeps both disabled.
 
 This repository is still an MVP, not a certified collision-avoidance system. The
 planner and PX4 offboard nodes are kept independent from Gazebo, but any real
@@ -145,6 +146,9 @@ near point A, moved away from A, kept the configured clearance from every
 building footprint, reached point B, and held position there with low speed.
 The validation footprints list the tall buildings that intersect the cruise
 altitude; lower buildings are visual city geometry below the flight plane.
+On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
+the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
+crashed vehicle is not commanded to recover and continue the mission.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
@@ -175,5 +179,13 @@ colcon test-result --verbose
   same horizontal origin.
 - Runtime logs include distance-to-start and distance-to-goal values in
   `planner_node`, `px4_offboard_node`, and `mission_monitor_node`.
+- The simulation offboard follower uses a short lookahead so obstacle-avoidance
+  waypoints are followed instead of being skipped by a direct-to-goal setpoint.
+- The simulation planner ignores lidar map updates below
+  `min_mapping_altitude_m` so takeoff-time ground or low-building returns do not
+  pollute the cruise-altitude 2D occupancy grid.
+- The simulation parameter file keeps `use_px4_heading_for_scan=false` because
+  the bridged Gazebo lidar scan already arrives in the local simulation frame
+  used by this MVP.
 - The launch file bridges `/scan`; if the PX4 lidar model publishes a different
   Gazebo topic, update `city_nav.launch.py` or add a remap.

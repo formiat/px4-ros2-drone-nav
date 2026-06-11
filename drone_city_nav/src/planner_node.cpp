@@ -52,6 +52,8 @@ public:
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
     direct_path_fallback_ =
         declare_parameter<bool>("direct_path_fallback", false);
+    reuse_last_valid_path_on_failure_ =
+        declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
     max_initial_lateral_deviation_m_ =
         declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
     start_ = Point2{declare_parameter<double>("start_x_m", 0.0),
@@ -59,8 +61,12 @@ public:
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                    declare_parameter<double>("goal_y_m", 0.0)};
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
+    min_mapping_altitude_m_ =
+        declare_parameter<double>("min_mapping_altitude_m", 0.0);
     scan_yaw_offset_rad_ =
         declare_parameter<double>("scan_yaw_offset_rad", 0.0);
+    use_px4_heading_for_scan_ =
+        declare_parameter<bool>("use_px4_heading_for_scan", true);
     max_lidar_range_m_ = declare_parameter<double>("max_lidar_range_m", 35.0);
     range_hit_epsilon_m_ =
         declare_parameter<double>("range_hit_epsilon_m", 0.05);
@@ -137,9 +143,13 @@ public:
                 lidar_topic.c_str(), local_position_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Planner fallback policy: direct_path_fallback=%s "
-                "max_initial_lateral_deviation=%.2fm",
+                "reuse_last_valid_path_on_failure=%s "
+                "max_initial_lateral_deviation=%.2fm "
+                "use_px4_heading_for_scan=%s",
                 direct_path_fallback_ ? "true" : "false",
-                max_initial_lateral_deviation_m_);
+                reuse_last_valid_path_on_failure_ ? "true" : "false",
+                max_initial_lateral_deviation_m_,
+                use_px4_heading_for_scan_ ? "true" : "false");
   }
 
 private:
@@ -155,7 +165,12 @@ private:
 
     current_pose_.position =
         Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
-    if (msg.heading_good_for_control && std::isfinite(msg.heading)) {
+    if (msg.z_valid && std::isfinite(msg.z)) {
+      current_altitude_m_ = -static_cast<double>(msg.z);
+      altitude_valid_ = true;
+    }
+    if (use_px4_heading_for_scan_ && msg.heading_good_for_control &&
+        std::isfinite(msg.heading)) {
       current_pose_.yaw_rad = static_cast<double>(msg.heading);
     }
     pose_valid_ = true;
@@ -163,9 +178,11 @@ private:
     if (!local_position_seen_) {
       local_position_seen_ = true;
       RCLCPP_INFO(get_logger(),
-                  "First valid PX4 local position: x=%.2f y=%.2f yaw=%.2f "
-                  "distance_to_start=%.2f distance_to_goal=%.2f",
+                  "First valid PX4 local position: x=%.2f y=%.2f z=%.2f "
+                  "altitude=%.2f yaw=%.2f distance_to_start=%.2f "
+                  "distance_to_goal=%.2f",
                   current_pose_.position.x, current_pose_.position.y,
+                  static_cast<double>(msg.z), current_altitude_m_,
                   current_pose_.yaw_rad, distance(current_pose_.position, start_),
                   distance(current_pose_.position, goal_));
     }
@@ -180,6 +197,16 @@ private:
     const double scan_range_max =
         std::min(static_cast<double>(scan.range_max), max_lidar_range_m_);
     if (!(scan_range_max > 0.0)) {
+      return;
+    }
+    if (min_mapping_altitude_m_ > 0.0 &&
+        (!altitude_valid_ || current_altitude_m_ < min_mapping_altitude_m_)) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Skipping lidar map update below mapping altitude: altitude=%.2f "
+          "valid=%s required=%.2f",
+          current_altitude_m_, altitude_valid_ ? "true" : "false",
+          min_mapping_altitude_m_);
       return;
     }
 
@@ -225,10 +252,11 @@ private:
     }
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Lidar update: pose=(%.2f, %.2f, yaw=%.2f) processed=%zu hits=%zu "
-        "range_max=%.2f",
+        "Lidar update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
+        "processed=%zu hits=%zu range_max=%.2f",
         current_pose_.position.x, current_pose_.position.y,
-        current_pose_.yaw_rad, processed_beams, hit_beams, scan_range_max);
+        current_altitude_m_, current_pose_.yaw_rad, processed_beams, hit_beams,
+        scan_range_max);
   }
 
   void replanAndPublish() {
@@ -409,7 +437,7 @@ private:
   }
 
   void publishLastValidPathOrEmpty() {
-    if (!last_valid_path_points_.empty()) {
+    if (reuse_last_valid_path_on_failure_ && !last_valid_path_points_.empty()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Reusing last valid path after replanning failure: waypoints=%zu",
@@ -418,6 +446,12 @@ private:
       return;
     }
 
+    if (!last_valid_path_points_.empty()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Clearing path after replanning failure; holding position instead of "
+          "reusing stale waypoints");
+    }
     publishPath({});
   }
 
@@ -539,13 +573,18 @@ private:
   Pose2 current_pose_{};
   Point2 start_{};
   Point2 goal_{};
+  double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   bool pose_valid_{false};
+  bool altitude_valid_{false};
   bool local_position_seen_{false};
   bool scan_seen_{false};
   bool direct_path_fallback_{false};
+  bool reuse_last_valid_path_on_failure_{false};
+  bool use_px4_heading_for_scan_{true};
   std::string frame_id_{"map"};
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};
+  double min_mapping_altitude_m_{0.0};
   double max_initial_lateral_deviation_m_{8.0};
   double scan_yaw_offset_rad_{0.0};
   double max_lidar_range_m_{35.0};

@@ -26,6 +26,17 @@ TEST(OccupancyGrid2D, RayMarksFreeCellsAndOccupiedEndpoint) {
   EXPECT_EQ(grid.state(GridIndex{5, 1}), CellState::kOccupied);
 }
 
+TEST(OccupancyGrid2D, FreeRayClearsStaleOccupiedCells) {
+  OccupancyGrid2D grid = makeGrid();
+
+  grid.markRay(Point2{1.5, 1.5}, Point2{5.5, 1.5}, true);
+  ASSERT_EQ(grid.state(GridIndex{5, 1}), CellState::kOccupied);
+
+  grid.markRay(Point2{1.5, 1.5}, Point2{8.5, 1.5}, false);
+
+  EXPECT_EQ(grid.state(GridIndex{5, 1}), CellState::kFree);
+}
+
 TEST(OccupancyGrid2D, InflationBlocksSafetyRadius) {
   OccupancyGrid2D grid = makeGrid();
 

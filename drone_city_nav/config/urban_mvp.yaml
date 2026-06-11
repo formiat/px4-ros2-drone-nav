@@ -20,10 +20,13 @@ planner_node:
     goal_x_m: 150.0
     goal_y_m: 90.0
     cruise_altitude_m: 12.0
+    min_mapping_altitude_m: 10.0
     inflation_radius_m: 6.0
     direct_path_fallback: false
+    reuse_last_valid_path_on_failure: false
     max_initial_lateral_deviation_m: 14.0
     scan_yaw_offset_rad: 0.0
+    use_px4_heading_for_scan: false
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     scan_stride: 1
@@ -39,10 +42,11 @@ px4_offboard_node:
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
+    emergency_stop_topic: /drone_city_nav/emergency_stop
     cruise_altitude_m: 12.0
-    acceptance_radius_m: 3.0
-    max_setpoint_distance_m: 1.0
-    lookahead_distance_m: 18.0
+    acceptance_radius_m: 1.0
+    max_setpoint_distance_m: 0.8
+    lookahead_distance_m: 0.5
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true
@@ -69,7 +73,153 @@ mission_monitor_node:
     goal_radius_m: 2.0
     stop_speed_mps: 0.6
     stop_hold_s: 2.0
-    building_clearance_m: 1.0
+    building_clearance_m: 3.0
+    vertical_clearance_m: 1.0
+    crash_detection_enabled: true
+    crash_min_airborne_altitude_m: 6.0
+    crash_altitude_m: 2.5
+    emergency_stop_topic: /drone_city_nav/emergency_stop
+    building_volumes:
+      - 25.0
+      - 35.0
+      - 12.0
+      - 12.0
+      - 28.0
+      - 45.0
+      - 50.0
+      - 14.0
+      - 12.0
+      - 30.0
+      - 70.0
+      - 10.0
+      - 13.0
+      - 13.0
+      - 26.0
+      - 95.0
+      - 75.0
+      - 14.0
+      - 12.0
+      - 28.0
+      - 120.0
+      - 35.0
+      - 13.0
+      - 14.0
+      - 30.0
+      - 135.0
+      - 60.0
+      - 12.0
+      - 12.0
+      - 24.0
+      - 20.0
+      - 65.0
+      - 14.0
+      - 16.0
+      - 26.0
+      - 47.0
+      - 81.0
+      - 16.0
+      - 12.0
+      - 34.0
+      - 75.0
+      - 77.0
+      - 12.0
+      - 15.0
+      - 22.0
+      - 105.0
+      - 13.0
+      - 14.0
+      - 14.0
+      - 32.0
+      - 131.0
+      - 21.0
+      - 16.0
+      - 12.0
+      - 28.0
+      - 147.0
+      - 41.0
+      - 12.0
+      - 16.0
+      - 24.0
+      - 5.0
+      - 45.0
+      - 12.0
+      - 14.0
+      - 20.0
+      - 79.0
+      - 9.0
+      - 13.0
+      - 12.0
+      - 22.0
+      - 13.0
+      - 1.0
+      - 9.0
+      - 8.0
+      - 8.0
+      - 40.0
+      - 1.0
+      - 12.0
+      - 10.0
+      - 9.0
+      - 65.0
+      - 3.0
+      - 10.0
+      - 12.0
+      - 7.0
+      - 90.0
+      - 1.0
+      - 11.0
+      - 10.0
+      - 8.0
+      - 115.0
+      - 1.0
+      - 12.0
+      - 11.0
+      - 10.0
+      - 141.0
+      - 1.0
+      - 10.0
+      - 10.0
+      - 9.0
+      - 3.0
+      - 83.0
+      - 10.0
+      - 10.0
+      - 8.0
+      - 27.0
+      - 87.0
+      - 12.0
+      - 9.0
+      - 7.0
+      - 57.0
+      - 61.0
+      - 10.0
+      - 11.0
+      - 9.0
+      - 83.0
+      - 89.0
+      - 11.0
+      - 9.0
+      - 8.0
+      - 109.0
+      - 87.0
+      - 10.0
+      - 10.0
+      - 9.0
+      - 151.0
+      - 67.0
+      - 9.0
+      - 12.0
+      - 8.0
+      - 3.0
+      - 27.0
+      - 10.0
+      - 12.0
+      - 8.0
+      - 149.0
+      - 11.0
+      - 12.0
+      - 10.0
+      - 9.0
     building_footprints:
       - 25.0
       - 35.0
