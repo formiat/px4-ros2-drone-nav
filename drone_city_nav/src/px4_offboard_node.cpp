@@ -56,6 +56,10 @@ class Px4OffboardNode final : public rclcpp::Node {
 public:
   Px4OffboardNode() : Node{"px4_offboard_node"} {
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
+    min_navigation_altitude_m_ =
+        std::clamp(declare_parameter<double>("min_navigation_altitude_m", 0.0),
+                   0.0, std::abs(cruise_altitude_m_));
+    face_target_yaw_ = declare_parameter<bool>("face_target_yaw", false);
     acceptance_radius_m_ =
         declare_parameter<double>("acceptance_radius_m", 1.5);
     max_setpoint_distance_m_ =
@@ -147,11 +151,13 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-        "auto_offboard=%s max_setpoint_distance=%.1fm lookahead=%.1fm "
+        "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
+        "max_setpoint_distance=%.1fm lookahead=%.1fm "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-        auto_offboard_ ? "true" : "false", max_setpoint_distance_m_,
+        auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
+        face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
         lookahead_distance_m_, path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_,
         path_continuity_max_target_distance_m_, mission_goal_.x,
@@ -325,16 +331,25 @@ private:
 
     current_position_ =
         Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    if (msg.z_valid && std::isfinite(msg.z)) {
+      current_altitude_m_ = -static_cast<double>(msg.z);
+      altitude_valid_ = true;
+    }
     if (std::isfinite(msg.heading)) {
       current_heading_rad_ = static_cast<double>(msg.heading);
     }
     local_position_valid_ = true;
+    if (!takeoff_hold_target_valid_) {
+      takeoff_hold_target_ = current_position_;
+      takeoff_hold_target_valid_ = true;
+    }
 
     if (!local_position_seen_) {
       local_position_seen_ = true;
       RCLCPP_INFO(get_logger(),
-                  "First valid PX4 local position: x=%.2f y=%.2f heading=%.2f",
-                  current_position_.x, current_position_.y,
+                  "First valid PX4 local position: x=%.2f y=%.2f "
+                  "altitude=%.2f heading=%.2f",
+                  current_position_.x, current_position_.y, current_altitude_m_,
                   current_heading_rad_);
     }
   }
@@ -446,7 +461,9 @@ private:
                                : std::array<float, 3>{0.0F, 0.0F, 0.0F};
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
-    msg.yaw = static_cast<float>(targetYaw(target));
+    msg.yaw =
+        static_cast<float>(face_target_yaw_ ? targetYaw(target)
+                                            : current_heading_rad_);
     msg.yawspeed = nan;
 
     trajectory_setpoint_pub_->publish(msg);
@@ -498,6 +515,15 @@ private:
   }
 
   [[nodiscard]] Point2 currentTarget() const {
+    if (!navigationAllowed()) {
+      if (takeoff_hold_target_valid_) {
+        return takeoff_hold_target_;
+      }
+      if (local_position_valid_) {
+        return current_position_;
+      }
+    }
+
     if (path_valid_ && waypoint_index_ < path_.poses.size()) {
       return Point2{pathPointX(path_, waypoint_index_),
                     pathPointY(path_, waypoint_index_)};
@@ -546,6 +572,13 @@ private:
     return std::atan2(dy, dx);
   }
 
+  [[nodiscard]] bool navigationAllowed() const {
+    if (min_navigation_altitude_m_ <= 0.0) {
+      return true;
+    }
+    return altitude_valid_ && current_altitude_m_ >= min_navigation_altitude_m_;
+  }
+
   [[nodiscard]] bool isArmed() const {
     return vehicle_status_valid_ &&
            vehicle_status_.arming_state ==
@@ -578,12 +611,13 @@ private:
             : std::numeric_limits<double>::quiet_NaN();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Offboard summary: local_position=%s status=%s armed=%s offboard=%s "
-        "path=%s hold=%s waypoint=%zu/%zu current=(%.2f, %.2f) "
-        "target=(%.2f, %.2f) "
+        "Offboard summary: local_position=%s altitude=%.2f nav_allowed=%s "
+        "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
+        "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f",
-        local_position_valid_ ? "true" : "false",
+        local_position_valid_ ? "true" : "false", current_altitude_m_,
+        navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         no_path_hold_target_valid_ ? "true" : "false",
@@ -596,9 +630,12 @@ private:
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
   Point2 no_path_hold_target_{};
+  Point2 takeoff_hold_target_{};
   Point2 mission_goal_{85.0, 0.0};
   double current_heading_rad_{0.0};
+  double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double cruise_altitude_m_{12.0};
+  double min_navigation_altitude_m_{0.0};
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
   double lookahead_distance_m_{6.0};
@@ -614,11 +651,14 @@ private:
   bool path_valid_{false};
   bool local_position_valid_{false};
   bool vehicle_status_valid_{false};
+  bool altitude_valid_{false};
   bool local_position_seen_{false};
   bool auto_arm_{true};
   bool auto_offboard_{true};
   bool emergency_stop_requested_{false};
   bool no_path_hold_target_valid_{false};
+  bool takeoff_hold_target_valid_{false};
+  bool face_target_yaw_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
