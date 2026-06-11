@@ -68,11 +68,31 @@ MicroXRCEAgent log is written to `log/uxrce_agent_city_mvp.log`. Override them
 with `PX4_LOG_FILE=/path/to/px4.log` and
 `UXRCE_AGENT_LOG_FILE=/path/to/agent.log` when needed.
 
-For a headless smoke run:
+For a full headless validation run:
 
 ```bash
-HEADLESS=1 SMOKE_DURATION_S=30 ./scripts/run_city_mvp.sh
+HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 ```
+
+This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
+planner/offboard launch. When the timeout is reached, the script checks the logs
+for a ready Gazebo world, valid PX4 local position, lidar scans, planner
+waypoints, offboard and arm commands, armed offboard state, and critical PX4
+preflight failures.
+
+During startup the script sends SITL-only PX4 parameters through the PX4 shell:
+`CBRK_SUPPLY_CHK=894281` disables the unavailable power-supply check and
+`NAV_DLL_ACT=0` allows a no-GCS headless run. These parameters are not saved.
+
+Headless logs are written to:
+
+- `log/gz_city_mvp.log`
+- `log/px4_city_mvp.log`
+- `log/uxrce_agent_city_mvp.log`
+- `log/ros_city_mvp.log`
+
+The script prepares Gazebo runtime resources under `build/gazebo_city_mvp` and
+does not modify the PX4 checkout under `external/`.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

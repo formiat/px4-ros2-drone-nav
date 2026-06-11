@@ -74,8 +74,8 @@
           <diffuse>0.02 0.02 0.02 1</diffuse>
         </material>
       </visual>
-      <sensor name="lidar_2d_v2" type="lidar">
-        <topic>/scan</topic>
+      <sensor name="lidar_2d_v2" type="gpu_lidar">
+        <gz_frame_id>link</gz_frame_id>
         <pose>0 0 0.055 0 0 0</pose>
         <ray>
           <scan>

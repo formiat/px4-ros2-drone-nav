@@ -57,6 +57,9 @@ public:
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
     acceptance_radius_m_ =
         declare_parameter<double>("acceptance_radius_m", 1.5);
+    max_setpoint_distance_m_ =
+        std::clamp(declare_parameter<double>("max_setpoint_distance_m", 4.0),
+                   0.5, 50.0);
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
@@ -121,9 +124,9 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-        "auto_offboard=%s",
+        "auto_offboard=%s max_setpoint_distance=%.1fm",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-        auto_offboard_ ? "true" : "false");
+        auto_offboard_ ? "true" : "false", max_setpoint_distance_m_);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s'",
@@ -255,7 +258,7 @@ private:
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
 
-    const Point2 target = currentTarget();
+    const Point2 target = limitedTarget(currentTarget());
     const float nan = std::numeric_limits<float>::quiet_NaN();
 
     px4_msgs::msg::TrajectorySetpoint msg;
@@ -330,6 +333,24 @@ private:
     return Point2{hold_x_m_, hold_y_m_};
   }
 
+  [[nodiscard]] Point2 limitedTarget(const Point2 target) const {
+    if (!local_position_valid_) {
+      return target;
+    }
+
+    const double dx = target.x - current_position_.x;
+    const double dy = target.y - current_position_.y;
+    const double target_distance = std::hypot(dx, dy);
+    if (target_distance <= max_setpoint_distance_m_ ||
+        !(target_distance > 0.0)) {
+      return target;
+    }
+
+    const double scale = max_setpoint_distance_m_ / target_distance;
+    return Point2{current_position_.x + dx * scale,
+                  current_position_.y + dy * scale};
+  }
+
   [[nodiscard]] double targetYaw(const Point2 target) const {
     if (!local_position_valid_) {
       return current_heading_rad_;
@@ -361,7 +382,7 @@ private:
   }
 
   void logControlSummary() {
-    const Point2 target = currentTarget();
+    const Point2 target = limitedTarget(currentTarget());
     const double target_distance =
         local_position_valid_ ? distance(current_position_, target)
                               : std::numeric_limits<double>::quiet_NaN();
@@ -384,6 +405,7 @@ private:
   double current_heading_rad_{0.0};
   double cruise_altitude_m_{12.0};
   double acceptance_radius_m_{1.5};
+  double max_setpoint_distance_m_{4.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
