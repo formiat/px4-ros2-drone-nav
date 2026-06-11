@@ -16,10 +16,10 @@ flight at a fixed altitude.
 - The planner starts without a prior map. It incrementally marks a 2D occupancy
   grid from `sensor_msgs/LaserScan`, inflates occupied cells, runs A*, smooths
   the result with line-of-sight checks, and republishes a waypoint path.
-- If the planner cannot find a path after a new obstacle update, it publishes an
-  empty path by default so the offboard node holds position instead of following
-  stale waypoints. Direct-goal fallback and stale-path reuse remain explicitly
-  parameterized for experiments, but the simulation MVP keeps both disabled.
+- If the planner briefly cannot find a path after a new obstacle update, the
+  simulation MVP reuses the last valid path to keep moving through the current
+  local avoidance maneuver. If an empty path is published, the offboard node
+  holds a fixed position instead of moving without a target.
 
 This repository is still an MVP, not a certified collision-avoidance system. The
 planner and PX4 offboard nodes are kept independent from Gazebo, but any real
@@ -31,6 +31,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - Planner grid frame: local horizontal `map`, meters.
 - PX4 local position: NED, using `VehicleLocalPosition.x` as north/meters and
   `VehicleLocalPosition.y` as east/meters.
+- Gazebo visual coordinates are ENU-like in this simulation. The PX4 local
+  mission frame maps Gazebo north/Y to local X and Gazebo east/X to local Y.
 - Published `nav_msgs/Path` uses positive altitude for visualization.
 - PX4 `TrajectorySetpoint` uses NED altitude, so the offboard node sends
   `z = -cruise_altitude_m`.
@@ -79,7 +81,7 @@ vehicle and test area.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
 spawned at visual point A. Therefore the planner/monitor use local point A
-`(0, 0)` and local point B `(150, 90)`.
+`(0, 0)` and local point B `(90, 150)`.
 
 ## Quick Start
 

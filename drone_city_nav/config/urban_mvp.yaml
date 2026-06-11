@@ -7,8 +7,8 @@ planner_node:
     path_topic: /drone_city_nav/path
     current_waypoint_topic: /drone_city_nav/current_waypoint
     grid_resolution_m: 0.5
-    grid_width_m: 175.0
-    grid_height_m: 115.0
+    grid_width_m: 115.0
+    grid_height_m: 175.0
     grid_origin_x: -10.0
     grid_origin_y: -10.0
     start_x_m: 0.0
@@ -17,8 +17,8 @@ planner_node:
     initial_y_m: 0.0
     initial_heading_rad: 0.0
     use_initial_pose_until_px4: true
-    goal_x_m: 150.0
-    goal_y_m: 90.0
+    goal_x_m: 90.0
+    goal_y_m: 150.0
     cruise_altitude_m: 18.0
     min_mapping_altitude_m: 16.0
     inflation_radius_m: 5.0
@@ -27,6 +27,7 @@ planner_node:
     max_initial_lateral_deviation_m: 14.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
+    swap_lidar_xy_to_local_frame: true
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     hit_obstacle_depth_m: 10.0
@@ -58,8 +59,8 @@ px4_offboard_node:
     command_resend_period_s: 2.0
     auto_arm: true
     auto_offboard: true
-    goal_x_m: 150.0
-    goal_y_m: 90.0
+    goal_x_m: 90.0
+    goal_y_m: 150.0
     hold_x_m: 0.0
     hold_y_m: 0.0
     target_system: 1
@@ -80,6 +81,7 @@ lidar_debug_node:
     view_radius_m: 45.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
+    swap_lidar_xy_to_local_frame: true
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     beam_csv_stride: 1
@@ -93,8 +95,8 @@ mission_monitor_node:
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     start_x_m: 0.0
     start_y_m: 0.0
-    goal_x_m: 150.0
-    goal_y_m: 90.0
+    goal_x_m: 90.0
+    goal_y_m: 150.0
     spawn_tolerance_m: 1.0
     min_movement_distance_m: 5.0
     goal_radius_m: 2.0
@@ -108,146 +110,146 @@ mission_monitor_node:
     crash_altitude_m: 2.5
     emergency_stop_topic: /drone_city_nav/emergency_stop
     building_volumes:
+      - 35.0
       - 25.0
-      - 35.0
       - 12.0
       - 12.0
       - 28.0
-      - 45.0
       - 50.0
-      - 14.0
-      - 12.0
-      - 30.0
-      - 70.0
-      - 10.0
-      - 13.0
-      - 13.0
-      - 26.0
-      - 95.0
-      - 75.0
-      - 14.0
-      - 12.0
-      - 28.0
-      - 120.0
-      - 35.0
-      - 13.0
-      - 14.0
-      - 30.0
-      - 135.0
-      - 60.0
-      - 12.0
-      - 12.0
-      - 24.0
-      - 20.0
-      - 65.0
-      - 14.0
-      - 16.0
-      - 26.0
-      - 47.0
-      - 81.0
-      - 16.0
-      - 12.0
-      - 34.0
-      - 75.0
-      - 77.0
-      - 12.0
-      - 15.0
-      - 22.0
-      - 105.0
-      - 13.0
-      - 14.0
-      - 14.0
-      - 32.0
-      - 131.0
-      - 21.0
-      - 16.0
-      - 12.0
-      - 28.0
-      - 147.0
-      - 41.0
-      - 12.0
-      - 16.0
-      - 24.0
-      - 5.0
       - 45.0
       - 12.0
       - 14.0
-      - 20.0
-      - 79.0
-      - 9.0
-      - 13.0
-      - 12.0
-      - 22.0
-      - 13.0
-      - 1.0
-      - 9.0
-      - 8.0
-      - 8.0
-      - 40.0
-      - 1.0
-      - 12.0
+      - 28.0
       - 10.0
-      - 9.0
+      - 70.0
+      - 13.0
+      - 13.0
+      - 28.0
+      - 75.0
+      - 95.0
+      - 12.0
+      - 14.0
+      - 28.0
+      - 35.0
+      - 120.0
+      - 14.0
+      - 13.0
+      - 28.0
+      - 60.0
+      - 135.0
+      - 12.0
+      - 12.0
+      - 28.0
       - 65.0
-      - 3.0
+      - 20.0
+      - 16.0
+      - 14.0
+      - 28.0
+      - 81.0
+      - 47.0
+      - 12.0
+      - 16.0
+      - 28.0
+      - 77.0
+      - 75.0
+      - 15.0
+      - 12.0
+      - 28.0
+      - 13.0
+      - 105.0
+      - 14.0
+      - 14.0
+      - 28.0
+      - 21.0
+      - 131.0
+      - 12.0
+      - 16.0
+      - 28.0
+      - 41.0
+      - 147.0
+      - 16.0
+      - 12.0
+      - 28.0
+      - 45.0
+      - 5.0
+      - 14.0
+      - 12.0
+      - 28.0
+      - 9.0
+      - 79.0
+      - 12.0
+      - 13.0
+      - 28.0
+      - 1.0
+      - 13.0
+      - 8.0
+      - 9.0
+      - 28.0
+      - 1.0
+      - 40.0
       - 10.0
       - 12.0
-      - 7.0
+      - 28.0
+      - 3.0
+      - 65.0
+      - 12.0
+      - 10.0
+      - 28.0
+      - 1.0
       - 90.0
-      - 1.0
-      - 11.0
       - 10.0
-      - 8.0
+      - 11.0
+      - 28.0
+      - 1.0
       - 115.0
-      - 1.0
-      - 12.0
       - 11.0
-      - 10.0
+      - 12.0
+      - 28.0
+      - 1.0
       - 141.0
-      - 1.0
       - 10.0
       - 10.0
-      - 9.0
-      - 3.0
+      - 28.0
       - 83.0
+      - 3.0
       - 10.0
       - 10.0
-      - 8.0
-      - 27.0
+      - 28.0
       - 87.0
-      - 12.0
+      - 27.0
       - 9.0
-      - 7.0
-      - 57.0
+      - 12.0
+      - 28.0
       - 61.0
-      - 10.0
+      - 57.0
       - 11.0
-      - 9.0
-      - 83.0
+      - 10.0
+      - 28.0
       - 89.0
-      - 11.0
+      - 83.0
       - 9.0
-      - 8.0
-      - 109.0
+      - 11.0
+      - 28.0
       - 87.0
+      - 109.0
       - 10.0
       - 10.0
-      - 9.0
-      - 151.0
+      - 28.0
       - 67.0
-      - 9.0
+      - 151.0
       - 12.0
-      - 8.0
-      - 3.0
+      - 9.0
+      - 28.0
       - 27.0
-      - 10.0
+      - 3.0
       - 12.0
-      - 8.0
-      - 149.0
+      - 10.0
+      - 28.0
       - 11.0
-      - 12.0
+      - 149.0
       - 10.0
-      - 9.0
+      - 12.0
+      - 28.0
     building_footprints:
       - 25.0
       - 35.0

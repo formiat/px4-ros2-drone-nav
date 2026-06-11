@@ -67,6 +67,8 @@ public:
         declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
+    swap_lidar_xy_to_local_frame_ =
+        declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     max_lidar_range_m_ = declare_parameter<double>("max_lidar_range_m", 35.0);
     range_hit_epsilon_m_ =
         declare_parameter<double>("range_hit_epsilon_m", 0.05);
@@ -148,11 +150,13 @@ public:
                 "Planner fallback policy: direct_path_fallback=%s "
                 "reuse_last_valid_path_on_failure=%s "
                 "max_initial_lateral_deviation=%.2fm "
-                "use_px4_heading_for_scan=%s hit_obstacle_depth=%.2fm",
+                "use_px4_heading_for_scan=%s swap_lidar_xy_to_local_frame=%s "
+                "hit_obstacle_depth=%.2fm",
                 direct_path_fallback_ ? "true" : "false",
                 reuse_last_valid_path_on_failure_ ? "true" : "false",
                 max_initial_lateral_deviation_m_,
                 use_px4_heading_for_scan_ ? "true" : "false",
+                swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 hit_obstacle_depth_m_);
   }
 
@@ -238,12 +242,12 @@ private:
           current_pose_.yaw_rad + scan_yaw_offset_rad_ +
           static_cast<double>(scan.angle_min) +
           static_cast<double>(i) * static_cast<double>(scan.angle_increment);
-      const Point2 end{current_pose_.position.x + range_m * std::cos(angle_rad),
-                       current_pose_.position.y +
-                           range_m * std::sin(angle_rad)};
+      const Point2 direction = lidarDirection(angle_rad);
+      const Point2 end{current_pose_.position.x + range_m * direction.x,
+                       current_pose_.position.y + range_m * direction.y};
       grid_->markRay(current_pose_.position, end, hit);
       if (hit) {
-        obstacle_depth_cells += markObstacleDepth(end, angle_rad);
+        obstacle_depth_cells += markObstacleDepth(end, direction);
       }
     }
 
@@ -268,14 +272,14 @@ private:
   }
 
   std::size_t markObstacleDepth(const Point2 hit_point,
-                                const double angle_rad) {
+                                const Point2 direction) {
     if (hit_obstacle_depth_m_ <= 0.0 || grid_ == nullptr) {
       return 0U;
     }
 
     const Point2 shadow_end{
-        hit_point.x + hit_obstacle_depth_m_ * std::cos(angle_rad),
-        hit_point.y + hit_obstacle_depth_m_ * std::sin(angle_rad)};
+        hit_point.x + hit_obstacle_depth_m_ * direction.x,
+        hit_point.y + hit_obstacle_depth_m_ * direction.y};
     const auto start_cell = grid_->worldToCell(hit_point);
     const auto end_cell = grid_->worldToCell(shadow_end);
     if (!start_cell.has_value() || !end_cell.has_value()) {
@@ -288,6 +292,15 @@ private:
       grid_->setOccupied(cell);
     }
     return cells.size();
+  }
+
+  [[nodiscard]] Point2 lidarDirection(const double angle_rad) const {
+    const double scan_x = std::cos(angle_rad);
+    const double scan_y = std::sin(angle_rad);
+    if (swap_lidar_xy_to_local_frame_) {
+      return Point2{scan_y, scan_x};
+    }
+    return Point2{scan_x, scan_y};
   }
 
   void replanAndPublish() {
@@ -612,6 +625,7 @@ private:
   bool direct_path_fallback_{false};
   bool reuse_last_valid_path_on_failure_{false};
   bool use_px4_heading_for_scan_{true};
+  bool swap_lidar_xy_to_local_frame_{false};
   std::string frame_id_{"map"};
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};

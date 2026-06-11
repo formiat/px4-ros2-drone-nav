@@ -164,6 +164,8 @@ public:
         declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", false);
+    swap_lidar_xy_to_local_frame_ =
+        declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     beam_csv_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("beam_csv_stride", 1), 1, 100000));
     image_beam_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
@@ -326,9 +328,19 @@ private:
         static_cast<double>(last_scan_.angle_min) +
         static_cast<double>(beam_index) *
             static_cast<double>(last_scan_.angle_increment);
+    const Point2 direction = lidarDirection(angle_rad);
     return Point2{
-        current_pose_.position.x + range_m * std::cos(angle_rad),
-        current_pose_.position.y + range_m * std::sin(angle_rad)};
+        current_pose_.position.x + range_m * direction.x,
+        current_pose_.position.y + range_m * direction.y};
+  }
+
+  [[nodiscard]] Point2 lidarDirection(const double angle_rad) const {
+    const double scan_x = std::cos(angle_rad);
+    const double scan_y = std::sin(angle_rad);
+    if (swap_lidar_xy_to_local_frame_) {
+      return Point2{scan_y, scan_x};
+    }
+    return Point2{scan_x, scan_y};
   }
 
   void writeScanCsv(const std::filesystem::path &csv_path,
@@ -636,6 +648,7 @@ private:
   bool pose_seen_{false};
   bool altitude_valid_{false};
   bool use_px4_heading_for_scan_{false};
+  bool swap_lidar_xy_to_local_frame_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_sub_;
