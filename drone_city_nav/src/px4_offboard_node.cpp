@@ -191,13 +191,18 @@ private:
         if (local_position_valid_) {
           no_path_hold_target_ = current_position_;
           no_path_hold_target_valid_ = true;
+          commanded_target_ = no_path_hold_target_;
+          commanded_target_valid_ = true;
+          waypoint_index_ = 0U;
           RCLCPP_WARN(
               get_logger(),
               "Received empty path; holding fixed target at current position "
-              "(%.2f, %.2f)",
+              "(%.2f, %.2f) and resetting commanded target",
               no_path_hold_target_.x, no_path_hold_target_.y);
         } else {
           no_path_hold_target_valid_ = false;
+          commanded_target_valid_ = false;
+          waypoint_index_ = 0U;
           RCLCPP_WARN(get_logger(),
                       "Received empty path before local position; holding "
                       "configured fallback target");
@@ -339,6 +344,13 @@ private:
     if (msg.z_valid && std::isfinite(msg.z)) {
       current_altitude_m_ = -static_cast<double>(msg.z);
       altitude_valid_ = true;
+      if (!navigation_started_ &&
+          current_altitude_m_ >= min_navigation_altitude_m_) {
+        navigation_started_ = true;
+        RCLCPP_INFO(get_logger(),
+                    "Navigation altitude reached: altitude=%.2f required=%.2f",
+                    current_altitude_m_, min_navigation_altitude_m_);
+      }
     }
     if (std::isfinite(msg.heading)) {
       current_heading_rad_ = static_cast<double>(msg.heading);
@@ -606,7 +618,7 @@ private:
     if (min_navigation_altitude_m_ <= 0.0) {
       return true;
     }
-    return altitude_valid_ && current_altitude_m_ >= min_navigation_altitude_m_;
+    return navigation_started_;
   }
 
   [[nodiscard]] bool isArmed() const {
@@ -694,6 +706,7 @@ private:
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool face_target_yaw_{false};
+  bool navigation_started_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
