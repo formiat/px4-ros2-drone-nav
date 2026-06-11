@@ -33,6 +33,7 @@ _deps/
 PX4-Autopilot/build/
 PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/build/
 px4/build/
+external/
 
 # Gazebo / Ignition / gz local runtime data
 .gazebo/
