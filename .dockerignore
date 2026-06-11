@@ -1,0 +1,11 @@
+.git/
+build/
+install/
+log/
+.colcon/
+.gazebo/
+.gz/
+*.bag
+*.db3
+*.log
+rosbag2_*/
