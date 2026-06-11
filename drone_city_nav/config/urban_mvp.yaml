@@ -21,7 +21,7 @@ planner_node:
     goal_y_m: 90.0
     cruise_altitude_m: 18.0
     min_mapping_altitude_m: 16.0
-    inflation_radius_m: 8.0
+    inflation_radius_m: 5.0
     direct_path_fallback: false
     reuse_last_valid_path_on_failure: false
     max_initial_lateral_deviation_m: 14.0
@@ -29,7 +29,7 @@ planner_node:
     use_px4_heading_for_scan: false
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
-    hit_obstacle_depth_m: 16.0
+    hit_obstacle_depth_m: 10.0
     scan_stride: 1
     nearest_free_radius_cells: 30
     astar_max_expansions: 100000
@@ -100,7 +100,7 @@ mission_monitor_node:
     goal_radius_m: 2.0
     stop_speed_mps: 0.6
     stop_hold_s: 2.0
-    building_clearance_m: 4.0
+    building_clearance_m: 3.0
     vertical_clearance_m: 1.0
     uniform_building_height_m: 28.0
     crash_detection_enabled: true
