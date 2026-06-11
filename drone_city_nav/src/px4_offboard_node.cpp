@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -35,6 +36,17 @@ namespace {
 [[nodiscard]] double pathPointY(const nav_msgs::msg::Path &path,
                                 const std::size_t index) {
   return path.poses.at(index).pose.position.y;
+}
+
+[[nodiscard]] const char *commandName(const std::uint32_t command) noexcept {
+  switch (command) {
+  case px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE:
+    return "VEHICLE_CMD_DO_SET_MODE";
+  case px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM:
+    return "VEHICLE_CMD_COMPONENT_ARM_DISARM";
+  default:
+    return "UNKNOWN";
+  }
 }
 
 } // namespace
@@ -108,8 +120,15 @@ public:
 
     RCLCPP_INFO(
         get_logger(),
-        "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s",
-        cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false");
+        "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
+        "auto_offboard=%s",
+        cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
+        auto_offboard_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(),
+                "PX4 offboard subscriptions: path='%s' local_position='%s' "
+                "vehicle_status='%s'",
+                path_topic.c_str(), local_position_topic.c_str(),
+                vehicle_status_topic.c_str());
   }
 
 private:
@@ -117,10 +136,41 @@ private:
     path_ = path;
     path_valid_ = !path_.poses.empty();
     waypoint_index_ = 0U;
+
+    if (!path_valid_) {
+      if (last_logged_path_size_ != 0U) {
+        RCLCPP_WARN(get_logger(), "Received empty path; holding current target");
+        last_logged_path_size_ = 0U;
+      }
+      return;
+    }
+
+    const Point2 first{pathPointX(path_, 0U), pathPointY(path_, 0U)};
+    const Point2 last{pathPointX(path_, path_.poses.size() - 1U),
+                      pathPointY(path_, path_.poses.size() - 1U)};
+    const bool path_changed = path_.poses.size() != last_logged_path_size_ ||
+                              squaredDistance(first, last_logged_path_first_) >
+                                  0.01 ||
+                              squaredDistance(last, last_logged_path_last_) >
+                                  0.01;
+    if (path_changed) {
+      RCLCPP_INFO(get_logger(),
+                  "Received path: waypoints=%zu first=(%.2f, %.2f) "
+                  "last=(%.2f, %.2f)",
+                  path_.poses.size(), first.x, first.y, last.x, last.y);
+      last_logged_path_size_ = path_.poses.size();
+      last_logged_path_first_ = first;
+      last_logged_path_last_ = last;
+    }
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Ignoring invalid PX4 local position: xy_valid=%s x=%.2f y=%.2f",
+          msg.xy_valid ? "true" : "false", static_cast<double>(msg.x),
+          static_cast<double>(msg.y));
       return;
     }
 
@@ -130,18 +180,40 @@ private:
       current_heading_rad_ = static_cast<double>(msg.heading);
     }
     local_position_valid_ = true;
+
+    if (!local_position_seen_) {
+      local_position_seen_ = true;
+      RCLCPP_INFO(get_logger(),
+                  "First valid PX4 local position: x=%.2f y=%.2f heading=%.2f",
+                  current_position_.x, current_position_.y,
+                  current_heading_rad_);
+    }
   }
 
   void onVehicleStatus(const px4_msgs::msg::VehicleStatus &msg) {
     vehicle_status_ = msg;
     vehicle_status_valid_ = true;
+
+    const auto arming_state = static_cast<int>(msg.arming_state);
+    const auto nav_state = static_cast<int>(msg.nav_state);
+    if (arming_state != last_logged_arming_state_ ||
+        nav_state != last_logged_nav_state_) {
+      RCLCPP_INFO(get_logger(), "PX4 vehicle status: arming_state=%d nav_state=%d",
+                  arming_state, nav_state);
+      last_logged_arming_state_ = arming_state;
+      last_logged_nav_state_ = nav_state;
+    }
   }
 
   void onTimer() {
     publishOffboardControlMode();
     publishTrajectorySetpoint();
+    logControlSummary();
 
     if (setpoint_counter_ < warmup_setpoints_) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                           "Offboard warmup: sent %d/%d setpoints",
+                           setpoint_counter_, warmup_setpoints_);
       ++setpoint_counter_;
       return;
     }
@@ -214,6 +286,9 @@ private:
     msg.source_component = source_component_;
     msg.from_external = true;
     vehicle_command_pub_->publish(msg);
+    RCLCPP_INFO(get_logger(), "Sent PX4 command: %s (%u) param1=%.2f param2=%.2f",
+                commandName(command), static_cast<unsigned int>(command),
+                static_cast<double>(param1), static_cast<double>(param2));
   }
 
   void advanceWaypointIfNeeded() {
@@ -221,6 +296,7 @@ private:
       return;
     }
 
+    const std::size_t previous_waypoint_index = waypoint_index_;
     while (waypoint_index_ + 1U < path_.poses.size()) {
       const Point2 waypoint{pathPointX(path_, waypoint_index_),
                             pathPointY(path_, waypoint_index_)};
@@ -228,6 +304,16 @@ private:
         break;
       }
       ++waypoint_index_;
+    }
+
+    if (waypoint_index_ != previous_waypoint_index) {
+      const Point2 target{pathPointX(path_, waypoint_index_),
+                          pathPointY(path_, waypoint_index_)};
+      RCLCPP_INFO(get_logger(),
+                  "Waypoint advanced: index=%zu/%zu current=(%.2f, %.2f) "
+                  "target=(%.2f, %.2f)",
+                  waypoint_index_ + 1U, path_.poses.size(), current_position_.x,
+                  current_position_.y, target.x, target.y);
     }
   }
 
@@ -274,6 +360,24 @@ private:
     return static_cast<std::uint64_t>(get_clock()->now().nanoseconds() / 1000);
   }
 
+  void logControlSummary() {
+    const Point2 target = currentTarget();
+    const double target_distance =
+        local_position_valid_ ? distance(current_position_, target)
+                              : std::numeric_limits<double>::quiet_NaN();
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Offboard summary: local_position=%s status=%s armed=%s offboard=%s "
+        "path=%s waypoint=%zu/%zu current=(%.2f, %.2f) target=(%.2f, %.2f) "
+        "distance=%.2f",
+        local_position_valid_ ? "true" : "false",
+        vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
+        isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
+        path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
+        current_position_.x, current_position_.y, target.x, target.y,
+        target_distance);
+  }
+
   nav_msgs::msg::Path path_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
@@ -289,12 +393,18 @@ private:
   bool path_valid_{false};
   bool local_position_valid_{false};
   bool vehicle_status_valid_{false};
+  bool local_position_seen_{false};
   bool auto_arm_{true};
   bool auto_offboard_{true};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
   std::uint16_t source_component_{1U};
+  int last_logged_arming_state_{-1};
+  int last_logged_nav_state_{-1};
+  std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
+  Point2 last_logged_path_first_{};
+  Point2 last_logged_path_last_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
