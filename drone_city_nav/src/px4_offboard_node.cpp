@@ -65,6 +65,9 @@ public:
     max_setpoint_distance_m_ =
         std::clamp(declare_parameter<double>("max_setpoint_distance_m", 2.0),
                    0.5, 50.0);
+    max_commanded_target_step_m_ = std::clamp(
+        declare_parameter<double>("max_commanded_target_step_m", 0.25), 0.01,
+        10.0);
     lookahead_distance_m_ =
         std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0),
                    0.0, 50.0);
@@ -152,13 +155,15 @@ public:
         get_logger(),
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
         "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
-        "max_setpoint_distance=%.1fm lookahead=%.1fm "
+        "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
+        "lookahead=%.1fm "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
-        lookahead_distance_m_, path_switch_hysteresis_m_,
+        max_commanded_target_step_m_, lookahead_distance_m_,
+        path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_,
         path_continuity_max_target_distance_m_, mission_goal_.x,
         mission_goal_.y);
@@ -449,7 +454,7 @@ private:
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
 
-    const Point2 target = limitedTarget(currentTarget());
+    const Point2 target = smoothedCommandTarget(limitedTarget(currentTarget()));
     const float nan = std::numeric_limits<float>::quiet_NaN();
 
     px4_msgs::msg::TrajectorySetpoint msg;
@@ -558,6 +563,31 @@ private:
                   current_position_.y + dy * scale};
   }
 
+  Point2 smoothedCommandTarget(const Point2 desired_target) {
+    if (!local_position_valid_) {
+      commanded_target_valid_ = false;
+      return desired_target;
+    }
+    if (!commanded_target_valid_) {
+      commanded_target_ = desired_target;
+      commanded_target_valid_ = true;
+      return commanded_target_;
+    }
+
+    const double dx = desired_target.x - commanded_target_.x;
+    const double dy = desired_target.y - commanded_target_.y;
+    const double target_step = std::hypot(dx, dy);
+    if (target_step <= max_commanded_target_step_m_ || !(target_step > 0.0)) {
+      commanded_target_ = desired_target;
+      return commanded_target_;
+    }
+
+    const double scale = max_commanded_target_step_m_ / target_step;
+    commanded_target_ =
+        Point2{commanded_target_.x + dx * scale, commanded_target_.y + dy * scale};
+    return commanded_target_;
+  }
+
   [[nodiscard]] double targetYaw(const Point2 target) const {
     if (!local_position_valid_) {
       return current_heading_rad_;
@@ -596,7 +626,9 @@ private:
   }
 
   void logControlSummary() {
-    const Point2 target = limitedTarget(currentTarget());
+    const Point2 target = commanded_target_valid_
+                              ? commanded_target_
+                              : limitedTarget(currentTarget());
     const double target_distance =
         local_position_valid_ ? distance(current_position_, target)
                               : std::numeric_limits<double>::quiet_NaN();
@@ -631,6 +663,7 @@ private:
   Point2 current_position_{};
   Point2 no_path_hold_target_{};
   Point2 takeoff_hold_target_{};
+  Point2 commanded_target_{};
   Point2 mission_goal_{85.0, 0.0};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
@@ -638,6 +671,7 @@ private:
   double min_navigation_altitude_m_{0.0};
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
+  double max_commanded_target_step_m_{0.25};
   double lookahead_distance_m_{6.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
@@ -658,6 +692,7 @@ private:
   bool emergency_stop_requested_{false};
   bool no_path_hold_target_valid_{false};
   bool takeoff_hold_target_valid_{false};
+  bool commanded_target_valid_{false};
   bool face_target_yaw_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
