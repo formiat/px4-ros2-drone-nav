@@ -19,6 +19,8 @@ planner_node:
     goal_y_m: 0.0
     cruise_altitude_m: 12.0
     inflation_radius_m: 2.5
+    direct_path_fallback: true
+    max_initial_lateral_deviation_m: 8.0
     scan_yaw_offset_rad: 0.0
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -37,7 +39,7 @@ px4_offboard_node:
     vehicle_command_topic: /fmu/in/vehicle_command
     cruise_altitude_m: 12.0
     acceptance_radius_m: 1.5
-    max_setpoint_distance_m: 4.0
+    max_setpoint_distance_m: 2.0
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true
@@ -48,3 +50,47 @@ px4_offboard_node:
     target_component: 1
     source_system: 1
     source_component: 1
+
+mission_monitor_node:
+  ros__parameters:
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
+    start_x_m: 0.0
+    start_y_m: 0.0
+    goal_x_m: 85.0
+    goal_y_m: 0.0
+    spawn_tolerance_m: 1.0
+    min_movement_distance_m: 5.0
+    goal_radius_m: 2.0
+    stop_speed_mps: 0.6
+    stop_hold_s: 2.0
+    building_clearance_m: 1.0
+    building_footprints:
+      - 18.0
+      - -16.0
+      - 13.0
+      - 14.0
+      - 18.0
+      - 17.0
+      - 14.0
+      - 13.0
+      - 38.0
+      - -13.0
+      - 16.0
+      - 16.0
+      - 41.0
+      - 14.0
+      - 14.0
+      - 12.0
+      - 58.0
+      - -18.0
+      - 15.0
+      - 13.0
+      - 64.0
+      - 15.0
+      - 17.0
+      - 14.0
+      - 80.0
+      - -12.0
+      - 12.0
+      - 15.0

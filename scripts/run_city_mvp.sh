@@ -13,6 +13,7 @@ uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${repo_root}/log/uxrce_agent_city_mvp.lo
 ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
+mission_check="${MISSION_CHECK:-}"
 headless="${HEADLESS:-}"
 runtime_dir="${repo_root}/build/gazebo_city_mvp"
 runtime_models_dir="${runtime_dir}/models"
@@ -200,6 +201,16 @@ check_headless_run() {
     "Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM" || failed=1
   require_log_pattern "vehicle reaches armed offboard state" "${ros_log_file}" \
     "Offboard summary: .*armed=true.*offboard=true" || failed=1
+
+  if grep -Eq "MISSION_RESULT success=false" "${ros_log_file}"; then
+    echo "FAIL: mission monitor reported failure" >&2
+    failed=1
+  fi
+
+  if [[ -n "${mission_check}" ]]; then
+    require_log_pattern "mission monitor verifies complete A-to-B flight" \
+      "${ros_log_file}" "MISSION_RESULT success=true" || failed=1
+  fi
 
   if grep -Eqi \
     "Sensor [0-9]+ missing|Accel Sensor [0-9]+ missing|Gyro Sensor [0-9]+ missing|barometer [0-9]+ missing|Found 0 compass|Timed out waiting for Gazebo world|gz_bridge failed|Attitude failure" \

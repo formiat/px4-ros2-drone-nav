@@ -94,6 +94,16 @@ Headless logs are written to:
 The script prepares Gazebo runtime resources under `build/gazebo_city_mvp` and
 does not modify the PX4 checkout under `external/`.
 
+For a full A-to-B mission validation run:
+
+```bash
+HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=180 ./scripts/run_city_mvp.sh
+```
+
+`MISSION_CHECK=1` requires the mission monitor to verify that the drone spawned
+near point A, moved away from A, kept the configured clearance from every
+building footprint, reached point B, and held position there with low speed.
+
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
 

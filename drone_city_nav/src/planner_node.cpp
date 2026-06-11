@@ -49,6 +49,10 @@ public:
     const double origin_y = declare_parameter<double>("grid_origin_y", -40.0);
 
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
+    direct_path_fallback_ =
+        declare_parameter<bool>("direct_path_fallback", true);
+    max_initial_lateral_deviation_m_ =
+        declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                    declare_parameter<double>("goal_y_m", 0.0)};
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
@@ -230,7 +234,7 @@ private:
     if (!start_cell.has_value() || !goal_cell.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Start or goal is outside the occupancy grid");
-      publishPath({});
+      publishFallbackPath();
       return;
     }
 
@@ -242,7 +246,7 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "No unblocked start or goal cell is available after inflation");
-      publishPath({});
+      publishFallbackPath();
       return;
     }
 
@@ -264,7 +268,7 @@ private:
           "A* did not find a path; expanded=%zu start=(%d,%d) goal=(%d,%d)",
           astar_result.expanded_cells, unblocked_start->x, unblocked_start->y,
           unblocked_goal->x, unblocked_goal->y);
-      publishPath({});
+      publishFallbackPath();
       return;
     }
 
@@ -279,7 +283,30 @@ private:
         stats.occupied_cells, stats.inflated_cells, stats.free_cells,
         stats.unknown_cells, astar_result.expanded_cells,
         astar_result.path.size(), smoothed_cells.size());
-    publishPath(cellsToPoints(*grid_, smoothed_cells));
+    std::vector<Point2> path_points = cellsToPoints(*grid_, smoothed_cells);
+    if (path_points.empty()) {
+      publishPath({});
+      return;
+    }
+
+    if (distance(current_pose_.position, path_points.front()) <
+        grid_->resolution()) {
+      path_points.front() = current_pose_.position;
+    } else {
+      path_points.insert(path_points.begin(), current_pose_.position);
+    }
+    pruneBackwardInitialWaypoints(path_points);
+    if (hasExcessiveInitialLateralDeviation(path_points)) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "A* path has excessive initial lateral deviation; using direct "
+          "fallback path");
+      publishDirectGoalPath();
+      return;
+    }
+
+    last_valid_path_points_ = path_points;
+    publishPath(path_points);
   }
 
   [[nodiscard]] GridStats collectGridStats() const {
@@ -366,6 +393,91 @@ private:
     logPathUpdate(path);
   }
 
+  void publishLastValidPathOrEmpty() {
+    if (!last_valid_path_points_.empty()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Reusing last valid path after replanning failure: waypoints=%zu",
+          last_valid_path_points_.size());
+      publishPath(last_valid_path_points_);
+      return;
+    }
+
+    publishPath({});
+  }
+
+  void publishFallbackPath() {
+    if (direct_path_fallback_) {
+      publishDirectGoalPath();
+      return;
+    }
+
+    publishLastValidPathOrEmpty();
+  }
+
+  void publishDirectGoalPath() {
+    std::vector<Point2> path_points{current_pose_.position, goal_};
+    last_valid_path_points_ = path_points;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
+        current_pose_.position.x, current_pose_.position.y, goal_.x, goal_.y);
+    publishPath(path_points);
+  }
+
+  [[nodiscard]] bool hasExcessiveInitialLateralDeviation(
+      const std::vector<Point2> &path_points) const {
+    if (!direct_path_fallback_ || path_points.size() < 3U) {
+      return false;
+    }
+
+    const Point2 origin = path_points.front();
+    const double lookahead_x = origin.x + 20.0;
+    for (const Point2 point : path_points) {
+      if (point.x > lookahead_x) {
+        break;
+      }
+      if (std::abs(point.y - origin.y) > max_initial_lateral_deviation_m_) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void pruneBackwardInitialWaypoints(std::vector<Point2> &path_points) const {
+    if (path_points.size() < 3U) {
+      return;
+    }
+
+    const Point2 origin = path_points.front();
+    const Point2 goal_vector{goal_.x - origin.x, goal_.y - origin.y};
+    const double goal_distance_sq = squaredDistance(origin, goal_);
+    if (!(goal_distance_sq > 0.0)) {
+      return;
+    }
+
+    auto first_forward = path_points.begin() + 1;
+    while (first_forward + 1 != path_points.end()) {
+      const Point2 candidate_vector{first_forward->x - origin.x,
+                                    first_forward->y - origin.y};
+      const double projection =
+          candidate_vector.x * goal_vector.x + candidate_vector.y * goal_vector.y;
+      if (projection >= grid_->resolution() * grid_->resolution()) {
+        break;
+      }
+      ++first_forward;
+    }
+
+    if (first_forward != path_points.begin() + 1) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Pruned backward initial waypoints: removed=%zu",
+          static_cast<std::size_t>(first_forward - (path_points.begin() + 1)));
+      path_points.erase(path_points.begin() + 1, first_forward);
+    }
+  }
+
   void logPathUpdate(const nav_msgs::msg::Path &path) {
     const std::size_t path_size = path.poses.size();
     const bool path_changed = path_size != last_logged_path_size_;
@@ -404,9 +516,11 @@ private:
   bool pose_valid_{false};
   bool local_position_seen_{false};
   bool scan_seen_{false};
+  bool direct_path_fallback_{true};
   std::string frame_id_{"map"};
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};
+  double max_initial_lateral_deviation_m_{8.0};
   double scan_yaw_offset_rad_{0.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
@@ -415,6 +529,7 @@ private:
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
+  std::vector<Point2> last_valid_path_points_;
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr

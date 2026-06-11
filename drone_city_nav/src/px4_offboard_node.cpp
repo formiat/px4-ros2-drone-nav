@@ -58,7 +58,7 @@ public:
     acceptance_radius_m_ =
         declare_parameter<double>("acceptance_radius_m", 1.5);
     max_setpoint_distance_m_ =
-        std::clamp(declare_parameter<double>("max_setpoint_distance_m", 4.0),
+        std::clamp(declare_parameter<double>("max_setpoint_distance_m", 2.0),
                    0.5, 50.0);
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
@@ -138,7 +138,6 @@ private:
   void onPath(const nav_msgs::msg::Path &path) {
     path_ = path;
     path_valid_ = !path_.poses.empty();
-    waypoint_index_ = 0U;
 
     if (!path_valid_) {
       if (last_logged_path_size_ != 0U) {
@@ -148,6 +147,7 @@ private:
       return;
     }
 
+    waypoint_index_ = closestWaypointIndex();
     const Point2 first{pathPointX(path_, 0U), pathPointY(path_, 0U)};
     const Point2 last{pathPointX(path_, path_.poses.size() - 1U),
                       pathPointY(path_, path_.poses.size() - 1U)};
@@ -165,6 +165,25 @@ private:
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
     }
+  }
+
+  [[nodiscard]] std::size_t closestWaypointIndex() const {
+    if (!local_position_valid_ || path_.poses.empty()) {
+      return 0U;
+    }
+
+    std::size_t closest_index = 0U;
+    double closest_distance_sq = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0U; i < path_.poses.size(); ++i) {
+      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
+      const double distance_sq = squaredDistance(current_position_, waypoint);
+      if (distance_sq < closest_distance_sq) {
+        closest_distance_sq = distance_sq;
+        closest_index = i;
+      }
+    }
+
+    return closest_index;
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
@@ -405,7 +424,7 @@ private:
   double current_heading_rad_{0.0};
   double cruise_altitude_m_{12.0};
   double acceptance_radius_m_{1.5};
-  double max_setpoint_distance_m_{4.0};
+  double max_setpoint_distance_m_{2.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};

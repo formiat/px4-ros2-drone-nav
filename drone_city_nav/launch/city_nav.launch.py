@@ -43,4 +43,12 @@ def generate_launch_description():
         parameters=[str(params_file)],
     )
 
-    return LaunchDescription([scan_bridge, planner, offboard])
+    mission_monitor = Node(
+        package="drone_city_nav",
+        executable="mission_monitor_node",
+        name="mission_monitor_node",
+        output="screen",
+        parameters=[str(params_file)],
+    )
+
+    return LaunchDescription([scan_bridge, planner, offboard, mission_monitor])

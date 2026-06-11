@@ -57,8 +57,21 @@ ament_target_dependencies(
   rclcpp)
 enable_project_warnings(px4_offboard_node)
 
+add_executable(mission_monitor_node src/mission_monitor_node.cpp)
+target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
+target_link_libraries(mission_monitor_node drone_city_nav_core)
+ament_target_dependencies(
+  mission_monitor_node
+  px4_msgs
+  rclcpp)
+enable_project_warnings(mission_monitor_node)
+
 install(
-  TARGETS drone_city_nav_core planner_node px4_offboard_node
+  TARGETS
+    drone_city_nav_core
+    planner_node
+    px4_offboard_node
+    mission_monitor_node
   EXPORT drone_city_nav_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
