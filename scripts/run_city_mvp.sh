@@ -234,6 +234,9 @@ check_headless_run() {
 echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
+    params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    enable_gazebo_bridge:=true \
+    enable_mission_monitor:=true \
     > "${ros_log_file}" 2>&1 || {
     exit_code=$?
     if [[ "${exit_code}" -eq 124 ]]; then
@@ -249,5 +252,9 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
     exit "${exit_code}"
   }
 else
-  ros2 launch drone_city_nav city_nav.launch.py 2>&1 | tee "${ros_log_file}"
+  ros2 launch drone_city_nav city_nav.launch.py \
+    params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    enable_gazebo_bridge:=true \
+    enable_mission_monitor:=true \
+    2>&1 | tee "${ros_log_file}"
 fi

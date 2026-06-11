@@ -11,11 +11,14 @@ flight at a fixed altitude.
 - The planner starts without a prior map. It incrementally marks a 2D occupancy
   grid from `sensor_msgs/LaserScan`, inflates occupied cells, runs A*, smooths
   the result with line-of-sight checks, and republishes a waypoint path.
-- If the planner cannot find a path after a new obstacle update, it publishes an
-  empty path; the offboard node then holds the current local position.
+- If the planner cannot find a path after a new obstacle update, fallback
+  behavior is parameterized. The simulation MVP enables direct-goal fallback to
+  keep the synthetic scenario moving; the real-drone template disables it.
 
-This is simulation code only. It is not a certified collision-avoidance system
-and must not be used on real hardware.
+This repository is still an MVP, not a certified collision-avoidance system. The
+planner and PX4 offboard nodes are kept independent from Gazebo, but any real
+hardware use needs a separate safety review, real sensor calibration, geofence,
+RC override, failsafe behavior, and staged tethered/low-risk tests.
 
 ## Frames And Units
 
@@ -33,8 +36,36 @@ and must not be used on real hardware.
 - `drone_city_nav/worlds/generated_city.sdf` - generated static city world.
 - `drone_city_nav/src/planner_node.cpp` - lidar mapping and replanning node.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
+- `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
+  verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
+- `drone_city_nav/config/real_drone_template.yaml` - conservative template for
+  running the planner/offboard nodes without Gazebo-specific helpers.
 - `drone_city_nav/tests/planner_core_test.cpp` - deterministic algorithm tests.
+
+## Runtime Profiles
+
+The core runtime nodes are `planner_node` and `px4_offboard_node`. They consume
+ROS/PX4 topics and do not depend on Gazebo APIs.
+
+Simulation launch starts two extra helpers:
+
+- `ros_gz_bridge` for the Gazebo lidar topic.
+- `mission_monitor_node` for headless test assertions against the generated
+  city footprints.
+
+Launch only the portable ROS/PX4 stack with a hardware-specific parameter file:
+
+```bash
+ros2 launch drone_city_nav city_nav.launch.py \
+  params_file:=/workspace/drone_city_nav/config/real_drone_template.yaml \
+  enable_gazebo_bridge:=false \
+  enable_mission_monitor:=false
+```
+
+Before using the real-drone template, update the lidar topic, PX4 topic version,
+frame alignment, grid origin, goal, altitude, and safety limits for the actual
+vehicle and test area.
 
 ## Quick Start
 
@@ -62,6 +93,9 @@ Run the MVP stack:
 ```bash
 ./scripts/run_city_mvp.sh
 ```
+
+The script launches `city_nav.launch.py` with the simulation parameter file,
+Gazebo bridge enabled, and mission monitor enabled.
 
 PX4 SITL output is written to `log/px4_city_mvp.log` by default. The
 MicroXRCEAgent log is written to `log/uxrce_agent_city_mvp.log`. Override them

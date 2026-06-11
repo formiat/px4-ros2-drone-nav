@@ -50,7 +50,7 @@ public:
 
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
     direct_path_fallback_ =
-        declare_parameter<bool>("direct_path_fallback", true);
+        declare_parameter<bool>("direct_path_fallback", false);
     max_initial_lateral_deviation_m_ =
         declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
@@ -130,6 +130,11 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner subscriptions: lidar='%s' local_position='%s'",
                 lidar_topic.c_str(), local_position_topic.c_str());
+    RCLCPP_INFO(get_logger(),
+                "Planner fallback policy: direct_path_fallback=%s "
+                "max_initial_lateral_deviation=%.2fm",
+                direct_path_fallback_ ? "true" : "false",
+                max_initial_lateral_deviation_m_);
   }
 
 private:
@@ -516,7 +521,7 @@ private:
   bool pose_valid_{false};
   bool local_position_seen_{false};
   bool scan_seen_{false};
-  bool direct_path_fallback_{true};
+  bool direct_path_fallback_{false};
   std::string frame_id_{"map"};
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};
