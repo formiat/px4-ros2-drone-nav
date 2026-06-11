@@ -64,6 +64,16 @@ public:
     lookahead_distance_m_ =
         std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0),
                    0.0, 50.0);
+    path_switch_hysteresis_m_ =
+        std::clamp(declare_parameter<double>("path_switch_hysteresis_m", 3.0),
+                   0.0, 100.0);
+    path_continuity_reuse_radius_m_ = std::clamp(
+        declare_parameter<double>("path_continuity_reuse_radius_m", 6.0), 0.0,
+        100.0);
+    path_continuity_max_target_distance_m_ =
+        std::clamp(declare_parameter<double>(
+                       "path_continuity_max_target_distance_m", 20.0),
+                   0.0, 500.0);
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
@@ -138,10 +148,14 @@ public:
         get_logger(),
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
         "auto_offboard=%s max_setpoint_distance=%.1fm lookahead=%.1fm "
-        "mission_goal=(%.1f, %.1f)",
+        "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
+        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", max_setpoint_distance_m_,
-        lookahead_distance_m_, mission_goal_.x, mission_goal_.y);
+        lookahead_distance_m_, path_switch_hysteresis_m_,
+        path_continuity_reuse_radius_m_,
+        path_continuity_max_target_distance_m_, mission_goal_.x,
+        mission_goal_.y);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s'",
@@ -151,6 +165,13 @@ public:
 
 private:
   void onPath(const nav_msgs::msg::Path &path) {
+    const bool had_active_target = path_valid_ && local_position_valid_ &&
+                                   waypoint_index_ < path_.poses.size();
+    const Point2 previous_target =
+        had_active_target ? Point2{pathPointX(path_, waypoint_index_),
+                                   pathPointY(path_, waypoint_index_)}
+                          : Point2{};
+
     path_ = path;
     path_valid_ = !path_.poses.empty();
 
@@ -162,7 +183,10 @@ private:
       return;
     }
 
-    waypoint_index_ = lookaheadWaypointIndex();
+    const std::size_t candidate_index = lookaheadWaypointIndex();
+    waypoint_index_ =
+        continuityWaypointIndex(previous_target, candidate_index,
+                                had_active_target);
     const Point2 first{pathPointX(path_, 0U), pathPointY(path_, 0U)};
     const Point2 last{pathPointX(path_, path_.poses.size() - 1U),
                       pathPointY(path_, path_.poses.size() - 1U)};
@@ -223,6 +247,56 @@ private:
     }
 
     return path_.poses.size() - 1U;
+  }
+
+  [[nodiscard]] std::size_t
+  continuityWaypointIndex(const Point2 previous_target,
+                          const std::size_t candidate_index,
+                          const bool had_active_target) const {
+    if (!had_active_target || path_switch_hysteresis_m_ <= 0.0 ||
+        path_continuity_reuse_radius_m_ <= 0.0 ||
+        candidate_index >= path_.poses.size()) {
+      return candidate_index;
+    }
+    if (distance(current_position_, previous_target) >
+        path_continuity_max_target_distance_m_) {
+      return candidate_index;
+    }
+
+    const Point2 candidate{pathPointX(path_, candidate_index),
+                           pathPointY(path_, candidate_index)};
+    if (distance(previous_target, candidate) <= path_switch_hysteresis_m_) {
+      return candidate_index;
+    }
+
+    std::size_t closest_index = candidate_index;
+    double closest_distance = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0U; i < path_.poses.size(); ++i) {
+      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
+      const double waypoint_distance = distance(previous_target, waypoint);
+      if (waypoint_distance < closest_distance) {
+        closest_distance = waypoint_distance;
+        closest_index = i;
+      }
+    }
+
+    if (closest_distance <= path_continuity_reuse_radius_m_) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Path continuity kept waypoint near previous target: candidate=%zu "
+          "kept=%zu previous_target=(%.2f, %.2f) closest_distance=%.2f",
+          candidate_index + 1U, closest_index + 1U, previous_target.x,
+          previous_target.y, closest_distance);
+      return closest_index;
+    }
+
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "Path continuity allowed target switch: candidate=%zu "
+        "previous_target=(%.2f, %.2f) closest_distance=%.2f",
+        candidate_index + 1U, previous_target.x, previous_target.y,
+        closest_distance);
+    return candidate_index;
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
@@ -506,6 +580,9 @@ private:
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
   double lookahead_distance_m_{6.0};
+  double path_switch_hysteresis_m_{3.0};
+  double path_continuity_reuse_radius_m_{6.0};
+  double path_continuity_max_target_distance_m_{20.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};

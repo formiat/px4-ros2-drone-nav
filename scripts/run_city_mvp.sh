@@ -12,6 +12,9 @@ px4_log_file="${PX4_LOG_FILE:-${repo_root}/log/px4_city_mvp.log}"
 uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${repo_root}/log/uxrce_agent_city_mvp.log}"
 ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
+lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
+enable_lidar_debug="${ENABLE_LIDAR_DEBUG:-true}"
+enable_rviz="${ENABLE_RVIZ:-false}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 headless="${HEADLESS:-}"
@@ -69,6 +72,10 @@ mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
 mkdir -p "$(dirname "${gz_log_file}")"
+if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
+  rm -rf "${lidar_debug_dir}"
+  mkdir -p "${lidar_debug_dir}"
+fi
 : > "${px4_log_file}"
 : > "${uxrce_log_file}"
 : > "${ros_log_file}"
@@ -120,6 +127,7 @@ export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:
 export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
 echo "Gazebo log: ${gz_log_file}"
+echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "Gazebo resources: ${runtime_dir}"
 (
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
@@ -206,6 +214,10 @@ check_headless_run() {
     "Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM" || failed=1
   require_log_pattern "vehicle reaches armed offboard state" "${ros_log_file}" \
     "Offboard summary: .*armed=true.*offboard=true" || failed=1
+  if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
+    require_log_pattern "lidar debug snapshots are written" "${ros_log_file}" \
+      "LIDAR_DEBUG snapshot=" || failed=1
+  fi
 
   if grep -Eq "MISSION_RESULT success=false" "${ros_log_file}"; then
     echo "FAIL: mission monitor reported failure" >&2
@@ -240,8 +252,11 @@ echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
     params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    lidar_debug_output_dir:="${lidar_debug_dir}" \
     enable_gazebo_bridge:=true \
     enable_mission_monitor:=true \
+    enable_lidar_debug:="${enable_lidar_debug}" \
+    enable_rviz:="${enable_rviz}" \
     > "${ros_log_file}" 2>&1 || {
     exit_code=$?
     if [[ "${exit_code}" -eq 124 ]]; then
@@ -259,7 +274,10 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
 else
   ros2 launch drone_city_nav city_nav.launch.py \
     params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    lidar_debug_output_dir:="${lidar_debug_dir}" \
     enable_gazebo_bridge:=true \
     enable_mission_monitor:=true \
+    enable_lidar_debug:="${enable_lidar_debug}" \
+    enable_rviz:="${enable_rviz}" \
     2>&1 | tee "${ros_log_file}"
 fi

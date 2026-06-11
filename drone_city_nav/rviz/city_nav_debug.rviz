@@ -1,0 +1,78 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Class: rviz_default_plugins/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Name: Ground Grid
+      Plane: XY
+      Plane Cell Count: 40
+      Reference Frame: map
+    - Alpha: 0.75
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Occupancy Grid
+      Topic:
+        Value: /drone_city_nav/occupancy_grid
+    - Alpha: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 220; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.18
+      Name: Planned Path
+      Topic:
+        Value: /drone_city_nav/path
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 64; 64
+      Color Transformer: FlatColor
+      Decay Time: 2
+      Enabled: true
+      Name: Lidar Hit Points
+      Position Transformer: XYZ
+      Size (Pixels): 5
+      Size (m): 0.35
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/lidar_debug_points
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 3
+      Name: Map Axes
+      Radius: 0.08
+  Enabled: true
+  Global Options:
+    Background Color: 20; 24; 28
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 170
+      Focal Point:
+        X: 75
+        Y: 45
+        Z: 0
+      Name: Orbit
+      Pitch: 1.5707
+      Target Frame: map
+      Yaw: 0
+    Saved: ~
+Window Geometry:
+  Height: 900
+  Width: 1400

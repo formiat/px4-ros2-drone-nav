@@ -47,6 +47,9 @@ px4_offboard_node:
     acceptance_radius_m: 1.0
     max_setpoint_distance_m: 0.8
     lookahead_distance_m: 0.5
+    path_switch_hysteresis_m: 3.0
+    path_continuity_reuse_radius_m: 6.0
+    path_continuity_max_target_distance_m: 20.0
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true
@@ -59,6 +62,26 @@ px4_offboard_node:
     target_component: 1
     source_system: 1
     source_component: 1
+
+lidar_debug_node:
+  ros__parameters:
+    lidar_topic: /scan
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    occupancy_grid_topic: /drone_city_nav/occupancy_grid
+    path_topic: /drone_city_nav/path
+    pointcloud_topic: /drone_city_nav/lidar_debug_points
+    output_dir: log/lidar_debug
+    snapshot_period_s: 1.0
+    image_size_px: 900
+    view_radius_m: 45.0
+    scan_yaw_offset_rad: 0.0
+    use_px4_heading_for_scan: false
+    max_lidar_range_m: 35.0
+    range_hit_epsilon_m: 0.05
+    beam_csv_stride: 1
+    image_beam_stride: 3
+    max_logged_hit_points: 256
+    max_snapshots: 0
 
 mission_monitor_node:
   ros__parameters:

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+output_dir="${BAG_OUTPUT_DIR:-${repo_root}/log/rosbag_city_debug}"
+
+mkdir -p "$(dirname "${output_dir}")"
+
+ros2 bag record \
+  --output "${output_dir}" \
+  /scan \
+  /drone_city_nav/lidar_debug_points \
+  /drone_city_nav/occupancy_grid \
+  /drone_city_nav/path \
+  /drone_city_nav/current_waypoint \
+  /drone_city_nav/emergency_stop \
+  /fmu/out/vehicle_local_position_v1 \
+  /fmu/out/vehicle_status_v1

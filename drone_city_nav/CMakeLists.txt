@@ -68,9 +68,21 @@ ament_target_dependencies(
   std_msgs)
 enable_project_warnings(mission_monitor_node)
 
+add_executable(lidar_debug_node src/lidar_debug_node.cpp)
+target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
+target_link_libraries(lidar_debug_node drone_city_nav_core)
+ament_target_dependencies(
+  lidar_debug_node
+  nav_msgs
+  px4_msgs
+  rclcpp
+  sensor_msgs)
+enable_project_warnings(lidar_debug_node)
+
 install(
   TARGETS
     drone_city_nav_core
+    lidar_debug_node
     planner_node
     px4_offboard_node
     mission_monitor_node
@@ -80,7 +92,7 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY config launch models worlds DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
