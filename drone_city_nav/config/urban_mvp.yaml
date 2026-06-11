@@ -19,8 +19,8 @@ planner_node:
     use_initial_pose_until_px4: true
     goal_x_m: 150.0
     goal_y_m: 90.0
-    cruise_altitude_m: 14.0
-    min_mapping_altitude_m: 12.0
+    cruise_altitude_m: 18.0
+    min_mapping_altitude_m: 16.0
     inflation_radius_m: 8.0
     direct_path_fallback: false
     reuse_last_valid_path_on_failure: false
@@ -43,8 +43,8 @@ px4_offboard_node:
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
     emergency_stop_topic: /drone_city_nav/emergency_stop
-    cruise_altitude_m: 14.0
-    min_navigation_altitude_m: 13.0
+    cruise_altitude_m: 18.0
+    min_navigation_altitude_m: 17.0
     face_target_yaw: false
     acceptance_radius_m: 1.0
     max_setpoint_distance_m: 0.6
