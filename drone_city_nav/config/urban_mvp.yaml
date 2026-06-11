@@ -26,7 +26,7 @@ planner_node:
     reuse_last_valid_path_on_failure: false
     max_initial_lateral_deviation_m: 14.0
     scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: true
+    use_px4_heading_for_scan: false
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     hit_obstacle_depth_m: 16.0
@@ -79,7 +79,7 @@ lidar_debug_node:
     image_size_px: 900
     view_radius_m: 45.0
     scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: true
+    use_px4_heading_for_scan: false
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     beam_csv_stride: 1
