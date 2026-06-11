@@ -5,8 +5,12 @@ flight at a fixed altitude.
 
 ## Scope
 
-- Gazebo provides a generated city block world with 28 static buildings. Half
-  of them are above the 12 m cruise altitude and half are below it.
+- Gazebo provides a generated city block world with 28 static buildings. The
+  default MVP world uses uniform 28 m buildings so the horizontal 2D lidar can
+  observe every obstacle at the configured cruise altitude. The original
+  mixed-height world is preserved as
+  `drone_city_nav/worlds/generated_city_mixed_heights.sdf` for later
+  experiments.
 - PX4 SITL provides stabilization and accepts offboard trajectory setpoints.
 - ROS 2 runs a lidar-driven planner and a PX4 offboard control node.
 - The planner starts without a prior map. It incrementally marks a 2D occupancy
@@ -36,7 +40,10 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 ## Main Files
 
 - `drone_city_nav/worlds/generated_city.sdf` - generated static city world with
-  visual point A at `(-75, -45)` and visual point B at `(75, 45)`.
+  uniform-height buildings, visual point A at `(-75, -45)`, and visual point B
+  at `(75, 45)`.
+- `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
+  mixed-height version of the same city layout.
 - `drone_city_nav/src/planner_node.cpp` - lidar mapping and replanning node.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
@@ -183,8 +190,8 @@ HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
 `MISSION_CHECK=1` requires the mission monitor to verify that the drone spawned
 near point A, moved away from A, kept the configured clearance from every
 building footprint, reached point B, and held position there with low speed.
-The validation footprints list the tall buildings that intersect the cruise
-altitude; lower buildings are visual city geometry below the flight plane.
+The default monitor config applies `uniform_building_height_m=28.0`, matching
+the default uniform-height world used by the MVP.
 On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
 the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
 crashed vehicle is not commanded to recover and continue the mission.
@@ -225,10 +232,10 @@ colcon test-result --verbose
   nearby waypoint from the new path still matches the previous local target.
   This continuity is disabled for far-away targets such as the final goal.
 - The simulation planner ignores lidar map updates below
-  `min_mapping_altitude_m` so takeoff-time ground or low-building returns do not
-  pollute the cruise-altitude 2D occupancy grid.
-- The simulation parameter file keeps `use_px4_heading_for_scan=false` because
-  the bridged Gazebo lidar scan already arrives in the local simulation frame
-  used by this MVP.
+  `min_mapping_altitude_m` so takeoff-time ground returns do not pollute the
+  cruise-altitude 2D occupancy grid.
+- The simulation parameter file keeps `use_px4_heading_for_scan=true` so lidar
+  beams are rotated with the PX4 local heading before being inserted into the
+  occupancy grid.
 - The launch file bridges `/scan`; if the PX4 lidar model publishes a different
   Gazebo topic, update `city_nav.launch.py` or add a remap.

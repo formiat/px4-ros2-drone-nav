@@ -82,6 +82,17 @@ parseBuildingVolumes(const std::vector<double> &values) {
   return -static_cast<double>(position.z);
 }
 
+void applyUniformBuildingHeight(std::vector<BuildingFootprint> &buildings,
+                                const double uniform_height_m) {
+  if (!(uniform_height_m > 0.0)) {
+    return;
+  }
+
+  for (BuildingFootprint &building : buildings) {
+    building.height_m = uniform_height_m;
+  }
+}
+
 } // namespace
 
 class MissionMonitorNode final : public rclcpp::Node {
@@ -128,6 +139,9 @@ public:
                   "Ignoring trailing building footprint values: count=%zu",
                   building_values.size());
     }
+    uniform_building_height_m_ =
+        declare_parameter<double>("uniform_building_height_m", 0.0);
+    applyUniformBuildingHeight(buildings_, uniform_building_height_m_);
 
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
@@ -159,11 +173,12 @@ public:
         get_logger(),
         "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
         "spawn_tolerance=%.2fm goal_radius=%.2fm buildings=%zu clearance=%.2fm "
-        "vertical_clearance=%.2fm crash_detection=%s emergency_stop_topic='%s'",
+        "vertical_clearance=%.2fm uniform_building_height=%.2fm "
+        "crash_detection=%s emergency_stop_topic='%s'",
         start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
         goal_radius_m_, buildings_.size(), building_clearance_m_,
-        vertical_clearance_m_, crash_detection_enabled_ ? "true" : "false",
-        emergency_stop_topic.c_str());
+        vertical_clearance_m_, uniform_building_height_m_,
+        crash_detection_enabled_ ? "true" : "false", emergency_stop_topic.c_str());
   }
 
 private:
@@ -364,6 +379,7 @@ private:
   double stop_hold_s_{2.0};
   double building_clearance_m_{1.0};
   double vertical_clearance_m_{1.0};
+  double uniform_building_height_m_{0.0};
   double spawn_distance_m_{std::numeric_limits<double>::infinity()};
   double max_distance_from_start_m_{0.0};
   double min_goal_distance_m_{std::numeric_limits<double>::infinity()};

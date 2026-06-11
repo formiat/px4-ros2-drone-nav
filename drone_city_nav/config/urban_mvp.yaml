@@ -101,6 +101,7 @@ mission_monitor_node:
     stop_hold_s: 2.0
     building_clearance_m: 4.0
     vertical_clearance_m: 1.0
+    uniform_building_height_m: 28.0
     crash_detection_enabled: true
     crash_min_airborne_altitude_m: 6.0
     crash_altitude_m: 2.5
