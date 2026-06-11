@@ -177,12 +177,26 @@ private:
 
     if (!path_valid_) {
       if (last_logged_path_size_ != 0U) {
-        RCLCPP_WARN(get_logger(), "Received empty path; holding current target");
+        if (local_position_valid_) {
+          no_path_hold_target_ = current_position_;
+          no_path_hold_target_valid_ = true;
+          RCLCPP_WARN(
+              get_logger(),
+              "Received empty path; holding fixed target at current position "
+              "(%.2f, %.2f)",
+              no_path_hold_target_.x, no_path_hold_target_.y);
+        } else {
+          no_path_hold_target_valid_ = false;
+          RCLCPP_WARN(get_logger(),
+                      "Received empty path before local position; holding "
+                      "configured fallback target");
+        }
         last_logged_path_size_ = 0U;
       }
       return;
     }
 
+    no_path_hold_target_valid_ = false;
     const std::size_t candidate_index = lookaheadWaypointIndex();
     waypoint_index_ =
         continuityWaypointIndex(previous_target, candidate_index,
@@ -428,7 +442,8 @@ private:
     msg.position = std::array<float, 3>{
         static_cast<float>(target.x), static_cast<float>(target.y),
         static_cast<float>(-std::abs(cruise_altitude_m_))};
-    msg.velocity = std::array<float, 3>{nan, nan, nan};
+    msg.velocity = path_valid_ ? std::array<float, 3>{nan, nan, nan}
+                               : std::array<float, 3>{0.0F, 0.0F, 0.0F};
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw = static_cast<float>(targetYaw(target));
@@ -486,6 +501,10 @@ private:
     if (path_valid_ && waypoint_index_ < path_.poses.size()) {
       return Point2{pathPointX(path_, waypoint_index_),
                     pathPointY(path_, waypoint_index_)};
+    }
+
+    if (no_path_hold_target_valid_) {
+      return no_path_hold_target_;
     }
 
     if (local_position_valid_) {
@@ -560,12 +579,14 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Offboard summary: local_position=%s status=%s armed=%s offboard=%s "
-        "path=%s waypoint=%zu/%zu current=(%.2f, %.2f) target=(%.2f, %.2f) "
+        "path=%s hold=%s waypoint=%zu/%zu current=(%.2f, %.2f) "
+        "target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f",
         local_position_valid_ ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
+        no_path_hold_target_valid_ ? "true" : "false",
         path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
         current_position_.x, current_position_.y, target.x, target.y,
         target_distance, path_goal_distance, mission_goal_distance);
@@ -574,6 +595,7 @@ private:
   nav_msgs::msg::Path path_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
+  Point2 no_path_hold_target_{};
   Point2 mission_goal_{85.0, 0.0};
   double current_heading_rad_{0.0};
   double cruise_altitude_m_{12.0};
@@ -596,6 +618,7 @@ private:
   bool auto_arm_{true};
   bool auto_offboard_{true};
   bool emergency_stop_requested_{false};
+  bool no_path_hold_target_valid_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
