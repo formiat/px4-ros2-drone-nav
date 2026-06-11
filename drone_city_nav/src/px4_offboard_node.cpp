@@ -581,7 +581,7 @@ private:
       return desired_target;
     }
     if (!commanded_target_valid_) {
-      commanded_target_ = desired_target;
+      commanded_target_ = limitedTarget(desired_target);
       commanded_target_valid_ = true;
       return commanded_target_;
     }
@@ -591,12 +591,35 @@ private:
     const double target_step = std::hypot(dx, dy);
     if (target_step <= max_commanded_target_step_m_ || !(target_step > 0.0)) {
       commanded_target_ = desired_target;
-      return commanded_target_;
+      return clampCommandedTargetToCurrent();
     }
 
     const double scale = max_commanded_target_step_m_ / target_step;
     commanded_target_ =
         Point2{commanded_target_.x + dx * scale, commanded_target_.y + dy * scale};
+    return clampCommandedTargetToCurrent();
+  }
+
+  Point2 clampCommandedTargetToCurrent() {
+    if (!local_position_valid_) {
+      return commanded_target_;
+    }
+
+    const double target_distance = distance(current_position_, commanded_target_);
+    if (target_distance <= max_setpoint_distance_m_ || !(target_distance > 0.0)) {
+      return commanded_target_;
+    }
+
+    const double scale = max_setpoint_distance_m_ / target_distance;
+    commanded_target_ = Point2{
+        current_position_.x + (commanded_target_.x - current_position_.x) * scale,
+        current_position_.y + (commanded_target_.y - current_position_.y) * scale};
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Clamped commanded target to current position radius: distance=%.2f "
+        "limit=%.2f target=(%.2f, %.2f)",
+        target_distance, max_setpoint_distance_m_, commanded_target_.x,
+        commanded_target_.y);
     return commanded_target_;
   }
 
