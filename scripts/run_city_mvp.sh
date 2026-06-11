@@ -23,7 +23,15 @@ source /opt/px4_msgs_ws/install/setup.bash
 set -u
 
 world_dst="${px4_dir}/Tools/simulation/gz/worlds/${world_name}.sdf"
+px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
+local_models_dir="${repo_root}/drone_city_nav/models"
 install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" "${world_dst}"
+if [[ -d "${local_models_dir}" ]]; then
+  while IFS= read -r -d '' local_model_file; do
+    relative_path="${local_model_file#"${local_models_dir}/"}"
+    install -D "${local_model_file}" "${px4_models_dir}/${relative_path}"
+  done < <(find "${local_models_dir}" -type f -print0)
+fi
 mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 : > "${px4_log_file}"

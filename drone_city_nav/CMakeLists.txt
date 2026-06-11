@@ -65,7 +65,7 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY config launch worlds DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch models worlds DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)

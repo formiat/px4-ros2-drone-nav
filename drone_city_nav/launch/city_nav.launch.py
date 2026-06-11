@@ -8,6 +8,10 @@ from launch_ros.actions import Node
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     params_file = package_share / "config" / "urban_mvp.yaml"
+    lidar_gz_topic = (
+        "/world/generated_city/model/x500_lidar_2d_0/link/link/"
+        "sensor/lidar_2d_v2/scan"
+    )
 
     scan_bridge = Node(
         package="ros_gz_bridge",
@@ -15,8 +19,11 @@ def generate_launch_description():
         name="scan_bridge",
         output="screen",
         arguments=[
-            "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
+            f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+            "--ros-args",
+            "-r",
+            f"{lidar_gz_topic}:=/scan",
         ],
     )
 

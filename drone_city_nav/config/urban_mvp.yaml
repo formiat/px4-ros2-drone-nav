@@ -2,7 +2,7 @@ planner_node:
   ros__parameters:
     frame_id: map
     lidar_topic: /scan
-    px4_local_position_topic: /fmu/out/vehicle_local_position
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
     path_topic: /drone_city_nav/path
     current_waypoint_topic: /drone_city_nav/current_waypoint
@@ -30,7 +30,7 @@ planner_node:
 px4_offboard_node:
   ros__parameters:
     path_topic: /drone_city_nav/path
-    px4_local_position_topic: /fmu/out/vehicle_local_position
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_status_topic: /fmu/out/vehicle_status
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
