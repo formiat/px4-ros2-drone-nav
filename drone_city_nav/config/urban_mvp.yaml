@@ -47,9 +47,9 @@ px4_offboard_node:
     cruise_altitude_m: 18.0
     min_navigation_altitude_m: 17.0
     face_target_yaw: false
-    acceptance_radius_m: 1.0
-    max_setpoint_distance_m: 0.6
-    max_commanded_target_step_m: 0.15
+    acceptance_radius_m: 0.5
+    max_setpoint_distance_m: 0.3
+    max_commanded_target_step_m: 0.05
     lookahead_distance_m: 0.5
     path_switch_hysteresis_m: 3.0
     path_continuity_reuse_radius_m: 6.0
