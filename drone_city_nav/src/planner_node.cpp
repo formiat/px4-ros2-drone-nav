@@ -70,6 +70,9 @@ public:
     max_lidar_range_m_ = declare_parameter<double>("max_lidar_range_m", 35.0);
     range_hit_epsilon_m_ =
         declare_parameter<double>("range_hit_epsilon_m", 0.05);
+    hit_obstacle_depth_m_ =
+        std::clamp(declare_parameter<double>("hit_obstacle_depth_m", 0.0), 0.0,
+                   100.0);
     nearest_free_radius_cells_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0,
         100000));
@@ -145,11 +148,12 @@ public:
                 "Planner fallback policy: direct_path_fallback=%s "
                 "reuse_last_valid_path_on_failure=%s "
                 "max_initial_lateral_deviation=%.2fm "
-                "use_px4_heading_for_scan=%s",
+                "use_px4_heading_for_scan=%s hit_obstacle_depth=%.2fm",
                 direct_path_fallback_ ? "true" : "false",
                 reuse_last_valid_path_on_failure_ ? "true" : "false",
                 max_initial_lateral_deviation_m_,
-                use_px4_heading_for_scan_ ? "true" : "false");
+                use_px4_heading_for_scan_ ? "true" : "false",
+                hit_obstacle_depth_m_);
   }
 
 private:
@@ -213,6 +217,7 @@ private:
     const auto stride = static_cast<std::size_t>(scan_stride_);
     std::size_t processed_beams = 0U;
     std::size_t hit_beams = 0U;
+    std::size_t obstacle_depth_cells = 0U;
     for (std::size_t i = 0; i < scan.ranges.size(); i += stride) {
       const float raw_range = scan.ranges[i];
       const bool finite_range = std::isfinite(raw_range);
@@ -237,6 +242,9 @@ private:
                        current_pose_.position.y +
                            range_m * std::sin(angle_rad)};
       grid_->markRay(current_pose_.position, end, hit);
+      if (hit) {
+        obstacle_depth_cells += markObstacleDepth(end, angle_rad);
+      }
     }
 
     if (!scan_seen_) {
@@ -253,10 +261,33 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Lidar update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
-        "processed=%zu hits=%zu range_max=%.2f",
+        "processed=%zu hits=%zu obstacle_depth_cells=%zu range_max=%.2f",
         current_pose_.position.x, current_pose_.position.y,
         current_altitude_m_, current_pose_.yaw_rad, processed_beams, hit_beams,
-        scan_range_max);
+        obstacle_depth_cells, scan_range_max);
+  }
+
+  std::size_t markObstacleDepth(const Point2 hit_point,
+                                const double angle_rad) {
+    if (hit_obstacle_depth_m_ <= 0.0 || grid_ == nullptr) {
+      return 0U;
+    }
+
+    const Point2 shadow_end{
+        hit_point.x + hit_obstacle_depth_m_ * std::cos(angle_rad),
+        hit_point.y + hit_obstacle_depth_m_ * std::sin(angle_rad)};
+    const auto start_cell = grid_->worldToCell(hit_point);
+    const auto end_cell = grid_->worldToCell(shadow_end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      return 0U;
+    }
+
+    const std::vector<GridIndex> cells =
+        grid_->cellsOnLine(*start_cell, *end_cell);
+    for (const GridIndex cell : cells) {
+      grid_->setOccupied(cell);
+    }
+    return cells.size();
   }
 
   void replanAndPublish() {
@@ -589,6 +620,7 @@ private:
   double scan_yaw_offset_rad_{0.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
+  double hit_obstacle_depth_m_{0.0};
   int nearest_free_radius_cells_{10};
   int scan_stride_{1};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};

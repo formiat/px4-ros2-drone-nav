@@ -221,6 +221,10 @@ colcon test-result --verbose
 - Only static building obstacles are modeled.
 - The planner treats unknown grid cells as traversable and replans as lidar data
   arrives.
+- Lidar hit endpoints are extended by the configurable
+  `hit_obstacle_depth_m` before inflation. This conservative 2D mapping
+  heuristic prevents A* from treating the unseen volume immediately behind a
+  detected wall as a free corridor.
 - The offboard node assumes the planner path and PX4 local position share the
   same horizontal origin.
 - Runtime logs include distance-to-start and distance-to-goal values in
