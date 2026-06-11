@@ -60,12 +60,17 @@ public:
     max_setpoint_distance_m_ =
         std::clamp(declare_parameter<double>("max_setpoint_distance_m", 2.0),
                    0.5, 50.0);
+    lookahead_distance_m_ =
+        std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0),
+                   0.0, 50.0);
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
     command_resend_period_s_ =
         declare_parameter<double>("command_resend_period_s", 2.0);
+    mission_goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
+                           declare_parameter<double>("goal_y_m", 0.0)};
     hold_x_m_ = declare_parameter<double>("hold_x_m", 0.0);
     hold_y_m_ = declare_parameter<double>("hold_y_m", 0.0);
     target_system_ =
@@ -124,9 +129,11 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-        "auto_offboard=%s max_setpoint_distance=%.1fm",
+        "auto_offboard=%s max_setpoint_distance=%.1fm lookahead=%.1fm "
+        "mission_goal=(%.1f, %.1f)",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-        auto_offboard_ ? "true" : "false", max_setpoint_distance_m_);
+        auto_offboard_ ? "true" : "false", max_setpoint_distance_m_,
+        lookahead_distance_m_, mission_goal_.x, mission_goal_.y);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s'",
@@ -147,7 +154,7 @@ private:
       return;
     }
 
-    waypoint_index_ = closestWaypointIndex();
+    waypoint_index_ = lookaheadWaypointIndex();
     const Point2 first{pathPointX(path_, 0U), pathPointY(path_, 0U)};
     const Point2 last{pathPointX(path_, path_.poses.size() - 1U),
                       pathPointY(path_, path_.poses.size() - 1U)};
@@ -158,9 +165,10 @@ private:
                                   0.01;
     if (path_changed) {
       RCLCPP_INFO(get_logger(),
-                  "Received path: waypoints=%zu first=(%.2f, %.2f) "
+                  "Received path: waypoints=%zu selected=%zu first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f)",
-                  path_.poses.size(), first.x, first.y, last.x, last.y);
+                  path_.poses.size(), waypoint_index_ + 1U, first.x, first.y,
+                  last.x, last.y);
       last_logged_path_size_ = path_.poses.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -184,6 +192,29 @@ private:
     }
 
     return closest_index;
+  }
+
+  [[nodiscard]] std::size_t lookaheadWaypointIndex() const {
+    if (!local_position_valid_ || path_.poses.empty()) {
+      return 0U;
+    }
+
+    const std::size_t closest_index = closestWaypointIndex();
+    const double current_goal_distance =
+        distance(current_position_, mission_goal_);
+    for (std::size_t i = closest_index; i < path_.poses.size(); ++i) {
+      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
+      const bool far_enough =
+          distance(current_position_, waypoint) >= lookahead_distance_m_;
+      const bool progresses_to_goal =
+          distance(waypoint, mission_goal_) + acceptance_radius_m_ <
+          current_goal_distance;
+      if (far_enough && progresses_to_goal) {
+        return i;
+      }
+    }
+
+    return path_.poses.size() - 1U;
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
@@ -405,26 +436,38 @@ private:
     const double target_distance =
         local_position_valid_ ? distance(current_position_, target)
                               : std::numeric_limits<double>::quiet_NaN();
+    const double mission_goal_distance =
+        local_position_valid_ ? distance(current_position_, mission_goal_)
+                              : std::numeric_limits<double>::quiet_NaN();
+    const double path_goal_distance =
+        local_position_valid_ && path_valid_
+            ? distance(current_position_,
+                       Point2{pathPointX(path_, path_.poses.size() - 1U),
+                              pathPointY(path_, path_.poses.size() - 1U)})
+            : std::numeric_limits<double>::quiet_NaN();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Offboard summary: local_position=%s status=%s armed=%s offboard=%s "
         "path=%s waypoint=%zu/%zu current=(%.2f, %.2f) target=(%.2f, %.2f) "
-        "distance=%.2f",
+        "distance_to_target=%.2f distance_to_path_goal=%.2f "
+        "distance_to_mission_goal=%.2f",
         local_position_valid_ ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
         current_position_.x, current_position_.y, target.x, target.y,
-        target_distance);
+        target_distance, path_goal_distance, mission_goal_distance);
   }
 
   nav_msgs::msg::Path path_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
+  Point2 mission_goal_{85.0, 0.0};
   double current_heading_rad_{0.0};
   double cruise_altitude_m_{12.0};
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
+  double lookahead_distance_m_{6.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};

@@ -5,7 +5,8 @@ flight at a fixed altitude.
 
 ## Scope
 
-- Gazebo provides a generated city block world with static building obstacles.
+- Gazebo provides a generated city block world with 28 static buildings. Half
+  of them are above the 12 m cruise altitude and half are below it.
 - PX4 SITL provides stabilization and accepts offboard trajectory setpoints.
 - ROS 2 runs a lidar-driven planner and a PX4 offboard control node.
 - The planner starts without a prior map. It incrementally marks a 2D occupancy
@@ -33,7 +34,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 
 ## Main Files
 
-- `drone_city_nav/worlds/generated_city.sdf` - generated static city world.
+- `drone_city_nav/worlds/generated_city.sdf` - generated static city world with
+  visual point A at `(-75, -45)` and visual point B at `(75, 45)`.
 - `drone_city_nav/src/planner_node.cpp` - lidar mapping and replanning node.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
@@ -66,6 +68,10 @@ ros2 launch drone_city_nav city_nav.launch.py \
 Before using the real-drone template, update the lidar topic, PX4 topic version,
 frame alignment, grid origin, goal, altitude, and safety limits for the actual
 vehicle and test area.
+
+In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
+spawned at visual point A. Therefore the planner/monitor use local point A
+`(0, 0)` and local point B `(150, 90)`.
 
 ## Quick Start
 
@@ -128,15 +134,17 @@ Headless logs are written to:
 The script prepares Gazebo runtime resources under `build/gazebo_city_mvp` and
 does not modify the PX4 checkout under `external/`.
 
-For a full A-to-B mission validation run:
+For a full diagonal A-to-B mission validation run:
 
 ```bash
-HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=180 ./scripts/run_city_mvp.sh
+HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
 ```
 
 `MISSION_CHECK=1` requires the mission monitor to verify that the drone spawned
 near point A, moved away from A, kept the configured clearance from every
 building footprint, reached point B, and held position there with low speed.
+The validation footprints list the tall buildings that intersect the cruise
+altitude; lower buildings are visual city geometry below the flight plane.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
@@ -165,5 +173,7 @@ colcon test-result --verbose
   arrives.
 - The offboard node assumes the planner path and PX4 local position share the
   same horizontal origin.
+- Runtime logs include distance-to-start and distance-to-goal values in
+  `planner_node`, `px4_offboard_node`, and `mission_monitor_node`.
 - The launch file bridges `/scan`; if the PX4 lidar model publishes a different
   Gazebo topic, update `city_nav.launch.py` or add a remap.

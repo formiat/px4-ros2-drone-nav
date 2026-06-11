@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,8 @@ public:
         declare_parameter<bool>("direct_path_fallback", false);
     max_initial_lateral_deviation_m_ =
         declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
+    start_ = Point2{declare_parameter<double>("start_x_m", 0.0),
+                    declare_parameter<double>("start_y_m", 0.0)};
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                    declare_parameter<double>("goal_y_m", 0.0)};
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
@@ -123,10 +126,12 @@ public:
         std::chrono::duration<double>{std::max(0.05, replan_period_s)},
         [this]() { replanAndPublish(); });
 
-    RCLCPP_INFO(get_logger(),
-                "Planner ready: grid=%dx%d resolution=%.2fm goal=(%.1f, %.1f)",
-                grid_->width(), grid_->height(), grid_->resolution(), goal_.x,
-                goal_.y);
+    RCLCPP_INFO(
+        get_logger(),
+        "Planner ready: grid=%dx%d resolution=%.2fm start=(%.1f, %.1f) "
+        "goal=(%.1f, %.1f)",
+        grid_->width(), grid_->height(), grid_->resolution(), start_.x,
+        start_.y, goal_.x, goal_.y);
     RCLCPP_INFO(get_logger(),
                 "Planner subscriptions: lidar='%s' local_position='%s'",
                 lidar_topic.c_str(), local_position_topic.c_str());
@@ -158,9 +163,11 @@ private:
     if (!local_position_seen_) {
       local_position_seen_ = true;
       RCLCPP_INFO(get_logger(),
-                  "First valid PX4 local position: x=%.2f y=%.2f yaw=%.2f",
+                  "First valid PX4 local position: x=%.2f y=%.2f yaw=%.2f "
+                  "distance_to_start=%.2f distance_to_goal=%.2f",
                   current_pose_.position.x, current_pose_.position.y,
-                  current_pose_.yaw_rad);
+                  current_pose_.yaw_rad, distance(current_pose_.position, start_),
+                  distance(current_pose_.position, goal_));
     }
   }
 
@@ -282,12 +289,15 @@ private:
     const GridStats stats = collectGridStats();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Planning summary: pose=(%.2f, %.2f) occupied=%zu inflated=%zu free=%zu "
-        "unknown=%zu expanded=%zu raw_path=%zu smoothed_path=%zu",
+        "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
+        "distance_to_goal=%.2f occupied=%zu inflated=%zu free=%zu unknown=%zu "
+        "expanded=%zu raw_path=%zu smoothed_path=%zu",
         current_pose_.position.x, current_pose_.position.y,
-        stats.occupied_cells, stats.inflated_cells, stats.free_cells,
-        stats.unknown_cells, astar_result.expanded_cells,
-        astar_result.path.size(), smoothed_cells.size());
+        distance(current_pose_.position, start_),
+        distance(current_pose_.position, goal_), stats.occupied_cells,
+        stats.inflated_cells, stats.free_cells, stats.unknown_cells,
+        astar_result.expanded_cells, astar_result.path.size(),
+        smoothed_cells.size());
     std::vector<Point2> path_points = cellsToPoints(*grid_, smoothed_cells);
     if (path_points.empty()) {
       publishPath({});
@@ -502,10 +512,20 @@ private:
         squaredDistance(first, last_logged_path_first_) > 0.01 ||
         squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed || endpoint_changed) {
+      std::ostringstream preview;
+      const std::size_t preview_count = std::min<std::size_t>(path_size, 6U);
+      for (std::size_t i = 0U; i < preview_count; ++i) {
+        if (i != 0U) {
+          preview << " -> ";
+        }
+        preview << "(" << path.poses[i].pose.position.x << ", "
+                << path.poses[i].pose.position.y << ")";
+      }
       RCLCPP_INFO(get_logger(),
                   "Published path: waypoints=%zu first=(%.2f, %.2f) "
-                  "last=(%.2f, %.2f)",
-                  path_size, first.x, first.y, last.x, last.y);
+                  "last=(%.2f, %.2f) preview=%s",
+                  path_size, first.x, first.y, last.x, last.y,
+                  preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -517,6 +537,7 @@ private:
   AStarConfig astar_config_{};
 
   Pose2 current_pose_{};
+  Point2 start_{};
   Point2 goal_{};
   bool pose_valid_{false};
   bool local_position_seen_{false};

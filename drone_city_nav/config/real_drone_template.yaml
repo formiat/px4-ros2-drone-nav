@@ -11,6 +11,8 @@ planner_node:
     grid_height_m: 80.0
     grid_origin_x: -20.0
     grid_origin_y: -40.0
+    start_x_m: 0.0
+    start_y_m: 0.0
     use_initial_pose_until_px4: false
     goal_x_m: 85.0
     goal_y_m: 0.0
@@ -37,6 +39,9 @@ px4_offboard_node:
     cruise_altitude_m: 12.0
     acceptance_radius_m: 1.5
     max_setpoint_distance_m: 1.0
+    lookahead_distance_m: 3.0
+    goal_x_m: 85.0
+    goal_y_m: 0.0
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: false

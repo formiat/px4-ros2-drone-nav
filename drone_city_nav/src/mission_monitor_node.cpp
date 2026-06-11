@@ -252,11 +252,13 @@ private:
     RCLCPP_INFO(
         get_logger(),
         "Mission summary: spawn_ok=%s moved=%s armed_seen=%s "
-        "position=(%.2f, %.2f) speed=%.2f distance_to_goal=%.2f "
-        "max_distance_from_start=%.2f min_building_clearance=%.2f",
+        "position=(%.2f, %.2f) speed=%.2f distance_to_start=%.2f "
+        "distance_to_goal=%.2f max_distance_from_start=%.2f "
+        "min_building_clearance=%.2f",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
         armed_seen ? "true" : "false", latest_position_.x,
-        latest_position_.y, latest_speed_mps_, distance(latest_position_, goal_),
+        latest_position_.y, latest_speed_mps_,
+        distance(latest_position_, start_), distance(latest_position_, goal_),
         max_distance_from_start_m_, min_building_clearance_m_);
   }
 

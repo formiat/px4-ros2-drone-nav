@@ -15,6 +15,10 @@ gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 headless="${HEADLESS:-}"
+spawn_x_m="${SIM_START_X_M:--75}"
+spawn_y_m="${SIM_START_Y_M:--45}"
+spawn_z_m="${SIM_START_Z_M:-0.3}"
+spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
 runtime_dir="${repo_root}/build/gazebo_city_mvp"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
@@ -138,6 +142,7 @@ echo "MicroXRCEAgent log: ${uxrce_log_file}"
 MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
 
 echo "PX4 SITL log: ${px4_log_file}"
+echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}"
 (
   {
     sleep "${px4_param_delay_s}"
@@ -148,7 +153,7 @@ echo "PX4 SITL log: ${px4_log_file}"
     done
   } | PX4_GZ_WORLD="${world_name}" \
       PX4_GZ_STANDALONE=1 \
-      PX4_GZ_MODEL_POSE="0,0,0.3,0,0,0" \
+      PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
       HEADLESS="${headless}" \
         make -C "${px4_dir}" px4_sitl "${px4_model_target}"
 ) > "${px4_log_file}" 2>&1 &
