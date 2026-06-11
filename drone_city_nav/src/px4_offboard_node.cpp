@@ -474,8 +474,7 @@ private:
     msg.position = std::array<float, 3>{
         static_cast<float>(target.x), static_cast<float>(target.y),
         static_cast<float>(-std::abs(cruise_altitude_m_))};
-    msg.velocity = path_valid_ ? std::array<float, 3>{nan, nan, nan}
-                               : std::array<float, 3>{0.0F, 0.0F, 0.0F};
+    msg.velocity = std::array<float, 3>{0.0F, 0.0F, 0.0F};
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw =
