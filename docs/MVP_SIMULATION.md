@@ -63,6 +63,17 @@ Run the MVP stack:
 ./scripts/run_city_mvp.sh
 ```
 
+PX4 SITL output is written to `log/px4_city_mvp.log` by default. The
+MicroXRCEAgent log is written to `log/uxrce_agent_city_mvp.log`. Override them
+with `PX4_LOG_FILE=/path/to/px4.log` and
+`UXRCE_AGENT_LOG_FILE=/path/to/agent.log` when needed.
+
+For a headless smoke run:
+
+```bash
+HEADLESS=1 SMOKE_DURATION_S=30 ./scripts/run_city_mvp.sh
+```
+
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
 
