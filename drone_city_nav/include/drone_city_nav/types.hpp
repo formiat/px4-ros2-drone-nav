@@ -44,8 +44,7 @@ struct GridBounds {
   return dx * dx + dy * dy;
 }
 
-[[nodiscard]] inline double distance(const Point2 lhs,
-                                     const Point2 rhs) noexcept {
+[[nodiscard]] inline double distance(const Point2 lhs, const Point2 rhs) noexcept {
   return std::sqrt(squaredDistance(lhs, rhs));
 }
 

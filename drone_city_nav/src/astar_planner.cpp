@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <queue>
 
 namespace drone_city_nav {
@@ -16,8 +17,8 @@ struct OpenNode {
 };
 
 struct CompareOpenNode {
-  [[nodiscard]] bool operator()(const OpenNode &lhs,
-                                const OpenNode &rhs) const noexcept {
+  [[nodiscard]] bool operator()(const OpenNode& lhs,
+                                const OpenNode& rhs) const noexcept {
     if (lhs.f_score == rhs.f_score) {
       return lhs.g_score < rhs.g_score;
     }
@@ -25,14 +26,13 @@ struct CompareOpenNode {
   }
 };
 
-[[nodiscard]] double heuristic(const GridIndex from,
-                               const GridIndex to) noexcept {
+[[nodiscard]] double heuristic(const GridIndex from, const GridIndex to) noexcept {
   const double dx = static_cast<double>(from.x - to.x);
   const double dy = static_cast<double>(from.y - to.y);
   return std::hypot(dx, dy);
 }
 
-[[nodiscard]] bool diagonalMoveCutsBlockedCorner(const OccupancyGrid2D &grid,
+[[nodiscard]] bool diagonalMoveCutsBlockedCorner(const OccupancyGrid2D& grid,
                                                  const GridIndex from,
                                                  const GridIndex to) {
   const int dx = to.x - from.x;
@@ -46,9 +46,10 @@ struct CompareOpenNode {
   return grid.isBlocked(adjacent_x) || grid.isBlocked(adjacent_y);
 }
 
-[[nodiscard]] std::vector<GridIndex>
-reconstructPath(const OccupancyGrid2D &grid, const std::vector<int> &parents,
-                const GridIndex start, const GridIndex goal) {
+[[nodiscard]] std::vector<GridIndex> reconstructPath(const OccupancyGrid2D& grid,
+                                                     const std::vector<int>& parents,
+                                                     const GridIndex start,
+                                                     const GridIndex goal) {
   std::vector<GridIndex> path;
   GridIndex current = goal;
   path.push_back(current);
@@ -69,9 +70,8 @@ reconstructPath(const OccupancyGrid2D &grid, const std::vector<int> &parents,
 
 } // namespace
 
-AStarResult AStarPlanner::plan(const OccupancyGrid2D &grid,
-                               const GridIndex start, const GridIndex goal,
-                               const AStarConfig &config) const {
+AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex start,
+                               const GridIndex goal, const AStarConfig& config) const {
   AStarResult result{};
   if (!grid.contains(start) || !grid.contains(goal) || grid.isBlocked(start) ||
       grid.isBlocked(goal)) {
@@ -90,8 +90,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D &grid,
   }};
 
   const std::size_t cell_count = grid.cellCount();
-  std::vector<double> g_scores(cell_count,
-                               std::numeric_limits<double>::infinity());
+  std::vector<double> g_scores(cell_count, std::numeric_limits<double>::infinity());
   std::vector<int> parents(cell_count, -1);
   std::vector<std::uint8_t> closed(cell_count, 0U);
   std::priority_queue<OpenNode, std::vector<OpenNode>, CompareOpenNode> open;
@@ -118,8 +117,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D &grid,
     }
 
     for (const GridIndex offset : kNeighborOffsets) {
-      const GridIndex next{current.cell.x + offset.x,
-                           current.cell.y + offset.y};
+      const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
       if (!grid.contains(next) || grid.isBlocked(next) ||
           diagonalMoveCutsBlockedCorner(grid, current.cell, next)) {
         continue;
@@ -131,7 +129,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D &grid,
       }
 
       const double step_cost =
-          (offset.x != 0 && offset.y != 0) ? std::sqrt(2.0) : 1.0;
+          (offset.x != 0 && offset.y != 0) ? std::numbers::sqrt2 : 1.0;
       const double tentative_g = g_scores[current_index] + step_cost;
       if (tentative_g >= g_scores[next_index]) {
         continue;

@@ -21,8 +21,7 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] int positiveCellCount(const double length_m,
-                                    const double resolution_m) {
+[[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
   return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
 }
 
@@ -41,17 +40,16 @@ struct GridStats {
 
 class PlannerNode final : public rclcpp::Node {
 public:
-  PlannerNode() : Node{"planner_node"} {
-    const double resolution_m =
-        declare_parameter<double>("grid_resolution_m", 0.5);
+  PlannerNode()
+      : Node{"planner_node"} {
+    const double resolution_m = declare_parameter<double>("grid_resolution_m", 0.5);
     const double width_m = declare_parameter<double>("grid_width_m", 120.0);
     const double height_m = declare_parameter<double>("grid_height_m", 80.0);
     const double origin_x = declare_parameter<double>("grid_origin_x", -20.0);
     const double origin_y = declare_parameter<double>("grid_origin_y", -40.0);
 
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
-    direct_path_fallback_ =
-        declare_parameter<bool>("direct_path_fallback", false);
+    direct_path_fallback_ = declare_parameter<bool>("direct_path_fallback", false);
     reuse_last_valid_path_on_failure_ =
         declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
     max_initial_lateral_deviation_m_ =
@@ -61,44 +59,36 @@ public:
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                    declare_parameter<double>("goal_y_m", 0.0)};
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
-    min_mapping_altitude_m_ =
-        declare_parameter<double>("min_mapping_altitude_m", 0.0);
-    scan_yaw_offset_rad_ =
-        declare_parameter<double>("scan_yaw_offset_rad", 0.0);
+    min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
+    scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     swap_lidar_xy_to_local_frame_ =
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     max_lidar_range_m_ = declare_parameter<double>("max_lidar_range_m", 35.0);
-    range_hit_epsilon_m_ =
-        declare_parameter<double>("range_hit_epsilon_m", 0.05);
+    range_hit_epsilon_m_ = declare_parameter<double>("range_hit_epsilon_m", 0.05);
     hit_obstacle_depth_m_ =
-        std::clamp(declare_parameter<double>("hit_obstacle_depth_m", 0.0), 0.0,
-                   100.0);
+        std::clamp(declare_parameter<double>("hit_obstacle_depth_m", 0.0), 0.0, 100.0);
     nearest_free_radius_cells_ = static_cast<int>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0,
-        100000));
+        declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0, 100000));
     scan_stride_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("scan_stride", 1), 1, 100000));
-    astar_config_.max_expansions =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
-            std::numeric_limits<int>::max()));
+    astar_config_.max_expansions = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
+        std::numeric_limits<int>::max()));
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     if (use_initial_pose) {
-      current_pose_ =
-          Pose2{Point2{declare_parameter<double>("initial_x_m", 0.0),
-                       declare_parameter<double>("initial_y_m", 0.0)},
-                declare_parameter<double>("initial_heading_rad", 0.0)};
+      current_pose_ = Pose2{Point2{declare_parameter<double>("initial_x_m", 0.0),
+                                   declare_parameter<double>("initial_y_m", 0.0)},
+                            declare_parameter<double>("initial_heading_rad", 0.0)};
       pose_valid_ = true;
     }
 
-    grid_ = std::make_unique<OccupancyGrid2D>(
-        GridBounds{origin_x, origin_y, resolution_m,
-                   positiveCellCount(width_m, resolution_m),
-                   positiveCellCount(height_m, resolution_m)});
+    grid_ = std::make_unique<OccupancyGrid2D>(GridBounds{
+        origin_x, origin_y, resolution_m, positiveCellCount(width_m, resolution_m),
+        positiveCellCount(height_m, resolution_m)});
 
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     const std::string lidar_topic =
@@ -109,15 +99,12 @@ public:
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
-        [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-          onScan(*msg);
+        [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
+    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+        local_position_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+          onLocalPosition(*msg);
         });
-    local_position_sub_ =
-        create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-            local_position_topic, sensor_qos,
-            [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-              onLocalPosition(*msg);
-            });
 
     occupancy_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("occupancy_grid_topic",
@@ -131,37 +118,33 @@ public:
                                        "/drone_city_nav/current_waypoint"),
         rclcpp::QoS{1}.reliable());
 
-    const double replan_period_s =
-        declare_parameter<double>("replan_period_s", 0.5);
+    const double replan_period_s = declare_parameter<double>("replan_period_s", 0.5);
     timer_ = create_wall_timer(
         std::chrono::duration<double>{std::max(0.05, replan_period_s)},
         [this]() { replanAndPublish(); });
 
+    RCLCPP_INFO(get_logger(),
+                "Planner ready: grid=%dx%d resolution=%.2fm start=(%.1f, %.1f) "
+                "goal=(%.1f, %.1f)",
+                grid_->width(), grid_->height(), grid_->resolution(), start_.x,
+                start_.y, goal_.x, goal_.y);
+    RCLCPP_INFO(get_logger(), "Planner subscriptions: lidar='%s' local_position='%s'",
+                lidar_topic.c_str(), local_position_topic.c_str());
     RCLCPP_INFO(
         get_logger(),
-        "Planner ready: grid=%dx%d resolution=%.2fm start=(%.1f, %.1f) "
-        "goal=(%.1f, %.1f)",
-        grid_->width(), grid_->height(), grid_->resolution(), start_.x,
-        start_.y, goal_.x, goal_.y);
-    RCLCPP_INFO(get_logger(),
-                "Planner subscriptions: lidar='%s' local_position='%s'",
-                lidar_topic.c_str(), local_position_topic.c_str());
-    RCLCPP_INFO(get_logger(),
-                "Planner fallback policy: direct_path_fallback=%s "
-                "reuse_last_valid_path_on_failure=%s "
-                "max_initial_lateral_deviation=%.2fm "
-                "use_px4_heading_for_scan=%s swap_lidar_xy_to_local_frame=%s "
-                "hit_obstacle_depth=%.2fm",
-                direct_path_fallback_ ? "true" : "false",
-                reuse_last_valid_path_on_failure_ ? "true" : "false",
-                max_initial_lateral_deviation_m_,
-                use_px4_heading_for_scan_ ? "true" : "false",
-                swap_lidar_xy_to_local_frame_ ? "true" : "false",
-                hit_obstacle_depth_m_);
+        "Planner fallback policy: direct_path_fallback=%s "
+        "reuse_last_valid_path_on_failure=%s "
+        "max_initial_lateral_deviation=%.2fm "
+        "use_px4_heading_for_scan=%s swap_lidar_xy_to_local_frame=%s "
+        "hit_obstacle_depth=%.2fm",
+        direct_path_fallback_ ? "true" : "false",
+        reuse_last_valid_path_on_failure_ ? "true" : "false",
+        max_initial_lateral_deviation_m_, use_px4_heading_for_scan_ ? "true" : "false",
+        swap_lidar_xy_to_local_frame_ ? "true" : "false", hit_obstacle_depth_m_);
   }
 
 private:
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
+  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -196,7 +179,7 @@ private:
     }
   }
 
-  void onScan(const sensor_msgs::msg::LaserScan &scan) {
+  void onScan(const sensor_msgs::msg::LaserScan& scan) {
     if (!pose_valid_ || grid_ == nullptr || !finite2D(current_pose_.position) ||
         !std::isfinite(scan.angle_increment) || scan.angle_increment == 0.0F) {
       return;
@@ -225,11 +208,10 @@ private:
     for (std::size_t i = 0; i < scan.ranges.size(); i += stride) {
       const float raw_range = scan.ranges[i];
       const bool finite_range = std::isfinite(raw_range);
-      const bool hit = finite_range && raw_range >= scan.range_min &&
-                       static_cast<double>(raw_range) <
-                           scan_range_max - range_hit_epsilon_m_;
-      const double range_m =
-          hit ? static_cast<double>(raw_range) : scan_range_max;
+      const bool hit =
+          finite_range && raw_range >= scan.range_min &&
+          static_cast<double>(raw_range) < scan_range_max - range_hit_epsilon_m_;
+      const double range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
       if (!(range_m >= static_cast<double>(scan.range_min))) {
         continue;
       }
@@ -253,41 +235,37 @@ private:
 
     if (!scan_seen_) {
       scan_seen_ = true;
-      RCLCPP_INFO(get_logger(),
-                  "First lidar scan: beams=%zu processed=%zu range=[%.2f, %.2f] "
-                  "angle=[%.2f, %.2f]",
-                  scan.ranges.size(), processed_beams,
-                  static_cast<double>(scan.range_min),
-                  static_cast<double>(scan.range_max),
-                  static_cast<double>(scan.angle_min),
-                  static_cast<double>(scan.angle_max));
+      RCLCPP_INFO(
+          get_logger(),
+          "First lidar scan: beams=%zu processed=%zu range=[%.2f, %.2f] "
+          "angle=[%.2f, %.2f]",
+          scan.ranges.size(), processed_beams, static_cast<double>(scan.range_min),
+          static_cast<double>(scan.range_max), static_cast<double>(scan.angle_min),
+          static_cast<double>(scan.angle_max));
     }
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Lidar update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
         "processed=%zu hits=%zu obstacle_depth_cells=%zu range_max=%.2f",
-        current_pose_.position.x, current_pose_.position.y,
-        current_altitude_m_, current_pose_.yaw_rad, processed_beams, hit_beams,
-        obstacle_depth_cells, scan_range_max);
+        current_pose_.position.x, current_pose_.position.y, current_altitude_m_,
+        current_pose_.yaw_rad, processed_beams, hit_beams, obstacle_depth_cells,
+        scan_range_max);
   }
 
-  std::size_t markObstacleDepth(const Point2 hit_point,
-                                const Point2 direction) {
+  std::size_t markObstacleDepth(const Point2 hit_point, const Point2 direction) {
     if (hit_obstacle_depth_m_ <= 0.0 || grid_ == nullptr) {
       return 0U;
     }
 
-    const Point2 shadow_end{
-        hit_point.x + hit_obstacle_depth_m_ * direction.x,
-        hit_point.y + hit_obstacle_depth_m_ * direction.y};
+    const Point2 shadow_end{hit_point.x + hit_obstacle_depth_m_ * direction.x,
+                            hit_point.y + hit_obstacle_depth_m_ * direction.y};
     const auto start_cell = grid_->worldToCell(hit_point);
     const auto end_cell = grid_->worldToCell(shadow_end);
     if (!start_cell.has_value() || !end_cell.has_value()) {
       return 0U;
     }
 
-    const std::vector<GridIndex> cells =
-        grid_->cellsOnLine(*start_cell, *end_cell);
+    const std::vector<GridIndex> cells = grid_->cellsOnLine(*start_cell, *end_cell);
     for (const GridIndex cell : cells) {
       grid_->setOccupied(cell);
     }
@@ -339,9 +317,8 @@ private:
           get_logger(), *get_clock(), 5000,
           "Planning endpoints adjusted after inflation: start=(%d,%d)->(%d,%d) "
           "goal=(%d,%d)->(%d,%d)",
-          start_cell->x, start_cell->y, unblocked_start->x,
-          unblocked_start->y, goal_cell->x, goal_cell->y, unblocked_goal->x,
-          unblocked_goal->y);
+          start_cell->x, start_cell->y, unblocked_start->x, unblocked_start->y,
+          goal_cell->x, goal_cell->y, unblocked_goal->x, unblocked_goal->y);
     }
 
     const AStarResult astar_result =
@@ -356,8 +333,7 @@ private:
       return;
     }
 
-    const std::vector<GridIndex> smoothed_cells =
-        smoothPath(*grid_, astar_result.path);
+    const std::vector<GridIndex> smoothed_cells = smoothPath(*grid_, astar_result.path);
     const GridStats stats = collectGridStats();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -368,16 +344,14 @@ private:
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_), stats.occupied_cells,
         stats.inflated_cells, stats.free_cells, stats.unknown_cells,
-        astar_result.expanded_cells, astar_result.path.size(),
-        smoothed_cells.size());
+        astar_result.expanded_cells, astar_result.path.size(), smoothed_cells.size());
     std::vector<Point2> path_points = cellsToPoints(*grid_, smoothed_cells);
     if (path_points.empty()) {
       publishPath({});
       return;
     }
 
-    if (distance(current_pose_.position, path_points.front()) <
-        grid_->resolution()) {
+    if (distance(current_pose_.position, path_points.front()) < grid_->resolution()) {
       path_points.front() = current_pose_.position;
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
@@ -410,15 +384,15 @@ private:
         }
 
         switch (grid_->state(cell)) {
-        case CellState::kUnknown:
-          ++stats.unknown_cells;
-          break;
-        case CellState::kFree:
-          ++stats.free_cells;
-          break;
-        case CellState::kOccupied:
-          ++stats.occupied_cells;
-          break;
+          case CellState::kUnknown:
+            ++stats.unknown_cells;
+            break;
+          case CellState::kFree:
+            ++stats.free_cells;
+            break;
+          case CellState::kOccupied:
+            ++stats.occupied_cells;
+            break;
         }
       }
     }
@@ -456,7 +430,7 @@ private:
     occupancy_pub_->publish(msg);
   }
 
-  void publishPath(const std::vector<Point2> &points) {
+  void publishPath(const std::vector<Point2>& points) {
     nav_msgs::msg::Path path;
     path.header.stamp = now();
     path.header.frame_id = frame_id_;
@@ -518,8 +492,8 @@ private:
     publishPath(path_points);
   }
 
-  [[nodiscard]] bool hasExcessiveInitialLateralDeviation(
-      const std::vector<Point2> &path_points) const {
+  [[nodiscard]] bool
+  hasExcessiveInitialLateralDeviation(const std::vector<Point2>& path_points) const {
     if (!direct_path_fallback_ || path_points.size() < 3U) {
       return false;
     }
@@ -538,7 +512,7 @@ private:
     return false;
   }
 
-  void pruneBackwardInitialWaypoints(std::vector<Point2> &path_points) const {
+  void pruneBackwardInitialWaypoints(std::vector<Point2>& path_points) const {
     if (path_points.size() < 3U) {
       return;
     }
@@ -571,7 +545,7 @@ private:
     }
   }
 
-  void logPathUpdate(const nav_msgs::msg::Path &path) {
+  void logPathUpdate(const nav_msgs::msg::Path& path) {
     const std::size_t path_size = path.poses.size();
     const bool path_changed = path_size != last_logged_path_size_;
     if (path_size == 0U) {
@@ -602,8 +576,7 @@ private:
       RCLCPP_INFO(get_logger(),
                   "Published path: waypoints=%zu first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f) preview=%s",
-                  path_size, first.x, first.y, last.x, last.y,
-                  preview.str().c_str());
+                  path_size, first.x, first.y, last.x, last.y, preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -653,7 +626,7 @@ private:
 
 } // namespace drone_city_nav
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<drone_city_nav::PlannerNode>());
   rclcpp::shutdown();

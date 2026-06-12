@@ -5,9 +5,9 @@
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -15,8 +15,8 @@
 #include <array>
 #include <chrono>
 #include <cmath>
-#include <cstring>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -39,17 +39,22 @@ struct Pixel {
 struct Image {
   int width{1};
   int height{1};
-  std::vector<Pixel> pixels{};
+  std::vector<Pixel> pixels;
 
   Image(const int image_width, const int image_height, const Pixel background)
-      : width{std::max(1, image_width)}, height{std::max(1, image_height)},
-        pixels(static_cast<std::size_t>(width * height), background) {}
+      : width{std::max(1, image_width)},
+        height{std::max(1, image_height)},
+        pixels(static_cast<std::size_t>(width * height), background) {
+  }
 
   void set(const int x, const int y, const Pixel color) {
     if (x < 0 || y < 0 || x >= width || y >= height) {
       return;
     }
-    pixels[static_cast<std::size_t>(y * width + x)] = color;
+    const auto pixel_index =
+        static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+        static_cast<std::size_t>(x);
+    pixels[pixel_index] = color;
   }
 };
 
@@ -57,43 +62,42 @@ struct Image {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] std::string zeroPadded(const std::uint64_t value,
-                                     const int width) {
+[[nodiscard]] std::string zeroPadded(const std::uint64_t value, const int width) {
   std::ostringstream stream;
   stream << std::setw(width) << std::setfill('0') << value;
   return stream.str();
 }
 
-[[nodiscard]] std::string jsonString(const std::string &value) {
+[[nodiscard]] std::string jsonString(const std::string& value) {
   std::ostringstream stream;
   stream << '"';
   for (const char c : value) {
     switch (c) {
-    case '\\':
-      stream << "\\\\";
-      break;
-    case '"':
-      stream << "\\\"";
-      break;
-    case '\n':
-      stream << "\\n";
-      break;
-    case '\r':
-      stream << "\\r";
-      break;
-    case '\t':
-      stream << "\\t";
-      break;
-    default:
-      stream << c;
-      break;
+      case '\\':
+        stream << "\\\\";
+        break;
+      case '"':
+        stream << "\\\"";
+        break;
+      case '\n':
+        stream << "\\n";
+        break;
+      case '\r':
+        stream << "\\r";
+        break;
+      case '\t':
+        stream << "\\t";
+        break;
+      default:
+        stream << c;
+        break;
     }
   }
   stream << '"';
   return stream.str();
 }
 
-void drawLine(Image &image, int x0, int y0, const int x1, const int y1,
+void drawLine(Image& image, int x0, int y0, const int x1, const int y1,
               const Pixel color) {
   const int dx = std::abs(x1 - x0);
   const int sx = x0 < x1 ? 1 : -1;
@@ -119,8 +123,8 @@ void drawLine(Image &image, int x0, int y0, const int x1, const int y1,
   }
 }
 
-void drawDisc(Image &image, const int center_x, const int center_y,
-              const int radius, const Pixel color) {
+void drawDisc(Image& image, const int center_x, const int center_y, const int radius,
+              const Pixel color) {
   for (int y = center_y - radius; y <= center_y + radius; ++y) {
     for (int x = center_x - radius; x <= center_x + radius; ++x) {
       const int dx = x - center_x;
@@ -132,8 +136,7 @@ void drawDisc(Image &image, const int center_x, const int center_y,
   }
 }
 
-[[nodiscard]] bool writePpm(const std::filesystem::path &path,
-                            const Image &image) {
+[[nodiscard]] bool writePpm(const std::filesystem::path& path, const Image& image) {
   std::ofstream output{path, std::ios::binary};
   if (!output.is_open()) {
     return false;
@@ -152,20 +155,19 @@ void drawDisc(Image &image, const int center_x, const int center_y,
 
 class LidarDebugNode final : public rclcpp::Node {
 public:
-  LidarDebugNode() : Node{"lidar_debug_node"} {
+  LidarDebugNode()
+      : Node{"lidar_debug_node"} {
     output_dir_ = declare_parameter<std::string>("output_dir", "log/lidar_debug");
     snapshot_period_s_ =
         std::max(0.1, declare_parameter<double>("snapshot_period_s", 1.0));
     image_size_px_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("image_size_px", 900), 200, 4000));
-    view_radius_m_ =
-        std::max(5.0, declare_parameter<double>("view_radius_m", 45.0));
+    view_radius_m_ = std::max(5.0, declare_parameter<double>("view_radius_m", 45.0));
     max_lidar_range_m_ =
         std::max(1.0, declare_parameter<double>("max_lidar_range_m", 35.0));
     range_hit_epsilon_m_ =
         std::max(0.0, declare_parameter<double>("range_hit_epsilon_m", 0.05));
-    scan_yaw_offset_rad_ =
-        declare_parameter<double>("scan_yaw_offset_rad", 0.0);
+    scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", false);
     swap_lidar_xy_to_local_frame_ =
@@ -174,13 +176,11 @@ public:
         declare_parameter<std::int64_t>("beam_csv_stride", 1), 1, 100000));
     image_beam_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("image_beam_stride", 4), 1, 100000));
-    max_logged_hit_points_ =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0,
-            100000));
-    max_snapshots_ = static_cast<std::uint64_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("max_snapshots", 0), 0,
-        std::numeric_limits<std::int32_t>::max()));
+    max_logged_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0, 100000));
+    max_snapshots_ = static_cast<std::uint64_t>(
+        std::clamp<std::int64_t>(declare_parameter<std::int64_t>("max_snapshots", 0), 0,
+                                 std::numeric_limits<std::int32_t>::max()));
 
     const std::string lidar_topic =
         declare_parameter<std::string>("lidar_topic", "/scan");
@@ -209,12 +209,11 @@ public:
           last_scan_ = *msg;
           scan_seen_ = true;
         });
-    local_position_sub_ =
-        create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-            local_position_topic, sensor_qos,
-            [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-              onLocalPosition(*msg);
-            });
+    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+        local_position_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+          onLocalPosition(*msg);
+        });
     occupancy_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
         occupancy_grid_topic, rclcpp::QoS{1}.transient_local(),
         [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -235,19 +234,18 @@ public:
     timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                                [this]() { writeSnapshot(); });
 
-    RCLCPP_INFO(
-        get_logger(),
-        "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-        "view_radius=%.1fm topics scan='%s' grid='%s' path='%s' pose='%s' "
-        "points='%s' markers='%s'",
-        output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-        lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
-        local_position_topic.c_str(), pointcloud_topic_.c_str(),
-        marker_topic_.c_str());
+    RCLCPP_INFO(get_logger(),
+                "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
+                "view_radius=%.1fm topics scan='%s' grid='%s' path='%s' pose='%s' "
+                "points='%s' markers='%s'",
+                output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
+                lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
+                local_position_topic.c_str(), pointcloud_topic_.c_str(),
+                marker_topic_.c_str());
   }
 
 private:
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
+  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
       return;
     }
@@ -270,10 +268,10 @@ private:
       return;
     }
     if (!scan_seen_ || !pose_seen_) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Lidar debug waiting for scan and pose: scan=%s pose=%s",
-          scan_seen_ ? "true" : "false", pose_seen_ ? "true" : "false");
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Lidar debug waiting for scan and pose: scan=%s pose=%s",
+                           scan_seen_ ? "true" : "false",
+                           pose_seen_ ? "true" : "false");
       return;
     }
 
@@ -294,18 +292,17 @@ private:
     drawDrone(image);
     const bool image_ok = writePpm(image_path, image);
     publishPointCloud(stats);
-    publishRadarMarkers(stats);
+    publishRadarMarkers();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
-    RCLCPP_INFO(
-        get_logger(),
-        "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
-        "beams=%zu hits=%zu grid=%s path_waypoints=%zu image='%s' csv='%s'",
-        prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
-        current_altitude_m_, stats.processed_beams, stats.hit_beams,
-        grid_seen_ ? "true" : "false",
-        path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
-        csv_path.string().c_str());
+    RCLCPP_INFO(get_logger(),
+                "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
+                "beams=%zu hits=%zu grid=%s path_waypoints=%zu image='%s' csv='%s'",
+                prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
+                current_altitude_m_, stats.processed_beams, stats.hit_beams,
+                grid_seen_ ? "true" : "false",
+                path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
+                csv_path.string().c_str());
   }
 
   struct SnapshotStats {
@@ -316,32 +313,27 @@ private:
     std::size_t grid_free{0U};
     std::size_t grid_inflated{0U};
     std::size_t grid_occupied{0U};
-    std::vector<Point2> hit_points{};
+    std::vector<Point2> hit_points;
   };
 
   [[nodiscard]] double scanRangeMax() const {
-    return std::min(static_cast<double>(last_scan_.range_max),
-                    max_lidar_range_m_);
+    return std::min(static_cast<double>(last_scan_.range_max), max_lidar_range_m_);
   }
 
-  [[nodiscard]] bool isHit(const float raw_range,
-                           const double scan_range_max) const {
+  [[nodiscard]] bool isHit(const float raw_range, const double scan_range_max) const {
     return std::isfinite(raw_range) && raw_range >= last_scan_.range_min &&
-           static_cast<double>(raw_range) <
-               scan_range_max - range_hit_epsilon_m_;
+           static_cast<double>(raw_range) < scan_range_max - range_hit_epsilon_m_;
   }
 
   [[nodiscard]] Point2 scanEndpoint(const std::size_t beam_index,
                                     const double range_m) const {
-    const double angle_rad =
-        current_pose_.yaw_rad + scan_yaw_offset_rad_ +
-        static_cast<double>(last_scan_.angle_min) +
-        static_cast<double>(beam_index) *
-            static_cast<double>(last_scan_.angle_increment);
+    const double angle_rad = current_pose_.yaw_rad + scan_yaw_offset_rad_ +
+                             static_cast<double>(last_scan_.angle_min) +
+                             static_cast<double>(beam_index) *
+                                 static_cast<double>(last_scan_.angle_increment);
     const Point2 direction = lidarDirection(angle_rad);
-    return Point2{
-        current_pose_.position.x + range_m * direction.x,
-        current_pose_.position.y + range_m * direction.y};
+    return Point2{current_pose_.position.x + range_m * direction.x,
+                  current_pose_.position.y + range_m * direction.y};
   }
 
   [[nodiscard]] Point2 lidarDirection(const double angle_rad) const {
@@ -353,8 +345,7 @@ private:
     return Point2{scan_x, scan_y};
   }
 
-  void writeScanCsv(const std::filesystem::path &csv_path,
-                    SnapshotStats &stats) {
+  void writeScanCsv(const std::filesystem::path& csv_path, SnapshotStats& stats) {
     std::ofstream csv{csv_path, std::ios::out | std::ios::trunc};
     csv << "beam_index,angle_rad,raw_range_m,used_range_m,hit,end_x_m,end_y_m\n";
 
@@ -366,8 +357,7 @@ private:
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += beam_csv_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      const double used_range_m =
-          hit ? static_cast<double>(raw_range) : scan_range_max;
+      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
@@ -385,13 +375,12 @@ private:
       const double angle_rad =
           current_pose_.yaw_rad + scan_yaw_offset_rad_ +
           static_cast<double>(last_scan_.angle_min) +
-          static_cast<double>(i) *
-              static_cast<double>(last_scan_.angle_increment);
+          static_cast<double>(i) * static_cast<double>(last_scan_.angle_increment);
       csv << i << ',' << angle_rad << ','
           << (std::isfinite(raw_range) ? static_cast<double>(raw_range)
                                        : std::numeric_limits<double>::quiet_NaN())
-          << ',' << used_range_m << ',' << (hit ? 1 : 0) << ',' << end.x << ','
-          << end.y << '\n';
+          << ',' << used_range_m << ',' << (hit ? 1 : 0) << ',' << end.x << ',' << end.y
+          << '\n';
     }
   }
 
@@ -401,8 +390,7 @@ private:
       return std::nullopt;
     }
 
-    const double scale =
-        static_cast<double>(image_size_px_) / (2.0 * view_radius_m_);
+    const double scale = static_cast<double>(image_size_px_) / (2.0 * view_radius_m_);
     const double center = static_cast<double>(image_size_px_) * 0.5;
     const int x = static_cast<int>(
         std::lround(center + (point.x - current_pose_.position.x) * scale));
@@ -414,7 +402,7 @@ private:
     return std::array<int, 2>{x, y};
   }
 
-  void drawGrid(Image &image) {
+  void drawGrid(Image& image) {
     if (!grid_seen_) {
       return;
     }
@@ -428,8 +416,9 @@ private:
     const int height = static_cast<int>(last_grid_.info.height);
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
-        const std::size_t index =
-            static_cast<std::size_t>(y * width + x);
+        const auto index =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+            static_cast<std::size_t>(x);
         if (index >= last_grid_.data.size()) {
           continue;
         }
@@ -451,11 +440,10 @@ private:
           ++latest_stats_grid_free_;
         }
 
-        const Point2 center{
-            last_grid_.info.origin.position.x +
-                (static_cast<double>(x) + 0.5) * resolution,
-            last_grid_.info.origin.position.y +
-                (static_cast<double>(y) + 0.5) * resolution};
+        const Point2 center{last_grid_.info.origin.position.x +
+                                (static_cast<double>(x) + 0.5) * resolution,
+                            last_grid_.info.origin.position.y +
+                                (static_cast<double>(y) + 0.5) * resolution};
         const auto pixel = worldToPixel(center);
         if (pixel.has_value()) {
           image.set((*pixel)[0], (*pixel)[1], color);
@@ -464,7 +452,7 @@ private:
     }
   }
 
-  void drawPath(Image &image) {
+  void drawPath(Image& image) {
     if (!path_seen_ || last_path_.poses.empty()) {
       return;
     }
@@ -482,7 +470,7 @@ private:
       }
     }
 
-    for (const auto &pose : last_path_.poses) {
+    for (const auto& pose : last_path_.poses) {
       const auto pixel =
           worldToPixel(Point2{pose.pose.position.x, pose.pose.position.y});
       if (pixel.has_value()) {
@@ -491,7 +479,7 @@ private:
     }
   }
 
-  void drawScan(Image &image, SnapshotStats &stats) {
+  void drawScan(Image& image, SnapshotStats& stats) {
     const double scan_range_max = scanRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return;
@@ -505,8 +493,7 @@ private:
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      const double used_range_m =
-          hit ? static_cast<double>(raw_range) : scan_range_max;
+      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
@@ -518,11 +505,9 @@ private:
       }
 
       drawLine(image, (*origin_pixel)[0], (*origin_pixel)[1], (*end_pixel)[0],
-               (*end_pixel)[1],
-               hit ? Pixel{130U, 82U, 65U} : Pixel{40U, 74U, 84U});
+               (*end_pixel)[1], hit ? Pixel{130U, 82U, 65U} : Pixel{40U, 74U, 84U});
       if (hit) {
-        drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2,
-                 Pixel{255U, 60U, 60U});
+        drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2, Pixel{255U, 60U, 60U});
       }
     }
 
@@ -536,7 +521,7 @@ private:
     latest_stats_grid_occupied_ = 0U;
   }
 
-  void drawDrone(Image &image) const {
+  void drawDrone(Image& image) const {
     const int center = image_size_px_ / 2;
     drawDisc(image, center, center, 5, Pixel{90U, 145U, 255U});
 
@@ -546,10 +531,9 @@ private:
     drawLine(image, center, center, nose_x, nose_y, Pixel{235U, 245U, 255U});
   }
 
-  void writeSummary(const std::string &prefix,
-                    const std::filesystem::path &image_path,
-                    const std::filesystem::path &csv_path,
-                    const SnapshotStats &stats, const bool image_ok) {
+  void writeSummary(const std::string& prefix, const std::filesystem::path& image_path,
+                    const std::filesystem::path& csv_path, const SnapshotStats& stats,
+                    const bool image_ok) {
     summary_stream_ << std::fixed << std::setprecision(4);
     summary_stream_ << "{\"snapshot\":\"" << prefix << "\",";
     summary_stream_ << "\"time_s\":" << now().seconds() << ',';
@@ -570,8 +554,8 @@ private:
                     << ",\"inflated\":" << stats.grid_inflated
                     << ",\"occupied\":" << stats.grid_occupied << "},";
     summary_stream_ << "\"path\":{\"seen\":" << (path_seen_ ? "true" : "false")
-                    << ",\"waypoints\":"
-                    << (path_seen_ ? last_path_.poses.size() : 0U) << "},";
+                    << ",\"waypoints\":" << (path_seen_ ? last_path_.poses.size() : 0U)
+                    << "},";
     summary_stream_ << "\"image_ok\":" << (image_ok ? "true" : "false") << ',';
     summary_stream_ << "\"image\":" << jsonString(image_path.string()) << ',';
     summary_stream_ << "\"scan_csv\":" << jsonString(csv_path.string()) << ',';
@@ -587,7 +571,7 @@ private:
     summary_stream_.flush();
   }
 
-  void publishPointCloud(const SnapshotStats &stats) {
+  void publishPointCloud(const SnapshotStats& stats) {
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = now();
     cloud.header.frame_id = "map";
@@ -615,10 +599,9 @@ private:
     for (std::size_t i = 0U; i < stats.hit_points.size(); ++i) {
       const float x = static_cast<float>(stats.hit_points[i].x);
       const float y = static_cast<float>(stats.hit_points[i].y);
-      const float z =
-          std::isfinite(current_altitude_m_)
-              ? static_cast<float>(current_altitude_m_)
-              : 0.0F;
+      const float z = std::isfinite(current_altitude_m_)
+                          ? static_cast<float>(current_altitude_m_)
+                          : 0.0F;
       const std::size_t offset = i * static_cast<std::size_t>(cloud.point_step);
       std::memcpy(&cloud.data[offset], &x, sizeof(float));
       std::memcpy(&cloud.data[offset + 4U], &y, sizeof(float));
@@ -637,8 +620,8 @@ private:
     return marker_point;
   }
 
-  [[nodiscard]] visualization_msgs::msg::Marker baseMarker(
-      const std::string &ns, const int id, const int type) const {
+  [[nodiscard]] visualization_msgs::msg::Marker
+  baseMarker(const std::string& ns, const int id, const int type) const {
     visualization_msgs::msg::Marker marker;
     marker.header.stamp = now();
     marker.header.frame_id = "map";
@@ -652,7 +635,7 @@ private:
     return marker;
   }
 
-  void setColor(visualization_msgs::msg::Marker &marker, const float red,
+  void setColor(visualization_msgs::msg::Marker& marker, const float red,
                 const float green, const float blue, const float alpha) const {
     marker.color.r = red;
     marker.color.g = green;
@@ -660,27 +643,26 @@ private:
     marker.color.a = alpha;
   }
 
-  void addRangeRing(visualization_msgs::msg::MarkerArray &markers,
+  void addRangeRing(visualization_msgs::msg::MarkerArray& markers,
                     const double radius_m, const int id, const double z) const {
     constexpr int kSegments = 144;
     auto ring = baseMarker("lidar_radar_range", id,
                            visualization_msgs::msg::Marker::LINE_STRIP);
     ring.scale.x = 0.08;
     setColor(ring, 0.25F, 0.70F, 0.95F, 0.45F);
-    ring.points.reserve(static_cast<std::size_t>(kSegments + 1));
+    ring.points.reserve(static_cast<std::size_t>(kSegments) + 1U);
     for (int i = 0; i <= kSegments; ++i) {
-      const double angle =
-          2.0 * std::numbers::pi * static_cast<double>(i) /
-          static_cast<double>(kSegments);
-      ring.points.push_back(markerPoint(
-          Point2{current_pose_.position.x + radius_m * std::cos(angle),
-                 current_pose_.position.y + radius_m * std::sin(angle)},
-          z));
+      const double angle = 2.0 * std::numbers::pi * static_cast<double>(i) /
+                           static_cast<double>(kSegments);
+      ring.points.push_back(
+          markerPoint(Point2{current_pose_.position.x + radius_m * std::cos(angle),
+                             current_pose_.position.y + radius_m * std::sin(angle)},
+                      z));
     }
     markers.markers.push_back(std::move(ring));
   }
 
-  void addScanRayMarkers(visualization_msgs::msg::MarkerArray &markers,
+  void addScanRayMarkers(visualization_msgs::msg::MarkerArray& markers,
                          const double z) const {
     const double scan_range_max = scanRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
@@ -697,18 +679,16 @@ private:
     setColor(hit_rays, 1.0F, 0.22F, 0.18F, 0.70F);
 
     const auto origin = markerPoint(current_pose_.position, z);
-    for (std::size_t i = 0U; i < last_scan_.ranges.size();
-         i += image_beam_stride_) {
+    for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      const double used_range_m =
-          hit ? static_cast<double>(raw_range) : scan_range_max;
+      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
 
       const auto end = markerPoint(scanEndpoint(i, used_range_m), z);
-      auto &ray_marker = hit ? hit_rays : free_rays;
+      auto& ray_marker = hit ? hit_rays : free_rays;
       ray_marker.points.push_back(origin);
       ray_marker.points.push_back(end);
     }
@@ -717,27 +697,26 @@ private:
     markers.markers.push_back(std::move(hit_rays));
   }
 
-  void addDroneMarker(visualization_msgs::msg::MarkerArray &markers,
+  void addDroneMarker(visualization_msgs::msg::MarkerArray& markers,
                       const double z) const {
-    auto drone = baseMarker("lidar_radar_drone", 0,
-                            visualization_msgs::msg::Marker::ARROW);
+    auto drone =
+        baseMarker("lidar_radar_drone", 0, visualization_msgs::msg::Marker::ARROW);
     drone.scale.x = 0.9;
     drone.scale.y = 0.35;
     drone.scale.z = 0.35;
     setColor(drone, 0.30F, 0.55F, 1.0F, 1.0F);
     const Point2 direction = lidarDirection(current_pose_.yaw_rad);
     drone.points.push_back(markerPoint(current_pose_.position, z));
-    drone.points.push_back(markerPoint(
-        Point2{current_pose_.position.x + 3.0 * direction.x,
-               current_pose_.position.y + 3.0 * direction.y},
-        z));
+    drone.points.push_back(
+        markerPoint(Point2{current_pose_.position.x + 3.0 * direction.x,
+                           current_pose_.position.y + 3.0 * direction.y},
+                    z));
     markers.markers.push_back(std::move(drone));
   }
 
-  void publishRadarMarkers(const SnapshotStats &) {
+  void publishRadarMarkers() {
     visualization_msgs::msg::MarkerArray markers;
-    const double z =
-        std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
+    const double z = std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
     addRangeRing(markers, 10.0, 0, z);
     addRangeRing(markers, 20.0, 1, z);
     addRangeRing(markers, 30.0, 2, z);
@@ -792,7 +771,7 @@ private:
 
 } // namespace drone_city_nav
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<drone_city_nav::LidarDebugNode>());
   rclcpp::shutdown();

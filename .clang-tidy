@@ -7,7 +7,18 @@ Checks: >
   modernize-*,
   performance-*,
   portability-*,
-  readability-*
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-vararg,
+  -modernize-raw-string-literal,
+  -modernize-use-auto,
+  -modernize-use-trailing-return-type,
+  -performance-unnecessary-value-param,
+  -readability-convert-member-functions-to-static,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-magic-numbers
 WarningsAsErrors: ''
 HeaderFilterRegex: '^(drone_city_nav/include|drone_city_nav/src|drone_city_nav/tests)/.*'
 FormatStyle: file

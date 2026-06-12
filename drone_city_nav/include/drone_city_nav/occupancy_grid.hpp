@@ -18,9 +18,9 @@ enum class CellState : std::int8_t {
 
 class OccupancyGrid2D {
 public:
-  explicit OccupancyGrid2D(GridBounds bounds);
+  explicit OccupancyGrid2D(const GridBounds& bounds);
 
-  [[nodiscard]] const GridBounds &bounds() const noexcept;
+  [[nodiscard]] const GridBounds& bounds() const noexcept;
   [[nodiscard]] int width() const noexcept;
   [[nodiscard]] int height() const noexcept;
   [[nodiscard]] double resolution() const noexcept;
@@ -29,8 +29,7 @@ public:
   [[nodiscard]] std::size_t cellCount() const noexcept;
 
   [[nodiscard]] bool contains(GridIndex cell) const noexcept;
-  [[nodiscard]] std::optional<GridIndex>
-  worldToCell(Point2 point) const noexcept;
+  [[nodiscard]] std::optional<GridIndex> worldToCell(Point2 point) const noexcept;
   [[nodiscard]] Point2 cellCenter(GridIndex cell) const noexcept;
   [[nodiscard]] std::size_t linearIndex(GridIndex cell) const;
 
@@ -48,8 +47,8 @@ public:
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;
-  [[nodiscard]] std::optional<GridIndex>
-  nearestUnblocked(GridIndex seed, int max_radius_cells) const;
+  [[nodiscard]] std::optional<GridIndex> nearestUnblocked(GridIndex seed,
+                                                          int max_radius_cells) const;
 
 private:
   GridBounds bounds_{};

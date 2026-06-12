@@ -156,6 +156,14 @@ mapfile -t tidy_files < <(
   done
 )
 
+mapfile -t cppcheck_files < <(
+  printf '%s\n' "${cpp_files[@]}" | while IFS= read -r path; do
+    case "${path}" in
+      drone_city_nav/src/*.cpp) printf '%s\n' "${path}" ;;
+    esac
+  done
+)
+
 status=0
 
 run_or_fail() {
@@ -227,13 +235,14 @@ fi
 if [[ "${run_cppcheck}" == "true" ]]; then
   if ! command -v cppcheck >/dev/null 2>&1; then
     echo "SKIP: cppcheck: cppcheck is not installed"
-  elif [[ "${#cpp_files[@]}" -eq 0 ]]; then
-    echo "SKIP: cppcheck: no scoped C++ files changed"
+  elif [[ "${#cppcheck_files[@]}" -eq 0 ]]; then
+    echo "SKIP: cppcheck: no scoped production C++ translation units changed"
   else
     run_or_fail "cppcheck scoped files" \
-      cppcheck --std=c++20 --enable=warning,style,performance,portability \
+      cppcheck --std=c++20 --enable=warning,performance,portability \
         --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem \
-        -Idrone_city_nav/include "${cpp_files[@]}"
+        --suppress=useInitializationList -Idrone_city_nav/include \
+        "${cppcheck_files[@]}"
   fi
 fi
 

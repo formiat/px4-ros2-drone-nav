@@ -10,14 +10,14 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] bool validBounds(const GridBounds &bounds) noexcept {
-  return bounds.resolution_m > 0.0 && bounds.width_cells > 0 &&
-         bounds.height_cells > 0;
+[[nodiscard]] bool validBounds(const GridBounds& bounds) noexcept {
+  return bounds.resolution_m > 0.0 && bounds.width_cells > 0 && bounds.height_cells > 0;
 }
 
 } // namespace
 
-OccupancyGrid2D::OccupancyGrid2D(GridBounds bounds) : bounds_{bounds} {
+OccupancyGrid2D::OccupancyGrid2D(const GridBounds& bounds)
+    : bounds_{bounds} {
   if (!validBounds(bounds_)) {
     throw std::invalid_argument{
         "OccupancyGrid2D requires positive resolution, width, and height"};
@@ -29,19 +29,29 @@ OccupancyGrid2D::OccupancyGrid2D(GridBounds bounds) : bounds_{bounds} {
   inflated_.assign(width * height, 0U);
 }
 
-const GridBounds &OccupancyGrid2D::bounds() const noexcept { return bounds_; }
+const GridBounds& OccupancyGrid2D::bounds() const noexcept {
+  return bounds_;
+}
 
-int OccupancyGrid2D::width() const noexcept { return bounds_.width_cells; }
+int OccupancyGrid2D::width() const noexcept {
+  return bounds_.width_cells;
+}
 
-int OccupancyGrid2D::height() const noexcept { return bounds_.height_cells; }
+int OccupancyGrid2D::height() const noexcept {
+  return bounds_.height_cells;
+}
 
 double OccupancyGrid2D::resolution() const noexcept {
   return bounds_.resolution_m;
 }
 
-double OccupancyGrid2D::originX() const noexcept { return bounds_.origin_x; }
+double OccupancyGrid2D::originX() const noexcept {
+  return bounds_.origin_x;
+}
 
-double OccupancyGrid2D::originY() const noexcept { return bounds_.origin_y; }
+double OccupancyGrid2D::originY() const noexcept {
+  return bounds_.origin_y;
+}
 
 std::size_t OccupancyGrid2D::cellCount() const noexcept {
   return cells_.size();
@@ -54,10 +64,10 @@ bool OccupancyGrid2D::contains(const GridIndex cell) const noexcept {
 
 std::optional<GridIndex>
 OccupancyGrid2D::worldToCell(const Point2 point) const noexcept {
-  const auto x = static_cast<int>(
-      std::floor((point.x - bounds_.origin_x) / bounds_.resolution_m));
-  const auto y = static_cast<int>(
-      std::floor((point.y - bounds_.origin_y) / bounds_.resolution_m));
+  const auto x =
+      static_cast<int>(std::floor((point.x - bounds_.origin_x) / bounds_.resolution_m));
+  const auto y =
+      static_cast<int>(std::floor((point.y - bounds_.origin_y) / bounds_.resolution_m));
   const GridIndex cell{x, y};
   if (!contains(cell)) {
     return std::nullopt;
@@ -66,10 +76,9 @@ OccupancyGrid2D::worldToCell(const Point2 point) const noexcept {
 }
 
 Point2 OccupancyGrid2D::cellCenter(const GridIndex cell) const noexcept {
-  return Point2{bounds_.origin_x +
-                    (static_cast<double>(cell.x) + 0.5) * bounds_.resolution_m,
-                bounds_.origin_y +
-                    (static_cast<double>(cell.y) + 0.5) * bounds_.resolution_m};
+  return Point2{
+      bounds_.origin_x + (static_cast<double>(cell.x) + 0.5) * bounds_.resolution_m,
+      bounds_.origin_y + (static_cast<double>(cell.y) + 0.5) * bounds_.resolution_m};
 }
 
 std::size_t OccupancyGrid2D::linearIndex(const GridIndex cell) const {
@@ -134,8 +143,7 @@ void OccupancyGrid2D::markRay(const Point2 start, const Point2 end,
     return;
   }
 
-  const auto free_end =
-      endpoint_occupied ? ray_cells.size() - 1U : ray_cells.size();
+  const auto free_end = endpoint_occupied ? ray_cells.size() - 1U : ray_cells.size();
   for (std::size_t i = 0; i < free_end; ++i) {
     setFree(ray_cells[i]);
   }
@@ -151,8 +159,7 @@ void OccupancyGrid2D::rebuildInflation(const double radius_m) {
     return;
   }
 
-  const int radius_cells =
-      static_cast<int>(std::ceil(radius_m / bounds_.resolution_m));
+  const int radius_cells = static_cast<int>(std::ceil(radius_m / bounds_.resolution_m));
   const double radius_with_margin = radius_m + (0.5 * bounds_.resolution_m);
   const double radius_sq = radius_with_margin * radius_with_margin;
 
@@ -170,8 +177,7 @@ void OccupancyGrid2D::rebuildInflation(const double radius_m) {
           if (!contains(candidate)) {
             continue;
           }
-          if (squaredDistance(obstacle_center, cellCenter(candidate)) <=
-              radius_sq) {
+          if (squaredDistance(obstacle_center, cellCenter(candidate)) <= radius_sq) {
             inflated_[linearIndex(candidate)] = 1U;
           }
         }

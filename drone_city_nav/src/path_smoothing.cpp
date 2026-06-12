@@ -1,24 +1,22 @@
 #include "drone_city_nav/path_smoothing.hpp"
 
+#include <algorithm>
+
 namespace drone_city_nav {
 
-bool hasLineOfSight(const OccupancyGrid2D &grid, const GridIndex start,
+bool hasLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
                     const GridIndex end) {
   if (!grid.contains(start) || !grid.contains(end)) {
     return false;
   }
 
-  for (const GridIndex cell : grid.cellsOnLine(start, end)) {
-    if (grid.isBlocked(cell)) {
-      return false;
-    }
-  }
-
-  return true;
+  const auto line_cells = grid.cellsOnLine(start, end);
+  return std::ranges::none_of(
+      line_cells, [&grid](const GridIndex cell) { return grid.isBlocked(cell); });
 }
 
-std::vector<GridIndex> smoothPath(const OccupancyGrid2D &grid,
-                                  const std::vector<GridIndex> &path) {
+std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
+                                  const std::vector<GridIndex>& path) {
   if (path.size() <= 2U) {
     return path;
   }
@@ -31,8 +29,7 @@ std::vector<GridIndex> smoothPath(const OccupancyGrid2D &grid,
 
   while (anchor < path.size() - 1U) {
     std::size_t next = path.size() - 1U;
-    while (next > anchor + 1U &&
-           !hasLineOfSight(grid, path[anchor], path[next])) {
+    while (next > anchor + 1U && !hasLineOfSight(grid, path[anchor], path[next])) {
       --next;
     }
 
@@ -43,8 +40,8 @@ std::vector<GridIndex> smoothPath(const OccupancyGrid2D &grid,
   return smoothed;
 }
 
-std::vector<Point2> cellsToPoints(const OccupancyGrid2D &grid,
-                                  const std::vector<GridIndex> &path) {
+std::vector<Point2> cellsToPoints(const OccupancyGrid2D& grid,
+                                  const std::vector<GridIndex>& path) {
   std::vector<Point2> points;
   points.reserve(path.size());
   for (const GridIndex cell : path) {

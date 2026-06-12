@@ -23,18 +23,17 @@ struct BuildingFootprint {
   double height_m{std::numeric_limits<double>::infinity()};
 };
 
-[[nodiscard]] double speed2D(
-    const px4_msgs::msg::VehicleLocalPosition &position) noexcept {
+[[nodiscard]] double
+speed2D(const px4_msgs::msg::VehicleLocalPosition& position) noexcept {
   if (!std::isfinite(position.vx) || !std::isfinite(position.vy)) {
     return std::numeric_limits<double>::infinity();
   }
 
-  return std::hypot(static_cast<double>(position.vx),
-                    static_cast<double>(position.vy));
+  return std::hypot(static_cast<double>(position.vx), static_cast<double>(position.vy));
 }
 
 [[nodiscard]] double clearanceToFootprint(const Point2 point,
-                                          const BuildingFootprint &building) {
+                                          const BuildingFootprint& building) {
   const double half_x = building.size_x_m * 0.5;
   const double half_y = building.size_y_m * 0.5;
   const double dx_inside = half_x - std::abs(point.x - building.center.x);
@@ -43,26 +42,24 @@ struct BuildingFootprint {
     return -std::min(dx_inside, dy_inside);
   }
 
-  const double dx = std::max(std::abs(point.x - building.center.x) - half_x,
-                             0.0);
-  const double dy = std::max(std::abs(point.y - building.center.y) - half_y,
-                             0.0);
+  const double dx = std::max(std::abs(point.x - building.center.x) - half_x, 0.0);
+  const double dy = std::max(std::abs(point.y - building.center.y) - half_y, 0.0);
   return std::hypot(dx, dy);
 }
 
 [[nodiscard]] std::vector<BuildingFootprint>
-parseBuildings(const std::vector<double> &values) {
+parseBuildings(const std::vector<double>& values) {
   std::vector<BuildingFootprint> buildings;
   buildings.reserve(values.size() / 4U);
   for (std::size_t i = 0U; i + 3U < values.size(); i += 4U) {
-    buildings.push_back(BuildingFootprint{
-        Point2{values[i], values[i + 1U]}, values[i + 2U], values[i + 3U]});
+    buildings.push_back(BuildingFootprint{Point2{values[i], values[i + 1U]},
+                                          values[i + 2U], values[i + 3U]});
   }
   return buildings;
 }
 
 [[nodiscard]] std::vector<BuildingFootprint>
-parseBuildingVolumes(const std::vector<double> &values) {
+parseBuildingVolumes(const std::vector<double>& values) {
   std::vector<BuildingFootprint> buildings;
   buildings.reserve(values.size() / 5U);
   for (std::size_t i = 0U; i + 4U < values.size(); i += 5U) {
@@ -74,7 +71,7 @@ parseBuildingVolumes(const std::vector<double> &values) {
 }
 
 [[nodiscard]] double altitudeFromLocalPosition(
-    const px4_msgs::msg::VehicleLocalPosition &position) noexcept {
+    const px4_msgs::msg::VehicleLocalPosition& position) noexcept {
   if (!position.z_valid || !std::isfinite(position.z)) {
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -82,13 +79,13 @@ parseBuildingVolumes(const std::vector<double> &values) {
   return -static_cast<double>(position.z);
 }
 
-void applyUniformBuildingHeight(std::vector<BuildingFootprint> &buildings,
+void applyUniformBuildingHeight(std::vector<BuildingFootprint>& buildings,
                                 const double uniform_height_m) {
   if (!(uniform_height_m > 0.0)) {
     return;
   }
 
-  for (BuildingFootprint &building : buildings) {
+  for (BuildingFootprint& building : buildings) {
     building.height_m = uniform_height_m;
   }
 }
@@ -97,7 +94,8 @@ void applyUniformBuildingHeight(std::vector<BuildingFootprint> &buildings,
 
 class MissionMonitorNode final : public rclcpp::Node {
 public:
-  MissionMonitorNode() : Node{"mission_monitor_node"} {
+  MissionMonitorNode()
+      : Node{"mission_monitor_node"} {
     start_ = Point2{declare_parameter<double>("start_x_m", 0.0),
                     declare_parameter<double>("start_y_m", 0.0)};
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
@@ -108,12 +106,9 @@ public:
     goal_radius_m_ = declare_parameter<double>("goal_radius_m", 2.0);
     stop_speed_mps_ = declare_parameter<double>("stop_speed_mps", 0.6);
     stop_hold_s_ = declare_parameter<double>("stop_hold_s", 2.0);
-    building_clearance_m_ =
-        declare_parameter<double>("building_clearance_m", 1.0);
-    vertical_clearance_m_ =
-        declare_parameter<double>("vertical_clearance_m", 1.0);
-    crash_detection_enabled_ =
-        declare_parameter<bool>("crash_detection_enabled", true);
+    building_clearance_m_ = declare_parameter<double>("building_clearance_m", 1.0);
+    vertical_clearance_m_ = declare_parameter<double>("vertical_clearance_m", 1.0);
+    crash_detection_enabled_ = declare_parameter<bool>("crash_detection_enabled", true);
     crash_min_airborne_altitude_m_ =
         declare_parameter<double>("crash_min_airborne_altitude_m", 6.0);
     crash_altitude_m_ = declare_parameter<double>("crash_altitude_m", 2.5);
@@ -123,14 +118,12 @@ public:
                                                std::vector<double>{});
     buildings_ = parseBuildingVolumes(building_volume_values);
     if (building_volume_values.size() % 5U != 0U) {
-      RCLCPP_WARN(get_logger(),
-                  "Ignoring trailing building volume values: count=%zu",
+      RCLCPP_WARN(get_logger(), "Ignoring trailing building volume values: count=%zu",
                   building_volume_values.size());
     }
 
-    const std::vector<double> building_values =
-        declare_parameter<std::vector<double>>("building_footprints",
-                                               std::vector<double>{});
+    const std::vector<double> building_values = declare_parameter<std::vector<double>>(
+        "building_footprints", std::vector<double>{});
     if (buildings_.empty()) {
       buildings_ = parseBuildings(building_values);
     }
@@ -152,12 +145,11 @@ public:
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
 
-    local_position_sub_ =
-        create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-            local_position_topic, px4_qos,
-            [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-              onLocalPosition(*msg);
-            });
+    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+        local_position_topic, px4_qos,
+        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+          onLocalPosition(*msg);
+        });
     vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
         vehicle_status_topic, px4_qos,
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
@@ -166,35 +158,34 @@ public:
     emergency_stop_pub_ = create_publisher<std_msgs::msg::Bool>(
         emergency_stop_topic, rclcpp::QoS{1}.reliable().transient_local());
 
-    summary_timer_ = create_wall_timer(std::chrono::seconds{5},
-                                       [this]() { logSummary(); });
+    summary_timer_ =
+        create_wall_timer(std::chrono::seconds{5}, [this]() { logSummary(); });
 
-    RCLCPP_INFO(
-        get_logger(),
-        "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
-        "spawn_tolerance=%.2fm goal_radius=%.2fm buildings=%zu clearance=%.2fm "
-        "vertical_clearance=%.2fm uniform_building_height=%.2fm "
-        "crash_detection=%s emergency_stop_topic='%s'",
-        start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
-        goal_radius_m_, buildings_.size(), building_clearance_m_,
-        vertical_clearance_m_, uniform_building_height_m_,
-        crash_detection_enabled_ ? "true" : "false", emergency_stop_topic.c_str());
+    RCLCPP_INFO(get_logger(),
+                "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
+                "spawn_tolerance=%.2fm goal_radius=%.2fm buildings=%zu clearance=%.2fm "
+                "vertical_clearance=%.2fm uniform_building_height=%.2fm "
+                "crash_detection=%s emergency_stop_topic='%s'",
+                start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
+                goal_radius_m_, buildings_.size(), building_clearance_m_,
+                vertical_clearance_m_, uniform_building_height_m_,
+                crash_detection_enabled_ ? "true" : "false",
+                emergency_stop_topic.c_str());
   }
 
 private:
-  void onVehicleStatus(const px4_msgs::msg::VehicleStatus &msg) {
+  void onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg) {
     vehicle_status_ = msg;
     vehicle_status_valid_ = true;
   }
 
-  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition &msg) {
+  void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (result_reported_ || !msg.xy_valid || !std::isfinite(msg.x) ||
         !std::isfinite(msg.y)) {
       return;
     }
 
-    const Point2 position{static_cast<double>(msg.x),
-                          static_cast<double>(msg.y)};
+    const Point2 position{static_cast<double>(msg.x), static_cast<double>(msg.y)};
     const double current_speed_mps = speed2D(msg);
     const double current_altitude_m = altitudeFromLocalPosition(msg);
     latest_position_ = position;
@@ -220,8 +211,7 @@ private:
     const double movement_distance = distance(position, start_);
     max_distance_from_start_m_ =
         std::max(max_distance_from_start_m_, movement_distance);
-    if (!movement_ok_ &&
-        max_distance_from_start_m_ >= min_movement_distance_m_) {
+    if (!movement_ok_ && max_distance_from_start_m_ >= min_movement_distance_m_) {
       movement_ok_ = true;
       RCLCPP_INFO(get_logger(),
                   "MISSION_CHECK movement_ok=true max_distance_from_start=%.2f",
@@ -279,15 +269,14 @@ private:
   }
 
   void updateBuildingClearance(const Point2 position, const double altitude_m) {
-    for (const BuildingFootprint &building : buildings_) {
+    for (const BuildingFootprint& building : buildings_) {
       if (std::isfinite(altitude_m) &&
           altitude_m > building.height_m + vertical_clearance_m_) {
         continue;
       }
 
       const double clearance_m = clearanceToFootprint(position, building);
-      min_building_clearance_m_ =
-          std::min(min_building_clearance_m_, clearance_m);
+      min_building_clearance_m_ = std::min(min_building_clearance_m_, clearance_m);
       if (clearance_m < building_clearance_m_) {
         collision_detected_ = true;
         RCLCPP_ERROR(get_logger(),
@@ -302,9 +291,8 @@ private:
   }
 
   [[nodiscard]] bool isArmedOrWasArmed() {
-    if (vehicle_status_valid_ &&
-        vehicle_status_.arming_state ==
-            px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED) {
+    if (vehicle_status_valid_ && vehicle_status_.arming_state ==
+                                     px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED) {
       armed_seen_ = true;
     }
 
@@ -313,37 +301,34 @@ private:
 
   void reportSuccess() {
     result_reported_ = true;
-    RCLCPP_INFO(
-        get_logger(),
-        "MISSION_RESULT success=true spawn_distance=%.2f "
-        "max_distance_from_start=%.2f min_goal_distance=%.2f "
-        "min_building_clearance=%.2f final_position=(%.2f, %.2f) "
-        "final_altitude=%.2f final_speed=%.2f",
-        spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
-        min_building_clearance_m_, latest_position_.x, latest_position_.y,
-        latest_altitude_m_, latest_speed_mps_);
+    RCLCPP_INFO(get_logger(),
+                "MISSION_RESULT success=true spawn_distance=%.2f "
+                "max_distance_from_start=%.2f min_goal_distance=%.2f "
+                "min_building_clearance=%.2f final_position=(%.2f, %.2f) "
+                "final_altitude=%.2f final_speed=%.2f",
+                spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
+                min_building_clearance_m_, latest_position_.x, latest_position_.y,
+                latest_altitude_m_, latest_speed_mps_);
   }
 
-  void reportFailure(const std::string &reason) {
+  void reportFailure(const std::string& reason) {
     result_reported_ = true;
     publishEmergencyStop(reason);
-    RCLCPP_ERROR(
-        get_logger(),
-        "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
-        "max_distance_from_start=%.2f min_goal_distance=%.2f "
-        "min_building_clearance=%.2f latest_position=(%.2f, %.2f) "
-        "latest_altitude=%.2f latest_speed=%.2f",
-        reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
-        min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
-        latest_position_.y, latest_altitude_m_, latest_speed_mps_);
+    RCLCPP_ERROR(get_logger(),
+                 "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
+                 "max_distance_from_start=%.2f min_goal_distance=%.2f "
+                 "min_building_clearance=%.2f latest_position=(%.2f, %.2f) "
+                 "latest_altitude=%.2f latest_speed=%.2f",
+                 reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
+                 min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
+                 latest_position_.y, latest_altitude_m_, latest_speed_mps_);
   }
 
-  void publishEmergencyStop(const std::string &reason) {
+  void publishEmergencyStop(const std::string& reason) {
     std_msgs::msg::Bool msg;
     msg.data = true;
     emergency_stop_pub_->publish(msg);
-    RCLCPP_ERROR(get_logger(),
-                 "MISSION_CHECK emergency_stop=true reason='%s'",
+    RCLCPP_ERROR(get_logger(), "MISSION_CHECK emergency_stop=true reason='%s'",
                  reason.c_str());
   }
 
@@ -360,14 +345,14 @@ private:
         "distance_to_start=%.2f distance_to_goal=%.2f max_distance_from_start=%.2f "
         "min_building_clearance=%.2f",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
-        armed_seen ? "true" : "false", latest_position_.x,
-        latest_position_.y, latest_altitude_m_, latest_speed_mps_,
-        distance(latest_position_, start_), distance(latest_position_, goal_),
-        max_distance_from_start_m_, min_building_clearance_m_);
+        armed_seen ? "true" : "false", latest_position_.x, latest_position_.y,
+        latest_altitude_m_, latest_speed_mps_, distance(latest_position_, start_),
+        distance(latest_position_, goal_), max_distance_from_start_m_,
+        min_building_clearance_m_);
   }
 
   std::vector<BuildingFootprint> buildings_;
-  px4_msgs::msg::VehicleStatus vehicle_status_{};
+  px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 start_{};
   Point2 goal_{};
   Point2 latest_position_{};
@@ -403,15 +388,14 @@ private:
 
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr
-      vehicle_status_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr emergency_stop_pub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
 };
 
 } // namespace drone_city_nav
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<drone_city_nav::MissionMonitorNode>());
   rclcpp::shutdown();

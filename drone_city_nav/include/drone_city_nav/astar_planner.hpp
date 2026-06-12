@@ -19,9 +19,8 @@ struct AStarResult {
 
 class AStarPlanner {
 public:
-  [[nodiscard]] AStarResult plan(const OccupancyGrid2D &grid, GridIndex start,
-                                 GridIndex goal,
-                                 const AStarConfig &config = {}) const;
+  [[nodiscard]] AStarResult plan(const OccupancyGrid2D& grid, GridIndex start,
+                                 GridIndex goal, const AStarConfig& config = {}) const;
 };
 
 } // namespace drone_city_nav
