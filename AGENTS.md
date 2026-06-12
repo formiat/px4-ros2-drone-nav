@@ -19,5 +19,5 @@ Before committing after file changes:
 2. Run `./scripts/check_cpp_quality.sh`.
 3. Commit the completed file changes.
 
-Speak with the project owner in Russian. Keep code comments and repository
+Use Russian for assistant-user communication. Keep code comments and repository
 documentation in English.
