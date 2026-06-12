@@ -1,5 +1,6 @@
 #include "drone_city_nav/types.hpp"
 
+#include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -7,6 +8,8 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
 #include <array>
@@ -18,6 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -186,6 +190,8 @@ public:
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
     pointcloud_topic_ = declare_parameter<std::string>(
         "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
+    marker_topic_ = declare_parameter<std::string>(
+        "marker_topic", "/drone_city_nav/lidar_radar_markers");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
 
@@ -223,6 +229,8 @@ public:
         });
     pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         pointcloud_topic_, rclcpp::QoS{1}.reliable());
+    marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+        marker_topic_, rclcpp::QoS{1}.reliable());
 
     timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                                [this]() { writeSnapshot(); });
@@ -231,10 +239,11 @@ public:
         get_logger(),
         "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
         "view_radius=%.1fm topics scan='%s' grid='%s' path='%s' pose='%s' "
-        "points='%s'",
+        "points='%s' markers='%s'",
         output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
         lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
-        local_position_topic.c_str(), pointcloud_topic_.c_str());
+        local_position_topic.c_str(), pointcloud_topic_.c_str(),
+        marker_topic_.c_str());
   }
 
 private:
@@ -285,6 +294,7 @@ private:
     drawDrone(image);
     const bool image_ok = writePpm(image_path, image);
     publishPointCloud(stats);
+    publishRadarMarkers(stats);
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     RCLCPP_INFO(
@@ -618,8 +628,128 @@ private:
     pointcloud_pub_->publish(cloud);
   }
 
+  [[nodiscard]] geometry_msgs::msg::Point markerPoint(const Point2 point,
+                                                      const double z) const {
+    geometry_msgs::msg::Point marker_point;
+    marker_point.x = point.x;
+    marker_point.y = point.y;
+    marker_point.z = z;
+    return marker_point;
+  }
+
+  [[nodiscard]] visualization_msgs::msg::Marker baseMarker(
+      const std::string &ns, const int id, const int type) const {
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = now();
+    marker.header.frame_id = "map";
+    marker.ns = ns;
+    marker.id = id;
+    marker.type = type;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.lifetime.sec = 2;
+    marker.lifetime.nanosec = 0U;
+    return marker;
+  }
+
+  void setColor(visualization_msgs::msg::Marker &marker, const float red,
+                const float green, const float blue, const float alpha) const {
+    marker.color.r = red;
+    marker.color.g = green;
+    marker.color.b = blue;
+    marker.color.a = alpha;
+  }
+
+  void addRangeRing(visualization_msgs::msg::MarkerArray &markers,
+                    const double radius_m, const int id, const double z) const {
+    constexpr int kSegments = 144;
+    auto ring = baseMarker("lidar_radar_range", id,
+                           visualization_msgs::msg::Marker::LINE_STRIP);
+    ring.scale.x = 0.08;
+    setColor(ring, 0.25F, 0.70F, 0.95F, 0.45F);
+    ring.points.reserve(static_cast<std::size_t>(kSegments + 1));
+    for (int i = 0; i <= kSegments; ++i) {
+      const double angle =
+          2.0 * std::numbers::pi * static_cast<double>(i) /
+          static_cast<double>(kSegments);
+      ring.points.push_back(markerPoint(
+          Point2{current_pose_.position.x + radius_m * std::cos(angle),
+                 current_pose_.position.y + radius_m * std::sin(angle)},
+          z));
+    }
+    markers.markers.push_back(std::move(ring));
+  }
+
+  void addScanRayMarkers(visualization_msgs::msg::MarkerArray &markers,
+                         const double z) const {
+    const double scan_range_max = scanRangeMax();
+    if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
+      return;
+    }
+
+    auto free_rays = baseMarker("lidar_radar_free_rays", 0,
+                                visualization_msgs::msg::Marker::LINE_LIST);
+    free_rays.scale.x = 0.04;
+    setColor(free_rays, 0.18F, 0.85F, 0.95F, 0.28F);
+    auto hit_rays = baseMarker("lidar_radar_hit_rays", 0,
+                               visualization_msgs::msg::Marker::LINE_LIST);
+    hit_rays.scale.x = 0.07;
+    setColor(hit_rays, 1.0F, 0.22F, 0.18F, 0.70F);
+
+    const auto origin = markerPoint(current_pose_.position, z);
+    for (std::size_t i = 0U; i < last_scan_.ranges.size();
+         i += image_beam_stride_) {
+      const float raw_range = last_scan_.ranges[i];
+      const bool hit = isHit(raw_range, scan_range_max);
+      const double used_range_m =
+          hit ? static_cast<double>(raw_range) : scan_range_max;
+      if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
+        continue;
+      }
+
+      const auto end = markerPoint(scanEndpoint(i, used_range_m), z);
+      auto &ray_marker = hit ? hit_rays : free_rays;
+      ray_marker.points.push_back(origin);
+      ray_marker.points.push_back(end);
+    }
+
+    markers.markers.push_back(std::move(free_rays));
+    markers.markers.push_back(std::move(hit_rays));
+  }
+
+  void addDroneMarker(visualization_msgs::msg::MarkerArray &markers,
+                      const double z) const {
+    auto drone = baseMarker("lidar_radar_drone", 0,
+                            visualization_msgs::msg::Marker::ARROW);
+    drone.scale.x = 0.9;
+    drone.scale.y = 0.35;
+    drone.scale.z = 0.35;
+    setColor(drone, 0.30F, 0.55F, 1.0F, 1.0F);
+    const Point2 direction = lidarDirection(current_pose_.yaw_rad);
+    drone.points.push_back(markerPoint(current_pose_.position, z));
+    drone.points.push_back(markerPoint(
+        Point2{current_pose_.position.x + 3.0 * direction.x,
+               current_pose_.position.y + 3.0 * direction.y},
+        z));
+    markers.markers.push_back(std::move(drone));
+  }
+
+  void publishRadarMarkers(const SnapshotStats &) {
+    visualization_msgs::msg::MarkerArray markers;
+    const double z =
+        std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
+    addRangeRing(markers, 10.0, 0, z);
+    addRangeRing(markers, 20.0, 1, z);
+    addRangeRing(markers, 30.0, 2, z);
+    addRangeRing(markers, scanRangeMax(), 3, z);
+    addScanRayMarkers(markers, z);
+    addDroneMarker(markers, z);
+    marker_pub_->publish(markers);
+  }
+
   std::string output_dir_;
   std::string pointcloud_topic_;
+  std::string marker_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
   sensor_msgs::msg::LaserScan last_scan_;
@@ -656,6 +786,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

@@ -45,6 +45,16 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/lidar_debug_points
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Lidar Radar Overlay
+      Namespaces:
+        lidar_radar_drone: true
+        lidar_radar_free_rays: true
+        lidar_radar_hit_rays: true
+        lidar_radar_range: true
+      Topic:
+        Value: /drone_city_nav/lidar_radar_markers
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 3
@@ -65,10 +75,10 @@ Visualization Manager:
       Class: rviz_default_plugins/Orbit
       Distance: 170
       Focal Point:
-        X: 75
-        Y: 45
+        X: 45
+        Y: 75
         Z: 0
-      Name: Orbit
+      Name: Top Down Radar
       Pitch: 1.5707
       Target Frame: map
       Yaw: 0

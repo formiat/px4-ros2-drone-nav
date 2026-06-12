@@ -8,6 +8,7 @@ find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 function(enable_project_warnings target_name)
   target_compile_options(
@@ -76,7 +77,8 @@ ament_target_dependencies(
   nav_msgs
   px4_msgs
   rclcpp
-  sensor_msgs)
+  sensor_msgs
+  visualization_msgs)
 enable_project_warnings(lidar_debug_node)
 
 install(
