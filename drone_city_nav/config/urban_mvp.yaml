@@ -1,16 +1,46 @@
-planner_node:
+obstacle_memory_node:
   ros__parameters:
     frame_id: map
+    pose_source: px4_local_position
     lidar_topic: /scan
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
-    occupancy_grid_topic: /drone_city_nav/occupancy_grid
-    path_topic: /drone_city_nav/path
-    current_waypoint_topic: /drone_city_nav/current_waypoint
+    obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
+    obstacle_memory_inflated_grid_topic: /drone_city_nav/obstacle_memory_inflated_grid
+    obstacle_memory_local_grid_topic: /drone_city_nav/obstacle_memory_local_grid
     grid_resolution_m: 0.5
     grid_width_m: 115.0
     grid_height_m: 175.0
     grid_origin_x: -10.0
     grid_origin_y: -10.0
+    initial_x_m: 0.0
+    initial_y_m: 0.0
+    initial_heading_rad: 0.0
+    use_initial_pose_until_px4: true
+    min_mapping_altitude_m: 16.0
+    inflation_radius_m: 4.0
+    local_grid_radius_m: 45.0
+    scan_yaw_offset_rad: 0.0
+    use_px4_heading_for_scan: false
+    swap_lidar_xy_to_local_frame: true
+    max_lidar_range_m: 35.0
+    range_hit_epsilon_m: 0.05
+    hit_obstacle_depth_m: 8.0
+    scan_stride: 1
+    hit_weight: 4
+    miss_weight: 1
+    min_score: -8
+    max_score: 12
+    occupied_score: 3
+    free_score: -1
+
+planner_node:
+  ros__parameters:
+    frame_id: map
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
+    occupancy_grid_topic: /drone_city_nav/occupancy_grid
+    path_topic: /drone_city_nav/path
+    current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 0.0
     start_y_m: 0.0
     initial_x_m: 0.0
@@ -20,19 +50,13 @@ planner_node:
     goal_x_m: 90.0
     goal_y_m: 150.0
     cruise_altitude_m: 18.0
-    min_mapping_altitude_m: 16.0
     inflation_radius_m: 4.0
     direct_path_fallback: false
-    reuse_last_valid_path_on_failure: true
+    reuse_last_valid_path_on_failure: false
     max_initial_lateral_deviation_m: 14.0
-    scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: false
-    swap_lidar_xy_to_local_frame: true
-    max_lidar_range_m: 35.0
-    range_hit_epsilon_m: 0.05
-    hit_obstacle_depth_m: 8.0
-    scan_stride: 1
     nearest_free_radius_cells: 30
+    memory_occupied_threshold: 65
+    memory_free_threshold: 0
     astar_max_expansions: 100000
     replan_period_s: 1.5
 
@@ -72,10 +96,10 @@ lidar_debug_node:
   ros__parameters:
     lidar_topic: /scan
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
-    occupancy_grid_topic: /drone_city_nav/occupancy_grid
+    occupancy_grid_topic: /drone_city_nav/obstacle_memory_local_grid
     path_topic: /drone_city_nav/path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
-    marker_topic: /drone_city_nav/lidar_radar_markers
+    marker_topic: /drone_city_nav/obstacle_memory_markers
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900

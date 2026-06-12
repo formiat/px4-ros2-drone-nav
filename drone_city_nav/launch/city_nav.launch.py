@@ -48,6 +48,14 @@ def generate_launch_description():
         parameters=[params_file],
     )
 
+    obstacle_memory = Node(
+        package="drone_city_nav",
+        executable="obstacle_memory_node",
+        name="obstacle_memory_node",
+        output="screen",
+        parameters=[params_file],
+    )
+
     offboard = Node(
         package="drone_city_nav",
         executable="px4_offboard_node",
@@ -126,6 +134,7 @@ def generate_launch_description():
                 description="Start RViz with the navigation debug view.",
             ),
             scan_bridge,
+            obstacle_memory,
             planner,
             offboard,
             mission_monitor,

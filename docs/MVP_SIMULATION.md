@@ -12,14 +12,16 @@ flight at a fixed altitude.
   `drone_city_nav/worlds/generated_city_mixed_heights.sdf` for later
   experiments.
 - PX4 SITL provides stabilization and accepts offboard trajectory setpoints.
-- ROS 2 runs a lidar-driven planner and a PX4 offboard control node.
-- The planner starts without a prior map. It incrementally marks a 2D occupancy
-  grid from `sensor_msgs/LaserScan`, inflates occupied cells, runs A*, smooths
-  the result with line-of-sight checks, and republishes a waypoint path.
-- If the planner briefly cannot find a path after a new obstacle update, the
-  simulation MVP reuses the last valid path to keep moving through the current
-  local avoidance maneuver. If an empty path is published, the offboard node
-  holds a fixed position instead of moving without a target.
+- ROS 2 runs an obstacle-memory mapper, a planner, and a PX4 offboard control
+  node.
+- The stack starts without a prior map. `obstacle_memory_node` integrates
+  `sensor_msgs/LaserScan` with navigation pose into a persistent 2D memory grid.
+  `planner_node` subscribes to that raw memory grid, inflates occupied cells,
+  runs A*, smooths the result with line-of-sight checks, and republishes a
+  waypoint path.
+- If the planner cannot find a path or has no valid map/pose, it publishes an
+  empty path so the offboard node holds position instead of moving without a
+  target.
 
 This repository is still an MVP, not a certified collision-avoidance system. The
 planner and PX4 offboard nodes are kept independent from Gazebo, but any real
@@ -46,19 +48,29 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   and visual point B at `(75, 45)`.
 - `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
   mixed-height version of the same city layout.
-- `drone_city_nav/src/planner_node.cpp` - lidar mapping and replanning node.
+- `drone_city_nav/src/obstacle_memory_node.cpp` - lidar + pose obstacle-memory
+  mapper.
+- `drone_city_nav/src/planner_node.cpp` - memory-grid replanning node.
+- `drone_city_nav/include/drone_city_nav/obstacle_memory.hpp` - persistent
+  obstacle-memory core with ray clipping and hit/miss score updates.
+- `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
+  navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
 - `drone_city_nav/config/real_drone_template.yaml` - conservative template for
   running the planner/offboard nodes without Gazebo-specific helpers.
-- `drone_city_nav/tests/planner_core_test.cpp` - deterministic algorithm tests.
+- `drone_city_nav/tests/planner_core_test.cpp` - deterministic planner/grid
+  tests.
+- `drone_city_nav/tests/obstacle_memory_test.cpp` - deterministic obstacle
+  memory and GPS/compass adapter tests.
 
 ## Runtime Profiles
 
-The core runtime nodes are `planner_node` and `px4_offboard_node`. They consume
-ROS/PX4 topics and do not depend on Gazebo APIs.
+The core runtime nodes are `obstacle_memory_node`, `planner_node`, and
+`px4_offboard_node`. They consume ROS/PX4 topics and do not depend on Gazebo
+APIs or preloaded building coordinates.
 
 Simulation launch starts two extra helpers:
 
@@ -75,9 +87,12 @@ ros2 launch drone_city_nav city_nav.launch.py \
   enable_mission_monitor:=false
 ```
 
-Before using the real-drone template, update the lidar topic, PX4 topic version,
-frame alignment, grid origin, goal, altitude, and safety limits for the actual
-vehicle and test area.
+Before using the real-drone template, update the lidar topic, GPS/compass
+topics or PX4 local position topic version, frame alignment, grid origin, goal,
+altitude, and safety limits for the actual vehicle and test area. The template
+supports `pose_source: gps_compass` through `sensor_msgs/NavSatFix` and
+`sensor_msgs/Imu`, or `pose_source: px4_local_position` when PX4 estimator local
+position is available.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
 spawned at visual point A. Therefore the planner/monitor use local point A
@@ -124,13 +139,14 @@ The simulation launch starts `lidar_debug_node` by default. It records periodic
 snapshots under `log/lidar_debug`:
 
 - `snapshots.jsonl` - one JSON record per snapshot with pose, scan statistics,
-  grid statistics, path size, file paths, and a capped list of hit points.
+  local obstacle-memory grid statistics, path size, file paths, and a capped
+  list of hit points.
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
   hit flag, and map-frame endpoint.
 - `snapshot_000001.ppm` - a top-down debug image centered on the drone. Red
-  dots are lidar hits, orange cells are inflated occupancy, red cells are
-  occupied, cyan/green lines are the current path, and the blue marker is the
-  drone.
+  dots are lidar hits, orange cells are inflated memory occupancy, red cells
+  are occupied, cyan/green lines are the current path, and the blue marker is
+  the drone.
 
 Override the debug directory or disable recording from the run script:
 
@@ -153,12 +169,22 @@ ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
 ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
-The RViz config shows `/drone_city_nav/occupancy_grid`,
-`/drone_city_nav/path`, `/drone_city_nav/lidar_debug_points`, and the live
-radar overlay from `/drone_city_nav/lidar_radar_markers`. The overlay draws
-range rings around the drone, current scan rays, hit rays, and a drone heading
-arrow. These debug topics are generated by `lidar_debug_node` in the `map`
-frame, so they do not depend on a Gazebo lidar TF tree.
+The RViz config shows the cropped local memory map from
+`/drone_city_nav/obstacle_memory_local_grid`, the planner debug grid from
+`/drone_city_nav/occupancy_grid`, `/drone_city_nav/path`, and
+`/drone_city_nav/lidar_debug_points`. The local map is published in the `map`
+frame with its origin centered around the current drone pose, so no Gazebo lidar
+TF tree is required.
+
+The main obstacle-memory topics are:
+
+- `/drone_city_nav/obstacle_memory_grid` - full raw persistent memory grid.
+- `/drone_city_nav/obstacle_memory_inflated_grid` - full memory grid after
+  safety inflation for debugging clearance.
+- `/drone_city_nav/obstacle_memory_local_grid` - cropped inflated memory window
+  around the drone for RViz and PPM snapshots.
+- `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
+  inflation, kept for compatibility with existing debug tooling.
 
 For replay-oriented debugging, record the relevant topics in a second shell
 while the simulation is running:
@@ -175,9 +201,9 @@ HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
 planner/offboard launch. When the timeout is reached, the script checks the logs
-for a ready Gazebo world, valid PX4 local position, lidar scans, planner
-waypoints, offboard and arm commands, armed offboard state, and critical PX4
-preflight failures.
+for a ready Gazebo world, valid PX4 local position, lidar scans, obstacle-memory
+updates, local memory-grid publication, planner waypoints, offboard and arm
+commands, armed offboard state, and critical PX4 preflight failures.
 
 During startup the script sends SITL-only PX4 parameters through the PX4 shell:
 `CBRK_SUPPLY_CHK=894281` disables the unavailable power-supply check and
@@ -233,28 +259,32 @@ colcon test-result --verbose
 
 - The generated city is intentionally small and synthetic.
 - Only static building obstacles are modeled.
-- The planner treats unknown grid cells as traversable and replans as lidar data
-  arrives.
+- The planner treats unknown memory cells as traversable and replans as
+  obstacle-memory data arrives.
+- `obstacle_memory_node` stores bounded hit/miss scores per cell. A single free
+  miss does not immediately erase a remembered obstacle, but repeated free
+  evidence can clear stale cells.
 - Lidar hit endpoints are extended by the configurable
   `hit_obstacle_depth_m` before inflation. This conservative 2D mapping
   heuristic prevents A* from treating the unseen volume immediately behind a
   detected wall as a free corridor.
 - The offboard node assumes the planner path and PX4 local position share the
   same horizontal origin.
-- Runtime logs include distance-to-start and distance-to-goal values in
-  `planner_node`, `px4_offboard_node`, and `mission_monitor_node`.
+- Runtime logs include obstacle-memory update statistics, local grid publication
+  status, and distance-to-start and distance-to-goal values in `planner_node`,
+  `px4_offboard_node`, and `mission_monitor_node`.
 - The simulation offboard follower uses a short lookahead so obstacle-avoidance
   waypoints are followed instead of being skipped by a direct-to-goal setpoint.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.
   This continuity is disabled for far-away targets such as the final goal.
-- The simulation planner ignores lidar map updates below
+- The simulation obstacle-memory node ignores lidar map updates below
   `min_mapping_altitude_m` so takeoff-time ground returns do not pollute the
   cruise-altitude 2D occupancy grid.
-- The simulation parameter file keeps `use_px4_heading_for_scan=false` because
-  the bridged Gazebo lidar scan used by this MVP is already aligned with the
-  local horizontal map frame. Enabling PX4 heading rotation misplaces obstacle
-  hits in the occupancy grid.
+- The simulation parameter file keeps `use_px4_heading_for_scan=false` in
+  `obstacle_memory_node` because the bridged Gazebo lidar scan used by this MVP
+  is already aligned with the local horizontal map frame. Enabling PX4 heading
+  rotation misplaces obstacle hits in the occupancy grid.
 - The launch file bridges `/scan`; if the PX4 lidar model publishes a different
   Gazebo topic, update `city_nav.launch.py` or add a remap.

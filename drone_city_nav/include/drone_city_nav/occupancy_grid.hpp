@@ -40,6 +40,7 @@ public:
   [[nodiscard]] std::span<const CellState> cells() const noexcept;
 
   void reset(CellState value = CellState::kUnknown);
+  void setUnknown(GridIndex cell);
   void setFree(GridIndex cell);
   void setOccupied(GridIndex cell);
   void markRay(Point2 start, Point2 end, bool endpoint_occupied);

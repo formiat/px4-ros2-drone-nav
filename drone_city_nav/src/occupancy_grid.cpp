@@ -115,6 +115,14 @@ void OccupancyGrid2D::reset(const CellState value) {
   std::fill(inflated_.begin(), inflated_.end(), 0U);
 }
 
+void OccupancyGrid2D::setUnknown(const GridIndex cell) {
+  if (!contains(cell)) {
+    return;
+  }
+
+  cells_[linearIndex(cell)] = CellState::kUnknown;
+}
+
 void OccupancyGrid2D::setFree(const GridIndex cell) {
   if (!contains(cell)) {
     return;

@@ -19,9 +19,9 @@ Visualization Manager:
       Color Scheme: map
       Draw Behind: false
       Enabled: true
-      Name: Occupancy Grid
+      Name: Local Obstacle Memory
       Topic:
-        Value: /drone_city_nav/occupancy_grid
+        Value: /drone_city_nav/obstacle_memory_local_grid
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255
@@ -46,15 +46,15 @@ Visualization Manager:
       Topic:
         Value: /drone_city_nav/lidar_debug_points
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: Lidar Radar Overlay
+      Enabled: false
+      Name: Obstacle Memory Markers
       Namespaces:
         lidar_radar_drone: true
         lidar_radar_free_rays: true
         lidar_radar_hit_rays: true
         lidar_radar_range: true
       Topic:
-        Value: /drone_city_nav/lidar_radar_markers
+        Value: /drone_city_nav/obstacle_memory_markers
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 3
@@ -78,7 +78,7 @@ Visualization Manager:
         X: 45
         Y: 75
         Z: 0
-      Name: Top Down Radar
+      Name: Top Down Memory
       Pitch: 1.5707
       Target Frame: map
       Yaw: 0

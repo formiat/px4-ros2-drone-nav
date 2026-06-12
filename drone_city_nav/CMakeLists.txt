@@ -28,6 +28,8 @@ endfunction()
 add_library(
   drone_city_nav_core
   src/astar_planner.cpp
+  src/navigation_pose.cpp
+  src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/path_smoothing.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
@@ -49,6 +51,17 @@ ament_target_dependencies(
   rclcpp
   sensor_msgs)
 enable_project_warnings(planner_node)
+
+add_executable(obstacle_memory_node src/obstacle_memory_node.cpp)
+target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
+target_link_libraries(obstacle_memory_node drone_city_nav_core)
+ament_target_dependencies(
+  obstacle_memory_node
+  nav_msgs
+  px4_msgs
+  rclcpp
+  sensor_msgs)
+enable_project_warnings(obstacle_memory_node)
 
 add_executable(px4_offboard_node src/px4_offboard_node.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
@@ -87,6 +100,7 @@ install(
   TARGETS
     drone_city_nav_core
     lidar_debug_node
+    obstacle_memory_node
     planner_node
     px4_offboard_node
     mission_monitor_node
@@ -105,6 +119,11 @@ if(BUILD_TESTING)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
   target_link_libraries(planner_core_test drone_city_nav_core)
   enable_project_warnings(planner_core_test)
+
+  ament_add_gtest(obstacle_memory_test tests/obstacle_memory_test.cpp)
+  target_compile_features(obstacle_memory_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_memory_test drone_city_nav_core)
+  enable_project_warnings(obstacle_memory_test)
 endif()
 
 ament_export_include_directories(include)
