@@ -18,6 +18,3 @@ Before committing after file changes:
 1. Format changed C++ files with `./scripts/format_cpp_changed.sh`.
 2. Run `./scripts/check_cpp_quality.sh`.
 3. Commit the completed file changes.
-
-Use Russian for assistant-user communication. Keep code comments and repository
-documentation in English.
