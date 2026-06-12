@@ -5,10 +5,10 @@ flight at a fixed altitude.
 
 ## Scope
 
-- Gazebo provides a generated city block world with 28 static buildings. The
-  default MVP world uses uniform 28 m buildings so the horizontal 2D lidar can
-  observe every obstacle at the configured cruise altitude. The original
-  mixed-height world is preserved as
+- Gazebo provides a generated Manhattan-style city grid with 40 static
+  buildings. The default MVP world uses uniform 28 m buildings so the
+  horizontal 2D lidar can observe every obstacle at the configured cruise
+  altitude. The original mixed-height world is preserved as
   `drone_city_nav/worlds/generated_city_mixed_heights.sdf` for later
   experiments.
 - PX4 SITL provides stabilization and accepts offboard trajectory setpoints.
@@ -41,9 +41,9 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 
 ## Main Files
 
-- `drone_city_nav/worlds/generated_city.sdf` - generated static city world with
-  uniform-height buildings, visual point A at `(-75, -45)`, and visual point B
-  at `(75, 45)`.
+- `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
+  city world with uniform-height buildings, visual point A at `(-75, -45)`,
+  and visual point B at `(75, 45)`.
 - `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
   mixed-height version of the same city layout.
 - `drone_city_nav/src/planner_node.cpp` - lidar mapping and replanning node.
@@ -194,6 +194,8 @@ near point A, moved away from A, kept the configured clearance from every
 building footprint, reached point B, and held position there with low speed.
 The default monitor config applies `uniform_building_height_m=28.0`, matching
 the default uniform-height world used by the MVP.
+The default offboard tuning advances setpoints about three times faster than the
+initial conservative MVP tuning.
 On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
 the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
 crashed vehicle is not commanded to recover and continue the mission.
