@@ -14,10 +14,16 @@ ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
 enable_lidar_debug="${ENABLE_LIDAR_DEBUG:-true}"
-enable_rviz="${ENABLE_RVIZ:-false}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 headless="${HEADLESS:-}"
+if [[ -n "${ENABLE_RVIZ+x}" ]]; then
+  enable_rviz="${ENABLE_RVIZ}"
+elif [[ -n "${headless}" ]]; then
+  enable_rviz="false"
+else
+  enable_rviz="true"
+fi
 spawn_x_m="${SIM_START_X_M:--75}"
 spawn_y_m="${SIM_START_Y_M:--45}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -128,6 +134,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
+echo "RViz debug view: enabled=${enable_rviz}"
 echo "Gazebo resources: ${runtime_dir}"
 (
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)

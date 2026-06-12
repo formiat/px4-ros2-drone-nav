@@ -139,10 +139,18 @@ LIDAR_DEBUG_DIR=/workspace/log/lidar_debug_run_01 ./scripts/run_city_mvp.sh
 ENABLE_LIDAR_DEBUG=false ./scripts/run_city_mvp.sh
 ```
 
-Start RViz with the simulation stack to inspect the same data live:
+The regular GUI launch starts Gazebo and RViz so the same data can be inspected
+live:
+
+```bash
+./scripts/run_city_mvp.sh
+```
+
+Force RViz on or off with:
 
 ```bash
 ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
+ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
 The RViz config shows `/drone_city_nav/occupancy_grid`,
