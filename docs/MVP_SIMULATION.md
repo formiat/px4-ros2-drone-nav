@@ -92,7 +92,10 @@ topics or PX4 local position topic version, frame alignment, grid origin, goal,
 altitude, and safety limits for the actual vehicle and test area. The template
 supports `pose_source: gps_compass` through `sensor_msgs/NavSatFix` and
 `sensor_msgs/Imu`, or `pose_source: px4_local_position` when PX4 estimator local
-position is available.
+position is available. In `gps_compass` mode, both GPS and compass yaw must stay
+fresh: `max_gps_staleness_s` bounds GPS fixes, and `max_compass_staleness_s`
+bounds compass yaw. If either source is missing, invalid, or stale, obstacle
+memory skips lidar integration instead of reusing cached heading data.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
 spawned at visual point A. Therefore the planner/monitor use local point A

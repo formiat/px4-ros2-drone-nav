@@ -53,6 +53,10 @@ void invalidateNavigationPose(NavigationPose2D& pose) noexcept {
   pose = NavigationPose2D{};
 }
 
+void invalidateCompassYaw(CompassYawState& state) noexcept {
+  state = CompassYawState{};
+}
+
 bool navigationPoseReadyForScan(const NavigationPose2D& pose,
                                 const std::int64_t last_update_ns,
                                 const std::int64_t now_ns,
@@ -60,6 +64,12 @@ bool navigationPoseReadyForScan(const NavigationPose2D& pose,
   return pose.position_valid && pose.yaw_valid && std::isfinite(pose.pose.position.x) &&
          std::isfinite(pose.pose.position.y) && std::isfinite(pose.pose.yaw_rad) &&
          timestampIsFresh(last_update_ns, now_ns, max_staleness_ns);
+}
+
+bool compassYawReady(const CompassYawState& state, const std::int64_t now_ns,
+                     const std::int64_t max_staleness_ns) noexcept {
+  return state.valid && std::isfinite(state.yaw_rad) &&
+         timestampIsFresh(state.last_update_ns, now_ns, max_staleness_ns);
 }
 
 bool validGpsFix(const GpsFixSample& fix, const GpsCompassConfig& config,
@@ -106,6 +116,24 @@ std::optional<double> yawFromQuaternion(const QuaternionSample& quaternion) noex
     return std::nullopt;
   }
   return normalizeYaw(yaw);
+}
+
+CompassYawUpdateStatus updateCompassYawFromQuaternion(
+    const QuaternionSample& quaternion, const bool orientation_available,
+    const std::int64_t receive_time_ns, CompassYawState& state) noexcept {
+  if (!orientation_available) {
+    invalidateCompassYaw(state);
+    return CompassYawUpdateStatus::kUnavailable;
+  }
+
+  const auto yaw = yawFromQuaternion(quaternion);
+  if (!yaw.has_value()) {
+    invalidateCompassYaw(state);
+    return CompassYawUpdateStatus::kInvalidYaw;
+  }
+
+  state = CompassYawState{*yaw, receive_time_ns, true};
+  return CompassYawUpdateStatus::kAccepted;
 }
 
 std::optional<NavigationPose2D>
@@ -190,6 +218,35 @@ std::optional<NavigationPose2D> makeNavigationPoseFromGpsCompass(
                           true,
                           true,
                           true};
+}
+
+GpsCompassPoseUpdateStatus updateNavigationPoseFromGpsCompassState(
+    const std::optional<GpsFixSample>& fix, const CompassYawState& compass_yaw,
+    const std::int64_t now_ns, const std::int64_t max_compass_staleness_ns,
+    const GpsCompassConfig& config, GeoReference& origin,
+    NavigationPose2D& state) noexcept {
+  if (!fix.has_value()) {
+    invalidateNavigationPose(state);
+    return GpsCompassPoseUpdateStatus::kWaitingForGps;
+  }
+  if (!compass_yaw.valid || !std::isfinite(compass_yaw.yaw_rad)) {
+    invalidateNavigationPose(state);
+    return GpsCompassPoseUpdateStatus::kMissingCompassYaw;
+  }
+  if (!compassYawReady(compass_yaw, now_ns, max_compass_staleness_ns)) {
+    invalidateNavigationPose(state);
+    return GpsCompassPoseUpdateStatus::kStaleCompassYaw;
+  }
+
+  const auto pose = makeNavigationPoseFromGpsCompass(*fix, compass_yaw.yaw_rad, now_ns,
+                                                     config, origin);
+  if (!pose.has_value()) {
+    invalidateNavigationPose(state);
+    return GpsCompassPoseUpdateStatus::kRejectedPose;
+  }
+
+  state = *pose;
+  return GpsCompassPoseUpdateStatus::kAccepted;
 }
 
 } // namespace drone_city_nav

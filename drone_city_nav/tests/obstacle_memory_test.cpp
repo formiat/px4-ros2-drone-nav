@@ -137,6 +137,86 @@ TEST(NavigationPose, ConvertsCompassYawAndOffsets) {
   EXPECT_NEAR(pose_value.pose.yaw_rad, 1.0, 1.0e-9);
 }
 
+TEST(NavigationPose, CompassYawStateInvalidatesUnavailableAndInvalidYaw) {
+  CompassYawState state{};
+
+  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), true, 100, state),
+            CompassYawUpdateStatus::kAccepted);
+  EXPECT_TRUE(state.valid);
+  EXPECT_NEAR(state.yaw_rad, 0.4, 1.0e-9);
+
+  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), false, 200, state),
+            CompassYawUpdateStatus::kUnavailable);
+  EXPECT_FALSE(state.valid);
+
+  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), true, 300, state),
+            CompassYawUpdateStatus::kAccepted);
+  QuaternionSample invalid_quaternion = yawQuaternion(0.4);
+  invalid_quaternion.w = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_EQ(updateCompassYawFromQuaternion(invalid_quaternion, true, 400, state),
+            CompassYawUpdateStatus::kInvalidYaw);
+  EXPECT_FALSE(state.valid);
+}
+
+TEST(NavigationPose, GpsCompassStateRequiresFreshCompassYaw) {
+  GpsCompassConfig config{};
+  GeoReference origin{};
+  NavigationPose2D pose{};
+  CompassYawState compass{};
+  std::optional<GpsFixSample> gps = makeFix();
+
+  ASSERT_EQ(
+      updateCompassYawFromQuaternion(yawQuaternion(0.4), true, kNowNs - 100, compass),
+      CompassYawUpdateStatus::kAccepted);
+  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs, 1000, config,
+                                                    origin, pose),
+            GpsCompassPoseUpdateStatus::kAccepted);
+  EXPECT_TRUE(navigationPoseReadyForScan(pose, kNowNs, kNowNs, 1000));
+
+  gps->stamp_ns = kNowNs + 2'000'000'000LL - 100;
+  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(
+                gps, compass, kNowNs + 2'000'000'000LL, 1000, config, origin, pose),
+            GpsCompassPoseUpdateStatus::kStaleCompassYaw);
+  EXPECT_FALSE(pose.position_valid);
+  EXPECT_FALSE(pose.yaw_valid);
+  EXPECT_FALSE(navigationPoseReadyForScan(pose, 0, kNowNs + 2'000'000'000LL, 1000));
+}
+
+TEST(NavigationPose, GpsCompassStateDoesNotRevivePoseAfterInvalidCompass) {
+  GpsCompassConfig config{};
+  GeoReference origin{};
+  NavigationPose2D pose{};
+  CompassYawState compass{};
+  std::optional<GpsFixSample> gps = makeFix();
+
+  ASSERT_EQ(
+      updateCompassYawFromQuaternion(yawQuaternion(0.4), true, kNowNs - 100, compass),
+      CompassYawUpdateStatus::kAccepted);
+  ASSERT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs, 1000, config,
+                                                    origin, pose),
+            GpsCompassPoseUpdateStatus::kAccepted);
+
+  EXPECT_EQ(
+      updateCompassYawFromQuaternion(yawQuaternion(0.4), false, kNowNs + 10, compass),
+      CompassYawUpdateStatus::kUnavailable);
+  gps->stamp_ns = kNowNs + 20;
+  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs + 30, 1000,
+                                                    config, origin, pose),
+            GpsCompassPoseUpdateStatus::kMissingCompassYaw);
+  EXPECT_FALSE(pose.position_valid);
+  EXPECT_FALSE(pose.yaw_valid);
+
+  EXPECT_EQ(
+      updateCompassYawFromQuaternion(yawQuaternion(0.7), true, kNowNs + 40, compass),
+      CompassYawUpdateStatus::kAccepted);
+  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs + 50, 1000,
+                                                    config, origin, pose),
+            GpsCompassPoseUpdateStatus::kAccepted);
+  EXPECT_TRUE(pose.position_valid);
+  EXPECT_TRUE(pose.yaw_valid);
+  EXPECT_NEAR(pose.pose.yaw_rad, 0.7, 1.0e-9);
+}
+
 TEST(NavigationPose, Px4LocalPoseRequiresValidHeadingWhenConfigured) {
   const Px4LocalPositionSample invalid_heading_sample{
       3.0,           4.0,  -18.0, std::numeric_limits<double>::quiet_NaN(),

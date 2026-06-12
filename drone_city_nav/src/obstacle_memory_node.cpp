@@ -99,6 +99,10 @@ public:
         std::clamp<double>(declare_parameter<double>("max_gps_staleness_s", 1.0), 0.0,
                            3600.0) *
         1.0e9);
+    max_compass_staleness_ns_ = static_cast<std::int64_t>(
+        std::clamp<double>(declare_parameter<double>("max_compass_staleness_s", 1.0),
+                           0.0, 3600.0) *
+        1.0e9);
     gps_config_.max_gps_horizontal_variance_m2 =
         declare_parameter<double>("max_gps_horizontal_variance_m2", 25.0);
     gps_config_.require_known_gps_covariance =
@@ -254,39 +258,64 @@ private:
   }
 
   void onImu(const sensor_msgs::msg::Imu& msg) {
-    if (msg.orientation_covariance[0] < 0.0) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Compass IMU orientation is unavailable");
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    const CompassYawUpdateStatus status = updateCompassYawFromQuaternion(
+        QuaternionSample{msg.orientation.w, msg.orientation.x, msg.orientation.y,
+                         msg.orientation.z},
+        msg.orientation_covariance[0] >= 0.0, now_ns, compass_yaw_);
+    if (status == CompassYawUpdateStatus::kUnavailable) {
+      invalidateCurrentPose();
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Compass IMU orientation is unavailable; invalidated gps_compass pose");
       return;
     }
 
-    const auto yaw = yawFromQuaternion(QuaternionSample{
-        msg.orientation.w, msg.orientation.x, msg.orientation.y, msg.orientation.z});
-    if (!yaw.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Compass IMU quaternion did not produce a valid yaw");
+    if (status == CompassYawUpdateStatus::kInvalidYaw) {
+      invalidateCurrentPose();
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Compass IMU quaternion did not produce a valid yaw; invalidated "
+          "gps_compass pose");
       return;
     }
 
-    last_compass_yaw_rad_ = yaw;
     updateGpsCompassPose();
   }
 
   void updateGpsCompassPose() {
-    if (!last_gps_.has_value() || !last_compass_yaw_rad_.has_value()) {
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Waiting for gps_compass pose: gps=%s compass=%s",
-                           last_gps_.has_value() ? "ready" : "missing",
-                           last_compass_yaw_rad_.has_value() ? "ready" : "missing");
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    const bool origin_was_initialized = gps_origin_.initialized;
+    const GpsCompassPoseUpdateStatus status = updateNavigationPoseFromGpsCompassState(
+        last_gps_, compass_yaw_, now_ns, max_compass_staleness_ns_, gps_config_,
+        gps_origin_, current_pose_);
+
+    if (status == GpsCompassPoseUpdateStatus::kWaitingForGps ||
+        status == GpsCompassPoseUpdateStatus::kMissingCompassYaw) {
+      last_pose_update_ns_ = 0;
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Waiting for gps_compass pose: gps=%s compass=%s compass_fresh=%s "
+          "compass_age_s=%.2f",
+          last_gps_.has_value() ? "ready" : "missing",
+          compass_yaw_.valid ? "ready" : "missing",
+          compassYawReady(compass_yaw_, now_ns, max_compass_staleness_ns_) ? "true"
+                                                                           : "false",
+          compassAgeSeconds(now_ns));
       return;
     }
 
-    const bool origin_was_initialized = gps_origin_.initialized;
-    const auto pose = makeNavigationPoseFromGpsCompass(
-        *last_gps_, *last_compass_yaw_rad_, get_clock()->now().nanoseconds(),
-        gps_config_, gps_origin_);
-    if (!pose.has_value()) {
-      invalidateCurrentPose();
+    if (status == GpsCompassPoseUpdateStatus::kStaleCompassYaw) {
+      last_pose_update_ns_ = 0;
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "gps_compass pose rejected because compass yaw is stale: compass_age_s=%.2f",
+          compassAgeSeconds(now_ns));
+      return;
+    }
+
+    if (status == GpsCompassPoseUpdateStatus::kRejectedPose) {
+      last_pose_update_ns_ = 0;
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "gps_compass pose rejected: status=%d covariance_known=%s "
                            "horizontal_variance=%.3f",
@@ -301,8 +330,7 @@ private:
           get_logger(), "GPS origin initialized: lat=%.8f lon=%.8f altitude=%.2f",
           gps_origin_.latitude_deg, gps_origin_.longitude_deg, gps_origin_.altitude_m);
     }
-    current_pose_ = *pose;
-    last_pose_update_ns_ = get_clock()->now().nanoseconds();
+    last_pose_update_ns_ = now_ns;
     logFirstPose("gps_compass");
   }
 
@@ -406,6 +434,13 @@ private:
     return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
   }
 
+  [[nodiscard]] double compassAgeSeconds(const std::int64_t now_ns) const {
+    if (compass_yaw_.last_update_ns <= 0 || now_ns <= compass_yaw_.last_update_ns) {
+      return std::numeric_limits<double>::infinity();
+    }
+    return static_cast<double>(now_ns - compass_yaw_.last_update_ns) / 1.0e9;
+  }
+
   void publishMemoryGrids() {
     const rclcpp::Time stamp = now();
     raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), false, stamp));
@@ -496,13 +531,14 @@ private:
   GeoReference gps_origin_{};
   NavigationPose2D current_pose_{};
   std::optional<GpsFixSample> last_gps_;
-  std::optional<double> last_compass_yaw_rad_;
+  CompassYawState compass_yaw_{};
 
   std::string frame_id_{"map"};
   std::string pose_source_{"px4_local_position"};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};
+  std::int64_t max_compass_staleness_ns_{1'000'000'000};
   double inflation_radius_m_{2.5};
   double local_grid_radius_m_{45.0};
   double scan_yaw_offset_rad_{0.0};
