@@ -30,8 +30,10 @@ topics, потому что такой же контракт доступен н
 
 # Investigation context
 
-`INVESTIGATION.md` в workspace отсутствует. Существующего `PLAN.md` тоже не
-было, поэтому этот файл создан как новый план.
+`INVESTIGATION.md` в workspace отсутствует. Этот `PLAN.md` был создан в первом
+раунде планирования и в текущем раунде доработан по peer review: исправлены
+команды `runlim`, уточнён реальный `gps_compass` adapter и добавлено требование
+clipping для lidar rays на границах grid.
 
 Прочитаны локальные источники:
 
@@ -99,7 +101,7 @@ Rust profile не читался: в workspace не найден `Cargo.toml` и
 Для долгих запусков использовать `/home/formi/.local/bin/runlim`, например:
 
 ```bash
-/home/formi/.local/bin/runlim --seconds 420 -- \
+/home/formi/.local/bin/runlim timeout 420 \
   env HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
 ```
 
@@ -160,7 +162,8 @@ Rust profile не читался: в workspace не найден `Cargo.toml` и
    Для core-части лучше не тянуть `rclcpp`; если timestamp нужен в core,
    хранить `std::int64_t stamp_ns`.
 
-2. Добавить GPS-to-local frame helper для реального режима.
+2. Добавить `gps_compass` adapter и GPS-to-local frame helper для реального
+   режима.
 
    Файлы:
 
@@ -168,23 +171,72 @@ Rust profile не читался: в workspace не найден `Cargo.toml` и
    - `drone_city_nav/src/navigation_pose.cpp`
    - `drone_city_nav/tests/obstacle_memory_test.cpp`
 
-   Материализуемый результат: локальный проектор WGS84 -> локальная плоскость
-   вокруг home/origin. Для совместимости с текущим проектом использовать
-   `Point2{x = north_m, y = east_m}`, потому что `docs/MVP_SIMULATION.md:31`
-   фиксирует PX4 local `x` как north и `y` как east.
+   Материализуемый результат: отдельный adapter, который принимает
+   `sensor_msgs/NavSatFix` и compass/yaw input, валидирует данные, и выдаёт
+   `NavigationPose2D` в той же локальной системе координат, что и planner. Для
+   совместимости с текущим проектом использовать `Point2{x = north_m,
+   y = east_m}`, потому что `docs/MVP_SIMULATION.md:31` фиксирует PX4 local `x`
+   как north и `y` как east.
+
+   Обязательные правила adapter:
+
+   - `NavSatFix.status.status` должен быть не хуже `STATUS_FIX`; сообщения
+     `STATUS_NO_FIX`, NaN latitude/longitude/altitude и устаревший timestamp
+     отклоняются.
+   - Если `position_covariance_type` известен, adapter сравнивает горизонтальную
+     covariance с параметром `max_gps_horizontal_variance_m2`; слишком шумные
+     GPS samples не обновляют pose.
+   - `home/origin` задаётся параметрами `origin_latitude_deg`,
+     `origin_longitude_deg`, `origin_altitude_m` или автоматически фиксируется
+     первым валидным GPS fix при `auto_initialize_origin=true`. Автоинициализация
+     должна логироваться один раз.
+   - Compass/yaw принимается из `sensor_msgs/Imu` orientation quaternion или из
+     отдельного yaw topic. Quaternion нормализуется и конвертируется в yaw вокруг
+     вертикальной оси; невалидная orientation covariance или NaN yaw отклоняются.
+   - Frame convention задаётся явно: GPS projector выдаёт north/east в local
+     navigation frame, lidar beam rotation применяет yaw в этом же frame, а
+     параметры `yaw_offset_rad`, `magnetic_declination_rad` и
+     `compass_to_body_yaw_offset_rad` документируют калибровку компаса и
+     ориентацию лидара относительно корпуса.
+   - Adapter не читает Gazebo state и не использует заранее известные building
+     coordinates. В симуляции default может оставаться `pose_source:
+     px4_local_position`, но `gps_compass` путь должен быть полноценным и
+     покрытым unit tests.
 
    Pseudocode:
 
    ```cpp
+   if (!validNavSatFix(fix) || !fresh(fix.header.stamp)) {
+     return std::nullopt;
+   }
+   if (!origin.initialized) {
+     origin = makeOriginFromFix(fix);
+   }
    north_m = deg_to_rad(latitude_deg - origin_latitude_deg) * earth_radius_m;
    east_m = deg_to_rad(longitude_deg - origin_longitude_deg) *
             earth_radius_m * cos(deg_to_rad(origin_latitude_deg));
-   return Point2{north_m, east_m};
+   yaw_rad = normalizeYaw(imuYaw + magnetic_declination_rad +
+                          compass_to_body_yaw_offset_rad + yaw_offset_rad);
+   return NavigationPose2D{Pose2{Point2{north_m, east_m}, yaw_rad}, ...};
    ```
 
    Это не Gazebo-зависимость. В симуляции можно продолжать использовать PX4
    local position как уже готовую оценку, а на железе подключить GPS/compass
    topics через тот же адаптер.
+
+   Тесты этого шага обязательны, а не optional:
+
+   - WGS84 -> local projection: изменение latitude даёт `+north`, изменение
+     longitude даёт `+east`, знаки соответствуют текущему `Point2{x=north,
+     y=east}`.
+   - Origin handling: manual origin и auto-initialized origin дают ожидаемый
+     local zero для первого fix.
+   - `NavSatFix` validation: no-fix, NaN, stale timestamp и превышенная
+     covariance не обновляют pose.
+   - Compass conversion: quaternion yaw, отдельный yaw topic, yaw offset и
+     magnetic declination дают ожидаемый normalized yaw.
+   - Frame convention: один и тот же yaw поворачивает lidar endpoint в ту же
+     сторону, которую ожидает memory integration.
 
 3. Добавить core-класс памяти препятствий.
 
@@ -238,10 +290,21 @@ Rust profile не читался: в workspace не найден `Cargo.toml` и
      used_range = hit ? range : max
      angle = pose.yaw_rad + scan_yaw_offset + angle_min + i * angle_increment
      end = pose.position + used_range * unit(angle)
-     mark ray cells as free evidence
-     if hit:
+     clipped_end = clipSegmentToGridBounds(pose.position, end)
+     if no clipped in-bounds segment:
+       continue
+     mark in-bounds ray cells through clipped_end as free evidence
+     if hit and original endpoint is inside grid:
        mark endpoint and optional obstacle_depth cells as occupied evidence
    ```
+
+   Обязательное отличие от текущего `OccupancyGrid2D::markRay` на
+   `drone_city_nav/src/occupancy_grid.cpp:133`: ray integration не должен
+   полностью пропускать beam только потому, что endpoint вне grid. Если старт
+   внутри grid, а endpoint снаружи, нужно обновить free evidence до границы
+   карты. Для hit за пределами grid endpoint не помечается occupied, но
+   in-bounds часть луча всё равно очищается. Для hit около границы
+   `hit_obstacle_depth_m` должен clip-аться и не писать вне bounds.
 
    Важная деталь: free ray не должен мгновенно стирать устойчивое препятствие
    от одного случайного промаха. Нужны hit/miss counters или log-odds. Для MVP
@@ -414,6 +477,10 @@ Rust profile не читался: в workspace не найден `Cargo.toml` и
    Edge-case tests:
 
    - beams за границей global grid не падают;
+   - ray clipping: луч изнутри grid к endpoint вне grid обновляет free cells до
+     границы, а не делает полный no-op;
+   - hit endpoint вне grid не создаёт occupied вне bounds, но очищает
+     in-bounds часть луча;
    - obstacle_depth не выходит за bounds;
    - inflation вокруг remembered obstacle блокирует safety radius.
 
@@ -483,14 +550,14 @@ ctest --test-dir build/drone_city_nav --output-on-failure
 Headless smoke после успешных unit tests:
 
 ```bash
-/home/formi/.local/bin/runlim --seconds 180 -- \
+/home/formi/.local/bin/runlim timeout 180 \
   env HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 ```
 
 Полный mission validation перед финальным коммитом реализации:
 
 ```bash
-/home/formi/.local/bin/runlim --seconds 420 -- \
+/home/formi/.local/bin/runlim timeout 420 \
   env HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
 ```
 
@@ -523,6 +590,11 @@ GUI smoke вручную, если есть X11/GPU:
 
 - Вынести mapping из `planner_node` в `ObstacleMemoryGrid`.
 - Покрыть core memory unit tests без ROS runtime.
+- Покрыть `gps_compass` adapter unit tests: WGS84 projection, origin handling,
+  `NavSatFix` validity/covariance/staleness, compass quaternion/yaw conversion,
+  yaw offsets и magnetic declination.
+- Покрыть boundary ray clipping unit tests: free ray к endpoint вне grid, hit
+  outside grid и obstacle depth near boundary.
 - Проверить planner-on-memory contract через C++ unit test.
 - Это основной рекомендуемый путь: изменение архитектурное, но ограничено
   текущим package.
@@ -559,6 +631,9 @@ GUI smoke вручную, если есть X11/GPU:
   дорогим при росте карты. Нужны throttled publish rates и отдельные periods.
 - Реальный GPS риск: GPS шум и compass drift будут двигать/вращать карту.
   Нужны параметры origin, yaw offset, min altitude и возможно фильтрация позы.
+- Boundary mapping риск: если clipping лучей у границ grid не реализовать, lidar
+  beams с endpoint вне карты будут терять free evidence. Это особенно заметно
+  рядом с краями global grid и на реальном маршруте с rolling/global map.
 - Safety риск: это всё ещё не certified collision avoidance. Даже с памятью
   препятствий нужен geofence, failsafe, RC override и staged tests.
 
@@ -583,6 +658,14 @@ GUI smoke вручную, если есть X11/GPU:
 - Производительность: карта памяти и local crop могут увеличить CPU при 15 Hz
   lidar. Проверка: throttle logs, publish period и headless run без missed
   deadlines/lag.
+- Алгоритм у границы карты: если clipping лучей реализован неправильно, память
+  может оставлять ложные occupied/unknown зоны или писать за bounds. Проверка:
+  unit tests на free ray clipping, hit outside grid и obstacle depth near
+  boundary.
+- GPS/compass adapter: неверная обработка covariance, stale timestamps,
+  magnetic declination или ENU/NED convention может сместить всю карту
+  препятствий. Проверка: unit tests на projection/yaw conversion и debug log
+  первого валидного origin/yaw.
 
 # Open questions
 
