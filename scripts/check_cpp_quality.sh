@@ -12,6 +12,22 @@ run_test=false
 explicit_checks=false
 all_files=false
 
+guard_against_root_owned_workspace_writes() {
+  local repo_owner_uid
+  repo_owner_uid="$(stat -c '%u' "${repo_root}")"
+  if [[ "${EUID}" -eq 0 && "${repo_owner_uid}" -ne 0 &&
+    "${ALLOW_ROOT_WORKSPACE_WRITE:-}" != "1" ]]; then
+    cat >&2 <<EOF
+Refusing to run build-capable checks as root in a non-root-owned workspace.
+Run through ./scripts/dev_shell.sh or docker run with:
+  --user "\$(id -u):\$(id -g)"
+
+Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
+EOF
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/check_cpp_quality.sh [options]
@@ -94,6 +110,10 @@ if [[ "${explicit_checks}" == "false" ]]; then
   run_cppcheck=true
   run_build=true
   run_test=true
+fi
+
+if [[ "${run_build}" == "true" || "${run_test}" == "true" ]]; then
+  guard_against_root_owned_workspace_writes
 fi
 
 is_cpp_path() {

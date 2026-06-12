@@ -2,6 +2,26 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+guard_against_root_owned_workspace_writes() {
+  local repo_owner_uid
+  repo_owner_uid="$(stat -c '%u' "${repo_root}")"
+  if [[ "${EUID}" -eq 0 && "${repo_owner_uid}" -ne 0 &&
+    "${ALLOW_ROOT_WORKSPACE_WRITE:-}" != "1" ]]; then
+    cat >&2 <<EOF
+Refusing to run as root in a non-root-owned workspace because this script writes
+build, install, log, and runtime files.
+Run through ./scripts/dev_shell.sh or docker run with:
+  --user "\$(id -u):\$(id -g)"
+
+Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
+EOF
+    exit 1
+  fi
+}
+
+guard_against_root_owned_workspace_writes
+
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
 ros_distro="${ROS_DISTRO:-jazzy}"
 world_name="generated_city"

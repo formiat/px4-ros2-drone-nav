@@ -9,6 +9,15 @@ MVP. The main package is `drone_city_nav`, an ament CMake package built with
 Run commands from the repository root inside the dev container or an equivalent
 environment where ROS 2 Jazzy and `px4_msgs` are sourced.
 
+Start the dev container with the repository helper:
+
+```bash
+./scripts/dev_shell.sh
+```
+
+The helper runs the container with the host UID/GID so generated and formatted
+files remain owned by the host user.
+
 Build the ROS package:
 
 ```bash

@@ -6,6 +6,22 @@ cd "${repo_root}"
 
 all_files=false
 
+guard_against_root_owned_workspace_writes() {
+  local repo_owner_uid
+  repo_owner_uid="$(stat -c '%u' "${repo_root}")"
+  if [[ "${EUID}" -eq 0 && "${repo_owner_uid}" -ne 0 &&
+    "${ALLOW_ROOT_WORKSPACE_WRITE:-}" != "1" ]]; then
+    cat >&2 <<EOF
+Refusing to format as root in a non-root-owned workspace.
+Run through ./scripts/dev_shell.sh or docker run with:
+  --user "\$(id -u):\$(id -g)"
+
+Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
+EOF
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/format_cpp_changed.sh [--all]
@@ -86,6 +102,8 @@ if ! command -v clang-format >/dev/null 2>&1; then
   echo "clang-format is not installed" >&2
   exit 1
 fi
+
+guard_against_root_owned_workspace_writes
 
 mapfile -t cpp_files < <(
   if [[ "${all_files}" == "true" ]]; then
