@@ -11,6 +11,7 @@ CMakeCache.txt
 cmake_install.cmake
 CTestTestfile.cmake
 Makefile
+!/Makefile
 compile_commands.json
 Testing/
 _deps/

@@ -1,0 +1,25 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(drone_city_nav/include|drone_city_nav/src|drone_city_nav/tests)/.*'
+FormatStyle: file
+CheckOptions:
+  - key: readability-identifier-length.IgnoredParameterNames
+    value: '^[ijkxyz]|dx|dy|id|ns|dt$'
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: '^[ijkxyz]|dx|dy|id|ns|dt$'
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '35'
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;3;4;5;6;7;8;9;10;20;30;45;60;90;100;255;1000'
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoredFloatingPointValues
+    value: '0.0;0.01;0.05;0.1;0.2;0.25;0.5;1.0;2.0;3.0;5.0;10.0'
+...

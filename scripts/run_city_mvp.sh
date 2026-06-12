@@ -88,7 +88,8 @@ fi
 : > "${gz_log_file}"
 
 cd "${repo_root}"
-colcon build --packages-select drone_city_nav --symlink-install
+colcon build --packages-select drone_city_nav --symlink-install \
+  --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 set +u
 source install/setup.bash
 set -u
