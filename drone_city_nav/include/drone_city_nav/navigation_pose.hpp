@@ -40,6 +40,22 @@ struct QuaternionSample {
   double z{0.0};
 };
 
+struct Px4LocalPositionSample {
+  double x_m{0.0};
+  double y_m{0.0};
+  double z_m{0.0};
+  double heading_rad{0.0};
+  std::int64_t stamp_ns{0};
+  bool xy_valid{false};
+  bool z_valid{false};
+  bool heading_good_for_control{false};
+};
+
+struct Px4LocalPoseConfig {
+  bool use_heading_for_yaw{true};
+  double initial_heading_rad{0.0};
+};
+
 struct GpsCompassConfig {
   int min_fix_status{0};
   std::int64_t max_gps_staleness_ns{1'000'000'000};
@@ -64,6 +80,10 @@ struct GpsCompassConfig {
 
 [[nodiscard]] std::optional<double>
 yawFromQuaternion(const QuaternionSample& quaternion) noexcept;
+
+[[nodiscard]] std::optional<NavigationPose2D>
+makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
+                                       const Px4LocalPoseConfig& config) noexcept;
 
 [[nodiscard]] std::optional<NavigationPose2D>
 makeNavigationPoseFromGpsCompass(const GpsFixSample& fix, double compass_yaw_rad,

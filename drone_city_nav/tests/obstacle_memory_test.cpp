@@ -137,6 +137,55 @@ TEST(NavigationPose, ConvertsCompassYawAndOffsets) {
   EXPECT_NEAR(pose_value.pose.yaw_rad, 1.0, 1.0e-9);
 }
 
+TEST(NavigationPose, Px4LocalPoseRequiresValidHeadingWhenConfigured) {
+  const Px4LocalPositionSample invalid_heading_sample{
+      3.0,           4.0,  -18.0, std::numeric_limits<double>::quiet_NaN(),
+      kFreshStampNs, true, true,  false};
+
+  const auto pose = makeNavigationPoseFromPx4LocalPosition(
+      invalid_heading_sample, Px4LocalPoseConfig{true, 0.75});
+
+  ASSERT_TRUE(pose.has_value());
+  const NavigationPose2D pose_value =
+      pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(pose_value.position_valid);
+  EXPECT_TRUE(pose_value.altitude_valid);
+  EXPECT_FALSE(pose_value.yaw_valid);
+  EXPECT_NEAR(pose_value.pose.position.x, 3.0, 1.0e-9);
+  EXPECT_NEAR(pose_value.pose.position.y, 4.0, 1.0e-9);
+  EXPECT_NEAR(pose_value.altitude_m, 18.0, 1.0e-9);
+}
+
+TEST(NavigationPose, Px4LocalPoseUsesInitialYawForMapAlignedScans) {
+  const Px4LocalPositionSample invalid_heading_sample{
+      3.0,           4.0,  -18.0, std::numeric_limits<double>::quiet_NaN(),
+      kFreshStampNs, true, true,  false};
+
+  const auto pose = makeNavigationPoseFromPx4LocalPosition(
+      invalid_heading_sample, Px4LocalPoseConfig{false, 0.75});
+
+  ASSERT_TRUE(pose.has_value());
+  const NavigationPose2D pose_value =
+      pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(pose_value.position_valid);
+  EXPECT_TRUE(pose_value.yaw_valid);
+  EXPECT_NEAR(pose_value.pose.yaw_rad, 0.75, 1.0e-9);
+}
+
+TEST(NavigationPose, Px4LocalPoseUsesValidEstimatorHeadingWhenRequired) {
+  const Px4LocalPositionSample valid_heading_sample{3.0,           4.0,  -18.0, -3.5,
+                                                    kFreshStampNs, true, true,  true};
+
+  const auto pose = makeNavigationPoseFromPx4LocalPosition(
+      valid_heading_sample, Px4LocalPoseConfig{true, 0.75});
+
+  ASSERT_TRUE(pose.has_value());
+  const NavigationPose2D pose_value =
+      pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(pose_value.yaw_valid);
+  EXPECT_NEAR(pose_value.pose.yaw_rad, normalizeYaw(-3.5), 1.0e-9);
+}
+
 TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};

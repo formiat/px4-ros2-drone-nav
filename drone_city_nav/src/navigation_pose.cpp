@@ -95,6 +95,38 @@ std::optional<double> yawFromQuaternion(const QuaternionSample& quaternion) noex
   return normalizeYaw(yaw);
 }
 
+std::optional<NavigationPose2D>
+makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
+                                       const Px4LocalPoseConfig& config) noexcept {
+  if (!sample.xy_valid || !std::isfinite(sample.x_m) || !std::isfinite(sample.y_m)) {
+    return std::nullopt;
+  }
+
+  NavigationPose2D pose{};
+  pose.pose.position = Point2{sample.x_m, sample.y_m};
+  pose.stamp_ns = sample.stamp_ns;
+  pose.position_valid = true;
+
+  if (sample.z_valid && std::isfinite(sample.z_m)) {
+    pose.altitude_m = -sample.z_m;
+    pose.altitude_valid = true;
+  }
+
+  if (config.use_heading_for_yaw) {
+    if (sample.heading_good_for_control && std::isfinite(sample.heading_rad)) {
+      pose.pose.yaw_rad = normalizeYaw(sample.heading_rad);
+      pose.yaw_valid = true;
+    }
+    return pose;
+  }
+
+  if (std::isfinite(config.initial_heading_rad)) {
+    pose.pose.yaw_rad = normalizeYaw(config.initial_heading_rad);
+    pose.yaw_valid = true;
+  }
+  return pose;
+}
+
 std::optional<NavigationPose2D> makeNavigationPoseFromGpsCompass(
     const GpsFixSample& fix, const double compass_yaw_rad, const std::int64_t now_ns,
     const GpsCompassConfig& config, GeoReference& origin) noexcept {

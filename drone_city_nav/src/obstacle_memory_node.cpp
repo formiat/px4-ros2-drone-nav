@@ -123,8 +123,9 @@ public:
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
-    current_pose_.pose.yaw_rad = declare_parameter<double>("initial_heading_rad", 0.0);
-    current_pose_.yaw_valid = true;
+    initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
+    current_pose_.pose.yaw_rad = initial_heading_rad_;
+    current_pose_.yaw_valid = !use_px4_heading_for_scan_;
     if (use_initial_pose) {
       current_pose_.pose.position =
           Point2{declare_parameter<double>("initial_x_m", 0.0),
@@ -186,17 +187,26 @@ public:
                 origin_y, lidar_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
-                "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s",
+                "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
+                "yaw_source=%s",
                 memory_config_.max_lidar_range_m, memory_config_.hit_obstacle_depth_m,
                 memory_config_.scan_stride, memory_config_.min_score,
                 memory_config_.max_score, memory_config_.free_score,
                 memory_config_.occupied_score,
-                swap_lidar_xy_to_local_frame_ ? "true" : "false");
+                swap_lidar_xy_to_local_frame_ ? "true" : "false",
+                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned");
   }
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
-    if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
+    const auto pose = makeNavigationPoseFromPx4LocalPosition(
+        Px4LocalPositionSample{static_cast<double>(msg.x), static_cast<double>(msg.y),
+                               static_cast<double>(msg.z),
+                               static_cast<double>(msg.heading),
+                               static_cast<std::int64_t>(msg.timestamp) * 1000LL,
+                               msg.xy_valid, msg.z_valid, msg.heading_good_for_control},
+        Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_});
+    if (!pose.has_value()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Obstacle memory ignoring invalid PX4 local position: xy_valid=%s x=%.2f "
@@ -206,22 +216,20 @@ private:
       return;
     }
 
-    current_pose_.pose.position =
-        Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
-    current_pose_.position_valid = true;
-    current_pose_.stamp_ns = static_cast<std::int64_t>(msg.timestamp) * 1000LL;
-
-    if (msg.z_valid && std::isfinite(msg.z)) {
-      current_pose_.altitude_m = -static_cast<double>(msg.z);
-      current_pose_.altitude_valid = true;
-    }
-    if (use_px4_heading_for_scan_ && msg.heading_good_for_control &&
-        std::isfinite(msg.heading)) {
-      current_pose_.pose.yaw_rad = static_cast<double>(msg.heading);
-      current_pose_.yaw_valid = true;
+    current_pose_ = pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+    if (use_px4_heading_for_scan_ && !current_pose_.yaw_valid) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "PX4 local position has no valid heading for obstacle memory: "
+          "heading_good_for_control=%s heading=%.3f",
+          msg.heading_good_for_control ? "true" : "false",
+          static_cast<double>(msg.heading));
+      return;
     }
 
-    logFirstPose("px4_local_position");
+    if (current_pose_.yaw_valid) {
+      logFirstPose("px4_local_position");
+    }
   }
 
   void onGps(const sensor_msgs::msg::NavSatFix& msg) {
@@ -468,6 +476,7 @@ private:
   double inflation_radius_m_{2.5};
   double local_grid_radius_m_{45.0};
   double scan_yaw_offset_rad_{0.0};
+  double initial_heading_rad_{0.0};
   bool swap_lidar_xy_to_local_frame_{false};
   bool use_px4_heading_for_scan_{true};
   bool pose_seen_{false};
