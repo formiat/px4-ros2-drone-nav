@@ -282,6 +282,10 @@ colcon test-result --verbose
 - The simulation obstacle-memory node ignores lidar map updates below
   `min_mapping_altitude_m` so takeoff-time ground returns do not pollute the
   cruise-altitude 2D occupancy grid.
+- `obstacle_memory_node` and `planner_node` both fail closed when PX4 local
+  position becomes invalid or stale for longer than `max_pose_staleness_s`.
+  Obstacle memory skips lidar integration, and the planner publishes an empty
+  hold path instead of using cached pose data.
 - The simulation parameter file keeps `use_px4_heading_for_scan=false` in
   `obstacle_memory_node` because the bridged Gazebo lidar scan used by this MVP
   is already aligned with the local horizontal map frame. Enabling PX4 heading

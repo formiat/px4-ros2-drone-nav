@@ -24,10 +24,6 @@ namespace {
   return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
 }
 
-[[nodiscard]] bool finite2D(const Point2 point) noexcept {
-  return std::isfinite(point.x) && std::isfinite(point.y);
-}
-
 [[nodiscard]] std::int64_t toNanoseconds(const builtin_interfaces::msg::Time& stamp) {
   return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
          static_cast<std::int64_t>(stamp.nanosec);
@@ -69,6 +65,10 @@ public:
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
+    max_pose_staleness_ns_ = static_cast<std::int64_t>(
+        std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
+                           3600.0) *
+        1.0e9);
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
     local_grid_radius_m_ = declare_parameter<double>("local_grid_radius_m", 45.0);
     memory_config_.max_lidar_range_m =
@@ -131,6 +131,7 @@ public:
           Point2{declare_parameter<double>("initial_x_m", 0.0),
                  declare_parameter<double>("initial_y_m", 0.0)};
       current_pose_.position_valid = true;
+      last_pose_update_ns_ = get_clock()->now().nanoseconds();
     }
 
     const std::string lidar_topic =
@@ -199,37 +200,42 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
-    const auto pose = makeNavigationPoseFromPx4LocalPosition(
-        Px4LocalPositionSample{static_cast<double>(msg.x), static_cast<double>(msg.y),
+    const auto sample =
+        Px4LocalPositionSample{static_cast<double>(msg.x),
+                               static_cast<double>(msg.y),
                                static_cast<double>(msg.z),
                                static_cast<double>(msg.heading),
                                static_cast<std::int64_t>(msg.timestamp) * 1000LL,
-                               msg.xy_valid, msg.z_valid, msg.heading_good_for_control},
-        Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_});
-    if (!pose.has_value()) {
+                               msg.xy_valid,
+                               msg.z_valid,
+                               msg.heading_good_for_control};
+    const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
+        sample, Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_},
+        current_pose_);
+    if (status == Px4LocalPoseUpdateStatus::kInvalidPosition) {
+      last_pose_update_ns_ = 0;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Obstacle memory ignoring invalid PX4 local position: xy_valid=%s x=%.2f "
-          "y=%.2f",
+          "Obstacle memory invalidated cached pose after invalid PX4 local position: "
+          "xy_valid=%s x=%.2f y=%.2f",
           msg.xy_valid ? "true" : "false", static_cast<double>(msg.x),
           static_cast<double>(msg.y));
       return;
     }
 
-    current_pose_ = pose.value(); // NOLINT(bugprone-unchecked-optional-access)
-    if (use_px4_heading_for_scan_ && !current_pose_.yaw_valid) {
+    if (status == Px4LocalPoseUpdateStatus::kInvalidYaw) {
+      last_pose_update_ns_ = 0;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "PX4 local position has no valid heading for obstacle memory: "
-          "heading_good_for_control=%s heading=%.3f",
+          "Obstacle memory invalidated cached pose after PX4 local position without "
+          "valid heading: heading_good_for_control=%s heading=%.3f",
           msg.heading_good_for_control ? "true" : "false",
           static_cast<double>(msg.heading));
       return;
     }
 
-    if (current_pose_.yaw_valid) {
-      logFirstPose("px4_local_position");
-    }
+    last_pose_update_ns_ = get_clock()->now().nanoseconds();
+    logFirstPose("px4_local_position");
   }
 
   void onGps(const sensor_msgs::msg::NavSatFix& msg) {
@@ -280,6 +286,7 @@ private:
         *last_gps_, *last_compass_yaw_rad_, get_clock()->now().nanoseconds(),
         gps_config_, gps_origin_);
     if (!pose.has_value()) {
+      invalidateCurrentPose();
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "gps_compass pose rejected: status=%d covariance_known=%s "
                            "horizontal_variance=%.3f",
@@ -295,19 +302,28 @@ private:
           gps_origin_.latitude_deg, gps_origin_.longitude_deg, gps_origin_.altitude_m);
     }
     current_pose_ = *pose;
+    last_pose_update_ns_ = get_clock()->now().nanoseconds();
     logFirstPose("gps_compass");
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
-    if (memory_ == nullptr || !current_pose_.position_valid ||
-        !current_pose_.yaw_valid || !finite2D(current_pose_.pose.position) ||
-        !std::isfinite(current_pose_.pose.yaw_rad)) {
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    const bool pose_fresh =
+        timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
+    const double pose_age_s = poseAgeSeconds(now_ns);
+    if (memory_ == nullptr ||
+        !navigationPoseReadyForScan(current_pose_, last_pose_update_ns_, now_ns,
+                                    max_pose_staleness_ns_)) {
+      if (!pose_fresh) {
+        invalidateCurrentPose();
+      }
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Skipping obstacle memory scan without valid navigation pose: "
-          "position_valid=%s yaw_valid=%s",
+          "position_valid=%s yaw_valid=%s pose_fresh=%s pose_age_s=%.2f",
           current_pose_.position_valid ? "true" : "false",
-          current_pose_.yaw_valid ? "true" : "false");
+          current_pose_.yaw_valid ? "true" : "false", pose_fresh ? "true" : "false",
+          pose_age_s);
       return;
     }
     if (min_mapping_altitude_m_ > 0.0 &&
@@ -376,6 +392,18 @@ private:
                 current_pose_.pose.position.y, current_pose_.altitude_m,
                 current_pose_.altitude_valid ? "true" : "false",
                 current_pose_.pose.yaw_rad);
+  }
+
+  void invalidateCurrentPose() {
+    invalidateNavigationPose(current_pose_);
+    last_pose_update_ns_ = 0;
+  }
+
+  [[nodiscard]] double poseAgeSeconds(const std::int64_t now_ns) const {
+    if (last_pose_update_ns_ <= 0 || now_ns <= last_pose_update_ns_) {
+      return std::numeric_limits<double>::infinity();
+    }
+    return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
   }
 
   void publishMemoryGrids() {
@@ -473,6 +501,8 @@ private:
   std::string frame_id_{"map"};
   std::string pose_source_{"px4_local_position"};
   double min_mapping_altitude_m_{0.0};
+  std::int64_t max_pose_staleness_ns_{1'000'000'000};
+  std::int64_t last_pose_update_ns_{0};
   double inflation_radius_m_{2.5};
   double local_grid_radius_m_{45.0};
   double scan_yaw_offset_rad_{0.0};

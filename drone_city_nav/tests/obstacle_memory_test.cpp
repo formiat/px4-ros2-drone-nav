@@ -186,6 +186,77 @@ TEST(NavigationPose, Px4LocalPoseUsesValidEstimatorHeadingWhenRequired) {
   EXPECT_NEAR(pose_value.pose.yaw_rad, normalizeYaw(-3.5), 1.0e-9);
 }
 
+TEST(NavigationPose, TimestampFreshnessRejectsMissingAndExpiredUpdates) {
+  EXPECT_TRUE(timestampIsFresh(100, 150, 100));
+  EXPECT_TRUE(timestampIsFresh(200, 150, 100));
+  EXPECT_TRUE(timestampIsFresh(0, 150, 0));
+  EXPECT_FALSE(timestampIsFresh(0, 150, 100));
+  EXPECT_FALSE(timestampIsFresh(100, 250, 100));
+}
+
+TEST(NavigationPose, StatefulPx4UpdateInvalidatesCachedPoseAfterInvalidPosition) {
+  NavigationPose2D state{};
+  const Px4LocalPoseConfig config{true, 0.0};
+  const Px4LocalPositionSample valid_sample{3.0,           4.0,  -18.0, 0.5,
+                                            kFreshStampNs, true, true,  true};
+  const Px4LocalPositionSample invalid_position_sample{
+      std::numeric_limits<double>::quiet_NaN(),
+      4.0,
+      -18.0,
+      0.5,
+      kFreshStampNs,
+      true,
+      true,
+      true};
+
+  EXPECT_EQ(updateNavigationPoseFromPx4LocalPosition(valid_sample, config, state),
+            Px4LocalPoseUpdateStatus::kAccepted);
+  EXPECT_TRUE(state.position_valid);
+  EXPECT_TRUE(state.yaw_valid);
+
+  EXPECT_EQ(
+      updateNavigationPoseFromPx4LocalPosition(invalid_position_sample, config, state),
+      Px4LocalPoseUpdateStatus::kInvalidPosition);
+  EXPECT_FALSE(state.position_valid);
+  EXPECT_FALSE(state.yaw_valid);
+  EXPECT_FALSE(state.altitude_valid);
+}
+
+TEST(NavigationPose, StatefulPx4UpdateInvalidatesCachedPoseAfterInvalidHeading) {
+  NavigationPose2D state{};
+  const Px4LocalPoseConfig config{true, 0.0};
+  const Px4LocalPositionSample valid_sample{3.0,           4.0,  -18.0, 0.5,
+                                            kFreshStampNs, true, true,  true};
+  const Px4LocalPositionSample invalid_heading_sample{
+      3.0,           4.0,  -18.0, std::numeric_limits<double>::quiet_NaN(),
+      kFreshStampNs, true, true,  false};
+
+  EXPECT_EQ(updateNavigationPoseFromPx4LocalPosition(valid_sample, config, state),
+            Px4LocalPoseUpdateStatus::kAccepted);
+  EXPECT_TRUE(state.position_valid);
+  EXPECT_TRUE(state.yaw_valid);
+
+  EXPECT_EQ(
+      updateNavigationPoseFromPx4LocalPosition(invalid_heading_sample, config, state),
+      Px4LocalPoseUpdateStatus::kInvalidYaw);
+  EXPECT_FALSE(state.position_valid);
+  EXPECT_FALSE(state.yaw_valid);
+}
+
+TEST(NavigationPose, ScanReadinessRequiresFreshPoseState) {
+  NavigationPose2D state{};
+  const Px4LocalPositionSample valid_sample{3.0,           4.0,  -18.0, 0.5,
+                                            kFreshStampNs, true, true,  true};
+  ASSERT_EQ(updateNavigationPoseFromPx4LocalPosition(
+                valid_sample, Px4LocalPoseConfig{true, 0.0}, state),
+            Px4LocalPoseUpdateStatus::kAccepted);
+
+  EXPECT_TRUE(navigationPoseReadyForScan(state, 100, 150, 100));
+  EXPECT_FALSE(navigationPoseReadyForScan(state, 100, 250, 100));
+  state.yaw_valid = false;
+  EXPECT_FALSE(navigationPoseReadyForScan(state, 200, 250, 100));
+}
+
 TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};

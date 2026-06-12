@@ -56,6 +56,12 @@ struct Px4LocalPoseConfig {
   double initial_heading_rad{0.0};
 };
 
+enum class Px4LocalPoseUpdateStatus {
+  kAccepted,
+  kInvalidPosition,
+  kInvalidYaw,
+};
+
 struct GpsCompassConfig {
   int min_fix_status{0};
   std::int64_t max_gps_staleness_ns{1'000'000'000};
@@ -72,6 +78,16 @@ struct GpsCompassConfig {
 
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
 
+[[nodiscard]] bool timestampIsFresh(std::int64_t stamp_ns, std::int64_t now_ns,
+                                    std::int64_t max_staleness_ns) noexcept;
+
+void invalidateNavigationPose(NavigationPose2D& pose) noexcept;
+
+[[nodiscard]] bool navigationPoseReadyForScan(const NavigationPose2D& pose,
+                                              std::int64_t last_update_ns,
+                                              std::int64_t now_ns,
+                                              std::int64_t max_staleness_ns) noexcept;
+
 [[nodiscard]] bool validGpsFix(const GpsFixSample& fix, const GpsCompassConfig& config,
                                std::int64_t now_ns) noexcept;
 
@@ -84,6 +100,11 @@ yawFromQuaternion(const QuaternionSample& quaternion) noexcept;
 [[nodiscard]] std::optional<NavigationPose2D>
 makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
                                        const Px4LocalPoseConfig& config) noexcept;
+
+[[nodiscard]] Px4LocalPoseUpdateStatus
+updateNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
+                                         const Px4LocalPoseConfig& config,
+                                         NavigationPose2D& state) noexcept;
 
 [[nodiscard]] std::optional<NavigationPose2D>
 makeNavigationPoseFromGpsCompass(const GpsFixSample& fix, double compass_yaw_rad,

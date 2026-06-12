@@ -16,6 +16,7 @@ obstacle_memory_node:
     initial_y_m: 0.0
     initial_heading_rad: 0.0
     use_initial_pose_until_px4: true
+    max_pose_staleness_s: 1.0
     min_mapping_altitude_m: 16.0
     inflation_radius_m: 4.0
     local_grid_radius_m: 45.0
@@ -47,6 +48,7 @@ planner_node:
     initial_y_m: 0.0
     initial_heading_rad: 0.0
     use_initial_pose_until_px4: true
+    max_pose_staleness_s: 1.0
     goal_x_m: 90.0
     goal_y_m: 150.0
     cruise_altitude_m: 18.0

@@ -1,4 +1,5 @@
 #include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -44,6 +45,10 @@ public:
                    declare_parameter<double>("goal_y_m", 0.0)};
     cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
+    max_pose_staleness_ns_ = static_cast<std::int64_t>(
+        std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
+                           3600.0) *
+        1.0e9);
     direct_path_fallback_ = declare_parameter<bool>("direct_path_fallback", false);
     reuse_last_valid_path_on_failure_ =
         declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
@@ -66,6 +71,7 @@ public:
                                    declare_parameter<double>("initial_y_m", 0.0)},
                             declare_parameter<double>("initial_heading_rad", 0.0)};
       pose_valid_ = true;
+      last_pose_update_ns_ = get_clock()->now().nanoseconds();
     }
 
     const std::string memory_grid_topic = declare_parameter<std::string>(
@@ -121,9 +127,11 @@ public:
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
+      invalidateCurrentPose();
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Ignoring invalid PX4 local position: xy_valid=%s x=%.2f y=%.2f",
+          "Planner invalidated cached pose after invalid PX4 local position: "
+          "xy_valid=%s x=%.2f y=%.2f",
           msg.xy_valid ? "true" : "false", static_cast<double>(msg.x),
           static_cast<double>(msg.y));
       return;
@@ -135,6 +143,7 @@ private:
       current_pose_.yaw_rad = static_cast<double>(msg.heading);
     }
     pose_valid_ = true;
+    last_pose_update_ns_ = get_clock()->now().nanoseconds();
 
     if (!local_position_seen_) {
       local_position_seen_ = true;
@@ -217,6 +226,18 @@ private:
   }
 
   void replanAndPublish() {
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    const bool pose_fresh =
+        timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
+    const double pose_age_s = poseAgeSeconds(now_ns);
+    if (pose_valid_ && !pose_fresh) {
+      invalidateCurrentPose();
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Planner invalidated stale PX4 local position before replanning: "
+          "pose_age_s=%.2f",
+          pose_age_s);
+    }
     if (!pose_valid_ || !finite2D(current_pose_.position)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner is waiting for a valid PX4 local position; "
@@ -434,6 +455,19 @@ private:
     publishPath(path_points);
   }
 
+  void invalidateCurrentPose() {
+    current_pose_ = Pose2{};
+    pose_valid_ = false;
+    last_pose_update_ns_ = 0;
+  }
+
+  [[nodiscard]] double poseAgeSeconds(const std::int64_t now_ns) const {
+    if (last_pose_update_ns_ <= 0 || now_ns <= last_pose_update_ns_) {
+      return std::numeric_limits<double>::infinity();
+    }
+    return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
+  }
+
   [[nodiscard]] bool
   hasExcessiveInitialLateralDeviation(const std::vector<Point2>& path_points) const {
     if (!direct_path_fallback_ || path_points.size() < 3U) {
@@ -542,6 +576,8 @@ private:
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};
   double max_initial_lateral_deviation_m_{8.0};
+  std::int64_t max_pose_staleness_ns_{1'000'000'000};
+  std::int64_t last_pose_update_ns_{0};
   int nearest_free_radius_cells_{10};
   int occupied_threshold_{65};
   int free_threshold_{0};

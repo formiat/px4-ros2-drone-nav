@@ -18,20 +18,6 @@ constexpr double kEarthRadiusM = 6'378'137.0;
          std::isfinite(fix.altitude_m);
 }
 
-[[nodiscard]] bool freshStamp(const std::int64_t stamp_ns, const std::int64_t now_ns,
-                              const std::int64_t max_staleness_ns) noexcept {
-  if (max_staleness_ns <= 0) {
-    return true;
-  }
-  if (stamp_ns <= 0 || now_ns <= 0) {
-    return false;
-  }
-  if (stamp_ns > now_ns) {
-    return true;
-  }
-  return now_ns - stamp_ns <= max_staleness_ns;
-}
-
 } // namespace
 
 double normalizeYaw(const double yaw_rad) noexcept {
@@ -49,10 +35,37 @@ double normalizeYaw(const double yaw_rad) noexcept {
   return normalized;
 }
 
+bool timestampIsFresh(const std::int64_t stamp_ns, const std::int64_t now_ns,
+                      const std::int64_t max_staleness_ns) noexcept {
+  if (max_staleness_ns <= 0) {
+    return true;
+  }
+  if (stamp_ns <= 0 || now_ns <= 0) {
+    return false;
+  }
+  if (stamp_ns > now_ns) {
+    return true;
+  }
+  return now_ns - stamp_ns <= max_staleness_ns;
+}
+
+void invalidateNavigationPose(NavigationPose2D& pose) noexcept {
+  pose = NavigationPose2D{};
+}
+
+bool navigationPoseReadyForScan(const NavigationPose2D& pose,
+                                const std::int64_t last_update_ns,
+                                const std::int64_t now_ns,
+                                const std::int64_t max_staleness_ns) noexcept {
+  return pose.position_valid && pose.yaw_valid && std::isfinite(pose.pose.position.x) &&
+         std::isfinite(pose.pose.position.y) && std::isfinite(pose.pose.yaw_rad) &&
+         timestampIsFresh(last_update_ns, now_ns, max_staleness_ns);
+}
+
 bool validGpsFix(const GpsFixSample& fix, const GpsCompassConfig& config,
                  const std::int64_t now_ns) noexcept {
   if (fix.status < config.min_fix_status || !finiteFix(fix) ||
-      !freshStamp(fix.stamp_ns, now_ns, config.max_gps_staleness_ns)) {
+      !timestampIsFresh(fix.stamp_ns, now_ns, config.max_gps_staleness_ns)) {
     return false;
   }
 
@@ -125,6 +138,25 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
     pose.yaw_valid = true;
   }
   return pose;
+}
+
+Px4LocalPoseUpdateStatus
+updateNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
+                                         const Px4LocalPoseConfig& config,
+                                         NavigationPose2D& state) noexcept {
+  const auto pose = makeNavigationPoseFromPx4LocalPosition(sample, config);
+  if (!pose.has_value()) {
+    invalidateNavigationPose(state);
+    return Px4LocalPoseUpdateStatus::kInvalidPosition;
+  }
+
+  if (!pose->yaw_valid) {
+    invalidateNavigationPose(state);
+    return Px4LocalPoseUpdateStatus::kInvalidYaw;
+  }
+
+  state = *pose;
+  return Px4LocalPoseUpdateStatus::kAccepted;
 }
 
 std::optional<NavigationPose2D> makeNavigationPoseFromGpsCompass(
