@@ -241,38 +241,6 @@ const OccupancyGrid2D& ObstacleMemoryGrid::inflatedGrid() const noexcept {
   return inflated_grid_;
 }
 
-OccupancyGrid2D ObstacleMemoryGrid::localWindow(const Point2 center,
-                                                const double radius_m) const {
-  const double bounded_radius = std::max(radius_m, raw_grid_.resolution());
-  const int width_cells = std::max(
-      1, static_cast<int>(std::ceil((2.0 * bounded_radius) / raw_grid_.resolution())));
-  OccupancyGrid2D window{GridBounds{center.x - bounded_radius,
-                                    center.y - bounded_radius, raw_grid_.resolution(),
-                                    width_cells, width_cells}};
-
-  for (int y = 0; y < window.height(); ++y) {
-    for (int x = 0; x < window.width(); ++x) {
-      const GridIndex local_cell{x, y};
-      const auto source_cell = raw_grid_.worldToCell(window.cellCenter(local_cell));
-      if (!source_cell.has_value()) {
-        continue;
-      }
-      switch (raw_grid_.state(*source_cell)) {
-        case CellState::kUnknown:
-          break;
-        case CellState::kFree:
-          window.setFree(local_cell);
-          break;
-        case CellState::kOccupied:
-          window.setOccupied(local_cell);
-          break;
-      }
-    }
-  }
-
-  return window;
-}
-
 GridCellCounts ObstacleMemoryGrid::countRawCells() const {
   return countCells(raw_grid_);
 }

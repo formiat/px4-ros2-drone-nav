@@ -4,7 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -445,19 +444,6 @@ TEST(ObstacleMemoryGrid, InflationBlocksRememberedObstacle) {
   EXPECT_TRUE(memory.inflatedGrid().isBlocked(GridIndex{9, 5}));
   EXPECT_TRUE(memory.inflatedGrid().isBlocked(GridIndex{8, 5}));
   EXPECT_FALSE(memory.inflatedGrid().isBlocked(GridIndex{12, 5}));
-}
-
-TEST(ObstacleMemoryGrid, LocalWindowContainsRememberedObstacle) {
-  ObstacleMemoryGrid memory = makeMemory();
-  const std::vector<float> ranges{4.0F};
-
-  const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {});
-  EXPECT_EQ(stats.hit_beams, 1U);
-  const OccupancyGrid2D local = memory.localWindow(Point2{9.5, 5.5}, 2.0);
-
-  EXPECT_GT(
-      std::count(local.cells().begin(), local.cells().end(), CellState::kOccupied), 0);
 }
 
 TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {

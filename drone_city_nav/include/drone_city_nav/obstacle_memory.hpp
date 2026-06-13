@@ -61,7 +61,6 @@ public:
 
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
   [[nodiscard]] const OccupancyGrid2D& inflatedGrid() const noexcept;
-  [[nodiscard]] OccupancyGrid2D localWindow(Point2 center, double radius_m) const;
   [[nodiscard]] GridCellCounts countRawCells() const;
   [[nodiscard]] GridCellCounts countInflatedCells() const;
 

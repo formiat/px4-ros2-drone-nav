@@ -236,8 +236,6 @@ check_headless_run() {
     "First lidar scan" || failed=1
   require_log_pattern "obstacle memory receives lidar" "${ros_log_file}" \
     "Obstacle memory update:" || failed=1
-  require_log_pattern "obstacle memory publishes local grid" "${ros_log_file}" \
-    "Published obstacle memory local grid" || failed=1
   require_log_pattern "planner publishes a path" "${ros_log_file}" \
     "Published path: waypoints=[1-9]" || failed=1
   require_log_pattern "offboard command is sent" "${ros_log_file}" \

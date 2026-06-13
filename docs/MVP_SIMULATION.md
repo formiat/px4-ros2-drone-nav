@@ -142,14 +142,14 @@ The simulation launch starts `lidar_debug_node` by default. It records periodic
 snapshots under `log/lidar_debug`:
 
 - `snapshots.jsonl` - one JSON record per snapshot with pose, scan statistics,
-  local obstacle-memory grid statistics, path size, file paths, and a capped
-  list of hit points.
+  obstacle-memory grid statistics, path size, file paths, and a capped list of
+  hit points.
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
   hit flag, and map-frame endpoint.
-- `snapshot_000001.ppm` - a top-down debug image centered on the drone. Red
-  dots are lidar hits, orange cells are inflated memory occupancy, red cells
-  are occupied, cyan/green lines are the current path, and the blue marker is
-  the drone.
+- `snapshot_000001.ppm` - a full-map top-down debug image when the memory grid
+  is available. Red dots/rays are current lidar hits, yellow cells are occupied
+  obstacle-memory cells, amber cells are inflated safety cells, cyan/green lines
+  are the current path, and the blue marker is the drone.
 
 Override the debug directory or disable recording from the run script:
 
@@ -172,20 +172,16 @@ ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
 ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
-The RViz config shows the cropped local memory map from
-`/drone_city_nav/obstacle_memory_local_grid`, the planner debug grid from
-`/drone_city_nav/occupancy_grid`, `/drone_city_nav/path`, and
-`/drone_city_nav/lidar_debug_points`. The local map is published in the `map`
-frame with its origin centered around the current drone pose, so no Gazebo lidar
-TF tree is required.
+The RViz config shows the full inflated memory map from
+`/drone_city_nav/obstacle_memory_inflated_grid`, `/drone_city_nav/path`, and
+`/drone_city_nav/lidar_debug_points`. The map is published in the `map` frame,
+so no Gazebo lidar TF tree is required.
 
 The main obstacle-memory topics are:
 
 - `/drone_city_nav/obstacle_memory_grid` - full raw persistent memory grid.
 - `/drone_city_nav/obstacle_memory_inflated_grid` - full memory grid after
   safety inflation for debugging clearance.
-- `/drone_city_nav/obstacle_memory_local_grid` - cropped inflated memory window
-  around the drone for RViz and PPM snapshots.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   inflation, kept for compatibility with existing debug tooling.
 
@@ -205,8 +201,8 @@ HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
 planner/offboard launch. When the timeout is reached, the script checks the logs
 for a ready Gazebo world, valid PX4 local position, lidar scans, obstacle-memory
-updates, local memory-grid publication, planner waypoints, offboard and arm
-commands, armed offboard state, and critical PX4 preflight failures.
+updates, planner waypoints, offboard and arm commands, armed offboard state,
+and critical PX4 preflight failures.
 
 During startup the script sends SITL-only PX4 parameters through the PX4 shell:
 `CBRK_SUPPLY_CHK=894281` disables the unavailable power-supply check and
@@ -273,8 +269,8 @@ colcon test-result --verbose
   detected wall as a free corridor.
 - The offboard node assumes the planner path and PX4 local position share the
   same horizontal origin.
-- Runtime logs include obstacle-memory update statistics, local grid publication
-  status, and distance-to-start and distance-to-goal values in `planner_node`,
+- Runtime logs include obstacle-memory update statistics and distance-to-start
+  and distance-to-goal values in `planner_node`,
   `px4_offboard_node`, and `mission_monitor_node`.
 - The simulation offboard follower uses a short lookahead so obstacle-avoidance
   waypoints are followed instead of being skipped by a direct-to-goal setpoint.

@@ -8,7 +8,6 @@ obstacle_memory_node:
     compass_imu_topic: /imu
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     obstacle_memory_inflated_grid_topic: /drone_city_nav/obstacle_memory_inflated_grid
-    obstacle_memory_local_grid_topic: /drone_city_nav/obstacle_memory_local_grid
     grid_resolution_m: 0.5
     grid_width_m: 120.0
     grid_height_m: 80.0
@@ -19,7 +18,6 @@ obstacle_memory_node:
     max_pose_staleness_s: 1.0
     min_mapping_altitude_m: 0.0
     inflation_radius_m: 2.5
-    local_grid_radius_m: 45.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
@@ -103,14 +101,13 @@ lidar_debug_node:
   ros__parameters:
     lidar_topic: /scan
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
-    occupancy_grid_topic: /drone_city_nav/obstacle_memory_local_grid
+    occupancy_grid_topic: /drone_city_nav/obstacle_memory_inflated_grid
     path_topic: /drone_city_nav/path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
     marker_topic: /drone_city_nav/obstacle_memory_markers
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900
-    view_radius_m: 45.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     max_lidar_range_m: 35.0

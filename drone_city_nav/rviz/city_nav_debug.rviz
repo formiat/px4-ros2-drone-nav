@@ -19,9 +19,9 @@ Visualization Manager:
       Color Scheme: map
       Draw Behind: false
       Enabled: true
-      Name: Local Obstacle Memory
+      Name: Obstacle Memory
       Topic:
-        Value: /drone_city_nav/obstacle_memory_local_grid
+        Value: /drone_city_nav/obstacle_memory_inflated_grid
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255

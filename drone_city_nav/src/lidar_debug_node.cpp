@@ -236,8 +236,8 @@ public:
 
     RCLCPP_INFO(get_logger(),
                 "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-                "view_radius=%.1fm topics scan='%s' grid='%s' path='%s' pose='%s' "
-                "points='%s' markers='%s'",
+                "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
+                "pose='%s' points='%s' markers='%s'",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), pointcloud_topic_.c_str(),
@@ -286,9 +286,9 @@ private:
     writeScanCsv(csv_path, stats);
 
     Image image{image_size_px_, image_size_px_, Pixel{12U, 16U, 20U}};
-    drawGrid(image);
+    drawGrid(image, stats);
     drawPath(image);
-    drawScan(image, stats);
+    drawScan(image);
     drawDrone(image);
     const bool image_ok = writePpm(image_path, image);
     publishPointCloud(stats);
@@ -385,7 +385,46 @@ private:
   }
 
   [[nodiscard]] std::optional<std::array<int, 2>>
+  gridWorldToPixel(const Point2 point) const {
+    constexpr double kImagePaddingPx = 8.0;
+    if (!finite2D(point)) {
+      return std::nullopt;
+    }
+
+    const double resolution = static_cast<double>(last_grid_.info.resolution);
+    const double width_m = static_cast<double>(last_grid_.info.width) * resolution;
+    const double height_m = static_cast<double>(last_grid_.info.height) * resolution;
+    if (!(resolution > 0.0) || !(width_m > 0.0) || !(height_m > 0.0)) {
+      return std::nullopt;
+    }
+
+    const double usable_px =
+        std::max(1.0, static_cast<double>(image_size_px_ - 1) - 2.0 * kImagePaddingPx);
+    const double scale = std::min(usable_px / width_m, usable_px / height_m);
+    const double drawn_width_px = width_m * scale;
+    const double drawn_height_px = height_m * scale;
+    const double offset_x =
+        (static_cast<double>(image_size_px_ - 1) - drawn_width_px) * 0.5;
+    const double offset_y =
+        (static_cast<double>(image_size_px_ - 1) - drawn_height_px) * 0.5;
+    const double local_x = point.x - last_grid_.info.origin.position.x;
+    const double local_y = point.y - last_grid_.info.origin.position.y;
+    const int x = static_cast<int>(std::lround(offset_x + local_x * scale));
+    const int y = static_cast<int>(std::lround(static_cast<double>(image_size_px_ - 1) -
+                                               (offset_y + local_y * scale)));
+    if (x < 0 || y < 0 || x >= image_size_px_ || y >= image_size_px_) {
+      return std::nullopt;
+    }
+    return std::array<int, 2>{x, y};
+  }
+
+  [[nodiscard]] std::optional<std::array<int, 2>>
   worldToPixel(const Point2 point) const {
+    if (grid_seen_ && last_grid_.info.resolution > 0.0F && last_grid_.info.width > 0U &&
+        last_grid_.info.height > 0U) {
+      return gridWorldToPixel(point);
+    }
+
     if (!finite2D(point) || !finite2D(current_pose_.position)) {
       return std::nullopt;
     }
@@ -402,7 +441,7 @@ private:
     return std::array<int, 2>{x, y};
   }
 
-  void drawGrid(Image& image) {
+  void drawGrid(Image& image, SnapshotStats& stats) {
     if (!grid_seen_) {
       return;
     }
@@ -426,18 +465,18 @@ private:
         const std::int8_t value = last_grid_.data[index];
         Pixel color{};
         if (value < 0) {
-          ++latest_stats_grid_unknown_;
+          ++stats.grid_unknown;
           continue;
         }
         if (value >= 100) {
-          color = Pixel{220U, 68U, 68U};
-          ++latest_stats_grid_occupied_;
+          color = Pixel{255U, 218U, 75U};
+          ++stats.grid_occupied;
         } else if (value >= 80) {
-          color = Pixel{210U, 130U, 42U};
-          ++latest_stats_grid_inflated_;
+          color = Pixel{204U, 156U, 42U};
+          ++stats.grid_inflated;
         } else {
           color = Pixel{34U, 43U, 52U};
-          ++latest_stats_grid_free_;
+          ++stats.grid_free;
         }
 
         const Point2 center{last_grid_.info.origin.position.x +
@@ -479,7 +518,7 @@ private:
     }
   }
 
-  void drawScan(Image& image, SnapshotStats& stats) {
+  void drawScan(Image& image) {
     const double scan_range_max = scanRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return;
@@ -505,30 +544,27 @@ private:
       }
 
       drawLine(image, (*origin_pixel)[0], (*origin_pixel)[1], (*end_pixel)[0],
-               (*end_pixel)[1], hit ? Pixel{130U, 82U, 65U} : Pixel{40U, 74U, 84U});
+               (*end_pixel)[1], hit ? Pixel{180U, 45U, 45U} : Pixel{40U, 74U, 84U});
       if (hit) {
         drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2, Pixel{255U, 60U, 60U});
       }
     }
-
-    stats.grid_unknown = latest_stats_grid_unknown_;
-    stats.grid_free = latest_stats_grid_free_;
-    stats.grid_inflated = latest_stats_grid_inflated_;
-    stats.grid_occupied = latest_stats_grid_occupied_;
-    latest_stats_grid_unknown_ = 0U;
-    latest_stats_grid_free_ = 0U;
-    latest_stats_grid_inflated_ = 0U;
-    latest_stats_grid_occupied_ = 0U;
   }
 
   void drawDrone(Image& image) const {
-    const int center = image_size_px_ / 2;
-    drawDisc(image, center, center, 5, Pixel{90U, 145U, 255U});
+    const auto pixel = worldToPixel(current_pose_.position);
+    if (!pixel.has_value()) {
+      return;
+    }
+
+    const int center_x = (*pixel)[0];
+    const int center_y = (*pixel)[1];
+    drawDisc(image, center_x, center_y, 5, Pixel{90U, 145U, 255U});
 
     const double yaw = current_pose_.yaw_rad + scan_yaw_offset_rad_;
-    const int nose_x = center + static_cast<int>(std::lround(14.0 * std::cos(yaw)));
-    const int nose_y = center - static_cast<int>(std::lround(14.0 * std::sin(yaw)));
-    drawLine(image, center, center, nose_x, nose_y, Pixel{235U, 245U, 255U});
+    const int nose_x = center_x + static_cast<int>(std::lround(14.0 * std::cos(yaw)));
+    const int nose_y = center_y - static_cast<int>(std::lround(14.0 * std::sin(yaw)));
+    drawLine(image, center_x, center_y, nose_x, nose_y, Pixel{235U, 245U, 255U});
   }
 
   void writeSummary(const std::string& prefix, const std::filesystem::path& image_path,
@@ -747,10 +783,6 @@ private:
   std::size_t max_logged_hit_points_{256U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
-  std::size_t latest_stats_grid_unknown_{0U};
-  std::size_t latest_stats_grid_free_{0U};
-  std::size_t latest_stats_grid_inflated_{0U};
-  std::size_t latest_stats_grid_occupied_{0U};
   bool scan_seen_{false};
   bool grid_seen_{false};
   bool path_seen_{false};

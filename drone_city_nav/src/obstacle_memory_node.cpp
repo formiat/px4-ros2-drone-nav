@@ -70,7 +70,6 @@ public:
                            3600.0) *
         1.0e9);
     inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
-    local_grid_radius_m_ = declare_parameter<double>("local_grid_radius_m", 45.0);
     memory_config_.max_lidar_range_m =
         declare_parameter<double>("max_lidar_range_m", 35.0);
     memory_config_.range_hit_epsilon_m =
@@ -153,10 +152,6 @@ public:
     inflated_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("obstacle_memory_inflated_grid_topic",
                                        "/drone_city_nav/obstacle_memory_inflated_grid"),
-        rclcpp::QoS{1}.transient_local());
-    local_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("obstacle_memory_local_grid_topic",
-                                       "/drone_city_nav/obstacle_memory_local_grid"),
         rclcpp::QoS{1}.transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
@@ -446,7 +441,6 @@ private:
     raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), false, stamp));
     inflated_grid_pub_->publish(
         makeOccupancyGridMessage(memory_->inflatedGrid(), true, stamp));
-    local_grid_pub_->publish(makeLocalGridMessage(stamp));
   }
 
   [[nodiscard]] nav_msgs::msg::OccupancyGrid
@@ -474,57 +468,6 @@ private:
     return msg;
   }
 
-  [[nodiscard]] nav_msgs::msg::OccupancyGrid
-  makeLocalGridMessage(const rclcpp::Time& stamp) {
-    const OccupancyGrid2D& source_grid = memory_->inflatedGrid();
-    const double radius = std::max(local_grid_radius_m_, source_grid.resolution());
-    const int width_cells = positiveCellCount(2.0 * radius, source_grid.resolution());
-    const GridBounds local_bounds{current_pose_.pose.position.x - radius,
-                                  current_pose_.pose.position.y - radius,
-                                  source_grid.resolution(), width_cells, width_cells};
-    OccupancyGrid2D local_grid{local_bounds};
-    nav_msgs::msg::OccupancyGrid msg;
-    msg.header.stamp = stamp;
-    msg.header.frame_id = frame_id_;
-    msg.info.map_load_time = stamp;
-    msg.info.resolution = static_cast<float>(local_grid.resolution());
-    msg.info.width = static_cast<std::uint32_t>(local_grid.width());
-    msg.info.height = static_cast<std::uint32_t>(local_grid.height());
-    msg.info.origin.position.x = local_grid.originX();
-    msg.info.origin.position.y = local_grid.originY();
-    msg.info.origin.orientation.w = 1.0;
-    msg.data.assign(local_grid.cellCount(), static_cast<std::int8_t>(-1));
-
-    for (int y = 0; y < local_grid.height(); ++y) {
-      for (int x = 0; x < local_grid.width(); ++x) {
-        const GridIndex local_cell{x, y};
-        const auto source_cell =
-            source_grid.worldToCell(local_grid.cellCenter(local_cell));
-        if (source_cell.has_value()) {
-          msg.data[local_grid.linearIndex(local_cell)] =
-              occupancyValue(source_grid, *source_cell, true);
-        }
-      }
-    }
-
-    if (!local_grid_seen_) {
-      local_grid_seen_ = true;
-      RCLCPP_INFO(get_logger(),
-                  "Published obstacle memory local grid: center=(%.2f, %.2f) "
-                  "radius=%.2f cells=%dx%d",
-                  current_pose_.pose.position.x, current_pose_.pose.position.y, radius,
-                  local_grid.width(), local_grid.height());
-    } else {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Published obstacle memory local grid: center=(%.2f, %.2f) radius=%.2f "
-          "cells=%dx%d",
-          current_pose_.pose.position.x, current_pose_.pose.position.y, radius,
-          local_grid.width(), local_grid.height());
-    }
-    return msg;
-  }
-
   std::unique_ptr<ObstacleMemoryGrid> memory_;
   ObstacleMemoryConfig memory_config_{};
   GpsCompassConfig gps_config_{};
@@ -540,14 +483,12 @@ private:
   std::int64_t last_pose_update_ns_{0};
   std::int64_t max_compass_staleness_ns_{1'000'000'000};
   double inflation_radius_m_{2.5};
-  double local_grid_radius_m_{45.0};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   bool swap_lidar_xy_to_local_frame_{false};
   bool use_px4_heading_for_scan_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
-  bool local_grid_seen_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
@@ -556,7 +497,6 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr inflated_grid_pub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr local_grid_pub_;
 };
 
 } // namespace drone_city_nav
