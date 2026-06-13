@@ -204,14 +204,22 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
     reason = SpeedLimitReason::kAcceleration;
   }
 
-  if (limits.step_cap_limit_mps + kEpsilon < requested_speed) {
-    requested_speed = std::max(0.0, limits.step_cap_limit_mps);
-    reason = SpeedLimitReason::kHardStepCap;
+  const double step_cap_speed = std::max(0.0, limits.step_cap_limit_mps);
+  if (config_.min_command_speed_mps > 0.0 && requested_speed > 0.0 &&
+      allowed_speed > 0.0 && step_cap_speed > 0.0) {
+    const double requested_minimum =
+        boundedMinimum(config_.min_command_speed_mps, desired);
+    const double safe_minimum =
+        std::min(requested_minimum, std::min(allowed_speed, step_cap_speed));
+    requested_speed = std::max(requested_speed, safe_minimum);
   }
 
-  if (config_.min_command_speed_mps > 0.0 && requested_speed > 0.0) {
-    requested_speed = std::max(requested_speed,
-                               boundedMinimum(config_.min_command_speed_mps, desired));
+  if (allowed_speed + kEpsilon < requested_speed) {
+    requested_speed = allowed_speed;
+  }
+  if (step_cap_speed + kEpsilon < requested_speed) {
+    requested_speed = step_cap_speed;
+    reason = SpeedLimitReason::kHardStepCap;
   }
 
   previous_requested_speed_mps_ = requested_speed;

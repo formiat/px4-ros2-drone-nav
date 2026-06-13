@@ -124,6 +124,38 @@ TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
+TEST(OffboardSpeedController, MinCommandSpeedDoesNotBypassHardStepCap) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  config.min_command_speed_mps = 4.0;
+  config.max_commanded_target_step_m = 0.2;
+  OffboardSpeedController controller{config};
+
+  const SpeedControllerOutput output = controller.update(cruiseInput());
+
+  EXPECT_NEAR(output.requested_speed_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(output.target_step_m, 0.2, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
+}
+
+TEST(OffboardSpeedController, MinCommandSpeedDoesNotPreventGoalStop) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 10.0;
+  config.min_command_speed_mps = 1.5;
+  OffboardSpeedController controller{config};
+  (void)controller.update(cruiseInput());
+  (void)controller.update(cruiseInput());
+
+  SpeedControllerInput input = cruiseInput();
+  input.distance_to_goal_m = 0.5;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kGoal);
+}
+
 TEST(OffboardSpeedController, NonFiniteInputsFailClosedToHold) {
   OffboardSpeedController controller{testConfig()};
   SpeedControllerInput input = cruiseInput();
