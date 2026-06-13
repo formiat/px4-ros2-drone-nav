@@ -67,6 +67,9 @@ planner_node:
     use_px4_heading_for_scan: false
     swap_lidar_xy_to_local_frame: true
     astar_max_expansions: 100000
+    astar_obstacle_clearance_cost_radius_m: 4.0
+    astar_obstacle_clearance_cost_weight: 6.0
+    path_smoothing_min_obstacle_clearance_m: 1.5
     replan_period_s: 0.75
 
 px4_offboard_node:

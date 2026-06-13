@@ -89,6 +89,15 @@ public:
     astar_config_.max_expansions = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
         std::numeric_limits<int>::max()));
+    astar_config_.obstacle_clearance_cost_radius_m = std::clamp(
+        declare_parameter<double>("astar_obstacle_clearance_cost_radius_m", 0.0), 0.0,
+        100.0);
+    astar_config_.obstacle_clearance_cost_weight = std::clamp(
+        declare_parameter<double>("astar_obstacle_clearance_cost_weight", 0.0), 0.0,
+        1000.0);
+    path_smoothing_config_.minimum_obstacle_clearance_m = std::clamp(
+        declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0), 0.0,
+        100.0);
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -163,6 +172,12 @@ public:
         direct_path_fallback_ ? "true" : "false",
         reuse_last_valid_path_on_failure_ ? "true" : "false",
         max_initial_lateral_deviation_m_);
+    RCLCPP_INFO(get_logger(),
+                "Planner obstacle clearance preference: astar_radius=%.2fm "
+                "astar_weight=%.2f smoothing_min_clearance=%.2fm",
+                astar_config_.obstacle_clearance_cost_radius_m,
+                astar_config_.obstacle_clearance_cost_weight,
+                path_smoothing_config_.minimum_obstacle_clearance_m);
   }
 
 private:
@@ -360,14 +375,19 @@ private:
     }
 
     const std::vector<GridIndex> smoothed_cells =
-        smoothPath(planning_grid, astar_result.path);
+        smoothPath(planning_grid, astar_result.path, path_smoothing_config_);
     const GridStats stats = collectGridStats(planning_grid);
+    const double raw_path_clearance_m =
+        pathMinimumBlockedClearanceM(planning_grid, astar_result.path);
+    const double smoothed_path_clearance_m =
+        pathMinimumBlockedClearanceM(planning_grid, smoothed_cells);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
         "distance_to_goal=%.2f occupied=%zu inflated=%zu free=%zu unknown=%zu "
         "current_lidar[used=%s fresh=%s hits=%zu occupied_cells=%zu outside=%zu] "
-        "expanded=%zu raw_path=%zu smoothed_path=%zu",
+        "expanded=%zu raw_path=%zu smoothed_path=%zu "
+        "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_), stats.occupied_cells,
@@ -375,7 +395,8 @@ private:
         current_lidar_stats.used ? "true" : "false",
         current_lidar_stats.fresh ? "true" : "false", current_lidar_stats.hit_beams,
         current_lidar_stats.occupied_cells, current_lidar_stats.outside_hits,
-        astar_result.expanded_cells, astar_result.path.size(), smoothed_cells.size());
+        astar_result.expanded_cells, astar_result.path.size(), smoothed_cells.size(),
+        raw_path_clearance_m, smoothed_path_clearance_m);
 
     std::vector<Point2> path_points = cellsToPoints(planning_grid, smoothed_cells);
     if (path_points.empty()) {
@@ -424,6 +445,51 @@ private:
       }
     }
     return stats;
+  }
+
+  [[nodiscard]] double clearanceDiagnosticRadiusM() const noexcept {
+    const double configured_clearance_m =
+        std::max(astar_config_.obstacle_clearance_cost_radius_m,
+                 path_smoothing_config_.minimum_obstacle_clearance_m);
+    return std::max(10.0, configured_clearance_m);
+  }
+
+  [[nodiscard]] double nearestBlockedDistanceM(const OccupancyGrid2D& grid,
+                                               const GridIndex cell) const {
+    if (!(grid.resolution() > 0.0)) {
+      return std::numeric_limits<double>::infinity();
+    }
+
+    const int radius_cells =
+        static_cast<int>(std::ceil(clearanceDiagnosticRadiusM() / grid.resolution()));
+    double nearest_distance_m = std::numeric_limits<double>::infinity();
+    for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+      for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+        const GridIndex candidate{cell.x + dx, cell.y + dy};
+        if (!grid.contains(candidate) || !grid.isBlocked(candidate)) {
+          continue;
+        }
+        nearest_distance_m =
+            std::min(nearest_distance_m,
+                     distance(grid.cellCenter(cell), grid.cellCenter(candidate)));
+      }
+    }
+
+    return nearest_distance_m;
+  }
+
+  [[nodiscard]] double
+  pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
+                               const std::vector<GridIndex>& path) const {
+    double minimum_clearance_m = std::numeric_limits<double>::infinity();
+    for (const GridIndex cell : path) {
+      if (!grid.contains(cell)) {
+        continue;
+      }
+      minimum_clearance_m =
+          std::min(minimum_clearance_m, nearestBlockedDistanceM(grid, cell));
+    }
+    return minimum_clearance_m;
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -747,6 +813,7 @@ private:
   std::optional<OccupancyGrid2D> memory_grid_;
   AStarPlanner planner_;
   AStarConfig astar_config_{};
+  PathSmoothingConfig path_smoothing_config_{};
 
   Pose2 current_pose_{};
   Point2 start_{};

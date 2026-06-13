@@ -9,6 +9,8 @@ namespace drone_city_nav {
 
 struct AStarConfig {
   std::size_t max_expansions{100000};
+  double obstacle_clearance_cost_radius_m{0.0};
+  double obstacle_clearance_cost_weight{0.0};
 };
 
 struct AStarResult {

@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <vector>
 
 namespace drone_city_nav {
@@ -69,6 +70,42 @@ TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   for (const GridIndex cell : result.path) {
     EXPECT_FALSE(grid.isBlocked(cell));
   }
+}
+
+TEST(AStarPlanner, ClearanceCostPrefersRouteFartherFromObstacleWall) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(0.0);
+
+  AStarConfig config{};
+  config.obstacle_clearance_cost_radius_m = 3.0;
+  config.obstacle_clearance_cost_weight = 8.0;
+
+  const GridIndex start{1, 1};
+  const GridIndex goal{18, 1};
+  const AStarResult result = AStarPlanner{}.plan(grid, start, goal, config);
+
+  ASSERT_TRUE(result.success);
+  const auto farthest_from_wall = std::ranges::max_element(
+      result.path, {}, [](const GridIndex cell) { return cell.y; });
+  ASSERT_NE(farthest_from_wall, result.path.end());
+  EXPECT_GE(farthest_from_wall->y, 3);
+}
+
+TEST(PathSmoothing, RejectsShortcutTooCloseToObstacleWhenClearanceIsRequired) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(0.0);
+
+  EXPECT_TRUE(hasLineOfSight(grid, GridIndex{1, 1}, GridIndex{18, 1}));
+
+  PathSmoothingConfig config{};
+  config.minimum_obstacle_clearance_m = 2.5;
+  EXPECT_FALSE(hasLineOfSight(grid, GridIndex{1, 1}, GridIndex{18, 1}, config));
 }
 
 TEST(PathSmoothing, KeepsCollisionFreeSegments) {
