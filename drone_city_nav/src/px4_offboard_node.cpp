@@ -1,5 +1,7 @@
+#include "drone_city_nav/offboard_speed_controller.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
@@ -16,10 +18,15 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <string>
 
 namespace drone_city_nav {
 namespace {
+
+constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
+constexpr double kControllerPeriodS = 0.1;
+constexpr double kTinyDistanceM = 1.0e-6;
 
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
@@ -66,6 +73,39 @@ public:
         declare_parameter<double>("max_setpoint_distance_m", 2.0), 0.5, 50.0);
     max_commanded_target_step_m_ = std::clamp(
         declare_parameter<double>("max_commanded_target_step_m", 0.25), 0.01, 10.0);
+    SpeedControllerConfig speed_config{};
+    speed_config.max_commanded_target_step_m = max_commanded_target_step_m_;
+    speed_config.desired_speed_mps = std::clamp(
+        declare_parameter<double>("desired_speed_mps",
+                                  max_commanded_target_step_m_ / kControllerPeriodS),
+        0.0, 50.0);
+    speed_config.max_accel_mps2 =
+        std::clamp(declare_parameter<double>("max_accel_mps2", 2.0), 0.1, 50.0);
+    speed_config.min_command_speed_mps =
+        std::clamp(declare_parameter<double>("min_command_speed_mps", 0.0), 0.0, 50.0);
+    speed_config.goal_slowdown_radius_m = std::clamp(
+        declare_parameter<double>("goal_slowdown_radius_m", 10.0), 0.0, 200.0);
+    speed_config.braking_safety_margin_m = std::clamp(
+        declare_parameter<double>("braking_safety_margin_m", acceptance_radius_m_), 0.0,
+        50.0);
+    speed_config.turn_slowdown_angle_rad =
+        std::clamp(declare_parameter<double>("turn_slowdown_angle_rad", 0.7), 0.0,
+                   std::numbers::pi);
+    speed_config.turn_slowdown_min_speed_mps = std::clamp(
+        declare_parameter<double>("turn_slowdown_min_speed_mps", 1.5), 0.0, 50.0);
+    speed_config.narrow_clearance_slowdown_radius_m =
+        std::clamp(declare_parameter<double>("narrow_clearance_slowdown_radius_m", 7.0),
+                   0.0, 100.0);
+    speed_config.narrow_clearance_min_speed_mps = std::clamp(
+        declare_parameter<double>("narrow_clearance_min_speed_mps", 1.0), 0.0, 50.0);
+    speed_controller_.setConfig(speed_config);
+    velocity_feedforward_enabled_ =
+        declare_parameter<bool>("velocity_feedforward_enabled", false);
+    max_clearance_grid_staleness_ns_ = static_cast<std::int64_t>(
+        std::clamp<double>(
+            declare_parameter<double>("max_clearance_grid_staleness_s", 1.5), 0.0,
+            3600.0) *
+        1.0e9);
     lookahead_distance_m_ =
         std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0), 0.0, 50.0);
     path_switch_hysteresis_m_ = std::clamp(
@@ -100,6 +140,8 @@ public:
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
     const std::string emergency_stop_topic = declare_parameter<std::string>(
         "emergency_stop_topic", "/drone_city_nav/emergency_stop");
+    const std::string occupancy_grid_topic = declare_parameter<std::string>(
+        "occupancy_grid_topic", "/drone_city_nav/occupancy_grid");
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
@@ -119,6 +161,11 @@ public:
     emergency_stop_sub_ = create_subscription<std_msgs::msg::Bool>(
         emergency_stop_topic, rclcpp::QoS{1}.reliable().transient_local(),
         [this](const std_msgs::msg::Bool::SharedPtr msg) { onEmergencyStop(*msg); });
+    occupancy_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+        occupancy_grid_topic, rclcpp::QoS{1}.transient_local(),
+        [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+          onOccupancyGrid(*msg);
+        });
 
     offboard_control_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
         declare_parameter<std::string>("offboard_control_mode_topic",
@@ -133,29 +180,37 @@ public:
                                        "/fmu/in/vehicle_command"),
         px4_qos);
 
-    timer_ = create_wall_timer(std::chrono::milliseconds{100}, [this]() { onTimer(); });
+    timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
     last_command_time_ =
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
 
-    RCLCPP_INFO(get_logger(),
-                "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-                "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
-                "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
-                "lookahead=%.1fm "
-                "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-                "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
-                cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-                auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
-                face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
-                max_commanded_target_step_m_, lookahead_distance_m_,
-                path_switch_hysteresis_m_, path_continuity_reuse_radius_m_,
-                path_continuity_max_target_distance_m_, mission_goal_.x,
-                mission_goal_.y);
+    RCLCPP_INFO(
+        get_logger(),
+        "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
+        "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
+        "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
+        "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
+        "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
+        "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
+        "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
+        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
+        cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
+        auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
+        face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
+        max_commanded_target_step_m_, speed_controller_.config().desired_speed_mps,
+        speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
+        speed_controller_.config().goal_slowdown_radius_m,
+        speed_controller_.config().turn_slowdown_angle_rad,
+        speed_controller_.config().narrow_clearance_slowdown_radius_m,
+        velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
+        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
+        mission_goal_.x, mission_goal_.y);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
-                "vehicle_status='%s' emergency_stop='%s'",
+                "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
                 path_topic.c_str(), local_position_topic.c_str(),
-                vehicle_status_topic.c_str(), emergency_stop_topic.c_str());
+                vehicle_status_topic.c_str(), emergency_stop_topic.c_str(),
+                occupancy_grid_topic.c_str());
   }
 
 private:
@@ -318,6 +373,16 @@ private:
     }
 
     current_position_ = Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    if (std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
+      current_velocity_ =
+          Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
+      current_speed_mps_ = std::hypot(current_velocity_.x, current_velocity_.y);
+      current_velocity_valid_ = true;
+    } else {
+      current_velocity_ = Point2{};
+      current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
+      current_velocity_valid_ = false;
+    }
     if (msg.z_valid && std::isfinite(msg.z)) {
       current_altitude_m_ = -static_cast<double>(msg.z);
       altitude_valid_ = true;
@@ -374,6 +439,41 @@ private:
                  "sending disarm commands");
   }
 
+  void onOccupancyGrid(const nav_msgs::msg::OccupancyGrid& msg) {
+    if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U ||
+        msg.info.height == 0U ||
+        msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Ignoring invalid offboard occupancy grid metadata");
+      return;
+    }
+
+    const std::size_t expected_size = static_cast<std::size_t>(msg.info.width) *
+                                      static_cast<std::size_t>(msg.info.height);
+    if (msg.data.size() != expected_size) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Ignoring offboard occupancy grid with mismatched data size: expected=%zu "
+          "got=%zu",
+          expected_size, msg.data.size());
+      return;
+    }
+
+    occupancy_grid_ = msg;
+    occupancy_grid_valid_ = true;
+    last_occupancy_grid_update_ns_ = get_clock()->now().nanoseconds();
+    if (!occupancy_grid_seen_logged_) {
+      occupancy_grid_seen_logged_ = true;
+      RCLCPP_INFO(get_logger(),
+                  "First offboard occupancy grid: size=%ux%u resolution=%.2f "
+                  "origin=(%.2f, %.2f)",
+                  msg.info.width, msg.info.height,
+                  static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
+                  msg.info.origin.position.y);
+    }
+  }
+
   void onTimer() {
     if (emergency_stop_requested_) {
       handleEmergencyStop();
@@ -427,7 +527,7 @@ private:
     px4_msgs::msg::OffboardControlMode msg;
     msg.timestamp = nowMicros();
     msg.position = true;
-    msg.velocity = false;
+    msg.velocity = velocity_feedforward_enabled_;
     msg.acceleration = false;
     msg.attitude = false;
     msg.body_rate = false;
@@ -439,7 +539,11 @@ private:
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
 
-    const Point2 target = smoothedCommandTarget(limitedTarget(currentTarget()));
+    const Point2 desired_target = limitedTarget(currentTarget());
+    const SpeedControllerInput speed_input = makeSpeedControllerInput();
+    last_speed_output_ = speed_controller_.update(speed_input);
+    const Point2 target = smoothedCommandTarget(
+        desired_target, last_speed_output_.target_step_m, speed_input.hold_position);
     const float nan = std::numeric_limits<float>::quiet_NaN();
 
     px4_msgs::msg::TrajectorySetpoint msg;
@@ -447,7 +551,7 @@ private:
     msg.position =
         std::array<float, 3>{static_cast<float>(target.x), static_cast<float>(target.y),
                              static_cast<float>(-std::abs(cruise_altitude_m_))};
-    msg.velocity = std::array<float, 3>{0.0F, 0.0F, 0.0F};
+    msg.velocity = velocityFeedforward(target, last_speed_output_);
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw =
@@ -543,29 +647,161 @@ private:
     return Point2{current_position_.x + dx * scale, current_position_.y + dy * scale};
   }
 
-  Point2 smoothedCommandTarget(const Point2 desired_target) {
+  Point2 smoothedCommandTarget(const Point2 desired_target, const double target_step_m,
+                               const bool snap_to_desired_target) {
     if (!local_position_valid_) {
       commanded_target_valid_ = false;
       return desired_target;
     }
-    if (!commanded_target_valid_) {
+    if (snap_to_desired_target) {
       commanded_target_ = limitedTarget(desired_target);
       commanded_target_valid_ = true;
-      return commanded_target_;
+      return clampCommandedTargetToCurrent();
+    }
+    if (!commanded_target_valid_) {
+      commanded_target_ = current_position_;
+      commanded_target_valid_ = true;
     }
 
     const double dx = desired_target.x - commanded_target_.x;
     const double dy = desired_target.y - commanded_target_.y;
     const double target_step = std::hypot(dx, dy);
-    if (target_step <= max_commanded_target_step_m_ || !(target_step > 0.0)) {
+    if (!(target_step_m > 0.0)) {
+      return clampCommandedTargetToCurrent();
+    }
+    if (target_step <= target_step_m || !(target_step > 0.0)) {
       commanded_target_ = desired_target;
       return clampCommandedTargetToCurrent();
     }
 
-    const double scale = max_commanded_target_step_m_ / target_step;
+    const double scale = target_step_m / target_step;
     commanded_target_ =
         Point2{commanded_target_.x + dx * scale, commanded_target_.y + dy * scale};
     return clampCommandedTargetToCurrent();
+  }
+
+  [[nodiscard]] bool shouldHoldPosition() const {
+    return !local_position_valid_ || !navigationAllowed() || !path_valid_ ||
+           waypoint_index_ >= path_.poses.size();
+  }
+
+  [[nodiscard]] SpeedControllerInput makeSpeedControllerInput() const {
+    SpeedControllerInput input{};
+    input.hold_position = shouldHoldPosition();
+    input.controller_dt_s = kControllerPeriodS;
+    input.distance_to_goal_m = local_position_valid_
+                                   ? distance(current_position_, mission_goal_)
+                                   : std::numeric_limits<double>::quiet_NaN();
+    input.turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
+    input.local_clearance_m = local_position_valid_
+                                  ? estimateLocalClearanceM(current_position_)
+                                  : std::numeric_limits<double>::quiet_NaN();
+    input.actual_speed_mps = current_speed_mps_;
+    return input;
+  }
+
+  [[nodiscard]] double pathTurnAngleAtWaypoint(const std::size_t index) const {
+    if (!path_valid_ || path_.poses.size() < 3U || index >= path_.poses.size()) {
+      return 0.0;
+    }
+
+    const Point2 previous =
+        index == 0U && local_position_valid_
+            ? current_position_
+            : Point2{pathPointX(path_, index == 0U ? 0U : index - 1U),
+                     pathPointY(path_, index == 0U ? 0U : index - 1U)};
+    const Point2 current{pathPointX(path_, index), pathPointY(path_, index)};
+    const Point2 next{pathPointX(path_, std::min(index + 1U, path_.poses.size() - 1U)),
+                      pathPointY(path_, std::min(index + 1U, path_.poses.size() - 1U))};
+
+    const Point2 incoming{current.x - previous.x, current.y - previous.y};
+    const Point2 outgoing{next.x - current.x, next.y - current.y};
+    const double incoming_length = std::hypot(incoming.x, incoming.y);
+    const double outgoing_length = std::hypot(outgoing.x, outgoing.y);
+    if (incoming_length <= kTinyDistanceM || outgoing_length <= kTinyDistanceM) {
+      return 0.0;
+    }
+
+    const double cosine =
+        std::clamp((incoming.x * outgoing.x + incoming.y * outgoing.y) /
+                       (incoming_length * outgoing_length),
+                   -1.0, 1.0);
+    return std::acos(cosine);
+  }
+
+  [[nodiscard]] bool occupancyGridFresh() const {
+    if (!occupancy_grid_valid_ || last_occupancy_grid_update_ns_ <= 0) {
+      return false;
+    }
+    if (max_clearance_grid_staleness_ns_ <= 0) {
+      return true;
+    }
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    return now_ns >= last_occupancy_grid_update_ns_ &&
+           now_ns - last_occupancy_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
+  }
+
+  [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
+    if (!occupancyGridFresh()) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    const double resolution = static_cast<double>(occupancy_grid_.info.resolution);
+    const double origin_x = occupancy_grid_.info.origin.position.x;
+    const double origin_y = occupancy_grid_.info.origin.position.y;
+    const auto width = static_cast<int>(occupancy_grid_.info.width);
+    const auto height = static_cast<int>(occupancy_grid_.info.height);
+    const GridIndex center{
+        static_cast<int>(std::floor((point.x - origin_x) / resolution)),
+        static_cast<int>(std::floor((point.y - origin_y) / resolution))};
+    if (center.x < 0 || center.y < 0 || center.x >= width || center.y >= height) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    const int radius_cells = static_cast<int>(std::ceil(
+        speed_controller_.config().narrow_clearance_slowdown_radius_m / resolution));
+    const int min_x = std::max(center.x - radius_cells, 0);
+    const int max_x = std::min(center.x + radius_cells, width - 1);
+    const int min_y = std::max(center.y - radius_cells, 0);
+    const int max_y = std::min(center.y + radius_cells, height - 1);
+
+    double nearest_clearance_m = std::numeric_limits<double>::infinity();
+    for (int y = min_y; y <= max_y; ++y) {
+      for (int x = min_x; x <= max_x; ++x) {
+        const std::size_t data_index =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+            static_cast<std::size_t>(x);
+        if (occupancy_grid_.data[data_index] < 80) {
+          continue;
+        }
+        const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
+                                 origin_y +
+                                     (static_cast<double>(y) + 0.5) * resolution};
+        nearest_clearance_m =
+            std::min(nearest_clearance_m, distance(point, cell_center));
+      }
+    }
+
+    return nearest_clearance_m;
+  }
+
+  [[nodiscard]] std::array<float, 3>
+  velocityFeedforward(const Point2 target,
+                      const SpeedControllerOutput& speed_output) const {
+    if (!velocity_feedforward_enabled_ || !local_position_valid_ ||
+        !(speed_output.requested_speed_mps > 0.0)) {
+      return std::array<float, 3>{0.0F, 0.0F, 0.0F};
+    }
+
+    const double target_distance = distance(current_position_, target);
+    if (target_distance <= kTinyDistanceM) {
+      return std::array<float, 3>{0.0F, 0.0F, 0.0F};
+    }
+
+    const double scale = speed_output.requested_speed_mps / target_distance;
+    return std::array<float, 3>{
+        static_cast<float>((target.x - current_position_.x) * scale),
+        static_cast<float>((target.y - current_position_.y) * scale), 0.0F};
   }
 
   Point2 clampCommandedTargetToCurrent() {
@@ -643,13 +879,18 @@ private:
                        Point2{pathPointX(path_, path_.poses.size() - 1U),
                               pathPointY(path_, path_.poses.size() - 1U)})
             : std::numeric_limits<double>::quiet_NaN();
+    const double local_clearance_m = local_position_valid_
+                                         ? estimateLocalClearanceM(current_position_)
+                                         : std::numeric_limits<double>::quiet_NaN();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Offboard summary: local_position=%s altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
-        "distance_to_mission_goal=%.2f",
+        "distance_to_mission_goal=%.2f requested_speed=%.2f actual_speed=%.2f "
+        "speed_limit_reason=%s allowed_speed=%.2f braking_distance=%.2f "
+        "target_step=%.2f turn_angle=%.2f local_clearance=%.2f",
         local_position_valid_ ? "true" : "false", current_altitude_m_,
         navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -657,12 +898,19 @@ private:
         no_path_hold_target_valid_ ? "true" : "false",
         path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
         current_position_.x, current_position_.y, target.x, target.y, target_distance,
-        path_goal_distance, mission_goal_distance);
+        path_goal_distance, mission_goal_distance,
+        last_speed_output_.requested_speed_mps, current_speed_mps_,
+        speedLimitReasonName(last_speed_output_.limit_reason),
+        last_speed_output_.allowed_speed_mps, last_speed_output_.braking_distance_m,
+        last_speed_output_.target_step_m, pathTurnAngleAtWaypoint(waypoint_index_),
+        local_clearance_m);
   }
 
   nav_msgs::msg::Path path_;
+  nav_msgs::msg::OccupancyGrid occupancy_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
+  Point2 current_velocity_{};
   Point2 no_path_hold_target_{};
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
@@ -681,6 +929,9 @@ private:
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
+  double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
+  std::int64_t last_occupancy_grid_update_ns_{0};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
@@ -692,11 +943,15 @@ private:
   bool auto_arm_{true};
   bool auto_offboard_{true};
   bool emergency_stop_requested_{false};
+  bool occupancy_grid_valid_{false};
+  bool occupancy_grid_seen_logged_{false};
+  bool current_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool face_target_yaw_{false};
   bool navigation_started_{false};
+  bool velocity_feedforward_enabled_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -706,6 +961,8 @@ private:
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
+  OffboardSpeedController speed_controller_;
+  SpeedControllerOutput last_speed_output_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
@@ -713,6 +970,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
+  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_grid_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr

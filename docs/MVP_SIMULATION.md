@@ -56,6 +56,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
   navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
+- `drone_city_nav/include/drone_city_nav/offboard_speed_controller.hpp` -
+  portable speed-profile logic used by the offboard follower.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
@@ -65,6 +67,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   tests.
 - `drone_city_nav/tests/obstacle_memory_test.cpp` - deterministic obstacle
   memory and GPS/compass adapter tests.
+- `drone_city_nav/tests/offboard_speed_controller_test.cpp` - deterministic
+  speed-profile tests.
 
 ## Runtime Profiles
 
@@ -135,6 +139,12 @@ PX4 SITL output is written to `log/px4_city_mvp.log` by default. The
 MicroXRCEAgent log is written to `log/uxrce_agent_city_mvp.log`. Override them
 with `PX4_LOG_FILE=/path/to/px4.log` and
 `UXRCE_AGENT_LOG_FILE=/path/to/agent.log` when needed.
+
+Override the ROS parameter file used by the run script with:
+
+```bash
+CITY_NAV_PARAMS_FILE=/workspace/build/some_params.yaml ./scripts/run_city_mvp.sh
+```
 
 ## Lidar Debugging
 
@@ -261,6 +271,44 @@ On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
 the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
 crashed vehicle is not commanded to recover and continue the mission.
 
+## Offboard Speed Control
+
+The offboard follower uses position setpoints by default, but speed is now an
+explicit requested profile instead of only an emergent result of target motion.
+The main simulation parameters are:
+
+- `desired_speed_mps` - requested cruise speed for normal path following.
+- `max_accel_mps2` - acceleration/deceleration limit for requested setpoint
+  progression.
+- `goal_slowdown_radius_m` and `braking_safety_margin_m` - reduce requested
+  speed before point B.
+- `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - reduce speed
+  before sharp path turns.
+- `narrow_clearance_slowdown_radius_m` and
+  `narrow_clearance_min_speed_mps` - reduce speed near occupied or inflated
+  planner grid cells.
+- `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
+  target motion at the 10 Hz controller rate.
+- `velocity_feedforward_enabled` - experimental feed-forward flag. It is
+  disabled by default; the MVP remains position-setpoint controlled unless this
+  is explicitly enabled for SITL validation.
+
+Runtime logs from `px4_offboard_node` include `requested_speed`,
+`actual_speed`, `speed_limit_reason`, `allowed_speed`, `braking_distance`,
+`target_step`, `turn_angle`, and `local_clearance`. Mission-monitor results
+include final speed plus `max_observed_speed` and `mean_observed_speed`, so
+headless runs can prove that the drone moved at the expected scale and stopped
+at the goal.
+
+Run a simple simulation speed sweep without editing tracked YAML files:
+
+```bash
+./scripts/run_speed_sweep.sh 3 5 7
+```
+
+The sweep writes temporary parameter files under `build/speed_sweep` and logs
+each run under `log/speed_sweep_<speed>`.
+
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
 
@@ -300,6 +348,9 @@ colcon test-result --verbose
   `px4_offboard_node`, and `mission_monitor_node`.
 - The simulation offboard follower uses a short lookahead so obstacle-avoidance
   waypoints are followed instead of being skipped by a direct-to-goal setpoint.
+- The simulation offboard follower has explicit requested speed, acceleration,
+  goal/turn/clearance slowdown, and a hard per-tick target-step cap. Actual
+  speed is still ultimately limited by PX4 position-controller internals.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.

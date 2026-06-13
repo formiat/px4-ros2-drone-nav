@@ -192,6 +192,11 @@ private:
     latest_speed_mps_ = current_speed_mps;
     latest_altitude_m_ = current_altitude_m;
     latest_position_valid_ = true;
+    if (std::isfinite(current_speed_mps)) {
+      max_observed_speed_mps_ = std::max(max_observed_speed_mps_, current_speed_mps);
+      speed_sum_mps_ += current_speed_mps;
+      ++speed_sample_count_;
+    }
 
     if (!spawn_checked_) {
       spawn_checked_ = true;
@@ -305,10 +310,12 @@ private:
                 "MISSION_RESULT success=true spawn_distance=%.2f "
                 "max_distance_from_start=%.2f min_goal_distance=%.2f "
                 "min_building_clearance=%.2f final_position=(%.2f, %.2f) "
-                "final_altitude=%.2f final_speed=%.2f",
+                "final_altitude=%.2f final_speed=%.2f max_observed_speed=%.2f "
+                "mean_observed_speed=%.2f",
                 spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
                 min_building_clearance_m_, latest_position_.x, latest_position_.y,
-                latest_altitude_m_, latest_speed_mps_);
+                latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
+                meanObservedSpeedMps());
   }
 
   void reportFailure(const std::string& reason) {
@@ -318,10 +325,12 @@ private:
                  "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
                  "max_distance_from_start=%.2f min_goal_distance=%.2f "
                  "min_building_clearance=%.2f latest_position=(%.2f, %.2f) "
-                 "latest_altitude=%.2f latest_speed=%.2f",
+                 "latest_altitude=%.2f latest_speed=%.2f max_observed_speed=%.2f "
+                 "mean_observed_speed=%.2f",
                  reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
                  min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
-                 latest_position_.y, latest_altitude_m_, latest_speed_mps_);
+                 latest_position_.y, latest_altitude_m_, latest_speed_mps_,
+                 max_observed_speed_mps_, meanObservedSpeedMps());
   }
 
   void publishEmergencyStop(const std::string& reason) {
@@ -342,13 +351,22 @@ private:
         get_logger(),
         "Mission summary: spawn_ok=%s moved=%s armed_seen=%s "
         "position=(%.2f, %.2f) altitude=%.2f speed=%.2f "
+        "max_observed_speed=%.2f mean_observed_speed=%.2f "
         "distance_to_start=%.2f distance_to_goal=%.2f max_distance_from_start=%.2f "
         "min_building_clearance=%.2f",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
         armed_seen ? "true" : "false", latest_position_.x, latest_position_.y,
-        latest_altitude_m_, latest_speed_mps_, distance(latest_position_, start_),
+        latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
+        meanObservedSpeedMps(), distance(latest_position_, start_),
         distance(latest_position_, goal_), max_distance_from_start_m_,
         min_building_clearance_m_);
+  }
+
+  [[nodiscard]] double meanObservedSpeedMps() const noexcept {
+    if (speed_sample_count_ == 0U) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    return speed_sum_mps_ / static_cast<double>(speed_sample_count_);
   }
 
   std::vector<BuildingFootprint> buildings_;
@@ -372,6 +390,9 @@ private:
   double latest_speed_mps_{std::numeric_limits<double>::infinity()};
   double latest_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double max_altitude_m_{0.0};
+  double max_observed_speed_mps_{0.0};
+  double speed_sum_mps_{0.0};
+  std::size_t speed_sample_count_{0U};
   bool latest_position_valid_{false};
   bool vehicle_status_valid_{false};
   bool spawn_checked_{false};

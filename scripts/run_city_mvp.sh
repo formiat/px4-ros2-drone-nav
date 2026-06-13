@@ -33,6 +33,7 @@ uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${repo_root}/log/uxrce_agent_city_mvp.lo
 ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
+city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${repo_root}/drone_city_nav/config/urban_mvp.yaml}"
 enable_lidar_debug="${ENABLE_LIDAR_DEBUG:-true}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
@@ -58,6 +59,10 @@ px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
 if [[ ! -d "${px4_dir}" ]]; then
   echo "PX4-Autopilot was not found at ${px4_dir}" >&2
   echo "Run scripts/setup_px4_autopilot.sh first or set PX4_AUTOPILOT_DIR." >&2
+  exit 1
+fi
+if [[ ! -f "${city_nav_params_file}" ]]; then
+  echo "City navigation params file was not found: ${city_nav_params_file}" >&2
   exit 1
 fi
 
@@ -156,6 +161,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
+echo "City navigation params: ${city_nav_params_file}"
 echo "Gazebo resources: ${runtime_dir}"
 (
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
@@ -281,7 +287,7 @@ check_headless_run() {
 echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
-    params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    params_file:="${city_nav_params_file}" \
     lidar_debug_output_dir:="${lidar_debug_dir}" \
     enable_gazebo_bridge:=true \
     enable_mission_monitor:=true \
@@ -303,7 +309,7 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
   }
 else
   ros2 launch drone_city_nav city_nav.launch.py \
-    params_file:="${repo_root}/drone_city_nav/config/urban_mvp.yaml" \
+    params_file:="${city_nav_params_file}" \
     lidar_debug_output_dir:="${lidar_debug_dir}" \
     enable_gazebo_bridge:=true \
     enable_mission_monitor:=true \

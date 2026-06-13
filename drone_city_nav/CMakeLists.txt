@@ -29,6 +29,7 @@ add_library(
   drone_city_nav_core
   src/astar_planner.cpp
   src/navigation_pose.cpp
+  src/offboard_speed_controller.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/path_smoothing.cpp)
@@ -124,6 +125,12 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_test)
+
+  ament_add_gtest(offboard_speed_controller_test
+                  tests/offboard_speed_controller_test.cpp)
+  target_compile_features(offboard_speed_controller_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_speed_controller_test drone_city_nav_core)
+  enable_project_warnings(offboard_speed_controller_test)
 endif()
 
 ament_export_include_directories(include)
