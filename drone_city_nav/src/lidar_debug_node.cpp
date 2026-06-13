@@ -21,6 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -200,6 +201,12 @@ public:
         declare_parameter<bool>("publish_lidar_radar_markers", false);
     hit_memory_resolution_m_ =
         std::max(0.05, declare_parameter<double>("hit_memory_resolution_m", 0.25));
+    remembered_hit_min_confirmations_ =
+        static_cast<std::size_t>(std::clamp<std::int64_t>(
+            declare_parameter<std::int64_t>("remembered_hit_min_confirmations", 3), 1,
+            1000));
+    min_remember_altitude_m_ =
+        std::max(0.0, declare_parameter<double>("min_remember_altitude_m", 0.0));
     max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1,
         1000000));
@@ -252,13 +259,15 @@ public:
                 "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
                 "pose='%s' current_hits='%s' remembered_hits='%s' markers='%s' "
                 "lidar_radar_markers=%s hit_memory_resolution=%.2fm "
+                "min_confirmations=%zu min_remember_altitude=%.2fm "
                 "max_remembered_hits=%zu",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), pointcloud_topic_.c_str(),
                 remembered_pointcloud_topic_.c_str(), marker_topic_.c_str(),
                 publish_lidar_radar_markers_ ? "true" : "false",
-                hit_memory_resolution_m_, max_remembered_hit_points_);
+                hit_memory_resolution_m_, remembered_hit_min_confirmations_,
+                min_remember_altitude_m_, max_remembered_hit_points_);
   }
 
 private:
@@ -317,11 +326,12 @@ private:
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     RCLCPP_INFO(get_logger(),
                 "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
-                "beams=%zu hits=%zu remembered_hits=%zu grid=%s path_waypoints=%zu "
-                "image='%s' csv='%s'",
+                "beams=%zu hits=%zu remembered_hits=%zu candidate_hits=%zu grid=%s "
+                "path_waypoints=%zu image='%s' csv='%s'",
                 prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
                 current_altitude_m_, stats.processed_beams, stats.hit_beams,
-                remembered_hit_points_.size(), grid_seen_ ? "true" : "false",
+                remembered_hit_points_.size(), hit_candidates_.size(),
+                grid_seen_ ? "true" : "false",
                 path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
                 csv_path.string().c_str());
   }
@@ -334,6 +344,11 @@ private:
     std::size_t grid_inflated{0U};
     std::size_t grid_occupied{0U};
     std::vector<Point2> hit_points;
+  };
+
+  struct HitCandidate {
+    std::size_t confirmations{0U};
+    Point2 point{};
   };
 
   [[nodiscard]] double scanRangeMax() const {
@@ -500,13 +515,43 @@ private:
             static_cast<int>(std::floor(point.y / hit_memory_resolution_m_))};
   }
 
+  [[nodiscard]] bool rememberedHitsAllowed() const {
+    if (!(min_remember_altitude_m_ > 0.0)) {
+      return true;
+    }
+    return altitude_valid_ && std::isfinite(current_altitude_m_) &&
+           current_altitude_m_ >= min_remember_altitude_m_;
+  }
+
   void rememberHitPoints(const std::vector<Point2>& hit_points) {
+    if (!rememberedHitsAllowed()) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Skipping remembered lidar hit updates below memory altitude: "
+          "altitude=%.2f valid=%s required=%.2f",
+          current_altitude_m_, altitude_valid_ ? "true" : "false",
+          min_remember_altitude_m_);
+      return;
+    }
+
     for (const Point2 point : hit_points) {
       if (!finite2D(point)) {
         continue;
       }
       const auto key = hitMemoryKey(point);
       if (remembered_hit_cells_.contains(key)) {
+        continue;
+      }
+      HitCandidate& candidate = hit_candidates_[key];
+      ++candidate.confirmations;
+      if (candidate.confirmations == 1U) {
+        candidate.point = point;
+      } else {
+        const double sample_count = static_cast<double>(candidate.confirmations);
+        candidate.point.x += (point.x - candidate.point.x) / sample_count;
+        candidate.point.y += (point.y - candidate.point.y) / sample_count;
+      }
+      if (candidate.confirmations < remembered_hit_min_confirmations_) {
         continue;
       }
       if (remembered_hit_points_.size() >= max_remembered_hit_points_) {
@@ -518,7 +563,7 @@ private:
         return;
       }
       remembered_hit_cells_.insert(key);
-      remembered_hit_points_.push_back(point);
+      remembered_hit_points_.push_back(candidate.point);
     }
   }
 
@@ -628,6 +673,7 @@ private:
                     << ",\"waypoints\":" << (path_seen_ ? last_path_.poses.size() : 0U)
                     << "},";
     summary_stream_ << "\"remembered_hits\":" << remembered_hit_points_.size() << ',';
+    summary_stream_ << "\"candidate_hits\":" << hit_candidates_.size() << ',';
     summary_stream_ << "\"image_ok\":" << (image_ok ? "true" : "false") << ',';
     summary_stream_ << "\"image\":" << jsonString(image_path.string()) << ',';
     summary_stream_ << "\"scan_csv\":" << jsonString(csv_path.string()) << ',';
@@ -823,13 +869,16 @@ private:
   double range_hit_epsilon_m_{0.05};
   double scan_yaw_offset_rad_{0.0};
   double hit_memory_resolution_m_{0.25};
+  double min_remember_altitude_m_{0.0};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
   std::size_t image_beam_stride_{4U};
   std::size_t max_logged_hit_points_{256U};
+  std::size_t remembered_hit_min_confirmations_{3U};
   std::size_t max_remembered_hit_points_{50000U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
+  std::map<std::pair<int, int>, HitCandidate> hit_candidates_;
   std::set<std::pair<int, int>> remembered_hit_cells_;
   std::vector<Point2> remembered_hit_points_;
   bool scan_seen_{false};

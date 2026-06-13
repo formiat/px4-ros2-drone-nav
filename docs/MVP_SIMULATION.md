@@ -150,7 +150,9 @@ snapshots under `log/lidar_debug`:
   is available. Red dots are current lidar hits, yellow dots are accumulated
   remembered lidar hits, cyan/green lines are the current path, and the blue
   marker is the drone. Occupancy-grid cells are counted in JSON but are not
-  drawn in this image.
+  drawn in this image. Remembered lidar hits are altitude-gated and require
+  repeated confirmations before they are displayed, so takeoff-time transient
+  ground returns are not kept as obstacle outlines.
 
 Override the debug directory or disable recording from the run script:
 
@@ -189,7 +191,9 @@ The main obstacle-memory topics are:
 - `/drone_city_nav/lidar_debug_points` - current lidar hit endpoints, shown red
   in RViz.
 - `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
-  shown yellow in RViz.
+  shown yellow in RViz. The MVP config uses `min_remember_altitude_m=16.0`,
+  `remembered_hit_min_confirmations=3`, and `hit_memory_resolution_m=0.25` for
+  this visual debug memory.
 - `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
   controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
