@@ -23,8 +23,10 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -190,10 +192,17 @@ public:
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
     pointcloud_topic_ = declare_parameter<std::string>(
         "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
+    remembered_pointcloud_topic_ = declare_parameter<std::string>(
+        "remembered_pointcloud_topic", "/drone_city_nav/remembered_lidar_points");
     marker_topic_ = declare_parameter<std::string>(
         "marker_topic", "/drone_city_nav/lidar_radar_markers");
     publish_lidar_radar_markers_ =
         declare_parameter<bool>("publish_lidar_radar_markers", false);
+    hit_memory_resolution_m_ =
+        std::max(0.05, declare_parameter<double>("hit_memory_resolution_m", 0.25));
+    max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1,
+        1000000));
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
 
@@ -230,6 +239,8 @@ public:
         });
     pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         pointcloud_topic_, rclcpp::QoS{1}.reliable());
+    remembered_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        remembered_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
         marker_topic_, rclcpp::QoS{1}.reliable());
 
@@ -239,11 +250,15 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
                 "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
-                "pose='%s' points='%s' markers='%s' lidar_radar_markers=%s",
+                "pose='%s' current_hits='%s' remembered_hits='%s' markers='%s' "
+                "lidar_radar_markers=%s hit_memory_resolution=%.2fm "
+                "max_remembered_hits=%zu",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), pointcloud_topic_.c_str(),
-                marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false");
+                remembered_pointcloud_topic_.c_str(), marker_topic_.c_str(),
+                publish_lidar_radar_markers_ ? "true" : "false",
+                hit_memory_resolution_m_, max_remembered_hit_points_);
   }
 
 private:
@@ -286,23 +301,27 @@ private:
 
     SnapshotStats stats{};
     writeScanCsv(csv_path, stats);
+    rememberHitPoints(stats.hit_points);
 
     Image image{image_size_px_, image_size_px_, Pixel{12U, 16U, 20U}};
-    drawGrid(image, stats);
+    countGrid(stats);
+    drawRememberedHits(image);
     drawPath(image);
     drawScan(image);
     drawDrone(image);
     const bool image_ok = writePpm(image_path, image);
-    publishPointCloud(stats);
+    publishPointCloud(stats.hit_points, pointcloud_pub_);
+    publishPointCloud(remembered_hit_points_, remembered_pointcloud_pub_);
     publishRadarMarkers();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     RCLCPP_INFO(get_logger(),
                 "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
-                "beams=%zu hits=%zu grid=%s path_waypoints=%zu image='%s' csv='%s'",
+                "beams=%zu hits=%zu remembered_hits=%zu grid=%s path_waypoints=%zu "
+                "image='%s' csv='%s'",
                 prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
                 current_altitude_m_, stats.processed_beams, stats.hit_beams,
-                grid_seen_ ? "true" : "false",
+                remembered_hit_points_.size(), grid_seen_ ? "true" : "false",
                 path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
                 csv_path.string().c_str());
   }
@@ -310,7 +329,6 @@ private:
   struct SnapshotStats {
     std::size_t processed_beams{0U};
     std::size_t hit_beams{0U};
-    std::size_t logged_hit_points{0U};
     std::size_t grid_unknown{0U};
     std::size_t grid_free{0U};
     std::size_t grid_inflated{0U};
@@ -359,23 +377,16 @@ private:
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += beam_csv_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      if (!hit) {
-        continue;
-      }
-
-      const double used_range_m = static_cast<double>(raw_range);
+      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
 
       ++stats.processed_beams;
+      const Point2 end = scanEndpoint(i, used_range_m);
       if (hit) {
         ++stats.hit_beams;
-      }
-      const Point2 end = scanEndpoint(i, used_range_m);
-      if (hit && stats.hit_points.size() < max_logged_hit_points_) {
         stats.hit_points.push_back(end);
-        ++stats.logged_hit_points;
       }
 
       const double angle_rad =
@@ -447,7 +458,7 @@ private:
     return std::array<int, 2>{x, y};
   }
 
-  void drawGrid(Image& image, SnapshotStats& stats) {
+  void countGrid(SnapshotStats& stats) const {
     if (!grid_seen_) {
       return;
     }
@@ -469,30 +480,53 @@ private:
         }
 
         const std::int8_t value = last_grid_.data[index];
-        Pixel color{};
         if (value < 0) {
           ++stats.grid_unknown;
           continue;
         }
         if (value >= 100) {
-          color = Pixel{255U, 218U, 75U};
           ++stats.grid_occupied;
         } else if (value >= 80) {
-          color = Pixel{204U, 156U, 42U};
           ++stats.grid_inflated;
         } else {
-          color = Pixel{34U, 43U, 52U};
           ++stats.grid_free;
         }
+      }
+    }
+  }
 
-        const Point2 center{last_grid_.info.origin.position.x +
-                                (static_cast<double>(x) + 0.5) * resolution,
-                            last_grid_.info.origin.position.y +
-                                (static_cast<double>(y) + 0.5) * resolution};
-        const auto pixel = worldToPixel(center);
-        if (pixel.has_value()) {
-          image.set((*pixel)[0], (*pixel)[1], color);
-        }
+  [[nodiscard]] std::pair<int, int> hitMemoryKey(const Point2 point) const {
+    return {static_cast<int>(std::floor(point.x / hit_memory_resolution_m_)),
+            static_cast<int>(std::floor(point.y / hit_memory_resolution_m_))};
+  }
+
+  void rememberHitPoints(const std::vector<Point2>& hit_points) {
+    for (const Point2 point : hit_points) {
+      if (!finite2D(point)) {
+        continue;
+      }
+      const auto key = hitMemoryKey(point);
+      if (remembered_hit_cells_.contains(key)) {
+        continue;
+      }
+      if (remembered_hit_points_.size() >= max_remembered_hit_points_) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                             "Remembered lidar hit memory is full: points=%zu max=%zu "
+                             "resolution=%.2fm",
+                             remembered_hit_points_.size(), max_remembered_hit_points_,
+                             hit_memory_resolution_m_);
+        return;
+      }
+      remembered_hit_cells_.insert(key);
+      remembered_hit_points_.push_back(point);
+    }
+  }
+
+  void drawRememberedHits(Image& image) const {
+    for (const Point2 point : remembered_hit_points_) {
+      const auto pixel = worldToPixel(point);
+      if (pixel.has_value()) {
+        drawDisc(image, (*pixel)[0], (*pixel)[1], 1, Pixel{255U, 218U, 75U});
       }
     }
   }
@@ -530,15 +564,14 @@ private:
       return;
     }
 
-    const auto origin_pixel = worldToPixel(current_pose_.position);
-    if (!origin_pixel.has_value()) {
-      return;
-    }
-
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
+      if (!hit) {
+        continue;
+      }
+
+      const double used_range_m = static_cast<double>(raw_range);
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
@@ -549,8 +582,6 @@ private:
         continue;
       }
 
-      drawLine(image, (*origin_pixel)[0], (*origin_pixel)[1], (*end_pixel)[0],
-               (*end_pixel)[1], Pixel{180U, 45U, 45U});
       drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2, Pixel{255U, 60U, 60U});
     }
   }
@@ -596,11 +627,14 @@ private:
     summary_stream_ << "\"path\":{\"seen\":" << (path_seen_ ? "true" : "false")
                     << ",\"waypoints\":" << (path_seen_ ? last_path_.poses.size() : 0U)
                     << "},";
+    summary_stream_ << "\"remembered_hits\":" << remembered_hit_points_.size() << ',';
     summary_stream_ << "\"image_ok\":" << (image_ok ? "true" : "false") << ',';
     summary_stream_ << "\"image\":" << jsonString(image_path.string()) << ',';
     summary_stream_ << "\"scan_csv\":" << jsonString(csv_path.string()) << ',';
     summary_stream_ << "\"hit_points\":[";
-    for (std::size_t i = 0U; i < stats.hit_points.size(); ++i) {
+    const std::size_t logged_hit_count =
+        std::min(stats.hit_points.size(), max_logged_hit_points_);
+    for (std::size_t i = 0U; i < logged_hit_count; ++i) {
       if (i != 0U) {
         summary_stream_ << ',';
       }
@@ -611,12 +645,14 @@ private:
     summary_stream_.flush();
   }
 
-  void publishPointCloud(const SnapshotStats& stats) {
+  void publishPointCloud(
+      const std::vector<Point2>& points,
+      const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher) {
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = now();
     cloud.header.frame_id = "map";
     cloud.height = 1U;
-    cloud.width = static_cast<std::uint32_t>(stats.hit_points.size());
+    cloud.width = static_cast<std::uint32_t>(points.size());
     cloud.is_bigendian = false;
     cloud.is_dense = true;
     cloud.point_step = 12U;
@@ -636,9 +672,9 @@ private:
     cloud.fields[2].count = 1U;
     cloud.data.resize(static_cast<std::size_t>(cloud.row_step));
 
-    for (std::size_t i = 0U; i < stats.hit_points.size(); ++i) {
-      const float x = static_cast<float>(stats.hit_points[i].x);
-      const float y = static_cast<float>(stats.hit_points[i].y);
+    for (std::size_t i = 0U; i < points.size(); ++i) {
+      const float x = static_cast<float>(points[i].x);
+      const float y = static_cast<float>(points[i].y);
       const float z = std::isfinite(current_altitude_m_)
                           ? static_cast<float>(current_altitude_m_)
                           : 0.0F;
@@ -648,7 +684,7 @@ private:
       std::memcpy(&cloud.data[offset + 8U], &z, sizeof(float));
     }
 
-    pointcloud_pub_->publish(cloud);
+    publisher->publish(cloud);
   }
 
   [[nodiscard]] geometry_msgs::msg::Point markerPoint(const Point2 point,
@@ -754,79 +790,25 @@ private:
     markers.markers.push_back(std::move(drone));
   }
 
-  void addObstacleMemoryMarkers(visualization_msgs::msg::MarkerArray& markers) const {
-    if (!grid_seen_) {
-      return;
-    }
-
-    const double resolution = static_cast<double>(last_grid_.info.resolution);
-    if (!(resolution > 0.0)) {
-      return;
-    }
-
-    auto inflated = baseMarker("obstacle_memory_inflated", 0,
-                               visualization_msgs::msg::Marker::CUBE_LIST);
-    inflated.scale.x = resolution;
-    inflated.scale.y = resolution;
-    inflated.scale.z = 0.08;
-    setColor(inflated, 0.80F, 0.55F, 0.12F, 0.60F);
-
-    auto occupied = baseMarker("obstacle_memory_occupied", 0,
-                               visualization_msgs::msg::Marker::CUBE_LIST);
-    occupied.scale.x = resolution;
-    occupied.scale.y = resolution;
-    occupied.scale.z = 0.16;
-    setColor(occupied, 1.0F, 0.86F, 0.24F, 0.95F);
-
-    const int width = static_cast<int>(last_grid_.info.width);
-    const int height = static_cast<int>(last_grid_.info.height);
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        const auto index =
-            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
-            static_cast<std::size_t>(x);
-        if (index >= last_grid_.data.size()) {
-          continue;
-        }
-
-        const std::int8_t value = last_grid_.data[index];
-        if (value < 80) {
-          continue;
-        }
-
-        const Point2 center{last_grid_.info.origin.position.x +
-                                (static_cast<double>(x) + 0.5) * resolution,
-                            last_grid_.info.origin.position.y +
-                                (static_cast<double>(y) + 0.5) * resolution};
-        if (value >= 100) {
-          occupied.points.push_back(markerPoint(center, 0.10));
-        } else {
-          inflated.points.push_back(markerPoint(center, 0.05));
-        }
-      }
-    }
-
-    markers.markers.push_back(std::move(inflated));
-    markers.markers.push_back(std::move(occupied));
-  }
-
   void publishRadarMarkers() {
+    if (!publish_lidar_radar_markers_) {
+      return;
+    }
+
     visualization_msgs::msg::MarkerArray markers;
     const double z = std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
-    addObstacleMemoryMarkers(markers);
-    if (publish_lidar_radar_markers_) {
-      addRangeRing(markers, 10.0, 0, z);
-      addRangeRing(markers, 20.0, 1, z);
-      addRangeRing(markers, 30.0, 2, z);
-      addRangeRing(markers, scanRangeMax(), 3, z);
-      addScanRayMarkers(markers, z);
-      addDroneMarker(markers, z);
-    }
+    addRangeRing(markers, 10.0, 0, z);
+    addRangeRing(markers, 20.0, 1, z);
+    addRangeRing(markers, 30.0, 2, z);
+    addRangeRing(markers, scanRangeMax(), 3, z);
+    addScanRayMarkers(markers, z);
+    addDroneMarker(markers, z);
     marker_pub_->publish(markers);
   }
 
   std::string output_dir_;
   std::string pointcloud_topic_;
+  std::string remembered_pointcloud_topic_;
   std::string marker_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
@@ -840,12 +822,16 @@ private:
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double scan_yaw_offset_rad_{0.0};
+  double hit_memory_resolution_m_{0.25};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
   std::size_t image_beam_stride_{4U};
   std::size_t max_logged_hit_points_{256U};
+  std::size_t max_remembered_hit_points_{50000U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
+  std::set<std::pair<int, int>> remembered_hit_cells_;
+  std::vector<Point2> remembered_hit_points_;
   bool scan_seen_{false};
   bool grid_seen_{false};
   bool path_seen_{false};
@@ -861,6 +847,8 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+      remembered_pointcloud_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

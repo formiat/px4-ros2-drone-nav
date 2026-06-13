@@ -147,9 +147,10 @@ snapshots under `log/lidar_debug`:
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
   hit flag, and map-frame endpoint.
 - `snapshot_000001.ppm` - a full-map top-down debug image when the memory grid
-  is available. Red dots/rays are current lidar hits, yellow cells are occupied
-  obstacle-memory cells, amber cells are inflated safety cells, cyan/green lines
-  are the current path, and the blue marker is the drone.
+  is available. Red dots are current lidar hits, yellow dots are accumulated
+  remembered lidar hits, cyan/green lines are the current path, and the blue
+  marker is the drone. Occupancy-grid cells are counted in JSON but are not
+  drawn in this image.
 
 Override the debug directory or disable recording from the run script:
 
@@ -172,22 +173,25 @@ ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
 ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
-The RViz config shows obstacle-memory cells from
-`/drone_city_nav/obstacle_memory_markers`, `/drone_city_nav/path`, and red-only
-lidar hit points from `/drone_city_nav/lidar_debug_points`. The standard RViz
-`Map` display for `/drone_city_nav/obstacle_memory_inflated_grid` is kept
-disabled by default because its fixed black/gray color scheme hides the intended
-yellow obstacle-memory view. All debug overlays are published in the `map`
-frame, so no Gazebo lidar TF tree is required.
+The RViz config shows red current lidar hit points from
+`/drone_city_nav/lidar_debug_points`, yellow accumulated lidar hit points from
+`/drone_city_nav/remembered_lidar_points`, and `/drone_city_nav/path`. The
+standard RViz `Map` display for `/drone_city_nav/obstacle_memory_inflated_grid`
+is kept disabled by default because this GUI is intended to show remembered
+lidar wall hits, not filled occupancy-grid cells. All debug overlays are
+published in the `map` frame, so no Gazebo lidar TF tree is required.
 
 The main obstacle-memory topics are:
 
 - `/drone_city_nav/obstacle_memory_grid` - full raw persistent memory grid.
 - `/drone_city_nav/obstacle_memory_inflated_grid` - full memory grid after
   safety inflation for debugging clearance.
-- `/drone_city_nav/obstacle_memory_markers` - RViz marker overlay for the
-  obstacle-memory grid. Occupied cells are yellow, inflated safety cells are
-  amber, and non-hit lidar helper markers are not published by default.
+- `/drone_city_nav/lidar_debug_points` - current lidar hit endpoints, shown red
+  in RViz.
+- `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
+  shown yellow in RViz.
+- `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
+  controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   inflation, kept for compatibility with existing debug tooling.
 
