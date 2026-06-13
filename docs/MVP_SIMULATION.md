@@ -191,13 +191,25 @@ The main obstacle-memory topics are:
 - `/drone_city_nav/lidar_debug_points` - current lidar hit endpoints, shown red
   in RViz.
 - `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
-  shown yellow in RViz. The MVP config uses `min_remember_altitude_m=16.0`,
+  shown yellow in RViz. The MVP config uses `min_remember_altitude_m=10.0`,
   `remembered_hit_min_confirmations=3`, and `hit_memory_resolution_m=0.25` for
   this visual debug memory.
 - `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
   controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   inflation, kept for compatibility with existing debug tooling.
+
+The planner builds its A* grid from two sources:
+
+- Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.
+- A temporary overlay of the latest fresh `/scan` hit endpoints. This overlay is
+  applied only to the planner's working grid before inflation, so it can help at
+  lower altitude without permanently storing takeoff-time artifacts.
+
+In the MVP config, obstacle-memory integration starts at
+`min_mapping_altitude_m=5.0`. The yellow visual remembered-hit layer is more
+conservative and starts at `min_remember_altitude_m=10.0`, because it is only a
+GUI/debug memory and should avoid clutter from takeoff transients.
 
 For replay-oriented debugging, record the relevant topics in a second shell
 while the simulation is running:
@@ -292,9 +304,9 @@ colcon test-result --verbose
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.
   This continuity is disabled for far-away targets such as the final goal.
-- The simulation obstacle-memory node ignores lidar map updates below
-  `min_mapping_altitude_m` so takeoff-time ground returns do not pollute the
-  cruise-altitude 2D occupancy grid.
+- The simulation obstacle-memory node ignores persistent lidar map updates below
+  `min_mapping_altitude_m`. The planner still overlays fresh lidar hits onto its
+  temporary A* grid when `use_current_lidar_obstacles=true`.
 - `obstacle_memory_node` and `planner_node` both fail closed when PX4 local
   position becomes invalid or stale for longer than `max_pose_staleness_s`.
   Obstacle memory skips lidar integration, and the planner publishes an empty
