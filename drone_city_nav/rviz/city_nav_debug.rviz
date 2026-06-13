@@ -18,8 +18,8 @@ Visualization Manager:
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: false
-      Enabled: true
-      Name: Obstacle Memory
+      Enabled: false
+      Name: Raw Obstacle Memory Grid
       Topic:
         Value: /drone_city_nav/obstacle_memory_inflated_grid
     - Alpha: 1
@@ -46,13 +46,15 @@ Visualization Manager:
       Topic:
         Value: /drone_city_nav/lidar_debug_points
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Name: Obstacle Memory Markers
+      Enabled: true
+      Name: Obstacle Memory
       Namespaces:
-        lidar_radar_drone: true
-        lidar_radar_free_rays: true
-        lidar_radar_hit_rays: true
-        lidar_radar_range: true
+        lidar_radar_drone: false
+        lidar_radar_free_rays: false
+        lidar_radar_hit_rays: false
+        lidar_radar_range: false
+        obstacle_memory_inflated: true
+        obstacle_memory_occupied: true
       Topic:
         Value: /drone_city_nav/obstacle_memory_markers
     - Class: rviz_default_plugins/Axes

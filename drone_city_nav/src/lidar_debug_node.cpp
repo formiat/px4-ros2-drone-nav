@@ -192,6 +192,8 @@ public:
         "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
     marker_topic_ = declare_parameter<std::string>(
         "marker_topic", "/drone_city_nav/lidar_radar_markers");
+    publish_lidar_radar_markers_ =
+        declare_parameter<bool>("publish_lidar_radar_markers", false);
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
 
@@ -237,11 +239,11 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
                 "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
-                "pose='%s' points='%s' markers='%s'",
+                "pose='%s' points='%s' markers='%s' lidar_radar_markers=%s",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), pointcloud_topic_.c_str(),
-                marker_topic_.c_str());
+                marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false");
   }
 
 private:
@@ -357,7 +359,11 @@ private:
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += beam_csv_stride_) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = isHit(raw_range, scan_range_max);
-      const double used_range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
+      if (!hit) {
+        continue;
+      }
+
+      const double used_range_m = static_cast<double>(raw_range);
       if (!(used_range_m >= static_cast<double>(last_scan_.range_min))) {
         continue;
       }
@@ -544,10 +550,8 @@ private:
       }
 
       drawLine(image, (*origin_pixel)[0], (*origin_pixel)[1], (*end_pixel)[0],
-               (*end_pixel)[1], hit ? Pixel{180U, 45U, 45U} : Pixel{40U, 74U, 84U});
-      if (hit) {
-        drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2, Pixel{255U, 60U, 60U});
-      }
+               (*end_pixel)[1], Pixel{180U, 45U, 45U});
+      drawDisc(image, (*end_pixel)[0], (*end_pixel)[1], 2, Pixel{255U, 60U, 60U});
     }
   }
 
@@ -750,15 +754,74 @@ private:
     markers.markers.push_back(std::move(drone));
   }
 
+  void addObstacleMemoryMarkers(visualization_msgs::msg::MarkerArray& markers) const {
+    if (!grid_seen_) {
+      return;
+    }
+
+    const double resolution = static_cast<double>(last_grid_.info.resolution);
+    if (!(resolution > 0.0)) {
+      return;
+    }
+
+    auto inflated = baseMarker("obstacle_memory_inflated", 0,
+                               visualization_msgs::msg::Marker::CUBE_LIST);
+    inflated.scale.x = resolution;
+    inflated.scale.y = resolution;
+    inflated.scale.z = 0.08;
+    setColor(inflated, 0.80F, 0.55F, 0.12F, 0.60F);
+
+    auto occupied = baseMarker("obstacle_memory_occupied", 0,
+                               visualization_msgs::msg::Marker::CUBE_LIST);
+    occupied.scale.x = resolution;
+    occupied.scale.y = resolution;
+    occupied.scale.z = 0.16;
+    setColor(occupied, 1.0F, 0.86F, 0.24F, 0.95F);
+
+    const int width = static_cast<int>(last_grid_.info.width);
+    const int height = static_cast<int>(last_grid_.info.height);
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        const auto index =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+            static_cast<std::size_t>(x);
+        if (index >= last_grid_.data.size()) {
+          continue;
+        }
+
+        const std::int8_t value = last_grid_.data[index];
+        if (value < 80) {
+          continue;
+        }
+
+        const Point2 center{last_grid_.info.origin.position.x +
+                                (static_cast<double>(x) + 0.5) * resolution,
+                            last_grid_.info.origin.position.y +
+                                (static_cast<double>(y) + 0.5) * resolution};
+        if (value >= 100) {
+          occupied.points.push_back(markerPoint(center, 0.10));
+        } else {
+          inflated.points.push_back(markerPoint(center, 0.05));
+        }
+      }
+    }
+
+    markers.markers.push_back(std::move(inflated));
+    markers.markers.push_back(std::move(occupied));
+  }
+
   void publishRadarMarkers() {
     visualization_msgs::msg::MarkerArray markers;
     const double z = std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
-    addRangeRing(markers, 10.0, 0, z);
-    addRangeRing(markers, 20.0, 1, z);
-    addRangeRing(markers, 30.0, 2, z);
-    addRangeRing(markers, scanRangeMax(), 3, z);
-    addScanRayMarkers(markers, z);
-    addDroneMarker(markers, z);
+    addObstacleMemoryMarkers(markers);
+    if (publish_lidar_radar_markers_) {
+      addRangeRing(markers, 10.0, 0, z);
+      addRangeRing(markers, 20.0, 1, z);
+      addRangeRing(markers, 30.0, 2, z);
+      addRangeRing(markers, scanRangeMax(), 3, z);
+      addScanRayMarkers(markers, z);
+      addDroneMarker(markers, z);
+    }
     marker_pub_->publish(markers);
   }
 
@@ -790,6 +853,7 @@ private:
   bool altitude_valid_{false};
   bool use_px4_heading_for_scan_{false};
   bool swap_lidar_xy_to_local_frame_{false};
+  bool publish_lidar_radar_markers_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_sub_;

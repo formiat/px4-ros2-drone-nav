@@ -105,6 +105,7 @@ lidar_debug_node:
     path_topic: /drone_city_nav/path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
     marker_topic: /drone_city_nav/obstacle_memory_markers
+    publish_lidar_radar_markers: false
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900

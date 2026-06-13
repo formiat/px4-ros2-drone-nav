@@ -172,16 +172,22 @@ ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
 ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
-The RViz config shows the full inflated memory map from
-`/drone_city_nav/obstacle_memory_inflated_grid`, `/drone_city_nav/path`, and
-`/drone_city_nav/lidar_debug_points`. The map is published in the `map` frame,
-so no Gazebo lidar TF tree is required.
+The RViz config shows obstacle-memory cells from
+`/drone_city_nav/obstacle_memory_markers`, `/drone_city_nav/path`, and red-only
+lidar hit points from `/drone_city_nav/lidar_debug_points`. The standard RViz
+`Map` display for `/drone_city_nav/obstacle_memory_inflated_grid` is kept
+disabled by default because its fixed black/gray color scheme hides the intended
+yellow obstacle-memory view. All debug overlays are published in the `map`
+frame, so no Gazebo lidar TF tree is required.
 
 The main obstacle-memory topics are:
 
 - `/drone_city_nav/obstacle_memory_grid` - full raw persistent memory grid.
 - `/drone_city_nav/obstacle_memory_inflated_grid` - full memory grid after
   safety inflation for debugging clearance.
+- `/drone_city_nav/obstacle_memory_markers` - RViz marker overlay for the
+  obstacle-memory grid. Occupied cells are yellow, inflated safety cells are
+  amber, and non-hit lidar helper markers are not published by default.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   inflation, kept for compatibility with existing debug tooling.
 
