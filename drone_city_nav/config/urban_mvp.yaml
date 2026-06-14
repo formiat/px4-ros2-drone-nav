@@ -66,9 +66,10 @@ planner_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
     swap_lidar_xy_to_local_frame: true
-    astar_max_expansions: 100000
+    astar_max_expansions: 500000
     astar_obstacle_clearance_cost_radius_m: 4.0
     astar_obstacle_clearance_cost_weight: 6.0
+    astar_turn_cost_weight: 2.5
     path_smoothing_min_obstacle_clearance_m: 1.5
     replan_period_s: 0.75
 
@@ -86,20 +87,24 @@ px4_offboard_node:
     min_navigation_altitude_m: 17.0
     face_target_yaw: false
     acceptance_radius_m: 1.0
-    max_setpoint_distance_m: 3.0
-    max_commanded_target_step_m: 0.5
+    max_setpoint_distance_m: 10.0
+    max_commanded_target_step_m: 0.9
     desired_speed_mps: 5.0
-    max_accel_mps2: 2.5
+    max_accel_mps2: 4.0
     min_command_speed_mps: 0.0
-    goal_slowdown_radius_m: 14.0
+    goal_slowdown_radius_m: 18.0
     braking_safety_margin_m: 1.0
-    turn_slowdown_angle_rad: 0.65
-    turn_slowdown_min_speed_mps: 1.5
-    narrow_clearance_slowdown_radius_m: 7.0
-    narrow_clearance_min_speed_mps: 1.2
+    turn_slowdown_angle_rad: 0.85
+    turn_slowdown_min_speed_mps: 2.0
+    narrow_clearance_slowdown_radius_m: 2.5
+    narrow_clearance_min_speed_mps: 2.0
     max_clearance_grid_staleness_s: 1.5
-    velocity_feedforward_enabled: false
-    lookahead_distance_m: 5.0
+    velocity_feedforward_enabled: true
+    lookahead_distance_m: 8.0
+    dynamic_lookahead_enabled: true
+    lookahead_time_s: 1.6
+    min_lookahead_distance_m: 8.0
+    max_lookahead_distance_m: 16.0
     path_switch_hysteresis_m: 3.0
     path_continuity_reuse_radius_m: 6.0
     path_continuity_max_target_distance_m: 20.0

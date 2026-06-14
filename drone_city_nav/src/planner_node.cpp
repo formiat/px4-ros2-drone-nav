@@ -95,6 +95,8 @@ public:
     astar_config_.obstacle_clearance_cost_weight = std::clamp(
         declare_parameter<double>("astar_obstacle_clearance_cost_weight", 0.0), 0.0,
         1000.0);
+    astar_config_.turn_cost_weight = std::clamp(
+        declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);
     path_smoothing_config_.minimum_obstacle_clearance_m = std::clamp(
         declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0), 0.0,
         100.0);
@@ -174,9 +176,11 @@ public:
         max_initial_lateral_deviation_m_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
-                "astar_weight=%.2f smoothing_min_clearance=%.2fm",
+                "astar_weight=%.2f astar_turn_weight=%.2f "
+                "smoothing_min_clearance=%.2fm",
                 astar_config_.obstacle_clearance_cost_radius_m,
                 astar_config_.obstacle_clearance_cost_weight,
+                astar_config_.turn_cost_weight,
                 path_smoothing_config_.minimum_obstacle_clearance_m);
   }
 

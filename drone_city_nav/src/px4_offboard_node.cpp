@@ -19,6 +19,7 @@
 #include <limits>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <string>
 
 namespace drone_city_nav {
@@ -27,6 +28,13 @@ namespace {
 constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
 constexpr double kControllerPeriodS = 0.1;
 constexpr double kTinyDistanceM = 1.0e-6;
+
+struct PathProjection {
+  std::size_t segment_start_index{0U};
+  double segment_t{0.0};
+  double distance_sq{std::numeric_limits<double>::infinity()};
+  Point2 point{};
+};
 
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
@@ -108,6 +116,19 @@ public:
         1.0e9);
     lookahead_distance_m_ =
         std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0), 0.0, 50.0);
+    dynamic_lookahead_enabled_ =
+        declare_parameter<bool>("dynamic_lookahead_enabled", true);
+    lookahead_time_s_ =
+        std::clamp(declare_parameter<double>("lookahead_time_s", 1.2), 0.0, 10.0);
+    min_lookahead_distance_m_ = std::clamp(
+        declare_parameter<double>("min_lookahead_distance_m", lookahead_distance_m_),
+        0.0, 50.0);
+    max_lookahead_distance_m_ = std::clamp(
+        declare_parameter<double>("max_lookahead_distance_m", lookahead_distance_m_),
+        0.0, 100.0);
+    if (max_lookahead_distance_m_ < min_lookahead_distance_m_) {
+      max_lookahead_distance_m_ = min_lookahead_distance_m_;
+    }
     path_switch_hysteresis_m_ = std::clamp(
         declare_parameter<double>("path_switch_hysteresis_m", 3.0), 0.0, 100.0);
     path_continuity_reuse_radius_m_ = std::clamp(
@@ -190,6 +211,8 @@ public:
         "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
         "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
         "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
+        "dynamic_lookahead=%s lookahead_time=%.2fs "
+        "lookahead_range=[%.1f, %.1f] "
         "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
         "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
@@ -199,6 +222,8 @@ public:
         face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
         max_commanded_target_step_m_, speed_controller_.config().desired_speed_mps,
         speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
+        dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
+        min_lookahead_distance_m_, max_lookahead_distance_m_,
         speed_controller_.config().goal_slowdown_radius_m,
         speed_controller_.config().turn_slowdown_angle_rad,
         speed_controller_.config().narrow_clearance_slowdown_radius_m,
@@ -298,10 +323,11 @@ private:
 
     const std::size_t closest_index = closestWaypointIndex();
     const double current_goal_distance = distance(current_position_, mission_goal_);
+    const double lookahead_distance = effectiveLookaheadDistanceM();
     for (std::size_t i = closest_index; i < path_.poses.size(); ++i) {
       const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
       const bool far_enough =
-          distance(current_position_, waypoint) >= lookahead_distance_m_;
+          distance(current_position_, waypoint) >= lookahead_distance;
       const bool progresses_to_goal =
           distance(waypoint, mission_goal_) + acceptance_radius_m_ <
           current_goal_distance;
@@ -311,6 +337,79 @@ private:
     }
 
     return path_.poses.size() - 1U;
+  }
+
+  [[nodiscard]] double effectiveLookaheadDistanceM() const {
+    double lookahead_m = lookahead_distance_m_;
+    if (dynamic_lookahead_enabled_) {
+      lookahead_m = std::max(lookahead_m, speed_controller_.config().desired_speed_mps *
+                                              lookahead_time_s_);
+    }
+    return std::clamp(lookahead_m, min_lookahead_distance_m_,
+                      max_lookahead_distance_m_);
+  }
+
+  [[nodiscard]] std::optional<PathProjection> closestPathProjection() const {
+    if (!local_position_valid_ || path_.poses.empty()) {
+      return std::nullopt;
+    }
+    if (path_.poses.size() == 1U) {
+      const Point2 waypoint{pathPointX(path_, 0U), pathPointY(path_, 0U)};
+      return PathProjection{0U, 0.0, squaredDistance(current_position_, waypoint),
+                            waypoint};
+    }
+
+    PathProjection best{};
+    for (std::size_t i = 0U; i + 1U < path_.poses.size(); ++i) {
+      const Point2 segment_start{pathPointX(path_, i), pathPointY(path_, i)};
+      const Point2 segment_end{pathPointX(path_, i + 1U), pathPointY(path_, i + 1U)};
+      const Point2 segment{segment_end.x - segment_start.x,
+                           segment_end.y - segment_start.y};
+      const double segment_length_sq = squaredDistance(segment_start, segment_end);
+      const double segment_t =
+          segment_length_sq > kTinyDistanceM
+              ? std::clamp(((current_position_.x - segment_start.x) * segment.x +
+                            (current_position_.y - segment_start.y) * segment.y) /
+                               segment_length_sq,
+                           0.0, 1.0)
+              : 0.0;
+      const Point2 projected{segment_start.x + segment.x * segment_t,
+                             segment_start.y + segment.y * segment_t};
+      const double distance_sq = squaredDistance(current_position_, projected);
+      if (distance_sq < best.distance_sq) {
+        best = PathProjection{i, segment_t, distance_sq, projected};
+      }
+    }
+
+    return best;
+  }
+
+  [[nodiscard]] Point2 lookaheadTargetOnPath() const {
+    const auto projection = closestPathProjection();
+    if (!projection.has_value()) {
+      return Point2{pathPointX(path_, waypoint_index_),
+                    pathPointY(path_, waypoint_index_)};
+    }
+
+    double remaining_lookahead_m = effectiveLookaheadDistanceM();
+    Point2 segment_start = projection->point;
+    for (std::size_t i = projection->segment_start_index; i + 1U < path_.poses.size();
+         ++i) {
+      const Point2 segment_end{pathPointX(path_, i + 1U), pathPointY(path_, i + 1U)};
+      const double segment_length_m = distance(segment_start, segment_end);
+      if (segment_length_m > kTinyDistanceM) {
+        if (remaining_lookahead_m <= segment_length_m) {
+          const double ratio = remaining_lookahead_m / segment_length_m;
+          return Point2{segment_start.x + (segment_end.x - segment_start.x) * ratio,
+                        segment_start.y + (segment_end.y - segment_start.y) * ratio};
+        }
+        remaining_lookahead_m -= segment_length_m;
+      }
+      segment_start = segment_end;
+    }
+
+    return Point2{pathPointX(path_, path_.poses.size() - 1U),
+                  pathPointY(path_, path_.poses.size() - 1U)};
   }
 
   [[nodiscard]] std::size_t
@@ -585,6 +684,11 @@ private:
     }
 
     const std::size_t previous_waypoint_index = waypoint_index_;
+    if (const auto projection = closestPathProjection(); projection.has_value()) {
+      waypoint_index_ =
+          std::max(waypoint_index_, std::min(projection->segment_start_index + 1U,
+                                             path_.poses.size() - 1U));
+    }
     while (waypoint_index_ + 1U < path_.poses.size()) {
       const Point2 waypoint{pathPointX(path_, waypoint_index_),
                             pathPointY(path_, waypoint_index_)};
@@ -616,8 +720,7 @@ private:
     }
 
     if (path_valid_ && waypoint_index_ < path_.poses.size()) {
-      return Point2{pathPointX(path_, waypoint_index_),
-                    pathPointY(path_, waypoint_index_)};
+      return lookaheadTargetOnPath();
     }
 
     if (no_path_hold_target_valid_) {
@@ -890,7 +993,8 @@ private:
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f requested_speed=%.2f actual_speed=%.2f "
         "speed_limit_reason=%s allowed_speed=%.2f braking_distance=%.2f "
-        "target_step=%.2f turn_angle=%.2f local_clearance=%.2f",
+        "target_step=%.2f effective_lookahead=%.2f turn_angle=%.2f "
+        "local_clearance=%.2f",
         local_position_valid_ ? "true" : "false", current_altitude_m_,
         navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -902,8 +1006,8 @@ private:
         last_speed_output_.requested_speed_mps, current_speed_mps_,
         speedLimitReasonName(last_speed_output_.limit_reason),
         last_speed_output_.allowed_speed_mps, last_speed_output_.braking_distance_m,
-        last_speed_output_.target_step_m, pathTurnAngleAtWaypoint(waypoint_index_),
-        local_clearance_m);
+        last_speed_output_.target_step_m, effectiveLookaheadDistanceM(),
+        pathTurnAngleAtWaypoint(waypoint_index_), local_clearance_m);
   }
 
   nav_msgs::msg::Path path_;
@@ -923,6 +1027,9 @@ private:
   double max_setpoint_distance_m_{2.0};
   double max_commanded_target_step_m_{0.25};
   double lookahead_distance_m_{6.0};
+  double lookahead_time_s_{1.2};
+  double min_lookahead_distance_m_{6.0};
+  double max_lookahead_distance_m_{6.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
@@ -952,6 +1059,7 @@ private:
   bool face_target_yaw_{false};
   bool navigation_started_{false};
   bool velocity_feedforward_enabled_{false};
+  bool dynamic_lookahead_enabled_{true};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};

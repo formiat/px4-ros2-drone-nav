@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <queue>
@@ -12,9 +13,23 @@ namespace drone_city_nav {
 namespace {
 
 constexpr int kNoBlockedCellInRange = std::numeric_limits<int>::max();
+constexpr int kDirectionCount = 8;
+constexpr int kDirectionStateCount = kDirectionCount + 1;
+constexpr int kStartDirectionState = kDirectionCount;
+constexpr std::array<GridIndex, kDirectionCount> kNeighborOffsets{{
+    {-1, -1},
+    {0, -1},
+    {1, -1},
+    {-1, 0},
+    {1, 0},
+    {-1, 1},
+    {0, 1},
+    {1, 1},
+}};
 
 struct OpenNode {
   GridIndex cell{};
+  int direction_state{kStartDirectionState};
   double f_score{0.0};
   double g_score{0.0};
 };
@@ -38,6 +53,18 @@ struct CompareOpenNode {
   const double dx = static_cast<double>(from.x - to.x);
   const double dy = static_cast<double>(from.y - to.y);
   return std::hypot(dx, dy);
+}
+
+[[nodiscard]] std::size_t stateIndex(const OccupancyGrid2D& grid, const GridIndex cell,
+                                     const int direction_state) noexcept {
+  return grid.linearIndex(cell) * static_cast<std::size_t>(kDirectionStateCount) +
+         static_cast<std::size_t>(direction_state);
+}
+
+[[nodiscard]] GridIndex cellFromStateIndex(const OccupancyGrid2D& grid,
+                                           const int state_index) noexcept {
+  const int cell_index = state_index / kDirectionStateCount;
+  return GridIndex{cell_index % grid.width(), cell_index / grid.width()};
 }
 
 [[nodiscard]] bool diagonalMoveCutsBlockedCorner(const OccupancyGrid2D& grid,
@@ -85,17 +112,6 @@ struct CompareOpenNode {
     }
   }
 
-  constexpr std::array<GridIndex, 8> kNeighborOffsets{{
-      {-1, -1},
-      {0, -1},
-      {1, -1},
-      {-1, 0},
-      {1, 0},
-      {-1, 1},
-      {0, 1},
-      {1, 1},
-  }};
-
   while (!queue.empty()) {
     const GridIndex current = queue.front();
     queue.pop();
@@ -121,6 +137,18 @@ struct CompareOpenNode {
   return field;
 }
 
+[[nodiscard]] double turnCost(const AStarConfig& config,
+                              const int current_direction_state,
+                              const int next_direction_state) noexcept {
+  if (!(config.turn_cost_weight > 0.0) ||
+      current_direction_state == kStartDirectionState ||
+      current_direction_state == next_direction_state) {
+    return 0.0;
+  }
+
+  return config.turn_cost_weight;
+}
+
 [[nodiscard]] double clearanceCost(const OccupancyGrid2D& grid,
                                    const ClearanceField& field,
                                    const AStarConfig& config, const GridIndex cell) {
@@ -141,20 +169,20 @@ struct CompareOpenNode {
 
 [[nodiscard]] std::vector<GridIndex> reconstructPath(const OccupancyGrid2D& grid,
                                                      const std::vector<int>& parents,
-                                                     const GridIndex start,
-                                                     const GridIndex goal) {
+                                                     const int start_state_index,
+                                                     const int goal_state_index) {
   std::vector<GridIndex> path;
-  GridIndex current = goal;
-  path.push_back(current);
+  int current_state_index = goal_state_index;
 
-  while (current != start) {
-    const int parent_index = parents.at(grid.linearIndex(current));
-    if (parent_index < 0) {
+  while (current_state_index >= 0) {
+    path.push_back(cellFromStateIndex(grid, current_state_index));
+    if (current_state_index == start_state_index) {
+      break;
+    }
+    current_state_index = parents.at(static_cast<std::size_t>(current_state_index));
+    if (current_state_index < 0) {
       return {};
     }
-    const int width = grid.width();
-    current = GridIndex{parent_index % width, parent_index / width};
-    path.push_back(current);
   }
 
   std::reverse(path.begin(), path.end());
@@ -171,34 +199,25 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     return result;
   }
 
-  constexpr std::array<GridIndex, 8> kNeighborOffsets{{
-      {-1, -1},
-      {0, -1},
-      {1, -1},
-      {-1, 0},
-      {1, 0},
-      {-1, 1},
-      {0, 1},
-      {1, 1},
-  }};
-
   const ClearanceField clearance_field =
       buildClearanceField(grid, clearanceRadiusCells(grid, config));
-  const std::size_t cell_count = grid.cellCount();
-  std::vector<double> g_scores(cell_count, std::numeric_limits<double>::infinity());
-  std::vector<int> parents(cell_count, -1);
-  std::vector<std::uint8_t> closed(cell_count, 0U);
+  const std::size_t state_count =
+      grid.cellCount() * static_cast<std::size_t>(kDirectionStateCount);
+  std::vector<double> g_scores(state_count, std::numeric_limits<double>::infinity());
+  std::vector<int> parents(state_count, -1);
+  std::vector<std::uint8_t> closed(state_count, 0U);
   std::priority_queue<OpenNode, std::vector<OpenNode>, CompareOpenNode> open;
 
-  const std::size_t start_index = grid.linearIndex(start);
+  const std::size_t start_index = stateIndex(grid, start, kStartDirectionState);
   g_scores[start_index] = 0.0;
-  open.push(OpenNode{start, heuristic(start, goal), 0.0});
+  open.push(OpenNode{start, kStartDirectionState, heuristic(start, goal), 0.0});
 
   while (!open.empty() && result.expanded_cells < config.max_expansions) {
     const OpenNode current = open.top();
     open.pop();
 
-    const std::size_t current_index = grid.linearIndex(current.cell);
+    const std::size_t current_index =
+        stateIndex(grid, current.cell, current.direction_state);
     if (closed[current_index] != 0U) {
       continue;
     }
@@ -206,27 +225,33 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     ++result.expanded_cells;
 
     if (current.cell == goal) {
-      result.path = reconstructPath(grid, parents, start, goal);
+      result.path = reconstructPath(grid, parents, static_cast<int>(start_index),
+                                    static_cast<int>(current_index));
       result.success = !result.path.empty();
       return result;
     }
 
-    for (const GridIndex offset : kNeighborOffsets) {
+    for (std::size_t direction_index = 0U; direction_index < kNeighborOffsets.size();
+         ++direction_index) {
+      const GridIndex offset = kNeighborOffsets.at(direction_index);
       const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
       if (!grid.contains(next) || grid.isBlocked(next) ||
           diagonalMoveCutsBlockedCorner(grid, current.cell, next)) {
         continue;
       }
 
-      const std::size_t next_index = grid.linearIndex(next);
+      const int next_direction_state = static_cast<int>(direction_index);
+      const std::size_t next_index = stateIndex(grid, next, next_direction_state);
       if (closed[next_index] != 0U) {
         continue;
       }
 
       const double step_cost =
           (offset.x != 0 && offset.y != 0) ? std::numbers::sqrt2 : 1.0;
-      const double tentative_g = g_scores[current_index] + step_cost +
-                                 clearanceCost(grid, clearance_field, config, next);
+      const double tentative_g =
+          g_scores[current_index] + step_cost +
+          clearanceCost(grid, clearance_field, config, next) +
+          turnCost(config, current.direction_state, next_direction_state);
       if (tentative_g >= g_scores[next_index]) {
         continue;
       }
@@ -234,7 +259,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       parents[next_index] = static_cast<int>(current_index);
       g_scores[next_index] = tentative_g;
       const double f_score = tentative_g + heuristic(next, goal);
-      open.push(OpenNode{next, f_score, tentative_g});
+      open.push(OpenNode{next, next_direction_state, f_score, tentative_g});
     }
   }
 
