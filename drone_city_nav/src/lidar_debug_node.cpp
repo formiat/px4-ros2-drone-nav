@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -61,6 +62,12 @@ struct Image {
   }
 };
 
+struct AttitudeEuler {
+  double roll_rad{0.0};
+  double pitch_rad{0.0};
+  double yaw_rad{0.0};
+};
+
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
@@ -98,6 +105,40 @@ struct Image {
   }
   stream << '"';
   return stream.str();
+}
+
+[[nodiscard]] std::optional<AttitudeEuler>
+quaternionToEuler(const std::array<float, 4>& quaternion) {
+  const double w = static_cast<double>(quaternion[0]);
+  const double x = static_cast<double>(quaternion[1]);
+  const double y = static_cast<double>(quaternion[2]);
+  const double z = static_cast<double>(quaternion[3]);
+  const double norm_sq = w * w + x * x + y * y + z * z;
+  if (!std::isfinite(norm_sq) || norm_sq <= 0.0) {
+    return std::nullopt;
+  }
+
+  const double inv_norm = 1.0 / std::sqrt(norm_sq);
+  const double nw = w * inv_norm;
+  const double nx = x * inv_norm;
+  const double ny = y * inv_norm;
+  const double nz = z * inv_norm;
+
+  const double sin_roll = 2.0 * (nw * nx + ny * nz);
+  const double cos_roll = 1.0 - 2.0 * (nx * nx + ny * ny);
+  const double roll = std::atan2(sin_roll, cos_roll);
+
+  const double sin_pitch = std::clamp(2.0 * (nw * ny - nz * nx), -1.0, 1.0);
+  const double pitch = std::asin(sin_pitch);
+
+  const double sin_yaw = 2.0 * (nw * nz + nx * ny);
+  const double cos_yaw = 1.0 - 2.0 * (ny * ny + nz * nz);
+  const double yaw = std::atan2(sin_yaw, cos_yaw);
+
+  if (!std::isfinite(roll) || !std::isfinite(pitch) || !std::isfinite(yaw)) {
+    return std::nullopt;
+  }
+  return AttitudeEuler{roll, pitch, yaw};
 }
 
 void drawLine(Image& image, int x0, int y0, const int x1, const int y1,
@@ -212,6 +253,8 @@ public:
         1000000));
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
+    const std::string attitude_topic = declare_parameter<std::string>(
+        "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
 
     std::filesystem::create_directories(output_dir_);
     summary_path_ = std::filesystem::path{output_dir_} / "snapshots.jsonl";
@@ -231,6 +274,11 @@ public:
         local_position_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
+        });
+    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
+        attitude_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
+          onAttitude(*msg);
         });
     occupancy_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
         occupancy_grid_topic, rclcpp::QoS{1}.transient_local(),
@@ -257,15 +305,15 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
                 "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
-                "pose='%s' current_hits='%s' remembered_hits='%s' markers='%s' "
-                "lidar_radar_markers=%s hit_memory_resolution=%.2fm "
+                "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
+                "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
                 "min_confirmations=%zu min_remember_altitude=%.2fm "
                 "max_remembered_hits=%zu",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
-                local_position_topic.c_str(), pointcloud_topic_.c_str(),
-                remembered_pointcloud_topic_.c_str(), marker_topic_.c_str(),
-                publish_lidar_radar_markers_ ? "true" : "false",
+                local_position_topic.c_str(), attitude_topic.c_str(),
+                pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
+                marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
                 hit_memory_resolution_m_, remembered_hit_min_confirmations_,
                 min_remember_altitude_m_, max_remembered_hit_points_);
   }
@@ -286,7 +334,26 @@ private:
       current_altitude_m_ = -static_cast<double>(msg.z);
       altitude_valid_ = true;
     }
+    if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
+      horizontal_speed_mps_ =
+          std::hypot(static_cast<double>(msg.vx), static_cast<double>(msg.vy));
+      horizontal_speed_valid_ = true;
+    } else {
+      horizontal_speed_valid_ = false;
+    }
     pose_seen_ = true;
+  }
+
+  void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
+    const auto euler = quaternionToEuler(msg.q);
+    if (!euler.has_value()) {
+      attitude_valid_ = false;
+      return;
+    }
+
+    attitude_ = *euler;
+    attitude_tilt_rad_ = std::hypot(attitude_.roll_rad, attitude_.pitch_rad);
+    attitude_valid_ = true;
   }
 
   void writeSnapshot() {
@@ -326,11 +393,15 @@ private:
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     RCLCPP_INFO(get_logger(),
                 "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
-                "beams=%zu hits=%zu remembered_hits=%zu candidate_hits=%zu grid=%s "
-                "path_waypoints=%zu image='%s' csv='%s'",
+                "speed=%.2f speed_valid=%s attitude_valid=%s roll=%.3f pitch=%.3f "
+                "tilt=%.3f beams=%zu hits=%zu remembered_hits=%zu candidate_hits=%zu "
+                "grid=%s path_waypoints=%zu image='%s' csv='%s'",
                 prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
-                current_altitude_m_, stats.processed_beams, stats.hit_beams,
-                remembered_hit_points_.size(), hit_candidates_.size(),
+                current_altitude_m_, horizontal_speed_mps_,
+                horizontal_speed_valid_ ? "true" : "false",
+                attitude_valid_ ? "true" : "false", attitude_.roll_rad,
+                attitude_.pitch_rad, attitude_tilt_rad_, stats.processed_beams,
+                stats.hit_beams, remembered_hit_points_.size(), hit_candidates_.size(),
                 grid_seen_ ? "true" : "false",
                 path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
                 csv_path.string().c_str());
@@ -657,6 +728,15 @@ private:
                     << ",\"y\":" << current_pose_.position.y
                     << ",\"yaw_rad\":" << current_pose_.yaw_rad
                     << ",\"altitude_m\":" << current_altitude_m_ << "},";
+    summary_stream_ << "\"motion\":{\"horizontal_speed_mps\":" << horizontal_speed_mps_
+                    << ",\"horizontal_speed_valid\":"
+                    << (horizontal_speed_valid_ ? "true" : "false") << "},";
+    summary_stream_ << "\"attitude\":{\"valid\":"
+                    << (attitude_valid_ ? "true" : "false")
+                    << ",\"roll_rad\":" << attitude_.roll_rad
+                    << ",\"pitch_rad\":" << attitude_.pitch_rad
+                    << ",\"yaw_rad\":" << attitude_.yaw_rad
+                    << ",\"tilt_rad\":" << attitude_tilt_rad_ << "},";
     summary_stream_ << "\"scan\":{\"beams\":" << last_scan_.ranges.size()
                     << ",\"processed\":" << stats.processed_beams
                     << ",\"hits\":" << stats.hit_beams
@@ -862,7 +942,10 @@ private:
   nav_msgs::msg::OccupancyGrid last_grid_;
   nav_msgs::msg::Path last_path_;
   Pose2 current_pose_{};
+  AttitudeEuler attitude_{};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double attitude_tilt_rad_{std::numeric_limits<double>::quiet_NaN()};
   double snapshot_period_s_{1.0};
   double view_radius_m_{45.0};
   double max_lidar_range_m_{35.0};
@@ -886,6 +969,8 @@ private:
   bool path_seen_{false};
   bool pose_seen_{false};
   bool altitude_valid_{false};
+  bool horizontal_speed_valid_{false};
+  bool attitude_valid_{false};
   bool use_px4_heading_for_scan_{false};
   bool swap_lidar_xy_to_local_frame_{false};
   bool publish_lidar_radar_markers_{false};
@@ -895,6 +980,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       remembered_pointcloud_pub_;

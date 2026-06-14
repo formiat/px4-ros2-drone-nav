@@ -201,6 +201,8 @@ public:
         declare_parameter<std::string>("static_map_points_topic",
                                        "/drone_city_nav/static_map_points"),
         rclcpp::QoS{1}.transient_local());
+    static_map_debug_publish_period_s_ = std::clamp(
+        declare_parameter<double>("static_map_debug_publish_period_s", 1.0), 0.0, 60.0);
     path_pub_ = create_publisher<nav_msgs::msg::Path>(
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path"),
         rclcpp::QoS{1}.reliable());
@@ -211,6 +213,11 @@ public:
 
     const double replan_period_s = declare_parameter<double>("replan_period_s", 0.5);
     loadConfiguredStaticMap();
+    if (static_map_debug_publish_period_s_ > 0.0) {
+      static_map_debug_timer_ = create_wall_timer(
+          std::chrono::duration<double>{static_map_debug_publish_period_s_},
+          [this]() { republishStaticMapDebug(); });
+    }
     timer_ = create_wall_timer(
         std::chrono::duration<double>{std::max(0.05, replan_period_s)},
         [this]() { replanAndPublish(); });
@@ -434,7 +441,7 @@ private:
           static_map_rectangles_, static_map_occupied_cells_, static_grid_->width(),
           static_grid_->height(), static_grid_->resolution(), static_grid_->originX(),
           static_grid_->originY(), static_map_min_blocking_height_m_);
-      publishStaticMapGrid(*static_grid_);
+      publishStaticMapDebug(*static_grid_, true);
     } catch (const std::exception& error) {
       static_grid_.reset();
       static_map_rectangles_ = 0U;
@@ -894,14 +901,25 @@ private:
     return msg;
   }
 
-  void publishStaticMapGrid(const OccupancyGrid2D& grid) {
+  void publishStaticMapDebug(const OccupancyGrid2D& grid, const bool log_publication) {
     static_map_pub_->publish(makeOccupancyGridMessage(grid, false));
     publishStaticMapPoints(grid);
-    RCLCPP_INFO(get_logger(),
-                "Published static map grid: cells=%zu occupied=%zu "
-                "points_topic='%s'",
-                grid.cellCount(), static_map_occupied_cells_,
-                static_map_points_pub_->get_topic_name());
+    if (log_publication) {
+      RCLCPP_INFO(get_logger(),
+                  "Published static map grid: cells=%zu occupied=%zu "
+                  "points_topic='%s' republish_period=%.2fs",
+                  grid.cellCount(), static_map_occupied_cells_,
+                  static_map_points_pub_->get_topic_name(),
+                  static_map_debug_publish_period_s_);
+    }
+  }
+
+  void republishStaticMapDebug() {
+    if (!static_grid_.has_value()) {
+      return;
+    }
+
+    publishStaticMapDebug(*static_grid_, false);
   }
 
   void publishStaticMapPoints(const OccupancyGrid2D& grid) {
@@ -1172,6 +1190,7 @@ private:
   double current_lidar_obstacle_depth_m_{0.0};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
+  double static_map_debug_publish_period_s_{1.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t max_current_lidar_staleness_ns_{750'000'000};
   std::int64_t last_pose_update_ns_{0};
@@ -1195,6 +1214,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
+  rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

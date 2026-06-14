@@ -182,9 +182,10 @@ ros2 launch drone_city_nav city_nav.launch.py use_static_map:=false
 The simulation launch starts `lidar_debug_node` by default. It records periodic
 snapshots under `log/lidar_debug`:
 
-- `snapshots.jsonl` - one JSON record per snapshot with pose, scan statistics,
-  obstacle-memory grid statistics, path size, file paths, and a capped list of
-  hit points.
+- `snapshots.jsonl` - one JSON record per snapshot with pose, horizontal speed,
+  PX4 attitude diagnostics (`roll_rad`, `pitch_rad`, `tilt_rad`), scan
+  statistics, obstacle-memory grid statistics, path size, file paths, and a
+  capped list of hit points.
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
   hit flag, and map-frame endpoint.
 - `snapshot_000001.ppm` - a full-map top-down debug image when the memory grid
@@ -245,7 +246,9 @@ The main obstacle-memory topics are:
 - `/drone_city_nav/static_map_grid` - static city map layer only. It is
   published with transient-local QoS after the map2d file is loaded.
 - `/drone_city_nav/static_map_points` - occupied static city map cells as a
-  point cloud for RViz. The default debug view shows this layer in green.
+  point cloud for RViz. The default debug view shows this layer in green. The
+  planner republishes this static debug layer periodically so RViz receives it
+  even when RViz starts after the planner.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   source overlay and inflation, kept for compatibility with existing debug
   tooling.

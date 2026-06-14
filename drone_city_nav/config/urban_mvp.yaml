@@ -42,6 +42,7 @@ planner_node:
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
     static_map_grid_topic: /drone_city_nav/static_map_grid
     static_map_points_topic: /drone_city_nav/static_map_points
+    static_map_debug_publish_period_s: 1.0
     path_topic: /drone_city_nav/path
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 0.0
@@ -137,6 +138,7 @@ lidar_debug_node:
   ros__parameters:
     lidar_topic: /scan
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     occupancy_grid_topic: /drone_city_nav/obstacle_memory_inflated_grid
     path_topic: /drone_city_nav/path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
