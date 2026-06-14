@@ -14,11 +14,10 @@ flight at a fixed altitude.
 - PX4 SITL provides stabilization and accepts offboard trajectory setpoints.
 - ROS 2 runs an obstacle-memory mapper, a planner, and a PX4 offboard control
   node.
-- The stack starts without a prior map. `obstacle_memory_node` integrates
-  `sensor_msgs/LaserScan` with navigation pose into a persistent 2D memory grid.
-  `planner_node` subscribes to that raw memory grid, inflates occupied cells,
-  runs A*, smooths the result with line-of-sight checks, and republishes a
-  waypoint path.
+- The stack can use a static 2D city map as a conservative prior source.
+  `obstacle_memory_node` still integrates `sensor_msgs/LaserScan` with
+  navigation pose into a persistent 2D memory grid, and `planner_node` overlays
+  static map, obstacle memory, and current lidar hits before inflation.
 - If the planner cannot find a path or has no valid map/pose, it publishes an
   empty path so the offboard node holds position instead of moving without a
   target.
@@ -46,11 +45,18 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
   city world with uniform-height buildings, visual point A at `(-75, -45)`,
   and visual point B at `(75, 45)`.
+- `drone_city_nav/worlds/generated_city.map2d` - static 2D obstacle map for the
+  same local city layout used by the planner and mission monitor.
 - `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
   mixed-height version of the same city layout.
 - `drone_city_nav/src/obstacle_memory_node.cpp` - lidar + pose obstacle-memory
   mapper.
-- `drone_city_nav/src/planner_node.cpp` - memory-grid replanning node.
+- `drone_city_nav/src/planner_node.cpp` - static/memory/lidar grid replanning
+  node.
+- `drone_city_nav/include/drone_city_nav/static_city_map.hpp` - static map2d
+  loader and rasterizer.
+- `drone_city_nav/include/drone_city_nav/grid_overlay.hpp` - occupied-wins grid
+  overlay helpers for planner sources.
 - `drone_city_nav/include/drone_city_nav/obstacle_memory.hpp` - persistent
   obstacle-memory core with ray clipping and hit/miss score updates.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
@@ -65,6 +71,9 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   running the planner/offboard nodes without Gazebo-specific helpers.
 - `drone_city_nav/tests/planner_core_test.cpp` - deterministic planner/grid
   tests.
+- `drone_city_nav/tests/static_city_map_test.cpp` - static map parser and
+  rasterization tests.
+- `drone_city_nav/tests/grid_overlay_test.cpp` - source overlay precedence tests.
 - `drone_city_nav/tests/obstacle_memory_test.cpp` - deterministic obstacle
   memory and GPS/compass adapter tests.
 - `drone_city_nav/tests/offboard_speed_controller_test.cpp` - deterministic
@@ -74,7 +83,9 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 
 The core runtime nodes are `obstacle_memory_node`, `planner_node`, and
 `px4_offboard_node`. They consume ROS/PX4 topics and do not depend on Gazebo
-APIs or preloaded building coordinates.
+APIs. `planner_node` can optionally consume a static `*.map2d` obstacle file;
+for non-simulation runs, provide a site-specific map or disable
+`use_static_map`.
 
 Simulation launch starts two extra helpers:
 
@@ -88,7 +99,8 @@ Launch only the portable ROS/PX4 stack with a hardware-specific parameter file:
 ros2 launch drone_city_nav city_nav.launch.py \
   params_file:=/workspace/drone_city_nav/config/real_drone_template.yaml \
   enable_gazebo_bridge:=false \
-  enable_mission_monitor:=false
+  enable_mission_monitor:=false \
+  use_static_map:=false
 ```
 
 Before using the real-drone template, update the lidar topic, GPS/compass
@@ -146,6 +158,16 @@ Override the ROS parameter file used by the run script with:
 CITY_NAV_PARAMS_FILE=/workspace/build/some_params.yaml ./scripts/run_city_mvp.sh
 ```
 
+Obstacle sources can be toggled before a run without editing tracked YAML files.
+All three are enabled by default:
+
+```bash
+ENABLE_STATIC_MAP=false ./scripts/run_city_mvp.sh
+ENABLE_OBSTACLE_MEMORY=false ./scripts/run_city_mvp.sh
+ENABLE_CURRENT_LIDAR=false ./scripts/run_city_mvp.sh
+STATIC_CITY_MAP_PATH=/workspace/drone_city_nav/worlds/generated_city.map2d ./scripts/run_city_mvp.sh
+```
+
 ## Lidar Debugging
 
 The simulation launch starts `lidar_debug_node` by default. It records periodic
@@ -192,6 +214,9 @@ standard RViz `Map` display for `/drone_city_nav/obstacle_memory_inflated_grid`
 is kept disabled by default because this GUI is intended to show remembered
 lidar wall hits, not filled occupancy-grid cells. All debug overlays are
 published in the `map` frame, so no Gazebo lidar TF tree is required.
+The RViz config also includes a disabled `Static City Map` display for
+`/drone_city_nav/static_map_grid`; enable it when you need to inspect the static
+planner source separately.
 
 The main obstacle-memory topics are:
 
@@ -206,15 +231,34 @@ The main obstacle-memory topics are:
   this visual debug memory.
 - `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
   controlled by `publish_lidar_radar_markers`; disabled by default.
+- `/drone_city_nav/static_map_grid` - static city map layer only. It is
+  published with transient-local QoS after the map2d file is loaded.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
-  inflation, kept for compatibility with existing debug tooling.
+  source overlay and inflation, kept for compatibility with existing debug
+  tooling.
 
-The planner builds its A* grid from two sources:
+The planner builds its A* grid from three obstacle sources:
+
+- Static map from `drone_city_nav/worlds/generated_city.map2d`. The map uses the
+  planner/mission local frame, not raw Gazebo visual coordinates. Its format is
+  line-oriented and versioned:
+
+  ```text
+  drone_city_nav_static_map_v1
+  frame_id map
+  bounds -10.0 -10.0 0.5 115.0 175.0
+  rect building_001 9.0 9.0 8.0 8.0 28.0
+  ```
 
 - Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.
 - A temporary overlay of the latest fresh `/scan` hit endpoints. This overlay is
   applied only to the planner's working grid before inflation, so it can help at
   lower altitude without permanently storing takeoff-time artifacts.
+
+The merge rule is conservative: if any enabled source marks a cell occupied, the
+planner treats it as occupied. Free cells from obstacle memory cannot clear a
+static-map or current-lidar occupied cell. Inflation runs after all enabled
+source overlays are applied.
 
 In the MVP config, obstacle-memory integration starts at
 `min_mapping_altitude_m=5.0`. The yellow visual remembered-hit layer is more
@@ -237,8 +281,9 @@ HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
 planner/offboard launch. When the timeout is reached, the script checks the logs
 for a ready Gazebo world, valid PX4 local position, lidar scans, obstacle-memory
-updates, planner waypoints, offboard and arm commands, armed offboard state,
-and critical PX4 preflight failures.
+updates, static map loading when enabled, planner source configuration, planner
+waypoints, offboard and arm commands, armed offboard state, and critical PX4
+preflight failures.
 
 During startup the script sends SITL-only PX4 parameters through the PX4 shell:
 `CBRK_SUPPLY_CHK=894281` disables the unavailable power-supply check and
@@ -250,6 +295,15 @@ Headless logs are written to:
 - `log/px4_city_mvp.log`
 - `log/uxrce_agent_city_mvp.log`
 - `log/ros_city_mvp.log`
+
+Useful ROS log markers for obstacle-source debugging:
+
+- `Planner obstacle sources: static=true memory=true current_lidar=true`
+- `Static city map loaded:`
+- `Published static map grid:`
+- `Planning summary: ... static[enabled=true loaded=true used=true ...]`
+- `memory[enabled=true seen=true used=true ...]`
+- `current_lidar[enabled=true used=true fresh=true ...]`
 
 The script prepares Gazebo runtime resources under `build/gazebo_city_mvp` and
 does not modify the PX4 checkout under `external/`.
@@ -332,8 +386,8 @@ colcon test-result --verbose
 
 - The generated city is intentionally small and synthetic.
 - Only static building obstacles are modeled.
-- The planner treats unknown memory cells as traversable and replans as
-  obstacle-memory data arrives.
+- The planner treats unknown planning-grid cells as traversable, but occupied
+  cells from any enabled source remain blocked through the union overlay.
 - `obstacle_memory_node` stores bounded hit/miss scores per cell. A single free
   miss does not immediately erase a remembered obstacle, but repeated free
   evidence can clear stale cells.
@@ -358,6 +412,9 @@ colcon test-result --verbose
 - The simulation obstacle-memory node ignores persistent lidar map updates below
   `min_mapping_altitude_m`. The planner still overlays fresh lidar hits onto its
   temporary A* grid when `use_current_lidar_obstacles=true`.
+- `use_static_map`, `use_obstacle_memory`, and `use_current_lidar_obstacles`
+  can be toggled before launch. If every obstacle source is disabled or no
+  enabled source has usable data, the planner publishes an empty hold path.
 - `obstacle_memory_node` and `planner_node` both fail closed when PX4 local
   position becomes invalid or stale for longer than `max_pose_staleness_s`.
   Obstacle memory skips lidar integration, and the planner publishes an empty

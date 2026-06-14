@@ -84,6 +84,11 @@ Equivalent explicit command:
 HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 ```
 
+The simulation uses three planner obstacle sources by default: the static
+`generated_city.map2d` city map, accumulated lidar obstacle memory, and the
+current lidar hit overlay. Source toggles and map format details are documented
+in `docs/MVP_SIMULATION.md`.
+
 ## Build System
 
 The approved build system entry point is `colcon`, not direct top-level CMake.

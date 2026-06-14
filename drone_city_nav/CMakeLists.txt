@@ -4,6 +4,7 @@ project(drone_city_nav VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
@@ -28,11 +29,13 @@ endfunction()
 add_library(
   drone_city_nav_core
   src/astar_planner.cpp
+  src/grid_overlay.cpp
   src/navigation_pose.cpp
   src/offboard_speed_controller.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
-  src/path_smoothing.cpp)
+  src/path_smoothing.cpp
+  src/static_city_map.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
   drone_city_nav_core
@@ -46,6 +49,7 @@ target_compile_features(planner_node PRIVATE cxx_std_20)
 target_link_libraries(planner_node drone_city_nav_core)
 ament_target_dependencies(
   planner_node
+  ament_index_cpp
   geometry_msgs
   nav_msgs
   px4_msgs
@@ -120,6 +124,16 @@ if(BUILD_TESTING)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
   target_link_libraries(planner_core_test drone_city_nav_core)
   enable_project_warnings(planner_core_test)
+
+  ament_add_gtest(static_city_map_test tests/static_city_map_test.cpp)
+  target_compile_features(static_city_map_test PRIVATE cxx_std_20)
+  target_link_libraries(static_city_map_test drone_city_nav_core)
+  enable_project_warnings(static_city_map_test)
+
+  ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
+  target_compile_features(grid_overlay_test PRIVATE cxx_std_20)
+  target_link_libraries(grid_overlay_test drone_city_nav_core)
+  enable_project_warnings(grid_overlay_test)
 
   ament_add_gtest(obstacle_memory_test tests/obstacle_memory_test.cpp)
   target_compile_features(obstacle_memory_test PRIVATE cxx_std_20)

@@ -6,12 +6,14 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
     default_rviz_config = package_share / "rviz" / "city_nav_debug.rviz"
+    default_static_map = package_share / "worlds" / "generated_city.map2d"
     lidar_gz_topic = (
         "/world/generated_city/model/x500_lidar_2d_0/link/link/"
         "sensor/lidar_2d_v2/scan"
@@ -24,6 +26,10 @@ def generate_launch_description():
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     enable_rviz = LaunchConfiguration("enable_rviz")
+    use_static_map = LaunchConfiguration("use_static_map")
+    use_obstacle_memory = LaunchConfiguration("use_obstacle_memory")
+    use_current_lidar_obstacles = LaunchConfiguration("use_current_lidar_obstacles")
+    static_map_path = LaunchConfiguration("static_map_path")
 
     scan_bridge = Node(
         package="ros_gz_bridge",
@@ -45,7 +51,19 @@ def generate_launch_description():
         executable="planner_node",
         name="planner_node",
         output="screen",
-        parameters=[params_file],
+        parameters=[
+            params_file,
+            {
+                "use_static_map": ParameterValue(use_static_map, value_type=bool),
+                "use_obstacle_memory": ParameterValue(
+                    use_obstacle_memory, value_type=bool
+                ),
+                "use_current_lidar_obstacles": ParameterValue(
+                    use_current_lidar_obstacles, value_type=bool
+                ),
+                "static_map_path": static_map_path,
+            },
+        ],
     )
 
     obstacle_memory = Node(
@@ -53,7 +71,12 @@ def generate_launch_description():
         executable="obstacle_memory_node",
         name="obstacle_memory_node",
         output="screen",
-        parameters=[params_file],
+        parameters=[
+            params_file,
+            {
+                "mapping_enabled": ParameterValue(use_obstacle_memory, value_type=bool),
+            },
+        ],
     )
 
     offboard = Node(
@@ -132,6 +155,26 @@ def generate_launch_description():
                 "enable_rviz",
                 default_value="false",
                 description="Start RViz with the navigation debug view.",
+            ),
+            DeclareLaunchArgument(
+                "use_static_map",
+                default_value="true",
+                description="Enable the static city obstacle map source.",
+            ),
+            DeclareLaunchArgument(
+                "use_obstacle_memory",
+                default_value="true",
+                description="Enable the accumulated obstacle memory source.",
+            ),
+            DeclareLaunchArgument(
+                "use_current_lidar_obstacles",
+                default_value="true",
+                description="Enable the current LaserScan obstacle overlay source.",
+            ),
+            DeclareLaunchArgument(
+                "static_map_path",
+                default_value=str(default_static_map),
+                description="Path to the static city map2d file.",
             ),
             scan_bridge,
             obstacle_memory,

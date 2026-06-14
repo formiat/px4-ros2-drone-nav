@@ -22,6 +22,21 @@ EOF
 
 guard_against_root_owned_workspace_writes
 
+normalize_bool() {
+  local value="${1}"
+  case "${value,,}" in
+    1|true|yes|on)
+      printf 'true'
+      ;;
+    0|false|no|off)
+      printf 'false'
+      ;;
+    *)
+      printf '%s' "${value}"
+      ;;
+  esac
+}
+
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
 ros_distro="${ROS_DISTRO:-jazzy}"
 world_name="generated_city"
@@ -34,7 +49,11 @@ ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${repo_root}/drone_city_nav/config/urban_mvp.yaml}"
-enable_lidar_debug="${ENABLE_LIDAR_DEBUG:-true}"
+enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
+enable_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-true}")"
+enable_obstacle_memory="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY:-true}")"
+enable_current_lidar="$(normalize_bool "${ENABLE_CURRENT_LIDAR:-true}")"
+static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
 headless="${HEADLESS:-}"
@@ -76,6 +95,8 @@ prepare_runtime_resources() {
   mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
   install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
     "${runtime_worlds_dir}/${world_name}.sdf"
+  install -D "${repo_root}/drone_city_nav/worlds/${world_name}.map2d" \
+    "${runtime_worlds_dir}/${world_name}.map2d"
 
   local px4_model
   local model_name
@@ -162,6 +183,8 @@ echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "City navigation params: ${city_nav_params_file}"
+echo "Obstacle sources: static=${enable_static_map} memory=${enable_obstacle_memory} current_lidar=${enable_current_lidar}"
+echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
 (
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
@@ -240,8 +263,21 @@ check_headless_run() {
     "First valid PX4 local position" || failed=1
   require_log_pattern "lidar scans are received" "${ros_log_file}" \
     "First lidar scan" || failed=1
-  require_log_pattern "obstacle memory receives lidar" "${ros_log_file}" \
-    "Obstacle memory update:" || failed=1
+  if [[ "${enable_obstacle_memory}" == "true" || "${enable_obstacle_memory}" == "1" ]]; then
+    require_log_pattern "obstacle memory receives lidar" "${ros_log_file}" \
+      "Obstacle memory update:" || failed=1
+  else
+    require_log_pattern "obstacle memory source is disabled" "${ros_log_file}" \
+      "Obstacle memory mapping is disabled" || failed=1
+  fi
+  require_log_pattern "planner obstacle sources are logged" "${ros_log_file}" \
+    "Planner obstacle sources: static=${enable_static_map} memory=${enable_obstacle_memory} current_lidar=${enable_current_lidar}" || failed=1
+  if [[ "${enable_static_map}" == "true" || "${enable_static_map}" == "1" ]]; then
+    require_log_pattern "static city map is loaded" "${ros_log_file}" \
+      "Static city map loaded:" || failed=1
+    require_log_pattern "static map contributes to planning" "${ros_log_file}" \
+      "static\\[enabled=true loaded=true used=true" || failed=1
+  fi
   require_log_pattern "planner publishes a path" "${ros_log_file}" \
     "Published path: waypoints=[1-9]" || failed=1
   require_log_pattern "offboard command is sent" "${ros_log_file}" \
@@ -293,6 +329,10 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
     enable_mission_monitor:=true \
     enable_lidar_debug:="${enable_lidar_debug}" \
     enable_rviz:="${enable_rviz}" \
+    use_static_map:="${enable_static_map}" \
+    use_obstacle_memory:="${enable_obstacle_memory}" \
+    use_current_lidar_obstacles:="${enable_current_lidar}" \
+    static_map_path:="${static_city_map_path}" \
     > "${ros_log_file}" 2>&1 || {
     exit_code=$?
     if [[ "${exit_code}" -eq 124 ]]; then
@@ -315,5 +355,9 @@ else
     enable_mission_monitor:=true \
     enable_lidar_debug:="${enable_lidar_debug}" \
     enable_rviz:="${enable_rviz}" \
+    use_static_map:="${enable_static_map}" \
+    use_obstacle_memory:="${enable_obstacle_memory}" \
+    use_current_lidar_obstacles:="${enable_current_lidar}" \
+    static_map_path:="${static_city_map_path}" \
     2>&1 | tee "${ros_log_file}"
 fi

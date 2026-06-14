@@ -62,6 +62,7 @@ public:
 
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     pose_source_ = declare_parameter<std::string>("pose_source", "px4_local_position");
+    mapping_enabled_ = declare_parameter<bool>("mapping_enabled", true);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
@@ -180,11 +181,12 @@ public:
     }
 
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory ready: pose_source=%s grid=%dx%d resolution=%.2fm "
-                "origin=(%.1f, %.1f) lidar='%s'",
-                pose_source_.c_str(), memory_->rawGrid().width(),
-                memory_->rawGrid().height(), memory_->rawGrid().resolution(), origin_x,
-                origin_y, lidar_topic.c_str());
+                "Obstacle memory ready: enabled=%s pose_source=%s grid=%dx%d "
+                "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s'",
+                mapping_enabled_ ? "true" : "false", pose_source_.c_str(),
+                memory_->rawGrid().width(), memory_->rawGrid().height(),
+                memory_->rawGrid().resolution(), origin_x, origin_y,
+                lidar_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
@@ -330,6 +332,12 @@ private:
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
+    if (!mapping_enabled_) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Obstacle memory mapping is disabled; ignoring lidar scan");
+      return;
+    }
+
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     const bool pose_fresh =
         timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
@@ -487,6 +495,7 @@ private:
   double initial_heading_rad_{0.0};
   bool swap_lidar_xy_to_local_frame_{false};
   bool use_px4_heading_for_scan_{true};
+  bool mapping_enabled_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
 

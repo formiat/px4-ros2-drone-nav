@@ -1,4 +1,5 @@
 #include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 
 #include <gtest/gtest.h>
@@ -86,6 +87,29 @@ TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   EXPECT_EQ(result.path.back(), goal);
   for (const GridIndex cell : result.path) {
     EXPECT_FALSE(grid.isBlocked(cell));
+  }
+}
+
+TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
+  OccupancyGrid2D planning_grid = makeGrid();
+  OccupancyGrid2D static_grid = makeGrid();
+  for (int y = 2; y < 10; ++y) {
+    static_grid.setOccupied(GridIndex{9, y});
+  }
+
+  const GridOverlayStats overlay_stats =
+      overlayOccupiedCells(planning_grid, static_grid);
+  planning_grid.rebuildInflation(0.0);
+
+  const GridIndex start{1, 5};
+  const GridIndex goal{18, 5};
+  const AStarResult result = AStarPlanner{}.plan(planning_grid, start, goal);
+
+  EXPECT_EQ(overlay_stats.source_occupied_cells, 8U);
+  ASSERT_TRUE(result.success);
+  for (const GridIndex cell : result.path) {
+    EXPECT_FALSE(static_grid.isOccupied(cell));
+    EXPECT_FALSE(planning_grid.isBlocked(cell));
   }
 }
 

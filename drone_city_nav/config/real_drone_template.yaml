@@ -3,6 +3,7 @@ obstacle_memory_node:
     frame_id: map
     pose_source: gps_compass
     lidar_topic: /scan
+    mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     gps_topic: /fix
     compass_imu_topic: /imu
@@ -50,6 +51,7 @@ planner_node:
     lidar_topic: /scan
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
+    static_map_grid_topic: /drone_city_nav/static_map_grid
     path_topic: /drone_city_nav/path
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 0.0
@@ -66,6 +68,15 @@ planner_node:
     nearest_free_radius_cells: 10
     memory_occupied_threshold: 65
     memory_free_threshold: 0
+    use_static_map: false
+    static_map_path: ""
+    static_map_min_blocking_height_m: 0.0
+    use_obstacle_memory: true
+    planning_grid_resolution_m: 0.5
+    planning_grid_width_m: 120.0
+    planning_grid_height_m: 80.0
+    planning_grid_origin_x: -20.0
+    planning_grid_origin_y: -40.0
     use_current_lidar_obstacles: true
     max_current_lidar_staleness_s: 0.75
     max_lidar_range_m: 35.0

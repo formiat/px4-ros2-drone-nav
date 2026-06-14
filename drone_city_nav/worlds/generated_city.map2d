@@ -1,0 +1,44 @@
+drone_city_nav_static_map_v1
+frame_id map
+bounds -10.0 -10.0 0.5 115.0 175.0
+# rect <id> <center_x_m> <center_y_m> <size_x_m> <size_y_m> <height_m>
+rect building_001 9.0 9.0 8.0 8.0 28.0
+rect building_002 9.0 27.0 8.0 8.0 28.0
+rect building_003 9.0 45.0 8.0 8.0 28.0
+rect building_004 9.0 63.0 8.0 8.0 28.0
+rect building_005 9.0 81.0 8.0 8.0 28.0
+rect building_006 9.0 99.0 8.0 8.0 28.0
+rect building_007 9.0 117.0 8.0 8.0 28.0
+rect building_008 9.0 135.0 8.0 8.0 28.0
+rect building_009 27.0 9.0 8.0 8.0 28.0
+rect building_010 27.0 27.0 8.0 8.0 28.0
+rect building_011 27.0 45.0 8.0 8.0 28.0
+rect building_012 27.0 63.0 8.0 8.0 28.0
+rect building_013 27.0 81.0 8.0 8.0 28.0
+rect building_014 27.0 99.0 8.0 8.0 28.0
+rect building_015 27.0 117.0 8.0 8.0 28.0
+rect building_016 27.0 135.0 8.0 8.0 28.0
+rect building_017 45.0 9.0 8.0 8.0 28.0
+rect building_018 45.0 27.0 8.0 8.0 28.0
+rect building_019 45.0 45.0 8.0 8.0 28.0
+rect building_020 45.0 63.0 8.0 8.0 28.0
+rect building_021 45.0 81.0 8.0 8.0 28.0
+rect building_022 45.0 99.0 8.0 8.0 28.0
+rect building_023 45.0 117.0 8.0 8.0 28.0
+rect building_024 45.0 135.0 8.0 8.0 28.0
+rect building_025 63.0 9.0 8.0 8.0 28.0
+rect building_026 63.0 27.0 8.0 8.0 28.0
+rect building_027 63.0 45.0 8.0 8.0 28.0
+rect building_028 63.0 63.0 8.0 8.0 28.0
+rect building_029 63.0 81.0 8.0 8.0 28.0
+rect building_030 63.0 99.0 8.0 8.0 28.0
+rect building_031 63.0 117.0 8.0 8.0 28.0
+rect building_032 63.0 135.0 8.0 8.0 28.0
+rect building_033 81.0 9.0 8.0 8.0 28.0
+rect building_034 81.0 27.0 8.0 8.0 28.0
+rect building_035 81.0 45.0 8.0 8.0 28.0
+rect building_036 81.0 63.0 8.0 8.0 28.0
+rect building_037 81.0 81.0 8.0 8.0 28.0
+rect building_038 81.0 99.0 8.0 8.0 28.0
+rect building_039 81.0 117.0 8.0 8.0 28.0
+rect building_040 81.0 135.0 8.0 8.0 28.0

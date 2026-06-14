@@ -1,6 +1,8 @@
 #include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
+#include "drone_city_nav/static_city_map.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -10,13 +12,16 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -34,6 +39,7 @@ struct GridStats {
 };
 
 struct CurrentLidarStats {
+  bool enabled{false};
   bool used{false};
   bool fresh{false};
   std::size_t processed_beams{0U};
@@ -41,6 +47,35 @@ struct CurrentLidarStats {
   std::size_t occupied_cells{0U};
   std::size_t outside_hits{0U};
 };
+
+struct StaticSourceStats {
+  bool enabled{false};
+  bool loaded{false};
+  bool used{false};
+  std::size_t rectangles{0U};
+  std::size_t occupied_cells{0U};
+  std::string path;
+};
+
+struct MemorySourceStats {
+  bool enabled{false};
+  bool seen{false};
+  bool used{false};
+  bool geometry_matches{false};
+  GridStats source_counts{};
+  GridOverlayStats overlay{};
+};
+
+struct PlanningGridBuildResult {
+  OccupancyGrid2D grid;
+  StaticSourceStats static_source{};
+  MemorySourceStats memory{};
+  CurrentLidarStats current_lidar{};
+};
+
+[[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
+  return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
+}
 
 } // namespace
 
@@ -70,6 +105,23 @@ public:
         declare_parameter<std::int64_t>("memory_occupied_threshold", 65), 1, 100));
     free_threshold_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("memory_free_threshold", 0), 0, 100));
+    use_static_map_ = declare_parameter<bool>("use_static_map", true);
+    use_obstacle_memory_ = declare_parameter<bool>("use_obstacle_memory", true);
+    static_map_path_param_ = declare_parameter<std::string>(
+        "static_map_path", "worlds/generated_city.map2d");
+    static_map_min_blocking_height_m_ =
+        std::clamp(declare_parameter<double>("static_map_min_blocking_height_m", 0.0),
+                   0.0, 100000.0);
+    const double planning_grid_resolution_m =
+        std::max(0.01, declare_parameter<double>("planning_grid_resolution_m", 0.5));
+    fallback_grid_bounds_ = GridBounds{
+        declare_parameter<double>("planning_grid_origin_x", -10.0),
+        declare_parameter<double>("planning_grid_origin_y", -10.0),
+        planning_grid_resolution_m,
+        positiveCellCount(declare_parameter<double>("planning_grid_width_m", 115.0),
+                          planning_grid_resolution_m),
+        positiveCellCount(declare_parameter<double>("planning_grid_height_m", 175.0),
+                          planning_grid_resolution_m)};
     use_current_lidar_obstacles_ =
         declare_parameter<bool>("use_current_lidar_obstacles", true);
     max_current_lidar_staleness_ns_ = static_cast<std::int64_t>(
@@ -138,6 +190,10 @@ public:
         declare_parameter<std::string>("occupancy_grid_topic",
                                        "/drone_city_nav/occupancy_grid"),
         rclcpp::QoS{1}.transient_local());
+    static_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
+        declare_parameter<std::string>("static_map_grid_topic",
+                                       "/drone_city_nav/static_map_grid"),
+        rclcpp::QoS{1}.transient_local());
     path_pub_ = create_publisher<nav_msgs::msg::Path>(
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path"),
         rclcpp::QoS{1}.reliable());
@@ -147,6 +203,7 @@ public:
         rclcpp::QoS{1}.reliable());
 
     const double replan_period_s = declare_parameter<double>("replan_period_s", 0.5);
+    loadConfiguredStaticMap();
     timer_ = create_wall_timer(
         std::chrono::duration<double>{std::max(0.05, replan_period_s)},
         [this]() { replanAndPublish(); });
@@ -158,6 +215,15 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s'",
                 memory_grid_topic.c_str(), local_position_topic.c_str());
+    RCLCPP_INFO(
+        get_logger(),
+        "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
+        "static_path='%s' fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
+        use_static_map_ ? "true" : "false", use_obstacle_memory_ ? "true" : "false",
+        use_current_lidar_obstacles_ ? "true" : "false",
+        static_map_resolved_path_.string().c_str(), fallback_grid_bounds_.width_cells,
+        fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
+        fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
                 "max_staleness=%.2fs depth=%.2f swap_lidar_xy=%s yaw_source=%s",
@@ -301,6 +367,164 @@ private:
     return grid;
   }
 
+  [[nodiscard]] std::filesystem::path
+  resolveStaticMapPath(const std::string& configured_path) const {
+    std::filesystem::path path =
+        configured_path.empty() ? std::filesystem::path{"worlds/generated_city.map2d"}
+                                : std::filesystem::path{configured_path};
+    if (path.is_absolute()) {
+      return path;
+    }
+    if (std::filesystem::exists(path)) {
+      return std::filesystem::absolute(path);
+    }
+
+    try {
+      const auto package_share = std::filesystem::path{
+          ament_index_cpp::get_package_share_directory("drone_city_nav")};
+      std::filesystem::path package_candidate = package_share / path;
+      if (std::filesystem::exists(package_candidate)) {
+        return package_candidate;
+      }
+      std::filesystem::path worlds_candidate =
+          package_share / "worlds" / path.filename();
+      if (std::filesystem::exists(worlds_candidate)) {
+        return worlds_candidate;
+      }
+    } catch (const std::exception&) {
+      return path;
+    }
+
+    return path;
+  }
+
+  void loadConfiguredStaticMap() {
+    static_map_resolved_path_ = resolveStaticMapPath(static_map_path_param_);
+    if (!use_static_map_) {
+      RCLCPP_INFO(get_logger(), "Static city map source is disabled");
+      return;
+    }
+
+    try {
+      const StaticCityMap static_map = loadStaticCityMap(static_map_resolved_path_);
+      if (static_map.frame_id != frame_id_) {
+        RCLCPP_WARN(get_logger(),
+                    "Static city map frame differs from planner frame: map='%s' "
+                    "planner='%s'",
+                    static_map.frame_id.c_str(), frame_id_.c_str());
+      }
+      static_map_rectangles_ = static_map.rectangles.size();
+      static_grid_ =
+          rasterizeStaticCityMap(static_map, static_map_min_blocking_height_m_);
+      const GridStats stats = collectGridStats(*static_grid_);
+      static_map_occupied_cells_ = stats.occupied_cells;
+      RCLCPP_INFO(
+          get_logger(),
+          "Static city map loaded: path='%s' frame='%s' rectangles=%zu "
+          "occupied_cells=%zu grid=%dx%d@%.2fm origin=(%.2f, %.2f) "
+          "min_blocking_height=%.2f",
+          static_map_resolved_path_.string().c_str(), static_map.frame_id.c_str(),
+          static_map_rectangles_, static_map_occupied_cells_, static_grid_->width(),
+          static_grid_->height(), static_grid_->resolution(), static_grid_->originX(),
+          static_grid_->originY(), static_map_min_blocking_height_m_);
+      publishStaticMapGrid(*static_grid_);
+    } catch (const std::exception& error) {
+      static_grid_.reset();
+      static_map_rectangles_ = 0U;
+      static_map_occupied_cells_ = 0U;
+      RCLCPP_ERROR(get_logger(), "Failed to load static city map: path='%s' error='%s'",
+                   static_map_resolved_path_.string().c_str(), error.what());
+    }
+  }
+
+  [[nodiscard]] OccupancyGrid2D makeBasePlanningGrid() const {
+    if (use_static_map_ && static_grid_.has_value()) {
+      return OccupancyGrid2D{static_grid_->bounds()};
+    }
+    if (use_obstacle_memory_ && memory_grid_.has_value()) {
+      return OccupancyGrid2D{memory_grid_->bounds()};
+    }
+    return OccupancyGrid2D{fallback_grid_bounds_};
+  }
+
+  [[nodiscard]] std::optional<PlanningGridBuildResult>
+  buildPlanningGrid(const std::int64_t now_ns) {
+    StaticSourceStats static_stats{};
+    static_stats.enabled = use_static_map_;
+    static_stats.loaded = static_grid_.has_value();
+    static_stats.rectangles = static_map_rectangles_;
+    static_stats.occupied_cells = static_map_occupied_cells_;
+    static_stats.path = static_map_resolved_path_.string();
+
+    MemorySourceStats memory_stats{};
+    memory_stats.enabled = use_obstacle_memory_;
+    memory_stats.seen = memory_grid_.has_value();
+
+    if (!use_static_map_ && !use_obstacle_memory_ && !use_current_lidar_obstacles_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Planner has no enabled obstacle sources; publishing hold path");
+      return std::nullopt;
+    }
+    if (use_static_map_ && !static_grid_.has_value()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Planner static map source is enabled but not loaded; "
+                           "publishing hold path");
+      return std::nullopt;
+    }
+
+    OccupancyGrid2D planning_grid = makeBasePlanningGrid();
+    if (use_static_map_ && static_grid_.has_value()) {
+      const GridOverlayStats static_overlay =
+          overlayOccupiedCells(planning_grid, *static_grid_);
+      static_stats.occupied_cells = static_overlay.source_occupied_cells;
+      static_stats.used = true;
+    }
+
+    if (use_obstacle_memory_) {
+      if (memory_grid_.has_value()) {
+        memory_stats.source_counts = collectGridStats(*memory_grid_);
+        memory_stats.geometry_matches =
+            haveSameGridGeometry(planning_grid, *memory_grid_);
+        if (memory_stats.geometry_matches) {
+          memory_stats.overlay = overlayKnownMemoryCells(planning_grid, *memory_grid_);
+          memory_stats.used = true;
+        } else {
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 5000,
+              "Skipping obstacle memory overlay due to grid geometry mismatch: "
+              "planning=%dx%d@%.2f origin=(%.2f, %.2f) memory=%dx%d@%.2f "
+              "origin=(%.2f, %.2f)",
+              planning_grid.width(), planning_grid.height(), planning_grid.resolution(),
+              planning_grid.originX(), planning_grid.originY(), memory_grid_->width(),
+              memory_grid_->height(), memory_grid_->resolution(),
+              memory_grid_->originX(), memory_grid_->originY());
+        }
+      } else {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                             "Obstacle memory source is enabled but no grid has been "
+                             "received yet");
+      }
+    }
+
+    const CurrentLidarStats current_lidar_stats =
+        overlayCurrentLidarHits(planning_grid, now_ns);
+    const bool any_source_ready =
+        static_stats.used || memory_stats.used ||
+        (current_lidar_stats.enabled && current_lidar_stats.used &&
+         current_lidar_stats.fresh);
+    if (!any_source_ready) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Planner has no ready obstacle source data; publishing hold "
+                           "path");
+      return std::nullopt;
+    }
+
+    planning_grid.rebuildInflation(inflation_radius_m_);
+    return PlanningGridBuildResult{std::move(planning_grid), std::move(static_stats),
+                                   memory_stats, current_lidar_stats};
+  }
+
   void replanAndPublish() {
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     const bool pose_fresh =
@@ -321,25 +545,19 @@ private:
       publishPath({});
       return;
     }
-    if (!memory_grid_.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Planner is waiting for obstacle memory grid; publishing "
-                           "hold path");
+    auto planning_result = buildPlanningGrid(now_ns);
+    if (!planning_result.has_value()) {
       publishPath({});
       return;
     }
-
-    OccupancyGrid2D planning_grid = *memory_grid_;
-    const CurrentLidarStats current_lidar_stats =
-        overlayCurrentLidarHits(planning_grid, now_ns);
-    planning_grid.rebuildInflation(inflation_radius_m_);
+    OccupancyGrid2D planning_grid = std::move(planning_result->grid);
     publishOccupancyGrid(planning_grid);
 
     const auto start_cell = planning_grid.worldToCell(current_pose_.position);
     const auto goal_cell = planning_grid.worldToCell(goal_);
     if (!start_cell.has_value() || !goal_cell.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Start or goal is outside the obstacle memory grid");
+                           "Start or goal is outside the planning grid");
       publishFallbackPath();
       return;
     }
@@ -370,7 +588,7 @@ private:
     if (!astar_result.success) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "A* did not find a path on obstacle memory; expanded=%zu start=(%d,%d) "
+          "A* did not find a path on planning grid; expanded=%zu start=(%d,%d) "
           "goal=(%d,%d)",
           astar_result.expanded_cells, unblocked_start->x, unblocked_start->y,
           unblocked_goal->x, unblocked_goal->y);
@@ -389,18 +607,41 @@ private:
         get_logger(), *get_clock(), 5000,
         "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
         "distance_to_goal=%.2f occupied=%zu inflated=%zu free=%zu unknown=%zu "
-        "current_lidar[used=%s fresh=%s hits=%zu occupied_cells=%zu outside=%zu] "
+        "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
+        "path='%s'] "
+        "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
+        "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
+        "current_lidar[enabled=%s used=%s fresh=%s hits=%zu occupied_cells=%zu "
+        "outside=%zu] "
         "expanded=%zu raw_path=%zu smoothed_path=%zu "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_), stats.occupied_cells,
         stats.inflated_cells, stats.free_cells, stats.unknown_cells,
-        current_lidar_stats.used ? "true" : "false",
-        current_lidar_stats.fresh ? "true" : "false", current_lidar_stats.hit_beams,
-        current_lidar_stats.occupied_cells, current_lidar_stats.outside_hits,
-        astar_result.expanded_cells, astar_result.path.size(), smoothed_cells.size(),
-        raw_path_clearance_m, smoothed_path_clearance_m);
+        planning_result->static_source.enabled ? "true" : "false",
+        planning_result->static_source.loaded ? "true" : "false",
+        planning_result->static_source.used ? "true" : "false",
+        planning_result->static_source.rectangles,
+        planning_result->static_source.occupied_cells,
+        planning_result->static_source.path.c_str(),
+        planning_result->memory.enabled ? "true" : "false",
+        planning_result->memory.seen ? "true" : "false",
+        planning_result->memory.used ? "true" : "false",
+        planning_result->memory.geometry_matches ? "true" : "false",
+        planning_result->memory.source_counts.occupied_cells,
+        planning_result->memory.source_counts.free_cells,
+        planning_result->memory.source_counts.unknown_cells,
+        planning_result->memory.overlay.occupied_cells_applied,
+        planning_result->memory.overlay.free_cells_applied,
+        planning_result->current_lidar.enabled ? "true" : "false",
+        planning_result->current_lidar.used ? "true" : "false",
+        planning_result->current_lidar.fresh ? "true" : "false",
+        planning_result->current_lidar.hit_beams,
+        planning_result->current_lidar.occupied_cells,
+        planning_result->current_lidar.outside_hits, astar_result.expanded_cells,
+        astar_result.path.size(), smoothed_cells.size(), raw_path_clearance_m,
+        smoothed_path_clearance_m);
 
     std::vector<Point2> path_points = cellsToPoints(planning_grid, smoothed_cells);
     if (path_points.empty()) {
@@ -557,11 +798,11 @@ private:
   CurrentLidarStats overlayCurrentLidarHits(OccupancyGrid2D& grid,
                                             const std::int64_t now_ns) const {
     CurrentLidarStats stats{};
+    stats.enabled = use_current_lidar_obstacles_;
     if (!use_current_lidar_obstacles_) {
       return stats;
     }
 
-    stats.used = scan_seen_;
     stats.fresh =
         timestampIsFresh(last_scan_update_ns_, now_ns, max_current_lidar_staleness_ns_);
     if (!scan_seen_ || !stats.fresh) {
@@ -573,12 +814,14 @@ private:
           scanAgeSeconds(now_ns));
       return stats;
     }
+    stats.used = true;
 
     const double scan_range_max = currentLidarRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return stats;
     }
 
+    OccupancyGrid2D current_lidar_grid{grid.bounds()};
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
       const float raw_range = last_scan_.ranges[i];
       const bool hit = currentLidarHit(raw_range, scan_range_max);
@@ -599,18 +842,22 @@ private:
       const Point2 depth_endpoint =
           currentLidarEndpoint(i, range_m + current_lidar_obstacle_depth_m_);
       const std::size_t occupied_cells =
-          markCurrentLidarObstacle(grid, endpoint, depth_endpoint);
+          markCurrentLidarObstacle(current_lidar_grid, endpoint, depth_endpoint);
       if (occupied_cells == 0U) {
         ++stats.outside_hits;
       } else {
         stats.occupied_cells += occupied_cells;
       }
     }
+    const GridOverlayStats overlay_stats =
+        overlayCurrentLidarCells(grid, current_lidar_grid);
+    stats.occupied_cells = overlay_stats.source_occupied_cells;
 
     return stats;
   }
 
-  void publishOccupancyGrid(const OccupancyGrid2D& grid) {
+  [[nodiscard]] nav_msgs::msg::OccupancyGrid
+  makeOccupancyGridMessage(const OccupancyGrid2D& grid, const bool include_inflation) {
     nav_msgs::msg::OccupancyGrid msg;
     msg.header.stamp = now();
     msg.header.frame_id = frame_id_;
@@ -629,7 +876,7 @@ private:
         const std::size_t index = grid.linearIndex(cell);
         if (grid.isOccupied(cell)) {
           msg.data[index] = static_cast<std::int8_t>(100);
-        } else if (grid.isInflated(cell)) {
+        } else if (include_inflation && grid.isInflated(cell)) {
           msg.data[index] = static_cast<std::int8_t>(80);
         } else if (grid.state(cell) == CellState::kFree) {
           msg.data[index] = static_cast<std::int8_t>(0);
@@ -637,7 +884,17 @@ private:
       }
     }
 
-    occupancy_pub_->publish(msg);
+    return msg;
+  }
+
+  void publishStaticMapGrid(const OccupancyGrid2D& grid) {
+    static_map_pub_->publish(makeOccupancyGridMessage(grid, false));
+    RCLCPP_INFO(get_logger(), "Published static map grid: cells=%zu occupied=%zu",
+                grid.cellCount(), static_map_occupied_cells_);
+  }
+
+  void publishOccupancyGrid(const OccupancyGrid2D& grid) {
+    occupancy_pub_->publish(makeOccupancyGridMessage(grid, true));
   }
 
   void publishPath(const std::vector<Point2>& points) {
@@ -815,6 +1072,7 @@ private:
   }
 
   std::optional<OccupancyGrid2D> memory_grid_;
+  std::optional<OccupancyGrid2D> static_grid_;
   AStarPlanner planner_;
   AStarConfig astar_config_{};
   PathSmoothingConfig path_smoothing_config_{};
@@ -830,12 +1088,18 @@ private:
   bool scan_seen_logged_{false};
   bool direct_path_fallback_{false};
   bool reuse_last_valid_path_on_failure_{false};
+  bool use_static_map_{true};
+  bool use_obstacle_memory_{true};
   bool use_current_lidar_obstacles_{true};
   bool use_px4_heading_for_scan_{false};
   bool swap_lidar_xy_to_local_frame_{false};
   std::string frame_id_{"map"};
+  std::string static_map_path_param_{"worlds/generated_city.map2d"};
+  std::filesystem::path static_map_resolved_path_;
+  GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{2.5};
   double cruise_altitude_m_{12.0};
+  double static_map_min_blocking_height_m_{0.0};
   double max_initial_lateral_deviation_m_{8.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
@@ -850,6 +1114,8 @@ private:
   int occupied_threshold_{65};
   int free_threshold_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
+  std::size_t static_map_rectangles_{0U};
+  std::size_t static_map_occupied_cells_{0U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
@@ -859,6 +1125,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr timer_;

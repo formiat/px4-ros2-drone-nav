@@ -22,6 +22,14 @@ Visualization Manager:
       Name: Raw Obstacle Memory Grid
       Topic:
         Value: /drone_city_nav/obstacle_memory_inflated_grid
+    - Alpha: 0.45
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: false
+      Name: Static City Map
+      Topic:
+        Value: /drone_city_nav/static_map_grid
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255
