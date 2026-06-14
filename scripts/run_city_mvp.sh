@@ -121,7 +121,7 @@ expected_obstacle_memory="${enable_obstacle_memory_override}"
 expected_current_lidar="${enable_current_lidar_override}"
 if [[ "${params_are_default}" == "true" ]]; then
   expected_static_map="${expected_static_map:-true}"
-  expected_obstacle_memory="${expected_obstacle_memory:-false}"
+  expected_obstacle_memory="${expected_obstacle_memory:-true}"
   expected_current_lidar="${expected_current_lidar:-true}"
 fi
 

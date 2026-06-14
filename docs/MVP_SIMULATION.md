@@ -15,12 +15,10 @@ flight at a fixed altitude.
 - ROS 2 runs an obstacle-memory mapper, a planner, and a PX4 offboard control
   node.
 - The stack can use a static 2D city map as a conservative prior source.
-  `planner_node` overlays the static map and current lidar hits before
-  inflation in the default MVP profile. `obstacle_memory_node` can still
-  integrate `sensor_msgs/LaserScan` with navigation pose into a persistent 2D
-  memory grid for experiments, but persistent memory is disabled by default as a
-  hard planning source because accumulated scan artifacts can close otherwise
-  passable streets.
+  `obstacle_memory_node` integrates `sensor_msgs/LaserScan` with navigation pose
+  into a persistent 2D memory grid, and `planner_node` overlays static map,
+  obstacle memory, and current lidar hits before inflation in the default MVP
+  profile.
 - If the planner cannot find a path or has no valid map/pose, it publishes an
   empty path so the offboard node holds position instead of moving without a
   target.
@@ -275,8 +273,6 @@ The planner builds its A* grid from three obstacle sources:
   ```
 
 - Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.
-  This source is available for experiments, but the default MVP profile keeps it
-  disabled as a hard planning source.
 - A temporary overlay of the latest fresh `/scan` hit endpoints. This overlay is
   applied only to the planner's working grid before inflation, so it can help at
   lower altitude without permanently storing takeoff-time artifacts.

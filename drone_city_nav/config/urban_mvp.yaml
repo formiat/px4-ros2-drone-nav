@@ -3,7 +3,7 @@ obstacle_memory_node:
     frame_id: map
     pose_source: px4_local_position
     lidar_topic: /scan
-    mapping_enabled: false
+    mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
@@ -71,7 +71,7 @@ planner_node:
     use_static_map: true
     static_map_path: worlds/generated_city.map2d
     static_map_min_blocking_height_m: 0.0
-    use_obstacle_memory: false
+    use_obstacle_memory: true
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 115.0
     planning_grid_height_m: 175.0
