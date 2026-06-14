@@ -48,14 +48,29 @@ uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${repo_root}/log/uxrce_agent_city_mvp.lo
 ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
-city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${repo_root}/drone_city_nav/config/urban_mvp.yaml}"
+default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
+city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
-enable_static_map="$(normalize_bool "${ENABLE_STATIC_MAP:-true}")"
-enable_obstacle_memory="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY:-true}")"
-enable_current_lidar="$(normalize_bool "${ENABLE_CURRENT_LIDAR:-true}")"
+enable_static_map_override=""
+enable_obstacle_memory_override=""
+enable_current_lidar_override=""
+if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
+  enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
+fi
+if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
+  enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
+fi
+if [[ -n "${ENABLE_CURRENT_LIDAR+x}" ]]; then
+  enable_current_lidar_override="$(normalize_bool "${ENABLE_CURRENT_LIDAR}")"
+fi
 static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
+static_city_map_path_override=false
+if [[ -n "${STATIC_CITY_MAP_PATH+x}" ]]; then
+  static_city_map_path_override=true
+fi
 px4_param_delay_s="${PX4_PARAM_DELAY_S:-6}"
 mission_check="${MISSION_CHECK:-}"
+allow_mission_failure="$(normalize_bool "${ALLOW_MISSION_FAILURE:-false}")"
 headless="${HEADLESS:-}"
 if [[ -n "${ENABLE_RVIZ+x}" ]]; then
   enable_rviz="${ENABLE_RVIZ}"
@@ -84,6 +99,39 @@ if [[ ! -f "${city_nav_params_file}" ]]; then
   echo "City navigation params file was not found: ${city_nav_params_file}" >&2
   exit 1
 fi
+
+format_override_value() {
+  local value="$1"
+  if [[ -n "${value}" ]]; then
+    printf '%s' "${value}"
+  else
+    printf 'from_params'
+  fi
+}
+
+params_are_default=false
+canonical_city_nav_params_file="$(realpath -m "${city_nav_params_file}")"
+canonical_default_city_nav_params_file="$(realpath -m "${default_city_nav_params_file}")"
+if [[ "${canonical_city_nav_params_file}" == "${canonical_default_city_nav_params_file}" ]]; then
+  params_are_default=true
+fi
+
+expected_static_map="${enable_static_map_override}"
+expected_obstacle_memory="${enable_obstacle_memory_override}"
+expected_current_lidar="${enable_current_lidar_override}"
+if [[ "${params_are_default}" == "true" ]]; then
+  expected_static_map="${expected_static_map:-true}"
+  expected_obstacle_memory="${expected_obstacle_memory:-true}"
+  expected_current_lidar="${expected_current_lidar:-true}"
+fi
+
+bool_is_true() {
+  [[ "$1" == "true" || "$1" == "1" ]]
+}
+
+bool_is_false() {
+  [[ "$1" == "false" || "$1" == "0" ]]
+}
 
 set +u
 source "/opt/ros/${ros_distro}/setup.bash"
@@ -183,7 +231,8 @@ echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "City navigation params: ${city_nav_params_file}"
-echo "Obstacle sources: static=${enable_static_map} memory=${enable_obstacle_memory} current_lidar=${enable_current_lidar}"
+echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
+echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
 (
@@ -254,6 +303,26 @@ require_log_pattern() {
   return 1
 }
 
+skip_log_check() {
+  local label="$1"
+  local reason="$2"
+  echo "SKIP: ${label}: ${reason}"
+}
+
+require_source_value() {
+  local label="$1"
+  local source_name="$2"
+  local expected_value="$3"
+
+  if [[ -z "${expected_value}" ]]; then
+    skip_log_check "${label}" "source value comes from custom params file"
+    return 0
+  fi
+
+  require_log_pattern "${label}" "${ros_log_file}" \
+    "Planner obstacle sources: .*${source_name}=${expected_value}"
+}
+
 check_headless_run() {
   local failed=0
 
@@ -261,23 +330,70 @@ check_headless_run() {
     "Gazebo world is ready" || failed=1
   require_log_pattern "PX4 local position is valid" "${ros_log_file}" \
     "First valid PX4 local position" || failed=1
-  require_log_pattern "lidar scans are received" "${ros_log_file}" \
-    "First lidar scan" || failed=1
-  if [[ "${enable_obstacle_memory}" == "true" || "${enable_obstacle_memory}" == "1" ]]; then
+
+  if bool_is_true "${expected_obstacle_memory}"; then
+    require_log_pattern "lidar scans are received by obstacle memory" \
+      "${ros_log_file}" "First lidar scan" || failed=1
+  elif bool_is_true "${expected_current_lidar}"; then
+    require_log_pattern "lidar scans are received by planner" \
+      "${ros_log_file}" "First planner lidar scan" || failed=1
+  elif bool_is_false "${expected_obstacle_memory}" &&
+    bool_is_false "${expected_current_lidar}"; then
+    skip_log_check "lidar scans are received" \
+      "static-only source configuration does not require lidar data"
+  else
+    require_log_pattern "lidar scans are received" "${ros_log_file}" \
+      "First lidar scan|First planner lidar scan|LIDAR_DEBUG snapshot=" || failed=1
+  fi
+
+  if bool_is_true "${expected_obstacle_memory}"; then
     require_log_pattern "obstacle memory receives lidar" "${ros_log_file}" \
       "Obstacle memory update:" || failed=1
-  else
+    require_log_pattern "obstacle memory contributes to planning" "${ros_log_file}" \
+      "memory\\[enabled=true" || failed=1
+  elif bool_is_false "${expected_obstacle_memory}"; then
     require_log_pattern "obstacle memory source is disabled" "${ros_log_file}" \
       "Obstacle memory mapping is disabled" || failed=1
+    require_log_pattern "obstacle memory is disabled in planning" "${ros_log_file}" \
+      "memory\\[enabled=false" || failed=1
+  else
+    skip_log_check "obstacle memory source state" \
+      "source value comes from custom params file"
   fi
+
   require_log_pattern "planner obstacle sources are logged" "${ros_log_file}" \
-    "Planner obstacle sources: static=${enable_static_map} memory=${enable_obstacle_memory} current_lidar=${enable_current_lidar}" || failed=1
-  if [[ "${enable_static_map}" == "true" || "${enable_static_map}" == "1" ]]; then
+    "Planner obstacle sources:" || failed=1
+  require_source_value "static source value is logged" "static" \
+    "${expected_static_map}" || failed=1
+  require_source_value "memory source value is logged" "memory" \
+    "${expected_obstacle_memory}" || failed=1
+  require_source_value "current lidar source value is logged" "current_lidar" \
+    "${expected_current_lidar}" || failed=1
+
+  if bool_is_true "${expected_static_map}"; then
     require_log_pattern "static city map is loaded" "${ros_log_file}" \
       "Static city map loaded:" || failed=1
     require_log_pattern "static map contributes to planning" "${ros_log_file}" \
       "static\\[enabled=true loaded=true used=true" || failed=1
+  elif bool_is_false "${expected_static_map}"; then
+    require_log_pattern "static map is disabled in planning" "${ros_log_file}" \
+      "static\\[enabled=false" || failed=1
+  else
+    skip_log_check "static map source state" \
+      "source value comes from custom params file"
   fi
+
+  if bool_is_true "${expected_current_lidar}"; then
+    require_log_pattern "current lidar contributes to planning" "${ros_log_file}" \
+      "current_lidar\\[enabled=true used=true" || failed=1
+  elif bool_is_false "${expected_current_lidar}"; then
+    require_log_pattern "current lidar is disabled in planning" "${ros_log_file}" \
+      "current_lidar\\[enabled=false used=false" || failed=1
+  else
+    skip_log_check "current lidar source state" \
+      "source value comes from custom params file"
+  fi
+
   require_log_pattern "planner publishes a path" "${ros_log_file}" \
     "Published path: waypoints=[1-9]" || failed=1
   require_log_pattern "offboard command is sent" "${ros_log_file}" \
@@ -292,8 +408,12 @@ check_headless_run() {
   fi
 
   if grep -Eq "MISSION_RESULT success=false" "${ros_log_file}"; then
-    echo "FAIL: mission monitor reported failure" >&2
-    failed=1
+    if [[ -n "${mission_check}" ]] || ! bool_is_true "${allow_mission_failure}"; then
+      echo "FAIL: mission monitor reported failure" >&2
+      failed=1
+    else
+      echo "WARN: mission monitor reported failure (allowed by ALLOW_MISSION_FAILURE=true)"
+    fi
   fi
 
   if [[ -n "${mission_check}" ]]; then
@@ -304,8 +424,12 @@ check_headless_run() {
   if grep -Eqi \
     "Sensor [0-9]+ missing|Accel Sensor [0-9]+ missing|Gyro Sensor [0-9]+ missing|barometer [0-9]+ missing|Found 0 compass|Timed out waiting for Gazebo world|gz_bridge failed|Attitude failure" \
     "${px4_log_file}"; then
-    echo "FAIL: PX4 log contains critical simulator/preflight errors" >&2
-    failed=1
+    if [[ -n "${mission_check}" ]] || ! bool_is_true "${allow_mission_failure}"; then
+      echo "FAIL: PX4 log contains critical simulator/preflight errors" >&2
+      failed=1
+    else
+      echo "WARN: PX4 log contains critical simulator/preflight errors (allowed by ALLOW_MISSION_FAILURE=true)"
+    fi
   else
     echo "OK: no critical PX4 simulator/preflight errors found"
   fi
@@ -320,19 +444,31 @@ check_headless_run() {
   return 0
 }
 
+ros_launch_args=(
+  params_file:="${city_nav_params_file}"
+  lidar_debug_output_dir:="${lidar_debug_dir}"
+  enable_gazebo_bridge:=true
+  enable_mission_monitor:=true
+  enable_lidar_debug:="${enable_lidar_debug}"
+  enable_rviz:="${enable_rviz}"
+)
+if [[ -n "${enable_static_map_override}" ]]; then
+  ros_launch_args+=(use_static_map:="${enable_static_map_override}")
+fi
+if [[ -n "${enable_obstacle_memory_override}" ]]; then
+  ros_launch_args+=(use_obstacle_memory:="${enable_obstacle_memory_override}")
+fi
+if [[ -n "${enable_current_lidar_override}" ]]; then
+  ros_launch_args+=(use_current_lidar_obstacles:="${enable_current_lidar_override}")
+fi
+if [[ "${static_city_map_path_override}" == "true" ]]; then
+  ros_launch_args+=(static_map_path:="${static_city_map_path}")
+fi
+
 echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
-    params_file:="${city_nav_params_file}" \
-    lidar_debug_output_dir:="${lidar_debug_dir}" \
-    enable_gazebo_bridge:=true \
-    enable_mission_monitor:=true \
-    enable_lidar_debug:="${enable_lidar_debug}" \
-    enable_rviz:="${enable_rviz}" \
-    use_static_map:="${enable_static_map}" \
-    use_obstacle_memory:="${enable_obstacle_memory}" \
-    use_current_lidar_obstacles:="${enable_current_lidar}" \
-    static_map_path:="${static_city_map_path}" \
+    "${ros_launch_args[@]}" \
     > "${ros_log_file}" 2>&1 || {
     exit_code=$?
     if [[ "${exit_code}" -eq 124 ]]; then
@@ -349,15 +485,6 @@ if [[ "${smoke_duration_s}" != "0" ]]; then
   }
 else
   ros2 launch drone_city_nav city_nav.launch.py \
-    params_file:="${city_nav_params_file}" \
-    lidar_debug_output_dir:="${lidar_debug_dir}" \
-    enable_gazebo_bridge:=true \
-    enable_mission_monitor:=true \
-    enable_lidar_debug:="${enable_lidar_debug}" \
-    enable_rviz:="${enable_rviz}" \
-    use_static_map:="${enable_static_map}" \
-    use_obstacle_memory:="${enable_obstacle_memory}" \
-    use_current_lidar_obstacles:="${enable_current_lidar}" \
-    static_map_path:="${static_city_map_path}" \
+    "${ros_launch_args[@]}" \
     2>&1 | tee "${ros_log_file}"
 fi

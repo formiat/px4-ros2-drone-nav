@@ -99,8 +99,7 @@ Launch only the portable ROS/PX4 stack with a hardware-specific parameter file:
 ros2 launch drone_city_nav city_nav.launch.py \
   params_file:=/workspace/drone_city_nav/config/real_drone_template.yaml \
   enable_gazebo_bridge:=false \
-  enable_mission_monitor:=false \
-  use_static_map:=false
+  enable_mission_monitor:=false
 ```
 
 Before using the real-drone template, update the lidar topic, GPS/compass
@@ -158,14 +157,24 @@ Override the ROS parameter file used by the run script with:
 CITY_NAV_PARAMS_FILE=/workspace/build/some_params.yaml ./scripts/run_city_mvp.sh
 ```
 
-Obstacle sources can be toggled before a run without editing tracked YAML files.
-All three are enabled by default:
+Obstacle sources are controlled by the selected params file. In the default
+simulation params file all three are enabled. The run script environment
+variables below are explicit launch overrides, so unset variables leave the
+selected params file in control:
 
 ```bash
 ENABLE_STATIC_MAP=false ./scripts/run_city_mvp.sh
 ENABLE_OBSTACLE_MEMORY=false ./scripts/run_city_mvp.sh
 ENABLE_CURRENT_LIDAR=false ./scripts/run_city_mvp.sh
 STATIC_CITY_MAP_PATH=/workspace/drone_city_nav/worlds/generated_city.map2d ./scripts/run_city_mvp.sh
+```
+
+The same launch arguments can be passed manually. Leave them empty or omit them
+to use `params_file`; pass a value only when an explicit launch-time override is
+needed:
+
+```bash
+ros2 launch drone_city_nav city_nav.launch.py use_static_map:=false
 ```
 
 ## Lidar Debugging
@@ -280,10 +289,10 @@ HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
 planner/offboard launch. When the timeout is reached, the script checks the logs
-for a ready Gazebo world, valid PX4 local position, lidar scans, obstacle-memory
-updates, static map loading when enabled, planner source configuration, planner
-waypoints, offboard and arm commands, armed offboard state, and critical PX4
-preflight failures.
+for a ready Gazebo world, valid PX4 local position, source-appropriate lidar
+markers, obstacle-memory updates or disabled-state markers, static map loading
+when enabled, planner source configuration, planner waypoints, offboard and arm
+commands, armed offboard state, and critical PX4 preflight failures.
 
 During startup the script sends SITL-only PX4 parameters through the PX4 shell:
 `CBRK_SUPPLY_CHK=894281` disables the unavailable power-supply check and
@@ -324,6 +333,11 @@ initial conservative MVP tuning.
 On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
 the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
 crashed vehicle is not commanded to recover and continue the mission.
+
+For source-toggle smoke checks where a non-default source combination is known
+to be unsafe for a complete mission, set `ALLOW_MISSION_FAILURE=true`. This
+keeps the log-marker checks useful while explicitly allowing mission monitor and
+PX4 attitude failure markers. Do not set it for full A-to-B validation.
 
 ## Offboard Speed Control
 

@@ -2,18 +2,32 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
+
+
+def optional_bool_override(context, launch_config, argument_name):
+    value = launch_config.perform(context).strip()
+    if not value:
+        return None
+
+    normalized = value.lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+
+    raise RuntimeError(
+        f"Launch argument '{argument_name}' must be a boolean or empty, got '{value}'"
+    )
 
 
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
     default_rviz_config = package_share / "rviz" / "city_nav_debug.rviz"
-    default_static_map = package_share / "worlds" / "generated_city.map2d"
     lidar_gz_topic = (
         "/world/generated_city/model/x500_lidar_2d_0/link/link/"
         "sensor/lidar_2d_v2/scan"
@@ -46,38 +60,57 @@ def generate_launch_description():
         ],
     )
 
-    planner = Node(
-        package="drone_city_nav",
-        executable="planner_node",
-        name="planner_node",
-        output="screen",
-        parameters=[
-            params_file,
-            {
-                "use_static_map": ParameterValue(use_static_map, value_type=bool),
-                "use_obstacle_memory": ParameterValue(
-                    use_obstacle_memory, value_type=bool
-                ),
-                "use_current_lidar_obstacles": ParameterValue(
-                    use_current_lidar_obstacles, value_type=bool
-                ),
-                "static_map_path": static_map_path,
-            },
-        ],
-    )
+    def source_nodes(context, *args, **kwargs):
+        planner_overrides = {}
 
-    obstacle_memory = Node(
-        package="drone_city_nav",
-        executable="obstacle_memory_node",
-        name="obstacle_memory_node",
-        output="screen",
-        parameters=[
-            params_file,
-            {
-                "mapping_enabled": ParameterValue(use_obstacle_memory, value_type=bool),
-            },
-        ],
-    )
+        static_map_override = optional_bool_override(
+            context, use_static_map, "use_static_map"
+        )
+        if static_map_override is not None:
+            planner_overrides["use_static_map"] = static_map_override
+
+        obstacle_memory_override = optional_bool_override(
+            context, use_obstacle_memory, "use_obstacle_memory"
+        )
+        if obstacle_memory_override is not None:
+            planner_overrides["use_obstacle_memory"] = obstacle_memory_override
+
+        current_lidar_override = optional_bool_override(
+            context, use_current_lidar_obstacles, "use_current_lidar_obstacles"
+        )
+        if current_lidar_override is not None:
+            planner_overrides["use_current_lidar_obstacles"] = current_lidar_override
+
+        static_map_path_override = static_map_path.perform(context).strip()
+        if static_map_path_override:
+            planner_overrides["static_map_path"] = static_map_path_override
+
+        planner_parameters = [params_file.perform(context)]
+        if planner_overrides:
+            planner_parameters.append(planner_overrides)
+
+        obstacle_memory_parameters = [params_file.perform(context)]
+        if obstacle_memory_override is not None:
+            obstacle_memory_parameters.append(
+                {"mapping_enabled": obstacle_memory_override}
+            )
+
+        return [
+            Node(
+                package="drone_city_nav",
+                executable="obstacle_memory_node",
+                name="obstacle_memory_node",
+                output="screen",
+                parameters=obstacle_memory_parameters,
+            ),
+            Node(
+                package="drone_city_nav",
+                executable="planner_node",
+                name="planner_node",
+                output="screen",
+                parameters=planner_parameters,
+            ),
+        ]
 
     offboard = Node(
         package="drone_city_nav",
@@ -158,27 +191,38 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "use_static_map",
-                default_value="true",
-                description="Enable the static city obstacle map source.",
+                default_value="",
+                description=(
+                    "Optional override for the static city obstacle map source. "
+                    "Leave empty to use params_file."
+                ),
             ),
             DeclareLaunchArgument(
                 "use_obstacle_memory",
-                default_value="true",
-                description="Enable the accumulated obstacle memory source.",
+                default_value="",
+                description=(
+                    "Optional override for the accumulated obstacle memory source. "
+                    "Leave empty to use params_file."
+                ),
             ),
             DeclareLaunchArgument(
                 "use_current_lidar_obstacles",
-                default_value="true",
-                description="Enable the current LaserScan obstacle overlay source.",
+                default_value="",
+                description=(
+                    "Optional override for the current LaserScan obstacle overlay "
+                    "source. Leave empty to use params_file."
+                ),
             ),
             DeclareLaunchArgument(
                 "static_map_path",
-                default_value=str(default_static_map),
-                description="Path to the static city map2d file.",
+                default_value="",
+                description=(
+                    "Optional static city map2d path override. Leave empty to use "
+                    "params_file."
+                ),
             ),
             scan_bridge,
-            obstacle_memory,
-            planner,
+            OpaqueFunction(function=source_nodes),
             offboard,
             mission_monitor,
             lidar_debug,
