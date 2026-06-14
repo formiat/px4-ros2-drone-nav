@@ -1,7 +1,9 @@
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -94,6 +96,13 @@ public:
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     swap_lidar_xy_to_local_frame_ =
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
+    compensate_lidar_attitude_ =
+        declare_parameter<bool>("compensate_lidar_attitude", false);
+    lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
+    min_projected_lidar_altitude_m_ =
+        declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
+    max_projected_lidar_altitude_m_ =
+        declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
 
     gps_config_.max_gps_staleness_ns = static_cast<std::int64_t>(
         std::clamp<double>(declare_parameter<double>("max_gps_staleness_s", 1.0), 0.0,
@@ -142,6 +151,8 @@ public:
         declare_parameter<std::string>("lidar_topic", "/scan");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
+    const std::string attitude_topic = declare_parameter<std::string>(
+        "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
     const std::string gps_topic = declare_parameter<std::string>("gps_topic", "/fix");
     const std::string compass_imu_topic =
         declare_parameter<std::string>("compass_imu_topic", "/imu");
@@ -159,6 +170,11 @@ public:
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
+    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
+        attitude_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
+          onAttitude(*msg);
+        });
 
     if (pose_source_ == "px4_local_position") {
       local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
@@ -182,21 +198,24 @@ public:
 
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory ready: enabled=%s pose_source=%s grid=%dx%d "
-                "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s'",
+                "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
                 mapping_enabled_ ? "true" : "false", pose_source_.c_str(),
                 memory_->rawGrid().width(), memory_->rawGrid().height(),
                 memory_->rawGrid().resolution(), origin_x, origin_y,
-                lidar_topic.c_str());
+                lidar_topic.c_str(), attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
-                "yaw_source=%s",
+                "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
+                "projected_altitude_range=[%.2f, %.2f]",
                 memory_config_.max_lidar_range_m, memory_config_.hit_obstacle_depth_m,
                 memory_config_.scan_stride, memory_config_.min_score,
                 memory_config_.max_score, memory_config_.free_score,
                 memory_config_.occupied_score,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
-                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned");
+                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
+                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_);
   }
 
 private:
@@ -278,6 +297,17 @@ private:
     }
 
     updateGpsCompassPose();
+  }
+
+  void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
+    const auto euler = quaternionToEuler(msg.q);
+    if (!euler.has_value()) {
+      attitude_valid_ = false;
+      return;
+    }
+
+    current_attitude_ = *euler;
+    attitude_valid_ = true;
   }
 
   void updateGpsCompassPose() {
@@ -369,14 +399,23 @@ private:
       return;
     }
 
-    LaserScan2DView scan_view{
-        std::span<const float>{scan.ranges.data(), scan.ranges.size()},
-        static_cast<double>(scan.angle_min),
-        static_cast<double>(scan.angle_increment),
-        static_cast<double>(scan.range_min),
-        static_cast<double>(scan.range_max),
-        scan_yaw_offset_rad_,
-        swap_lidar_xy_to_local_frame_};
+    LaserScan2DView scan_view{};
+    scan_view.ranges = std::span<const float>{scan.ranges.data(), scan.ranges.size()};
+    scan_view.angle_min_rad = static_cast<double>(scan.angle_min);
+    scan_view.angle_increment_rad = static_cast<double>(scan.angle_increment);
+    scan_view.range_min_m = static_cast<double>(scan.range_min);
+    scan_view.range_max_m = static_cast<double>(scan.range_max);
+    scan_view.scan_yaw_offset_rad = scan_yaw_offset_rad_;
+    scan_view.origin_altitude_m = current_pose_.altitude_m;
+    scan_view.roll_rad = current_attitude_.roll_rad;
+    scan_view.pitch_rad = current_attitude_.pitch_rad;
+    scan_view.lidar_z_offset_m = lidar_z_offset_m_;
+    scan_view.min_projected_altitude_m = min_projected_lidar_altitude_m_;
+    scan_view.max_projected_altitude_m = max_projected_lidar_altitude_m_;
+    scan_view.swap_lidar_xy_to_local_frame = swap_lidar_xy_to_local_frame_;
+    scan_view.altitude_valid = current_pose_.altitude_valid;
+    scan_view.attitude_valid = attitude_valid_;
+    scan_view.compensate_attitude = compensate_lidar_attitude_;
     const ObstacleMemoryStats stats =
         memory_->integrateScan(current_pose_.pose, scan_view, memory_config_);
     memory_->rebuildInflation(inflation_radius_m_);
@@ -386,10 +425,11 @@ private:
       RCLCPP_INFO(
           get_logger(),
           "First lidar scan: beams=%zu processed=%zu hits=%zu range=[%.2f, %.2f] "
-          "angle=[%.2f, %.2f]",
+          "angle=[%.2f, %.2f] attitude_valid=%s",
           scan.ranges.size(), stats.processed_beams, stats.hit_beams,
           static_cast<double>(scan.range_min), static_cast<double>(scan.range_max),
-          static_cast<double>(scan.angle_min), static_cast<double>(scan.angle_max));
+          static_cast<double>(scan.angle_min), static_cast<double>(scan.angle_max),
+          attitude_valid_ ? "true" : "false");
     }
 
     publishMemoryGrids();
@@ -399,12 +439,15 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
-        "processed=%zu hits=%zu invalid=%zu clipped=%zu outside_hits=%zu "
-        "free_updates=%zu occupied_updates=%zu depth_cells=%zu raw[occupied=%zu "
-        "free=%zu unknown=%zu] inflated=%zu",
+        "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
+        "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
+        "occupied_updates=%zu depth_cells=%zu raw[occupied=%zu free=%zu unknown=%zu] "
+        "inflated=%zu",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
-        current_pose_.altitude_m, current_pose_.pose.yaw_rad, stats.processed_beams,
-        stats.hit_beams, stats.invalid_ranges, stats.clipped_rays,
+        current_pose_.altitude_m, current_pose_.pose.yaw_rad,
+        current_attitude_.roll_rad, current_attitude_.pitch_rad,
+        attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
+        stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
         stats.outside_hit_endpoints, stats.free_cells_updated,
         stats.occupied_cells_updated, stats.obstacle_depth_cells,
         raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells,
@@ -481,6 +524,7 @@ private:
   GpsCompassConfig gps_config_{};
   GeoReference gps_origin_{};
   NavigationPose2D current_pose_{};
+  AttitudeEuler current_attitude_{};
   std::optional<GpsFixSample> last_gps_;
   CompassYawState compass_yaw_{};
 
@@ -493,15 +537,21 @@ private:
   double inflation_radius_m_{2.5};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
+  double lidar_z_offset_m_{0.0};
+  double min_projected_lidar_altitude_m_{0.0};
+  double max_projected_lidar_altitude_m_{100000.0};
   bool swap_lidar_xy_to_local_frame_{false};
   bool use_px4_heading_for_scan_{true};
+  bool compensate_lidar_attitude_{false};
   bool mapping_enabled_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
+  bool attitude_valid_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;

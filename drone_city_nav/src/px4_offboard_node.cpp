@@ -770,7 +770,9 @@ private:
     const double dy = desired_target.y - commanded_target_.y;
     const double target_step = std::hypot(dx, dy);
     if (!(target_step_m > 0.0)) {
-      return clampCommandedTargetToCurrent();
+      commanded_target_ = current_position_;
+      commanded_target_valid_ = true;
+      return commanded_target_;
     }
     if (target_step <= target_step_m || !(target_step > 0.0)) {
       commanded_target_ = desired_target;

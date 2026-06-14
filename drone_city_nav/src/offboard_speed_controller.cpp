@@ -64,6 +64,8 @@ const char* speedLimitReasonName(const SpeedLimitReason reason) noexcept {
       return "clearance";
     case SpeedLimitReason::kHardStepCap:
       return "hard_step_cap";
+    case SpeedLimitReason::kTrackingOverspeed:
+      return "tracking_overspeed";
   }
   return "unknown";
 }
@@ -216,6 +218,11 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
 
   if (allowed_speed + kEpsilon < requested_speed) {
     requested_speed = allowed_speed;
+  }
+  if (finiteNonNegative(input.actual_speed_mps) &&
+      input.actual_speed_mps > allowed_speed + max_speed_delta) {
+    requested_speed = 0.0;
+    reason = SpeedLimitReason::kTrackingOverspeed;
   }
   if (step_cap_speed + kEpsilon < requested_speed) {
     requested_speed = step_cap_speed;

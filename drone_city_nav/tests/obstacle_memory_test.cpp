@@ -22,13 +22,13 @@ constexpr std::int64_t kFreshStampNs = 1'500'000'000LL;
 [[nodiscard]] LaserScan2DView makeScan(const std::vector<float>& ranges,
                                        const double angle_min_rad = 0.0,
                                        const double angle_increment_rad = 0.1) {
-  return LaserScan2DView{std::span<const float>{ranges.data(), ranges.size()},
-                         angle_min_rad,
-                         angle_increment_rad,
-                         0.1,
-                         20.0,
-                         0.0,
-                         false};
+  LaserScan2DView scan{};
+  scan.ranges = std::span<const float>{ranges.data(), ranges.size()};
+  scan.angle_min_rad = angle_min_rad;
+  scan.angle_increment_rad = angle_increment_rad;
+  scan.range_min_m = 0.1;
+  scan.range_max_m = 20.0;
+  return scan;
 }
 
 [[nodiscard]] GpsFixSample makeFix() {

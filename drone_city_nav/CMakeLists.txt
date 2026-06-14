@@ -30,6 +30,7 @@ add_library(
   drone_city_nav_core
   src/astar_planner.cpp
   src/grid_overlay.cpp
+  src/lidar_projection.cpp
   src/navigation_pose.cpp
   src/offboard_speed_controller.cpp
   src/obstacle_memory.cpp
@@ -145,6 +146,11 @@ if(BUILD_TESTING)
   target_compile_features(offboard_speed_controller_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_speed_controller_test drone_city_nav_core)
   enable_project_warnings(offboard_speed_controller_test)
+
+  ament_add_gtest(lidar_projection_test tests/lidar_projection_test.cpp)
+  target_compile_features(lidar_projection_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_projection_test drone_city_nav_core)
+  enable_project_warnings(lidar_projection_test)
 endif()
 
 ament_export_include_directories(include)

@@ -59,6 +59,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   overlay helpers for planner sources.
 - `drone_city_nav/include/drone_city_nav/obstacle_memory.hpp` - persistent
   obstacle-memory core with ray clipping and hit/miss score updates.
+- `drone_city_nav/include/drone_city_nav/lidar_projection.hpp` - shared lidar
+  ray projection, PX4 attitude compensation, and projected-altitude filtering.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
   navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
@@ -184,17 +186,19 @@ snapshots under `log/lidar_debug`:
 
 - `snapshots.jsonl` - one JSON record per snapshot with pose, horizontal speed,
   PX4 attitude diagnostics (`roll_rad`, `pitch_rad`, `tilt_rad`), scan
-  statistics, obstacle-memory grid statistics, path size, file paths, and a
-  capped list of hit points.
+  statistics including projected-altitude rejection counts, obstacle-memory grid
+  statistics, path size, file paths, and a capped list of hit points.
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
-  hit flag, and map-frame endpoint.
+  hit flag, map-frame endpoint, and projected endpoint altitude.
 - `snapshot_000001.ppm` - a full-map top-down debug image when the memory grid
   is available. Red dots are current lidar hits, yellow dots are accumulated
   remembered lidar hits, cyan/green lines are the current path, and the blue
   marker is the drone. Occupancy-grid cells are counted in JSON but are not
   drawn in this image. Remembered lidar hits are altitude-gated and require
-  repeated confirmations before they are displayed, so takeoff-time transient
-  ground returns are not kept as obstacle outlines.
+  repeated confirmations before they are displayed. Lidar hit endpoints are
+  projected with PX4 roll/pitch compensation and a projected-altitude filter, so
+  tilted takeoff or acceleration scans do not permanently store ground returns as
+  obstacle outlines.
 
 Override the debug directory or disable recording from the run script:
 
@@ -240,7 +244,8 @@ The main obstacle-memory topics are:
 - `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
   shown yellow in RViz. The MVP config uses `min_remember_altitude_m=10.0`,
   `remembered_hit_min_confirmations=3`, and `hit_memory_resolution_m=0.25` for
-  this visual debug memory.
+  this visual debug memory. These points use the same attitude-compensated
+  projected-altitude filter as obstacle memory.
 - `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
   controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/static_map_grid` - static city map layer only. It is
@@ -320,6 +325,7 @@ Useful ROS log markers for obstacle-source debugging:
 - `Planning summary: ... static[enabled=true loaded=true used=true ...]`
 - `memory[enabled=true seen=true used=true ...]`
 - `current_lidar[enabled=true used=true fresh=true ...]`
+- `altitude_rejected=...`
 
 The script prepares Gazebo runtime resources under `build/gazebo_city_mvp` and
 does not modify the PX4 checkout under `external/`.

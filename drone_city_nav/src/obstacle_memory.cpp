@@ -26,16 +26,6 @@ struct ClippedSegment {
          config.free_score < config.occupied_score;
 }
 
-[[nodiscard]] Point2 directionFromAngle(const double angle_rad,
-                                        const bool swap_xy) noexcept {
-  const double scan_x = std::cos(angle_rad);
-  const double scan_y = std::sin(angle_rad);
-  if (swap_xy) {
-    return Point2{scan_y, scan_x};
-  }
-  return Point2{scan_x, scan_y};
-}
-
 [[nodiscard]] std::optional<ClippedSegment>
 clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
                   const Point2 end) noexcept {
@@ -82,10 +72,6 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
   clipped_end.x = std::clamp(clipped_end.x, min_x, max_x - kBoundaryEpsilon);
   clipped_end.y = std::clamp(clipped_end.y, min_y, max_y - kBoundaryEpsilon);
   return ClippedSegment{clipped_end, t1 < 1.0 - kBoundaryEpsilon};
-}
-
-[[nodiscard]] bool rangeIsPositiveInfinity(const float value) noexcept {
-  return std::isinf(value) && value > 0.0F;
 }
 
 [[nodiscard]] GridCellCounts countCells(const OccupancyGrid2D& grid) {
@@ -135,27 +121,38 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     return stats;
   }
 
+  const LidarProjectionPose projection_pose{
+      pose.position,  scan.origin_altitude_m, pose.yaw_rad,       scan.roll_rad,
+      scan.pitch_rad, scan.altitude_valid,    scan.attitude_valid};
+  const LidarProjectionConfig projection_config{
+      config.max_lidar_range_m,          config.range_hit_epsilon_m,
+      scan.scan_yaw_offset_rad,          scan.lidar_z_offset_m,
+      scan.min_projected_altitude_m,     scan.max_projected_altitude_m,
+      scan.swap_lidar_xy_to_local_frame, scan.compensate_attitude};
+
   const auto stride = static_cast<std::size_t>(std::max(1, config.scan_stride));
   for (std::size_t i = 0U; i < scan.ranges.size(); i += stride) {
     const float raw_range = scan.ranges[i];
-    const bool finite_range = std::isfinite(raw_range);
-    if ((!finite_range && !rangeIsPositiveInfinity(raw_range)) ||
-        (finite_range && static_cast<double>(raw_range) < scan.range_min_m)) {
+    if (!lidarRawRangeUsable(raw_range, scan.range_min_m)) {
       ++stats.invalid_ranges;
       continue;
     }
 
-    const bool hit = finite_range && static_cast<double>(raw_range) <
-                                         scan_range_max - config.range_hit_epsilon_m;
-    const double range_m = hit ? static_cast<double>(raw_range) : scan_range_max;
-    const double angle_rad = pose.yaw_rad + scan.scan_yaw_offset_rad +
-                             scan.angle_min_rad +
-                             static_cast<double>(i) * scan.angle_increment_rad;
-    const Point2 direction =
-        directionFromAngle(angle_rad, scan.swap_lidar_xy_to_local_frame);
-    const Point2 endpoint{pose.position.x + range_m * direction.x,
-                          pose.position.y + range_m * direction.y};
-    const auto clipped = clipSegmentToGrid(raw_grid_, pose.position, endpoint);
+    const LidarBeamProjection projection =
+        projectLidarBeam(projection_pose, projection_config, scan.range_min_m,
+                         scan_range_max, scan.angle_min_rad, scan.angle_increment_rad,
+                         i, raw_range, config.hit_obstacle_depth_m);
+    if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
+      ++stats.altitude_rejected_beams;
+      continue;
+    }
+    if (projection.status != LidarBeamProjectionStatus::kAccepted) {
+      ++stats.invalid_ranges;
+      continue;
+    }
+
+    const auto clipped =
+        clipSegmentToGrid(raw_grid_, pose.position, projection.endpoint);
     if (!clipped.has_value()) {
       ++stats.invalid_ranges;
       continue;
@@ -169,15 +166,15 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     }
 
     ++stats.processed_beams;
-    if (hit) {
+    if (projection.hit) {
       ++stats.hit_beams;
     }
     if (clipped->clipped) {
       ++stats.clipped_rays;
     }
 
-    const auto endpoint_cell = raw_grid_.worldToCell(endpoint);
-    const bool hit_endpoint_inside = hit && endpoint_cell.has_value();
+    const auto endpoint_cell = raw_grid_.worldToCell(projection.endpoint);
+    const bool hit_endpoint_inside = projection.hit && endpoint_cell.has_value();
     const std::vector<GridIndex> ray_cells =
         raw_grid_.cellsOnLine(*start_cell, *clipped_end_cell);
     const std::size_t free_end = hit_endpoint_inside && !ray_cells.empty()
@@ -188,7 +185,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       ++stats.free_cells_updated;
     }
 
-    if (!hit) {
+    if (!projection.hit) {
       continue;
     }
     if (!endpoint_cell.has_value()) {
@@ -205,9 +202,8 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       continue;
     }
 
-    const Point2 depth_start = endpoint;
-    const Point2 depth_end{depth_start.x + config.hit_obstacle_depth_m * direction.x,
-                           depth_start.y + config.hit_obstacle_depth_m * direction.y};
+    const Point2 depth_start = projection.endpoint;
+    const Point2 depth_end = projection.depth_endpoint;
     const auto clipped_depth = clipSegmentToGrid(raw_grid_, depth_start, depth_end);
     if (!clipped_depth.has_value()) {
       continue;

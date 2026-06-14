@@ -5,6 +5,7 @@ obstacle_memory_node:
     lidar_topic: /scan
     mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     gps_topic: /fix
     compass_imu_topic: /imu
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
@@ -22,6 +23,10 @@ obstacle_memory_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.0
+    min_projected_lidar_altitude_m: 0.0
+    max_projected_lidar_altitude_m: 100.0
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     hit_obstacle_depth_m: 4.0
@@ -48,6 +53,7 @@ planner_node:
   ros__parameters:
     frame_id: map
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     lidar_topic: /scan
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
@@ -87,6 +93,10 @@ planner_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.0
+    min_projected_lidar_altitude_m: 0.0
+    max_projected_lidar_altitude_m: 100.0
     astar_max_expansions: 100000
     replan_period_s: 0.5
 
@@ -152,6 +162,11 @@ lidar_debug_node:
     image_size_px: 900
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
+    swap_lidar_xy_to_local_frame: false
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.0
+    min_projected_lidar_altitude_m: 0.0
+    max_projected_lidar_altitude_m: 100.0
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     beam_csv_stride: 1

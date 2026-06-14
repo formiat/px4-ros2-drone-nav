@@ -5,6 +5,7 @@ obstacle_memory_node:
     lidar_topic: /scan
     mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     obstacle_memory_inflated_grid_topic: /drone_city_nav/obstacle_memory_inflated_grid
     grid_resolution_m: 0.5
@@ -22,6 +23,10 @@ obstacle_memory_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
     swap_lidar_xy_to_local_frame: true
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.315
+    min_projected_lidar_altitude_m: 1.0
+    max_projected_lidar_altitude_m: 40.0
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     hit_obstacle_depth_m: 8.0
@@ -37,6 +42,7 @@ planner_node:
   ros__parameters:
     frame_id: map
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     lidar_topic: /scan
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
@@ -79,11 +85,15 @@ planner_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
     swap_lidar_xy_to_local_frame: true
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.315
+    min_projected_lidar_altitude_m: 1.0
+    max_projected_lidar_altitude_m: 40.0
     astar_max_expansions: 500000
-    astar_obstacle_clearance_cost_radius_m: 4.0
-    astar_obstacle_clearance_cost_weight: 6.0
+    astar_obstacle_clearance_cost_radius_m: 5.0
+    astar_obstacle_clearance_cost_weight: 10.0
     astar_turn_cost_weight: 2.5
-    path_smoothing_min_obstacle_clearance_m: 1.5
+    path_smoothing_min_obstacle_clearance_m: 2.5
     replan_period_s: 0.75
 
 px4_offboard_node:
@@ -100,24 +110,24 @@ px4_offboard_node:
     min_navigation_altitude_m: 17.0
     face_target_yaw: false
     acceptance_radius_m: 1.0
-    max_setpoint_distance_m: 10.0
-    max_commanded_target_step_m: 0.9
-    desired_speed_mps: 5.0
-    max_accel_mps2: 4.0
+    max_setpoint_distance_m: 5.0
+    max_commanded_target_step_m: 0.4
+    desired_speed_mps: 4.0
+    max_accel_mps2: 2.0
     min_command_speed_mps: 0.0
     goal_slowdown_radius_m: 18.0
     braking_safety_margin_m: 1.0
-    turn_slowdown_angle_rad: 0.85
+    turn_slowdown_angle_rad: 0.55
     turn_slowdown_min_speed_mps: 2.0
-    narrow_clearance_slowdown_radius_m: 2.5
-    narrow_clearance_min_speed_mps: 2.0
+    narrow_clearance_slowdown_radius_m: 6.0
+    narrow_clearance_min_speed_mps: 1.2
     max_clearance_grid_staleness_s: 1.5
-    velocity_feedforward_enabled: true
-    lookahead_distance_m: 8.0
+    velocity_feedforward_enabled: false
+    lookahead_distance_m: 4.5
     dynamic_lookahead_enabled: true
-    lookahead_time_s: 1.6
-    min_lookahead_distance_m: 8.0
-    max_lookahead_distance_m: 16.0
+    lookahead_time_s: 1.0
+    min_lookahead_distance_m: 4.5
+    max_lookahead_distance_m: 7.0
     path_switch_hysteresis_m: 3.0
     path_continuity_reuse_radius_m: 6.0
     path_continuity_max_target_distance_m: 20.0
@@ -155,6 +165,10 @@ lidar_debug_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: false
     swap_lidar_xy_to_local_frame: true
+    compensate_lidar_attitude: true
+    lidar_z_offset_m: 0.315
+    min_projected_lidar_altitude_m: 1.0
+    max_projected_lidar_altitude_m: 40.0
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     beam_csv_stride: 1

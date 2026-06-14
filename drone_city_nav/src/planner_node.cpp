@@ -1,5 +1,6 @@
 #include "drone_city_nav/astar_planner.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/static_city_map.hpp"
@@ -7,6 +8,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -47,6 +49,7 @@ struct CurrentLidarStats {
   bool fresh{false};
   std::size_t processed_beams{0U};
   std::size_t hit_beams{0U};
+  std::size_t altitude_rejected_beams{0U};
   std::size_t occupied_cells{0U};
   std::size_t outside_hits{0U};
 };
@@ -141,6 +144,13 @@ public:
         declare_parameter<bool>("use_px4_heading_for_scan", false);
     swap_lidar_xy_to_local_frame_ =
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
+    compensate_lidar_attitude_ =
+        declare_parameter<bool>("compensate_lidar_attitude", false);
+    lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
+    min_projected_lidar_altitude_m_ =
+        declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
+    max_projected_lidar_altitude_m_ =
+        declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
     astar_config_.max_expansions = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
         std::numeric_limits<int>::max()));
@@ -173,6 +183,8 @@ public:
         declare_parameter<std::string>("lidar_topic", "/scan");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
+    const std::string attitude_topic = declare_parameter<std::string>(
+        "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
@@ -187,6 +199,11 @@ public:
         local_position_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
+        });
+    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
+        attitude_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
+          onAttitude(*msg);
         });
 
     occupancy_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -227,8 +244,10 @@ public:
                 "inflation=%.2fm",
                 start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_);
     RCLCPP_INFO(get_logger(),
-                "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s'",
-                memory_grid_topic.c_str(), local_position_topic.c_str());
+                "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s' "
+                "attitude='%s'",
+                memory_grid_topic.c_str(), local_position_topic.c_str(),
+                attitude_topic.c_str());
     RCLCPP_INFO(
         get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
@@ -240,13 +259,17 @@ public:
         fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
-                "max_staleness=%.2fs depth=%.2f swap_lidar_xy=%s yaw_source=%s",
+                "max_staleness=%.2fs depth=%.2f swap_lidar_xy=%s yaw_source=%s "
+                "compensate_attitude=%s lidar_z_offset=%.2f "
+                "projected_altitude_range=[%.2f, %.2f]",
                 use_current_lidar_obstacles_ ? "true" : "false", lidar_topic.c_str(),
                 max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
                 current_lidar_obstacle_depth_m_,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
-                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned");
+                use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
+                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_);
     RCLCPP_INFO(
         get_logger(),
         "Planner fallback policy: direct_path_fallback=%s "
@@ -281,6 +304,12 @@ private:
         Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
     if (msg.heading_good_for_control && std::isfinite(msg.heading)) {
       current_pose_.yaw_rad = static_cast<double>(msg.heading);
+    }
+    if (msg.z_valid && std::isfinite(msg.z)) {
+      current_altitude_m_ = -static_cast<double>(msg.z);
+      altitude_valid_ = true;
+    } else {
+      altitude_valid_ = false;
     }
     pose_valid_ = true;
     last_pose_update_ns_ = get_clock()->now().nanoseconds();
@@ -333,6 +362,17 @@ private:
                   static_cast<double>(last_scan_.angle_min),
                   static_cast<double>(last_scan_.angle_max));
     }
+  }
+
+  void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
+    const auto euler = quaternionToEuler(msg.q);
+    if (!euler.has_value()) {
+      attitude_valid_ = false;
+      return;
+    }
+
+    current_attitude_ = *euler;
+    attitude_valid_ = true;
   }
 
   [[nodiscard]] std::optional<OccupancyGrid2D>
@@ -625,8 +665,8 @@ private:
         "path='%s'] "
         "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
         "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
-        "current_lidar[enabled=%s used=%s fresh=%s hits=%zu occupied_cells=%zu "
-        "outside=%zu] "
+        "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
+        "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
         "expanded=%zu raw_path=%zu smoothed_path=%zu "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
@@ -651,7 +691,9 @@ private:
         planning_result->current_lidar.enabled ? "true" : "false",
         planning_result->current_lidar.used ? "true" : "false",
         planning_result->current_lidar.fresh ? "true" : "false",
+        planning_result->current_lidar.processed_beams,
         planning_result->current_lidar.hit_beams,
+        planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
         planning_result->current_lidar.outside_hits, astar_result.expanded_cells,
         astar_result.path.size(), smoothed_cells.size(), raw_path_clearance_m,
@@ -755,32 +797,26 @@ private:
     return std::min(static_cast<double>(last_scan_.range_max), max_lidar_range_m_);
   }
 
-  [[nodiscard]] bool currentLidarHit(const float raw_range,
-                                     const double scan_range_max) const {
-    return std::isfinite(raw_range) && raw_range >= last_scan_.range_min &&
-           static_cast<double>(raw_range) < scan_range_max - range_hit_epsilon_m_;
+  [[nodiscard]] LidarProjectionPose currentLidarProjectionPose() const {
+    return LidarProjectionPose{current_pose_.position,
+                               current_altitude_m_,
+                               use_px4_heading_for_scan_ ? current_pose_.yaw_rad
+                                                         : initial_heading_rad_,
+                               current_attitude_.roll_rad,
+                               current_attitude_.pitch_rad,
+                               altitude_valid_,
+                               attitude_valid_};
   }
 
-  [[nodiscard]] Point2 lidarDirection(const double angle_rad) const {
-    const double scan_x = std::cos(angle_rad);
-    const double scan_y = std::sin(angle_rad);
-    if (swap_lidar_xy_to_local_frame_) {
-      return Point2{scan_y, scan_x};
-    }
-    return Point2{scan_x, scan_y};
-  }
-
-  [[nodiscard]] Point2 currentLidarEndpoint(const std::size_t beam_index,
-                                            const double range_m) const {
-    const double yaw_rad =
-        (use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_) +
-        scan_yaw_offset_rad_;
-    const double angle_rad = yaw_rad + static_cast<double>(last_scan_.angle_min) +
-                             static_cast<double>(beam_index) *
-                                 static_cast<double>(last_scan_.angle_increment);
-    const Point2 direction = lidarDirection(angle_rad);
-    return Point2{current_pose_.position.x + range_m * direction.x,
-                  current_pose_.position.y + range_m * direction.y};
+  [[nodiscard]] LidarProjectionConfig currentLidarProjectionConfig() const {
+    return LidarProjectionConfig{max_lidar_range_m_,
+                                 range_hit_epsilon_m_,
+                                 scan_yaw_offset_rad_,
+                                 lidar_z_offset_m_,
+                                 min_projected_lidar_altitude_m_,
+                                 max_projected_lidar_altitude_m_,
+                                 swap_lidar_xy_to_local_frame_,
+                                 compensate_lidar_attitude_};
   }
 
   std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoint,
@@ -836,27 +872,32 @@ private:
     }
 
     OccupancyGrid2D current_lidar_grid{grid.bounds()};
+    const LidarProjectionPose projection_pose = currentLidarProjectionPose();
+    const LidarProjectionConfig projection_config = currentLidarProjectionConfig();
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
       const float raw_range = last_scan_.ranges[i];
-      const bool hit = currentLidarHit(raw_range, scan_range_max);
-      if (std::isfinite(raw_range) &&
-          raw_range >= static_cast<float>(last_scan_.range_min)) {
-        ++stats.processed_beams;
-      }
-      if (!hit) {
+      if (!lidarRawRangeUsable(raw_range, static_cast<double>(last_scan_.range_min))) {
         continue;
       }
-      const double range_m = static_cast<double>(raw_range);
-      if (!(range_m >= static_cast<double>(last_scan_.range_min))) {
+      ++stats.processed_beams;
+
+      const LidarBeamProjection projection = projectLidarBeam(
+          projection_pose, projection_config, static_cast<double>(last_scan_.range_min),
+          scan_range_max, static_cast<double>(last_scan_.angle_min),
+          static_cast<double>(last_scan_.angle_increment), i, raw_range,
+          current_lidar_obstacle_depth_m_);
+      if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
+        ++stats.altitude_rejected_beams;
+        continue;
+      }
+      if (projection.status != LidarBeamProjectionStatus::kAccepted ||
+          !projection.hit) {
         continue;
       }
 
       ++stats.hit_beams;
-      const Point2 endpoint = currentLidarEndpoint(i, range_m);
-      const Point2 depth_endpoint =
-          currentLidarEndpoint(i, range_m + current_lidar_obstacle_depth_m_);
-      const std::size_t occupied_cells =
-          markCurrentLidarObstacle(current_lidar_grid, endpoint, depth_endpoint);
+      const std::size_t occupied_cells = markCurrentLidarObstacle(
+          current_lidar_grid, projection.endpoint, projection.depth_endpoint);
       if (occupied_cells == 0U) {
         ++stats.outside_hits;
       } else {
@@ -1045,7 +1086,9 @@ private:
 
   void invalidateCurrentPose() {
     current_pose_ = Pose2{};
+    current_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
     pose_valid_ = false;
+    altitude_valid_ = false;
     last_pose_update_ns_ = 0;
   }
 
@@ -1162,6 +1205,7 @@ private:
   PathSmoothingConfig path_smoothing_config_{};
 
   Pose2 current_pose_{};
+  AttitudeEuler current_attitude_{};
   Point2 start_{};
   Point2 goal_{};
   sensor_msgs::msg::LaserScan last_scan_;
@@ -1177,6 +1221,9 @@ private:
   bool use_current_lidar_obstacles_{true};
   bool use_px4_heading_for_scan_{false};
   bool swap_lidar_xy_to_local_frame_{false};
+  bool compensate_lidar_attitude_{false};
+  bool altitude_valid_{false};
+  bool attitude_valid_{false};
   std::string frame_id_{"map"};
   std::string static_map_path_param_{"worlds/generated_city.map2d"};
   std::filesystem::path static_map_resolved_path_;
@@ -1191,6 +1238,10 @@ private:
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double static_map_debug_publish_period_s_{1.0};
+  double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
+  double lidar_z_offset_m_{0.0};
+  double min_projected_lidar_altitude_m_{0.0};
+  double max_projected_lidar_altitude_m_{100000.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t max_current_lidar_staleness_ns_{750'000'000};
   std::int64_t last_pose_update_ns_{0};
@@ -1209,6 +1260,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;

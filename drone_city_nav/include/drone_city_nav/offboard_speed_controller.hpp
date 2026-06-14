@@ -13,6 +13,7 @@ enum class SpeedLimitReason {
   kTurn,
   kClearance,
   kHardStepCap,
+  kTrackingOverspeed,
 };
 
 struct SpeedControllerConfig {

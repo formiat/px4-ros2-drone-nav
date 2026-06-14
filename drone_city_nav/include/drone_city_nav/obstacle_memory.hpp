@@ -1,8 +1,10 @@
 #pragma once
 
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -15,7 +17,16 @@ struct LaserScan2DView {
   double range_min_m{0.0};
   double range_max_m{0.0};
   double scan_yaw_offset_rad{0.0};
+  double origin_altitude_m{0.0};
+  double roll_rad{0.0};
+  double pitch_rad{0.0};
+  double lidar_z_offset_m{0.0};
+  double min_projected_altitude_m{0.0};
+  double max_projected_altitude_m{100000.0};
   bool swap_lidar_xy_to_local_frame{false};
+  bool altitude_valid{false};
+  bool attitude_valid{false};
+  bool compensate_attitude{false};
 };
 
 struct ObstacleMemoryConfig {
@@ -35,6 +46,7 @@ struct ObstacleMemoryStats {
   std::size_t processed_beams{0U};
   std::size_t hit_beams{0U};
   std::size_t invalid_ranges{0U};
+  std::size_t altitude_rejected_beams{0U};
   std::size_t clipped_rays{0U};
   std::size_t outside_hit_endpoints{0U};
   std::size_t free_cells_updated{0U};
