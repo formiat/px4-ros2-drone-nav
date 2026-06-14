@@ -15,9 +15,12 @@ flight at a fixed altitude.
 - ROS 2 runs an obstacle-memory mapper, a planner, and a PX4 offboard control
   node.
 - The stack can use a static 2D city map as a conservative prior source.
-  `obstacle_memory_node` still integrates `sensor_msgs/LaserScan` with
-  navigation pose into a persistent 2D memory grid, and `planner_node` overlays
-  static map, obstacle memory, and current lidar hits before inflation.
+  `planner_node` overlays the static map and current lidar hits before
+  inflation in the default MVP profile. `obstacle_memory_node` can still
+  integrate `sensor_msgs/LaserScan` with navigation pose into a persistent 2D
+  memory grid for experiments, but persistent memory is disabled by default as a
+  hard planning source because accumulated scan artifacts can close otherwise
+  passable streets.
 - If the planner cannot find a path or has no valid map/pose, it publishes an
   empty path so the offboard node holds position instead of moving without a
   target.
@@ -272,6 +275,8 @@ The planner builds its A* grid from three obstacle sources:
   ```
 
 - Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.
+  This source is available for experiments, but the default MVP profile keeps it
+  disabled as a hard planning source.
 - A temporary overlay of the latest fresh `/scan` hit endpoints. This overlay is
   applied only to the planner's working grid before inflation, so it can help at
   lower altitude without permanently storing takeoff-time artifacts.
@@ -436,9 +441,10 @@ colcon test-result --verbose
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.
   This continuity is disabled for far-away targets such as the final goal.
-- The simulation obstacle-memory node ignores persistent lidar map updates below
-  `min_mapping_altitude_m`. The planner still overlays fresh lidar hits onto its
-  temporary A* grid when `use_current_lidar_obstacles=true`.
+- When obstacle-memory mapping is enabled, the simulation obstacle-memory node
+  ignores persistent lidar map updates below `min_mapping_altitude_m`. The
+  planner still overlays fresh lidar hits onto its temporary A* grid when
+  `use_current_lidar_obstacles=true`.
 - `use_static_map`, `use_obstacle_memory`, and `use_current_lidar_obstacles`
   can be toggled before launch. If every obstacle source is disabled or no
   enabled source has usable data, the planner publishes an empty hold path.

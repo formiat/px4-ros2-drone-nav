@@ -834,6 +834,51 @@ private:
     return std::acos(cosine);
   }
 
+  [[nodiscard]] const char* pathSegmentTypeName(const double turn_angle_rad) const {
+    if (!path_valid_) {
+      return "no_path";
+    }
+    if (turn_angle_rad < 0.15) {
+      return "straight";
+    }
+    if (turn_angle_rad < speed_controller_.config().turn_slowdown_angle_rad) {
+      return "gentle_turn";
+    }
+    if (turn_angle_rad < 1.2) {
+      return "turn";
+    }
+    return "sharp_turn";
+  }
+
+  [[nodiscard]] const char* motionPhaseName(const SpeedLimitReason reason,
+                                            const bool hold_position) const noexcept {
+    if (hold_position) {
+      return no_path_hold_target_valid_ ? "hold_no_path" : "hold";
+    }
+
+    switch (reason) {
+      case SpeedLimitReason::kHold:
+        return "hold";
+      case SpeedLimitReason::kInvalidInput:
+        return "invalid_input";
+      case SpeedLimitReason::kCruise:
+        return "cruise";
+      case SpeedLimitReason::kAcceleration:
+        return "accelerating";
+      case SpeedLimitReason::kGoal:
+        return "goal_braking";
+      case SpeedLimitReason::kTurn:
+        return "turn_slowdown";
+      case SpeedLimitReason::kClearance:
+        return "clearance_slowdown";
+      case SpeedLimitReason::kHardStepCap:
+        return "step_limited";
+      case SpeedLimitReason::kTrackingOverspeed:
+        return "tracking_recovery";
+    }
+    return "unknown";
+  }
+
   [[nodiscard]] bool occupancyGridFresh() const {
     if (!occupancy_grid_valid_ || last_occupancy_grid_update_ns_ <= 0) {
       return false;
@@ -987,10 +1032,13 @@ private:
     const double local_clearance_m = local_position_valid_
                                          ? estimateLocalClearanceM(current_position_)
                                          : std::numeric_limits<double>::quiet_NaN();
+    const bool hold_position = shouldHoldPosition();
+    const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Offboard summary: local_position=%s altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
+        "motion_phase=%s path_segment=%s "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f requested_speed=%.2f actual_speed=%.2f "
@@ -1003,13 +1051,14 @@ private:
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         no_path_hold_target_valid_ ? "true" : "false",
         path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
-        current_position_.x, current_position_.y, target.x, target.y, target_distance,
-        path_goal_distance, mission_goal_distance,
+        motionPhaseName(last_speed_output_.limit_reason, hold_position),
+        pathSegmentTypeName(turn_angle_rad), current_position_.x, current_position_.y,
+        target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
         last_speed_output_.requested_speed_mps, current_speed_mps_,
         speedLimitReasonName(last_speed_output_.limit_reason),
         last_speed_output_.allowed_speed_mps, last_speed_output_.braking_distance_m,
-        last_speed_output_.target_step_m, effectiveLookaheadDistanceM(),
-        pathTurnAngleAtWaypoint(waypoint_index_), local_clearance_m);
+        last_speed_output_.target_step_m, effectiveLookaheadDistanceM(), turn_angle_rad,
+        local_clearance_m);
   }
 
   nav_msgs::msg::Path path_;

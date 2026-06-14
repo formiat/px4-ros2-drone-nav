@@ -84,10 +84,11 @@ Equivalent explicit command:
 HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 ```
 
-The simulation uses three planner obstacle sources by default: the static
-`generated_city.map2d` city map, accumulated lidar obstacle memory, and the
-current lidar hit overlay. Source toggles and map format details are documented
-in `docs/MVP_SIMULATION.md`.
+The simulation uses the static `generated_city.map2d` city map and the current
+lidar hit overlay by default. Persistent lidar obstacle memory is available but
+disabled as a hard planning source in the default MVP profile because accumulated
+scan artifacts can close otherwise passable streets. Source toggles and map
+format details are documented in `docs/MVP_SIMULATION.md`.
 
 ## Build System
 
