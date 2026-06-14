@@ -30,6 +30,20 @@ Visualization Manager:
       Name: Static City Map
       Topic:
         Value: /drone_city_nav/static_map_grid
+    - Alpha: 0.85
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 72; 220; 112
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Static City Map Points
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.35
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/static_map_points
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255

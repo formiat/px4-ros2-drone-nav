@@ -10,12 +10,15 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/point_field.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <optional>
@@ -193,6 +196,10 @@ public:
     static_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("static_map_grid_topic",
                                        "/drone_city_nav/static_map_grid"),
+        rclcpp::QoS{1}.transient_local());
+    static_map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        declare_parameter<std::string>("static_map_points_topic",
+                                       "/drone_city_nav/static_map_points"),
         rclcpp::QoS{1}.transient_local());
     path_pub_ = create_publisher<nav_msgs::msg::Path>(
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path"),
@@ -889,8 +896,67 @@ private:
 
   void publishStaticMapGrid(const OccupancyGrid2D& grid) {
     static_map_pub_->publish(makeOccupancyGridMessage(grid, false));
-    RCLCPP_INFO(get_logger(), "Published static map grid: cells=%zu occupied=%zu",
-                grid.cellCount(), static_map_occupied_cells_);
+    publishStaticMapPoints(grid);
+    RCLCPP_INFO(get_logger(),
+                "Published static map grid: cells=%zu occupied=%zu "
+                "points_topic='%s'",
+                grid.cellCount(), static_map_occupied_cells_,
+                static_map_points_pub_->get_topic_name());
+  }
+
+  void publishStaticMapPoints(const OccupancyGrid2D& grid) {
+    sensor_msgs::msg::PointCloud2 cloud;
+    cloud.header.stamp = now();
+    cloud.header.frame_id = frame_id_;
+    cloud.height = 1U;
+    cloud.width = static_cast<std::uint32_t>(static_map_occupied_cells_);
+    cloud.is_bigendian = false;
+    cloud.is_dense = true;
+    cloud.point_step = 12U;
+    cloud.row_step = cloud.point_step * cloud.width;
+    cloud.fields.resize(3U);
+    cloud.fields[0].name = "x";
+    cloud.fields[0].offset = 0U;
+    cloud.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[0].count = 1U;
+    cloud.fields[1].name = "y";
+    cloud.fields[1].offset = 4U;
+    cloud.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[1].count = 1U;
+    cloud.fields[2].name = "z";
+    cloud.fields[2].offset = 8U;
+    cloud.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+    cloud.fields[2].count = 1U;
+    cloud.data.resize(static_cast<std::size_t>(cloud.row_step));
+
+    std::size_t point_index = 0U;
+    for (int y = 0; y < grid.height(); ++y) {
+      for (int x = 0; x < grid.width(); ++x) {
+        const GridIndex cell{x, y};
+        if (!grid.isOccupied(cell)) {
+          continue;
+        }
+
+        const Point2 center = grid.cellCenter(cell);
+        const float point_x = static_cast<float>(center.x);
+        const float point_y = static_cast<float>(center.y);
+        const float point_z = 0.05F;
+        const std::size_t offset =
+            point_index * static_cast<std::size_t>(cloud.point_step);
+        std::memcpy(&cloud.data[offset], &point_x, sizeof(float));
+        std::memcpy(&cloud.data[offset + 4U], &point_y, sizeof(float));
+        std::memcpy(&cloud.data[offset + 8U], &point_z, sizeof(float));
+        ++point_index;
+      }
+    }
+
+    if (point_index != static_cast<std::size_t>(cloud.width)) {
+      cloud.width = static_cast<std::uint32_t>(point_index);
+      cloud.row_step = cloud.point_step * cloud.width;
+      cloud.data.resize(static_cast<std::size_t>(cloud.row_step));
+    }
+
+    static_map_points_pub_->publish(cloud);
   }
 
   void publishOccupancyGrid(const OccupancyGrid2D& grid) {
@@ -1126,6 +1192,7 @@ private:
       local_position_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr timer_;

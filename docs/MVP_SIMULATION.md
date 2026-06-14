@@ -224,8 +224,10 @@ is kept disabled by default because this GUI is intended to show remembered
 lidar wall hits, not filled occupancy-grid cells. All debug overlays are
 published in the `map` frame, so no Gazebo lidar TF tree is required.
 The RViz config also includes a disabled `Static City Map` display for
-`/drone_city_nav/static_map_grid`; enable it when you need to inspect the static
-planner source separately.
+`/drone_city_nav/static_map_grid`; enable it when you need to inspect the raw
+occupancy-grid encoding. The green `Static City Map Points` display is enabled
+by default and shows occupied static-map cells from
+`/drone_city_nav/static_map_points`.
 
 The main obstacle-memory topics are:
 
@@ -242,6 +244,8 @@ The main obstacle-memory topics are:
   controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/static_map_grid` - static city map layer only. It is
   published with transient-local QoS after the map2d file is loaded.
+- `/drone_city_nav/static_map_points` - occupied static city map cells as a
+  point cloud for RViz. The default debug view shows this layer in green.
 - `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
   source overlay and inflation, kept for compatibility with existing debug
   tooling.
