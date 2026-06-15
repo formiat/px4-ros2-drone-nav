@@ -274,6 +274,11 @@ public:
     max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1,
         1000000));
+    current_pointcloud_z_m_ =
+        declare_parameter<double>("current_lidar_pointcloud_z_m", 0.30);
+    remembered_pointcloud_z_m_ =
+        declare_parameter<double>("remembered_lidar_pointcloud_z_m", 0.20);
+    marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", 0.40);
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
     const std::string attitude_topic = declare_parameter<std::string>(
@@ -335,8 +340,9 @@ public:
                 "min_confirmations=%zu min_remember_altitude=%.2fm "
                 "max_remembered_hits=%zu compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
-                "lidar_mount_rpy=(%.3f, %.3f, %.3f) yaw_source=%s "
-                "initial_heading=%.3f",
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
+                "pointcloud_z[current=%.2f, remembered=%.2f] marker_z=%.2f "
+                "yaw_source=%s initial_heading=%.3f",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), attitude_topic.c_str(),
@@ -347,6 +353,7 @@ public:
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+                current_pointcloud_z_m_, remembered_pointcloud_z_m_, marker_z_m_,
                 yawSourceName(), initial_heading_rad_);
     if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
       RCLCPP_WARN(
@@ -429,8 +436,9 @@ private:
     drawScan(image);
     drawDrone(image);
     const bool image_ok = writePpm(image_path, image);
-    publishPointCloud(stats.hit_points, pointcloud_pub_);
-    publishPointCloud(remembered_hit_points_, remembered_pointcloud_pub_);
+    publishPointCloud(stats.hit_points, current_pointcloud_z_m_, pointcloud_pub_);
+    publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
+                      remembered_pointcloud_pub_);
     publishRadarMarkers();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
@@ -945,7 +953,7 @@ private:
   }
 
   void publishPointCloud(
-      const std::vector<Point2>& points,
+      const std::vector<Point2>& points, const double z_m,
       const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher) {
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = now();
@@ -974,9 +982,7 @@ private:
     for (std::size_t i = 0U; i < points.size(); ++i) {
       const float x = static_cast<float>(points[i].x);
       const float y = static_cast<float>(points[i].y);
-      const float z = std::isfinite(current_altitude_m_)
-                          ? static_cast<float>(current_altitude_m_)
-                          : 0.0F;
+      const float z = std::isfinite(z_m) ? static_cast<float>(z_m) : 0.0F;
       const std::size_t offset = i * static_cast<std::size_t>(cloud.point_step);
       std::memcpy(&cloud.data[offset], &x, sizeof(float));
       std::memcpy(&cloud.data[offset + 4U], &y, sizeof(float));
@@ -1094,7 +1100,7 @@ private:
     }
 
     visualization_msgs::msg::MarkerArray markers;
-    const double z = std::isfinite(current_altitude_m_) ? current_altitude_m_ : 0.0;
+    const double z = std::isfinite(marker_z_m_) ? marker_z_m_ : 0.0;
     addRangeRing(markers, 10.0, 0, z);
     addRangeRing(markers, 20.0, 1, z);
     addRangeRing(markers, 30.0, 2, z);
@@ -1132,6 +1138,9 @@ private:
   double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
+  double current_pointcloud_z_m_{0.30};
+  double remembered_pointcloud_z_m_{0.20};
+  double marker_z_m_{0.40};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
   std::size_t image_beam_stride_{4U};
