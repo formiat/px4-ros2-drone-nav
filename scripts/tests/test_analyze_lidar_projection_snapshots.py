@@ -35,7 +35,10 @@ def make_record(
     image_ok: bool = True,
     config_yaw: float = 0.0,
     projection_yaw_delta: float = 0.0,
+    hit_points: list[dict[str, float]] | None = None,
 ) -> dict:
+    if hit_points is None:
+        hit_points = [{"x": 1.0, "y": 0.0}, {"x": 0.0, "y": 1.0}]
     return {
         "snapshot": "snapshot_000001",
         "pose": {"altitude_m": altitude_m},
@@ -73,6 +76,7 @@ def make_record(
         "grid": {"seen": True},
         "image_ok": image_ok,
         "remembered_hits": remembered_hits,
+        "hit_points": hit_points,
     }
 
 
@@ -163,6 +167,30 @@ class LidarProjectionSnapshotAnalyzerTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(
             any("projection yaw diverges" in error for error in result.errors)
+        )
+
+    def test_static_map_hit_alignment_fails_for_rotated_hits(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            static_map_path = Path(temp_dir) / "generated_city.map2d"
+            static_map_path.write_text(
+                "drone_city_nav_static_map_v1\n"
+                "rect building_001 0 0 2 2 20\n",
+                encoding="utf-8",
+            )
+            records = [
+                make_record(
+                    altitude_m=18.0,
+                    hit_points=[{"x": 10.0, "y": 10.0}, {"x": 11.0, "y": 10.0}],
+                )
+            ]
+
+            result = analyzer.analyze_snapshots(
+                records, static_map_path=static_map_path
+            )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("lidar hit points do not align" in error for error in result.errors)
         )
 
     def test_cli_accepts_static_map_rectangles(self) -> None:
