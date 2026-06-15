@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -88,6 +89,21 @@ TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   for (const GridIndex cell : result.path) {
     EXPECT_FALSE(grid.isBlocked(cell));
   }
+}
+
+TEST(AStarPlanner, UsesPhysicalDistanceForBasePathCost) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 2.0, 8, 8}};
+  grid.rebuildInflation(0.0);
+
+  const AStarResult straight_result =
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 1});
+  ASSERT_TRUE(straight_result.success);
+  EXPECT_NEAR(straight_result.total_cost, 6.0, 1.0e-9);
+
+  const AStarResult diagonal_result =
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4});
+  ASSERT_TRUE(diagonal_result.success);
+  EXPECT_NEAR(diagonal_result.total_cost, 3.0 * std::numbers::sqrt2 * 2.0, 1.0e-9);
 }
 
 TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {

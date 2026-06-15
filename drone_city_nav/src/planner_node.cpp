@@ -691,7 +691,7 @@ private:
         "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
-        "source=combined expanded=%zu raw_path=%zu smoothed_path=%zu "
+        "source=combined expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
@@ -721,8 +721,9 @@ private:
         planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
         planning_result->current_lidar.outside_hits, path_result->astar.expanded_cells,
-        path_result->astar.path.size(), path_result->smoothed_cells.size(),
-        path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m);
+        path_result->astar.total_cost, path_result->astar.path.size(),
+        path_result->smoothed_cells.size(), path_result->raw_path_clearance_m,
+        path_result->smoothed_path_clearance_m);
     publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
                                  "combined");
   }
@@ -1199,11 +1200,12 @@ private:
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Using static-only fallback path after %s: static_occupied_cells=%zu "
-        "expanded=%zu raw_path=%zu smoothed_path=%zu "
+        "expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         reason, static_overlay.source_occupied_cells, path_result->astar.expanded_cells,
-        path_result->astar.path.size(), path_result->smoothed_cells.size(),
-        path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m);
+        path_result->astar.total_cost, path_result->astar.path.size(),
+        path_result->smoothed_cells.size(), path_result->raw_path_clearance_m,
+        path_result->smoothed_path_clearance_m);
     publishOccupancyGrid(static_only_grid);
     return publishPathFromSmoothedCells(static_only_grid, path_result->smoothed_cells,
                                         "static-only fallback");

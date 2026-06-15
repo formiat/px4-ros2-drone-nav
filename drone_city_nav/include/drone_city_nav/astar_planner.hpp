@@ -17,6 +17,7 @@ struct AStarConfig {
 struct AStarResult {
   bool success{false};
   std::size_t expanded_cells{0};
+  double total_cost{0.0};
   std::vector<GridIndex> path;
 };
 

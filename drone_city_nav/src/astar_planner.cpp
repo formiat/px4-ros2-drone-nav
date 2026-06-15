@@ -49,10 +49,18 @@ struct CompareOpenNode {
   }
 };
 
-[[nodiscard]] double heuristic(const GridIndex from, const GridIndex to) noexcept {
+[[nodiscard]] double heuristic(const GridIndex from, const GridIndex to,
+                               const double resolution_m) noexcept {
   const double dx = static_cast<double>(from.x - to.x);
   const double dy = static_cast<double>(from.y - to.y);
-  return std::hypot(dx, dy);
+  return std::hypot(dx, dy) * resolution_m;
+}
+
+[[nodiscard]] double stepDistanceM(const GridIndex offset,
+                                   const double resolution_m) noexcept {
+  const double cell_distance =
+      (offset.x != 0 && offset.y != 0) ? std::numbers::sqrt2 : 1.0;
+  return cell_distance * resolution_m;
 }
 
 [[nodiscard]] std::size_t stateIndex(const OccupancyGrid2D& grid, const GridIndex cell,
@@ -210,7 +218,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
 
   const std::size_t start_index = stateIndex(grid, start, kStartDirectionState);
   g_scores[start_index] = 0.0;
-  open.push(OpenNode{start, kStartDirectionState, heuristic(start, goal), 0.0});
+  open.push(OpenNode{start, kStartDirectionState,
+                     heuristic(start, goal, grid.resolution()), 0.0});
 
   while (!open.empty() && result.expanded_cells < config.max_expansions) {
     const OpenNode current = open.top();
@@ -228,6 +237,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       result.path = reconstructPath(grid, parents, static_cast<int>(start_index),
                                     static_cast<int>(current_index));
       result.success = !result.path.empty();
+      result.total_cost = current.g_score;
       return result;
     }
 
@@ -246,10 +256,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
         continue;
       }
 
-      const double step_cost =
-          (offset.x != 0 && offset.y != 0) ? std::numbers::sqrt2 : 1.0;
       const double tentative_g =
-          g_scores[current_index] + step_cost +
+          g_scores[current_index] + stepDistanceM(offset, grid.resolution()) +
           clearanceCost(grid, clearance_field, config, next) +
           turnCost(config, current.direction_state, next_direction_state);
       if (tentative_g >= g_scores[next_index]) {
@@ -258,7 +266,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
 
       parents[next_index] = static_cast<int>(current_index);
       g_scores[next_index] = tentative_g;
-      const double f_score = tentative_g + heuristic(next, goal);
+      const double f_score = tentative_g + heuristic(next, goal, grid.resolution());
       open.push(OpenNode{next, next_direction_state, f_score, tentative_g});
     }
   }
