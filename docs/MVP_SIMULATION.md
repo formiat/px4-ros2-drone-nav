@@ -439,8 +439,13 @@ colcon test-result --verbose
   `hit_obstacle_depth_m` before inflation. This conservative 2D mapping
   heuristic prevents A* from treating the unseen volume immediately behind a
   detected wall as a free corridor.
-- The offboard node assumes the planner path and PX4 local position share the
-  same horizontal origin.
+- A* base edge costs use physical grid distance in meters. `astar_turn_cost_weight`
+  prefers smoother paths by penalizing turns. `astar_evasive_maneuvering_enabled`
+  switches direction preference to evasive mode, where straight continuations are
+  penalized by `astar_evasive_maneuvering_straight_cost_weight` instead.
+- The offboard node converts PX4 local position into the planner map frame using
+  `px4_local_origin_*` parameters, and converts map-frame targets back to PX4
+  local setpoints.
 - Runtime logs include obstacle-memory update statistics and distance-to-start
   and distance-to-goal values in `planner_node`,
   `px4_offboard_node`, and `mission_monitor_node`.

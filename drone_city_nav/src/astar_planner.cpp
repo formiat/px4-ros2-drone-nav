@@ -145,11 +145,22 @@ struct CompareOpenNode {
   return field;
 }
 
-[[nodiscard]] double turnCost(const AStarConfig& config,
-                              const int current_direction_state,
-                              const int next_direction_state) noexcept {
+[[nodiscard]] double directionPreferenceCost(const AStarConfig& config,
+                                             const int current_direction_state,
+                                             const int next_direction_state) noexcept {
+  if (current_direction_state == kStartDirectionState) {
+    return 0.0;
+  }
+
+  if (config.evasive_maneuvering_enabled) {
+    if (!(config.evasive_maneuvering_straight_cost_weight > 0.0) ||
+        current_direction_state != next_direction_state) {
+      return 0.0;
+    }
+    return config.evasive_maneuvering_straight_cost_weight;
+  }
+
   if (!(config.turn_cost_weight > 0.0) ||
-      current_direction_state == kStartDirectionState ||
       current_direction_state == next_direction_state) {
     return 0.0;
   }
@@ -259,7 +270,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       const double tentative_g =
           g_scores[current_index] + stepDistanceM(offset, grid.resolution()) +
           clearanceCost(grid, clearance_field, config, next) +
-          turnCost(config, current.direction_state, next_direction_state);
+          directionPreferenceCost(config, current.direction_state,
+                                  next_direction_state);
       if (tentative_g >= g_scores[next_index]) {
         continue;
       }

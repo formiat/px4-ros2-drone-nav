@@ -12,6 +12,8 @@ struct AStarConfig {
   double obstacle_clearance_cost_radius_m{0.0};
   double obstacle_clearance_cost_weight{0.0};
   double turn_cost_weight{0.0};
+  bool evasive_maneuvering_enabled{false};
+  double evasive_maneuvering_straight_cost_weight{1.0};
 };
 
 struct AStarResult {

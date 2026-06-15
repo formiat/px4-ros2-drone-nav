@@ -177,6 +177,28 @@ TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
             directionChanges(unpenalized_result.path));
 }
 
+TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 7}};
+  grid.rebuildInflation(0.0);
+
+  const GridIndex start{1, 3};
+  const GridIndex goal{8, 3};
+  const AStarResult normal_result = AStarPlanner{}.plan(grid, start, goal);
+
+  AStarConfig evasive_config{};
+  evasive_config.evasive_maneuvering_enabled = true;
+  evasive_config.evasive_maneuvering_straight_cost_weight = 1.0;
+  evasive_config.turn_cost_weight = 100.0;
+  const AStarResult evasive_result =
+      AStarPlanner{}.plan(grid, start, goal, evasive_config);
+
+  ASSERT_TRUE(normal_result.success);
+  ASSERT_TRUE(evasive_result.success);
+  EXPECT_EQ(directionChanges(normal_result.path), 0);
+  EXPECT_GT(directionChanges(evasive_result.path),
+            directionChanges(normal_result.path));
+}
+
 TEST(PathSmoothing, RejectsShortcutTooCloseToObstacleWhenClearanceIsRequired) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
   for (int x = 0; x < grid.width(); ++x) {
