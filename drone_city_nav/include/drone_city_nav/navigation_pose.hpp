@@ -54,6 +54,8 @@ struct Px4LocalPositionSample {
 struct Px4LocalPoseConfig {
   bool use_heading_for_yaw{true};
   double initial_heading_rad{0.0};
+  double map_origin_x_m{0.0};
+  double map_origin_y_m{0.0};
 };
 
 enum class Px4LocalPoseUpdateStatus {

@@ -44,8 +44,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 ## Main Files
 
 - `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
-  city world with uniform-height buildings, visual point A at `(-75, -45)`,
-  and visual point B at `(75, 45)`.
+  city world with uniform-height buildings, visual point A at `(-57, -27)`,
+  and visual point B at `(51, 27)`.
 - `drone_city_nav/worlds/generated_city.map2d` - static 2D obstacle map for the
   same local city layout used by the planner and mission monitor.
 - `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
@@ -116,8 +116,9 @@ bounds compass yaw. If either source is missing, invalid, or stale, obstacle
 memory skips lidar integration instead of reusing cached heading data.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
-spawned at visual point A. Therefore the planner/monitor use local point A
-`(0, 0)` and local point B `(90, 150)`.
+spawned at visual point A. The default mission sets
+`px4_local_origin=(18, 18)`, so planner/monitor map-frame point A is `(18, 18)`
+and point B is `(72, 126)`.
 
 ## Quick Start
 

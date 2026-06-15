@@ -265,6 +265,21 @@ TEST(NavigationPose, Px4LocalPoseUsesValidEstimatorHeadingWhenRequired) {
   EXPECT_NEAR(pose_value.pose.yaw_rad, normalizeYaw(-3.5), 1.0e-9);
 }
 
+TEST(NavigationPose, Px4LocalPoseAppliesMapOriginOffset) {
+  const Px4LocalPositionSample sample{3.0,           4.0,  -18.0, 0.25,
+                                      kFreshStampNs, true, true,  true};
+
+  const auto pose = makeNavigationPoseFromPx4LocalPosition(
+      sample, Px4LocalPoseConfig{true, 0.0, 18.0, 18.0});
+
+  ASSERT_TRUE(pose.has_value());
+  const NavigationPose2D pose_value =
+      pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(pose_value.position_valid);
+  EXPECT_NEAR(pose_value.pose.position.x, 21.0, 1.0e-9);
+  EXPECT_NEAR(pose_value.pose.position.y, 22.0, 1.0e-9);
+}
+
 TEST(NavigationPose, TimestampFreshnessRejectsMissingAndExpiredUpdates) {
   EXPECT_TRUE(timestampIsFresh(100, 150, 100));
   EXPECT_TRUE(timestampIsFresh(200, 150, 100));

@@ -144,7 +144,8 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
   }
 
   NavigationPose2D pose{};
-  pose.pose.position = Point2{sample.x_m, sample.y_m};
+  pose.pose.position =
+      Point2{sample.x_m + config.map_origin_x_m, sample.y_m + config.map_origin_y_m};
   pose.stamp_ns = sample.stamp_ns;
   pose.position_valid = true;
 

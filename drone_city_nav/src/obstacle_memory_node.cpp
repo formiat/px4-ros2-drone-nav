@@ -140,6 +140,10 @@ public:
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
+    px4_local_pose_config_ =
+        Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_,
+                           declare_parameter<double>("px4_local_origin_x_m", 0.0),
+                           declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     current_pose_.pose.yaw_rad = initial_heading_rad_;
     current_pose_.yaw_valid = !use_px4_heading_for_scan_;
     if (use_initial_pose) {
@@ -241,8 +245,7 @@ private:
                                msg.z_valid,
                                msg.heading_good_for_control};
     const Px4LocalPoseUpdateStatus status = updateNavigationPoseFromPx4LocalPosition(
-        sample, Px4LocalPoseConfig{use_px4_heading_for_scan_, initial_heading_rad_},
-        current_pose_);
+        sample, px4_local_pose_config_, current_pose_);
     if (status == Px4LocalPoseUpdateStatus::kInvalidPosition) {
       last_pose_update_ns_ = 0;
       RCLCPP_WARN_THROTTLE(
@@ -536,6 +539,7 @@ private:
   std::unique_ptr<ObstacleMemoryGrid> memory_;
   ObstacleMemoryConfig memory_config_{};
   GpsCompassConfig gps_config_{};
+  Px4LocalPoseConfig px4_local_pose_config_{};
   GeoReference gps_origin_{};
   NavigationPose2D current_pose_{};
   AttitudeEuler current_attitude_{};

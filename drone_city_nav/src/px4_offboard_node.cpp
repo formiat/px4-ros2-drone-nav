@@ -142,6 +142,8 @@ public:
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
     command_resend_period_s_ =
         declare_parameter<double>("command_resend_period_s", 2.0);
+    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
+                               declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     mission_goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                            declare_parameter<double>("goal_y_m", 0.0)};
     hold_x_m_ = declare_parameter<double>("hold_x_m", 0.0);
@@ -216,7 +218,8 @@ public:
         "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
         "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f)",
+        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
+        "px4_local_origin=(%.1f, %.1f)",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
@@ -229,7 +232,7 @@ public:
         speed_controller_.config().narrow_clearance_slowdown_radius_m,
         velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        mission_goal_.x, mission_goal_.y);
+        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -471,7 +474,8 @@ private:
       return;
     }
 
-    current_position_ = Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    current_position_ = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
+                               static_cast<double>(msg.y) + px4_local_origin_.y};
     if (std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
       current_velocity_ =
           Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -647,9 +651,10 @@ private:
 
     px4_msgs::msg::TrajectorySetpoint msg;
     msg.timestamp = nowMicros();
-    msg.position =
-        std::array<float, 3>{static_cast<float>(target.x), static_cast<float>(target.y),
-                             static_cast<float>(-std::abs(cruise_altitude_m_))};
+    const Point2 px4_local_target = mapToPx4Local(target);
+    msg.position = std::array<float, 3>{
+        static_cast<float>(px4_local_target.x), static_cast<float>(px4_local_target.y),
+        static_cast<float>(-std::abs(cruise_altitude_m_))};
     msg.velocity = velocityFeedforward(target, last_speed_output_);
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
@@ -1006,6 +1011,10 @@ private:
     return std::atan2(dy, dx);
   }
 
+  [[nodiscard]] Point2 mapToPx4Local(const Point2 point) const noexcept {
+    return Point2{point.x - px4_local_origin_.x, point.y - px4_local_origin_.y};
+  }
+
   [[nodiscard]] bool navigationAllowed() const {
     if (min_navigation_altitude_m_ <= 0.0) {
       return true;
@@ -1085,6 +1094,7 @@ private:
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
   Point2 mission_goal_{85.0, 0.0};
+  Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double cruise_altitude_m_{12.0};

@@ -388,7 +388,7 @@
 
     <model name="start_marker">
       <static>true</static>
-      <pose>-75 -45 0.05 0 0 0</pose>
+      <pose>-57 -27 0.05 0 0 0</pose>
       <link name="link">
         <visual name="visual">
           <geometry><cylinder><radius>1.6</radius><length>0.08</length></cylinder></geometry>
@@ -399,7 +399,7 @@
 
     <model name="goal_marker">
       <static>true</static>
-      <pose>75 45 0.05 0 0 0</pose>
+      <pose>51 27 0.05 0 0 0</pose>
       <link name="link">
         <visual name="visual">
           <geometry><cylinder><radius>1.6</radius><length>0.08</length></cylinder></geometry>

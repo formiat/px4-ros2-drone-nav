@@ -224,6 +224,8 @@ public:
         std::max(0.0, declare_parameter<double>("range_hit_epsilon_m", 0.05));
     initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
     current_pose_.yaw_rad = initial_heading_rad_;
+    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
+                               declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     compensate_lidar_attitude_ =
         declare_parameter<bool>("compensate_lidar_attitude", false);
@@ -370,8 +372,8 @@ private:
       return;
     }
 
-    current_pose_.position =
-        Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    current_pose_.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
+                                    static_cast<double>(msg.y) + px4_local_origin_.y};
     const bool heading_valid =
         msg.heading_good_for_control && std::isfinite(msg.heading);
     if (heading_valid) {
@@ -1120,6 +1122,7 @@ private:
   nav_msgs::msg::OccupancyGrid last_grid_;
   nav_msgs::msg::Path last_path_;
   Pose2 current_pose_{};
+  Point2 px4_local_origin_{};
   AttitudeEuler attitude_{};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};

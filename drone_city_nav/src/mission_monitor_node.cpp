@@ -100,6 +100,8 @@ public:
                     declare_parameter<double>("start_y_m", 0.0)};
     goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
                    declare_parameter<double>("goal_y_m", 0.0)};
+    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
+                               declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     spawn_tolerance_m_ = declare_parameter<double>("spawn_tolerance_m", 1.0);
     min_movement_distance_m_ =
         declare_parameter<double>("min_movement_distance_m", 5.0);
@@ -185,7 +187,8 @@ private:
       return;
     }
 
-    const Point2 position{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    const Point2 position{static_cast<double>(msg.x) + px4_local_origin_.x,
+                          static_cast<double>(msg.y) + px4_local_origin_.y};
     const double current_speed_mps = speed2D(msg);
     const double current_altitude_m = altitudeFromLocalPosition(msg);
     latest_position_ = position;
@@ -373,6 +376,7 @@ private:
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 start_{};
   Point2 goal_{};
+  Point2 px4_local_origin_{};
   Point2 latest_position_{};
   rclcpp::Time goal_stop_start_time_{0, 0, RCL_ROS_TIME};
   double spawn_tolerance_m_{1.0};

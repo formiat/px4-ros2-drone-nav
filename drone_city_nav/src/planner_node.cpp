@@ -203,6 +203,8 @@ public:
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
+    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
+                               declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     if (use_initial_pose) {
       current_pose_ = Pose2{Point2{declare_parameter<double>("initial_x_m", 0.0),
                                    declare_parameter<double>("initial_y_m", 0.0)},
@@ -350,8 +352,8 @@ private:
       return;
     }
 
-    current_pose_.position =
-        Point2{static_cast<double>(msg.x), static_cast<double>(msg.y)};
+    current_pose_.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
+                                    static_cast<double>(msg.y) + px4_local_origin_.y};
     if (msg.heading_good_for_control && std::isfinite(msg.heading)) {
       current_pose_.yaw_rad = static_cast<double>(msg.heading);
     }
@@ -1538,6 +1540,7 @@ private:
   AttitudeEuler current_attitude_{};
   Point2 start_{};
   Point2 goal_{};
+  Point2 px4_local_origin_{};
   sensor_msgs::msg::LaserScan last_scan_;
   bool pose_valid_{false};
   bool local_position_seen_{false};
