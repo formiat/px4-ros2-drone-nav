@@ -111,6 +111,11 @@ public:
     direct_path_fallback_ = declare_parameter<bool>("direct_path_fallback", false);
     reuse_last_valid_path_on_failure_ =
         declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
+    max_initial_goal_regression_m_ = std::clamp(
+        declare_parameter<double>("max_initial_goal_regression_m", 8.0), 0.0, 1000.0);
+    initial_progress_probe_distance_m_ =
+        std::clamp(declare_parameter<double>("initial_progress_probe_distance_m", 2.0),
+                   0.1, 100.0);
     max_initial_lateral_deviation_m_ =
         declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
     nearest_free_radius_cells_ = static_cast<int>(std::clamp<std::int64_t>(
@@ -290,13 +295,14 @@ public:
           "with attitude compensation. Prefer lidar_mount_* parameters for physical "
           "3D projection.");
     }
-    RCLCPP_INFO(
-        get_logger(),
-        "Planner fallback policy: direct_path_fallback=%s "
-        "reuse_last_valid_path_on_failure=%s max_initial_lateral_deviation=%.2fm",
-        direct_path_fallback_ ? "true" : "false",
-        reuse_last_valid_path_on_failure_ ? "true" : "false",
-        max_initial_lateral_deviation_m_);
+    RCLCPP_INFO(get_logger(),
+                "Planner fallback policy: direct_path_fallback=%s "
+                "reuse_last_valid_path_on_failure=%s max_initial_goal_regression=%.2fm "
+                "initial_progress_probe=%.2fm max_initial_lateral_deviation=%.2fm",
+                direct_path_fallback_ ? "true" : "false",
+                reuse_last_valid_path_on_failure_ ? "true" : "false",
+                max_initial_goal_regression_m_, initial_progress_probe_distance_m_,
+                max_initial_lateral_deviation_m_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
                 "astar_weight=%.2f astar_turn_weight=%.2f "
@@ -758,7 +764,15 @@ private:
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
-    pruneBackwardInitialWaypoints(path_points, grid.resolution());
+    pruneBackwardInitialWaypoints(path_points, grid);
+    if (!pathIsUnblocked(grid, path_points, source_label)) {
+      publishPath({});
+      return false;
+    }
+    if (publishLastValidPathInsteadOfRegressiveSwitch(grid, path_points,
+                                                      source_label)) {
+      return true;
+    }
     if (hasExcessiveInitialLateralDeviation(path_points)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "%s path has excessive initial lateral deviation; using "
@@ -1189,6 +1203,60 @@ private:
            smoothed_path_clearance_m < lowClearanceFallbackThresholdM();
   }
 
+  [[nodiscard]] double
+  initialGoalRegressionM(const std::vector<Point2>& path_points) const {
+    if (path_points.size() < 2U || !finite2D(current_pose_.position)) {
+      return 0.0;
+    }
+
+    const double current_goal_distance = distance(current_pose_.position, goal_);
+    const double probe_distance_m = std::max(initial_progress_probe_distance_m_,
+                                             2.0 * fallback_grid_bounds_.resolution_m);
+    for (auto point = path_points.begin() + 1; point != path_points.end(); ++point) {
+      if (distance(current_pose_.position, *point) < probe_distance_m) {
+        continue;
+      }
+      return distance(*point, goal_) - current_goal_distance;
+    }
+
+    return distance(path_points.back(), goal_) - current_goal_distance;
+  }
+
+  bool publishLastValidPathInsteadOfRegressiveSwitch(
+      const OccupancyGrid2D& grid, const std::vector<Point2>& candidate_path_points,
+      const char* source_label) {
+    if (!(max_initial_goal_regression_m_ > 0.0) ||
+        last_valid_path_points_.size() < 2U || candidate_path_points.size() < 2U) {
+      return false;
+    }
+
+    const double candidate_regression_m = initialGoalRegressionM(candidate_path_points);
+    if (!(candidate_regression_m > max_initial_goal_regression_m_)) {
+      return false;
+    }
+
+    const double previous_regression_m =
+        initialGoalRegressionM(last_valid_path_points_);
+    if (previous_regression_m > max_initial_goal_regression_m_) {
+      return false;
+    }
+    if (!pathIsUnblocked(grid, last_valid_path_points_, "previous stable path")) {
+      return false;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "Keeping previous path instead of regressive %s switch: "
+        "candidate_initial_goal_regression=%.2fm "
+        "previous_initial_goal_regression=%.2fm "
+        "threshold=%.2fm previous_waypoints=%zu candidate_waypoints=%zu",
+        source_label, candidate_regression_m, previous_regression_m,
+        max_initial_goal_regression_m_, last_valid_path_points_.size(),
+        candidate_path_points.size());
+    publishPath(last_valid_path_points_);
+    return true;
+  }
+
   void invalidateCurrentPose() {
     current_pose_ = Pose2{};
     current_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
@@ -1231,8 +1299,44 @@ private:
     return false;
   }
 
+  [[nodiscard]] bool pathSegmentIsUnblocked(const OccupancyGrid2D& grid,
+                                            const Point2 start,
+                                            const Point2 end) const {
+    const auto start_cell = grid.worldToCell(start);
+    const auto end_cell = grid.worldToCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      return false;
+    }
+
+    return hasLineOfSight(grid, *start_cell, *end_cell);
+  }
+
+  [[nodiscard]] bool pathIsUnblocked(const OccupancyGrid2D& grid,
+                                     const std::vector<Point2>& path_points,
+                                     const char* source_label) const {
+    if (path_points.size() < 2U) {
+      return true;
+    }
+
+    for (std::size_t index = 1U; index < path_points.size(); ++index) {
+      if (pathSegmentIsUnblocked(grid, path_points[index - 1U], path_points[index])) {
+        continue;
+      }
+
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "%s path segment intersects blocked cells after final path "
+                           "edits: segment=%zu "
+                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
+                           source_label, index - 1U, path_points[index - 1U].x,
+                           path_points[index - 1U].y, path_points[index].x,
+                           path_points[index].y);
+      return false;
+    }
+    return true;
+  }
+
   void pruneBackwardInitialWaypoints(std::vector<Point2>& path_points,
-                                     const double grid_resolution_m) const {
+                                     const OccupancyGrid2D& grid) const {
     if (path_points.size() < 3U) {
       return;
     }
@@ -1250,13 +1354,23 @@ private:
                                     first_forward->y - origin.y};
       const double projection =
           candidate_vector.x * goal_vector.x + candidate_vector.y * goal_vector.y;
-      if (projection >= grid_resolution_m * grid_resolution_m) {
+      if (projection >= grid.resolution() * grid.resolution()) {
         break;
       }
       ++first_forward;
     }
 
     if (first_forward != path_points.begin() + 1) {
+      if (!pathSegmentIsUnblocked(grid, origin, *first_forward)) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Skipped pruning backward initial waypoints because it would create an "
+            "unsafe first path segment: removed_candidate=%zu start=(%.2f, %.2f) "
+            "next=(%.2f, %.2f)",
+            static_cast<std::size_t>(first_forward - (path_points.begin() + 1)),
+            origin.x, origin.y, first_forward->x, first_forward->y);
+        return;
+      }
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Pruned backward initial waypoints: removed=%zu",
@@ -1337,6 +1451,8 @@ private:
   double cruise_altitude_m_{12.0};
   double static_map_min_blocking_height_m_{0.0};
   double max_initial_lateral_deviation_m_{8.0};
+  double max_initial_goal_regression_m_{8.0};
+  double initial_progress_probe_distance_m_{2.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double current_lidar_obstacle_depth_m_{0.0};

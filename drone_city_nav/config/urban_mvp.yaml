@@ -21,7 +21,7 @@ obstacle_memory_node:
     min_mapping_altitude_m: 5.0
     inflation_radius_m: 3.5
     scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: false
+    use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
@@ -67,6 +67,8 @@ planner_node:
     inflation_radius_m: 3.5
     direct_path_fallback: false
     reuse_last_valid_path_on_failure: false
+    max_initial_goal_regression_m: 8.0
+    initial_progress_probe_distance_m: 2.0
     max_initial_lateral_deviation_m: 14.0
     nearest_free_radius_cells: 30
     memory_occupied_threshold: 65
@@ -86,7 +88,7 @@ planner_node:
     range_hit_epsilon_m: 0.05
     current_lidar_obstacle_depth_m: 8.0
     scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: false
+    use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
@@ -168,8 +170,9 @@ lidar_debug_node:
     output_dir: log/lidar_debug
     snapshot_period_s: 1.0
     image_size_px: 900
+    initial_heading_rad: 0.0
     scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: false
+    use_px4_heading_for_scan: true
     swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0

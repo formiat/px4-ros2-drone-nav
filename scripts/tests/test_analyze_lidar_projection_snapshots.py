@@ -34,6 +34,7 @@ def make_record(
     remembered_hits: int = 3,
     image_ok: bool = True,
     config_yaw: float = 0.0,
+    projection_yaw_delta: float = 0.0,
 ) -> dict:
     return {
         "snapshot": "snapshot_000001",
@@ -53,6 +54,8 @@ def make_record(
         },
         "projection_config": {
             "compensate_attitude": True,
+            "use_px4_heading_for_scan": True,
+            "initial_heading_rad": 0.0,
             "swap_lidar_xy_to_local_frame": False,
             "scan_yaw_offset_rad": 0.0,
             "lidar_mount_roll_rad": 0.0,
@@ -60,6 +63,12 @@ def make_record(
             "lidar_mount_yaw_rad": config_yaw,
             "min_projected_altitude_m": 1.0,
             "max_projected_altitude_m": 40.0,
+        },
+        "projection": {
+            "yaw_source": "px4_heading",
+            "yaw_rad": 0.0,
+            "px4_heading_valid": True,
+            "yaw_delta_to_attitude_rad": projection_yaw_delta,
         },
         "grid": {"seen": True},
         "image_ok": image_ok,
@@ -144,6 +153,16 @@ class LidarProjectionSnapshotAnalyzerTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(
             any("projection_config changed" in error for error in result.errors)
+        )
+
+    def test_large_projection_yaw_delta_fails(self) -> None:
+        records = [make_record(altitude_m=18.0, projection_yaw_delta=0.6)]
+
+        result = analyzer.analyze_snapshots(records)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("projection yaw diverges" in error for error in result.errors)
         )
 
     def test_cli_accepts_static_map_rectangles(self) -> None:

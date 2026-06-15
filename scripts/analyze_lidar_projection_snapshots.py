@@ -33,6 +33,7 @@ class AnalysisResult:
     max_cruise_current_hits: int = 0
     max_cruise_accepted_beams: int = 0
     max_cruise_altitude_rejection_ratio: float = 0.0
+    max_cruise_projection_attitude_yaw_delta_rad: float = 0.0
     final_remembered_hits: int = 0
     static_map_rectangles: int | None = None
     errors: list[str] = field(default_factory=list)
@@ -140,6 +141,8 @@ def _projection_config_key(record: dict[str, Any]) -> tuple[Any, ...] | None:
         return None
     keys = (
         "compensate_attitude",
+        "use_px4_heading_for_scan",
+        "initial_heading_rad",
         "swap_lidar_xy_to_local_frame",
         "scan_yaw_offset_rad",
         "lidar_mount_roll_rad",
@@ -156,6 +159,7 @@ def analyze_snapshots(
     *,
     cruise_altitude_min_m: float = 15.0,
     altitude_rejection_threshold: float = 0.75,
+    yaw_delta_threshold_rad: float = 0.35,
     static_map_path: Path | None = None,
 ) -> AnalysisResult:
     result = AnalysisResult(snapshot_count=len(records))
@@ -200,6 +204,24 @@ def analyze_snapshots(
                 f"{result.max_cruise_altitude_rejection_ratio:.3f} >= "
                 f"{altitude_rejection_threshold:.3f}"
             )
+        yaw_deltas = [
+            abs(_finite_float(_nested(record, "projection", "yaw_delta_to_attitude_rad")))
+            for record in cruise_records
+        ]
+        yaw_deltas = [delta for delta in yaw_deltas if math.isfinite(delta)]
+        result.max_cruise_projection_attitude_yaw_delta_rad = max(
+            yaw_deltas, default=0.0
+        )
+        if (
+            yaw_deltas
+            and result.max_cruise_projection_attitude_yaw_delta_rad
+            >= yaw_delta_threshold_rad
+        ):
+            result.errors.append(
+                "projection yaw diverges from attitude yaw at cruise altitude: "
+                f"{result.max_cruise_projection_attitude_yaw_delta_rad:.3f} >= "
+                f"{yaw_delta_threshold_rad:.3f}"
+            )
 
     result.final_remembered_hits = _non_negative_int(records[-1].get("remembered_hits"))
     if result.final_remembered_hits <= 0:
@@ -241,6 +263,8 @@ def format_result(result: AnalysisResult) -> str:
         f"max cruise accepted beams: {result.max_cruise_accepted_beams}",
         "max cruise altitude rejection ratio: "
         f"{result.max_cruise_altitude_rejection_ratio:.3f}",
+        "max cruise projection-attitude yaw delta: "
+        f"{result.max_cruise_projection_attitude_yaw_delta_rad:.3f} rad",
         f"final remembered hits: {result.final_remembered_hits}",
     ]
     if result.static_map_rectangles is not None:
@@ -263,6 +287,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--static-map", type=Path, default=None)
     parser.add_argument("--cruise-altitude-min", type=float, default=15.0)
     parser.add_argument("--altitude-rejection-threshold", type=float, default=0.75)
+    parser.add_argument("--yaw-delta-threshold-rad", type=float, default=0.35)
     return parser.parse_args(argv)
 
 
@@ -274,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
             records,
             cruise_altitude_min_m=args.cruise_altitude_min,
             altitude_rejection_threshold=args.altitude_rejection_threshold,
+            yaw_delta_threshold_rad=args.yaw_delta_threshold_rad,
             static_map_path=args.static_map,
         )
     except SnapshotLoadError as exc:
