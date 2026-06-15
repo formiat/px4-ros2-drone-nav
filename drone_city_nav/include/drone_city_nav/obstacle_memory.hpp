@@ -27,6 +27,9 @@ struct LaserScan2DView {
   bool altitude_valid{false};
   bool attitude_valid{false};
   bool compensate_attitude{false};
+  double lidar_mount_roll_rad{0.0};
+  double lidar_mount_pitch_rad{0.0};
+  double lidar_mount_yaw_rad{0.0};
 };
 
 struct ObstacleMemoryConfig {

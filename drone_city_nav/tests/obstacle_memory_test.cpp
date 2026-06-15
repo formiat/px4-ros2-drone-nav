@@ -359,6 +359,29 @@ TEST(ObstacleMemoryGrid, ScanHitRotatesWithYaw) {
   EXPECT_EQ(memory.rawGrid().state(GridIndex{5, 9}), CellState::kOccupied);
 }
 
+TEST(ObstacleMemoryGrid, TiltedScanUsesPhysicalFrameInsteadOfLegacySwap) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> ranges{4.0F};
+  LaserScan2DView scan = makeScan(ranges);
+  scan.origin_altitude_m = 18.0;
+  scan.pitch_rad = -0.4;
+  scan.altitude_valid = true;
+  scan.attitude_valid = true;
+  scan.compensate_attitude = true;
+  scan.swap_lidar_xy_to_local_frame = true;
+  scan.min_projected_altitude_m = 1.0;
+  scan.max_projected_altitude_m = 40.0;
+
+  const ObstacleMemoryStats stats =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, scan, {});
+
+  EXPECT_EQ(stats.processed_beams, 1U);
+  EXPECT_EQ(stats.hit_beams, 1U);
+  EXPECT_EQ(stats.altitude_rejected_beams, 0U);
+  EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
+  EXPECT_NE(memory.rawGrid().state(GridIndex{5, 9}), CellState::kOccupied);
+}
+
 TEST(ObstacleMemoryGrid, PersistentObstacleSurvivesOneFreeMiss) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> hit_ranges{4.0F};

@@ -42,6 +42,12 @@ Equivalent explicit command:
 ctest --test-dir build/drone_city_nav --output-on-failure
 ```
 
+Run script-level tests:
+
+```bash
+make test-scripts
+```
+
 Run the non-mutating C++ quality checks:
 
 ```bash
@@ -88,6 +94,14 @@ The simulation uses three planner obstacle sources by default: the static
 `generated_city.map2d` city map, accumulated lidar obstacle memory, and the
 current lidar hit overlay. Source toggles and map format details are documented
 in `docs/MVP_SIMULATION.md`.
+
+After a headless run, validate lidar projection snapshots without GUI:
+
+```bash
+python3 scripts/analyze_lidar_projection_snapshots.py \
+  log/lidar_debug/snapshots.jsonl \
+  --static-map drone_city_nav/worlds/generated_city.map2d
+```
 
 ## Build System
 

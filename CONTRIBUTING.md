@@ -23,6 +23,12 @@ All C++ development must follow `CPP_BEST_PRACTICES.md`.
 
    If the build directory does not exist, build first with the documented
    `colcon build` command.
+   For Python helper scripts, run:
+
+   ```bash
+   make test-scripts
+   ```
+
 6. Do not run mutating formatters across the whole repository. Format changed
    C++ files only:
 

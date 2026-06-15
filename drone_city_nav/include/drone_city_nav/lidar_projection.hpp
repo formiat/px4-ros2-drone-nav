@@ -34,6 +34,9 @@ struct LidarProjectionConfig {
   double max_projected_altitude_m{100000.0};
   bool swap_lidar_xy_to_local_frame{false};
   bool compensate_attitude{false};
+  double lidar_mount_roll_rad{0.0};
+  double lidar_mount_pitch_rad{0.0};
+  double lidar_mount_yaw_rad{0.0};
 };
 
 enum class LidarBeamProjectionStatus {
@@ -51,6 +54,9 @@ struct LidarBeamProjection {
   double depth_endpoint_altitude_m{std::numeric_limits<double>::quiet_NaN()};
   Point2 endpoint{};
   Point2 depth_endpoint{};
+  Point3 lidar_direction{};
+  Point3 body_frd_direction{};
+  Point3 ned_direction{};
 };
 
 [[nodiscard]] std::optional<AttitudeEuler>

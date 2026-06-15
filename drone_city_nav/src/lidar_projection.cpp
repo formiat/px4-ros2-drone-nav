@@ -20,8 +20,21 @@ namespace {
          altitude_m <= config.max_projected_altitude_m;
 }
 
-[[nodiscard]] Point3 scanDirectionInBodyFrame(const double angle_rad,
-                                              const bool swap_xy) noexcept {
+[[nodiscard]] double squaredNorm(const Point3& vector) noexcept {
+  return vector.x * vector.x + vector.y * vector.y + vector.z * vector.z;
+}
+
+[[nodiscard]] Point3 normalizeOrZero(const Point3& vector) noexcept {
+  const double norm_sq = squaredNorm(vector);
+  if (!std::isfinite(norm_sq) || norm_sq <= 0.0) {
+    return Point3{};
+  }
+  const double inv_norm = 1.0 / std::sqrt(norm_sq);
+  return Point3{vector.x * inv_norm, vector.y * inv_norm, vector.z * inv_norm};
+}
+
+[[nodiscard]] Point3 legacyScanDirectionInMapFrame(const double angle_rad,
+                                                   const bool swap_xy) noexcept {
   const double scan_x = std::cos(angle_rad);
   const double scan_y = std::sin(angle_rad);
   if (swap_xy) {
@@ -30,9 +43,12 @@ namespace {
   return Point3{scan_x, scan_y, 0.0};
 }
 
-[[nodiscard]] Point3 rotateBodyToWorld(const Point3& vector, const double roll_rad,
-                                       const double pitch_rad,
-                                       const double yaw_rad) noexcept {
+[[nodiscard]] Point3 scanDirectionInLidarFluFrame(const double angle_rad) noexcept {
+  return Point3{std::cos(angle_rad), std::sin(angle_rad), 0.0};
+}
+
+[[nodiscard]] Point3 rotateRzyx(const Point3& vector, const double roll_rad,
+                                const double pitch_rad, const double yaw_rad) noexcept {
   const double cr = std::cos(roll_rad);
   const double sr = std::sin(roll_rad);
   const double cp = std::cos(pitch_rad);
@@ -45,6 +61,42 @@ namespace {
                 cp * sy * vector.x + (sr * sp * sy + cr * cy) * vector.y +
                     (cr * sp * sy - sr * cy) * vector.z,
                 -sp * vector.x + sr * cp * vector.y + cr * cp * vector.z};
+}
+
+[[nodiscard]] Point3 lidarFluToBodyFrd(const Point3& vector) noexcept {
+  return Point3{vector.x, -vector.y, -vector.z};
+}
+
+[[nodiscard]] Point3
+mountedLidarDirection(const Point3& lidar_direction,
+                      const LidarProjectionConfig& config) noexcept {
+  return rotateRzyx(lidar_direction, config.lidar_mount_roll_rad,
+                    config.lidar_mount_pitch_rad, config.lidar_mount_yaw_rad);
+}
+
+[[nodiscard]] Point3
+projectDirectionToNed(const Point3& lidar_direction, const LidarProjectionPose& pose,
+                      const LidarProjectionConfig& config) noexcept {
+  const Point3 body_frd_direction =
+      lidarFluToBodyFrd(mountedLidarDirection(lidar_direction, config));
+  const double roll_rad =
+      config.compensate_attitude && pose.attitude_valid ? pose.roll_rad : 0.0;
+  const double pitch_rad =
+      config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
+  return normalizeOrZero(rotateRzyx(body_frd_direction, roll_rad, pitch_rad,
+                                    pose.yaw_rad + config.scan_yaw_offset_rad));
+}
+
+[[nodiscard]] Point3
+legacyProjectDirectionToMap(const double beam_angle_rad,
+                            const LidarProjectionPose& pose,
+                            const LidarProjectionConfig& config) noexcept {
+  const Point3 legacy_direction = legacyScanDirectionInMapFrame(
+      beam_angle_rad, config.swap_lidar_xy_to_local_frame);
+  const double yaw_rad = config.swap_lidar_xy_to_local_frame
+                             ? -(pose.yaw_rad + config.scan_yaw_offset_rad)
+                             : pose.yaw_rad + config.scan_yaw_offset_rad;
+  return normalizeOrZero(rotateRzyx(legacy_direction, 0.0, 0.0, yaw_rad));
 }
 
 [[nodiscard]] bool validProjectionInputs(const LidarProjectionPose& pose,
@@ -60,6 +112,9 @@ namespace {
          std::isfinite(config.lidar_z_offset_m) &&
          std::isfinite(config.min_projected_altitude_m) &&
          !std::isnan(config.max_projected_altitude_m) &&
+         std::isfinite(config.lidar_mount_roll_rad) &&
+         std::isfinite(config.lidar_mount_pitch_rad) &&
+         std::isfinite(config.lidar_mount_yaw_rad) &&
          config.min_projected_altitude_m <= config.max_projected_altitude_m &&
          std::isfinite(scan_range_min_m) && std::isfinite(scan_range_max_m) &&
          scan_range_max_m > scan_range_min_m && std::isfinite(angle_min_rad) &&
@@ -128,14 +183,28 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
     projection.status = LidarBeamProjectionStatus::kInvalidScan;
     return projection;
   }
-  if (!lidarRawRangeUsable(raw_range, scan_range_min_m)) {
-    projection.status = LidarBeamProjectionStatus::kInvalidRange;
-    return projection;
-  }
-
   const double scan_range_max = std::min(scan_range_max_m, config.max_lidar_range_m);
   if (!(scan_range_max > scan_range_min_m)) {
     projection.status = LidarBeamProjectionStatus::kInvalidScan;
+    return projection;
+  }
+
+  const double beam_angle_rad =
+      angle_min_rad + static_cast<double>(beam_index) * angle_increment_rad;
+  projection.lidar_direction = scanDirectionInLidarFluFrame(beam_angle_rad);
+  if (config.compensate_attitude) {
+    projection.body_frd_direction = normalizeOrZero(
+        lidarFluToBodyFrd(mountedLidarDirection(projection.lidar_direction, config)));
+    projection.ned_direction =
+        projectDirectionToNed(projection.lidar_direction, pose, config);
+  } else {
+    projection.body_frd_direction =
+        legacyProjectDirectionToMap(beam_angle_rad, pose, config);
+    projection.ned_direction = projection.body_frd_direction;
+  }
+
+  if (!lidarRawRangeUsable(raw_range, scan_range_min_m)) {
+    projection.status = LidarBeamProjectionStatus::kInvalidRange;
     return projection;
   }
 
@@ -144,19 +213,7 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
   projection.used_range_m =
       projection.hit ? static_cast<double>(raw_range) : scan_range_max;
 
-  const double beam_angle_rad =
-      angle_min_rad + static_cast<double>(beam_index) * angle_increment_rad;
-  const Point3 scan_direction =
-      scanDirectionInBodyFrame(beam_angle_rad, config.swap_lidar_xy_to_local_frame);
-  const double projection_yaw_rad = config.swap_lidar_xy_to_local_frame
-                                        ? -(pose.yaw_rad + config.scan_yaw_offset_rad)
-                                        : pose.yaw_rad + config.scan_yaw_offset_rad;
-  const double roll_rad =
-      config.compensate_attitude && pose.attitude_valid ? pose.roll_rad : 0.0;
-  const double pitch_rad =
-      config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
-  const Point3 world_direction =
-      rotateBodyToWorld(scan_direction, roll_rad, pitch_rad, projection_yaw_rad);
+  const Point3 world_direction = projection.ned_direction;
 
   projection.endpoint =
       Point2{pose.position.x + projection.used_range_m * world_direction.x,

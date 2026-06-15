@@ -816,6 +816,9 @@ private:
             : Point2{pathPointX(path_, index == 0U ? 0U : index - 1U),
                      pathPointY(path_, index == 0U ? 0U : index - 1U)};
     const Point2 current{pathPointX(path_, index), pathPointY(path_, index)};
+    if (!turnWaypointIsCloseEnoughForSlowdown(current)) {
+      return 0.0;
+    }
     const Point2 next{pathPointX(path_, std::min(index + 1U, path_.poses.size() - 1U)),
                       pathPointY(path_, std::min(index + 1U, path_.poses.size() - 1U))};
 
@@ -832,6 +835,18 @@ private:
                        (incoming_length * outgoing_length),
                    -1.0, 1.0);
     return std::acos(cosine);
+  }
+
+  [[nodiscard]] bool
+  turnWaypointIsCloseEnoughForSlowdown(const Point2 turn_waypoint) const {
+    if (!local_position_valid_) {
+      return true;
+    }
+
+    const double activation_distance_m =
+        std::max(2.0 * effectiveLookaheadDistanceM(),
+                 max_setpoint_distance_m_ + acceptance_radius_m_);
+    return distance(current_position_, turn_waypoint) <= activation_distance_m;
   }
 
   [[nodiscard]] const char* pathSegmentTypeName(const double turn_angle_rad) const {

@@ -8,6 +8,10 @@ build:
 test: build
 	ctest --test-dir build/drone_city_nav --output-on-failure
 
+.PHONY: test-scripts
+test-scripts:
+	python3 -m unittest discover scripts/tests
+
 .PHONY: quality
 quality:
 	./scripts/check_cpp_quality.sh

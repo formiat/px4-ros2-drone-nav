@@ -79,6 +79,14 @@ struct PlanningGridBuildResult {
   CurrentLidarStats current_lidar{};
 };
 
+struct PathComputationResult {
+  AStarResult astar{};
+  std::vector<GridIndex> smoothed_cells;
+  GridStats grid_stats{};
+  double raw_path_clearance_m{std::numeric_limits<double>::infinity()};
+  double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
+};
+
 [[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
   return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
 }
@@ -146,6 +154,9 @@ public:
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     compensate_lidar_attitude_ =
         declare_parameter<bool>("compensate_lidar_attitude", false);
+    lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
+    lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
+    lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
     lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
     min_projected_lidar_altitude_m_ =
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
@@ -261,7 +272,8 @@ public:
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
                 "max_staleness=%.2fs depth=%.2f swap_lidar_xy=%s yaw_source=%s "
                 "compensate_attitude=%s lidar_z_offset=%.2f "
-                "projected_altitude_range=[%.2f, %.2f]",
+                "projected_altitude_range=[%.2f, %.2f] "
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 use_current_lidar_obstacles_ ? "true" : "false", lidar_topic.c_str(),
                 max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
@@ -269,7 +281,15 @@ public:
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_);
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
+      RCLCPP_WARN(
+          get_logger(),
+          "Planner current lidar overlay is using legacy swap_lidar_xy_to_local_frame "
+          "with attitude compensation. Prefer lidar_mount_* parameters for physical "
+          "3D projection.");
+    }
     RCLCPP_INFO(
         get_logger(),
         "Planner fallback policy: direct_path_fallback=%s "
@@ -605,58 +625,25 @@ private:
       return;
     }
     OccupancyGrid2D planning_grid = std::move(planning_result->grid);
-    publishOccupancyGrid(planning_grid);
-
-    const auto start_cell = planning_grid.worldToCell(current_pose_.position);
-    const auto goal_cell = planning_grid.worldToCell(goal_);
-    if (!start_cell.has_value() || !goal_cell.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Start or goal is outside the planning grid");
-      publishFallbackPath();
+    auto path_result = computePathOnGrid(planning_grid, "combined");
+    if (!path_result.has_value()) {
+      if (!publishStaticOnlyFallbackPath("combined planning failure")) {
+        publishFallbackPath();
+      }
       return;
     }
-
-    const auto unblocked_start =
-        planning_grid.nearestUnblocked(*start_cell, nearest_free_radius_cells_);
-    const auto unblocked_goal =
-        planning_grid.nearestUnblocked(*goal_cell, nearest_free_radius_cells_);
-    if (!unblocked_start.has_value() || !unblocked_goal.has_value()) {
+    if (shouldRejectLowClearancePath(path_result->smoothed_path_clearance_m)) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "No unblocked start or goal cell is available after inflation");
-      publishFallbackPath();
+          "Rejecting low-clearance combined path; trying static-only fallback: "
+          "raw_clearance=%.2f smoothed_clearance=%.2f threshold=%.2f",
+          path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m,
+          lowClearanceFallbackThresholdM());
+      if (!publishStaticOnlyFallbackPath("combined low-clearance path")) {
+        publishFallbackPath();
+      }
       return;
     }
-
-    if (*unblocked_start != *start_cell || *unblocked_goal != *goal_cell) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Planning endpoints adjusted after inflation: start=(%d,%d)->(%d,%d) "
-          "goal=(%d,%d)->(%d,%d)",
-          start_cell->x, start_cell->y, unblocked_start->x, unblocked_start->y,
-          goal_cell->x, goal_cell->y, unblocked_goal->x, unblocked_goal->y);
-    }
-
-    const AStarResult astar_result =
-        planner_.plan(planning_grid, *unblocked_start, *unblocked_goal, astar_config_);
-    if (!astar_result.success) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "A* did not find a path on planning grid; expanded=%zu start=(%d,%d) "
-          "goal=(%d,%d)",
-          astar_result.expanded_cells, unblocked_start->x, unblocked_start->y,
-          unblocked_goal->x, unblocked_goal->y);
-      publishFallbackPath();
-      return;
-    }
-
-    const std::vector<GridIndex> smoothed_cells =
-        smoothPath(planning_grid, astar_result.path, path_smoothing_config_);
-    const GridStats stats = collectGridStats(planning_grid);
-    const double raw_path_clearance_m =
-        pathMinimumBlockedClearanceM(planning_grid, astar_result.path);
-    const double smoothed_path_clearance_m =
-        pathMinimumBlockedClearanceM(planning_grid, smoothed_cells);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
@@ -667,12 +654,13 @@ private:
         "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
-        "expanded=%zu raw_path=%zu smoothed_path=%zu "
+        "source=combined expanded=%zu raw_path=%zu smoothed_path=%zu "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
-        distance(current_pose_.position, goal_), stats.occupied_cells,
-        stats.inflated_cells, stats.free_cells, stats.unknown_cells,
+        distance(current_pose_.position, goal_), path_result->grid_stats.occupied_cells,
+        path_result->grid_stats.inflated_cells, path_result->grid_stats.free_cells,
+        path_result->grid_stats.unknown_cells,
         planning_result->static_source.enabled ? "true" : "false",
         planning_result->static_source.loaded ? "true" : "false",
         planning_result->static_source.used ? "true" : "false",
@@ -695,33 +683,94 @@ private:
         planning_result->current_lidar.hit_beams,
         planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
-        planning_result->current_lidar.outside_hits, astar_result.expanded_cells,
-        astar_result.path.size(), smoothed_cells.size(), raw_path_clearance_m,
-        smoothed_path_clearance_m);
+        planning_result->current_lidar.outside_hits, path_result->astar.expanded_cells,
+        path_result->astar.path.size(), path_result->smoothed_cells.size(),
+        path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m);
+    publishOccupancyGrid(planning_grid);
+    publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
+                                 "combined");
+  }
 
-    std::vector<Point2> path_points = cellsToPoints(planning_grid, smoothed_cells);
-    if (path_points.empty()) {
-      publishPath({});
-      return;
+  [[nodiscard]] std::optional<PathComputationResult>
+  computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label) {
+    const auto start_cell = grid.worldToCell(current_pose_.position);
+    const auto goal_cell = grid.worldToCell(goal_);
+    if (!start_cell.has_value() || !goal_cell.has_value()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Start or goal is outside the %s planning grid",
+                           source_label);
+      return std::nullopt;
     }
 
-    if (distance(current_pose_.position, path_points.front()) <
-        planning_grid.resolution()) {
+    const auto unblocked_start =
+        grid.nearestUnblocked(*start_cell, nearest_free_radius_cells_);
+    const auto unblocked_goal =
+        grid.nearestUnblocked(*goal_cell, nearest_free_radius_cells_);
+    if (!unblocked_start.has_value() || !unblocked_goal.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "No unblocked start or goal cell is available on %s grid after inflation",
+          source_label);
+      return std::nullopt;
+    }
+
+    if (*unblocked_start != *start_cell || *unblocked_goal != *goal_cell) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Planning endpoints adjusted on %s grid after inflation: "
+                           "start=(%d,%d)->(%d,%d) goal=(%d,%d)->(%d,%d)",
+                           source_label, start_cell->x, start_cell->y,
+                           unblocked_start->x, unblocked_start->y, goal_cell->x,
+                           goal_cell->y, unblocked_goal->x, unblocked_goal->y);
+    }
+
+    PathComputationResult result{};
+    result.astar =
+        planner_.plan(grid, *unblocked_start, *unblocked_goal, astar_config_);
+    if (!result.astar.success) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "A* did not find a path on %s grid; expanded=%zu start=(%d,%d) "
+          "goal=(%d,%d)",
+          source_label, result.astar.expanded_cells, unblocked_start->x,
+          unblocked_start->y, unblocked_goal->x, unblocked_goal->y);
+      return std::nullopt;
+    }
+
+    result.smoothed_cells = smoothPath(grid, result.astar.path, path_smoothing_config_);
+    result.grid_stats = collectGridStats(grid);
+    result.raw_path_clearance_m = pathMinimumBlockedClearanceM(grid, result.astar.path);
+    result.smoothed_path_clearance_m =
+        pathMinimumBlockedClearanceM(grid, result.smoothed_cells);
+    return result;
+  }
+
+  bool publishPathFromSmoothedCells(const OccupancyGrid2D& grid,
+                                    const std::vector<GridIndex>& smoothed_cells,
+                                    const char* source_label) {
+    std::vector<Point2> path_points = cellsToPoints(grid, smoothed_cells);
+    if (path_points.empty()) {
+      publishPath({});
+      return false;
+    }
+
+    if (distance(current_pose_.position, path_points.front()) < grid.resolution()) {
       path_points.front() = current_pose_.position;
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
-    pruneBackwardInitialWaypoints(path_points, planning_grid.resolution());
+    pruneBackwardInitialWaypoints(path_points, grid.resolution());
     if (hasExcessiveInitialLateralDeviation(path_points)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "A* path has excessive initial lateral deviation; using "
-                           "direct fallback path");
+                           "%s path has excessive initial lateral deviation; using "
+                           "direct fallback path",
+                           source_label);
       publishDirectGoalPath();
-      return;
+      return true;
     }
 
     last_valid_path_points_ = path_points;
     publishPath(path_points);
+    return true;
   }
 
   [[nodiscard]] GridStats collectGridStats(const OccupancyGrid2D& grid) const {
@@ -816,7 +865,10 @@ private:
                                  min_projected_lidar_altitude_m_,
                                  max_projected_lidar_altitude_m_,
                                  swap_lidar_xy_to_local_frame_,
-                                 compensate_lidar_attitude_};
+                                 compensate_lidar_attitude_,
+                                 lidar_mount_roll_rad_,
+                                 lidar_mount_pitch_rad_,
+                                 lidar_mount_yaw_rad_};
   }
 
   std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoint,
@@ -1074,6 +1126,44 @@ private:
     publishLastValidPathOrEmpty();
   }
 
+  bool publishStaticOnlyFallbackPath(const char* reason) {
+    if (!use_static_map_ || !static_grid_.has_value()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Static-only fallback is unavailable after %s: "
+                           "use_static_map=%s loaded=%s",
+                           reason, use_static_map_ ? "true" : "false",
+                           static_grid_.has_value() ? "true" : "false");
+      return false;
+    }
+
+    OccupancyGrid2D static_only_grid{static_grid_->bounds()};
+    const GridOverlayStats static_overlay =
+        overlayOccupiedCells(static_only_grid, *static_grid_);
+    static_only_grid.rebuildInflation(inflation_radius_m_);
+
+    auto path_result = computePathOnGrid(static_only_grid, "static-only fallback");
+    if (!path_result.has_value()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Static-only fallback could not produce a path after %s: "
+                           "static_occupied_cells=%zu applied=%zu",
+                           reason, static_overlay.source_occupied_cells,
+                           static_overlay.occupied_cells_applied);
+      return false;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Using static-only fallback path after %s: static_occupied_cells=%zu "
+        "expanded=%zu raw_path=%zu smoothed_path=%zu "
+        "path_clearance[raw=%.2f smoothed=%.2f]",
+        reason, static_overlay.source_occupied_cells, path_result->astar.expanded_cells,
+        path_result->astar.path.size(), path_result->smoothed_cells.size(),
+        path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m);
+    publishOccupancyGrid(static_only_grid);
+    return publishPathFromSmoothedCells(static_only_grid, path_result->smoothed_cells,
+                                        "static-only fallback");
+  }
+
   void publishDirectGoalPath() {
     std::vector<Point2> path_points{current_pose_.position, goal_};
     last_valid_path_points_ = path_points;
@@ -1082,6 +1172,21 @@ private:
         "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
         current_pose_.position.x, current_pose_.position.y, goal_.x, goal_.y);
     publishPath(path_points);
+  }
+
+  [[nodiscard]] double lowClearanceFallbackThresholdM() const noexcept {
+    if (!(path_smoothing_config_.minimum_obstacle_clearance_m > 0.0)) {
+      return 0.0;
+    }
+    return 0.75 * path_smoothing_config_.minimum_obstacle_clearance_m;
+  }
+
+  [[nodiscard]] bool
+  shouldRejectLowClearancePath(const double smoothed_path_clearance_m) const noexcept {
+    return use_static_map_ && static_grid_.has_value() &&
+           lowClearanceFallbackThresholdM() > 0.0 &&
+           std::isfinite(smoothed_path_clearance_m) &&
+           smoothed_path_clearance_m < lowClearanceFallbackThresholdM();
   }
 
   void invalidateCurrentPose() {
@@ -1240,6 +1345,9 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double lidar_z_offset_m_{0.0};
+  double lidar_mount_roll_rad_{0.0};
+  double lidar_mount_pitch_rad_{0.0};
+  double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};

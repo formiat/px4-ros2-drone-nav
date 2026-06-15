@@ -188,9 +188,12 @@ snapshots under `log/lidar_debug`:
 - `snapshots.jsonl` - one JSON record per snapshot with pose, horizontal speed,
   PX4 attitude diagnostics (`roll_rad`, `pitch_rad`, `tilt_rad`), scan
   statistics including projected-altitude rejection counts, obstacle-memory grid
-  statistics, path size, file paths, and a capped list of hit points.
+  statistics, path size, file paths, projection config/stats, and a capped list
+  of hit points.
 - `snapshot_000001_scan.csv` - per-beam scan data with raw range, interpreted
-  hit flag, map-frame endpoint, and projected endpoint altitude.
+  hit flag, projection status, map-frame endpoint, depth endpoint, projected
+  endpoint altitude, lidar-frame direction, body-FRD direction, and NED/map
+  direction.
 - `snapshot_000001.ppm` - a full-map top-down debug image when the memory grid
   is available. Red dots are current lidar hits, yellow dots are accumulated
   remembered lidar hits, cyan/green lines are the current path, and the blue
@@ -207,6 +210,18 @@ Override the debug directory or disable recording from the run script:
 LIDAR_DEBUG_DIR=/workspace/log/lidar_debug_run_01 ./scripts/run_city_mvp.sh
 ENABLE_LIDAR_DEBUG=false ./scripts/run_city_mvp.sh
 ```
+
+Validate a headless run without opening Gazebo or RViz:
+
+```bash
+python3 scripts/analyze_lidar_projection_snapshots.py \
+  log/lidar_debug/snapshots.jsonl \
+  --static-map drone_city_nav/worlds/generated_city.map2d
+```
+
+The analyzer fails on missing snapshots, missing cruise-altitude current hits,
+dominant projected-altitude rejection at cruise altitude, missing final
+remembered hits, failed snapshot images, or inconsistent projection config.
 
 The regular GUI launch starts Gazebo and RViz so the same data can be inspected
 live:

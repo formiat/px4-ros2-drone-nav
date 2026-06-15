@@ -101,6 +101,29 @@ struct Image {
   return stream.str();
 }
 
+void writeJsonNumberOrNull(std::ostream& stream, const double value) {
+  if (std::isfinite(value)) {
+    stream << value;
+    return;
+  }
+  stream << "null";
+}
+
+[[nodiscard]] const char*
+projectionStatusName(const LidarBeamProjectionStatus status) noexcept {
+  switch (status) {
+    case LidarBeamProjectionStatus::kAccepted:
+      return "accepted";
+    case LidarBeamProjectionStatus::kInvalidScan:
+      return "invalid_scan";
+    case LidarBeamProjectionStatus::kInvalidRange:
+      return "invalid_range";
+    case LidarBeamProjectionStatus::kAltitudeRejected:
+      return "altitude_rejected";
+  }
+  return "unknown";
+}
+
 void drawLine(Image& image, int x0, int y0, const int x1, const int y1,
               const Pixel color) {
   const int dx = std::abs(x1 - x0);
@@ -183,6 +206,9 @@ public:
         declare_parameter<bool>("use_px4_heading_for_scan", false);
     swap_lidar_xy_to_local_frame_ =
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
+    lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
+    lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
+    lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
     beam_csv_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("beam_csv_stride", 1), 1, 100000));
     image_beam_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
@@ -276,7 +302,8 @@ public:
                 "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
                 "min_confirmations=%zu min_remember_altitude=%.2fm "
                 "max_remembered_hits=%zu compensate_attitude=%s lidar_z_offset=%.2f "
-                "projected_altitude_range=[%.2f, %.2f]",
+                "projected_altitude_range=[%.2f, %.2f] "
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
                 lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
                 local_position_topic.c_str(), attitude_topic.c_str(),
@@ -285,7 +312,14 @@ public:
                 hit_memory_resolution_m_, remembered_hit_min_confirmations_,
                 min_remember_altitude_m_, max_remembered_hit_points_,
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_);
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
+      RCLCPP_WARN(
+          get_logger(),
+          "Lidar debug is using legacy swap_lidar_xy_to_local_frame with attitude "
+          "compensation. Prefer lidar_mount_* parameters for physical 3D projection.");
+    }
   }
 
 private:
@@ -381,13 +415,18 @@ private:
 
   struct SnapshotStats {
     std::size_t processed_beams{0U};
+    std::size_t accepted_beams{0U};
     std::size_t hit_beams{0U};
     std::size_t altitude_rejected_beams{0U};
+    std::size_t invalid_range_beams{0U};
+    std::size_t invalid_scan_beams{0U};
     std::size_t projection_rejected_beams{0U};
     std::size_t grid_unknown{0U};
     std::size_t grid_free{0U};
     std::size_t grid_inflated{0U};
     std::size_t grid_occupied{0U};
+    double endpoint_altitude_min_m{std::numeric_limits<double>::infinity()};
+    double endpoint_altitude_max_m{-std::numeric_limits<double>::infinity()};
     std::vector<Point2> hit_points;
   };
 
@@ -415,7 +454,10 @@ private:
                                  min_projected_lidar_altitude_m_,
                                  max_projected_lidar_altitude_m_,
                                  swap_lidar_xy_to_local_frame_,
-                                 compensate_lidar_attitude_};
+                                 compensate_lidar_attitude_,
+                                 lidar_mount_roll_rad_,
+                                 lidar_mount_pitch_rad_,
+                                 lidar_mount_yaw_rad_};
   }
 
   [[nodiscard]] LidarBeamProjection
@@ -439,7 +481,9 @@ private:
   void writeScanCsv(const std::filesystem::path& csv_path, SnapshotStats& stats) {
     std::ofstream csv{csv_path, std::ios::out | std::ios::trunc};
     csv << "beam_index,angle_rad,raw_range_m,used_range_m,hit,end_x_m,end_y_m,"
-           "end_altitude_m\n";
+           "end_altitude_m,status,depth_end_x_m,depth_end_y_m,depth_end_altitude_m,"
+           "lidar_dir_x,lidar_dir_y,lidar_dir_z,body_frd_x,body_frd_y,body_frd_z,"
+           "ned_x,ned_y,ned_z\n";
 
     const double scan_range_max = scanRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
@@ -448,36 +492,59 @@ private:
 
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += beam_csv_stride_) {
       const float raw_range = last_scan_.ranges[i];
-      if (!lidarRawRangeUsable(raw_range, static_cast<double>(last_scan_.range_min))) {
-        ++stats.projection_rejected_beams;
-        continue;
-      }
       ++stats.processed_beams;
 
       const LidarBeamProjection projection = projectScanBeam(i, raw_range, 0.0);
-      if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
-        ++stats.altitude_rejected_beams;
-        continue;
-      }
-      if (projection.status != LidarBeamProjectionStatus::kAccepted) {
-        ++stats.projection_rejected_beams;
-        continue;
-      }
-      if (projection.hit) {
-        ++stats.hit_beams;
-        stats.hit_points.push_back(projection.endpoint);
+      switch (projection.status) {
+        case LidarBeamProjectionStatus::kAccepted:
+          ++stats.accepted_beams;
+          if (projection.hit) {
+            ++stats.hit_beams;
+            stats.hit_points.push_back(projection.endpoint);
+          }
+          if (std::isfinite(projection.endpoint_altitude_m)) {
+            stats.endpoint_altitude_min_m =
+                std::min(stats.endpoint_altitude_min_m, projection.endpoint_altitude_m);
+            stats.endpoint_altitude_max_m =
+                std::max(stats.endpoint_altitude_max_m, projection.endpoint_altitude_m);
+          }
+          break;
+        case LidarBeamProjectionStatus::kAltitudeRejected:
+          ++stats.altitude_rejected_beams;
+          break;
+        case LidarBeamProjectionStatus::kInvalidRange:
+          ++stats.invalid_range_beams;
+          ++stats.projection_rejected_beams;
+          break;
+        case LidarBeamProjectionStatus::kInvalidScan:
+          ++stats.invalid_scan_beams;
+          ++stats.projection_rejected_beams;
+          break;
       }
 
+      const bool endpoint_available =
+          projection.status == LidarBeamProjectionStatus::kAccepted ||
+          projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
+      const double nan = std::numeric_limits<double>::quiet_NaN();
       const double angle_rad =
-          current_pose_.yaw_rad + scan_yaw_offset_rad_ +
           static_cast<double>(last_scan_.angle_min) +
           static_cast<double>(i) * static_cast<double>(last_scan_.angle_increment);
       csv << i << ',' << angle_rad << ','
           << (std::isfinite(raw_range) ? static_cast<double>(raw_range)
                                        : std::numeric_limits<double>::quiet_NaN())
           << ',' << projection.used_range_m << ',' << (projection.hit ? 1 : 0) << ','
-          << projection.endpoint.x << ',' << projection.endpoint.y << ','
-          << projection.endpoint_altitude_m << '\n';
+          << (endpoint_available ? projection.endpoint.x : nan) << ','
+          << (endpoint_available ? projection.endpoint.y : nan) << ','
+          << projection.endpoint_altitude_m << ','
+          << projectionStatusName(projection.status) << ','
+          << (endpoint_available ? projection.depth_endpoint.x : nan) << ','
+          << (endpoint_available ? projection.depth_endpoint.y : nan) << ','
+          << projection.depth_endpoint_altitude_m << ',' << projection.lidar_direction.x
+          << ',' << projection.lidar_direction.y << ',' << projection.lidar_direction.z
+          << ',' << projection.body_frd_direction.x << ','
+          << projection.body_frd_direction.y << ',' << projection.body_frd_direction.z
+          << ',' << projection.ned_direction.x << ',' << projection.ned_direction.y
+          << ',' << projection.ned_direction.z << '\n';
     }
   }
 
@@ -736,6 +803,28 @@ private:
                     << ",\"altitude_rejected\":" << stats.altitude_rejected_beams
                     << ",\"projection_rejected\":" << stats.projection_rejected_beams
                     << "},";
+    summary_stream_ << "\"projection_config\":{\"compensate_attitude\":"
+                    << (compensate_lidar_attitude_ ? "true" : "false")
+                    << ",\"swap_lidar_xy_to_local_frame\":"
+                    << (swap_lidar_xy_to_local_frame_ ? "true" : "false")
+                    << ",\"scan_yaw_offset_rad\":" << scan_yaw_offset_rad_
+                    << ",\"lidar_mount_roll_rad\":" << lidar_mount_roll_rad_
+                    << ",\"lidar_mount_pitch_rad\":" << lidar_mount_pitch_rad_
+                    << ",\"lidar_mount_yaw_rad\":" << lidar_mount_yaw_rad_
+                    << ",\"min_projected_altitude_m\":"
+                    << min_projected_lidar_altitude_m_
+                    << ",\"max_projected_altitude_m\":"
+                    << max_projected_lidar_altitude_m_ << "},";
+    summary_stream_ << "\"projection_stats\":{\"accepted\":" << stats.accepted_beams
+                    << ",\"hit\":" << stats.hit_beams
+                    << ",\"altitude_rejected\":" << stats.altitude_rejected_beams
+                    << ",\"invalid_range\":" << stats.invalid_range_beams
+                    << ",\"invalid_scan\":" << stats.invalid_scan_beams
+                    << ",\"endpoint_altitude_min_m\":";
+    writeJsonNumberOrNull(summary_stream_, stats.endpoint_altitude_min_m);
+    summary_stream_ << ",\"endpoint_altitude_max_m\":";
+    writeJsonNumberOrNull(summary_stream_, stats.endpoint_altitude_max_m);
+    summary_stream_ << "},";
     summary_stream_ << "\"grid\":{\"seen\":" << (grid_seen_ ? "true" : "false")
                     << ",\"unknown\":" << stats.grid_unknown
                     << ",\"free\":" << stats.grid_free
@@ -945,6 +1034,9 @@ private:
   double hit_memory_resolution_m_{0.25};
   double min_remember_altitude_m_{0.0};
   double lidar_z_offset_m_{0.0};
+  double lidar_mount_roll_rad_{0.0};
+  double lidar_mount_pitch_rad_{0.0};
+  double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   int image_size_px_{900};

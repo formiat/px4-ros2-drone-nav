@@ -128,7 +128,9 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       config.max_lidar_range_m,          config.range_hit_epsilon_m,
       scan.scan_yaw_offset_rad,          scan.lidar_z_offset_m,
       scan.min_projected_altitude_m,     scan.max_projected_altitude_m,
-      scan.swap_lidar_xy_to_local_frame, scan.compensate_attitude};
+      scan.swap_lidar_xy_to_local_frame, scan.compensate_attitude,
+      scan.lidar_mount_roll_rad,         scan.lidar_mount_pitch_rad,
+      scan.lidar_mount_yaw_rad};
 
   const auto stride = static_cast<std::size_t>(std::max(1, config.scan_stride));
   for (std::size_t i = 0U; i < scan.ranges.size(); i += stride) {

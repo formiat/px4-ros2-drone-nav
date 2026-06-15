@@ -98,6 +98,9 @@ public:
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     compensate_lidar_attitude_ =
         declare_parameter<bool>("compensate_lidar_attitude", false);
+    lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
+    lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
+    lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
     lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
     min_projected_lidar_altitude_m_ =
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
@@ -207,7 +210,8 @@ public:
                 "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
-                "projected_altitude_range=[%.2f, %.2f]",
+                "projected_altitude_range=[%.2f, %.2f] "
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 memory_config_.max_lidar_range_m, memory_config_.hit_obstacle_depth_m,
                 memory_config_.scan_stride, memory_config_.min_score,
                 memory_config_.max_score, memory_config_.free_score,
@@ -215,7 +219,14 @@ public:
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_);
+                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
+      RCLCPP_WARN(
+          get_logger(),
+          "Obstacle memory is using legacy swap_lidar_xy_to_local_frame with attitude "
+          "compensation. Prefer lidar_mount_* parameters for physical 3D projection.");
+    }
   }
 
 private:
@@ -416,6 +427,9 @@ private:
     scan_view.altitude_valid = current_pose_.altitude_valid;
     scan_view.attitude_valid = attitude_valid_;
     scan_view.compensate_attitude = compensate_lidar_attitude_;
+    scan_view.lidar_mount_roll_rad = lidar_mount_roll_rad_;
+    scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
+    scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
     const ObstacleMemoryStats stats =
         memory_->integrateScan(current_pose_.pose, scan_view, memory_config_);
     memory_->rebuildInflation(inflation_radius_m_);
@@ -538,6 +552,9 @@ private:
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double lidar_z_offset_m_{0.0};
+  double lidar_mount_roll_rad_{0.0};
+  double lidar_mount_pitch_rad_{0.0};
+  double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   bool swap_lidar_xy_to_local_frame_{false};

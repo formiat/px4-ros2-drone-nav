@@ -16,9 +16,13 @@ namespace {
                           0.0);
 }
 
+[[nodiscard]] double norm(const Point3 vector) {
+  return std::hypot(vector.x, vector.y, vector.z);
+}
+
 } // namespace
 
-TEST(LidarProjection, ZeroTiltKeepsLegacyNoSwapEndpoint) {
+TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
   const LidarProjectionPose pose{
       Point2{5.0, 6.0}, 18.0, std::numbers::pi / 2.0, 0.0, 0.0, true, true};
   LidarProjectionConfig config{};
@@ -31,13 +35,18 @@ TEST(LidarProjection, ZeroTiltKeepsLegacyNoSwapEndpoint) {
   EXPECT_NEAR(projection.endpoint.x, 5.0, 1.0e-6);
   EXPECT_NEAR(projection.endpoint.y, 10.0, 1.0e-6);
   EXPECT_NEAR(projection.endpoint_altitude_m, 18.0, 1.0e-6);
+  EXPECT_NEAR(projection.lidar_direction.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(projection.lidar_direction.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.body_frd_direction.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(projection.body_frd_direction.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(norm(projection.ned_direction), 1.0, 1.0e-9);
 }
 
-TEST(LidarProjection, ZeroTiltKeepsLegacySwapEndpoint) {
+TEST(LidarProjection, LegacySwapEndpointIsOnlyUsedWithoutAttitudeCompensation) {
   const LidarProjectionPose pose{
       Point2{5.0, 6.0}, 18.0, std::numbers::pi / 2.0, 0.0, 0.0, true, true};
   LidarProjectionConfig config{};
-  config.compensate_attitude = true;
+  config.compensate_attitude = false;
   config.swap_lidar_xy_to_local_frame = true;
 
   const LidarBeamProjection projection = project(pose, config, 4.0F);
@@ -45,6 +54,29 @@ TEST(LidarProjection, ZeroTiltKeepsLegacySwapEndpoint) {
   EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
   EXPECT_NEAR(projection.endpoint.x, 9.0, 1.0e-6);
   EXPECT_NEAR(projection.endpoint.y, 6.0, 1.0e-6);
+}
+
+TEST(LidarProjection, ConfiguredMountYawReorientsLevelBeam) {
+  const LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.0, 0.0, true, true};
+  LidarProjectionConfig config{};
+  config.compensate_attitude = true;
+  config.lidar_mount_yaw_rad = -std::numbers::pi / 2.0;
+
+  const LidarBeamProjection east_projection = project(pose, config, 4.0F);
+  const LidarBeamProjection north_projection =
+      project(pose, config, 4.0F, std::numbers::pi / 2.0);
+
+  EXPECT_EQ(east_projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(east_projection.endpoint.x, 0.0, 1.0e-6);
+  EXPECT_NEAR(east_projection.endpoint.y, 4.0, 1.0e-6);
+  EXPECT_NEAR(east_projection.body_frd_direction.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(east_projection.body_frd_direction.y, 1.0, 1.0e-9);
+
+  EXPECT_EQ(north_projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(north_projection.endpoint.x, 4.0, 1.0e-6);
+  EXPECT_NEAR(north_projection.endpoint.y, 0.0, 1.0e-6);
+  EXPECT_NEAR(north_projection.body_frd_direction.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(north_projection.body_frd_direction.y, 0.0, 1.0e-9);
 }
 
 TEST(LidarProjection, PitchChangesProjectedAltitude) {
@@ -58,6 +90,34 @@ TEST(LidarProjection, PitchChangesProjectedAltitude) {
   EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
   EXPECT_LT(projection.endpoint.x, 10.0);
   EXPECT_LT(projection.endpoint_altitude_m, 18.3);
+}
+
+TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxesInsteadOfLegacySwap) {
+  LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.25, -0.35, true, true};
+  LidarProjectionConfig config{};
+  config.compensate_attitude = true;
+  config.swap_lidar_xy_to_local_frame = true;
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(norm(projection.ned_direction), 1.0, 1.0e-9);
+  EXPECT_NEAR(projection.endpoint.x, 10.0 * std::cos(0.35), 1.0e-6);
+  EXPECT_NEAR(projection.endpoint.y, 0.0, 1.0e-6);
+  EXPECT_NEAR(projection.endpoint_altitude_m, 18.0 - 10.0 * std::sin(0.35), 1.0e-6);
+}
+
+TEST(LidarProjection, InvalidAttitudeFallsBackToLevelProjection) {
+  LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.5, -0.5, true, false};
+  LidarProjectionConfig config{};
+  config.compensate_attitude = true;
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(projection.endpoint.x, 10.0, 1.0e-6);
+  EXPECT_NEAR(projection.endpoint.y, 0.0, 1.0e-6);
+  EXPECT_NEAR(projection.endpoint_altitude_m, 18.0, 1.0e-6);
 }
 
 TEST(LidarProjection, AltitudeFilterRejectsGroundProjection) {
