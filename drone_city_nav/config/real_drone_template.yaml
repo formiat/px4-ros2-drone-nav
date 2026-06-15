@@ -75,8 +75,11 @@ planner_node:
     inflation_radius_m: 2.5
     direct_path_fallback: false
     reuse_last_valid_path_on_failure: false
-    max_initial_goal_regression_m: 8.0
-    initial_progress_probe_distance_m: 2.0
+    stable_path_reuse_enabled: true
+    stable_path_reuse_max_deviation_m: 6.0
+    stable_path_goal_tolerance_m: 3.0
+    stable_path_blocking_occupied_length_m: 1.0
+    stable_path_blocked_confirmations_required: 2
     max_initial_lateral_deviation_m: 8.0
     nearest_free_radius_cells: 10
     memory_occupied_threshold: 65

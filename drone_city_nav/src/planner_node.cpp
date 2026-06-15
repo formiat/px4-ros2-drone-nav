@@ -87,6 +87,15 @@ struct PathComputationResult {
   double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
 };
 
+struct PathProjection2D {
+  std::size_t segment_start_index{0U};
+  double segment_t{0.0};
+  double distance_sq{std::numeric_limits<double>::infinity()};
+  Point2 point{};
+};
+
+constexpr double kTinyDistanceSqM = 1.0e-12;
+
 [[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
   return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
 }
@@ -111,11 +120,20 @@ public:
     direct_path_fallback_ = declare_parameter<bool>("direct_path_fallback", false);
     reuse_last_valid_path_on_failure_ =
         declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
-    max_initial_goal_regression_m_ = std::clamp(
-        declare_parameter<double>("max_initial_goal_regression_m", 8.0), 0.0, 1000.0);
-    initial_progress_probe_distance_m_ =
-        std::clamp(declare_parameter<double>("initial_progress_probe_distance_m", 2.0),
-                   0.1, 100.0);
+    stable_path_reuse_enabled_ =
+        declare_parameter<bool>("stable_path_reuse_enabled", true);
+    stable_path_reuse_max_deviation_m_ =
+        std::clamp(declare_parameter<double>("stable_path_reuse_max_deviation_m", 12.0),
+                   0.0, 1000.0);
+    stable_path_goal_tolerance_m_ = std::clamp(
+        declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
+    stable_path_blocking_occupied_length_m_ = std::clamp(
+        declare_parameter<double>("stable_path_blocking_occupied_length_m", 2.0), 0.0,
+        1000.0);
+    stable_path_blocked_confirmations_required_ = static_cast<int>(
+        std::clamp<std::int64_t>(declare_parameter<std::int64_t>(
+                                     "stable_path_blocked_confirmations_required", 2),
+                                 1, 1000));
     max_initial_lateral_deviation_m_ =
         declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
     nearest_free_radius_cells_ = static_cast<int>(std::clamp<std::int64_t>(
@@ -297,12 +315,18 @@ public:
     }
     RCLCPP_INFO(get_logger(),
                 "Planner fallback policy: direct_path_fallback=%s "
-                "reuse_last_valid_path_on_failure=%s max_initial_goal_regression=%.2fm "
-                "initial_progress_probe=%.2fm max_initial_lateral_deviation=%.2fm",
+                "reuse_last_valid_path_on_failure=%s "
+                "max_initial_lateral_deviation=%.2fm "
+                "stable_path_reuse=%s stable_max_deviation=%.2fm "
+                "stable_goal_tolerance=%.2fm stable_blocking_occupied_length=%.2fm "
+                "stable_blocked_confirmations=%d",
                 direct_path_fallback_ ? "true" : "false",
                 reuse_last_valid_path_on_failure_ ? "true" : "false",
-                max_initial_goal_regression_m_, initial_progress_probe_distance_m_,
-                max_initial_lateral_deviation_m_);
+                max_initial_lateral_deviation_m_,
+                stable_path_reuse_enabled_ ? "true" : "false",
+                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
+                stable_path_blocking_occupied_length_m_,
+                stable_path_blocked_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
                 "astar_weight=%.2f astar_turn_weight=%.2f "
@@ -631,6 +655,11 @@ private:
       return;
     }
     OccupancyGrid2D planning_grid = std::move(planning_result->grid);
+    publishOccupancyGrid(planning_grid);
+    if (keepCurrentPathIfStillClear(planning_grid)) {
+      return;
+    }
+
     auto path_result = computePathOnGrid(planning_grid, "combined");
     if (!path_result.has_value()) {
       if (!publishStaticOnlyFallbackPath("combined planning failure")) {
@@ -692,7 +721,6 @@ private:
         planning_result->current_lidar.outside_hits, path_result->astar.expanded_cells,
         path_result->astar.path.size(), path_result->smoothed_cells.size(),
         path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m);
-    publishOccupancyGrid(planning_grid);
     publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
                                  "combined");
   }
@@ -764,14 +792,9 @@ private:
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
-    pruneBackwardInitialWaypoints(path_points, grid);
     if (!pathIsUnblocked(grid, path_points, source_label)) {
       publishPath({});
       return false;
-    }
-    if (publishLastValidPathInsteadOfRegressiveSwitch(grid, path_points,
-                                                      source_label)) {
-      return true;
     }
     if (hasExcessiveInitialLateralDeviation(path_points)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -783,6 +806,7 @@ private:
     }
 
     last_valid_path_points_ = path_points;
+    stable_path_blocked_confirmations_ = 0;
     publishPath(path_points);
     return true;
   }
@@ -1089,6 +1113,11 @@ private:
   }
 
   void publishPath(const std::vector<Point2>& points) {
+    if (points.empty()) {
+      last_valid_path_points_.clear();
+      stable_path_blocked_confirmations_ = 0;
+    }
+
     nav_msgs::msg::Path path;
     path.header.stamp = now();
     path.header.frame_id = frame_id_;
@@ -1181,6 +1210,7 @@ private:
   void publishDirectGoalPath() {
     std::vector<Point2> path_points{current_pose_.position, goal_};
     last_valid_path_points_ = path_points;
+    stable_path_blocked_confirmations_ = 0;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
@@ -1201,60 +1231,6 @@ private:
            lowClearanceFallbackThresholdM() > 0.0 &&
            std::isfinite(smoothed_path_clearance_m) &&
            smoothed_path_clearance_m < lowClearanceFallbackThresholdM();
-  }
-
-  [[nodiscard]] double
-  initialGoalRegressionM(const std::vector<Point2>& path_points) const {
-    if (path_points.size() < 2U || !finite2D(current_pose_.position)) {
-      return 0.0;
-    }
-
-    const double current_goal_distance = distance(current_pose_.position, goal_);
-    const double probe_distance_m = std::max(initial_progress_probe_distance_m_,
-                                             2.0 * fallback_grid_bounds_.resolution_m);
-    for (auto point = path_points.begin() + 1; point != path_points.end(); ++point) {
-      if (distance(current_pose_.position, *point) < probe_distance_m) {
-        continue;
-      }
-      return distance(*point, goal_) - current_goal_distance;
-    }
-
-    return distance(path_points.back(), goal_) - current_goal_distance;
-  }
-
-  bool publishLastValidPathInsteadOfRegressiveSwitch(
-      const OccupancyGrid2D& grid, const std::vector<Point2>& candidate_path_points,
-      const char* source_label) {
-    if (!(max_initial_goal_regression_m_ > 0.0) ||
-        last_valid_path_points_.size() < 2U || candidate_path_points.size() < 2U) {
-      return false;
-    }
-
-    const double candidate_regression_m = initialGoalRegressionM(candidate_path_points);
-    if (!(candidate_regression_m > max_initial_goal_regression_m_)) {
-      return false;
-    }
-
-    const double previous_regression_m =
-        initialGoalRegressionM(last_valid_path_points_);
-    if (previous_regression_m > max_initial_goal_regression_m_) {
-      return false;
-    }
-    if (!pathIsUnblocked(grid, last_valid_path_points_, "previous stable path")) {
-      return false;
-    }
-
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "Keeping previous path instead of regressive %s switch: "
-        "candidate_initial_goal_regression=%.2fm "
-        "previous_initial_goal_regression=%.2fm "
-        "threshold=%.2fm previous_waypoints=%zu candidate_waypoints=%zu",
-        source_label, candidate_regression_m, previous_regression_m,
-        max_initial_goal_regression_m_, last_valid_path_points_.size(),
-        candidate_path_points.size());
-    publishPath(last_valid_path_points_);
-    return true;
   }
 
   void invalidateCurrentPose() {
@@ -1311,6 +1287,185 @@ private:
     return hasLineOfSight(grid, *start_cell, *end_cell);
   }
 
+  [[nodiscard]] double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid,
+                                                  const Point2 start,
+                                                  const Point2 end) const {
+    const auto start_cell = grid.worldToCell(start);
+    const auto end_cell = grid.worldToCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      return std::numeric_limits<double>::infinity();
+    }
+
+    const std::vector<GridIndex> segment_cells =
+        grid.cellsOnLine(*start_cell, *end_cell);
+    const auto occupied_count = static_cast<double>(
+        std::ranges::count_if(segment_cells, [&grid](const GridIndex cell) {
+          return grid.isOccupied(cell);
+        }));
+    return occupied_count * grid.resolution();
+  }
+
+  [[nodiscard]] std::optional<PathProjection2D>
+  closestPathProjection(const std::vector<Point2>& path_points) const {
+    if (path_points.empty() || !finite2D(current_pose_.position)) {
+      return std::nullopt;
+    }
+    if (path_points.size() == 1U) {
+      return PathProjection2D{
+          0U, 0.0, squaredDistance(current_pose_.position, path_points.front()),
+          path_points.front()};
+    }
+
+    PathProjection2D best{};
+    for (std::size_t i = 0U; i + 1U < path_points.size(); ++i) {
+      const Point2 segment_start = path_points[i];
+      const Point2 segment_end = path_points[i + 1U];
+      const Point2 segment{segment_end.x - segment_start.x,
+                           segment_end.y - segment_start.y};
+      const double segment_length_sq = squaredDistance(segment_start, segment_end);
+      const double segment_t =
+          segment_length_sq > kTinyDistanceSqM
+              ? std::clamp(((current_pose_.position.x - segment_start.x) * segment.x +
+                            (current_pose_.position.y - segment_start.y) * segment.y) /
+                               segment_length_sq,
+                           0.0, 1.0)
+              : 0.0;
+      const Point2 projected{segment_start.x + segment.x * segment_t,
+                             segment_start.y + segment.y * segment_t};
+      const double distance_sq = squaredDistance(current_pose_.position, projected);
+      if (distance_sq < best.distance_sq) {
+        best = PathProjection2D{i, segment_t, distance_sq, projected};
+      }
+    }
+
+    return best;
+  }
+
+  [[nodiscard]] std::optional<std::vector<Point2>>
+  remainingPathFromCurrentPose(const std::vector<Point2>& path_points,
+                               double& deviation_m) const {
+    deviation_m = std::numeric_limits<double>::quiet_NaN();
+    if (path_points.size() < 2U || !finite2D(current_pose_.position)) {
+      return std::nullopt;
+    }
+    if (distance(path_points.back(), goal_) > stable_path_goal_tolerance_m_) {
+      return std::nullopt;
+    }
+
+    const auto projection = closestPathProjection(path_points);
+    if (!projection.has_value()) {
+      return std::nullopt;
+    }
+
+    deviation_m = std::sqrt(projection->distance_sq);
+    if (deviation_m > stable_path_reuse_max_deviation_m_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Current path cannot be reused because the vehicle is too far from it: "
+          "deviation=%.2fm limit=%.2fm",
+          deviation_m, stable_path_reuse_max_deviation_m_);
+      return std::nullopt;
+    }
+
+    std::vector<Point2> remaining_path;
+    remaining_path.reserve(path_points.size() - projection->segment_start_index + 1U);
+    remaining_path.push_back(current_pose_.position);
+
+    const std::size_t next_index =
+        std::min(projection->segment_start_index + 1U, path_points.size() - 1U);
+    for (std::size_t i = next_index; i < path_points.size(); ++i) {
+      if (squaredDistance(remaining_path.back(), path_points[i]) <= kTinyDistanceSqM) {
+        continue;
+      }
+      remaining_path.push_back(path_points[i]);
+    }
+
+    if (remaining_path.size() < 2U &&
+        squaredDistance(current_pose_.position, goal_) > kTinyDistanceSqM) {
+      remaining_path.push_back(goal_);
+    }
+    if (remaining_path.size() < 2U) {
+      return std::nullopt;
+    }
+
+    return remaining_path;
+  }
+
+  bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
+    if (!stable_path_reuse_enabled_ || last_valid_path_points_.size() < 2U) {
+      return false;
+    }
+
+    double deviation_m = std::numeric_limits<double>::quiet_NaN();
+    auto remaining_path =
+        remainingPathFromCurrentPose(last_valid_path_points_, deviation_m);
+    if (!remaining_path.has_value()) {
+      return false;
+    }
+    if (pathHasOccupiedCells(grid, *remaining_path, "current stable path")) {
+      ++stable_path_blocked_confirmations_;
+      if (stable_path_blocked_confirmations_ <
+          stable_path_blocked_confirmations_required_) {
+        last_valid_path_points_ = *remaining_path;
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 3000,
+            "Current path has an unconfirmed occupied intersection; keeping current "
+            "path until it is confirmed: confirmations=%d/%d remaining_waypoints=%zu "
+            "deviation=%.2fm",
+            stable_path_blocked_confirmations_,
+            stable_path_blocked_confirmations_required_, remaining_path->size(),
+            deviation_m);
+        return true;
+      }
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Current path intersects confirmed newly available occupied obstacle data; "
+          "running A* from current pose: confirmations=%d/%d remaining_waypoints=%zu "
+          "deviation=%.2fm",
+          stable_path_blocked_confirmations_,
+          stable_path_blocked_confirmations_required_, remaining_path->size(),
+          deviation_m);
+      return false;
+    }
+
+    stable_path_blocked_confirmations_ = 0;
+    last_valid_path_points_ = *remaining_path;
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Keeping current path because the remaining path is still clear: "
+        "remaining_waypoints=%zu deviation=%.2fm distance_to_goal=%.2f",
+        last_valid_path_points_.size(), deviation_m,
+        distance(current_pose_.position, goal_));
+    return true;
+  }
+
+  [[nodiscard]] bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
+                                          const std::vector<Point2>& path_points,
+                                          const char* source_label) const {
+    if (path_points.size() < 2U) {
+      return false;
+    }
+
+    for (std::size_t index = 1U; index < path_points.size(); ++index) {
+      const double occupied_length_m =
+          pathSegmentOccupiedLengthM(grid, path_points[index - 1U], path_points[index]);
+      if (occupied_length_m < stable_path_blocking_occupied_length_m_) {
+        continue;
+      }
+
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "%s path segment intersects occupied cells: segment=%zu "
+                           "occupied_length=%.2fm threshold=%.2fm "
+                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
+                           source_label, index - 1U, occupied_length_m,
+                           stable_path_blocking_occupied_length_m_,
+                           path_points[index - 1U].x, path_points[index - 1U].y,
+                           path_points[index].x, path_points[index].y);
+      return true;
+    }
+    return false;
+  }
+
   [[nodiscard]] bool pathIsUnblocked(const OccupancyGrid2D& grid,
                                      const std::vector<Point2>& path_points,
                                      const char* source_label) const {
@@ -1333,50 +1488,6 @@ private:
       return false;
     }
     return true;
-  }
-
-  void pruneBackwardInitialWaypoints(std::vector<Point2>& path_points,
-                                     const OccupancyGrid2D& grid) const {
-    if (path_points.size() < 3U) {
-      return;
-    }
-
-    const Point2 origin = path_points.front();
-    const Point2 goal_vector{goal_.x - origin.x, goal_.y - origin.y};
-    const double goal_distance_sq = squaredDistance(origin, goal_);
-    if (!(goal_distance_sq > 0.0)) {
-      return;
-    }
-
-    auto first_forward = path_points.begin() + 1;
-    while (first_forward + 1 != path_points.end()) {
-      const Point2 candidate_vector{first_forward->x - origin.x,
-                                    first_forward->y - origin.y};
-      const double projection =
-          candidate_vector.x * goal_vector.x + candidate_vector.y * goal_vector.y;
-      if (projection >= grid.resolution() * grid.resolution()) {
-        break;
-      }
-      ++first_forward;
-    }
-
-    if (first_forward != path_points.begin() + 1) {
-      if (!pathSegmentIsUnblocked(grid, origin, *first_forward)) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 5000,
-            "Skipped pruning backward initial waypoints because it would create an "
-            "unsafe first path segment: removed_candidate=%zu start=(%.2f, %.2f) "
-            "next=(%.2f, %.2f)",
-            static_cast<std::size_t>(first_forward - (path_points.begin() + 1)),
-            origin.x, origin.y, first_forward->x, first_forward->y);
-        return;
-      }
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Pruned backward initial waypoints: removed=%zu",
-          static_cast<std::size_t>(first_forward - (path_points.begin() + 1)));
-      path_points.erase(path_points.begin() + 1, first_forward);
-    }
   }
 
   void logPathUpdate(const nav_msgs::msg::Path& path) {
@@ -1435,6 +1546,7 @@ private:
   bool scan_seen_logged_{false};
   bool direct_path_fallback_{false};
   bool reuse_last_valid_path_on_failure_{false};
+  bool stable_path_reuse_enabled_{true};
   bool use_static_map_{true};
   bool use_obstacle_memory_{true};
   bool use_current_lidar_obstacles_{true};
@@ -1451,8 +1563,9 @@ private:
   double cruise_altitude_m_{12.0};
   double static_map_min_blocking_height_m_{0.0};
   double max_initial_lateral_deviation_m_{8.0};
-  double max_initial_goal_regression_m_{8.0};
-  double initial_progress_probe_distance_m_{2.0};
+  double stable_path_reuse_max_deviation_m_{12.0};
+  double stable_path_goal_tolerance_m_{3.0};
+  double stable_path_blocking_occupied_length_m_{2.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double current_lidar_obstacle_depth_m_{0.0};
@@ -1473,6 +1586,8 @@ private:
   int nearest_free_radius_cells_{10};
   int occupied_threshold_{65};
   int free_threshold_{0};
+  int stable_path_blocked_confirmations_required_{2};
+  int stable_path_blocked_confirmations_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   std::size_t static_map_rectangles_{0U};
   std::size_t static_map_occupied_cells_{0U};
