@@ -61,6 +61,8 @@ public:
     min_navigation_altitude_m_ =
         std::clamp(declare_parameter<double>("min_navigation_altitude_m", 0.0), 0.0,
                    std::abs(cruise_altitude_m_));
+    takeoff_hover_s_ =
+        std::clamp(declare_parameter<double>("takeoff_hover_s", 2.0), 0.0, 30.0);
     face_target_yaw_ = declare_parameter<bool>("face_target_yaw", false);
     acceptance_radius_m_ = declare_parameter<double>("acceptance_radius_m", 1.5);
     max_setpoint_distance_m_ = std::clamp(
@@ -95,6 +97,8 @@ public:
                    0.0, 100.0);
     speed_config.narrow_clearance_min_speed_mps = std::clamp(
         declare_parameter<double>("narrow_clearance_min_speed_mps", 1.0), 0.0, 50.0);
+    speed_config.clearance_braking_margin_m = std::clamp(
+        declare_parameter<double>("clearance_braking_margin_m", 1.0), 0.0, 100.0);
     speed_controller_.setConfig(speed_config);
     velocity_feedforward_enabled_ =
         declare_parameter<bool>("velocity_feedforward_enabled", false);
@@ -200,35 +204,38 @@ public:
     last_command_time_ =
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
 
-    RCLCPP_INFO(get_logger(),
-                "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-                "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
-                "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
-                "min_commanded_target_lead=%.1fm "
-                "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
-                "dynamic_lookahead=%s lookahead_time=%.2fs "
-                "lookahead_range=[%.1f, %.1f] "
-                "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
-                "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
-                "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-                "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
-                "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
-                cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-                auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
-                face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
-                max_commanded_target_step_m_, min_commanded_target_lead_m_,
-                speed_controller_.config().desired_speed_mps,
-                speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
-                dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
-                min_lookahead_distance_m_, max_lookahead_distance_m_,
-                speed_controller_.config().goal_slowdown_radius_m,
-                speed_controller_.config().turn_slowdown_angle_rad,
-                speed_controller_.config().narrow_clearance_slowdown_radius_m,
-                velocity_feedforward_enabled_ ? "true" : "false",
-                path_switch_hysteresis_m_, path_continuity_reuse_radius_m_,
-                path_continuity_max_target_distance_m_, mission_goal_.x,
-                mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
-                static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
+    RCLCPP_INFO(
+        get_logger(),
+        "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
+        "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
+        "takeoff_hover=%.1fs "
+        "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
+        "min_commanded_target_lead=%.1fm "
+        "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
+        "dynamic_lookahead=%s lookahead_time=%.2fs "
+        "lookahead_range=[%.1f, %.1f] "
+        "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
+        "narrow_clearance_radius=%.1fm clearance_braking_margin=%.1fm "
+        "velocity_feedforward=%s "
+        "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
+        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
+        "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
+        cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
+        auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
+        face_target_yaw_ ? "true" : "false", takeoff_hover_s_, max_setpoint_distance_m_,
+        max_commanded_target_step_m_, min_commanded_target_lead_m_,
+        speed_controller_.config().desired_speed_mps,
+        speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
+        dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
+        min_lookahead_distance_m_, max_lookahead_distance_m_,
+        speed_controller_.config().goal_slowdown_radius_m,
+        speed_controller_.config().turn_slowdown_angle_rad,
+        speed_controller_.config().narrow_clearance_slowdown_radius_m,
+        speed_controller_.config().clearance_braking_margin_m,
+        velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
+        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
+        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -305,6 +312,7 @@ private:
                               squaredDistance(first, last_logged_path_first_) > 0.01 ||
                               squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed) {
+      resetCommandedTargetToCurrentPath("path_changed");
       const PathMetrics metrics = pointPathMetrics(path_points_);
       RCLCPP_INFO(get_logger(),
                   "Received path: waypoints=%zu segments=%zu straight_segments=%zu "
@@ -418,12 +426,7 @@ private:
     if (msg.z_valid && std::isfinite(msg.z)) {
       current_altitude_m_ = -static_cast<double>(msg.z);
       altitude_valid_ = true;
-      if (!navigation_started_ && current_altitude_m_ >= min_navigation_altitude_m_) {
-        navigation_started_ = true;
-        RCLCPP_INFO(get_logger(),
-                    "Navigation altitude reached: altitude=%.2f required=%.2f",
-                    current_altitude_m_, min_navigation_altitude_m_);
-      }
+      updateNavigationStartState();
     }
     if (std::isfinite(msg.heading)) {
       current_heading_rad_ = static_cast<double>(msg.heading);
@@ -577,12 +580,16 @@ private:
     last_speed_output_ = speed_controller_.update(speed_input);
     const Point2 smoothed_target = smoothedCommandTarget(
         desired_target, last_speed_output_.target_step_m, speed_input.hold_position);
-    const Point2 target = last_speed_output_.requested_speed_mps > 0.0
-                              ? enforceMinimumTargetLead(
-                                    smoothed_target, desired_target, current_position_,
-                                    local_position_valid_, min_commanded_target_lead_m_,
-                                    max_setpoint_distance_m_)
-                              : smoothed_target;
+    const double minimum_target_lead_m =
+        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps);
+    const Point2 target =
+        last_speed_output_.requested_speed_mps > 0.0
+            ? enforceMinimumTargetLead(smoothed_target, desired_target,
+                                       current_position_, local_position_valid_,
+                                       minimum_target_lead_m, max_setpoint_distance_m_)
+            : smoothed_target;
+    last_published_target_ = target;
+    last_published_target_valid_ = true;
     const float nan = std::numeric_limits<float>::quiet_NaN();
 
     px4_msgs::msg::TrajectorySetpoint msg;
@@ -677,6 +684,26 @@ private:
     commanded_target_valid_ = state.valid;
     commanded_target_ = state.target;
     return target;
+  }
+
+  void resetCommandedTargetToCurrentPath(const char* reason) {
+    if (!local_position_valid_ || !path_valid_ ||
+        waypoint_index_ >= path_points_.size()) {
+      commanded_target_valid_ = false;
+      last_published_target_valid_ = false;
+      return;
+    }
+
+    commanded_target_ = limitedTarget(currentTarget());
+    commanded_target_valid_ = true;
+    last_published_target_ = commanded_target_;
+    last_published_target_valid_ = true;
+    RCLCPP_INFO(get_logger(),
+                "Reset commanded target after path update: reason=%s target=(%.2f, "
+                "%.2f) current=(%.2f, %.2f) distance=%.2f waypoint=%zu/%zu",
+                reason, commanded_target_.x, commanded_target_.y, current_position_.x,
+                current_position_.y, distance(current_position_, commanded_target_),
+                waypoint_index_ + 1U, path_points_.size());
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
@@ -795,7 +822,7 @@ private:
         const std::size_t data_index =
             static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
             static_cast<std::size_t>(x);
-        if (occupancy_grid_.data[data_index] < 80) {
+        if (occupancy_grid_.data[data_index] < 100) {
           continue;
         }
         const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
@@ -869,6 +896,56 @@ private:
     return Point2{point.x - px4_local_origin_.x, point.y - px4_local_origin_.y};
   }
 
+  [[nodiscard]] double
+  effectiveMinimumTargetLeadM(const double requested_speed_mps) const noexcept {
+    const double desired_speed_mps = speed_controller_.config().desired_speed_mps;
+    if (!std::isfinite(requested_speed_mps) || requested_speed_mps <= 0.0 ||
+        !std::isfinite(desired_speed_mps) || desired_speed_mps <= 0.0) {
+      return 0.0;
+    }
+
+    const double speed_ratio =
+        std::clamp(requested_speed_mps / desired_speed_mps, 0.0, 1.0);
+    return min_commanded_target_lead_m_ * speed_ratio;
+  }
+
+  void updateNavigationStartState() {
+    if (navigation_started_ || min_navigation_altitude_m_ <= 0.0 || !altitude_valid_) {
+      return;
+    }
+    if (current_altitude_m_ < min_navigation_altitude_m_) {
+      return;
+    }
+
+    const rclcpp::Time now_time = get_clock()->now();
+    if (!navigation_altitude_reached_) {
+      navigation_altitude_reached_ = true;
+      navigation_altitude_reached_time_ = now_time;
+      commanded_target_valid_ = false;
+      last_published_target_valid_ = false;
+      speed_controller_.reset();
+      RCLCPP_INFO(get_logger(),
+                  "Navigation altitude reached; holding before horizontal flight: "
+                  "altitude=%.2f required=%.2f hover_s=%.2f",
+                  current_altitude_m_, min_navigation_altitude_m_, takeoff_hover_s_);
+    }
+
+    const double hover_elapsed_s =
+        (now_time - navigation_altitude_reached_time_).seconds();
+    if (hover_elapsed_s + kTinyDistanceM < takeoff_hover_s_) {
+      return;
+    }
+
+    navigation_started_ = true;
+    commanded_target_valid_ = false;
+    last_published_target_valid_ = false;
+    speed_controller_.reset();
+    RCLCPP_INFO(get_logger(),
+                "Takeoff hover complete; horizontal navigation enabled: "
+                "altitude=%.2f hover_elapsed=%.2f required_hover=%.2f",
+                current_altitude_m_, hover_elapsed_s, takeoff_hover_s_);
+  }
+
   [[nodiscard]] bool navigationAllowed() const {
     if (min_navigation_altitude_m_ <= 0.0) {
       return true;
@@ -893,8 +970,7 @@ private:
   }
 
   void logControlSummary() {
-    const Point2 target =
-        commanded_target_valid_ ? commanded_target_ : limitedTarget(currentTarget());
+    const Point2 target = loggedTarget();
     const double target_distance = local_position_valid_
                                        ? distance(current_position_, target)
                                        : std::numeric_limits<double>::quiet_NaN();
@@ -920,7 +996,8 @@ private:
         "distance_to_mission_goal=%.2f requested_speed=%.2f actual_speed=%.2f "
         "speed_limit_reason=%s allowed_speed=%.2f braking_distance=%.2f "
         "target_step=%.2f effective_lookahead=%.2f turn_angle=%.2f "
-        "local_clearance=%.2f",
+        "local_clearance=%.2f effective_min_lead=%.2f "
+        "speed_limits[goal=%.2f turn=%.2f clearance=%.2f step=%.2f]",
         local_position_valid_ ? "true" : "false", current_altitude_m_,
         navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -934,7 +1011,12 @@ private:
         speedLimitReasonName(last_speed_output_.limit_reason),
         last_speed_output_.allowed_speed_mps, last_speed_output_.braking_distance_m,
         last_speed_output_.target_step_m, effectiveLookaheadDistanceM(), turn_angle_rad,
-        local_clearance_m);
+        local_clearance_m,
+        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
+        last_speed_output_.limits.goal_limit_mps,
+        last_speed_output_.limits.turn_limit_mps,
+        last_speed_output_.limits.clearance_limit_mps,
+        last_speed_output_.limits.step_cap_limit_mps);
   }
 
   void logTelemetry() {
@@ -949,8 +1031,7 @@ private:
     }
     last_telemetry_log_ns_ = now_ns;
 
-    const Point2 target =
-        commanded_target_valid_ ? commanded_target_ : limitedTarget(currentTarget());
+    const Point2 target = loggedTarget();
     const double target_distance = distance(current_position_, target);
     const double mission_goal_distance = distance(current_position_, mission_goal_);
     const double path_goal_distance =
@@ -967,7 +1048,9 @@ private:
         "requested_speed=%.2f allowed_speed=%.2f target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-        "path_segment=%s speed_limit_reason=%s local_clearance=%.2f",
+        "path_segment=%s speed_limit_reason=%s local_clearance=%.2f "
+        "effective_min_lead=%.2f "
+        "speed_limits[goal=%.2f turn=%.2f clearance=%.2f step=%.2f]",
         current_position_.x, current_position_.y, current_altitude_m_,
         current_velocity_.x, current_velocity_.y,
         current_velocity_valid_ ? "true" : "false", current_speed_mps_,
@@ -976,7 +1059,22 @@ private:
         path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
         motionPhaseName(last_speed_output_.limit_reason, hold_position),
         pathSegmentTypeName(turn_angle_rad),
-        speedLimitReasonName(last_speed_output_.limit_reason), local_clearance_m);
+        speedLimitReasonName(last_speed_output_.limit_reason), local_clearance_m,
+        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
+        last_speed_output_.limits.goal_limit_mps,
+        last_speed_output_.limits.turn_limit_mps,
+        last_speed_output_.limits.clearance_limit_mps,
+        last_speed_output_.limits.step_cap_limit_mps);
+  }
+
+  [[nodiscard]] Point2 loggedTarget() const {
+    if (last_published_target_valid_) {
+      return last_published_target_;
+    }
+    if (commanded_target_valid_) {
+      return commanded_target_;
+    }
+    return limitedTarget(currentTarget());
   }
 
   nav_msgs::msg::OccupancyGrid occupancy_grid_;
@@ -986,12 +1084,14 @@ private:
   Point2 no_path_hold_target_{};
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
+  Point2 last_published_target_{};
   Point2 mission_goal_{85.0, 0.0};
   Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double cruise_altitude_m_{12.0};
   double min_navigation_altitude_m_{0.0};
+  double takeoff_hover_s_{2.0};
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
   double max_commanded_target_step_m_{0.25};
@@ -1028,7 +1128,9 @@ private:
   bool no_path_hold_target_valid_{false};
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
+  bool last_published_target_valid_{false};
   bool face_target_yaw_{false};
+  bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
   bool velocity_feedforward_enabled_{false};
   bool dynamic_lookahead_enabled_{true};
@@ -1044,6 +1146,7 @@ private:
   OffboardSpeedController speed_controller_;
   SpeedControllerOutput last_speed_output_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   std::vector<Point2> path_points_;
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;

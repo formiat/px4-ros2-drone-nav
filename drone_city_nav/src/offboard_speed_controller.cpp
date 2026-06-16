@@ -127,17 +127,30 @@ double clearanceLimitedSpeedMps(const SpeedControllerConfig& config,
     return desired;
   }
 
+  double limit = desired;
   const double slowdown_radius =
       finiteNonNegative(config.narrow_clearance_slowdown_radius_m)
           ? config.narrow_clearance_slowdown_radius_m
           : 0.0;
-  if (slowdown_radius <= 0.0 || local_clearance_m >= slowdown_radius) {
-    return desired;
+  if (slowdown_radius > 0.0 && local_clearance_m < slowdown_radius) {
+    const double minimum =
+        boundedMinimum(config.narrow_clearance_min_speed_mps, desired);
+    const double ratio = std::clamp(local_clearance_m / slowdown_radius, 0.0, 1.0);
+    limit = std::min(limit, minimum + ratio * (desired - minimum));
   }
 
-  const double minimum = boundedMinimum(config.narrow_clearance_min_speed_mps, desired);
-  const double ratio = std::clamp(local_clearance_m / slowdown_radius, 0.0, 1.0);
-  return minimum + ratio * (desired - minimum);
+  const double braking_margin = finiteNonNegative(config.clearance_braking_margin_m)
+                                    ? config.clearance_braking_margin_m
+                                    : 0.0;
+  if (std::isfinite(config.max_accel_mps2) && config.max_accel_mps2 > 0.0) {
+    const double stopping_clearance_m =
+        std::max(local_clearance_m - braking_margin, 0.0);
+    const double stopping_limit_mps =
+        std::sqrt(2.0 * config.max_accel_mps2 * stopping_clearance_m);
+    limit = std::min(limit, stopping_limit_mps);
+  }
+
+  return limit;
 }
 
 double advanceToward(const double current, const double target,
@@ -197,6 +210,7 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   applyLimit(allowed_speed, reason, limits.turn_limit_mps, SpeedLimitReason::kTurn);
   applyLimit(allowed_speed, reason, limits.clearance_limit_mps,
              SpeedLimitReason::kClearance);
+  const SpeedLimitReason allowed_speed_reason = reason;
 
   const double max_speed_delta = config_.max_accel_mps2 * input.controller_dt_s;
   double requested_speed =
@@ -221,8 +235,12 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   }
   if (finiteNonNegative(input.actual_speed_mps) &&
       input.actual_speed_mps > allowed_speed + max_speed_delta) {
-    requested_speed =
-        std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
+    if (allowed_speed_reason == SpeedLimitReason::kClearance) {
+      requested_speed = 0.0;
+    } else {
+      requested_speed =
+          std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
+    }
     reason = SpeedLimitReason::kTrackingOverspeed;
   }
   if (step_cap_speed + kEpsilon < requested_speed) {

@@ -43,6 +43,22 @@ namespace {
 
 constexpr double kPublishedPathCollinearityToleranceM = 0.05;
 
+[[nodiscard]] double
+pathDistanceToSegmentStart(const std::span<const Point2> path_points,
+                           const std::size_t segment_start_index) noexcept {
+  if (path_points.size() < 2U) {
+    return 0.0;
+  }
+
+  const std::size_t bounded_segment_start =
+      std::min(segment_start_index, path_points.size() - 1U);
+  double distance_m = 0.0;
+  for (std::size_t index = 1U; index <= bounded_segment_start; ++index) {
+    distance_m += distance(path_points[index - 1U], path_points[index]);
+  }
+  return distance_m;
+}
+
 } // namespace
 
 class PlannerNode final : public rclcpp::Node {
@@ -139,20 +155,21 @@ public:
           "with attitude compensation. Prefer lidar_mount_* parameters for physical "
           "3D projection.");
     }
-    RCLCPP_INFO(get_logger(),
-                "Planner fallback policy: direct_path_fallback=%s "
-                "reuse_last_valid_path_on_failure=%s "
-                "max_initial_lateral_deviation=%.2fm "
-                "stable_path_reuse=%s stable_max_deviation=%.2fm "
-                "stable_goal_tolerance=%.2fm stable_blocking_occupied_length=%.2fm "
-                "stable_blocked_confirmations=%d",
-                direct_path_fallback_ ? "true" : "false",
-                reuse_last_valid_path_on_failure_ ? "true" : "false",
-                max_initial_lateral_deviation_m_,
-                stable_path_reuse_enabled_ ? "true" : "false",
-                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
-                stable_path_blocking_occupied_length_m_,
-                stable_path_blocked_confirmations_required_);
+    RCLCPP_INFO(
+        get_logger(),
+        "Planner fallback policy: direct_path_fallback=%s "
+        "reuse_last_valid_path_on_failure=%s "
+        "max_initial_lateral_deviation=%.2fm "
+        "stable_path_reuse=%s stable_max_deviation=%.2fm "
+        "stable_goal_tolerance=%.2fm stable_blocking_occupied_length=%.2fm "
+        "stable_blocking_replan_horizon=%.2fm "
+        "stable_blocked_confirmations=%d",
+        direct_path_fallback_ ? "true" : "false",
+        reuse_last_valid_path_on_failure_ ? "true" : "false",
+        max_initial_lateral_deviation_m_, stable_path_reuse_enabled_ ? "true" : "false",
+        stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
+        stable_path_blocking_occupied_length_m_, stable_path_blocking_replan_horizon_m_,
+        stable_path_blocked_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
                 "astar_weight=%.2f astar_turn_weight=%.2f evasive_maneuvering=%s "
@@ -182,6 +199,8 @@ private:
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
     stable_path_blocking_occupied_length_m_ =
         config.planner_core.stable_path_blocking_occupied_length_m;
+    stable_path_blocking_replan_horizon_m_ =
+        config.planner_core.stable_path_blocking_replan_horizon_m;
     stable_path_blocked_confirmations_required_ =
         config.planner_core.stable_path_blocked_confirmations_required;
     max_initial_lateral_deviation_m_ = config.fallback.max_initial_lateral_deviation_m;
@@ -501,7 +520,7 @@ private:
     if (shouldRejectLowClearancePath(path_result->smoothed_path_clearance_m)) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Rejecting low-clearance combined path; trying static-only fallback: "
+          "Rejecting low-clearance combined path; trying fallback/hold: "
           "raw_clearance=%.2f smoothed_clearance=%.2f threshold=%.2f",
           path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m,
           lowClearanceFallbackThresholdM());
@@ -637,17 +656,7 @@ private:
                   kPublishedPathCollinearityToleranceM);
     }
 
-    std::size_t blocked_segment_index = 0U;
-    if (!drone_city_nav::pathIsUnblocked(grid, path_points, &blocked_segment_index)) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "%s path segment intersects blocked cells after final path "
-                           "edits: segment=%zu "
-                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
-                           source_label, blocked_segment_index,
-                           path_points[blocked_segment_index].x,
-                           path_points[blocked_segment_index].y,
-                           path_points[blocked_segment_index + 1U].x,
-                           path_points[blocked_segment_index + 1U].y);
+    if (!pathIsPublishableAfterFinalEdits(grid, path_points, source_label)) {
       publishPath({});
       return false;
     }
@@ -663,6 +672,61 @@ private:
     last_valid_path_points_ = path_points;
     stable_path_blocked_confirmations_ = 0;
     publishPath(path_points);
+    return true;
+  }
+
+  [[nodiscard]] bool escapeSegmentLeavesInflation(const OccupancyGrid2D& grid,
+                                                  const Point2 start,
+                                                  const Point2 end) const {
+    const auto start_cell = grid.worldToCell(start);
+    const auto end_cell = grid.worldToCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      return false;
+    }
+    if (!grid.isBlocked(*start_cell) || grid.isOccupied(*start_cell) ||
+        grid.isBlocked(*end_cell)) {
+      return false;
+    }
+
+    const double occupied_length_m = pathSegmentOccupiedLengthM(grid, start, end);
+    return std::isfinite(occupied_length_m) && occupied_length_m <= 0.0;
+  }
+
+  [[nodiscard]] bool
+  pathIsPublishableAfterFinalEdits(const OccupancyGrid2D& grid,
+                                   std::span<const Point2> path_points,
+                                   const char* source_label) {
+    if (path_points.size() < 2U) {
+      return true;
+    }
+
+    for (std::size_t index = 1U; index < path_points.size(); ++index) {
+      const Point2 segment_start = path_points[index - 1U];
+      const Point2 segment_end = path_points[index];
+      if (pathSegmentIsUnblocked(grid, segment_start, segment_end)) {
+        continue;
+      }
+
+      const std::size_t segment_index = index - 1U;
+      if (segment_index == 0U &&
+          escapeSegmentLeavesInflation(grid, segment_start, segment_end)) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000,
+                             "%s path allows first segment as an inflated-zone escape: "
+                             "segment=0 start=(%.2f, %.2f) end=(%.2f, %.2f)",
+                             source_label, segment_start.x, segment_start.y,
+                             segment_end.x, segment_end.y);
+        continue;
+      }
+
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "%s path segment intersects blocked cells after final path edits: "
+          "segment=%zu start=(%.2f, %.2f) end=(%.2f, %.2f)",
+          source_label, segment_index, segment_start.x, segment_start.y, segment_end.x,
+          segment_end.y);
+      return false;
+    }
+
     return true;
   }
 
@@ -960,36 +1024,67 @@ private:
       return false;
     }
 
+    if ((decision.reason == StablePathDecisionReason::kBlockedUnconfirmed ||
+         decision.reason == StablePathDecisionReason::kBlockedConfirmed) &&
+        keepInflationEscapePathIfApplicable(grid, decision)) {
+      return true;
+    }
+    if ((decision.reason == StablePathDecisionReason::kBlockedUnconfirmed ||
+         decision.reason == StablePathDecisionReason::kBlockedConfirmed) &&
+        deferDistantStablePathBlockIfApplicable(decision)) {
+      return true;
+    }
+
     if (decision.reason == StablePathDecisionReason::kBlockedUnconfirmed) {
       stable_path_blocked_confirmations_ = decision.blocked_confirmations;
       last_valid_path_points_ = decision.remaining_path;
+      const Point2 blocking_start =
+          decision.blocking_segment_index < last_valid_path_points_.size()
+              ? last_valid_path_points_[decision.blocking_segment_index]
+              : Point2{};
+      const Point2 blocking_end =
+          decision.blocking_segment_index + 1U < last_valid_path_points_.size()
+              ? last_valid_path_points_[decision.blocking_segment_index + 1U]
+              : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
           "Current path has an unconfirmed occupied intersection; keeping current "
           "path until it is confirmed: reason=%s confirmations=%d/%d "
-          "remaining_waypoints=%zu deviation=%.2fm occupied_segment=%zu "
-          "occupied_length=%.2fm",
+          "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
+          "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+          "segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
           stable_path_blocked_confirmations_,
           stable_path_blocked_confirmations_required_, last_valid_path_points_.size(),
           decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_occupied_length_m);
+          decision.blocking_occupied_length_m, blocking_start.x, blocking_start.y,
+          blocking_end.x, blocking_end.y);
       return true;
     }
 
     if (decision.reason == StablePathDecisionReason::kBlockedConfirmed) {
       stable_path_blocked_confirmations_ = decision.blocked_confirmations;
+      const Point2 blocking_start =
+          decision.blocking_segment_index < decision.remaining_path.size()
+              ? decision.remaining_path[decision.blocking_segment_index]
+              : Point2{};
+      const Point2 blocking_end =
+          decision.blocking_segment_index + 1U < decision.remaining_path.size()
+              ? decision.remaining_path[decision.blocking_segment_index + 1U]
+              : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
           "Current path intersects confirmed newly available occupied obstacle data; "
           "running A* from current pose: reason=%s confirmations=%d/%d "
-          "remaining_waypoints=%zu deviation=%.2fm occupied_segment=%zu "
-          "occupied_length=%.2fm",
+          "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
+          "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+          "segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
           stable_path_blocked_confirmations_,
           stable_path_blocked_confirmations_required_, decision.remaining_path.size(),
           decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_occupied_length_m);
+          decision.blocking_occupied_length_m, blocking_start.x, blocking_start.y,
+          blocking_end.x, blocking_end.y);
       return false;
     }
 
@@ -1001,6 +1096,57 @@ private:
         "reason=%s remaining_waypoints=%zu deviation=%.2fm distance_to_goal=%.2f",
         stablePathDecisionReasonName(decision.reason), last_valid_path_points_.size(),
         decision.deviation_m, distance(current_pose_.position, goal_));
+    return true;
+  }
+
+  bool deferDistantStablePathBlockIfApplicable(const StablePathDecision& decision) {
+    if (!(stable_path_blocking_replan_horizon_m_ > 0.0)) {
+      return false;
+    }
+    const double distance_to_blocked_segment_m = pathDistanceToSegmentStart(
+        decision.remaining_path, decision.blocking_segment_index);
+    if (!std::isfinite(distance_to_blocked_segment_m) ||
+        distance_to_blocked_segment_m <= stable_path_blocking_replan_horizon_m_) {
+      return false;
+    }
+
+    stable_path_blocked_confirmations_ = 0;
+    last_valid_path_points_ = decision.remaining_path;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "Deferring current-path replan because the blocked segment is beyond the "
+        "near planning horizon: reason=%s remaining_waypoints=%zu deviation=%.2fm "
+        "blocked_segment=%zu blocked_length=%.2fm "
+        "distance_to_blocked_segment=%.2fm horizon=%.2fm",
+        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
+        decision.deviation_m, decision.blocking_segment_index,
+        decision.blocking_occupied_length_m, distance_to_blocked_segment_m,
+        stable_path_blocking_replan_horizon_m_);
+    return true;
+  }
+
+  bool keepInflationEscapePathIfApplicable(const OccupancyGrid2D& grid,
+                                           const StablePathDecision& decision) {
+    if (decision.blocking_segment_index != 0U || decision.remaining_path.size() < 2U) {
+      return false;
+    }
+    const Point2 segment_start = decision.remaining_path[0];
+    const Point2 segment_end = decision.remaining_path[1];
+    if (!escapeSegmentLeavesInflation(grid, segment_start, segment_end)) {
+      return false;
+    }
+
+    stable_path_blocked_confirmations_ = 0;
+    last_valid_path_points_ = decision.remaining_path;
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "Keeping current path because the first blocked segment is an "
+        "inflated-zone escape: reason=%s remaining_waypoints=%zu deviation=%.2fm "
+        "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+        "segment_end=(%.2f, %.2f)",
+        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
+        decision.deviation_m, decision.blocking_occupied_length_m, segment_start.x,
+        segment_start.y, segment_end.x, segment_end.y);
     return true;
   }
 
@@ -1084,6 +1230,7 @@ private:
   double stable_path_reuse_max_deviation_m_{12.0};
   double stable_path_goal_tolerance_m_{3.0};
   double stable_path_blocking_occupied_length_m_{2.0};
+  double stable_path_blocking_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double current_lidar_obstacle_depth_m_{0.0};

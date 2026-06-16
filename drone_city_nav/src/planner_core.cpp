@@ -207,6 +207,20 @@ double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid, const Point2 star
   return occupied_count * grid.resolution();
 }
 
+double pathSegmentBlockedLengthM(const OccupancyGrid2D& grid, const Point2 start,
+                                 const Point2 end) {
+  const auto start_cell = grid.worldToCell(start);
+  const auto end_cell = grid.worldToCell(end);
+  if (!start_cell.has_value() || !end_cell.has_value()) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const std::vector<GridIndex> segment_cells = grid.cellsOnLine(*start_cell, *end_cell);
+  const auto blocked_count = static_cast<double>(std::ranges::count_if(
+      segment_cells, [&grid](const GridIndex cell) { return grid.isBlocked(cell); }));
+  return blocked_count * grid.resolution();
+}
+
 std::optional<PathProjection2D>
 closestPathProjection(const std::span<const Point2> path_points,
                       const Point2 current_position) {
@@ -300,16 +314,16 @@ bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
   }
 
   for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    const double occupied_length_m =
-        pathSegmentOccupiedLengthM(grid, path_points[index - 1U], path_points[index]);
-    if (occupied_length_m < stable_path_blocking_occupied_length_m) {
+    const double blocked_length_m =
+        pathSegmentBlockedLengthM(grid, path_points[index - 1U], path_points[index]);
+    if (blocked_length_m < stable_path_blocking_occupied_length_m) {
       continue;
     }
     if (blocking_segment_index != nullptr) {
       *blocking_segment_index = index - 1U;
     }
     if (blocking_occupied_length_m != nullptr) {
-      *blocking_occupied_length_m = occupied_length_m;
+      *blocking_occupied_length_m = blocked_length_m;
     }
     return true;
   }

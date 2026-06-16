@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace drone_city_nav {
 namespace {
@@ -18,6 +19,7 @@ namespace {
   config.turn_slowdown_min_speed_mps = 2.0;
   config.narrow_clearance_slowdown_radius_m = 6.0;
   config.narrow_clearance_min_speed_mps = 1.0;
+  config.clearance_braking_margin_m = 1.0;
   config.max_commanded_target_step_m = 2.0;
   return config;
 }
@@ -99,6 +101,39 @@ TEST(OffboardSpeedController, NarrowClearanceUsesClearanceLimit) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
 }
 
+TEST(OffboardSpeedController, ClearanceBrakingLimitCanBeatLinearRamp) {
+  SpeedControllerConfig config = testConfig();
+  config.desired_speed_mps = 10.0;
+  config.max_accel_mps2 = 2.0;
+  config.narrow_clearance_slowdown_radius_m = 10.0;
+  config.narrow_clearance_min_speed_mps = 0.0;
+  config.max_commanded_target_step_m = 100.0;
+  OffboardSpeedController controller{config};
+  SpeedControllerInput input = cruiseInput();
+  input.controller_dt_s = 10.0;
+  input.local_clearance_m = 1.5;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_NEAR(output.allowed_speed_mps, std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(output.requested_speed_mps, std::sqrt(2.0), 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
+}
+
+TEST(OffboardSpeedController, ClearanceInsideBrakingMarginStops) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  OffboardSpeedController controller{config};
+  SpeedControllerInput input = cruiseInput();
+  input.local_clearance_m = 0.5;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
+}
+
 TEST(OffboardSpeedController, HoldModeRequestsZeroSpeed) {
   OffboardSpeedController controller{testConfig()};
   SpeedControllerInput input = cruiseInput();
@@ -124,7 +159,7 @@ TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
-TEST(OffboardSpeedController, ActualOverspeedReducesCommandWithoutFullStop) {
+TEST(OffboardSpeedController, ClearanceOverspeedRequestsStop) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -138,10 +173,11 @@ TEST(OffboardSpeedController, ActualOverspeedReducesCommandWithoutFullStop) {
   input.actual_speed_mps = 5.0;
 
   const SpeedControllerOutput output = controller.update(input);
+  const double expected_allowed_speed = std::numbers::sqrt2;
 
-  EXPECT_NEAR(output.allowed_speed_mps, 2.0, 1.0e-9);
-  EXPECT_NEAR(output.requested_speed_mps, 1.8, 1.0e-9);
-  EXPECT_NEAR(output.target_step_m, 0.18, 1.0e-9);
+  EXPECT_NEAR(output.allowed_speed_mps, expected_allowed_speed, 1.0e-9);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
 }
 

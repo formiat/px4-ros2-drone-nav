@@ -50,6 +50,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.planner_core.stable_path_blocking_occupied_length_m = std::clamp(
       node.declare_parameter<double>("stable_path_blocking_occupied_length_m", 2.0),
       0.0, 1000.0);
+  config.planner_core.stable_path_blocking_replan_horizon_m = std::clamp(
+      node.declare_parameter<double>("stable_path_blocking_replan_horizon_m", 25.0),
+      0.0, 1000.0);
   config.planner_core.stable_path_blocked_confirmations_required = static_cast<int>(
       std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
                                    "stable_path_blocked_confirmations_required", 2),

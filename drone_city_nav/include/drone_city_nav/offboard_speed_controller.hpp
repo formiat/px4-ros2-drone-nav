@@ -26,6 +26,7 @@ struct SpeedControllerConfig {
   double turn_slowdown_min_speed_mps{1.5};
   double narrow_clearance_slowdown_radius_m{7.0};
   double narrow_clearance_min_speed_mps{1.0};
+  double clearance_braking_margin_m{1.0};
   double max_commanded_target_step_m{0.5};
 };
 

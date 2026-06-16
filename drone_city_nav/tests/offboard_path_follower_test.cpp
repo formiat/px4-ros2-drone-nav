@@ -44,6 +44,16 @@ TEST(OffboardPathFollower, LookaheadSelectsForwardWaypointThatProgressesToGoal) 
   EXPECT_EQ(index, 2U);
 }
 
+TEST(OffboardPathFollower, LookaheadFollowsPathWhenDetourMovesAwayFromGoal) {
+  const std::vector<Point2> path{
+      {18.0, 18.0}, {18.0, 6.0}, {29.0, -1.0}, {72.0, 126.0}};
+
+  const std::size_t index = lookaheadWaypointIndex(
+      path, Point2{18.0, 18.0}, Point2{72.0, 126.0}, testConfig(), 5.0);
+
+  EXPECT_EQ(index, 1U);
+}
+
 TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
   const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {30.0, 0.0}};
 
@@ -136,6 +146,15 @@ TEST(OffboardPathFollower, PathTurnAngleUsesNearbyWaypoint) {
 
   const double angle =
       pathTurnAngleAtWaypoint(path, 1U, Point2{4.0, 0.0}, true, testConfig(), 5.0);
+
+  EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, PathTurnAngleUsesUpcomingWaypointEarly) {
+  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
+
+  const double angle =
+      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, testConfig(), 5.0);
 
   EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
 }

@@ -35,6 +35,7 @@ struct PlannerCoreConfig {
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{12.0};
   double stable_path_blocking_occupied_length_m{2.0};
+  double stable_path_blocking_replan_horizon_m{25.0};
   int stable_path_blocked_confirmations_required{2};
 };
 
@@ -102,6 +103,9 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 
 [[nodiscard]] double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid,
                                                 Point2 start, Point2 end);
+
+[[nodiscard]] double pathSegmentBlockedLengthM(const OccupancyGrid2D& grid,
+                                               Point2 start, Point2 end);
 
 [[nodiscard]] std::optional<PathProjection2D>
 closestPathProjection(std::span<const Point2> path_points, Point2 current_position);

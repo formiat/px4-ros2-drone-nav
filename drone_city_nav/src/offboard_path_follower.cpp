@@ -21,7 +21,7 @@ constexpr double kTinyDistanceM = 1.0e-6;
   }
 
   const double activation_distance_m =
-      std::max(2.0 * effectiveLookaheadDistanceM(config, desired_speed_mps),
+      std::max(4.0 * effectiveLookaheadDistanceM(config, desired_speed_mps),
                config.max_setpoint_distance_m + config.acceptance_radius_m);
   return distance(current_position, turn_waypoint) <= activation_distance_m;
 }
@@ -62,22 +62,30 @@ std::size_t lookaheadWaypointIndex(const std::span<const Point2> path,
                                    const Point2 mission_goal,
                                    const OffboardPathFollowerConfig& config,
                                    const double desired_speed_mps) {
+  (void)mission_goal;
   if (path.empty() || !finite2D(current_position)) {
     return 0U;
   }
 
-  const std::size_t closest_index = closestWaypointIndex(path, current_position);
-  const double current_goal_distance = distance(current_position, mission_goal);
   const double lookahead_distance =
       effectiveLookaheadDistanceM(config, desired_speed_mps);
-  for (std::size_t i = closest_index; i < path.size(); ++i) {
-    const bool far_enough = distance(current_position, path[i]) >= lookahead_distance;
-    const bool progresses_to_goal =
-        distance(path[i], mission_goal) + config.acceptance_radius_m <
-        current_goal_distance;
-    if (far_enough && progresses_to_goal) {
-      return i;
+  const auto projection = closestOffboardPathProjection(path, current_position);
+  if (!projection.has_value()) {
+    return closestWaypointIndex(path, current_position);
+  }
+
+  double remaining_lookahead_m = lookahead_distance;
+  Point2 segment_start = projection->point;
+  for (std::size_t i = projection->segment_start_index; i + 1U < path.size(); ++i) {
+    const Point2 segment_end = path[i + 1U];
+    const double segment_length_m = distance(segment_start, segment_end);
+    if (segment_length_m > kTinyDistanceM) {
+      if (remaining_lookahead_m <= segment_length_m) {
+        return i + 1U;
+      }
+      remaining_lookahead_m -= segment_length_m;
     }
+    segment_start = segment_end;
   }
 
   return path.size() - 1U;
