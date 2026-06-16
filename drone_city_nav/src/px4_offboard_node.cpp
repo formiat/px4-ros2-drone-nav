@@ -1,5 +1,6 @@
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_speed_controller.hpp"
+#include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -294,11 +295,14 @@ private:
                               squaredDistance(first, last_logged_path_first_) > 0.01 ||
                               squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed) {
+      const PathMetrics metrics = pointPathMetrics(path_points_);
       RCLCPP_INFO(get_logger(),
-                  "Received path: waypoints=%zu selected=%zu first=(%.2f, %.2f) "
+                  "Received path: waypoints=%zu segments=%zu straight_segments=%zu "
+                  "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f)",
-                  path_points_.size(), waypoint_index_ + 1U, first.x, first.y, last.x,
-                  last.y);
+                  path_points_.size(), metrics.segments, metrics.straight_segments,
+                  metrics.turns, metrics.length_m, waypoint_index_ + 1U, first.x,
+                  first.y, last.x, last.y);
       last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;

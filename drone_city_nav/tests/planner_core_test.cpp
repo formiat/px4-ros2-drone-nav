@@ -200,6 +200,32 @@ TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {
             directionChanges(normal_result.path));
 }
 
+TEST(PathMetrics, CountsGridSegmentsTurnsAndLength) {
+  const OccupancyGrid2D grid = makeGrid();
+  const std::vector<GridIndex> path{{0, 0}, {1, 0}, {2, 0}, {2, 1}, {3, 1}};
+
+  const PathMetrics metrics = gridPathMetrics(grid, path);
+
+  EXPECT_EQ(metrics.points, 5U);
+  EXPECT_EQ(metrics.segments, 4U);
+  EXPECT_EQ(metrics.straight_segments, 3U);
+  EXPECT_EQ(metrics.turns, 2U);
+  EXPECT_DOUBLE_EQ(metrics.length_m, 4.0);
+}
+
+TEST(PathMetrics, CountsPointSegmentsTurnsAndSkipsDuplicatePoints) {
+  const std::vector<Point2> path{
+      {0.0, 0.0}, {3.0, 0.0}, {3.0, 4.0}, {3.0, 4.0}, {6.0, 4.0}};
+
+  const PathMetrics metrics = pointPathMetrics(path);
+
+  EXPECT_EQ(metrics.points, 5U);
+  EXPECT_EQ(metrics.segments, 3U);
+  EXPECT_EQ(metrics.straight_segments, 3U);
+  EXPECT_EQ(metrics.turns, 2U);
+  EXPECT_DOUBLE_EQ(metrics.length_m, 10.0);
+}
+
 TEST(PathSmoothing, RejectsShortcutTooCloseToObstacleWhenClearanceIsRequired) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
   for (int x = 0; x < grid.width(); ++x) {

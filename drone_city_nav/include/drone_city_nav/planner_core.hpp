@@ -19,6 +19,14 @@ struct GridStats {
   std::size_t inflated_cells{0U};
 };
 
+struct PathMetrics {
+  std::size_t points{0U};
+  std::size_t segments{0U};
+  std::size_t straight_segments{0U};
+  std::size_t turns{0U};
+  double length_m{0.0};
+};
+
 struct PlannerCoreConfig {
   AStarConfig astar{};
   PathSmoothingConfig smoothing{};
@@ -34,6 +42,8 @@ struct PathComputationResult {
   AStarResult astar{};
   std::vector<GridIndex> smoothed_cells;
   GridStats grid_stats{};
+  PathMetrics raw_path_metrics{};
+  PathMetrics smoothed_path_metrics{};
   double raw_path_clearance_m{std::numeric_limits<double>::infinity()};
   double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
   std::optional<GridIndex> start_cell;
@@ -74,6 +84,11 @@ struct StablePathDecision {
 stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 
 [[nodiscard]] GridStats collectGridStats(const OccupancyGrid2D& grid);
+
+[[nodiscard]] PathMetrics gridPathMetrics(const OccupancyGrid2D& grid,
+                                          std::span<const GridIndex> path);
+
+[[nodiscard]] PathMetrics pointPathMetrics(std::span<const Point2> path_points);
 
 [[nodiscard]] double nearestBlockedDistanceM(const OccupancyGrid2D& grid,
                                              GridIndex cell, double max_distance_m);

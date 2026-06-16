@@ -2,12 +2,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kTinyDistanceSqM = 1.0e-12;
+constexpr double kTurnAngleThresholdRad = 1.0e-3;
+
+struct UnitDirection2D {
+  double x{0.0};
+  double y{0.0};
+};
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
@@ -19,6 +26,38 @@ normalizedClearanceDiagnosticRadiusM(const double configured_radius_m) noexcept 
     return configured_radius_m;
   }
   return 10.0;
+}
+
+[[nodiscard]] bool directionChanged(const UnitDirection2D previous,
+                                    const UnitDirection2D current) noexcept {
+  const double dot =
+      std::clamp(previous.x * current.x + previous.y * current.y, -1.0, 1.0);
+  return std::acos(dot) > kTurnAngleThresholdRad;
+}
+
+void addPathSegmentMetrics(PathMetrics& metrics,
+                           std::optional<UnitDirection2D>& previous, const double dx_m,
+                           const double dy_m) {
+  const double segment_length_m = std::hypot(dx_m, dy_m);
+  if (segment_length_m <= 0.0) {
+    return;
+  }
+
+  ++metrics.segments;
+  metrics.length_m += segment_length_m;
+
+  const UnitDirection2D current{dx_m / segment_length_m, dy_m / segment_length_m};
+  if (!previous.has_value()) {
+    ++metrics.straight_segments;
+    previous = current;
+    return;
+  }
+
+  if (directionChanged(*previous, current)) {
+    ++metrics.turns;
+    ++metrics.straight_segments;
+  }
+  previous = current;
 }
 
 } // namespace
@@ -68,6 +107,41 @@ GridStats collectGridStats(const OccupancyGrid2D& grid) {
     }
   }
   return stats;
+}
+
+PathMetrics gridPathMetrics(const OccupancyGrid2D& grid,
+                            const std::span<const GridIndex> path) {
+  PathMetrics metrics{};
+  metrics.points = path.size();
+  if (!(grid.resolution() > 0.0) || path.size() < 2U) {
+    return metrics;
+  }
+
+  std::optional<UnitDirection2D> previous_direction;
+  for (std::size_t i = 1U; i < path.size(); ++i) {
+    const double dx_m =
+        static_cast<double>(path[i].x - path[i - 1U].x) * grid.resolution();
+    const double dy_m =
+        static_cast<double>(path[i].y - path[i - 1U].y) * grid.resolution();
+    addPathSegmentMetrics(metrics, previous_direction, dx_m, dy_m);
+  }
+  return metrics;
+}
+
+PathMetrics pointPathMetrics(const std::span<const Point2> path_points) {
+  PathMetrics metrics{};
+  metrics.points = path_points.size();
+  if (path_points.size() < 2U) {
+    return metrics;
+  }
+
+  std::optional<UnitDirection2D> previous_direction;
+  for (std::size_t i = 1U; i < path_points.size(); ++i) {
+    addPathSegmentMetrics(metrics, previous_direction,
+                          path_points[i].x - path_points[i - 1U].x,
+                          path_points[i].y - path_points[i - 1U].y);
+  }
+  return metrics;
 }
 
 double nearestBlockedDistanceM(const OccupancyGrid2D& grid, const GridIndex cell,
@@ -300,6 +374,8 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 
   result.smoothed_cells = smoothPath(grid, result.astar.path, config_.smoothing);
   result.grid_stats = collectGridStats(grid);
+  result.raw_path_metrics = gridPathMetrics(grid, result.astar.path);
+  result.smoothed_path_metrics = gridPathMetrics(grid, result.smoothed_cells);
   result.raw_path_clearance_m = pathMinimumBlockedClearanceM(
       grid, result.astar.path,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));

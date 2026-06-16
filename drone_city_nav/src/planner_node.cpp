@@ -519,6 +519,9 @@ private:
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
         "source=combined expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
+        "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
+        "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
+        "smoothed_turns=%zu smoothed_length=%.2f] "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
@@ -548,8 +551,15 @@ private:
         planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
         planning_result->current_lidar.outside_hits, path_result->astar.expanded_cells,
-        path_result->astar.total_cost, path_result->astar.path.size(),
-        path_result->smoothed_cells.size(), path_result->raw_path_clearance_m,
+        path_result->astar.total_cost, path_result->raw_path_metrics.points,
+        path_result->smoothed_path_metrics.points,
+        path_result->raw_path_metrics.segments,
+        path_result->raw_path_metrics.straight_segments,
+        path_result->raw_path_metrics.turns, path_result->raw_path_metrics.length_m,
+        path_result->smoothed_path_metrics.segments,
+        path_result->smoothed_path_metrics.straight_segments,
+        path_result->smoothed_path_metrics.turns,
+        path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
         path_result->smoothed_path_clearance_m);
     publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
                                  "combined");
@@ -755,6 +765,7 @@ private:
       stable_path_blocked_confirmations_ = 0;
     }
 
+    const PathMetrics metrics = pointPathMetrics(points);
     const nav_msgs::msg::Path path =
         pathToRos(std::span<const Point2>{points.data(), points.size()},
                   makePlannerHeader(), cruise_altitude_m_);
@@ -764,7 +775,7 @@ private:
       waypoint_pub_->publish(path.poses.front());
     }
 
-    logPathUpdate(path);
+    logPathUpdate(path, metrics);
   }
 
   void publishLastValidPathOrEmpty() {
@@ -824,10 +835,20 @@ private:
         get_logger(), *get_clock(), 5000,
         "Using static-only fallback path after %s: static_occupied_cells=%zu "
         "expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
+        "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
+        "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
+        "smoothed_turns=%zu smoothed_length=%.2f] "
         "path_clearance[raw=%.2f smoothed=%.2f]",
         reason, static_overlay.source_occupied_cells, path_result->astar.expanded_cells,
-        path_result->astar.total_cost, path_result->astar.path.size(),
-        path_result->smoothed_cells.size(), path_result->raw_path_clearance_m,
+        path_result->astar.total_cost, path_result->raw_path_metrics.points,
+        path_result->smoothed_path_metrics.points,
+        path_result->raw_path_metrics.segments,
+        path_result->raw_path_metrics.straight_segments,
+        path_result->raw_path_metrics.turns, path_result->raw_path_metrics.length_m,
+        path_result->smoothed_path_metrics.segments,
+        path_result->smoothed_path_metrics.straight_segments,
+        path_result->smoothed_path_metrics.turns,
+        path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
         path_result->smoothed_path_clearance_m);
     publishOccupancyGrid(static_only_grid);
     return publishPathFromSmoothedCells(static_only_grid, path_result->smoothed_cells,
@@ -969,7 +990,7 @@ private:
     return true;
   }
 
-  void logPathUpdate(const nav_msgs::msg::Path& path) {
+  void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics) {
     const std::size_t path_size = path.poses.size();
     const bool path_changed = path_size != last_logged_path_size_;
     if (path_size == 0U) {
@@ -998,9 +1019,12 @@ private:
                 << path.poses[i].pose.position.y << ")";
       }
       RCLCPP_INFO(get_logger(),
-                  "Published path: waypoints=%zu first=(%.2f, %.2f) "
+                  "Published path: waypoints=%zu segments=%zu "
+                  "straight_segments=%zu turns=%zu length=%.2f first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f) preview=%s",
-                  path_size, first.x, first.y, last.x, last.y, preview.str().c_str());
+                  path_size, metrics.segments, metrics.straight_segments, metrics.turns,
+                  metrics.length_m, first.x, first.y, last.x, last.y,
+                  preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
