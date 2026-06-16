@@ -1,0 +1,139 @@
+#include "drone_city_nav/planner_node_config.hpp"
+
+#include <rclcpp/parameter.hpp>
+
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace drone_city_nav {
+namespace {
+
+class PlannerNodeConfigTest : public ::testing::Test {
+protected:
+  static void SetUpTestSuite() {
+    if (!rclcpp::ok()) {
+      int argc = 0;
+      char** argv = nullptr;
+      rclcpp::init(argc, argv);
+    }
+  }
+
+  static void TearDownTestSuite() {
+    if (rclcpp::ok()) {
+      rclcpp::shutdown();
+    }
+  }
+
+  [[nodiscard]] static std::shared_ptr<rclcpp::Node>
+  makeNode(const std::string& name,
+           const std::vector<rclcpp::Parameter>& parameters = {}) {
+    rclcpp::NodeOptions options;
+    options.parameter_overrides(parameters);
+    return std::make_shared<rclcpp::Node>(name, options);
+  }
+};
+
+} // namespace
+
+TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
+  const auto node = makeNode("planner_node_config_defaults");
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_EQ(config.frame_id, "map");
+  EXPECT_DOUBLE_EQ(config.start.x, 0.0);
+  EXPECT_DOUBLE_EQ(config.start.y, 0.0);
+  EXPECT_DOUBLE_EQ(config.goal.x, 85.0);
+  EXPECT_DOUBLE_EQ(config.goal.y, 0.0);
+  EXPECT_DOUBLE_EQ(config.cruise_altitude_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.inflation_radius_m, 2.5);
+  EXPECT_TRUE(config.static_map.enabled);
+  EXPECT_TRUE(config.planning_grid_builder.use_static_map);
+  EXPECT_TRUE(config.planning_grid_builder.use_obstacle_memory);
+  EXPECT_TRUE(config.planning_grid_builder.use_current_lidar_obstacles);
+  EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
+  EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
+}
+
+TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
+  const auto node = makeNode(
+      "planner_node_config_clamps",
+      {rclcpp::Parameter{"max_pose_staleness_s", -5.0},
+       rclcpp::Parameter{"max_current_lidar_staleness_s", 9999.0},
+       rclcpp::Parameter{"nearest_free_radius_cells", -10},
+       rclcpp::Parameter{"memory_occupied_threshold", 500},
+       rclcpp::Parameter{"memory_free_threshold", -20},
+       rclcpp::Parameter{"static_map_min_blocking_height_m", -1.0},
+       rclcpp::Parameter{"planning_grid_resolution_m", -0.5},
+       rclcpp::Parameter{"planning_grid_width_m", -10.0},
+       rclcpp::Parameter{"planning_grid_height_m", 0.0},
+       rclcpp::Parameter{"current_lidar_obstacle_depth_m", -2.0},
+       rclcpp::Parameter{"astar_max_expansions", 0},
+       rclcpp::Parameter{"astar_obstacle_clearance_cost_radius_m", 500.0},
+       rclcpp::Parameter{"astar_obstacle_clearance_cost_weight", 5000.0},
+       rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
+       rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
+       rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 500.0},
+       rclcpp::Parameter{"stable_path_blocked_confirmations_required", 0},
+       rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_EQ(config.timing.max_pose_staleness_ns, 0);
+  EXPECT_EQ(config.timing.max_current_lidar_staleness_ns, 3'600'000'000'000LL);
+  EXPECT_EQ(config.planner_core.nearest_free_radius_cells, 0);
+  EXPECT_EQ(config.memory_grid.occupied_threshold, 100);
+  EXPECT_EQ(config.memory_grid.free_threshold, 0);
+  EXPECT_DOUBLE_EQ(config.static_map.min_blocking_height_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.planning_grid_builder.fallback_bounds.resolution_m, 0.01);
+  EXPECT_EQ(config.planning_grid_builder.fallback_bounds.width_cells, 1);
+  EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
+  EXPECT_DOUBLE_EQ(config.current_lidar.obstacle_depth_m, 0.0);
+  EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_radius_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_weight, 1000.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
+                   1000.0);
+  EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 100.0);
+  EXPECT_EQ(config.planner_core.stable_path_blocked_confirmations_required, 1);
+  EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
+}
+
+TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
+  const auto node =
+      makeNode("planner_node_config_nested",
+               {rclcpp::Parameter{"astar_obstacle_clearance_cost_radius_m", 6.0},
+                rclcpp::Parameter{"astar_obstacle_clearance_cost_weight", 3.0},
+                rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
+                rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
+                rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 4.0},
+                rclcpp::Parameter{"use_static_map", false},
+                rclcpp::Parameter{"use_obstacle_memory", false},
+                rclcpp::Parameter{"use_current_lidar_obstacles", false},
+                rclcpp::Parameter{"max_lidar_range_m", 22.0},
+                rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
+                rclcpp::Parameter{"compensate_lidar_attitude", true}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_radius_m, 6.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_weight, 3.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 2.0);
+  EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
+  EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 4.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.smoothing.minimum_obstacle_clearance_m, 4.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
+  EXPECT_FALSE(config.static_map.enabled);
+  EXPECT_FALSE(config.planning_grid_builder.use_static_map);
+  EXPECT_FALSE(config.planning_grid_builder.use_obstacle_memory);
+  EXPECT_FALSE(config.planning_grid_builder.use_current_lidar_obstacles);
+  EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
+  EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
+  EXPECT_TRUE(config.lidar_projection.compensate_attitude);
+}
+
+} // namespace drone_city_nav

@@ -52,9 +52,26 @@ target_include_directories(
     "$<INSTALL_INTERFACE:include>")
 enable_project_warnings(drone_city_nav_core)
 
+add_library(
+  drone_city_nav_ros_adapters
+  src/planner_node_config.cpp
+  src/ros_conversions.cpp
+  src/static_map_debug.cpp
+  src/static_map_source.cpp)
+target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
+target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_core)
+ament_target_dependencies(
+  drone_city_nav_ros_adapters
+  geometry_msgs
+  nav_msgs
+  rclcpp
+  sensor_msgs
+  std_msgs)
+enable_project_warnings(drone_city_nav_ros_adapters)
+
 add_executable(planner_node src/planner_node.cpp)
 target_compile_features(planner_node PRIVATE cxx_std_20)
-target_link_libraries(planner_node drone_city_nav_core)
+target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
   planner_node
   ament_index_cpp
@@ -112,6 +129,7 @@ enable_project_warnings(lidar_debug_node)
 install(
   TARGETS
     drone_city_nav_core
+    drone_city_nav_ros_adapters
     lidar_debug_node
     obstacle_memory_node
     planner_node
@@ -200,6 +218,30 @@ if(BUILD_TESTING)
   target_compile_features(lidar_projection_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_projection_test drone_city_nav_core)
   enable_project_warnings(lidar_projection_test)
+
+  ament_add_gtest(planner_node_config_test
+                  tests/planner_node_config_test.cpp)
+  target_compile_features(planner_node_config_test PRIVATE cxx_std_20)
+  target_link_libraries(planner_node_config_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(planner_node_config_test rclcpp)
+  enable_project_warnings(planner_node_config_test)
+
+  ament_add_gtest(ros_conversions_test tests/ros_conversions_test.cpp)
+  target_compile_features(ros_conversions_test PRIVATE cxx_std_20)
+  target_link_libraries(ros_conversions_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(ros_conversions_test nav_msgs std_msgs)
+  enable_project_warnings(ros_conversions_test)
+
+  ament_add_gtest(static_map_source_test tests/static_map_source_test.cpp)
+  target_compile_features(static_map_source_test PRIVATE cxx_std_20)
+  target_link_libraries(static_map_source_test drone_city_nav_ros_adapters)
+  enable_project_warnings(static_map_source_test)
+
+  ament_add_gtest(static_map_debug_test tests/static_map_debug_test.cpp)
+  target_compile_features(static_map_debug_test PRIVATE cxx_std_20)
+  target_link_libraries(static_map_debug_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(static_map_debug_test nav_msgs sensor_msgs std_msgs)
+  enable_project_warnings(static_map_debug_test)
 endif()
 
 ament_export_include_directories(include)

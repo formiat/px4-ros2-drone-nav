@@ -4,8 +4,11 @@
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/planner_node_config.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
-#include "drone_city_nav/static_city_map.hpp"
+#include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/static_map_debug.hpp"
+#include "drone_city_nav/static_map_source.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -15,14 +18,13 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/msg/point_field.hpp>
+#include <std_msgs/msg/header.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <optional>
@@ -39,182 +41,52 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
-  return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
-}
-
 } // namespace
 
 class PlannerNode final : public rclcpp::Node {
 public:
   PlannerNode()
       : Node{"planner_node"} {
-    frame_id_ = declare_parameter<std::string>("frame_id", "map");
-    start_ = Point2{declare_parameter<double>("start_x_m", 0.0),
-                    declare_parameter<double>("start_y_m", 0.0)};
-    goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
-                   declare_parameter<double>("goal_y_m", 0.0)};
-    cruise_altitude_m_ = declare_parameter<double>("cruise_altitude_m", 12.0);
-    inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
-    max_pose_staleness_ns_ = static_cast<std::int64_t>(
-        std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
-                           3600.0) *
-        1.0e9);
-    direct_path_fallback_ = declare_parameter<bool>("direct_path_fallback", false);
-    reuse_last_valid_path_on_failure_ =
-        declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
-    stable_path_reuse_enabled_ =
-        declare_parameter<bool>("stable_path_reuse_enabled", true);
-    stable_path_reuse_max_deviation_m_ =
-        std::clamp(declare_parameter<double>("stable_path_reuse_max_deviation_m", 12.0),
-                   0.0, 1000.0);
-    stable_path_goal_tolerance_m_ = std::clamp(
-        declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
-    stable_path_blocking_occupied_length_m_ = std::clamp(
-        declare_parameter<double>("stable_path_blocking_occupied_length_m", 2.0), 0.0,
-        1000.0);
-    stable_path_blocked_confirmations_required_ = static_cast<int>(
-        std::clamp<std::int64_t>(declare_parameter<std::int64_t>(
-                                     "stable_path_blocked_confirmations_required", 2),
-                                 1, 1000));
-    max_initial_lateral_deviation_m_ =
-        declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
-    nearest_free_radius_cells_ = static_cast<int>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0, 100000));
-    occupied_threshold_ = static_cast<int>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("memory_occupied_threshold", 65), 1, 100));
-    free_threshold_ = static_cast<int>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("memory_free_threshold", 0), 0, 100));
-    use_static_map_ = declare_parameter<bool>("use_static_map", true);
-    use_obstacle_memory_ = declare_parameter<bool>("use_obstacle_memory", true);
-    static_map_path_param_ = declare_parameter<std::string>(
-        "static_map_path", "worlds/generated_city.map2d");
-    static_map_min_blocking_height_m_ =
-        std::clamp(declare_parameter<double>("static_map_min_blocking_height_m", 0.0),
-                   0.0, 100000.0);
-    const double planning_grid_resolution_m =
-        std::max(0.01, declare_parameter<double>("planning_grid_resolution_m", 0.5));
-    fallback_grid_bounds_ = GridBounds{
-        declare_parameter<double>("planning_grid_origin_x", -10.0),
-        declare_parameter<double>("planning_grid_origin_y", -10.0),
-        planning_grid_resolution_m,
-        positiveCellCount(declare_parameter<double>("planning_grid_width_m", 115.0),
-                          planning_grid_resolution_m),
-        positiveCellCount(declare_parameter<double>("planning_grid_height_m", 175.0),
-                          planning_grid_resolution_m)};
-    use_current_lidar_obstacles_ =
-        declare_parameter<bool>("use_current_lidar_obstacles", true);
-    max_current_lidar_staleness_ns_ = static_cast<std::int64_t>(
-        std::clamp<double>(
-            declare_parameter<double>("max_current_lidar_staleness_s", 0.75), 0.0,
-            3600.0) *
-        1.0e9);
-    max_lidar_range_m_ = declare_parameter<double>("max_lidar_range_m", 35.0);
-    range_hit_epsilon_m_ = declare_parameter<double>("range_hit_epsilon_m", 0.05);
-    current_lidar_obstacle_depth_m_ = std::clamp(
-        declare_parameter<double>("current_lidar_obstacle_depth_m", 0.0), 0.0, 100.0);
-    scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
-    use_px4_heading_for_scan_ =
-        declare_parameter<bool>("use_px4_heading_for_scan", false);
-    swap_lidar_xy_to_local_frame_ =
-        declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
-    compensate_lidar_attitude_ =
-        declare_parameter<bool>("compensate_lidar_attitude", false);
-    lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
-    lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
-    lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
-    lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
-    min_projected_lidar_altitude_m_ =
-        declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
-    max_projected_lidar_altitude_m_ =
-        declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-    astar_config_.max_expansions = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
-        std::numeric_limits<int>::max()));
-    astar_config_.obstacle_clearance_cost_radius_m = std::clamp(
-        declare_parameter<double>("astar_obstacle_clearance_cost_radius_m", 0.0), 0.0,
-        100.0);
-    astar_config_.obstacle_clearance_cost_weight = std::clamp(
-        declare_parameter<double>("astar_obstacle_clearance_cost_weight", 0.0), 0.0,
-        1000.0);
-    astar_config_.turn_cost_weight = std::clamp(
-        declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);
-    astar_config_.evasive_maneuvering_enabled =
-        declare_parameter<bool>("astar_evasive_maneuvering_enabled", false);
-    astar_config_.evasive_maneuvering_straight_cost_weight =
-        std::clamp(declare_parameter<double>(
-                       "astar_evasive_maneuvering_straight_cost_weight", 1.0),
-                   0.0, 1000.0);
-    path_smoothing_config_.minimum_obstacle_clearance_m = std::clamp(
-        declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0), 0.0,
-        100.0);
-    updatePlannerCoreConfig();
-
-    const bool use_initial_pose =
-        declare_parameter<bool>("use_initial_pose_until_px4", true);
-    initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
-    px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
-                               declare_parameter<double>("px4_local_origin_y_m", 0.0)};
-    if (use_initial_pose) {
-      current_pose_ = Pose2{Point2{declare_parameter<double>("initial_x_m", 0.0),
-                                   declare_parameter<double>("initial_y_m", 0.0)},
-                            initial_heading_rad_};
+    const PlannerNodeConfig config = loadPlannerNodeConfig(*this);
+    applyConfig(config);
+    if (config.initial_pose.use_until_px4) {
+      current_pose_ =
+          Pose2{config.initial_pose.position, config.initial_pose.heading_rad};
       pose_valid_ = true;
       last_pose_update_ns_ = get_clock()->now().nanoseconds();
     }
 
-    const std::string memory_grid_topic = declare_parameter<std::string>(
-        "obstacle_memory_grid_topic", "/drone_city_nav/obstacle_memory_grid");
-    const std::string lidar_topic =
-        declare_parameter<std::string>("lidar_topic", "/scan");
-    const std::string local_position_topic = declare_parameter<std::string>(
-        "px4_local_position_topic", "/fmu/out/vehicle_local_position");
-    const std::string attitude_topic = declare_parameter<std::string>(
-        "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
-
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-        memory_grid_topic, rclcpp::QoS{1}.transient_local(),
+        config.topics.obstacle_memory_grid, rclcpp::QoS{1}.transient_local(),
         [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
           onMemoryGrid(*msg);
         });
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-        lidar_topic, sensor_qos,
+        config.topics.lidar, sensor_qos,
         [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-        local_position_topic, sensor_qos,
+        config.topics.local_position, sensor_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
         });
     attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
-        attitude_topic, sensor_qos,
+        config.topics.attitude, sensor_qos,
         [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
           onAttitude(*msg);
         });
 
     occupancy_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("occupancy_grid_topic",
-                                       "/drone_city_nav/occupancy_grid"),
-        rclcpp::QoS{1}.transient_local());
+        config.topics.occupancy_grid, rclcpp::QoS{1}.transient_local());
     static_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("static_map_grid_topic",
-                                       "/drone_city_nav/static_map_grid"),
-        rclcpp::QoS{1}.transient_local());
+        config.topics.static_map_grid, rclcpp::QoS{1}.transient_local());
     static_map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-        declare_parameter<std::string>("static_map_points_topic",
-                                       "/drone_city_nav/static_map_points"),
-        rclcpp::QoS{1}.transient_local());
-    static_map_debug_publish_period_s_ = std::clamp(
-        declare_parameter<double>("static_map_debug_publish_period_s", 1.0), 0.0, 60.0);
-    path_pub_ = create_publisher<nav_msgs::msg::Path>(
-        declare_parameter<std::string>("path_topic", "/drone_city_nav/path"),
-        rclcpp::QoS{1}.reliable());
+        config.topics.static_map_points, rclcpp::QoS{1}.transient_local());
+    path_pub_ = create_publisher<nav_msgs::msg::Path>(config.topics.path,
+                                                      rclcpp::QoS{1}.reliable());
     waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
-        declare_parameter<std::string>("current_waypoint_topic",
-                                       "/drone_city_nav/current_waypoint"),
-        rclcpp::QoS{1}.reliable());
+        config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
-    const double replan_period_s = declare_parameter<double>("replan_period_s", 0.5);
     loadConfiguredStaticMap();
     if (static_map_debug_publish_period_s_ > 0.0) {
       static_map_debug_timer_ = create_wall_timer(
@@ -222,7 +94,7 @@ public:
           [this]() { republishStaticMapDebug(); });
     }
     timer_ = create_wall_timer(
-        std::chrono::duration<double>{std::max(0.05, replan_period_s)},
+        std::chrono::duration<double>{std::max(0.05, config.timing.replan_period_s)},
         [this]() { replanAndPublish(); });
 
     RCLCPP_INFO(get_logger(),
@@ -232,8 +104,8 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s' "
                 "attitude='%s'",
-                memory_grid_topic.c_str(), local_position_topic.c_str(),
-                attitude_topic.c_str());
+                config.topics.obstacle_memory_grid.c_str(),
+                config.topics.local_position.c_str(), config.topics.attitude.c_str());
     RCLCPP_INFO(
         get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
@@ -249,8 +121,8 @@ public:
                 "compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
-                use_current_lidar_obstacles_ ? "true" : "false", lidar_topic.c_str(),
-                max_lidar_range_m_,
+                use_current_lidar_obstacles_ ? "true" : "false",
+                config.topics.lidar.c_str(), max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
                 current_lidar_obstacle_depth_m_,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
@@ -292,19 +164,57 @@ public:
   }
 
 private:
-  void updatePlannerCoreConfig() {
-    PlannerCoreConfig config{};
-    config.astar = astar_config_;
-    config.smoothing = path_smoothing_config_;
-    config.nearest_free_radius_cells = nearest_free_radius_cells_;
-    config.clearance_diagnostic_radius_m = clearanceDiagnosticRadiusM();
-    config.stable_path_goal_tolerance_m = stable_path_goal_tolerance_m_;
-    config.stable_path_reuse_max_deviation_m = stable_path_reuse_max_deviation_m_;
-    config.stable_path_blocking_occupied_length_m =
-        stable_path_blocking_occupied_length_m_;
-    config.stable_path_blocked_confirmations_required =
-        stable_path_blocked_confirmations_required_;
-    planner_core_.setConfig(config);
+  void applyConfig(const PlannerNodeConfig& config) {
+    frame_id_ = config.frame_id;
+    start_ = config.start;
+    goal_ = config.goal;
+    cruise_altitude_m_ = config.cruise_altitude_m;
+    inflation_radius_m_ = config.inflation_radius_m;
+    max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
+    direct_path_fallback_ = config.fallback.direct_path_fallback;
+    reuse_last_valid_path_on_failure_ =
+        config.fallback.reuse_last_valid_path_on_failure;
+    stable_path_reuse_enabled_ = config.fallback.stable_path_reuse_enabled;
+    stable_path_reuse_max_deviation_m_ =
+        config.planner_core.stable_path_reuse_max_deviation_m;
+    stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
+    stable_path_blocking_occupied_length_m_ =
+        config.planner_core.stable_path_blocking_occupied_length_m;
+    stable_path_blocked_confirmations_required_ =
+        config.planner_core.stable_path_blocked_confirmations_required;
+    max_initial_lateral_deviation_m_ = config.fallback.max_initial_lateral_deviation_m;
+    nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
+    occupied_threshold_ = config.memory_grid.occupied_threshold;
+    free_threshold_ = config.memory_grid.free_threshold;
+    use_static_map_ = config.static_map.enabled;
+    use_obstacle_memory_ = config.planning_grid_builder.use_obstacle_memory;
+    static_map_path_param_ = config.static_map.configured_path.string();
+    static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
+    fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
+    use_current_lidar_obstacles_ =
+        config.planning_grid_builder.use_current_lidar_obstacles;
+    max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
+    max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
+    range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;
+    current_lidar_obstacle_depth_m_ = config.current_lidar.obstacle_depth_m;
+    scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
+    use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
+    swap_lidar_xy_to_local_frame_ =
+        config.lidar_projection.swap_lidar_xy_to_local_frame;
+    compensate_lidar_attitude_ = config.lidar_projection.compensate_attitude;
+    lidar_mount_roll_rad_ = config.lidar_projection.lidar_mount_roll_rad;
+    lidar_mount_pitch_rad_ = config.lidar_projection.lidar_mount_pitch_rad;
+    lidar_mount_yaw_rad_ = config.lidar_projection.lidar_mount_yaw_rad;
+    lidar_z_offset_m_ = config.lidar_projection.lidar_z_offset_m;
+    min_projected_lidar_altitude_m_ = config.lidar_projection.min_projected_altitude_m;
+    max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
+    astar_config_ = config.planner_core.astar;
+    path_smoothing_config_ = config.path_smoothing;
+    initial_heading_rad_ = config.initial_pose.heading_rad;
+    px4_local_origin_ = config.initial_pose.px4_local_origin;
+    static_map_debug_publish_period_s_ =
+        config.timing.static_map_debug_publish_period_s;
+    planner_core_.setConfig(config.planner_core);
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -350,12 +260,23 @@ private:
   }
 
   void onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
-    auto converted = occupancyGridFromMessage(msg);
-    if (!converted.has_value()) {
+    OccupancyGridFromRosResult converted = occupancyGridFromRos(
+        msg, OccupancyGridFromRosConfig{occupied_threshold_, free_threshold_});
+    if (!converted.grid.has_value()) {
+      if (converted.error == OccupancyGridFromRosError::kMismatchedDataSize) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Ignoring obstacle memory grid with mismatched data size: expected=%zu "
+            "got=%zu",
+            converted.expected_data_size, converted.actual_data_size);
+      } else {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                             "Ignoring invalid obstacle memory grid metadata");
+      }
       return;
     }
 
-    memory_grid_ = std::move(*converted);
+    memory_grid_ = std::move(*converted.grid);
     if (!memory_grid_seen_) {
       memory_grid_seen_ = true;
       RCLCPP_INFO(
@@ -394,120 +315,56 @@ private:
     attitude_valid_ = true;
   }
 
-  [[nodiscard]] std::optional<OccupancyGrid2D>
-  occupancyGridFromMessage(const nav_msgs::msg::OccupancyGrid& msg) {
-    if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U ||
-        msg.info.height == 0U ||
-        msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-        msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Ignoring invalid obstacle memory grid metadata");
-      return std::nullopt;
-    }
-
-    const auto width = static_cast<int>(msg.info.width);
-    const auto height = static_cast<int>(msg.info.height);
-    const std::size_t expected_size =
-        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-    if (msg.data.size() != expected_size) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Ignoring obstacle memory grid with mismatched data size: "
-                           "expected=%zu got=%zu",
-                           expected_size, msg.data.size());
-      return std::nullopt;
-    }
-
-    OccupancyGrid2D grid{
-        GridBounds{msg.info.origin.position.x, msg.info.origin.position.y,
-                   static_cast<double>(msg.info.resolution), width, height}};
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        const GridIndex cell{x, y};
-        const std::size_t index = grid.linearIndex(cell);
-        const auto raw_value = msg.data[index];
-        if (raw_value < 0) {
-          continue;
-        }
-        const int value = static_cast<int>(static_cast<unsigned char>(raw_value));
-        if (value >= occupied_threshold_) {
-          grid.setOccupied(cell);
-        } else if (value >= free_threshold_) {
-          grid.setFree(cell);
-        }
-      }
-    }
-
-    return grid;
-  }
-
-  [[nodiscard]] std::filesystem::path
-  resolveStaticMapPath(const std::string& configured_path) const {
-    std::filesystem::path path =
-        configured_path.empty() ? std::filesystem::path{"worlds/generated_city.map2d"}
-                                : std::filesystem::path{configured_path};
-    if (path.is_absolute()) {
-      return path;
-    }
-    if (std::filesystem::exists(path)) {
-      return std::filesystem::absolute(path);
-    }
-
+  [[nodiscard]] std::filesystem::path staticMapPackageShareDirectory() const {
     try {
-      const auto package_share = std::filesystem::path{
+      return std::filesystem::path{
           ament_index_cpp::get_package_share_directory("drone_city_nav")};
-      std::filesystem::path package_candidate = package_share / path;
-      if (std::filesystem::exists(package_candidate)) {
-        return package_candidate;
-      }
-      std::filesystem::path worlds_candidate =
-          package_share / "worlds" / path.filename();
-      if (std::filesystem::exists(worlds_candidate)) {
-        return worlds_candidate;
-      }
     } catch (const std::exception&) {
-      return path;
+      return {};
     }
-
-    return path;
   }
 
   void loadConfiguredStaticMap() {
-    static_map_resolved_path_ = resolveStaticMapPath(static_map_path_param_);
-    if (!use_static_map_) {
+    StaticMapSourceResult result = loadStaticMapSource(StaticMapSourceConfig{
+        use_static_map_, static_map_path_param_, staticMapPackageShareDirectory(),
+        frame_id_, static_map_min_blocking_height_m_});
+    static_map_resolved_path_ = result.resolved_path;
+
+    if (result.status == StaticMapSourceStatus::kDisabled) {
       RCLCPP_INFO(get_logger(), "Static city map source is disabled");
       return;
     }
 
-    try {
-      const StaticCityMap static_map = loadStaticCityMap(static_map_resolved_path_);
-      if (static_map.frame_id != frame_id_) {
-        RCLCPP_WARN(get_logger(),
-                    "Static city map frame differs from planner frame: map='%s' "
-                    "planner='%s'",
-                    static_map.frame_id.c_str(), frame_id_.c_str());
-      }
-      static_map_rectangles_ = static_map.rectangles.size();
-      static_grid_ =
-          rasterizeStaticCityMap(static_map, static_map_min_blocking_height_m_);
-      const GridStats stats = collectGridStats(*static_grid_);
-      static_map_occupied_cells_ = stats.occupied_cells;
-      RCLCPP_INFO(
-          get_logger(),
-          "Static city map loaded: path='%s' frame='%s' rectangles=%zu "
-          "occupied_cells=%zu grid=%dx%d@%.2fm origin=(%.2f, %.2f) "
-          "min_blocking_height=%.2f",
-          static_map_resolved_path_.string().c_str(), static_map.frame_id.c_str(),
-          static_map_rectangles_, static_map_occupied_cells_, static_grid_->width(),
-          static_grid_->height(), static_grid_->resolution(), static_grid_->originX(),
-          static_grid_->originY(), static_map_min_blocking_height_m_);
-      publishStaticMapDebug(*static_grid_, true);
-    } catch (const std::exception& error) {
+    if (result.status == StaticMapSourceStatus::kLoadFailed ||
+        !result.grid.has_value()) {
       static_grid_.reset();
       static_map_rectangles_ = 0U;
       static_map_occupied_cells_ = 0U;
       RCLCPP_ERROR(get_logger(), "Failed to load static city map: path='%s' error='%s'",
-                   static_map_resolved_path_.string().c_str(), error.what());
+                   static_map_resolved_path_.string().c_str(),
+                   result.error_message.c_str());
+      return;
     }
+
+    if (!result.frame_matches) {
+      RCLCPP_WARN(get_logger(),
+                  "Static city map frame differs from planner frame: map='%s' "
+                  "planner='%s'",
+                  result.map_frame_id.c_str(), frame_id_.c_str());
+    }
+    static_grid_ = std::move(result.grid);
+    static_map_rectangles_ = result.rectangles;
+    static_map_occupied_cells_ = result.occupied_cells;
+    RCLCPP_INFO(get_logger(),
+                "Static city map loaded: path='%s' frame='%s' rectangles=%zu "
+                "occupied_cells=%zu grid=%dx%d@%.2fm origin=(%.2f, %.2f) "
+                "min_blocking_height=%.2f",
+                static_map_resolved_path_.string().c_str(), result.map_frame_id.c_str(),
+                static_map_rectangles_, static_map_occupied_cells_,
+                static_grid_->width(), static_grid_->height(),
+                static_grid_->resolution(), static_grid_->originX(),
+                static_grid_->originY(), static_map_min_blocking_height_m_);
+    publishStaticMapDebug(*static_grid_, true);
   }
 
   [[nodiscard]] PlanningGridBuilderConfig planningGridBuilderConfig() const {
@@ -785,13 +642,6 @@ private:
     return true;
   }
 
-  [[nodiscard]] double clearanceDiagnosticRadiusM() const noexcept {
-    const double configured_clearance_m =
-        std::max(astar_config_.obstacle_clearance_cost_radius_m,
-                 path_smoothing_config_.minimum_obstacle_clearance_m);
-    return std::max(10.0, configured_clearance_m);
-  }
-
   [[nodiscard]] double currentLidarRangeMax() const {
     return std::min(static_cast<double>(last_scan_.range_max), max_lidar_range_m_);
   }
@@ -865,40 +715,17 @@ private:
     return stats;
   }
 
-  [[nodiscard]] nav_msgs::msg::OccupancyGrid
-  makeOccupancyGridMessage(const OccupancyGrid2D& grid, const bool include_inflation) {
-    nav_msgs::msg::OccupancyGrid msg;
-    msg.header.stamp = now();
-    msg.header.frame_id = frame_id_;
-    msg.info.map_load_time = msg.header.stamp;
-    msg.info.resolution = static_cast<float>(grid.resolution());
-    msg.info.width = static_cast<std::uint32_t>(grid.width());
-    msg.info.height = static_cast<std::uint32_t>(grid.height());
-    msg.info.origin.position.x = grid.originX();
-    msg.info.origin.position.y = grid.originY();
-    msg.info.origin.orientation.w = 1.0;
-    msg.data.assign(grid.cellCount(), static_cast<std::int8_t>(-1));
-
-    for (int y = 0; y < grid.height(); ++y) {
-      for (int x = 0; x < grid.width(); ++x) {
-        const GridIndex cell{x, y};
-        const std::size_t index = grid.linearIndex(cell);
-        if (grid.isOccupied(cell)) {
-          msg.data[index] = static_cast<std::int8_t>(100);
-        } else if (include_inflation && grid.isInflated(cell)) {
-          msg.data[index] = static_cast<std::int8_t>(80);
-        } else if (grid.state(cell) == CellState::kFree) {
-          msg.data[index] = static_cast<std::int8_t>(0);
-        }
-      }
-    }
-
-    return msg;
+  [[nodiscard]] std_msgs::msg::Header makePlannerHeader() const {
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = frame_id_;
+    return header;
   }
 
   void publishStaticMapDebug(const OccupancyGrid2D& grid, const bool log_publication) {
-    static_map_pub_->publish(makeOccupancyGridMessage(grid, false));
-    publishStaticMapPoints(grid);
+    const StaticMapDebugConfig config{makePlannerHeader(), 0.05F};
+    static_map_pub_->publish(staticMapGridMessage(grid, config));
+    static_map_points_pub_->publish(staticMapPointCloud(grid, config));
     if (log_publication) {
       RCLCPP_INFO(get_logger(),
                   "Published static map grid: cells=%zu occupied=%zu "
@@ -917,63 +744,9 @@ private:
     publishStaticMapDebug(*static_grid_, false);
   }
 
-  void publishStaticMapPoints(const OccupancyGrid2D& grid) {
-    sensor_msgs::msg::PointCloud2 cloud;
-    cloud.header.stamp = now();
-    cloud.header.frame_id = frame_id_;
-    cloud.height = 1U;
-    cloud.width = static_cast<std::uint32_t>(static_map_occupied_cells_);
-    cloud.is_bigendian = false;
-    cloud.is_dense = true;
-    cloud.point_step = 12U;
-    cloud.row_step = cloud.point_step * cloud.width;
-    cloud.fields.resize(3U);
-    cloud.fields[0].name = "x";
-    cloud.fields[0].offset = 0U;
-    cloud.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    cloud.fields[0].count = 1U;
-    cloud.fields[1].name = "y";
-    cloud.fields[1].offset = 4U;
-    cloud.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    cloud.fields[1].count = 1U;
-    cloud.fields[2].name = "z";
-    cloud.fields[2].offset = 8U;
-    cloud.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
-    cloud.fields[2].count = 1U;
-    cloud.data.resize(static_cast<std::size_t>(cloud.row_step));
-
-    std::size_t point_index = 0U;
-    for (int y = 0; y < grid.height(); ++y) {
-      for (int x = 0; x < grid.width(); ++x) {
-        const GridIndex cell{x, y};
-        if (!grid.isOccupied(cell)) {
-          continue;
-        }
-
-        const Point2 center = grid.cellCenter(cell);
-        const float point_x = static_cast<float>(center.x);
-        const float point_y = static_cast<float>(center.y);
-        const float point_z = 0.05F;
-        const std::size_t offset =
-            point_index * static_cast<std::size_t>(cloud.point_step);
-        std::memcpy(&cloud.data[offset], &point_x, sizeof(float));
-        std::memcpy(&cloud.data[offset + 4U], &point_y, sizeof(float));
-        std::memcpy(&cloud.data[offset + 8U], &point_z, sizeof(float));
-        ++point_index;
-      }
-    }
-
-    if (point_index != static_cast<std::size_t>(cloud.width)) {
-      cloud.width = static_cast<std::uint32_t>(point_index);
-      cloud.row_step = cloud.point_step * cloud.width;
-      cloud.data.resize(static_cast<std::size_t>(cloud.row_step));
-    }
-
-    static_map_points_pub_->publish(cloud);
-  }
-
   void publishOccupancyGrid(const OccupancyGrid2D& grid) {
-    occupancy_pub_->publish(makeOccupancyGridMessage(grid, true));
+    occupancy_pub_->publish(
+        occupancyGridToRos(grid, OccupancyGridToRosConfig{makePlannerHeader(), true}));
   }
 
   void publishPath(const std::vector<Point2>& points) {
@@ -982,20 +755,9 @@ private:
       stable_path_blocked_confirmations_ = 0;
     }
 
-    nav_msgs::msg::Path path;
-    path.header.stamp = now();
-    path.header.frame_id = frame_id_;
-    path.poses.reserve(points.size());
-
-    for (const Point2 point : points) {
-      geometry_msgs::msg::PoseStamped pose;
-      pose.header = path.header;
-      pose.pose.position.x = point.x;
-      pose.pose.position.y = point.y;
-      pose.pose.position.z = cruise_altitude_m_;
-      pose.pose.orientation.w = 1.0;
-      path.poses.push_back(pose);
-    }
+    const nav_msgs::msg::Path path =
+        pathToRos(std::span<const Point2>{points.data(), points.size()},
+                  makePlannerHeader(), cruise_altitude_m_);
 
     path_pub_->publish(path);
     if (!path.poses.empty()) {
