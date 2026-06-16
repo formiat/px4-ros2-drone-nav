@@ -140,6 +140,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),
                  0.0, 1000.0);
+  config.planner_core.comfort_path_max_detour_ratio = std::clamp(
+      node.declare_parameter<double>("astar_comfort_max_detour_ratio", 0.0), 0.0, 10.0);
   config.path_smoothing.minimum_obstacle_clearance_m = std::clamp(
       node.declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0),
       0.0, 100.0);

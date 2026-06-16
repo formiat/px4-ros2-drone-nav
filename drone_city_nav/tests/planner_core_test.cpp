@@ -178,6 +178,67 @@ TEST(AStarPlanner, ClearanceCostDoesNotDoubleCountInflation) {
                                   [](const GridIndex cell) { return cell.y == 3; }));
 }
 
+TEST(PlannerCore, DetourLimitFallsBackToShortestSafePath) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(0.0);
+
+  PlannerCoreConfig config{};
+  config.astar.obstacle_clearance_cost_radius_m = 3.0;
+  config.astar.obstacle_clearance_cost_weight = 8.0;
+  config.comfort_path_max_detour_ratio = 0.05;
+
+  const GridIndex start{1, 1};
+  const GridIndex goal{18, 1};
+  const auto result = PlannerCore{config}.computePath(grid, grid.cellCenter(start),
+                                                      grid.cellCenter(goal));
+
+  if (!result.has_value()) {
+    ADD_FAILURE() << "PlannerCore did not return a path";
+    return;
+  }
+  const PathComputationResult& path_result = *result;
+  EXPECT_TRUE(path_result.comfort_path_detour_limited);
+  EXPECT_FALSE(path_result.comfort_path_selected);
+  EXPECT_NEAR(path_result.shortest_path_length_m, 17.0, 1.0e-9);
+  EXPECT_GT(path_result.comfort_path_length_m, path_result.comfort_path_length_limit_m);
+  EXPECT_TRUE(std::ranges::all_of(path_result.astar.path,
+                                  [](const GridIndex cell) { return cell.y == 1; }));
+}
+
+TEST(PlannerCore, DetourLimitAllowsComfortPathWithinBudget) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(0.0);
+
+  PlannerCoreConfig config{};
+  config.astar.obstacle_clearance_cost_radius_m = 3.0;
+  config.astar.obstacle_clearance_cost_weight = 8.0;
+  config.comfort_path_max_detour_ratio = 1.0;
+
+  const GridIndex start{1, 1};
+  const GridIndex goal{18, 1};
+  const auto result = PlannerCore{config}.computePath(grid, grid.cellCenter(start),
+                                                      grid.cellCenter(goal));
+
+  if (!result.has_value()) {
+    ADD_FAILURE() << "PlannerCore did not return a path";
+    return;
+  }
+  const PathComputationResult& path_result = *result;
+  EXPECT_TRUE(path_result.comfort_path_detour_limited);
+  EXPECT_TRUE(path_result.comfort_path_selected);
+  EXPECT_LE(path_result.comfort_path_length_m, path_result.comfort_path_length_limit_m);
+  const auto farthest_from_wall = std::ranges::max_element(
+      path_result.astar.path, {}, [](const GridIndex cell) { return cell.y; });
+  ASSERT_NE(farthest_from_wall, path_result.astar.path.end());
+  EXPECT_GE(farthest_from_wall->y, 3);
+}
+
 TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 12, 8}};
   const std::vector<GridIndex> occupied_cells{

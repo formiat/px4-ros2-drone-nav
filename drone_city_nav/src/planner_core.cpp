@@ -10,6 +10,7 @@ namespace {
 
 constexpr double kTinyDistanceSqM = 1.0e-12;
 constexpr double kTurnAngleThresholdRad = 1.0e-3;
+constexpr double kDetourLengthToleranceM = 1.0e-6;
 
 struct UnitDirection2D {
   double x{0.0};
@@ -33,6 +34,30 @@ normalizedClearanceDiagnosticRadiusM(const double configured_radius_m) noexcept 
   const double dot =
       std::clamp(previous.x * current.x + previous.y * current.y, -1.0, 1.0);
   return std::acos(dot) > kTurnAngleThresholdRad;
+}
+
+[[nodiscard]] bool hasComfortCost(const AStarConfig& config) noexcept {
+  return config.obstacle_clearance_cost_weight > 0.0 || config.turn_cost_weight > 0.0 ||
+         (config.evasive_maneuvering_enabled &&
+          config.evasive_maneuvering_straight_cost_weight > 0.0);
+}
+
+[[nodiscard]] AStarConfig shortestPathConfig(AStarConfig config) noexcept {
+  config.obstacle_clearance_cost_radius_m = 0.0;
+  config.obstacle_clearance_cost_weight = 0.0;
+  config.turn_cost_weight = 0.0;
+  config.evasive_maneuvering_enabled = false;
+  config.evasive_maneuvering_straight_cost_weight = 0.0;
+  return config;
+}
+
+[[nodiscard]] double detourLengthLimitM(const double shortest_length_m,
+                                        const double max_detour_ratio) noexcept {
+  if (!std::isfinite(shortest_length_m) || shortest_length_m < 0.0 ||
+      !(max_detour_ratio > 0.0)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return shortest_length_m * (1.0 + max_detour_ratio);
 }
 
 void addPathSegmentMetrics(PathMetrics& metrics,
@@ -380,10 +405,41 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
     return std::nullopt;
   }
 
-  result.astar = planner_.plan(grid, *result.unblocked_start_cell,
-                               *result.unblocked_goal_cell, config_.astar);
-  if (!result.astar.success) {
-    return std::nullopt;
+  const bool detour_limited =
+      config_.comfort_path_max_detour_ratio > 0.0 && hasComfortCost(config_.astar);
+  if (detour_limited) {
+    const AStarResult shortest_path =
+        planner_.plan(grid, *result.unblocked_start_cell, *result.unblocked_goal_cell,
+                      shortestPathConfig(config_.astar));
+    if (!shortest_path.success) {
+      return std::nullopt;
+    }
+
+    result.comfort_path_detour_limited = true;
+    result.shortest_path_length_m = gridPathMetrics(grid, shortest_path.path).length_m;
+    result.comfort_path_length_limit_m = detourLengthLimitM(
+        result.shortest_path_length_m, config_.comfort_path_max_detour_ratio);
+
+    const AStarResult comfort_path = planner_.plan(
+        grid, *result.unblocked_start_cell, *result.unblocked_goal_cell, config_.astar);
+    result.comfort_path_length_m =
+        comfort_path.success ? gridPathMetrics(grid, comfort_path.path).length_m
+                             : std::numeric_limits<double>::infinity();
+
+    if (comfort_path.success &&
+        result.comfort_path_length_m <=
+            result.comfort_path_length_limit_m + kDetourLengthToleranceM) {
+      result.astar = comfort_path;
+      result.comfort_path_selected = true;
+    } else {
+      result.astar = shortest_path;
+    }
+  } else {
+    result.astar = planner_.plan(grid, *result.unblocked_start_cell,
+                                 *result.unblocked_goal_cell, config_.astar);
+    if (!result.astar.success) {
+      return std::nullopt;
+    }
   }
 
   result.smoothed_cells = smoothPath(grid, result.astar.path, config_.smoothing);

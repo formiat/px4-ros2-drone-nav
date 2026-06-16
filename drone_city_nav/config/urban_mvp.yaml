@@ -109,6 +109,7 @@ planner_node:
     astar_obstacle_clearance_cost_radius_m: 5.0
     astar_obstacle_clearance_cost_weight: 24.0
     astar_turn_cost_weight: 2.5
+    astar_comfort_max_detour_ratio: 0.10
     astar_evasive_maneuvering_enabled: false
     astar_evasive_maneuvering_straight_cost_weight: 2.5
     path_smoothing_min_obstacle_clearance_m: 5.0
