@@ -112,10 +112,12 @@ Repo-approved commands из `README.md`, `CONTRIBUTING.md`, `Makefile`:
 - Full mission validation, documented in repo workflow and existing scripts:
   - `HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=<seconds> ./scripts/run_city_mvp.sh`
 
-Для долгих команд в рамках оркестратора использовать `/home/formi/.local/bin/runlim`, например:
+Для долгих команд в рамках оркестратора использовать `/home/formi/.local/bin/runlim`.
+Локальный `runlim` имеет интерфейс `systemd-run`; не использовать `-t` как timeout,
+потому что здесь `-t` означает `--pty`. Проверенный базовый синтаксис:
 
 ```bash
-/home/formi/.local/bin/runlim -t 300 -- make test
+/home/formi/.local/bin/runlim -- make test
 ```
 
 Если проверка запускается внутри Docker dev image без интерактивного shell, использовать тот же контейнерный шаблон, что `scripts/dev_shell.sh`, и оборачивать внешний `docker run ... ./scripts/check_cpp_quality.sh` через `runlim`.
@@ -549,32 +551,32 @@ Repo-approved commands из `README.md`, `CONTRIBUTING.md`, `Makefile`:
 
 ```bash
 ./scripts/format_cpp_changed.sh
-/home/formi/.local/bin/runlim -t 300 -- make build
-/home/formi/.local/bin/runlim -t 300 -- ctest --test-dir build/drone_city_nav --output-on-failure -R '<relevant_test_regex>'
+/home/formi/.local/bin/runlim -- make build
+/home/formi/.local/bin/runlim -- ctest --test-dir build/drone_city_nav --output-on-failure -R '<relevant_test_regex>'
 ```
 
 Перед финальным commit/перед сдачей:
 
 ```bash
-/home/formi/.local/bin/runlim -t 600 -- ./scripts/check_cpp_quality.sh
+/home/formi/.local/bin/runlim -- ./scripts/check_cpp_quality.sh
 ```
 
 Если из-за существующего build dir с `/workspace` host/container path mismatch `check_cpp_quality.sh` падает на host, запускать ту же команду внутри dev container по шаблону `scripts/dev_shell.sh`, но внешний `docker run ... ./scripts/check_cpp_quality.sh` обернуть в:
 
 ```bash
-/home/formi/.local/bin/runlim -t 900 -- docker run ...
+/home/formi/.local/bin/runlim -- docker run ...
 ```
 
 После тяжёлого изменения planner/offboard поведения:
 
 ```bash
-/home/formi/.local/bin/runlim -t 420 -- bash -lc 'HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh'
+/home/formi/.local/bin/runlim -- bash -lc 'HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh'
 ```
 
 После финального объединения всех refactor steps, если окружение симуляции доступно:
 
 ```bash
-/home/formi/.local/bin/runlim -t 600 -- bash -lc 'HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=240 ./scripts/run_city_mvp.sh'
+/home/formi/.local/bin/runlim -- bash -lc 'HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=240 ./scripts/run_city_mvp.sh'
 ```
 
 Если GUI/RViz не нужен, не запускать GUI. Ручная GUI проверка — только дополнительный fallback, не замена автотестам.
@@ -588,8 +590,8 @@ Repo-approved commands из `README.md`, `CONTRIBUTING.md`, `Makefile`:
 Команды:
 
 ```bash
-/home/formi/.local/bin/runlim -t 300 -- make build
-/home/formi/.local/bin/runlim -t 300 -- ctest --test-dir build/drone_city_nav --output-on-failure
+/home/formi/.local/bin/runlim -- make build
+/home/formi/.local/bin/runlim -- ctest --test-dir build/drone_city_nav --output-on-failure
 ```
 
 Если build уже валиден и изменяется только план/документация, допустимо ограничиться:
@@ -611,8 +613,8 @@ git diff --check
 
 ```bash
 ./scripts/format_cpp_changed.sh
-/home/formi/.local/bin/runlim -t 300 -- make build
-/home/formi/.local/bin/runlim -t 300 -- ctest --test-dir build/drone_city_nav --output-on-failure -R 'planner_core|offboard_path_follower|debug_image|lidar_debug_renderer|lidar_snapshot_writer|lidar_radar_markers'
+/home/formi/.local/bin/runlim -- make build
+/home/formi/.local/bin/runlim -- ctest --test-dir build/drone_city_nav --output-on-failure -R 'planner_core|offboard_path_follower|debug_image|lidar_debug_renderer|lidar_snapshot_writer|lidar_radar_markers'
 ```
 
 Покрытие:
@@ -628,25 +630,25 @@ git diff --check
 Обязательные проверки:
 
 ```bash
-/home/formi/.local/bin/runlim -t 600 -- ./scripts/check_cpp_quality.sh
+/home/formi/.local/bin/runlim -- ./scripts/check_cpp_quality.sh
 ```
 
 Если изменение затронуло runtime поведение planner/offboard/lidar debug:
 
 ```bash
-/home/formi/.local/bin/runlim -t 420 -- bash -lc 'HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh'
+/home/formi/.local/bin/runlim -- bash -lc 'HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh'
 ```
 
 Если изменение затронуло mission completion, path reuse, target follower или emergency/hold behavior:
 
 ```bash
-/home/formi/.local/bin/runlim -t 600 -- bash -lc 'HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=240 ./scripts/run_city_mvp.sh'
+/home/formi/.local/bin/runlim -- bash -lc 'HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=240 ./scripts/run_city_mvp.sh'
 ```
 
 Если менялись lidar snapshots:
 
 ```bash
-/home/formi/.local/bin/runlim -t 120 -- python3 scripts/analyze_lidar_projection_snapshots.py log/lidar_debug/snapshots.jsonl --static-map drone_city_nav/worlds/generated_city.map2d
+/home/formi/.local/bin/runlim -- python3 scripts/analyze_lidar_projection_snapshots.py log/lidar_debug/snapshots.jsonl --static-map drone_city_nav/worlds/generated_city.map2d
 ```
 
 # Risks and tradeoffs
