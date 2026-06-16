@@ -129,10 +129,6 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
-bool_is_false() {
-  [[ "$1" == "false" || "$1" == "0" ]]
-}
-
 set +u
 source "/opt/ros/${ros_distro}/setup.bash"
 source /opt/px4_msgs_ws/install/setup.bash
@@ -290,155 +286,24 @@ print_log_tail() {
     | tail -n 80 >&2 || true
 }
 
-require_log_pattern() {
-  local label="$1"
-  local file="$2"
-  local pattern="$3"
-  if grep -Eq "${pattern}" "${file}"; then
-    echo "OK: ${label}"
-    return 0
-  fi
-
-  echo "FAIL: ${label}" >&2
-  return 1
-}
-
-skip_log_check() {
-  local label="$1"
-  local reason="$2"
-  echo "SKIP: ${label}: ${reason}"
-}
-
-require_source_value() {
-  local label="$1"
-  local source_name="$2"
-  local expected_value="$3"
-
-  if [[ -z "${expected_value}" ]]; then
-    skip_log_check "${label}" "source value comes from custom params file"
-    return 0
-  fi
-
-  require_log_pattern "${label}" "${ros_log_file}" \
-    "Planner obstacle sources: .*${source_name}=${expected_value}"
-}
-
 check_headless_run() {
-  local failed=0
-
-  require_log_pattern "Gazebo world is ready" "${px4_log_file}" \
-    "Gazebo world is ready" || failed=1
-  require_log_pattern "PX4 local position is valid" "${ros_log_file}" \
-    "First valid PX4 local position" || failed=1
-
-  if bool_is_true "${expected_obstacle_memory}"; then
-    require_log_pattern "lidar scans are received by obstacle memory" \
-      "${ros_log_file}" "First lidar scan" || failed=1
-  elif bool_is_true "${expected_current_lidar}"; then
-    require_log_pattern "lidar scans are received by planner" \
-      "${ros_log_file}" "First planner lidar scan" || failed=1
-  elif bool_is_false "${expected_obstacle_memory}" &&
-    bool_is_false "${expected_current_lidar}"; then
-    skip_log_check "lidar scans are received" \
-      "static-only source configuration does not require lidar data"
-  else
-    require_log_pattern "lidar scans are received" "${ros_log_file}" \
-      "First lidar scan|First planner lidar scan|LIDAR_DEBUG snapshot=" || failed=1
-  fi
-
-  if bool_is_true "${expected_obstacle_memory}"; then
-    require_log_pattern "obstacle memory receives lidar" "${ros_log_file}" \
-      "Obstacle memory update:" || failed=1
-    require_log_pattern "obstacle memory contributes to planning" "${ros_log_file}" \
-      "memory\\[enabled=true" || failed=1
-  elif bool_is_false "${expected_obstacle_memory}"; then
-    require_log_pattern "obstacle memory source is disabled" "${ros_log_file}" \
-      "Obstacle memory mapping is disabled|Obstacle memory ready: enabled=false" ||
-      failed=1
-    require_log_pattern "obstacle memory is disabled in planning" "${ros_log_file}" \
-      "memory\\[enabled=false|Planner obstacle sources: .*memory=false" ||
-      failed=1
-  else
-    skip_log_check "obstacle memory source state" \
-      "source value comes from custom params file"
-  fi
-
-  require_log_pattern "planner obstacle sources are logged" "${ros_log_file}" \
-    "Planner obstacle sources:" || failed=1
-  require_source_value "static source value is logged" "static" \
-    "${expected_static_map}" || failed=1
-  require_source_value "memory source value is logged" "memory" \
-    "${expected_obstacle_memory}" || failed=1
-  require_source_value "current lidar source value is logged" "current_lidar" \
-    "${expected_current_lidar}" || failed=1
-
-  if bool_is_true "${expected_static_map}"; then
-    require_log_pattern "static city map is loaded" "${ros_log_file}" \
-      "Static city map loaded:" || failed=1
-    require_log_pattern "static map contributes to planning" "${ros_log_file}" \
-      "static\\[enabled=true loaded=true used=true|Planner obstacle sources: static=true" ||
-      failed=1
-  elif bool_is_false "${expected_static_map}"; then
-    require_log_pattern "static map is disabled in planning" "${ros_log_file}" \
-      "static\\[enabled=false" || failed=1
-  else
-    skip_log_check "static map source state" \
-      "source value comes from custom params file"
-  fi
-
-  if bool_is_true "${expected_current_lidar}"; then
-    require_log_pattern "current lidar contributes to planning" "${ros_log_file}" \
-      "current_lidar\\[enabled=true used=true" || failed=1
-  elif bool_is_false "${expected_current_lidar}"; then
-    require_log_pattern "current lidar is disabled in planning" "${ros_log_file}" \
-      "current_lidar\\[enabled=false used=false|Planner obstacle sources: .*current_lidar=false" ||
-      failed=1
-  else
-    skip_log_check "current lidar source state" \
-      "source value comes from custom params file"
-  fi
-
-  require_log_pattern "planner publishes a path" "${ros_log_file}" \
-    "Published path: waypoints=[1-9]" || failed=1
-  require_log_pattern "offboard command is sent" "${ros_log_file}" \
-    "Sent PX4 command: VEHICLE_CMD_DO_SET_MODE" || failed=1
-  require_log_pattern "arm command is sent" "${ros_log_file}" \
-    "Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM" || failed=1
-  require_log_pattern "vehicle reaches armed offboard state" "${ros_log_file}" \
-    "Offboard summary: .*armed=true.*offboard=true" || failed=1
-  if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
-    require_log_pattern "lidar debug snapshots are written" "${ros_log_file}" \
-      "LIDAR_DEBUG snapshot=" || failed=1
-  fi
-
-  if grep -Eq "MISSION_RESULT success=false" "${ros_log_file}"; then
-    if [[ -n "${mission_check}" ]] || ! bool_is_true "${allow_mission_failure}"; then
-      echo "FAIL: mission monitor reported failure" >&2
-      failed=1
-    else
-      echo "WARN: mission monitor reported failure (allowed by ALLOW_MISSION_FAILURE=true)"
-    fi
-  fi
-
+  local validation_args=(
+    --ros-log "${ros_log_file}"
+    --px4-log "${px4_log_file}"
+    --expected-static "${expected_static_map}"
+    --expected-memory "${expected_obstacle_memory}"
+    --expected-current-lidar "${expected_current_lidar}"
+    --enable-lidar-debug "${enable_lidar_debug}"
+  )
   if [[ -n "${mission_check}" ]]; then
-    require_log_pattern "mission monitor verifies complete A-to-B flight" \
-      "${ros_log_file}" "MISSION_RESULT success=true" || failed=1
+    validation_args+=(--mission-check)
+  fi
+  if bool_is_true "${allow_mission_failure}"; then
+    validation_args+=(--allow-mission-failure)
   fi
 
-  if grep -Eqi \
-    "Sensor [0-9]+ missing|Accel Sensor [0-9]+ missing|Gyro Sensor [0-9]+ missing|barometer [0-9]+ missing|Found 0 compass|Timed out waiting for Gazebo world|gz_bridge failed|Attitude failure" \
-    "${px4_log_file}"; then
-    if [[ -n "${mission_check}" ]] || ! bool_is_true "${allow_mission_failure}"; then
-      echo "FAIL: PX4 log contains critical simulator/preflight errors" >&2
-      failed=1
-    else
-      echo "WARN: PX4 log contains critical simulator/preflight errors (allowed by ALLOW_MISSION_FAILURE=true)"
-    fi
-  else
-    echo "OK: no critical PX4 simulator/preflight errors found"
-  fi
-
-  if [[ "${failed}" -ne 0 ]]; then
+  if ! python3 "${repo_root}/scripts/validate_city_mvp_headless.py" \
+    "${validation_args[@]}"; then
     print_log_tail "Gazebo" "${gz_log_file}"
     print_log_tail "PX4 SITL" "${px4_log_file}"
     print_log_tail "ROS launch" "${ros_log_file}"
