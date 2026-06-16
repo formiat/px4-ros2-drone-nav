@@ -129,6 +129,7 @@ px4_offboard_node:
     acceptance_radius_m: 1.0
     max_setpoint_distance_m: 12.0
     max_commanded_target_step_m: 1.0
+    min_commanded_target_lead_m: 4.0
     desired_speed_mps: 5.0
     max_accel_mps2: 2.5
     min_command_speed_mps: 0.0

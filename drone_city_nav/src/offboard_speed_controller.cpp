@@ -221,7 +221,8 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   }
   if (finiteNonNegative(input.actual_speed_mps) &&
       input.actual_speed_mps > allowed_speed + max_speed_delta) {
-    requested_speed = 0.0;
+    requested_speed =
+        std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
     reason = SpeedLimitReason::kTrackingOverspeed;
   }
   if (step_cap_speed + kEpsilon < requested_speed) {

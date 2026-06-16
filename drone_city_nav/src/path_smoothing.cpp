@@ -42,6 +42,38 @@ namespace {
          config.minimum_obstacle_clearance_m;
 }
 
+[[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
+  return lhs.x * rhs.y - lhs.y * rhs.x;
+}
+
+[[nodiscard]] double dot(const Point2 lhs, const Point2 rhs) noexcept {
+  return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+[[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
+  return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
+}
+
+[[nodiscard]] bool pointLiesOnSegmentLine(const Point2 segment_start,
+                                          const Point2 point, const Point2 segment_end,
+                                          const double lateral_tolerance_m) {
+  const Point2 segment = segment_end - segment_start;
+  const Point2 relative_point = point - segment_start;
+  const double segment_length_sq = segment.x * segment.x + segment.y * segment.y;
+  if (segment_length_sq <= std::numeric_limits<double>::epsilon()) {
+    return distance(segment_start, point) <= lateral_tolerance_m;
+  }
+
+  const double projection = dot(relative_point, segment);
+  if (projection < 0.0 || projection > segment_length_sq) {
+    return false;
+  }
+
+  const double lateral_error_m =
+      std::abs(cross(relative_point, segment)) / std::sqrt(segment_length_sq);
+  return lateral_error_m <= lateral_tolerance_m;
+}
+
 } // namespace
 
 bool hasLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
@@ -91,6 +123,35 @@ std::vector<Point2> cellsToPoints(const OccupancyGrid2D& grid,
     points.push_back(grid.cellCenter(cell));
   }
   return points;
+}
+
+std::vector<Point2> collapseCollinearPath(std::span<const Point2> path_points,
+                                          const double lateral_tolerance_m) {
+  if (path_points.size() <= 2U) {
+    return {path_points.begin(), path_points.end()};
+  }
+
+  const double tolerance_m = std::max(0.0, lateral_tolerance_m);
+  std::vector<Point2> collapsed;
+  collapsed.reserve(path_points.size());
+  collapsed.push_back(path_points.front());
+
+  for (std::size_t i = 1U; i + 1U < path_points.size(); ++i) {
+    const Point2 previous_kept = collapsed.back();
+    const Point2 current = path_points[i];
+    const Point2 next = path_points[i + 1U];
+    if (pointLiesOnSegmentLine(previous_kept, current, next, tolerance_m)) {
+      continue;
+    }
+    collapsed.push_back(current);
+  }
+
+  const Point2 last = path_points.back();
+  if (squaredDistance(collapsed.back(), last) >
+      std::numeric_limits<double>::epsilon()) {
+    collapsed.push_back(last);
+  }
+  return collapsed;
 }
 
 } // namespace drone_city_nav

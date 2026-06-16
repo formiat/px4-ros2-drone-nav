@@ -76,6 +76,10 @@ advanceWaypointIndex(std::span<const Point2> path, Point2 current_position,
                                            bool local_position_valid,
                                            double max_setpoint_distance_m,
                                            CommandTargetState& state);
+[[nodiscard]] Point2
+enforceMinimumTargetLead(Point2 command_target, Point2 desired_target,
+                         Point2 current_position, bool local_position_valid,
+                         double minimum_target_lead_m, double max_setpoint_distance_m);
 
 [[nodiscard]] double pathTurnAngleAtWaypoint(std::span<const Point2> path,
                                              std::size_t index, Point2 current_position,

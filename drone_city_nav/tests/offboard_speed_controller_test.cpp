@@ -124,18 +124,24 @@ TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
-TEST(OffboardSpeedController, ActualOverspeedRequestsBrake) {
+TEST(OffboardSpeedController, ActualOverspeedReducesCommandWithoutFullStop) {
   SpeedControllerConfig config = testConfig();
-  config.max_accel_mps2 = 2.0;
+  config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
+
+  (void)controller.update(cruiseInput());
+
+  config.max_accel_mps2 = 2.0;
+  controller.setConfig(config);
   SpeedControllerInput input = cruiseInput();
   input.local_clearance_m = 1.5;
   input.actual_speed_mps = 5.0;
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
+  EXPECT_NEAR(output.allowed_speed_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(output.requested_speed_mps, 1.8, 1.0e-9);
+  EXPECT_NEAR(output.target_step_m, 0.18, 1.0e-9);
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
 }
 

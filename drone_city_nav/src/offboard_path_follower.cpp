@@ -275,6 +275,40 @@ Point2 smoothedCommandTarget(const Point2 desired_target, const double target_st
                        max_setpoint_distance_m);
 }
 
+Point2 enforceMinimumTargetLead(const Point2 command_target,
+                                const Point2 desired_target,
+                                const Point2 current_position,
+                                const bool local_position_valid,
+                                const double minimum_target_lead_m,
+                                const double max_setpoint_distance_m) {
+  if (!local_position_valid || !(minimum_target_lead_m > 0.0) ||
+      !(max_setpoint_distance_m > 0.0)) {
+    return command_target;
+  }
+
+  const Point2 desired_vector{desired_target.x - current_position.x,
+                              desired_target.y - current_position.y};
+  const double desired_distance_m = std::hypot(desired_vector.x, desired_vector.y);
+  if (desired_distance_m <= kTinyDistanceM) {
+    return command_target;
+  }
+
+  const double required_lead_m =
+      std::min({minimum_target_lead_m, max_setpoint_distance_m, desired_distance_m});
+  const Point2 command_vector{command_target.x - current_position.x,
+                              command_target.y - current_position.y};
+  const double projected_command_lead_m =
+      (command_vector.x * desired_vector.x + command_vector.y * desired_vector.y) /
+      desired_distance_m;
+  if (projected_command_lead_m >= required_lead_m) {
+    return command_target;
+  }
+
+  const double scale = required_lead_m / desired_distance_m;
+  return Point2{current_position.x + (desired_target.x - current_position.x) * scale,
+                current_position.y + (desired_target.y - current_position.y) * scale};
+}
+
 double pathTurnAngleAtWaypoint(const std::span<const Point2> path,
                                const std::size_t index, const Point2 current_position,
                                const bool local_position_valid,

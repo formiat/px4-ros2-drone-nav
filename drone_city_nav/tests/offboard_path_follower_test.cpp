@@ -80,6 +80,46 @@ TEST(OffboardPathFollower, ZeroTargetStepFallsBackToHoldAtCurrentPosition) {
   EXPECT_NEAR(target.y, 2.0, 1.0e-9);
 }
 
+TEST(OffboardPathFollower, MinimumTargetLeadExtendsCloseCommandTarget) {
+  const Point2 target = enforceMinimumTargetLead(Point2{0.5, 0.0}, Point2{10.0, 0.0},
+                                                 Point2{0.0, 0.0}, true, 4.0, 12.0);
+
+  EXPECT_NEAR(target.x, 4.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, MinimumTargetLeadRespectsMaxSetpointDistance) {
+  const Point2 target = enforceMinimumTargetLead(Point2{0.5, 0.0}, Point2{10.0, 0.0},
+                                                 Point2{0.0, 0.0}, true, 4.0, 2.0);
+
+  EXPECT_NEAR(target.x, 2.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, MinimumTargetLeadReplacesBehindCommandTarget) {
+  const Point2 target = enforceMinimumTargetLead(Point2{-5.0, 0.0}, Point2{10.0, 0.0},
+                                                 Point2{0.0, 0.0}, true, 4.0, 12.0);
+
+  EXPECT_NEAR(target.x, 4.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, MinimumTargetLeadReplacesLateralCommandTarget) {
+  const Point2 target = enforceMinimumTargetLead(Point2{0.0, 5.0}, Point2{10.0, 0.0},
+                                                 Point2{0.0, 0.0}, true, 4.0, 12.0);
+
+  EXPECT_NEAR(target.x, 4.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, MinimumTargetLeadLeavesFarTargetUnchanged) {
+  const Point2 target = enforceMinimumTargetLead(Point2{5.0, 1.0}, Point2{10.0, 0.0},
+                                                 Point2{0.0, 0.0}, true, 4.0, 12.0);
+
+  EXPECT_NEAR(target.x, 5.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 1.0, 1.0e-9);
+}
+
 TEST(OffboardPathFollower, MissingLocalPositionInvalidatesCommandState) {
   CommandTargetState state{true, Point2{3.0, 0.0}};
 

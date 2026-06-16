@@ -33,6 +33,11 @@ namespace {
   return changes;
 }
 
+void expectPointNear(const Point2 actual, const Point2 expected) {
+  EXPECT_NEAR(actual.x, expected.x, 1.0e-9);
+  EXPECT_NEAR(actual.y, expected.y, 1.0e-9);
+}
+
 } // namespace
 
 TEST(OccupancyGrid2D, RayMarksFreeCellsAndOccupiedEndpoint) {
@@ -258,6 +263,36 @@ TEST(PathSmoothing, KeepsCollisionFreeSegments) {
   for (std::size_t i = 1; i < smoothed.size(); ++i) {
     EXPECT_TRUE(hasLineOfSight(grid, smoothed[i - 1U], smoothed[i]));
   }
+}
+
+TEST(PathSmoothing, CollapseCollinearPathRemovesStraightInteriorPoints) {
+  const std::vector<Point2> path{{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}, {3.0, 0.0}};
+
+  const std::vector<Point2> collapsed = collapseCollinearPath(path, 0.05);
+
+  ASSERT_EQ(collapsed.size(), 2U);
+  expectPointNear(collapsed[0], Point2{0.0, 0.0});
+  expectPointNear(collapsed[1], Point2{3.0, 0.0});
+}
+
+TEST(PathSmoothing, CollapseCollinearPathPreservesCorners) {
+  const std::vector<Point2> path{
+      {0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {2.0, 2.0}};
+
+  const std::vector<Point2> collapsed = collapseCollinearPath(path, 0.05);
+
+  ASSERT_EQ(collapsed.size(), 3U);
+  expectPointNear(collapsed[0], Point2{0.0, 0.0});
+  expectPointNear(collapsed[1], Point2{2.0, 0.0});
+  expectPointNear(collapsed[2], Point2{2.0, 2.0});
+}
+
+TEST(PathSmoothing, CollapseCollinearPathUsesLateralTolerance) {
+  const std::vector<Point2> nearly_straight_path{{0.0, 0.0}, {1.0, 0.02}, {2.0, 0.0}};
+  const std::vector<Point2> bent_path{{0.0, 0.0}, {1.0, 0.2}, {2.0, 0.0}};
+
+  EXPECT_EQ(collapseCollinearPath(nearly_straight_path, 0.05).size(), 2U);
+  EXPECT_EQ(collapseCollinearPath(bent_path, 0.05).size(), 3U);
 }
 
 TEST(PlannerCore, ComputePathAdjustsBlockedEndpoints) {

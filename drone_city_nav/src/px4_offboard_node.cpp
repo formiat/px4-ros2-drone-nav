@@ -67,6 +67,9 @@ public:
         declare_parameter<double>("max_setpoint_distance_m", 2.0), 0.5, 50.0);
     max_commanded_target_step_m_ = std::clamp(
         declare_parameter<double>("max_commanded_target_step_m", 0.25), 0.01, 10.0);
+    min_commanded_target_lead_m_ =
+        std::clamp(declare_parameter<double>("min_commanded_target_lead_m", 0.0), 0.0,
+                   max_setpoint_distance_m_);
     SpeedControllerConfig speed_config{};
     speed_config.max_commanded_target_step_m = max_commanded_target_step_m_;
     speed_config.desired_speed_mps = std::clamp(
@@ -197,33 +200,35 @@ public:
     last_command_time_ =
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
 
-    RCLCPP_INFO(
-        get_logger(),
-        "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-        "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
-        "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
-        "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
-        "dynamic_lookahead=%s lookahead_time=%.2fs "
-        "lookahead_range=[%.1f, %.1f] "
-        "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
-        "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
-        "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
-        "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
-        cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-        auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
-        face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
-        max_commanded_target_step_m_, speed_controller_.config().desired_speed_mps,
-        speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
-        dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
-        min_lookahead_distance_m_, max_lookahead_distance_m_,
-        speed_controller_.config().goal_slowdown_radius_m,
-        speed_controller_.config().turn_slowdown_angle_rad,
-        speed_controller_.config().narrow_clearance_slowdown_radius_m,
-        velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
-        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
-        static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
+    RCLCPP_INFO(get_logger(),
+                "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
+                "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
+                "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
+                "min_commanded_target_lead=%.1fm "
+                "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
+                "dynamic_lookahead=%s lookahead_time=%.2fs "
+                "lookahead_range=[%.1f, %.1f] "
+                "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
+                "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
+                "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
+                "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
+                "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
+                cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
+                auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
+                face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
+                max_commanded_target_step_m_, min_commanded_target_lead_m_,
+                speed_controller_.config().desired_speed_mps,
+                speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
+                dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
+                min_lookahead_distance_m_, max_lookahead_distance_m_,
+                speed_controller_.config().goal_slowdown_radius_m,
+                speed_controller_.config().turn_slowdown_angle_rad,
+                speed_controller_.config().narrow_clearance_slowdown_radius_m,
+                velocity_feedforward_enabled_ ? "true" : "false",
+                path_switch_hysteresis_m_, path_continuity_reuse_radius_m_,
+                path_continuity_max_target_distance_m_, mission_goal_.x,
+                mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+                static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -570,8 +575,14 @@ private:
     const Point2 desired_target = limitedTarget(currentTarget());
     const SpeedControllerInput speed_input = makeSpeedControllerInput();
     last_speed_output_ = speed_controller_.update(speed_input);
-    const Point2 target = smoothedCommandTarget(
+    const Point2 smoothed_target = smoothedCommandTarget(
         desired_target, last_speed_output_.target_step_m, speed_input.hold_position);
+    const Point2 target = last_speed_output_.requested_speed_mps > 0.0
+                              ? enforceMinimumTargetLead(
+                                    smoothed_target, desired_target, current_position_,
+                                    local_position_valid_, min_commanded_target_lead_m_,
+                                    max_setpoint_distance_m_)
+                              : smoothed_target;
     const float nan = std::numeric_limits<float>::quiet_NaN();
 
     px4_msgs::msg::TrajectorySetpoint msg;
@@ -984,6 +995,7 @@ private:
   double acceptance_radius_m_{1.5};
   double max_setpoint_distance_m_{2.0};
   double max_commanded_target_step_m_{0.25};
+  double min_commanded_target_lead_m_{0.0};
   double lookahead_distance_m_{6.0};
   double lookahead_time_s_{1.2};
   double min_lookahead_distance_m_{6.0};

@@ -41,6 +41,8 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
+constexpr double kPublishedPathCollinearityToleranceM = 0.05;
+
 } // namespace
 
 class PlannerNode final : public rclcpp::Node {
@@ -623,6 +625,18 @@ private:
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
+
+    const std::size_t dense_path_points = path_points.size();
+    path_points =
+        collapseCollinearPath(path_points, kPublishedPathCollinearityToleranceM);
+    if (path_points.size() != dense_path_points) {
+      RCLCPP_INFO(get_logger(),
+                  "%s path collinear waypoints collapsed: before=%zu after=%zu "
+                  "tolerance=%.2fm",
+                  source_label, dense_path_points, path_points.size(),
+                  kPublishedPathCollinearityToleranceM);
+    }
+
     std::size_t blocked_segment_index = 0U;
     if (!drone_city_nav::pathIsUnblocked(grid, path_points, &blocked_segment_index)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
