@@ -55,6 +55,10 @@ closestOffboardPathProjection(std::span<const Point2> path, Point2 current_posit
                                            const OffboardPathFollowerConfig& config,
                                            double desired_speed_mps);
 
+[[nodiscard]] Point2 targetOnPathAtDistance(std::span<const Point2> path,
+                                            Point2 current_position,
+                                            double path_distance_m);
+
 [[nodiscard]] std::size_t
 continuityWaypointIndex(std::span<const Point2> path, Point2 current_position,
                         Point2 previous_target, std::size_t candidate_index,

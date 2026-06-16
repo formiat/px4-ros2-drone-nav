@@ -12,7 +12,7 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr int kNoBlockedCellInRange = std::numeric_limits<int>::max();
+constexpr int kNoOccupiedCellInRange = std::numeric_limits<int>::max();
 constexpr int kDirectionCount = 8;
 constexpr int kDirectionStateCount = kDirectionCount + 1;
 constexpr int kStartDirectionState = kDirectionCount;
@@ -103,7 +103,7 @@ struct CompareOpenNode {
                                                  const int radius_cells) {
   ClearanceField field{};
   field.radius_cells = std::max(0, radius_cells);
-  field.distance_cells.assign(grid.cellCount(), kNoBlockedCellInRange);
+  field.distance_cells.assign(grid.cellCount(), kNoOccupiedCellInRange);
   if (field.radius_cells == 0) {
     return field;
   }
@@ -112,7 +112,7 @@ struct CompareOpenNode {
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
-      if (!grid.isBlocked(cell)) {
+      if (!grid.isOccupied(cell)) {
         continue;
       }
       field.distance_cells[grid.linearIndex(cell)] = 0;
@@ -176,13 +176,18 @@ struct CompareOpenNode {
   }
 
   const int distance_cells = field.distance_cells.at(grid.linearIndex(cell));
-  if (distance_cells == kNoBlockedCellInRange || distance_cells > field.radius_cells) {
+  if (distance_cells == kNoOccupiedCellInRange) {
+    return 0.0;
+  }
+
+  const double distance_m = static_cast<double>(distance_cells) * grid.resolution();
+  const double comfort_radius_m = config.obstacle_clearance_cost_radius_m;
+  if (!(comfort_radius_m > 0.0) || distance_m >= comfort_radius_m) {
     return 0.0;
   }
 
   const double normalized_proximity =
-      static_cast<double>(field.radius_cells + 1 - distance_cells) /
-      static_cast<double>(field.radius_cells + 1);
+      std::clamp((comfort_radius_m - distance_m) / comfort_radius_m, 0.0, 1.0);
   return config.obstacle_clearance_cost_weight * normalized_proximity;
 }
 

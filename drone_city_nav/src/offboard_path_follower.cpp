@@ -139,12 +139,26 @@ Point2 lookaheadTargetOnPath(const std::span<const Point2> path,
     return path.back();
   }
 
-  const auto projection = closestOffboardPathProjection(path, current_position);
-  if (!projection.has_value()) {
-    return path[waypoint_index];
+  return targetOnPathAtDistance(path, current_position,
+                                effectiveLookaheadDistanceM(config, desired_speed_mps));
+}
+
+Point2 targetOnPathAtDistance(const std::span<const Point2> path,
+                              const Point2 current_position,
+                              const double path_distance_m) {
+  if (path.empty()) {
+    return current_position;
+  }
+  if (path.size() == 1U) {
+    return path.front();
   }
 
-  double remaining_lookahead_m = effectiveLookaheadDistanceM(config, desired_speed_mps);
+  const auto projection = closestOffboardPathProjection(path, current_position);
+  if (!projection.has_value()) {
+    return path.front();
+  }
+
+  double remaining_lookahead_m = std::max(0.0, path_distance_m);
   Point2 segment_start = projection->point;
   for (std::size_t i = projection->segment_start_index; i + 1U < path.size(); ++i) {
     const Point2 segment_end = path[i + 1U];

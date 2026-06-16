@@ -157,6 +157,27 @@ TEST(AStarPlanner, ClearanceCostPrefersRouteFartherFromObstacleWall) {
   EXPECT_GE(farthest_from_wall->y, 3);
 }
 
+TEST(AStarPlanner, ClearanceCostDoesNotDoubleCountInflation) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(2.1);
+
+  AStarConfig config{};
+  config.obstacle_clearance_cost_radius_m = 3.0;
+  config.obstacle_clearance_cost_weight = 8.0;
+
+  const GridIndex start{1, 3};
+  const GridIndex goal{18, 3};
+  const AStarResult result = AStarPlanner{}.plan(grid, start, goal, config);
+
+  ASSERT_TRUE(result.success);
+  EXPECT_NEAR(result.total_cost, 17.0, 1.0e-9);
+  EXPECT_TRUE(std::ranges::all_of(result.path,
+                                  [](const GridIndex cell) { return cell.y == 3; }));
+}
+
 TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 12, 8}};
   const std::vector<GridIndex> occupied_cells{
@@ -243,6 +264,21 @@ TEST(PathSmoothing, RejectsShortcutTooCloseToObstacleWhenClearanceIsRequired) {
   PathSmoothingConfig config{};
   config.minimum_obstacle_clearance_m = 2.5;
   EXPECT_FALSE(hasLineOfSight(grid, GridIndex{1, 1}, GridIndex{18, 1}, config));
+}
+
+TEST(PathSmoothing, ClearanceRequirementDoesNotDoubleCountInflation) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(2.1);
+
+  PathSmoothingConfig config{};
+  config.minimum_obstacle_clearance_m = 3.0;
+  EXPECT_TRUE(hasLineOfSight(grid, GridIndex{1, 3}, GridIndex{18, 3}, config));
+
+  config.minimum_obstacle_clearance_m = 4.0;
+  EXPECT_FALSE(hasLineOfSight(grid, GridIndex{1, 3}, GridIndex{18, 3}, config));
 }
 
 TEST(PathSmoothing, KeepsCollisionFreeSegments) {

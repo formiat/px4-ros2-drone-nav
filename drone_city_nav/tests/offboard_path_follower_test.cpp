@@ -54,6 +54,24 @@ TEST(OffboardPathFollower, LookaheadFollowsPathWhenDetourMovesAwayFromGoal) {
   EXPECT_EQ(index, 1U);
 }
 
+TEST(OffboardPathFollower, TargetAtDistanceFollowsPolylineAroundCorner) {
+  const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {5.0, 5.0}};
+
+  const Point2 target = targetOnPathAtDistance(path, Point2{0.0, 0.0}, 7.0);
+
+  EXPECT_NEAR(target.x, 5.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 2.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, TargetAtDistanceStartsFromClosestProjection) {
+  const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+
+  const Point2 target = targetOnPathAtDistance(path, Point2{4.0, 1.0}, 3.0);
+
+  EXPECT_NEAR(target.x, 7.0, 1.0e-9);
+  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
+}
+
 TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
   const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {30.0, 0.0}};
 

@@ -75,7 +75,7 @@ planner_node:
     stable_path_reuse_max_deviation_m: 12.0
     stable_path_goal_tolerance_m: 3.0
     stable_path_blocking_occupied_length_m: 1.0
-    stable_path_blocking_replan_horizon_m: 20.0
+    stable_path_blocking_replan_horizon_m: 12.0
     stable_path_blocked_confirmations_required: 1
     max_initial_lateral_deviation_m: 14.0
     nearest_free_radius_cells: 30
@@ -111,7 +111,7 @@ planner_node:
     astar_turn_cost_weight: 2.5
     astar_evasive_maneuvering_enabled: false
     astar_evasive_maneuvering_straight_cost_weight: 2.5
-    path_smoothing_min_obstacle_clearance_m: 4.0
+    path_smoothing_min_obstacle_clearance_m: 5.0
     replan_period_s: 0.5
 
 px4_offboard_node:
@@ -139,9 +139,9 @@ px4_offboard_node:
     braking_safety_margin_m: 1.0
     turn_slowdown_angle_rad: 0.35
     turn_slowdown_min_speed_mps: 0.8
-    narrow_clearance_slowdown_radius_m: 10.0
+    narrow_clearance_slowdown_radius_m: 12.0
     narrow_clearance_min_speed_mps: 0.8
-    clearance_braking_margin_m: 3.0
+    clearance_braking_margin_m: 3.2
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     velocity_feedforward_enabled: true
@@ -153,6 +153,10 @@ px4_offboard_node:
     path_switch_hysteresis_m: 6.0
     path_continuity_reuse_radius_m: 12.0
     path_continuity_max_target_distance_m: 20.0
+    target_segment_safety_check_enabled: true
+    clearance_escape_enabled: true
+    clearance_escape_step_m: 0.5
+    clearance_escape_min_improvement_m: 0.05
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true

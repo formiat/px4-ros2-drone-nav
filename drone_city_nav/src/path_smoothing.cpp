@@ -7,9 +7,9 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] double nearestBlockedDistanceM(const OccupancyGrid2D& grid,
-                                             const GridIndex cell,
-                                             const double max_distance_m) {
+[[nodiscard]] double nearestOccupiedDistanceM(const OccupancyGrid2D& grid,
+                                              const GridIndex cell,
+                                              const double max_distance_m) {
   if (!(max_distance_m > 0.0) || !(grid.resolution() > 0.0)) {
     return std::numeric_limits<double>::infinity();
   }
@@ -20,7 +20,7 @@ namespace {
   for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
     for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
       const GridIndex candidate{cell.x + dx, cell.y + dy};
-      if (!grid.contains(candidate) || !grid.isBlocked(candidate)) {
+      if (!grid.contains(candidate) || !grid.isOccupied(candidate)) {
         continue;
       }
       nearest_distance_m =
@@ -38,7 +38,7 @@ namespace {
   if (!(config.minimum_obstacle_clearance_m > 0.0)) {
     return true;
   }
-  return nearestBlockedDistanceM(grid, cell, config.minimum_obstacle_clearance_m) >=
+  return nearestOccupiedDistanceM(grid, cell, config.minimum_obstacle_clearance_m) >=
          config.minimum_obstacle_clearance_m;
 }
 

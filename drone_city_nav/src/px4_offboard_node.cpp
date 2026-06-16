@@ -31,6 +31,21 @@ namespace {
 constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
 constexpr double kControllerPeriodS = 0.1;
 constexpr double kTinyDistanceM = 1.0e-6;
+constexpr std::int8_t kInflatedOccupancyValue = 80;
+constexpr std::int8_t kOccupiedOccupancyValue = 100;
+
+struct TargetSegmentSafety {
+  bool grid_available{false};
+  bool allowed{true};
+  bool escape{false};
+  bool start_blocked{false};
+  bool start_occupied{false};
+  bool end_blocked{false};
+  std::size_t blocked_cells{0U};
+  std::size_t occupied_cells{0U};
+  double start_clearance_m{std::numeric_limits<double>::quiet_NaN()};
+  double end_clearance_m{std::numeric_limits<double>::quiet_NaN()};
+};
 
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
@@ -129,6 +144,16 @@ public:
     path_continuity_max_target_distance_m_ = std::clamp(
         declare_parameter<double>("path_continuity_max_target_distance_m", 20.0), 0.0,
         500.0);
+    target_segment_safety_check_enabled_ =
+        declare_parameter<bool>("target_segment_safety_check_enabled", true);
+    clearance_escape_enabled_ =
+        declare_parameter<bool>("clearance_escape_enabled", true);
+    clearance_escape_step_m_ =
+        std::clamp(declare_parameter<double>("clearance_escape_step_m", 0.5), 0.0,
+                   max_setpoint_distance_m_);
+    clearance_escape_min_improvement_m_ = std::clamp(
+        declare_parameter<double>("clearance_escape_min_improvement_m", 0.05), 0.0,
+        10.0);
     telemetry_log_period_ns_ = static_cast<std::int64_t>(
         std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
                    60.0) *
@@ -218,7 +243,9 @@ public:
         "narrow_clearance_radius=%.1fm clearance_braking_margin=%.1fm "
         "velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
+        "path_continuity_max_target_distance=%.1fm target_safety=%s "
+        "clearance_escape=%s clearance_escape_step=%.2fm "
+        "clearance_escape_min_improvement=%.2fm mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
@@ -234,7 +261,10 @@ public:
         speed_controller_.config().clearance_braking_margin_m,
         velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        target_segment_safety_check_enabled_ ? "true" : "false",
+        clearance_escape_enabled_ ? "true" : "false", clearance_escape_step_m_,
+        clearance_escape_min_improvement_m_, mission_goal_.x, mission_goal_.y,
+        px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
@@ -578,16 +608,9 @@ private:
     const Point2 desired_target = limitedTarget(currentTarget());
     const SpeedControllerInput speed_input = makeSpeedControllerInput();
     last_speed_output_ = speed_controller_.update(speed_input);
-    const Point2 smoothed_target = smoothedCommandTarget(
-        desired_target, last_speed_output_.target_step_m, speed_input.hold_position);
-    const double minimum_target_lead_m =
-        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps);
-    const Point2 target =
-        last_speed_output_.requested_speed_mps > 0.0
-            ? enforceMinimumTargetLead(smoothed_target, desired_target,
-                                       current_position_, local_position_valid_,
-                                       minimum_target_lead_m, max_setpoint_distance_m_)
-            : smoothed_target;
+    const Point2 target = selectSafeCommandTarget(desired_target, speed_input);
+    commanded_target_ = target;
+    commanded_target_valid_ = local_position_valid_;
     last_published_target_ = target;
     last_published_target_valid_ = true;
     const float nan = std::numeric_limits<float>::quiet_NaN();
@@ -675,6 +698,241 @@ private:
         target, current_position_, local_position_valid_, max_setpoint_distance_m_);
   }
 
+  [[nodiscard]] double occupancyGridResolutionM() const noexcept {
+    return static_cast<double>(occupancy_grid_.info.resolution);
+  }
+
+  [[nodiscard]] std::optional<GridIndex> occupancyGridCell(const Point2 point) const {
+    if (!occupancyGridFresh()) {
+      return std::nullopt;
+    }
+
+    const double resolution = occupancyGridResolutionM();
+    const double origin_x = occupancy_grid_.info.origin.position.x;
+    const double origin_y = occupancy_grid_.info.origin.position.y;
+    const auto width = static_cast<int>(occupancy_grid_.info.width);
+    const auto height = static_cast<int>(occupancy_grid_.info.height);
+    const GridIndex cell{
+        static_cast<int>(std::floor((point.x - origin_x) / resolution)),
+        static_cast<int>(std::floor((point.y - origin_y) / resolution))};
+    if (cell.x < 0 || cell.y < 0 || cell.x >= width || cell.y >= height) {
+      return std::nullopt;
+    }
+    return cell;
+  }
+
+  [[nodiscard]] std::int8_t occupancyGridValue(const GridIndex cell) const {
+    const auto width = static_cast<int>(occupancy_grid_.info.width);
+    const std::size_t data_index =
+        static_cast<std::size_t>(cell.y) * static_cast<std::size_t>(width) +
+        static_cast<std::size_t>(cell.x);
+    return occupancy_grid_.data.at(data_index);
+  }
+
+  [[nodiscard]] bool occupancyGridCellBlocked(const GridIndex cell) const {
+    return occupancyGridValue(cell) >= kInflatedOccupancyValue;
+  }
+
+  [[nodiscard]] bool occupancyGridCellOccupied(const GridIndex cell) const {
+    return occupancyGridValue(cell) >= kOccupiedOccupancyValue;
+  }
+
+  [[nodiscard]] std::vector<GridIndex>
+  occupancyGridCellsOnLine(const GridIndex start, const GridIndex end) const {
+    std::vector<GridIndex> cells;
+
+    int x0 = start.x;
+    int y0 = start.y;
+    const int x1 = end.x;
+    const int y1 = end.y;
+    const int dx = std::abs(x1 - x0);
+    const int sx = x0 < x1 ? 1 : -1;
+    const int dy = -std::abs(y1 - y0);
+    const int sy = y0 < y1 ? 1 : -1;
+    int error = dx + dy;
+
+    const auto width = static_cast<int>(occupancy_grid_.info.width);
+    const auto height = static_cast<int>(occupancy_grid_.info.height);
+    while (true) {
+      if (x0 >= 0 && y0 >= 0 && x0 < width && y0 < height) {
+        cells.push_back(GridIndex{x0, y0});
+      }
+      if (x0 == x1 && y0 == y1) {
+        break;
+      }
+
+      const int doubled_error = 2 * error;
+      if (doubled_error >= dy) {
+        error += dy;
+        x0 += sx;
+      }
+      if (doubled_error <= dx) {
+        error += dx;
+        y0 += sy;
+      }
+    }
+
+    return cells;
+  }
+
+  [[nodiscard]] TargetSegmentSafety
+  evaluateTargetSegmentSafety(const Point2 start, const Point2 end,
+                              const bool allow_escape) const {
+    TargetSegmentSafety safety{};
+    if (!target_segment_safety_check_enabled_ || !occupancyGridFresh()) {
+      safety.grid_available = false;
+      safety.allowed = true;
+      return safety;
+    }
+    safety.grid_available = true;
+
+    const auto start_cell = occupancyGridCell(start);
+    const auto end_cell = occupancyGridCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      safety.allowed = false;
+      return safety;
+    }
+
+    safety.start_blocked = occupancyGridCellBlocked(*start_cell);
+    safety.start_occupied = occupancyGridCellOccupied(*start_cell);
+    safety.end_blocked = occupancyGridCellBlocked(*end_cell);
+
+    const std::vector<GridIndex> segment_cells =
+        occupancyGridCellsOnLine(*start_cell, *end_cell);
+    for (const GridIndex cell : segment_cells) {
+      if (occupancyGridCellOccupied(cell)) {
+        ++safety.occupied_cells;
+      }
+      if (occupancyGridCellBlocked(cell)) {
+        ++safety.blocked_cells;
+      }
+    }
+
+    if (safety.occupied_cells > 0U) {
+      safety.allowed = false;
+      return safety;
+    }
+    if (safety.blocked_cells == 0U) {
+      safety.allowed = true;
+      return safety;
+    }
+
+    safety.start_clearance_m = estimateLocalClearanceM(start);
+    safety.end_clearance_m = estimateLocalClearanceM(end);
+    const bool improves_clearance =
+        std::isfinite(safety.start_clearance_m) &&
+        std::isfinite(safety.end_clearance_m) &&
+        safety.end_clearance_m >=
+            safety.start_clearance_m + clearance_escape_min_improvement_m_;
+
+    safety.escape = allow_escape && safety.start_blocked && !safety.start_occupied &&
+                    improves_clearance;
+    safety.allowed = safety.escape;
+    return safety;
+  }
+
+  [[nodiscard]] bool clearanceEscapeRequested(const SpeedControllerInput& input) const {
+    if (!clearance_escape_enabled_ || input.hold_position ||
+        !(clearance_escape_step_m_ > 0.0) ||
+        last_speed_output_.requested_speed_mps > 0.0) {
+      return false;
+    }
+
+    const bool clearance_stopped =
+        last_speed_output_.limit_reason == SpeedLimitReason::kClearance ||
+        (last_speed_output_.limit_reason == SpeedLimitReason::kTrackingOverspeed &&
+         last_speed_output_.limits.clearance_limit_mps <= kTinyDistanceM);
+    return clearance_stopped;
+  }
+
+  [[nodiscard]] Point2 pathTargetAtDistance(const double path_distance_m,
+                                            const Point2 fallback_target) const {
+    if (!path_valid_ || path_points_.empty() || !local_position_valid_) {
+      return fallback_target;
+    }
+    return targetOnPathAtDistance(path_points_, current_position_, path_distance_m);
+  }
+
+  [[nodiscard]] Point2 selectSafePathTarget(const double requested_lead_m,
+                                            const Point2 fallback_target,
+                                            const bool allow_escape) {
+    const double bounded_lead_m =
+        std::clamp(requested_lead_m, 0.0, max_setpoint_distance_m_);
+    if (!(bounded_lead_m > 0.0) || !local_position_valid_) {
+      return current_position_;
+    }
+
+    const double resolution =
+        occupancyGridFresh() ? std::max(occupancyGridResolutionM(), 0.25) : 0.5;
+    const double min_step_m = std::min(std::max(resolution, 0.25), bounded_lead_m);
+    const int candidate_count = std::max(
+        1, static_cast<int>(std::ceil(bounded_lead_m / std::max(min_step_m, 0.1))));
+
+    for (int step = candidate_count; step >= 1; --step) {
+      const double distance_m = bounded_lead_m * static_cast<double>(step) /
+                                static_cast<double>(candidate_count);
+      const Point2 candidate = pathTargetAtDistance(distance_m, fallback_target);
+      if (distance(current_position_, candidate) <= kTinyDistanceM) {
+        continue;
+      }
+
+      const TargetSegmentSafety safety =
+          evaluateTargetSegmentSafety(current_position_, candidate, allow_escape);
+      if (safety.allowed) {
+        if (step != candidate_count || safety.escape) {
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "Target segment safety adjusted command: requested_lead=%.2f "
+              "selected_lead=%.2f escape=%s blocked_cells=%zu occupied_cells=%zu "
+              "clearance_start=%.2f clearance_end=%.2f target=(%.2f, %.2f)",
+              bounded_lead_m, distance_m, safety.escape ? "true" : "false",
+              safety.blocked_cells, safety.occupied_cells, safety.start_clearance_m,
+              safety.end_clearance_m, candidate.x, candidate.y);
+        }
+        return candidate;
+      }
+    }
+
+    const TargetSegmentSafety desired_safety =
+        evaluateTargetSegmentSafety(current_position_, fallback_target, allow_escape);
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Target segment safety hold: requested_lead=%.2f allow_escape=%s "
+        "blocked_cells=%zu occupied_cells=%zu start_blocked=%s end_blocked=%s "
+        "clearance_start=%.2f clearance_end=%.2f fallback_target=(%.2f, %.2f)",
+        bounded_lead_m, allow_escape ? "true" : "false", desired_safety.blocked_cells,
+        desired_safety.occupied_cells, desired_safety.start_blocked ? "true" : "false",
+        desired_safety.end_blocked ? "true" : "false", desired_safety.start_clearance_m,
+        desired_safety.end_clearance_m, fallback_target.x, fallback_target.y);
+    return current_position_;
+  }
+
+  [[nodiscard]] Point2
+  selectSafeCommandTarget(const Point2 desired_target,
+                          const SpeedControllerInput& speed_input) {
+    if (!local_position_valid_) {
+      return desired_target;
+    }
+    if (speed_input.hold_position) {
+      return current_position_;
+    }
+
+    const bool escape_requested = clearanceEscapeRequested(speed_input);
+    double requested_lead_m = 0.0;
+    if (last_speed_output_.requested_speed_mps > 0.0) {
+      requested_lead_m =
+          std::max(last_speed_output_.target_step_m,
+                   effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps));
+    } else if (escape_requested) {
+      requested_lead_m = clearance_escape_step_m_;
+    }
+
+    if (!(requested_lead_m > 0.0)) {
+      return current_position_;
+    }
+    return selectSafePathTarget(requested_lead_m, desired_target, escape_requested);
+  }
+
   Point2 smoothedCommandTarget(const Point2 desired_target, const double target_step_m,
                                const bool snap_to_desired_target) {
     CommandTargetState state{commanded_target_valid_, commanded_target_};
@@ -694,16 +952,16 @@ private:
       return;
     }
 
-    commanded_target_ = limitedTarget(currentTarget());
+    commanded_target_ = current_position_;
     commanded_target_valid_ = true;
     last_published_target_ = commanded_target_;
     last_published_target_valid_ = true;
     RCLCPP_INFO(get_logger(),
-                "Reset commanded target after path update: reason=%s target=(%.2f, "
-                "%.2f) current=(%.2f, %.2f) distance=%.2f waypoint=%zu/%zu",
+                "Reset commanded target to current position after path update: "
+                "reason=%s target=(%.2f, %.2f) current=(%.2f, %.2f) "
+                "waypoint=%zu/%zu",
                 reason, commanded_target_.x, commanded_target_.y, current_position_.x,
-                current_position_.y, distance(current_position_, commanded_target_),
-                waypoint_index_ + 1U, path_points_.size());
+                current_position_.y, waypoint_index_ + 1U, path_points_.size());
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
@@ -1103,6 +1361,8 @@ private:
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
+  double clearance_escape_step_m_{0.5};
+  double clearance_escape_min_improvement_m_{0.05};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
@@ -1132,6 +1392,8 @@ private:
   bool face_target_yaw_{false};
   bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
+  bool target_segment_safety_check_enabled_{true};
+  bool clearance_escape_enabled_{true};
   bool velocity_feedforward_enabled_{false};
   bool dynamic_lookahead_enabled_{true};
   std::uint8_t target_system_{1U};
