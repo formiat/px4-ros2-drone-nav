@@ -1,3 +1,4 @@
+#include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_speed_controller.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -21,6 +22,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -29,29 +31,12 @@ constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
 constexpr double kControllerPeriodS = 0.1;
 constexpr double kTinyDistanceM = 1.0e-6;
 
-struct PathProjection {
-  std::size_t segment_start_index{0U};
-  double segment_t{0.0};
-  double distance_sq{std::numeric_limits<double>::infinity()};
-  Point2 point{};
-};
-
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
 }
 
 [[nodiscard]] std::uint16_t boundedUint16(const std::int64_t value) {
   return static_cast<std::uint16_t>(std::clamp<std::int64_t>(value, 0, 65535));
-}
-
-[[nodiscard]] double pathPointX(const nav_msgs::msg::Path& path,
-                                const std::size_t index) {
-  return path.poses.at(index).pose.position.x;
-}
-
-[[nodiscard]] double pathPointY(const nav_msgs::msg::Path& path,
-                                const std::size_t index) {
-  return path.poses.at(index).pose.position.y;
 }
 
 [[nodiscard]] const char* commandName(const std::uint32_t command) noexcept {
@@ -242,16 +227,37 @@ public:
   }
 
 private:
+  [[nodiscard]] std::vector<Point2>
+  pathPointsFromMessage(const nav_msgs::msg::Path& path) const {
+    std::vector<Point2> points;
+    points.reserve(path.poses.size());
+    for (const auto& pose : path.poses) {
+      points.push_back(Point2{pose.pose.position.x, pose.pose.position.y});
+    }
+    return points;
+  }
+
+  [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const {
+    return OffboardPathFollowerConfig{acceptance_radius_m_,
+                                      lookahead_distance_m_,
+                                      lookahead_time_s_,
+                                      min_lookahead_distance_m_,
+                                      max_lookahead_distance_m_,
+                                      path_switch_hysteresis_m_,
+                                      path_continuity_reuse_radius_m_,
+                                      path_continuity_max_target_distance_m_,
+                                      max_setpoint_distance_m_,
+                                      dynamic_lookahead_enabled_};
+  }
+
   void onPath(const nav_msgs::msg::Path& path) {
     const bool had_active_target =
-        path_valid_ && local_position_valid_ && waypoint_index_ < path_.poses.size();
-    const Point2 previous_target = had_active_target
-                                       ? Point2{pathPointX(path_, waypoint_index_),
-                                                pathPointY(path_, waypoint_index_)}
-                                       : Point2{};
+        path_valid_ && local_position_valid_ && waypoint_index_ < path_points_.size();
+    const Point2 previous_target =
+        had_active_target ? path_points_[waypoint_index_] : Point2{};
 
-    path_ = path;
-    path_valid_ = !path_.poses.empty();
+    path_points_ = pathPointsFromMessage(path);
+    path_valid_ = !path_points_.empty();
 
     if (!path_valid_) {
       if (last_logged_path_size_ != 0U) {
@@ -282,137 +288,56 @@ private:
     const std::size_t candidate_index = lookaheadWaypointIndex();
     waypoint_index_ =
         continuityWaypointIndex(previous_target, candidate_index, had_active_target);
-    const Point2 first{pathPointX(path_, 0U), pathPointY(path_, 0U)};
-    const Point2 last{pathPointX(path_, path_.poses.size() - 1U),
-                      pathPointY(path_, path_.poses.size() - 1U)};
-    const bool path_changed = path_.poses.size() != last_logged_path_size_ ||
+    const Point2 first = path_points_.front();
+    const Point2 last = path_points_.back();
+    const bool path_changed = path_points_.size() != last_logged_path_size_ ||
                               squaredDistance(first, last_logged_path_first_) > 0.01 ||
                               squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed) {
       RCLCPP_INFO(get_logger(),
                   "Received path: waypoints=%zu selected=%zu first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f)",
-                  path_.poses.size(), waypoint_index_ + 1U, first.x, first.y, last.x,
+                  path_points_.size(), waypoint_index_ + 1U, first.x, first.y, last.x,
                   last.y);
-      last_logged_path_size_ = path_.poses.size();
+      last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
     }
   }
 
   [[nodiscard]] std::size_t closestWaypointIndex() const {
-    if (!local_position_valid_ || path_.poses.empty()) {
+    if (!local_position_valid_ || path_points_.empty()) {
       return 0U;
     }
-
-    std::size_t closest_index = 0U;
-    double closest_distance_sq = std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0U; i < path_.poses.size(); ++i) {
-      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
-      const double distance_sq = squaredDistance(current_position_, waypoint);
-      if (distance_sq < closest_distance_sq) {
-        closest_distance_sq = distance_sq;
-        closest_index = i;
-      }
-    }
-
-    return closest_index;
+    return drone_city_nav::closestWaypointIndex(path_points_, current_position_);
   }
 
   [[nodiscard]] std::size_t lookaheadWaypointIndex() const {
-    if (!local_position_valid_ || path_.poses.empty()) {
+    if (!local_position_valid_ || path_points_.empty()) {
       return 0U;
     }
-
-    const std::size_t closest_index = closestWaypointIndex();
-    const double current_goal_distance = distance(current_position_, mission_goal_);
-    const double lookahead_distance = effectiveLookaheadDistanceM();
-    for (std::size_t i = closest_index; i < path_.poses.size(); ++i) {
-      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
-      const bool far_enough =
-          distance(current_position_, waypoint) >= lookahead_distance;
-      const bool progresses_to_goal =
-          distance(waypoint, mission_goal_) + acceptance_radius_m_ <
-          current_goal_distance;
-      if (far_enough && progresses_to_goal) {
-        return i;
-      }
-    }
-
-    return path_.poses.size() - 1U;
+    return drone_city_nav::lookaheadWaypointIndex(
+        path_points_, current_position_, mission_goal_, pathFollowerConfig(),
+        speed_controller_.config().desired_speed_mps);
   }
 
   [[nodiscard]] double effectiveLookaheadDistanceM() const {
-    double lookahead_m = lookahead_distance_m_;
-    if (dynamic_lookahead_enabled_) {
-      lookahead_m = std::max(lookahead_m, speed_controller_.config().desired_speed_mps *
-                                              lookahead_time_s_);
-    }
-    return std::clamp(lookahead_m, min_lookahead_distance_m_,
-                      max_lookahead_distance_m_);
+    return drone_city_nav::effectiveLookaheadDistanceM(
+        pathFollowerConfig(), speed_controller_.config().desired_speed_mps);
   }
 
-  [[nodiscard]] std::optional<PathProjection> closestPathProjection() const {
-    if (!local_position_valid_ || path_.poses.empty()) {
+  [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
+    if (!local_position_valid_ || path_points_.empty()) {
       return std::nullopt;
     }
-    if (path_.poses.size() == 1U) {
-      const Point2 waypoint{pathPointX(path_, 0U), pathPointY(path_, 0U)};
-      return PathProjection{0U, 0.0, squaredDistance(current_position_, waypoint),
-                            waypoint};
-    }
-
-    PathProjection best{};
-    for (std::size_t i = 0U; i + 1U < path_.poses.size(); ++i) {
-      const Point2 segment_start{pathPointX(path_, i), pathPointY(path_, i)};
-      const Point2 segment_end{pathPointX(path_, i + 1U), pathPointY(path_, i + 1U)};
-      const Point2 segment{segment_end.x - segment_start.x,
-                           segment_end.y - segment_start.y};
-      const double segment_length_sq = squaredDistance(segment_start, segment_end);
-      const double segment_t =
-          segment_length_sq > kTinyDistanceM
-              ? std::clamp(((current_position_.x - segment_start.x) * segment.x +
-                            (current_position_.y - segment_start.y) * segment.y) /
-                               segment_length_sq,
-                           0.0, 1.0)
-              : 0.0;
-      const Point2 projected{segment_start.x + segment.x * segment_t,
-                             segment_start.y + segment.y * segment_t};
-      const double distance_sq = squaredDistance(current_position_, projected);
-      if (distance_sq < best.distance_sq) {
-        best = PathProjection{i, segment_t, distance_sq, projected};
-      }
-    }
-
-    return best;
+    return drone_city_nav::closestOffboardPathProjection(path_points_,
+                                                         current_position_);
   }
 
   [[nodiscard]] Point2 lookaheadTargetOnPath() const {
-    const auto projection = closestPathProjection();
-    if (!projection.has_value()) {
-      return Point2{pathPointX(path_, waypoint_index_),
-                    pathPointY(path_, waypoint_index_)};
-    }
-
-    double remaining_lookahead_m = effectiveLookaheadDistanceM();
-    Point2 segment_start = projection->point;
-    for (std::size_t i = projection->segment_start_index; i + 1U < path_.poses.size();
-         ++i) {
-      const Point2 segment_end{pathPointX(path_, i + 1U), pathPointY(path_, i + 1U)};
-      const double segment_length_m = distance(segment_start, segment_end);
-      if (segment_length_m > kTinyDistanceM) {
-        if (remaining_lookahead_m <= segment_length_m) {
-          const double ratio = remaining_lookahead_m / segment_length_m;
-          return Point2{segment_start.x + (segment_end.x - segment_start.x) * ratio,
-                        segment_start.y + (segment_end.y - segment_start.y) * ratio};
-        }
-        remaining_lookahead_m -= segment_length_m;
-      }
-      segment_start = segment_end;
-    }
-
-    return Point2{pathPointX(path_, path_.poses.size() - 1U),
-                  pathPointY(path_, path_.poses.size() - 1U)};
+    return drone_city_nav::lookaheadTargetOnPath(
+        path_points_, current_position_, waypoint_index_, pathFollowerConfig(),
+        speed_controller_.config().desired_speed_mps);
   }
 
   [[nodiscard]] std::size_t
@@ -421,7 +346,7 @@ private:
                           const bool had_active_target) const {
     if (!had_active_target || path_switch_hysteresis_m_ <= 0.0 ||
         path_continuity_reuse_radius_m_ <= 0.0 ||
-        candidate_index >= path_.poses.size()) {
+        candidate_index >= path_points_.size()) {
       return candidate_index;
     }
     if (distance(current_position_, previous_target) >
@@ -429,24 +354,14 @@ private:
       return candidate_index;
     }
 
-    const Point2 candidate{pathPointX(path_, candidate_index),
-                           pathPointY(path_, candidate_index)};
-    if (distance(previous_target, candidate) <= path_switch_hysteresis_m_) {
-      return candidate_index;
-    }
-
-    std::size_t closest_index = candidate_index;
-    double closest_distance = std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0U; i < path_.poses.size(); ++i) {
-      const Point2 waypoint{pathPointX(path_, i), pathPointY(path_, i)};
-      const double waypoint_distance = distance(previous_target, waypoint);
-      if (waypoint_distance < closest_distance) {
-        closest_distance = waypoint_distance;
-        closest_index = i;
-      }
-    }
-
-    if (closest_distance <= path_continuity_reuse_radius_m_) {
+    const std::size_t closest_index = drone_city_nav::continuityWaypointIndex(
+        path_points_, current_position_, previous_target, candidate_index,
+        had_active_target, pathFollowerConfig());
+    const double closest_distance =
+        closest_index < path_points_.size()
+            ? distance(previous_target, path_points_[closest_index])
+            : std::numeric_limits<double>::infinity();
+    if (closest_index != candidate_index) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 3000,
           "Path continuity kept waypoint near previous target: candidate=%zu "
@@ -689,27 +604,15 @@ private:
     }
 
     const std::size_t previous_waypoint_index = waypoint_index_;
-    if (const auto projection = closestPathProjection(); projection.has_value()) {
-      waypoint_index_ =
-          std::max(waypoint_index_, std::min(projection->segment_start_index + 1U,
-                                             path_.poses.size() - 1U));
-    }
-    while (waypoint_index_ + 1U < path_.poses.size()) {
-      const Point2 waypoint{pathPointX(path_, waypoint_index_),
-                            pathPointY(path_, waypoint_index_)};
-      if (distance(current_position_, waypoint) > acceptance_radius_m_) {
-        break;
-      }
-      ++waypoint_index_;
-    }
+    waypoint_index_ = drone_city_nav::advanceWaypointIndex(
+        path_points_, current_position_, waypoint_index_, pathFollowerConfig());
 
     if (waypoint_index_ != previous_waypoint_index) {
-      const Point2 target{pathPointX(path_, waypoint_index_),
-                          pathPointY(path_, waypoint_index_)};
+      const Point2 target = path_points_[waypoint_index_];
       RCLCPP_INFO(get_logger(),
                   "Waypoint advanced: index=%zu/%zu current=(%.2f, %.2f) "
                   "target=(%.2f, %.2f)",
-                  waypoint_index_ + 1U, path_.poses.size(), current_position_.x,
+                  waypoint_index_ + 1U, path_points_.size(), current_position_.x,
                   current_position_.y, target.x, target.y);
     }
   }
@@ -724,7 +627,7 @@ private:
       }
     }
 
-    if (path_valid_ && waypoint_index_ < path_.poses.size()) {
+    if (path_valid_ && waypoint_index_ < path_points_.size()) {
       return lookaheadTargetOnPath();
     }
 
@@ -740,59 +643,24 @@ private:
   }
 
   [[nodiscard]] Point2 limitedTarget(const Point2 target) const {
-    if (!local_position_valid_) {
-      return target;
-    }
-
-    const double dx = target.x - current_position_.x;
-    const double dy = target.y - current_position_.y;
-    const double target_distance = std::hypot(dx, dy);
-    if (target_distance <= max_setpoint_distance_m_ || !(target_distance > 0.0)) {
-      return target;
-    }
-
-    const double scale = max_setpoint_distance_m_ / target_distance;
-    return Point2{current_position_.x + dx * scale, current_position_.y + dy * scale};
+    return drone_city_nav::limitedTarget(
+        target, current_position_, local_position_valid_, max_setpoint_distance_m_);
   }
 
   Point2 smoothedCommandTarget(const Point2 desired_target, const double target_step_m,
                                const bool snap_to_desired_target) {
-    if (!local_position_valid_) {
-      commanded_target_valid_ = false;
-      return desired_target;
-    }
-    if (snap_to_desired_target) {
-      commanded_target_ = limitedTarget(desired_target);
-      commanded_target_valid_ = true;
-      return clampCommandedTargetToCurrent();
-    }
-    if (!commanded_target_valid_) {
-      commanded_target_ = current_position_;
-      commanded_target_valid_ = true;
-    }
-
-    const double dx = desired_target.x - commanded_target_.x;
-    const double dy = desired_target.y - commanded_target_.y;
-    const double target_step = std::hypot(dx, dy);
-    if (!(target_step_m > 0.0)) {
-      commanded_target_ = current_position_;
-      commanded_target_valid_ = true;
-      return commanded_target_;
-    }
-    if (target_step <= target_step_m || !(target_step > 0.0)) {
-      commanded_target_ = desired_target;
-      return clampCommandedTargetToCurrent();
-    }
-
-    const double scale = target_step_m / target_step;
-    commanded_target_ =
-        Point2{commanded_target_.x + dx * scale, commanded_target_.y + dy * scale};
-    return clampCommandedTargetToCurrent();
+    CommandTargetState state{commanded_target_valid_, commanded_target_};
+    const Point2 target = drone_city_nav::smoothedCommandTarget(
+        desired_target, target_step_m, snap_to_desired_target, current_position_,
+        local_position_valid_, max_setpoint_distance_m_, state);
+    commanded_target_valid_ = state.valid;
+    commanded_target_ = state.target;
+    return target;
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
     return !local_position_valid_ || !navigationAllowed() || !path_valid_ ||
-           waypoint_index_ >= path_.poses.size();
+           waypoint_index_ >= path_points_.size();
   }
 
   [[nodiscard]] SpeedControllerInput makeSpeedControllerInput() const {
@@ -811,47 +679,12 @@ private:
   }
 
   [[nodiscard]] double pathTurnAngleAtWaypoint(const std::size_t index) const {
-    if (!path_valid_ || path_.poses.size() < 3U || index >= path_.poses.size()) {
+    if (!path_valid_) {
       return 0.0;
     }
-
-    const Point2 previous =
-        index == 0U && local_position_valid_
-            ? current_position_
-            : Point2{pathPointX(path_, index == 0U ? 0U : index - 1U),
-                     pathPointY(path_, index == 0U ? 0U : index - 1U)};
-    const Point2 current{pathPointX(path_, index), pathPointY(path_, index)};
-    if (!turnWaypointIsCloseEnoughForSlowdown(current)) {
-      return 0.0;
-    }
-    const Point2 next{pathPointX(path_, std::min(index + 1U, path_.poses.size() - 1U)),
-                      pathPointY(path_, std::min(index + 1U, path_.poses.size() - 1U))};
-
-    const Point2 incoming{current.x - previous.x, current.y - previous.y};
-    const Point2 outgoing{next.x - current.x, next.y - current.y};
-    const double incoming_length = std::hypot(incoming.x, incoming.y);
-    const double outgoing_length = std::hypot(outgoing.x, outgoing.y);
-    if (incoming_length <= kTinyDistanceM || outgoing_length <= kTinyDistanceM) {
-      return 0.0;
-    }
-
-    const double cosine =
-        std::clamp((incoming.x * outgoing.x + incoming.y * outgoing.y) /
-                       (incoming_length * outgoing_length),
-                   -1.0, 1.0);
-    return std::acos(cosine);
-  }
-
-  [[nodiscard]] bool
-  turnWaypointIsCloseEnoughForSlowdown(const Point2 turn_waypoint) const {
-    if (!local_position_valid_) {
-      return true;
-    }
-
-    const double activation_distance_m =
-        std::max(2.0 * effectiveLookaheadDistanceM(),
-                 max_setpoint_distance_m_ + acceptance_radius_m_);
-    return distance(current_position_, turn_waypoint) <= activation_distance_m;
+    return drone_city_nav::pathTurnAngleAtWaypoint(
+        path_points_, index, current_position_, local_position_valid_,
+        pathFollowerConfig(), speed_controller_.config().desired_speed_mps);
   }
 
   [[nodiscard]] const char* pathSegmentTypeName(const double turn_angle_rad) const {
@@ -1049,9 +882,7 @@ private:
                               : std::numeric_limits<double>::quiet_NaN();
     const double path_goal_distance =
         local_position_valid_ && path_valid_
-            ? distance(current_position_,
-                       Point2{pathPointX(path_, path_.poses.size() - 1U),
-                              pathPointY(path_, path_.poses.size() - 1U)})
+            ? distance(current_position_, path_points_.back())
             : std::numeric_limits<double>::quiet_NaN();
     const double local_clearance_m = local_position_valid_
                                          ? estimateLocalClearanceM(current_position_)
@@ -1074,7 +905,7 @@ private:
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         no_path_hold_target_valid_ ? "true" : "false",
-        path_valid_ ? waypoint_index_ + 1U : 0U, path_.poses.size(),
+        path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
         motionPhaseName(last_speed_output_.limit_reason, hold_position),
         pathSegmentTypeName(turn_angle_rad), current_position_.x, current_position_.y,
         target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
@@ -1085,7 +916,6 @@ private:
         local_clearance_m);
   }
 
-  nav_msgs::msg::Path path_;
   nav_msgs::msg::OccupancyGrid occupancy_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
@@ -1148,6 +978,7 @@ private:
   OffboardSpeedController speed_controller_;
   SpeedControllerOutput last_speed_output_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  std::vector<Point2> path_points_;
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr

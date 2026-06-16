@@ -353,9 +353,11 @@ check_headless_run() {
       "memory\\[enabled=true" || failed=1
   elif bool_is_false "${expected_obstacle_memory}"; then
     require_log_pattern "obstacle memory source is disabled" "${ros_log_file}" \
-      "Obstacle memory mapping is disabled" || failed=1
+      "Obstacle memory mapping is disabled|Obstacle memory ready: enabled=false" ||
+      failed=1
     require_log_pattern "obstacle memory is disabled in planning" "${ros_log_file}" \
-      "memory\\[enabled=false" || failed=1
+      "memory\\[enabled=false|Planner obstacle sources: .*memory=false" ||
+      failed=1
   else
     skip_log_check "obstacle memory source state" \
       "source value comes from custom params file"
@@ -374,7 +376,8 @@ check_headless_run() {
     require_log_pattern "static city map is loaded" "${ros_log_file}" \
       "Static city map loaded:" || failed=1
     require_log_pattern "static map contributes to planning" "${ros_log_file}" \
-      "static\\[enabled=true loaded=true used=true" || failed=1
+      "static\\[enabled=true loaded=true used=true|Planner obstacle sources: static=true" ||
+      failed=1
   elif bool_is_false "${expected_static_map}"; then
     require_log_pattern "static map is disabled in planning" "${ros_log_file}" \
       "static\\[enabled=false" || failed=1
@@ -388,7 +391,8 @@ check_headless_run() {
       "current_lidar\\[enabled=true used=true" || failed=1
   elif bool_is_false "${expected_current_lidar}"; then
     require_log_pattern "current lidar is disabled in planning" "${ros_log_file}" \
-      "current_lidar\\[enabled=false used=false" || failed=1
+      "current_lidar\\[enabled=false used=false|Planner obstacle sources: .*current_lidar=false" ||
+      failed=1
   else
     skip_log_check "current lidar source state" \
       "source value comes from custom params file"

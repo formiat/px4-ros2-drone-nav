@@ -1,8 +1,10 @@
-#include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
+#include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/static_city_map.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -24,6 +26,7 @@
 #include <filesystem>
 #include <limits>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -35,66 +38,6 @@ namespace {
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
-
-struct GridStats {
-  std::size_t unknown_cells{0U};
-  std::size_t free_cells{0U};
-  std::size_t occupied_cells{0U};
-  std::size_t inflated_cells{0U};
-};
-
-struct CurrentLidarStats {
-  bool enabled{false};
-  bool used{false};
-  bool fresh{false};
-  std::size_t processed_beams{0U};
-  std::size_t hit_beams{0U};
-  std::size_t altitude_rejected_beams{0U};
-  std::size_t occupied_cells{0U};
-  std::size_t outside_hits{0U};
-};
-
-struct StaticSourceStats {
-  bool enabled{false};
-  bool loaded{false};
-  bool used{false};
-  std::size_t rectangles{0U};
-  std::size_t occupied_cells{0U};
-  std::string path;
-};
-
-struct MemorySourceStats {
-  bool enabled{false};
-  bool seen{false};
-  bool used{false};
-  bool geometry_matches{false};
-  GridStats source_counts{};
-  GridOverlayStats overlay{};
-};
-
-struct PlanningGridBuildResult {
-  OccupancyGrid2D grid;
-  StaticSourceStats static_source{};
-  MemorySourceStats memory{};
-  CurrentLidarStats current_lidar{};
-};
-
-struct PathComputationResult {
-  AStarResult astar{};
-  std::vector<GridIndex> smoothed_cells;
-  GridStats grid_stats{};
-  double raw_path_clearance_m{std::numeric_limits<double>::infinity()};
-  double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
-};
-
-struct PathProjection2D {
-  std::size_t segment_start_index{0U};
-  double segment_t{0.0};
-  double distance_sq{std::numeric_limits<double>::infinity()};
-  Point2 point{};
-};
-
-constexpr double kTinyDistanceSqM = 1.0e-12;
 
 [[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
   return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
@@ -205,6 +148,7 @@ public:
     path_smoothing_config_.minimum_obstacle_clearance_m = std::clamp(
         declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0), 0.0,
         100.0);
+    updatePlannerCoreConfig();
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -348,6 +292,21 @@ public:
   }
 
 private:
+  void updatePlannerCoreConfig() {
+    PlannerCoreConfig config{};
+    config.astar = astar_config_;
+    config.smoothing = path_smoothing_config_;
+    config.nearest_free_radius_cells = nearest_free_radius_cells_;
+    config.clearance_diagnostic_radius_m = clearanceDiagnosticRadiusM();
+    config.stable_path_goal_tolerance_m = stable_path_goal_tolerance_m_;
+    config.stable_path_reuse_max_deviation_m = stable_path_reuse_max_deviation_m_;
+    config.stable_path_blocking_occupied_length_m =
+        stable_path_blocking_occupied_length_m_;
+    config.stable_path_blocked_confirmations_required =
+        stable_path_blocked_confirmations_required_;
+    planner_core_.setConfig(config);
+  }
+
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
       invalidateCurrentPose();
@@ -551,92 +510,88 @@ private:
     }
   }
 
-  [[nodiscard]] OccupancyGrid2D makeBasePlanningGrid() const {
-    if (use_static_map_ && static_grid_.has_value()) {
-      return OccupancyGrid2D{static_grid_->bounds()};
-    }
-    if (use_obstacle_memory_ && memory_grid_.has_value()) {
-      return OccupancyGrid2D{memory_grid_->bounds()};
-    }
-    return OccupancyGrid2D{fallback_grid_bounds_};
+  [[nodiscard]] PlanningGridBuilderConfig planningGridBuilderConfig() const {
+    PlanningGridBuilderConfig config{};
+    config.use_static_map = use_static_map_;
+    config.use_obstacle_memory = use_obstacle_memory_;
+    config.use_current_lidar_obstacles = use_current_lidar_obstacles_;
+    config.fallback_bounds = fallback_grid_bounds_;
+    config.inflation_radius_m = inflation_radius_m_;
+    return config;
   }
 
   [[nodiscard]] std::optional<PlanningGridBuildResult>
   buildPlanningGrid(const std::int64_t now_ns) {
-    StaticSourceStats static_stats{};
-    static_stats.enabled = use_static_map_;
-    static_stats.loaded = static_grid_.has_value();
-    static_stats.rectangles = static_map_rectangles_;
-    static_stats.occupied_cells = static_map_occupied_cells_;
-    static_stats.path = static_map_resolved_path_.string();
+    const PlanningGridBuilderConfig config = planningGridBuilderConfig();
+    PlanningGridSources sources{};
+    sources.static_grid = static_grid_ ? &*static_grid_ : nullptr;
+    sources.static_rectangles = static_map_rectangles_;
+    sources.static_occupied_cells = static_map_occupied_cells_;
+    sources.static_map_path = static_map_resolved_path_.string();
+    sources.memory_grid = memory_grid_ ? &*memory_grid_ : nullptr;
 
-    MemorySourceStats memory_stats{};
-    memory_stats.enabled = use_obstacle_memory_;
-    memory_stats.seen = memory_grid_.has_value();
+    std::optional<OccupancyGrid2D> current_lidar_grid;
+    if (const std::optional<GridBounds> bounds =
+            selectPlanningGridBounds(config, sources);
+        bounds.has_value()) {
+      current_lidar_grid.emplace(*bounds);
+      sources.current_lidar = overlayCurrentLidarHits(*current_lidar_grid, now_ns);
+      sources.current_lidar_grid = &*current_lidar_grid;
+    }
 
-    if (!use_static_map_ && !use_obstacle_memory_ && !use_current_lidar_obstacles_) {
+    PlanningGridBuildResult result = drone_city_nav::buildPlanningGrid(config, sources);
+    if (result.memory.enabled && !result.memory.seen) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Obstacle memory source is enabled but no grid has been "
+                           "received yet");
+    } else if (result.memory.seen && memory_grid_.has_value() &&
+               !result.memory.geometry_matches) {
+      const OccupancyGrid2D& memory_grid = *memory_grid_;
+      std::optional<OccupancyGrid2D> diagnostic_grid;
+      const OccupancyGrid2D* planning_grid = result.grid ? &*result.grid : nullptr;
+      if (planning_grid == nullptr) {
+        if (const std::optional<GridBounds> bounds =
+                selectPlanningGridBounds(config, sources);
+            bounds.has_value()) {
+          diagnostic_grid.emplace(*bounds);
+          planning_grid = &*diagnostic_grid;
+        }
+      }
+      if (planning_grid != nullptr) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Skipping obstacle memory overlay due to grid geometry mismatch: "
+            "planning=%dx%d@%.2f origin=(%.2f, %.2f) memory=%dx%d@%.2f "
+            "origin=(%.2f, %.2f)",
+            planning_grid->width(), planning_grid->height(),
+            planning_grid->resolution(), planning_grid->originX(),
+            planning_grid->originY(), memory_grid.width(), memory_grid.height(),
+            memory_grid.resolution(), memory_grid.originX(), memory_grid.originY());
+      }
+    }
+
+    if (result.status == PlanningGridStatus::kNoEnabledSources) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Planner has no enabled obstacle sources; publishing hold path");
       return std::nullopt;
     }
-    if (use_static_map_ && !static_grid_.has_value()) {
+    if (result.status == PlanningGridStatus::kStaticMapEnabledButMissing) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner static map source is enabled but not loaded; "
                            "publishing hold path");
       return std::nullopt;
     }
-
-    OccupancyGrid2D planning_grid = makeBasePlanningGrid();
-    if (use_static_map_ && static_grid_.has_value()) {
-      const GridOverlayStats static_overlay =
-          overlayOccupiedCells(planning_grid, *static_grid_);
-      static_stats.occupied_cells = static_overlay.source_occupied_cells;
-      static_stats.used = true;
-    }
-
-    if (use_obstacle_memory_) {
-      if (memory_grid_.has_value()) {
-        memory_stats.source_counts = collectGridStats(*memory_grid_);
-        memory_stats.geometry_matches =
-            haveSameGridGeometry(planning_grid, *memory_grid_);
-        if (memory_stats.geometry_matches) {
-          memory_stats.overlay = overlayKnownMemoryCells(planning_grid, *memory_grid_);
-          memory_stats.used = true;
-        } else {
-          RCLCPP_WARN_THROTTLE(
-              get_logger(), *get_clock(), 5000,
-              "Skipping obstacle memory overlay due to grid geometry mismatch: "
-              "planning=%dx%d@%.2f origin=(%.2f, %.2f) memory=%dx%d@%.2f "
-              "origin=(%.2f, %.2f)",
-              planning_grid.width(), planning_grid.height(), planning_grid.resolution(),
-              planning_grid.originX(), planning_grid.originY(), memory_grid_->width(),
-              memory_grid_->height(), memory_grid_->resolution(),
-              memory_grid_->originX(), memory_grid_->originY());
-        }
-      } else {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                             "Obstacle memory source is enabled but no grid has been "
-                             "received yet");
-      }
-    }
-
-    const CurrentLidarStats current_lidar_stats =
-        overlayCurrentLidarHits(planning_grid, now_ns);
-    const bool any_source_ready =
-        static_stats.used || memory_stats.used ||
-        (current_lidar_stats.enabled && current_lidar_stats.used &&
-         current_lidar_stats.fresh);
-    if (!any_source_ready) {
+    if (result.status == PlanningGridStatus::kNoReadySourceData ||
+        !result.grid.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner has no ready obstacle source data; publishing hold "
-                           "path");
+                           "path status=%s",
+                           planningGridStatusName(result.status));
       return std::nullopt;
     }
 
-    planning_grid.rebuildInflation(inflation_radius_m_);
-    return PlanningGridBuildResult{std::move(planning_grid), std::move(static_stats),
-                                   memory_stats, current_lidar_stats};
+    return result;
   }
 
   void replanAndPublish() {
@@ -664,7 +619,14 @@ private:
       publishPath({});
       return;
     }
-    OccupancyGrid2D planning_grid = std::move(planning_result->grid);
+    if (!planning_result->grid.has_value()) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Planner grid builder returned no grid despite a ready "
+                           "result; publishing hold path");
+      publishPath({});
+      return;
+    }
+    OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
     publishOccupancyGrid(planning_grid);
     if (keepCurrentPathIfStillClear(planning_grid)) {
       return;
@@ -747,10 +709,10 @@ private:
       return std::nullopt;
     }
 
-    const auto unblocked_start =
-        grid.nearestUnblocked(*start_cell, nearest_free_radius_cells_);
-    const auto unblocked_goal =
-        grid.nearestUnblocked(*goal_cell, nearest_free_radius_cells_);
+    const auto unblocked_start = grid.nearestUnblocked(
+        *start_cell, planner_core_.config().nearest_free_radius_cells);
+    const auto unblocked_goal = grid.nearestUnblocked(
+        *goal_cell, planner_core_.config().nearest_free_radius_cells);
     if (!unblocked_start.has_value() || !unblocked_goal.has_value()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -768,24 +730,15 @@ private:
                            goal_cell->y, unblocked_goal->x, unblocked_goal->y);
     }
 
-    PathComputationResult result{};
-    result.astar =
-        planner_.plan(grid, *unblocked_start, *unblocked_goal, astar_config_);
-    if (!result.astar.success) {
+    auto result = planner_core_.computePath(grid, current_pose_.position, goal_);
+    if (!result.has_value()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "A* did not find a path on %s grid; expanded=%zu start=(%d,%d) "
-          "goal=(%d,%d)",
-          source_label, result.astar.expanded_cells, unblocked_start->x,
-          unblocked_start->y, unblocked_goal->x, unblocked_goal->y);
+          "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d)", source_label,
+          unblocked_start->x, unblocked_start->y, unblocked_goal->x, unblocked_goal->y);
       return std::nullopt;
     }
 
-    result.smoothed_cells = smoothPath(grid, result.astar.path, path_smoothing_config_);
-    result.grid_stats = collectGridStats(grid);
-    result.raw_path_clearance_m = pathMinimumBlockedClearanceM(grid, result.astar.path);
-    result.smoothed_path_clearance_m =
-        pathMinimumBlockedClearanceM(grid, result.smoothed_cells);
     return result;
   }
 
@@ -803,7 +756,17 @@ private:
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
-    if (!pathIsUnblocked(grid, path_points, source_label)) {
+    std::size_t blocked_segment_index = 0U;
+    if (!drone_city_nav::pathIsUnblocked(grid, path_points, &blocked_segment_index)) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "%s path segment intersects blocked cells after final path "
+                           "edits: segment=%zu "
+                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
+                           source_label, blocked_segment_index,
+                           path_points[blocked_segment_index].x,
+                           path_points[blocked_segment_index].y,
+                           path_points[blocked_segment_index + 1U].x,
+                           path_points[blocked_segment_index + 1U].y);
       publishPath({});
       return false;
     }
@@ -822,73 +785,11 @@ private:
     return true;
   }
 
-  [[nodiscard]] GridStats collectGridStats(const OccupancyGrid2D& grid) const {
-    GridStats stats{};
-    for (int y = 0; y < grid.height(); ++y) {
-      for (int x = 0; x < grid.width(); ++x) {
-        const GridIndex cell{x, y};
-        if (grid.isInflated(cell)) {
-          ++stats.inflated_cells;
-        }
-        switch (grid.state(cell)) {
-          case CellState::kUnknown:
-            ++stats.unknown_cells;
-            break;
-          case CellState::kFree:
-            ++stats.free_cells;
-            break;
-          case CellState::kOccupied:
-            ++stats.occupied_cells;
-            break;
-        }
-      }
-    }
-    return stats;
-  }
-
   [[nodiscard]] double clearanceDiagnosticRadiusM() const noexcept {
     const double configured_clearance_m =
         std::max(astar_config_.obstacle_clearance_cost_radius_m,
                  path_smoothing_config_.minimum_obstacle_clearance_m);
     return std::max(10.0, configured_clearance_m);
-  }
-
-  [[nodiscard]] double nearestBlockedDistanceM(const OccupancyGrid2D& grid,
-                                               const GridIndex cell) const {
-    if (!(grid.resolution() > 0.0)) {
-      return std::numeric_limits<double>::infinity();
-    }
-
-    const int radius_cells =
-        static_cast<int>(std::ceil(clearanceDiagnosticRadiusM() / grid.resolution()));
-    double nearest_distance_m = std::numeric_limits<double>::infinity();
-    for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
-      for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-        const GridIndex candidate{cell.x + dx, cell.y + dy};
-        if (!grid.contains(candidate) || !grid.isBlocked(candidate)) {
-          continue;
-        }
-        nearest_distance_m =
-            std::min(nearest_distance_m,
-                     distance(grid.cellCenter(cell), grid.cellCenter(candidate)));
-      }
-    }
-
-    return nearest_distance_m;
-  }
-
-  [[nodiscard]] double
-  pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
-                               const std::vector<GridIndex>& path) const {
-    double minimum_clearance_m = std::numeric_limits<double>::infinity();
-    for (const GridIndex cell : path) {
-      if (!grid.contains(cell)) {
-        continue;
-      }
-      minimum_clearance_m =
-          std::min(minimum_clearance_m, nearestBlockedDistanceM(grid, cell));
-    }
-    return minimum_clearance_m;
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -920,35 +821,9 @@ private:
                                  lidar_mount_yaw_rad_};
   }
 
-  std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoint,
-                                       const Point2 depth_endpoint) const {
-    const auto endpoint_cell = grid.worldToCell(endpoint);
-    if (!endpoint_cell.has_value()) {
-      return 0U;
-    }
-
-    std::size_t occupied_cells = 0U;
-    if (current_lidar_obstacle_depth_m_ <= 0.0) {
-      grid.setOccupied(*endpoint_cell);
-      return 1U;
-    }
-
-    const auto depth_cell = grid.worldToCell(depth_endpoint);
-    if (!depth_cell.has_value()) {
-      grid.setOccupied(*endpoint_cell);
-      return 1U;
-    }
-
-    for (const GridIndex cell : grid.cellsOnLine(*endpoint_cell, *depth_cell)) {
-      grid.setOccupied(cell);
-      ++occupied_cells;
-    }
-    return occupied_cells;
-  }
-
-  CurrentLidarStats overlayCurrentLidarHits(OccupancyGrid2D& grid,
-                                            const std::int64_t now_ns) const {
-    CurrentLidarStats stats{};
+  CurrentLidarOverlayStats overlayCurrentLidarHits(OccupancyGrid2D& grid,
+                                                   const std::int64_t now_ns) const {
+    CurrentLidarOverlayStats stats{};
     stats.enabled = use_current_lidar_obstacles_;
     if (!use_current_lidar_obstacles_) {
       return stats;
@@ -965,50 +840,28 @@ private:
           scanAgeSeconds(now_ns));
       return stats;
     }
-    stats.used = true;
 
     const double scan_range_max = currentLidarRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return stats;
     }
 
-    OccupancyGrid2D current_lidar_grid{grid.bounds()};
-    const LidarProjectionPose projection_pose = currentLidarProjectionPose();
-    const LidarProjectionConfig projection_config = currentLidarProjectionConfig();
-    for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
-      const float raw_range = last_scan_.ranges[i];
-      if (!lidarRawRangeUsable(raw_range, static_cast<double>(last_scan_.range_min))) {
-        continue;
-      }
-      ++stats.processed_beams;
-
-      const LidarBeamProjection projection = projectLidarBeam(
-          projection_pose, projection_config, static_cast<double>(last_scan_.range_min),
-          scan_range_max, static_cast<double>(last_scan_.angle_min),
-          static_cast<double>(last_scan_.angle_increment), i, raw_range,
-          current_lidar_obstacle_depth_m_);
-      if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
-        ++stats.altitude_rejected_beams;
-        continue;
-      }
-      if (projection.status != LidarBeamProjectionStatus::kAccepted ||
-          !projection.hit) {
-        continue;
-      }
-
-      ++stats.hit_beams;
-      const std::size_t occupied_cells = markCurrentLidarObstacle(
-          current_lidar_grid, projection.endpoint, projection.depth_endpoint);
-      if (occupied_cells == 0U) {
-        ++stats.outside_hits;
-      } else {
-        stats.occupied_cells += occupied_cells;
-      }
-    }
-    const GridOverlayStats overlay_stats =
-        overlayCurrentLidarCells(grid, current_lidar_grid);
-    stats.occupied_cells = overlay_stats.source_occupied_cells;
-
+    const CurrentLidarOverlayStats overlay_stats =
+        drone_city_nav::overlayCurrentLidarHits(
+            grid,
+            LidarScanView{std::span<const float>{last_scan_.ranges.data(),
+                                                 last_scan_.ranges.size()},
+                          static_cast<double>(last_scan_.range_min), scan_range_max,
+                          static_cast<double>(last_scan_.angle_min),
+                          static_cast<double>(last_scan_.angle_increment)},
+            currentLidarProjectionPose(), currentLidarProjectionConfig(),
+            current_lidar_obstacle_depth_m_);
+    stats.used = overlay_stats.used;
+    stats.processed_beams = overlay_stats.processed_beams;
+    stats.hit_beams = overlay_stats.hit_beams;
+    stats.altitude_rejected_beams = overlay_stats.altitude_rejected_beams;
+    stats.occupied_cells = overlay_stats.occupied_cells;
+    stats.outside_hits = overlay_stats.outside_hits;
     return stats;
   }
 
@@ -1287,218 +1140,70 @@ private:
     return false;
   }
 
-  [[nodiscard]] bool pathSegmentIsUnblocked(const OccupancyGrid2D& grid,
-                                            const Point2 start,
-                                            const Point2 end) const {
-    const auto start_cell = grid.worldToCell(start);
-    const auto end_cell = grid.worldToCell(end);
-    if (!start_cell.has_value() || !end_cell.has_value()) {
-      return false;
-    }
-
-    return hasLineOfSight(grid, *start_cell, *end_cell);
-  }
-
-  [[nodiscard]] double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid,
-                                                  const Point2 start,
-                                                  const Point2 end) const {
-    const auto start_cell = grid.worldToCell(start);
-    const auto end_cell = grid.worldToCell(end);
-    if (!start_cell.has_value() || !end_cell.has_value()) {
-      return std::numeric_limits<double>::infinity();
-    }
-
-    const std::vector<GridIndex> segment_cells =
-        grid.cellsOnLine(*start_cell, *end_cell);
-    const auto occupied_count = static_cast<double>(
-        std::ranges::count_if(segment_cells, [&grid](const GridIndex cell) {
-          return grid.isOccupied(cell);
-        }));
-    return occupied_count * grid.resolution();
-  }
-
-  [[nodiscard]] std::optional<PathProjection2D>
-  closestPathProjection(const std::vector<Point2>& path_points) const {
-    if (path_points.empty() || !finite2D(current_pose_.position)) {
-      return std::nullopt;
-    }
-    if (path_points.size() == 1U) {
-      return PathProjection2D{
-          0U, 0.0, squaredDistance(current_pose_.position, path_points.front()),
-          path_points.front()};
-    }
-
-    PathProjection2D best{};
-    for (std::size_t i = 0U; i + 1U < path_points.size(); ++i) {
-      const Point2 segment_start = path_points[i];
-      const Point2 segment_end = path_points[i + 1U];
-      const Point2 segment{segment_end.x - segment_start.x,
-                           segment_end.y - segment_start.y};
-      const double segment_length_sq = squaredDistance(segment_start, segment_end);
-      const double segment_t =
-          segment_length_sq > kTinyDistanceSqM
-              ? std::clamp(((current_pose_.position.x - segment_start.x) * segment.x +
-                            (current_pose_.position.y - segment_start.y) * segment.y) /
-                               segment_length_sq,
-                           0.0, 1.0)
-              : 0.0;
-      const Point2 projected{segment_start.x + segment.x * segment_t,
-                             segment_start.y + segment.y * segment_t};
-      const double distance_sq = squaredDistance(current_pose_.position, projected);
-      if (distance_sq < best.distance_sq) {
-        best = PathProjection2D{i, segment_t, distance_sq, projected};
-      }
-    }
-
-    return best;
-  }
-
-  [[nodiscard]] std::optional<std::vector<Point2>>
-  remainingPathFromCurrentPose(const std::vector<Point2>& path_points,
-                               double& deviation_m) const {
-    deviation_m = std::numeric_limits<double>::quiet_NaN();
-    if (path_points.size() < 2U || !finite2D(current_pose_.position)) {
-      return std::nullopt;
-    }
-    if (distance(path_points.back(), goal_) > stable_path_goal_tolerance_m_) {
-      return std::nullopt;
-    }
-
-    const auto projection = closestPathProjection(path_points);
-    if (!projection.has_value()) {
-      return std::nullopt;
-    }
-
-    deviation_m = std::sqrt(projection->distance_sq);
-    if (deviation_m > stable_path_reuse_max_deviation_m_) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Current path cannot be reused because the vehicle is too far from it: "
-          "deviation=%.2fm limit=%.2fm",
-          deviation_m, stable_path_reuse_max_deviation_m_);
-      return std::nullopt;
-    }
-
-    std::vector<Point2> remaining_path;
-    remaining_path.reserve(path_points.size() - projection->segment_start_index + 1U);
-    remaining_path.push_back(current_pose_.position);
-
-    const std::size_t next_index =
-        std::min(projection->segment_start_index + 1U, path_points.size() - 1U);
-    for (std::size_t i = next_index; i < path_points.size(); ++i) {
-      if (squaredDistance(remaining_path.back(), path_points[i]) <= kTinyDistanceSqM) {
-        continue;
-      }
-      remaining_path.push_back(path_points[i]);
-    }
-
-    if (remaining_path.size() < 2U &&
-        squaredDistance(current_pose_.position, goal_) > kTinyDistanceSqM) {
-      remaining_path.push_back(goal_);
-    }
-    if (remaining_path.size() < 2U) {
-      return std::nullopt;
-    }
-
-    return remaining_path;
-  }
-
   bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
     if (!stable_path_reuse_enabled_ || last_valid_path_points_.size() < 2U) {
       return false;
     }
 
-    double deviation_m = std::numeric_limits<double>::quiet_NaN();
-    auto remaining_path =
-        remainingPathFromCurrentPose(last_valid_path_points_, deviation_m);
-    if (!remaining_path.has_value()) {
+    const StablePathDecision decision = planner_core_.evaluateStablePath(
+        grid, last_valid_path_points_, current_pose_.position, goal_,
+        stable_path_blocked_confirmations_);
+    if (decision.reason == StablePathDecisionReason::kDeviationTooLarge) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Current path cannot be reused because the vehicle is too far from it: "
+          "deviation=%.2fm limit=%.2fm",
+          decision.deviation_m, stable_path_reuse_max_deviation_m_);
+    }
+    if (decision.reason == StablePathDecisionReason::kGoalMismatch ||
+        decision.reason == StablePathDecisionReason::kProjectionUnavailable ||
+        decision.reason == StablePathDecisionReason::kDeviationTooLarge ||
+        decision.reason == StablePathDecisionReason::kNoPreviousPath ||
+        decision.reason == StablePathDecisionReason::kDisabled) {
       return false;
     }
-    if (pathHasOccupiedCells(grid, *remaining_path, "current stable path")) {
-      ++stable_path_blocked_confirmations_;
-      if (stable_path_blocked_confirmations_ <
-          stable_path_blocked_confirmations_required_) {
-        last_valid_path_points_ = *remaining_path;
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 3000,
-            "Current path has an unconfirmed occupied intersection; keeping current "
-            "path until it is confirmed: confirmations=%d/%d remaining_waypoints=%zu "
-            "deviation=%.2fm",
-            stable_path_blocked_confirmations_,
-            stable_path_blocked_confirmations_required_, remaining_path->size(),
-            deviation_m);
-        return true;
-      }
+
+    if (decision.reason == StablePathDecisionReason::kBlockedUnconfirmed) {
+      stable_path_blocked_confirmations_ = decision.blocked_confirmations;
+      last_valid_path_points_ = decision.remaining_path;
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Current path has an unconfirmed occupied intersection; keeping current "
+          "path until it is confirmed: reason=%s confirmations=%d/%d "
+          "remaining_waypoints=%zu deviation=%.2fm occupied_segment=%zu "
+          "occupied_length=%.2fm",
+          stablePathDecisionReasonName(decision.reason),
+          stable_path_blocked_confirmations_,
+          stable_path_blocked_confirmations_required_, last_valid_path_points_.size(),
+          decision.deviation_m, decision.blocking_segment_index,
+          decision.blocking_occupied_length_m);
+      return true;
+    }
+
+    if (decision.reason == StablePathDecisionReason::kBlockedConfirmed) {
+      stable_path_blocked_confirmations_ = decision.blocked_confirmations;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
           "Current path intersects confirmed newly available occupied obstacle data; "
-          "running A* from current pose: confirmations=%d/%d remaining_waypoints=%zu "
-          "deviation=%.2fm",
+          "running A* from current pose: reason=%s confirmations=%d/%d "
+          "remaining_waypoints=%zu deviation=%.2fm occupied_segment=%zu "
+          "occupied_length=%.2fm",
+          stablePathDecisionReasonName(decision.reason),
           stable_path_blocked_confirmations_,
-          stable_path_blocked_confirmations_required_, remaining_path->size(),
-          deviation_m);
+          stable_path_blocked_confirmations_required_, decision.remaining_path.size(),
+          decision.deviation_m, decision.blocking_segment_index,
+          decision.blocking_occupied_length_m);
       return false;
     }
 
     stable_path_blocked_confirmations_ = 0;
-    last_valid_path_points_ = *remaining_path;
+    last_valid_path_points_ = decision.remaining_path;
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Keeping current path because the remaining path is still clear: "
-        "remaining_waypoints=%zu deviation=%.2fm distance_to_goal=%.2f",
-        last_valid_path_points_.size(), deviation_m,
-        distance(current_pose_.position, goal_));
-    return true;
-  }
-
-  [[nodiscard]] bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
-                                          const std::vector<Point2>& path_points,
-                                          const char* source_label) const {
-    if (path_points.size() < 2U) {
-      return false;
-    }
-
-    for (std::size_t index = 1U; index < path_points.size(); ++index) {
-      const double occupied_length_m =
-          pathSegmentOccupiedLengthM(grid, path_points[index - 1U], path_points[index]);
-      if (occupied_length_m < stable_path_blocking_occupied_length_m_) {
-        continue;
-      }
-
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "%s path segment intersects occupied cells: segment=%zu "
-                           "occupied_length=%.2fm threshold=%.2fm "
-                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
-                           source_label, index - 1U, occupied_length_m,
-                           stable_path_blocking_occupied_length_m_,
-                           path_points[index - 1U].x, path_points[index - 1U].y,
-                           path_points[index].x, path_points[index].y);
-      return true;
-    }
-    return false;
-  }
-
-  [[nodiscard]] bool pathIsUnblocked(const OccupancyGrid2D& grid,
-                                     const std::vector<Point2>& path_points,
-                                     const char* source_label) const {
-    if (path_points.size() < 2U) {
-      return true;
-    }
-
-    for (std::size_t index = 1U; index < path_points.size(); ++index) {
-      if (pathSegmentIsUnblocked(grid, path_points[index - 1U], path_points[index])) {
-        continue;
-      }
-
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "%s path segment intersects blocked cells after final path "
-                           "edits: segment=%zu "
-                           "start=(%.2f, %.2f) end=(%.2f, %.2f)",
-                           source_label, index - 1U, path_points[index - 1U].x,
-                           path_points[index - 1U].y, path_points[index].x,
-                           path_points[index].y);
-      return false;
-    }
+        "reason=%s remaining_waypoints=%zu deviation=%.2fm distance_to_goal=%.2f",
+        stablePathDecisionReasonName(decision.reason), last_valid_path_points_.size(),
+        decision.deviation_m, distance(current_pose_.position, goal_));
     return true;
   }
 
@@ -1542,7 +1247,7 @@ private:
 
   std::optional<OccupancyGrid2D> memory_grid_;
   std::optional<OccupancyGrid2D> static_grid_;
-  AStarPlanner planner_;
+  PlannerCore planner_core_;
   AStarConfig astar_config_{};
   PathSmoothingConfig path_smoothing_config_{};
 

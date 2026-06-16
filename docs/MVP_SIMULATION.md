@@ -54,10 +54,16 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   mapper.
 - `drone_city_nav/src/planner_node.cpp` - static/memory/lidar grid replanning
   node.
+- `drone_city_nav/include/drone_city_nav/planner_core.hpp` - ROS-free A* path
+  computation, path clearance diagnostics, and stable-path reuse decisions.
+- `drone_city_nav/include/drone_city_nav/planning_grid_builder.hpp` - ROS-free
+  union of static map, obstacle-memory, and current-lidar obstacle sources.
 - `drone_city_nav/include/drone_city_nav/static_city_map.hpp` - static map2d
   loader and rasterizer.
 - `drone_city_nav/include/drone_city_nav/grid_overlay.hpp` - occupied-wins grid
   overlay helpers for planner sources.
+- `drone_city_nav/include/drone_city_nav/current_lidar_overlay.hpp` - current
+  lidar hit projection overlay into a planning grid.
 - `drone_city_nav/include/drone_city_nav/obstacle_memory.hpp` - persistent
   obstacle-memory core with ray clipping and hit/miss score updates.
 - `drone_city_nav/include/drone_city_nav/lidar_projection.hpp` - shared lidar
@@ -65,8 +71,18 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
   navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
+- `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp` - ROS-free
+  path lookahead, waypoint advancement, target continuity, and target smoothing.
 - `drone_city_nav/include/drone_city_nav/offboard_speed_controller.hpp` -
   portable speed-profile logic used by the offboard follower.
+- `drone_city_nav/include/drone_city_nav/debug_image.hpp` - small PPM debug image
+  primitive used by lidar snapshots.
+- `drone_city_nav/include/drone_city_nav/lidar_debug_renderer.hpp` - ROS-free
+  full-map/fallback-view lidar snapshot renderer.
+- `drone_city_nav/include/drone_city_nav/lidar_snapshot_writer.hpp` - ROS-free
+  lidar snapshot CSV and JSONL formatting.
+- `drone_city_nav/include/drone_city_nav/lidar_radar_markers.hpp` - RViz radar
+  marker builder used by `lidar_debug_node`.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
@@ -74,13 +90,51 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   running the planner/offboard nodes without Gazebo-specific helpers.
 - `drone_city_nav/tests/planner_core_test.cpp` - deterministic planner/grid
   tests.
+- `drone_city_nav/tests/planning_grid_builder_test.cpp` - deterministic planner
+  source selection and overlay tests.
 - `drone_city_nav/tests/static_city_map_test.cpp` - static map parser and
   rasterization tests.
 - `drone_city_nav/tests/grid_overlay_test.cpp` - source overlay precedence tests.
 - `drone_city_nav/tests/obstacle_memory_test.cpp` - deterministic obstacle
   memory and GPS/compass adapter tests.
+- `drone_city_nav/tests/current_lidar_overlay_test.cpp` - current lidar overlay
+  tests without ROS messages.
+- `drone_city_nav/tests/offboard_path_follower_test.cpp` - deterministic
+  waypoint target selection and smoothing tests.
 - `drone_city_nav/tests/offboard_speed_controller_test.cpp` - deterministic
   speed-profile tests.
+- `drone_city_nav/tests/debug_image_test.cpp` - deterministic PPM/debug image
+  primitive tests.
+- `drone_city_nav/tests/lidar_debug_renderer_test.cpp` - deterministic snapshot
+  coordinate mapping and color-layer tests.
+- `drone_city_nav/tests/lidar_snapshot_writer_test.cpp` - deterministic lidar
+  CSV/JSONL schema tests.
+- `drone_city_nav/tests/lidar_radar_markers_test.cpp` - deterministic RViz marker
+  construction tests.
+
+## Architecture Notes
+
+The runtime ROS nodes keep ownership of subscriptions, publishers, parameters,
+timestamps, and throttled logs. Domain logic that does not need ROS messages is
+kept in `drone_city_nav_core` and covered with deterministic unit tests:
+
+- Planner source union and path reuse live in `planning_grid_builder` and
+  `planner_core`.
+- Current lidar hit marking lives in `current_lidar_overlay`; the node still
+  prepares scan metadata and the attitude-compensated projection pose.
+- Offboard waypoint lookahead, target continuity, and command smoothing live in
+  `offboard_path_follower`; the PX4 node still owns arming/offboard commands and
+  `TrajectorySetpoint` publication.
+- Lidar snapshot low-level drawing lives in `debug_image`; full snapshot
+  rendering lives in `lidar_debug_renderer`; CSV/JSONL formatting lives in
+  `lidar_snapshot_writer`; RViz helper markers are built by
+  `lidar_radar_markers`. The lidar debug node still owns subscriptions,
+  snapshot scheduling, point cloud publication, and log emission.
+
+Headless debugging depends on stable log markers such as `Planning summary:`,
+`Keeping current path`, `Published path`, `Received path`, `Offboard summary:`,
+and `LIDAR_DEBUG snapshot=`. Keep these substrings stable when refactoring
+runtime nodes, or update the validation scripts in the same change.
 
 ## Runtime Profiles
 

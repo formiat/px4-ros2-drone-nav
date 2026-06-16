@@ -1,6 +1,7 @@
 #include "drone_city_nav/astar_planner.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
+#include "drone_city_nav/planner_core.hpp"
 
 #include <gtest/gtest.h>
 
@@ -231,6 +232,99 @@ TEST(PathSmoothing, KeepsCollisionFreeSegments) {
   for (std::size_t i = 1; i < smoothed.size(); ++i) {
     EXPECT_TRUE(hasLineOfSight(grid, smoothed[i - 1U], smoothed[i]));
   }
+}
+
+TEST(PlannerCore, ComputePathAdjustsBlockedEndpoints) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{1, 1});
+  grid.rebuildInflation(0.0);
+
+  PlannerCoreConfig config{};
+  config.nearest_free_radius_cells = 2;
+  PlannerCore core{config};
+
+  const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
+
+  ASSERT_TRUE(result.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const PathComputationResult& path_result = result.value();
+  ASSERT_TRUE(path_result.start_cell.has_value());
+  ASSERT_TRUE(path_result.unblocked_start_cell.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const GridIndex start_cell = path_result.start_cell.value();
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const GridIndex unblocked_start_cell = path_result.unblocked_start_cell.value();
+  EXPECT_EQ(start_cell, (GridIndex{1, 1}));
+  EXPECT_NE(unblocked_start_cell, start_cell);
+  EXPECT_FALSE(grid.isBlocked(unblocked_start_cell));
+  EXPECT_FALSE(path_result.smoothed_cells.empty());
+}
+
+TEST(PlannerCore, ComputePathRejectsOutOfGridGoal) {
+  OccupancyGrid2D grid = makeGrid();
+  PlannerCore core{};
+
+  const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{100.0, 100.0});
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
+  OccupancyGrid2D grid = makeGrid();
+  PlannerCoreConfig config{};
+  config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_reuse_max_deviation_m = 5.0;
+  PlannerCore core{config};
+  const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{5.0, 1.0}, Point2{9.0, 1.0}};
+
+  const StablePathDecision decision =
+      core.evaluateStablePath(grid, path, Point2{3.0, 1.0}, Point2{9.0, 1.0}, 0);
+
+  EXPECT_TRUE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
+  ASSERT_GE(decision.remaining_path.size(), 2U);
+  EXPECT_EQ(decision.blocked_confirmations, 0);
+}
+
+TEST(PlannerCore, StablePathRequiresConfirmedOccupiedIntersection) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 1});
+  grid.rebuildInflation(0.0);
+  PlannerCoreConfig config{};
+  config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_reuse_max_deviation_m = 5.0;
+  config.stable_path_blocking_occupied_length_m = 0.5;
+  config.stable_path_blocked_confirmations_required = 2;
+  PlannerCore core{config};
+  const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
+
+  const StablePathDecision first =
+      core.evaluateStablePath(grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, 0);
+  const StablePathDecision second = core.evaluateStablePath(
+      grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, first.blocked_confirmations);
+
+  EXPECT_TRUE(first.keep_path);
+  EXPECT_EQ(first.reason, StablePathDecisionReason::kBlockedUnconfirmed);
+  EXPECT_EQ(first.blocked_confirmations, 1);
+  EXPECT_FALSE(second.keep_path);
+  EXPECT_EQ(second.reason, StablePathDecisionReason::kBlockedConfirmed);
+  EXPECT_EQ(second.blocked_confirmations, 2);
+}
+
+TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {
+  OccupancyGrid2D grid = makeGrid();
+  PlannerCoreConfig config{};
+  config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_reuse_max_deviation_m = 0.5;
+  PlannerCore core{config};
+  const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{9.0, 1.0}};
+
+  const StablePathDecision decision =
+      core.evaluateStablePath(grid, path, Point2{3.0, 4.0}, Point2{9.0, 1.0}, 0);
+
+  EXPECT_FALSE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kDeviationTooLarge);
+  EXPECT_GT(decision.deviation_m, config.stable_path_reuse_max_deviation_m);
 }
 
 } // namespace drone_city_nav

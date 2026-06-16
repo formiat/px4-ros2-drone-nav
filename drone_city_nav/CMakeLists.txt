@@ -29,13 +29,20 @@ endfunction()
 add_library(
   drone_city_nav_core
   src/astar_planner.cpp
+  src/current_lidar_overlay.cpp
+  src/debug_image.cpp
   src/grid_overlay.cpp
+  src/lidar_debug_renderer.cpp
   src/lidar_projection.cpp
+  src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
+  src/offboard_path_follower.cpp
   src/offboard_speed_controller.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/path_smoothing.cpp
+  src/planning_grid_builder.cpp
+  src/planner_core.cpp
   src/static_city_map.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
@@ -90,7 +97,7 @@ ament_target_dependencies(
   std_msgs)
 enable_project_warnings(mission_monitor_node)
 
-add_executable(lidar_debug_node src/lidar_debug_node.cpp)
+add_executable(lidar_debug_node src/lidar_debug_node.cpp src/lidar_radar_markers.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
 target_link_libraries(lidar_debug_node drone_city_nav_core)
 ament_target_dependencies(
@@ -121,10 +128,46 @@ install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_N
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
+  ament_add_gtest(debug_image_test tests/debug_image_test.cpp)
+  target_compile_features(debug_image_test PRIVATE cxx_std_20)
+  target_link_libraries(debug_image_test drone_city_nav_core)
+  enable_project_warnings(debug_image_test)
+
+  ament_add_gtest(lidar_debug_renderer_test
+                  tests/lidar_debug_renderer_test.cpp)
+  target_compile_features(lidar_debug_renderer_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_debug_renderer_test drone_city_nav_core)
+  enable_project_warnings(lidar_debug_renderer_test)
+
+  ament_add_gtest(lidar_snapshot_writer_test
+                  tests/lidar_snapshot_writer_test.cpp)
+  target_compile_features(lidar_snapshot_writer_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_snapshot_writer_test drone_city_nav_core)
+  enable_project_warnings(lidar_snapshot_writer_test)
+
+  ament_add_gtest(lidar_radar_markers_test tests/lidar_radar_markers_test.cpp
+                  src/lidar_radar_markers.cpp)
+  target_compile_features(lidar_radar_markers_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_radar_markers_test drone_city_nav_core)
+  ament_target_dependencies(lidar_radar_markers_test visualization_msgs)
+  enable_project_warnings(lidar_radar_markers_test)
+
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
   target_link_libraries(planner_core_test drone_city_nav_core)
   enable_project_warnings(planner_core_test)
+
+  ament_add_gtest(current_lidar_overlay_test
+                  tests/current_lidar_overlay_test.cpp)
+  target_compile_features(current_lidar_overlay_test PRIVATE cxx_std_20)
+  target_link_libraries(current_lidar_overlay_test drone_city_nav_core)
+  enable_project_warnings(current_lidar_overlay_test)
+
+  ament_add_gtest(planning_grid_builder_test
+                  tests/planning_grid_builder_test.cpp)
+  target_compile_features(planning_grid_builder_test PRIVATE cxx_std_20)
+  target_link_libraries(planning_grid_builder_test drone_city_nav_core)
+  enable_project_warnings(planning_grid_builder_test)
 
   ament_add_gtest(static_city_map_test tests/static_city_map_test.cpp)
   target_compile_features(static_city_map_test PRIVATE cxx_std_20)
@@ -146,6 +189,12 @@ if(BUILD_TESTING)
   target_compile_features(offboard_speed_controller_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_speed_controller_test drone_city_nav_core)
   enable_project_warnings(offboard_speed_controller_test)
+
+  ament_add_gtest(offboard_path_follower_test
+                  tests/offboard_path_follower_test.cpp)
+  target_compile_features(offboard_path_follower_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_path_follower_test drone_city_nav_core)
+  enable_project_warnings(offboard_path_follower_test)
 
   ament_add_gtest(lidar_projection_test tests/lidar_projection_test.cpp)
   target_compile_features(lidar_projection_test PRIVATE cxx_std_20)
