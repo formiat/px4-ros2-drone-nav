@@ -181,6 +181,24 @@ TEST(OffboardSpeedController, ClearanceOverspeedRequestsStop) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
 }
 
+TEST(OffboardSpeedController, ClearanceOverspeedStopsEvenWhenGoalLimitWins) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 2.0;
+  OffboardSpeedController controller{config};
+
+  SpeedControllerInput input = cruiseInput();
+  input.distance_to_goal_m = 2.0;
+  input.local_clearance_m = 1.5;
+  input.actual_speed_mps = 5.0;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_LT(output.limits.goal_limit_mps, output.limits.clearance_limit_mps);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
+}
+
 TEST(OffboardSpeedController, MinCommandSpeedDoesNotBypassHardStepCap) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;

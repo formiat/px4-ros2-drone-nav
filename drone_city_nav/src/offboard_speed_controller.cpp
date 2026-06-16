@@ -235,7 +235,11 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   }
   if (finiteNonNegative(input.actual_speed_mps) &&
       input.actual_speed_mps > allowed_speed + max_speed_delta) {
-    if (allowed_speed_reason == SpeedLimitReason::kClearance) {
+    const bool clearance_tracking_overspeed =
+        std::isfinite(limits.clearance_limit_mps) &&
+        input.actual_speed_mps > limits.clearance_limit_mps + max_speed_delta;
+    if (allowed_speed_reason == SpeedLimitReason::kClearance ||
+        clearance_tracking_overspeed) {
       requested_speed = 0.0;
     } else {
       requested_speed =
