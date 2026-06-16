@@ -122,6 +122,10 @@ public:
     path_continuity_max_target_distance_m_ = std::clamp(
         declare_parameter<double>("path_continuity_max_target_distance_m", 20.0), 0.0,
         500.0);
+    telemetry_log_period_ns_ = static_cast<std::int64_t>(
+        std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
+                   60.0) *
+        1.0e9);
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
@@ -205,7 +209,7 @@ public:
         "narrow_clearance_radius=%.1fm velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
-        "px4_local_origin=(%.1f, %.1f)",
+        "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", max_setpoint_distance_m_,
@@ -218,7 +222,8 @@ public:
         speed_controller_.config().narrow_clearance_slowdown_radius_m,
         velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y);
+        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -504,6 +509,7 @@ private:
 
     publishOffboardControlMode();
     publishTrajectorySetpoint();
+    logTelemetry();
     logControlSummary();
 
     if (setpoint_counter_ < warmup_setpoints_) {
@@ -920,6 +926,48 @@ private:
         local_clearance_m);
   }
 
+  void logTelemetry() {
+    if (!local_position_valid_) {
+      return;
+    }
+
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    if (last_telemetry_log_ns_ > 0 &&
+        now_ns - last_telemetry_log_ns_ < telemetry_log_period_ns_) {
+      return;
+    }
+    last_telemetry_log_ns_ = now_ns;
+
+    const Point2 target =
+        commanded_target_valid_ ? commanded_target_ : limitedTarget(currentTarget());
+    const double target_distance = distance(current_position_, target);
+    const double mission_goal_distance = distance(current_position_, mission_goal_);
+    const double path_goal_distance =
+        path_valid_ ? distance(current_position_, path_points_.back())
+                    : std::numeric_limits<double>::quiet_NaN();
+    const double local_clearance_m = estimateLocalClearanceM(current_position_);
+    const bool hold_position = shouldHoldPosition();
+    const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
+
+    RCLCPP_INFO(
+        get_logger(),
+        "Drone telemetry: current=(%.2f, %.2f) altitude=%.2f "
+        "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
+        "requested_speed=%.2f allowed_speed=%.2f target=(%.2f, %.2f) "
+        "distance_to_target=%.2f distance_to_path_goal=%.2f "
+        "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
+        "path_segment=%s speed_limit_reason=%s local_clearance=%.2f",
+        current_position_.x, current_position_.y, current_altitude_m_,
+        current_velocity_.x, current_velocity_.y,
+        current_velocity_valid_ ? "true" : "false", current_speed_mps_,
+        last_speed_output_.requested_speed_mps, last_speed_output_.allowed_speed_mps,
+        target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
+        path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
+        motionPhaseName(last_speed_output_.limit_reason, hold_position),
+        pathSegmentTypeName(turn_angle_rad),
+        speedLimitReasonName(last_speed_output_.limit_reason), local_clearance_m);
+  }
+
   nav_msgs::msg::OccupancyGrid occupancy_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
@@ -948,7 +996,9 @@ private:
   double hold_y_m_{0.0};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
+  std::int64_t telemetry_log_period_ns_{500'000'000};
   std::int64_t last_occupancy_grid_update_ns_{0};
+  std::int64_t last_telemetry_log_ns_{0};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};

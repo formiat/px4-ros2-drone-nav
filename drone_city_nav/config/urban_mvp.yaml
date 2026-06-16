@@ -139,6 +139,7 @@ px4_offboard_node:
     narrow_clearance_slowdown_radius_m: 5.5
     narrow_clearance_min_speed_mps: 0.8
     max_clearance_grid_staleness_s: 1.5
+    telemetry_log_period_s: 0.5
     velocity_feedforward_enabled: true
     lookahead_distance_m: 8.0
     dynamic_lookahead_enabled: true
