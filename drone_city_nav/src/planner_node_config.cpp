@@ -45,9 +45,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       1000.0);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
-  config.planner_core.stable_path_blocking_occupied_length_m = std::clamp(
-      node.declare_parameter<double>("stable_path_blocking_occupied_length_m", 2.0),
-      0.0, 1000.0);
+  config.planner_core.stable_path_blocking_blocked_length_m = std::clamp(
+      node.declare_parameter<double>("stable_path_blocking_blocked_length_m", 2.0), 0.0,
+      1000.0);
   config.planner_core.stable_path_blocking_replan_horizon_m = std::clamp(
       node.declare_parameter<double>("stable_path_blocking_replan_horizon_m", 25.0),
       0.0, 1000.0);

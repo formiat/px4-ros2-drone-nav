@@ -161,14 +161,14 @@ public:
         "reuse_last_valid_path_on_failure=%s "
         "max_initial_lateral_deviation=%.2fm "
         "stable_path_reuse=%s stable_max_deviation=%.2fm "
-        "stable_goal_tolerance=%.2fm stable_blocking_occupied_length=%.2fm "
+        "stable_goal_tolerance=%.2fm stable_blocking_blocked_length=%.2fm "
         "stable_blocking_replan_horizon=%.2fm "
         "stable_blocked_confirmations=%d",
         direct_path_fallback_ ? "true" : "false",
         reuse_last_valid_path_on_failure_ ? "true" : "false",
         max_initial_lateral_deviation_m_, stable_path_reuse_enabled_ ? "true" : "false",
         stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
-        stable_path_blocking_occupied_length_m_, stable_path_blocking_replan_horizon_m_,
+        stable_path_blocking_blocked_length_m_, stable_path_blocking_replan_horizon_m_,
         stable_path_blocked_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
@@ -199,8 +199,8 @@ private:
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
-    stable_path_blocking_occupied_length_m_ =
-        config.planner_core.stable_path_blocking_occupied_length_m;
+    stable_path_blocking_blocked_length_m_ =
+        config.planner_core.stable_path_blocking_blocked_length_m;
     stable_path_blocking_replan_horizon_m_ =
         config.planner_core.stable_path_blocking_replan_horizon_m;
     stable_path_blocked_confirmations_required_ =
@@ -1059,7 +1059,7 @@ private:
               : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
-          "Current path has an unconfirmed occupied intersection; keeping current "
+          "Current path has an unconfirmed blocked intersection; keeping current "
           "path until it is confirmed: reason=%s confirmations=%d/%d "
           "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
           "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
@@ -1068,7 +1068,7 @@ private:
           stable_path_blocked_confirmations_,
           stable_path_blocked_confirmations_required_, last_valid_path_points_.size(),
           decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_occupied_length_m, blocking_start.x, blocking_start.y,
+          decision.blocking_blocked_length_m, blocking_start.x, blocking_start.y,
           blocking_end.x, blocking_end.y);
       return true;
     }
@@ -1094,7 +1094,7 @@ private:
           stable_path_blocked_confirmations_,
           stable_path_blocked_confirmations_required_, decision.remaining_path.size(),
           decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_occupied_length_m, blocking_start.x, blocking_start.y,
+          decision.blocking_blocked_length_m, blocking_start.x, blocking_start.y,
           blocking_end.x, blocking_end.y);
       return false;
     }
@@ -1131,7 +1131,7 @@ private:
         "distance_to_blocked_segment=%.2fm horizon=%.2fm",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
         decision.deviation_m, decision.blocking_segment_index,
-        decision.blocking_occupied_length_m, distance_to_blocked_segment_m,
+        decision.blocking_blocked_length_m, distance_to_blocked_segment_m,
         stable_path_blocking_replan_horizon_m_);
     return true;
   }
@@ -1156,7 +1156,7 @@ private:
         "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
         "segment_end=(%.2f, %.2f)",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.blocking_occupied_length_m, segment_start.x,
+        decision.deviation_m, decision.blocking_blocked_length_m, segment_start.x,
         segment_start.y, segment_end.x, segment_end.y);
     return true;
   }
@@ -1240,7 +1240,7 @@ private:
   double max_initial_lateral_deviation_m_{8.0};
   double stable_path_reuse_max_deviation_m_{12.0};
   double stable_path_goal_tolerance_m_{3.0};
-  double stable_path_blocking_occupied_length_m_{2.0};
+  double stable_path_blocking_blocked_length_m_{2.0};
   double stable_path_blocking_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};

@@ -35,7 +35,7 @@ struct PlannerCoreConfig {
   double comfort_path_max_detour_ratio{0.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{12.0};
-  double stable_path_blocking_occupied_length_m{2.0};
+  double stable_path_blocking_blocked_length_m{2.0};
   double stable_path_blocking_replan_horizon_m{25.0};
   int stable_path_blocked_confirmations_required{2};
 };
@@ -84,7 +84,7 @@ struct StablePathDecision {
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
   int blocked_confirmations{0};
   std::size_t blocking_segment_index{0U};
-  double blocking_occupied_length_m{0.0};
+  double blocking_blocked_length_m{0.0};
 };
 
 [[nodiscard]] const char*
@@ -121,11 +121,11 @@ closestPathProjection(std::span<const Point2> path_points, Point2 current_positi
     double stable_path_goal_tolerance_m, double stable_path_reuse_max_deviation_m,
     double& deviation_m);
 
-[[nodiscard]] bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
-                                        std::span<const Point2> path_points,
-                                        double stable_path_blocking_occupied_length_m,
-                                        std::size_t* blocking_segment_index = nullptr,
-                                        double* blocking_occupied_length_m = nullptr);
+[[nodiscard]] bool pathHasBlockedCells(const OccupancyGrid2D& grid,
+                                       std::span<const Point2> path_points,
+                                       double stable_path_blocking_blocked_length_m,
+                                       std::size_t* blocking_segment_index = nullptr,
+                                       double* blocking_blocked_length_m = nullptr);
 
 [[nodiscard]] bool pathIsUnblocked(const OccupancyGrid2D& grid,
                                    std::span<const Point2> path_points,

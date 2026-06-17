@@ -507,7 +507,7 @@ TEST(PlannerCore, StablePathRequiresConfirmedOccupiedIntersection) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_blocking_occupied_length_m = 0.5;
+  config.stable_path_blocking_blocked_length_m = 0.5;
   config.stable_path_blocked_confirmations_required = 2;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
@@ -535,7 +535,7 @@ TEST(PlannerCore, StablePathTreatsInflationAsBlocking) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_blocking_occupied_length_m = 0.5;
+  config.stable_path_blocking_blocked_length_m = 0.5;
   config.stable_path_blocked_confirmations_required = 1;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 3.5}, Point2{8.5, 3.5}};
@@ -545,7 +545,7 @@ TEST(PlannerCore, StablePathTreatsInflationAsBlocking) {
 
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kBlockedConfirmed);
-  EXPECT_GE(decision.blocking_occupied_length_m, 1.0);
+  EXPECT_GE(decision.blocking_blocked_length_m, 1.0);
 }
 
 TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {

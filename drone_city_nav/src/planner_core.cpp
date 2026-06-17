@@ -1,5 +1,7 @@
 #include "drone_city_nav/planner_core.hpp"
 
+#include "drone_city_nav/clearance_field.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -171,38 +173,28 @@ PathMetrics pointPathMetrics(const std::span<const Point2> path_points) {
 
 double nearestBlockedDistanceM(const OccupancyGrid2D& grid, const GridIndex cell,
                                const double max_distance_m) {
-  if (!(grid.resolution() > 0.0)) {
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
+      ClearanceSource::kBlocked);
+  if (!clearance_field.contains(cell)) {
     return std::numeric_limits<double>::infinity();
   }
-
-  const int radius_cells = static_cast<int>(std::ceil(
-      normalizedClearanceDiagnosticRadiusM(max_distance_m) / grid.resolution()));
-  double nearest_distance_m = std::numeric_limits<double>::infinity();
-  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
-    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-      const GridIndex candidate{cell.x + dx, cell.y + dy};
-      if (!grid.contains(candidate) || !grid.isBlocked(candidate)) {
-        continue;
-      }
-      nearest_distance_m =
-          std::min(nearest_distance_m,
-                   distance(grid.cellCenter(cell), grid.cellCenter(candidate)));
-    }
-  }
-
-  return nearest_distance_m;
+  return clearance_field.distanceAt(cell);
 }
 
 double pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
                                     const std::span<const GridIndex> path,
                                     const double max_distance_m) {
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
+      ClearanceSource::kBlocked);
   double minimum_clearance_m = std::numeric_limits<double>::infinity();
   for (const GridIndex cell : path) {
-    if (!grid.contains(cell)) {
+    if (!clearance_field.contains(cell)) {
       continue;
     }
-    minimum_clearance_m = std::min(minimum_clearance_m,
-                                   nearestBlockedDistanceM(grid, cell, max_distance_m));
+    minimum_clearance_m =
+        std::min(minimum_clearance_m, clearance_field.distanceAt(cell));
   }
   return minimum_clearance_m;
 }
@@ -329,11 +321,11 @@ std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
   return remaining_path;
 }
 
-bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
-                          const std::span<const Point2> path_points,
-                          const double stable_path_blocking_occupied_length_m,
-                          std::size_t* const blocking_segment_index,
-                          double* const blocking_occupied_length_m) {
+bool pathHasBlockedCells(const OccupancyGrid2D& grid,
+                         const std::span<const Point2> path_points,
+                         const double stable_path_blocking_blocked_length_m,
+                         std::size_t* const blocking_segment_index,
+                         double* const blocking_blocked_length_m) {
   if (path_points.size() < 2U) {
     return false;
   }
@@ -341,14 +333,14 @@ bool pathHasOccupiedCells(const OccupancyGrid2D& grid,
   for (std::size_t index = 1U; index < path_points.size(); ++index) {
     const double blocked_length_m =
         pathSegmentBlockedLengthM(grid, path_points[index - 1U], path_points[index]);
-    if (blocked_length_m < stable_path_blocking_occupied_length_m) {
+    if (blocked_length_m < stable_path_blocking_blocked_length_m) {
       continue;
     }
     if (blocking_segment_index != nullptr) {
       *blocking_segment_index = index - 1U;
     }
-    if (blocking_occupied_length_m != nullptr) {
-      *blocking_occupied_length_m = blocked_length_m;
+    if (blocking_blocked_length_m != nullptr) {
+      *blocking_blocked_length_m = blocked_length_m;
     }
     return true;
   }
@@ -483,10 +475,10 @@ PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
   }
 
   decision.remaining_path = std::move(*remaining_path);
-  const bool occupied = pathHasOccupiedCells(
-      grid, decision.remaining_path, config_.stable_path_blocking_occupied_length_m,
-      &decision.blocking_segment_index, &decision.blocking_occupied_length_m);
-  if (!occupied) {
+  const bool blocked = pathHasBlockedCells(
+      grid, decision.remaining_path, config_.stable_path_blocking_blocked_length_m,
+      &decision.blocking_segment_index, &decision.blocking_blocked_length_m);
+  if (!blocked) {
     decision.keep_path = true;
     decision.reason = StablePathDecisionReason::kClear;
     decision.blocked_confirmations = 0;

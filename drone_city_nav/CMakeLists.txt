@@ -29,6 +29,7 @@ endfunction()
 add_library(
   drone_city_nav_core
   src/astar_planner.cpp
+  src/clearance_field.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
   src/grid_config.cpp
@@ -164,6 +165,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_snapshot_writer_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_snapshot_writer_test drone_city_nav_core)
   enable_project_warnings(lidar_snapshot_writer_test)
+
+  ament_add_gtest(clearance_field_test tests/clearance_field_test.cpp)
+  target_compile_features(clearance_field_test PRIVATE cxx_std_20)
+  target_link_libraries(clearance_field_test drone_city_nav_core)
+  enable_project_warnings(clearance_field_test)
 
   ament_add_gtest(lidar_radar_markers_test tests/lidar_radar_markers_test.cpp
                   src/lidar_radar_markers.cpp)

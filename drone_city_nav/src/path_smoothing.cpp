@@ -1,5 +1,7 @@
 #include "drone_city_nav/path_smoothing.hpp"
 
+#include "drone_city_nav/clearance_field.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -7,39 +9,21 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] double nearestOccupiedDistanceM(const OccupancyGrid2D& grid,
-                                              const GridIndex cell,
-                                              const double max_distance_m) {
-  if (!(max_distance_m > 0.0) || !(grid.resolution() > 0.0)) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  const int radius_cells =
-      static_cast<int>(std::ceil(max_distance_m / grid.resolution()));
-  double nearest_distance_m = std::numeric_limits<double>::infinity();
-  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
-    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-      const GridIndex candidate{cell.x + dx, cell.y + dy};
-      if (!grid.contains(candidate) || !grid.isOccupied(candidate)) {
-        continue;
-      }
-      nearest_distance_m =
-          std::min(nearest_distance_m,
-                   distance(grid.cellCenter(cell), grid.cellCenter(candidate)));
-    }
-  }
-
-  return nearest_distance_m;
+[[nodiscard]] ClearanceField2D
+buildSmoothingClearanceField(const OccupancyGrid2D& grid,
+                             const PathSmoothingConfig& config) {
+  return ClearanceField2D::build(grid,
+                                 std::max(0.0, config.minimum_obstacle_clearance_m),
+                                 ClearanceSource::kOccupied);
 }
 
-[[nodiscard]] bool cellHasRequiredClearance(const OccupancyGrid2D& grid,
+[[nodiscard]] bool cellHasRequiredClearance(const ClearanceField2D& clearance_field,
                                             const GridIndex cell,
                                             const PathSmoothingConfig& config) {
   if (!(config.minimum_obstacle_clearance_m > 0.0)) {
     return true;
   }
-  return nearestOccupiedDistanceM(grid, cell, config.minimum_obstacle_clearance_m) >=
-         config.minimum_obstacle_clearance_m;
+  return clearance_field.distanceAt(cell) >= config.minimum_obstacle_clearance_m;
 }
 
 [[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
@@ -74,18 +58,28 @@ namespace {
   return lateral_error_m <= lateral_tolerance_m;
 }
 
-} // namespace
-
-bool hasLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
-                    const GridIndex end, const PathSmoothingConfig& config) {
+[[nodiscard]] bool hasLineOfSight(const OccupancyGrid2D& grid,
+                                  const ClearanceField2D& clearance_field,
+                                  const GridIndex start, const GridIndex end,
+                                  const PathSmoothingConfig& config) {
   if (!grid.contains(start) || !grid.contains(end)) {
     return false;
   }
 
   const auto line_cells = grid.cellsOnLine(start, end);
-  return std::ranges::none_of(line_cells, [&grid, &config](const GridIndex cell) {
-    return grid.isBlocked(cell) || !cellHasRequiredClearance(grid, cell, config);
-  });
+  return std::ranges::none_of(
+      line_cells, [&grid, &clearance_field, &config](const GridIndex cell) {
+        return grid.isBlocked(cell) ||
+               !cellHasRequiredClearance(clearance_field, cell, config);
+      });
+}
+
+} // namespace
+
+bool hasLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
+                    const GridIndex end, const PathSmoothingConfig& config) {
+  const ClearanceField2D clearance_field = buildSmoothingClearanceField(grid, config);
+  return hasLineOfSight(grid, clearance_field, start, end, config);
 }
 
 std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
@@ -100,11 +94,12 @@ std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
 
   std::size_t anchor = 0U;
   smoothed.push_back(path.front());
+  const ClearanceField2D clearance_field = buildSmoothingClearanceField(grid, config);
 
   while (anchor < path.size() - 1U) {
     std::size_t next = path.size() - 1U;
     while (next > anchor + 1U &&
-           !hasLineOfSight(grid, path[anchor], path[next], config)) {
+           !hasLineOfSight(grid, clearance_field, path[anchor], path[next], config)) {
       --next;
     }
 

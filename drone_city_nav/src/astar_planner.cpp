@@ -1,5 +1,7 @@
 #include "drone_city_nav/astar_planner.hpp"
 
+#include "drone_city_nav/clearance_field.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -36,16 +38,6 @@ struct OpenNode {
   double g_score{0.0};
 };
 
-struct ClearanceField {
-  double radius_m{0.0};
-  std::vector<double> distance_m;
-};
-
-struct ClearanceNode {
-  GridIndex cell{};
-  double distance_m{0.0};
-};
-
 struct CompareOpenNode {
   [[nodiscard]] bool operator()(const OpenNode& lhs,
                                 const OpenNode& rhs) const noexcept {
@@ -53,13 +45,6 @@ struct CompareOpenNode {
       return lhs.g_score < rhs.g_score;
     }
     return lhs.f_score > rhs.f_score;
-  }
-};
-
-struct CompareClearanceNode {
-  [[nodiscard]] bool operator()(const ClearanceNode& lhs,
-                                const ClearanceNode& rhs) const noexcept {
-    return lhs.distance_m > rhs.distance_m;
   }
 };
 
@@ -106,63 +91,6 @@ struct CompareClearanceNode {
   return grid.isBlocked(adjacent_x) || grid.isBlocked(adjacent_y);
 }
 
-[[nodiscard]] ClearanceField buildClearanceField(const OccupancyGrid2D& grid,
-                                                 const double radius_m) {
-  ClearanceField field{};
-  field.radius_m = std::max(0.0, radius_m);
-  field.distance_m.assign(grid.cellCount(), std::numeric_limits<double>::infinity());
-  if (field.radius_m <= 0.0) {
-    return field;
-  }
-
-  // Weighted 8-neighbor propagation is an inexpensive metric approximation:
-  // diagonal steps cost sqrt(2) cells instead of being counted as one cell.
-  std::priority_queue<ClearanceNode, std::vector<ClearanceNode>, CompareClearanceNode>
-      queue;
-  for (int y = 0; y < grid.height(); ++y) {
-    for (int x = 0; x < grid.width(); ++x) {
-      const GridIndex cell{x, y};
-      if (!grid.isOccupied(cell)) {
-        continue;
-      }
-      field.distance_m[grid.linearIndex(cell)] = 0.0;
-      queue.push(ClearanceNode{cell, 0.0});
-    }
-  }
-
-  while (!queue.empty()) {
-    const ClearanceNode current = queue.top();
-    queue.pop();
-    if (current.distance_m > field.radius_m) {
-      continue;
-    }
-    const std::size_t current_index = grid.linearIndex(current.cell);
-    if (current.distance_m > field.distance_m[current_index]) {
-      continue;
-    }
-
-    for (const GridIndex offset : kNeighborOffsets) {
-      const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
-      if (!grid.contains(next)) {
-        continue;
-      }
-      const double next_distance_m =
-          current.distance_m + stepDistanceM(offset, grid.resolution());
-      if (next_distance_m > field.radius_m) {
-        continue;
-      }
-      const std::size_t next_index = grid.linearIndex(next);
-      if (field.distance_m[next_index] <= next_distance_m) {
-        continue;
-      }
-      field.distance_m[next_index] = next_distance_m;
-      queue.push(ClearanceNode{next, next_distance_m});
-    }
-  }
-
-  return field;
-}
-
 [[nodiscard]] double directionPreferenceCost(const AStarConfig& config,
                                              const int current_direction_state,
                                              const int next_direction_state) noexcept {
@@ -186,14 +114,13 @@ struct CompareClearanceNode {
   return config.turn_cost_weight;
 }
 
-[[nodiscard]] double clearanceCost(const OccupancyGrid2D& grid,
-                                   const ClearanceField& field,
+[[nodiscard]] double clearanceCost(const ClearanceField2D& field,
                                    const AStarConfig& config, const GridIndex cell) {
-  if (field.radius_m <= 0.0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
+  if (field.maxDistanceM() <= 0.0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
     return 0.0;
   }
 
-  const double distance_m = field.distance_m.at(grid.linearIndex(cell));
+  const double distance_m = field.distanceAt(cell);
   if (!std::isfinite(distance_m)) {
     return 0.0;
   }
@@ -268,8 +195,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     return result;
   }
 
-  const ClearanceField clearance_field =
-      buildClearanceField(grid, config.obstacle_clearance_cost_radius_m);
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      grid, config.obstacle_clearance_cost_radius_m, ClearanceSource::kOccupied);
   const std::size_t state_count = grid.cellCount() * direction_states;
   std::vector<double> g_scores(state_count, std::numeric_limits<double>::infinity());
   std::vector<std::size_t> parents(state_count, kNoParent);
@@ -319,7 +246,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
 
       const double tentative_g =
           g_scores[current_index] + stepDistanceM(offset, grid.resolution()) +
-          clearanceCost(grid, clearance_field, config, next) +
+          clearanceCost(clearance_field, config, next) +
           directionPreferenceCost(config, current.direction_state,
                                   next_direction_state);
       if (tentative_g >= g_scores[next_index]) {
