@@ -1037,11 +1037,6 @@ private:
 
     if ((decision.reason == StablePathDecisionReason::kBlockedUnconfirmed ||
          decision.reason == StablePathDecisionReason::kBlockedConfirmed) &&
-        keepInflationEscapePathIfApplicable(grid, decision)) {
-      return true;
-    }
-    if ((decision.reason == StablePathDecisionReason::kBlockedUnconfirmed ||
-         decision.reason == StablePathDecisionReason::kBlockedConfirmed) &&
         deferDistantStablePathBlockIfApplicable(decision)) {
       return true;
     }
