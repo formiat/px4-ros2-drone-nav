@@ -746,6 +746,18 @@ private:
     return occupancyGridValue(cell) >= kOccupiedOccupancyValue;
   }
 
+  [[nodiscard]] bool currentPositionInInflatedSafetyCell() const {
+    if (!localPositionFresh()) {
+      return false;
+    }
+    const std::optional<GridIndex> current_cell = occupancyGridCell(current_position_);
+    if (!current_cell.has_value()) {
+      return false;
+    }
+    return occupancyGridCellBlocked(*current_cell) &&
+           !occupancyGridCellOccupied(*current_cell);
+  }
+
   [[nodiscard]] std::vector<GridIndex>
   occupancyGridCellsOnLine(const GridIndex start, const GridIndex end) const {
     std::vector<GridIndex> cells;
@@ -825,8 +837,15 @@ private:
 
   [[nodiscard]] bool clearanceEscapeRequested(const SpeedControllerInput& input) const {
     if (!clearance_escape_enabled_ || input.hold_position ||
-        !(clearance_escape_step_m_ > 0.0) ||
-        last_speed_output_.requested_speed_mps > 0.0) {
+        !(clearance_escape_step_m_ > 0.0)) {
+      return false;
+    }
+
+    if (currentPositionInInflatedSafetyCell()) {
+      return true;
+    }
+
+    if (last_speed_output_.requested_speed_mps > 0.0) {
       return false;
     }
 
