@@ -245,11 +245,18 @@ run_px4_sitl() {
   if [[ -n "${PX4_BUILD_DIR+x}" ]]; then
     local cmake_generator="${PX4_CMAKE_GENERATOR:-Ninja}"
     local python_executable="${PYTHON_EXECUTABLE:-$(command -v python3)}"
+    local ninja_file="${px4_build_dir}/build.ninja"
     if [[ ! -f "${px4_build_dir}/CMakeCache.txt" ]]; then
       cmake -S "${px4_dir}" -B "${px4_build_dir}" -G "${cmake_generator}" \
         -DCONFIG=px4_sitl_default \
         -DPYTHON_EXECUTABLE="${python_executable}" \
         -DPython3_EXECUTABLE="${python_executable}"
+    fi
+    if [[ -f "${ninja_file}" ]] &&
+      grep -Eq -- '-std=(gnu\+\+|c\+\+)14' "${ninja_file}"; then
+      echo "PX4 host build: switching generated Ninja C++ standard flags to C++17 for conda protobuf compatibility"
+      perl -0pi -e 's/-std=gnu\+\+14/-std=gnu++17/g; s/-std=c\+\+14/-std=c++17/g' \
+        "${ninja_file}"
     fi
     cmake --build "${px4_build_dir}" --target "${px4_model_target}"
     return

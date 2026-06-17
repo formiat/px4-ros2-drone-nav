@@ -102,6 +102,9 @@ and host-built PX4 ROS support installed:
 - `MicroXRCEAgent` installed into the same micromamba environment.
 - PX4 SITL configured in `external/PX4-Autopilot/build-host` so the native
   cache does not conflict with the container-created PX4 cache.
+  The wrapper patches the generated host Ninja file to C++17 because the
+  Robostack/Gazebo protobuf headers require C++17 while PX4 1.17 defaults to
+  C++14.
 
 Enter the native host shell:
 
