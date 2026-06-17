@@ -817,8 +817,8 @@ private:
       }
     }
 
-    input.start_clearance_m = estimateLocalClearanceM(start);
-    input.end_clearance_m = estimateLocalClearanceM(end);
+    input.start_clearance_m = estimateOccupiedClearanceM(start);
+    input.end_clearance_m = estimateOccupiedClearanceM(end);
     return evaluateTargetSegmentSafetyPolicy(input);
   }
 
@@ -1193,6 +1193,16 @@ private:
   }
 
   [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
+    return estimateGridClearanceM(point, kInflatedOccupancyValue);
+  }
+
+  [[nodiscard]] double estimateOccupiedClearanceM(const Point2 point) const {
+    return estimateGridClearanceM(point, kOccupiedOccupancyValue);
+  }
+
+  [[nodiscard]] double
+  estimateGridClearanceM(const Point2 point,
+                         const std::int8_t min_occupancy_value) const {
     if (!occupancyGridFresh()) {
       return std::numeric_limits<double>::quiet_NaN();
     }
@@ -1222,7 +1232,7 @@ private:
         const std::size_t data_index =
             static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
             static_cast<std::size_t>(x);
-        if (occupancy_grid_.data[data_index] < kInflatedOccupancyValue) {
+        if (occupancy_grid_.data[data_index] < min_occupancy_value) {
           continue;
         }
         const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
