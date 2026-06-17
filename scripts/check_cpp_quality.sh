@@ -26,6 +26,7 @@ Refusing to run build-capable checks as root in a non-root-owned workspace.
 Run through ./scripts/dev_shell.sh or docker run with:
   --user "\$(id -u):\$(id -g)"
 
+For native host checks, prefer ./scripts/host_shell.sh ./scripts/check_cpp_quality.sh.
 Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
 EOF
     exit 1

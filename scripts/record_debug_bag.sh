@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-output_dir="${BAG_OUTPUT_DIR:-${repo_root}/log/rosbag_city_debug}"
+output_dir="${BAG_OUTPUT_DIR:-${DRONE_GAZEBO_LOG_DIR:-${repo_root}/log}/rosbag_city_debug}"
 
 mkdir -p "$(dirname "${output_dir}")"
 

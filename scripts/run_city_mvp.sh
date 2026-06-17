@@ -22,6 +22,7 @@ build, install, log, and runtime files.
 Run through ./scripts/dev_shell.sh or docker run with:
   --user "\$(id -u):\$(id -g)"
 
+For native host runs, prefer ./scripts/run_city_mvp_host.sh.
 Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
 EOF
     exit 1
@@ -116,12 +117,12 @@ if [[ ! -d "${px4_dir}" ]]; then
 fi
 if [[ ! -f "${ros_setup_file}" ]]; then
   echo "ROS setup file was not found: ${ros_setup_file}" >&2
-  echo "Set ROS_SETUP_FILE or run inside ./scripts/dev_shell.sh." >&2
+  echo "Use ./scripts/run_city_mvp_host.sh, set ROS_SETUP_FILE, or run inside ./scripts/dev_shell.sh." >&2
   exit 1
 fi
 if [[ ! -f "${px4_msgs_setup_file}" ]]; then
   echo "px4_msgs setup file was not found: ${px4_msgs_setup_file}" >&2
-  echo "Set PX4_MSGS_SETUP_FILE or run inside ./scripts/dev_shell.sh." >&2
+  echo "Use ./scripts/run_city_mvp_host.sh, set PX4_MSGS_SETUP_FILE, or run inside ./scripts/dev_shell.sh." >&2
   exit 1
 fi
 if [[ ! -f "${city_nav_params_file}" ]]; then

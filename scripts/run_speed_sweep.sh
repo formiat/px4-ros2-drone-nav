@@ -2,8 +2,19 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+make_abs_path() {
+  local path="$1"
+  case "${path}" in
+    /*) printf '%s\n' "${path}" ;;
+    *) printf '%s/%s\n' "${repo_root}" "${path}" ;;
+  esac
+}
+
 base_params="${CITY_NAV_SWEEP_BASE_PARAMS:-${repo_root}/drone_city_nav/config/urban_mvp.yaml}"
-sweep_dir="${CITY_NAV_SWEEP_DIR:-${repo_root}/build/speed_sweep}"
+sweep_dir="${CITY_NAV_SWEEP_DIR:-$(make_abs_path "${COLCON_BUILD_BASE:-build}")/speed_sweep}"
+log_root="${CITY_NAV_SWEEP_LOG_ROOT:-$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")}"
+run_script="${CITY_NAV_RUNNER:-${repo_root}/scripts/run_city_mvp.sh}"
 smoke_duration_s="${SMOKE_DURATION_S:-300}"
 
 if [[ ! -f "${base_params}" ]]; then
@@ -60,7 +71,7 @@ for speed in "$@"; do
   speed_label="${speed//./_}"
   step_cap="$(awk -v speed="${speed}" 'BEGIN { printf "%.3f", speed * 0.1 }')"
   params_file="${sweep_dir}/urban_mvp_speed_${speed_label}.yaml"
-  run_log_dir="${repo_root}/log/speed_sweep_${speed_label}"
+  run_log_dir="${log_root}/speed_sweep_${speed_label}"
   mkdir -p "${run_log_dir}"
   write_speed_params "${speed}" "${step_cap}" "${params_file}"
 
@@ -75,5 +86,5 @@ for speed in "$@"; do
     ROS_LOG_FILE="${run_log_dir}/ros_city_mvp.log" \
     GZ_LOG_FILE="${run_log_dir}/gz_city_mvp.log" \
     LIDAR_DEBUG_DIR="${run_log_dir}/lidar_debug" \
-    "${repo_root}/scripts/run_city_mvp.sh"
+    "${run_script}"
 done
