@@ -46,6 +46,11 @@ normalize_bool() {
 }
 
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
+if [[ -n "${PX4_BUILD_DIR+x}" ]]; then
+  px4_build_dir="$(make_abs_path "${PX4_BUILD_DIR}")"
+else
+  px4_build_dir="${px4_dir}/build/px4_sitl_default"
+fi
 ros_distro="${ROS_DISTRO:-jazzy}"
 ros_setup_file="${ROS_SETUP_FILE:-/opt/ros/${ros_distro}/setup.bash}"
 px4_msgs_setup_file="${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"
@@ -101,7 +106,7 @@ runtime_dir="${colcon_build_base}/gazebo_city_mvp"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
-px4_plugins_dir="${px4_dir}/build/px4_sitl_default/src/modules/simulation/gz_plugins"
+px4_plugins_dir="${px4_build_dir}/src/modules/simulation/gz_plugins"
 px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
 
 if [[ ! -d "${px4_dir}" ]]; then
@@ -236,6 +241,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+run_px4_sitl() {
+  if [[ -n "${PX4_BUILD_DIR+x}" ]]; then
+    local cmake_generator="${PX4_CMAKE_GENERATOR:-Ninja}"
+    local python_executable="${PYTHON_EXECUTABLE:-$(command -v python3)}"
+    if [[ ! -f "${px4_build_dir}/CMakeCache.txt" ]]; then
+      cmake -S "${px4_dir}" -B "${px4_build_dir}" -G "${cmake_generator}" \
+        -DCONFIG=px4_sitl_default \
+        -DPYTHON_EXECUTABLE="${python_executable}" \
+        -DPython3_EXECUTABLE="${python_executable}"
+    fi
+    cmake --build "${px4_build_dir}" --target "${px4_model_target}"
+    return
+  fi
+
+  make -C "${px4_dir}" px4_sitl "${px4_model_target}"
+}
+
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
 if [[ -n "${GZ_SIM_RESOURCE_PATH:-}" ]]; then
   gz_resource_path="${gz_resource_path}:${GZ_SIM_RESOURCE_PATH}"
@@ -292,7 +314,7 @@ echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_
       PX4_GZ_STANDALONE=1 \
       PX4_GZ_MODEL_POSE="${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_yaw_rad}" \
       HEADLESS="${headless}" \
-        make -C "${px4_dir}" px4_sitl "${px4_model_target}"
+        run_px4_sitl
 ) > "${px4_log_file}" 2>&1 &
 px4_pid=$!
 

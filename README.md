@@ -100,6 +100,8 @@ and host-built PX4 ROS support installed:
   `~/.local/share/mamba/envs/drone-gazebo-host`.
 - `px4_msgs` built in `external/px4_msgs_ws_host`.
 - `MicroXRCEAgent` installed into the same micromamba environment.
+- PX4 SITL configured in `external/PX4-Autopilot/build-host` so the native
+  cache does not conflict with the container-created PX4 cache.
 
 Enter the native host shell:
 
