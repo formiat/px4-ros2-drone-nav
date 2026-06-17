@@ -103,6 +103,17 @@ bool escapeCommandStepAllowed(const TargetSegmentSafety& safety,
   return safety.end_clearance_m >= safety.start_clearance_m + required_improvement;
 }
 
+bool targetCommandAllowed(const TargetSegmentSafety& safety, const bool allow_escape,
+                          const double min_clearance_improvement_m) noexcept {
+  if (!allow_escape) {
+    return safety.allowed;
+  }
+  if (safety.allowed) {
+    return true;
+  }
+  return escapeCommandStepAllowed(safety, min_clearance_improvement_m);
+}
+
 const char*
 targetSegmentSafetyReasonName(const TargetSegmentSafetyReason reason) noexcept {
   switch (reason) {

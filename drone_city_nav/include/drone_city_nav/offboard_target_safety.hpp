@@ -67,6 +67,10 @@ clearanceEscapeRequested(const ClearanceEscapeRequestInput& input) noexcept;
 escapeCommandStepAllowed(const TargetSegmentSafety& safety,
                          double min_clearance_improvement_m) noexcept;
 
+[[nodiscard]] bool targetCommandAllowed(const TargetSegmentSafety& safety,
+                                        bool allow_escape,
+                                        double min_clearance_improvement_m) noexcept;
+
 [[nodiscard]] const char*
 targetSegmentSafetyReasonName(TargetSegmentSafetyReason reason) noexcept;
 

@@ -133,6 +133,28 @@ TEST(OffboardTargetSafety, AllowsClearEscapeCommandStep) {
   EXPECT_TRUE(escapeCommandStepAllowed(safety, 0.1));
 }
 
+TEST(OffboardTargetSafety, AllowsClearCommandEvenDuringEscapeMode) {
+  TargetSegmentSafety safety{};
+  safety.allowed = true;
+  safety.reason = TargetSegmentSafetyReason::kAllowed;
+  safety.blocked_cells = 0U;
+  safety.start_clearance_m = 6.0;
+  safety.end_clearance_m = 4.0;
+
+  EXPECT_TRUE(targetCommandAllowed(safety, true, 0.1));
+}
+
+TEST(OffboardTargetSafety, RejectsBlockedCommandOutsideEscapeMode) {
+  TargetSegmentSafety safety{};
+  safety.allowed = false;
+  safety.reason = TargetSegmentSafetyReason::kBlocked;
+  safety.blocked_cells = 2U;
+  safety.start_clearance_m = 0.30;
+  safety.end_clearance_m = 0.50;
+
+  EXPECT_FALSE(targetCommandAllowed(safety, false, 0.1));
+}
+
 TEST(OffboardTargetSafety, RejectsEscapeCommandStepThatLosesClearance) {
   TargetSegmentSafety safety{};
   safety.allowed = false;

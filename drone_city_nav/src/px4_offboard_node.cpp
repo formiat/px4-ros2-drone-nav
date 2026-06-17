@@ -895,10 +895,8 @@ private:
 
   [[nodiscard]] bool commandSafetyAllowed(const TargetSegmentSafety& safety,
                                           const bool allow_escape) const noexcept {
-    if (!allow_escape) {
-      return safety.allowed;
-    }
-    return escapeSafetyMakesProgress(safety);
+    return targetCommandAllowed(safety, allow_escape,
+                                clearance_escape_min_improvement_m_);
   }
 
   [[nodiscard]] bool escapeStepTowardValidatedTargetAllowed(
