@@ -49,6 +49,10 @@ struct TargetSegmentSafetyInput {
 [[nodiscard]] TargetSegmentSafety
 evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcept;
 
+[[nodiscard]] bool
+escapeCommandStepAllowed(const TargetSegmentSafety& safety,
+                         double min_clearance_improvement_m) noexcept;
+
 [[nodiscard]] const char*
 targetSegmentSafetyReasonName(TargetSegmentSafetyReason reason) noexcept;
 

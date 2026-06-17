@@ -57,6 +57,30 @@ evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcep
   return safety;
 }
 
+bool escapeCommandStepAllowed(const TargetSegmentSafety& safety,
+                              const double min_clearance_improvement_m) noexcept {
+  if (safety.reason == TargetSegmentSafetyReason::kOutsideGrid ||
+      safety.reason == TargetSegmentSafetyReason::kOccupied ||
+      safety.occupied_cells > 0U) {
+    return false;
+  }
+  if (safety.reason == TargetSegmentSafetyReason::kSafetyDisabled ||
+      safety.reason == TargetSegmentSafetyReason::kNoGrid) {
+    return safety.allowed;
+  }
+  if (safety.reason == TargetSegmentSafetyReason::kAllowed &&
+      safety.blocked_cells == 0U) {
+    return true;
+  }
+  if (!std::isfinite(safety.start_clearance_m) ||
+      !std::isfinite(safety.end_clearance_m)) {
+    return false;
+  }
+
+  const double required_improvement = std::max(0.0, min_clearance_improvement_m);
+  return safety.end_clearance_m >= safety.start_clearance_m + required_improvement;
+}
+
 const char*
 targetSegmentSafetyReasonName(const TargetSegmentSafetyReason reason) noexcept {
   switch (reason) {

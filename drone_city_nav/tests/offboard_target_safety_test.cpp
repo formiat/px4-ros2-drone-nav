@@ -101,4 +101,46 @@ TEST(OffboardTargetSafety, RejectsOutsideGrid) {
   EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kOutsideGrid);
 }
 
+TEST(OffboardTargetSafety, AllowsClearEscapeCommandStep) {
+  TargetSegmentSafety safety{};
+  safety.allowed = true;
+  safety.reason = TargetSegmentSafetyReason::kAllowed;
+  safety.blocked_cells = 0U;
+
+  EXPECT_TRUE(escapeCommandStepAllowed(safety, 0.1));
+}
+
+TEST(OffboardTargetSafety, RejectsEscapeCommandStepThatLosesClearance) {
+  TargetSegmentSafety safety{};
+  safety.allowed = false;
+  safety.reason = TargetSegmentSafetyReason::kBlocked;
+  safety.blocked_cells = 2U;
+  safety.start_clearance_m = 0.30;
+  safety.end_clearance_m = 0.25;
+
+  EXPECT_FALSE(escapeCommandStepAllowed(safety, 0.05));
+}
+
+TEST(OffboardTargetSafety, RejectsEscapeCommandStepBelowRequiredImprovement) {
+  TargetSegmentSafety safety{};
+  safety.allowed = false;
+  safety.reason = TargetSegmentSafetyReason::kBlocked;
+  safety.blocked_cells = 2U;
+  safety.start_clearance_m = 0.30;
+  safety.end_clearance_m = 0.34;
+
+  EXPECT_FALSE(escapeCommandStepAllowed(safety, 0.05));
+}
+
+TEST(OffboardTargetSafety, AllowsEscapeCommandStepWithRequiredImprovement) {
+  TargetSegmentSafety safety{};
+  safety.allowed = false;
+  safety.reason = TargetSegmentSafetyReason::kBlocked;
+  safety.blocked_cells = 2U;
+  safety.start_clearance_m = 0.30;
+  safety.end_clearance_m = 0.36;
+
+  EXPECT_TRUE(escapeCommandStepAllowed(safety, 0.05));
+}
+
 } // namespace drone_city_nav

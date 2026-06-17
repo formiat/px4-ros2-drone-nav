@@ -888,29 +888,7 @@ private:
 
   [[nodiscard]] bool escapeStepTowardValidatedTargetAllowed(
       const TargetSegmentSafety& safety) const noexcept {
-    if (!safety.allowed && safety.reason != TargetSegmentSafetyReason::kBlocked) {
-      return false;
-    }
-    if (safety.reason == TargetSegmentSafetyReason::kOutsideGrid ||
-        safety.reason == TargetSegmentSafetyReason::kOccupied ||
-        safety.occupied_cells > 0U) {
-      return false;
-    }
-    if (safety.reason == TargetSegmentSafetyReason::kSafetyDisabled ||
-        safety.reason == TargetSegmentSafetyReason::kNoGrid) {
-      return safety.allowed;
-    }
-    if (safety.reason == TargetSegmentSafetyReason::kAllowed &&
-        safety.blocked_cells == 0U) {
-      return true;
-    }
-    if (!std::isfinite(safety.start_clearance_m) ||
-        !std::isfinite(safety.end_clearance_m)) {
-      return safety.allowed;
-    }
-
-    return safety.end_clearance_m + clearance_escape_min_improvement_m_ >=
-           safety.start_clearance_m;
+    return escapeCommandStepAllowed(safety, clearance_escape_min_improvement_m_);
   }
 
   [[nodiscard]] std::optional<Point2>
