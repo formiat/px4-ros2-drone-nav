@@ -845,6 +845,18 @@ private:
                                   waypoint_index_ > 0U ? waypoint_index_ - 1U : 0U);
   }
 
+  [[nodiscard]] Point2 targetStepToward(const Point2 target,
+                                        const double step_m) const noexcept {
+    const double target_distance = distance(current_position_, target);
+    if (!(target_distance > kTinyDistanceM) || !(step_m > 0.0)) {
+      return current_position_;
+    }
+
+    const double ratio = std::min(step_m, target_distance) / target_distance;
+    return Point2{current_position_.x + (target.x - current_position_.x) * ratio,
+                  current_position_.y + (target.y - current_position_.y) * ratio};
+  }
+
   [[nodiscard]] Point2 selectSafePathTarget(const double requested_lead_m,
                                             const Point2 fallback_target,
                                             const bool allow_escape) {
@@ -887,8 +899,51 @@ private:
       }
     }
 
+    if (allow_escape) {
+      const Point2 direct_escape_target =
+          targetStepToward(fallback_target, bounded_lead_m);
+      if (distance(current_position_, direct_escape_target) > kTinyDistanceM) {
+        const TargetSegmentSafety direct_escape_safety = evaluateTargetSegmentSafety(
+            current_position_, direct_escape_target, allow_escape);
+        if (direct_escape_safety.allowed) {
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "Target segment safety selected direct escape: requested_lead=%.2f "
+              "blocked_cells=%zu occupied_cells=%zu reason=%s "
+              "clearance_start=%.2f clearance_end=%.2f target=(%.2f, %.2f) "
+              "fallback_target=(%.2f, %.2f)",
+              bounded_lead_m, direct_escape_safety.blocked_cells,
+              direct_escape_safety.occupied_cells,
+              targetSegmentSafetyReasonName(direct_escape_safety.reason),
+              direct_escape_safety.start_clearance_m,
+              direct_escape_safety.end_clearance_m, direct_escape_target.x,
+              direct_escape_target.y, fallback_target.x, fallback_target.y);
+          return direct_escape_target;
+        }
+      }
+    }
+
     const TargetSegmentSafety desired_safety =
         evaluateTargetSegmentSafety(current_position_, fallback_target, allow_escape);
+    if (allow_escape && desired_safety.allowed) {
+      const Point2 direct_escape_target =
+          targetStepToward(fallback_target, bounded_lead_m);
+      if (distance(current_position_, direct_escape_target) > kTinyDistanceM) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "Target segment safety selected bounded fallback escape: "
+            "requested_lead=%.2f "
+            "blocked_cells=%zu occupied_cells=%zu reason=%s clearance_start=%.2f "
+            "clearance_end=%.2f target=(%.2f, %.2f) fallback_target=(%.2f, %.2f)",
+            bounded_lead_m, desired_safety.blocked_cells, desired_safety.occupied_cells,
+            targetSegmentSafetyReasonName(desired_safety.reason),
+            desired_safety.start_clearance_m, desired_safety.end_clearance_m,
+            direct_escape_target.x, direct_escape_target.y, fallback_target.x,
+            fallback_target.y);
+        return direct_escape_target;
+      }
+    }
+
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "Target segment safety hold: requested_lead=%.2f allow_escape=%s "
