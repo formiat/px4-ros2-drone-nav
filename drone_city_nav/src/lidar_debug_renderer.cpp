@@ -77,6 +77,41 @@ void drawPoints(DebugImage& image, const std::span<const Point2> points,
   }
 }
 
+void drawGridCells(DebugImage& image, const LidarDebugRenderConfig& config,
+                   const LidarDebugFrame& frame) {
+  if (!frame.grid.has_value()) {
+    return;
+  }
+
+  const GridImageView& grid = *frame.grid;
+  const auto expected_cells = static_cast<std::size_t>(std::max(0, grid.width)) *
+                              static_cast<std::size_t>(std::max(0, grid.height));
+  if (grid.cells.size() != expected_cells || !(grid.resolution_m > 0.0)) {
+    return;
+  }
+
+  for (int y = 0; y < grid.height; ++y) {
+    for (int x = 0; x < grid.width; ++x) {
+      const auto index =
+          static_cast<std::size_t>(y) * static_cast<std::size_t>(grid.width) +
+          static_cast<std::size_t>(x);
+      const std::int8_t value = grid.cells[index];
+      if (value < 80) {
+        continue;
+      }
+      const Point2 center{
+          grid.origin_x_m + (static_cast<double>(x) + 0.5) * grid.resolution_m,
+          grid.origin_y_m + (static_cast<double>(y) + 0.5) * grid.resolution_m};
+      const auto pixel = worldToDebugImagePixel(center, config, frame);
+      if (!pixel.has_value()) {
+        continue;
+      }
+      drawDisc(image, pixel->x, pixel->y, 1,
+               value >= 100 ? config.grid_occupied_color : config.grid_inflated_color);
+    }
+  }
+}
+
 void drawPath(DebugImage& image, const LidarDebugRenderConfig& config,
               const LidarDebugFrame& frame) {
   if (frame.path.empty()) {
@@ -127,6 +162,7 @@ DebugImage renderLidarDebugImage(const LidarDebugRenderConfig& config,
                                  const LidarDebugFrame& frame) {
   const int image_size_px = std::max(1, config.image_size_px);
   DebugImage image{image_size_px, image_size_px, config.background};
+  drawGridCells(image, config, frame);
   drawPoints(image, frame.remembered_hits, config, frame, 1,
              config.remembered_hit_color);
   drawPath(image, config, frame);

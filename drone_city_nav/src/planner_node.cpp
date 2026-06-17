@@ -541,7 +541,8 @@ private:
         "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
-        "source=combined expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
+        "source=combined astar_status=%s expanded=%zu cost=%.2f raw_path=%zu "
+        "smoothed_path=%zu "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
@@ -575,7 +576,8 @@ private:
         planning_result->current_lidar.hit_beams,
         planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
-        planning_result->current_lidar.outside_hits, path_result->astar.expanded_cells,
+        planning_result->current_lidar.outside_hits,
+        astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,
         path_result->smoothed_path_metrics.points,
         path_result->raw_path_metrics.segments,
@@ -920,12 +922,13 @@ private:
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Using static-only fallback path after %s: static_occupied_cells=%zu "
-        "expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
+        "astar_status=%s expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
         "path_clearance[raw=%.2f smoothed=%.2f]",
-        reason, static_overlay.source_occupied_cells, path_result->astar.expanded_cells,
+        reason, static_overlay.source_occupied_cells,
+        astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,
         path_result->smoothed_path_metrics.points,
         path_result->raw_path_metrics.segments,

@@ -100,4 +100,34 @@ TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {
   EXPECT_TRUE(grid.isOccupied(GridIndex{5, 2}));
 }
 
+TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {
+  PlanningGridBuilderConfig config = testConfig();
+  config.use_static_map = false;
+  config.use_obstacle_memory = false;
+  config.use_current_lidar_obstacles = true;
+  config.fallback_bounds = GridBounds{-100.0, -100.0, 5.0, 3, 3};
+  const GridBounds lidar_bounds{10.0, 20.0, 0.5, 6, 4};
+  OccupancyGrid2D current_lidar_grid{lidar_bounds};
+  current_lidar_grid.setOccupied(GridIndex{2, 1});
+  PlanningGridSources sources{};
+  sources.current_lidar_grid = &current_lidar_grid;
+  sources.current_lidar.enabled = true;
+  sources.current_lidar.used = true;
+  sources.current_lidar.fresh = true;
+  sources.current_lidar.occupied_cells = 1U;
+
+  const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
+
+  ASSERT_EQ(result.status, PlanningGridStatus::kReady);
+  ASSERT_TRUE(result.grid.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const OccupancyGrid2D& grid = result.grid.value();
+  EXPECT_DOUBLE_EQ(grid.originX(), lidar_bounds.origin_x);
+  EXPECT_DOUBLE_EQ(grid.originY(), lidar_bounds.origin_y);
+  EXPECT_DOUBLE_EQ(grid.resolution(), lidar_bounds.resolution_m);
+  EXPECT_EQ(grid.width(), lidar_bounds.width_cells);
+  EXPECT_EQ(grid.height(), lidar_bounds.height_cells);
+  EXPECT_TRUE(grid.isOccupied(GridIndex{2, 1}));
+}
+
 } // namespace drone_city_nav

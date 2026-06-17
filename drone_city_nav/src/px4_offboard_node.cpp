@@ -841,7 +841,8 @@ private:
     if (!path_valid_ || path_points_.empty() || !localPositionFresh()) {
       return fallback_target;
     }
-    return targetOnPathAtDistance(path_points_, current_position_, path_distance_m);
+    return targetOnPathAtDistance(path_points_, current_position_, path_distance_m,
+                                  waypoint_index_ > 0U ? waypoint_index_ - 1U : 0U);
   }
 
   [[nodiscard]] Point2 selectSafePathTarget(const double requested_lead_m,

@@ -72,6 +72,31 @@ TEST(OffboardPathFollower, TargetAtDistanceStartsFromClosestProjection) {
   EXPECT_NEAR(target.y, 0.0, 1.0e-9);
 }
 
+TEST(OffboardPathFollower, TargetAtDistanceRespectsMinimumSegmentOnLoopedPath) {
+  const std::vector<Point2> path{{0.0, 0.0},  {10.0, 0.0}, {10.0, 10.0},
+                                 {0.0, 10.0}, {0.0, 0.0},  {0.0, -10.0}};
+
+  const Point2 target = targetOnPathAtDistance(path, Point2{0.2, 0.1}, 5.0, 4U);
+
+  EXPECT_NEAR(target.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(target.y, -5.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, LookaheadTargetUsesWaypointAsProjectionLowerBound) {
+  OffboardPathFollowerConfig config = testConfig();
+  config.lookahead_distance_m = 5.0;
+  config.min_lookahead_distance_m = 5.0;
+  config.max_lookahead_distance_m = 5.0;
+  config.dynamic_lookahead_enabled = false;
+  const std::vector<Point2> path{{0.0, 0.0},  {10.0, 0.0}, {10.0, 10.0},
+                                 {0.0, 10.0}, {0.0, 0.0},  {0.0, -10.0}};
+
+  const Point2 target = lookaheadTargetOnPath(path, Point2{0.2, 0.1}, 4U, config, 5.0);
+
+  EXPECT_NEAR(target.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(target.y, -4.9, 1.0e-9);
+}
+
 TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
   const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {30.0, 0.0}};
 

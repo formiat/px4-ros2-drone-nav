@@ -27,6 +27,11 @@ selectPlanningGridBounds(const PlanningGridBuilderConfig& config,
   if (config.use_obstacle_memory && sources.memory_grid != nullptr) {
     return sources.memory_grid->bounds();
   }
+  if (config.use_current_lidar_obstacles && sources.current_lidar_grid != nullptr &&
+      sources.current_lidar.enabled && sources.current_lidar.used &&
+      sources.current_lidar.fresh) {
+    return sources.current_lidar_grid->bounds();
+  }
   return config.fallback_bounds;
 }
 

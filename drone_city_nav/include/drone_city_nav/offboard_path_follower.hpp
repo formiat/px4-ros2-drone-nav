@@ -47,7 +47,8 @@ lookaheadWaypointIndex(std::span<const Point2> path, Point2 current_position,
                        double desired_speed_mps);
 
 [[nodiscard]] std::optional<OffboardPathProjection>
-closestOffboardPathProjection(std::span<const Point2> path, Point2 current_position);
+closestOffboardPathProjection(std::span<const Point2> path, Point2 current_position,
+                              std::size_t minimum_segment_start_index = 0U);
 
 [[nodiscard]] Point2 lookaheadTargetOnPath(std::span<const Point2> path,
                                            Point2 current_position,
@@ -55,9 +56,10 @@ closestOffboardPathProjection(std::span<const Point2> path, Point2 current_posit
                                            const OffboardPathFollowerConfig& config,
                                            double desired_speed_mps);
 
-[[nodiscard]] Point2 targetOnPathAtDistance(std::span<const Point2> path,
-                                            Point2 current_position,
-                                            double path_distance_m);
+[[nodiscard]] Point2
+targetOnPathAtDistance(std::span<const Point2> path, Point2 current_position,
+                       double path_distance_m,
+                       std::size_t minimum_segment_start_index = 0U);
 
 [[nodiscard]] std::size_t
 continuityWaypointIndex(std::span<const Point2> path, Point2 current_position,

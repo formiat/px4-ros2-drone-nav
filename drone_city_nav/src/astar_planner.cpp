@@ -12,10 +12,10 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr int kNoOccupiedCellInRange = std::numeric_limits<int>::max();
 constexpr int kDirectionCount = 8;
 constexpr int kDirectionStateCount = kDirectionCount + 1;
 constexpr int kStartDirectionState = kDirectionCount;
+constexpr std::size_t kNoParent = std::numeric_limits<std::size_t>::max();
 constexpr std::array<GridIndex, kDirectionCount> kNeighborOffsets{{
     {-1, -1},
     {0, -1},
@@ -35,8 +35,13 @@ struct OpenNode {
 };
 
 struct ClearanceField {
-  int radius_cells{0};
-  std::vector<int> distance_cells;
+  double radius_m{0.0};
+  std::vector<double> distance_m;
+};
+
+struct ClearanceNode {
+  GridIndex cell{};
+  double distance_m{0.0};
 };
 
 struct CompareOpenNode {
@@ -46,6 +51,13 @@ struct CompareOpenNode {
       return lhs.g_score < rhs.g_score;
     }
     return lhs.f_score > rhs.f_score;
+  }
+};
+
+struct CompareClearanceNode {
+  [[nodiscard]] bool operator()(const ClearanceNode& lhs,
+                                const ClearanceNode& rhs) const noexcept {
+    return lhs.distance_m > rhs.distance_m;
   }
 };
 
@@ -70,9 +82,12 @@ struct CompareOpenNode {
 }
 
 [[nodiscard]] GridIndex cellFromStateIndex(const OccupancyGrid2D& grid,
-                                           const int state_index) noexcept {
-  const int cell_index = state_index / kDirectionStateCount;
-  return GridIndex{cell_index % grid.width(), cell_index / grid.width()};
+                                           const std::size_t state_index) noexcept {
+  const std::size_t cell_index =
+      state_index / static_cast<std::size_t>(kDirectionStateCount);
+  const auto width = static_cast<std::size_t>(grid.width());
+  return GridIndex{static_cast<int>(cell_index % width),
+                   static_cast<int>(cell_index / width)};
 }
 
 [[nodiscard]] bool diagonalMoveCutsBlockedCorner(const OccupancyGrid2D& grid,
@@ -89,56 +104,55 @@ struct CompareOpenNode {
   return grid.isBlocked(adjacent_x) || grid.isBlocked(adjacent_y);
 }
 
-[[nodiscard]] int clearanceRadiusCells(const OccupancyGrid2D& grid,
-                                       const AStarConfig& config) noexcept {
-  if (!(config.obstacle_clearance_cost_radius_m > 0.0) ||
-      !(config.obstacle_clearance_cost_weight > 0.0) || !(grid.resolution() > 0.0)) {
-    return 0;
-  }
-  return std::max(0, static_cast<int>(std::ceil(
-                         config.obstacle_clearance_cost_radius_m / grid.resolution())));
-}
-
 [[nodiscard]] ClearanceField buildClearanceField(const OccupancyGrid2D& grid,
-                                                 const int radius_cells) {
+                                                 const double radius_m) {
   ClearanceField field{};
-  field.radius_cells = std::max(0, radius_cells);
-  field.distance_cells.assign(grid.cellCount(), kNoOccupiedCellInRange);
-  if (field.radius_cells == 0) {
+  field.radius_m = std::max(0.0, radius_m);
+  field.distance_m.assign(grid.cellCount(), std::numeric_limits<double>::infinity());
+  if (field.radius_m <= 0.0) {
     return field;
   }
 
-  std::queue<GridIndex> queue;
+  std::priority_queue<ClearanceNode, std::vector<ClearanceNode>, CompareClearanceNode>
+      queue;
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
       if (!grid.isOccupied(cell)) {
         continue;
       }
-      field.distance_cells[grid.linearIndex(cell)] = 0;
-      queue.push(cell);
+      field.distance_m[grid.linearIndex(cell)] = 0.0;
+      queue.push(ClearanceNode{cell, 0.0});
     }
   }
 
   while (!queue.empty()) {
-    const GridIndex current = queue.front();
+    const ClearanceNode current = queue.top();
     queue.pop();
-    const int current_distance = field.distance_cells.at(grid.linearIndex(current));
-    if (current_distance >= field.radius_cells) {
+    if (current.distance_m > field.radius_m) {
+      continue;
+    }
+    const std::size_t current_index = grid.linearIndex(current.cell);
+    if (current.distance_m > field.distance_m[current_index]) {
       continue;
     }
 
     for (const GridIndex offset : kNeighborOffsets) {
-      const GridIndex next{current.x + offset.x, current.y + offset.y};
+      const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
       if (!grid.contains(next)) {
         continue;
       }
-      const std::size_t next_index = grid.linearIndex(next);
-      if (field.distance_cells[next_index] <= current_distance + 1) {
+      const double next_distance_m =
+          current.distance_m + stepDistanceM(offset, grid.resolution());
+      if (next_distance_m > field.radius_m) {
         continue;
       }
-      field.distance_cells[next_index] = current_distance + 1;
-      queue.push(next);
+      const std::size_t next_index = grid.linearIndex(next);
+      if (field.distance_m[next_index] <= next_distance_m) {
+        continue;
+      }
+      field.distance_m[next_index] = next_distance_m;
+      queue.push(ClearanceNode{next, next_distance_m});
     }
   }
 
@@ -171,16 +185,15 @@ struct CompareOpenNode {
 [[nodiscard]] double clearanceCost(const OccupancyGrid2D& grid,
                                    const ClearanceField& field,
                                    const AStarConfig& config, const GridIndex cell) {
-  if (field.radius_cells <= 0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
+  if (field.radius_m <= 0.0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
     return 0.0;
   }
 
-  const int distance_cells = field.distance_cells.at(grid.linearIndex(cell));
-  if (distance_cells == kNoOccupiedCellInRange) {
+  const double distance_m = field.distance_m.at(grid.linearIndex(cell));
+  if (!std::isfinite(distance_m)) {
     return 0.0;
   }
 
-  const double distance_m = static_cast<double>(distance_cells) * grid.resolution();
   const double comfort_radius_m = config.obstacle_clearance_cost_radius_m;
   if (!(comfort_radius_m > 0.0) || distance_m >= comfort_radius_m) {
     return 0.0;
@@ -191,20 +204,20 @@ struct CompareOpenNode {
   return config.obstacle_clearance_cost_weight * normalized_proximity;
 }
 
-[[nodiscard]] std::vector<GridIndex> reconstructPath(const OccupancyGrid2D& grid,
-                                                     const std::vector<int>& parents,
-                                                     const int start_state_index,
-                                                     const int goal_state_index) {
+[[nodiscard]] std::vector<GridIndex>
+reconstructPath(const OccupancyGrid2D& grid, const std::vector<std::size_t>& parents,
+                const std::size_t start_state_index,
+                const std::size_t goal_state_index) {
   std::vector<GridIndex> path;
-  int current_state_index = goal_state_index;
+  std::size_t current_state_index = goal_state_index;
 
-  while (current_state_index >= 0) {
+  while (current_state_index != kNoParent) {
     path.push_back(cellFromStateIndex(grid, current_state_index));
     if (current_state_index == start_state_index) {
       break;
     }
-    current_state_index = parents.at(static_cast<std::size_t>(current_state_index));
-    if (current_state_index < 0) {
+    current_state_index = parents.at(current_state_index);
+    if (current_state_index == kNoParent) {
       return {};
     }
   }
@@ -215,20 +228,47 @@ struct CompareOpenNode {
 
 } // namespace
 
+const char* astarStatusName(const AStarStatus status) noexcept {
+  switch (status) {
+    case AStarStatus::kSuccess:
+      return "success";
+    case AStarStatus::kInvalidStartOrGoal:
+      return "invalid_start_or_goal";
+    case AStarStatus::kBlockedStartOrGoal:
+      return "blocked_start_or_goal";
+    case AStarStatus::kUnreachable:
+      return "unreachable";
+    case AStarStatus::kExpansionBudgetExceeded:
+      return "expansion_budget_exceeded";
+    case AStarStatus::kStateSpaceTooLarge:
+      return "state_space_too_large";
+  }
+  return "unknown";
+}
+
 AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex start,
                                const GridIndex goal, const AStarConfig& config) const {
   AStarResult result{};
-  if (!grid.contains(start) || !grid.contains(goal) || grid.isBlocked(start) ||
-      grid.isBlocked(goal)) {
+  if (!grid.contains(start) || !grid.contains(goal)) {
+    result.status = AStarStatus::kInvalidStartOrGoal;
+    return result;
+  }
+  if (grid.isBlocked(start) || grid.isBlocked(goal)) {
+    result.status = AStarStatus::kBlockedStartOrGoal;
+    return result;
+  }
+
+  const std::size_t direction_states = static_cast<std::size_t>(kDirectionStateCount);
+  if (grid.cellCount() > std::numeric_limits<std::size_t>::max() / direction_states) {
+    result.status = AStarStatus::kStateSpaceTooLarge;
     return result;
   }
 
   const ClearanceField clearance_field =
-      buildClearanceField(grid, clearanceRadiusCells(grid, config));
-  const std::size_t state_count =
-      grid.cellCount() * static_cast<std::size_t>(kDirectionStateCount);
+      buildClearanceField(grid, config.obstacle_clearance_cost_radius_m);
+  const std::size_t state_count = grid.cellCount() * direction_states;
   std::vector<double> g_scores(state_count, std::numeric_limits<double>::infinity());
-  std::vector<int> parents(state_count, -1);
+  std::vector<std::size_t> parents(state_count, kNoParent);
   std::vector<std::uint8_t> closed(state_count, 0U);
   std::priority_queue<OpenNode, std::vector<OpenNode>, CompareOpenNode> open;
 
@@ -250,9 +290,10 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     ++result.expanded_cells;
 
     if (current.cell == goal) {
-      result.path = reconstructPath(grid, parents, static_cast<int>(start_index),
-                                    static_cast<int>(current_index));
+      result.path = reconstructPath(grid, parents, start_index, current_index);
       result.success = !result.path.empty();
+      result.status =
+          result.success ? AStarStatus::kSuccess : AStarStatus::kUnreachable;
       result.total_cost = current.g_score;
       return result;
     }
@@ -281,13 +322,18 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
         continue;
       }
 
-      parents[next_index] = static_cast<int>(current_index);
+      parents[next_index] = current_index;
       g_scores[next_index] = tentative_g;
       const double f_score = tentative_g + heuristic(next, goal, grid.resolution());
       open.push(OpenNode{next, next_direction_state, f_score, tentative_g});
     }
   }
 
+  if (!open.empty() && result.expanded_cells >= config.max_expansions) {
+    result.status = AStarStatus::kExpansionBudgetExceeded;
+  } else {
+    result.status = AStarStatus::kUnreachable;
+  }
   return result;
 }
 

@@ -82,6 +82,52 @@ TEST(LidarDebugRenderer, DrawsRememberedHitsAmberAndCurrentHitsRed) {
                         config.current_hit_color));
 }
 
+TEST(LidarDebugRenderer, DrawsGridCellsBeforeLidarOverlays) {
+  LidarDebugRenderConfig config;
+  config.image_size_px = 101;
+  std::vector<std::int8_t> cells(100, 0);
+  cells[static_cast<std::size_t>(5) * 10U + 5U] = 100;
+  cells[static_cast<std::size_t>(4) * 10U + 5U] = 80;
+  const std::vector<Point2> current_hits{Point2{0.5, 0.5}};
+  LidarDebugFrame frame;
+  frame.grid = GridImageView{10, 10, 1.0, -5.0, -5.0, cells};
+  frame.current_hits = current_hits;
+
+  const DebugImage image = renderLidarDebugImage(config, frame);
+
+  const auto occupied_pixel = worldToDebugImagePixel(Point2{0.5, 0.5}, config, frame);
+  const auto inflated_pixel = worldToDebugImagePixel(Point2{0.5, -0.5}, config, frame);
+  ASSERT_TRUE(occupied_pixel.has_value());
+  ASSERT_TRUE(inflated_pixel.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  const ImagePixel occupied_pixel_value = occupied_pixel.value();
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  const ImagePixel inflated_pixel_value = inflated_pixel.value();
+
+  EXPECT_TRUE(samePixel(pixelAt(image, occupied_pixel_value.x, occupied_pixel_value.y),
+                        config.current_hit_color));
+  EXPECT_TRUE(samePixel(pixelAt(image, inflated_pixel_value.x, inflated_pixel_value.y),
+                        config.grid_inflated_color));
+}
+
+TEST(LidarDebugRenderer, DrawsOccupiedGridCellWhenNoHitOverlaysIt) {
+  LidarDebugRenderConfig config;
+  config.image_size_px = 101;
+  std::vector<std::int8_t> cells(100, 0);
+  cells[static_cast<std::size_t>(5) * 10U + 5U] = 100;
+  LidarDebugFrame frame;
+  frame.grid = GridImageView{10, 10, 1.0, -5.0, -5.0, cells};
+
+  const DebugImage image = renderLidarDebugImage(config, frame);
+  const auto occupied_pixel = worldToDebugImagePixel(Point2{0.5, 0.5}, config, frame);
+
+  ASSERT_TRUE(occupied_pixel.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  const ImagePixel occupied_pixel_value = occupied_pixel.value();
+  EXPECT_TRUE(samePixel(pixelAt(image, occupied_pixel_value.x, occupied_pixel_value.y),
+                        config.grid_occupied_color));
+}
+
 TEST(LidarDebugRenderer, DrawsPathCyanWithoutThrowingOnOutOfBoundsPoints) {
   LidarDebugRenderConfig config;
   config.image_size_px = 101;

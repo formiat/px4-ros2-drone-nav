@@ -16,12 +16,24 @@ struct AStarConfig {
   double evasive_maneuvering_straight_cost_weight{1.0};
 };
 
+enum class AStarStatus {
+  kSuccess,
+  kInvalidStartOrGoal,
+  kBlockedStartOrGoal,
+  kUnreachable,
+  kExpansionBudgetExceeded,
+  kStateSpaceTooLarge,
+};
+
 struct AStarResult {
   bool success{false};
+  AStarStatus status{AStarStatus::kUnreachable};
   std::size_t expanded_cells{0};
   double total_cost{0.0};
   std::vector<GridIndex> path;
 };
+
+[[nodiscard]] const char* astarStatusName(AStarStatus status) noexcept;
 
 class AStarPlanner {
 public:

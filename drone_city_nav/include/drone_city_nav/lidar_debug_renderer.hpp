@@ -27,6 +27,8 @@ struct LidarDebugRenderConfig {
   int image_size_px{900};
   double fallback_view_radius_m{45.0};
   Pixel background{12U, 16U, 20U};
+  Pixel grid_occupied_color{0U, 220U, 95U};
+  Pixel grid_inflated_color{120U, 92U, 28U};
   Pixel remembered_hit_color{255U, 218U, 75U};
   Pixel current_hit_color{255U, 60U, 60U};
   Pixel path_line_color{85U, 220U, 255U};

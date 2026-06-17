@@ -112,6 +112,62 @@ TEST(AStarPlanner, UsesPhysicalDistanceForBasePathCost) {
   EXPECT_NEAR(diagonal_result.total_cost, 3.0 * std::numbers::sqrt2 * 2.0, 1.0e-9);
 }
 
+TEST(AStarPlanner, ReportsSuccessForStartEqualGoal) {
+  OccupancyGrid2D grid = makeGrid();
+
+  const AStarResult result =
+      AStarPlanner{}.plan(grid, GridIndex{4, 4}, GridIndex{4, 4});
+
+  ASSERT_TRUE(result.success);
+  EXPECT_EQ(result.status, AStarStatus::kSuccess);
+  ASSERT_EQ(result.path.size(), 1U);
+  EXPECT_EQ(result.path.front(), (GridIndex{4, 4}));
+  EXPECT_STREQ(astarStatusName(result.status), "success");
+}
+
+TEST(AStarPlanner, ReportsBlockedStartOrGoal) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{4, 4});
+  grid.rebuildInflation(0.0);
+
+  const AStarResult result =
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4});
+
+  EXPECT_FALSE(result.success);
+  EXPECT_EQ(result.status, AStarStatus::kBlockedStartOrGoal);
+}
+
+TEST(AStarPlanner, ReportsExpansionBudgetExceededSeparately) {
+  OccupancyGrid2D grid = makeGrid();
+  AStarConfig config{};
+  config.max_expansions = 1U;
+
+  const AStarResult result =
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{18, 10}, config);
+
+  EXPECT_FALSE(result.success);
+  EXPECT_EQ(result.status, AStarStatus::kExpansionBudgetExceeded);
+}
+
+TEST(AStarPlanner, MetricClearanceCostPenalizesDiagonalProximity) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 6, 6}};
+  grid.setOccupied(GridIndex{1, 1});
+  grid.rebuildInflation(0.0);
+
+  AStarConfig config{};
+  config.obstacle_clearance_cost_radius_m = 1.5;
+  config.obstacle_clearance_cost_weight = 10.0;
+
+  const AStarResult diagonal_result =
+      AStarPlanner{}.plan(grid, GridIndex{3, 3}, GridIndex{2, 2}, config);
+  const AStarResult far_result =
+      AStarPlanner{}.plan(grid, GridIndex{5, 5}, GridIndex{4, 4}, config);
+
+  ASSERT_TRUE(diagonal_result.success);
+  ASSERT_TRUE(far_result.success);
+  EXPECT_GT(diagonal_result.total_cost, far_result.total_cost);
+}
+
 TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
   OccupancyGrid2D planning_grid = makeGrid();
   OccupancyGrid2D static_grid = makeGrid();

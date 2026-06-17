@@ -93,7 +93,8 @@ std::size_t lookaheadWaypointIndex(const std::span<const Point2> path,
 
 std::optional<OffboardPathProjection>
 closestOffboardPathProjection(const std::span<const Point2> path,
-                              const Point2 current_position) {
+                              const Point2 current_position,
+                              const std::size_t minimum_segment_start_index) {
   if (path.empty() || !finite2D(current_position)) {
     return std::nullopt;
   }
@@ -103,7 +104,9 @@ closestOffboardPathProjection(const std::span<const Point2> path,
   }
 
   OffboardPathProjection best{};
-  for (std::size_t i = 0U; i + 1U < path.size(); ++i) {
+  const std::size_t first_segment_index =
+      std::min(minimum_segment_start_index, path.size() - 2U);
+  for (std::size_t i = first_segment_index; i + 1U < path.size(); ++i) {
     const Point2 segment_start = path[i];
     const Point2 segment_end = path[i + 1U];
     const Point2 segment{segment_end.x - segment_start.x,
@@ -140,12 +143,14 @@ Point2 lookaheadTargetOnPath(const std::span<const Point2> path,
   }
 
   return targetOnPathAtDistance(path, current_position,
-                                effectiveLookaheadDistanceM(config, desired_speed_mps));
+                                effectiveLookaheadDistanceM(config, desired_speed_mps),
+                                waypoint_index > 0U ? waypoint_index - 1U : 0U);
 }
 
 Point2 targetOnPathAtDistance(const std::span<const Point2> path,
                               const Point2 current_position,
-                              const double path_distance_m) {
+                              const double path_distance_m,
+                              const std::size_t minimum_segment_start_index) {
   if (path.empty()) {
     return current_position;
   }
@@ -153,7 +158,8 @@ Point2 targetOnPathAtDistance(const std::span<const Point2> path,
     return path.front();
   }
 
-  const auto projection = closestOffboardPathProjection(path, current_position);
+  const auto projection = closestOffboardPathProjection(path, current_position,
+                                                        minimum_segment_start_index);
   if (!projection.has_value()) {
     return path.front();
   }
@@ -222,7 +228,9 @@ std::size_t advanceWaypointIndex(const std::span<const Point2> path,
   }
 
   std::size_t next_index = std::min(waypoint_index, path.size() - 1U);
-  if (const auto projection = closestOffboardPathProjection(path, current_position);
+  const std::size_t minimum_segment_index = next_index > 0U ? next_index - 1U : 0U;
+  if (const auto projection =
+          closestOffboardPathProjection(path, current_position, minimum_segment_index);
       projection.has_value()) {
     next_index = std::max(
         next_index, std::min(projection->segment_start_index + 1U, path.size() - 1U));
