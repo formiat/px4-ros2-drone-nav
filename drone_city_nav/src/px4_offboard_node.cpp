@@ -1053,17 +1053,6 @@ private:
     return selectSafePathTarget(requested_lead_m, desired_target, escape_requested);
   }
 
-  Point2 smoothedCommandTarget(const Point2 desired_target, const double target_step_m,
-                               const bool snap_to_desired_target) {
-    CommandTargetState state{commanded_target_valid_, commanded_target_};
-    const Point2 target = drone_city_nav::smoothedCommandTarget(
-        desired_target, target_step_m, snap_to_desired_target, current_position_,
-        local_position_valid_, max_setpoint_distance_m_, state);
-    commanded_target_valid_ = state.valid;
-    commanded_target_ = state.target;
-    return target;
-  }
-
   void resetCommandedTargetToCurrentPath(const char* reason) {
     if (!local_position_valid_ || !path_valid_ ||
         waypoint_index_ >= path_points_.size()) {
