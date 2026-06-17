@@ -1,7 +1,5 @@
 #include "drone_city_nav/astar_planner.hpp"
 
-#include "drone_city_nav/clearance_field.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -114,28 +112,6 @@ struct CompareOpenNode {
   return config.turn_cost_weight;
 }
 
-[[nodiscard]] double clearanceCost(const ClearanceField2D& field,
-                                   const AStarConfig& config, const GridIndex cell,
-                                   const double step_distance_m) {
-  if (field.maxDistanceM() <= 0.0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
-    return 0.0;
-  }
-
-  const double distance_m = field.distanceAt(cell);
-  if (!std::isfinite(distance_m)) {
-    return 0.0;
-  }
-
-  const double comfort_radius_m = config.obstacle_clearance_cost_radius_m;
-  if (!(comfort_radius_m > 0.0) || distance_m >= comfort_radius_m) {
-    return 0.0;
-  }
-
-  const double normalized_proximity =
-      std::clamp((comfort_radius_m - distance_m) / comfort_radius_m, 0.0, 1.0);
-  return config.obstacle_clearance_cost_weight * normalized_proximity * step_distance_m;
-}
-
 [[nodiscard]] std::vector<GridIndex>
 reconstructPath(const OccupancyGrid2D& grid, const std::vector<std::size_t>& parents,
                 const std::size_t start_state_index,
@@ -196,8 +172,6 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     return result;
   }
 
-  const ClearanceField2D clearance_field = ClearanceField2D::build(
-      grid, config.obstacle_clearance_cost_radius_m, ClearanceSource::kOccupied);
   const std::size_t state_count = grid.cellCount() * direction_states;
   std::vector<double> g_scores(state_count, std::numeric_limits<double>::infinity());
   std::vector<std::size_t> parents(state_count, kNoParent);
@@ -248,7 +222,6 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       const double step_distance_m = stepDistanceM(offset, grid.resolution());
       const double tentative_g =
           g_scores[current_index] + step_distance_m +
-          clearanceCost(clearance_field, config, next, step_distance_m) +
           directionPreferenceCost(config, current.direction_state,
                                   next_direction_state);
       if (tentative_g >= g_scores[next_index]) {

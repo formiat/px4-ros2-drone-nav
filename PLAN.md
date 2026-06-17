@@ -220,23 +220,22 @@ workflow is the default for agent work.
    - Remove duplicated brute-force nearest-obstacle scans where practical.
    - Add comments explaining the chosen metric and its tradeoff.
 
-9. Make the soft clearance penalty piecewise and length-aware.
+9. Remove the obsolete alternate path selection.
 
    Files:
    - `drone_city_nav/src/astar_planner.cpp`
    - `drone_city_nav/include/drone_city_nav/astar_planner.hpp`
+   - `drone_city_nav/src/planner_core.cpp`
    - `drone_city_nav/src/planner_node_config.cpp`
    - `drone_city_nav/tests/planner_core_test.cpp`
 
    Materialized result:
-   - Keep hard inflation as the blocked safety zone.
-   - Apply zero soft penalty beyond a configurable comfort radius.
-   - Apply smooth penalty only between safety and comfort radii, based on real
-     occupied cells rather than inflated cells.
+   - Keep hard inflation as the prohibited safety zone.
+   - Remove the A* near-obstacle cost and the two-pass alternate path selection.
    - Preserve physical distance as the primary path cost so a much longer outer
      route is not selected only because it is wider.
-   - Document the intentional non-admissible heuristic tradeoff when clearance
-     or turn penalties are enabled.
+   - Keep turn/evasive direction preferences as separate optional path-shape
+     controls.
 
 10. Make path smoothing respect the same safety model.
 
@@ -505,17 +504,17 @@ Skipped checks for this planning-only round:
 - A metric clearance field is more correct than the current cell-count BFS but
   adds implementation complexity. Keep it isolated and benchmark with existing
   headless logs.
-- A* with clearance and turn penalties is not strictly optimal under the simple
-  Euclidean heuristic. This should be documented as an intentional tradeoff or
-  addressed with a more conservative heuristic if optimality becomes necessary.
+- A* with turn or evasive direction preferences is not strictly optimal under the
+  simple Euclidean heuristic. This should be documented as an intentional
+  tradeoff or addressed with a more conservative heuristic if optimality becomes
+  necessary.
 - Reusing current paths until newly discovered obstacles intersect them reduces
   oscillation, but stale obstacle-memory artifacts can still force conservative
   routes. Debug snapshots and pruning logs are important.
 - Large refactors of `planner_node.cpp` should wait until the critical safety
   fixes and tests land, otherwise behavior changes will be difficult to isolate.
-- Lower inflation or comfort penalties can make routes more direct, but the hard
-  safety radius must remain a true no-fly zone unless a dedicated escape policy
-  is active.
+- Lower inflation can make routes more direct, but the hard safety radius must
+  remain a true no-fly zone unless a dedicated escape policy is active.
 
 # Open questions
 

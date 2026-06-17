@@ -171,17 +171,13 @@ public:
         stable_path_prohibited_length_m_, stable_path_prohibited_replan_horizon_m_,
         stable_path_prohibited_confirmations_required_);
     RCLCPP_INFO(get_logger(),
-                "Planner obstacle clearance preference: astar_radius=%.2fm "
-                "astar_weight=%.2f astar_turn_weight=%.2f evasive_maneuvering=%s "
-                "evasive_straight_weight=%.2f smoothing_min_clearance=%.2fm "
-                "comfort_max_detour_ratio=%.2f",
-                astar_config_.obstacle_clearance_cost_radius_m,
-                astar_config_.obstacle_clearance_cost_weight,
+                "Planner path preference: astar_turn_weight=%.2f "
+                "evasive_maneuvering=%s evasive_straight_weight=%.2f "
+                "smoothing_min_clearance=%.2fm",
                 astar_config_.turn_cost_weight,
                 astar_config_.evasive_maneuvering_enabled ? "true" : "false",
                 astar_config_.evasive_maneuvering_straight_cost_weight,
-                path_smoothing_config_.minimum_obstacle_clearance_m,
-                planner_core_.config().comfort_path_max_detour_ratio);
+                path_smoothing_config_.minimum_obstacle_clearance_m);
   }
 
 private:
@@ -546,9 +542,7 @@ private:
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
-        "path_clearance[raw=%.2f smoothed=%.2f] "
-        "comfort_detour[enabled=%s selected=%s shortest_length=%.2f "
-        "comfort_length=%.2f length_limit=%.2f]",
+        "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_), path_result->grid_stats.occupied_cells,
@@ -587,11 +581,7 @@ private:
         path_result->smoothed_path_metrics.straight_segments,
         path_result->smoothed_path_metrics.turns,
         path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
-        path_result->smoothed_path_clearance_m,
-        path_result->comfort_path_detour_limited ? "true" : "false",
-        path_result->comfort_path_selected ? "true" : "false",
-        path_result->shortest_path_length_m, path_result->comfort_path_length_m,
-        path_result->comfort_path_length_limit_m);
+        path_result->smoothed_path_clearance_m);
     publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
                                  "combined");
   }

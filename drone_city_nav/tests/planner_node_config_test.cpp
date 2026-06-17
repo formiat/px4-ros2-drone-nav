@@ -57,7 +57,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
-  EXPECT_DOUBLE_EQ(config.planner_core.comfort_path_max_detour_ratio, 0.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
@@ -74,10 +73,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
        rclcpp::Parameter{"current_lidar_obstacle_depth_m", -2.0},
        rclcpp::Parameter{"astar_max_expansions", 0},
-       rclcpp::Parameter{"astar_obstacle_clearance_cost_radius_m", 500.0},
-       rclcpp::Parameter{"astar_obstacle_clearance_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
-       rclcpp::Parameter{"astar_comfort_max_detour_ratio", 500.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 500.0},
        rclcpp::Parameter{"stable_path_prohibited_replan_horizon_m", -5.0},
@@ -97,10 +93,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
   EXPECT_DOUBLE_EQ(config.current_lidar.obstacle_depth_m, 0.0);
   EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_radius_m, 100.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.comfort_path_max_detour_ratio, 10.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
   EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 100.0);
@@ -112,10 +105,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
 TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   const auto node =
       makeNode("planner_node_config_nested",
-               {rclcpp::Parameter{"astar_obstacle_clearance_cost_radius_m", 6.0},
-                rclcpp::Parameter{"astar_obstacle_clearance_cost_weight", 3.0},
-                rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
-                rclcpp::Parameter{"astar_comfort_max_detour_ratio", 0.25},
+               {rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
                 rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
                 rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 4.0},
                 rclcpp::Parameter{"use_static_map", false},
@@ -127,10 +117,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_radius_m, 6.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.obstacle_clearance_cost_weight, 3.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 2.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.comfort_path_max_detour_ratio, 0.25);
   EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
   EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 4.0);
   EXPECT_DOUBLE_EQ(config.planner_core.smoothing.minimum_obstacle_clearance_m, 4.0);

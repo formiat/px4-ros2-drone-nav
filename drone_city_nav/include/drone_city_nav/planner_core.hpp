@@ -32,7 +32,6 @@ struct PlannerCoreConfig {
   PathSmoothingConfig smoothing{};
   int nearest_free_radius_cells{10};
   double clearance_diagnostic_radius_m{10.0};
-  double comfort_path_max_detour_ratio{0.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{12.0};
   double stable_path_prohibited_length_m{2.0};
@@ -48,11 +47,6 @@ struct PathComputationResult {
   PathMetrics smoothed_path_metrics{};
   double raw_path_clearance_m{std::numeric_limits<double>::infinity()};
   double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
-  bool comfort_path_detour_limited{false};
-  bool comfort_path_selected{false};
-  double shortest_path_length_m{std::numeric_limits<double>::quiet_NaN()};
-  double comfort_path_length_m{std::numeric_limits<double>::quiet_NaN()};
-  double comfort_path_length_limit_m{std::numeric_limits<double>::quiet_NaN()};
   std::optional<GridIndex> start_cell;
   std::optional<GridIndex> goal_cell;
   std::optional<GridIndex> allowed_start_cell;

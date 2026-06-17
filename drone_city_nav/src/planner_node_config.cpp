@@ -13,10 +13,8 @@ namespace {
   return static_cast<std::int64_t>(seconds * 1.0e9);
 }
 
-[[nodiscard]] double clearanceDiagnosticRadiusM(const AStarConfig& astar,
-                                                const PathSmoothingConfig& smoothing) {
-  const double configured_clearance_m = std::max(
-      astar.obstacle_clearance_cost_radius_m, smoothing.minimum_obstacle_clearance_m);
+[[nodiscard]] double clearanceDiagnosticRadiusM(const PathSmoothingConfig& smoothing) {
+  const double configured_clearance_m = smoothing.minimum_obstacle_clearance_m;
   return std::max(10.0, configured_clearance_m);
 }
 
@@ -162,12 +160,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
           std::numeric_limits<int>::max()));
-  config.planner_core.astar.obstacle_clearance_cost_radius_m = std::clamp(
-      node.declare_parameter<double>("astar_obstacle_clearance_cost_radius_m", 0.0),
-      0.0, 100.0);
-  config.planner_core.astar.obstacle_clearance_cost_weight = std::clamp(
-      node.declare_parameter<double>("astar_obstacle_clearance_cost_weight", 0.0), 0.0,
-      1000.0);
   config.planner_core.astar.turn_cost_weight = std::clamp(
       node.declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);
   config.planner_core.astar.evasive_maneuvering_enabled =
@@ -176,14 +168,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),
                  0.0, 1000.0);
-  config.planner_core.comfort_path_max_detour_ratio = std::clamp(
-      node.declare_parameter<double>("astar_comfort_max_detour_ratio", 0.0), 0.0, 10.0);
   config.path_smoothing.minimum_obstacle_clearance_m = std::clamp(
       node.declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0),
       0.0, 100.0);
   config.planner_core.smoothing = config.path_smoothing;
   config.planner_core.clearance_diagnostic_radius_m =
-      clearanceDiagnosticRadiusM(config.planner_core.astar, config.path_smoothing);
+      clearanceDiagnosticRadiusM(config.path_smoothing);
 
   config.initial_pose.use_until_px4 =
       node.declare_parameter<bool>("use_initial_pose_until_px4", true);
