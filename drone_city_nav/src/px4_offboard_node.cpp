@@ -895,8 +895,7 @@ private:
     }
 
     const double max_escape_lead_m =
-        std::min({fallback_distance, max_setpoint_distance_m_,
-                  std::max(requested_step_m, clearance_escape_step_m_) * 8.0});
+        std::min(fallback_distance, max_setpoint_distance_m_);
     const int candidate_count =
         std::max(1, static_cast<int>(std::ceil(max_escape_lead_m / requested_step_m)));
     for (int step = 1; step <= candidate_count; ++step) {
