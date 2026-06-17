@@ -104,10 +104,10 @@ stablePathDecisionReasonName(const StablePathDecisionReason reason) noexcept {
       return "deviation_too_large";
     case StablePathDecisionReason::kClear:
       return "clear";
-    case StablePathDecisionReason::kBlockedUnconfirmed:
-      return "blocked_unconfirmed";
-    case StablePathDecisionReason::kBlockedConfirmed:
-      return "blocked_confirmed";
+    case StablePathDecisionReason::kProhibitedUnconfirmed:
+      return "prohibited_unconfirmed";
+    case StablePathDecisionReason::kProhibitedConfirmed:
+      return "prohibited_confirmed";
   }
   return "unknown";
 }
@@ -171,23 +171,23 @@ PathMetrics pointPathMetrics(const std::span<const Point2> path_points) {
   return metrics;
 }
 
-double nearestBlockedDistanceM(const OccupancyGrid2D& grid, const GridIndex cell,
-                               const double max_distance_m) {
+double nearestProhibitedDistanceM(const OccupancyGrid2D& grid, const GridIndex cell,
+                                  const double max_distance_m) {
   const ClearanceField2D clearance_field = ClearanceField2D::build(
       grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
-      ClearanceSource::kBlocked);
+      ClearanceSource::kProhibited);
   if (!clearance_field.contains(cell)) {
     return std::numeric_limits<double>::infinity();
   }
   return clearance_field.distanceAt(cell);
 }
 
-double pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
-                                    const std::span<const GridIndex> path,
-                                    const double max_distance_m) {
+double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
+                                       const std::span<const GridIndex> path,
+                                       const double max_distance_m) {
   const ClearanceField2D clearance_field = ClearanceField2D::build(
       grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
-      ClearanceSource::kBlocked);
+      ClearanceSource::kProhibited);
   double minimum_clearance_m = std::numeric_limits<double>::infinity();
   for (const GridIndex cell : path) {
     if (!clearance_field.contains(cell)) {
@@ -199,8 +199,8 @@ double pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
   return minimum_clearance_m;
 }
 
-bool pathSegmentIsUnblocked(const OccupancyGrid2D& grid, const Point2 start,
-                            const Point2 end) {
+bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, const Point2 start,
+                          const Point2 end) {
   const auto start_cell = grid.worldToCell(start);
   const auto end_cell = grid.worldToCell(end);
   if (!start_cell.has_value() || !end_cell.has_value()) {
@@ -224,8 +224,8 @@ double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid, const Point2 star
   return occupied_count * grid.resolution();
 }
 
-double pathSegmentBlockedLengthM(const OccupancyGrid2D& grid, const Point2 start,
-                                 const Point2 end) {
+double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid, const Point2 start,
+                                    const Point2 end) {
   const auto start_cell = grid.worldToCell(start);
   const auto end_cell = grid.worldToCell(end);
   if (!start_cell.has_value() || !end_cell.has_value()) {
@@ -233,9 +233,11 @@ double pathSegmentBlockedLengthM(const OccupancyGrid2D& grid, const Point2 start
   }
 
   const std::vector<GridIndex> segment_cells = grid.cellsOnLine(*start_cell, *end_cell);
-  const auto blocked_count = static_cast<double>(std::ranges::count_if(
-      segment_cells, [&grid](const GridIndex cell) { return grid.isBlocked(cell); }));
-  return blocked_count * grid.resolution();
+  const auto prohibited_count = static_cast<double>(
+      std::ranges::count_if(segment_cells, [&grid](const GridIndex cell) {
+        return grid.isProhibited(cell);
+      }));
+  return prohibited_count * grid.resolution();
 }
 
 std::optional<PathProjection2D>
@@ -321,45 +323,45 @@ std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
   return remaining_path;
 }
 
-bool pathHasBlockedCells(const OccupancyGrid2D& grid,
-                         const std::span<const Point2> path_points,
-                         const double stable_path_blocking_blocked_length_m,
-                         std::size_t* const blocking_segment_index,
-                         double* const blocking_blocked_length_m) {
+bool pathHasProhibitedCells(const OccupancyGrid2D& grid,
+                            const std::span<const Point2> path_points,
+                            const double stable_path_prohibited_length_m,
+                            std::size_t* const prohibited_segment_index,
+                            double* const prohibited_length_m) {
   if (path_points.size() < 2U) {
     return false;
   }
 
   for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    const double blocked_length_m =
-        pathSegmentBlockedLengthM(grid, path_points[index - 1U], path_points[index]);
-    if (blocked_length_m < stable_path_blocking_blocked_length_m) {
+    const double segment_prohibited_length_m =
+        pathSegmentProhibitedLengthM(grid, path_points[index - 1U], path_points[index]);
+    if (segment_prohibited_length_m < stable_path_prohibited_length_m) {
       continue;
     }
-    if (blocking_segment_index != nullptr) {
-      *blocking_segment_index = index - 1U;
+    if (prohibited_segment_index != nullptr) {
+      *prohibited_segment_index = index - 1U;
     }
-    if (blocking_blocked_length_m != nullptr) {
-      *blocking_blocked_length_m = blocked_length_m;
+    if (prohibited_length_m != nullptr) {
+      *prohibited_length_m = segment_prohibited_length_m;
     }
     return true;
   }
   return false;
 }
 
-bool pathIsUnblocked(const OccupancyGrid2D& grid,
-                     const std::span<const Point2> path_points,
-                     std::size_t* const blocked_segment_index) {
+bool pathIsAllowed(const OccupancyGrid2D& grid,
+                   const std::span<const Point2> path_points,
+                   std::size_t* const prohibited_segment_index) {
   if (path_points.size() < 2U) {
     return true;
   }
 
   for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    if (pathSegmentIsUnblocked(grid, path_points[index - 1U], path_points[index])) {
+    if (pathSegmentIsAllowed(grid, path_points[index - 1U], path_points[index])) {
       continue;
     }
-    if (blocked_segment_index != nullptr) {
-      *blocked_segment_index = index - 1U;
+    if (prohibited_segment_index != nullptr) {
+      *prohibited_segment_index = index - 1U;
     }
     return false;
   }
@@ -388,12 +390,11 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
     return std::nullopt;
   }
 
-  result.unblocked_start_cell =
-      grid.nearestUnblocked(*result.start_cell, config_.nearest_free_radius_cells);
-  result.unblocked_goal_cell =
-      grid.nearestUnblocked(*result.goal_cell, config_.nearest_free_radius_cells);
-  if (!result.unblocked_start_cell.has_value() ||
-      !result.unblocked_goal_cell.has_value()) {
+  result.allowed_start_cell =
+      grid.nearestAllowed(*result.start_cell, config_.nearest_free_radius_cells);
+  result.allowed_goal_cell =
+      grid.nearestAllowed(*result.goal_cell, config_.nearest_free_radius_cells);
+  if (!result.allowed_start_cell.has_value() || !result.allowed_goal_cell.has_value()) {
     return std::nullopt;
   }
 
@@ -401,7 +402,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
       config_.comfort_path_max_detour_ratio > 0.0 && hasComfortCost(config_.astar);
   if (detour_limited) {
     const AStarResult shortest_path =
-        planner_.plan(grid, *result.unblocked_start_cell, *result.unblocked_goal_cell,
+        planner_.plan(grid, *result.allowed_start_cell, *result.allowed_goal_cell,
                       shortestPathConfig(config_.astar));
     if (!shortest_path.success) {
       return std::nullopt;
@@ -413,7 +414,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
         result.shortest_path_length_m, config_.comfort_path_max_detour_ratio);
 
     const AStarResult comfort_path = planner_.plan(
-        grid, *result.unblocked_start_cell, *result.unblocked_goal_cell, config_.astar);
+        grid, *result.allowed_start_cell, *result.allowed_goal_cell, config_.astar);
     result.comfort_path_length_m =
         comfort_path.success ? gridPathMetrics(grid, comfort_path.path).length_m
                              : std::numeric_limits<double>::infinity();
@@ -427,8 +428,8 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
       result.astar = shortest_path;
     }
   } else {
-    result.astar = planner_.plan(grid, *result.unblocked_start_cell,
-                                 *result.unblocked_goal_cell, config_.astar);
+    result.astar = planner_.plan(grid, *result.allowed_start_cell,
+                                 *result.allowed_goal_cell, config_.astar);
     if (!result.astar.success) {
       return std::nullopt;
     }
@@ -438,10 +439,10 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   result.grid_stats = collectGridStats(grid);
   result.raw_path_metrics = gridPathMetrics(grid, result.astar.path);
   result.smoothed_path_metrics = gridPathMetrics(grid, result.smoothed_cells);
-  result.raw_path_clearance_m = pathMinimumBlockedClearanceM(
+  result.raw_path_clearance_m = pathMinimumProhibitedClearanceM(
       grid, result.astar.path,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
-  result.smoothed_path_clearance_m = pathMinimumBlockedClearanceM(
+  result.smoothed_path_clearance_m = pathMinimumProhibitedClearanceM(
       grid, result.smoothed_cells,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
   return result;
@@ -451,7 +452,7 @@ StablePathDecision
 PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
                                 const std::span<const Point2> previous_path,
                                 const Point2 current_position, const Point2 goal,
-                                const int current_blocked_confirmations) const {
+                                const int current_prohibited_confirmations) const {
   StablePathDecision decision{};
   if (previous_path.size() < 2U) {
     decision.reason = StablePathDecisionReason::kNoPreviousPath;
@@ -475,25 +476,25 @@ PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
   }
 
   decision.remaining_path = std::move(*remaining_path);
-  const bool blocked = pathHasBlockedCells(
-      grid, decision.remaining_path, config_.stable_path_blocking_blocked_length_m,
-      &decision.blocking_segment_index, &decision.blocking_blocked_length_m);
-  if (!blocked) {
+  const bool has_prohibited_cells = pathHasProhibitedCells(
+      grid, decision.remaining_path, config_.stable_path_prohibited_length_m,
+      &decision.prohibited_segment_index, &decision.prohibited_length_m);
+  if (!has_prohibited_cells) {
     decision.keep_path = true;
     decision.reason = StablePathDecisionReason::kClear;
-    decision.blocked_confirmations = 0;
+    decision.prohibited_confirmations = 0;
     return decision;
   }
 
-  decision.blocked_confirmations = std::max(0, current_blocked_confirmations) + 1;
-  if (decision.blocked_confirmations <
-      config_.stable_path_blocked_confirmations_required) {
+  decision.prohibited_confirmations = std::max(0, current_prohibited_confirmations) + 1;
+  if (decision.prohibited_confirmations <
+      config_.stable_path_prohibited_confirmations_required) {
     decision.keep_path = true;
-    decision.reason = StablePathDecisionReason::kBlockedUnconfirmed;
+    decision.reason = StablePathDecisionReason::kProhibitedUnconfirmed;
     return decision;
   }
 
-  decision.reason = StablePathDecisionReason::kBlockedConfirmed;
+  decision.reason = StablePathDecisionReason::kProhibitedConfirmed;
   return decision;
 }
 

@@ -14,10 +14,10 @@ TargetSegmentSafety
 evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcept {
   TargetSegmentSafety safety{};
   safety.grid_available = input.grid_available;
-  safety.start_blocked = input.start_blocked;
+  safety.start_prohibited = input.start_prohibited;
   safety.start_occupied = input.start_occupied;
-  safety.end_blocked = input.end_blocked;
-  safety.blocked_cells = input.blocked_cells;
+  safety.end_prohibited = input.end_prohibited;
+  safety.prohibited_cells = input.prohibited_cells;
   safety.occupied_cells = input.occupied_cells;
   safety.start_clearance_m = input.start_clearance_m;
   safety.end_clearance_m = input.end_clearance_m;
@@ -39,10 +39,10 @@ evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcep
   }
   if (input.occupied_cells > 0U) {
     safety.allowed = false;
-    safety.reason = TargetSegmentSafetyReason::kOccupied;
+    safety.reason = TargetSegmentSafetyReason::kProhibited;
     return safety;
   }
-  if (input.blocked_cells == 0U) {
+  if (input.prohibited_cells == 0U) {
     safety.allowed = true;
     safety.reason = TargetSegmentSafetyReason::kAllowed;
     return safety;
@@ -53,12 +53,13 @@ evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcep
       std::isfinite(input.start_clearance_m) && std::isfinite(input.end_clearance_m) &&
       input.end_clearance_m >= input.start_clearance_m + required_improvement;
   const bool can_start_escape =
-      (input.start_blocked || input.clearance_stop_requested) && !input.start_occupied;
+      (input.start_prohibited || input.clearance_stop_requested) &&
+      !input.start_occupied;
 
   safety.escape = input.allow_escape && can_start_escape && improves_clearance;
   safety.allowed = safety.escape;
   safety.reason = safety.escape ? TargetSegmentSafetyReason::kEscape
-                                : TargetSegmentSafetyReason::kBlocked;
+                                : TargetSegmentSafetyReason::kProhibited;
   return safety;
 }
 
@@ -82,7 +83,6 @@ bool clearanceEscapeRequested(const ClearanceEscapeRequestInput& input) noexcept
 bool escapeCommandStepAllowed(const TargetSegmentSafety& safety,
                               const double min_clearance_improvement_m) noexcept {
   if (safety.reason == TargetSegmentSafetyReason::kOutsideGrid ||
-      safety.reason == TargetSegmentSafetyReason::kOccupied ||
       safety.occupied_cells > 0U) {
     return false;
   }
@@ -91,7 +91,7 @@ bool escapeCommandStepAllowed(const TargetSegmentSafety& safety,
     return safety.allowed;
   }
   if (safety.reason == TargetSegmentSafetyReason::kAllowed &&
-      safety.blocked_cells == 0U) {
+      safety.prohibited_cells == 0U) {
     return true;
   }
   if (!std::isfinite(safety.start_clearance_m) ||
@@ -125,10 +125,8 @@ targetSegmentSafetyReasonName(const TargetSegmentSafetyReason reason) noexcept {
       return "no_grid";
     case TargetSegmentSafetyReason::kOutsideGrid:
       return "outside_grid";
-    case TargetSegmentSafetyReason::kOccupied:
-      return "occupied";
-    case TargetSegmentSafetyReason::kBlocked:
-      return "blocked";
+    case TargetSegmentSafetyReason::kProhibited:
+      return "prohibited";
     case TargetSegmentSafetyReason::kEscape:
       return "escape";
   }

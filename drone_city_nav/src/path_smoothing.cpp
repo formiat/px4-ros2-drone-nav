@@ -69,7 +69,7 @@ buildSmoothingClearanceField(const OccupancyGrid2D& grid,
   const auto line_cells = grid.cellsOnLine(start, end);
   return std::ranges::none_of(
       line_cells, [&grid, &clearance_field, &config](const GridIndex cell) {
-        return grid.isBlocked(cell) ||
+        return grid.isProhibited(cell) ||
                !cellHasRequiredClearance(clearance_field, cell, config);
       });
 }

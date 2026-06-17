@@ -35,9 +35,9 @@ struct PlannerCoreConfig {
   double comfort_path_max_detour_ratio{0.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{12.0};
-  double stable_path_blocking_blocked_length_m{2.0};
-  double stable_path_blocking_replan_horizon_m{25.0};
-  int stable_path_blocked_confirmations_required{2};
+  double stable_path_prohibited_length_m{2.0};
+  double stable_path_prohibited_replan_horizon_m{25.0};
+  int stable_path_prohibited_confirmations_required{2};
 };
 
 struct PathComputationResult {
@@ -55,8 +55,8 @@ struct PathComputationResult {
   double comfort_path_length_limit_m{std::numeric_limits<double>::quiet_NaN()};
   std::optional<GridIndex> start_cell;
   std::optional<GridIndex> goal_cell;
-  std::optional<GridIndex> unblocked_start_cell;
-  std::optional<GridIndex> unblocked_goal_cell;
+  std::optional<GridIndex> allowed_start_cell;
+  std::optional<GridIndex> allowed_goal_cell;
 };
 
 struct PathProjection2D {
@@ -73,8 +73,8 @@ enum class StablePathDecisionReason {
   kProjectionUnavailable,
   kDeviationTooLarge,
   kClear,
-  kBlockedUnconfirmed,
-  kBlockedConfirmed,
+  kProhibitedUnconfirmed,
+  kProhibitedConfirmed,
 };
 
 struct StablePathDecision {
@@ -82,9 +82,9 @@ struct StablePathDecision {
   StablePathDecisionReason reason{StablePathDecisionReason::kDisabled};
   std::vector<Point2> remaining_path;
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
-  int blocked_confirmations{0};
-  std::size_t blocking_segment_index{0U};
-  double blocking_blocked_length_m{0.0};
+  int prohibited_confirmations{0};
+  std::size_t prohibited_segment_index{0U};
+  double prohibited_length_m{0.0};
 };
 
 [[nodiscard]] const char*
@@ -97,21 +97,21 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 
 [[nodiscard]] PathMetrics pointPathMetrics(std::span<const Point2> path_points);
 
-[[nodiscard]] double nearestBlockedDistanceM(const OccupancyGrid2D& grid,
-                                             GridIndex cell, double max_distance_m);
+[[nodiscard]] double nearestProhibitedDistanceM(const OccupancyGrid2D& grid,
+                                                GridIndex cell, double max_distance_m);
 
-[[nodiscard]] double pathMinimumBlockedClearanceM(const OccupancyGrid2D& grid,
-                                                  std::span<const GridIndex> path,
-                                                  double max_distance_m);
+[[nodiscard]] double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
+                                                     std::span<const GridIndex> path,
+                                                     double max_distance_m);
 
-[[nodiscard]] bool pathSegmentIsUnblocked(const OccupancyGrid2D& grid, Point2 start,
-                                          Point2 end);
+[[nodiscard]] bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, Point2 start,
+                                        Point2 end);
 
 [[nodiscard]] double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid,
                                                 Point2 start, Point2 end);
 
-[[nodiscard]] double pathSegmentBlockedLengthM(const OccupancyGrid2D& grid,
-                                               Point2 start, Point2 end);
+[[nodiscard]] double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid,
+                                                  Point2 start, Point2 end);
 
 [[nodiscard]] std::optional<PathProjection2D>
 closestPathProjection(std::span<const Point2> path_points, Point2 current_position);
@@ -121,15 +121,15 @@ closestPathProjection(std::span<const Point2> path_points, Point2 current_positi
     double stable_path_goal_tolerance_m, double stable_path_reuse_max_deviation_m,
     double& deviation_m);
 
-[[nodiscard]] bool pathHasBlockedCells(const OccupancyGrid2D& grid,
-                                       std::span<const Point2> path_points,
-                                       double stable_path_blocking_blocked_length_m,
-                                       std::size_t* blocking_segment_index = nullptr,
-                                       double* blocking_blocked_length_m = nullptr);
+[[nodiscard]] bool
+pathHasProhibitedCells(const OccupancyGrid2D& grid, std::span<const Point2> path_points,
+                       double stable_path_prohibited_length_m,
+                       std::size_t* prohibited_segment_index = nullptr,
+                       double* prohibited_length_m = nullptr);
 
-[[nodiscard]] bool pathIsUnblocked(const OccupancyGrid2D& grid,
-                                   std::span<const Point2> path_points,
-                                   std::size_t* blocked_segment_index = nullptr);
+[[nodiscard]] bool pathIsAllowed(const OccupancyGrid2D& grid,
+                                 std::span<const Point2> path_points,
+                                 std::size_t* prohibited_segment_index = nullptr);
 
 class PlannerCore {
 public:
@@ -144,7 +144,7 @@ public:
   [[nodiscard]] StablePathDecision
   evaluateStablePath(const OccupancyGrid2D& grid, std::span<const Point2> previous_path,
                      Point2 current_position, Point2 goal,
-                     int current_blocked_confirmations) const;
+                     int current_prohibited_confirmations) const;
 
 private:
   PlannerCoreConfig config_{};

@@ -69,12 +69,12 @@ TEST(OccupancyGrid2D, InflationBlocksSafetyRadius) {
   grid.setOccupied(GridIndex{5, 5});
   grid.rebuildInflation(1.1);
 
-  EXPECT_TRUE(grid.isBlocked(GridIndex{5, 5}));
-  EXPECT_TRUE(grid.isBlocked(GridIndex{4, 5}));
-  EXPECT_TRUE(grid.isBlocked(GridIndex{6, 5}));
-  EXPECT_TRUE(grid.isBlocked(GridIndex{5, 4}));
-  EXPECT_TRUE(grid.isBlocked(GridIndex{5, 6}));
-  EXPECT_FALSE(grid.isBlocked(GridIndex{8, 5}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 5}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{4, 5}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{6, 5}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 4}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 6}));
+  EXPECT_FALSE(grid.isProhibited(GridIndex{8, 5}));
 }
 
 TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
@@ -93,7 +93,7 @@ TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   EXPECT_EQ(result.path.front(), start);
   EXPECT_EQ(result.path.back(), goal);
   for (const GridIndex cell : result.path) {
-    EXPECT_FALSE(grid.isBlocked(cell));
+    EXPECT_FALSE(grid.isProhibited(cell));
   }
 }
 
@@ -125,7 +125,7 @@ TEST(AStarPlanner, ReportsSuccessForStartEqualGoal) {
   EXPECT_STREQ(astarStatusName(result.status), "success");
 }
 
-TEST(AStarPlanner, ReportsBlockedStartOrGoal) {
+TEST(AStarPlanner, ReportsProhibitedStartOrGoal) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{4, 4});
   grid.rebuildInflation(0.0);
@@ -134,7 +134,7 @@ TEST(AStarPlanner, ReportsBlockedStartOrGoal) {
       AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4});
 
   EXPECT_FALSE(result.success);
-  EXPECT_EQ(result.status, AStarStatus::kBlockedStartOrGoal);
+  EXPECT_EQ(result.status, AStarStatus::kProhibitedStartOrGoal);
 }
 
 TEST(AStarPlanner, ReportsExpansionBudgetExceededSeparately) {
@@ -187,7 +187,7 @@ TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
   ASSERT_TRUE(result.success);
   for (const GridIndex cell : result.path) {
     EXPECT_FALSE(static_grid.isOccupied(cell));
-    EXPECT_FALSE(planning_grid.isBlocked(cell));
+    EXPECT_FALSE(planning_grid.isProhibited(cell));
   }
 }
 
@@ -448,7 +448,7 @@ TEST(PathSmoothing, CollapseCollinearPathUsesLateralTolerance) {
   EXPECT_EQ(collapseCollinearPath(bent_path, 0.05).size(), 3U);
 }
 
-TEST(PlannerCore, ComputePathAdjustsBlockedEndpoints) {
+TEST(PlannerCore, ComputePathAdjustsProhibitedEndpoints) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{1, 1});
   grid.rebuildInflation(0.0);
@@ -463,14 +463,14 @@ TEST(PlannerCore, ComputePathAdjustsBlockedEndpoints) {
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const PathComputationResult& path_result = result.value();
   ASSERT_TRUE(path_result.start_cell.has_value());
-  ASSERT_TRUE(path_result.unblocked_start_cell.has_value());
+  ASSERT_TRUE(path_result.allowed_start_cell.has_value());
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const GridIndex start_cell = path_result.start_cell.value();
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
-  const GridIndex unblocked_start_cell = path_result.unblocked_start_cell.value();
+  const GridIndex allowed_start_cell = path_result.allowed_start_cell.value();
   EXPECT_EQ(start_cell, (GridIndex{1, 1}));
-  EXPECT_NE(unblocked_start_cell, start_cell);
-  EXPECT_FALSE(grid.isBlocked(unblocked_start_cell));
+  EXPECT_NE(allowed_start_cell, start_cell);
+  EXPECT_FALSE(grid.isProhibited(allowed_start_cell));
   EXPECT_FALSE(path_result.smoothed_cells.empty());
 }
 
@@ -497,35 +497,35 @@ TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   EXPECT_TRUE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
   ASSERT_GE(decision.remaining_path.size(), 2U);
-  EXPECT_EQ(decision.blocked_confirmations, 0);
+  EXPECT_EQ(decision.prohibited_confirmations, 0);
 }
 
-TEST(PlannerCore, StablePathRequiresConfirmedBlockedIntersection) {
+TEST(PlannerCore, StablePathRequiresConfirmedProhibitedIntersection) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
   grid.rebuildInflation(0.0);
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_blocking_blocked_length_m = 0.5;
-  config.stable_path_blocked_confirmations_required = 2;
+  config.stable_path_prohibited_length_m = 0.5;
+  config.stable_path_prohibited_confirmations_required = 2;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
 
   const StablePathDecision first =
       core.evaluateStablePath(grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, 0);
   const StablePathDecision second = core.evaluateStablePath(
-      grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, first.blocked_confirmations);
+      grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, first.prohibited_confirmations);
 
   EXPECT_TRUE(first.keep_path);
-  EXPECT_EQ(first.reason, StablePathDecisionReason::kBlockedUnconfirmed);
-  EXPECT_EQ(first.blocked_confirmations, 1);
+  EXPECT_EQ(first.reason, StablePathDecisionReason::kProhibitedUnconfirmed);
+  EXPECT_EQ(first.prohibited_confirmations, 1);
   EXPECT_FALSE(second.keep_path);
-  EXPECT_EQ(second.reason, StablePathDecisionReason::kBlockedConfirmed);
-  EXPECT_EQ(second.blocked_confirmations, 2);
+  EXPECT_EQ(second.reason, StablePathDecisionReason::kProhibitedConfirmed);
+  EXPECT_EQ(second.prohibited_confirmations, 2);
 }
 
-TEST(PlannerCore, StablePathTreatsInflationAsBlocking) {
+TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
   grid.rebuildInflation(2.0);
@@ -535,8 +535,8 @@ TEST(PlannerCore, StablePathTreatsInflationAsBlocking) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_blocking_blocked_length_m = 0.5;
-  config.stable_path_blocked_confirmations_required = 1;
+  config.stable_path_prohibited_length_m = 0.5;
+  config.stable_path_prohibited_confirmations_required = 1;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 3.5}, Point2{8.5, 3.5}};
 
@@ -544,8 +544,8 @@ TEST(PlannerCore, StablePathTreatsInflationAsBlocking) {
       core.evaluateStablePath(grid, path, Point2{2.5, 3.5}, Point2{8.5, 3.5}, 0);
 
   EXPECT_FALSE(decision.keep_path);
-  EXPECT_EQ(decision.reason, StablePathDecisionReason::kBlockedConfirmed);
-  EXPECT_GE(decision.blocking_blocked_length_m, 1.0);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
+  EXPECT_GE(decision.prohibited_length_m, 1.0);
 }
 
 TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {

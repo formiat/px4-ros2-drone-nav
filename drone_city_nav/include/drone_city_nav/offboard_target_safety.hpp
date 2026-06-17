@@ -12,8 +12,7 @@ enum class TargetSegmentSafetyReason {
   kSafetyDisabled,
   kNoGrid,
   kOutsideGrid,
-  kOccupied,
-  kBlocked,
+  kProhibited,
   kEscape,
 };
 
@@ -21,10 +20,10 @@ struct TargetSegmentSafety {
   bool grid_available{false};
   bool allowed{true};
   bool escape{false};
-  bool start_blocked{false};
+  bool start_prohibited{false};
   bool start_occupied{false};
-  bool end_blocked{false};
-  std::size_t blocked_cells{0U};
+  bool end_prohibited{false};
+  std::size_t prohibited_cells{0U};
   std::size_t occupied_cells{0U};
   double start_clearance_m{std::numeric_limits<double>::quiet_NaN()};
   double end_clearance_m{std::numeric_limits<double>::quiet_NaN()};
@@ -36,10 +35,10 @@ struct TargetSegmentSafetyInput {
   bool grid_available{true};
   bool start_cell_valid{true};
   bool end_cell_valid{true};
-  bool start_blocked{false};
+  bool start_prohibited{false};
   bool start_occupied{false};
-  bool end_blocked{false};
-  std::size_t blocked_cells{0U};
+  bool end_prohibited{false};
+  std::size_t prohibited_cells{0U};
   std::size_t occupied_cells{0U};
   double start_clearance_m{std::numeric_limits<double>::quiet_NaN()};
   double end_clearance_m{std::numeric_limits<double>::quiet_NaN()};

@@ -161,15 +161,15 @@ public:
         "reuse_last_valid_path_on_failure=%s "
         "max_initial_lateral_deviation=%.2fm "
         "stable_path_reuse=%s stable_max_deviation=%.2fm "
-        "stable_goal_tolerance=%.2fm stable_blocking_blocked_length=%.2fm "
-        "stable_blocking_replan_horizon=%.2fm "
-        "stable_blocked_confirmations=%d",
+        "stable_goal_tolerance=%.2fm stable_prohibited_length=%.2fm "
+        "stable_prohibited_replan_horizon=%.2fm "
+        "stable_prohibited_confirmations=%d",
         direct_path_fallback_ ? "true" : "false",
         reuse_last_valid_path_on_failure_ ? "true" : "false",
         max_initial_lateral_deviation_m_, stable_path_reuse_enabled_ ? "true" : "false",
         stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
-        stable_path_blocking_blocked_length_m_, stable_path_blocking_replan_horizon_m_,
-        stable_path_blocked_confirmations_required_);
+        stable_path_prohibited_length_m_, stable_path_prohibited_replan_horizon_m_,
+        stable_path_prohibited_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner obstacle clearance preference: astar_radius=%.2fm "
                 "astar_weight=%.2f astar_turn_weight=%.2f evasive_maneuvering=%s "
@@ -199,12 +199,12 @@ private:
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
-    stable_path_blocking_blocked_length_m_ =
-        config.planner_core.stable_path_blocking_blocked_length_m;
-    stable_path_blocking_replan_horizon_m_ =
-        config.planner_core.stable_path_blocking_replan_horizon_m;
-    stable_path_blocked_confirmations_required_ =
-        config.planner_core.stable_path_blocked_confirmations_required;
+    stable_path_prohibited_length_m_ =
+        config.planner_core.stable_path_prohibited_length_m;
+    stable_path_prohibited_replan_horizon_m_ =
+        config.planner_core.stable_path_prohibited_replan_horizon_m;
+    stable_path_prohibited_confirmations_required_ =
+        config.planner_core.stable_path_prohibited_confirmations_required;
     max_initial_lateral_deviation_m_ = config.fallback.max_initial_lateral_deviation_m;
     nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
     occupied_threshold_ = config.memory_grid.occupied_threshold;
@@ -607,25 +607,25 @@ private:
       return std::nullopt;
     }
 
-    const auto unblocked_start = grid.nearestUnblocked(
+    const auto allowed_start = grid.nearestAllowed(
         *start_cell, planner_core_.config().nearest_free_radius_cells);
-    const auto unblocked_goal = grid.nearestUnblocked(
+    const auto allowed_goal = grid.nearestAllowed(
         *goal_cell, planner_core_.config().nearest_free_radius_cells);
-    if (!unblocked_start.has_value() || !unblocked_goal.has_value()) {
+    if (!allowed_start.has_value() || !allowed_goal.has_value()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "No unblocked start or goal cell is available on %s grid after inflation",
+          "No allowed start or goal cell is available on %s grid after inflation",
           source_label);
       return std::nullopt;
     }
 
-    if (*unblocked_start != *start_cell || *unblocked_goal != *goal_cell) {
+    if (*allowed_start != *start_cell || *allowed_goal != *goal_cell) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planning endpoints adjusted on %s grid after inflation: "
                            "start=(%d,%d)->(%d,%d) goal=(%d,%d)->(%d,%d)",
-                           source_label, start_cell->x, start_cell->y,
-                           unblocked_start->x, unblocked_start->y, goal_cell->x,
-                           goal_cell->y, unblocked_goal->x, unblocked_goal->y);
+                           source_label, start_cell->x, start_cell->y, allowed_start->x,
+                           allowed_start->y, goal_cell->x, goal_cell->y,
+                           allowed_goal->x, allowed_goal->y);
     }
 
     auto result = planner_core_.computePath(grid, current_pose_.position, goal_);
@@ -633,7 +633,7 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d)", source_label,
-          unblocked_start->x, unblocked_start->y, unblocked_goal->x, unblocked_goal->y);
+          allowed_start->x, allowed_start->y, allowed_goal->x, allowed_goal->y);
       return std::nullopt;
     }
 
@@ -655,7 +655,7 @@ private:
                grid.resolution()) {
       const bool direct_to_next_is_safe =
           path_points.size() < 2U ||
-          pathSegmentIsUnblocked(grid, current_pose_.position, path_points[1]);
+          pathSegmentIsAllowed(grid, current_pose_.position, path_points[1]);
       if (direct_to_next_is_safe) {
         path_points.front() = current_pose_.position;
       } else {
@@ -670,14 +670,14 @@ private:
     path_points = collapseCollinearPath(pre_collapse_path_points,
                                         kPublishedPathCollinearityToleranceM);
     if (pre_collapse_path_points.size() >= 3U && path_points.size() >= 2U &&
-        !pathSegmentIsUnblocked(grid, path_points[0], path_points[1]) &&
-        pathSegmentIsUnblocked(grid, pre_collapse_path_points[0],
-                               pre_collapse_path_points[1])) {
+        !pathSegmentIsAllowed(grid, path_points[0], path_points[1]) &&
+        pathSegmentIsAllowed(grid, pre_collapse_path_points[0],
+                             pre_collapse_path_points[1])) {
       path_points.insert(path_points.begin() + 1, pre_collapse_path_points[1]);
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
           "%s path restored first waypoint after collinear collapse to keep the "
-          "first published segment unblocked: restored=(%.2f, %.2f)",
+          "first published segment allowed: restored=(%.2f, %.2f)",
           source_label, pre_collapse_path_points[1].x, pre_collapse_path_points[1].y);
     }
     if (path_points.size() != dense_path_points) {
@@ -702,7 +702,7 @@ private:
     }
 
     last_valid_path_points_ = path_points;
-    stable_path_blocked_confirmations_ = 0;
+    stable_path_prohibited_confirmations_ = 0;
     publishPath(path_points);
     return true;
   }
@@ -715,8 +715,8 @@ private:
     if (!start_cell.has_value() || !end_cell.has_value()) {
       return false;
     }
-    if (!grid.isBlocked(*start_cell) || grid.isOccupied(*start_cell) ||
-        grid.isBlocked(*end_cell)) {
+    if (!grid.isProhibited(*start_cell) || grid.isOccupied(*start_cell) ||
+        grid.isProhibited(*end_cell)) {
       return false;
     }
 
@@ -735,7 +735,7 @@ private:
     for (std::size_t index = 1U; index < path_points.size(); ++index) {
       const Point2 segment_start = path_points[index - 1U];
       const Point2 segment_end = path_points[index];
-      if (pathSegmentIsUnblocked(grid, segment_start, segment_end)) {
+      if (pathSegmentIsAllowed(grid, segment_start, segment_end)) {
         continue;
       }
 
@@ -752,7 +752,7 @@ private:
 
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "%s path segment intersects blocked cells after final path edits: "
+          "%s path segment intersects prohibited cells after final path edits: "
           "segment=%zu start=(%.2f, %.2f) end=(%.2f, %.2f)",
           source_label, segment_index, segment_start.x, segment_start.y, segment_end.x,
           segment_end.y);
@@ -872,7 +872,7 @@ private:
   void publishPath(const std::vector<Point2>& points) {
     if (points.empty()) {
       last_valid_path_points_.clear();
-      stable_path_blocked_confirmations_ = 0;
+      stable_path_prohibited_confirmations_ = 0;
     }
 
     const PathMetrics metrics = pointPathMetrics(points);
@@ -969,7 +969,7 @@ private:
   void publishDirectGoalPath() {
     std::vector<Point2> path_points{current_pose_.position, goal_};
     last_valid_path_points_ = path_points;
-    stable_path_blocked_confirmations_ = 0;
+    stable_path_prohibited_confirmations_ = 0;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
@@ -1041,7 +1041,7 @@ private:
 
     const StablePathDecision decision = planner_core_.evaluateStablePath(
         grid, last_valid_path_points_, current_pose_.position, goal_,
-        stable_path_blocked_confirmations_);
+        stable_path_prohibited_confirmations_);
     if (decision.reason == StablePathDecisionReason::kDeviationTooLarge) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -1057,66 +1057,66 @@ private:
       return false;
     }
 
-    if ((decision.reason == StablePathDecisionReason::kBlockedUnconfirmed ||
-         decision.reason == StablePathDecisionReason::kBlockedConfirmed) &&
+    if ((decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed ||
+         decision.reason == StablePathDecisionReason::kProhibitedConfirmed) &&
         deferDistantStablePathBlockIfApplicable(decision)) {
       return true;
     }
 
-    if (decision.reason == StablePathDecisionReason::kBlockedUnconfirmed) {
-      stable_path_blocked_confirmations_ = decision.blocked_confirmations;
+    if (decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed) {
+      stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
       last_valid_path_points_ = decision.remaining_path;
-      const Point2 blocking_start =
-          decision.blocking_segment_index < last_valid_path_points_.size()
-              ? last_valid_path_points_[decision.blocking_segment_index]
+      const Point2 prohibited_start =
+          decision.prohibited_segment_index < last_valid_path_points_.size()
+              ? last_valid_path_points_[decision.prohibited_segment_index]
               : Point2{};
-      const Point2 blocking_end =
-          decision.blocking_segment_index + 1U < last_valid_path_points_.size()
-              ? last_valid_path_points_[decision.blocking_segment_index + 1U]
+      const Point2 prohibited_end =
+          decision.prohibited_segment_index + 1U < last_valid_path_points_.size()
+              ? last_valid_path_points_[decision.prohibited_segment_index + 1U]
               : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
-          "Current path has an unconfirmed blocked intersection; keeping current "
+          "Current path has an unconfirmed prohibited intersection; keeping current "
           "path until it is confirmed: reason=%s confirmations=%d/%d "
-          "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
-          "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+          "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
+          "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
           "segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
-          stable_path_blocked_confirmations_,
-          stable_path_blocked_confirmations_required_, last_valid_path_points_.size(),
-          decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_blocked_length_m, blocking_start.x, blocking_start.y,
-          blocking_end.x, blocking_end.y);
+          stable_path_prohibited_confirmations_,
+          stable_path_prohibited_confirmations_required_,
+          last_valid_path_points_.size(), decision.deviation_m,
+          decision.prohibited_segment_index, decision.prohibited_length_m,
+          prohibited_start.x, prohibited_start.y, prohibited_end.x, prohibited_end.y);
       return true;
     }
 
-    if (decision.reason == StablePathDecisionReason::kBlockedConfirmed) {
-      stable_path_blocked_confirmations_ = decision.blocked_confirmations;
-      const Point2 blocking_start =
-          decision.blocking_segment_index < decision.remaining_path.size()
-              ? decision.remaining_path[decision.blocking_segment_index]
+    if (decision.reason == StablePathDecisionReason::kProhibitedConfirmed) {
+      stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
+      const Point2 prohibited_start =
+          decision.prohibited_segment_index < decision.remaining_path.size()
+              ? decision.remaining_path[decision.prohibited_segment_index]
               : Point2{};
-      const Point2 blocking_end =
-          decision.blocking_segment_index + 1U < decision.remaining_path.size()
-              ? decision.remaining_path[decision.blocking_segment_index + 1U]
+      const Point2 prohibited_end =
+          decision.prohibited_segment_index + 1U < decision.remaining_path.size()
+              ? decision.remaining_path[decision.prohibited_segment_index + 1U]
               : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
-          "Current path intersects confirmed newly available blocked obstacle data; "
+          "Current path intersects confirmed newly available prohibited obstacle data; "
           "running A* from current pose: reason=%s confirmations=%d/%d "
-          "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
-          "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+          "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
+          "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
           "segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
-          stable_path_blocked_confirmations_,
-          stable_path_blocked_confirmations_required_, decision.remaining_path.size(),
-          decision.deviation_m, decision.blocking_segment_index,
-          decision.blocking_blocked_length_m, blocking_start.x, blocking_start.y,
-          blocking_end.x, blocking_end.y);
+          stable_path_prohibited_confirmations_,
+          stable_path_prohibited_confirmations_required_,
+          decision.remaining_path.size(), decision.deviation_m,
+          decision.prohibited_segment_index, decision.prohibited_length_m,
+          prohibited_start.x, prohibited_start.y, prohibited_end.x, prohibited_end.y);
       return false;
     }
 
-    stable_path_blocked_confirmations_ = 0;
+    stable_path_prohibited_confirmations_ = 0;
     last_valid_path_points_ = decision.remaining_path;
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -1128,34 +1128,35 @@ private:
   }
 
   bool deferDistantStablePathBlockIfApplicable(const StablePathDecision& decision) {
-    if (!(stable_path_blocking_replan_horizon_m_ > 0.0)) {
+    if (!(stable_path_prohibited_replan_horizon_m_ > 0.0)) {
       return false;
     }
-    const double distance_to_blocked_segment_m = pathDistanceToSegmentStart(
-        decision.remaining_path, decision.blocking_segment_index);
-    if (!std::isfinite(distance_to_blocked_segment_m) ||
-        distance_to_blocked_segment_m <= stable_path_blocking_replan_horizon_m_) {
+    const double distance_to_prohibited_segment_m = pathDistanceToSegmentStart(
+        decision.remaining_path, decision.prohibited_segment_index);
+    if (!std::isfinite(distance_to_prohibited_segment_m) ||
+        distance_to_prohibited_segment_m <= stable_path_prohibited_replan_horizon_m_) {
       return false;
     }
 
-    stable_path_blocked_confirmations_ = 0;
+    stable_path_prohibited_confirmations_ = 0;
     last_valid_path_points_ = decision.remaining_path;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
-        "Deferring current-path replan because the blocked segment is beyond the "
+        "Deferring current-path replan because the prohibited segment is beyond the "
         "near planning horizon: reason=%s remaining_waypoints=%zu deviation=%.2fm "
-        "blocked_segment=%zu blocked_length=%.2fm "
-        "distance_to_blocked_segment=%.2fm horizon=%.2fm",
+        "prohibited_segment=%zu prohibited_length=%.2fm "
+        "distance_to_prohibited_segment=%.2fm horizon=%.2fm",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.blocking_segment_index,
-        decision.blocking_blocked_length_m, distance_to_blocked_segment_m,
-        stable_path_blocking_replan_horizon_m_);
+        decision.deviation_m, decision.prohibited_segment_index,
+        decision.prohibited_length_m, distance_to_prohibited_segment_m,
+        stable_path_prohibited_replan_horizon_m_);
     return true;
   }
 
   bool keepInflationEscapePathIfApplicable(const OccupancyGrid2D& grid,
                                            const StablePathDecision& decision) {
-    if (decision.blocking_segment_index != 0U || decision.remaining_path.size() < 2U) {
+    if (decision.prohibited_segment_index != 0U ||
+        decision.remaining_path.size() < 2U) {
       return false;
     }
     const Point2 segment_start = decision.remaining_path[0];
@@ -1164,16 +1165,16 @@ private:
       return false;
     }
 
-    stable_path_blocked_confirmations_ = 0;
+    stable_path_prohibited_confirmations_ = 0;
     last_valid_path_points_ = decision.remaining_path;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
-        "Keeping current path because the first blocked segment is an "
+        "Keeping current path because the first prohibited segment is an "
         "inflated-zone escape: reason=%s remaining_waypoints=%zu deviation=%.2fm "
-        "blocked_length=%.2fm segment_start=(%.2f, %.2f) "
+        "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
         "segment_end=(%.2f, %.2f)",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.blocking_blocked_length_m, segment_start.x,
+        decision.deviation_m, decision.prohibited_length_m, segment_start.x,
         segment_start.y, segment_end.x, segment_end.y);
     return true;
   }
@@ -1257,8 +1258,8 @@ private:
   double max_initial_lateral_deviation_m_{8.0};
   double stable_path_reuse_max_deviation_m_{12.0};
   double stable_path_goal_tolerance_m_{3.0};
-  double stable_path_blocking_blocked_length_m_{2.0};
-  double stable_path_blocking_replan_horizon_m_{25.0};
+  double stable_path_prohibited_length_m_{2.0};
+  double stable_path_prohibited_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double current_lidar_obstacle_depth_m_{0.0};
@@ -1279,8 +1280,8 @@ private:
   int nearest_free_radius_cells_{10};
   int occupied_threshold_{65};
   int free_threshold_{0};
-  int stable_path_blocked_confirmations_required_{2};
-  int stable_path_blocked_confirmations_{0};
+  int stable_path_prohibited_confirmations_required_{2};
+  int stable_path_prohibited_confirmations_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   std::size_t static_map_rectangles_{0U};
   std::size_t static_map_occupied_cells_{0U};

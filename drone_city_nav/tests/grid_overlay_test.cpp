@@ -72,8 +72,8 @@ TEST(GridOverlay, InflationRunsAfterUnionOverlay) {
   destination.rebuildInflation(1.1);
 
   EXPECT_EQ(overlay_stats.occupied_cells_applied, 1U);
-  EXPECT_TRUE(destination.isBlocked(GridIndex{2, 2}));
-  EXPECT_TRUE(destination.isBlocked(GridIndex{3, 2}));
+  EXPECT_TRUE(destination.isProhibited(GridIndex{2, 2}));
+  EXPECT_TRUE(destination.isProhibited(GridIndex{3, 2}));
 }
 
 TEST(GridOverlay, RejectsMismatchedGeometry) {

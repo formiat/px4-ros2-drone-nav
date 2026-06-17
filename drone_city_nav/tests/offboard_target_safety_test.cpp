@@ -25,12 +25,12 @@ TEST(OffboardTargetSafety, AllowsClearSegment) {
   EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kAllowed);
 }
 
-TEST(OffboardTargetSafety, RejectsOccupiedSegmentEvenDuringEscape) {
+TEST(OffboardTargetSafety, RejectsOccupiedSegmentAsProhibitedEvenDuringEscape) {
   TargetSegmentSafetyInput input = baseInput();
   input.allow_escape = true;
   input.clearance_stop_requested = true;
   input.occupied_cells = 1U;
-  input.blocked_cells = 1U;
+  input.prohibited_cells = 1U;
   input.start_clearance_m = 0.5;
   input.end_clearance_m = 2.0;
 
@@ -38,14 +38,14 @@ TEST(OffboardTargetSafety, RejectsOccupiedSegmentEvenDuringEscape) {
 
   EXPECT_FALSE(safety.allowed);
   EXPECT_FALSE(safety.escape);
-  EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kOccupied);
+  EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kProhibited);
 }
 
 TEST(OffboardTargetSafety, AllowsEscapeFromInflatedStartWhenClearanceImproves) {
   TargetSegmentSafetyInput input = baseInput();
   input.allow_escape = true;
-  input.start_blocked = true;
-  input.blocked_cells = 2U;
+  input.start_prohibited = true;
+  input.prohibited_cells = 2U;
   input.start_clearance_m = 0.5;
   input.end_clearance_m = 0.7;
   input.min_clearance_improvement_m = 0.1;
@@ -62,8 +62,8 @@ TEST(OffboardTargetSafety,
   TargetSegmentSafetyInput input = baseInput();
   input.allow_escape = true;
   input.clearance_stop_requested = true;
-  input.blocked_cells = 1U;
-  input.start_blocked = false;
+  input.prohibited_cells = 1U;
+  input.start_prohibited = false;
   input.start_clearance_m = 0.8;
   input.end_clearance_m = 1.1;
   input.min_clearance_improvement_m = 0.1;
@@ -98,11 +98,11 @@ TEST(OffboardTargetSafety, DoesNotRequestEscapeDuringCruise) {
   EXPECT_FALSE(clearanceEscapeRequested(input));
 }
 
-TEST(OffboardTargetSafety, RejectsBlockedSegmentWithoutEscapeImprovement) {
+TEST(OffboardTargetSafety, RejectsProhibitedSegmentWithoutEscapeImprovement) {
   TargetSegmentSafetyInput input = baseInput();
   input.allow_escape = true;
   input.clearance_stop_requested = true;
-  input.blocked_cells = 1U;
+  input.prohibited_cells = 1U;
   input.start_clearance_m = 0.8;
   input.end_clearance_m = 0.82;
   input.min_clearance_improvement_m = 0.1;
@@ -111,7 +111,7 @@ TEST(OffboardTargetSafety, RejectsBlockedSegmentWithoutEscapeImprovement) {
 
   EXPECT_FALSE(safety.allowed);
   EXPECT_FALSE(safety.escape);
-  EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kBlocked);
+  EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kProhibited);
 }
 
 TEST(OffboardTargetSafety, RejectsOutsideGrid) {
@@ -128,7 +128,7 @@ TEST(OffboardTargetSafety, AllowsClearEscapeCommandStep) {
   TargetSegmentSafety safety{};
   safety.allowed = true;
   safety.reason = TargetSegmentSafetyReason::kAllowed;
-  safety.blocked_cells = 0U;
+  safety.prohibited_cells = 0U;
 
   EXPECT_TRUE(escapeCommandStepAllowed(safety, 0.1));
 }
@@ -137,18 +137,18 @@ TEST(OffboardTargetSafety, AllowsClearCommandEvenDuringEscapeMode) {
   TargetSegmentSafety safety{};
   safety.allowed = true;
   safety.reason = TargetSegmentSafetyReason::kAllowed;
-  safety.blocked_cells = 0U;
+  safety.prohibited_cells = 0U;
   safety.start_clearance_m = 6.0;
   safety.end_clearance_m = 4.0;
 
   EXPECT_TRUE(targetCommandAllowed(safety, true, 0.1));
 }
 
-TEST(OffboardTargetSafety, RejectsBlockedCommandOutsideEscapeMode) {
+TEST(OffboardTargetSafety, RejectsProhibitedCommandOutsideEscapeMode) {
   TargetSegmentSafety safety{};
   safety.allowed = false;
-  safety.reason = TargetSegmentSafetyReason::kBlocked;
-  safety.blocked_cells = 2U;
+  safety.reason = TargetSegmentSafetyReason::kProhibited;
+  safety.prohibited_cells = 2U;
   safety.start_clearance_m = 0.30;
   safety.end_clearance_m = 0.50;
 
@@ -158,8 +158,8 @@ TEST(OffboardTargetSafety, RejectsBlockedCommandOutsideEscapeMode) {
 TEST(OffboardTargetSafety, RejectsEscapeCommandStepThatLosesClearance) {
   TargetSegmentSafety safety{};
   safety.allowed = false;
-  safety.reason = TargetSegmentSafetyReason::kBlocked;
-  safety.blocked_cells = 2U;
+  safety.reason = TargetSegmentSafetyReason::kProhibited;
+  safety.prohibited_cells = 2U;
   safety.start_clearance_m = 0.30;
   safety.end_clearance_m = 0.25;
 
@@ -169,8 +169,8 @@ TEST(OffboardTargetSafety, RejectsEscapeCommandStepThatLosesClearance) {
 TEST(OffboardTargetSafety, RejectsEscapeCommandStepBelowRequiredImprovement) {
   TargetSegmentSafety safety{};
   safety.allowed = false;
-  safety.reason = TargetSegmentSafetyReason::kBlocked;
-  safety.blocked_cells = 2U;
+  safety.reason = TargetSegmentSafetyReason::kProhibited;
+  safety.prohibited_cells = 2U;
   safety.start_clearance_m = 0.30;
   safety.end_clearance_m = 0.34;
 
@@ -180,8 +180,8 @@ TEST(OffboardTargetSafety, RejectsEscapeCommandStepBelowRequiredImprovement) {
 TEST(OffboardTargetSafety, AllowsEscapeCommandStepWithRequiredImprovement) {
   TargetSegmentSafety safety{};
   safety.allowed = false;
-  safety.reason = TargetSegmentSafetyReason::kBlocked;
-  safety.blocked_cells = 2U;
+  safety.reason = TargetSegmentSafetyReason::kProhibited;
+  safety.prohibited_cells = 2U;
   safety.start_clearance_m = 0.30;
   safety.end_clearance_m = 0.36;
 

@@ -519,9 +519,9 @@ TEST(ObstacleMemoryGrid, InflationBlocksRememberedObstacle) {
   EXPECT_EQ(stats.hit_beams, 1U);
   memory.rebuildInflation(1.1);
 
-  EXPECT_TRUE(memory.inflatedGrid().isBlocked(GridIndex{9, 5}));
-  EXPECT_TRUE(memory.inflatedGrid().isBlocked(GridIndex{8, 5}));
-  EXPECT_FALSE(memory.inflatedGrid().isBlocked(GridIndex{12, 5}));
+  EXPECT_TRUE(memory.inflatedGrid().isProhibited(GridIndex{9, 5}));
+  EXPECT_TRUE(memory.inflatedGrid().isProhibited(GridIndex{8, 5}));
+  EXPECT_FALSE(memory.inflatedGrid().isProhibited(GridIndex{12, 5}));
 }
 
 TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
@@ -540,7 +540,7 @@ TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
 
   ASSERT_TRUE(result.success);
   for (const GridIndex cell : result.path) {
-    EXPECT_FALSE(planning_grid.isBlocked(cell));
+    EXPECT_FALSE(planning_grid.isProhibited(cell));
   }
 }
 

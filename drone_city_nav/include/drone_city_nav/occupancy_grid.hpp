@@ -36,7 +36,7 @@ public:
   [[nodiscard]] CellState state(GridIndex cell) const;
   [[nodiscard]] bool isOccupied(GridIndex cell) const;
   [[nodiscard]] bool isInflated(GridIndex cell) const;
-  [[nodiscard]] bool isBlocked(GridIndex cell) const;
+  [[nodiscard]] bool isProhibited(GridIndex cell) const;
   [[nodiscard]] std::span<const CellState> cells() const noexcept;
 
   void reset(CellState value = CellState::kUnknown);
@@ -48,8 +48,8 @@ public:
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;
-  [[nodiscard]] std::optional<GridIndex> nearestUnblocked(GridIndex seed,
-                                                          int max_radius_cells) const;
+  [[nodiscard]] std::optional<GridIndex> nearestAllowed(GridIndex seed,
+                                                        int max_radius_cells) const;
 
 private:
   GridBounds bounds_{};

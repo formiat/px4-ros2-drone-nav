@@ -95,7 +95,7 @@ bool OccupancyGrid2D::isInflated(const GridIndex cell) const {
   return inflated_.at(linearIndex(cell)) != 0U;
 }
 
-bool OccupancyGrid2D::isBlocked(const GridIndex cell) const {
+bool OccupancyGrid2D::isProhibited(const GridIndex cell) const {
   return isOccupied(cell) || isInflated(cell);
 }
 
@@ -228,12 +228,12 @@ std::vector<GridIndex> OccupancyGrid2D::cellsOnLine(const GridIndex start,
 }
 
 std::optional<GridIndex>
-OccupancyGrid2D::nearestUnblocked(const GridIndex seed,
-                                  const int max_radius_cells) const {
+OccupancyGrid2D::nearestAllowed(const GridIndex seed,
+                                const int max_radius_cells) const {
   if (!contains(seed)) {
     return std::nullopt;
   }
-  if (!isBlocked(seed)) {
+  if (!isProhibited(seed)) {
     return seed;
   }
 
@@ -245,7 +245,7 @@ OccupancyGrid2D::nearestUnblocked(const GridIndex seed,
           continue;
         }
         const GridIndex candidate{seed.x + dx, seed.y + dy};
-        if (contains(candidate) && !isBlocked(candidate)) {
+        if (contains(candidate) && !isProhibited(candidate)) {
           return candidate;
         }
       }

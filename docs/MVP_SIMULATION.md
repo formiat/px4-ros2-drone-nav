@@ -521,7 +521,7 @@ make quality
 - The generated city is intentionally small and synthetic.
 - Only static building obstacles are modeled.
 - The planner treats unknown planning-grid cells as traversable, but occupied
-  cells from any enabled source remain blocked through the union overlay.
+  cells from any enabled source remain prohibited through the union overlay.
 - `obstacle_memory_node` stores bounded hit/miss scores per cell. A single free
   miss does not immediately erase a remembered obstacle, but repeated free
   evidence can clear stale cells.

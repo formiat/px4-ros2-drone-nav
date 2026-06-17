@@ -46,8 +46,8 @@ struct CompareClearanceNode {
   switch (source) {
     case ClearanceSource::kOccupied:
       return grid.isOccupied(cell);
-    case ClearanceSource::kBlocked:
-      return grid.isBlocked(cell);
+    case ClearanceSource::kProhibited:
+      return grid.isProhibited(cell);
   }
   return false;
 }

@@ -19,7 +19,7 @@ struct AStarConfig {
 enum class AStarStatus {
   kSuccess,
   kInvalidStartOrGoal,
-  kBlockedStartOrGoal,
+  kProhibitedStartOrGoal,
   kUnreachable,
   kExpansionBudgetExceeded,
   kStateSpaceTooLarge,

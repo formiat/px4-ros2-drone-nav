@@ -80,8 +80,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_comfort_max_detour_ratio", 500.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 500.0},
-       rclcpp::Parameter{"stable_path_blocking_replan_horizon_m", -5.0},
-       rclcpp::Parameter{"stable_path_blocked_confirmations_required", 0},
+       rclcpp::Parameter{"stable_path_prohibited_replan_horizon_m", -5.0},
+       rclcpp::Parameter{"stable_path_prohibited_confirmations_required", 0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -104,8 +104,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
   EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 100.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.stable_path_blocking_replan_horizon_m, 0.0);
-  EXPECT_EQ(config.planner_core.stable_path_blocked_confirmations_required, 1);
+  EXPECT_DOUBLE_EQ(config.planner_core.stable_path_prohibited_replan_horizon_m, 0.0);
+  EXPECT_EQ(config.planner_core.stable_path_prohibited_confirmations_required, 1);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
 }
 

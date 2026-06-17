@@ -747,7 +747,7 @@ private:
     return occupancy_grid_.data.at(data_index);
   }
 
-  [[nodiscard]] bool occupancyGridCellBlocked(const GridIndex cell) const {
+  [[nodiscard]] bool occupancyGridCellProhibited(const GridIndex cell) const {
     return occupancyGridValue(cell) >= kInflatedOccupancyValue;
   }
 
@@ -763,7 +763,7 @@ private:
     if (!current_cell.has_value()) {
       return false;
     }
-    return occupancyGridCellBlocked(*current_cell) &&
+    return occupancyGridCellProhibited(*current_cell) &&
            !occupancyGridCellOccupied(*current_cell);
   }
 
@@ -824,9 +824,9 @@ private:
       return evaluateTargetSegmentSafetyPolicy(input);
     }
 
-    input.start_blocked = occupancyGridCellBlocked(*start_cell);
+    input.start_prohibited = occupancyGridCellProhibited(*start_cell);
     input.start_occupied = occupancyGridCellOccupied(*start_cell);
-    input.end_blocked = occupancyGridCellBlocked(*end_cell);
+    input.end_prohibited = occupancyGridCellProhibited(*end_cell);
 
     const std::vector<GridIndex> segment_cells =
         occupancyGridCellsOnLine(*start_cell, *end_cell);
@@ -834,8 +834,8 @@ private:
       if (occupancyGridCellOccupied(cell)) {
         ++input.occupied_cells;
       }
-      if (occupancyGridCellBlocked(cell)) {
-        ++input.blocked_cells;
+      if (occupancyGridCellProhibited(cell)) {
+        ++input.prohibited_cells;
       }
     }
 
@@ -943,16 +943,16 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "Target segment safety selected direct escape: requested_lead=%.2f "
-          "selected_lead=%.2f command_lead=%.2f blocked_cells=%zu "
+          "selected_lead=%.2f command_lead=%.2f prohibited_cells=%zu "
           "occupied_cells=%zu reason=%s clearance_start=%.2f clearance_end=%.2f "
-          "command_blocked_cells=%zu command_occupied_cells=%zu "
+          "command_prohibited_cells=%zu command_occupied_cells=%zu "
           "command_reason=%s command_clearance_start=%.2f "
           "command_clearance_end=%.2f target=(%.2f, %.2f) "
           "scan_target=(%.2f, %.2f) fallback_target=(%.2f, %.2f)",
-          requested_step_m, distance_m, command_lead_m, safety.blocked_cells,
+          requested_step_m, distance_m, command_lead_m, safety.prohibited_cells,
           safety.occupied_cells, targetSegmentSafetyReasonName(safety.reason),
           safety.start_clearance_m, safety.end_clearance_m,
-          command_safety.blocked_cells, command_safety.occupied_cells,
+          command_safety.prohibited_cells, command_safety.occupied_cells,
           targetSegmentSafetyReasonName(command_safety.reason),
           command_safety.start_clearance_m, command_safety.end_clearance_m,
           command_candidate.x, command_candidate.y, candidate.x, candidate.y,
@@ -993,11 +993,11 @@ private:
           RCLCPP_WARN_THROTTLE(
               get_logger(), *get_clock(), 1000,
               "Target segment safety adjusted command: requested_lead=%.2f "
-              "selected_lead=%.2f escape=%s blocked_cells=%zu occupied_cells=%zu "
+              "selected_lead=%.2f escape=%s prohibited_cells=%zu occupied_cells=%zu "
               "reason=%s clearance_start=%.2f clearance_end=%.2f "
               "target=(%.2f, %.2f)",
               bounded_lead_m, distance_m, safety.escape ? "true" : "false",
-              safety.blocked_cells, safety.occupied_cells,
+              safety.prohibited_cells, safety.occupied_cells,
               targetSegmentSafetyReasonName(safety.reason), safety.start_clearance_m,
               safety.end_clearance_m, candidate.x, candidate.y);
         }
@@ -1018,12 +1018,13 @@ private:
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "Target segment safety hold: requested_lead=%.2f allow_escape=%s "
-        "blocked_cells=%zu occupied_cells=%zu start_blocked=%s end_blocked=%s "
+        "prohibited_cells=%zu occupied_cells=%zu start_prohibited=%s end_prohibited=%s "
         "reason=%s clearance_start=%.2f clearance_end=%.2f "
         "fallback_target=(%.2f, %.2f)",
-        bounded_lead_m, allow_escape ? "true" : "false", desired_safety.blocked_cells,
-        desired_safety.occupied_cells, desired_safety.start_blocked ? "true" : "false",
-        desired_safety.end_blocked ? "true" : "false",
+        bounded_lead_m, allow_escape ? "true" : "false",
+        desired_safety.prohibited_cells, desired_safety.occupied_cells,
+        desired_safety.start_prohibited ? "true" : "false",
+        desired_safety.end_prohibited ? "true" : "false",
         targetSegmentSafetyReasonName(desired_safety.reason),
         desired_safety.start_clearance_m, desired_safety.end_clearance_m,
         fallback_target.x, fallback_target.y);

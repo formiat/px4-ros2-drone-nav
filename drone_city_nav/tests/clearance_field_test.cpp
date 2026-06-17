@@ -27,7 +27,7 @@ TEST(ClearanceField2D, MeasuresMetricDistanceFromOccupiedCells) {
   EXPECT_NEAR(field.distanceAt(GridIndex{3, 3}), std::numbers::sqrt2, 1.0e-9);
 }
 
-TEST(ClearanceField2D, CanUseInflatedCellsAsBlockedSources) {
+TEST(ClearanceField2D, CanUseInflatedCellsAsProhibitedSources) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{2, 2});
   grid.rebuildInflation(1.1);
@@ -36,13 +36,13 @@ TEST(ClearanceField2D, CanUseInflatedCellsAsBlockedSources) {
 
   const ClearanceField2D occupied_field =
       ClearanceField2D::build(grid, 4.0, ClearanceSource::kOccupied);
-  const ClearanceField2D blocked_field =
-      ClearanceField2D::build(grid, 4.0, ClearanceSource::kBlocked);
+  const ClearanceField2D prohibited_field =
+      ClearanceField2D::build(grid, 4.0, ClearanceSource::kProhibited);
 
   EXPECT_DOUBLE_EQ(occupied_field.distanceAt(GridIndex{3, 2}), 1.0);
-  EXPECT_DOUBLE_EQ(blocked_field.distanceAt(GridIndex{3, 2}), 0.0);
-  EXPECT_DOUBLE_EQ(blocked_field.distanceAt(GridIndex{4, 2}), 1.0);
-  EXPECT_DOUBLE_EQ(blocked_field.distanceAt(GridIndex{5, 2}), 2.0);
+  EXPECT_DOUBLE_EQ(prohibited_field.distanceAt(GridIndex{3, 2}), 0.0);
+  EXPECT_DOUBLE_EQ(prohibited_field.distanceAt(GridIndex{4, 2}), 1.0);
+  EXPECT_DOUBLE_EQ(prohibited_field.distanceAt(GridIndex{5, 2}), 2.0);
 }
 
 TEST(ClearanceField2D, IgnoresFreeAndUnknownCellsAsSources) {

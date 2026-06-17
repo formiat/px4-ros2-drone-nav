@@ -9,7 +9,7 @@ namespace drone_city_nav {
 
 enum class ClearanceSource {
   kOccupied,
-  kBlocked,
+  kProhibited,
 };
 
 class ClearanceField2D {

@@ -77,9 +77,9 @@ struct CompareOpenNode {
                    static_cast<int>(cell_index / width)};
 }
 
-[[nodiscard]] bool diagonalMoveCutsBlockedCorner(const OccupancyGrid2D& grid,
-                                                 const GridIndex from,
-                                                 const GridIndex to) {
+[[nodiscard]] bool diagonalMoveCutsProhibitedCorner(const OccupancyGrid2D& grid,
+                                                    const GridIndex from,
+                                                    const GridIndex to) {
   const int dx = to.x - from.x;
   const int dy = to.y - from.y;
   if (std::abs(dx) != 1 || std::abs(dy) != 1) {
@@ -88,7 +88,7 @@ struct CompareOpenNode {
 
   const GridIndex adjacent_x{from.x + dx, from.y};
   const GridIndex adjacent_y{from.x, from.y + dy};
-  return grid.isBlocked(adjacent_x) || grid.isBlocked(adjacent_y);
+  return grid.isProhibited(adjacent_x) || grid.isProhibited(adjacent_y);
 }
 
 [[nodiscard]] double directionPreferenceCost(const AStarConfig& config,
@@ -166,8 +166,8 @@ const char* astarStatusName(const AStarStatus status) noexcept {
       return "success";
     case AStarStatus::kInvalidStartOrGoal:
       return "invalid_start_or_goal";
-    case AStarStatus::kBlockedStartOrGoal:
-      return "blocked_start_or_goal";
+    case AStarStatus::kProhibitedStartOrGoal:
+      return "prohibited_start_or_goal";
     case AStarStatus::kUnreachable:
       return "unreachable";
     case AStarStatus::kExpansionBudgetExceeded:
@@ -185,8 +185,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     result.status = AStarStatus::kInvalidStartOrGoal;
     return result;
   }
-  if (grid.isBlocked(start) || grid.isBlocked(goal)) {
-    result.status = AStarStatus::kBlockedStartOrGoal;
+  if (grid.isProhibited(start) || grid.isProhibited(goal)) {
+    result.status = AStarStatus::kProhibitedStartOrGoal;
     return result;
   }
 
@@ -234,8 +234,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
          ++direction_index) {
       const GridIndex offset = kNeighborOffsets.at(direction_index);
       const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
-      if (!grid.contains(next) || grid.isBlocked(next) ||
-          diagonalMoveCutsBlockedCorner(grid, current.cell, next)) {
+      if (!grid.contains(next) || grid.isProhibited(next) ||
+          diagonalMoveCutsProhibitedCorner(grid, current.cell, next)) {
         continue;
       }
 
