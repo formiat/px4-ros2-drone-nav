@@ -46,6 +46,9 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
   city world with uniform-height buildings, visual point A at `(-57, -27)`,
   and visual point B at `(51, 27)`.
+- `drone_city_nav/models/x500_lidar_2d/model.sdf` - local PX4 X500 wrapper with
+  the 2D lidar, bright yellow Gazebo GUI tracking markers, and a yellow
+  ground-projection debug disc.
 - `drone_city_nav/worlds/generated_city.map2d` - static 2D obstacle map for the
   same local city layout used by the planner and mission monitor.
 - `drone_city_nav/worlds/generated_city_mixed_heights.sdf` - preserved
