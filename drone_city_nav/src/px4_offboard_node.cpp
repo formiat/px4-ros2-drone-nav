@@ -900,6 +900,10 @@ private:
         safety.reason == TargetSegmentSafetyReason::kNoGrid) {
       return safety.allowed;
     }
+    if (safety.reason == TargetSegmentSafetyReason::kAllowed &&
+        safety.blocked_cells == 0U) {
+      return true;
+    }
     if (!std::isfinite(safety.start_clearance_m) ||
         !std::isfinite(safety.end_clearance_m)) {
       return safety.allowed;
