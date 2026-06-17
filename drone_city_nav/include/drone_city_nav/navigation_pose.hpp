@@ -100,8 +100,10 @@ struct GpsCompassConfig {
 
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
 
-[[nodiscard]] bool timestampIsFresh(std::int64_t stamp_ns, std::int64_t now_ns,
-                                    std::int64_t max_staleness_ns) noexcept;
+[[nodiscard]] bool
+timestampIsFresh(std::int64_t stamp_ns, std::int64_t now_ns,
+                 std::int64_t max_staleness_ns,
+                 std::int64_t max_future_skew_ns = 100'000'000) noexcept;
 
 void invalidateNavigationPose(NavigationPose2D& pose) noexcept;
 

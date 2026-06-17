@@ -64,6 +64,8 @@ namespace {
 }
 
 [[nodiscard]] Point3 lidarFluToBodyFrd(const Point3& vector) noexcept {
+  // ROS optical/lidar scans are handled in FLU, while PX4 attitude is body FRD.
+  // The NED projection below expects body FRD before applying roll/pitch/yaw.
   return Point3{vector.x, -vector.y, -vector.z};
 }
 
@@ -198,6 +200,8 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
     projection.ned_direction =
         projectDirectionToNed(projection.lidar_direction, pose, config);
   } else {
+    // The legacy 2D path intentionally ignores roll/pitch and keeps the old
+    // map-frame axis behavior for compatibility with existing launch files.
     projection.body_frd_direction =
         legacyProjectDirectionToMap(beam_angle_rad, pose, config);
     projection.ned_direction = projection.body_frd_direction;

@@ -36,7 +36,8 @@ double normalizeYaw(const double yaw_rad) noexcept {
 }
 
 bool timestampIsFresh(const std::int64_t stamp_ns, const std::int64_t now_ns,
-                      const std::int64_t max_staleness_ns) noexcept {
+                      const std::int64_t max_staleness_ns,
+                      const std::int64_t max_future_skew_ns) noexcept {
   if (max_staleness_ns <= 0) {
     return true;
   }
@@ -44,7 +45,7 @@ bool timestampIsFresh(const std::int64_t stamp_ns, const std::int64_t now_ns,
     return false;
   }
   if (stamp_ns > now_ns) {
-    return true;
+    return max_future_skew_ns >= 0 && stamp_ns - now_ns <= max_future_skew_ns;
   }
   return now_ns - stamp_ns <= max_staleness_ns;
 }

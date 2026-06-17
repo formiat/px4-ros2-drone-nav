@@ -284,10 +284,11 @@ TEST(NavigationPose, Px4LocalPoseAppliesMapOriginOffset) {
 
 TEST(NavigationPose, TimestampFreshnessRejectsMissingAndExpiredUpdates) {
   EXPECT_TRUE(timestampIsFresh(100, 150, 100));
-  EXPECT_TRUE(timestampIsFresh(200, 150, 100));
+  EXPECT_TRUE(timestampIsFresh(170, 150, 100, 25));
   EXPECT_TRUE(timestampIsFresh(0, 150, 0));
   EXPECT_FALSE(timestampIsFresh(0, 150, 100));
   EXPECT_FALSE(timestampIsFresh(100, 250, 100));
+  EXPECT_FALSE(timestampIsFresh(200, 150, 100, 25));
 }
 
 TEST(NavigationPose, StatefulPx4UpdateInvalidatesCachedPoseAfterInvalidPosition) {

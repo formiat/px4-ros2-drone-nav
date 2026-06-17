@@ -16,6 +16,8 @@ constexpr int kDirectionCount = 8;
 constexpr int kDirectionStateCount = kDirectionCount + 1;
 constexpr int kStartDirectionState = kDirectionCount;
 constexpr std::size_t kNoParent = std::numeric_limits<std::size_t>::max();
+// The planner keeps heading as part of the search state so turn penalties can
+// prefer flyable paths without losing the physical distance cost.
 constexpr std::array<GridIndex, kDirectionCount> kNeighborOffsets{{
     {-1, -1},
     {0, -1},
@@ -113,6 +115,8 @@ struct CompareClearanceNode {
     return field;
   }
 
+  // Weighted 8-neighbor propagation is an inexpensive metric approximation:
+  // diagonal steps cost sqrt(2) cells instead of being counted as one cell.
   std::priority_queue<ClearanceNode, std::vector<ClearanceNode>, CompareClearanceNode>
       queue;
   for (int y = 0; y < grid.height(); ++y) {

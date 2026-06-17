@@ -143,6 +143,8 @@ double clearanceLimitedSpeedMps(const SpeedControllerConfig& config,
                                     ? config.clearance_braking_margin_m
                                     : 0.0;
   if (std::isfinite(config.max_accel_mps2) && config.max_accel_mps2 > 0.0) {
+    // Treat obstacle clearance like stopping distance so the setpoint speed
+    // reaches zero before the hard safety margin is consumed.
     const double stopping_clearance_m =
         std::max(local_clearance_m - braking_margin, 0.0);
     const double stopping_limit_mps =

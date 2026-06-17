@@ -39,6 +39,8 @@ speed2D(const px4_msgs::msg::VehicleLocalPosition& position) noexcept {
   const double dx_inside = half_x - std::abs(point.x - building.center.x);
   const double dy_inside = half_y - std::abs(point.y - building.center.y);
   if (dx_inside >= 0.0 && dy_inside >= 0.0) {
+    // Negative clearance means the drone footprint is horizontally inside the
+    // building footprint; positive clearance is distance outside it.
     return -std::min(dx_inside, dy_inside);
   }
 
@@ -118,7 +120,8 @@ public:
     const std::vector<double> building_volume_values =
         declare_parameter<std::vector<double>>("building_volumes",
                                                std::vector<double>{});
-    buildings_ = parseBuildingVolumes(building_volume_values);
+    const std::vector<BuildingFootprint> volume_buildings =
+        parseBuildingVolumes(building_volume_values);
     if (building_volume_values.size() % 5U != 0U) {
       RCLCPP_WARN(get_logger(), "Ignoring trailing building volume values: count=%zu",
                   building_volume_values.size());
@@ -126,13 +129,25 @@ public:
 
     const std::vector<double> building_values = declare_parameter<std::vector<double>>(
         "building_footprints", std::vector<double>{});
-    if (buildings_.empty()) {
+    std::string building_source = "none";
+    if (!volume_buildings.empty()) {
+      buildings_ = volume_buildings;
+      building_source = "building_volumes";
+      if (!building_values.empty()) {
+        RCLCPP_INFO(
+            get_logger(),
+            "Ignoring building_footprints because building_volumes are configured: "
+            "footprint_values=%zu volume_buildings=%zu",
+            building_values.size(), buildings_.size());
+      }
+    } else {
       buildings_ = parseBuildings(building_values);
-    }
-    if (building_values.size() % 4U != 0U) {
-      RCLCPP_WARN(get_logger(),
-                  "Ignoring trailing building footprint values: count=%zu",
-                  building_values.size());
+      building_source = buildings_.empty() ? "none" : "building_footprints";
+      if (building_values.size() % 4U != 0U) {
+        RCLCPP_WARN(get_logger(),
+                    "Ignoring trailing building footprint values: count=%zu",
+                    building_values.size());
+      }
     }
     uniform_building_height_m_ =
         declare_parameter<double>("uniform_building_height_m", 0.0);
@@ -165,13 +180,14 @@ public:
 
     RCLCPP_INFO(get_logger(),
                 "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
-                "spawn_tolerance=%.2fm goal_radius=%.2fm buildings=%zu clearance=%.2fm "
+                "spawn_tolerance=%.2fm goal_radius=%.2fm building_source=%s "
+                "buildings=%zu clearance=%.2fm "
                 "vertical_clearance=%.2fm uniform_building_height=%.2fm "
                 "crash_detection=%s emergency_stop_topic='%s'",
                 start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
-                goal_radius_m_, buildings_.size(), building_clearance_m_,
-                vertical_clearance_m_, uniform_building_height_m_,
-                crash_detection_enabled_ ? "true" : "false",
+                goal_radius_m_, building_source.c_str(), buildings_.size(),
+                building_clearance_m_, vertical_clearance_m_,
+                uniform_building_height_m_, crash_detection_enabled_ ? "true" : "false",
                 emergency_stop_topic.c_str());
   }
 

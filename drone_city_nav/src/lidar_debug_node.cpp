@@ -144,6 +144,9 @@ public:
     max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1,
         1000000));
+    max_hit_candidate_cells_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("max_hit_candidate_cells", 200000), 1,
+        1000000));
     current_pointcloud_z_m_ =
         declare_parameter<double>("current_lidar_pointcloud_z_m", 0.30);
     remembered_pointcloud_z_m_ =
@@ -208,7 +211,8 @@ public:
                 "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
                 "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
                 "min_confirmations=%zu min_remember_altitude=%.2fm "
-                "max_remembered_hits=%zu compensate_attitude=%s lidar_z_offset=%.2f "
+                "max_remembered_hits=%zu max_candidate_cells=%zu "
+                "compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
                 "pointcloud_z[current=%.2f, remembered=%.2f] marker_z=%.2f "
@@ -220,11 +224,12 @@ public:
                 marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
                 hit_memory_resolution_m_, remembered_hit_min_confirmations_,
                 min_remember_altitude_m_, max_remembered_hit_points_,
-                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-                current_pointcloud_z_m_, remembered_pointcloud_z_m_, marker_z_m_,
-                yawSourceName(), initial_heading_rad_);
+                max_hit_candidate_cells_, compensate_lidar_attitude_ ? "true" : "false",
+                lidar_z_offset_m_, min_projected_lidar_altitude_m_,
+                max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
+                lidar_mount_pitch_rad_, lidar_mount_yaw_rad_, current_pointcloud_z_m_,
+                remembered_pointcloud_z_m_, marker_z_m_, yawSourceName(),
+                initial_heading_rad_);
     if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
       RCLCPP_WARN(
           get_logger(),
@@ -535,6 +540,48 @@ private:
            current_altitude_m_ >= min_remember_altitude_m_;
   }
 
+  void pruneHitCandidateMemory() {
+    const std::size_t before = hit_candidates_.size();
+    for (auto it = hit_candidates_.begin(); it != hit_candidates_.end();) {
+      if (remembered_hit_cells_.contains(it->first)) {
+        it = hit_candidates_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    while (hit_candidates_.size() > max_hit_candidate_cells_) {
+      hit_candidates_.erase(hit_candidates_.begin());
+    }
+
+    if (hit_candidates_.size() < before) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Pruned lidar hit candidate memory: before=%zu after=%zu remembered=%zu "
+          "candidate_cap=%zu",
+          before, hit_candidates_.size(), remembered_hit_cells_.size(),
+          max_hit_candidate_cells_);
+    }
+  }
+
+  [[nodiscard]] bool ensureCandidateCapacity() {
+    if (hit_candidates_.size() < max_hit_candidate_cells_) {
+      return true;
+    }
+
+    pruneHitCandidateMemory();
+    if (hit_candidates_.size() < max_hit_candidate_cells_) {
+      return true;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping unconfirmed lidar hit candidates: candidates=%zu cap=%zu "
+        "remembered=%zu",
+        hit_candidates_.size(), max_hit_candidate_cells_, remembered_hit_cells_.size());
+    return false;
+  }
+
   void rememberHitPoints(const std::vector<Point2>& hit_points) {
     if (!rememberedHitsAllowed()) {
       RCLCPP_INFO_THROTTLE(
@@ -554,7 +601,15 @@ private:
       if (remembered_hit_cells_.contains(key)) {
         continue;
       }
-      HitCandidate& candidate = hit_candidates_[key];
+      auto candidate_it = hit_candidates_.find(key);
+      if (candidate_it == hit_candidates_.end()) {
+        if (!ensureCandidateCapacity()) {
+          continue;
+        }
+        candidate_it = hit_candidates_.try_emplace(key).first;
+      }
+
+      HitCandidate& candidate = candidate_it->second;
       ++candidate.confirmations;
       if (candidate.confirmations == 1U) {
         candidate.point = point;
@@ -576,7 +631,9 @@ private:
       }
       remembered_hit_cells_.insert(key);
       remembered_hit_points_.push_back(candidate.point);
+      hit_candidates_.erase(key);
     }
+    pruneHitCandidateMemory();
   }
 
   [[nodiscard]] std::vector<Point2> pathPoints() const {
@@ -781,6 +838,7 @@ private:
   std::size_t max_logged_hit_points_{256U};
   std::size_t remembered_hit_min_confirmations_{3U};
   std::size_t max_remembered_hit_points_{50000U};
+  std::size_t max_hit_candidate_cells_{200000U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
   std::int64_t last_scan_receive_ns_{0};
