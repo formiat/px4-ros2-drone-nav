@@ -266,6 +266,10 @@ if [[ "${run_cppcheck}" == "true" ]]; then
   elif [[ "${#cppcheck_files[@]}" -eq 0 ]]; then
     echo "SKIP: cppcheck: no scoped production C++ translation units changed"
   else
+    echo "INFO: cppcheck gates warning/performance/portability findings; style/information checks are intentionally not enabled"
+    # Actionable cppcheck findings fail the quality gate through
+    # --error-exitcode=1. Informational/style-only messages such as
+    # normalCheckLevelMaxBranches are intentionally outside this gate.
     run_or_fail "cppcheck scoped files" \
       cppcheck --std=c++20 --enable=warning,performance,portability \
         --inline-suppr --error-exitcode=1 --suppress=missingIncludeSystem \

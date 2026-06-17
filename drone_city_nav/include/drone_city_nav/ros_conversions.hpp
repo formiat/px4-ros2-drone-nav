@@ -42,6 +42,10 @@ occupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
 [[nodiscard]] nav_msgs::msg::OccupancyGrid
 occupancyGridToRos(const OccupancyGrid2D& grid, const OccupancyGridToRosConfig& config);
 
+[[nodiscard]] double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
+                                             Point2 point, double search_radius_m,
+                                             std::int8_t min_occupancy_value);
+
 [[nodiscard]] nav_msgs::msg::Path pathToRos(std::span<const Point2> points,
                                             const std_msgs::msg::Header& header,
                                             double altitude_m);

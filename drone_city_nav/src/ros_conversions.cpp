@@ -1,5 +1,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -80,6 +82,56 @@ occupancyGridToRos(const OccupancyGrid2D& grid,
   }
 
   return msg;
+}
+
+double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
+                               const Point2 point, const double search_radius_m,
+                               const std::int8_t min_occupancy_value) {
+  if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const auto width = static_cast<int>(msg.info.width);
+  const auto height = static_cast<int>(msg.info.height);
+  const std::size_t expected_data_size =
+      static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+  if (msg.data.size() != expected_data_size) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const double resolution = static_cast<double>(msg.info.resolution);
+  const double origin_x = msg.info.origin.position.x;
+  const double origin_y = msg.info.origin.position.y;
+  const GridIndex center{
+      static_cast<int>(std::floor((point.x - origin_x) / resolution)),
+      static_cast<int>(std::floor((point.y - origin_y) / resolution))};
+  if (center.x < 0 || center.y < 0 || center.x >= width || center.y >= height) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const int radius_cells =
+      static_cast<int>(std::ceil(std::max(0.0, search_radius_m) / resolution));
+  const int min_x = std::max(center.x - radius_cells, 0);
+  const int max_x = std::min(center.x + radius_cells, width - 1);
+  const int min_y = std::max(center.y - radius_cells, 0);
+  const int max_y = std::min(center.y + radius_cells, height - 1);
+
+  double nearest_clearance_m = std::numeric_limits<double>::infinity();
+  for (int y = min_y; y <= max_y; ++y) {
+    for (int x = min_x; x <= max_x; ++x) {
+      const std::size_t data_index =
+          static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+          static_cast<std::size_t>(x);
+      if (msg.data[data_index] < min_occupancy_value) {
+        continue;
+      }
+      const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
+                               origin_y + (static_cast<double>(y) + 0.5) * resolution};
+      nearest_clearance_m = std::min(nearest_clearance_m, distance(point, cell_center));
+    }
+  }
+
+  return nearest_clearance_m;
 }
 
 nav_msgs::msg::Path pathToRos(std::span<const Point2> points,

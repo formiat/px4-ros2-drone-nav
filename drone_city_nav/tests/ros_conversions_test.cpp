@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 namespace drone_city_nav {
 namespace {
 
@@ -95,6 +97,54 @@ TEST(RosConversions, SerializesInflatedCellsOnlyWhenRequested) {
   EXPECT_EQ(with_inflation.data[1], 100);
   EXPECT_EQ(without_inflation.data[0], 0);
   EXPECT_EQ(without_inflation.data[1], 100);
+}
+
+TEST(RosConversions, ClearanceUsesOccupiedCellsAtThreshold) {
+  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(5U, 5U);
+  msg.info.origin.position.x = 0.0;
+  msg.info.origin.position.y = 0.0;
+  msg.data[static_cast<std::size_t>(2U) * 5U + 3U] = 100;
+
+  const double clearance_m = occupancyGridClearanceM(msg, Point2{2.5, 2.5}, 4.0, 100);
+
+  EXPECT_DOUBLE_EQ(clearance_m, 1.0);
+}
+
+TEST(RosConversions, ClearanceTreatsInflatedCellsAsSafetyBlockers) {
+  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(5U, 5U);
+  msg.info.origin.position.x = 0.0;
+  msg.info.origin.position.y = 0.0;
+  msg.data[static_cast<std::size_t>(2U) * 5U + 3U] = 80;
+
+  const double inflated_clearance_m =
+      occupancyGridClearanceM(msg, Point2{2.5, 2.5}, 4.0, 80);
+  const double occupied_clearance_m =
+      occupancyGridClearanceM(msg, Point2{2.5, 2.5}, 4.0, 100);
+
+  EXPECT_DOUBLE_EQ(inflated_clearance_m, 1.0);
+  EXPECT_TRUE(std::isinf(occupied_clearance_m));
+}
+
+TEST(RosConversions, ClearanceIgnoresUnknownAndFreeCells) {
+  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(5U, 5U);
+  msg.info.origin.position.x = 0.0;
+  msg.info.origin.position.y = 0.0;
+  msg.data[static_cast<std::size_t>(2U) * 5U + 2U] = -1;
+  msg.data[static_cast<std::size_t>(2U) * 5U + 3U] = 0;
+
+  const double clearance_m = occupancyGridClearanceM(msg, Point2{2.5, 2.5}, 4.0, 80);
+
+  EXPECT_TRUE(std::isinf(clearance_m));
+}
+
+TEST(RosConversions, ClearanceReturnsNanForInvalidGridOrOutsidePoint) {
+  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(5U, 5U);
+
+  nav_msgs::msg::OccupancyGrid invalid = msg;
+  invalid.data.pop_back();
+
+  EXPECT_TRUE(std::isnan(occupancyGridClearanceM(invalid, Point2{0.0, 0.0}, 4.0, 80)));
+  EXPECT_TRUE(std::isnan(occupancyGridClearanceM(msg, Point2{100.0, 100.0}, 4.0, 80)));
 }
 
 TEST(RosConversions, BuildsPathWithHeaderAltitudeAndIdentityOrientation) {

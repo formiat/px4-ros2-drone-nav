@@ -2,6 +2,7 @@
 #include "drone_city_nav/offboard_speed_controller.hpp"
 #include "drone_city_nav/offboard_target_safety.hpp"
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -1196,43 +1197,10 @@ private:
       return std::numeric_limits<double>::quiet_NaN();
     }
 
-    const double resolution = static_cast<double>(occupancy_grid_.info.resolution);
-    const double origin_x = occupancy_grid_.info.origin.position.x;
-    const double origin_y = occupancy_grid_.info.origin.position.y;
-    const auto width = static_cast<int>(occupancy_grid_.info.width);
-    const auto height = static_cast<int>(occupancy_grid_.info.height);
-    const GridIndex center{
-        static_cast<int>(std::floor((point.x - origin_x) / resolution)),
-        static_cast<int>(std::floor((point.y - origin_y) / resolution))};
-    if (center.x < 0 || center.y < 0 || center.x >= width || center.y >= height) {
-      return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    const int radius_cells = static_cast<int>(std::ceil(
-        speed_controller_.config().narrow_clearance_slowdown_radius_m / resolution));
-    const int min_x = std::max(center.x - radius_cells, 0);
-    const int max_x = std::min(center.x + radius_cells, width - 1);
-    const int min_y = std::max(center.y - radius_cells, 0);
-    const int max_y = std::min(center.y + radius_cells, height - 1);
-
-    double nearest_clearance_m = std::numeric_limits<double>::infinity();
-    for (int y = min_y; y <= max_y; ++y) {
-      for (int x = min_x; x <= max_x; ++x) {
-        const std::size_t data_index =
-            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
-            static_cast<std::size_t>(x);
-        if (occupancy_grid_.data[data_index] < min_occupancy_value) {
-          continue;
-        }
-        const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
-                                 origin_y +
-                                     (static_cast<double>(y) + 0.5) * resolution};
-        nearest_clearance_m =
-            std::min(nearest_clearance_m, distance(point, cell_center));
-      }
-    }
-
-    return nearest_clearance_m;
+    return occupancyGridClearanceM(
+        occupancy_grid_, point,
+        speed_controller_.config().narrow_clearance_slowdown_radius_m,
+        min_occupancy_value);
   }
 
   [[nodiscard]] std::array<float, 3>

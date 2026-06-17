@@ -98,7 +98,7 @@ enable_project_warnings(obstacle_memory_node)
 
 add_executable(px4_offboard_node src/px4_offboard_node.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
-target_link_libraries(px4_offboard_node drone_city_nav_core)
+target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
   px4_offboard_node
   nav_msgs
