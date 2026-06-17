@@ -142,7 +142,7 @@ px4_offboard_node:
     turn_slowdown_min_speed_mps: 0.8
     narrow_clearance_slowdown_radius_m: 12.0
     narrow_clearance_min_speed_mps: 0.8
-    clearance_braking_margin_m: 3.2
+    clearance_braking_margin_m: 1.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     velocity_feedforward_enabled: true
