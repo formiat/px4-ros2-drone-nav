@@ -217,11 +217,26 @@ source "${colcon_install_base}/setup.bash"
 set -u
 
 cleanup() {
+  local job_pids
   local pids
-  pids="$(jobs -pr || true)"
-  if [[ -z "${pids}" ]]; then
+  local pid
+  local child_pids
+
+  job_pids="$(jobs -pr || true)"
+  if [[ -z "${job_pids}" ]]; then
     return
   fi
+
+  pids="${job_pids}"
+  for pid in ${job_pids}; do
+    child_pids="$(collect_descendant_pids "${pid}")"
+    if [[ -n "${child_pids}" ]]; then
+      pids="$(
+        printf '%s\n%s\n' "${pids}" "${child_pids}" |
+          awk 'NF && !seen[$0]++'
+      )"
+    fi
+  done
 
   kill ${pids} 2>/dev/null || true
   for _ in {1..20}; do
@@ -237,7 +252,17 @@ cleanup() {
   done
 
   kill -KILL ${pids} 2>/dev/null || true
-  wait ${pids} 2>/dev/null || true
+  wait ${job_pids} 2>/dev/null || true
+}
+
+collect_descendant_pids() {
+  local root_pid="$1"
+  local child_pid
+
+  for child_pid in $(pgrep -P "${root_pid}" 2>/dev/null || true); do
+    printf '%s\n' "${child_pid}"
+    collect_descendant_pids "${child_pid}"
+  done
 }
 trap cleanup EXIT INT TERM
 
