@@ -115,7 +115,8 @@ struct CompareOpenNode {
 }
 
 [[nodiscard]] double clearanceCost(const ClearanceField2D& field,
-                                   const AStarConfig& config, const GridIndex cell) {
+                                   const AStarConfig& config, const GridIndex cell,
+                                   const double step_distance_m) {
   if (field.maxDistanceM() <= 0.0 || !(config.obstacle_clearance_cost_weight > 0.0)) {
     return 0.0;
   }
@@ -132,7 +133,7 @@ struct CompareOpenNode {
 
   const double normalized_proximity =
       std::clamp((comfort_radius_m - distance_m) / comfort_radius_m, 0.0, 1.0);
-  return config.obstacle_clearance_cost_weight * normalized_proximity;
+  return config.obstacle_clearance_cost_weight * normalized_proximity * step_distance_m;
 }
 
 [[nodiscard]] std::vector<GridIndex>
@@ -244,9 +245,10 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
         continue;
       }
 
+      const double step_distance_m = stepDistanceM(offset, grid.resolution());
       const double tentative_g =
-          g_scores[current_index] + stepDistanceM(offset, grid.resolution()) +
-          clearanceCost(clearance_field, config, next) +
+          g_scores[current_index] + step_distance_m +
+          clearanceCost(clearance_field, config, next, step_distance_m) +
           directionPreferenceCost(config, current.direction_state,
                                   next_direction_state);
       if (tentative_g >= g_scores[next_index]) {

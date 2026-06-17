@@ -500,7 +500,7 @@ TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   EXPECT_EQ(decision.blocked_confirmations, 0);
 }
 
-TEST(PlannerCore, StablePathRequiresConfirmedOccupiedIntersection) {
+TEST(PlannerCore, StablePathRequiresConfirmedBlockedIntersection) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
   grid.rebuildInflation(0.0);

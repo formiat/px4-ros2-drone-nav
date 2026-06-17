@@ -649,15 +649,37 @@ private:
       return false;
     }
 
-    if (distance(current_pose_.position, path_points.front()) < grid.resolution()) {
+    if (distance(current_pose_.position, path_points.front()) < 1.0e-6) {
       path_points.front() = current_pose_.position;
+    } else if (distance(current_pose_.position, path_points.front()) <
+               grid.resolution()) {
+      const bool direct_to_next_is_safe =
+          path_points.size() < 2U ||
+          pathSegmentIsUnblocked(grid, current_pose_.position, path_points[1]);
+      if (direct_to_next_is_safe) {
+        path_points.front() = current_pose_.position;
+      } else {
+        path_points.insert(path_points.begin(), current_pose_.position);
+      }
     } else {
       path_points.insert(path_points.begin(), current_pose_.position);
     }
 
+    const std::vector<Point2> pre_collapse_path_points = path_points;
     const std::size_t dense_path_points = path_points.size();
-    path_points =
-        collapseCollinearPath(path_points, kPublishedPathCollinearityToleranceM);
+    path_points = collapseCollinearPath(pre_collapse_path_points,
+                                        kPublishedPathCollinearityToleranceM);
+    if (pre_collapse_path_points.size() >= 3U && path_points.size() >= 2U &&
+        !pathSegmentIsUnblocked(grid, path_points[0], path_points[1]) &&
+        pathSegmentIsUnblocked(grid, pre_collapse_path_points[0],
+                               pre_collapse_path_points[1])) {
+      path_points.insert(path_points.begin() + 1, pre_collapse_path_points[1]);
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "%s path restored first waypoint after collinear collapse to keep the "
+          "first published segment unblocked: restored=(%.2f, %.2f)",
+          source_label, pre_collapse_path_points[1].x, pre_collapse_path_points[1].y);
+    }
     if (path_points.size() != dense_path_points) {
       RCLCPP_INFO(get_logger(),
                   "%s path collinear waypoints collapsed: before=%zu after=%zu "
@@ -1080,7 +1102,7 @@ private:
               : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
-          "Current path intersects confirmed newly available occupied obstacle data; "
+          "Current path intersects confirmed newly available blocked obstacle data; "
           "running A* from current pose: reason=%s confirmations=%d/%d "
           "remaining_waypoints=%zu deviation=%.2fm blocked_segment=%zu "
           "blocked_length=%.2fm segment_start=(%.2f, %.2f) "

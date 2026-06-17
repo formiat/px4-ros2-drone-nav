@@ -1,5 +1,7 @@
 #pragma once
 
+#include "drone_city_nav/offboard_speed_controller.hpp"
+
 #include <cstddef>
 #include <limits>
 
@@ -46,8 +48,20 @@ struct TargetSegmentSafetyInput {
   bool clearance_stop_requested{false};
 };
 
+struct ClearanceEscapeRequestInput {
+  bool enabled{true};
+  bool hold_position{true};
+  double escape_step_m{0.0};
+  bool current_position_in_inflated_safety_cell{false};
+  SpeedLimitReason speed_limit_reason{SpeedLimitReason::kHold};
+  double clearance_limit_mps{std::numeric_limits<double>::infinity()};
+};
+
 [[nodiscard]] TargetSegmentSafety
 evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcept;
+
+[[nodiscard]] bool
+clearanceEscapeRequested(const ClearanceEscapeRequestInput& input) noexcept;
 
 [[nodiscard]] bool
 escapeCommandStepAllowed(const TargetSegmentSafety& safety,

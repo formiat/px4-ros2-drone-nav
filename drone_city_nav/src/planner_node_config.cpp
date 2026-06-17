@@ -76,12 +76,43 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.static_map.min_blocking_height_m = std::clamp(
       node.declare_parameter<double>("static_map_min_blocking_height_m", 0.0), 0.0,
       100000.0);
+  const double planning_grid_origin_x =
+      node.declare_parameter<double>("planning_grid_origin_x", -10.0);
+  const double planning_grid_origin_y =
+      node.declare_parameter<double>("planning_grid_origin_y", -10.0);
+  const double planning_grid_resolution_m =
+      node.declare_parameter<double>("planning_grid_resolution_m", 0.5);
+  const double planning_grid_width_m =
+      node.declare_parameter<double>("planning_grid_width_m", 115.0);
+  const double planning_grid_height_m =
+      node.declare_parameter<double>("planning_grid_height_m", 175.0);
   config.planning_grid_builder.fallback_bounds = boundedGridBounds(
-      node.declare_parameter<double>("planning_grid_origin_x", -10.0),
-      node.declare_parameter<double>("planning_grid_origin_y", -10.0),
-      node.declare_parameter<double>("planning_grid_resolution_m", 0.5),
-      node.declare_parameter<double>("planning_grid_width_m", 115.0),
-      node.declare_parameter<double>("planning_grid_height_m", 175.0));
+      planning_grid_origin_x, planning_grid_origin_y, planning_grid_resolution_m,
+      planning_grid_width_m, planning_grid_height_m);
+  const GridBounds& fallback_bounds = config.planning_grid_builder.fallback_bounds;
+  if (!std::isfinite(planning_grid_origin_x) ||
+      !std::isfinite(planning_grid_origin_y) ||
+      !std::isfinite(planning_grid_resolution_m) ||
+      !std::isfinite(planning_grid_width_m) || !std::isfinite(planning_grid_height_m) ||
+      planning_grid_resolution_m <= 0.0 || planning_grid_width_m <= 0.0 ||
+      planning_grid_height_m <= 0.0 ||
+      planning_grid_origin_x != fallback_bounds.origin_x ||
+      planning_grid_origin_y != fallback_bounds.origin_y ||
+      planning_grid_resolution_m != fallback_bounds.resolution_m ||
+      boundedPositiveCellCount(planning_grid_width_m, fallback_bounds.resolution_m) !=
+          fallback_bounds.width_cells ||
+      boundedPositiveCellCount(planning_grid_height_m, fallback_bounds.resolution_m) !=
+          fallback_bounds.height_cells) {
+    RCLCPP_WARN(node.get_logger(),
+                "Sanitized planning grid bounds: requested origin=(%.3f, %.3f) "
+                "resolution=%.3f size=(%.3f, %.3f)m final origin=(%.3f, %.3f) "
+                "resolution=%.3f cells=%dx%d",
+                planning_grid_origin_x, planning_grid_origin_y,
+                planning_grid_resolution_m, planning_grid_width_m,
+                planning_grid_height_m, fallback_bounds.origin_x,
+                fallback_bounds.origin_y, fallback_bounds.resolution_m,
+                fallback_bounds.width_cells, fallback_bounds.height_cells);
+  }
   config.planning_grid_builder.use_current_lidar_obstacles =
       node.declare_parameter<bool>("use_current_lidar_obstacles", true);
   config.timing.max_current_lidar_staleness_ns =

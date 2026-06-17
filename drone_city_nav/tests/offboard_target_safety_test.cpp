@@ -75,6 +75,29 @@ TEST(OffboardTargetSafety,
   EXPECT_EQ(safety.reason, TargetSegmentSafetyReason::kEscape);
 }
 
+TEST(OffboardTargetSafety, RequestsEscapeDuringClearanceSlowdownWithPositiveSpeed) {
+  ClearanceEscapeRequestInput input{};
+  input.enabled = true;
+  input.hold_position = false;
+  input.escape_step_m = 0.5;
+  input.current_position_in_inflated_safety_cell = false;
+  input.speed_limit_reason = SpeedLimitReason::kClearance;
+  input.clearance_limit_mps = 0.8;
+
+  EXPECT_TRUE(clearanceEscapeRequested(input));
+}
+
+TEST(OffboardTargetSafety, DoesNotRequestEscapeDuringCruise) {
+  ClearanceEscapeRequestInput input{};
+  input.enabled = true;
+  input.hold_position = false;
+  input.escape_step_m = 0.5;
+  input.current_position_in_inflated_safety_cell = false;
+  input.speed_limit_reason = SpeedLimitReason::kCruise;
+
+  EXPECT_FALSE(clearanceEscapeRequested(input));
+}
+
 TEST(OffboardTargetSafety, RejectsBlockedSegmentWithoutEscapeImprovement) {
   TargetSegmentSafetyInput input = baseInput();
   input.allow_escape = true;

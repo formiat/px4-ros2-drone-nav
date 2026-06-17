@@ -4,6 +4,11 @@
 #include <cmath>
 
 namespace drone_city_nav {
+namespace {
+
+constexpr double kStoppedClearanceLimitMps = 1.0e-6;
+
+} // namespace
 
 TargetSegmentSafety
 evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcept {
@@ -55,6 +60,23 @@ evaluateTargetSegmentSafetyPolicy(const TargetSegmentSafetyInput& input) noexcep
   safety.reason = safety.escape ? TargetSegmentSafetyReason::kEscape
                                 : TargetSegmentSafetyReason::kBlocked;
   return safety;
+}
+
+bool clearanceEscapeRequested(const ClearanceEscapeRequestInput& input) noexcept {
+  if (!input.enabled || input.hold_position || !(input.escape_step_m > 0.0)) {
+    return false;
+  }
+
+  if (input.current_position_in_inflated_safety_cell) {
+    return true;
+  }
+
+  if (input.speed_limit_reason == SpeedLimitReason::kClearance) {
+    return true;
+  }
+
+  return input.speed_limit_reason == SpeedLimitReason::kTrackingOverspeed &&
+         input.clearance_limit_mps <= kStoppedClearanceLimitMps;
 }
 
 bool escapeCommandStepAllowed(const TargetSegmentSafety& safety,

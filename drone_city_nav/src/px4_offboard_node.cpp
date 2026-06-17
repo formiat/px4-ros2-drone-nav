@@ -164,8 +164,17 @@ public:
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
-    command_resend_period_s_ = boundedFiniteDouble(
-        declare_parameter<double>("command_resend_period_s", 2.0), 2.0, 0.05, 60.0);
+    const double requested_command_resend_period_s =
+        declare_parameter<double>("command_resend_period_s", 2.0);
+    command_resend_period_s_ =
+        boundedFiniteDouble(requested_command_resend_period_s, 2.0, 0.05, 60.0);
+    if (!std::isfinite(requested_command_resend_period_s) ||
+        requested_command_resend_period_s != command_resend_period_s_) {
+      RCLCPP_WARN(get_logger(),
+                  "Sanitized command_resend_period_s: requested=%.3f final=%.3f "
+                  "allowed_range=[0.050, 60.000]",
+                  requested_command_resend_period_s, command_resend_period_s_);
+    }
     px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
                                declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     mission_goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
@@ -836,24 +845,10 @@ private:
   }
 
   [[nodiscard]] bool clearanceEscapeRequested(const SpeedControllerInput& input) const {
-    if (!clearance_escape_enabled_ || input.hold_position ||
-        !(clearance_escape_step_m_ > 0.0)) {
-      return false;
-    }
-
-    if (currentPositionInInflatedSafetyCell()) {
-      return true;
-    }
-
-    if (last_speed_output_.requested_speed_mps > 0.0) {
-      return false;
-    }
-
-    const bool clearance_stopped =
-        last_speed_output_.limit_reason == SpeedLimitReason::kClearance ||
-        (last_speed_output_.limit_reason == SpeedLimitReason::kTrackingOverspeed &&
-         last_speed_output_.limits.clearance_limit_mps <= kTinyDistanceM);
-    return clearance_stopped;
+    return drone_city_nav::clearanceEscapeRequested(ClearanceEscapeRequestInput{
+        clearance_escape_enabled_, input.hold_position, clearance_escape_step_m_,
+        currentPositionInInflatedSafetyCell(), last_speed_output_.limit_reason,
+        last_speed_output_.limits.clearance_limit_mps});
   }
 
   [[nodiscard]] Point2 pathTargetAtDistance(const double path_distance_m,
