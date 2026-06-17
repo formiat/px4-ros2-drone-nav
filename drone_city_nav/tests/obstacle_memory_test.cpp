@@ -1,4 +1,5 @@
 #include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 #include <vector>
 
 namespace drone_city_nav {
@@ -363,6 +365,29 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
 }
 
+TEST(GridConfig, BoundedGridBoundsSanitizesInvalidAndHugeInputs) {
+  const GridBounds invalid =
+      boundedGridBounds(std::numeric_limits<double>::quiet_NaN(), 3.0, 0.0,
+                        std::numeric_limits<double>::infinity(), -4.0);
+
+  EXPECT_TRUE(gridBoundsUsable(invalid));
+  EXPECT_EQ(invalid.origin_x, 0.0);
+  EXPECT_EQ(invalid.origin_y, 3.0);
+  EXPECT_EQ(invalid.resolution_m, 0.01);
+  EXPECT_EQ(invalid.width_cells, 1);
+  EXPECT_EQ(invalid.height_cells, 1);
+
+  const GridBounds huge = boundedGridBounds(0.0, 0.0, 0.01, 1.0e9, 1.0e9);
+
+  EXPECT_TRUE(gridBoundsUsable(huge));
+  EXPECT_LE(gridBoundsCellCount(huge), kMaxGridCellCount);
+}
+
+TEST(OccupancyGrid2D, RejectsUnboundedCellCounts) {
+  EXPECT_THROW((void)OccupancyGrid2D(GridBounds{0.0, 0.0, 0.01, 100000, 100000}),
+               std::invalid_argument);
+}
+
 TEST(ObstacleMemoryGrid, ScanHitRotatesWithYaw) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
@@ -428,6 +453,20 @@ TEST(ObstacleMemoryGrid, InvalidRangeAndInvalidPoseDoNotChangeMap) {
   EXPECT_EQ(invalid_pose_stats.processed_beams, 0U);
   EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
   EXPECT_EQ(memory.countRawCells().free_cells, 0U);
+}
+
+TEST(ObstacleMemoryGrid, InvalidScoreOrderingDoesNotUpdateMap) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> ranges{4.0F};
+  ObstacleMemoryConfig config{};
+  config.max_score = 2;
+  config.occupied_score = 3;
+
+  const ObstacleMemoryStats stats =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), config);
+
+  EXPECT_EQ(stats.processed_beams, 0U);
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
 }
 
 TEST(ObstacleMemoryGrid, ClipsFreeRayToGridBoundary) {

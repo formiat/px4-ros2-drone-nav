@@ -1,3 +1,4 @@
+#include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/planner_node_config.hpp"
 
 #include <rclcpp/parameter.hpp>
@@ -141,6 +142,21 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
+}
+
+TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {
+  const auto node = makeNode("planner_node_config_huge_grid",
+                             {rclcpp::Parameter{"planning_grid_resolution_m", 0.01},
+                              rclcpp::Parameter{"planning_grid_width_m", 1.0e9},
+                              rclcpp::Parameter{"planning_grid_height_m", 1.0e9}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+  const auto& bounds = config.planning_grid_builder.fallback_bounds;
+  const auto cell_count = static_cast<std::size_t>(bounds.width_cells) *
+                          static_cast<std::size_t>(bounds.height_cells);
+
+  EXPECT_EQ(bounds.width_cells, kMaxGridAxisCells);
+  EXPECT_LE(cell_count, kMaxGridCellCount);
 }
 
 } // namespace drone_city_nav

@@ -22,7 +22,8 @@ struct ClippedSegment {
 [[nodiscard]] bool validMemoryConfig(const ObstacleMemoryConfig& config) noexcept {
   return config.max_lidar_range_m > 0.0 && config.scan_stride > 0 &&
          config.hit_weight > 0 && config.miss_weight > 0 &&
-         config.min_score < config.max_score &&
+         config.min_score < config.max_score && config.free_score >= config.min_score &&
+         config.occupied_score <= config.max_score &&
          config.free_score < config.occupied_score;
 }
 

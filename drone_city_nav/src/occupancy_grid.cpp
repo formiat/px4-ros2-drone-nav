@@ -1,5 +1,7 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 
+#include "drone_city_nav/grid_config.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -8,25 +10,16 @@
 #include <stdexcept>
 
 namespace drone_city_nav {
-namespace {
-
-[[nodiscard]] bool validBounds(const GridBounds& bounds) noexcept {
-  return bounds.resolution_m > 0.0 && bounds.width_cells > 0 && bounds.height_cells > 0;
-}
-
-} // namespace
-
 OccupancyGrid2D::OccupancyGrid2D(const GridBounds& bounds)
     : bounds_{bounds} {
-  if (!validBounds(bounds_)) {
+  if (!gridBoundsUsable(bounds_)) {
     throw std::invalid_argument{
-        "OccupancyGrid2D requires positive resolution, width, and height"};
+        "OccupancyGrid2D requires finite positive bounds within the cell-count cap"};
   }
 
-  const auto width = static_cast<std::size_t>(bounds_.width_cells);
-  const auto height = static_cast<std::size_t>(bounds_.height_cells);
-  cells_.assign(width * height, CellState::kUnknown);
-  inflated_.assign(width * height, 0U);
+  const std::size_t cell_count = gridBoundsCellCount(bounds_);
+  cells_.assign(cell_count, CellState::kUnknown);
+  inflated_.assign(cell_count, 0U);
 }
 
 const GridBounds& OccupancyGrid2D::bounds() const noexcept {
@@ -168,6 +161,8 @@ void OccupancyGrid2D::rebuildInflation(const double radius_m) {
   }
 
   const int radius_cells = static_cast<int>(std::ceil(radius_m / bounds_.resolution_m));
+  // The margin maps a continuous safety radius to cell centers without
+  // under-inflating cells whose edges touch the requested radius.
   const double radius_with_margin = radius_m + (0.5 * bounds_.resolution_m);
   const double radius_sq = radius_with_margin * radius_with_margin;
 

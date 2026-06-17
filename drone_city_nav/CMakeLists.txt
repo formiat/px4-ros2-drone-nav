@@ -31,11 +31,13 @@ add_library(
   src/astar_planner.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
+  src/grid_config.cpp
   src/grid_overlay.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_projection.cpp
   src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
+  src/offboard_target_safety.cpp
   src/offboard_path_follower.cpp
   src/offboard_speed_controller.cpp
   src/obstacle_memory.cpp
@@ -207,6 +209,12 @@ if(BUILD_TESTING)
   target_compile_features(offboard_speed_controller_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_speed_controller_test drone_city_nav_core)
   enable_project_warnings(offboard_speed_controller_test)
+
+  ament_add_gtest(offboard_target_safety_test
+                  tests/offboard_target_safety_test.cpp)
+  target_compile_features(offboard_target_safety_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_target_safety_test drone_city_nav_core)
+  enable_project_warnings(offboard_target_safety_test)
 
   ament_add_gtest(offboard_path_follower_test
                   tests/offboard_path_follower_test.cpp)

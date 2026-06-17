@@ -167,7 +167,7 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
             )
         )
 
-    def test_mission_failure_fails_when_mission_check_is_enabled(self) -> None:
+    def test_mission_failure_is_allowed_when_flag_is_enabled(self) -> None:
         result = validator.validate_logs(
             ros_log=make_ros_log(mission_success=False),
             px4_log=PX4_OK_LOG,
@@ -181,8 +181,53 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
             ),
         )
 
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(
+            any(
+                "allowed by ALLOW_MISSION_FAILURE=true" in message
+                for message in result.messages
+            )
+        )
+
+    def test_mission_failure_fails_without_allow_flag(self) -> None:
+        result = validator.validate_logs(
+            ros_log=make_ros_log(mission_success=False),
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+                allow_mission_failure=False,
+            ),
+        )
+
         self.assertFalse(result.ok)
         self.assertIn("FAIL: mission monitor reported failure", result.errors)
+
+    def test_px4_critical_error_is_allowed_when_flag_is_enabled(self) -> None:
+        result = validator.validate_logs(
+            ros_log=make_ros_log(),
+            px4_log=PX4_OK_LOG + "ERROR [commander] Found 0 compass\n",
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+                allow_mission_failure=True,
+            ),
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(
+            any(
+                "PX4 log contains critical simulator/preflight errors" in message
+                and "allowed by ALLOW_MISSION_FAILURE=true" in message
+                for message in result.messages
+            )
+        )
 
     def test_cli_returns_success_for_valid_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -212,6 +257,27 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
                 )
 
         self.assertEqual(exit_code, 0)
+
+    def test_cli_reports_missing_log_file_as_validation_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            missing_ros_log = temp_path / "missing_ros.log"
+            px4_log = temp_path / "px4.log"
+            px4_log.write_text(PX4_OK_LOG, encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stdout(StringIO()), redirect_stderr(stderr):
+                exit_code = validator.main(
+                    [
+                        "--ros-log",
+                        str(missing_ros_log),
+                        "--px4-log",
+                        str(px4_log),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("FAIL: cannot read log file", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,15 +1,13 @@
 #include "drone_city_nav/planner_node_config.hpp"
 
+#include "drone_city_nav/grid_config.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
-  return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
-}
 
 [[nodiscard]] std::int64_t secondsToNanoseconds(const double seconds) {
   return static_cast<std::int64_t>(seconds * 1.0e9);
@@ -78,16 +76,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.static_map.min_blocking_height_m = std::clamp(
       node.declare_parameter<double>("static_map_min_blocking_height_m", 0.0), 0.0,
       100000.0);
-  const double planning_grid_resolution_m =
-      std::max(0.01, node.declare_parameter<double>("planning_grid_resolution_m", 0.5));
-  config.planning_grid_builder.fallback_bounds = GridBounds{
+  config.planning_grid_builder.fallback_bounds = boundedGridBounds(
       node.declare_parameter<double>("planning_grid_origin_x", -10.0),
       node.declare_parameter<double>("planning_grid_origin_y", -10.0),
-      planning_grid_resolution_m,
-      positiveCellCount(node.declare_parameter<double>("planning_grid_width_m", 115.0),
-                        planning_grid_resolution_m),
-      positiveCellCount(node.declare_parameter<double>("planning_grid_height_m", 175.0),
-                        planning_grid_resolution_m)};
+      node.declare_parameter<double>("planning_grid_resolution_m", 0.5),
+      node.declare_parameter<double>("planning_grid_width_m", 115.0),
+      node.declare_parameter<double>("planning_grid_height_m", 175.0));
   config.planning_grid_builder.use_current_lidar_obstacles =
       node.declare_parameter<bool>("use_current_lidar_obstacles", true);
   config.timing.max_current_lidar_staleness_ns =

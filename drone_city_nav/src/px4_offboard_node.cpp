@@ -1,5 +1,6 @@
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_speed_controller.hpp"
+#include "drone_city_nav/offboard_target_safety.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -34,19 +35,6 @@ constexpr double kTinyDistanceM = 1.0e-6;
 constexpr std::int8_t kInflatedOccupancyValue = 80;
 constexpr std::int8_t kOccupiedOccupancyValue = 100;
 
-struct TargetSegmentSafety {
-  bool grid_available{false};
-  bool allowed{true};
-  bool escape{false};
-  bool start_blocked{false};
-  bool start_occupied{false};
-  bool end_blocked{false};
-  std::size_t blocked_cells{0U};
-  std::size_t occupied_cells{0U};
-  double start_clearance_m{std::numeric_limits<double>::quiet_NaN()};
-  double end_clearance_m{std::numeric_limits<double>::quiet_NaN()};
-};
-
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
 }
@@ -64,6 +52,15 @@ struct TargetSegmentSafety {
     default:
       return "UNKNOWN";
   }
+}
+
+[[nodiscard]] double boundedFiniteDouble(const double value, const double fallback,
+                                         const double min_value,
+                                         const double max_value) noexcept {
+  if (!std::isfinite(value)) {
+    return fallback;
+  }
+  return std::clamp(value, min_value, max_value);
 }
 
 } // namespace
@@ -122,6 +119,10 @@ public:
             declare_parameter<double>("max_clearance_grid_staleness_s", 1.5), 0.0,
             3600.0) *
         1.0e9);
+    max_pose_staleness_ns_ = static_cast<std::int64_t>(
+        boundedFiniteDouble(declare_parameter<double>("max_pose_staleness_s", 1.0), 1.0,
+                            0.0, 3600.0) *
+        1.0e9);
     lookahead_distance_m_ =
         std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0), 0.0, 50.0);
     dynamic_lookahead_enabled_ =
@@ -162,8 +163,8 @@ public:
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
     auto_offboard_ = declare_parameter<bool>("auto_offboard", true);
-    command_resend_period_s_ =
-        declare_parameter<double>("command_resend_period_s", 2.0);
+    command_resend_period_s_ = boundedFiniteDouble(
+        declare_parameter<double>("command_resend_period_s", 2.0), 2.0, 0.05, 60.0);
     px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
                                declare_parameter<double>("px4_local_origin_y_m", 0.0)};
     mission_goal_ = Point2{declare_parameter<double>("goal_x_m", 85.0),
@@ -246,7 +247,8 @@ public:
         "path_continuity_max_target_distance=%.1fm target_safety=%s "
         "clearance_escape=%s clearance_escape_step=%.2fm "
         "clearance_escape_min_improvement=%.2fm mission_goal=(%.1f, %.1f) "
-        "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs",
+        "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
+        "max_pose_staleness=%.2fs command_resend_period=%.2fs",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", takeoff_hover_s_, max_setpoint_distance_m_,
@@ -265,7 +267,8 @@ public:
         clearance_escape_enabled_ ? "true" : "false", clearance_escape_step_m_,
         clearance_escape_min_improvement_m_, mission_goal_.x, mission_goal_.y,
         px4_local_origin_.x, px4_local_origin_.y,
-        static_cast<double>(telemetry_log_period_ns_) / 1.0e9);
+        static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
+        static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -300,7 +303,7 @@ private:
 
   void onPath(const nav_msgs::msg::Path& path) {
     const bool had_active_target =
-        path_valid_ && local_position_valid_ && waypoint_index_ < path_points_.size();
+        path_valid_ && localPositionFresh() && waypoint_index_ < path_points_.size();
     const Point2 previous_target =
         had_active_target ? path_points_[waypoint_index_] : Point2{};
 
@@ -358,14 +361,14 @@ private:
   }
 
   [[nodiscard]] std::size_t closestWaypointIndex() const {
-    if (!local_position_valid_ || path_points_.empty()) {
+    if (!localPositionFresh() || path_points_.empty()) {
       return 0U;
     }
     return drone_city_nav::closestWaypointIndex(path_points_, current_position_);
   }
 
   [[nodiscard]] std::size_t lookaheadWaypointIndex() const {
-    if (!local_position_valid_ || path_points_.empty()) {
+    if (!localPositionFresh() || path_points_.empty()) {
       return 0U;
     }
     return drone_city_nav::lookaheadWaypointIndex(
@@ -379,7 +382,7 @@ private:
   }
 
   [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
-    if (!local_position_valid_ || path_points_.empty()) {
+    if (!localPositionFresh() || path_points_.empty()) {
       return std::nullopt;
     }
     return drone_city_nav::closestOffboardPathProjection(path_points_,
@@ -433,14 +436,19 @@ private:
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
+      if (local_position_valid_) {
+        last_local_position_update_ns_ = 0;
+      }
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Ignoring invalid PX4 local position: xy_valid=%s x=%.2f y=%.2f",
+          "Ignoring invalid PX4 local position and holding the last known target: "
+          "xy_valid=%s x=%.2f y=%.2f had_previous_position=%s",
           msg.xy_valid ? "true" : "false", static_cast<double>(msg.x),
-          static_cast<double>(msg.y));
+          static_cast<double>(msg.y), local_position_valid_ ? "true" : "false");
       return;
     }
 
+    last_local_position_update_ns_ = get_clock()->now().nanoseconds();
     current_position_ = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
                                static_cast<double>(msg.y) + px4_local_origin_.y};
     if (std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
@@ -650,7 +658,7 @@ private:
   }
 
   void advanceWaypointIfNeeded() {
-    if (!path_valid_ || !local_position_valid_) {
+    if (!path_valid_ || !localPositionFresh()) {
       return;
     }
 
@@ -678,7 +686,7 @@ private:
       }
     }
 
-    if (path_valid_ && waypoint_index_ < path_points_.size()) {
+    if (localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size()) {
       return lookaheadTargetOnPath();
     }
 
@@ -778,57 +786,40 @@ private:
   [[nodiscard]] TargetSegmentSafety
   evaluateTargetSegmentSafety(const Point2 start, const Point2 end,
                               const bool allow_escape) const {
-    TargetSegmentSafety safety{};
-    if (!target_segment_safety_check_enabled_ || !occupancyGridFresh()) {
-      safety.grid_available = false;
-      safety.allowed = true;
-      return safety;
-    }
-    safety.grid_available = true;
-
+    TargetSegmentSafetyInput input{};
+    input.safety_check_enabled = target_segment_safety_check_enabled_;
+    input.grid_available = occupancyGridFresh();
+    input.allow_escape = allow_escape;
+    input.clearance_stop_requested = allow_escape;
+    input.min_clearance_improvement_m = clearance_escape_min_improvement_m_;
     const auto start_cell = occupancyGridCell(start);
     const auto end_cell = occupancyGridCell(end);
-    if (!start_cell.has_value() || !end_cell.has_value()) {
-      safety.allowed = false;
-      return safety;
+    input.start_cell_valid = start_cell.has_value();
+    input.end_cell_valid = end_cell.has_value();
+
+    if (!input.safety_check_enabled || !input.grid_available ||
+        !input.start_cell_valid || !input.end_cell_valid) {
+      return evaluateTargetSegmentSafetyPolicy(input);
     }
 
-    safety.start_blocked = occupancyGridCellBlocked(*start_cell);
-    safety.start_occupied = occupancyGridCellOccupied(*start_cell);
-    safety.end_blocked = occupancyGridCellBlocked(*end_cell);
+    input.start_blocked = occupancyGridCellBlocked(*start_cell);
+    input.start_occupied = occupancyGridCellOccupied(*start_cell);
+    input.end_blocked = occupancyGridCellBlocked(*end_cell);
 
     const std::vector<GridIndex> segment_cells =
         occupancyGridCellsOnLine(*start_cell, *end_cell);
     for (const GridIndex cell : segment_cells) {
       if (occupancyGridCellOccupied(cell)) {
-        ++safety.occupied_cells;
+        ++input.occupied_cells;
       }
       if (occupancyGridCellBlocked(cell)) {
-        ++safety.blocked_cells;
+        ++input.blocked_cells;
       }
     }
 
-    if (safety.occupied_cells > 0U) {
-      safety.allowed = false;
-      return safety;
-    }
-    if (safety.blocked_cells == 0U) {
-      safety.allowed = true;
-      return safety;
-    }
-
-    safety.start_clearance_m = estimateLocalClearanceM(start);
-    safety.end_clearance_m = estimateLocalClearanceM(end);
-    const bool improves_clearance =
-        std::isfinite(safety.start_clearance_m) &&
-        std::isfinite(safety.end_clearance_m) &&
-        safety.end_clearance_m >=
-            safety.start_clearance_m + clearance_escape_min_improvement_m_;
-
-    safety.escape = allow_escape && safety.start_blocked && !safety.start_occupied &&
-                    improves_clearance;
-    safety.allowed = safety.escape;
-    return safety;
+    input.start_clearance_m = estimateLocalClearanceM(start);
+    input.end_clearance_m = estimateLocalClearanceM(end);
+    return evaluateTargetSegmentSafetyPolicy(input);
   }
 
   [[nodiscard]] bool clearanceEscapeRequested(const SpeedControllerInput& input) const {
@@ -847,7 +838,7 @@ private:
 
   [[nodiscard]] Point2 pathTargetAtDistance(const double path_distance_m,
                                             const Point2 fallback_target) const {
-    if (!path_valid_ || path_points_.empty() || !local_position_valid_) {
+    if (!path_valid_ || path_points_.empty() || !localPositionFresh()) {
       return fallback_target;
     }
     return targetOnPathAtDistance(path_points_, current_position_, path_distance_m);
@@ -858,7 +849,7 @@ private:
                                             const bool allow_escape) {
     const double bounded_lead_m =
         std::clamp(requested_lead_m, 0.0, max_setpoint_distance_m_);
-    if (!(bounded_lead_m > 0.0) || !local_position_valid_) {
+    if (!(bounded_lead_m > 0.0) || !localPositionFresh()) {
       return current_position_;
     }
 
@@ -884,9 +875,11 @@ private:
               get_logger(), *get_clock(), 1000,
               "Target segment safety adjusted command: requested_lead=%.2f "
               "selected_lead=%.2f escape=%s blocked_cells=%zu occupied_cells=%zu "
-              "clearance_start=%.2f clearance_end=%.2f target=(%.2f, %.2f)",
+              "reason=%s clearance_start=%.2f clearance_end=%.2f "
+              "target=(%.2f, %.2f)",
               bounded_lead_m, distance_m, safety.escape ? "true" : "false",
-              safety.blocked_cells, safety.occupied_cells, safety.start_clearance_m,
+              safety.blocked_cells, safety.occupied_cells,
+              targetSegmentSafetyReasonName(safety.reason), safety.start_clearance_m,
               safety.end_clearance_m, candidate.x, candidate.y);
         }
         return candidate;
@@ -899,11 +892,14 @@ private:
         get_logger(), *get_clock(), 1000,
         "Target segment safety hold: requested_lead=%.2f allow_escape=%s "
         "blocked_cells=%zu occupied_cells=%zu start_blocked=%s end_blocked=%s "
-        "clearance_start=%.2f clearance_end=%.2f fallback_target=(%.2f, %.2f)",
+        "reason=%s clearance_start=%.2f clearance_end=%.2f "
+        "fallback_target=(%.2f, %.2f)",
         bounded_lead_m, allow_escape ? "true" : "false", desired_safety.blocked_cells,
         desired_safety.occupied_cells, desired_safety.start_blocked ? "true" : "false",
-        desired_safety.end_blocked ? "true" : "false", desired_safety.start_clearance_m,
-        desired_safety.end_clearance_m, fallback_target.x, fallback_target.y);
+        desired_safety.end_blocked ? "true" : "false",
+        targetSegmentSafetyReasonName(desired_safety.reason),
+        desired_safety.start_clearance_m, desired_safety.end_clearance_m,
+        fallback_target.x, fallback_target.y);
     return current_position_;
   }
 
@@ -912,6 +908,16 @@ private:
                           const SpeedControllerInput& speed_input) {
     if (!local_position_valid_) {
       return desired_target;
+    }
+    if (!localPositionFresh()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Holding last known position because PX4 local position is stale: "
+          "age_s=%.2f max_age_s=%.2f target=(%.2f, %.2f)",
+          localPositionAgeSeconds(),
+          static_cast<double>(max_pose_staleness_ns_) / 1.0e9, current_position_.x,
+          current_position_.y);
+      return current_position_;
     }
     if (speed_input.hold_position) {
       return current_position_;
@@ -965,32 +971,31 @@ private:
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
-    return !local_position_valid_ || !navigationAllowed() || !path_valid_ ||
+    return !localPositionFresh() || !navigationAllowed() || !path_valid_ ||
            waypoint_index_ >= path_points_.size();
   }
 
   [[nodiscard]] SpeedControllerInput makeSpeedControllerInput() const {
     SpeedControllerInput input{};
     input.hold_position = shouldHoldPosition();
+    const bool pose_fresh = localPositionFresh();
     input.controller_dt_s = kControllerPeriodS;
-    input.distance_to_goal_m = local_position_valid_
-                                   ? distance(current_position_, mission_goal_)
-                                   : std::numeric_limits<double>::quiet_NaN();
+    input.distance_to_goal_m = pose_fresh ? distance(current_position_, mission_goal_)
+                                          : std::numeric_limits<double>::quiet_NaN();
     input.turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
-    input.local_clearance_m = local_position_valid_
-                                  ? estimateLocalClearanceM(current_position_)
-                                  : std::numeric_limits<double>::quiet_NaN();
+    input.local_clearance_m = pose_fresh ? estimateLocalClearanceM(current_position_)
+                                         : std::numeric_limits<double>::quiet_NaN();
     input.actual_speed_mps = current_speed_mps_;
     return input;
   }
 
   [[nodiscard]] double pathTurnAngleAtWaypoint(const std::size_t index) const {
-    if (!path_valid_) {
+    if (!path_valid_ || !localPositionFresh()) {
       return 0.0;
     }
     return drone_city_nav::pathTurnAngleAtWaypoint(
-        path_points_, index, current_position_, local_position_valid_,
-        pathFollowerConfig(), speed_controller_.config().desired_speed_mps);
+        path_points_, index, current_position_, true, pathFollowerConfig(),
+        speed_controller_.config().desired_speed_mps);
   }
 
   [[nodiscard]] const char* pathSegmentTypeName(const double turn_angle_rad) const {
@@ -1050,6 +1055,29 @@ private:
            now_ns - last_occupancy_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
   }
 
+  [[nodiscard]] bool localPositionFresh() const {
+    if (!local_position_valid_ || last_local_position_update_ns_ <= 0) {
+      return false;
+    }
+    if (max_pose_staleness_ns_ <= 0) {
+      return true;
+    }
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    return now_ns >= last_local_position_update_ns_ &&
+           now_ns - last_local_position_update_ns_ <= max_pose_staleness_ns_;
+  }
+
+  [[nodiscard]] double localPositionAgeSeconds() const {
+    if (last_local_position_update_ns_ <= 0) {
+      return std::numeric_limits<double>::infinity();
+    }
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    if (now_ns <= last_local_position_update_ns_) {
+      return 0.0;
+    }
+    return static_cast<double>(now_ns - last_local_position_update_ns_) / 1.0e9;
+  }
+
   [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
     if (!occupancyGridFresh()) {
       return std::numeric_limits<double>::quiet_NaN();
@@ -1080,7 +1108,7 @@ private:
         const std::size_t data_index =
             static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
             static_cast<std::size_t>(x);
-        if (occupancy_grid_.data[data_index] < 100) {
+        if (occupancy_grid_.data[data_index] < kInflatedOccupancyValue) {
           continue;
         }
         const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
@@ -1097,7 +1125,7 @@ private:
   [[nodiscard]] std::array<float, 3>
   velocityFeedforward(const Point2 target,
                       const SpeedControllerOutput& speed_output) const {
-    if (!velocity_feedforward_enabled_ || !local_position_valid_ ||
+    if (!velocity_feedforward_enabled_ || !localPositionFresh() ||
         !(speed_output.requested_speed_mps > 0.0)) {
       return std::array<float, 3>{0.0F, 0.0F, 0.0F};
     }
@@ -1137,7 +1165,7 @@ private:
   }
 
   [[nodiscard]] double targetYaw(const Point2 target) const {
-    if (!local_position_valid_) {
+    if (!localPositionFresh()) {
       return current_heading_rad_;
     }
 
@@ -1243,10 +1271,13 @@ private:
                                          ? estimateLocalClearanceM(current_position_)
                                          : std::numeric_limits<double>::quiet_NaN();
     const bool hold_position = shouldHoldPosition();
+    const bool pose_fresh = localPositionFresh();
+    const double pose_age_s = localPositionAgeSeconds();
     const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Offboard summary: local_position=%s altitude=%.2f nav_allowed=%s "
+        "Offboard summary: local_position=%s pose_fresh=%s pose_age_s=%.2f "
+        "altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
         "motion_phase=%s path_segment=%s "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
@@ -1256,8 +1287,8 @@ private:
         "target_step=%.2f effective_lookahead=%.2f turn_angle=%.2f "
         "local_clearance=%.2f effective_min_lead=%.2f "
         "speed_limits[goal=%.2f turn=%.2f clearance=%.2f step=%.2f]",
-        local_position_valid_ ? "true" : "false", current_altitude_m_,
-        navigationAllowed() ? "true" : "false",
+        local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
+        pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         no_path_hold_target_valid_ ? "true" : "false",
@@ -1297,11 +1328,14 @@ private:
                     : std::numeric_limits<double>::quiet_NaN();
     const double local_clearance_m = estimateLocalClearanceM(current_position_);
     const bool hold_position = shouldHoldPosition();
+    const bool pose_fresh = localPositionFresh();
+    const double pose_age_s = localPositionAgeSeconds();
     const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
 
     RCLCPP_INFO(
         get_logger(),
-        "Drone telemetry: current=(%.2f, %.2f) altitude=%.2f "
+        "Drone telemetry: current=(%.2f, %.2f) pose_fresh=%s pose_age_s=%.2f "
+        "altitude=%.2f "
         "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
         "requested_speed=%.2f allowed_speed=%.2f target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
@@ -1309,8 +1343,8 @@ private:
         "path_segment=%s speed_limit_reason=%s local_clearance=%.2f "
         "effective_min_lead=%.2f "
         "speed_limits[goal=%.2f turn=%.2f clearance=%.2f step=%.2f]",
-        current_position_.x, current_position_.y, current_altitude_m_,
-        current_velocity_.x, current_velocity_.y,
+        current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
+        pose_age_s, current_altitude_m_, current_velocity_.x, current_velocity_.y,
         current_velocity_valid_ ? "true" : "false", current_speed_mps_,
         last_speed_output_.requested_speed_mps, last_speed_output_.allowed_speed_mps,
         target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
@@ -1368,8 +1402,10 @@ private:
   double hold_y_m_{0.0};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
+  std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
   std::int64_t last_occupancy_grid_update_ns_{0};
+  std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};

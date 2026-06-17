@@ -258,7 +258,7 @@ def validate_logs(
         )
 
     if re.search(r"MISSION_RESULT success=false", ros_log):
-        if options.mission_check or not options.allow_mission_failure:
+        if not options.allow_mission_failure:
             result.fail("mission monitor reported failure")
         else:
             result.warn(
@@ -267,14 +267,22 @@ def validate_logs(
             )
 
     if options.mission_check:
-        result.require(
-            "mission monitor verifies complete A-to-B flight",
-            ros_log,
-            r"MISSION_RESULT success=true",
-        )
+        if options.allow_mission_failure and re.search(
+            r"MISSION_RESULT success=false", ros_log
+        ):
+            result.warn(
+                "mission monitor did not verify complete A-to-B flight "
+                "(allowed by ALLOW_MISSION_FAILURE=true)"
+            )
+        else:
+            result.require(
+                "mission monitor verifies complete A-to-B flight",
+                ros_log,
+                r"MISSION_RESULT success=true",
+            )
 
     if CRITICAL_PX4_PATTERN.search(px4_log):
-        if options.mission_check or not options.allow_mission_failure:
+        if not options.allow_mission_failure:
             result.fail("PX4 log contains critical simulator/preflight errors")
         else:
             result.warn(
@@ -288,7 +296,10 @@ def validate_logs(
 
 
 def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise RuntimeError(f"cannot read log file '{path}': {exc}") from exc
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -316,11 +327,15 @@ def main(argv: list[str] | None = None) -> int:
         mission_check=args.mission_check,
         allow_mission_failure=args.allow_mission_failure,
     )
-    result = validate_logs(
-        ros_log=read_text(args.ros_log),
-        px4_log=read_text(args.px4_log),
-        options=options,
-    )
+    try:
+        result = validate_logs(
+            ros_log=read_text(args.ros_log),
+            px4_log=read_text(args.px4_log),
+            options=options,
+        )
+    except RuntimeError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
 
     for message in result.messages:
         print(message)

@@ -1,3 +1,4 @@
+#include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
@@ -21,10 +22,6 @@
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] int positiveCellCount(const double length_m, const double resolution_m) {
-  return std::max(1, static_cast<int>(std::ceil(length_m / resolution_m)));
-}
 
 [[nodiscard]] std::int64_t toNanoseconds(const builtin_interfaces::msg::Time& stamp) {
   return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
@@ -52,15 +49,16 @@ class ObstacleMemoryNode final : public rclcpp::Node {
 public:
   ObstacleMemoryNode()
       : Node{"obstacle_memory_node"} {
-    const double resolution_m = declare_parameter<double>("grid_resolution_m", 0.5);
+    const double requested_resolution_m =
+        declare_parameter<double>("grid_resolution_m", 0.5);
     const double width_m = declare_parameter<double>("grid_width_m", 120.0);
     const double height_m = declare_parameter<double>("grid_height_m", 80.0);
     const double origin_x = declare_parameter<double>("grid_origin_x", -20.0);
     const double origin_y = declare_parameter<double>("grid_origin_y", -40.0);
 
-    memory_ = std::make_unique<ObstacleMemoryGrid>(GridBounds{
-        origin_x, origin_y, resolution_m, positiveCellCount(width_m, resolution_m),
-        positiveCellCount(height_m, resolution_m)});
+    const GridBounds memory_bounds = boundedGridBounds(
+        origin_x, origin_y, requested_resolution_m, width_m, height_m);
+    memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
 
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     pose_source_ = declare_parameter<std::string>("pose_source", "px4_local_position");
@@ -93,6 +91,12 @@ public:
         declare_parameter<std::int64_t>("occupied_score", 3), 1, 100000));
     memory_config_.free_score = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("free_score", -1), -100000, -1));
+    memory_config_.occupied_score =
+        std::clamp(memory_config_.occupied_score, memory_config_.free_score + 1,
+                   memory_config_.max_score);
+    memory_config_.free_score =
+        std::clamp(memory_config_.free_score, memory_config_.min_score,
+                   memory_config_.occupied_score - 1);
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     swap_lidar_xy_to_local_frame_ =
         declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
@@ -208,8 +212,9 @@ public:
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
                 mapping_enabled_ ? "true" : "false", pose_source_.c_str(),
                 memory_->rawGrid().width(), memory_->rawGrid().height(),
-                memory_->rawGrid().resolution(), origin_x, origin_y,
-                lidar_topic.c_str(), attitude_topic.c_str());
+                memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
+                memory_->rawGrid().originY(), lidar_topic.c_str(),
+                attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
