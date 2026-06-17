@@ -886,6 +886,29 @@ private:
     return escapeSafetyMakesProgress(safety);
   }
 
+  [[nodiscard]] bool escapeStepTowardValidatedTargetAllowed(
+      const TargetSegmentSafety& safety) const noexcept {
+    if (!safety.allowed && safety.reason != TargetSegmentSafetyReason::kBlocked) {
+      return false;
+    }
+    if (safety.reason == TargetSegmentSafetyReason::kOutsideGrid ||
+        safety.reason == TargetSegmentSafetyReason::kOccupied ||
+        safety.occupied_cells > 0U) {
+      return false;
+    }
+    if (safety.reason == TargetSegmentSafetyReason::kSafetyDisabled ||
+        safety.reason == TargetSegmentSafetyReason::kNoGrid) {
+      return safety.allowed;
+    }
+    if (!std::isfinite(safety.start_clearance_m) ||
+        !std::isfinite(safety.end_clearance_m)) {
+      return safety.allowed;
+    }
+
+    return safety.end_clearance_m + clearance_escape_min_improvement_m_ >=
+           safety.start_clearance_m;
+  }
+
   [[nodiscard]] std::optional<Point2>
   selectDirectEscapeTarget(const Point2 fallback_target,
                            const double requested_step_m) {
@@ -912,17 +935,34 @@ private:
         continue;
       }
 
+      const double command_lead_m =
+          std::min(distance_m, std::max(requested_step_m, clearance_escape_step_m_));
+      const Point2 command_candidate = targetStepToward(candidate, command_lead_m);
+      const TargetSegmentSafety command_safety =
+          evaluateTargetSegmentSafety(current_position_, command_candidate, true);
+      if (!commandSafetyAllowed(command_safety, true) &&
+          !escapeStepTowardValidatedTargetAllowed(command_safety)) {
+        continue;
+      }
+
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "Target segment safety selected direct escape: requested_lead=%.2f "
-          "selected_lead=%.2f blocked_cells=%zu occupied_cells=%zu reason=%s "
-          "clearance_start=%.2f clearance_end=%.2f target=(%.2f, %.2f) "
-          "fallback_target=(%.2f, %.2f)",
-          requested_step_m, distance_m, safety.blocked_cells, safety.occupied_cells,
-          targetSegmentSafetyReasonName(safety.reason), safety.start_clearance_m,
-          safety.end_clearance_m, candidate.x, candidate.y, fallback_target.x,
-          fallback_target.y);
-      return candidate;
+          "selected_lead=%.2f command_lead=%.2f blocked_cells=%zu "
+          "occupied_cells=%zu reason=%s clearance_start=%.2f clearance_end=%.2f "
+          "command_blocked_cells=%zu command_occupied_cells=%zu "
+          "command_reason=%s command_clearance_start=%.2f "
+          "command_clearance_end=%.2f target=(%.2f, %.2f) "
+          "scan_target=(%.2f, %.2f) fallback_target=(%.2f, %.2f)",
+          requested_step_m, distance_m, command_lead_m, safety.blocked_cells,
+          safety.occupied_cells, targetSegmentSafetyReasonName(safety.reason),
+          safety.start_clearance_m, safety.end_clearance_m,
+          command_safety.blocked_cells, command_safety.occupied_cells,
+          targetSegmentSafetyReasonName(command_safety.reason),
+          command_safety.start_clearance_m, command_safety.end_clearance_m,
+          command_candidate.x, command_candidate.y, candidate.x, candidate.y,
+          fallback_target.x, fallback_target.y);
+      return command_candidate;
     }
 
     return std::nullopt;
