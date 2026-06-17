@@ -129,6 +129,8 @@ public:
         "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
     remembered_pointcloud_topic_ = declare_parameter<std::string>(
         "remembered_pointcloud_topic", "/drone_city_nav/remembered_lidar_points");
+    inflated_pointcloud_topic_ = declare_parameter<std::string>(
+        "inflated_pointcloud_topic", "/drone_city_nav/inflated_obstacle_points");
     marker_topic_ = declare_parameter<std::string>(
         "marker_topic", "/drone_city_nav/lidar_radar_markers");
     publish_lidar_radar_markers_ =
@@ -151,6 +153,8 @@ public:
         declare_parameter<double>("current_lidar_pointcloud_z_m", 0.30);
     remembered_pointcloud_z_m_ =
         declare_parameter<double>("remembered_lidar_pointcloud_z_m", 0.20);
+    inflated_pointcloud_z_m_ =
+        declare_parameter<double>("inflated_pointcloud_z_m", 0.10);
     marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", 0.40);
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
@@ -199,37 +203,41 @@ public:
         pointcloud_topic_, rclcpp::QoS{1}.reliable());
     remembered_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         remembered_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
+    inflated_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        inflated_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
         marker_topic_, rclcpp::QoS{1}.reliable());
 
     timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                                [this]() { writeSnapshot(); });
 
-    RCLCPP_INFO(get_logger(),
-                "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-                "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
-                "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
-                "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
-                "min_confirmations=%zu min_remember_altitude=%.2fm "
-                "max_remembered_hits=%zu max_candidate_cells=%zu "
-                "compensate_attitude=%s lidar_z_offset=%.2f "
-                "projected_altitude_range=[%.2f, %.2f] "
-                "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
-                "pointcloud_z[current=%.2f, remembered=%.2f] marker_z=%.2f "
-                "yaw_source=%s initial_heading=%.3f",
-                output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-                lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
-                local_position_topic.c_str(), attitude_topic.c_str(),
-                pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
-                marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
-                hit_memory_resolution_m_, remembered_hit_min_confirmations_,
-                min_remember_altitude_m_, max_remembered_hit_points_,
-                max_hit_candidate_cells_, compensate_lidar_attitude_ ? "true" : "false",
-                lidar_z_offset_m_, min_projected_lidar_altitude_m_,
-                max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
-                lidar_mount_pitch_rad_, lidar_mount_yaw_rad_, current_pointcloud_z_m_,
-                remembered_pointcloud_z_m_, marker_z_m_, yawSourceName(),
-                initial_heading_rad_);
+    RCLCPP_INFO(
+        get_logger(),
+        "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
+        "fallback_view_radius=%.1fm topics scan='%s' grid='%s' path='%s' "
+        "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
+        "inflated_points='%s' "
+        "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
+        "min_confirmations=%zu min_remember_altitude=%.2fm "
+        "max_remembered_hits=%zu max_candidate_cells=%zu "
+        "compensate_attitude=%s lidar_z_offset=%.2f "
+        "projected_altitude_range=[%.2f, %.2f] "
+        "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
+        "pointcloud_z[current=%.2f, remembered=%.2f, inflated=%.2f] "
+        "marker_z=%.2f "
+        "yaw_source=%s initial_heading=%.3f",
+        output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
+        lidar_topic.c_str(), occupancy_grid_topic.c_str(), path_topic.c_str(),
+        local_position_topic.c_str(), attitude_topic.c_str(), pointcloud_topic_.c_str(),
+        remembered_pointcloud_topic_.c_str(), inflated_pointcloud_topic_.c_str(),
+        marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
+        hit_memory_resolution_m_, remembered_hit_min_confirmations_,
+        min_remember_altitude_m_, max_remembered_hit_points_, max_hit_candidate_cells_,
+        compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+        min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+        lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+        current_pointcloud_z_m_, remembered_pointcloud_z_m_, inflated_pointcloud_z_m_,
+        marker_z_m_, yawSourceName(), initial_heading_rad_);
     if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
       RCLCPP_WARN(
           get_logger(),
@@ -322,6 +330,8 @@ private:
     publishPointCloud(stats.hit_points, current_pointcloud_z_m_, pointcloud_pub_);
     publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
                       remembered_pointcloud_pub_);
+    publishPointCloud(collectInflatedGridPoints(), inflated_pointcloud_z_m_,
+                      inflated_pointcloud_pub_);
     publishRadarMarkers();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
@@ -525,6 +535,44 @@ private:
         }
       }
     }
+  }
+
+  [[nodiscard]] std::vector<Point2> collectInflatedGridPoints() const {
+    std::vector<Point2> points;
+    if (!grid_seen_) {
+      return points;
+    }
+
+    const double resolution = static_cast<double>(last_grid_.info.resolution);
+    if (!(resolution > 0.0)) {
+      return points;
+    }
+
+    const auto width = static_cast<int>(last_grid_.info.width);
+    const auto height = static_cast<int>(last_grid_.info.height);
+    const std::size_t expected_cells =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    if (width <= 0 || height <= 0 || last_grid_.data.size() < expected_cells) {
+      return points;
+    }
+
+    points.reserve(expected_cells / 8U);
+    const double origin_x = last_grid_.info.origin.position.x;
+    const double origin_y = last_grid_.info.origin.position.y;
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        const std::size_t index =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+            static_cast<std::size_t>(x);
+        const std::int8_t value = last_grid_.data[index];
+        if (value >= 80 && value < 100) {
+          points.push_back(
+              Point2{origin_x + (static_cast<double>(x) + 0.5) * resolution,
+                     origin_y + (static_cast<double>(y) + 0.5) * resolution});
+        }
+      }
+    }
+    return points;
   }
 
   [[nodiscard]] std::pair<int, int> hitMemoryKey(const Point2 point) const {
@@ -803,6 +851,7 @@ private:
   std::string output_dir_;
   std::string pointcloud_topic_;
   std::string remembered_pointcloud_topic_;
+  std::string inflated_pointcloud_topic_;
   std::string marker_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
@@ -831,6 +880,7 @@ private:
   double max_projected_lidar_altitude_m_{100000.0};
   double current_pointcloud_z_m_{0.30};
   double remembered_pointcloud_z_m_{0.20};
+  double inflated_pointcloud_z_m_{0.10};
   double marker_z_m_{0.40};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
@@ -871,6 +921,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       remembered_pointcloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr inflated_pointcloud_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

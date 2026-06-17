@@ -81,6 +81,20 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/remembered_lidar_points
+    - Alpha: 0.42
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 155; 48
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Inflated Safety Cells
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.45
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/inflated_obstacle_points
     - Class: rviz_default_plugins/MarkerArray
       Enabled: false
       Name: Optional Lidar Radar
