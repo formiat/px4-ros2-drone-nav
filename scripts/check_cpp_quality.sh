@@ -4,6 +4,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
+colcon_build_base="${COLCON_BUILD_BASE:-build}"
+colcon_install_base="${COLCON_INSTALL_BASE:-install}"
+colcon_log_base="${COLCON_LOG_BASE:-log}"
+
 run_format=false
 run_tidy=false
 run_cppcheck=false
@@ -214,27 +218,30 @@ if [[ "${run_build}" == "true" ]]; then
     echo "SKIP: build: colcon is not installed or ROS environment is not sourced"
   else
     run_or_fail "colcon build drone_city_nav" \
-      colcon build --packages-select drone_city_nav --symlink-install \
+      colcon --log-base "${colcon_log_base}" build \
+        --packages-select drone_city_nav --symlink-install \
+        --build-base "${colcon_build_base}" \
+        --install-base "${colcon_install_base}" \
         --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   fi
 fi
 
 if [[ "${run_test}" == "true" ]]; then
-  if [[ ! -d build/drone_city_nav ]]; then
-    echo "SKIP: ctest: build/drone_city_nav does not exist"
+  if [[ ! -d "${colcon_build_base}/drone_city_nav" ]]; then
+    echo "SKIP: ctest: ${colcon_build_base}/drone_city_nav does not exist"
   elif ! command -v ctest >/dev/null 2>&1; then
     echo "SKIP: ctest: ctest is not installed"
   else
     run_or_fail "ctest drone_city_nav" \
-      ctest --test-dir build/drone_city_nav --output-on-failure
+      ctest --test-dir "${colcon_build_base}/drone_city_nav" --output-on-failure
   fi
 fi
 
 compile_db_dir=""
-if [[ -f build/compile_commands.json ]]; then
-  compile_db_dir="build"
-elif [[ -f build/drone_city_nav/compile_commands.json ]]; then
-  compile_db_dir="build/drone_city_nav"
+if [[ -f "${colcon_build_base}/compile_commands.json" ]]; then
+  compile_db_dir="${colcon_build_base}"
+elif [[ -f "${colcon_build_base}/drone_city_nav/compile_commands.json" ]]; then
+  compile_db_dir="${colcon_build_base}/drone_city_nav"
 fi
 
 if [[ "${run_tidy}" == "true" ]]; then

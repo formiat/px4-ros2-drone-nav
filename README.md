@@ -90,6 +90,39 @@ Equivalent explicit command:
 HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
 ```
 
+### Native Host Workflow
+
+The dev container remains the default supported workflow. A native host setup
+can also be used when the local machine has the pinned micromamba environment
+and host-built PX4 ROS support installed:
+
+- ROS 2 Jazzy and Gazebo Harmonic in
+  `~/.local/share/mamba/envs/drone-gazebo-host`.
+- `px4_msgs` built in `external/px4_msgs_ws_host`.
+- `MicroXRCEAgent` installed into the same micromamba environment.
+
+Enter the native host shell:
+
+```bash
+make host-shell
+```
+
+Build and test natively without touching the container build directories:
+
+```bash
+make host-build
+make host-test
+```
+
+Run the native host simulation:
+
+```bash
+make host-sim-gui
+HEADLESS=1 SMOKE_DURATION_S=90 make host-sim-headless
+```
+
+The host workflow uses `build-host/`, `install-host/`, and `log-host/`.
+
 The simulation uses three planner obstacle sources by default: the static
 `generated_city.map2d` city map, accumulated lidar obstacle memory, and the
 current lidar hit overlay. Source toggles and map format details are documented
@@ -121,6 +154,8 @@ Project dependencies are managed through:
 - ROS 2 and Gazebo system packages in `docker/Dockerfile`.
 - `px4_msgs` built into `/opt/px4_msgs_ws` by the dev image.
 - PX4 Autopilot cloned by `scripts/setup_px4_autopilot.sh` into `external/`.
+- Optional native host dependencies in the pinned micromamba environment and
+  ignored `external/*_host` workspaces.
 
 Do not vendor new dependencies without documenting why they cannot be provided
 by ROS, system packages, or a clearly pinned external checkout.

@@ -1,12 +1,16 @@
 SHELL := /usr/bin/env bash
 
+COLCON_BUILD_BASE ?= build
+COLCON_INSTALL_BASE ?= install
+COLCON_LOG_BASE ?= log
+
 .PHONY: build
 build:
-	colcon build --packages-select drone_city_nav --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	colcon --log-base $(COLCON_LOG_BASE) build --packages-select drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 .PHONY: test
 test: build
-	ctest --test-dir build/drone_city_nav --output-on-failure
+	ctest --test-dir $(COLCON_BUILD_BASE)/drone_city_nav --output-on-failure
 
 .PHONY: test-scripts
 test-scripts:
@@ -31,3 +35,23 @@ sim-gui:
 .PHONY: sim-headless
 sim-headless:
 	HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
+
+.PHONY: host-shell
+host-shell:
+	./scripts/host_shell.sh
+
+.PHONY: host-build
+host-build:
+	./scripts/host_shell.sh make build
+
+.PHONY: host-test
+host-test:
+	./scripts/host_shell.sh make test
+
+.PHONY: host-sim-gui
+host-sim-gui:
+	./scripts/run_city_mvp_host.sh
+
+.PHONY: host-sim-headless
+host-sim-headless:
+	HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp_host.sh

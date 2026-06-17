@@ -3,6 +3,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+make_abs_path() {
+  local path="$1"
+  case "${path}" in
+    /*) printf '%s\n' "${path}" ;;
+    *) printf '%s/%s\n' "${repo_root}" "${path}" ;;
+  esac
+}
+
 guard_against_root_owned_workspace_writes() {
   local repo_owner_uid
   repo_owner_uid="$(stat -c '%u' "${repo_root}")"
@@ -39,15 +47,21 @@ normalize_bool() {
 
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
 ros_distro="${ROS_DISTRO:-jazzy}"
+ros_setup_file="${ROS_SETUP_FILE:-/opt/ros/${ros_distro}/setup.bash}"
+px4_msgs_setup_file="${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"
+colcon_build_base="$(make_abs_path "${COLCON_BUILD_BASE:-build}")"
+colcon_install_base="$(make_abs_path "${COLCON_INSTALL_BASE:-install}")"
+colcon_log_base="$(make_abs_path "${COLCON_LOG_BASE:-log}")"
+run_log_dir="$(make_abs_path "${DRONE_GAZEBO_LOG_DIR:-log}")"
 world_name="generated_city"
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
-px4_log_file="${PX4_LOG_FILE:-${repo_root}/log/px4_city_mvp.log}"
-uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${repo_root}/log/uxrce_agent_city_mvp.log}"
-ros_log_file="${ROS_LOG_FILE:-${repo_root}/log/ros_city_mvp.log}"
-gz_log_file="${GZ_LOG_FILE:-${repo_root}/log/gz_city_mvp.log}"
-lidar_debug_dir="${LIDAR_DEBUG_DIR:-${repo_root}/log/lidar_debug}"
+px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_city_mvp.log}"
+uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_city_mvp.log}"
+ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_city_mvp.log}"
+gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_city_mvp.log}"
+lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
@@ -83,7 +97,7 @@ spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
 spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
-runtime_dir="${repo_root}/build/gazebo_city_mvp"
+runtime_dir="${colcon_build_base}/gazebo_city_mvp"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
@@ -93,6 +107,16 @@ px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
 if [[ ! -d "${px4_dir}" ]]; then
   echo "PX4-Autopilot was not found at ${px4_dir}" >&2
   echo "Run scripts/setup_px4_autopilot.sh first or set PX4_AUTOPILOT_DIR." >&2
+  exit 1
+fi
+if [[ ! -f "${ros_setup_file}" ]]; then
+  echo "ROS setup file was not found: ${ros_setup_file}" >&2
+  echo "Set ROS_SETUP_FILE or run inside ./scripts/dev_shell.sh." >&2
+  exit 1
+fi
+if [[ ! -f "${px4_msgs_setup_file}" ]]; then
+  echo "px4_msgs setup file was not found: ${px4_msgs_setup_file}" >&2
+  echo "Set PX4_MSGS_SETUP_FILE or run inside ./scripts/dev_shell.sh." >&2
   exit 1
 fi
 if [[ ! -f "${city_nav_params_file}" ]]; then
@@ -130,8 +154,8 @@ bool_is_true() {
 }
 
 set +u
-source "/opt/ros/${ros_distro}/setup.bash"
-source /opt/px4_msgs_ws/install/setup.bash
+source "${ros_setup_file}"
+source "${px4_msgs_setup_file}"
 set -u
 
 prepare_runtime_resources() {
@@ -178,10 +202,13 @@ fi
 : > "${gz_log_file}"
 
 cd "${repo_root}"
-colcon build --packages-select drone_city_nav --symlink-install \
+colcon --log-base "${colcon_log_base}" build \
+  --packages-select drone_city_nav --symlink-install \
+  --build-base "${colcon_build_base}" \
+  --install-base "${colcon_install_base}" \
   --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 set +u
-source install/setup.bash
+source "${colcon_install_base}/setup.bash"
 set -u
 
 cleanup() {

@@ -2,6 +2,9 @@
 build/
 install/
 log/
+build-host/
+install-host/
+log-host/
 .colcon/
 *.colcon
 
