@@ -520,21 +520,7 @@ private:
 
     auto path_result = computePathOnGrid(planning_grid, "combined");
     if (!path_result.has_value()) {
-      if (!publishStaticOnlyFallbackPath("combined planning failure")) {
-        publishFallbackPath();
-      }
-      return;
-    }
-    if (shouldRejectLowClearancePath(path_result->smoothed_path_clearance_m)) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Rejecting low-clearance combined path; trying fallback/hold: "
-          "raw_clearance=%.2f smoothed_clearance=%.2f threshold=%.2f",
-          path_result->raw_path_clearance_m, path_result->smoothed_path_clearance_m,
-          lowClearanceFallbackThresholdM());
-      if (!publishStaticOnlyFallbackPath("combined low-clearance path")) {
-        publishFallbackPath();
-      }
+      publishFallbackPath();
       return;
     }
     RCLCPP_INFO_THROTTLE(
@@ -987,56 +973,6 @@ private:
     publishLastValidPathOrEmpty();
   }
 
-  bool publishStaticOnlyFallbackPath(const char* reason) {
-    if (!use_static_map_ || !static_grid_.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Static-only fallback is unavailable after %s: "
-                           "use_static_map=%s loaded=%s",
-                           reason, use_static_map_ ? "true" : "false",
-                           static_grid_.has_value() ? "true" : "false");
-      return false;
-    }
-
-    OccupancyGrid2D static_only_grid{static_grid_->bounds()};
-    const GridOverlayStats static_overlay =
-        overlayOccupiedCells(static_only_grid, *static_grid_);
-    static_only_grid.rebuildInflation(inflation_radius_m_);
-
-    auto path_result = computePathOnGrid(static_only_grid, "static-only fallback");
-    if (!path_result.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Static-only fallback could not produce a path after %s: "
-                           "static_occupied_cells=%zu applied=%zu",
-                           reason, static_overlay.source_occupied_cells,
-                           static_overlay.occupied_cells_applied);
-      return false;
-    }
-
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Using static-only fallback path after %s: static_occupied_cells=%zu "
-        "astar_status=%s expanded=%zu cost=%.2f raw_path=%zu smoothed_path=%zu "
-        "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
-        "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
-        "smoothed_turns=%zu smoothed_length=%.2f] "
-        "path_clearance[raw=%.2f smoothed=%.2f]",
-        reason, static_overlay.source_occupied_cells,
-        astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
-        path_result->astar.total_cost, path_result->raw_path_metrics.points,
-        path_result->smoothed_path_metrics.points,
-        path_result->raw_path_metrics.segments,
-        path_result->raw_path_metrics.straight_segments,
-        path_result->raw_path_metrics.turns, path_result->raw_path_metrics.length_m,
-        path_result->smoothed_path_metrics.segments,
-        path_result->smoothed_path_metrics.straight_segments,
-        path_result->smoothed_path_metrics.turns,
-        path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
-        path_result->smoothed_path_clearance_m);
-    publishOccupancyGrid(static_only_grid);
-    return publishPathFromSmoothedCells(static_only_grid, path_result->smoothed_cells,
-                                        "static-only fallback");
-  }
-
   void publishDirectGoalPath() {
     std::vector<Point2> path_points{current_pose_.position, goal_};
     last_valid_path_points_ = path_points;
@@ -1046,21 +982,6 @@ private:
         "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
         current_pose_.position.x, current_pose_.position.y, goal_.x, goal_.y);
     publishPath(path_points);
-  }
-
-  [[nodiscard]] double lowClearanceFallbackThresholdM() const noexcept {
-    if (!(path_smoothing_config_.minimum_obstacle_clearance_m > 0.0)) {
-      return 0.0;
-    }
-    return 0.75 * path_smoothing_config_.minimum_obstacle_clearance_m;
-  }
-
-  [[nodiscard]] bool
-  shouldRejectLowClearancePath(const double smoothed_path_clearance_m) const noexcept {
-    return use_static_map_ && static_grid_.has_value() &&
-           lowClearanceFallbackThresholdM() > 0.0 &&
-           std::isfinite(smoothed_path_clearance_m) &&
-           smoothed_path_clearance_m < lowClearanceFallbackThresholdM();
   }
 
   void invalidateCurrentPose() {
