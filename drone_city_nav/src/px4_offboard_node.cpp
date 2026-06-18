@@ -312,11 +312,24 @@ private:
                                       dynamic_lookahead_enabled_};
   }
 
+  [[nodiscard]] Point2 activePathTargetForContinuity() const {
+    if (last_published_target_valid_) {
+      return last_published_target_;
+    }
+    if (commanded_target_valid_) {
+      return commanded_target_;
+    }
+    if (path_valid_ && waypoint_index_ < path_points_.size()) {
+      return path_points_[waypoint_index_];
+    }
+    return current_position_;
+  }
+
   void onPath(const nav_msgs::msg::Path& path) {
     const bool had_active_target =
         path_valid_ && localPositionFresh() && waypoint_index_ < path_points_.size();
     const Point2 previous_target =
-        had_active_target ? path_points_[waypoint_index_] : Point2{};
+        had_active_target ? activePathTargetForContinuity() : Point2{};
 
     path_points_ = pathPointsFromMessage(path);
     path_valid_ = !path_points_.empty();
@@ -356,15 +369,16 @@ private:
                               squaredDistance(first, last_logged_path_first_) > 0.01 ||
                               squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed) {
-      resetCommandedTargetToCurrentPath("path_changed");
       const PathMetrics metrics = pointPathMetrics(path_points_);
       RCLCPP_INFO(get_logger(),
                   "Received path: waypoints=%zu segments=%zu straight_segments=%zu "
                   "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
-                  "last=(%.2f, %.2f)",
+                  "last=(%.2f, %.2f) continuity_target=(%.2f, %.2f) "
+                  "had_active_target=%s",
                   path_points_.size(), metrics.segments, metrics.straight_segments,
                   metrics.turns, metrics.length_m, waypoint_index_ + 1U, first.x,
-                  first.y, last.x, last.y);
+                  first.y, last.x, last.y, previous_target.x, previous_target.y,
+                  had_active_target ? "true" : "false");
       last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -1066,26 +1080,6 @@ private:
       return current_position_;
     }
     return selectSafePathTarget(requested_lead_m, desired_target, escape_requested);
-  }
-
-  void resetCommandedTargetToCurrentPath(const char* reason) {
-    if (!local_position_valid_ || !path_valid_ ||
-        waypoint_index_ >= path_points_.size()) {
-      commanded_target_valid_ = false;
-      last_published_target_valid_ = false;
-      return;
-    }
-
-    commanded_target_ = current_position_;
-    commanded_target_valid_ = true;
-    last_published_target_ = commanded_target_;
-    last_published_target_valid_ = true;
-    RCLCPP_INFO(get_logger(),
-                "Reset commanded target to current position after path update: "
-                "reason=%s target=(%.2f, %.2f) current=(%.2f, %.2f) "
-                "waypoint=%zu/%zu",
-                reason, commanded_target_.x, commanded_target_.y, current_position_.x,
-                current_position_.y, waypoint_index_ + 1U, path_points_.size());
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
