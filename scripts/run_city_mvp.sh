@@ -168,6 +168,44 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
+stop_stale_gazebo_servers() {
+  local stale_pids=()
+  local pid
+  local live_pid
+  local world_path="${runtime_worlds_dir}/${world_name}.sdf"
+
+  mapfile -t stale_pids < <(
+    ps -eo pid=,cmd= |
+      awk -v self="$$" -v world_path="${world_path}" '
+        $1 != self && index($0, "gz sim") && index($0, world_path) {
+          print $1
+        }
+      '
+  )
+
+  if [[ "${#stale_pids[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "Stopping stale Gazebo server processes for ${world_path}: ${stale_pids[*]}"
+  kill "${stale_pids[@]}" 2>/dev/null || true
+  for _ in {1..20}; do
+    live_pid=""
+    for pid in "${stale_pids[@]}"; do
+      if kill -0 "${pid}" 2>/dev/null; then
+        live_pid="${pid}"
+        break
+      fi
+    done
+    [[ -z "${live_pid}" ]] && return 0
+    sleep 0.25
+  done
+
+  kill -KILL "${stale_pids[@]}" 2>/dev/null || true
+}
+
+stop_stale_gazebo_servers
+
 set +u
 source "${ros_setup_file}"
 source "${px4_msgs_setup_file}"
@@ -243,6 +281,22 @@ prepare_gazebo_gui_config() {
   perl -0pi -e \
     's#<start_paused>\s*true\s*</start_paused>#<start_paused>false</start_paused>#g' \
     "${runtime_gazebo_gui_config_file}"
+  if ! grep -q 'filename="CameraTrackingConfig"' \
+    "${runtime_gazebo_gui_config_file}"; then
+    perl -0pi -e '
+      s#(<plugin filename="CameraTracking" name="Camera Tracking">\s*<gz-gui>.*?</gz-gui>\s*</plugin>)#$1
+<plugin filename="CameraTrackingConfig" name="Camera Tracking Config">
+  <gz-gui>
+    <title>Camera Tracking Config</title>
+    <property key="state" type="string">floating</property>
+    <property key="resizable" type="bool">true</property>
+    <property key="width" type="double">360</property>
+    <property key="height" type="double">240</property>
+    <property key="showTitleBar" type="bool">true</property>
+  </gz-gui>
+</plugin>#s
+    ' "${runtime_gazebo_gui_config_file}"
+  fi
 }
 
 prepare_runtime_resources
@@ -430,6 +484,21 @@ echo "Expected obstacle sources for checks: static=$(format_override_value "${ex
 echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
 (
+  gz_server_pid=""
+  gz_gui_pid=""
+  gz_follow_pid=""
+
+  cleanup_gazebo_children() {
+    local pids=()
+    [[ -n "${gz_follow_pid}" ]] && pids+=("${gz_follow_pid}")
+    [[ -n "${gz_gui_pid}" ]] && pids+=("${gz_gui_pid}")
+    [[ -n "${gz_server_pid}" ]] && pids+=("${gz_server_pid}")
+    [[ "${#pids[@]}" -eq 0 ]] && return 0
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+  }
+  trap cleanup_gazebo_children EXIT INT TERM
+
   gz_args=(--verbose="${GZ_VERBOSE:-1}" -r -s)
   if [[ -n "${headless}" ]]; then
     gz_args+=(--headless-rendering)
@@ -449,6 +518,7 @@ echo "Gazebo resources: ${runtime_dir}"
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
         "${gazebo_gui_follow_wait_s}" &
+      gz_follow_pid=$!
     fi
     wait "${gz_server_pid}" "${gz_gui_pid}"
   else
