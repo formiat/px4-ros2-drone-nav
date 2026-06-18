@@ -1,533 +1,483 @@
 # Context
 
-The task is to plan fixes for three local review reports about the Gazebo + ROS 2
-+ PX4 drone navigation MVP. The reviewed issues are concentrated in navigation
-safety, planning cost models, obstacle-map handling, validation scripts, and test
-coverage. This round is a planning round only: no production code is changed.
+Нужно запланировать исправление всего, что найдено в `INVESTIGATION.md` и
+остается актуальным на текущей ветке `main`.
 
-The user requires every new or touched feature to be covered by enough automated
-tests and logging to support headless debugging. The repository rule also
-requires code comments and documentation to stay in English.
+Текущий `main` уже содержит часть корректного направления:
+
+- GUI запускается прямым путем `gz sim -g`, без `--gui-config`
+  (`scripts/run_city_mvp.sh:501`).
+- World unpause выполняется отдельно через Gazebo world control
+  (`scripts/run_city_mvp.sh:408`, `scripts/run_city_mvp.sh:425`,
+  `scripts/run_city_mvp.sh:429`).
+- Есть startup cleanup stale Gazebo server processes
+  (`scripts/run_city_mvp.sh:169`, `scripts/run_city_mvp.sh:205`).
+
+Оставшиеся актуальные проблемы:
+
+1. Startup cleanup слишком узкий: сейчас он ищет только `gz sim` с конкретным
+   runtime world path (`scripts/run_city_mvp.sh:173-181`). Пользователь прямо
+   указал, что если проблема в stale/duplicate Gazebo processes, решение должно
+   быть постоянным и капитальным: перед запуском аккуратно убивать все
+   conflicting Gazebo instances, а не один раз вручную.
+2. Follow-camera все еще не имеет надежной runtime-проверки фактического
+   состояния GUI camera. Текущий код проверяет только принятие `/gui/follow`
+   и `/gui/follow/offset`, затем публикует `/gui/track`
+   (`scripts/run_city_mvp.sh:336-405`), но не доказывает, что активная камера
+   действительно перешла в follow mode.
+3. Поведение GUI-launch helpers почти не покрыто автотестами: `scripts/tests`
+   сейчас содержит тесты валидаторов, но нет тестов для `run_city_mvp.sh`,
+   stale-process selection, world unpause и follow-camera setup.
+4. Документация описывает cleanup как остановку stale servers "for the same
+   runtime world" (`README.md:85-93`), что уже недостаточно для целевого
+   капитального решения.
 
 # Investigation context
 
-No `INVESTIGATION.md` exists in the workspace at the time of this plan. The plan
-is based on the local review text from `.agent-io/inbox.txt`, repository docs,
-build files, and direct inspection of the affected source and test files.
+`INVESTIGATION.md` прочитан и использован как входные данные.
 
-Notion access was not used because the orchestration policy is `optional` and the
-prompt does not name a Notion task id. GitLab access was not used because the
-prompt contains pasted review findings but no GitLab MR id, MR URL, or project
-remote target to read. The remote-access policy for this workflow also forbids
-SSH and HTTP access to remote targets.
+Ключевые выводы расследования:
+
+- Проблема 1 (`718deec` OK, `cf8b9b1` bad): между коммитами не менялись SDF,
+  world, spawn pose, PX4 target или camera code. Менялась cleanup-логика в
+  `scripts/run_city_mvp.sh`. Stale/duplicate Gazebo process state остается
+  ведущей гипотезой, но не закрытым root cause без live `ps`/GUI capture.
+- Проблема 2a (`b4b9e8c`): follow-camera работала, но GUI мог навязать paused
+  state из default Gazebo GUI config с `WorldControl.start_paused=true`.
+- Проблема 2b (`41bb70e`): попытка лечить pause через runtime `--gui-config`
+  смешала управление состоянием симуляции и camera tracking, из-за чего
+  follow-camera регрессировала.
+- Правильное направление: не использовать GUI config для pause, запускать GUI
+  прямым путем, unpause делать через world control, stale processes чистить на
+  старте, camera tracking подтверждать отдельной проверкой.
+
+То, что уже реализовано на `main`, нужно закрепить тестами и усилить. То, что
+осталось гипотезой, нужно закрывать инструментированием и безопасным cleanup.
 
 # Detected stack/profiles
 
-- Primary stack: C++ ROS 2 workspace with an ament CMake package
-  (`drone_city_nav`) built through `colcon`.
-- Simulator/control stack: Gazebo, PX4 SITL, ROS 2 nodes, Python validation
-  scripts.
-- Relevant orchestrator profiles read and applied:
-  - `project_profiles/generic.md`
-  - `project_profiles/cpp.md`
-- Rust profile was not applied: no workspace `Cargo.toml` or Rust source was
-  found in the project scope.
-- Build artifacts and compile databases already exist under `build-host/` and
-  `build/`; do not introduce ad-hoc top-level CMake commands.
+- Основной стек: ROS 2 workspace, Gazebo Harmonic, PX4 SITL, C++/ament CMake,
+  helper shell/Python scripts.
+- Прочитаны обязательные protocol/profile файлы:
+  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/notion_access_protocol.md`
+  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/gitlab_access_protocol.md`
+  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/generic.md`
+  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/cpp.md`
+- Rust profile не применяется: `rg --files -g 'Cargo.toml' -g 'Cargo.lock'
+  -g '*.rs'` не нашел Rust manifest/source в workspace.
+- Существующие build dirs и compile databases есть в `build-host/` и `build/`;
+  новые ad-hoc CMake dirs создавать не нужно.
 
 # Repo-approved commands found
 
-Use these commands from the repository root:
+Из `README.md`, `CONTRIBUTING.md`, `Makefile`:
 
-- Native host build: `make host-build`
-- Native host unit tests: `make host-test`
-- Native host script tests: `make host-test-scripts`
-- Native host quality gate: `make host-quality`
-- Format changed C++ files only: `make host-format`
-- Native headless simulation: `make host-sim-headless`
-- Native GUI simulation: `make host-sim-gui`
-- Native speed sweep: `make host-speed-sweep`
+- `make host-build`
+- `make host-test`
+- `make host-test-scripts`
+- `make host-quality`
+- `make host-format`
+- `make host-sim-gui`
+- `make host-sim-headless`
+- `make host-speed-sweep`
+- container equivalents: `make build`, `make test`, `make test-scripts`,
+  `make quality`, `make format`, `make sim-gui`, `make sim-headless`
 
-Container compatibility remains supported through `./scripts/dev_shell.sh`, then
-`make build`, `make test`, `make test-scripts`, `make quality`,
-`make sim-headless`, and `make sim-gui` inside the container. The native host
-workflow is the default for agent work.
+Для routine agent work предпочтителен native host workflow через `host-*`
+targets.
 
 # Affected components
 
-- Offboard PX4 safety and command generation:
-  - `drone_city_nav/src/px4_offboard_node.cpp`
-  - `drone_city_nav/src/offboard_speed_controller.cpp`
-  - `drone_city_nav/src/offboard_path_follower.cpp`
-  - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp`
-  - related tests under `drone_city_nav/tests/`
-- A* and planner core:
-  - `drone_city_nav/src/astar_planner.cpp`
-  - `drone_city_nav/include/drone_city_nav/astar_planner.hpp`
-  - `drone_city_nav/src/planner_core.cpp`
-  - `drone_city_nav/src/path_smoothing.cpp`
-  - `drone_city_nav/src/planner_node.cpp`
-- Occupancy grid and obstacle memory:
-  - `drone_city_nav/src/occupancy_grid.cpp`
-  - `drone_city_nav/include/drone_city_nav/occupancy_grid.hpp`
-  - `drone_city_nav/src/obstacle_memory.cpp`
-  - `drone_city_nav/src/obstacle_memory_node.cpp`
-  - `drone_city_nav/src/planner_node_config.cpp`
-- Planning-grid source selection:
-  - `drone_city_nav/src/planning_grid_builder.cpp`
-  - `drone_city_nav/include/drone_city_nav/planning_grid_builder.hpp`
-- Lidar projection and debug visualization:
-  - `drone_city_nav/src/lidar_projection.cpp`
-  - `drone_city_nav/src/lidar_debug_node.cpp`
-  - `drone_city_nav/src/lidar_debug_renderer.cpp`
-  - `drone_city_nav/include/drone_city_nav/lidar_debug_renderer.hpp`
-- Mission validation and monitoring:
-  - `scripts/validate_city_mvp_headless.py`
-  - `scripts/tests/test_validate_city_mvp_headless.py`
-  - `drone_city_nav/src/mission_monitor_node.cpp`
-- Pose freshness and transforms:
-  - `drone_city_nav/src/navigation_pose.cpp`
-  - `drone_city_nav/src/lidar_projection.cpp`
-  - `drone_city_nav/launch/city_nav.launch.py`
+- Main simulation launcher:
+  - `scripts/run_city_mvp.sh`
+    - stale cleanup: `stop_stale_gazebo_servers()` at
+      `scripts/run_city_mvp.sh:169`
+    - GUI follow setup: `configure_gazebo_gui_follow_camera()` at
+      `scripts/run_city_mvp.sh:336`
+    - world unpause: `configure_gazebo_world_running()` at
+      `scripts/run_city_mvp.sh:408`
+    - Gazebo server/GUI launch block at `scripts/run_city_mvp.sh:476-517`
+- Host wrapper:
+  - `scripts/run_city_mvp_host.sh`
+- Script tests:
+  - existing `scripts/tests/test_validate_city_mvp_headless.py`
+  - new tests to add under `scripts/tests/`
+- Documentation:
+  - `README.md:73-93`
+  - possibly `docs/MVP_SIMULATION.md` if GUI troubleshooting instructions need
+    a dedicated note
+- Optional helper modules to make launch behavior testable:
+  - new `scripts/gazebo_process_cleanup.py`
+  - new `scripts/gazebo_gui_control.py` or `scripts/lib/gazebo_gui_control.sh`
 
 # Implementation steps
 
-1. Fix the clearance-escape deadlock in offboard target safety.
+1. Заменить узкий cleanup на тестируемый cleanup conflicting Gazebo processes.
 
    Files:
-   - `drone_city_nav/src/px4_offboard_node.cpp`
-   - `drone_city_nav/include/drone_city_nav/offboard_target_safety.hpp`
-   - `drone_city_nav/src/offboard_target_safety.cpp`
-   - `drone_city_nav/tests/offboard_target_safety_test.cpp`
-   - `drone_city_nav/CMakeLists.txt`
+   - `scripts/run_city_mvp.sh`
+   - new `scripts/gazebo_process_cleanup.py`
+   - new `scripts/tests/test_gazebo_process_cleanup.py`
+
+   Code anchors:
+   - replace/narrow `stop_stale_gazebo_servers()` at
+     `scripts/run_city_mvp.sh:169-203`
+   - keep call before ROS setup and before runtime resource generation at
+     `scripts/run_city_mvp.sh:205`
 
    Materialized result:
-   - Extract target-segment safety policy into a ROS-free core module that can be
-     tested directly.
-   - Allow escape when the same continuous clearance metric that stopped the
-     speed controller indicates a clearance stop, not only when the current grid
-     cell is already inflated-blocked.
-   - Keep the hard rule that escape must not cross real occupied cells.
-   - Add throttled logs for rejected escape candidates with reason,
-     `start_clearance_m`, `end_clearance_m`, `start_blocked`,
-     `start_occupied`, and whether clearance improved.
+   - Add a Python helper that parses `ps -eo pid=,ppid=,pgid=,cmd=` output and
+     returns candidate PIDs for conflicting Gazebo processes.
+   - Match all stale/conflicting Gazebo simulator processes, not only the
+     current runtime world path.
+   - Protect the current script process, its ancestors, and the current helper
+     process from being selected.
+   - Keep the actual kill sequence in one place: TERM, bounded wait, KILL for
+     remaining candidates.
+   - Log every candidate with `pid`, `ppid`, `pgid`, and command before killing.
 
-2. Fail closed on stale PX4 local position.
+   Suggested selection contract:
+
+   ```python
+   def is_conflicting_gazebo_process(cmd: str) -> bool:
+       normalized = " ".join(cmd.split())
+       return (
+           " gz sim " in f" {normalized} "
+           or normalized.endswith(" gz sim")
+           or "/gz sim " in normalized
+       )
+   ```
+
+   The implementation should include tests for:
+   - stale `gz sim -s ... generated_city.sdf` is selected;
+   - stale `gz sim -g` GUI process is selected;
+   - current script PID / helper PID / ancestor PIDs are not selected;
+   - unrelated commands containing words like `gazebo` in arguments are not
+     selected;
+   - multiple stale Gazebo processes are selected deterministically.
+
+2. Add an explicit safety switch and dry-run mode for cleanup.
 
    Files:
-   - `drone_city_nav/src/px4_offboard_node.cpp`
-   - `drone_city_nav/tests/offboard_target_safety_test.cpp` or a new focused
-     offboard state helper test if extraction requires it.
+   - `scripts/run_city_mvp.sh`
+   - `scripts/gazebo_process_cleanup.py`
+   - `README.md`
+   - `scripts/tests/test_gazebo_process_cleanup.py`
+
+   Code anchors:
+   - launcher env var block near `scripts/run_city_mvp.sh:102-108`
+   - cleanup call near `scripts/run_city_mvp.sh:205`
 
    Materialized result:
-   - Add `max_pose_staleness_s` with bounded sanitization.
-   - Track the last valid PX4 local-position update time.
-   - Clear or ignore `local_position_valid_` when updates become stale.
-   - Hold position and log a clear warning instead of publishing trajectory
-     setpoints from stale coordinates.
+   - Default behavior: cleanup enabled because the user stated that multiple
+     Gazebo instances are not planned on this machine.
+   - Add `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=true|false`.
+   - Add `DRONE_GAZEBO_CLEAN_STALE_DRY_RUN=true|false` for diagnostics.
+   - Dry-run logs candidates but does not kill.
+   - Disabled mode logs a warning that stale process cleanup is off.
 
-3. Make clearance slowdown consistent with inflated safety cells.
+   Expected shell sketch:
+
+   ```bash
+   clean_stale_gazebo_processes() {
+     if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then
+       echo "WARNING: stale Gazebo process cleanup is disabled"
+       return 0
+     fi
+     python3 "${repo_root}/scripts/gazebo_process_cleanup.py" \
+       --self-pid "$$" \
+       --mode "${cleanup_mode}"
+   }
+   ```
+
+3. Make Gazebo GUI control helpers testable without launching Gazebo.
 
    Files:
-   - `drone_city_nav/src/px4_offboard_node.cpp`
-   - `drone_city_nav/tests/offboard_speed_controller_test.cpp`
-   - new or extracted tests for local clearance estimation.
+   - `scripts/run_city_mvp.sh`
+   - new `scripts/lib/gazebo_gui_control.sh` or
+     new `scripts/gazebo_gui_control.py`
+   - new `scripts/tests/test_gazebo_gui_control.py`
+
+   Code anchors:
+   - extract `configure_gazebo_gui_follow_camera()` from
+     `scripts/run_city_mvp.sh:336-405`
+   - extract `configure_gazebo_world_running()` from
+     `scripts/run_city_mvp.sh:408-449`
 
    Materialized result:
-   - `estimateLocalClearanceM()` treats inflated cells (`>=80`) as safety
-     clearance blockers when feeding speed limits, matching the target-segment
-     safety gate and docs.
-   - Tests cover occupied cells, inflated cells, unknown/free cells, and the
-     boundary where clearance braking starts.
+   - Move command construction and response parsing into a helper with injectable
+     `gz` executable path or fake command runner.
+   - Unit-test command payloads for:
+     - `/gui/follow`;
+     - `/gui/follow/offset`;
+     - `/gui/track`;
+     - `/world/${world_name}/control` with `pause: false`.
+   - Unit-test response parsing:
+     - `data: true` is success;
+     - timeout/stderr is retryable failure;
+     - malformed offset is rejected before calling `gz`.
 
-4. Sanitize command resend timing.
+4. Strengthen follow-camera setup with confirmation and retry semantics.
 
    Files:
-   - `drone_city_nav/src/px4_offboard_node.cpp`
-   - an extracted parameter/config test if the parameter reader is made
-     testable.
+   - `scripts/run_city_mvp.sh`
+   - helper from step 3
+   - `scripts/tests/test_gazebo_gui_control.py`
+
+   Code anchors:
+   - `configure_gazebo_gui_follow_camera()` behavior currently returns after
+     the first accepted `/gui/follow` response at `scripts/run_city_mvp.sh:373`
+   - `/gui/track` publish currently happens once at `scripts/run_city_mvp.sh:382`
 
    Materialized result:
-   - Clamp `command_resend_period_s` to a finite positive range consistent with
-     other timing parameters.
-   - Log when an invalid value is replaced by the default or clamp boundary.
+   - Keep direct GUI launch; do not reintroduce `--gui-config`.
+   - Publish `/gui/track` more than once during the follow wait window, or until
+     a confirmation signal is observed.
+   - Add a confirmation phase that tries known Gazebo GUI tracking state
+     endpoints if available in the running GUI, for example `/gui/currently_tracked`
+     or camera pose tracking topic. If no confirmation endpoint exists in this
+     Gazebo build, log a clear `WARN` with the attempted endpoints and keep the
+     accepted command path as best effort.
+   - Do not show or depend on the visible `CameraTrackingConfig` panel.
 
-5. Fix `--allow-mission-failure` semantics in the headless validator.
+   Pseudocode:
+
+   ```text
+   for attempt in 1..wait:
+     call /gui/follow target
+     call /gui/follow/offset offset
+     publish /gui/track CameraTrack(FOLLOW, target, offset)
+     if tracking_state_confirms(target):
+       log confirmed
+       return success
+     sleep 1
+   log warning with last responses
+   ```
+
+5. Keep world unpause separate and make it observable.
 
    Files:
-   - `scripts/validate_city_mvp_headless.py`
+   - `scripts/run_city_mvp.sh`
+   - helper from step 3
+   - `scripts/tests/test_gazebo_gui_control.py`
+   - optionally `scripts/validate_city_mvp_headless.py`
    - `scripts/tests/test_validate_city_mvp_headless.py`
 
-   Materialized result:
-   - Mission failure and PX4 critical-error checks fail only when
-     `allow_mission_failure` is false.
-   - `--mission-check --allow-mission-failure` still parses and reports mission
-     status, but returns success for exploratory sweeps that explicitly allow
-     mission failure.
-   - Missing log files produce a structured validation failure or warning rather
-     than an uncaught `FileNotFoundError`.
+   Code anchors:
+   - current unpause loop at `scripts/run_city_mvp.sh:408-449`
+   - call site at `scripts/run_city_mvp.sh:504`
 
-6. Harden occupancy-grid and obstacle-memory configuration.
+   Materialized result:
+   - Keep `pause: false` world-control loop.
+   - Log attempts, first success, and final confirmation in a stable format.
+   - Add unit tests that require three consecutive accepted unpause responses,
+     matching current behavior.
+   - Add optional validator checks for `Gazebo world running command confirmed`
+     when GUI logs are supplied. This should be optional because headless runs do
+     not launch GUI.
+
+6. Add static regression tests that forbid the old broken GUI config path.
 
    Files:
-   - `drone_city_nav/src/occupancy_grid.cpp`
-   - `drone_city_nav/include/drone_city_nav/occupancy_grid.hpp`
-   - `drone_city_nav/src/planner_node_config.cpp`
-   - `drone_city_nav/src/obstacle_memory.cpp`
-   - `drone_city_nav/src/obstacle_memory_node.cpp`
-   - `drone_city_nav/tests/obstacle_memory_test.cpp`
-   - `drone_city_nav/tests/planner_node_config_test.cpp`
+   - new `scripts/tests/test_run_city_mvp_launch_contract.py`
+   - `scripts/run_city_mvp.sh`
 
    Materialized result:
-   - Add shared validation for finite positive resolution, finite positive
-     dimensions, and a documented maximum cell count.
-   - Prevent division by zero, invalid casts, and huge accidental allocations.
-   - Validate score ordering as
-     `min_score <= free_score < occupied_score <= max_score`.
-   - Log rejected or clamped grid parameters with exact values.
+   - Test that `scripts/run_city_mvp.sh` does not contain `--gui-config` in the
+     Gazebo GUI launch path.
+   - Test that `gz sim -g` is still present for GUI launch.
+   - Test that `pause: false` is sent to `/world/${world_name}/control`.
+   - Test that stale cleanup is called before runtime resources and before
+     `gz sim` launch.
 
-7. Fix A* state-index overflow and expose budget exhaustion distinctly.
+   This is intentionally a contract test. It protects the regression found in
+   `41bb70e` where pause was fixed by changing the GUI config path.
+
+7. Update docs to reflect the stronger permanent cleanup policy.
 
    Files:
-   - `drone_city_nav/src/astar_planner.cpp`
-   - `drone_city_nav/include/drone_city_nav/astar_planner.hpp`
-   - `drone_city_nav/tests/planner_core_test.cpp` or a new
-     `drone_city_nav/tests/astar_planner_test.cpp`
+   - `README.md`
+   - optionally `docs/MVP_SIMULATION.md`
+
+   Code anchors:
+   - current README GUI section at `README.md:73-93`
 
    Materialized result:
-   - Store parent state indices as `std::size_t` with an explicit sentinel.
-   - Guard state-space size before allocation or parent indexing.
-   - Add an `AStarStatus` result that distinguishes success, unreachable target,
-     invalid start/goal, and expansion-budget exceeded.
-   - Update planner logs to include the status.
+   - Replace "same runtime world" wording with "conflicting Gazebo simulator
+     processes".
+   - Document default cleanup behavior and the disable/dry-run environment
+     variables.
+   - Document that multiple Gazebo instances are intentionally unsupported for
+     this project workflow.
+   - Document where to look in `log-host/gz_city_mvp.log` for cleanup,
+     world-unpause, and follow-camera diagnostics.
 
-8. Replace the approximate clearance BFS with a reusable metric clearance field.
+8. Add launch-log validation for the GUI path.
 
    Files:
-   - `drone_city_nav/include/drone_city_nav/clearance_field.hpp`
-   - `drone_city_nav/src/clearance_field.cpp`
-   - `drone_city_nav/src/astar_planner.cpp`
-   - `drone_city_nav/src/planner_core.cpp`
-   - `drone_city_nav/src/path_smoothing.cpp`
-   - `drone_city_nav/tests/clearance_field_test.cpp`
-   - `drone_city_nav/CMakeLists.txt`
+   - new `scripts/validate_gazebo_gui_launch_log.py`
+   - new `scripts/tests/test_validate_gazebo_gui_launch_log.py`
+   - optionally `Makefile`
 
    Materialized result:
-   - Build one reusable clearance-distance field in meters, using weighted
-     8-neighbor propagation or another documented metric approximation.
-   - Use the field for A* clearance cost, planner path-clearance diagnostics,
-     and smoothing line-of-sight clearance checks.
-   - Remove duplicated brute-force nearest-obstacle scans where practical.
-   - Add comments explaining the chosen metric and its tradeoff.
+   - Parse `log-host/gz_city_mvp.log`.
+   - Validate:
+     - stale cleanup ran or explicitly logged no candidates;
+     - world unpause was confirmed;
+     - follow camera was configured or produced a clear warning;
+     - no `--gui-config` launch marker appears.
+   - Add `make host-test-scripts` coverage through Python unittest discovery.
 
-9. Remove the obsolete alternate path selection.
+9. Add a bounded GUI smoke procedure, but keep it separate from headless CI.
 
    Files:
-   - `drone_city_nav/src/astar_planner.cpp`
-   - `drone_city_nav/include/drone_city_nav/astar_planner.hpp`
-   - `drone_city_nav/src/planner_core.cpp`
-   - `drone_city_nav/src/planner_node_config.cpp`
-   - `drone_city_nav/tests/planner_core_test.cpp`
+   - `README.md`
+   - optionally `scripts/run_city_mvp.sh` if a machine-readable GUI status log
+     flag is needed
 
    Materialized result:
-   - Keep hard inflation as the prohibited safety zone.
-   - Remove the A* near-obstacle cost and the two-pass alternate path selection.
-   - Preserve physical distance as the primary path cost so a much longer outer
-     route is not selected only because it is wider.
-   - Keep turn/evasive direction preferences as separate optional path-shape
-     controls.
-
-10. Make path smoothing respect the same safety model.
-
-    Files:
-    - `drone_city_nav/src/path_smoothing.cpp`
-    - `drone_city_nav/tests/planner_core_test.cpp`
-
-    Materialized result:
-    - Ensure smoothing does not cut across occupied or inflated cells.
-    - Use the shared clearance field or shared line-safety helper.
-    - Tune `path_smoothing_min_obstacle_clearance_m` so smoothing does not push
-      routes unnecessarily toward the map boundary.
-
-11. Prevent path-follower backtracking on self-intersecting paths.
-
-    Files:
-    - `drone_city_nav/src/offboard_path_follower.cpp`
-    - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp`
-    - `drone_city_nav/tests/offboard_path_follower_test.cpp`
-
-    Materialized result:
-    - Search closest projections from the current waypoint/progress lower bound
-      instead of across the whole path.
-    - Keep forward progress monotonic unless the planner publishes a new path.
-    - Add tests for self-intersecting and looped paths where the nearest segment
-      behind the drone is geometrically closer than the correct forward segment.
-
-12. Validate every actual command segment before target publication.
-
-    Files:
-    - `drone_city_nav/src/px4_offboard_node.cpp`
-    - `drone_city_nav/src/offboard_target_safety.cpp`
-    - `drone_city_nav/tests/offboard_target_safety_test.cpp`
-
-    Materialized result:
-    - Check `current_position -> target` and target-advance segments against
-      occupied and inflated cells on every control update.
-    - If the drone starts inside inflated space, allow only escape segments that
-      avoid occupied cells and increase clearance or leave the inflated zone.
-    - Publish hold-position setpoints and log the rejection reason when no safe
-      segment exists.
-
-13. Improve replan diagnostics without making replanning trigger-happy.
-
-    Files:
-    - `drone_city_nav/src/planner_node.cpp`
-    - possible extracted helper under `drone_city_nav/include/drone_city_nav/`
-      and `drone_city_nav/src/`
-
-    Materialized result:
-    - Log every path decision as one of: initial plan, keep current path,
-      blocked-by-new-obstacle, no-path, fallback, or escape.
-    - Include path waypoint count, segment count, total length, direct distance,
-      minimum clearance, A* status, expansion count, and obstacle-source flags.
-    - Preserve the current policy that a path is reused unless newly discovered
-      obstacles intersect it.
-
-14. Include current lidar bounds in planning-grid source selection.
-
-    Files:
-    - `drone_city_nav/src/planning_grid_builder.cpp`
-    - `drone_city_nav/include/drone_city_nav/planning_grid_builder.hpp`
-    - `drone_city_nav/tests/planning_grid_builder_test.cpp`
-
-    Materialized result:
-    - `selectPlanningGridBounds()` can choose a valid current-lidar-only grid
-      when static and memory grids are unavailable.
-    - Add a lidar-only test where fallback bounds differ from the lidar grid and
-      the lidar source is still used correctly.
-
-15. Render occupancy-grid cells in lidar debug images.
-
-    Files:
-    - `drone_city_nav/src/lidar_debug_renderer.cpp`
-    - `drone_city_nav/include/drone_city_nav/lidar_debug_renderer.hpp`
-    - `drone_city_nav/tests/lidar_debug_renderer_test.cpp`
-
-    Materialized result:
-    - Draw occupancy-grid cells from `GridImageView::cells` before lidar hit
-      overlays.
-    - Use distinct colors for real occupied, inflated, remembered lidar hits,
-      current lidar hits, path, and drone marker.
-    - Add pixel-level renderer tests proving grid cells are visible in snapshots.
-
-16. Bound lidar debug hit-memory carrier maps.
-
-    Files:
-    - `drone_city_nav/src/lidar_debug_node.cpp`
-    - focused helper tests if pruning is extracted.
-
-    Materialized result:
-    - Enforce `max_remembered_hit_points_` or a separate carrier-map cap on
-      `hit_candidates_` and `remembered_hit_cells_`, not only on the published
-      vector.
-    - Log pruning counts at a throttled rate for long headless runs.
-
-17. Clarify mission-monitor footprint/volume parameter behavior.
-
-    Files:
-    - `drone_city_nav/src/mission_monitor_node.cpp`
-    - new or existing mission-monitor tests if a pure parser is extracted.
-
-    Materialized result:
-    - Avoid warning about trailing `building_footprints` values when
-      `building_volumes` intentionally takes precedence.
-    - Log the selected source and number of parsed buildings.
-
-18. Bound future timestamp freshness.
-
-    Files:
-    - `drone_city_nav/src/navigation_pose.cpp`
-    - a new `drone_city_nav/tests/navigation_pose_test.cpp` or an existing
-      relevant test file.
-
-    Materialized result:
-    - Reject future stamps beyond a small configurable or documented tolerance,
-      or explicitly document and test why future stamps are accepted.
-    - Log clock-domain mismatches when they affect pose freshness.
-
-19. Add missing comments on robotics-frame and safety math.
-
-    Files:
-    - `drone_city_nav/src/astar_planner.cpp`
-    - `drone_city_nav/src/offboard_speed_controller.cpp`
-    - `drone_city_nav/src/lidar_projection.cpp`
-    - `drone_city_nav/src/occupancy_grid.cpp`
-    - `drone_city_nav/src/mission_monitor_node.cpp`
-    - `drone_city_nav/launch/city_nav.launch.py`
-
-    Materialized result:
-    - Add short comments explaining direction-state A*, braking-distance
-      limiting, FLU/FRD/NED transform conventions, inflation center-vs-edge
-      adjustment, signed clearance semantics, and the Gazebo map transform.
-    - Do not add narrative comments where the code is already self-explanatory.
-
-20. Remove or wire dead command-smoothing helpers.
-
-    Files:
-    - `drone_city_nav/src/px4_offboard_node.cpp`
-    - `drone_city_nav/src/offboard_path_follower.cpp`
-    - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp`
-    - `drone_city_nav/tests/offboard_path_follower_test.cpp`
-
-    Materialized result:
-    - Either remove unused wrappers and stale tests, or intentionally wire the
-      smoothing path into the command-generation flow with tests that exercise
-      the active ROS-node path.
-    - Prefer removal if the current segment-safety model supersedes the old
-      helpers.
-
-21. Rename misleading stable-path "occupied" terminology.
-
-    Files:
-    - `drone_city_nav/src/planner_core.cpp`
-    - `drone_city_nav/include/drone_city_nav/planner_core.hpp`
-    - `drone_city_nav/src/planner_node.cpp`
-    - `drone_city_nav/tests/planner_core_test.cpp`
-
-    Materialized result:
-    - Rename functions and parameters that check inflated blocked cells but say
-      "occupied" to `blocked` terminology.
-    - Preserve behavior and update logs/tests to avoid tuning confusion.
-
-22. Review cppcheck quality-gate behavior.
-
-    Files:
-    - `scripts/check_cpp_quality.sh`
-    - no C++ files unless the script decision requires local annotations.
-
-    Materialized result:
-    - Decide whether informational `normalCheckLevelMaxBranches` should fail the
-      whole quality gate.
-    - If adjusted, keep actionable warnings as failures and document the reason
-      in script comments or output.
+   - Document a short manual/live verification command for the user:
+     `make host-sim-gui`.
+   - Define expected log lines for success:
+     - stale cleanup summary;
+     - `Gazebo world running command confirmed`;
+     - follow camera configured/confirmed;
+     - no warnings about `--gui-config`.
+   - Keep this as manual fallback because Gazebo GUI visual correctness cannot
+     be fully proven by current headless tests.
 
 # Verification plan
 
-For this planning-only change:
+For the implementation batch:
 
-1. `make host-format`
-2. `make host-quality`
-3. `make host-test-scripts`
-
-For implementation batches, use the smallest safe scope first, then broaden:
-
-1. Build and unit tests after each C++ batch:
-   - `make host-build`
-   - `ctest --test-dir build-host/drone_city_nav --output-on-failure -R <focused_test_regex>`
-   - `make host-test` when shared planner/offboard contracts change.
-2. Script validation changes:
+1. Script syntax and static contract checks:
+   - `bash -n scripts/run_city_mvp.sh`
+   - `python3 -m unittest discover scripts/tests`
    - `make host-test-scripts`
-3. Quality gate before each commit:
+2. C++/workspace quality gate:
    - `make host-format`
    - `make host-quality`
-4. Headless simulation after safety/planning batches:
+3. Headless smoke after script changes:
    - `make host-sim-headless`
-   - no-static-map headless run with the documented environment toggles from
-     `docs/MVP_SIMULATION.md`.
-   - inspect generated logs for path status, segment count, speed, position,
-     clearance, rejected target reasons, and mission result.
-5. Optional compatibility check when a batch touches scripts or launch behavior
-   used in the container:
-   - `./scripts/dev_shell.sh`, then `make build`, `make test`, and
-     `make sim-headless` inside the container.
+   - inspect `log-host/gz_city_mvp.log`, `log-host/px4_city_mvp.log`, and
+     `log-host/ros_city_mvp.log` for startup regressions.
+4. GUI-specific verification:
+   - `make host-sim-gui`
+   - use the new GUI launch-log validator against `log-host/gz_city_mvp.log`.
+   - visually confirm drone model and follow camera once, because actual Gazebo
+     3D rendering/camera behavior is not fully observable in headless tests.
+5. Container compatibility, only if launch helper paths or dependencies become
+   container-sensitive:
+   - `./scripts/dev_shell.sh`
+   - inside container: `make test-scripts`, `make quality`
 
-Skipped checks for this planning-only round:
+Skipped by default:
 
-- Headless simulation is not run because no runtime code is changed by this
-  plan.
-- Container validation is not run because no container-specific behavior is
-  changed by this plan.
+- Remote/SSH/HTTP checks are forbidden by workflow policy.
+- Full visual GUI assertion is not automatable with the current project
+  tooling; the plan adds log validation and fake-`gz` unit tests, then keeps a
+  single manual visual check as fallback.
 
 # Testing strategy
 
-1. No-refactor tests
+## Category 1: без рефакторинга
 
-   Use when the existing function is directly testable or the change is small:
+Use for simple text/log contracts:
 
-   - Update `scripts/tests/test_validate_city_mvp_headless.py` for
-     `mission_check + allow_mission_failure` and missing log files.
-   - Add A* tests for `start == goal`, unreachable goal, blocked start/goal,
-     budget exceeded, diagonal corner-cut, index-size guard, and status
-     reporting.
-   - Add `planning_grid_builder_test` coverage for current-lidar-only bounds.
-   - Add `lidar_debug_renderer_test` pixel checks for grid-cell rendering.
-   - Add obstacle-memory config tests for invalid score ordering, invalid
-     dimensions, and cell-count caps.
-   - Add speed-controller tests for clearance-tracking overspeed boundaries.
+- `scripts/tests/test_run_city_mvp_launch_contract.py`
+  - assert `--gui-config` is not used;
+  - assert direct `gz sim -g` launch remains;
+  - assert world-control `pause: false` path remains;
+  - assert stale cleanup call appears before Gazebo launch.
+- `scripts/tests/test_validate_gazebo_gui_launch_log.py`
+  - happy path: cleanup summary, world running confirmed, follow configured;
+  - negative path: missing world unpause confirmation fails;
+  - edge case: follow-camera warning is reported as warning, not silent pass.
 
-2. Light-refactor tests
+## Category 2: лёгкий рефакторинг
 
-   Use when the code is currently hidden inside ROS node methods but can be
-   extracted without changing architecture:
+Use for behavior currently embedded in `run_city_mvp.sh`:
 
-   - Extract offboard target-segment safety into pure C++ and test escape,
-     blocked, occupied, inflated, and clearance-stop cases.
-   - Extract obstacle-memory/grid parameter normalization and test it without
-     constructing full ROS nodes.
-   - Extract mission-monitor footprint/volume parsing if needed, then test
-     source precedence and warnings.
-   - Add forward-only path-projection helpers and tests for self-intersecting
-     paths.
-   - Add a navigation-pose freshness helper test for stale and future stamps.
+- Extract stale process selection into `scripts/gazebo_process_cleanup.py`.
+  - happy path: stale server and GUI candidates selected;
+  - negative path: unrelated commands and protected PIDs not selected;
+  - edge case: command with extra whitespace, absolute `gz` path, wrapper path.
+- Extract GUI command construction/response parsing into a helper.
+  - happy path: fake `gz` returns `data: true` for follow/offset/unpause;
+  - negative path: timeout or `data: false` retries and warns;
+  - edge case: malformed offset never calls fake `gz`.
 
-3. Heavy-refactor tests
+## Category 3: тяжёлый
 
-   Use only when shared behavior becomes easier and safer after introducing a
-   reusable module:
+Use only if light tests do not provide enough confidence:
 
-   - Introduce `ClearanceField2D` and test metric distances, diagonal behavior,
-     reuse in A*, smoothing, and planner diagnostics.
-   - Split large `planner_node.cpp` orchestration into a pure planning-cycle
-     runner once safety fixes are stable.
-   - Add integration-style headless assertions that parse logs for movement,
-     clearance, path segment counts, target rejection reasons, and mission
-     completion.
+- Add an optional pseudo-terminal or fake-process integration test that starts
+  disposable dummy `gz sim`-named processes and verifies cleanup kills only those
+  candidates. This is more fragile because process names and shell wrappers vary
+  by OS.
+- Add GUI smoke automation with a virtual display only if the local Gazebo GUI
+  can run reproducibly under the test harness. Until then, visual GUI behavior
+  remains a documented manual fallback.
 
 # Risks and tradeoffs
 
-- Tightening stale-pose and segment-safety gates can convert silent unsafe
-  behavior into visible holds. That is intended, but the logs must clearly show
-  why the drone is holding.
-- Treating inflated cells as speed-clearance blockers may reduce speed near
-  buildings. The piecewise soft-penalty and escape logic should keep this from
-  becoming a permanent deadlock.
-- A metric clearance field is more correct than the current cell-count BFS but
-  adds implementation complexity. Keep it isolated and benchmark with existing
-  headless logs.
-- A* with turn or evasive direction preferences is not strictly optimal under the
-  simple Euclidean heuristic. This should be documented as an intentional
-  tradeoff or addressed with a more conservative heuristic if optimality becomes
-  necessary.
-- Reusing current paths until newly discovered obstacles intersect them reduces
-  oscillation, but stale obstacle-memory artifacts can still force conservative
-  routes. Debug snapshots and pruning logs are important.
-- Large refactors of `planner_node.cpp` should wait until the critical safety
-  fixes and tests land, otherwise behavior changes will be difficult to isolate.
-- Lower inflation can make routes more direct, but the hard safety radius must
-  remain a true no-fly zone unless a dedicated escape policy is active.
+- Aggressive cleanup is intentionally broader than the current world-path-only
+  filter. This matches the user's workflow assumption that multiple Gazebo
+  instances are unsupported, but it must still avoid killing the current script,
+  shell ancestors, helper process, and unrelated commands.
+- Adding Python helpers for launch behavior improves testability but adds one
+  more script dependency path. Keep helpers dependency-free and covered by
+  `make host-test-scripts`.
+- Repeated `/gui/track` publishing can be noisy if the GUI is not ready. Use
+  throttled logs and bounded attempts.
+- Treating unavailable GUI tracking-state endpoints as fatal could make the
+  launcher fail on Gazebo builds that do not expose those endpoints. Prefer:
+  command accepted = best effort, explicit state confirmation = stronger
+  success, missing endpoint = warning with diagnostics.
+- Actual 3D model visibility cannot be fully proven by headless tests. The best
+  automated coverage is process cleanup, command construction, log validation,
+  and absence of the known-bad `--gui-config` path.
+
+# Что могло сломаться
+
+- Поведение:
+  - cleanup может убить активный пользовательский Gazebo процесс. Проверка:
+    unit tests for process selection, dry-run mode, and logs listing candidate
+    PIDs before kill.
+  - cleanup может пропустить stale process with unusual command shape. Проверка:
+    tests with `/path/to/gz sim`, wrapper commands, extra whitespace, GUI/server
+    variants.
+  - launcher can hang waiting for GUI confirmation. Проверка: bounded waits,
+    fake-`gz` timeout tests, and `make host-sim-headless` unaffected by GUI.
+- API/контракты:
+  - environment variables for cleanup can be misread. Проверка: tests for
+    `DRONE_GAZEBO_CLEAN_STALE_PROCESSES` and
+    `DRONE_GAZEBO_CLEAN_STALE_DRY_RUN` parsing.
+  - log validator can become too strict. Проверка: tests for warning vs failure
+    cases and docs describing required log lines.
+- Интеграции:
+  - host/container paths can differ. Проверка: keep helpers path-relative to
+    `repo_root`; run `make host-test-scripts`, and optionally container
+    `make test-scripts`.
+  - Gazebo topic/service names can differ by version. Проверка: fake-`gz` unit
+    tests for command construction plus real GUI smoke as fallback.
+- Производительность/ресурсы:
+  - repeated GUI control calls add startup overhead. Проверка: bounded
+    `GZ_GUI_FOLLOW_WAIT_S` and logs showing attempt counts.
+  - process scanning at startup is cheap, but should happen once. Проверка:
+    logs and unit tests for single cleanup invocation before launch.
 
 # Open questions
 
-- What exact maximum cell count should be accepted for planning and obstacle
-  memory grids on the target development machines?
-- Should the clearance slowdown use inflated cells only, or the maximum of
-  occupied-cell distance and inflated-cell distance with separate thresholds?
-- What default future timestamp tolerance should be used for mixed ROS, PX4, bag
-  replay, and simulator clock domains?
-- Should `--allow-mission-failure` also downgrade PX4 critical errors to
-  warnings, or should PX4 critical errors remain fatal even when mission failure
-  is allowed?
-- Should the old command-smoothing helpers be removed, or is there a future
-  target-selection mode that still needs them?
-- How strict should the no-static-map headless acceptance threshold be while the
-  map is intentionally partial and lidar-driven?
+- Which Gazebo GUI tracking confirmation endpoint is reliable in the local
+  Harmonic build: `/gui/currently_tracked`, `/gui/camera/pose`, or only
+  accepted service/topic responses? If none is reliable, the implementation
+  should keep confirmation as best-effort warning and rely on manual GUI smoke
+  for final visual proof.
+- Should the cleanup helper kill only `gz sim` or also other Gazebo-related
+  client wrappers if they are observed in local `ps` output during a bad run?
+  Initial implementation should start with `gz sim` because that is the known
+  server/GUI command path.
+- Should `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` be documented as a
+  developer escape hatch only, or should it be hidden to avoid users disabling a
+  safety fix?
