@@ -99,12 +99,9 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
-enable_gazebo_gui_follow_camera="$(
-  normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
-)"
-gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
-gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
-gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
+gazebo_gui_follow_target="x500_lidar_2d_0"
+gazebo_gui_follow_offset="-12 0 6"
+gazebo_gui_follow_wait_s="60"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -117,7 +114,7 @@ runtime_gazebo_gui_config_file="${runtime_gui_dir}/city_nav_gui.config"
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
 px4_plugins_dir="${px4_build_dir}/src/modules/simulation/gz_plugins"
 px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
-gazebo_gui_config_file="${GZ_GUI_CONFIG_FILE:-${runtime_gazebo_gui_config_file}}"
+gazebo_gui_config_file="${runtime_gazebo_gui_config_file}"
 
 if [[ ! -d "${px4_dir}" ]]; then
   echo "PX4-Autopilot was not found at ${px4_dir}" >&2
@@ -241,9 +238,6 @@ find_default_gazebo_gui_config() {
   local candidate
   local search_paths=()
 
-  if [[ -n "${GZ_GUI_BASE_CONFIG_FILE:-}" ]]; then
-    search_paths+=("${GZ_GUI_BASE_CONFIG_FILE}")
-  fi
   if [[ -n "${CONDA_PREFIX:-}" ]]; then
     search_paths+=("${CONDA_PREFIX}"/share/gz/gz-sim*/gui/gui.config)
   fi
@@ -262,14 +256,6 @@ find_default_gazebo_gui_config() {
 }
 
 prepare_gazebo_gui_config() {
-  if [[ -n "${GZ_GUI_CONFIG_FILE:-}" ]]; then
-    if [[ ! -f "${gazebo_gui_config_file}" ]]; then
-      echo "Gazebo GUI config file was not found: ${gazebo_gui_config_file}" >&2
-      exit 1
-    fi
-    return 0
-  fi
-
   local default_config
   if ! default_config="$(find_default_gazebo_gui_config)"; then
     echo "WARNING: default Gazebo GUI config was not found; using Gazebo defaults."
@@ -414,14 +400,14 @@ configure_gazebo_gui_follow_camera() {
   read -r offset_x offset_y offset_z extra_offset <<< "${offset}"
   if [[ -z "${offset_x:-}" || -z "${offset_y:-}" || -z "${offset_z:-}" ||
     -n "${extra_offset:-}" ]]; then
-    echo "WARNING: invalid GZ_GUI_FOLLOW_OFFSET='${offset}', expected 'x y z'."
+    echo "WARNING: invalid Gazebo GUI follow offset '${offset}', expected 'x y z'."
     return 0
   fi
 
   if [[ "${wait_s}" =~ ^[0-9]+$ ]]; then
     attempts="${wait_s}"
   else
-    echo "WARNING: invalid GZ_GUI_FOLLOW_WAIT_S='${wait_s}', using 60s."
+    echo "WARNING: invalid Gazebo GUI follow wait '${wait_s}', using 60s."
     attempts=60
   fi
 
@@ -476,7 +462,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
-echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
+echo "Gazebo GUI follow camera: target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "Gazebo GUI config: ${gazebo_gui_config_file:-gazebo_default}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
@@ -513,13 +499,11 @@ echo "Gazebo resources: ${runtime_dir}"
     fi
     gz sim "${gz_gui_args[@]}" > /dev/null 2>&1 &
     gz_gui_pid=$!
-    if bool_is_true "${enable_gazebo_gui_follow_camera}"; then
-      configure_gazebo_gui_follow_camera \
-        "${gazebo_gui_follow_target}" \
-        "${gazebo_gui_follow_offset}" \
-        "${gazebo_gui_follow_wait_s}" &
-      gz_follow_pid=$!
-    fi
+    configure_gazebo_gui_follow_camera \
+      "${gazebo_gui_follow_target}" \
+      "${gazebo_gui_follow_offset}" \
+      "${gazebo_gui_follow_wait_s}" &
+    gz_follow_pid=$!
     wait "${gz_server_pid}" "${gz_gui_pid}"
   else
     wait "${gz_server_pid}"
