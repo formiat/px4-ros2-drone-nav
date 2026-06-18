@@ -47,10 +47,8 @@ struct PublishedPathSafetySummary {
   std::size_t segments{0U};
   std::size_t prohibited_segments{0U};
   std::size_t occupied_segments{0U};
-  std::size_t escape_segments{0U};
   double prohibited_length_m{0.0};
   double occupied_length_m{0.0};
-  double escape_prohibited_length_m{0.0};
 };
 
 enum class PathPublicationReason : std::uint8_t {
@@ -735,23 +733,6 @@ private:
     return true;
   }
 
-  [[nodiscard]] bool escapeSegmentLeavesInflation(const OccupancyGrid2D& grid,
-                                                  const Point2 start,
-                                                  const Point2 end) const {
-    const auto start_cell = grid.worldToCell(start);
-    const auto end_cell = grid.worldToCell(end);
-    if (!start_cell.has_value() || !end_cell.has_value()) {
-      return false;
-    }
-    if (!grid.isProhibited(*start_cell) || grid.isOccupied(*start_cell) ||
-        grid.isProhibited(*end_cell)) {
-      return false;
-    }
-
-    const double occupied_length_m = pathSegmentOccupiedLengthM(grid, start, end);
-    return std::isfinite(occupied_length_m) && occupied_length_m <= 0.0;
-  }
-
   [[nodiscard]] bool
   pathIsPublishableAfterFinalEdits(const OccupancyGrid2D& grid,
                                    std::span<const Point2> path_points,
@@ -768,16 +749,6 @@ private:
       }
 
       const std::size_t segment_index = index - 1U;
-      if (segment_index == 0U &&
-          escapeSegmentLeavesInflation(grid, segment_start, segment_end)) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000,
-                             "%s path allows first segment as an inflated-zone escape: "
-                             "segment=0 start=(%.2f, %.2f) end=(%.2f, %.2f)",
-                             source_label, segment_start.x, segment_start.y,
-                             segment_end.x, segment_end.y);
-        continue;
-      }
-
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "%s path segment intersects prohibited cells after final path edits: "
@@ -806,13 +777,8 @@ private:
           pathSegmentProhibitedLengthM(grid, segment_start, segment_end);
       const double occupied_length_m =
           pathSegmentOccupiedLengthM(grid, segment_start, segment_end);
-      const bool escape_segment =
-          index == 1U && escapeSegmentLeavesInflation(grid, segment_start, segment_end);
 
-      if (escape_segment && prohibited_length_m > 0.0) {
-        ++summary.escape_segments;
-        summary.escape_prohibited_length_m += prohibited_length_m;
-      } else if (prohibited_length_m > 0.0) {
+      if (prohibited_length_m > 0.0) {
         ++summary.prohibited_segments;
         summary.prohibited_length_m += prohibited_length_m;
       }
@@ -837,24 +803,20 @@ private:
       RCLCPP_WARN(get_logger(),
                   "%s published path safety: segments=%zu prohibited_segments=%zu "
                   "prohibited_length=%.2fm occupied_segments=%zu "
-                  "occupied_length=%.2fm escape_segments=%zu "
-                  "escape_prohibited_length=%.2fm",
+                  "occupied_length=%.2fm",
                   source_label, summary.segments, summary.prohibited_segments,
                   summary.prohibited_length_m, summary.occupied_segments,
-                  summary.occupied_length_m, summary.escape_segments,
-                  summary.escape_prohibited_length_m);
+                  summary.occupied_length_m);
       return;
     }
 
     RCLCPP_INFO(get_logger(),
                 "%s published path safety: segments=%zu prohibited_segments=%zu "
                 "prohibited_length=%.2fm occupied_segments=%zu "
-                "occupied_length=%.2fm escape_segments=%zu "
-                "escape_prohibited_length=%.2fm",
+                "occupied_length=%.2fm",
                 source_label, summary.segments, summary.prohibited_segments,
                 summary.prohibited_length_m, summary.occupied_segments,
-                summary.occupied_length_m, summary.escape_segments,
-                summary.escape_prohibited_length_m);
+                summary.occupied_length_m);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -1098,11 +1060,6 @@ private:
         deferDistantStablePathBlockIfApplicable(decision)) {
       return true;
     }
-    if ((decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed ||
-         decision.reason == StablePathDecisionReason::kProhibitedConfirmed) &&
-        keepInflationEscapePathIfApplicable(grid, decision)) {
-      return true;
-    }
 
     if (decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed) {
       stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
@@ -1192,32 +1149,6 @@ private:
         decision.deviation_m, decision.prohibited_segment_index,
         decision.prohibited_length_m, distance_to_prohibited_segment_m,
         stable_path_prohibited_replan_horizon_m_);
-    return true;
-  }
-
-  bool keepInflationEscapePathIfApplicable(const OccupancyGrid2D& grid,
-                                           const StablePathDecision& decision) {
-    if (decision.prohibited_segment_index != 0U ||
-        decision.remaining_path.size() < 2U) {
-      return false;
-    }
-    const Point2 segment_start = decision.remaining_path[0];
-    const Point2 segment_end = decision.remaining_path[1];
-    if (!escapeSegmentLeavesInflation(grid, segment_start, segment_end)) {
-      return false;
-    }
-
-    stable_path_prohibited_confirmations_ = 0;
-    last_valid_path_points_ = decision.remaining_path;
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "Keeping current path because the first prohibited segment is an "
-        "inflated-zone escape: reason=%s remaining_waypoints=%zu deviation=%.2fm "
-        "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
-        "segment_end=(%.2f, %.2f)",
-        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.prohibited_length_m, segment_start.x,
-        segment_start.y, segment_end.x, segment_end.y);
     return true;
   }
 

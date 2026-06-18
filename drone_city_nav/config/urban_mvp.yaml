@@ -137,9 +137,6 @@ px4_offboard_node:
     braking_safety_margin_m: 1.0
     turn_slowdown_angle_rad: 0.35
     turn_slowdown_min_speed_mps: 0.8
-    narrow_clearance_slowdown_radius_m: 12.0
-    narrow_clearance_min_speed_mps: 0.8
-    clearance_braking_margin_m: 0.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     velocity_feedforward_enabled: true
@@ -151,10 +148,6 @@ px4_offboard_node:
     path_switch_hysteresis_m: 6.0
     path_continuity_reuse_radius_m: 12.0
     path_continuity_max_target_distance_m: 20.0
-    target_segment_safety_check_enabled: true
-    clearance_escape_enabled: true
-    clearance_escape_step_m: 0.5
-    clearance_escape_min_improvement_m: 0.05
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true

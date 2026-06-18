@@ -17,9 +17,6 @@ namespace {
   config.braking_safety_margin_m = 1.0;
   config.turn_slowdown_angle_rad = 0.5;
   config.turn_slowdown_min_speed_mps = 2.0;
-  config.narrow_clearance_slowdown_radius_m = 6.0;
-  config.narrow_clearance_min_speed_mps = 1.0;
-  config.clearance_braking_margin_m = 1.0;
   config.max_commanded_target_step_m = 2.0;
   return config;
 }
@@ -30,7 +27,6 @@ namespace {
   input.controller_dt_s = 0.1;
   input.distance_to_goal_m = 100.0;
   input.turn_angle_rad = 0.0;
-  input.local_clearance_m = std::numeric_limits<double>::infinity();
   input.actual_speed_mps = 0.0;
   return input;
 }
@@ -88,52 +84,6 @@ TEST(OffboardSpeedController, SharpTurnUsesTurnSlowdownLimit) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTurn);
 }
 
-TEST(OffboardSpeedController, NarrowClearanceUsesClearanceLimit) {
-  SpeedControllerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  OffboardSpeedController controller{config};
-  SpeedControllerInput input = cruiseInput();
-  input.local_clearance_m = 1.5;
-
-  const SpeedControllerOutput output = controller.update(input);
-
-  EXPECT_NEAR(output.requested_speed_mps, 2.0, 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
-}
-
-TEST(OffboardSpeedController, ClearanceBrakingLimitCanBeatLinearRamp) {
-  SpeedControllerConfig config = testConfig();
-  config.desired_speed_mps = 10.0;
-  config.max_accel_mps2 = 2.0;
-  config.narrow_clearance_slowdown_radius_m = 10.0;
-  config.narrow_clearance_min_speed_mps = 0.0;
-  config.max_commanded_target_step_m = 100.0;
-  OffboardSpeedController controller{config};
-  SpeedControllerInput input = cruiseInput();
-  input.controller_dt_s = 10.0;
-  input.local_clearance_m = 1.5;
-
-  const SpeedControllerOutput output = controller.update(input);
-
-  EXPECT_NEAR(output.allowed_speed_mps, std::sqrt(2.0), 1.0e-9);
-  EXPECT_NEAR(output.requested_speed_mps, std::sqrt(2.0), 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
-}
-
-TEST(OffboardSpeedController, ClearanceInsideBrakingMarginStops) {
-  SpeedControllerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  OffboardSpeedController controller{config};
-  SpeedControllerInput input = cruiseInput();
-  input.local_clearance_m = 0.5;
-
-  const SpeedControllerOutput output = controller.update(input);
-
-  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 0.0);
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kClearance);
-}
-
 TEST(OffboardSpeedController, HoldModeRequestsZeroSpeed) {
   OffboardSpeedController controller{testConfig()};
   SpeedControllerInput input = cruiseInput();
@@ -159,7 +109,7 @@ TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
-TEST(OffboardSpeedController, ClearanceOverspeedRequestsStop) {
+TEST(OffboardSpeedController, TrackingOverspeedDeceleratesWithoutStopping) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -169,33 +119,14 @@ TEST(OffboardSpeedController, ClearanceOverspeedRequestsStop) {
   config.max_accel_mps2 = 2.0;
   controller.setConfig(config);
   SpeedControllerInput input = cruiseInput();
-  input.local_clearance_m = 1.5;
-  input.actual_speed_mps = 5.0;
-
-  const SpeedControllerOutput output = controller.update(input);
-  const double expected_allowed_speed = std::numbers::sqrt2;
-
-  EXPECT_NEAR(output.allowed_speed_mps, expected_allowed_speed, 1.0e-9);
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
-}
-
-TEST(OffboardSpeedController, ClearanceOverspeedStopsEvenWhenGoalLimitWins) {
-  SpeedControllerConfig config = testConfig();
-  config.max_accel_mps2 = 2.0;
-  OffboardSpeedController controller{config};
-
-  SpeedControllerInput input = cruiseInput();
-  input.distance_to_goal_m = 2.0;
-  input.local_clearance_m = 1.5;
+  input.turn_angle_rad = std::numbers::pi;
   input.actual_speed_mps = 5.0;
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_LT(output.limits.goal_limit_mps, output.limits.clearance_limit_mps);
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
+  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 1.8);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.18);
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
 }
 

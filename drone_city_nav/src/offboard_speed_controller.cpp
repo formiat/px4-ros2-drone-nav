@@ -60,8 +60,6 @@ const char* speedLimitReasonName(const SpeedLimitReason reason) noexcept {
       return "goal";
     case SpeedLimitReason::kTurn:
       return "turn";
-    case SpeedLimitReason::kClearance:
-      return "clearance";
     case SpeedLimitReason::kHardStepCap:
       return "hard_step_cap";
     case SpeedLimitReason::kTrackingOverspeed:
@@ -120,41 +118,6 @@ double turnLimitedSpeedMps(const SpeedControllerConfig& config,
   return desired + std::clamp(ratio, 0.0, 1.0) * (minimum - desired);
 }
 
-double clearanceLimitedSpeedMps(const SpeedControllerConfig& config,
-                                const double local_clearance_m) noexcept {
-  const double desired = boundedDesiredSpeed(config);
-  if (!std::isfinite(local_clearance_m) || desired <= 0.0) {
-    return desired;
-  }
-
-  double limit = desired;
-  const double slowdown_radius =
-      finiteNonNegative(config.narrow_clearance_slowdown_radius_m)
-          ? config.narrow_clearance_slowdown_radius_m
-          : 0.0;
-  if (slowdown_radius > 0.0 && local_clearance_m < slowdown_radius) {
-    const double minimum =
-        boundedMinimum(config.narrow_clearance_min_speed_mps, desired);
-    const double ratio = std::clamp(local_clearance_m / slowdown_radius, 0.0, 1.0);
-    limit = std::min(limit, minimum + ratio * (desired - minimum));
-  }
-
-  const double braking_margin = finiteNonNegative(config.clearance_braking_margin_m)
-                                    ? config.clearance_braking_margin_m
-                                    : 0.0;
-  if (std::isfinite(config.max_accel_mps2) && config.max_accel_mps2 > 0.0) {
-    // Treat obstacle clearance like stopping distance so the setpoint speed
-    // reaches zero before the hard safety margin is consumed.
-    const double stopping_clearance_m =
-        std::max(local_clearance_m - braking_margin, 0.0);
-    const double stopping_limit_mps =
-        std::sqrt(2.0 * config.max_accel_mps2 * stopping_clearance_m);
-    limit = std::min(limit, stopping_limit_mps);
-  }
-
-  return limit;
-}
-
 double advanceToward(const double current, const double target,
                      const double max_delta) noexcept {
   if (!std::isfinite(current) || !std::isfinite(target) ||
@@ -203,16 +166,11 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   SpeedLimitBreakdown limits{};
   limits.goal_limit_mps = brakingLimitedSpeedMps(config_, input.distance_to_goal_m);
   limits.turn_limit_mps = turnLimitedSpeedMps(config_, input.turn_angle_rad);
-  limits.clearance_limit_mps =
-      clearanceLimitedSpeedMps(config_, input.local_clearance_m);
   limits.step_cap_limit_mps =
       config_.max_commanded_target_step_m / input.controller_dt_s;
 
   applyLimit(allowed_speed, reason, limits.goal_limit_mps, SpeedLimitReason::kGoal);
   applyLimit(allowed_speed, reason, limits.turn_limit_mps, SpeedLimitReason::kTurn);
-  applyLimit(allowed_speed, reason, limits.clearance_limit_mps,
-             SpeedLimitReason::kClearance);
-  const SpeedLimitReason allowed_speed_reason = reason;
 
   const double max_speed_delta = config_.max_accel_mps2 * input.controller_dt_s;
   double requested_speed =
@@ -237,16 +195,8 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   }
   if (finiteNonNegative(input.actual_speed_mps) &&
       input.actual_speed_mps > allowed_speed + max_speed_delta) {
-    const bool clearance_tracking_overspeed =
-        std::isfinite(limits.clearance_limit_mps) &&
-        input.actual_speed_mps > limits.clearance_limit_mps + max_speed_delta;
-    if (allowed_speed_reason == SpeedLimitReason::kClearance ||
-        clearance_tracking_overspeed) {
-      requested_speed = 0.0;
-    } else {
-      requested_speed =
-          std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
-    }
+    requested_speed =
+        std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
     reason = SpeedLimitReason::kTrackingOverspeed;
   }
   if (step_cap_speed + kEpsilon < requested_speed) {

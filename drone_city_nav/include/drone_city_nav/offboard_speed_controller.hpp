@@ -11,7 +11,6 @@ enum class SpeedLimitReason {
   kAcceleration,
   kGoal,
   kTurn,
-  kClearance,
   kHardStepCap,
   kTrackingOverspeed,
 };
@@ -24,16 +23,12 @@ struct SpeedControllerConfig {
   double braking_safety_margin_m{1.0};
   double turn_slowdown_angle_rad{0.7};
   double turn_slowdown_min_speed_mps{1.5};
-  double narrow_clearance_slowdown_radius_m{7.0};
-  double narrow_clearance_min_speed_mps{1.0};
-  double clearance_braking_margin_m{1.0};
   double max_commanded_target_step_m{0.5};
 };
 
 struct SpeedLimitBreakdown {
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
   double turn_limit_mps{std::numeric_limits<double>::infinity()};
-  double clearance_limit_mps{std::numeric_limits<double>::infinity()};
   double step_cap_limit_mps{std::numeric_limits<double>::infinity()};
 };
 
@@ -42,7 +37,6 @@ struct SpeedControllerInput {
   double controller_dt_s{0.1};
   double distance_to_goal_m{std::numeric_limits<double>::infinity()};
   double turn_angle_rad{0.0};
-  double local_clearance_m{std::numeric_limits<double>::infinity()};
   double actual_speed_mps{0.0};
 };
 
@@ -62,9 +56,6 @@ struct SpeedControllerOutput {
 
 [[nodiscard]] double turnLimitedSpeedMps(const SpeedControllerConfig& config,
                                          double turn_angle_rad) noexcept;
-
-[[nodiscard]] double clearanceLimitedSpeedMps(const SpeedControllerConfig& config,
-                                              double local_clearance_m) noexcept;
 
 [[nodiscard]] double advanceToward(double current, double target,
                                    double max_delta) noexcept;

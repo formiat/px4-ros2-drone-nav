@@ -138,9 +138,6 @@ px4_offboard_node:
     braking_safety_margin_m: 1.5
     turn_slowdown_angle_rad: 0.65
     turn_slowdown_min_speed_mps: 0.5
-    narrow_clearance_slowdown_radius_m: 4.0
-    narrow_clearance_min_speed_mps: 0.4
-    clearance_braking_margin_m: 0.5
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     velocity_feedforward_enabled: false

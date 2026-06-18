@@ -468,9 +468,6 @@ The main simulation parameters are:
   speed before point B.
 - `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - reduce speed
   before sharp path turns.
-- `narrow_clearance_slowdown_radius_m` and
-  `narrow_clearance_min_speed_mps` - reduce speed near occupied or inflated
-  planner grid cells.
 - `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
   target motion at the 10 Hz controller rate.
 - `velocity_feedforward_enabled` - experimental feed-forward flag. It is
@@ -542,8 +539,8 @@ make quality
 - The simulation offboard follower uses a short lookahead so obstacle-avoidance
   waypoints are followed instead of being skipped by a direct-to-goal setpoint.
 - The simulation offboard follower has explicit requested speed, acceleration,
-  goal/turn/clearance slowdown, and a hard per-tick target-step cap. Actual
-  speed is still ultimately limited by PX4 position-controller internals.
+  goal/turn slowdown, and a hard per-tick target-step cap. Actual speed is still
+  ultimately limited by PX4 position-controller internals.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.
