@@ -100,7 +100,7 @@ TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {
   EXPECT_TRUE(grid.isOccupied(GridIndex{5, 2}));
 }
 
-TEST(PlanningGridBuilder, StaticBaselineFiltersDuplicateCurrentLidarCells) {
+TEST(PlanningGridBuilder, SourceUnionInflatesOnceAfterRawObstacleMerge) {
   PlanningGridBuilderConfig config = testConfig();
   config.use_obstacle_memory = false;
   OccupancyGrid2D static_grid{testBounds()};
@@ -124,10 +124,9 @@ TEST(PlanningGridBuilder, StaticBaselineFiltersDuplicateCurrentLidarCells) {
   const OccupancyGrid2D& grid = result.grid.value();
   EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
   EXPECT_TRUE(grid.isProhibited(GridIndex{4, 3}));
-  EXPECT_FALSE(grid.isOccupied(GridIndex{4, 3}));
+  EXPECT_TRUE(grid.isOccupied(GridIndex{4, 3}));
   EXPECT_TRUE(grid.isOccupied(GridIndex{7, 7}));
-  EXPECT_EQ(result.current_lidar.overlay_occupied_cells_applied, 1U);
-  EXPECT_EQ(result.current_lidar.overlay_occupied_cells_excluded, 1U);
+  EXPECT_EQ(result.current_lidar.overlay_occupied_cells_applied, 2U);
 }
 
 TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {

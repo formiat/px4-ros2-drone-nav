@@ -544,11 +544,10 @@ private:
         "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
         "path='%s'] "
         "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
-        "unknown=%zu overlay_occupied=%zu overlay_free=%zu "
-        "excluded_occupied=%zu excluded_free=%zu] "
+        "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
-        "overlay_preserved=%zu overlay_excluded=%zu outside=%zu] "
+        "overlay_preserved=%zu outside=%zu] "
         "source=combined astar_status=%s expanded=%zu cost=%.2f raw_path=%zu "
         "smoothed_path=%zu "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
@@ -575,8 +574,6 @@ private:
         planning_result->memory.source_counts.unknown_cells,
         planning_result->memory.overlay.occupied_cells_applied,
         planning_result->memory.overlay.free_cells_applied,
-        planning_result->memory.overlay.occupied_cells_excluded,
-        planning_result->memory.overlay.free_cells_excluded,
         planning_result->current_lidar.enabled ? "true" : "false",
         planning_result->current_lidar.used ? "true" : "false",
         planning_result->current_lidar.fresh ? "true" : "false",
@@ -586,7 +583,6 @@ private:
         planning_result->current_lidar.occupied_cells,
         planning_result->current_lidar.overlay_occupied_cells_applied,
         planning_result->current_lidar.overlay_occupied_cells_preserved,
-        planning_result->current_lidar.overlay_occupied_cells_excluded,
         planning_result->current_lidar.outside_hits,
         astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,

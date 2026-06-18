@@ -26,7 +26,6 @@ struct CurrentLidarOverlayStats {
   std::size_t occupied_cells{0U};
   std::size_t overlay_occupied_cells_applied{0U};
   std::size_t overlay_occupied_cells_preserved{0U};
-  std::size_t overlay_occupied_cells_excluded{0U};
   std::size_t outside_hits{0U};
 };
 
