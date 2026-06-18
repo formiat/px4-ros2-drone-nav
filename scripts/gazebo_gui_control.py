@@ -29,15 +29,30 @@ class CommandRunner(Protocol):
         ...
 
 
+def _timeout_output_to_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
 def default_runner(args: list[str], timeout_s: float) -> CommandResult:
     gz_command = shlex.split(os.environ.get("GZ_BIN", "gz"))
-    result = subprocess.run(
-        [*gz_command, *args],
-        check=False,
-        text=True,
-        capture_output=True,
-        timeout=timeout_s,
-    )
+    command = [*gz_command, *args]
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _timeout_output_to_text(exc.stdout)
+        stderr = _timeout_output_to_text(exc.stderr)
+        stderr_parts = [part for part in (stderr, str(exc)) if part]
+        return CommandResult(124, stdout, "\n".join(stderr_parts))
     return CommandResult(result.returncode, result.stdout, result.stderr)
 
 

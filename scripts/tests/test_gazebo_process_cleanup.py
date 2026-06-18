@@ -26,6 +26,9 @@ class GazeboProcessCleanupTest(unittest.TestCase):
                     "100 1 100 /usr/bin/gz sim -r -s generated_city.sdf",
                     "101 1 101 gz sim -g",
                     "102 1 102 python3 unrelated.py --arg gazebo",
+                    "103 1 103 python3 note.py --message please run gz sim later",
+                    "104 1 104 rg gz sim scripts/run_city_mvp.sh",
+                    "105 1 105 bash -lc echo gz sim",
                 ]
             )
         )
@@ -51,13 +54,32 @@ class GazeboProcessCleanupTest(unittest.TestCase):
         self.assertEqual([process.pid for process in candidates], [40])
 
     def test_ignores_unrelated_commands_with_gazebo_words(self) -> None:
+        self.assertFalse(cleanup.is_conflicting_gazebo_process("gazebo-helper"))
+        self.assertFalse(
+            cleanup.is_conflicting_gazebo_process(
+                "python3 note.py --message please run gz sim later"
+            )
+        )
+        self.assertFalse(
+            cleanup.is_conflicting_gazebo_process("rg gz sim scripts/run_city_mvp.sh")
+        )
+        self.assertFalse(
+            cleanup.is_conflicting_gazebo_process("bash -lc echo gz sim")
+        )
         self.assertFalse(
             cleanup.is_conflicting_gazebo_process(
                 "python3 note.py --message 'please run gz sim later'"
             )
         )
-        self.assertFalse(cleanup.is_conflicting_gazebo_process("gazebo-helper"))
+
+    def test_matches_gazebo_executable_invocation_shapes(self) -> None:
+        self.assertTrue(cleanup.is_conflicting_gazebo_process("gz sim -g"))
         self.assertTrue(cleanup.is_conflicting_gazebo_process("/opt/gz sim -g"))
+        self.assertTrue(
+            cleanup.is_conflicting_gazebo_process(
+                "/usr/bin/env GZ_SIM_RESOURCE_PATH=/tmp /usr/bin/gz sim -s old.sdf"
+            )
+        )
 
     def test_parse_invalid_lines_is_tolerant(self) -> None:
         processes = cleanup.parse_ps_output(

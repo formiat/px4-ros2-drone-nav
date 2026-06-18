@@ -28,12 +28,43 @@ def _split_command(cmd: str) -> list[str]:
         return cmd.split()
 
 
+def _command_index_after_env_wrapper(tokens: list[str]) -> int:
+    if not tokens or os.path.basename(tokens[0]) != "env":
+        return 0
+
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            return index + 1
+        if token.startswith("-"):
+            if token in {"-i", "-0"}:
+                index += 1
+                continue
+            if token in {"-u", "-C", "-S"}:
+                index += 2
+                continue
+            if token.startswith(("-u", "-C", "-S")):
+                index += 1
+                continue
+            index += 1
+            continue
+        if "=" in token and not token.startswith("="):
+            index += 1
+            continue
+        break
+    return index
+
+
 def is_conflicting_gazebo_process(cmd: str) -> bool:
     tokens = _split_command(cmd)
-    for index, token in enumerate(tokens[:-1]):
-        if os.path.basename(token) == "gz" and tokens[index + 1] == "sim":
-            return True
-    return False
+    command_index = _command_index_after_env_wrapper(tokens)
+    if command_index + 1 >= len(tokens):
+        return False
+    return (
+        os.path.basename(tokens[command_index]) == "gz"
+        and tokens[command_index + 1] == "sim"
+    )
 
 
 def parse_ps_line(line: str) -> ProcessInfo | None:

@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "gazebo_gui_control.py"
@@ -96,6 +97,21 @@ class GazeboGuiControlTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(runner.calls, [])
+
+    def test_default_runner_converts_timeout_to_retryable_result(self) -> None:
+        timeout = gui.subprocess.TimeoutExpired(
+            cmd=["gz", "service"],
+            timeout=2.0,
+            output=b"partial stdout",
+            stderr=b"partial stderr",
+        )
+        with mock.patch.object(gui.subprocess, "run", side_effect=timeout):
+            result = gui.default_runner(["service"], 2.0)
+
+        self.assertEqual(result.returncode, 124)
+        self.assertIn("partial stdout", result.stdout)
+        self.assertIn("partial stderr", result.stderr)
+        self.assertIn("timed out", result.stderr)
 
 
 if __name__ == "__main__":
