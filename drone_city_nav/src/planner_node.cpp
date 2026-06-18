@@ -43,6 +43,16 @@ namespace {
 
 constexpr double kPublishedPathCollinearityToleranceM = 0.05;
 
+struct PublishedPathSafetySummary {
+  std::size_t segments{0U};
+  std::size_t prohibited_segments{0U};
+  std::size_t occupied_segments{0U};
+  std::size_t escape_segments{0U};
+  double prohibited_length_m{0.0};
+  double occupied_length_m{0.0};
+  double escape_prohibited_length_m{0.0};
+};
+
 [[nodiscard]] double
 pathDistanceToSegmentStart(const std::span<const Point2> path_points,
                            const std::size_t segment_start_index) noexcept {
@@ -534,9 +544,11 @@ private:
         "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
         "path='%s'] "
         "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
-        "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
+        "unknown=%zu overlay_occupied=%zu overlay_free=%zu "
+        "excluded_occupied=%zu excluded_free=%zu] "
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
-        "altitude_rejected=%zu occupied_cells=%zu outside=%zu] "
+        "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
+        "overlay_preserved=%zu overlay_excluded=%zu outside=%zu] "
         "source=combined astar_status=%s expanded=%zu cost=%.2f raw_path=%zu "
         "smoothed_path=%zu "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
@@ -563,6 +575,8 @@ private:
         planning_result->memory.source_counts.unknown_cells,
         planning_result->memory.overlay.occupied_cells_applied,
         planning_result->memory.overlay.free_cells_applied,
+        planning_result->memory.overlay.occupied_cells_excluded,
+        planning_result->memory.overlay.free_cells_excluded,
         planning_result->current_lidar.enabled ? "true" : "false",
         planning_result->current_lidar.used ? "true" : "false",
         planning_result->current_lidar.fresh ? "true" : "false",
@@ -570,6 +584,9 @@ private:
         planning_result->current_lidar.hit_beams,
         planning_result->current_lidar.altitude_rejected_beams,
         planning_result->current_lidar.occupied_cells,
+        planning_result->current_lidar.overlay_occupied_cells_applied,
+        planning_result->current_lidar.overlay_occupied_cells_preserved,
+        planning_result->current_lidar.overlay_occupied_cells_excluded,
         planning_result->current_lidar.outside_hits,
         astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,
@@ -693,6 +710,7 @@ private:
 
     last_valid_path_points_ = path_points;
     stable_path_prohibited_confirmations_ = 0;
+    logPublishedPathSafety(grid, path_points, source_label);
     publishPath(path_points);
     return true;
   }
@@ -750,6 +768,73 @@ private:
     }
 
     return true;
+  }
+
+  [[nodiscard]] PublishedPathSafetySummary
+  summarizePublishedPathSafety(const OccupancyGrid2D& grid,
+                               const std::span<const Point2> path_points) const {
+    PublishedPathSafetySummary summary{};
+    if (path_points.size() < 2U) {
+      return summary;
+    }
+
+    summary.segments = path_points.size() - 1U;
+    for (std::size_t index = 1U; index < path_points.size(); ++index) {
+      const Point2 segment_start = path_points[index - 1U];
+      const Point2 segment_end = path_points[index];
+      const double prohibited_length_m =
+          pathSegmentProhibitedLengthM(grid, segment_start, segment_end);
+      const double occupied_length_m =
+          pathSegmentOccupiedLengthM(grid, segment_start, segment_end);
+      const bool escape_segment =
+          index == 1U && escapeSegmentLeavesInflation(grid, segment_start, segment_end);
+
+      if (escape_segment && prohibited_length_m > 0.0) {
+        ++summary.escape_segments;
+        summary.escape_prohibited_length_m += prohibited_length_m;
+      } else if (prohibited_length_m > 0.0) {
+        ++summary.prohibited_segments;
+        summary.prohibited_length_m += prohibited_length_m;
+      }
+
+      if (occupied_length_m > 0.0) {
+        ++summary.occupied_segments;
+        summary.occupied_length_m += occupied_length_m;
+      }
+    }
+
+    return summary;
+  }
+
+  void logPublishedPathSafety(const OccupancyGrid2D& grid,
+                              const std::span<const Point2> path_points,
+                              const char* source_label) const {
+    const PublishedPathSafetySummary summary =
+        summarizePublishedPathSafety(grid, path_points);
+    const bool unsafe_path =
+        summary.prohibited_segments > 0U || summary.occupied_segments > 0U;
+    if (unsafe_path) {
+      RCLCPP_WARN(get_logger(),
+                  "%s published path safety: segments=%zu prohibited_segments=%zu "
+                  "prohibited_length=%.2fm occupied_segments=%zu "
+                  "occupied_length=%.2fm escape_segments=%zu "
+                  "escape_prohibited_length=%.2fm",
+                  source_label, summary.segments, summary.prohibited_segments,
+                  summary.prohibited_length_m, summary.occupied_segments,
+                  summary.occupied_length_m, summary.escape_segments,
+                  summary.escape_prohibited_length_m);
+      return;
+    }
+
+    RCLCPP_INFO(get_logger(),
+                "%s published path safety: segments=%zu prohibited_segments=%zu "
+                "prohibited_length=%.2fm occupied_segments=%zu "
+                "occupied_length=%.2fm escape_segments=%zu "
+                "escape_prohibited_length=%.2fm",
+                source_label, summary.segments, summary.prohibited_segments,
+                summary.prohibited_length_m, summary.occupied_segments,
+                summary.occupied_length_m, summary.escape_segments,
+                summary.escape_prohibited_length_m);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -1050,6 +1135,11 @@ private:
     if ((decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed ||
          decision.reason == StablePathDecisionReason::kProhibitedConfirmed) &&
         deferDistantStablePathBlockIfApplicable(decision)) {
+      return true;
+    }
+    if ((decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed ||
+         decision.reason == StablePathDecisionReason::kProhibitedConfirmed) &&
+        keepInflationEscapePathIfApplicable(grid, decision)) {
       return true;
     }
 

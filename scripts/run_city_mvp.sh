@@ -177,20 +177,17 @@ prepare_runtime_resources() {
   for px4_model in "${px4_models_dir}"/*; do
     [[ -d "${px4_model}" ]] || continue
     model_name="$(basename "${px4_model}")"
-    if [[ -n "${headless}" &&
-      ( "${model_name}" == "x500_lidar_2d" ||
-        "${model_name}" == "lidar_2d_v2" ) ]]; then
+    if [[ "${model_name}" == "x500_lidar_2d" ||
+      "${model_name}" == "lidar_2d_v2" ]]; then
       continue
     fi
     ln -s "${px4_model}" "${runtime_models_dir}/${model_name}"
   done
 
-  if [[ -n "${headless}" ]]; then
-    ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
-      "${runtime_models_dir}/x500_lidar_2d"
-    ln -s "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
-      "${runtime_models_dir}/lidar_2d_v2"
-  fi
+  ln -s "${repo_root}/drone_city_nav/models/x500_lidar_2d" \
+    "${runtime_models_dir}/x500_lidar_2d"
+  ln -s "${repo_root}/drone_city_nav/models/lidar_2d_v2" \
+    "${runtime_models_dir}/lidar_2d_v2"
 }
 
 prepare_runtime_resources

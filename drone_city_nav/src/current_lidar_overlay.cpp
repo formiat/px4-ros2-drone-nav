@@ -80,6 +80,9 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
   const GridOverlayStats overlay_stats =
       overlayCurrentLidarCells(grid, current_lidar_grid);
   stats.occupied_cells = overlay_stats.source_occupied_cells;
+  stats.overlay_occupied_cells_applied = overlay_stats.occupied_cells_applied;
+  stats.overlay_occupied_cells_preserved = overlay_stats.occupied_cells_preserved;
+  stats.overlay_occupied_cells_excluded = overlay_stats.occupied_cells_excluded;
   return stats;
 }
 

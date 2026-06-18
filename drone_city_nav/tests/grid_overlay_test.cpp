@@ -51,6 +51,25 @@ TEST(GridOverlay, CurrentLidarOccupiedBlocksWithoutMemory) {
   EXPECT_EQ(stats.occupied_cells_applied, 1U);
 }
 
+TEST(GridOverlay, ProhibitedExclusionSkipsStaticSafetyDuplicates) {
+  OccupancyGrid2D destination = makeOverlayGrid();
+  destination.setOccupied(GridIndex{2, 2});
+  OccupancyGrid2D static_prohibited_baseline = destination;
+  static_prohibited_baseline.rebuildInflation(1.1);
+  OccupancyGrid2D current_lidar = makeOverlayGrid();
+  current_lidar.setOccupied(GridIndex{3, 2});
+  current_lidar.setOccupied(GridIndex{5, 5});
+
+  const GridOverlayStats stats = overlayCurrentLidarCellsExcludingProhibited(
+      destination, current_lidar, static_prohibited_baseline);
+
+  EXPECT_FALSE(destination.isOccupied(GridIndex{3, 2}));
+  EXPECT_TRUE(destination.isOccupied(GridIndex{5, 5}));
+  EXPECT_EQ(stats.source_occupied_cells, 2U);
+  EXPECT_EQ(stats.occupied_cells_applied, 1U);
+  EXPECT_EQ(stats.occupied_cells_excluded, 1U);
+}
+
 TEST(GridOverlay, EmptySourceDoesNotChangeDestination) {
   OccupancyGrid2D destination = makeOverlayGrid();
   OccupancyGrid2D empty_source = makeOverlayGrid();

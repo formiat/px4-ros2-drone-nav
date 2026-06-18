@@ -46,6 +46,35 @@ GridOverlayStats overlayOccupiedCells(OccupancyGrid2D& destination,
   return stats;
 }
 
+GridOverlayStats
+overlayOccupiedCellsExcludingProhibited(OccupancyGrid2D& destination,
+                                        const OccupancyGrid2D& source,
+                                        const OccupancyGrid2D& prohibited_exclusion) {
+  requireSameGridGeometry(destination, source);
+  requireSameGridGeometry(destination, prohibited_exclusion);
+  GridOverlayStats stats{};
+  for (int y = 0; y < source.height(); ++y) {
+    for (int x = 0; x < source.width(); ++x) {
+      const GridIndex cell{x, y};
+      if (!source.isOccupied(cell)) {
+        continue;
+      }
+      ++stats.source_occupied_cells;
+      if (destination.isOccupied(cell)) {
+        ++stats.occupied_cells_preserved;
+        continue;
+      }
+      if (prohibited_exclusion.isProhibited(cell)) {
+        ++stats.occupied_cells_excluded;
+        continue;
+      }
+      destination.setOccupied(cell);
+      ++stats.occupied_cells_applied;
+    }
+  }
+  return stats;
+}
+
 GridOverlayStats overlayKnownMemoryCells(OccupancyGrid2D& destination,
                                          const OccupancyGrid2D& memory) {
   requireSameGridGeometry(destination, memory);
@@ -80,9 +109,60 @@ GridOverlayStats overlayKnownMemoryCells(OccupancyGrid2D& destination,
   return stats;
 }
 
+GridOverlayStats overlayKnownMemoryCellsExcludingProhibited(
+    OccupancyGrid2D& destination, const OccupancyGrid2D& memory,
+    const OccupancyGrid2D& prohibited_exclusion) {
+  requireSameGridGeometry(destination, memory);
+  requireSameGridGeometry(destination, prohibited_exclusion);
+  GridOverlayStats stats{};
+  for (int y = 0; y < memory.height(); ++y) {
+    for (int x = 0; x < memory.width(); ++x) {
+      const GridIndex cell{x, y};
+      if (memory.isOccupied(cell)) {
+        ++stats.source_occupied_cells;
+        if (destination.isOccupied(cell)) {
+          ++stats.occupied_cells_preserved;
+          continue;
+        }
+        if (prohibited_exclusion.isProhibited(cell)) {
+          ++stats.occupied_cells_excluded;
+          continue;
+        }
+        destination.setOccupied(cell);
+        ++stats.occupied_cells_applied;
+        continue;
+      }
+      if (memory.state(cell) != CellState::kFree) {
+        continue;
+      }
+      ++stats.source_free_cells;
+      if (destination.isOccupied(cell)) {
+        ++stats.occupied_cells_preserved;
+        continue;
+      }
+      if (prohibited_exclusion.isProhibited(cell)) {
+        ++stats.free_cells_excluded;
+        continue;
+      }
+      if (destination.state(cell) == CellState::kUnknown) {
+        destination.setFree(cell);
+        ++stats.free_cells_applied;
+      }
+    }
+  }
+  return stats;
+}
+
 GridOverlayStats overlayCurrentLidarCells(OccupancyGrid2D& destination,
                                           const OccupancyGrid2D& current_lidar) {
   return overlayOccupiedCells(destination, current_lidar);
+}
+
+GridOverlayStats overlayCurrentLidarCellsExcludingProhibited(
+    OccupancyGrid2D& destination, const OccupancyGrid2D& current_lidar,
+    const OccupancyGrid2D& prohibited_exclusion) {
+  return overlayOccupiedCellsExcludingProhibited(destination, current_lidar,
+                                                 prohibited_exclusion);
 }
 
 } // namespace drone_city_nav

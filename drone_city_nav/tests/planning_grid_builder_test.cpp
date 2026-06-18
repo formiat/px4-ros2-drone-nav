@@ -100,6 +100,36 @@ TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {
   EXPECT_TRUE(grid.isOccupied(GridIndex{5, 2}));
 }
 
+TEST(PlanningGridBuilder, StaticBaselineFiltersDuplicateCurrentLidarCells) {
+  PlanningGridBuilderConfig config = testConfig();
+  config.use_obstacle_memory = false;
+  OccupancyGrid2D static_grid{testBounds()};
+  static_grid.setOccupied(GridIndex{3, 3});
+  OccupancyGrid2D current_lidar_grid{testBounds()};
+  current_lidar_grid.setOccupied(GridIndex{4, 3});
+  current_lidar_grid.setOccupied(GridIndex{7, 7});
+  PlanningGridSources sources{};
+  sources.static_grid = &static_grid;
+  sources.current_lidar_grid = &current_lidar_grid;
+  sources.current_lidar.enabled = true;
+  sources.current_lidar.used = true;
+  sources.current_lidar.fresh = true;
+  sources.current_lidar.occupied_cells = 2U;
+
+  const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
+
+  ASSERT_EQ(result.status, PlanningGridStatus::kReady);
+  ASSERT_TRUE(result.grid.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const OccupancyGrid2D& grid = result.grid.value();
+  EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{4, 3}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{4, 3}));
+  EXPECT_TRUE(grid.isOccupied(GridIndex{7, 7}));
+  EXPECT_EQ(result.current_lidar.overlay_occupied_cells_applied, 1U);
+  EXPECT_EQ(result.current_lidar.overlay_occupied_cells_excluded, 1U);
+}
+
 TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {
   PlanningGridBuilderConfig config = testConfig();
   config.use_static_map = false;
