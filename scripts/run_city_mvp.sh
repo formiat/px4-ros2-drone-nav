@@ -99,9 +99,10 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
-gazebo_gui_follow_target="x500_lidar_2d_0"
-gazebo_gui_follow_offset="-12 0 6"
-gazebo_gui_follow_wait_s="60"
+gazebo_gui_follow_camera="$(normalize_bool "${GAZEBO_GUI_FOLLOW_CAMERA:-true}")"
+gazebo_gui_follow_target="${GAZEBO_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
+gazebo_gui_follow_offset="${GAZEBO_GUI_FOLLOW_OFFSET:--12 0 6}"
+gazebo_gui_follow_wait_s="${GAZEBO_GUI_FOLLOW_WAIT_S:-60}"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -267,22 +268,6 @@ prepare_gazebo_gui_config() {
   perl -0pi -e \
     's#<start_paused>\s*true\s*</start_paused>#<start_paused>false</start_paused>#g' \
     "${runtime_gazebo_gui_config_file}"
-  if ! grep -q 'filename="CameraTrackingConfig"' \
-    "${runtime_gazebo_gui_config_file}"; then
-    perl -0pi -e '
-      s#(<plugin filename="CameraTracking" name="Camera Tracking">\s*<gz-gui>.*?</gz-gui>\s*</plugin>)#$1
-<plugin filename="CameraTrackingConfig" name="Camera Tracking Config">
-  <gz-gui>
-    <title>Camera Tracking Config</title>
-    <property key="state" type="string">floating</property>
-    <property key="resizable" type="bool">true</property>
-    <property key="width" type="double">360</property>
-    <property key="height" type="double">240</property>
-    <property key="showTitleBar" type="bool">true</property>
-  </gz-gui>
-</plugin>#s
-    ' "${runtime_gazebo_gui_config_file}"
-  fi
 }
 
 prepare_runtime_resources
@@ -462,7 +447,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
-echo "Gazebo GUI follow camera: target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
+echo "Gazebo GUI follow camera: enabled=${gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "Gazebo GUI config: ${gazebo_gui_config_file:-gazebo_default}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
@@ -499,11 +484,13 @@ echo "Gazebo resources: ${runtime_dir}"
     fi
     gz sim "${gz_gui_args[@]}" > /dev/null 2>&1 &
     gz_gui_pid=$!
-    configure_gazebo_gui_follow_camera \
-      "${gazebo_gui_follow_target}" \
-      "${gazebo_gui_follow_offset}" \
-      "${gazebo_gui_follow_wait_s}" &
-    gz_follow_pid=$!
+    if [[ "${gazebo_gui_follow_camera}" == "true" ]]; then
+      configure_gazebo_gui_follow_camera \
+        "${gazebo_gui_follow_target}" \
+        "${gazebo_gui_follow_offset}" \
+        "${gazebo_gui_follow_wait_s}" &
+      gz_follow_pid=$!
+    fi
     wait "${gz_server_pid}" "${gz_gui_pid}"
   else
     wait "${gz_server_pid}"
