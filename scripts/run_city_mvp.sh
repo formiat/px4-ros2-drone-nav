@@ -105,6 +105,7 @@ enable_gazebo_gui_follow_camera="$(
 gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
+gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -404,6 +405,50 @@ configure_gazebo_gui_follow_camera() {
   echo "WARNING: Gazebo GUI follow camera was not configured for target '${target}' after ${attempts}s."
 }
 
+configure_gazebo_world_running() {
+  local wait_s="$1"
+  local attempts
+  local attempt
+  local response
+  local confirmed_attempts=0
+
+  if [[ "${wait_s}" =~ ^[0-9]+$ ]]; then
+    attempts="${wait_s}"
+  else
+    echo "WARNING: invalid Gazebo world unpause wait '${wait_s}', using 60s."
+    attempts=60
+  fi
+
+  for ((attempt = 1; attempt <= attempts; ++attempt)); do
+    response="$(
+      gz service \
+        -s "/world/${world_name}/control" \
+        --reqtype gz.msgs.WorldControl \
+        --reptype gz.msgs.Boolean \
+        --timeout 1000 \
+        --req 'pause: false' 2>&1 || true
+    )"
+    if grep -q "data: true" <<< "${response}"; then
+      ((++confirmed_attempts))
+      if [[ "${confirmed_attempts}" -eq 1 ]]; then
+        echo "Gazebo world unpause command accepted: world=${world_name}"
+      fi
+      if [[ "${confirmed_attempts}" -ge 3 ]]; then
+        echo "Gazebo world running command confirmed: world=${world_name}"
+        return 0
+      fi
+    else
+      confirmed_attempts=0
+      if [[ "${attempt}" -eq 1 || $((attempt % 5)) -eq 0 ]]; then
+        echo "Waiting to unpause Gazebo world '${world_name}' (${attempt}/${attempts}): ${response}"
+      fi
+    fi
+    sleep 1
+  done
+
+  echo "WARNING: Gazebo world '${world_name}' was not confirmed running after ${attempts}s."
+}
+
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
 if [[ -n "${GZ_SIM_RESOURCE_PATH:-}" ]]; then
   gz_resource_path="${gz_resource_path}:${GZ_SIM_RESOURCE_PATH}"
@@ -422,6 +467,7 @@ echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
+echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
@@ -431,9 +477,11 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_server_pid=""
   gz_gui_pid=""
   gz_follow_pid=""
+  gz_unpause_pid=""
 
   cleanup_gazebo_children() {
     local pids=()
+    [[ -n "${gz_unpause_pid}" ]] && pids+=("${gz_unpause_pid}")
     [[ -n "${gz_follow_pid}" ]] && pids+=("${gz_follow_pid}")
     [[ -n "${gz_gui_pid}" ]] && pids+=("${gz_gui_pid}")
     [[ -n "${gz_server_pid}" ]] && pids+=("${gz_server_pid}")
@@ -453,6 +501,8 @@ echo "Gazebo resources: ${runtime_dir}"
   if [[ -z "${headless}" ]]; then
     gz sim -g > /dev/null 2>&1 &
     gz_gui_pid=$!
+    configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
+    gz_unpause_pid=$!
     if bool_is_true "${enable_gazebo_gui_follow_camera}"; then
       configure_gazebo_gui_follow_camera \
         "${gazebo_gui_follow_target}" \

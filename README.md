@@ -88,7 +88,9 @@ reject IMU samples. By default, the Gazebo 3D view asks the Gazebo
 `CameraTracking` GUI plugin to follow the PX4-spawned drone model
 `x500_lidar_2d_0`. Disable this with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`,
 change the target with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person
-camera offset with `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`.
+camera offset with `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The GUI launch keeps the
+default Gazebo GUI config path and unpauses the simulation separately through
+Gazebo world control.
 
 Run a native headless smoke validation:
 

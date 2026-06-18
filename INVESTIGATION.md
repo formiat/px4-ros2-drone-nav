@@ -47,7 +47,7 @@
 - `make host-sim-headless`
 - current-environment equivalents: `make build`, `make test`, `make quality`, `make sim-gui`, `make sim-headless`
 
-Для этого investigation round выполнены только non-GUI / non-mission verification commands, потому что задача была исследовательская и визуальные факты уже предоставлены пользователем.
+Для этого investigation round выполнены только non-GUI / non-mission verification commands, потому что задача была исследовательская и визуальные факты уже предоставлены пользователем. После reviewer feedback дополнительно исправлено расхождение между рекомендацией и текущим launch script: GUI остается на прямом `gz sim -g`, а world unpause выполняется отдельной Gazebo transport командой.
 
 # Observed symptom
 
@@ -67,32 +67,34 @@
 
 Между `718deec` и `cf8b9b1` не менялись SDF-модели, world, spawn pose, PX4 model target или GUI camera code. Единственный diff - cleanup логика в `scripts/run_city_mvp.sh`.
 
-Непосредственная техническая зона риска: stale/duplicate Gazebo server/GUI process state между запусками. `cf8b9b1` улучшает cleanup при завершении, но не очищает уже существующие stale Gazebo server processes перед стартом нового запуска.
+Доказанная immediate boundary: между good/bad коммитами изменился только lifecycle/cleanup в `scripts/run_city_mvp.sh`; SDF-модели, world, spawn pose, PX4 model target и GUI camera code не менялись.
+
+Stale/duplicate Gazebo process state остается ведущей гипотезой, но не закрытым root cause: `cf8b9b1` улучшает cleanup при завершении, однако не очищает уже существующие stale Gazebo server processes перед стартом нового запуска. Без live `ps`/GUI snapshot в момент bad run нельзя доказать, что GUI действительно показывал stale scene.
 
 ## Problem 2
 
-Для `b4b9e8c` immediate cause нестарта сценария: GUI использует default Gazebo GUI config, где `WorldControl` имеет `<start_paused>true</start_paused>`. При запуске `gz sim -g` без runtime GUI config GUI может навязать paused state поверх server run mode.
+Для `b4b9e8c` immediate cause нестарта сценария: GUI использует default Gazebo GUI config, где `WorldControl` имеет `<start_paused>true</start_paused>`. При запуске `gz sim -g` без отдельного world-control unpause GUI может навязать paused state поверх server run mode.
 
 Для `41bb70e` immediate cause поломки следящей камеры: commit меняет способ запуска GUI с прямого `gz sim -g` на `gz sim -g --gui-config <runtime_config>`. Код настройки `/gui/follow` при этом остается тем же, поэтому регрессия локализуется в изменении GUI config launch path.
 
 # Causal chain / why chain
 
-## Problem 1 primary chain
+## Problem 1 leading hypothesis chain
 
 Observed symptom:
 `cf8b9b1` показывает мир без 3D-модели дрона, но RViz видит текущую миссию.
 
-Immediate technical cause:
-Gazebo GUI вероятно показывает scene от stale/duplicate Gazebo process или process state, не совпадающий с текущей ROS/PX4 сессией.
+Immediate technical boundary:
+Gazebo GUI показывает мир без 3D-модели дрона, но единственный code diff между good/bad commits находится в cleanup логике. Это ограничивает доказанную причину областью process lifecycle.
 
 Why that happened:
-До `cf8b9b1` cleanup убивал только top-level background jobs shell-скрипта, а не их descendants. Gazebo server/GUI запускаются внутри background subshell, поэтому дочерние `gz sim` процессы могли переживать остановку скрипта.
+Ведущая гипотеза: GUI показывает scene от stale/duplicate Gazebo process или process state, не совпадающий с текущей ROS/PX4 сессией. До `cf8b9b1` cleanup убивал только top-level background jobs shell-скрипта, а не их descendants. Gazebo server/GUI запускаются внутри background subshell, поэтому дочерние `gz sim` процессы могли переживать остановку скрипта.
 
 Why that condition was possible:
 `cf8b9b1` добавил descendant cleanup только на exit текущего запуска. Он не добавил startup cleanup, который удалял бы stale server processes, оставшиеся от предыдущего запуска.
 
-Actionable root cause / unresolved boundary:
-Actionable root cause - process lifecycle был неполным: cleanup был сфокусирован на shutdown, а не на startup isolation. Точный GUI-level механизм невидимости модели требует live GUI/process capture, но code diff доказывает, что между good/bad коммитами не менялась модель или spawn. Направление фикса: перед запуском нового мира убивать stale `gz sim` server processes для runtime world path и логировать найденные PIDs. Это позднее действительно появилось в `main` как `stop_stale_gazebo_servers`.
+Actionable finding / unresolved boundary:
+Actionable finding - process lifecycle был неполным: cleanup был сфокусирован на shutdown, а не на startup isolation. Точный GUI-level механизм невидимости модели требует live GUI/process capture, поэтому stale-scene explanation остается гипотезой. Направление фикса: перед запуском нового мира убивать stale `gz sim` server processes для runtime world path и логировать найденные PIDs. Это позднее действительно появилось в `main` как `stop_stale_gazebo_servers`.
 
 Confidence: medium-high.
 
@@ -119,7 +121,7 @@ Why that condition was possible:
 Исправление pause через GUI config меняет весь путь инициализации Gazebo GUI, хотя для сценария нужен только server/world unpause.
 
 Actionable root cause:
-Нужно разделить управление симуляцией и настройку камеры. Следящая камера должна запускаться тем же путем, что в `b4b9e8c` (`gz sim -g` + `CameraTracking` command), а проблему paused state нужно решать server-side командой `WorldControl { pause: false }`, не подменяя GUI config.
+Нужно разделить управление симуляцией и настройку камеры. Следящая камера должна запускаться тем же путем, что в `b4b9e8c` (`gz sim -g` + `CameraTracking` command), а проблему paused state нужно решать server-side командой `WorldControl { pause: false }`, не подменяя GUI config. Текущий `scripts/run_city_mvp.sh` обновлен в этом направлении: после запуска Gazebo GUI он отправляет `/world/generated_city/control` с `pause: false`.
 
 Confidence: high for regression boundary (`b4b9e8c..41bb70e`); medium for exact internal Gazebo reason why `--gui-config` disables/neutralizes follow camera, because без live GUI instrumentation нельзя увидеть active camera state.
 
@@ -165,20 +167,21 @@ gz sim "${gz_gui_args[@]}" > /dev/null 2>&1 &
 
 - `git diff b4b9e8c..41bb70e -- scripts/run_city_mvp.sh README.md` показывает, что follow function не менялась; ключевое изменение - runtime GUI config и `--gui-config`.
 - `gz msg -i gz.msgs.WorldControl` подтвердил локально, что Gazebo имеет `WorldControl.pause`, то есть unpause можно делать через transport command без GUI config mutation.
+- Текущий `main:scripts/run_city_mvp.sh` после revision добавляет `configure_gazebo_world_running`, который отправляет `pause: false` в `/world/${world_name}/control` и не использует `--gui-config`.
 
 # Root cause / unresolved boundary
 
 ## Problem 1
 
-Root cause вероятнее всего не в модели, не в камере и не в spawn. Между good/bad коммитами эти области не менялись. Root cause - неполная изоляция Gazebo process lifecycle между запусками: на момент `cf8b9b1` уже есть cleanup descendants на exit, но нет startup cleanup stale server state.
+Root cause не закрыт как доказанный факт. Доказано, что причина вероятнее всего не в модели, не в камере и не в spawn: между good/bad коммитами эти области не менялись. Ведущая гипотеза - неполная изоляция Gazebo process lifecycle между запусками: на момент `cf8b9b1` уже есть cleanup descendants на exit, но нет startup cleanup stale server state.
 
-Unresolved boundary: без live process list в момент плохого GUI-прогона нельзя на 100% доказать, какой именно stale process/scene показывал GUI. Для закрытия boundary нужен снимок `ps -eo pid,ppid,cmd | grep 'gz sim'` до старта и во время плохого запуска.
+Unresolved boundary: без live process list в момент плохого GUI-прогона нельзя доказать, что GUI показывал именно stale process/scene. Для закрытия boundary нужен снимок `ps -eo pid,ppid,cmd | grep 'gz sim'` до старта и во время плохого запуска.
 
 ## Problem 2
 
 Root cause - pause был исправлен на неправильном уровне абстракции. Вместо команды управления миром был заменен GUI config, а это изменило поведение camera tracking. Следящая камера и состояние симуляции должны управляться независимо.
 
-Unresolved boundary для текущего `main`: в `main` уже нет runtime `--gui-config`, но есть дополнительная публикация `/gui/track`. Если на текущем `main` follow camera все еще не работает, требуется live verification активной GUI camera state через `/gui/currently_tracked` / `/gui/camera/pose` или воспроизводимый GUI log. Код сейчас логирует только принятие transport command, но не проверяет, что активная камера действительно перешла в FOLLOW.
+Unresolved boundary для текущего `main`: в `main` уже нет runtime `--gui-config`, но есть дополнительная публикация `/gui/track`. Если на текущем `main` follow camera все еще не работает, требуется live verification активной GUI camera state через `/gui/currently_tracked` / `/gui/camera/pose` или воспроизводимый GUI log. Код сейчас логирует принятие transport command и отдельно unpause world command, но не проверяет, что активная камера действительно перешла в FOLLOW.
 
 # Sources checked
 
@@ -215,6 +218,11 @@ git show 41bb70e:scripts/run_city_mvp.sh
 git show main:scripts/run_city_mvp.sh
 ./scripts/host_shell.sh bash -lc 'gz msg -i gz.msgs.WorldControl'
 ./scripts/host_shell.sh bash -lc 'cfg=$(ls $CONDA_PREFIX/share/gz/gz-sim*/gui/gui.config | head -1); nl -ba "$cfg" | sed -n "30,90p;120,145p"'
+bash -n scripts/run_city_mvp.sh
+git diff --check
+make host-format
+make host-quality
+make host-test-scripts
 ```
 
 # Evidence references
@@ -228,15 +236,16 @@ git show main:scripts/run_city_mvp.sh
 - `41bb70e:scripts/run_city_mvp.sh:441-445` - GUI launch through `--gui-config`.
 - `$CONDA_PREFIX/share/gz/gz-sim8/gui/gui.config:74-82` - default `CameraTracking` plugin exists.
 - `$CONDA_PREFIX/share/gz/gz-sim8/gui/gui.config:138-140` - default `WorldControl` starts paused.
-- `main:scripts/run_city_mvp.sh:363-395` - current `main` sends `/gui/follow`, `/gui/follow/offset`, and `/gui/track`, but does not verify active tracked camera state.
+- `main:scripts/run_city_mvp.sh:408-449` - current `main` sends `/world/${world_name}/control` with `pause: false`.
+- `main:scripts/run_city_mvp.sh:501-510` - current `main` launches direct `gz sim -g`, starts world unpause, then configures Gazebo GUI follow camera without `--gui-config`.
 
 # Findings
 
-1. `cf8b9b1` is not a model/rendering diff. It is a process cleanup diff. Therefore the confirmed visible/invisible split most likely comes from Gazebo process lifecycle, not SDF or PX4 spawn.
-2. The later presence of `stop_stale_gazebo_servers` in `main` matches the likely fix direction for problem 1: clean stale Gazebo server processes at startup, not only descendants at exit.
+1. `cf8b9b1` is not a model/rendering diff. It is a process cleanup diff. Therefore the confirmed visible/invisible split should be investigated through Gazebo process lifecycle first, not SDF or PX4 spawn.
+2. The later presence of `stop_stale_gazebo_servers` in `main` matches the likely fix direction for problem 1: clean stale Gazebo server processes at startup, not only descendants at exit. This remains a leading hypothesis until live bad-run process evidence is captured.
 3. `b4b9e8c` correctly introduced follow camera via `CameraTracking` transport services but still used default Gazebo GUI config, whose `WorldControl` starts paused.
 4. `41bb70e` solved pause by mutating and passing a GUI config. That is the first code change that can explain the camera regression because the follow function itself did not change.
-5. Correct architectural fix direction: preserve the direct GUI launch path that made tracking work, and unpause the world through Gazebo transport/server control instead of GUI config replacement.
+5. Correct architectural fix direction: preserve the direct GUI launch path that made tracking work, and unpause the world through Gazebo transport/server control instead of GUI config replacement. The current launch script now follows this direction.
 
 # Relevant code paths
 
@@ -298,16 +307,16 @@ b4b9e8c 2026-06-18 10:06:22 -0300 Add Gazebo GUI drone follow camera
 
 # Conclusions
 
-1. Для проблемы 1 наиболее вероятная причина - не SDF и не камера, а неполная изоляция процессов Gazebo между запусками. `cf8b9b1` меняет только cleanup, и этот cleanup не решает stale processes, уже существующие до старта.
+1. Для проблемы 1 доказанная граница - не SDF и не камера: `cf8b9b1` меняет только cleanup. Неполная изоляция процессов Gazebo между запусками остается наиболее вероятной гипотезой, но требует live process evidence для окончательного подтверждения.
 2. Для проблемы 2 `b4b9e8c` сломал сценарий потому, что default Gazebo GUI config содержит `start_paused=true`.
 3. `41bb70e` сломал follow camera потому, что исправил pause через runtime GUI config и запуск `--gui-config`, изменив путь инициализации Gazebo GUI. Следящая камера на `b4b9e8c` работала при прямом `gz sim -g`.
-4. Правильное направление фикса: не использовать GUI config как способ управления pause. Запускать GUI прямым путем, а unpause делать отдельной server/world control командой.
+4. Правильное направление фикса: не использовать GUI config как способ управления pause. Запускать GUI прямым путем, а unpause делать отдельной server/world control командой. В текущем script это направление реализовано.
 
 # Recommendations/next steps
 
 1. Для сценария/миссии:
-   - вернуть или сохранить direct GUI launch `gz sim -g`;
-   - после старта server отправлять Gazebo transport command:
+   - сохранить direct GUI launch `gz sim -g`;
+   - после старта GUI/server отправлять Gazebo transport command:
 
 ```bash
 gz service \
@@ -325,7 +334,8 @@ gz service \
 
 3. Для невидимого дрона в Gazebo GUI:
    - сохранить startup stale cleanup (`stop_stale_gazebo_servers`) или усилить его, чтобы он ловил не только server by world path, но и связанные GUI/client processes текущего runtime;
-   - логировать `ps`-снимок при старте GUI-прогона: найденные stale PIDs, новый server PID, GUI PID.
+   - логировать `ps`-снимок при старте GUI-прогона: найденные stale PIDs, новый server PID, GUI PID;
+   - считать stale-scene explanation гипотезой до такого capture, а не закрытым root cause.
 
 4. Не смешивать в одном изменении:
    - SDF/visual marker changes;
