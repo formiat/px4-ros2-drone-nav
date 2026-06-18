@@ -5,6 +5,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
@@ -25,6 +26,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <tf2_ros/transform_broadcaster.h>
 #include <vector>
 
 namespace drone_city_nav {
@@ -181,6 +183,10 @@ public:
                            declare_parameter<double>("goal_y_m", 0.0)};
     hold_x_m_ = declare_parameter<double>("hold_x_m", 0.0);
     hold_y_m_ = declare_parameter<double>("hold_y_m", 0.0);
+    publish_debug_tf_ = declare_parameter<bool>("publish_debug_tf", false);
+    debug_tf_frame_id_ = declare_parameter<std::string>("debug_tf_frame_id", "map");
+    debug_tf_child_frame_id_ =
+        declare_parameter<std::string>("debug_tf_child_frame_id", "drone_base");
     target_system_ = boundedUint8(declare_parameter<std::int64_t>("target_system", 1));
     target_component_ =
         boundedUint8(declare_parameter<std::int64_t>("target_component", 1));
@@ -236,6 +242,9 @@ public:
         declare_parameter<std::string>("vehicle_command_topic",
                                        "/fmu/in/vehicle_command"),
         px4_qos);
+    if (publish_debug_tf_) {
+      debug_tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    }
 
     timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
     last_command_time_ =
@@ -259,7 +268,8 @@ public:
         "clearance_escape=%s clearance_escape_step=%.2fm "
         "clearance_escape_min_improvement=%.2fm mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
-        "max_pose_staleness=%.2fs command_resend_period=%.2fs",
+        "max_pose_staleness=%.2fs command_resend_period=%.2fs debug_tf=%s "
+        "debug_tf_frame='%s' debug_tf_child='%s'",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", takeoff_hover_s_, max_setpoint_distance_m_,
@@ -279,7 +289,9 @@ public:
         clearance_escape_min_improvement_m_, mission_goal_.x, mission_goal_.y,
         px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
-        static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
+        static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_,
+        publish_debug_tf_ ? "true" : "false", debug_tf_frame_id_.c_str(),
+        debug_tf_child_frame_id_.c_str());
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
                 "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
@@ -420,6 +432,28 @@ private:
         speed_controller_.config().desired_speed_mps);
   }
 
+  void publishDroneDebugTransform() {
+    if (!publish_debug_tf_ || !debug_tf_broadcaster_ || !local_position_valid_ ||
+        debug_tf_frame_id_.empty() || debug_tf_child_frame_id_.empty()) {
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header.stamp = get_clock()->now();
+    transform.header.frame_id = debug_tf_frame_id_;
+    transform.child_frame_id = debug_tf_child_frame_id_;
+    transform.transform.translation.x = current_position_.x;
+    transform.transform.translation.y = current_position_.y;
+    transform.transform.translation.z = altitude_valid_ ? current_altitude_m_ : 0.0;
+
+    const double half_yaw = 0.5 * current_heading_rad_;
+    transform.transform.rotation.x = 0.0;
+    transform.transform.rotation.y = 0.0;
+    transform.transform.rotation.z = std::sin(half_yaw);
+    transform.transform.rotation.w = std::cos(half_yaw);
+    debug_tf_broadcaster_->sendTransform(transform);
+  }
+
   [[nodiscard]] std::size_t
   continuityWaypointIndex(const Point2 previous_target,
                           const std::size_t candidate_index,
@@ -495,6 +529,7 @@ private:
       current_heading_rad_ = static_cast<double>(msg.heading);
     }
     local_position_valid_ = true;
+    publishDroneDebugTransform();
     if (!takeoff_hold_target_valid_) {
       takeoff_hold_target_ = current_position_;
       takeoff_hold_target_valid_ = true;
@@ -1468,6 +1503,8 @@ private:
   Point2 last_published_target_{};
   Point2 mission_goal_{85.0, 0.0};
   Point2 px4_local_origin_{};
+  std::string debug_tf_frame_id_{"map"};
+  std::string debug_tf_child_frame_id_{"drone_base"};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double cruise_altitude_m_{12.0};
@@ -1521,6 +1558,7 @@ private:
   bool clearance_escape_enabled_{true};
   bool velocity_feedforward_enabled_{false};
   bool dynamic_lookahead_enabled_{true};
+  bool publish_debug_tf_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -1547,6 +1585,7 @@ private:
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr
       trajectory_setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_pub_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> debug_tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
