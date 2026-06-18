@@ -99,10 +99,12 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
-gazebo_gui_follow_camera="$(normalize_bool "${GAZEBO_GUI_FOLLOW_CAMERA:-true}")"
-gazebo_gui_follow_target="${GAZEBO_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
-gazebo_gui_follow_offset="${GAZEBO_GUI_FOLLOW_OFFSET:--12 0 6}"
-gazebo_gui_follow_wait_s="${GAZEBO_GUI_FOLLOW_WAIT_S:-60}"
+enable_gazebo_gui_follow_camera="$(
+  normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
+)"
+gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
+gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
+gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -110,12 +112,9 @@ spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
 runtime_dir="${colcon_build_base}/gazebo_city_mvp"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
-runtime_gui_dir="${runtime_dir}/gui"
-runtime_gazebo_gui_config_file="${runtime_gui_dir}/city_nav_gui.config"
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
 px4_plugins_dir="${px4_build_dir}/src/modules/simulation/gz_plugins"
 px4_server_config="${px4_dir}/src/modules/simulation/gz_bridge/server.config"
-gazebo_gui_config_file="${runtime_gazebo_gui_config_file}"
 
 if [[ ! -d "${px4_dir}" ]]; then
   echo "PX4-Autopilot was not found at ${px4_dir}" >&2
@@ -211,7 +210,7 @@ set -u
 
 prepare_runtime_resources() {
   rm -rf "${runtime_dir}"
-  mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}" "${runtime_gui_dir}"
+  mkdir -p "${runtime_models_dir}" "${runtime_worlds_dir}"
   install -D "${repo_root}/drone_city_nav/worlds/${world_name}.sdf" \
     "${runtime_worlds_dir}/${world_name}.sdf"
   install -D "${repo_root}/drone_city_nav/worlds/${world_name}.map2d" \
@@ -235,43 +234,7 @@ prepare_runtime_resources() {
     "${runtime_models_dir}/lidar_2d_v2"
 }
 
-find_default_gazebo_gui_config() {
-  local candidate
-  local search_paths=()
-
-  if [[ -n "${CONDA_PREFIX:-}" ]]; then
-    search_paths+=("${CONDA_PREFIX}"/share/gz/gz-sim*/gui/gui.config)
-  fi
-  search_paths+=(
-    /usr/share/gz/gz-sim*/gui/gui.config
-    /usr/local/share/gz/gz-sim*/gui/gui.config
-  )
-
-  for candidate in "${search_paths[@]}"; do
-    [[ -f "${candidate}" ]] || continue
-    printf '%s\n' "${candidate}"
-    return 0
-  done
-
-  return 1
-}
-
-prepare_gazebo_gui_config() {
-  local default_config
-  if ! default_config="$(find_default_gazebo_gui_config)"; then
-    echo "WARNING: default Gazebo GUI config was not found; using Gazebo defaults."
-    gazebo_gui_config_file=""
-    return 0
-  fi
-
-  install -D "${default_config}" "${runtime_gazebo_gui_config_file}"
-  perl -0pi -e \
-    's#<start_paused>\s*true\s*</start_paused>#<start_paused>false</start_paused>#g' \
-    "${runtime_gazebo_gui_config_file}"
-}
-
 prepare_runtime_resources
-prepare_gazebo_gui_config
 mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
@@ -447,8 +410,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
-echo "Gazebo GUI follow camera: enabled=${gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
-echo "Gazebo GUI config: ${gazebo_gui_config_file:-gazebo_default}"
+echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
@@ -478,13 +440,9 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
-    gz_gui_args=(-g)
-    if [[ -n "${gazebo_gui_config_file}" ]]; then
-      gz_gui_args+=(--gui-config "${gazebo_gui_config_file}")
-    fi
-    gz sim "${gz_gui_args[@]}" > /dev/null 2>&1 &
+    gz sim -g > /dev/null 2>&1 &
     gz_gui_pid=$!
-    if [[ "${gazebo_gui_follow_camera}" == "true" ]]; then
+    if bool_is_true "${enable_gazebo_gui_follow_camera}"; then
       configure_gazebo_gui_follow_camera \
         "${gazebo_gui_follow_target}" \
         "${gazebo_gui_follow_offset}" \
