@@ -82,15 +82,26 @@ Equivalent explicit command:
 ./scripts/run_city_mvp_host.sh
 ```
 
-Gazebo GUI runs stop stale Gazebo servers for the same runtime world before
-starting, because duplicate servers can corrupt simulator time and make PX4
-reject IMU samples. By default, the Gazebo 3D view asks the Gazebo
-`CameraTracking` GUI plugin to follow the PX4-spawned drone model
-`x500_lidar_2d_0`. Disable this with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`,
-change the target with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person
-camera offset with `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The GUI launch keeps the
-default Gazebo GUI config path and unpauses the simulation separately through
-Gazebo world control.
+Gazebo GUI runs stop conflicting stale Gazebo simulator processes before
+starting, because this project does not support multiple simultaneous Gazebo
+instances on the same workstation. The cleanup is enabled by default and logs
+all candidate PIDs before terminating them. Use
+`DRONE_GAZEBO_CLEAN_STALE_DRY_RUN=true` to list candidates without killing, or
+`DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
+
+By default, the Gazebo 3D view asks the Gazebo `CameraTracking` GUI plugin to
+follow the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
+`ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
+`GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
+`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The GUI launch keeps the default Gazebo GUI
+config path and unpauses the simulation separately through Gazebo world
+control.
+
+After a GUI run, validate deterministic Gazebo launch diagnostics:
+
+```bash
+python3 scripts/validate_gazebo_gui_launch_log.py log-host/gz_city_mvp.log
+```
 
 Run a native headless smoke validation:
 

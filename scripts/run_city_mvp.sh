@@ -106,6 +106,12 @@ gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
+clean_stale_gazebo_processes_enabled="$(
+  normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_PROCESSES:-true}"
+)"
+clean_stale_gazebo_processes_dry_run="$(
+  normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
+)"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -166,43 +172,26 @@ bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
 }
 
-stop_stale_gazebo_servers() {
-  local stale_pids=()
-  local pid
-  local live_pid
-  local world_path="${runtime_worlds_dir}/${world_name}.sdf"
-
-  mapfile -t stale_pids < <(
-    ps -eo pid=,cmd= |
-      awk -v self="$$" -v world_path="${world_path}" '
-        $1 != self && index($0, "gz sim") && index($0, world_path) {
-          print $1
-        }
-      '
-  )
-
-  if [[ "${#stale_pids[@]}" -eq 0 ]]; then
+clean_stale_gazebo_processes() {
+  if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then
+    echo "WARNING: stale Gazebo process cleanup is disabled"
     return 0
   fi
 
-  echo "Stopping stale Gazebo server processes for ${world_path}: ${stale_pids[*]}"
-  kill "${stale_pids[@]}" 2>/dev/null || true
-  for _ in {1..20}; do
-    live_pid=""
-    for pid in "${stale_pids[@]}"; do
-      if kill -0 "${pid}" 2>/dev/null; then
-        live_pid="${pid}"
-        break
-      fi
-    done
-    [[ -z "${live_pid}" ]] && return 0
-    sleep 0.25
-  done
+  local cleanup_args=(
+    --self-pid "$$"
+    --protect-pid "${BASHPID}"
+  )
+  if bool_is_true "${clean_stale_gazebo_processes_dry_run}"; then
+    cleanup_args+=(--dry-run)
+  fi
 
-  kill -KILL "${stale_pids[@]}" 2>/dev/null || true
+  python3 "${repo_root}/scripts/gazebo_process_cleanup.py" "${cleanup_args[@]}"
 }
 
-stop_stale_gazebo_servers
+mkdir -p "$(dirname "${gz_log_file}")"
+: > "${gz_log_file}"
+clean_stale_gazebo_processes | tee -a "${gz_log_file}"
 
 set +u
 source "${ros_setup_file}"
@@ -239,7 +228,6 @@ prepare_runtime_resources
 mkdir -p "$(dirname "${px4_log_file}")"
 mkdir -p "$(dirname "${uxrce_log_file}")"
 mkdir -p "$(dirname "${ros_log_file}")"
-mkdir -p "$(dirname "${gz_log_file}")"
 if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
   rm -rf "${lidar_debug_dir}"
   mkdir -p "${lidar_debug_dir}"
@@ -247,7 +235,6 @@ fi
 : > "${px4_log_file}"
 : > "${uxrce_log_file}"
 : > "${ros_log_file}"
-: > "${gz_log_file}"
 
 cd "${repo_root}"
 colcon --log-base "${colcon_log_base}" build \
@@ -337,116 +324,19 @@ configure_gazebo_gui_follow_camera() {
   local target="$1"
   local offset="$2"
   local wait_s="$3"
-  local offset_x
-  local offset_y
-  local offset_z
-  local extra_offset
-  local attempts
-  local attempt
-  local follow_response
-  local offset_response
-  local track_response
-
-  read -r offset_x offset_y offset_z extra_offset <<< "${offset}"
-  if [[ -z "${offset_x:-}" || -z "${offset_y:-}" || -z "${offset_z:-}" ||
-    -n "${extra_offset:-}" ]]; then
-    echo "WARNING: invalid Gazebo GUI follow offset '${offset}', expected 'x y z'."
-    return 0
-  fi
-
-  if [[ "${wait_s}" =~ ^[0-9]+$ ]]; then
-    attempts="${wait_s}"
-  else
-    echo "WARNING: invalid Gazebo GUI follow wait '${wait_s}', using 60s."
-    attempts=60
-  fi
-
-  for ((attempt = 1; attempt <= attempts; ++attempt)); do
-    follow_response="$(
-      gz service \
-        -s /gui/follow \
-        --reqtype gz.msgs.StringMsg \
-        --reptype gz.msgs.Boolean \
-        --timeout 1000 \
-        --req "data: \"${target}\"" 2>&1 || true
-    )"
-    if grep -q "data: true" <<< "${follow_response}"; then
-      offset_response="$(
-        gz service \
-          -s /gui/follow/offset \
-          --reqtype gz.msgs.Vector3d \
-          --reptype gz.msgs.Boolean \
-          --timeout 1000 \
-          --req "x: ${offset_x} y: ${offset_y} z: ${offset_z}" 2>&1 || true
-      )"
-      track_response="$(
-        gz topic \
-          -t /gui/track \
-          -m gz.msgs.CameraTrack \
-          -p "track_mode: FOLLOW follow_target { name: \"${target}\" type: MODEL } follow_offset { x: ${offset_x} y: ${offset_y} z: ${offset_z} } follow_pgain: 1.0" \
-          2>&1 || true
-      )"
-      echo "Gazebo GUI follow camera configured: target=${target} offset=(${offset_x}, ${offset_y}, ${offset_z})"
-      if ! grep -q "data: true" <<< "${offset_response}"; then
-        echo "WARNING: Gazebo GUI follow offset was not confirmed: ${offset_response}"
-      fi
-      if [[ -n "${track_response}" ]]; then
-        echo "WARNING: Gazebo GUI track topic publish output: ${track_response}"
-      fi
-      return 0
-    fi
-
-    if [[ "${attempt}" -eq 1 || $((attempt % 5)) -eq 0 ]]; then
-      echo "Waiting for Gazebo GUI follow target '${target}' (${attempt}/${attempts}): ${follow_response}"
-    fi
-    sleep 1
-  done
-
-  echo "WARNING: Gazebo GUI follow camera was not configured for target '${target}' after ${attempts}s."
+  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
+    follow-camera \
+    --target "${target}" \
+    --offset "${offset}" \
+    --wait-s "${wait_s}"
 }
 
 configure_gazebo_world_running() {
   local wait_s="$1"
-  local attempts
-  local attempt
-  local response
-  local confirmed_attempts=0
-
-  if [[ "${wait_s}" =~ ^[0-9]+$ ]]; then
-    attempts="${wait_s}"
-  else
-    echo "WARNING: invalid Gazebo world unpause wait '${wait_s}', using 60s."
-    attempts=60
-  fi
-
-  for ((attempt = 1; attempt <= attempts; ++attempt)); do
-    response="$(
-      gz service \
-        -s "/world/${world_name}/control" \
-        --reqtype gz.msgs.WorldControl \
-        --reptype gz.msgs.Boolean \
-        --timeout 1000 \
-        --req 'pause: false' 2>&1 || true
-    )"
-    if grep -q "data: true" <<< "${response}"; then
-      ((++confirmed_attempts))
-      if [[ "${confirmed_attempts}" -eq 1 ]]; then
-        echo "Gazebo world unpause command accepted: world=${world_name}"
-      fi
-      if [[ "${confirmed_attempts}" -ge 3 ]]; then
-        echo "Gazebo world running command confirmed: world=${world_name}"
-        return 0
-      fi
-    else
-      confirmed_attempts=0
-      if [[ "${attempt}" -eq 1 || $((attempt % 5)) -eq 0 ]]; then
-        echo "Waiting to unpause Gazebo world '${world_name}' (${attempt}/${attempts}): ${response}"
-      fi
-    fi
-    sleep 1
-  done
-
-  echo "WARNING: Gazebo world '${world_name}' was not confirmed running after ${attempts}s."
+  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
+    world-running \
+    --world "${world_name}" \
+    --wait-s "${wait_s}"
 }
 
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
@@ -468,6 +358,7 @@ echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
+echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
@@ -514,7 +405,7 @@ echo "Gazebo resources: ${runtime_dir}"
   else
     wait "${gz_server_pid}"
   fi
-) > "${gz_log_file}" 2>&1 &
+) >> "${gz_log_file}" 2>&1 &
 
 echo "MicroXRCEAgent log: ${uxrce_log_file}"
 MicroXRCEAgent udp4 -p 8888 > "${uxrce_log_file}" 2>&1 &
