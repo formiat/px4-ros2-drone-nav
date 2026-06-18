@@ -74,6 +74,8 @@ enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
 enable_static_map_override=""
 enable_obstacle_memory_override=""
 enable_current_lidar_override=""
+tracking_overspeed_limit_enabled_override=""
+tracking_overspeed_limit_mps="${TRACKING_OVERSPEED_LIMIT_MPS:-}"
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
 fi
@@ -82,6 +84,11 @@ if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
 fi
 if [[ -n "${ENABLE_CURRENT_LIDAR+x}" ]]; then
   enable_current_lidar_override="$(normalize_bool "${ENABLE_CURRENT_LIDAR}")"
+fi
+if [[ -n "${ENABLE_TRACKING_OVERSPEED_LIMIT+x}" ]]; then
+  tracking_overspeed_limit_enabled_override="$(
+    normalize_bool "${ENABLE_TRACKING_OVERSPEED_LIMIT}"
+  )"
 fi
 static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
 static_city_map_path_override=false
@@ -361,6 +368,7 @@ echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
+echo "Tracking overspeed limit: enabled=$(format_override_value "${tracking_overspeed_limit_enabled_override}") max_speed_mps=$(format_override_value "${tracking_overspeed_limit_mps}")"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
@@ -491,6 +499,14 @@ if [[ -n "${enable_current_lidar_override}" ]]; then
 fi
 if [[ "${static_city_map_path_override}" == "true" ]]; then
   ros_launch_args+=(static_map_path:="${static_city_map_path}")
+fi
+if [[ -n "${tracking_overspeed_limit_enabled_override}" ]]; then
+  ros_launch_args+=(
+    tracking_overspeed_limit_enabled:="${tracking_overspeed_limit_enabled_override}"
+  )
+fi
+if [[ -n "${tracking_overspeed_limit_mps}" ]]; then
+  ros_launch_args+=(tracking_overspeed_limit_mps:="${tracking_overspeed_limit_mps}")
 fi
 
 echo "ROS launch log: ${ros_log_file}"

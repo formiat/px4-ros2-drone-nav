@@ -104,6 +104,12 @@ public:
                    std::numbers::pi);
     speed_config.turn_slowdown_min_speed_mps = std::clamp(
         declare_parameter<double>("turn_slowdown_min_speed_mps", 1.5), 0.0, 50.0);
+    speed_config.tracking_overspeed_limit_enabled =
+        declare_parameter<bool>("tracking_overspeed_limit_enabled", false);
+    speed_config.tracking_overspeed_limit_mps =
+        std::clamp(declare_parameter<double>("tracking_overspeed_limit_mps",
+                                             speed_config.desired_speed_mps),
+                   0.0, 100.0);
     speed_controller_.setConfig(speed_config);
     velocity_feedforward_enabled_ =
         declare_parameter<bool>("velocity_feedforward_enabled", false);
@@ -234,6 +240,7 @@ public:
         "dynamic_lookahead=%s lookahead_time=%.2fs "
         "lookahead_range=[%.1f, %.1f] "
         "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
+        "tracking_overspeed_limit=%s tracking_overspeed_limit_mps=%.2f "
         "velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
@@ -249,6 +256,8 @@ public:
         min_lookahead_distance_m_, max_lookahead_distance_m_,
         speed_controller_.config().goal_slowdown_radius_m,
         speed_controller_.config().turn_slowdown_angle_rad,
+        speed_controller_.config().tracking_overspeed_limit_enabled ? "true" : "false",
+        speed_controller_.config().tracking_overspeed_limit_mps,
         velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
         mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
@@ -1040,7 +1049,7 @@ private:
         "speed_limit_reason=%s allowed_speed=%.2f braking_distance=%.2f "
         "target_step=%.2f effective_lookahead=%.2f turn_angle=%.2f "
         "local_clearance=%.2f effective_min_lead=%.2f "
-        "speed_limits[goal=%.2f turn=%.2f step=%.2f]",
+        "speed_limits[goal=%.2f turn=%.2f step=%.2f tracking=%.2f]",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -1058,7 +1067,8 @@ private:
         effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
         last_speed_output_.limits.goal_limit_mps,
         last_speed_output_.limits.turn_limit_mps,
-        last_speed_output_.limits.step_cap_limit_mps);
+        last_speed_output_.limits.step_cap_limit_mps,
+        last_speed_output_.limits.tracking_overspeed_limit_mps);
   }
 
   void logTelemetry() {
@@ -1095,7 +1105,7 @@ private:
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
         "path_segment=%s speed_limit_reason=%s local_clearance=%.2f "
         "effective_min_lead=%.2f "
-        "speed_limits[goal=%.2f turn=%.2f step=%.2f]",
+        "speed_limits[goal=%.2f turn=%.2f step=%.2f tracking=%.2f]",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, current_velocity_.x, current_velocity_.y,
         current_velocity_valid_ ? "true" : "false", current_speed_mps_,
@@ -1108,7 +1118,8 @@ private:
         effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
         last_speed_output_.limits.goal_limit_mps,
         last_speed_output_.limits.turn_limit_mps,
-        last_speed_output_.limits.step_cap_limit_mps);
+        last_speed_output_.limits.step_cap_limit_mps,
+        last_speed_output_.limits.tracking_overspeed_limit_mps);
   }
 
   [[nodiscard]] Point2 loggedTarget() const {

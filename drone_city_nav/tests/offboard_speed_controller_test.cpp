@@ -109,7 +109,7 @@ TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
-TEST(OffboardSpeedController, TrackingOverspeedDeceleratesWithoutStopping) {
+TEST(OffboardSpeedController, TrackingOverspeedLimitIsDisabledByDefault) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -125,6 +125,30 @@ TEST(OffboardSpeedController, TrackingOverspeedDeceleratesWithoutStopping) {
   const SpeedControllerOutput output = controller.update(input);
 
   EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.2);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTurn);
+}
+
+TEST(OffboardSpeedController, TrackingOverspeedLimitDeceleratesWithoutStopping) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  OffboardSpeedController controller{config};
+
+  (void)controller.update(cruiseInput());
+
+  config.max_accel_mps2 = 2.0;
+  config.tracking_overspeed_limit_enabled = true;
+  config.tracking_overspeed_limit_mps = 2.0;
+  controller.setConfig(config);
+  SpeedControllerInput input = cruiseInput();
+  input.turn_angle_rad = std::numbers::pi;
+  input.actual_speed_mps = 5.0;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.limits.tracking_overspeed_limit_mps, 2.0);
   EXPECT_DOUBLE_EQ(output.requested_speed_mps, 1.8);
   EXPECT_DOUBLE_EQ(output.target_step_m, 0.18);
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);

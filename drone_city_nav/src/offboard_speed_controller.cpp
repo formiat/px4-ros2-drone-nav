@@ -168,6 +168,10 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   limits.turn_limit_mps = turnLimitedSpeedMps(config_, input.turn_angle_rad);
   limits.step_cap_limit_mps =
       config_.max_commanded_target_step_m / input.controller_dt_s;
+  limits.tracking_overspeed_limit_mps =
+      finiteNonNegative(config_.tracking_overspeed_limit_mps)
+          ? config_.tracking_overspeed_limit_mps
+          : std::numeric_limits<double>::infinity();
 
   applyLimit(allowed_speed, reason, limits.goal_limit_mps, SpeedLimitReason::kGoal);
   applyLimit(allowed_speed, reason, limits.turn_limit_mps, SpeedLimitReason::kTurn);
@@ -193,10 +197,13 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   if (allowed_speed + kEpsilon < requested_speed) {
     requested_speed = allowed_speed;
   }
-  if (finiteNonNegative(input.actual_speed_mps) &&
-      input.actual_speed_mps > allowed_speed + max_speed_delta) {
+  if (config_.tracking_overspeed_limit_enabled &&
+      finiteNonNegative(input.actual_speed_mps) &&
+      std::isfinite(limits.tracking_overspeed_limit_mps) &&
+      input.actual_speed_mps > limits.tracking_overspeed_limit_mps + max_speed_delta) {
     requested_speed =
-        std::min(requested_speed, std::max(0.0, allowed_speed - max_speed_delta));
+        std::min(requested_speed,
+                 std::max(0.0, limits.tracking_overspeed_limit_mps - max_speed_delta));
     reason = SpeedLimitReason::kTrackingOverspeed;
   }
   if (step_cap_speed + kEpsilon < requested_speed) {

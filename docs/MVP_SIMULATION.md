@@ -470,6 +470,10 @@ The main simulation parameters are:
   before sharp path turns.
 - `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
   target motion at the 10 Hz controller rate.
+- `tracking_overspeed_limit_enabled` and `tracking_overspeed_limit_mps` -
+  optional actual-speed overspeed recovery. It is disabled by default; enable it
+  with `ENABLE_TRACKING_OVERSPEED_LIMIT=true` and optionally set
+  `TRACKING_OVERSPEED_LIMIT_MPS`.
 - `velocity_feedforward_enabled` - experimental feed-forward flag. It is
   disabled by default; the MVP remains position-setpoint controlled unless this
   is explicitly enabled for SITL validation.

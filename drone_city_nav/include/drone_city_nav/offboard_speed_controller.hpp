@@ -24,12 +24,15 @@ struct SpeedControllerConfig {
   double turn_slowdown_angle_rad{0.7};
   double turn_slowdown_min_speed_mps{1.5};
   double max_commanded_target_step_m{0.5};
+  bool tracking_overspeed_limit_enabled{false};
+  double tracking_overspeed_limit_mps{std::numeric_limits<double>::infinity()};
 };
 
 struct SpeedLimitBreakdown {
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
   double turn_limit_mps{std::numeric_limits<double>::infinity()};
   double step_cap_limit_mps{std::numeric_limits<double>::infinity()};
+  double tracking_overspeed_limit_mps{std::numeric_limits<double>::infinity()};
 };
 
 struct SpeedControllerInput {
