@@ -86,12 +86,9 @@ Gazebo GUI runs stop stale Gazebo servers for the same runtime world before
 starting, because duplicate servers can corrupt simulator time and make PX4
 reject IMU samples. By default, the Gazebo 3D view asks the Gazebo
 `CameraTracking` GUI plugin to follow the PX4-spawned drone model
-`x500_lidar_2d_0`. Disable this with `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change
-the target with `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset
-with `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. GUI runs use a runtime copy of Gazebo's
-default GUI config with `start_paused=false` and an added `Camera Tracking
-Config` panel for interactive tracking controls; pass `GZ_GUI_CONFIG_FILE` to
-use a custom Gazebo GUI config instead.
+`x500_lidar_2d_0` and opens the Gazebo camera tracking panel for interactive
+tracking controls. The generated runtime Gazebo GUI config is only a launch
+implementation detail: it loads the panel and keeps the GUI unpaused.
 
 Run a native headless smoke validation:
 
