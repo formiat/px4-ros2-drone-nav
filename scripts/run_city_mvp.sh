@@ -344,6 +344,7 @@ configure_gazebo_gui_follow_camera() {
   local attempt
   local follow_response
   local offset_response
+  local track_response
 
   read -r offset_x offset_y offset_z extra_offset <<< "${offset}"
   if [[ -z "${offset_x:-}" || -z "${offset_y:-}" || -z "${offset_z:-}" ||
@@ -377,9 +378,19 @@ configure_gazebo_gui_follow_camera() {
           --timeout 1000 \
           --req "x: ${offset_x} y: ${offset_y} z: ${offset_z}" 2>&1 || true
       )"
+      track_response="$(
+        gz topic \
+          -t /gui/track \
+          -m gz.msgs.CameraTrack \
+          -p "track_mode: FOLLOW follow_target { name: \"${target}\" type: MODEL } follow_offset { x: ${offset_x} y: ${offset_y} z: ${offset_z} } follow_pgain: 1.0" \
+          2>&1 || true
+      )"
       echo "Gazebo GUI follow camera configured: target=${target} offset=(${offset_x}, ${offset_y}, ${offset_z})"
       if ! grep -q "data: true" <<< "${offset_response}"; then
         echo "WARNING: Gazebo GUI follow offset was not confirmed: ${offset_response}"
+      fi
+      if [[ -n "${track_response}" ]]; then
+        echo "WARNING: Gazebo GUI track topic publish output: ${track_response}"
       fi
       return 0
     fi
