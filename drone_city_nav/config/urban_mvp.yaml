@@ -122,9 +122,6 @@ px4_offboard_node:
     vehicle_command_topic: /fmu/in/vehicle_command
     emergency_stop_topic: /drone_city_nav/emergency_stop
     occupancy_grid_topic: /drone_city_nav/occupancy_grid
-    publish_debug_tf: true
-    debug_tf_frame_id: map
-    debug_tf_child_frame_id: drone_base
     cruise_altitude_m: 18.0
     min_navigation_altitude_m: 17.0
     takeoff_hover_s: 2.0

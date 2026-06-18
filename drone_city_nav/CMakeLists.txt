@@ -11,7 +11,6 @@ find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 function(enable_project_warnings target_name)
@@ -105,8 +104,7 @@ ament_target_dependencies(
   nav_msgs
   px4_msgs
   rclcpp
-  std_msgs
-  tf2_ros)
+  std_msgs)
 enable_project_warnings(px4_offboard_node)
 
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)
