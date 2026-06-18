@@ -161,6 +161,7 @@ public:
         "emergency_stop_topic", "/drone_city_nav/emergency_stop");
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
+    const auto emergency_stop_qos = rclcpp::QoS{1}.reliable().durability_volatile();
 
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, px4_qos,
@@ -172,8 +173,8 @@ public:
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
           onVehicleStatus(*msg);
         });
-    emergency_stop_pub_ = create_publisher<std_msgs::msg::Bool>(
-        emergency_stop_topic, rclcpp::QoS{1}.reliable().transient_local());
+    emergency_stop_pub_ =
+        create_publisher<std_msgs::msg::Bool>(emergency_stop_topic, emergency_stop_qos);
 
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this]() { logSummary(); });

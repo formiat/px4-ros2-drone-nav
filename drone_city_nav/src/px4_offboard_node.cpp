@@ -201,6 +201,7 @@ public:
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
+    const auto emergency_stop_qos = rclcpp::QoS{1}.reliable().durability_volatile();
     path_sub_ = create_subscription<nav_msgs::msg::Path>(
         path_topic, rclcpp::QoS{1}.reliable(),
         [this](const nav_msgs::msg::Path::SharedPtr msg) { onPath(*msg); });
@@ -215,7 +216,7 @@ public:
           onVehicleStatus(*msg);
         });
     emergency_stop_sub_ = create_subscription<std_msgs::msg::Bool>(
-        emergency_stop_topic, rclcpp::QoS{1}.reliable().transient_local(),
+        emergency_stop_topic, emergency_stop_qos,
         [this](const std_msgs::msg::Bool::SharedPtr msg) { onEmergencyStop(*msg); });
     occupancy_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
         occupancy_grid_topic, rclcpp::QoS{1}.transient_local(),
