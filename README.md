@@ -82,6 +82,12 @@ Equivalent explicit command:
 ./scripts/run_city_mvp_host.sh
 ```
 
+By default, the Gazebo 3D view asks the Gazebo `CameraTracking` GUI plugin to
+follow the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
+`ENABLE_GZ_GUI_FOLLOW_CAMERA=false`, change the target with
+`GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
+`GZ_GUI_FOLLOW_OFFSET="-12 0 6"`.
+
 Run a native headless smoke validation:
 
 ```bash

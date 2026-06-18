@@ -99,6 +99,12 @@ elif [[ -n "${headless}" ]]; then
 else
   enable_rviz="true"
 fi
+enable_gazebo_gui_follow_camera="$(
+  normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
+)"
+gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
+gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
+gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
 spawn_x_m="${SIM_START_X_M:--57}"
 spawn_y_m="${SIM_START_Y_M:--27}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
@@ -288,6 +294,67 @@ run_px4_sitl() {
   make -C "${px4_dir}" px4_sitl "${px4_model_target}"
 }
 
+configure_gazebo_gui_follow_camera() {
+  local target="$1"
+  local offset="$2"
+  local wait_s="$3"
+  local offset_x
+  local offset_y
+  local offset_z
+  local extra_offset
+  local attempts
+  local attempt
+  local follow_response
+  local offset_response
+
+  read -r offset_x offset_y offset_z extra_offset <<< "${offset}"
+  if [[ -z "${offset_x:-}" || -z "${offset_y:-}" || -z "${offset_z:-}" ||
+    -n "${extra_offset:-}" ]]; then
+    echo "WARNING: invalid GZ_GUI_FOLLOW_OFFSET='${offset}', expected 'x y z'."
+    return 0
+  fi
+
+  if [[ "${wait_s}" =~ ^[0-9]+$ ]]; then
+    attempts="${wait_s}"
+  else
+    echo "WARNING: invalid GZ_GUI_FOLLOW_WAIT_S='${wait_s}', using 60s."
+    attempts=60
+  fi
+
+  for ((attempt = 1; attempt <= attempts; ++attempt)); do
+    follow_response="$(
+      gz service \
+        -s /gui/follow \
+        --reqtype gz.msgs.StringMsg \
+        --reptype gz.msgs.Boolean \
+        --timeout 1000 \
+        --req "data: \"${target}\"" 2>&1 || true
+    )"
+    if grep -q "data: true" <<< "${follow_response}"; then
+      offset_response="$(
+        gz service \
+          -s /gui/follow/offset \
+          --reqtype gz.msgs.Vector3d \
+          --reptype gz.msgs.Boolean \
+          --timeout 1000 \
+          --req "x: ${offset_x} y: ${offset_y} z: ${offset_z}" 2>&1 || true
+      )"
+      echo "Gazebo GUI follow camera configured: target=${target} offset=(${offset_x}, ${offset_y}, ${offset_z})"
+      if ! grep -q "data: true" <<< "${offset_response}"; then
+        echo "WARNING: Gazebo GUI follow offset was not confirmed: ${offset_response}"
+      fi
+      return 0
+    fi
+
+    if [[ "${attempt}" -eq 1 || $((attempt % 5)) -eq 0 ]]; then
+      echo "Waiting for Gazebo GUI follow target '${target}' (${attempt}/${attempts}): ${follow_response}"
+    fi
+    sleep 1
+  done
+
+  echo "WARNING: Gazebo GUI follow camera was not configured for target '${target}' after ${attempts}s."
+}
+
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
 if [[ -n "${GZ_SIM_RESOURCE_PATH:-}" ]]; then
   gz_resource_path="${gz_resource_path}:${GZ_SIM_RESOURCE_PATH}"
@@ -305,6 +372,7 @@ export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 echo "Gazebo log: ${gz_log_file}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
+echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
@@ -321,6 +389,12 @@ echo "Gazebo resources: ${runtime_dir}"
   if [[ -z "${headless}" ]]; then
     gz sim -g > /dev/null 2>&1 &
     gz_gui_pid=$!
+    if bool_is_true "${enable_gazebo_gui_follow_camera}"; then
+      configure_gazebo_gui_follow_camera \
+        "${gazebo_gui_follow_target}" \
+        "${gazebo_gui_follow_offset}" \
+        "${gazebo_gui_follow_wait_s}" &
+    fi
     wait "${gz_server_pid}" "${gz_gui_pid}"
   else
     wait "${gz_server_pid}"
