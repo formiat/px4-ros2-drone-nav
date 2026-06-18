@@ -53,6 +53,41 @@ struct PublishedPathSafetySummary {
   double escape_prohibited_length_m{0.0};
 };
 
+enum class PathPublicationReason : std::uint8_t {
+  kComputedPath,
+  kHoldNoPose,
+  kHoldNoPlanningGrid,
+  kHoldInvalidPath,
+  kHoldUnsafePath,
+  kHoldAfterPlanningFailure,
+  kReuseLastValidAfterFailure,
+  kDirectFallback,
+};
+
+[[nodiscard]] const char*
+pathPublicationReasonName(const PathPublicationReason reason) noexcept {
+  switch (reason) {
+    case PathPublicationReason::kComputedPath:
+      return "computed_path";
+    case PathPublicationReason::kHoldNoPose:
+      return "hold_no_pose";
+    case PathPublicationReason::kHoldNoPlanningGrid:
+      return "hold_no_planning_grid";
+    case PathPublicationReason::kHoldInvalidPath:
+      return "hold_invalid_path";
+    case PathPublicationReason::kHoldUnsafePath:
+      return "hold_unsafe_path";
+    case PathPublicationReason::kHoldAfterPlanningFailure:
+      return "hold_after_planning_failure";
+    case PathPublicationReason::kReuseLastValidAfterFailure:
+      return "reuse_last_valid_after_failure";
+    case PathPublicationReason::kDirectFallback:
+      return "direct_fallback";
+  }
+
+  return "unknown";
+}
+
 [[nodiscard]] double
 pathDistanceToSegmentStart(const std::span<const Point2> path_points,
                            const std::size_t segment_start_index) noexcept {
@@ -497,19 +532,19 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner is waiting for a valid PX4 local position; "
                            "publishing hold path");
-      publishPath({});
+      publishPath({}, PathPublicationReason::kHoldNoPose);
       return;
     }
     auto planning_result = buildPlanningGrid(now_ns);
     if (!planning_result.has_value()) {
-      publishPath({});
+      publishPath({}, PathPublicationReason::kHoldNoPlanningGrid);
       return;
     }
     if (!planning_result->grid.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner grid builder returned no grid despite a ready "
                            "result; publishing hold path");
-      publishPath({});
+      publishPath({}, PathPublicationReason::kHoldNoPlanningGrid);
       return;
     }
     OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
@@ -618,7 +653,9 @@ private:
     }
 
     auto result = planner_core_.computePath(grid, current_pose_.position, goal_);
+    ++astar_runs_;
     if (!result.has_value()) {
+      ++astar_failures_;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d)", source_label,
@@ -626,6 +663,7 @@ private:
       return std::nullopt;
     }
 
+    ++astar_successes_;
     return result;
   }
 
@@ -634,7 +672,7 @@ private:
                                     const char* source_label) {
     std::vector<Point2> path_points = cellsToPoints(grid, smoothed_cells);
     if (path_points.empty()) {
-      publishPath({});
+      publishPath({}, PathPublicationReason::kHoldInvalidPath);
       return false;
     }
 
@@ -678,7 +716,7 @@ private:
     }
 
     if (!pathIsPublishableAfterFinalEdits(grid, path_points, source_label)) {
-      publishPath({});
+      publishPath({}, PathPublicationReason::kHoldUnsafePath);
       return false;
     }
     if (hasExcessiveInitialLateralDeviation(path_points)) {
@@ -693,7 +731,7 @@ private:
     last_valid_path_points_ = path_points;
     stable_path_prohibited_confirmations_ = 0;
     logPublishedPathSafety(grid, path_points, source_label);
-    publishPath(path_points);
+    publishPath(path_points, PathPublicationReason::kComputedPath);
     return true;
   }
 
@@ -926,7 +964,10 @@ private:
         occupancyGridToRos(grid, OccupancyGridToRosConfig{makePlannerHeader(), true}));
   }
 
-  void publishPath(const std::vector<Point2>& points) {
+  void publishPath(const std::vector<Point2>& points,
+                   const PathPublicationReason reason) {
+    recordPathPublication(reason, points.empty());
+
     if (points.empty()) {
       last_valid_path_points_.clear();
       stable_path_prohibited_confirmations_ = 0;
@@ -942,7 +983,8 @@ private:
       waypoint_pub_->publish(path.poses.front());
     }
 
-    logPathUpdate(path, metrics);
+    logPathUpdate(path, metrics, reason);
+    logPlannerCountersThrottled();
   }
 
   void publishLastValidPathOrEmpty() {
@@ -951,7 +993,8 @@ private:
           get_logger(), *get_clock(), 5000,
           "Reusing last valid path after replanning failure: waypoints=%zu",
           last_valid_path_points_.size());
-      publishPath(last_valid_path_points_);
+      publishPath(last_valid_path_points_,
+                  PathPublicationReason::kReuseLastValidAfterFailure);
       return;
     }
 
@@ -961,10 +1004,11 @@ private:
           "Clearing path after replanning failure; holding position instead of reusing "
           "stale waypoints");
     }
-    publishPath({});
+    publishPath({}, PathPublicationReason::kHoldAfterPlanningFailure);
   }
 
   void publishFallbackPath() {
+    ++fallback_requests_;
     if (direct_path_fallback_) {
       publishDirectGoalPath();
       return;
@@ -981,7 +1025,7 @@ private:
         get_logger(), *get_clock(), 5000,
         "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
         current_pose_.position.x, current_pose_.position.y, goal_.x, goal_.y);
-    publishPath(path_points);
+    publishPath(path_points, PathPublicationReason::kDirectFallback);
   }
 
   void invalidateCurrentPose() {
@@ -1088,6 +1132,7 @@ private:
     }
 
     if (decision.reason == StablePathDecisionReason::kProhibitedConfirmed) {
+      ++confirmed_replans_;
       stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
       const Point2 prohibited_start =
           decision.prohibited_segment_index < decision.remaining_path.size()
@@ -1176,12 +1221,15 @@ private:
     return true;
   }
 
-  void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics) {
+  void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics,
+                     const PathPublicationReason reason) {
     const std::size_t path_size = path.poses.size();
     const bool path_changed = path_size != last_logged_path_size_;
+    const std::string counters = plannerCountersSummary();
     if (path_size == 0U) {
       if (path_changed) {
-        RCLCPP_WARN(get_logger(), "Published empty path");
+        RCLCPP_WARN(get_logger(), "Published empty path: reason=%s counters[%s]",
+                    pathPublicationReasonName(reason), counters.c_str());
         last_logged_path_size_ = path_size;
       }
       return;
@@ -1205,16 +1253,70 @@ private:
                 << path.poses[i].pose.position.y << ")";
       }
       RCLCPP_INFO(get_logger(),
-                  "Published path: waypoints=%zu segments=%zu "
+                  "Published path: reason=%s waypoints=%zu segments=%zu "
                   "straight_segments=%zu turns=%zu length=%.2f first=(%.2f, %.2f) "
-                  "last=(%.2f, %.2f) preview=%s",
-                  path_size, metrics.segments, metrics.straight_segments, metrics.turns,
-                  metrics.length_m, first.x, first.y, last.x, last.y,
-                  preview.str().c_str());
+                  "last=(%.2f, %.2f) counters[%s] preview=%s",
+                  pathPublicationReasonName(reason), path_size, metrics.segments,
+                  metrics.straight_segments, metrics.turns, metrics.length_m, first.x,
+                  first.y, last.x, last.y, counters.c_str(), preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
     }
+  }
+
+  void recordPathPublication(const PathPublicationReason reason,
+                             const bool empty_path) {
+    ++path_publications_;
+    if (empty_path) {
+      ++hold_path_publications_;
+    } else {
+      ++non_empty_path_publications_;
+    }
+
+    switch (reason) {
+      case PathPublicationReason::kComputedPath:
+        ++computed_path_publications_;
+        break;
+      case PathPublicationReason::kReuseLastValidAfterFailure:
+        ++fallback_path_publications_;
+        ++last_valid_reuse_path_publications_;
+        break;
+      case PathPublicationReason::kDirectFallback:
+        ++fallback_path_publications_;
+        ++direct_fallback_path_publications_;
+        break;
+      case PathPublicationReason::kHoldNoPose:
+      case PathPublicationReason::kHoldNoPlanningGrid:
+      case PathPublicationReason::kHoldInvalidPath:
+      case PathPublicationReason::kHoldUnsafePath:
+      case PathPublicationReason::kHoldAfterPlanningFailure:
+        break;
+    }
+  }
+
+  [[nodiscard]] std::string plannerCountersSummary() const {
+    std::ostringstream summary;
+    summary << "astar_runs=" << astar_runs_ << " astar_successes=" << astar_successes_
+            << " astar_failures=" << astar_failures_
+            << " confirmed_replans=" << confirmed_replans_
+            << " path_publications=" << path_publications_
+            << " non_empty_path_publications=" << non_empty_path_publications_
+            << " hold_path_publications=" << hold_path_publications_
+            << " computed_path_publications=" << computed_path_publications_
+            << " fallback_requests=" << fallback_requests_
+            << " fallback_path_publications=" << fallback_path_publications_
+            << " direct_fallback_path_publications="
+            << direct_fallback_path_publications_
+            << " last_valid_reuse_path_publications="
+            << last_valid_reuse_path_publications_;
+    return summary.str();
+  }
+
+  void logPlannerCountersThrottled() {
+    const std::string counters = plannerCountersSummary();
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "Planner counters: %s",
+                         counters.c_str());
   }
 
   std::optional<OccupancyGrid2D> memory_grid_;
@@ -1282,6 +1384,18 @@ private:
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   std::size_t static_map_rectangles_{0U};
   std::size_t static_map_occupied_cells_{0U};
+  std::uint64_t astar_runs_{0U};
+  std::uint64_t astar_successes_{0U};
+  std::uint64_t astar_failures_{0U};
+  std::uint64_t confirmed_replans_{0U};
+  std::uint64_t path_publications_{0U};
+  std::uint64_t non_empty_path_publications_{0U};
+  std::uint64_t hold_path_publications_{0U};
+  std::uint64_t computed_path_publications_{0U};
+  std::uint64_t fallback_requests_{0U};
+  std::uint64_t fallback_path_publications_{0U};
+  std::uint64_t direct_fallback_path_publications_{0U};
+  std::uint64_t last_valid_reuse_path_publications_{0U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
