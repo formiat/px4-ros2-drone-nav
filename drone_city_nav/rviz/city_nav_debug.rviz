@@ -19,9 +19,9 @@ Visualization Manager:
       Color Scheme: map
       Draw Behind: false
       Enabled: false
-      Name: Raw Obstacle Memory Grid
+      Name: Prohibited Grid
       Topic:
-        Value: /drone_city_nav/obstacle_memory_inflated_grid
+        Value: /drone_city_nav/prohibited_grid
     - Alpha: 0.45
       Class: rviz_default_plugins/Map
       Color Scheme: map
@@ -88,13 +88,13 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
-      Name: Inflated Safety Cells
+      Name: Prohibited Safety Cells
       Position Transformer: XYZ
       Size (Pixels): 2
       Size (m): 0.35
       Style: Flat Squares
       Topic:
-        Value: /drone_city_nav/inflated_obstacle_points
+        Value: /drone_city_nav/prohibited_obstacle_points
     - Class: rviz_default_plugins/MarkerArray
       Enabled: false
       Name: Optional Lidar Radar

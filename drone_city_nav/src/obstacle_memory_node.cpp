@@ -28,14 +28,10 @@ namespace {
          static_cast<std::int64_t>(stamp.nanosec);
 }
 
-[[nodiscard]] std::int8_t occupancyValue(const OccupancyGrid2D& grid,
-                                         const GridIndex cell,
-                                         const bool include_inflation) {
+[[nodiscard]] std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid,
+                                            const GridIndex cell) {
   if (grid.isOccupied(cell)) {
     return static_cast<std::int8_t>(100);
-  }
-  if (include_inflation && grid.isInflated(cell)) {
-    return static_cast<std::int8_t>(80);
   }
   if (grid.state(cell) == CellState::kFree) {
     return static_cast<std::int8_t>(0);
@@ -70,13 +66,12 @@ public:
         std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
                            3600.0) *
         1.0e9);
-    inflation_radius_m_ = declare_parameter<double>("inflation_radius_m", 2.5);
     memory_config_.max_lidar_range_m =
         declare_parameter<double>("max_lidar_range_m", 35.0);
     memory_config_.range_hit_epsilon_m =
         declare_parameter<double>("range_hit_epsilon_m", 0.05);
-    memory_config_.hit_obstacle_depth_m =
-        std::clamp(declare_parameter<double>("hit_obstacle_depth_m", 0.0), 0.0, 100.0);
+    memory_config_.sensor_hit_depth_m =
+        std::clamp(declare_parameter<double>("sensor_hit_depth_m", 0.0), 0.0, 100.0);
     memory_config_.scan_stride = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("scan_stride", 1), 1, 100000));
     memory_config_.hit_weight = static_cast<int>(std::clamp<std::int64_t>(
@@ -172,10 +167,6 @@ public:
         declare_parameter<std::string>("obstacle_memory_grid_topic",
                                        "/drone_city_nav/obstacle_memory_grid"),
         rclcpp::QoS{1}.transient_local());
-    inflated_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        declare_parameter<std::string>("obstacle_memory_inflated_grid_topic",
-                                       "/drone_city_nav/obstacle_memory_inflated_grid"),
-        rclcpp::QoS{1}.transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
@@ -216,12 +207,13 @@ public:
                 memory_->rawGrid().originY(), lidar_topic.c_str(),
                 attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory config: max_range=%.2f hit_depth=%.2f stride=%d "
+                "Obstacle memory config: max_range=%.2f sensor_hit_depth=%.2f "
+                "stride=%d raw_memory_only=true "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
-                memory_config_.max_lidar_range_m, memory_config_.hit_obstacle_depth_m,
+                memory_config_.max_lidar_range_m, memory_config_.sensor_hit_depth_m,
                 memory_config_.scan_stride, memory_config_.min_score,
                 memory_config_.max_score, memory_config_.free_score,
                 memory_config_.occupied_score,
@@ -440,7 +432,6 @@ private:
     scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
     const ObstacleMemoryStats stats =
         memory_->integrateScan(current_pose_.pose, scan_view, memory_config_);
-    memory_->rebuildInflation(inflation_radius_m_);
 
     if (!scan_seen_) {
       scan_seen_ = true;
@@ -454,26 +445,24 @@ private:
           attitude_valid_ ? "true" : "false");
     }
 
-    publishMemoryGrids();
+    publishMemoryGrid();
 
     const GridCellCounts raw_counts = memory_->countRawCells();
-    const GridCellCounts inflated_counts = memory_->countInflatedCells();
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
-        "occupied_updates=%zu depth_cells=%zu raw[occupied=%zu free=%zu unknown=%zu] "
-        "inflated=%zu",
+        "occupied_updates=%zu sensor_hit_depth_cells=%zu "
+        "raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
         current_pose_.altitude_m, current_pose_.pose.yaw_rad,
         current_attitude_.roll_rad, current_attitude_.pitch_rad,
         attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
         stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
         stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated, stats.obstacle_depth_cells,
-        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells,
-        inflated_counts.inflated_cells);
+        stats.occupied_cells_updated, stats.sensor_hit_depth_cells,
+        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
   }
 
   void logFirstPose(const char* source_name) {
@@ -509,15 +498,13 @@ private:
     return static_cast<double>(now_ns - compass_yaw_.last_update_ns) / 1.0e9;
   }
 
-  void publishMemoryGrids() {
+  void publishMemoryGrid() {
     const rclcpp::Time stamp = now();
-    raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), false, stamp));
-    inflated_grid_pub_->publish(
-        makeOccupancyGridMessage(memory_->inflatedGrid(), true, stamp));
+    raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), stamp));
   }
 
   [[nodiscard]] nav_msgs::msg::OccupancyGrid
-  makeOccupancyGridMessage(const OccupancyGrid2D& grid, const bool include_inflation,
+  makeOccupancyGridMessage(const OccupancyGrid2D& grid,
                            const rclcpp::Time& stamp) const {
     nav_msgs::msg::OccupancyGrid msg;
     msg.header.stamp = stamp;
@@ -534,8 +521,7 @@ private:
     for (int y = 0; y < grid.height(); ++y) {
       for (int x = 0; x < grid.width(); ++x) {
         const GridIndex cell{x, y};
-        msg.data[grid.linearIndex(cell)] =
-            occupancyValue(grid, cell, include_inflation);
+        msg.data[grid.linearIndex(cell)] = rawOccupancyValue(grid, cell);
       }
     }
     return msg;
@@ -557,7 +543,6 @@ private:
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};
   std::int64_t max_compass_staleness_ns_{1'000'000'000};
-  double inflation_radius_m_{2.5};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double lidar_z_offset_m_{0.0};
@@ -581,7 +566,6 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr inflated_grid_pub_;
 };
 
 } // namespace drone_city_nav

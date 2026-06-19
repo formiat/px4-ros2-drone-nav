@@ -11,7 +11,7 @@ namespace drone_city_nav {
 
 nav_msgs::msg::OccupancyGrid staticMapGridMessage(const OccupancyGrid2D& grid,
                                                   const StaticMapDebugConfig& config) {
-  return occupancyGridToRos(grid, OccupancyGridToRosConfig{config.header, false});
+  return rawOccupancyGridToRos(grid, RawOccupancyGridToRosConfig{config.header});
 }
 
 sensor_msgs::msg::PointCloud2 staticMapPointCloud(const OccupancyGrid2D& grid,

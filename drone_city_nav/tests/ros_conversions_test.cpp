@@ -28,8 +28,8 @@ TEST(RosConversions, RejectsInvalidOccupancyGridMetadata) {
   nav_msgs::msg::OccupancyGrid msg = makeRosGrid(2U, 2U);
   msg.info.resolution = 0.0F;
 
-  const OccupancyGridFromRosResult result =
-      occupancyGridFromRos(msg, OccupancyGridFromRosConfig{});
+  const RawOccupancyGridFromRosResult result =
+      rawOccupancyGridFromRos(msg, RawOccupancyGridFromRosConfig{});
 
   EXPECT_FALSE(result.grid.has_value());
   ASSERT_TRUE(result.error.has_value());
@@ -43,8 +43,8 @@ TEST(RosConversions, RejectsMismatchedOccupancyGridDataSize) {
   nav_msgs::msg::OccupancyGrid msg = makeRosGrid(3U, 2U);
   msg.data.pop_back();
 
-  const OccupancyGridFromRosResult result =
-      occupancyGridFromRos(msg, OccupancyGridFromRosConfig{});
+  const RawOccupancyGridFromRosResult result =
+      rawOccupancyGridFromRos(msg, RawOccupancyGridFromRosConfig{});
 
   EXPECT_FALSE(result.grid.has_value());
   ASSERT_TRUE(result.error.has_value());
@@ -56,13 +56,13 @@ TEST(RosConversions, RejectsMismatchedOccupancyGridDataSize) {
   EXPECT_EQ(result.actual_data_size, 5U);
 }
 
-TEST(RosConversions, ConvertsUnknownFreeOccupiedByThresholds) {
-  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(3U, 1U);
+TEST(RosConversions, ConvertsRawUnknownFreeOccupiedValues) {
+  nav_msgs::msg::OccupancyGrid msg = makeRosGrid(4U, 1U);
   msg.data = {static_cast<std::int8_t>(-1), static_cast<std::int8_t>(0),
-              static_cast<std::int8_t>(65)};
+              static_cast<std::int8_t>(80), static_cast<std::int8_t>(100)};
 
-  const OccupancyGridFromRosResult result =
-      occupancyGridFromRos(msg, OccupancyGridFromRosConfig{65, 0});
+  const RawOccupancyGridFromRosResult result =
+      rawOccupancyGridFromRos(msg, RawOccupancyGridFromRosConfig{100, 0});
 
   ASSERT_TRUE(result.grid.has_value());
   if (!result.grid.has_value()) {
@@ -71,12 +71,14 @@ TEST(RosConversions, ConvertsUnknownFreeOccupiedByThresholds) {
   const OccupancyGrid2D& grid = *result.grid;
   EXPECT_EQ(grid.state(GridIndex{0, 0}), CellState::kUnknown);
   EXPECT_EQ(grid.state(GridIndex{1, 0}), CellState::kFree);
-  EXPECT_EQ(grid.state(GridIndex{2, 0}), CellState::kOccupied);
+  EXPECT_EQ(grid.state(GridIndex{2, 0}), CellState::kUnknown);
+  EXPECT_EQ(grid.state(GridIndex{3, 0}), CellState::kOccupied);
+  EXPECT_EQ(result.intermediate_value_cells, 1U);
   EXPECT_DOUBLE_EQ(grid.originX(), -1.0);
   EXPECT_DOUBLE_EQ(grid.originY(), -2.0);
 }
 
-TEST(RosConversions, SerializesInflatedCellsOnlyWhenRequested) {
+TEST(RosConversions, SerializesRawGridWithoutInflationValues) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 3, 1}};
   grid.setFree(GridIndex{0, 0});
   grid.setOccupied(GridIndex{1, 0});
@@ -86,17 +88,29 @@ TEST(RosConversions, SerializesInflatedCellsOnlyWhenRequested) {
   header.frame_id = "map";
   header.stamp.sec = 42;
 
-  nav_msgs::msg::OccupancyGrid with_inflation =
-      occupancyGridToRos(grid, OccupancyGridToRosConfig{header, true});
-  nav_msgs::msg::OccupancyGrid without_inflation =
-      occupancyGridToRos(grid, OccupancyGridToRosConfig{header, false});
+  nav_msgs::msg::OccupancyGrid raw =
+      rawOccupancyGridToRos(grid, RawOccupancyGridToRosConfig{header});
 
-  EXPECT_EQ(with_inflation.header.frame_id, "map");
-  EXPECT_EQ(with_inflation.info.map_load_time.sec, 42);
-  EXPECT_EQ(with_inflation.data[0], 80);
-  EXPECT_EQ(with_inflation.data[1], 100);
-  EXPECT_EQ(without_inflation.data[0], 0);
-  EXPECT_EQ(without_inflation.data[1], 100);
+  EXPECT_EQ(raw.header.frame_id, "map");
+  EXPECT_EQ(raw.info.map_load_time.sec, 42);
+  EXPECT_EQ(raw.data[0], 0);
+  EXPECT_EQ(raw.data[1], 100);
+}
+
+TEST(RosConversions, SerializesProhibitedGridWithInflationValues) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 3, 1}};
+  grid.setFree(GridIndex{0, 0});
+  grid.setOccupied(GridIndex{1, 0});
+  grid.rebuildInflation(1.1);
+
+  std_msgs::msg::Header header;
+  header.frame_id = "map";
+
+  nav_msgs::msg::OccupancyGrid prohibited =
+      prohibitedGridToRos(grid, ProhibitedGridToRosConfig{header});
+
+  EXPECT_EQ(prohibited.data[0], 80);
+  EXPECT_EQ(prohibited.data[1], 100);
 }
 
 TEST(RosConversions, ClearanceUsesOccupiedCellsAtThreshold) {

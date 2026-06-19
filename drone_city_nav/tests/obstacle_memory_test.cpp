@@ -497,31 +497,29 @@ TEST(ObstacleMemoryGrid, HitOutsideGridClearsInBoundsRayWithoutOccupiedEndpoint)
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kFree);
 }
 
-TEST(ObstacleMemoryGrid, ObstacleDepthClipsAtBoundary) {
+TEST(ObstacleMemoryGrid, SensorHitDepthClipsAtBoundary) {
   ObstacleMemoryGrid memory{GridBounds{0.0, 0.0, 1.0, 10, 10}};
   const std::vector<float> ranges{1.0F};
   ObstacleMemoryConfig config{};
-  config.hit_obstacle_depth_m = 5.0;
+  config.sensor_hit_depth_m = 5.0;
 
   const ObstacleMemoryStats stats =
       memory.integrateScan(Pose2{Point2{8.5, 5.5}, 0.0}, makeScan(ranges), config);
 
-  EXPECT_GT(stats.obstacle_depth_cells, 0U);
+  EXPECT_GT(stats.sensor_hit_depth_cells, 0U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
 }
 
-TEST(ObstacleMemoryGrid, InflationBlocksRememberedObstacle) {
+TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
 
   const ObstacleMemoryStats stats =
       memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {});
   EXPECT_EQ(stats.hit_beams, 1U);
-  memory.rebuildInflation(1.1);
 
-  EXPECT_TRUE(memory.inflatedGrid().isProhibited(GridIndex{9, 5}));
-  EXPECT_TRUE(memory.inflatedGrid().isProhibited(GridIndex{8, 5}));
-  EXPECT_FALSE(memory.inflatedGrid().isProhibited(GridIndex{12, 5}));
+  EXPECT_TRUE(memory.rawGrid().isOccupied(GridIndex{9, 5}));
+  EXPECT_FALSE(memory.rawGrid().isProhibited(GridIndex{8, 5}));
 }
 
 TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {

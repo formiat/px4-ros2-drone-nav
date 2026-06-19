@@ -8,10 +8,10 @@
 
 namespace drone_city_nav {
 
-OccupancyGridFromRosResult
-occupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
-                     const OccupancyGridFromRosConfig& config) {
-  OccupancyGridFromRosResult result{};
+RawOccupancyGridFromRosResult
+rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
+                        const RawOccupancyGridFromRosConfig& config) {
+  RawOccupancyGridFromRosResult result{};
   if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U ||
       msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
       msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
@@ -41,10 +41,12 @@ occupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
         continue;
       }
       const int value = static_cast<int>(static_cast<unsigned char>(raw_value));
-      if (value >= config.occupied_threshold) {
+      if (value == config.occupied_value) {
         grid.setOccupied(cell);
-      } else if (value >= config.free_threshold) {
+      } else if (value == config.free_value) {
         grid.setFree(cell);
+      } else {
+        ++result.intermediate_value_cells;
       }
     }
   }
@@ -54,8 +56,8 @@ occupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
 }
 
 nav_msgs::msg::OccupancyGrid
-occupancyGridToRos(const OccupancyGrid2D& grid,
-                   const OccupancyGridToRosConfig& config) {
+rawOccupancyGridToRos(const OccupancyGrid2D& grid,
+                      const RawOccupancyGridToRosConfig& config) {
   nav_msgs::msg::OccupancyGrid msg;
   msg.header = config.header;
   msg.info.map_load_time = msg.header.stamp;
@@ -73,7 +75,36 @@ occupancyGridToRos(const OccupancyGrid2D& grid,
       const std::size_t index = grid.linearIndex(cell);
       if (grid.isOccupied(cell)) {
         msg.data[index] = static_cast<std::int8_t>(100);
-      } else if (config.include_inflation && grid.isInflated(cell)) {
+      } else if (grid.state(cell) == CellState::kFree) {
+        msg.data[index] = static_cast<std::int8_t>(0);
+      }
+    }
+  }
+
+  return msg;
+}
+
+nav_msgs::msg::OccupancyGrid
+prohibitedGridToRos(const OccupancyGrid2D& grid,
+                    const ProhibitedGridToRosConfig& config) {
+  nav_msgs::msg::OccupancyGrid msg;
+  msg.header = config.header;
+  msg.info.map_load_time = msg.header.stamp;
+  msg.info.resolution = static_cast<float>(grid.resolution());
+  msg.info.width = static_cast<std::uint32_t>(grid.width());
+  msg.info.height = static_cast<std::uint32_t>(grid.height());
+  msg.info.origin.position.x = grid.originX();
+  msg.info.origin.position.y = grid.originY();
+  msg.info.origin.orientation.w = 1.0;
+  msg.data.assign(grid.cellCount(), static_cast<std::int8_t>(-1));
+
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      const GridIndex cell{x, y};
+      const std::size_t index = grid.linearIndex(cell);
+      if (grid.isOccupied(cell)) {
+        msg.data[index] = static_cast<std::int8_t>(100);
+      } else if (grid.isInflated(cell)) {
         msg.data[index] = static_cast<std::int8_t>(80);
       } else if (grid.state(cell) == CellState::kFree) {
         msg.data[index] = static_cast<std::int8_t>(0);

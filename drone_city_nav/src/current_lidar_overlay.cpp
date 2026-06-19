@@ -8,13 +8,13 @@ namespace drone_city_nav {
 
 std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoint,
                                      const Point2 depth_endpoint,
-                                     const double obstacle_depth_m) {
+                                     const double sensor_hit_depth_m) {
   const auto endpoint_cell = grid.worldToCell(endpoint);
   if (!endpoint_cell.has_value()) {
     return 0U;
   }
 
-  if (obstacle_depth_m <= 0.0) {
+  if (sensor_hit_depth_m <= 0.0) {
     grid.setOccupied(*endpoint_cell);
     return 1U;
   }
@@ -37,7 +37,7 @@ CurrentLidarOverlayStats
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
-                        const double obstacle_depth_m) {
+                        const double sensor_hit_depth_m) {
   CurrentLidarOverlayStats stats{};
   stats.used = true;
 
@@ -57,7 +57,7 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
 
     const LidarBeamProjection projection = projectLidarBeam(
         projection_pose, projection_config, scan.range_min_m, scan_range_max,
-        scan.angle_min_rad, scan.angle_increment_rad, i, raw_range, obstacle_depth_m);
+        scan.angle_min_rad, scan.angle_increment_rad, i, raw_range, sensor_hit_depth_m);
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
@@ -69,7 +69,7 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     ++stats.hit_beams;
     const std::size_t occupied_cells =
         markCurrentLidarObstacle(current_lidar_grid, projection.endpoint,
-                                 projection.depth_endpoint, obstacle_depth_m);
+                                 projection.depth_endpoint, sensor_hit_depth_m);
     if (occupied_cells == 0U) {
       ++stats.outside_hits;
     } else {

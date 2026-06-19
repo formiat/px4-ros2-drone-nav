@@ -35,7 +35,7 @@ struct LaserScan2DView {
 struct ObstacleMemoryConfig {
   double max_lidar_range_m{35.0};
   double range_hit_epsilon_m{0.05};
-  double hit_obstacle_depth_m{0.0};
+  double sensor_hit_depth_m{0.0};
   int scan_stride{1};
   int hit_weight{4};
   int miss_weight{1};
@@ -54,7 +54,7 @@ struct ObstacleMemoryStats {
   std::size_t outside_hit_endpoints{0U};
   std::size_t free_cells_updated{0U};
   std::size_t occupied_cells_updated{0U};
-  std::size_t obstacle_depth_cells{0U};
+  std::size_t sensor_hit_depth_cells{0U};
 };
 
 struct GridCellCounts {
@@ -72,12 +72,8 @@ public:
                                                   const LaserScan2DView& scan,
                                                   const ObstacleMemoryConfig& config);
 
-  void rebuildInflation(double radius_m);
-
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
-  [[nodiscard]] const OccupancyGrid2D& inflatedGrid() const noexcept;
   [[nodiscard]] GridCellCounts countRawCells() const;
-  [[nodiscard]] GridCellCounts countInflatedCells() const;
 
 private:
   void applyMiss(GridIndex cell, const ObstacleMemoryConfig& config);
@@ -85,7 +81,6 @@ private:
   void syncCellState(GridIndex cell, const ObstacleMemoryConfig& config);
 
   OccupancyGrid2D raw_grid_;
-  OccupancyGrid2D inflated_grid_;
   std::vector<int> scores_;
 };
 

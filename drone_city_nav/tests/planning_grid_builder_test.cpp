@@ -129,6 +129,29 @@ TEST(PlanningGridBuilder, SourceUnionInflatesOnceAfterRawObstacleMerge) {
   EXPECT_EQ(result.current_lidar.overlay_occupied_cells_applied, 2U);
 }
 
+TEST(PlanningGridBuilder, SourceInflatedCellsAreNotReusedAsRawObstacles) {
+  PlanningGridBuilderConfig config = testConfig();
+  config.use_static_map = false;
+  config.use_current_lidar_obstacles = false;
+  OccupancyGrid2D memory_grid{testBounds()};
+  memory_grid.setOccupied(GridIndex{3, 3});
+  memory_grid.rebuildInflation(1.1);
+  ASSERT_TRUE(memory_grid.isInflated(GridIndex{4, 3}));
+  PlanningGridSources sources{};
+  sources.memory_grid = &memory_grid;
+
+  const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
+
+  ASSERT_EQ(result.status, PlanningGridStatus::kReady);
+  ASSERT_TRUE(result.grid.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const OccupancyGrid2D& grid = result.grid.value();
+  EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{4, 3}));
+  EXPECT_TRUE(grid.isInflated(GridIndex{4, 3}));
+  EXPECT_EQ(result.memory.overlay.occupied_cells_applied, 1U);
+}
+
 TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {
   PlanningGridBuilderConfig config = testConfig();
   config.use_static_map = false;

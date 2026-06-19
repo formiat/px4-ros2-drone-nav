@@ -32,12 +32,12 @@ struct CurrentLidarOverlayStats {
 [[nodiscard]] std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid,
                                                    Point2 endpoint,
                                                    Point2 depth_endpoint,
-                                                   double obstacle_depth_m);
+                                                   double sensor_hit_depth_m);
 
 [[nodiscard]] CurrentLidarOverlayStats
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
-                        double obstacle_depth_m);
+                        double sensor_hit_depth_m);
 
 } // namespace drone_city_nav

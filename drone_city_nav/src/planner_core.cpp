@@ -185,20 +185,6 @@ bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, const Point2 start,
   return hasLineOfSight(grid, *start_cell, *end_cell);
 }
 
-double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid, const Point2 start,
-                                  const Point2 end) {
-  const auto start_cell = grid.worldToCell(start);
-  const auto end_cell = grid.worldToCell(end);
-  if (!start_cell.has_value() || !end_cell.has_value()) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  const std::vector<GridIndex> segment_cells = grid.cellsOnLine(*start_cell, *end_cell);
-  const auto occupied_count = static_cast<double>(std::ranges::count_if(
-      segment_cells, [&grid](const GridIndex cell) { return grid.isOccupied(cell); }));
-  return occupied_count * grid.resolution();
-}
-
 double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid, const Point2 start,
                                     const Point2 end) {
   const auto start_cell = grid.worldToCell(start);

@@ -178,7 +178,7 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
                  const double scan_range_min_m, const double scan_range_max_m,
                  const double angle_min_rad, const double angle_increment_rad,
                  const std::size_t beam_index, const float raw_range,
-                 const double obstacle_depth_m) noexcept {
+                 const double sensor_hit_depth_m) noexcept {
   LidarBeamProjection projection{};
   if (!validProjectionInputs(pose, config, scan_range_min_m, scan_range_max_m,
                              angle_min_rad, angle_increment_rad)) {
@@ -223,7 +223,7 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
       Point2{pose.position.x + projection.used_range_m * world_direction.x,
              pose.position.y + projection.used_range_m * world_direction.y};
   const double depth_range_m =
-      projection.used_range_m + std::max(0.0, obstacle_depth_m);
+      projection.used_range_m + std::max(0.0, sensor_hit_depth_m);
   projection.depth_endpoint =
       Point2{pose.position.x + depth_range_m * world_direction.x,
              pose.position.y + depth_range_m * world_direction.y};

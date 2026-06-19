@@ -184,8 +184,8 @@ public:
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
     const std::string emergency_stop_topic = declare_parameter<std::string>(
         "emergency_stop_topic", "/drone_city_nav/emergency_stop");
-    const std::string occupancy_grid_topic = declare_parameter<std::string>(
-        "occupancy_grid_topic", "/drone_city_nav/occupancy_grid");
+    const std::string prohibited_grid_topic = declare_parameter<std::string>(
+        "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
 
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
@@ -206,10 +206,10 @@ public:
     emergency_stop_sub_ = create_subscription<std_msgs::msg::Bool>(
         emergency_stop_topic, emergency_stop_qos,
         [this](const std_msgs::msg::Bool::SharedPtr msg) { onEmergencyStop(*msg); });
-    occupancy_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-        occupancy_grid_topic, rclcpp::QoS{1}.transient_local(),
+    prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+        prohibited_grid_topic, rclcpp::QoS{1}.transient_local(),
         [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-          onOccupancyGrid(*msg);
+          onProhibitedGrid(*msg);
         });
 
     offboard_control_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
@@ -265,10 +265,10 @@ public:
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
-                "vehicle_status='%s' emergency_stop='%s' occupancy_grid='%s'",
+                "vehicle_status='%s' emergency_stop='%s' prohibited_grid='%s'",
                 path_topic.c_str(), local_position_topic.c_str(),
                 vehicle_status_topic.c_str(), emergency_stop_topic.c_str(),
-                occupancy_grid_topic.c_str());
+                prohibited_grid_topic.c_str());
   }
 
 private:
@@ -520,13 +520,13 @@ private:
                  "sending disarm commands");
   }
 
-  void onOccupancyGrid(const nav_msgs::msg::OccupancyGrid& msg) {
+  void onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg) {
     if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U ||
         msg.info.height == 0U ||
         msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
         msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Ignoring invalid offboard occupancy grid metadata");
+                           "Ignoring invalid offboard prohibited grid metadata");
       return;
     }
 
@@ -535,19 +535,19 @@ private:
     if (msg.data.size() != expected_size) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Ignoring offboard occupancy grid with mismatched data size: expected=%zu "
+          "Ignoring offboard prohibited grid with mismatched data size: expected=%zu "
           "got=%zu",
           expected_size, msg.data.size());
       return;
     }
 
-    occupancy_grid_ = msg;
-    occupancy_grid_valid_ = true;
-    last_occupancy_grid_update_ns_ = get_clock()->now().nanoseconds();
-    if (!occupancy_grid_seen_logged_) {
-      occupancy_grid_seen_logged_ = true;
+    prohibited_grid_ = msg;
+    prohibited_grid_valid_ = true;
+    last_prohibited_grid_update_ns_ = get_clock()->now().nanoseconds();
+    if (!prohibited_grid_seen_logged_) {
+      prohibited_grid_seen_logged_ = true;
       RCLCPP_INFO(get_logger(),
-                  "First offboard occupancy grid: size=%ux%u resolution=%.2f "
+                  "First offboard prohibited grid: size=%ux%u resolution=%.2f "
                   "origin=(%.2f, %.2f)",
                   msg.info.width, msg.info.height,
                   static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
@@ -835,16 +835,16 @@ private:
     return "unknown";
   }
 
-  [[nodiscard]] bool occupancyGridFresh() const {
-    if (!occupancy_grid_valid_ || last_occupancy_grid_update_ns_ <= 0) {
+  [[nodiscard]] bool prohibitedGridFresh() const {
+    if (!prohibited_grid_valid_ || last_prohibited_grid_update_ns_ <= 0) {
       return false;
     }
     if (max_clearance_grid_staleness_ns_ <= 0) {
       return true;
     }
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    return now_ns >= last_occupancy_grid_update_ns_ &&
-           now_ns - last_occupancy_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
+    return now_ns >= last_prohibited_grid_update_ns_ &&
+           now_ns - last_prohibited_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
   }
 
   [[nodiscard]] bool localPositionFresh() const {
@@ -877,12 +877,12 @@ private:
   [[nodiscard]] double
   estimateGridClearanceM(const Point2 point,
                          const std::int8_t min_occupancy_value) const {
-    if (!occupancyGridFresh()) {
+    if (!prohibitedGridFresh()) {
       return std::numeric_limits<double>::quiet_NaN();
     }
 
     return occupancyGridClearanceM(
-        occupancy_grid_, point, kLocalClearanceDiagnosticRadiusM, min_occupancy_value);
+        prohibited_grid_, point, kLocalClearanceDiagnosticRadiusM, min_occupancy_value);
   }
 
   [[nodiscard]] std::array<float, 3>
@@ -1132,7 +1132,7 @@ private:
     return limitedTarget(currentTarget());
   }
 
-  nav_msgs::msg::OccupancyGrid occupancy_grid_;
+  nav_msgs::msg::OccupancyGrid prohibited_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 current_position_{};
   Point2 current_velocity_{};
@@ -1165,7 +1165,7 @@ private:
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
-  std::int64_t last_occupancy_grid_update_ns_{0};
+  std::int64_t last_prohibited_grid_update_ns_{0};
   std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
   std::size_t waypoint_index_{0U};
@@ -1179,8 +1179,8 @@ private:
   bool auto_arm_{true};
   bool auto_offboard_{true};
   bool emergency_stop_requested_{false};
-  bool occupancy_grid_valid_{false};
-  bool occupancy_grid_seen_logged_{false};
+  bool prohibited_grid_valid_{false};
+  bool prohibited_grid_seen_logged_{false};
   bool current_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool takeoff_hold_target_valid_{false};
@@ -1211,7 +1211,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_grid_sub_;
+  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr

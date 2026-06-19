@@ -72,6 +72,6 @@ quaternionToEuler(const std::array<float, 4>& quaternion) noexcept;
 projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& config,
                  double scan_range_min_m, double scan_range_max_m, double angle_min_rad,
                  double angle_increment_rad, std::size_t beam_index, float raw_range,
-                 double obstacle_depth_m) noexcept;
+                 double sensor_hit_depth_m) noexcept;
 
 } // namespace drone_city_nav

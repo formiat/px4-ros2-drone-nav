@@ -101,9 +101,6 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 [[nodiscard]] bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, Point2 start,
                                         Point2 end);
 
-[[nodiscard]] double pathSegmentOccupiedLengthM(const OccupancyGrid2D& grid,
-                                                Point2 start, Point2 end);
-
 [[nodiscard]] double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid,
                                                   Point2 start, Point2 end);
 

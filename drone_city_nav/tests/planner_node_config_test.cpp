@@ -56,6 +56,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.planning_grid_builder.use_obstacle_memory);
   EXPECT_TRUE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
+  EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 0.0);
@@ -67,13 +68,13 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
       {rclcpp::Parameter{"max_pose_staleness_s", -5.0},
        rclcpp::Parameter{"max_current_lidar_staleness_s", 9999.0},
        rclcpp::Parameter{"nearest_free_radius_cells", -10},
-       rclcpp::Parameter{"memory_occupied_threshold", 500},
-       rclcpp::Parameter{"memory_free_threshold", -20},
+       rclcpp::Parameter{"memory_occupied_value", 500},
+       rclcpp::Parameter{"memory_free_value", -20},
        rclcpp::Parameter{"static_map_min_blocking_height_m", -1.0},
        rclcpp::Parameter{"planning_grid_resolution_m", -0.5},
        rclcpp::Parameter{"planning_grid_width_m", -10.0},
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
-       rclcpp::Parameter{"current_lidar_obstacle_depth_m", -2.0},
+       rclcpp::Parameter{"current_lidar_sensor_hit_depth_m", -2.0},
        rclcpp::Parameter{"astar_max_expansions", 0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", -1.0},
@@ -89,13 +90,13 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.timing.max_pose_staleness_ns, 0);
   EXPECT_EQ(config.timing.max_current_lidar_staleness_ns, 3'600'000'000'000LL);
   EXPECT_EQ(config.planner_core.nearest_free_radius_cells, 0);
-  EXPECT_EQ(config.memory_grid.occupied_threshold, 100);
-  EXPECT_EQ(config.memory_grid.free_threshold, 0);
+  EXPECT_EQ(config.memory_grid.occupied_value, 100);
+  EXPECT_EQ(config.memory_grid.free_value, 0);
   EXPECT_DOUBLE_EQ(config.static_map.min_blocking_height_m, 0.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.fallback_bounds.resolution_m, 0.01);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.width_cells, 1);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
-  EXPECT_DOUBLE_EQ(config.current_lidar.obstacle_depth_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.current_lidar.sensor_hit_depth_m, 0.0);
   EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
@@ -139,6 +140,22 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
+}
+
+TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
+  const auto node =
+      makeNode("planner_node_config_topic_contract",
+               {rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
+                rclcpp::Parameter{"memory_occupied_value", 100},
+                rclcpp::Parameter{"memory_free_value", 0},
+                rclcpp::Parameter{"current_lidar_sensor_hit_depth_m", 1.25}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
+  EXPECT_EQ(config.memory_grid.occupied_value, 100);
+  EXPECT_EQ(config.memory_grid.free_value, 0);
+  EXPECT_DOUBLE_EQ(config.current_lidar.sensor_hit_depth_m, 1.25);
 }
 
 TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {

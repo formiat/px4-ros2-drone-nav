@@ -77,6 +77,17 @@ TEST(OccupancyGrid2D, InflationBlocksSafetyRadius) {
   EXPECT_FALSE(grid.isProhibited(GridIndex{8, 5}));
 }
 
+TEST(PathSafety, ProhibitedLengthIncludesOccupiedAndInflatedCells) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  grid.rebuildInflation(1.1);
+
+  const double prohibited_length_m =
+      pathSegmentProhibitedLengthM(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5});
+
+  EXPECT_DOUBLE_EQ(prohibited_length_m, 3.0);
+}
+
 TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   OccupancyGrid2D grid = makeGrid();
   for (int y = 0; y < 10; ++y) {

@@ -17,7 +17,7 @@ struct PlannerTopics {
   std::string lidar{"/scan"};
   std::string local_position{"/fmu/out/vehicle_local_position"};
   std::string attitude{"/fmu/out/vehicle_attitude"};
-  std::string occupancy_grid{"/drone_city_nav/occupancy_grid"};
+  std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
   std::string static_map_grid{"/drone_city_nav/static_map_grid"};
   std::string static_map_points{"/drone_city_nav/static_map_points"};
   std::string path{"/drone_city_nav/path"};
@@ -46,13 +46,13 @@ struct PlannerInitialPoseConfig {
 };
 
 struct PlannerMemoryGridConfig {
-  int occupied_threshold{65};
-  int free_threshold{0};
+  int occupied_value{100};
+  int free_value{0};
 };
 
 struct PlannerCurrentLidarConfig {
   bool use_px4_heading_for_scan{false};
-  double obstacle_depth_m{0.0};
+  double sensor_hit_depth_m{0.0};
 };
 
 struct PlannerNodeConfig {

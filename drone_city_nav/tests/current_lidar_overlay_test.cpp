@@ -41,6 +41,21 @@ TEST(CurrentLidarOverlay, AcceptedHitMarksDepthCellsBehindEndpoint) {
   EXPECT_TRUE(grid.isOccupied(GridIndex{7, 5}));
 }
 
+TEST(CurrentLidarOverlay, ZeroSensorHitDepthMarksOnlyEndpoint) {
+  OccupancyGrid2D grid = makeOverlayGrid();
+  const std::array<float, 1> ranges{4.0F};
+  LidarProjectionConfig config = overlayConfig();
+
+  const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, 0.0);
+
+  EXPECT_TRUE(stats.used);
+  EXPECT_EQ(stats.hit_beams, 1U);
+  EXPECT_TRUE(grid.isOccupied(GridIndex{5, 5}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{6, 5}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{7, 5}));
+}
+
 TEST(CurrentLidarOverlay, MaxRangeBeamDoesNotMarkObstacle) {
   OccupancyGrid2D grid = makeOverlayGrid();
   const std::array<float, 1> ranges{10.0F};

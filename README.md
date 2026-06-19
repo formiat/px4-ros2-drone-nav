@@ -132,6 +132,14 @@ The simulation uses three planner obstacle sources by default: the static
 current lidar hit overlay. Source toggles and map format details are documented
 in `docs/MVP_SIMULATION.md`.
 
+Obstacle topics follow a strict raw/prohibited/debug contract. Raw sources such
+as `/drone_city_nav/obstacle_memory_grid` must contain only direct obstacle
+evidence and must never include safety inflation. The planner overlays all raw
+sources, inflates that merged grid once, and publishes the final planning output
+as `/drone_city_nav/prohibited_grid`. Debug topics such as lidar point clouds or
+prohibited-cell point clouds are visualization outputs and must not be wired
+back into planner raw inputs.
+
 After a headless run, validate lidar projection snapshots without GUI:
 
 ```bash

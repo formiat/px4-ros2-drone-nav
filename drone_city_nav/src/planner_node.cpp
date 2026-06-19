@@ -47,9 +47,7 @@ constexpr double kGroundDebugZ = 0.05;
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
   std::size_t prohibited_segments{0U};
-  std::size_t occupied_segments{0U};
   double prohibited_length_m{0.0};
-  double occupied_length_m{0.0};
 };
 
 enum class PathPublicationReason : std::uint8_t {
@@ -135,8 +133,8 @@ public:
           onAttitude(*msg);
         });
 
-    occupancy_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-        config.topics.occupancy_grid, rclcpp::QoS{1}.transient_local());
+    prohibited_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
+        config.topics.prohibited_grid, rclcpp::QoS{1}.transient_local());
     static_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         config.topics.static_map_grid, rclcpp::QoS{1}.transient_local());
     static_map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -165,6 +163,10 @@ public:
                 "attitude='%s'",
                 config.topics.obstacle_memory_grid.c_str(),
                 config.topics.local_position.c_str(), config.topics.attitude.c_str());
+    RCLCPP_INFO(get_logger(),
+                "Planning grid contract: raw_sources=[static,memory,current_lidar] "
+                "inflation_owner=planner prohibited_output='%s'",
+                config.topics.prohibited_grid.c_str());
     RCLCPP_INFO(
         get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
@@ -176,14 +178,14 @@ public:
         fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
-                "max_staleness=%.2fs depth=%.2f swap_lidar_xy=%s yaw_source=%s "
-                "compensate_attitude=%s lidar_z_offset=%.2f "
+                "max_staleness=%.2fs sensor_hit_depth=%.2f swap_lidar_xy=%s "
+                "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 use_current_lidar_obstacles_ ? "true" : "false",
                 config.topics.lidar.c_str(), max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
-                current_lidar_obstacle_depth_m_,
+                current_lidar_sensor_hit_depth_m_,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
@@ -247,8 +249,8 @@ private:
         config.planner_core.stable_path_prohibited_confirmations_required;
     max_initial_lateral_deviation_m_ = config.fallback.max_initial_lateral_deviation_m;
     nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
-    occupied_threshold_ = config.memory_grid.occupied_threshold;
-    free_threshold_ = config.memory_grid.free_threshold;
+    memory_occupied_value_ = config.memory_grid.occupied_value;
+    memory_free_value_ = config.memory_grid.free_value;
     use_static_map_ = config.static_map.enabled;
     use_obstacle_memory_ = config.planning_grid_builder.use_obstacle_memory;
     static_map_path_param_ = config.static_map.configured_path.string();
@@ -259,7 +261,7 @@ private:
     max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
     max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
     range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;
-    current_lidar_obstacle_depth_m_ = config.current_lidar.obstacle_depth_m;
+    current_lidar_sensor_hit_depth_m_ = config.current_lidar.sensor_hit_depth_m;
     scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
     use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
     swap_lidar_xy_to_local_frame_ =
@@ -323,8 +325,8 @@ private:
   }
 
   void onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
-    OccupancyGridFromRosResult converted = occupancyGridFromRos(
-        msg, OccupancyGridFromRosConfig{occupied_threshold_, free_threshold_});
+    RawOccupancyGridFromRosResult converted = rawOccupancyGridFromRos(
+        msg, RawOccupancyGridFromRosConfig{memory_occupied_value_, memory_free_value_});
     if (!converted.grid.has_value()) {
       if (converted.error == OccupancyGridFromRosError::kMismatchedDataSize) {
         RCLCPP_WARN_THROTTLE(
@@ -340,6 +342,15 @@ private:
     }
 
     memory_grid_ = std::move(*converted.grid);
+    if (converted.intermediate_value_cells > 0U) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Ignored intermediate values while reading raw obstacle memory grid: "
+          "intermediate_cells=%zu. Raw memory topics must use only occupied=%d, "
+          "free=%d, or unknown=-1 values.",
+          converted.intermediate_value_cells, memory_occupied_value_,
+          memory_free_value_);
+    }
     if (!memory_grid_seen_) {
       memory_grid_seen_ = true;
       RCLCPP_INFO(
@@ -547,7 +558,7 @@ private:
       return;
     }
     OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
-    publishOccupancyGrid(planning_grid);
+    publishProhibitedGrid(planning_grid);
     if (keepCurrentPathIfStillClear(planning_grid)) {
       return;
     }
@@ -560,7 +571,9 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
-        "distance_to_goal=%.2f occupied=%zu inflated=%zu free=%zu unknown=%zu "
+        "distance_to_goal=%.2f raw_static=%zu raw_memory=%zu "
+        "raw_current_lidar=%zu prohibited=%zu occupied=%zu inflated=%zu free=%zu "
+        "unknown=%zu inflation_owner=planner inflation_radius_m=%.2f "
         "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
         "path='%s'] "
         "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
@@ -576,10 +589,14 @@ private:
         "path_clearance[raw=%.2f smoothed=%.2f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
-        distance(current_pose_.position, goal_), path_result->grid_stats.occupied_cells,
-        path_result->grid_stats.inflated_cells, path_result->grid_stats.free_cells,
-        path_result->grid_stats.unknown_cells,
-        planning_result->static_source.enabled ? "true" : "false",
+        distance(current_pose_.position, goal_),
+        planning_result->static_source.occupied_cells,
+        planning_result->memory.source_counts.occupied_cells,
+        planning_result->current_lidar.occupied_cells,
+        path_result->grid_stats.occupied_cells + path_result->grid_stats.inflated_cells,
+        path_result->grid_stats.occupied_cells, path_result->grid_stats.inflated_cells,
+        path_result->grid_stats.free_cells, path_result->grid_stats.unknown_cells,
+        inflation_radius_m_, planning_result->static_source.enabled ? "true" : "false",
         planning_result->static_source.loaded ? "true" : "false",
         planning_result->static_source.used ? "true" : "false",
         planning_result->static_source.rectangles,
@@ -744,17 +761,10 @@ private:
       const Point2 segment_end = path_points[index];
       const double prohibited_length_m =
           pathSegmentProhibitedLengthM(grid, segment_start, segment_end);
-      const double occupied_length_m =
-          pathSegmentOccupiedLengthM(grid, segment_start, segment_end);
 
       if (prohibited_length_m > 0.0) {
         ++summary.prohibited_segments;
         summary.prohibited_length_m += prohibited_length_m;
-      }
-
-      if (occupied_length_m > 0.0) {
-        ++summary.occupied_segments;
-        summary.occupied_length_m += occupied_length_m;
       }
     }
 
@@ -766,26 +776,21 @@ private:
                               const char* source_label) const {
     const PublishedPathSafetySummary summary =
         summarizePublishedPathSafety(grid, path_points);
-    const bool unsafe_path =
-        summary.prohibited_segments > 0U || summary.occupied_segments > 0U;
+    const bool unsafe_path = summary.prohibited_segments > 0U;
     if (unsafe_path) {
       RCLCPP_WARN(get_logger(),
                   "%s published path safety: segments=%zu prohibited_segments=%zu "
-                  "prohibited_length=%.2fm occupied_segments=%zu "
-                  "occupied_length=%.2fm",
+                  "prohibited_length=%.2fm",
                   source_label, summary.segments, summary.prohibited_segments,
-                  summary.prohibited_length_m, summary.occupied_segments,
-                  summary.occupied_length_m);
+                  summary.prohibited_length_m);
       return;
     }
 
     RCLCPP_INFO(get_logger(),
                 "%s published path safety: segments=%zu prohibited_segments=%zu "
-                "prohibited_length=%.2fm occupied_segments=%zu "
-                "occupied_length=%.2fm",
+                "prohibited_length=%.2fm",
                 source_label, summary.segments, summary.prohibited_segments,
-                summary.prohibited_length_m, summary.occupied_segments,
-                summary.occupied_length_m);
+                summary.prohibited_length_m);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -851,7 +856,7 @@ private:
                           static_cast<double>(last_scan_.angle_min),
                           static_cast<double>(last_scan_.angle_increment)},
             currentLidarProjectionPose(), currentLidarProjectionConfig(),
-            current_lidar_obstacle_depth_m_);
+            current_lidar_sensor_hit_depth_m_);
     stats.used = overlay_stats.used;
     stats.processed_beams = overlay_stats.processed_beams;
     stats.hit_beams = overlay_stats.hit_beams;
@@ -891,9 +896,9 @@ private:
     publishStaticMapDebug(*static_grid_, false);
   }
 
-  void publishOccupancyGrid(const OccupancyGrid2D& grid) {
-    occupancy_pub_->publish(
-        occupancyGridToRos(grid, OccupancyGridToRosConfig{makePlannerHeader(), true}));
+  void publishProhibitedGrid(const OccupancyGrid2D& grid) {
+    prohibited_grid_pub_->publish(
+        prohibitedGridToRos(grid, ProhibitedGridToRosConfig{makePlannerHeader()}));
   }
 
   void publishPath(const std::vector<Point2>& points,
@@ -1260,7 +1265,7 @@ private:
   double stable_path_prohibited_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
-  double current_lidar_obstacle_depth_m_{0.0};
+  double current_lidar_sensor_hit_depth_m_{0.0};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double static_map_debug_publish_period_s_{1.0};
@@ -1276,8 +1281,8 @@ private:
   std::int64_t last_pose_update_ns_{0};
   std::int64_t last_scan_update_ns_{0};
   int nearest_free_radius_cells_{10};
-  int occupied_threshold_{65};
-  int free_threshold_{0};
+  int memory_occupied_value_{100};
+  int memory_free_value_{0};
   int stable_path_prohibited_confirmations_required_{2};
   int stable_path_prohibited_confirmations_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
@@ -1304,7 +1309,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr occupancy_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;

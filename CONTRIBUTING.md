@@ -68,3 +68,6 @@ All C++ development must follow `CPP_BEST_PRACTICES.md`.
 - Keep generated files, build outputs, logs, bags, and simulator runtime data
   out of version control.
 - Treat `external/` as a local dependency checkout area, not project source.
+- Keep planner obstacle inputs raw. Runtime inflation is owned by the planner
+  grid builder, which publishes the final `/drone_city_nav/prohibited_grid`.
+  Debug or prohibited outputs must not be connected back to planner raw inputs.

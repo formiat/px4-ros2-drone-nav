@@ -341,10 +341,10 @@ model being absent from non-empty Gazebo pose/scene data.
 The RViz config shows red current lidar hit points from
 `/drone_city_nav/lidar_debug_points`, yellow accumulated lidar hit points from
 `/drone_city_nav/remembered_lidar_points`, and `/drone_city_nav/path`. The
-standard RViz `Map` display for `/drone_city_nav/obstacle_memory_inflated_grid`
-is kept disabled by default because this GUI is intended to show remembered
-lidar wall hits, not filled occupancy-grid cells. All debug overlays are
-published in the `map` frame, so no Gazebo lidar TF tree is required.
+standard RViz `Map` display for `/drone_city_nav/prohibited_grid` is kept
+disabled by default because this GUI is intended to show remembered lidar wall
+hits, not filled occupancy-grid cells. All debug overlays are published in the
+`map` frame, so no Gazebo lidar TF tree is required.
 The RViz config also includes a disabled `Static City Map` display for
 `/drone_city_nav/static_map_grid`; enable it when you need to inspect the raw
 occupancy-grid encoding. The green `Static City Map Points` display is enabled
@@ -354,8 +354,6 @@ by default and shows occupied static-map cells from
 The main obstacle-memory topics are:
 
 - `/drone_city_nav/obstacle_memory_grid` - full raw persistent memory grid.
-- `/drone_city_nav/obstacle_memory_inflated_grid` - full memory grid after
-  safety inflation for debugging clearance.
 - `/drone_city_nav/lidar_debug_points` - current lidar hit endpoints, shown red
   in RViz.
 - `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
@@ -371,9 +369,10 @@ The main obstacle-memory topics are:
   point cloud for RViz. The default debug view shows this layer in green. The
   planner republishes this static debug layer periodically so RViz receives it
   even when RViz starts after the planner.
-- `/drone_city_nav/occupancy_grid` - planner output grid after planner-side
-  source overlay and inflation, kept for compatibility with existing debug
-  tooling.
+- `/drone_city_nav/prohibited_grid` - planner output grid after planner-side
+  raw source overlay and single inflation. A* treats every prohibited cell as
+  blocked, regardless of whether the cell started as a direct obstacle or
+  planner-side inflation.
 
 The planner builds its A* grid from three obstacle sources:
 
@@ -529,13 +528,17 @@ make quality
 - Only static building obstacles are modeled.
 - The planner treats unknown planning-grid cells as traversable, but occupied
   cells from any enabled source remain prohibited through the union overlay.
+- Planner obstacle data uses a raw/prohibited/debug contract: obstacle sources
+  publish raw evidence only, the planner overlays all raw sources, and
+  `PlanningGridBuilder` performs the only runtime safety inflation before
+  publishing `/drone_city_nav/prohibited_grid`.
 - `obstacle_memory_node` stores bounded hit/miss scores per cell. A single free
   miss does not immediately erase a remembered obstacle, but repeated free
   evidence can clear stale cells.
-- Lidar hit endpoints are extended by the configurable
-  `hit_obstacle_depth_m` before inflation. This conservative 2D mapping
-  heuristic prevents A* from treating the unseen volume immediately behind a
-  detected wall as a free corridor.
+- Lidar hit endpoints are extended by the configurable `sensor_hit_depth_m`
+  before planner inflation. This is sensor preprocessing, not safety inflation:
+  it makes raw lidar evidence thick enough to survive grid discretization. Real
+  drone templates may use a larger value as deployment calibration.
 - A* base edge costs use physical grid distance in meters. `astar_turn_cost_weight`
   prefers smoother paths by penalizing turns. `astar_evasive_maneuvering_enabled`
   switches direction preference to evasive mode, where straight continuations are

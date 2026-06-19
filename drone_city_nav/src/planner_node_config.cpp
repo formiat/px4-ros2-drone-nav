@@ -70,10 +70,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<int>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0,
           100000));
-  config.memory_grid.occupied_threshold = static_cast<int>(std::clamp<std::int64_t>(
-      node.declare_parameter<std::int64_t>("memory_occupied_threshold", 65), 1, 100));
-  config.memory_grid.free_threshold = static_cast<int>(std::clamp<std::int64_t>(
-      node.declare_parameter<std::int64_t>("memory_free_threshold", 0), 0, 100));
+  config.memory_grid.occupied_value = static_cast<int>(std::clamp<std::int64_t>(
+      node.declare_parameter<std::int64_t>("memory_occupied_value", 100), 1, 100));
+  config.memory_grid.free_value = static_cast<int>(std::clamp<std::int64_t>(
+      node.declare_parameter<std::int64_t>("memory_free_value", 0), 0, 100));
 
   config.static_map.enabled = node.declare_parameter<bool>("use_static_map", true);
   config.planning_grid_builder.use_static_map = config.static_map.enabled;
@@ -132,9 +132,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("max_lidar_range_m", 35.0);
   config.lidar_projection.range_hit_epsilon_m =
       node.declare_parameter<double>("range_hit_epsilon_m", 0.05);
-  config.current_lidar.obstacle_depth_m =
-      std::clamp(node.declare_parameter<double>("current_lidar_obstacle_depth_m", 0.0),
-                 0.0, 100.0);
+  config.current_lidar.sensor_hit_depth_m = std::clamp(
+      node.declare_parameter<double>("current_lidar_sensor_hit_depth_m", 0.0), 0.0,
+      100.0);
   config.lidar_projection.scan_yaw_offset_rad =
       node.declare_parameter<double>("scan_yaw_offset_rad", 0.0);
   config.current_lidar.use_px4_heading_for_scan =
@@ -199,8 +199,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "px4_local_position_topic", "/fmu/out/vehicle_local_position");
   config.topics.attitude = node.declare_parameter<std::string>(
       "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
-  config.topics.occupancy_grid = node.declare_parameter<std::string>(
-      "occupancy_grid_topic", "/drone_city_nav/occupancy_grid");
+  config.topics.prohibited_grid = node.declare_parameter<std::string>(
+      "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
   config.topics.static_map_grid = node.declare_parameter<std::string>(
       "static_map_grid_topic", "/drone_city_nav/static_map_grid");
   config.topics.static_map_points = node.declare_parameter<std::string>(

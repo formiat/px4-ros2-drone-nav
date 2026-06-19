@@ -103,7 +103,6 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
 
 ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
     : raw_grid_{bounds},
-      inflated_grid_{bounds},
       scores_(raw_grid_.cellCount(), 0) {
 }
 
@@ -144,7 +143,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     const LidarBeamProjection projection =
         projectLidarBeam(projection_pose, projection_config, scan.range_min_m,
                          scan_range_max, scan.angle_min_rad, scan.angle_increment_rad,
-                         i, raw_range, config.hit_obstacle_depth_m);
+                         i, raw_range, config.sensor_hit_depth_m);
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
@@ -201,7 +200,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     applyHit(endpoint_grid_cell, config);
     ++stats.occupied_cells_updated;
 
-    if (config.hit_obstacle_depth_m <= 0.0) {
+    if (config.sensor_hit_depth_m <= 0.0) {
       continue;
     }
 
@@ -220,32 +219,19 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
         raw_grid_.cellsOnLine(endpoint_grid_cell, depth_grid_cell);
     for (const GridIndex cell : depth_cells) {
       applyHit(cell, config);
-      ++stats.obstacle_depth_cells;
+      ++stats.sensor_hit_depth_cells;
     }
   }
 
   return stats;
 }
 
-void ObstacleMemoryGrid::rebuildInflation(const double radius_m) {
-  inflated_grid_ = raw_grid_;
-  inflated_grid_.rebuildInflation(radius_m);
-}
-
 const OccupancyGrid2D& ObstacleMemoryGrid::rawGrid() const noexcept {
   return raw_grid_;
 }
 
-const OccupancyGrid2D& ObstacleMemoryGrid::inflatedGrid() const noexcept {
-  return inflated_grid_;
-}
-
 GridCellCounts ObstacleMemoryGrid::countRawCells() const {
   return countCells(raw_grid_);
-}
-
-GridCellCounts ObstacleMemoryGrid::countInflatedCells() const {
-  return countCells(inflated_grid_);
 }
 
 void ObstacleMemoryGrid::applyMiss(const GridIndex cell,
