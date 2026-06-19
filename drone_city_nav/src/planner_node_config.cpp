@@ -162,6 +162,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
           std::numeric_limits<int>::max()));
   config.planner_core.astar.turn_cost_weight = std::clamp(
       node.declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);
+  config.planner_core.astar.near_prohibited_penalty_radius_m = std::clamp(
+      node.declare_parameter<double>("astar_near_prohibited_penalty_radius_m", 0.0),
+      0.0, 100.0);
+  config.planner_core.astar.near_prohibited_penalty =
+      std::clamp(node.declare_parameter<double>("astar_near_prohibited_penalty", 0.0),
+                 0.0, 1000.0);
   config.planner_core.astar.evasive_maneuvering_enabled =
       node.declare_parameter<bool>("astar_evasive_maneuvering_enabled", false);
   config.planner_core.astar.evasive_maneuvering_straight_cost_weight =

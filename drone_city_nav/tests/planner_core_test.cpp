@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <numbers>
 #include <vector>
 
@@ -195,6 +196,31 @@ TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
   ASSERT_TRUE(turn_penalized_result.success);
   EXPECT_LT(directionChanges(turn_penalized_result.path),
             directionChanges(unpenalized_result.path));
+}
+
+TEST(AStarPlanner, NearProhibitedPenaltyPrefersWiderComparableRoute) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 5}};
+  for (int x = 0; x < grid.width(); ++x) {
+    grid.setOccupied(GridIndex{x, 0});
+  }
+  grid.rebuildInflation(0.0);
+
+  const GridIndex start{1, 1};
+  const GridIndex goal{8, 1};
+  const AStarResult unpenalized_result = AStarPlanner{}.plan(grid, start, goal);
+
+  AStarConfig clearance_config{};
+  clearance_config.near_prohibited_penalty_radius_m = 1.0;
+  clearance_config.near_prohibited_penalty = 1.0;
+  const AStarResult penalized_result =
+      AStarPlanner{}.plan(grid, start, goal, clearance_config);
+
+  ASSERT_TRUE(unpenalized_result.success);
+  ASSERT_TRUE(penalized_result.success);
+  EXPECT_TRUE(std::ranges::all_of(unpenalized_result.path,
+                                  [](const GridIndex cell) { return cell.y == 1; }));
+  EXPECT_TRUE(std::ranges::any_of(penalized_result.path,
+                                  [](const GridIndex cell) { return cell.y > 1; }));
 }
 
 TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {

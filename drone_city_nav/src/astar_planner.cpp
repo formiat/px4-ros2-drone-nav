@@ -1,5 +1,7 @@
 #include "drone_city_nav/astar_planner.hpp"
 
+#include "drone_city_nav/clearance_field.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -112,6 +114,23 @@ struct CompareOpenNode {
   return config.turn_cost_weight;
 }
 
+[[nodiscard]] double nearProhibitedCost(const AStarConfig& config,
+                                        const ClearanceField2D& clearance_field,
+                                        const GridIndex cell) {
+  if (!(config.near_prohibited_penalty_radius_m > 0.0) ||
+      !(config.near_prohibited_penalty > 0.0) || !clearance_field.contains(cell)) {
+    return 0.0;
+  }
+
+  const double clearance_m = clearance_field.distanceAt(cell);
+  if (!std::isfinite(clearance_m) ||
+      clearance_m > config.near_prohibited_penalty_radius_m) {
+    return 0.0;
+  }
+
+  return config.near_prohibited_penalty;
+}
+
 [[nodiscard]] std::vector<GridIndex>
 reconstructPath(const OccupancyGrid2D& grid, const std::vector<std::size_t>& parents,
                 const std::size_t start_state_index,
@@ -177,6 +196,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
   std::vector<std::size_t> parents(state_count, kNoParent);
   std::vector<std::uint8_t> closed(state_count, 0U);
   std::priority_queue<OpenNode, std::vector<OpenNode>, CompareOpenNode> open;
+  const ClearanceField2D prohibited_clearance_field = ClearanceField2D::build(
+      grid, config.near_prohibited_penalty_radius_m, ClearanceSource::kProhibited);
 
   const std::size_t start_index = stateIndex(grid, start, kStartDirectionState);
   g_scores[start_index] = 0.0;
@@ -223,7 +244,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       const double tentative_g =
           g_scores[current_index] + step_distance_m +
           directionPreferenceCost(config, current.direction_state,
-                                  next_direction_state);
+                                  next_direction_state) +
+          nearProhibitedCost(config, prohibited_clearance_field, next);
       if (tentative_g >= g_scores[next_index]) {
         continue;
       }

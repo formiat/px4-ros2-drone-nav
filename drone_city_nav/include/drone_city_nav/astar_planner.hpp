@@ -10,6 +10,8 @@ namespace drone_city_nav {
 struct AStarConfig {
   std::size_t max_expansions{100000};
   double turn_cost_weight{0.0};
+  double near_prohibited_penalty_radius_m{0.0};
+  double near_prohibited_penalty{0.0};
   bool evasive_maneuvering_enabled{false};
   double evasive_maneuvering_straight_cost_weight{1.0};
 };
