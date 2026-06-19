@@ -155,6 +155,7 @@ px4_offboard_node:
     path_switch_hysteresis_m: 6.0
     path_continuity_reuse_radius_m: 12.0
     path_continuity_max_target_distance_m: 20.0
+    commanded_target_hysteresis_m: 0.5
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true

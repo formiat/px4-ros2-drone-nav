@@ -200,6 +200,8 @@ public:
     path_continuity_max_target_distance_m_ = std::clamp(
         declare_parameter<double>("path_continuity_max_target_distance_m", 20.0), 0.0,
         500.0);
+    commanded_target_hysteresis_m_ = std::clamp(
+        declare_parameter<double>("commanded_target_hysteresis_m", 0.5), 0.0, 10.0);
     telemetry_log_period_ns_ = static_cast<std::int64_t>(
         std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
                    60.0) *
@@ -315,7 +317,8 @@ public:
         "tracking_overspeed_limit=%s tracking_overspeed_limit_mps=%.2f "
         "velocity_feedforward=%s "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-        "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
+        "path_continuity_max_target_distance=%.1fm "
+        "commanded_target_hysteresis=%.2fm mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
         "flight_blackbox=%s flight_blackbox_path='%s' "
         "max_pose_staleness=%.2fs command_resend_period=%.2fs",
@@ -333,7 +336,8 @@ public:
         speed_controller_.config().tracking_overspeed_limit_mps,
         velocity_feedforward_enabled_ ? "true" : "false", path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        commanded_target_hysteresis_m_, mission_goal_.x, mission_goal_.y,
+        px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
         flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
@@ -394,6 +398,7 @@ private:
 
     path_points_ = pathPointsFromMessage(path);
     path_valid_ = !path_points_.empty();
+    path_update_target_hysteresis_pending_ = false;
 
     if (!path_valid_) {
       if (last_logged_path_size_ != 0U) {
@@ -431,6 +436,8 @@ private:
     const std::size_t candidate_index = lookaheadWaypointIndex();
     waypoint_index_ =
         continuityWaypointIndex(previous_target, candidate_index, had_active_target);
+    path_update_target_hysteresis_pending_ =
+        had_active_target && commanded_target_hysteresis_m_ > 0.0;
     const Point2 first = path_points_.front();
     const Point2 last = path_points_.back();
     const bool path_changed = path_points_.size() != last_logged_path_size_ ||
@@ -764,7 +771,9 @@ private:
     const Point2 desired_target = limitedTarget(currentTarget());
     const SpeedControllerInput speed_input = makeSpeedControllerInput();
     last_speed_output_ = speed_controller_.update(speed_input);
-    const Point2 target = selectSafeCommandTarget(desired_target, speed_input);
+    const Point2 proposed_target = selectSafeCommandTarget(desired_target, speed_input);
+    const Point2 target = applyPathUpdateTargetHysteresis(
+        proposed_target, previous_target, had_previous_target);
     commanded_target_ = target;
     commanded_target_valid_ = local_position_valid_;
     last_published_target_ = target;
@@ -908,6 +917,67 @@ private:
       return current_position_;
     }
     return selectCommandTargetAtLead(requested_lead_m, desired_target);
+  }
+
+  [[nodiscard]] Point2 applyPathUpdateTargetHysteresis(const Point2 proposed_target,
+                                                       const Point2 previous_target,
+                                                       const bool had_previous_target) {
+    last_commanded_target_hysteresis_used_ = false;
+    last_commanded_target_hysteresis_delta_m_ =
+        std::numeric_limits<double>::quiet_NaN();
+    last_commanded_target_hysteresis_path_error_m_ =
+        std::numeric_limits<double>::quiet_NaN();
+
+    if (!path_update_target_hysteresis_pending_) {
+      return proposed_target;
+    }
+    path_update_target_hysteresis_pending_ = false;
+
+    if (!had_previous_target || commanded_target_hysteresis_m_ <= 0.0 ||
+        path_points_.empty()) {
+      return proposed_target;
+    }
+
+    const double target_delta_m = distance(previous_target, proposed_target);
+    last_commanded_target_hysteresis_delta_m_ = target_delta_m;
+    if (target_delta_m > commanded_target_hysteresis_m_) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Commanded target hysteresis switched to new path target: delta=%.2fm "
+          "tolerance=%.2fm previous=(%.2f, %.2f) proposed=(%.2f, %.2f)",
+          target_delta_m, commanded_target_hysteresis_m_, previous_target.x,
+          previous_target.y, proposed_target.x, proposed_target.y);
+      return proposed_target;
+    }
+
+    const std::size_t minimum_segment_start =
+        waypoint_index_ > 0U ? waypoint_index_ - 1U : 0U;
+    const auto projection = closestOffboardPathProjection(path_points_, previous_target,
+                                                          minimum_segment_start);
+    if (!projection.has_value()) {
+      return proposed_target;
+    }
+
+    const double path_error_m = std::sqrt(projection->distance_sq);
+    last_commanded_target_hysteresis_path_error_m_ = path_error_m;
+    if (path_error_m > commanded_target_hysteresis_m_) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Commanded target hysteresis rejected previous target because it is not "
+          "near the updated path: path_error=%.2fm tolerance=%.2fm previous=(%.2f, "
+          "%.2f)",
+          path_error_m, commanded_target_hysteresis_m_, previous_target.x,
+          previous_target.y);
+      return proposed_target;
+    }
+
+    last_commanded_target_hysteresis_used_ = true;
+    RCLCPP_INFO(get_logger(),
+                "Commanded target hysteresis kept previous target after path update: "
+                "delta=%.2fm path_error=%.2fm tolerance=%.2fm target=(%.2f, %.2f)",
+                target_delta_m, path_error_m, commanded_target_hysteresis_m_,
+                previous_target.x, previous_target.y);
+    return previous_target;
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
@@ -1432,10 +1502,14 @@ private:
     RCLCPP_INFO(get_logger(),
                 "Drone command diagnostics: command[target_delta=%.2f "
                 "target_distance=%.2f velocity=(%.2f, %.2f) velocity_speed=%.2f "
-                "yaw=%.3f]",
+                "yaw=%.3f target_hysteresis_used=%s "
+                "target_hysteresis_delta=%.2f target_hysteresis_path_error=%.2f]",
                 last_commanded_target_delta_m_, last_commanded_target_distance_m_,
                 last_commanded_velocity_.x, last_commanded_velocity_.y,
-                last_commanded_velocity_mps_, last_commanded_yaw_rad_);
+                last_commanded_velocity_mps_, last_commanded_yaw_rad_,
+                last_commanded_target_hysteresis_used_ ? "true" : "false",
+                last_commanded_target_hysteresis_delta_m_,
+                last_commanded_target_hysteresis_path_error_m_);
     RCLCPP_INFO(get_logger(),
                 "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
@@ -1524,6 +1598,14 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_velocity_mps_);
     flight_blackbox_stream_ << ",\"yaw_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_yaw_rad_);
+    flight_blackbox_stream_ << ",\"target_hysteresis_used\":";
+    writeJsonBool(flight_blackbox_stream_, last_commanded_target_hysteresis_used_);
+    flight_blackbox_stream_ << ",\"target_hysteresis_delta_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_commanded_target_hysteresis_delta_m_);
+    flight_blackbox_stream_ << ",\"target_hysteresis_path_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_commanded_target_hysteresis_path_error_m_);
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"path\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_valid_);
@@ -1631,6 +1713,7 @@ private:
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
+  double commanded_target_hysteresis_m_{0.5};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
@@ -1639,6 +1722,10 @@ private:
   double last_commanded_target_delta_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_target_distance_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_target_hysteresis_delta_m_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_target_hysteresis_path_error_m_{
+      std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -1675,6 +1762,8 @@ private:
   bool dynamic_lookahead_enabled_{true};
   bool latest_planner_path_id_seen_{false};
   bool flight_blackbox_enabled_{true};
+  bool path_update_target_hysteresis_pending_{false};
+  bool last_commanded_target_hysteresis_used_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};

@@ -33,6 +33,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("heading_error=%.3f", self.offboard_text)
         self.assertIn("Drone command diagnostics:", self.offboard_text)
         self.assertIn("command[target_delta=%.2f", self.offboard_text)
+        self.assertIn("target_hysteresis_used=%s", self.offboard_text)
+        self.assertIn("applyPathUpdateTargetHysteresis", self.offboard_text)
+        self.assertIn("path_update_target_hysteresis_pending_", self.offboard_text)
         self.assertIn("Drone obstacle diagnostics:", self.offboard_text)
         self.assertIn("nearest_obstacle[valid=%s", self.offboard_text)
         self.assertIn("bearing_body_deg=%.1f", self.offboard_text)
@@ -45,6 +48,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("cross_track_error_m", self.offboard_text)
         self.assertIn("bearing_body_rad", self.offboard_text)
         self.assertIn("velocity_speed_mps", self.offboard_text)
+        self.assertIn("target_hysteresis_delta_m", self.offboard_text)
+        self.assertIn("target_hysteresis_path_error_m", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
@@ -65,6 +70,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
+                self.assertIn("commanded_target_hysteresis_m: 0.5", text)
 
 
 if __name__ == "__main__":

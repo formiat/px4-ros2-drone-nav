@@ -484,6 +484,9 @@ The main simulation parameters are:
   before sharp path turns.
 - `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
   target motion at the 10 Hz controller rate.
+- `commanded_target_hysteresis_m` - keeps the previous commanded target after a
+  path update when the newly computed target is approximately equal and the
+  previous target is still near the updated path.
 - `tracking_overspeed_limit_enabled` and `tracking_overspeed_limit_mps` -
   optional actual-speed overspeed recovery. It is disabled by default; enable it
   with `ENABLE_TRACKING_OVERSPEED_LIMIT=true` and optionally set
@@ -495,9 +498,10 @@ The main simulation parameters are:
 Runtime logs from `px4_offboard_node` include `requested_speed`,
 `actual_speed`, `speed_limit_reason`, `allowed_speed`, `braking_distance`,
 `target_step`, `turn_angle`, `local_clearance`, attitude, path id correlation,
-cross-track error, heading error, commanded target delta, commanded velocity,
-and nearest-obstacle bearing. The same 2 Hz control diagnostics are written as
-JSON Lines to `log/offboard_blackbox.jsonl` for machine analysis.
+cross-track error, heading error, commanded target delta, path-update target
+hysteresis state, commanded velocity, and nearest-obstacle bearing. The same 2 Hz
+control diagnostics are written as JSON Lines to `log/offboard_blackbox.jsonl`
+for machine analysis.
 Mission-monitor results include final speed plus `max_observed_speed` and
 `mean_observed_speed`, so headless runs can prove that the drone moved at the
 expected scale and stopped at the goal.
