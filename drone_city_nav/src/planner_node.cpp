@@ -19,10 +19,13 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
+#include <std_msgs/msg/u_int64.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -43,6 +46,13 @@ namespace {
 
 constexpr double kPublishedPathCollinearityToleranceM = 0.05;
 constexpr double kGroundDebugZ = 0.05;
+
+[[nodiscard]] std::uint64_t
+stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
+  constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000U;
+  return static_cast<std::uint64_t>(stamp.sec) * kNanosecondsPerSecond +
+         static_cast<std::uint64_t>(stamp.nanosec);
+}
 
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
@@ -141,6 +151,8 @@ public:
         config.topics.static_map_points, rclcpp::QoS{1}.transient_local());
     path_pub_ = create_publisher<nav_msgs::msg::Path>(config.topics.path,
                                                       rclcpp::QoS{1}.reliable());
+    path_id_pub_ = create_publisher<std_msgs::msg::UInt64>(config.topics.path_id,
+                                                           rclcpp::QoS{1}.reliable());
     waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
         config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
@@ -163,6 +175,8 @@ public:
                 "attitude='%s'",
                 config.topics.obstacle_memory_grid.c_str(),
                 config.topics.local_position.c_str(), config.topics.attitude.c_str());
+    RCLCPP_INFO(get_logger(), "Planner publications: path='%s' path_id='%s'",
+                config.topics.path.c_str(), config.topics.path_id.c_str());
     RCLCPP_INFO(get_logger(),
                 "Planning grid contract: raw_sources=[static,memory,current_lidar] "
                 "inflation_owner=planner prohibited_output='%s'",
@@ -904,6 +918,7 @@ private:
   void publishPath(const std::vector<Point2>& points,
                    const PathPublicationReason reason) {
     recordPathPublication(reason, points.empty());
+    const std::uint64_t path_id = next_path_id_++;
 
     if (points.empty()) {
       last_valid_path_points_.clear();
@@ -915,12 +930,15 @@ private:
         pathToRos(std::span<const Point2>{points.data(), points.size()},
                   makePlannerHeader(), kGroundDebugZ);
 
+    std_msgs::msg::UInt64 path_id_msg;
+    path_id_msg.data = path_id;
+    path_id_pub_->publish(path_id_msg);
     path_pub_->publish(path);
     if (!path.poses.empty()) {
       waypoint_pub_->publish(path.poses.front());
     }
 
-    logPathUpdate(path, metrics, reason);
+    logPathUpdate(path, metrics, reason, path_id);
     logPlannerCountersThrottled();
   }
 
@@ -1128,14 +1146,18 @@ private:
   }
 
   void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics,
-                     const PathPublicationReason reason) {
+                     const PathPublicationReason reason, const std::uint64_t path_id) {
     const std::size_t path_size = path.poses.size();
     const bool path_changed = path_size != last_logged_path_size_;
     const std::string counters = plannerCountersSummary();
+    const std::uint64_t path_stamp_ns = stampNanoseconds(path.header.stamp);
     if (path_size == 0U) {
       if (path_changed) {
-        RCLCPP_WARN(get_logger(), "Published empty path: reason=%s counters[%s]",
-                    pathPublicationReasonName(reason), counters.c_str());
+        RCLCPP_WARN(get_logger(),
+                    "Published empty path: path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                    " reason=%s counters[%s]",
+                    path_id, path_stamp_ns, pathPublicationReasonName(reason),
+                    counters.c_str());
         last_logged_path_size_ = path_size;
       }
       return;
@@ -1159,12 +1181,14 @@ private:
                 << path.poses[i].pose.position.y << ")";
       }
       RCLCPP_INFO(get_logger(),
-                  "Published path: reason=%s waypoints=%zu segments=%zu "
+                  "Published path: path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                  " reason=%s waypoints=%zu segments=%zu "
                   "straight_segments=%zu turns=%zu length=%.2f first=(%.2f, %.2f) "
                   "last=(%.2f, %.2f) counters[%s] preview=%s",
-                  pathPublicationReasonName(reason), path_size, metrics.segments,
-                  metrics.straight_segments, metrics.turns, metrics.length_m, first.x,
-                  first.y, last.x, last.y, counters.c_str(), preview.str().c_str());
+                  path_id, path_stamp_ns, pathPublicationReasonName(reason), path_size,
+                  metrics.segments, metrics.straight_segments, metrics.turns,
+                  metrics.length_m, first.x, first.y, last.x, last.y, counters.c_str(),
+                  preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -1300,6 +1324,7 @@ private:
   std::uint64_t fallback_path_publications_{0U};
   std::uint64_t direct_fallback_path_publications_{0U};
   std::uint64_t last_valid_reuse_path_publications_{0U};
+  std::uint64_t next_path_id_{1U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
@@ -1313,6 +1338,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
+  rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr timer_;

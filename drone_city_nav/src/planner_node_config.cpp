@@ -210,6 +210,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       60.0);
   config.topics.path =
       node.declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
+  config.topics.path_id =
+      node.declare_parameter<std::string>("path_id_topic", "/drone_city_nav/path_id");
   config.topics.current_waypoint = node.declare_parameter<std::string>(
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
   config.timing.replan_period_s =

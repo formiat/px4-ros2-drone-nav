@@ -81,7 +81,8 @@ ament_target_dependencies(
   nav_msgs
   px4_msgs
   rclcpp
-  sensor_msgs)
+  sensor_msgs
+  std_msgs)
 enable_project_warnings(planner_node)
 
 add_executable(obstacle_memory_node src/obstacle_memory_node.cpp)

@@ -148,6 +148,11 @@ python3 scripts/analyze_lidar_projection_snapshots.py \
   --static-map drone_city_nav/worlds/generated_city.map2d
 ```
 
+Offboard flight diagnostics are also written as JSON Lines to
+`log/offboard_blackbox.jsonl` by default. This file mirrors the 2 Hz telemetry
+logs with path ids, cross-track error, heading error, commanded target motion,
+commanded velocity, vehicle attitude, and nearest-obstacle bearing.
+
 ## Build System
 
 The approved build system entry point is `colcon`, not direct top-level CMake.

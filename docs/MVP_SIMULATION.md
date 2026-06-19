@@ -432,6 +432,7 @@ Headless logs are written to:
 - `log/px4_city_mvp.log`
 - `log/uxrce_agent_city_mvp.log`
 - `log/ros_city_mvp.log`
+- `log/offboard_blackbox.jsonl`
 
 Useful ROS log markers for obstacle-source debugging:
 
@@ -493,10 +494,13 @@ The main simulation parameters are:
 
 Runtime logs from `px4_offboard_node` include `requested_speed`,
 `actual_speed`, `speed_limit_reason`, `allowed_speed`, `braking_distance`,
-`target_step`, `turn_angle`, and `local_clearance`. Mission-monitor results
-include final speed plus `max_observed_speed` and `mean_observed_speed`, so
-headless runs can prove that the drone moved at the expected scale and stopped
-at the goal.
+`target_step`, `turn_angle`, `local_clearance`, attitude, path id correlation,
+cross-track error, heading error, commanded target delta, commanded velocity,
+and nearest-obstacle bearing. The same 2 Hz control diagnostics are written as
+JSON Lines to `log/offboard_blackbox.jsonl` for machine analysis.
+Mission-monitor results include final speed plus `max_observed_speed` and
+`mean_observed_speed`, so headless runs can prove that the drone moved at the
+expected scale and stopped at the goal.
 
 Run a simple simulation speed sweep without editing tracked YAML files:
 

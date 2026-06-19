@@ -15,17 +15,24 @@
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/u_int64.hpp>
 
 #include <algorithm>
 #include <array>
+#include <builtin_interfaces/msg/time.hpp>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace drone_city_nav {
@@ -68,6 +75,49 @@ constexpr std::int8_t kInflatedOccupancyValue = 80;
 [[nodiscard]] double radiansToDegrees(const double radians) noexcept {
   return radians * 180.0 / std::numbers::pi;
 }
+
+[[nodiscard]] double normalizeAngle(const double angle_rad) noexcept {
+  return std::atan2(std::sin(angle_rad), std::cos(angle_rad));
+}
+
+[[nodiscard]] std::uint64_t
+stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
+  constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000U;
+  return static_cast<std::uint64_t>(stamp.sec) * kNanosecondsPerSecond +
+         static_cast<std::uint64_t>(stamp.nanosec);
+}
+
+void writeJsonBool(std::ostream& stream, const bool value) {
+  stream << (value ? "true" : "false");
+}
+
+void writeJsonNumberOrNull(std::ostream& stream, const double value) {
+  if (std::isfinite(value)) {
+    stream << value;
+    return;
+  }
+  stream << "null";
+}
+
+struct PathTrackingDiagnostics {
+  bool valid{false};
+  std::size_t segment_start_index{0U};
+  double segment_t{0.0};
+  double cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double signed_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double path_heading_rad{std::numeric_limits<double>::quiet_NaN()};
+  double heading_error_rad{std::numeric_limits<double>::quiet_NaN()};
+  Point2 projection{};
+};
+
+struct NearestObstacleDiagnostic {
+  bool valid{false};
+  double clearance_m{std::numeric_limits<double>::quiet_NaN()};
+  double bearing_map_rad{std::numeric_limits<double>::quiet_NaN()};
+  double bearing_body_rad{std::numeric_limits<double>::quiet_NaN()};
+  double bearing_body_deg{std::numeric_limits<double>::quiet_NaN()};
+  Point2 point{};
+};
 
 } // namespace
 
@@ -154,6 +204,9 @@ public:
         std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
                    60.0) *
         1.0e9);
+    flight_blackbox_enabled_ = declare_parameter<bool>("flight_blackbox_enabled", true);
+    flight_blackbox_path_ = declare_parameter<std::string>(
+        "flight_blackbox_path", "log/offboard_blackbox.jsonl");
     warmup_setpoints_ = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("warmup_setpoints", 20), 1, 100000));
     auto_arm_ = declare_parameter<bool>("auto_arm", true);
@@ -184,6 +237,8 @@ public:
 
     const std::string path_topic =
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
+    const std::string path_id_topic =
+        declare_parameter<std::string>("path_id_topic", "/drone_city_nav/path_id");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
@@ -201,6 +256,9 @@ public:
     path_sub_ = create_subscription<nav_msgs::msg::Path>(
         path_topic, rclcpp::QoS{1}.reliable(),
         [this](const nav_msgs::msg::Path::SharedPtr msg) { onPath(*msg); });
+    path_id_sub_ = create_subscription<std_msgs::msg::UInt64>(
+        path_id_topic, rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::UInt64::SharedPtr msg) { onPathId(*msg); });
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, px4_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -241,6 +299,7 @@ public:
     timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
     last_command_time_ =
         now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
+    openFlightBlackbox();
 
     RCLCPP_INFO(
         get_logger(),
@@ -258,6 +317,7 @@ public:
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
+        "flight_blackbox=%s flight_blackbox_path='%s' "
         "max_pose_staleness=%.2fs command_resend_period=%.2fs",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
@@ -275,14 +335,16 @@ public:
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
         mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
+        flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
-    RCLCPP_INFO(get_logger(),
-                "PX4 offboard subscriptions: path='%s' local_position='%s' "
-                "attitude='%s' vehicle_status='%s' emergency_stop='%s' "
-                "prohibited_grid='%s'",
-                path_topic.c_str(), local_position_topic.c_str(),
-                attitude_topic.c_str(), vehicle_status_topic.c_str(),
-                emergency_stop_topic.c_str(), prohibited_grid_topic.c_str());
+    RCLCPP_INFO(
+        get_logger(),
+        "PX4 offboard subscriptions: path='%s' path_id='%s' local_position='%s' "
+        "attitude='%s' vehicle_status='%s' emergency_stop='%s' "
+        "prohibited_grid='%s'",
+        path_topic.c_str(), path_id_topic.c_str(), local_position_topic.c_str(),
+        attitude_topic.c_str(), vehicle_status_topic.c_str(),
+        emergency_stop_topic.c_str(), prohibited_grid_topic.c_str());
   }
 
 private:
@@ -323,6 +385,8 @@ private:
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
+    ++received_path_update_id_;
+    last_received_path_stamp_ns_ = stampNanoseconds(path.header.stamp);
     const bool had_active_target =
         path_valid_ && localPositionFresh() && waypoint_index_ < path_points_.size();
     const Point2 previous_target =
@@ -340,16 +404,23 @@ private:
           commanded_target_valid_ = true;
           waypoint_index_ = 0U;
           RCLCPP_WARN(get_logger(),
-                      "Received empty path; holding fixed target at current position "
-                      "(%.2f, %.2f) and resetting commanded target",
-                      no_path_hold_target_.x, no_path_hold_target_.y);
+                      "Received empty path: local_path_update_id=%" PRIu64
+                      " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                      " holding fixed target at current position (%.2f, %.2f) "
+                      "and resetting commanded target",
+                      received_path_update_id_, latest_planner_path_id_,
+                      last_received_path_stamp_ns_, no_path_hold_target_.x,
+                      no_path_hold_target_.y);
         } else {
           no_path_hold_target_valid_ = false;
           commanded_target_valid_ = false;
           waypoint_index_ = 0U;
           RCLCPP_WARN(get_logger(),
-                      "Received empty path before local position; holding "
-                      "configured fallback target");
+                      "Received empty path: local_path_update_id=%" PRIu64
+                      " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                      " before local position; holding configured fallback target",
+                      received_path_update_id_, latest_planner_path_id_,
+                      last_received_path_stamp_ns_);
         }
         last_logged_path_size_ = 0U;
       }
@@ -367,19 +438,58 @@ private:
                               squaredDistance(last, last_logged_path_last_) > 0.01;
     if (path_changed) {
       const PathMetrics metrics = pointPathMetrics(path_points_);
-      RCLCPP_INFO(get_logger(),
-                  "Received path: waypoints=%zu segments=%zu straight_segments=%zu "
-                  "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
-                  "last=(%.2f, %.2f) continuity_target=(%.2f, %.2f) "
-                  "had_active_target=%s",
-                  path_points_.size(), metrics.segments, metrics.straight_segments,
-                  metrics.turns, metrics.length_m, waypoint_index_ + 1U, first.x,
-                  first.y, last.x, last.y, previous_target.x, previous_target.y,
-                  had_active_target ? "true" : "false");
+      RCLCPP_INFO(
+          get_logger(),
+          "Received path: local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+          " path_stamp_ns=%" PRIu64 " waypoints=%zu segments=%zu straight_segments=%zu "
+          "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
+          "last=(%.2f, %.2f) continuity_target=(%.2f, %.2f) "
+          "had_active_target=%s",
+          received_path_update_id_, latest_planner_path_id_,
+          last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
+          metrics.straight_segments, metrics.turns, metrics.length_m,
+          waypoint_index_ + 1U, first.x, first.y, last.x, last.y, previous_target.x,
+          previous_target.y, had_active_target ? "true" : "false");
       last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
     }
+  }
+
+  void onPathId(const std_msgs::msg::UInt64& msg) {
+    latest_planner_path_id_ = msg.data;
+    latest_planner_path_id_seen_ = true;
+  }
+
+  void openFlightBlackbox() {
+    if (!flight_blackbox_enabled_) {
+      return;
+    }
+
+    const std::filesystem::path path{flight_blackbox_path_};
+    const std::filesystem::path parent = path.parent_path();
+    std::error_code error;
+    if (!parent.empty()) {
+      std::filesystem::create_directories(parent, error);
+      if (error) {
+        RCLCPP_WARN(get_logger(), "Failed to create flight blackbox directory '%s': %s",
+                    parent.string().c_str(), error.message().c_str());
+        flight_blackbox_enabled_ = false;
+        return;
+      }
+    }
+
+    flight_blackbox_stream_.open(path, std::ios::out | std::ios::trunc);
+    if (!flight_blackbox_stream_.is_open()) {
+      RCLCPP_WARN(get_logger(), "Failed to open flight blackbox '%s'",
+                  flight_blackbox_path_.c_str());
+      flight_blackbox_enabled_ = false;
+      return;
+    }
+
+    flight_blackbox_stream_ << std::setprecision(6);
+    RCLCPP_INFO(get_logger(), "Writing flight blackbox telemetry to '%s'",
+                flight_blackbox_path_.c_str());
   }
 
   [[nodiscard]] std::size_t closestWaypointIndex() const {
@@ -649,6 +759,8 @@ private:
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
 
+    const bool had_previous_target = last_published_target_valid_;
+    const Point2 previous_target = last_published_target_;
     const Point2 desired_target = limitedTarget(currentTarget());
     const SpeedControllerInput speed_input = makeSpeedControllerInput();
     last_speed_output_ = speed_controller_.update(speed_input);
@@ -665,12 +777,16 @@ private:
     msg.position = std::array<float, 3>{
         static_cast<float>(px4_local_target.x), static_cast<float>(px4_local_target.y),
         static_cast<float>(-std::abs(cruise_altitude_m_))};
-    msg.velocity = velocityFeedforward(target, last_speed_output_);
+    const std::array<float, 3> commanded_velocity =
+        velocityFeedforward(target, last_speed_output_);
+    msg.velocity = commanded_velocity;
     msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw =
         static_cast<float>(face_target_yaw_ ? targetYaw(target) : current_heading_rad_);
     msg.yawspeed = nan;
+    updateCommandDiagnostics(target, previous_target, had_previous_target,
+                             commanded_velocity, static_cast<double>(msg.yaw));
 
     trajectory_setpoint_pub_->publish(msg);
   }
@@ -909,8 +1025,115 @@ private:
     return static_cast<double>(now_ns - last_attitude_update_ns_) / 1.0e9;
   }
 
+  [[nodiscard]] PathTrackingDiagnostics pathTrackingDiagnostics() const {
+    PathTrackingDiagnostics diagnostics{};
+    const auto projection = closestPathProjection();
+    if (!projection.has_value() || path_points_.size() < 2U) {
+      return diagnostics;
+    }
+
+    const std::size_t segment_index =
+        std::min(projection->segment_start_index, path_points_.size() - 2U);
+    const Point2 segment_start = path_points_[segment_index];
+    const Point2 segment_end = path_points_[segment_index + 1U];
+    const Point2 segment{segment_end.x - segment_start.x,
+                         segment_end.y - segment_start.y};
+    const double segment_length_m = std::hypot(segment.x, segment.y);
+    if (!(segment_length_m > kTinyDistanceM)) {
+      return diagnostics;
+    }
+
+    const Point2 relative{current_position_.x - segment_start.x,
+                          current_position_.y - segment_start.y};
+    const double signed_error_m =
+        (segment.x * relative.y - segment.y * relative.x) / segment_length_m;
+    const double path_heading_rad = std::atan2(segment.y, segment.x);
+
+    diagnostics.valid = true;
+    diagnostics.segment_start_index = segment_index;
+    diagnostics.segment_t = projection->segment_t;
+    diagnostics.cross_track_error_m = std::sqrt(projection->distance_sq);
+    diagnostics.signed_cross_track_error_m = signed_error_m;
+    diagnostics.path_heading_rad = path_heading_rad;
+    diagnostics.heading_error_rad =
+        normalizeAngle(current_heading_rad_ - path_heading_rad);
+    diagnostics.projection = projection->point;
+    return diagnostics;
+  }
+
   [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
     return estimateGridClearanceM(point, kInflatedOccupancyValue);
+  }
+
+  [[nodiscard]] NearestObstacleDiagnostic
+  nearestObstacleDiagnostic(const Point2 point,
+                            const std::int8_t min_occupancy_value) const {
+    NearestObstacleDiagnostic diagnostic{};
+    if (!prohibitedGridFresh() || !(prohibited_grid_.info.resolution > 0.0F) ||
+        prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U) {
+      return diagnostic;
+    }
+
+    const auto width = static_cast<int>(prohibited_grid_.info.width);
+    const auto height = static_cast<int>(prohibited_grid_.info.height);
+    const std::size_t expected_data_size =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    if (prohibited_grid_.data.size() != expected_data_size) {
+      return diagnostic;
+    }
+
+    const double resolution = static_cast<double>(prohibited_grid_.info.resolution);
+    const double origin_x = prohibited_grid_.info.origin.position.x;
+    const double origin_y = prohibited_grid_.info.origin.position.y;
+    const GridIndex center{
+        static_cast<int>(std::floor((point.x - origin_x) / resolution)),
+        static_cast<int>(std::floor((point.y - origin_y) / resolution))};
+    if (center.x < 0 || center.y < 0 || center.x >= width || center.y >= height) {
+      return diagnostic;
+    }
+
+    const int radius_cells =
+        static_cast<int>(std::ceil(kLocalClearanceDiagnosticRadiusM / resolution));
+    const int min_x = std::max(center.x - radius_cells, 0);
+    const int max_x = std::min(center.x + radius_cells, width - 1);
+    const int min_y = std::max(center.y - radius_cells, 0);
+    const int max_y = std::min(center.y + radius_cells, height - 1);
+
+    double nearest_distance_m = std::numeric_limits<double>::infinity();
+    Point2 nearest_point{};
+    for (int y = min_y; y <= max_y; ++y) {
+      for (int x = min_x; x <= max_x; ++x) {
+        const std::size_t data_index =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+            static_cast<std::size_t>(x);
+        if (prohibited_grid_.data[data_index] < min_occupancy_value) {
+          continue;
+        }
+        const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
+                                 origin_y +
+                                     (static_cast<double>(y) + 0.5) * resolution};
+        const double candidate_distance_m = distance(point, cell_center);
+        if (candidate_distance_m < nearest_distance_m) {
+          nearest_distance_m = candidate_distance_m;
+          nearest_point = cell_center;
+        }
+      }
+    }
+
+    if (!std::isfinite(nearest_distance_m)) {
+      return diagnostic;
+    }
+
+    const double bearing_map_rad =
+        std::atan2(nearest_point.y - point.y, nearest_point.x - point.x);
+    diagnostic.valid = true;
+    diagnostic.clearance_m = nearest_distance_m;
+    diagnostic.bearing_map_rad = bearing_map_rad;
+    diagnostic.bearing_body_rad =
+        normalizeAngle(bearing_map_rad - current_heading_rad_);
+    diagnostic.bearing_body_deg = radiansToDegrees(diagnostic.bearing_body_rad);
+    diagnostic.point = nearest_point;
+    return diagnostic;
   }
 
   [[nodiscard]] double
@@ -941,6 +1164,23 @@ private:
     return std::array<float, 3>{
         static_cast<float>((target.x - current_position_.x) * scale),
         static_cast<float>((target.y - current_position_.y) * scale), 0.0F};
+  }
+
+  void updateCommandDiagnostics(const Point2 target, const Point2 previous_target,
+                                const bool had_previous_target,
+                                const std::array<float, 3>& commanded_velocity,
+                                const double commanded_yaw_rad) {
+    last_commanded_target_distance_m_ = local_position_valid_
+                                            ? distance(current_position_, target)
+                                            : std::numeric_limits<double>::quiet_NaN();
+    last_commanded_target_delta_m_ = had_previous_target
+                                         ? distance(previous_target, target)
+                                         : std::numeric_limits<double>::quiet_NaN();
+    last_commanded_velocity_ = Point2{static_cast<double>(commanded_velocity[0]),
+                                      static_cast<double>(commanded_velocity[1])};
+    last_commanded_velocity_mps_ =
+        std::hypot(last_commanded_velocity_.x, last_commanded_velocity_.y);
+    last_commanded_yaw_rad_ = commanded_yaw_rad;
   }
 
   Point2 clampCommandedTargetToCurrent() {
@@ -1128,7 +1368,11 @@ private:
     const double path_goal_distance =
         path_valid_ ? distance(current_position_, path_points_.back())
                     : std::numeric_limits<double>::quiet_NaN();
-    const double local_clearance_m = estimateLocalClearanceM(current_position_);
+    const NearestObstacleDiagnostic nearest_obstacle =
+        nearestObstacleDiagnostic(current_position_, kInflatedOccupancyValue);
+    const double local_clearance_m = nearest_obstacle.valid
+                                         ? nearest_obstacle.clearance_m
+                                         : estimateLocalClearanceM(current_position_);
     const bool hold_position = shouldHoldPosition();
     const bool pose_fresh = localPositionFresh();
     const double pose_age_s = localPositionAgeSeconds();
@@ -1139,6 +1383,7 @@ private:
     const double tilt_deg = radiansToDegrees(
         std::hypot(current_attitude_.roll_rad, current_attitude_.pitch_rad));
     const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
+    const PathTrackingDiagnostics path_tracking = pathTrackingDiagnostics();
 
     RCLCPP_INFO(
         get_logger(),
@@ -1170,6 +1415,182 @@ private:
         last_speed_output_.limits.turn_limit_mps,
         last_speed_output_.limits.step_cap_limit_mps,
         last_speed_output_.limits.tracking_overspeed_limit_mps);
+    RCLCPP_INFO(get_logger(),
+                "Drone path diagnostics: path_id[local_update=%" PRIu64
+                " planner=%" PRIu64 " planner_seen=%s stamp_ns=%" PRIu64
+                "] tracking[valid=%s cross_track=%.2f signed_cross_track=%.2f "
+                "heading_error=%.3f path_heading=%.3f segment=%zu t=%.2f "
+                "projection=(%.2f, %.2f)]",
+                received_path_update_id_, latest_planner_path_id_,
+                latest_planner_path_id_seen_ ? "true" : "false",
+                last_received_path_stamp_ns_, path_tracking.valid ? "true" : "false",
+                path_tracking.cross_track_error_m,
+                path_tracking.signed_cross_track_error_m,
+                path_tracking.heading_error_rad, path_tracking.path_heading_rad,
+                path_tracking.segment_start_index, path_tracking.segment_t,
+                path_tracking.projection.x, path_tracking.projection.y);
+    RCLCPP_INFO(get_logger(),
+                "Drone command diagnostics: command[target_delta=%.2f "
+                "target_distance=%.2f velocity=(%.2f, %.2f) velocity_speed=%.2f "
+                "yaw=%.3f]",
+                last_commanded_target_delta_m_, last_commanded_target_distance_m_,
+                last_commanded_velocity_.x, last_commanded_velocity_.y,
+                last_commanded_velocity_mps_, last_commanded_yaw_rad_);
+    RCLCPP_INFO(get_logger(),
+                "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
+                "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
+                "point=(%.2f, %.2f)]",
+                nearest_obstacle.valid ? "true" : "false", nearest_obstacle.clearance_m,
+                nearest_obstacle.bearing_map_rad, nearest_obstacle.bearing_body_rad,
+                nearest_obstacle.bearing_body_deg, nearest_obstacle.point.x,
+                nearest_obstacle.point.y);
+    writeFlightBlackbox(now_ns, target, target_distance, path_goal_distance,
+                        mission_goal_distance, local_clearance_m, pose_fresh,
+                        pose_age_s, attitude_age_s, turn_angle_rad, hold_position,
+                        path_tracking, nearest_obstacle);
+  }
+
+  void writeFlightBlackbox(const std::int64_t now_ns, const Point2 target,
+                           const double target_distance_m,
+                           const double path_goal_distance_m,
+                           const double mission_goal_distance_m,
+                           const double local_clearance_m, const bool pose_fresh,
+                           const double pose_age_s, const double attitude_age_s,
+                           const double turn_angle_rad, const bool hold_position,
+                           const PathTrackingDiagnostics& path_tracking,
+                           const NearestObstacleDiagnostic& nearest_obstacle) {
+    if (!flight_blackbox_enabled_ || !flight_blackbox_stream_.is_open()) {
+      return;
+    }
+
+    flight_blackbox_stream_ << "{\"time_ns\":" << now_ns;
+    flight_blackbox_stream_ << ",\"path_id\":{\"local_update\":"
+                            << received_path_update_id_
+                            << ",\"planner\":" << latest_planner_path_id_
+                            << ",\"planner_seen\":";
+    writeJsonBool(flight_blackbox_stream_, latest_planner_path_id_seen_);
+    flight_blackbox_stream_ << ",\"stamp_ns\":" << last_received_path_stamp_ns_ << "}";
+    flight_blackbox_stream_ << ",\"pose\":{\"fresh\":";
+    writeJsonBool(flight_blackbox_stream_, pose_fresh);
+    flight_blackbox_stream_ << ",\"age_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, pose_age_s);
+    flight_blackbox_stream_ << ",\"x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_position_.x);
+    flight_blackbox_stream_ << ",\"y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_position_.y);
+    flight_blackbox_stream_ << ",\"altitude_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_altitude_m_);
+    flight_blackbox_stream_ << ",\"heading_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_heading_rad_);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"attitude\":{\"valid\":";
+    writeJsonBool(flight_blackbox_stream_, attitude_valid_);
+    flight_blackbox_stream_ << ",\"age_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, attitude_age_s);
+    flight_blackbox_stream_ << ",\"roll_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_attitude_.roll_rad);
+    flight_blackbox_stream_ << ",\"pitch_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_attitude_.pitch_rad);
+    flight_blackbox_stream_ << ",\"yaw_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_attitude_.yaw_rad);
+    flight_blackbox_stream_ << ",\"tilt_deg\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          radiansToDegrees(std::hypot(current_attitude_.roll_rad,
+                                                      current_attitude_.pitch_rad)));
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"velocity\":{\"valid\":";
+    writeJsonBool(flight_blackbox_stream_, current_velocity_valid_);
+    flight_blackbox_stream_ << ",\"x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_velocity_.x);
+    flight_blackbox_stream_ << ",\"y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_velocity_.y);
+    flight_blackbox_stream_ << ",\"speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, current_speed_mps_);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"target\":{\"x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target.x);
+    flight_blackbox_stream_ << ",\"y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target.y);
+    flight_blackbox_stream_ << ",\"distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target_distance_m);
+    flight_blackbox_stream_ << ",\"delta_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_target_delta_m_);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"command\":{\"velocity_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_velocity_.x);
+    flight_blackbox_stream_ << ",\"velocity_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_velocity_.y);
+    flight_blackbox_stream_ << ",\"velocity_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_velocity_mps_);
+    flight_blackbox_stream_ << ",\"yaw_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_yaw_rad_);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"path\":{\"valid\":";
+    writeJsonBool(flight_blackbox_stream_, path_valid_);
+    flight_blackbox_stream_ << ",\"waypoint_index\":"
+                            << (path_valid_ ? waypoint_index_ + 1U : 0U)
+                            << ",\"waypoint_count\":" << path_points_.size()
+                            << ",\"path_goal_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_goal_distance_m);
+    flight_blackbox_stream_ << ",\"mission_goal_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, mission_goal_distance_m);
+    flight_blackbox_stream_ << ",\"turn_angle_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, turn_angle_rad);
+    flight_blackbox_stream_ << ",\"segment_type\":\""
+                            << pathSegmentTypeName(turn_angle_rad) << "\"";
+    flight_blackbox_stream_ << ",\"tracking\":{\"valid\":";
+    writeJsonBool(flight_blackbox_stream_, path_tracking.valid);
+    flight_blackbox_stream_ << ",\"cross_track_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.cross_track_error_m);
+    flight_blackbox_stream_ << ",\"signed_cross_track_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          path_tracking.signed_cross_track_error_m);
+    flight_blackbox_stream_ << ",\"heading_error_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.heading_error_rad);
+    flight_blackbox_stream_ << ",\"path_heading_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.path_heading_rad);
+    flight_blackbox_stream_ << ",\"segment_start_index\":"
+                            << path_tracking.segment_start_index << ",\"segment_t\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.segment_t);
+    flight_blackbox_stream_ << ",\"projection_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.projection.x);
+    flight_blackbox_stream_ << ",\"projection_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, path_tracking.projection.y);
+    flight_blackbox_stream_ << "}}";
+    flight_blackbox_stream_ << ",\"speed\":{\"requested_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_speed_output_.requested_speed_mps);
+    flight_blackbox_stream_ << ",\"allowed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_speed_output_.allowed_speed_mps);
+    flight_blackbox_stream_ << ",\"reason\":\""
+                            << speedLimitReasonName(last_speed_output_.limit_reason)
+                            << "\",\"motion_phase\":\""
+                            << motionPhaseName(last_speed_output_.limit_reason,
+                                               hold_position)
+                            << "\",\"braking_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_speed_output_.braking_distance_m);
+    flight_blackbox_stream_ << ",\"target_step_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_speed_output_.target_step_m);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"obstacle\":{\"local_clearance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, local_clearance_m);
+    flight_blackbox_stream_ << ",\"nearest_valid\":";
+    writeJsonBool(flight_blackbox_stream_, nearest_obstacle.valid);
+    flight_blackbox_stream_ << ",\"nearest_clearance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.clearance_m);
+    flight_blackbox_stream_ << ",\"bearing_map_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_map_rad);
+    flight_blackbox_stream_ << ",\"bearing_body_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_body_rad);
+    flight_blackbox_stream_ << ",\"bearing_body_deg\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_body_deg);
+    flight_blackbox_stream_ << ",\"point_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.point.x);
+    flight_blackbox_stream_ << ",\"point_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.point.y);
+    flight_blackbox_stream_ << "}}\n";
   }
 
   [[nodiscard]] Point2 loggedTarget() const {
@@ -1191,6 +1612,7 @@ private:
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
   Point2 last_published_target_{};
+  Point2 last_commanded_velocity_{};
   Point2 mission_goal_{85.0, 0.0};
   Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
@@ -1213,6 +1635,10 @@ private:
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_velocity_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_target_delta_m_{std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_target_distance_m_{std::numeric_limits<double>::quiet_NaN()};
+  double last_commanded_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -1220,6 +1646,9 @@ private:
   std::int64_t last_attitude_update_ns_{0};
   std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
+  std::uint64_t latest_planner_path_id_{0U};
+  std::uint64_t received_path_update_id_{0U};
+  std::uint64_t last_received_path_stamp_ns_{0U};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
@@ -1244,6 +1673,8 @@ private:
   bool navigation_started_{false};
   bool velocity_feedforward_enabled_{false};
   bool dynamic_lookahead_enabled_{true};
+  bool latest_planner_path_id_seen_{false};
+  bool flight_blackbox_enabled_{true};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -1257,9 +1688,12 @@ private:
   SpeedControllerOutput last_speed_output_{};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
+  std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
+  std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+  rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;

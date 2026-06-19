@@ -24,6 +24,28 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f", self.offboard_text)
         self.assertIn("tilt_deg=%.1f", self.offboard_text)
 
+    def test_telemetry_logs_path_command_and_obstacle_diagnostics(self) -> None:
+        self.assertIn("path_id_topic", self.offboard_text)
+        self.assertIn("create_subscription<std_msgs::msg::UInt64>", self.offboard_text)
+        self.assertIn("Drone path diagnostics:", self.offboard_text)
+        self.assertIn("path_id[local_update=%", self.offboard_text)
+        self.assertIn("cross_track=%.2f", self.offboard_text)
+        self.assertIn("heading_error=%.3f", self.offboard_text)
+        self.assertIn("Drone command diagnostics:", self.offboard_text)
+        self.assertIn("command[target_delta=%.2f", self.offboard_text)
+        self.assertIn("Drone obstacle diagnostics:", self.offboard_text)
+        self.assertIn("nearest_obstacle[valid=%s", self.offboard_text)
+        self.assertIn("bearing_body_deg=%.1f", self.offboard_text)
+
+    def test_telemetry_writes_jsonl_flight_blackbox(self) -> None:
+        self.assertIn("flight_blackbox_enabled", self.offboard_text)
+        self.assertIn("flight_blackbox_path", self.offboard_text)
+        self.assertIn("offboard_blackbox.jsonl", self.offboard_text)
+        self.assertIn("writeFlightBlackbox", self.offboard_text)
+        self.assertIn("cross_track_error_m", self.offboard_text)
+        self.assertIn("bearing_body_rad", self.offboard_text)
+        self.assertIn("velocity_speed_mps", self.offboard_text)
+
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
         self.assertIn('"px4_vehicle_attitude_topic"', self.offboard_text)
@@ -40,6 +62,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn(
                     "px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude", text
                 )
+                self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
+                self.assertIn("flight_blackbox_enabled: true", text)
+                self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
 
 
 if __name__ == "__main__":

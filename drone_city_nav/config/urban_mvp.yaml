@@ -53,6 +53,7 @@ planner_node:
     static_map_points_topic: /drone_city_nav/static_map_points
     static_map_debug_publish_period_s: 1.0
     path_topic: /drone_city_nav/path
+    path_id_topic: /drone_city_nav/path_id
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 27.0
     start_y_m: 27.0
@@ -113,8 +114,9 @@ planner_node:
     replan_period_s: 0.5
 
 px4_offboard_node:
-  ros__parameters:
+    ros__parameters:
     path_topic: /drone_city_nav/path
+    path_id_topic: /drone_city_nav/path_id
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
@@ -142,6 +144,8 @@ px4_offboard_node:
     tracking_overspeed_limit_mps: 5.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
+    flight_blackbox_enabled: true
+    flight_blackbox_path: log/offboard_blackbox.jsonl
     velocity_feedforward_enabled: true
     lookahead_distance_m: 8.0
     dynamic_lookahead_enabled: true
