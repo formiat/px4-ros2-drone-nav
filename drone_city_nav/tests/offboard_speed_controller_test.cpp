@@ -45,19 +45,19 @@ TEST(OffboardSpeedController, CruiseSpeedAdvancesBySpeedTimesDt) {
   EXPECT_STREQ(speedLimitReasonName(output.limit_reason), "cruise");
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresAccelerationRamp) {
+TEST(OffboardSpeedController, AccelerationRampLimitsSpeedIncrease) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 2.0;
   OffboardSpeedController controller{config};
 
   const SpeedControllerOutput output = controller.update(cruiseInput());
 
-  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
-  EXPECT_NEAR(output.target_step_m, 0.5, 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_NEAR(output.requested_speed_mps, 0.2, 1.0e-9);
+  EXPECT_NEAR(output.target_step_m, 0.02, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kAcceleration);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresGoalBraking) {
+TEST(OffboardSpeedController, BrakingDistanceLimitsGoalApproach) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -66,13 +66,12 @@ TEST(OffboardSpeedController, DebugBypassIgnoresGoalBraking) {
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 5.0);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_LE(output.allowed_speed_mps, 1.1);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kGoal);
   EXPECT_LE(output.braking_distance_m, 2.0);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresTurnSlowdown) {
+TEST(OffboardSpeedController, SharpTurnUsesTurnSlowdownLimit) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -81,8 +80,8 @@ TEST(OffboardSpeedController, DebugBypassIgnoresTurnSlowdown) {
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_NEAR(output.requested_speed_mps, 2.0, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTurn);
 }
 
 TEST(OffboardSpeedController, HoldModeRequestsZeroSpeed) {
@@ -97,7 +96,7 @@ TEST(OffboardSpeedController, HoldModeRequestsZeroSpeed) {
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHold);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresMaxCommandedTargetStep) {
+TEST(OffboardSpeedController, MaxCommandedTargetStepHardCapWins) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   config.max_commanded_target_step_m = 0.25;
@@ -105,9 +104,9 @@ TEST(OffboardSpeedController, DebugBypassIgnoresMaxCommandedTargetStep) {
 
   const SpeedControllerOutput output = controller.update(cruiseInput());
 
-  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
-  EXPECT_NEAR(output.target_step_m, 0.5, 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_NEAR(output.requested_speed_mps, 2.5, 1.0e-9);
+  EXPECT_NEAR(output.target_step_m, 0.25, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
 TEST(OffboardSpeedController, TrackingOverspeedLimitIsDisabledByDefault) {
@@ -125,13 +124,13 @@ TEST(OffboardSpeedController, TrackingOverspeedLimitIsDisabledByDefault) {
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.5);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.2);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTurn);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresTrackingOverspeedLimit) {
+TEST(OffboardSpeedController, TrackingOverspeedLimitDeceleratesWithoutStopping) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   OffboardSpeedController controller{config};
@@ -148,14 +147,14 @@ TEST(OffboardSpeedController, DebugBypassIgnoresTrackingOverspeedLimit) {
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 5.0);
-  EXPECT_TRUE(std::isinf(output.limits.tracking_overspeed_limit_mps));
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.5);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_DOUBLE_EQ(output.allowed_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.limits.tracking_overspeed_limit_mps, 2.0);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 1.8);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.18);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTrackingOverspeed);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresHardStepCapWithMinCommandSpeed) {
+TEST(OffboardSpeedController, MinCommandSpeedDoesNotBypassHardStepCap) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   config.min_command_speed_mps = 4.0;
@@ -164,12 +163,12 @@ TEST(OffboardSpeedController, DebugBypassIgnoresHardStepCapWithMinCommandSpeed) 
 
   const SpeedControllerOutput output = controller.update(cruiseInput());
 
-  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
-  EXPECT_NEAR(output.target_step_m, 0.5, 1.0e-9);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_NEAR(output.requested_speed_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(output.target_step_m, 0.2, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kHardStepCap);
 }
 
-TEST(OffboardSpeedController, DebugBypassIgnoresGoalStopWithMinCommandSpeed) {
+TEST(OffboardSpeedController, MinCommandSpeedDoesNotPreventGoalStop) {
   SpeedControllerConfig config = testConfig();
   config.max_accel_mps2 = 10.0;
   config.min_command_speed_mps = 1.5;
@@ -182,9 +181,9 @@ TEST(OffboardSpeedController, DebugBypassIgnoresGoalStopWithMinCommandSpeed) {
 
   const SpeedControllerOutput output = controller.update(input);
 
-  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 5.0);
-  EXPECT_DOUBLE_EQ(output.target_step_m, 0.5);
-  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_DOUBLE_EQ(output.requested_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(output.target_step_m, 0.0);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kGoal);
 }
 
 TEST(OffboardSpeedController, NonFiniteInputsFailClosedToHold) {
