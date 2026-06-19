@@ -42,6 +42,7 @@ namespace {
 }
 
 constexpr double kPublishedPathCollinearityToleranceM = 0.05;
+constexpr double kGroundDebugZ = 0.05;
 
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
@@ -228,7 +229,6 @@ private:
     frame_id_ = config.frame_id;
     start_ = config.start;
     goal_ = config.goal;
-    cruise_altitude_m_ = config.cruise_altitude_m;
     inflation_radius_m_ = config.inflation_radius_m;
     max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
     direct_path_fallback_ = config.fallback.direct_path_fallback;
@@ -900,7 +900,8 @@ private:
   }
 
   void publishStaticMapDebug(const OccupancyGrid2D& grid, const bool log_publication) {
-    const StaticMapDebugConfig config{makePlannerHeader(), 0.05F};
+    const StaticMapDebugConfig config{makePlannerHeader(),
+                                      static_cast<float>(kGroundDebugZ)};
     static_map_pub_->publish(staticMapGridMessage(grid, config));
     static_map_points_pub_->publish(staticMapPointCloud(grid, config));
     if (log_publication) {
@@ -938,7 +939,7 @@ private:
     const PathMetrics metrics = pointPathMetrics(points);
     const nav_msgs::msg::Path path =
         pathToRos(std::span<const Point2>{points.data(), points.size()},
-                  makePlannerHeader(), cruise_altitude_m_);
+                  makePlannerHeader(), kGroundDebugZ);
 
     path_pub_->publish(path);
     if (!path.poses.empty()) {
@@ -1283,7 +1284,6 @@ private:
   std::filesystem::path static_map_resolved_path_;
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{2.5};
-  double cruise_altitude_m_{12.0};
   double static_map_min_blocking_height_m_{0.0};
   double max_initial_lateral_deviation_m_{8.0};
   double stable_path_reuse_max_deviation_m_{12.0};

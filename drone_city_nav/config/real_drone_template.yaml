@@ -171,7 +171,7 @@ lidar_debug_node:
     remembered_pointcloud_topic: /drone_city_nav/remembered_lidar_points
     inflated_pointcloud_topic: /drone_city_nav/inflated_obstacle_points
     marker_topic: /drone_city_nav/lidar_radar_markers
-    inflated_pointcloud_z_m: 0.10
+    inflated_pointcloud_z_m: 0.05
     publish_lidar_radar_markers: false
     hit_memory_resolution_m: 0.25
     remembered_hit_min_confirmations: 3

@@ -38,6 +38,7 @@ namespace drone_city_nav {
 namespace {
 
 constexpr std::int64_t kNanosecondsPerSecond = 1'000'000'000LL;
+constexpr double kGroundDebugZ = 0.05;
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
@@ -150,12 +151,12 @@ public:
         declare_parameter<std::int64_t>("max_hit_candidate_cells", 200000), 1,
         1000000));
     current_pointcloud_z_m_ =
-        declare_parameter<double>("current_lidar_pointcloud_z_m", 0.30);
+        declare_parameter<double>("current_lidar_pointcloud_z_m", kGroundDebugZ);
     remembered_pointcloud_z_m_ =
-        declare_parameter<double>("remembered_lidar_pointcloud_z_m", 0.20);
+        declare_parameter<double>("remembered_lidar_pointcloud_z_m", kGroundDebugZ);
     inflated_pointcloud_z_m_ =
-        declare_parameter<double>("inflated_pointcloud_z_m", 0.10);
-    marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", 0.40);
+        declare_parameter<double>("inflated_pointcloud_z_m", kGroundDebugZ);
+    marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", kGroundDebugZ);
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
     const std::string attitude_topic = declare_parameter<std::string>(
@@ -878,10 +879,10 @@ private:
   double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
-  double current_pointcloud_z_m_{0.30};
-  double remembered_pointcloud_z_m_{0.20};
-  double inflated_pointcloud_z_m_{0.10};
-  double marker_z_m_{0.40};
+  double current_pointcloud_z_m_{kGroundDebugZ};
+  double remembered_pointcloud_z_m_{kGroundDebugZ};
+  double inflated_pointcloud_z_m_{kGroundDebugZ};
+  double marker_z_m_{kGroundDebugZ};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
   std::size_t image_beam_stride_{4U};
