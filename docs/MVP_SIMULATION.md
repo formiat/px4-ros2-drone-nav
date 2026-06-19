@@ -44,8 +44,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 ## Main Files
 
 - `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
-  city world with uniform-height buildings, visual point A at `(-57, -27)`,
-  and visual point B at `(51, 27)`.
+  city world with uniform-height buildings, visual point A at `(-85.5, -40.5)`,
+  and visual point B at `(76.5, 40.5)`.
 - `drone_city_nav/models/x500_lidar_2d/model.sdf` - local PX4 X500 wrapper with
   the 2D lidar, bright yellow Gazebo GUI tracking markers, and a yellow
   ground-projection debug disc.
@@ -174,8 +174,8 @@ memory skips lidar integration instead of reusing cached heading data.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
 spawned at visual point A. The default mission sets
-`px4_local_origin=(18, 18)`, so planner/monitor map-frame point A is `(18, 18)`
-and point B is `(72, 126)`.
+`px4_local_origin=(27, 27)`, so planner/monitor map-frame point A is `(27, 27)`
+and point B is `(108, 189)`.
 
 ## Quick Start
 
@@ -384,8 +384,8 @@ The planner builds its A* grid from three obstacle sources:
   ```text
   drone_city_nav_static_map_v1
   frame_id map
-  bounds -10.0 -10.0 0.5 115.0 175.0
-  rect building_001 9.0 9.0 8.0 8.0 28.0
+  bounds -15.0 -15.0 0.5 172.5 262.5
+  rect building_001 13.5 13.5 12.0 12.0 28.0
   ```
 
 - Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.

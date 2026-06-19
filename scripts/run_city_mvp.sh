@@ -120,8 +120,8 @@ clean_stale_gazebo_processes_enabled="$(
 clean_stale_gazebo_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
-spawn_x_m="${SIM_START_X_M:--57}"
-spawn_y_m="${SIM_START_Y_M:--27}"
+spawn_x_m="${SIM_START_X_M:--85.5}"
+spawn_y_m="${SIM_START_Y_M:--40.5}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
 spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
 runtime_dir="${colcon_build_base}/gazebo_city_mvp"
