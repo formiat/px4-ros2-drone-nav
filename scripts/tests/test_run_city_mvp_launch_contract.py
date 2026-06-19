@@ -64,6 +64,14 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
         self.assertLess(truncate_index, cleanup_index)
         self.assertLess(cleanup_index, launch_redirect_index)
 
+    def test_lidar_debug_uses_per_run_directory_without_cleanup_race(self) -> None:
+        self.assertIn("run_id=", self.text)
+        self.assertIn(
+            'lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"',
+            self.text,
+        )
+        self.assertNotIn('rm -rf "${lidar_debug_dir}"', self.text)
+
 
 if __name__ == "__main__":
     unittest.main()
