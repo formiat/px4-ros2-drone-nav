@@ -34,4 +34,4 @@ sim-gui:
 
 .PHONY: sim-headless
 sim-headless:
-	HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
+	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_city_mvp.sh

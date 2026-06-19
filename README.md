@@ -10,15 +10,19 @@ Run commands from the repository root through the dev container. The container
 workflow is the only supported build, test, quality, and simulation workflow for
 this repository.
 
-Start the dev container with the repository helper:
+Use the top-level wrapper scripts for common workflows:
 
 ```bash
-./scripts/dev_shell.sh
+./scripts/build.sh
+./scripts/test.sh
+./scripts/sim_gui.sh
+./scripts/sim_headless.sh
 ```
 
-The helper runs the container with the current UID/GID so generated and
-formatted files remain owned by the invoking user. Inside the container, use
-these targets:
+These wrappers start the dev container with the current UID/GID so generated and
+formatted files remain owned by the invoking user. `./scripts/dev_shell.sh`
+remains available when you need an interactive container shell. Inside that
+shell, use these targets:
 
 ```bash
 make build
@@ -33,28 +37,28 @@ make sim-headless
 Build the ROS package:
 
 ```bash
-make build
+./scripts/build.sh
 ```
 
 Run unit tests:
 
 ```bash
-make test
+./scripts/test.sh
 ```
 
-Run script-level tests:
+Run script-level tests inside an interactive container shell:
 
 ```bash
 make test-scripts
 ```
 
-Run the non-mutating C++ quality checks:
+Run the non-mutating C++ quality checks inside an interactive container shell:
 
 ```bash
 make quality
 ```
 
-Format only changed C++ files:
+Format only changed C++ files inside an interactive container shell:
 
 ```bash
 make format
@@ -63,7 +67,7 @@ make format
 Run the GUI simulation:
 
 ```bash
-make sim-gui
+./scripts/sim_gui.sh
 ```
 
 Gazebo GUI runs stop conflicting stale Gazebo simulator processes before
@@ -100,13 +104,13 @@ minimal run.
 Run a headless smoke validation:
 
 ```bash
-make sim-headless
+./scripts/sim_headless.sh
 ```
 
-Equivalent explicit command:
+Equivalent explicit command inside an interactive container shell:
 
 ```bash
-HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp.sh
+make sim-headless
 ```
 
 Run the speed sweep:

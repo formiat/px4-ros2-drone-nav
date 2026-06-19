@@ -9,10 +9,12 @@ through the provided `Makefile` and scripts, not ad-hoc top-level CMake
 commands.
 
 Use only the container workflow for build, test, quality checks, and simulation.
-Start it with `./scripts/dev_shell.sh`; inside the container, use `make build`,
-`make test`, `make test-scripts`, `make quality`, `make sim-headless`, and
-`make sim-gui`. Do not run workspace-writing scripts as root unless doing
-intentional maintenance with `ALLOW_ROOT_WORKSPACE_WRITE=1`.
+Use `./scripts/build.sh`, `./scripts/test.sh`, `./scripts/sim_headless.sh`, and
+`./scripts/sim_gui.sh` for common workflows. Start `./scripts/dev_shell.sh`
+only when an interactive container shell is needed; inside the container, use
+`make build`, `make test`, `make test-scripts`, `make quality`,
+`make sim-headless`, and `make sim-gui`. Do not run workspace-writing scripts
+as root unless doing intentional maintenance with `ALLOW_ROOT_WORKSPACE_WRITE=1`.
 
 Before committing after file changes:
 

@@ -186,26 +186,31 @@ container workflow. Build the dev image once:
 ./scripts/build_dev_image.sh
 ```
 
-Enter the container:
+Use the top-level wrapper scripts for common operations:
 
 ```bash
-./scripts/dev_shell.sh
+./scripts/build.sh
+./scripts/sim_gui.sh
+./scripts/sim_headless.sh
+./scripts/test.sh
 ```
 
-Inside the container, clone PX4-Autopilot into the ignored `external/` folder if
-it is missing:
+The wrappers start the dev container and run the requested command inside it.
+Use `./scripts/dev_shell.sh` only when you need an interactive container shell.
+Inside the container shell, clone PX4-Autopilot into the ignored `external/`
+folder if it is missing:
 
 ```bash
 ./scripts/setup_px4_autopilot.sh
 export PX4_AUTOPILOT_DIR=/workspace/external/PX4-Autopilot
 ```
 
-Run the MVP stack inside the container:
+Run the MVP stack from the repository root:
 
 ```bash
-make build
-make sim-gui
-make sim-headless
+./scripts/build.sh
+./scripts/sim_gui.sh
+./scripts/sim_headless.sh
 ```
 
 Both launch variants run `city_nav.launch.py` with the simulation parameter
@@ -220,7 +225,7 @@ The current-environment runner writes PX4 SITL output to
 Override the ROS parameter file used by the run script with:
 
 ```bash
-CITY_NAV_PARAMS_FILE=build/some_params.yaml ./scripts/run_city_mvp.sh
+CITY_NAV_PARAMS_FILE=build/some_params.yaml ./scripts/sim_gui.sh
 ```
 
 Obstacle sources are controlled by the selected params file. In the default
@@ -229,10 +234,10 @@ variables below are explicit launch overrides, so unset variables leave the
 selected params file in control:
 
 ```bash
-ENABLE_STATIC_MAP=false ./scripts/run_city_mvp.sh
-ENABLE_OBSTACLE_MEMORY=false ./scripts/run_city_mvp.sh
-ENABLE_CURRENT_LIDAR=false ./scripts/run_city_mvp.sh
-STATIC_CITY_MAP_PATH=drone_city_nav/worlds/generated_city.map2d ./scripts/run_city_mvp.sh
+ENABLE_STATIC_MAP=false ./scripts/sim_gui.sh
+ENABLE_OBSTACLE_MEMORY=false ./scripts/sim_gui.sh
+ENABLE_CURRENT_LIDAR=false ./scripts/sim_gui.sh
+STATIC_CITY_MAP_PATH=drone_city_nav/worlds/generated_city.map2d ./scripts/sim_gui.sh
 ```
 
 The same launch arguments can be passed manually. Leave them empty or omit them
@@ -270,8 +275,8 @@ snapshots under `log/lidar_debug`:
 Override the debug directory or disable recording from the run script:
 
 ```bash
-LIDAR_DEBUG_DIR=log/lidar_debug_run_01 ./scripts/run_city_mvp.sh
-ENABLE_LIDAR_DEBUG=false ./scripts/run_city_mvp.sh
+LIDAR_DEBUG_DIR=log/lidar_debug_run_01 ./scripts/sim_gui.sh
+ENABLE_LIDAR_DEBUG=false ./scripts/sim_gui.sh
 ```
 
 Validate a headless run without opening Gazebo or RViz:
@@ -290,14 +295,14 @@ The regular GUI launch starts Gazebo and RViz so the same data can be inspected
 live:
 
 ```bash
-./scripts/run_city_mvp.sh
+./scripts/sim_gui.sh
 ```
 
 Force RViz on or off with:
 
 ```bash
-ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
-ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
+ENABLE_RVIZ=true ./scripts/sim_gui.sh
+ENABLE_RVIZ=false ./scripts/sim_gui.sh
 ```
 
 ## Gazebo GUI Diagnostics
@@ -408,7 +413,7 @@ while the simulation is running:
 For a full headless validation run:
 
 ```bash
-make sim-headless
+./scripts/sim_headless.sh
 ```
 
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
@@ -445,7 +450,7 @@ does not modify the PX4 checkout under `external/`.
 For a full diagonal A-to-B mission validation run:
 
 ```bash
-HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
+MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/sim_headless.sh
 ```
 
 `MISSION_CHECK=1` requires the mission monitor to verify that the drone spawned
