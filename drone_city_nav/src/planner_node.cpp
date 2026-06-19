@@ -57,7 +57,6 @@ enum class PathPublicationReason : std::uint8_t {
   kHoldNoPose,
   kHoldNoPlanningGrid,
   kHoldInvalidPath,
-  kHoldUnsafePath,
   kHoldAfterPlanningFailure,
   kReuseLastValidAfterFailure,
   kDirectFallback,
@@ -74,8 +73,6 @@ pathPublicationReasonName(const PathPublicationReason reason) noexcept {
       return "hold_no_planning_grid";
     case PathPublicationReason::kHoldInvalidPath:
       return "hold_invalid_path";
-    case PathPublicationReason::kHoldUnsafePath:
-      return "hold_unsafe_path";
     case PathPublicationReason::kHoldAfterPlanningFailure:
       return "hold_after_planning_failure";
     case PathPublicationReason::kReuseLastValidAfterFailure:
@@ -717,10 +714,6 @@ private:
                   kPublishedPathCollinearityToleranceM);
     }
 
-    if (!pathIsPublishableAfterFinalEdits(grid, path_points, source_label)) {
-      publishPath({}, PathPublicationReason::kHoldUnsafePath);
-      return false;
-    }
     if (hasExcessiveInitialLateralDeviation(path_points)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "%s path has excessive initial lateral deviation; using "
@@ -734,34 +727,6 @@ private:
     stable_path_prohibited_confirmations_ = 0;
     logPublishedPathSafety(grid, path_points, source_label);
     publishPath(path_points, PathPublicationReason::kComputedPath);
-    return true;
-  }
-
-  [[nodiscard]] bool
-  pathIsPublishableAfterFinalEdits(const OccupancyGrid2D& grid,
-                                   std::span<const Point2> path_points,
-                                   const char* source_label) {
-    if (path_points.size() < 2U) {
-      return true;
-    }
-
-    for (std::size_t index = 1U; index < path_points.size(); ++index) {
-      const Point2 segment_start = path_points[index - 1U];
-      const Point2 segment_end = path_points[index];
-      if (pathSegmentIsAllowed(grid, segment_start, segment_end)) {
-        continue;
-      }
-
-      const std::size_t segment_index = index - 1U;
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "%s path segment intersects prohibited cells after final path edits: "
-          "segment=%zu start=(%.2f, %.2f) end=(%.2f, %.2f)",
-          source_label, segment_index, segment_start.x, segment_start.y, segment_end.x,
-          segment_end.y);
-      return false;
-    }
-
     return true;
   }
 
@@ -1225,7 +1190,6 @@ private:
       case PathPublicationReason::kHoldNoPose:
       case PathPublicationReason::kHoldNoPlanningGrid:
       case PathPublicationReason::kHoldInvalidPath:
-      case PathPublicationReason::kHoldUnsafePath:
       case PathPublicationReason::kHoldAfterPlanningFailure:
         break;
     }
