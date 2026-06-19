@@ -1,3 +1,4 @@
+#include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_speed_controller.hpp"
 #include "drone_city_nav/planner_core.hpp"
@@ -8,6 +9,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>
+#include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
@@ -61,6 +63,10 @@ constexpr std::int8_t kInflatedOccupancyValue = 80;
     return fallback;
   }
   return std::clamp(value, min_value, max_value);
+}
+
+[[nodiscard]] double radiansToDegrees(const double radians) noexcept {
+  return radians * 180.0 / std::numbers::pi;
 }
 
 } // namespace
@@ -180,6 +186,8 @@ public:
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
+    const std::string attitude_topic = declare_parameter<std::string>(
+        "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
     const std::string emergency_stop_topic = declare_parameter<std::string>(
@@ -197,6 +205,11 @@ public:
         local_position_topic, px4_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
+        });
+    attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
+        attitude_topic, px4_qos,
+        [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
+          onAttitude(*msg);
         });
     vehicle_status_sub_ = create_subscription<px4_msgs::msg::VehicleStatus>(
         vehicle_status_topic, px4_qos,
@@ -265,10 +278,11 @@ public:
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
     RCLCPP_INFO(get_logger(),
                 "PX4 offboard subscriptions: path='%s' local_position='%s' "
-                "vehicle_status='%s' emergency_stop='%s' prohibited_grid='%s'",
+                "attitude='%s' vehicle_status='%s' emergency_stop='%s' "
+                "prohibited_grid='%s'",
                 path_topic.c_str(), local_position_topic.c_str(),
-                vehicle_status_topic.c_str(), emergency_stop_topic.c_str(),
-                prohibited_grid_topic.c_str());
+                attitude_topic.c_str(), vehicle_status_topic.c_str(),
+                emergency_stop_topic.c_str(), prohibited_grid_topic.c_str());
   }
 
 private:
@@ -491,6 +505,20 @@ private:
                   current_position_.x, current_position_.y, current_altitude_m_,
                   current_heading_rad_);
     }
+  }
+
+  void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
+    last_attitude_update_ns_ = get_clock()->now().nanoseconds();
+    const auto euler = quaternionToEuler(msg.q);
+    if (!euler.has_value()) {
+      attitude_valid_ = false;
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Ignoring invalid PX4 attitude quaternion");
+      return;
+    }
+
+    current_attitude_ = *euler;
+    attitude_valid_ = true;
   }
 
   void onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg) {
@@ -870,6 +898,17 @@ private:
     return static_cast<double>(now_ns - last_local_position_update_ns_) / 1.0e9;
   }
 
+  [[nodiscard]] double attitudeAgeSeconds() const {
+    if (last_attitude_update_ns_ <= 0) {
+      return std::numeric_limits<double>::infinity();
+    }
+    const std::int64_t now_ns = get_clock()->now().nanoseconds();
+    if (now_ns <= last_attitude_update_ns_) {
+      return 0.0;
+    }
+    return static_cast<double>(now_ns - last_attitude_update_ns_) / 1.0e9;
+  }
+
   [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
     return estimateGridClearanceM(point, kInflatedOccupancyValue);
   }
@@ -1093,12 +1132,20 @@ private:
     const bool hold_position = shouldHoldPosition();
     const bool pose_fresh = localPositionFresh();
     const double pose_age_s = localPositionAgeSeconds();
+    const double attitude_age_s = attitudeAgeSeconds();
+    const double roll_deg = radiansToDegrees(current_attitude_.roll_rad);
+    const double pitch_deg = radiansToDegrees(current_attitude_.pitch_rad);
+    const double attitude_yaw_deg = radiansToDegrees(current_attitude_.yaw_rad);
+    const double tilt_deg = radiansToDegrees(
+        std::hypot(current_attitude_.roll_rad, current_attitude_.pitch_rad));
     const double turn_angle_rad = pathTurnAngleAtWaypoint(waypoint_index_);
 
     RCLCPP_INFO(
         get_logger(),
         "Drone telemetry: current=(%.2f, %.2f) pose_fresh=%s pose_age_s=%.2f "
-        "altitude=%.2f "
+        "altitude=%.2f heading=%.3f "
+        "attitude[valid=%s age_s=%.2f roll=%.3frad pitch=%.3frad yaw=%.3frad "
+        "roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f tilt_deg=%.1f] "
         "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
         "requested_speed=%.2f allowed_speed=%.2f target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
@@ -1107,7 +1154,10 @@ private:
         "effective_min_lead=%.2f "
         "speed_limits[goal=%.2f turn=%.2f step=%.2f tracking=%.2f]",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
-        pose_age_s, current_altitude_m_, current_velocity_.x, current_velocity_.y,
+        pose_age_s, current_altitude_m_, current_heading_rad_,
+        attitude_valid_ ? "true" : "false", attitude_age_s, current_attitude_.roll_rad,
+        current_attitude_.pitch_rad, current_attitude_.yaw_rad, roll_deg, pitch_deg,
+        attitude_yaw_deg, tilt_deg, current_velocity_.x, current_velocity_.y,
         current_velocity_valid_ ? "true" : "false", current_speed_mps_,
         last_speed_output_.requested_speed_mps, last_speed_output_.allowed_speed_mps,
         target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
@@ -1134,6 +1184,7 @@ private:
 
   nav_msgs::msg::OccupancyGrid prohibited_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
+  AttitudeEuler current_attitude_{};
   Point2 current_position_{};
   Point2 current_velocity_{};
   Point2 no_path_hold_target_{};
@@ -1166,6 +1217,7 @@ private:
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
   std::int64_t last_prohibited_grid_update_ns_{0};
+  std::int64_t last_attitude_update_ns_{0};
   std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
   std::size_t waypoint_index_{0U};
@@ -1174,6 +1226,7 @@ private:
   bool path_valid_{false};
   bool local_position_valid_{false};
   bool vehicle_status_valid_{false};
+  bool attitude_valid_{false};
   bool altitude_valid_{false};
   bool local_position_seen_{false};
   bool auto_arm_{true};
@@ -1209,6 +1262,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
+  rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;

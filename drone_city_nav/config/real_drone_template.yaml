@@ -116,6 +116,7 @@ px4_offboard_node:
   ros__parameters:
     path_topic: /drone_city_nav/path
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
