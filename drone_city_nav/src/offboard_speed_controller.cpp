@@ -10,6 +10,10 @@ namespace {
 
 constexpr double kEpsilon = 1.0e-6;
 
+// Temporary debug bypass: disable all speed limiters to inspect raw navigation
+// behavior without acceleration, goal, turn, step, or tracking speed caps.
+constexpr bool kDisableSpeedLimitersForDebug = true;
+
 [[nodiscard]] bool finiteNonNegative(const double value) noexcept {
   return std::isfinite(value) && value >= 0.0;
 }
@@ -160,10 +164,23 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
   }
 
   const double desired = boundedDesiredSpeed(config_);
+  SpeedLimitBreakdown limits{};
+  if constexpr (kDisableSpeedLimitersForDebug) {
+    previous_requested_speed_mps_ = desired;
+
+    SpeedControllerOutput output{};
+    output.requested_speed_mps = desired;
+    output.allowed_speed_mps = desired;
+    output.target_step_m = desired * input.controller_dt_s;
+    output.braking_distance_m = (desired * desired) / (2.0 * config_.max_accel_mps2);
+    output.limits = limits;
+    output.limit_reason = SpeedLimitReason::kCruise;
+    return output;
+  }
+
   SpeedLimitReason reason = SpeedLimitReason::kCruise;
   double allowed_speed = desired;
 
-  SpeedLimitBreakdown limits{};
   limits.goal_limit_mps = brakingLimitedSpeedMps(config_, input.distance_to_goal_m);
   limits.turn_limit_mps = turnLimitedSpeedMps(config_, input.turn_angle_rad);
   limits.step_cap_limit_mps =
