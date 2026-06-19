@@ -2,10 +2,10 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-host_uid="$(id -u)"
-host_gid="$(id -g)"
-container_home="/tmp/drone-gazebo-home-${host_uid}"
-container_runtime="/tmp/drone-gazebo-runtime-${host_uid}"
+user_uid="$(id -u)"
+user_gid="$(id -g)"
+container_home="/tmp/drone-gazebo-home-${user_uid}"
+container_runtime="/tmp/drone-gazebo-runtime-${user_uid}"
 
 group_args=()
 if getent group render >/dev/null; then
@@ -18,7 +18,7 @@ fi
 docker run --rm -it \
   --privileged \
   --network host \
-  --user "${host_uid}:${host_gid}" \
+  --user "${user_uid}:${user_gid}" \
   "${group_args[@]}" \
   --env DISPLAY="${DISPLAY:-}" \
   --env HOME="${container_home}" \

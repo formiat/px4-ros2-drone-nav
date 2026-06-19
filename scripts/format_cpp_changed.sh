@@ -16,7 +16,6 @@ Refusing to format as root in a non-root-owned workspace.
 Run through ./scripts/dev_shell.sh or docker run with:
   --user "\$(id -u):\$(id -g)"
 
-For native host formatting, prefer ./scripts/host_shell.sh ./scripts/format_cpp_changed.sh.
 Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
 EOF
     exit 1

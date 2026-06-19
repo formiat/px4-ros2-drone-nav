@@ -22,7 +22,6 @@ build, install, log, and runtime files.
 Run through ./scripts/dev_shell.sh or docker run with:
   --user "\$(id -u):\$(id -g)"
 
-For native host runs, prefer ./scripts/run_city_mvp_host.sh.
 Set ALLOW_ROOT_WORKSPACE_WRITE=1 only for intentional maintenance.
 EOF
     exit 1
@@ -47,11 +46,7 @@ normalize_bool() {
 }
 
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
-if [[ -n "${PX4_BUILD_DIR+x}" ]]; then
-  px4_build_dir="$(make_abs_path "${PX4_BUILD_DIR}")"
-else
-  px4_build_dir="${px4_dir}/build/px4_sitl_default"
-fi
+px4_build_dir="${px4_dir}/build/px4_sitl_default"
 ros_distro="${ROS_DISTRO:-jazzy}"
 ros_setup_file="${ROS_SETUP_FILE:-/opt/ros/${ros_distro}/setup.bash}"
 px4_msgs_setup_file="${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"
@@ -142,12 +137,12 @@ if [[ ! -d "${px4_dir}" ]]; then
 fi
 if [[ ! -f "${ros_setup_file}" ]]; then
   echo "ROS setup file was not found: ${ros_setup_file}" >&2
-  echo "Use ./scripts/run_city_mvp_host.sh, set ROS_SETUP_FILE, or run inside ./scripts/dev_shell.sh." >&2
+  echo "Run inside ./scripts/dev_shell.sh or set ROS_SETUP_FILE." >&2
   exit 1
 fi
 if [[ ! -f "${px4_msgs_setup_file}" ]]; then
   echo "px4_msgs setup file was not found: ${px4_msgs_setup_file}" >&2
-  echo "Use ./scripts/run_city_mvp_host.sh, set PX4_MSGS_SETUP_FILE, or run inside ./scripts/dev_shell.sh." >&2
+  echo "Run inside ./scripts/dev_shell.sh or set PX4_MSGS_SETUP_FILE." >&2
   exit 1
 fi
 if [[ ! -f "${city_nav_params_file}" ]]; then
@@ -316,26 +311,6 @@ collect_descendant_pids() {
 trap cleanup EXIT INT TERM
 
 run_px4_sitl() {
-  if [[ -n "${PX4_BUILD_DIR+x}" ]]; then
-    local cmake_generator="${PX4_CMAKE_GENERATOR:-Ninja}"
-    local python_executable="${PYTHON_EXECUTABLE:-$(command -v python3)}"
-    local ninja_file="${px4_build_dir}/build.ninja"
-    if [[ ! -f "${px4_build_dir}/CMakeCache.txt" ]]; then
-      cmake -S "${px4_dir}" -B "${px4_build_dir}" -G "${cmake_generator}" \
-        -DCONFIG=px4_sitl_default \
-        -DPYTHON_EXECUTABLE="${python_executable}" \
-        -DPython3_EXECUTABLE="${python_executable}"
-    fi
-    if [[ -f "${ninja_file}" ]] &&
-      grep -Eq -- '-std=(gnu\+\+|c\+\+)14' "${ninja_file}"; then
-      echo "PX4 host build: switching generated Ninja C++ standard flags to C++17 for conda protobuf compatibility"
-      perl -0pi -e 's/-std=gnu\+\+14/-std=gnu++17/g; s/-std=c\+\+14/-std=c++17/g' \
-        "${ninja_file}"
-    fi
-    cmake --build "${px4_build_dir}" --target "${px4_model_target}"
-    return
-  fi
-
   make -C "${px4_dir}" px4_sitl "${px4_model_target}"
 }
 

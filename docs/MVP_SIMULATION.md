@@ -179,32 +179,8 @@ and point B is `(72, 126)`.
 
 ## Quick Start
 
-The default workflow for routine development and agent runs is native host
-execution:
-
-```bash
-make host-build
-make host-sim-gui
-```
-
-Run the native headless smoke validation:
-
-```bash
-make host-sim-headless
-```
-
-Equivalent explicit native commands:
-
-```bash
-./scripts/run_city_mvp_host.sh
-HEADLESS=1 SMOKE_DURATION_S=90 ./scripts/run_city_mvp_host.sh
-```
-
-The native workflow uses `build-host/`, `install-host/`, and `log-host/`.
-
-Use the container workflow when validating the dev image, reproducing a
-container-only issue, or working on a machine without the native host
-environment. Build the dev image once from the host:
+The supported workflow for routine development and agent runs is the dev
+container workflow. Build the dev image once:
 
 ```bash
 ./scripts/build_dev_image.sh
@@ -227,6 +203,7 @@ export PX4_AUTOPILOT_DIR=/workspace/external/PX4-Autopilot
 Run the MVP stack inside the container:
 
 ```bash
+make build
 make sim-gui
 make sim-headless
 ```
@@ -236,14 +213,14 @@ file, Gazebo bridge enabled, and mission monitor enabled.
 
 The current-environment runner writes PX4 SITL output to
 `log/px4_city_mvp.log` and the MicroXRCEAgent log to
-`log/uxrce_agent_city_mvp.log`. Native host runs use `log-host/` by default.
-Override them with `PX4_LOG_FILE=/path/to/px4.log` and
+`log/uxrce_agent_city_mvp.log`. Override them with
+`PX4_LOG_FILE=/path/to/px4.log` and
 `UXRCE_AGENT_LOG_FILE=/path/to/agent.log` when needed.
 
 Override the ROS parameter file used by the run script with:
 
 ```bash
-CITY_NAV_PARAMS_FILE=build-host/some_params.yaml ./scripts/run_city_mvp_host.sh
+CITY_NAV_PARAMS_FILE=build/some_params.yaml ./scripts/run_city_mvp.sh
 ```
 
 Obstacle sources are controlled by the selected params file. In the default
@@ -252,10 +229,10 @@ variables below are explicit launch overrides, so unset variables leave the
 selected params file in control:
 
 ```bash
-ENABLE_STATIC_MAP=false ./scripts/run_city_mvp_host.sh
-ENABLE_OBSTACLE_MEMORY=false ./scripts/run_city_mvp_host.sh
-ENABLE_CURRENT_LIDAR=false ./scripts/run_city_mvp_host.sh
-STATIC_CITY_MAP_PATH=drone_city_nav/worlds/generated_city.map2d ./scripts/run_city_mvp_host.sh
+ENABLE_STATIC_MAP=false ./scripts/run_city_mvp.sh
+ENABLE_OBSTACLE_MEMORY=false ./scripts/run_city_mvp.sh
+ENABLE_CURRENT_LIDAR=false ./scripts/run_city_mvp.sh
+STATIC_CITY_MAP_PATH=drone_city_nav/worlds/generated_city.map2d ./scripts/run_city_mvp.sh
 ```
 
 The same launch arguments can be passed manually. Leave them empty or omit them
@@ -268,9 +245,8 @@ ros2 launch drone_city_nav city_nav.launch.py use_static_map:=false
 
 ## Lidar Debugging
 
-The simulation launch starts `lidar_debug_node` by default. Native host runs
-record periodic snapshots under `log-host/lidar_debug`; current-environment or
-container runs use `log/lidar_debug`:
+The simulation launch starts `lidar_debug_node` by default and records periodic
+snapshots under `log/lidar_debug`:
 
 - `snapshots.jsonl` - one JSON record per snapshot with pose, horizontal speed,
   PX4 attitude diagnostics (`roll_rad`, `pitch_rad`, `tilt_rad`), scan
@@ -294,15 +270,15 @@ container runs use `log/lidar_debug`:
 Override the debug directory or disable recording from the run script:
 
 ```bash
-LIDAR_DEBUG_DIR=log-host/lidar_debug_run_01 ./scripts/run_city_mvp_host.sh
-ENABLE_LIDAR_DEBUG=false ./scripts/run_city_mvp_host.sh
+LIDAR_DEBUG_DIR=log/lidar_debug_run_01 ./scripts/run_city_mvp.sh
+ENABLE_LIDAR_DEBUG=false ./scripts/run_city_mvp.sh
 ```
 
 Validate a headless run without opening Gazebo or RViz:
 
 ```bash
 python3 scripts/analyze_lidar_projection_snapshots.py \
-  log-host/lidar_debug/snapshots.jsonl \
+  log/lidar_debug/snapshots.jsonl \
   --static-map drone_city_nav/worlds/generated_city.map2d
 ```
 
@@ -314,14 +290,14 @@ The regular GUI launch starts Gazebo and RViz so the same data can be inspected
 live:
 
 ```bash
-./scripts/run_city_mvp_host.sh
+./scripts/run_city_mvp.sh
 ```
 
 Force RViz on or off with:
 
 ```bash
-ENABLE_RVIZ=true ./scripts/run_city_mvp_host.sh
-ENABLE_RVIZ=false ./scripts/run_city_mvp_host.sh
+ENABLE_RVIZ=true ./scripts/run_city_mvp.sh
+ENABLE_RVIZ=false ./scripts/run_city_mvp.sh
 ```
 
 ## Gazebo GUI Diagnostics
@@ -329,11 +305,11 @@ ENABLE_RVIZ=false ./scripts/run_city_mvp_host.sh
 The run script keeps Gazebo server/world orchestration output and Gazebo GUI
 client output in separate files so render/resource issues are not lost:
 
-- `log-host/gz_city_mvp.log` - server, world-control, follow-camera, stale
+- `log/gz_city_mvp.log` - server, world-control, follow-camera, stale
   cleanup, and scene-diagnostics summaries.
-- `log-host/gz_gui_city_mvp.log` - stdout/stderr from the `gz sim -g` GUI
+- `log/gz_gui_city_mvp.log` - stdout/stderr from the `gz sim -g` GUI
   client.
-- `log-host/gazebo_scene_debug/` - bounded `gz topic` captures for
+- `log/gazebo_scene_debug/` - bounded `gz topic` captures for
   `/world/generated_city/pose/info`, `/world/generated_city/scene/info`, and
   `/gui/currently_tracked`, plus a `summary.txt` file with key booleans such as
   `target_model_seen`, `target_visual_seen`, `yellow_visual_seen`, and
@@ -343,9 +319,9 @@ Validate the captured launch diagnostics without relying on manual viewing:
 
 ```bash
 python3 scripts/validate_gazebo_gui_launch_log.py \
-  log-host/gz_city_mvp.log \
-  --gui-log log-host/gz_gui_city_mvp.log \
-  --scene-diagnostics-dir log-host/gazebo_scene_debug
+  log/gz_city_mvp.log \
+  --gui-log log/gz_gui_city_mvp.log \
+  --scene-diagnostics-dir log/gazebo_scene_debug
 ```
 
 Set `GZ_GUI_LOG_FILE=/path/to/gz_gui.log` or
@@ -426,13 +402,13 @@ For replay-oriented debugging, record the relevant topics in a second shell
 while the simulation is running:
 
 ```bash
-make host-record-debug-bag
+./scripts/record_debug_bag.sh
 ```
 
 For a full headless validation run:
 
 ```bash
-make host-sim-headless
+make sim-headless
 ```
 
 This mode starts Gazebo server-only, PX4 SITL, MicroXRCEAgent, and the ROS 2
@@ -448,10 +424,10 @@ During startup the script sends SITL-only PX4 parameters through the PX4 shell:
 
 Headless logs are written to:
 
-- `log-host/gz_city_mvp.log`
-- `log-host/px4_city_mvp.log`
-- `log-host/uxrce_agent_city_mvp.log`
-- `log-host/ros_city_mvp.log`
+- `log/gz_city_mvp.log`
+- `log/px4_city_mvp.log`
+- `log/uxrce_agent_city_mvp.log`
+- `log/ros_city_mvp.log`
 
 Useful ROS log markers for obstacle-source debugging:
 
@@ -469,7 +445,7 @@ does not modify the PX4 checkout under `external/`.
 For a full diagonal A-to-B mission validation run:
 
 ```bash
-HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp_host.sh
+HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp.sh
 ```
 
 `MISSION_CHECK=1` requires the mission monitor to verify that the drone spawned
@@ -521,13 +497,11 @@ at the goal.
 Run a simple simulation speed sweep without editing tracked YAML files:
 
 ```bash
-make host-speed-sweep
+./scripts/run_speed_sweep.sh
 ```
 
-The native sweep writes temporary parameter files under `build-host/speed_sweep`
-and logs each run under `log-host/speed_sweep_<speed>`. Inside the container,
-run `./scripts/run_speed_sweep.sh 3 5 7`, which uses `build/speed_sweep` and
-`log/speed_sweep_<speed>`.
+The sweep writes temporary parameter files under `build/speed_sweep` and logs
+each run under `log/speed_sweep_<speed>`.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
@@ -538,13 +512,7 @@ xhost +local:docker
 
 ## Development Checks
 
-Default native host checks:
-
-```bash
-make host-quality
-```
-
-Inside the dev container, the equivalent current-environment checks are:
+Default checks:
 
 ```bash
 make quality
