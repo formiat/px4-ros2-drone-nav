@@ -114,6 +114,8 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
                         "target_model_seen=false",
                         "target_visual_seen=false",
                         "yellow_visual_seen=false",
+                        "pose_info_status=ok",
+                        "scene_info_status=ok",
                     ]
                 )
                 + "\n",
@@ -138,6 +140,56 @@ class GazeboGuiLaunchLogValidatorTest(unittest.TestCase):
         self.assertIn(
             "FAIL: Gazebo scene diagnostics target model is present",
             result.errors,
+        )
+
+    def test_scene_diagnostics_unusable_samples_warn_without_failing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            diagnostics_dir = Path(temp_dir)
+            (diagnostics_dir / "summary.txt").write_text(
+                "\n".join(
+                    [
+                        "Gazebo scene diagnostics summary:",
+                        "target=x500_lidar_2d_0",
+                        "target_model_seen=false",
+                        "target_visual_seen=false",
+                        "yellow_visual_seen=false",
+                        "pose_info_status=failed",
+                        "scene_info_status=empty",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = validator.validate_log(
+                "\n".join(
+                    [
+                        "Gazebo stale cleanup: no conflicting Gazebo processes found",
+                        "Gazebo world running command confirmed: world=generated_city",
+                        (
+                            "Gazebo GUI follow camera state confirmed: "
+                            "target=x500_lidar_2d_0"
+                        ),
+                    ]
+                ),
+                scene_diagnostics_dir=diagnostics_dir,
+            )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertIn(
+            "WARN: Gazebo scene diagnostics pose_info capture status=failed",
+            result.messages,
+        )
+        self.assertIn(
+            "WARN: Gazebo scene diagnostics scene_info capture status=empty",
+            result.messages,
+        )
+        self.assertIn(
+            (
+                "WARN: Gazebo scene diagnostics did not confirm the target model "
+                "because pose diagnostics were unavailable or incomplete"
+            ),
+            result.messages,
         )
 
 

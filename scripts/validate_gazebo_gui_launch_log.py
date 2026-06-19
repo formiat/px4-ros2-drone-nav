@@ -52,6 +52,25 @@ def _read_summary_bool(summary: str, key: str) -> bool | None:
     return match.group(1) == "true"
 
 
+def _read_summary_value(summary: str, key: str) -> str | None:
+    match = re.search(rf"^{re.escape(key)}=([^\n]+)$", summary, re.MULTILINE)
+    if match is None:
+        return None
+    return match.group(1).strip()
+
+
+def _warn_on_capture_status(
+    result: ValidationResult,
+    *,
+    label: str,
+    status: str | None,
+) -> None:
+    if status is None:
+        result.warn(f"Gazebo scene diagnostics did not report {label}_status")
+    elif status != "ok":
+        result.warn(f"Gazebo scene diagnostics {label} capture status={status}")
+
+
 def _validate_gui_log(result: ValidationResult, text: str | None) -> None:
     if text is None:
         return
@@ -84,10 +103,19 @@ def _validate_scene_diagnostics(
     target_model_seen = _read_summary_bool(summary, "target_model_seen")
     target_visual_seen = _read_summary_bool(summary, "target_visual_seen")
     yellow_visual_seen = _read_summary_bool(summary, "yellow_visual_seen")
-    result.require(
-        "Gazebo scene diagnostics target model is present",
-        target_model_seen is not False,
-    )
+    pose_info_status = _read_summary_value(summary, "pose_info_status")
+    scene_info_status = _read_summary_value(summary, "scene_info_status")
+    _warn_on_capture_status(result, label="pose_info", status=pose_info_status)
+    _warn_on_capture_status(result, label="scene_info", status=scene_info_status)
+    if target_model_seen is False and pose_info_status == "ok":
+        result.require("Gazebo scene diagnostics target model is present", False)
+    elif target_model_seen is False:
+        result.warn(
+            "Gazebo scene diagnostics did not confirm the target model because "
+            "pose diagnostics were unavailable or incomplete"
+        )
+    else:
+        result.require("Gazebo scene diagnostics target model is present", True)
     if target_model_seen is None:
         result.warn("Gazebo scene diagnostics did not report target_model_seen")
     if target_visual_seen is False:
