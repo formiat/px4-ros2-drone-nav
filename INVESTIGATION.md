@@ -1,5 +1,8 @@
 # Context/Task
 
+> **Обновлено (второй раунд):** добавлены находки по bbcc6a3, анализ merge=true+joint конфликта,
+> данные из реальных лог-файлов и уточнённые root cause гипотезы для Bug #1.
+
 Два регрессионных бага на ветке `main`:
 
 1. **Bug #1**: 3D-модель дрона не отображается в окне Gazebo 3D (не в RViz). Дрон физически существует, летит и добирается до финиша — это видно в RViz.
@@ -390,3 +393,160 @@ bac9dbd  2026-06-18  Remove offboard clearance suppression
 2. Публикует ли Gazebo топик `/gui/currently_tracked` в текущей версии gz-sim на данном хосте?
 3. Является ли `<uri>model://x500</uri>` vs `<uri>x500</uri>` значимым различием в gz-sim Harmonic при merge include?
 4. Достаточно ли `make host-sim-gui` (через `Makefile`) или нужен `scripts/run_city_mvp_host.sh` напрямую для воспроизведения обоих багов?
+
+---
+
+# Дополнительные находки (второй раунд расследования)
+
+Следующие факты установлены при детальном анализе log-файлов, runtime-симлинков и git-истории
+commit `bbcc6a3`.
+
+## Подтверждённые факты из log-файлов
+
+**`log-host/gz_city_mvp.log` (последний запуск 22:36 Jun 18):**
+```
+Gazebo stale cleanup: no conflicting Gazebo processes found        ← stale-process не причина
+libEGL warning: egl: failed to create dri2 screen (10de:2520)     ← косметика, NVIDIA работает отдельно
+Waiting for Gazebo GUI follow target 'x500_lidar_2d_0' (1/60): Service call timed out
+Gazebo GUI follow camera command accepted: ...accepted_attempts=1/2/3
+WARNING: Gazebo GUI follow camera command accepted but state confirmation is unavailable
+```
+
+**`log-host/px4_city_mvp.log`:**
+```
+INFO  [init] Gazebo simulator 8.10.0
+INFO  [init] Spawning Gazebo model
+INFO  [gz_bridge] world: generated_city, model: x500_lidar_2d_0   ← spawn УСПЕШЕН
+```
+
+**Вывод:** модель заспавнена. Stale-процессов нет. Проблема — в GUI, не в spawn.
+
+## Runtime симлинки: build/ vs build-host/
+
+`build/gazebo_city_mvp/models/` — **stale Docker-среда**:
+- `x500_lidar_2d -> /workspace/drone_city_nav/models/x500_lidar_2d` (нет `/workspace`)
+- `x500_base -> /workspace/external/...`
+
+`build-host/gazebo_city_mvp/models/` — **корректные симлинки**:
+- `x500_lidar_2d -> /home/formi/.../drone_city_nav/models/x500_lidar_2d`
+- `lidar_2d_v2 -> /home/formi/.../drone_city_nav/models/lidar_2d_v2`
+
+`run_city_mvp_host.sh` использует `COLCON_BUILD_BASE=build-host` → корректная среда. Это не причина бага.
+
+## Детальный анализ bbcc6a3
+
+Коммит `bbcc6a3` (Jun 18 10:31, «Attach drone marker to lidar visual link»):
+
+**До `bbcc6a3` (fa88422):** в `x500_lidar_2d/model.sdf` был прямой link `visibility_marker_link`
+с pose `0 0 0` и `VisibilityMarkerJoint` (type=fixed, parent=base\_link). Жёлтые маркеры
+(yellow\_body\_plate, yellow\_arm\_x/y, yellow\_rotor\_*, yellow\_ground\_projection\_beam/disc)
+— все в этом прямо-объявленном link.
+
+**После `bbcc6a3`:** маркеры удалены из `x500_lidar_2d`, добавлены в `lidar_2d_v2/link`.
+`x500_lidar_2d/model.sdf` стал 17-строчным include-only файлом. Новые маркеры в `lidar_2d_v2`:
+- `yellow_drone_locator_core`: sphere r=0.32, pose=(-0.12, 0, -0.12) в frame link
+- `yellow_drone_locator_arm_x/y`: cylinder r=0.05 len=1.35
+- `yellow_ground_projection_beam`: cylinder r=0.08 len=18.0
+- `yellow_ground_projection_disc`: cylinder r=1.8 len=0.035
+
+## Анализ двойного позиционирования link (merge=true + joint)
+
+`x500_lidar_2d/model.sdf` содержит:
+```xml
+<include merge="true">
+  <uri>model://lidar_2d_v2</uri>
+  <pose>0.12 0 0.26 0 0 0</pose>   ← ПОЗИЦИОНИРОВАНИЕ #1 через include pose
+</include>
+<joint name="LidarJoint" type="fixed">
+  <parent>base_link</parent>
+  <child>link</child>
+  <pose relative_to="base_link">-0.1 0 0.26 0 0 0</pose>   ← ПОЗИЦИОНИРОВАНИЕ #2 через joint
+</joint>
+```
+
+При `merge="true"` в sdformat 14.8.0:
+- link `link` из `lidar_2d_v2` получает начальную позу: merge-offset `(0.12, 0, 0.26)` + link pose `(0, 0, 0)` = `(0.12, 0, 0.26)` в frame родительской модели.
+- `LidarJoint` (fixed, parent=`base_link`) кинематически ограничивает `link` в позиции `(-0.1, 0, 0.26)` от `base_link`.
+
+**Конфликт:** начальная merge-поза `(0.12, 0, 0.26)` ≠ joint-поза `(-0.1, 0, 0.26)`.
+Physics resolves kinematic constraint (joint wins). Но рендерер Ogre2 в Gazebo Harmonic
+может не синхронизировать visual transform link'а с joint-enforced runtime позой,
+если начальная поза (из merge) была другой. Это приводит к тому, что визуалы
+рендерятся в замороженной merge-позе или не появляются вовсе.
+
+**В `fa88422` этой проблемы не было**: `visibility_marker_link` имел pose `0 0 0` и был
+ограничен `VisibilityMarkerJoint` с pose `0 0 0` — конфликта не было.
+
+## Вычисление ожидаемой мировой позиции жёлтой сферы
+
+- Spawn: `(-57, -27, 0.3)`
+- `x500_base` model root pose: `(0, 0, 0.24)` → `base_link` at world `(-57, -27, 0.54)`
+- `LidarJoint` offset from `base_link`: `(-0.1, 0, 0.26)` → `link` at `(-57.1, -27, 0.80)`
+- Sphere local pose in `link`: `(-0.12, 0, -0.12)` → sphere center at world `(-57.22, -27, 0.68)`
+- Sphere radius = 0.32 m → видима в z ∈ [0.36, 1.0] над землёй — должна быть хорошо видна
+
+Если камера следит за дроном с offset `(-12, 0, 6)`, сфера должна ясно отображаться.
+Если камера НЕ следит, дрон на расстоянии 84 м от мирового центра и вне дефолтного viewport.
+
+## SDF-версии и x500\_lidar\_2d структура
+
+| Файл | SDF version | visual type |
+|------|-------------|-------------|
+| PX4 `lidar_2d_v2` | 1.6 | mesh `lidar_2d_v2.dae` |
+| custom `lidar_2d_v2` | **1.9** | box+cylinder примитивы + yellow sphere |
+| `x500_base` | 1.9 | mesh (NXP-HGD-CF.dae, 5010Base.dae и др.) |
+| PX4 `x500_lidar_2d` | 1.9 | `<uri>x500</uri>` (bare) |
+| custom `x500_lidar_2d` | 1.9 | `<uri>model://x500</uri>` ← потенциальная разница |
+
+## Обновлённая оценка гипотез
+
+### Гипотеза A (ВЫСОКАЯ уверенность): bbcc6a3 merge=true + joint конфликт
+
+Перемещение маркеров в `lidar_2d_v2/link` создало двойное позиционирование: include-pose
+при merge ≠ joint-pose. В Gazebo Harmonic (gz-sim8 / sdformat 14.8.0) это может приводить
+к тому, что визуалы merged link не отслеживаются рендерером корректно.
+
+До `bbcc6a3`: `visibility_marker_link` в `x500_lidar_2d` — прямой link без merge-конфликта.
+После `bbcc6a3`: `link` из `lidar_2d_v2` — merged link с конфликтующими позами. Это объясняет
+невидимость жёлтых маркеров ДАЖЕ при работающей камере.
+
+**Проверка:** убрать `<pose>0.12 0 0.26</pose>` из include-блока lidar\_2d\_v2 в
+`x500_lidar_2d/model.sdf` → тогда link позиционируется только через LidarJoint.
+
+### Гипотеза B (ВЫСОКАЯ уверенность, независимая): отсутствие follow camera
+
+Подтверждена логом: `state confirmation is unavailable`. Камера не следит за дроном.
+Дрон в `(-57, -27)` — вне дефолтного viewport. Даже если маркеры рендерятся корректно,
+пользователь их не видит без follow camera.
+
+### Гипотеза C (СРЕДНЯЯ): `model://x500` vs bare `x500` URI
+
+PX4-оригинал `x500_lidar_2d` использует `<uri>x500</uri>`.
+Custom использует `<uri>model://x500</uri>`.
+Теоретически оба должны работать при корректном `GZ_SIM_RESOURCE_PATH`.
+Но если `model://` prefix вызывает иное поведение при resolve → mesh-визуалы из x500_base
+не загружаются → только жёлтая сфера (или ничего, если Гипотеза A тоже активна).
+
+## Рекомендованные фиксы (дополнение)
+
+**Фикс X (для Гипотезы A): убрать include-pose из merge lidar\_2d\_v2**
+
+В `drone_city_nav/models/x500_lidar_2d/model.sdf` (строка 9):
+```xml
+<!-- Убрать: -->
+<pose>0.12 0 0.26 0 0 0</pose>
+```
+Тогда позиционирование `link` определяется только `LidarJoint`. Нет конфликта merge/joint.
+
+**Фикс Y (для Гипотезы C): заменить URI**
+
+В `drone_city_nav/models/x500_lidar_2d/model.sdf` строка 5:
+```xml
+<!-- Текущее: -->
+<uri>model://x500</uri>
+<!-- Заменить на: -->
+<uri>x500</uri>
+```
+
+**Комбинированный фикс:** применить оба. Плюс исправить follow camera (Bug #2).
+
