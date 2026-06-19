@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib.util
 import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -54,6 +56,44 @@ class GazeboGuiControlTest(unittest.TestCase):
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "", ""),
+                gui.CommandResult(
+                    0,
+                    'header {}\nfollow_target { name: "x500_lidar_2d_0" }\n',
+                    "",
+                ),
+            ]
+        )
+
+        exit_code = gui.configure_follow_camera(
+            target="x500_lidar_2d_0",
+            offset_text="-12 0 6",
+            wait_s=5,
+            runner=runner,
+            required_accepted_attempts=3,
+            tracking_confirmation_attempts=1,
+        )
+
+        self.assertEqual(exit_code, 0)
+        flat_calls = [" ".join(call) for call in runner.calls]
+        self.assertTrue(any("/gui/follow " in f"{call} " for call in flat_calls))
+        self.assertTrue(
+            any("/gui/follow/offset " in f"{call} " for call in flat_calls)
+        )
+        self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
+        self.assertTrue(
+            any(
+                "x500_lidar_2d_0" in call and "follow_target" in call
+                for call in flat_calls
+            )
+        )
+        self.assertTrue(any("/gui/currently_tracked" in call for call in flat_calls))
+
+    def test_follow_camera_logs_unavailable_tracking_state(self) -> None:
+        runner = FakeRunner(
+            [
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "data: true\n", ""),
+                gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "", ""),
                 gui.CommandResult(0, "data: true\n", ""),
                 gui.CommandResult(0, "data: true\n", ""),
@@ -65,24 +105,22 @@ class GazeboGuiControlTest(unittest.TestCase):
                 gui.CommandResult(0, "", ""),
             ]
         )
+        stdout = StringIO()
 
-        exit_code = gui.configure_follow_camera(
-            target="x500_lidar_2d_0",
-            offset_text="-12 0 6",
-            wait_s=5,
-            runner=runner,
-            required_accepted_attempts=3,
-        )
+        with redirect_stdout(stdout):
+            exit_code = gui.configure_follow_camera(
+                target="x500_lidar_2d_0",
+                offset_text="-12 0 6",
+                wait_s=5,
+                runner=runner,
+                required_accepted_attempts=3,
+                tracking_confirmation_attempts=1,
+            )
 
         self.assertEqual(exit_code, 0)
-        flat_calls = [" ".join(call) for call in runner.calls]
-        self.assertTrue(any("/gui/follow " in f"{call} " for call in flat_calls))
-        self.assertTrue(
-            any("/gui/follow/offset " in f"{call} " for call in flat_calls)
-        )
-        self.assertTrue(any("/gui/track " in f"{call} " for call in flat_calls))
-        self.assertTrue(
-            any("x500_lidar_2d_0" in call and "follow_target" in call for call in flat_calls)
+        self.assertIn(
+            "state confirmation is unavailable",
+            stdout.getvalue(),
         )
 
     def test_follow_camera_rejects_malformed_offset_before_calling_gz(self) -> None:

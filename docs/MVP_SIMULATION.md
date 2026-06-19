@@ -324,6 +324,39 @@ ENABLE_RVIZ=true ./scripts/run_city_mvp_host.sh
 ENABLE_RVIZ=false ./scripts/run_city_mvp_host.sh
 ```
 
+## Gazebo GUI Diagnostics
+
+The run script keeps Gazebo server/world orchestration output and Gazebo GUI
+client output in separate files so render/resource issues are not lost:
+
+- `log-host/gz_city_mvp.log` - server, world-control, follow-camera, stale
+  cleanup, and scene-diagnostics summaries.
+- `log-host/gz_gui_city_mvp.log` - stdout/stderr from the `gz sim -g` GUI
+  client.
+- `log-host/gazebo_scene_debug/` - bounded `gz topic` captures for
+  `/world/generated_city/pose/info`, `/world/generated_city/scene/info`, and
+  `/gui/currently_tracked`, plus a `summary.txt` file with key booleans such as
+  `target_model_seen`, `target_visual_seen`, `yellow_visual_seen`, and
+  `gui_tracking_target_seen`.
+
+Validate the captured launch diagnostics without relying on manual viewing:
+
+```bash
+python3 scripts/validate_gazebo_gui_launch_log.py \
+  log-host/gz_city_mvp.log \
+  --gui-log log-host/gz_gui_city_mvp.log \
+  --scene-diagnostics-dir log-host/gazebo_scene_debug
+```
+
+Set `GZ_GUI_LOG_FILE=/path/to/gz_gui.log` or
+`GZ_SCENE_DIAGNOSTICS_DIR=/path/to/scene_debug` to override the default paths.
+Set `ENABLE_GZ_SCENE_DIAGNOSTICS=false` to skip the bounded scene topic capture.
+
+The validator treats common EGL/render-stack messages as warnings unless the
+logs contain clear launch/resource failures. Scene diagnostics fail only when
+captured data contradicts required runtime facts, such as the spawned target
+model being absent from non-empty Gazebo pose/scene data.
+
 The RViz config shows red current lidar hit points from
 `/drone_city_nav/lidar_debug_points`, yellow accumulated lidar hit points from
 `/drone_city_nav/remembered_lidar_points`, and `/drone_city_nav/path`. The

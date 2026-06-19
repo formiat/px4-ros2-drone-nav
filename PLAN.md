@@ -311,7 +311,9 @@ Run these checks after implementation:
 2. SDF syntax check when Gazebo CLI is available in the host environment:
 
    ```bash
-   ./scripts/host_shell.sh gz sdf -k drone_city_nav/models/x500_lidar_2d/model.sdf
+   ./scripts/host_shell.sh bash -lc \
+     'export SDF_PATH="$PWD/drone_city_nav/models:$PWD/external/PX4-Autopilot/Tools/simulation/gz/models"; \
+      gz sdf -k drone_city_nav/models/x500_lidar_2d/model.sdf'
    ```
 
 3. Script unit tests:

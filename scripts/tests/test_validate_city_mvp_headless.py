@@ -124,6 +124,30 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
             "OK: obstacle memory is available to planner", result.messages
         )
 
+    def test_current_planner_path_log_format_passes(self) -> None:
+        ros_log = make_ros_log().replace(
+            "[planner_node]: Published path: waypoints=12 length=34.5m",
+            (
+                "[planner_node]: Published path: reason=initial_plan "
+                "waypoints=12 segments=11 length=34.5m"
+            ),
+        )
+
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertIn("OK: planner publishes a path", result.messages)
+
     def test_current_lidar_expected_fails_without_planner_scan(self) -> None:
         ros_log = make_ros_log(current_lidar=False).replace(
             "current_lidar=false", "current_lidar=true"

@@ -232,7 +232,7 @@ def validate_logs(
     result.require(
         "planner publishes a path",
         ros_log,
-        r"Published path: waypoints=[1-9]",
+        r"Published path:\s+(?:reason=\S+\s+)?waypoints=[1-9]\d*",
     )
     result.require(
         "offboard command is sent",

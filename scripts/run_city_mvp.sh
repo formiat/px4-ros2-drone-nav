@@ -67,10 +67,15 @@ px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_city_mvp.log}"
 uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_city_mvp.log}"
 ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_city_mvp.log}"
 gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_city_mvp.log}"
+gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_city_mvp.log}"
+gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${run_log_dir}/gazebo_scene_debug}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
+enable_gz_scene_diagnostics="$(
+  normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
+)"
 enable_static_map_override=""
 enable_obstacle_memory_override=""
 enable_current_lidar_override=""
@@ -197,7 +202,9 @@ clean_stale_gazebo_processes() {
 }
 
 mkdir -p "$(dirname "${gz_log_file}")"
+mkdir -p "$(dirname "${gz_gui_log_file}")"
 : > "${gz_log_file}"
+: > "${gz_gui_log_file}"
 clean_stale_gazebo_processes | tee -a "${gz_log_file}"
 
 set +u
@@ -238,6 +245,11 @@ mkdir -p "$(dirname "${ros_log_file}")"
 if [[ "${enable_lidar_debug}" == "true" || "${enable_lidar_debug}" == "1" ]]; then
   rm -rf "${lidar_debug_dir}"
   mkdir -p "${lidar_debug_dir}"
+fi
+if [[ "${enable_gz_scene_diagnostics}" == "true" ||
+  "${enable_gz_scene_diagnostics}" == "1" ]]; then
+  rm -rf "${gz_scene_diagnostics_dir}"
+  mkdir -p "${gz_scene_diagnostics_dir}"
 fi
 : > "${px4_log_file}"
 : > "${uxrce_log_file}"
@@ -346,6 +358,14 @@ configure_gazebo_world_running() {
     --wait-s "${wait_s}"
 }
 
+capture_gazebo_scene_diagnostics() {
+  local output_dir="$1"
+  python3 "${repo_root}/scripts/capture_gazebo_scene_diagnostics.py" \
+    --world "${world_name}" \
+    --target "${gazebo_gui_follow_target}" \
+    --output-dir "${output_dir}"
+}
+
 gz_resource_path="${runtime_models_dir}:${runtime_worlds_dir}"
 if [[ -n "${GZ_SIM_RESOURCE_PATH:-}" ]]; then
   gz_resource_path="${gz_resource_path}:${GZ_SIM_RESOURCE_PATH}"
@@ -361,6 +381,8 @@ export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:
 export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
 echo "Gazebo log: ${gz_log_file}"
+echo "Gazebo GUI log: ${gz_gui_log_file}"
+echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
@@ -398,7 +420,7 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_server_pid=$!
 
   if [[ -z "${headless}" ]]; then
-    gz sim -g > /dev/null 2>&1 &
+    gz sim -g >> "${gz_gui_log_file}" 2>&1 &
     gz_gui_pid=$!
     configure_gazebo_world_running "${gazebo_world_unpause_wait_s}" &
     gz_unpause_pid=$!
@@ -442,6 +464,13 @@ if ! kill -0 "${px4_pid}" 2>/dev/null; then
   echo "PX4 SITL exited before ROS launch. Last PX4 log lines:" >&2
   tail -n 80 "${px4_log_file}" >&2
   exit 1
+fi
+
+if bool_is_true "${enable_gz_scene_diagnostics}"; then
+  if ! capture_gazebo_scene_diagnostics "${gz_scene_diagnostics_dir}" |
+    tee -a "${gz_log_file}"; then
+    echo "WARNING: Gazebo scene diagnostics capture failed" | tee -a "${gz_log_file}"
+  fi
 fi
 
 print_log_tail() {

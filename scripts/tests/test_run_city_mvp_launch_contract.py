@@ -20,6 +20,18 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
 
     def test_gazebo_gui_launch_uses_direct_gui_command(self) -> None:
         self.assertIn("gz sim -g", self.text)
+        self.assertNotIn("gz sim -g > /dev/null", self.text)
+        self.assertIn('gz sim -g >> "${gz_gui_log_file}" 2>&1 &', self.text)
+
+    def test_gazebo_gui_log_is_separate_from_server_log(self) -> None:
+        self.assertIn("gz_gui_log_file=", self.text)
+        self.assertIn('echo "Gazebo GUI log: ${gz_gui_log_file}"', self.text)
+        self.assertIn(': > "${gz_gui_log_file}"', self.text)
+
+    def test_gazebo_scene_diagnostics_are_captured(self) -> None:
+        self.assertIn("ENABLE_GZ_SCENE_DIAGNOSTICS", self.text)
+        self.assertIn("capture_gazebo_scene_diagnostics", self.text)
+        self.assertIn("scripts/capture_gazebo_scene_diagnostics.py", self.text)
 
     def test_world_unpause_uses_world_control_pause_false(self) -> None:
         self.assertIn("world-running", self.text)

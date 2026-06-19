@@ -29,6 +29,13 @@ class CommandRunner(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class TrackingConfirmation:
+    confirmed: bool
+    available: bool
+    output: str = ""
+
+
 def _timeout_output_to_text(value: str | bytes | None) -> str:
     if value is None:
         return ""
@@ -143,17 +150,44 @@ def _publish_track(
     )
 
 
-def _confirm_tracking(runner: CommandRunner, *, target: str) -> bool | None:
-    result = runner(
-        ["topic", "-e", "-t", "/gui/currently_tracked", "-d", "0.2"],
-        1.0,
-    )
-    output = result.combined_output
-    if result.returncode != 0:
-        return None
-    if not output.strip():
-        return None
-    return target in output
+def _confirm_tracking(
+    runner: CommandRunner,
+    *,
+    target: str,
+    sample_duration_s: float = 1.0,
+    attempts: int = 2,
+) -> TrackingConfirmation:
+    last_output = ""
+    observed_output = False
+    for _ in range(max(1, attempts)):
+        result = runner(
+            [
+                "topic",
+                "-e",
+                "-t",
+                "/gui/currently_tracked",
+                "-d",
+                _format_float(sample_duration_s),
+            ],
+            sample_duration_s + 1.0,
+        )
+        output = result.combined_output
+        last_output = output
+        if result.returncode != 0 or not output.strip():
+            continue
+        observed_output = True
+        if target in output:
+            return TrackingConfirmation(True, True, output)
+    if observed_output:
+        return TrackingConfirmation(False, True, last_output)
+    return TrackingConfirmation(False, False, last_output)
+
+
+def _compact_log_excerpt(text: str, *, limit: int = 240) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
 
 
 def configure_follow_camera(
@@ -163,6 +197,8 @@ def configure_follow_camera(
     wait_s: int,
     runner: CommandRunner = default_runner,
     required_accepted_attempts: int = 3,
+    tracking_sample_duration_s: float = 1.0,
+    tracking_confirmation_attempts: int = 2,
 ) -> int:
     offset = parse_offset(offset_text)
     if offset is None:
@@ -215,16 +251,35 @@ def configure_follow_camera(
                     f"{track_response.combined_output}"
                 )
 
-            tracking_state = _confirm_tracking(runner, target=target)
+            tracking_state = _confirm_tracking(
+                runner,
+                target=target,
+                sample_duration_s=tracking_sample_duration_s,
+                attempts=tracking_confirmation_attempts,
+            )
             attempted_state_confirmation = True
-            if tracking_state is True:
+            if tracking_state.confirmed:
                 print(f"Gazebo GUI follow camera state confirmed: target={target}")
                 return 0
-            if accepted_attempts >= required_accepted_attempts:
+            if tracking_state.available:
                 print(
-                    "WARNING: Gazebo GUI follow camera command accepted but "
-                    "state confirmation is unavailable; continuing best-effort."
+                    "WARNING: Gazebo GUI follow camera state did not mention "
+                    f"target '{target}': "
+                    f"{_compact_log_excerpt(tracking_state.output)}"
                 )
+            if accepted_attempts >= required_accepted_attempts:
+                if tracking_state.available:
+                    print(
+                        "WARNING: Gazebo GUI follow camera command accepted but "
+                        "state does not track the requested target; continuing "
+                        "best-effort."
+                    )
+                else:
+                    print(
+                        "WARNING: Gazebo GUI follow camera command accepted but "
+                        "state confirmation is unavailable; continuing "
+                        "best-effort."
+                    )
                 return 0
         elif attempt == 1 or attempt % 5 == 0:
             print(

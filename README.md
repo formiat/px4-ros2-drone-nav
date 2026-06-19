@@ -100,8 +100,18 @@ control.
 After a GUI run, validate deterministic Gazebo launch diagnostics:
 
 ```bash
-python3 scripts/validate_gazebo_gui_launch_log.py log-host/gz_city_mvp.log
+python3 scripts/validate_gazebo_gui_launch_log.py \
+  log-host/gz_city_mvp.log \
+  --gui-log log-host/gz_gui_city_mvp.log \
+  --scene-diagnostics-dir log-host/gazebo_scene_debug
 ```
+
+GUI runs keep Gazebo server/world orchestration output in
+`log-host/gz_city_mvp.log` and Gazebo GUI client output in
+`log-host/gz_gui_city_mvp.log`. The launcher also captures bounded Gazebo scene
+diagnostics under `log-host/gazebo_scene_debug/` by default. Disable only the
+scene diagnostics with `ENABLE_GZ_SCENE_DIAGNOSTICS=false` when you need a
+minimal run.
 
 Run a native headless smoke validation:
 
