@@ -42,6 +42,13 @@ Important concrete findings from the investigation and follow-up file reads:
   locator and ground projection visuals inside the lidar sensor model.
   The wrapper model `drone_city_nav/models/x500_lidar_2d/model.sdf:3` currently
   only includes `x500`, includes `lidar_2d_v2`, and adds `LidarJoint`.
+- `INVESTIGATION.md:688` records H4: the local wrapper uses
+  `<uri>model://x500</uri>` at `drone_city_nav/models/x500_lidar_2d/model.sdf:5`,
+  while upstream PX4 uses bare `<uri>x500</uri>` at
+  `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf:5`.
+  The investigation rates this as low-medium confidence because the current SDF
+  is valid and the server-side model exists, but it still needs an explicit plan
+  closure.
 - `scripts/validate_gazebo_gui_launch_log.py:31` validates only the combined
   Gazebo launcher log. It has no way to validate a separate GUI log or scene
   diagnostics artifact.
@@ -111,9 +118,11 @@ Use commands from the repository root.
   - Existing script-level tests for launcher contract, GUI control, GUI log
     validation, and headless validation.
 - `drone_city_nav/models/x500_lidar_2d/model.sdf`
-  - Drone wrapper model and visual locator ownership.
+  - Drone wrapper model, base model URI, and visual locator ownership.
 - `drone_city_nav/models/lidar_2d_v2/model.sdf`
   - Lidar sensor model; should not own whole-drone visibility helpers.
+- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf`
+  - Upstream reference for the wrapper model URI style.
 - `docs/MVP_SIMULATION.md` and `README.md`
   - Launch and diagnostics documentation after implementation.
 
@@ -228,7 +237,31 @@ Use commands from the repository root.
    environment. If Gazebo requires inertial data for the new link, add tiny,
    explicit inertial values rather than coupling the marker to the lidar mass.
 
-7. Add SDF structure tests for visibility helpers.
+7. Close H4 by normalizing the wrapper base-model URI to upstream PX4 style.
+
+   Change `drone_city_nav/models/x500_lidar_2d/model.sdf:4-6` from:
+
+   ```xml
+   <include merge="true">
+     <uri>model://x500</uri>
+   </include>
+   ```
+
+   to the upstream-style form used at
+   `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf:4-6`:
+
+   ```xml
+   <include merge="true">
+     <uri>x500</uri>
+   </include>
+   ```
+
+   Expected result: the local wrapper no longer differs from PX4 upstream on the
+   base model URI. This does not assume H4 is the root cause; it removes a
+   low-medium confidence divergence while the new GUI logs and scene diagnostics
+   verify whether resource loading still fails.
+
+8. Add SDF structure tests for visibility helpers and the base-model URI.
 
    Add `scripts/tests/test_drone_model_sdf_contract.py` using Python XML
    parsing. The tests should assert:
@@ -239,11 +272,13 @@ Use commands from the repository root.
    - `drone_city_nav/models/lidar_2d_v2/model.sdf` still contains the lidar
      `gpu_lidar` sensor;
    - the lidar model no longer contains `yellow_drone_locator_*` or
-     `yellow_ground_projection_*` visuals.
+     `yellow_ground_projection_*` visuals;
+   - `drone_city_nav/models/x500_lidar_2d/model.sdf` uses bare `x500` for the
+     base include and `model://lidar_2d_v2` for the lidar include.
 
    This prevents the same ownership regression from silently returning.
 
-8. Add launch-contract tests for GUI log preservation and diagnostics.
+9. Add launch-contract tests for GUI log preservation and diagnostics.
 
    Extend `scripts/tests/test_run_city_mvp_launch_contract.py` so it checks:
 
@@ -252,7 +287,7 @@ Use commands from the repository root.
    - scene diagnostics capture is called or explicitly logged;
    - stale cleanup still runs before Gazebo launch.
 
-9. Update GUI launch documentation.
+10. Update GUI launch documentation.
 
    Update `README.md` and `docs/MVP_SIMULATION.md` after implementation to
    document:
@@ -262,13 +297,6 @@ Use commands from the repository root.
    - how to disable scene diagnostics if needed;
    - what a successful follow-camera / scene diagnostics summary should look
      like.
-
-10. Keep the first implementation batch scoped.
-
-    Do not change planner behavior, lidar projection, obstacle inflation, or
-    PX4 offboard control in this fix batch. The investigated failure is a GUI
-    rendering / diagnostics boundary issue, and changing navigation at the same
-    time would make regressions harder to attribute.
 
 ## Verification plan
 
@@ -280,25 +308,31 @@ Run these checks after implementation:
    git diff --check
    ```
 
-2. Script unit tests:
+2. SDF syntax check when Gazebo CLI is available in the host environment:
+
+   ```bash
+   ./scripts/host_shell.sh gz sdf -k drone_city_nav/models/x500_lidar_2d/model.sdf
+   ```
+
+3. Script unit tests:
 
    ```bash
    make host-test-scripts
    ```
 
-3. Full repository quality gate:
+4. Full repository quality gate:
 
    ```bash
    make host-quality
    ```
 
-4. Headless simulation smoke with mission validation:
+5. Headless simulation smoke with mission validation:
 
    ```bash
    HEADLESS=1 MISSION_CHECK=1 SMOKE_DURATION_S=300 ./scripts/run_city_mvp_host.sh
    ```
 
-5. GUI diagnostics smoke without relying on manual viewing:
+6. GUI diagnostics smoke without relying on manual viewing:
 
    ```bash
    ENABLE_RVIZ=false SMOKE_DURATION_S=120 ./scripts/run_city_mvp_host.sh
@@ -308,7 +342,7 @@ Run these checks after implementation:
      --scene-diagnostics-dir log-host/gazebo_scene_debug
    ```
 
-6. Optional manual GUI confirmation after automated checks pass:
+7. Optional manual GUI confirmation after automated checks pass:
 
    ```bash
    make host-sim-gui
@@ -336,7 +370,7 @@ Run these checks after implementation:
      `CommandRunner` responses for confirmed and unconfirmed follow-camera
      state.
    - Add `scripts/tests/test_drone_model_sdf_contract.py` to guard SDF marker
-     ownership and lidar sensor preservation.
+     ownership, base-model URI normalization, and lidar sensor preservation.
    - Add unit tests for any new scene diagnostics parser/helper functions with
      synthetic `gz topic` outputs.
 
@@ -367,6 +401,15 @@ Run these checks after implementation:
 - Scene diagnostics can be sparse if a Gazebo topic does not publish within the
   timeout. Treat missing diagnostic samples as warnings unless they contradict
   required runtime facts that are also available elsewhere.
+- Scope guardrail: keep the first implementation batch limited to GUI logging,
+  GUI/scene diagnostics, SDF wrapper/model-layout fixes, validators, tests, and
+  docs. Do not change planner behavior, lidar projection, obstacle inflation, or
+  PX4 offboard control in this batch; those changes would make the render
+  regression harder to attribute.
+- Normalizing `<uri>model://x500</uri>` to bare `<uri>x500</uri>` should match
+  PX4 upstream, but it still touches Gazebo resource resolution. Verify with
+  `gz sdf -k`, the SDF contract test, GUI log resource checks, and scene
+  diagnostics before treating H4 as closed.
 
 ## Open questions
 
