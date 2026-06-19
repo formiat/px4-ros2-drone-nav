@@ -37,6 +37,18 @@ class ContainerEntrypointTest(unittest.TestCase):
                 )
                 self.assertNotIn("docker run", text)
 
+    def test_sim_wrappers_run_host_cleanup_before_container(self) -> None:
+        for script_name in ("sim_gui.sh", "sim_headless.sh"):
+            with self.subTest(script_name=script_name):
+                text = self.read_script(script_name)
+                cleanup_index = text.index(
+                    '"${repo_root}/scripts/cleanup_sim_processes.sh"'
+                )
+                container_index = text.index(
+                    'exec "${repo_root}/scripts/container_run.sh"'
+                )
+                self.assertLess(cleanup_index, container_index)
+
     def test_container_runner_owns_docker_invocation(self) -> None:
         text = self.read_script("container_run.sh")
 

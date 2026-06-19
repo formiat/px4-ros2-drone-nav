@@ -194,7 +194,9 @@ clean_stale_gazebo_processes() {
     cleanup_args+=(--dry-run)
   fi
 
-  python3 "${repo_root}/scripts/gazebo_process_cleanup.py" "${cleanup_args[@]}"
+  python3 "${repo_root}/scripts/gazebo_process_cleanup.py" "${cleanup_args[@]}" \
+    --repo-root "${repo_root}" \
+    --project-marker "/workspace"
 }
 
 mkdir -p "$(dirname "${gz_log_file}")"

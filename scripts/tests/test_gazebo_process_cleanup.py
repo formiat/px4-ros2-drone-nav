@@ -37,6 +37,75 @@ class GazeboProcessCleanupTest(unittest.TestCase):
 
         self.assertEqual([process.pid for process in candidates], [100, 101])
 
+    def test_selects_project_simulation_stack_and_descendants(self) -> None:
+        processes = cleanup.parse_ps_output(
+            "\n".join(
+                [
+                    "100 1 100 bash ./scripts/run_city_mvp.sh",
+                    (
+                        "101 100 100 /usr/bin/python3 /opt/ros/jazzy/bin/ros2 "
+                        "launch drone_city_nav city_nav.launch.py"
+                    ),
+                    (
+                        "102 101 100 /workspace/install/drone_city_nav/lib/"
+                        "drone_city_nav/lidar_debug_node --ros-args"
+                    ),
+                    "103 100 100 MicroXRCEAgent udp4 -p 8888",
+                    (
+                        "104 100 100 make -C /workspace/external/PX4-Autopilot "
+                        "px4_sitl gz_x500_lidar_2d"
+                    ),
+                    (
+                        "105 104 100 /workspace/external/PX4-Autopilot/build/"
+                        "px4_sitl_default/bin/px4"
+                    ),
+                    (
+                        "106 1 106 rviz2 -d "
+                        "/workspace/drone_city_nav/rviz/city_nav_debug.rviz"
+                    ),
+                    "107 1 107 python3 unrelated.py",
+                ]
+            )
+        )
+
+        candidates = cleanup.select_conflicting_processes(
+            processes,
+            {999},
+            project_markers=["/workspace", "drone_city_nav"],
+        )
+
+        self.assertEqual(
+            [process.pid for process in candidates],
+            [100, 101, 102, 103, 104, 105, 106],
+        )
+
+    def test_protects_current_run_script_and_children(self) -> None:
+        processes = cleanup.parse_ps_output(
+            "\n".join(
+                [
+                    "10 1 10 /bin/bash parent",
+                    "20 10 20 bash ./scripts/run_city_mvp.sh",
+                    (
+                        "30 20 20 /workspace/install/drone_city_nav/lib/"
+                        "drone_city_nav/planner_node"
+                    ),
+                    "40 1 40 bash ./scripts/run_city_mvp.sh",
+                    (
+                        "50 40 40 /workspace/install/drone_city_nav/lib/"
+                        "drone_city_nav/planner_node"
+                    ),
+                ]
+            )
+        )
+
+        candidates = cleanup.select_conflicting_processes(
+            processes,
+            {20},
+            project_markers=["/workspace", "drone_city_nav"],
+        )
+
+        self.assertEqual([process.pid for process in candidates], [40, 50])
+
     def test_protects_current_process_and_ancestors(self) -> None:
         processes = cleanup.parse_ps_output(
             "\n".join(

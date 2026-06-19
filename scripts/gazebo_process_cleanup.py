@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clean conflicting Gazebo simulator processes before a new run."""
+"""Clean conflicting simulator processes before a new run."""
 
 from __future__ import annotations
 
@@ -19,6 +19,32 @@ class ProcessInfo:
     ppid: int
     pgid: int
     cmd: str
+
+
+PROJECT_NODE_EXECUTABLES = {
+    "lidar_debug_node",
+    "mission_monitor_node",
+    "obstacle_memory_node",
+    "planner_node",
+    "px4_offboard_node",
+}
+
+
+def default_project_markers() -> list[str]:
+    return [
+        "/workspace",
+        "drone_city_nav",
+        "drone-gazebo",
+    ]
+
+
+def normalized_project_markers(values: list[str]) -> list[str]:
+    markers = default_project_markers()
+    for value in values:
+        if value:
+            markers.append(os.path.realpath(value))
+            markers.append(value)
+    return sorted({marker for marker in markers if marker}, key=len, reverse=True)
 
 
 def _split_command(cmd: str) -> list[str]:
@@ -67,6 +93,77 @@ def is_conflicting_gazebo_process(cmd: str) -> bool:
     )
 
 
+def command_has_marker(cmd: str, markers: list[str]) -> bool:
+    return any(marker in cmd for marker in markers)
+
+
+def is_project_run_script(cmd: str) -> bool:
+    tokens = _split_command(cmd)
+    command_index = _command_index_after_env_wrapper(tokens)
+    if command_index >= len(tokens):
+        return False
+
+    executable = os.path.basename(tokens[command_index])
+    has_runner_arg = any(
+        token.endswith("scripts/run_city_mvp.sh")
+        or token.endswith("./scripts/run_city_mvp.sh")
+        for token in tokens[command_index + 1 :]
+    )
+    return executable in {"bash", "sh", "run_city_mvp.sh"} and (
+        executable == "run_city_mvp.sh" or has_runner_arg
+    )
+
+
+def is_project_ros_launch(cmd: str) -> bool:
+    return "ros2 launch drone_city_nav city_nav.launch.py" in cmd
+
+
+def is_project_ros_node(cmd: str, markers: list[str]) -> bool:
+    if not command_has_marker(cmd, markers):
+        return False
+    return any(
+        f"/{name}" in cmd or cmd.endswith(name) for name in PROJECT_NODE_EXECUTABLES
+    )
+
+
+def is_project_px4_process(cmd: str, markers: list[str]) -> bool:
+    if "PX4-Autopilot" not in cmd and "px4_sitl" not in cmd:
+        return False
+    if not command_has_marker(cmd, markers):
+        return False
+    return (
+        "px4_sitl" in cmd
+        or "gz_x500_lidar_2d" in cmd
+        or "PX4_SIM_MODEL=gz_x500_lidar_2d" in cmd
+        or "/bin/px4" in cmd
+    )
+
+
+def is_project_micro_xrce_agent(cmd: str) -> bool:
+    tokens = _split_command(cmd)
+    if not tokens or os.path.basename(tokens[0]) != "MicroXRCEAgent":
+        return False
+    return "udp4" in tokens and "-p" in tokens and "8888" in tokens
+
+
+def is_project_rviz_process(cmd: str, markers: list[str]) -> bool:
+    if "rviz2" not in cmd:
+        return False
+    return "city_nav_debug.rviz" in cmd or command_has_marker(cmd, markers)
+
+
+def is_conflicting_simulation_process(cmd: str, markers: list[str]) -> bool:
+    return (
+        is_conflicting_gazebo_process(cmd)
+        or is_project_run_script(cmd)
+        or is_project_ros_launch(cmd)
+        or is_project_ros_node(cmd, markers)
+        or is_project_px4_process(cmd, markers)
+        or is_project_micro_xrce_agent(cmd)
+        or is_project_rviz_process(cmd, markers)
+    )
+
+
 def parse_ps_line(line: str) -> ProcessInfo | None:
     parts = line.strip().split(None, 3)
     if len(parts) != 4:
@@ -107,14 +204,48 @@ def collect_ancestor_pids(
     return protected
 
 
+def collect_descendant_pids(
+    processes: list[ProcessInfo], seed_pids: set[int]
+) -> set[int]:
+    children_by_parent: dict[int, list[int]] = {}
+    for process in processes:
+        children_by_parent.setdefault(process.ppid, []).append(process.pid)
+
+    descendants: set[int] = set()
+    stack = list(seed_pids)
+    while stack:
+        pid = stack.pop()
+        for child_pid in children_by_parent.get(pid, []):
+            if child_pid in descendants:
+                continue
+            descendants.add(child_pid)
+            stack.append(child_pid)
+    return descendants
+
+
 def select_conflicting_processes(
-    processes: list[ProcessInfo], protected_pids: set[int]
+    processes: list[ProcessInfo],
+    protected_pids: set[int],
+    *,
+    project_markers: list[str] | None = None,
 ) -> list[ProcessInfo]:
     protected = collect_ancestor_pids(processes, protected_pids)
+    protected.update(collect_descendant_pids(processes, protected_pids))
+    markers = (
+        project_markers if project_markers is not None else default_project_markers()
+    )
+    directly_selected = [
+        process
+        for process in processes
+        if process.pid not in protected
+        and is_conflicting_simulation_process(process.cmd, markers)
+    ]
+    selected_pids = {process.pid for process in directly_selected}
+    selected_pids.update(collect_descendant_pids(processes, selected_pids))
     candidates = [
         process
         for process in processes
-        if process.pid not in protected and is_conflicting_gazebo_process(process.cmd)
+        if process.pid in selected_pids and process.pid not in protected
     ]
     return sorted(candidates, key=lambda process: process.pid)
 
@@ -201,10 +332,12 @@ def stop_processes(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Stop stale/conflicting Gazebo simulator processes."
+        description="Stop stale/conflicting simulator processes."
     )
     parser.add_argument("--self-pid", type=int, action="append", default=[])
     parser.add_argument("--protect-pid", type=int, action="append", default=[])
+    parser.add_argument("--repo-root", action="append", default=[])
+    parser.add_argument("--project-marker", action="append", default=[])
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--term-timeout-s", type=float, default=5.0)
     parser.add_argument("--ps-file")
@@ -226,7 +359,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     protected = {os.getpid(), os.getppid(), *args.self_pid, *args.protect_pid}
-    candidates = select_conflicting_processes(processes, protected)
+    project_markers = normalized_project_markers(
+        [*args.repo_root, *args.project_marker]
+    )
+    candidates = select_conflicting_processes(
+        processes,
+        protected,
+        project_markers=project_markers,
+    )
     return stop_processes(
         candidates,
         dry_run=args.dry_run,
