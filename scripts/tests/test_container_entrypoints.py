@@ -17,7 +17,7 @@ class ContainerEntrypointTest(unittest.TestCase):
     def test_dev_shell_uses_shared_container_runner(self) -> None:
         text = self.read_script("dev_shell.sh")
 
-        self.assertIn('exec "${repo_root}/scripts/container_run.sh"', text)
+        self.assertIn('exec "${repo_root}/scripts/container_run.sh" "$@"', text)
         self.assertNotIn("docker run", text)
 
     def test_common_wrappers_use_shared_container_runner(self) -> None:
