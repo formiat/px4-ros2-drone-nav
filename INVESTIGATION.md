@@ -1,605 +1,495 @@
 # Context/Task
 
-> **Обновлено (третий раунд — ревизия по feedback ревьюэра):** ранняя регрессия
-> `718deec`→`cf8b9b1` явно выделена как UNRESOLVED BOUNDARY (diff показывает только EXIT
-> cleanup — логически не влияет на видимость); Bug #2 root cause переформулирован как
-> ведущая гипотеза; уверенность по bbcc6a3 снижена до СРЕДНЕЙ.
+This investigation supplements the previous Gazebo GUI / drone rendering
+analysis with the clarified base fact from the user:
+
+- the drone is not merely hard to see;
+- the camera is not merely pointed at the wrong place;
+- the user did not just miss the model on screen;
+- the drone and its ground marker are not rendered/displayed in the Gazebo 3D
+  world window, while RViz and logs show that the simulated drone exists and
+  flies.
+
+The task is to investigate the real reason for the absence of the drone in the
+Gazebo 3D world window, using only headless checks for this round.
+
+# Research Questions
+
+- Is the drone missing from the simulation/server side, or only from the Gazebo
+  GUI/render side?
+- Does the current SDF resolve the PX4 x500 base model, lidar model, mesh
+  visuals, and yellow marker visuals?
+- Which recent changes are still relevant to the rendering regression?
+- Which previous explanations must be rejected after the user's clarification?
+- What remains unresolved because GUI rendering could not be inspected in this
+  headless-only round?
+
+# Scope And Constraints
+
+- Repository root:
+  `/home/formi/Documents/CppProjects/drone-gazebo`
+- Branch at investigation time: `main`
+- Starting HEAD: `42671b5 Revise investigation per reviewer feedback`
+- GUI runs were intentionally not used. The prompt allowed additional
+  investigation only in headless mode.
+- No remote systems were used.
+- Notion and GitLab protocols were read, but no task id or MR URL was provided,
+  so neither Notion nor GitLab was queried.
+- The investigation updates the existing `INVESTIGATION.md`; it does not
+  implement a code fix.
+
+# Detected Stack/Profiles
+
+Detected stack:
+
+- C++ ROS 2 workspace
+- `colcon` / ament CMake
+- Gazebo Sim / `gz`
+- PX4 SITL
+- shell/Python launch helpers
+- SDF model and world assets
+
+Profiles and protocols read:
 
-Два регрессионных бага на ветке `main`:
-
-1. **Bug #1**: 3D-модель дрона не отображается в окне Gazebo 3D (не в RViz). Дрон физически существует, летит и добирается до финиша — это видно в RViz.
-2. **Bug #2**: Следящая камера (follow camera) в Gazebo GUI не работает / не запускается. Вместо неё остаётся активной дефолтная свободная камера.
-
-Контекст истории: на коммите `718deec` дрон был виден. На `b4b9e8c` следящая камера работала. Несколько промежуточных коммитов пытались починить оба бага — безуспешно.
-
-# Research questions
-
-- Почему 3D-модель дрона не отображается в Gazebo GUI при текущем коде на `main`?
-- Почему следящая камера не активируется в текущей реализации?
-- Связаны ли Bug #1 и Bug #2 между собой (следствие или независимые)?
-- Что конкретно изменилось относительно рабочих коммитов (`718deec`, `b4b9e8c`)?
-- Что уже было попытано в последних коммитах, чтобы не повторять те же подходы?
-
-# Scope and constraints
-
-- Исследован только локальный код, git-история и локальные CLI/файлы.
-- SSH, HTTP, удалённые системы не использовались.
-- Notion policy: `optional`; Notion task id в промпте не указан — Notion не читался.
-- GitLab/MR в промпте не указан — GitLab не читался.
-- Симуляция не запускалась; выводы основаны на diff/code evidence и подтверждённых пользователем good/bad коммитах.
-
-# Detected stack/profiles
-
-- Стек: ROS 2 workspace (ament CMake / colcon), Gazebo Sim (gz-sim), PX4 SITL, C++.
-- Прочитаны обязательные профили:
-  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/generic.md`
-  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/cpp.md`
-- Rust profile не применялся: затронутые файлы — shell-скрипты, SDF-модели, Python-скрипт.
-- Протоколы:
-  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/notion_access_protocol.md`
-  - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/gitlab_access_protocol.md`
-
-# Repo-approved commands found
-
-Из `AGENTS.md`, `README.md`, `Makefile`:
-
-- `make host-build` — сборка на хосте
-- `make host-test` — тесты на хосте
-- `make host-quality` — качество кода
-- `make host-format` — форматирование
-- `make host-sim-gui` — запуск симуляции с GUI
-- `make host-sim-headless` — headless-запуск
-
-Для данного investigation-раунда GUI и simulation команды не запускались — задача исследовательская. Verification команды ограничены `git`, `grep`, `cat`.
-
-# Observed symptom
-
-## Bug #1: Дрон не отображается в Gazebo 3D
-
-- `718deec`: 3D-модель дрона в Gazebo GUI отображается корректно. Следящей камеры нет.
-- Текущий `main`: 3D-модель дрона отсутствует в Gazebo GUI. Дрон физически существует (виден в RViz).
-- Spawn координаты: `x=-57, y=-27, z=0.3` (неизменны с `718deec`).
-
-## Bug #2: Следящая камера не работает
-
-- `b4b9e8c`: следящая камера (`/gui/follow` service) работает.
-- `41bb70e`: следящая камера сломалась (добавлен `--gui-config`).
-- Текущий `main`: следящей камеры по-прежнему нет. Дефолтная свободная камера активна.
-
-# Immediate cause
-
-## Bug #1
-
-Два уровня анализа:
-
-**Ранняя регрессия `718deec`→`cf8b9b1` — UNRESOLVED BOUNDARY.** Diff этого коммита затрагивает исключительно EXIT `cleanup()` (descendant PID collection) — код, выполняемый при завершении скрипта, не при запуске симуляции. Причина видимости на `718deec` и невидимости на `cf8b9b1` не выводима из кода; возможно, это разные условия тестирования или stale Gazebo состояние.
-
-**Текущий `main` — ведущие гипотезы (не взаимоисключающие):**
-- Дрон спавнится в `(-57, -27, 0.3)` вне дефолтного viewport; follow camera (Bug #2) не активирована (лог: «state confirmation is unavailable») — ведущая гипотеза, medium confidence.
-- `bbcc6a3` создал конфликт include-pose/joint-pose в merge include (medium confidence, без live-evidence Ogre2).
-- `<uri>model://x500</uri>` vs `<uri>x500</uri>` — потенциально разный resolve (low-medium confidence).
-
-## Bug #2
-
-`configure_follow_camera` в `scripts/gazebo_gui_control.py` (строки 159–246) завершает работу после `required_accepted_attempts=3` с предупреждением «best-effort», даже если `_confirm_tracking` возвращает `None`. Функция вызывает `/gui/follow` service на каждой итерации; `/gui/follow` может возвращать `data: true` до того, как модель `x500_lidar_2d_0` реально появилась в сцене (или сразу после — но до подтверждения state). `_confirm_tracking` читает топик `/gui/currently_tracked` с duration 0.2s — слишком мало для надёжного ответа.
-
-# Causal chain / why chain
-
-## Bug #1: Дрон не виден в Gazebo 3D
-
-**Observed symptom:**
-Gazebo GUI не показывает 3D-модель дрона. Дрон летит (видно в RViz).
-
-### Ранняя регрессия `718deec` → `cf8b9b1` — UNRESOLVED BOUNDARY
-
-**Наблюдение из prompt:** на `718deec` дрон виден, на `cf8b9b1` — нет; follow camera отсутствует в обоих коммитах, spawn coords идентичны.
-
-**Что изменил `cf8b9b1` (`git diff 718deec..cf8b9b1 -- scripts/run_city_mvp.sh`):**
-Только функцию `cleanup()` и новый хелпер `collect_descendant_pids()`. Оба выполняются исключительно по `trap cleanup EXIT INT TERM` — при завершении скрипта, а не при запуске симуляции. Изменение логически ортогонально видимости дрона во время работы симуляции.
-
-**Вывод:** причина ранней регрессии НЕ выводима из diff `cf8b9b1`. Возможные внешние факторы (не подтверждаются кодом):
-- Stale Gazebo сцена от предыдущего запуска, где дрон был ближе к origin
-- Разные условия тестирования (например, ручная навигация камеры на `718deec`)
-
-**UNRESOLVED BOUNDARY:** для закрытия нужен live-тест обоих коммитов в идентичных условиях (fresh Gazebo, clean environment).
-
-### Текущий `main` — причинная цепочка
-
-**Contributing factor #1 (ведущая гипотеза, подтверждена логом):**
-Gazebo GUI-камера направлена на area вблизи world origin, а дрон находится в `(-57, -27, 0.3)`. Без следящей камеры дрон находится вне viewport с дефолтной позиции.
-
-**Why contributing factor #1 существует:**
-Follow camera (Bug #2) не активируется (подтверждено логом: «state confirmation is unavailable»). Камера остаётся в дефолтной позиции, не направленной на spawn area дрона.
-
-**Contributing factor #2 (гипотеза, средняя уверенность):**
-`bbcc6a3` перенёс жёлтые маркеры в `lidar_2d_v2/link` и создал двойное позиционирование (include-pose ≠ joint-pose). В Gazebo Harmonic это потенциально нарушает render transform merged link. Без live-run не доказано.
-
-**Why that condition was possible (для factor #2):**
-`e998cb9` сделал кастомные модели безусловными; `bbcc6a3` перенёс маркеры с конфликтующим позиционированием.
-
-**Unresolved boundary:**
-Нельзя утверждать, что Bug #1 на current main — ИСКЛЮЧИТЕЛЬНО следствие Bug #2, пока ранняя регрессия `cf8b9b1` не объяснена. Возможно, оба фактора независимо влияют на видимость.
-
-## Bug #2: Следящая камера не работает
-
-**Observed symptom:**
-Камера остаётся в дефолтном свободном режиме. Follow camera не активна.
-
-**Immediate technical cause:**
-`configure_follow_camera` в `gazebo_gui_control.py:159–246` завершает работу по `accepted_attempts >= required_accepted_attempts (3)` раньше, чем подтверждается реальное слежение.
-
-**Why that happened:**
-`_confirm_tracking` (`gazebo_gui_control.py:146–156`) читает `/gui/currently_tracked` с `-d 0.2` (0.2s duration). Если топик не публикуется в течение 0.2s (недоступен в данной версии Gazebo или слишком медленный), функция возвращает `None`. При `tracking_state is None` и `accepted_attempts < 3` цикл продолжается и на следующей итерации снова вызывает `/gui/follow`. После 3 принятых ответов (`data: true`) код выходит с "best-effort", не зная, реально ли камера следит. `/gui/follow` может возвращать `data: true` при принятии команды, даже если камера фактически не перешла в режим слежения (например, из-за того что модель ещё не заспавнена).
-
-**Why that condition was possible:**
-Оригинальная bash-реализация (b4b9e8c) требовала только ОДНОГО `data: true` ответа от `/gui/follow` и сразу возвращала 0. В коммите 2d054e2 она была заменена Python-скриптом с добавленными проверками: `required_accepted_attempts=3` и `_confirm_tracking`. Это усложнило логику без гарантии надёжности — подтверждение через `/gui/currently_tracked` ненадёжно при 0.2s timeout.
-
-Дополнительный фактор (d169f72): после каждого успешного вызова `/gui/follow` публикуется `gz.msgs.CameraTrack` в `/gui/track` (`_publish_track`, `gazebo_gui_control.py:115–143`). Если этот топик конкурирует с `/gui/follow` service или отправляется до реального появления модели, это может сбивать состояние камеры.
-
-**Ведущая гипотеза (log-confirmed, causally not fully proven):**
-Функция `configure_follow_camera` в Python-реализации не воспроизводит семантику оригинального bash-кода. Оригинал: один `data: true` → успех. Текущий: требует трёх принятий + недостижимого state confirmation. Результат (подтверждён логом): функция завершается по "best-effort" пути после 3 accepted, без гарантии активации слежения. `gz sim -g` уже запущен без `--gui-config` — это правильно (откат 1d7be4a). Однако: accepted follow service ≠ неработающая камера. Возможно, три вызова `/gui/follow` конфигурируют её корректно, а реальная причина — `_publish_track` или timing. Без live-сравнения «один success → exit» vs текущего кода causally не доказано.
-
-# Evidence per causal link
-
-## Bug #1
-
-| Звено | Evidence |
-|-------|----------|
-| Кастомные модели всегда используются | `git show e998cb9 -- scripts/run_city_mvp.sh`: убраны строки `if [[ -n "${headless}" && ( "${model_name}" == "x500_lidar_2d" || ... ) ]]` и `if [[ -n "${headless}" ]]; then ln -s ...`; `scripts/run_city_mvp.sh:208–232` (current HEAD) |
-| x500_lidar_2d — чисто include-based, без inline визуалов | `drone_city_nav/models/x500_lidar_2d/model.sdf:1–17` |
-| Желтые маркеры — в lidar_2d_v2 | `drone_city_nav/models/lidar_2d_v2/model.sdf:77–152` — `yellow_drone_locator_core` (sphere r=0.32), `yellow_drone_locator_arm_x/y` (cylinders), `yellow_ground_projection_beam` |
-| x500 использует mesh-based visuals из x500_base | `external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/model.sdf`: `model://x500_base/meshes/NXP-HGD-CF.dae`, `model://x500_base/meshes/5010Base.dae` |
-| PX4-оригинал x500_lidar_2d использует bare `x500` URI | `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf:5`: `<uri>x500</uri>` (без `model://`) |
-| Кастомный использует `model://x500` | `drone_city_nav/models/x500_lidar_2d/model.sdf:5`: `<uri>model://x500</uri>` |
-| Spawn координаты неизменны с 718deec | `scripts/run_city_mvp.sh:122–124`: `spawn_x_m="${SIM_START_X_M:--57}"`, одинаково на 718deec и HEAD |
-| World SDF без GUI camera | `drone_city_nav/worlds/generated_city.sdf:1–100`: нет `<gui>` секции с camera pose |
-
-## Bug #2
-
-| Звено | Evidence |
-|-------|----------|
-| Оригинальный bash: один `data: true` → return 0 | `git show b4b9e8c:scripts/run_city_mvp.sh`: `configure_gazebo_gui_follow_camera` — if `grep -q "data: true"` → echo + `return 0` |
-| Текущий Python: `required_accepted_attempts=3` | `scripts/gazebo_gui_control.py:164`: `required_accepted_attempts: int = 3` |
-| `_confirm_tracking` с 0.2s timeout | `scripts/gazebo_gui_control.py:146–156`: `["topic", "-e", "-t", "/gui/currently_tracked", "-d", "0.2"]`, timeout=1.0 |
-| Best-effort exit при accepted=3 | `scripts/gazebo_gui_control.py:223–228`: `if accepted_attempts >= required_accepted_attempts: print("WARNING: ...best-effort."); return 0` |
-| `_publish_track` вызывается после каждого accepted | `scripts/gazebo_gui_control.py:199`: `track_response = _publish_track(...)` — вызов внутри блока `if response_is_true(follow_response)` |
-| Python-делегация появилась в 2d054e2 | `git show 2d054e2 -- scripts/run_city_mvp.sh`: `+  python3 "${repo_root}/scripts/gazebo_gui_control.py"` для обоих вызовов |
-| `--gui-config` добавлен в 41bb70e | `git show 41bb70e -- scripts/run_city_mvp.sh`: `gz_gui_args+=(--gui-config "${gazebo_gui_config_file}")` |
-| `--gui-config` убран в 1d7be4a | `git show 1d7be4a -- scripts/run_city_mvp.sh`: удалена вся секция `find_default_gazebo_gui_config`, `prepare_gazebo_gui_config`, `--gui-config` args |
-| Текущий GUI запуск без `--gui-config` | `scripts/run_city_mvp.sh:401`: `gz sim -g > /dev/null 2>&1 &` |
-| `configure_world_running` параллелен с follow | `scripts/run_city_mvp.sh:403–411`: оба запущены через `&` |
-
-# Root cause / unresolved boundary
-
-## Bug #1
-
-**Ранняя регрессия `718deec`→`cf8b9b1` — явный UNRESOLVED BOUNDARY:**
-`git diff 718deec..cf8b9b1 -- scripts/run_city_mvp.sh` показывает ТОЛЬКО изменения EXIT `cleanup()` (descendant PID collection). Это логически ортогонально видимости во время симуляции. Код причиной быть не может. Возможные объяснения (без доказательства): разное окружение при тестировании, stale Gazebo scene. Для закрытия нужен: live-тест обоих коммитов в идентичных условиях + `gz model --model-name x500_lidar_2d_0` для проверки spawn.
-
-**Ведущие гипотезы для текущего `main` (не взаимоисключающие):**
-
-1. **Camera viewport** (log-confirmed, не causally proven как единственная причина): Без follow camera (Bug #2) дрон на `(-57, -27, 0.3)` находится вне дефолтного Gazebo GUI viewport. Лог подтверждает: «state confirmation is unavailable».
-
-2. **bbcc6a3 merge/joint конфликт** (средняя уверенность, unresolved boundary): include-pose `(0.12, 0, 0.26)` ≠ LidarJoint pose `(-0.1, 0, 0.26)`. Потенциально нарушает render transform в Gazebo Harmonic. Нет live-evidence Ogre2-поведения.
-
-3. **`model://x500` URI** (низкая-средняя уверенность): кастомный SDF использует `<uri>model://x500</uri>`, PX4-оригинал — bare `<uri>x500</uri>`. Если resolution поведение различается, mesh-визуалы x500_base могут не загружаться. Нужен `gz model --model-name x500_lidar_2d_0 --link`.
-
-## Bug #2
-
-**Ведущая гипотеза (log-confirmed, causally not fully proven):** `configure_follow_camera` в `scripts/gazebo_gui_control.py:159–246` завершает работу по best-effort после 3 accepted attempts без подтверждения реального слежения. Confirmation через `/gui/currently_tracked` (0.2s) недостижимо (лог: «state confirmation is unavailable»). Оригинальный bash (b4b9e8c): один `data: true` → return 0.
-
-**Что НЕ доказано:** то, что три accepted attempts сами по себе ломают camera follow. Возможны альтернативные причины: `_publish_track` конкурирует с `/gui/follow`, timing spawn, особенности gz-sim версии.
-
-**Unresolved boundary:** нужен live-тест: (a) «один success → exit», (b) без `_publish_track`, (c) с увеличенным timeout `_confirm_tracking` — чтобы изолировать причину.
-
-## Bug #2
-
-**Root cause (actionable):** `configure_follow_camera` в `scripts/gazebo_gui_control.py:159–246` перешёл от семантики «один успешный ответ сервиса → выход» к семантике «три принятых + state confirmation». Confirmation через `/gui/currently_tracked` с 0.2s timeout ненадёжна. Результат: функция выходит по best-effort после 3 принятых вызовов, но реальное слежение камеры не гарантировано.
-
-**Unresolved boundary:** Точное поведение `/gui/follow` при вызове до/после спавна модели (возвращает ли `data: true` для несуществующей модели) без live-прогона с логами `gz_city_mvp.log` нельзя доказать окончательно. Также неизвестно, влияет ли `_publish_track` (публикация в `/gui/track`) конкурентно с `/gui/follow` service на финальное состояние камеры.
-
-# Sources checked
-
-- `.agent-io/inbox.txt`
 - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/notion_access_protocol.md`
 - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/gitlab_access_protocol.md`
 - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/generic.md`
 - `/home/formi/Documents/RustProjects/multi-agent-orchestrator-rs/docs/project_profiles/cpp.md`
-- `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `Makefile`
-- `scripts/run_city_mvp.sh` (HEAD и коммиты: 718deec, cf8b9b1, fa88422, e998cb9, b4b9e8c, 41bb70e, 5e006b2, 0e838e1, bbcc6a3, b53d43c, 1d7be4a, d169f72, 6a3638f, 2d054e2)
+
+# Repo-Approved Commands Found
+
+Repository-approved workflow is documented in `AGENTS.md`, `README.md`,
+`CONTRIBUTING.md`, and `Makefile`.
+
+Host workflow, preferred for agents:
+
+- `make host-build`
+- `make host-test`
+- `make host-quality`
+- `make host-format`
+- `make host-sim-headless`
+- `make host-sim-gui`
+
+Container workflow:
+
+- `./scripts/dev_shell.sh`
+- inside the container: `make build`, `make test`, `make quality`,
+  `make sim-headless`, `make sim-gui`
+
+For this investigation, GUI commands were skipped by prompt constraint. A short
+headless run and non-GUI `gz` queries were used.
+
+# Observed Symptom
+
+Verified base fact:
+
+- In Gazebo 3D world, the drone model and the yellow ground marker are not
+  rendered/displayed.
+- This is not a camera-position explanation and not a "too small to notice"
+  explanation.
+- The drone exists physically in the simulation, flies, publishes telemetry, and
+  is visible through RViz-derived state/logs.
+
+Separate secondary symptom:
+
+- Gazebo GUI follow camera commands are accepted, but state confirmation is not
+  available in logs. This affects convenience of viewing, but it is not an
+  acceptable explanation for the verified absence of rendered drone visuals.
+
+# Immediate Cause
+
+The immediate cause is narrowed to the Gazebo GUI/render-client boundary:
+
+- PX4 and Gazebo server create the model `x500_lidar_2d_0`.
+- `gz model --list` in a headless run lists `x500_lidar_2d_0`.
+- `gz model -m x500_lidar_2d_0 -l` lists the expected links:
+  `base_link`, `rotor_0`, `rotor_1`, `rotor_2`, `rotor_3`, and `link`.
+- The lidar sensor and model topics are present.
+- Static SDF expansion with `SDF_PATH` succeeds and contains both PX4 x500 mesh
+  visuals and custom yellow marker visuals.
+
+Therefore the current evidence does not support:
+
+- spawn failure;
+- wrong start/finish position;
+- missing physical model;
+- missing lidar link;
+- SDF syntax failure;
+- user/camera misidentification.
+
+The exact render-client subcause remains unresolved in this headless-only
+round. The strongest code-level suspect is still the marker/model composition
+around `bbcc6a3`, where marker visuals were moved from a dedicated parent-model
+link into the merged `lidar_2d_v2/link`. However, because the expanded SDF still
+contains the base x500 mesh visuals, this is a suspect, not a fully proven root
+cause.
+
+# Causal Chain / Why Chain
+
+1. User observes that the drone and yellow ground marker are not rendered in the
+   Gazebo 3D world window.
+2. RViz/logs show the drone exists and flies, so the symptom is not a navigation
+   or PX4 spawn failure.
+3. A headless Gazebo transport query confirms the server-side model exists:
+   `x500_lidar_2d_0` is listed as an available model.
+4. The same query confirms expected links and sensors exist on the model.
+5. Static SDF expansion confirms that the source model resolves to a complete
+   model with PX4 x500 mesh visuals and custom yellow locator visuals.
+6. Therefore the failure boundary is after server-side model creation and SDF
+   resolution: Gazebo GUI/render-client visual presentation.
+7. The most relevant current code-level suspect is the custom visual composition
+   introduced by marker changes, especially moving marker visuals into the
+   merged lidar child model instead of keeping them in a dedicated link attached
+   directly to `base_link`.
+8. Follow-camera failure can make viewing inconvenient, but it does not explain
+   a model that is absent after manually searching the 3D world.
+
+# Evidence Per Causal Link
+
+| Causal link | Evidence |
+| --- | --- |
+| The model is spawned by PX4/Gazebo | `log-host/px4_city_mvp.log` contains `Spawning Gazebo model` and `world: generated_city, model: x500_lidar_2d_0`. |
+| The server-side model exists | Headless query `gz model --list` listed `x500_lidar_2d_0`. |
+| The server-side model has expected links | Headless query `gz model -m x500_lidar_2d_0 -l` listed `base_link`, `rotor_0..3`, and `link`. |
+| The lidar link/sensor exists | Headless query listed sensor `lidar_2d_v2` on link `link`; topic list contained `/world/generated_city/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan`. |
+| Current wrapper uses custom local model | `scripts/run_city_mvp.sh:208-232` builds runtime resources and symlinks local `x500_lidar_2d` and `lidar_2d_v2`. |
+| Current wrapper includes x500 and lidar | `drone_city_nav/models/x500_lidar_2d/model.sdf:3-15`. |
+| Custom marker visuals are inside lidar model | `drone_city_nav/models/lidar_2d_v2/model.sdf:77-152`. |
+| SDF resolves and expands with visuals | `gz sdf -k` with `SDF_PATH` returned `Valid`; `gz sdf -p` output included `base_link_visual`, rotor visuals, `yellow_drone_locator_core`, arms, beam, and disc. |
+| PX4 upstream wrapper uses bare `x500` URI | `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf:4-16`. |
+| Current wrapper uses `model://x500` | `drone_city_nav/models/x500_lidar_2d/model.sdf:4-8`. Static expansion works with `SDF_PATH`, so this is not currently strong evidence of resource failure. |
+| Follow camera is accepted but unconfirmed | `log-host/gz_city_mvp.log` contains three accepted follow commands and `state confirmation is unavailable`. |
+
+# Root Cause / Unresolved Boundary
+
+Confirmed root boundary:
+
+- The drone is present in the Gazebo server simulation.
+- The model has expected links and sensors.
+- The source SDF is valid when resolved with the appropriate model search path.
+- The rendered absence is therefore on the Gazebo GUI/render-client side or in
+  the visual-scene transfer/loading path, not in PX4 mission logic or ROS
+  navigation.
+
+Unresolved exact subcause:
+
+- Headless mode cannot directly prove which visual nodes the GUI renderer
+  receives, culls, fails to load, or fails to draw.
+- The investigation could not inspect the actual GUI render tree because GUI
+  execution was disallowed for this round.
+
+Most likely code-level suspect:
+
+- `bbcc6a3 Attach drone marker to lidar visual link` moved the yellow marker
+  visuals out of a dedicated `visibility_marker_link` in
+  `x500_lidar_2d/model.sdf` and into `lidar_2d_v2/link`.
+- This made marker rendering depend on the merged child lidar model and mixed
+  the locator visuals with the lidar sensor link.
+- If Gazebo GUI has a render/client-side issue with these merged child visuals,
+  the marker can disappear even while the physical model and sensors exist.
+- This does not fully explain why base x500 mesh visuals are also not visible,
+  because SDF expansion still contains those visuals. That part remains the main
+  unresolved boundary.
+
+Rejected explanations:
+
+- "The user did not look at the right place."
+- "The camera is pointed wrong."
+- "The drone is too small."
+- "The drone spawned at a random/wrong point."
+- "The drone does not exist in simulation."
+- "PX4 did not spawn the model."
+
+# Sources Checked
+
+- `.agent-io/inbox.txt`
+- `AGENTS.md`
+- `README.md`
+- `CONTRIBUTING.md`
+- `Makefile`
+- `INVESTIGATION.md` before this update
+- `scripts/run_city_mvp.sh`
 - `scripts/gazebo_gui_control.py`
-- `scripts/gazebo_process_cleanup.py`
-- `drone_city_nav/models/x500_lidar_2d/model.sdf` (HEAD и коммиты: 718deec, cf8b9b1, 0e838e1)
+- `drone_city_nav/models/x500_lidar_2d/model.sdf`
 - `drone_city_nav/models/lidar_2d_v2/model.sdf`
-- `drone_city_nav/worlds/generated_city.sdf`
-- `drone_city_nav/launch/city_nav.launch.py`
 - `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf`
-- `external/PX4-Autopilot/Tools/simulation/gz/models/x500/model.sdf`
-- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/model.sdf` (grep по visual/mesh)
-- `INVESTIGATION.md` из коммита `6a3638f` (предыдущее расследование)
-- Git diffs: `718deec..cf8b9b1`, `718deec..HEAD`, а также `git show` для каждого ключевого коммита
+- `external/PX4-Autopilot/Tools/simulation/gz/models/lidar_2d_v2/model.sdf`
+- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/model.sdf`
+- `log-host/gz_city_mvp.log`
+- `log-host/px4_city_mvp.log`
+- `log-host/ros_city_mvp.log`
+- Headless run logs under
+  `log-host/investigate_render_headless_20260618_233648/`
+- Git history for relevant commits:
+  `fa88422`, `bbcc6a3`, `b4b9e8c`, `41bb70e`, `5e006b2`,
+  `1d7be4a`, `d169f72`, `2d054e2`, `718deec`, `cf8b9b1`,
+  and current `42671b5`
 
 # Evidence
 
-## Ключевые file:line ссылки
+Commands run:
 
-- `scripts/run_city_mvp.sh:208–232` — `prepare_runtime_resources`: кастомные модели всегда
-- `scripts/run_city_mvp.sh:122–125` — spawn coords: `SIM_START_X_M:--57`, `SIM_START_Y_M:--27`
-- `scripts/run_city_mvp.sh:401` — `gz sim -g > /dev/null 2>&1 &` (без `--gui-config`)
-- `scripts/run_city_mvp.sh:403–411` — parallel unpause + follow camera
-- `scripts/gazebo_gui_control.py:159–246` — `configure_follow_camera`
-- `scripts/gazebo_gui_control.py:164` — `required_accepted_attempts: int = 3`
-- `scripts/gazebo_gui_control.py:146–156` — `_confirm_tracking` c 0.2s
-- `scripts/gazebo_gui_control.py:115–143` — `_publish_track`
-- `scripts/gazebo_gui_control.py:223–228` — best-effort exit
-- `drone_city_nav/models/x500_lidar_2d/model.sdf:5` — `<uri>model://x500</uri>`
-- `drone_city_nav/models/lidar_2d_v2/model.sdf:77–90` — `yellow_drone_locator_core` sphere r=0.32
-- `drone_city_nav/worlds/generated_city.sdf` — нет `<gui>` секции с camera pose
+- `cat /home/formi/Documents/CppProjects/drone-gazebo/.agent-io/inbox.txt`
+- `cat` for the required Notion/GitLab/profile documents
+- `git status --short --branch`
+- `git log --oneline --decorate --date=iso --format='%h %ad %s' -20`
+- `rg` over model, launch, and helper files
+- `nl -ba` over current and upstream SDF/script files
+- `git show --stat --oneline fa88422 bbcc6a3`
+- `git show fa88422:drone_city_nav/models/x500_lidar_2d/model.sdf`
+- `git diff --stat 718deec..cf8b9b1 -- scripts/run_city_mvp.sh`
+- `git diff --unified=80 718deec..cf8b9b1 -- scripts/run_city_mvp.sh`
+- `./scripts/host_shell.sh bash -lc 'command -v gz; gz --versions; gz sdf --help; gz model --help'`
+- `./scripts/host_shell.sh bash -lc 'export SDF_PATH=...; gz sdf -k drone_city_nav/models/x500_lidar_2d/model.sdf; gz sdf -p ...'`
+- Temporary bare-URI SDF comparison with `gz sdf -k` and `gz sdf -p`
+- Short headless run:
+  `HEADLESS=1 ENABLE_RVIZ=false SMOKE_DURATION_S=45 DRONE_GAZEBO_LOG_DIR=log-host/investigate_render_headless_20260618_233648 ./scripts/run_city_mvp_host.sh`
+- During that headless run:
+  `gz model --list`,
+  `gz model -m x500_lidar_2d_0 -l`,
+  `gz model -m x500_lidar_2d_0 -l link -s`,
+  `gz topic -l`
 
-## Ключевые commit hash-ы
+One attempted command was invalid:
 
-| Hash | Описание | Значимость |
-|------|----------|------------|
-| `718deec` | Handle host PX4 protobuf compatibility | Дрон виден, PX4 default модели в GUI |
-| `e998cb9` | Stabilize static-map obstacle overlays | **КЛЮЧЕВОЙ**: убрал headless условие → кастомные модели всегда |
-| `fa88422` | Add bright drone visibility markers | Добавил visibility_marker_link в x500_lidar_2d/model.sdf |
-| `b4b9e8c` | Add Gazebo GUI drone follow camera | Follow camera **работала** (bash inline) |
-| `41bb70e` | Keep Gazebo GUI simulation unpaused | Follow camera **сломалась** (`--gui-config`) |
-| `bbcc6a3` | Attach drone marker to lidar visual link | Перенёс маркеры из x500_lidar_2d в lidar_2d_v2; x500_lidar_2d → 17 строк |
-| `1d7be4a` | Restore original Gazebo follow camera launch | Убрал `--gui-config`, вернул `gz sim -g` |
-| `d169f72` | Publish Gazebo camera tracking command | Добавил `_publish_track` → `/gui/track` |
-| `2d054e2` | Stabilize Gazebo launch diagnostics | Заменил bash-функции Python-скриптом |
+- `./scripts/host_shell.sh 'command -v gz && ...'`
+- Reason: `host_shell.sh` expects command arguments, not a single shell string.
+  The correct form is `./scripts/host_shell.sh bash -lc '...'`.
+
+# Evidence References
+
+- `scripts/run_city_mvp.sh:208-232`: runtime model resources are prepared; local
+  `x500_lidar_2d` and `lidar_2d_v2` replace PX4 originals.
+- `scripts/run_city_mvp.sh:349-360`: `GZ_SIM_RESOURCE_PATH` points Gazebo to the
+  runtime model/world directories.
+- `scripts/run_city_mvp.sh:393-416`: Gazebo server/headless/GUI launch path.
+- `scripts/run_city_mvp.sh:421-435`: PX4 is launched with
+  `PX4_GZ_MODEL_POSE` and `PX4_GZ_WORLD`.
+- `scripts/gazebo_gui_control.py:146-156`: follow-state confirmation reads
+  `/gui/currently_tracked` for only `0.2s`.
+- `scripts/gazebo_gui_control.py:159-228`: follow camera exits best-effort
+  after accepted commands without confirmed tracking state.
+- `drone_city_nav/models/x500_lidar_2d/model.sdf:3-15`: current wrapper include
+  and fixed lidar joint.
+- `drone_city_nav/models/lidar_2d_v2/model.sdf:77-152`: yellow marker and
+  ground projection visuals are currently inside the lidar model.
+- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf:4-16`:
+  upstream PX4 wrapper structure for comparison.
 
 # Findings
 
-1. **Bug #1 — несколько гипотез, ранняя регрессия — UNRESOLVED BOUNDARY.** `718deec`→`cf8b9b1`: diff меняет только EXIT cleanup (ортогонально видимости). Для current main: дрон в `(-57, -27, 0.3)` вне дефолтного viewport без follow camera (подтверждено логом). World SDF не задаёт позицию камеры. Дополнительно: bbcc6a3 merge/joint конфликт и model://x500 URI — отдельные гипотезы средней-низкой уверенности.
+1. High confidence: the drone is not missing from the simulation. It is spawned
+   as `x500_lidar_2d_0` and exists in the Gazebo server.
+2. High confidence: the current model has expected physics/sensor links in the
+   server-side state.
+3. High confidence: the current SDF can resolve into a complete model with x500
+   mesh visuals and yellow marker visuals when the model path is supplied.
+4. Medium-high confidence: the reported absence is a GUI/render-client problem,
+   not a PX4/ROS/navigation problem.
+5. Medium confidence: the marker relocation in `bbcc6a3` is the most relevant
+   code-level rendering suspect because it moved visual locator geometry into a
+   merged child lidar link.
+6. Medium confidence: follow-camera logic is broken or at least unreliable, but
+   it is a separate issue and must not be used as the explanation for a model
+   that is not rendered after manual inspection.
+7. High confidence: the old `718deec -> cf8b9b1` visibility boundary remains
+   unresolved by code inspection. That diff changes only cleanup logic executed
+   on script exit, so it cannot directly explain live rendering behavior.
 
-2. **Bug #1, independent component.** Кастомная `x500_lidar_2d/model.sdf` использует `<uri>model://x500</uri>`, PX4-оригинал — `<uri>x500</uri>`. Визуальные mesh из `x500_base` (`NXP-HGD-CF.dae`, `5010Base.dae`) могут не рендериться, если `model://x500` merge работает иначе, чем bare `x500`. В этом случае видна только жёлтая сфера из `lidar_2d_v2`, но не quadcopter frame.
+# Relevant Code Paths
 
-3. **Bug #2 (ведущая гипотеза, подтверждена логом, causally не доказана).** Python-реализация follow camera семантически отличается от рабочего bash-оригинала: `required_accepted_attempts=3` + `_confirm_tracking` 0.2s vs «один success → exit». Лог показывает best-effort exit без confirmation. Не доказано, что это ЕДИНСТВЕННАЯ причина — возможны `_publish_track` или timing. Нужен live-тест вариантов.
+- `scripts/run_city_mvp.sh`
+  - runtime resource setup
+  - Gazebo server/GUI launch
+  - PX4 model spawn environment
+  - follow camera helper invocation
+- `scripts/gazebo_gui_control.py`
+  - follow camera service call
+  - follow offset service call
+  - optional `/gui/track` publication
+  - state confirmation logic
+- `drone_city_nav/models/x500_lidar_2d/model.sdf`
+  - wrapper model for PX4 x500 + lidar
+- `drone_city_nav/models/lidar_2d_v2/model.sdf`
+  - custom lidar model
+  - current yellow drone locator and ground projection visuals
+- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf`
+  - upstream comparison point
+- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_base/model.sdf`
+  - x500 mesh visual definitions
 
-4. **`--gui-config` (41bb70e) уже убран в 1d7be4a.** Возврат к bare `gz sim -g` — правильный шаг. Это НЕ текущая проблема.
+# Timeline/History
 
-5. **Stale process cleanup уже добавлен (5e006b2, 2d054e2).** `gazebo_process_cleanup.py` убивает все `gz sim` процессы перед стартом. Stale-сцена — не текущая проблема.
+- `fa88422 Add bright drone visibility markers`
+  - added a dedicated `visibility_marker_link` directly in
+    `x500_lidar_2d/model.sdf`.
+- `bbcc6a3 Attach drone marker to lidar visual link`
+  - removed the dedicated marker link from `x500_lidar_2d`;
+  - added yellow marker and ground projection visuals inside
+    `lidar_2d_v2/link`.
+- `b4b9e8c Add Gazebo GUI drone follow camera`
+  - first follow-camera implementation that previously worked according to user
+    history.
+- `41bb70e Keep Gazebo GUI simulation unpaused`
+  - introduced a GUI config path in that historical period.
+- `1d7be4a Restore original Gazebo follow camera launch`
+  - removed the GUI config launch path.
+- `2d054e2 Stabilize Gazebo launch diagnostics`
+  - switched follow/unpause control to `scripts/gazebo_gui_control.py`.
+- `42671b5 Revise investigation per reviewer feedback`
+  - previous investigation state before this update.
 
-6. **Уже попытано, не помогло:** `--gui-config` с `start_paused=false` (41bb70e), дополнительный `/gui/track` publish (d169f72), `_confirm_tracking` через `/gui/currently_tracked` (2d054e2).
+# Hypotheses/Alternatives
 
-# Relevant code paths
+## H1: GUI/render-client visual issue with custom merged lidar visuals
 
-- `scripts/run_city_mvp.sh` → `prepare_runtime_resources` (строки 208–232) — выбор моделей
-- `scripts/run_city_mvp.sh` → Gazebo subshell (строки 376–416) — запуск server/GUI/follow/unpause
-- `scripts/gazebo_gui_control.py` → `configure_follow_camera` (строки 159–246)
-- `scripts/gazebo_gui_control.py` → `_confirm_tracking` (строки 146–156)
-- `scripts/gazebo_gui_control.py` → `_publish_track` (строки 115–143)
-- `drone_city_nav/models/x500_lidar_2d/model.sdf` — include-based drone model
-- `drone_city_nav/models/lidar_2d_v2/model.sdf` — lidar + visual markers
-- `external/PX4-Autopilot/Tools/simulation/gz/models/x500_lidar_2d/model.sdf` — PX4 original
+Status: plausible, medium confidence.
 
-# Timeline/history
+The marker was moved into `lidar_2d_v2/link`, which is included with
+`merge="true"` into `x500_lidar_2d`. If the GUI renderer mishandles these
+merged visuals or their transforms/materials, the yellow marker can disappear.
+This is the most actionable model-level suspect.
 
-```
-718deec  2026-06-16  Handle host PX4 protobuf compatibility         [дрон виден; PX4 default models в GUI]
-cf8b9b1  2026-06-16  Clean up simulation child processes            [cleanup change; модели не менялись]
-5cfa9cd  2026-06-16  Document native and container workflows
-fa88422  2026-06-16  Add bright drone visibility markers             [+visibility_marker_link в x500_lidar_2d]
-e998cb9  2026-06-17  Stabilize static-map obstacle overlays         [КЛЮЧ: убрал headless guard → кастомные модели всегда]
-b4b9e8c  2026-06-18  Add Gazebo GUI drone follow camera             [следящая камера РАБОТАЛА; bash inline]
-41bb70e  2026-06-18  Keep Gazebo GUI simulation unpaused            [камера СЛОМАЛАСЬ; добавлен --gui-config]
-5e006b2  2026-06-18  Add Gazebo tracking controls and stale cleanup [stale cleanup добавлен]
-89addd4  2026-06-18  Clarify Gazebo camera tracking controls
-0e838e1  2026-06-18  Remove Gazebo camera env controls
-bbcc6a3  2026-06-18  Attach drone marker to lidar visual link       [маркеры → lidar_2d_v2; x500_lidar_2d → 17 строк]
-b53d43c  2026-06-18  Restore Gazebo follow camera toggle
-1d7be4a  2026-06-18  Restore original Gazebo follow camera launch   [убрал --gui-config; вернул gz sim -g]
-d169f72  2026-06-18  Publish Gazebo camera tracking command         [добавил /gui/track publish в bash]
-9966cde  2026-06-18  Document Gazebo GUI regression investigation   [предыдущий INVESTIGATION.md]
-6a3638f  2026-06-18  Revise Gazebo GUI investigation                [ревизия; добавил configure_world_running bash]
-2d054e2  2026-06-18  Stabilize Gazebo launch diagnostics            [bash → Python (gazebo_gui_control.py)]
-5761734  2026-06-18  Tighten Gazebo helper safety checks
-2f7bb76  2026-06-18  removed plan
-bf4dfd8  2026-06-18  removed investigation
-f8f7357  2026-06-18  Remove static-only planner fallback
-b2b38c9  2026-06-18  Add planner diagnostic counters
-bac9dbd  2026-06-18  Remove offboard clearance suppression
-9ad5363  2026-06-18  Make tracking overspeed limit opt-in
-a1c0ca1  2026-06-19  Document Gazebo GUI regression investigation   [investigation commit 1]
-3f6bed6  2026-06-19  Update INVESTIGATION.md with drone visibility analysis [investigation commit 2]
-                     (текущий HEAD на момент ревью)
-```
+Falsification:
 
-# Hypotheses/alternatives
+- Move the yellow marker back into a dedicated link in `x500_lidar_2d` attached
+  to `base_link`.
+- Keep `lidar_2d_v2` close to the upstream sensor model.
+- Run GUI and verify marker/drone rendering.
 
-## Bug #1: Hypothesis A — Camera position (ведущая гипотеза для current main)
+## H2: GUI/render-client resource loading issue for mesh visuals
 
-- Immediate cause: дрон вне дефолтного viewport (origin area).
-- Cause-of-cause: follow camera не работает (Bug #2, ведущая гипотеза).
-- Deeper/root cause: Python-реализация follow camera не воспроизводит рабочий bash-оригинал.
-- Evidence: spawn coords `(-57, -27)` неизменны; world SDF без GUI camera; лог: «state confirmation is unavailable».
-- **ОГРАНИЧЕНИЕ:** не объясняет раннюю регрессию `718deec`→`cf8b9b1` (см. UNRESOLVED BOUNDARY). На `718deec` follow camera тоже отсутствовала, но дрон был виден.
-- Confidence: **medium** (для current main) — log-confirmed, но causally не единственная причина.
-- Falsification: вручную навигировать камеру к `(-57, -27)` и проверить видимость дрона.
+Status: plausible, medium confidence.
 
-## Bug #1: Hypothesis B — `model://x500` merge failure (supplementary)
+SDF expansion includes mesh URIs such as `model://x500_base/meshes/...`.
+Headless server loads the model, but GUI may fail to load/render mesh resources.
+The available logs do not currently show a mesh-load error, so this remains
+unproven.
 
-- Immediate cause: quadcopter frame mesh (из `x500_base`) не рендерится.
-- Cause-of-cause: `<uri>model://x500</uri>` в кастомной `x500_lidar_2d/model.sdf` resolved иначе, чем bare `<uri>x500</uri>` в PX4-оригинале.
-- Evidence: PX4 original: `<uri>x500</uri>`; кастомный: `<uri>model://x500</uri>`; mesh refs в x500_base через `model://x500_base/meshes/...`.
-- Confidence: low-medium. Оба URI должны работать при корректном `GZ_SIM_RESOURCE_PATH`.
-- Falsification: `gz model --model-name x500_lidar_2d_0 --link` в живой симуляции — если link visuals пустые у base_link, merge не работает. Если жёлтая сфера видна — merge работает для lidar_2d_v2.
+Falsification:
 
-## Bug #2: Hypothesis — `_confirm_tracking` ненадёжен + early best-effort exit (ведущая гипотеза)
+- Capture GUI logs with resource/render verbosity.
+- Check whether primitive yellow marker visuals render when x500 meshes do not.
+- Add a simple primitive visual directly to `base_link` and compare.
 
-- Immediate cause: follow camera «успешно» завершается без реального подтверждения слежения.
-- Cause-of-cause: `required_accepted_attempts=3` при недостижимом `_confirm_tracking` (0.2s) → best-effort exit после 3 итераций.
-- Evidence: `gazebo_gui_control.py:223–228`; оригинал b4b9e8c — один `data: true` → return 0; лог: «state confirmation is unavailable».
-- **Limitation:** accepted follow service ≠ неработающая камера. Логи доказывают отсутствие confirmation, но не доказывают, что именно `required_accepted_attempts=3` сломал camera tracking.
-- Confidence: **medium** — log-confirmed behavior, causal link не доказан без live-теста.
-- Falsification: вернуть «один success → exit», проверить; если не поможет — изолировать `_publish_track`.
+## H3: `model://x500` vs bare `x500` URI
 
-## Bug #2: Alternative — `_publish_track` конкурирует с `/gui/follow`
+Status: weakened, low-medium confidence.
 
-- Гипотеза: публикация `CameraTrack` в `/gui/track` (добавлена в d169f72) может конкурировать или сбивать `/gui/follow` service.
-- Evidence: `gazebo_gui_control.py:199` — `_publish_track` вызывается сразу после каждого успешного `/gui/follow`.
-- Confidence: low. Нужен live-тест с отключённым `_publish_track`.
-- Falsification: отключить `_publish_track` и проверить, начинает ли камера следить только по `/gui/follow`.
+PX4 upstream uses bare `<uri>x500</uri>` while the current local wrapper uses
+`<uri>model://x500</uri>`. Static SDF expansion works with `SDF_PATH`, and the
+headless server creates the model, so this is not strong enough to explain the
+current symptom by itself.
 
-# Risk/impact
+Falsification:
 
-- Без следящей камеры оператор не видит дрон в Gazebo GUI и не может визуально контролировать миссию.
-- Если `model://x500` merge не работает (Hypothesis B), дрон виден только как жёлтая сфера — нет quadcopter frame mesh. Это затрудняет визуальную проверку ориентации и поведения дрона.
-- Попытка снова добавить `--gui-config` или `CameraTrackingConfig` через GUI config (41bb70e-стиль) уже доказала свою неработоспособность.
-- Добавление `_confirm_tracking` с увеличенным таймаутом без устранения `required_accepted_attempts` не решит проблему.
+- Switch to the upstream bare URI and compare expanded SDF and GUI behavior.
+
+## H4: Follow-camera failure
+
+Status: real but separate.
+
+Follow-camera state is not confirmed in logs, but this cannot be the root
+explanation for a model that is not rendered after manual inspection of the 3D
+world.
+
+Falsification:
+
+- Fix follow camera independently and verify whether the drone still fails to
+  render.
+
+## H5: User/camera/scale/location mistake
+
+Status: rejected.
+
+This contradicts the clarified base fact and must not be used as an explanation.
+
+# Risk/Impact
+
+- The simulation may be functionally correct while unusable for visual
+  inspection in Gazebo 3D.
+- RViz remains useful for path/lidar/map debugging, but it does not replace
+  Gazebo 3D visual validation.
+- If marker visuals are kept inside the lidar child model, future model changes
+  may keep mixing sensor configuration with human visibility aids.
+- Follow-camera instability can hide or confuse GUI issues, even when it is not
+  their root cause.
 
 # Conclusions
 
-1. **Bug #1** — три взаимодействующие гипотезы, ранняя регрессия — UNRESOLVED BOUNDARY. Для current main: ведущая гипотеза — дрон вне viewport без follow camera (подтверждена логом). Дополнительно: bbcc6a3 merge/joint конфликт (medium confidence) и model://x500 URI (low-medium). Нельзя утверждать «Bug #1 = чисто следствие Bug #2», пока `718deec`→`cf8b9b1` не объяснена.
-
-2. **Bug #2 (ведущая гипотеза)**: Python-реализация `configure_follow_camera` (2d054e2) семантически отличается от рабочего bash-оригинала (b4b9e8c). Ключевое отличие: `required_accepted_attempts=3` + ненадёжный `_confirm_tracking` вместо «один success → exit». Лог подтверждает behavior, но не causally доказывает этот путь как единственную причину.
-
-3. **Уже исправлено правильно**: `--gui-config` убран (1d7be4a), stale cleanup добавлен (5e006b2+), `configure_world_running` реализован отдельно.
-
-4. **Направление фикса Bug #2**: вернуть семантику «один успешный `/gui/follow` → выход». Удалить или переработать `required_accepted_attempts=3` и `_confirm_tracking`. Оставить `_publish_track` только если он не конкурирует.
-
-5. **Направление фикса Bug #1 (independent component)**: заменить `<uri>model://x500</uri>` на `<uri>x500</uri>` в `drone_city_nav/models/x500_lidar_2d/model.sdf` — точное соответствие PX4-оригиналу. Это убирает потенциальный риск разного resolution behavior.
-
-# Recommendations/next steps
-
-## Немедленно (Bug #2 → следящая камера)
-
-**1. Упростить `configure_follow_camera` до рабочей семантики:**
-
-В `scripts/gazebo_gui_control.py`, функция `configure_follow_camera` (строки 159–246):
-- Убрать `required_accepted_attempts` как barring condition.
-- Оставить `required_accepted_attempts` только как «количество попыток подтверждения», но делать return 0 СРАЗУ после первого `response_is_true(follow_response)`, не ждать подтверждения через `_confirm_tracking`.
-- `_confirm_tracking` оставить как optional best-effort logging, но не блокирующим условием.
-- Итого: один успешный ответ `/gui/follow` (`data: true`) + один вызов `/gui/follow/offset` → return 0.
-
-**2. Разобраться с `_publish_track`:**
-- Если `_publish_track` в `/gui/track` конкурирует с `/gui/follow`, его следует либо убрать, либо оставить только как дополнительный reinforcement ПОСЛЕ успешного выхода из retry-loop, а не внутри каждой итерации.
-
-## После Bug #2 (Bug #1 — видимость drone frame)
-
-**3. Заменить URI в `drone_city_nav/models/x500_lidar_2d/model.sdf`:**
-```xml
-<!-- Текущее (потенциально разное resolution) -->
-<uri>model://x500</uri>
-
-<!-- Заменить на (точное соответствие PX4-оригиналу) -->
-<uri>x500</uri>
-```
-`drone_city_nav/models/x500_lidar_2d/model.sdf:5` и строка 8 (lidar_2d_v2 URI — там `model://` уже правильный, т.к. custom модель).
-
-**4. Верифицировать видимость:** после фикса Bug #2, запустить `make host-sim-gui` и подтвердить, что камера следит за дроном и quadcopter frame mesh отображается.
-
-# Verification/falsification steps for findings
-
-## Bug #2
-
-1. **Фиксируем «один success → return 0»:**
-   - Изменить `configure_follow_camera` (gazebo_gui_control.py:159–246): после первого `response_is_true(follow_response)` → вызвать `/gui/follow/offset` → return 0.
-   - Запустить `make host-sim-gui`.
-   - Если камера начинает следить — confirmed: `required_accepted_attempts=3` был причиной.
-   - Если не следит — копать `/gui/follow` service behavior в этой версии gz-sim.
-
-2. **Изолировать `_publish_track`:**
-   - Временно убрать вызов `_publish_track` из `configure_follow_camera`.
-   - Если после фикса (1) камера работает без `_publish_track` — оставить его убранным.
-   - Если с `_publish_track` камера не работает, но без него работает — `_publish_track` конкурирует с `/gui/follow`.
-
-3. **Проверить `/gui/currently_tracked` топик:**
-   - `gz topic -e -t /gui/currently_tracked -d 5.0` во время работающей симуляции с дроном.
-   - Если топик публикуется — `_confirm_tracking` нужен с более долгим timeout.
-   - Если не публикуется — `_confirm_tracking` следует убрать.
-
-## Bug #1
-
-4. **Ручная навигация к дрону:**
-   - Запустить `make host-sim-gui` с BROKEN следящей камерой.
-   - Вручную в Gazebo GUI навигировать к `(-57, -27)`.
-   - Если видна жёлтая сфера + quadcopter frame: Bug #1 = чисто следствие Bug #2.
-   - Если видна только сфера, нет frame: Hypothesis B (model://x500 merge) — менять URI.
-   - Если ничего не видно: проверить `gz model --model-name x500_lidar_2d_0`.
-
-5. **Проверить URI resolution:**
-   - Изменить `drone_city_nav/models/x500_lidar_2d/model.sdf:5` с `model://x500` на `x500`.
-   - Запустить `make host-sim-gui`.
-   - Если quadcopter frame появляется — Hypothesis B подтвердилась.
-
-# Follow-up verification implications
-
-- Headless smoke test (`make host-sim-headless`) не верифицирует Gazebo GUI camera tracking и видимость 3D-модели. Нужен отдельный ручной GUI check после каждого изменения, затрагивающего `gazebo_gui_control.py` или `x500_lidar_2d/model.sdf`.
-- При изменении `configure_follow_camera` запускать `make host-test-scripts` для unit-тестов Python (в `scripts/tests/`).
-- Перед коммитом изменений в model.sdf: запустить `make host-format` (не применимо к SDF), `make host-quality`.
-
-# Open questions
-
-1. Возвращает ли `/gui/follow` `data: true` до спавна модели `x500_lidar_2d_0` в текущей версии gz-sim? (Нужен live-log `gz_city_mvp.log` с временными метками от `configure_follow_camera`.)
-2. Публикует ли Gazebo топик `/gui/currently_tracked` в текущей версии gz-sim на данном хосте?
-3. Является ли `<uri>model://x500</uri>` vs `<uri>x500</uri>` значимым различием в gz-sim Harmonic при merge include?
-4. Достаточно ли `make host-sim-gui` (через `Makefile`) или нужен `scripts/run_city_mvp_host.sh` напрямую для воспроизведения обоих багов?
-
----
-
-# Дополнительные находки (второй раунд расследования)
-
-Следующие факты установлены при детальном анализе log-файлов, runtime-симлинков и git-истории
-commit `bbcc6a3`.
-
-## Подтверждённые факты из log-файлов
-
-**`log-host/gz_city_mvp.log` (последний запуск 22:36 Jun 18):**
-```
-Gazebo stale cleanup: no conflicting Gazebo processes found        ← stale-process не причина
-libEGL warning: egl: failed to create dri2 screen (10de:2520)     ← косметика, NVIDIA работает отдельно
-Waiting for Gazebo GUI follow target 'x500_lidar_2d_0' (1/60): Service call timed out
-Gazebo GUI follow camera command accepted: ...accepted_attempts=1/2/3
-WARNING: Gazebo GUI follow camera command accepted but state confirmation is unavailable
-```
-
-**`log-host/px4_city_mvp.log`:**
-```
-INFO  [init] Gazebo simulator 8.10.0
-INFO  [init] Spawning Gazebo model
-INFO  [gz_bridge] world: generated_city, model: x500_lidar_2d_0   ← spawn УСПЕШЕН
-```
-
-**Вывод:** модель заспавнена. Stale-процессов нет. Проблема — в GUI, не в spawn.
-
-## Runtime симлинки: build/ vs build-host/
-
-`build/gazebo_city_mvp/models/` — **stale Docker-среда**:
-- `x500_lidar_2d -> /workspace/drone_city_nav/models/x500_lidar_2d` (нет `/workspace`)
-- `x500_base -> /workspace/external/...`
-
-`build-host/gazebo_city_mvp/models/` — **корректные симлинки**:
-- `x500_lidar_2d -> /home/formi/.../drone_city_nav/models/x500_lidar_2d`
-- `lidar_2d_v2 -> /home/formi/.../drone_city_nav/models/lidar_2d_v2`
-
-`run_city_mvp_host.sh` использует `COLCON_BUILD_BASE=build-host` → корректная среда. Это не причина бага.
-
-## Детальный анализ bbcc6a3
-
-Коммит `bbcc6a3` (Jun 18 10:31, «Attach drone marker to lidar visual link»):
-
-**До `bbcc6a3` (fa88422):** в `x500_lidar_2d/model.sdf` был прямой link `visibility_marker_link`
-с pose `0 0 0` и `VisibilityMarkerJoint` (type=fixed, parent=base\_link). Жёлтые маркеры
-(yellow\_body\_plate, yellow\_arm\_x/y, yellow\_rotor\_*, yellow\_ground\_projection\_beam/disc)
-— все в этом прямо-объявленном link.
-
-**После `bbcc6a3`:** маркеры удалены из `x500_lidar_2d`, добавлены в `lidar_2d_v2/link`.
-`x500_lidar_2d/model.sdf` стал 17-строчным include-only файлом. Новые маркеры в `lidar_2d_v2`:
-- `yellow_drone_locator_core`: sphere r=0.32, pose=(-0.12, 0, -0.12) в frame link
-- `yellow_drone_locator_arm_x/y`: cylinder r=0.05 len=1.35
-- `yellow_ground_projection_beam`: cylinder r=0.08 len=18.0
-- `yellow_ground_projection_disc`: cylinder r=1.8 len=0.035
-
-## Анализ двойного позиционирования link (merge=true + joint)
-
-`x500_lidar_2d/model.sdf` содержит:
-```xml
-<include merge="true">
-  <uri>model://lidar_2d_v2</uri>
-  <pose>0.12 0 0.26 0 0 0</pose>   ← ПОЗИЦИОНИРОВАНИЕ #1 через include pose
-</include>
-<joint name="LidarJoint" type="fixed">
-  <parent>base_link</parent>
-  <child>link</child>
-  <pose relative_to="base_link">-0.1 0 0.26 0 0 0</pose>   ← ПОЗИЦИОНИРОВАНИЕ #2 через joint
-</joint>
-```
-
-При `merge="true"` в sdformat 14.8.0:
-- link `link` из `lidar_2d_v2` получает начальную позу: merge-offset `(0.12, 0, 0.26)` + link pose `(0, 0, 0)` = `(0.12, 0, 0.26)` в frame родительской модели.
-- `LidarJoint` (fixed, parent=`base_link`) кинематически ограничивает `link` в позиции `(-0.1, 0, 0.26)` от `base_link`.
-
-**Конфликт:** начальная merge-поза `(0.12, 0, 0.26)` ≠ joint-поза `(-0.1, 0, 0.26)`.
-Physics resolves kinematic constraint (joint wins). Но рендерер Ogre2 в Gazebo Harmonic
-может не синхронизировать visual transform link'а с joint-enforced runtime позой,
-если начальная поза (из merge) была другой. Это приводит к тому, что визуалы
-рендерятся в замороженной merge-позе или не появляются вовсе.
-
-**В `fa88422` этой проблемы не было**: `visibility_marker_link` имел pose `0 0 0` и был
-ограничен `VisibilityMarkerJoint` с pose `0 0 0` — конфликта не было.
-
-## Вычисление ожидаемой мировой позиции жёлтой сферы
-
-- Spawn: `(-57, -27, 0.3)`
-- `x500_base` model root pose: `(0, 0, 0.24)` → `base_link` at world `(-57, -27, 0.54)`
-- `LidarJoint` offset from `base_link`: `(-0.1, 0, 0.26)` → `link` at `(-57.1, -27, 0.80)`
-- Sphere local pose in `link`: `(-0.12, 0, -0.12)` → sphere center at world `(-57.22, -27, 0.68)`
-- Sphere radius = 0.32 m → видима в z ∈ [0.36, 1.0] над землёй — должна быть хорошо видна
-
-Если камера следит за дроном с offset `(-12, 0, 6)`, сфера должна ясно отображаться.
-Если камера НЕ следит, дрон на расстоянии 84 м от мирового центра и вне дефолтного viewport.
-
-## SDF-версии и x500\_lidar\_2d структура
-
-| Файл | SDF version | visual type |
-|------|-------------|-------------|
-| PX4 `lidar_2d_v2` | 1.6 | mesh `lidar_2d_v2.dae` |
-| custom `lidar_2d_v2` | **1.9** | box+cylinder примитивы + yellow sphere |
-| `x500_base` | 1.9 | mesh (NXP-HGD-CF.dae, 5010Base.dae и др.) |
-| PX4 `x500_lidar_2d` | 1.9 | `<uri>x500</uri>` (bare) |
-| custom `x500_lidar_2d` | 1.9 | `<uri>model://x500</uri>` ← потенциальная разница |
-
-## Обновлённая оценка гипотез
-
-### Гипотеза A (СРЕДНЯЯ уверенность): bbcc6a3 merge=true + joint конфликт
-
-Перемещение маркеров в `lidar_2d_v2/link` создало двойное позиционирование: include-pose
-при merge ≠ joint-pose. В Gazebo Harmonic (gz-sim8 / sdformat 14.8.0) это ПОТЕНЦИАЛЬНО
-может приводить к проблемам с render transform merged link.
-
-До `bbcc6a3`: `visibility_marker_link` в `x500_lidar_2d` — прямой link без merge-конфликта.
-После `bbcc6a3`: `link` из `lidar_2d_v2` — merged link с конфликтующими позами.
-
-**ОГРАНИЧЕНИЕ (downgraded с ВЫСОКОЙ):** в Gazebo physics engine joint constraint должен
-override начальную SDF-позу; visual link следует physics position. Утверждение «Ogre2
-freezes visual at merge pose» — специфика рендера, не подтверждённая live-тестом или
-локальной документацией gz-sim8. Нет screenshot/`gz model` evidence.
-
-**Проверка:** убрать `<pose>0.12 0 0.26</pose>` из include-блока lidar\_2d\_v2 в
-`x500_lidar_2d/model.sdf` → тогда link позиционируется только через LidarJoint.
-Запустить `make host-sim-gui`, проверить visible transform.
-
-### Гипотеза B (СРЕДНЯЯ уверенность — ведущая гипотеза для current main): отсутствие follow camera
-
-Подтверждена логом: `state confirmation is unavailable`. Лог показывает best-effort exit.
-Дрон в `(-57, -27)` — вне дефолтного viewport без follow camera.
-
-**ОГРАНИЧЕНИЕ (downgraded с ВЫСОКОЙ):** лог подтверждает отсутствие state confirmation,
-но не доказывает, что camera NOT tracking. Возможно, три accepted `/gui/follow` вызова
-всё-таки конфигурируют камеру, но эффект теряется из-за `_publish_track` или другого фактора.
-Causal link между «best-effort exit» и «свободная камера» — без live-теста не доказан.
-Не объясняет `718deec`→`cf8b9b1` регрессию (в `718deec` follow camera тоже не было).
-
-### Гипотеза C (СРЕДНЯЯ): `model://x500` vs bare `x500` URI
-
-PX4-оригинал `x500_lidar_2d` использует `<uri>x500</uri>`.
-Custom использует `<uri>model://x500</uri>`.
-Теоретически оба должны работать при корректном `GZ_SIM_RESOURCE_PATH`.
-Но если `model://` prefix вызывает иное поведение при resolve → mesh-визуалы из x500_base
-не загружаются → только жёлтая сфера (или ничего, если Гипотеза A тоже активна).
-
-## Рекомендованные фиксы (дополнение)
-
-**Фикс X (для Гипотезы A): убрать include-pose из merge lidar\_2d\_v2**
-
-В `drone_city_nav/models/x500_lidar_2d/model.sdf` (строка 9):
-```xml
-<!-- Убрать: -->
-<pose>0.12 0 0.26 0 0 0</pose>
-```
-Тогда позиционирование `link` определяется только `LidarJoint`. Нет конфликта merge/joint.
-
-**Фикс Y (для Гипотезы C): заменить URI**
-
-В `drone_city_nav/models/x500_lidar_2d/model.sdf` строка 5:
-```xml
-<!-- Текущее: -->
-<uri>model://x500</uri>
-<!-- Заменить на: -->
-<uri>x500</uri>
-```
-
-**Комбинированный фикс:** применить оба. Плюс исправить follow camera (Bug #2).
+- The drone is present server-side and flies.
+- The current source SDF is valid and contains visual definitions.
+- The verified failure is at the Gazebo GUI/render-client boundary, not at PX4
+  spawn or ROS navigation.
+- The most practical next model-level fix is to remove locator visuals from the
+  lidar child model and attach a dedicated marker/visibility link directly in
+  `x500_lidar_2d` to `base_link`.
+- Follow-camera should be fixed separately, but not treated as the reason for
+  non-rendered drone visuals.
+
+# Recommendations/Next Steps
+
+1. Restore a dedicated `visibility_marker_link` in
+   `drone_city_nav/models/x500_lidar_2d/model.sdf`, fixed to `base_link`.
+2. Remove yellow locator and ground-projection visuals from
+   `drone_city_nav/models/lidar_2d_v2/model.sdf`.
+3. Keep the custom lidar model focused on lidar sensor geometry/sensor config;
+   keep human visibility aids in the wrapper drone model.
+4. Add a simple primitive yellow visual directly attached to the drone wrapper
+   so marker rendering does not depend on x500 mesh resource loading.
+5. Keep a headless diagnostic script or documented command that verifies:
+   model exists, links exist, sensors exist, and scan topics exist.
+6. Fix follow camera separately:
+   - wait until `x500_lidar_2d_0` appears in `gz model --list`;
+   - call `/gui/follow` and `/gui/follow/offset`;
+   - remove or isolate `/gui/track` publication until proven necessary;
+   - do not report success as "confirmed" unless state is actually observed.
+7. After the model change, run a GUI validation manually because headless
+   checks cannot prove final rendering.
+
+# Verification/Falsification Steps For Findings
+
+Headless verification already performed:
+
+- Run a short headless simulation.
+- Query `gz model --list`.
+- Verify `x500_lidar_2d_0` is present.
+- Query `gz model -m x500_lidar_2d_0 -l`.
+- Verify expected links and sensor exist.
+- Query `gz topic -l`.
+- Verify lidar topics exist.
+- Run `gz sdf -k` and `gz sdf -p` with `SDF_PATH` containing local and PX4 model
+  directories.
+
+Remaining GUI-only verification:
+
+- After moving marker visuals back to a dedicated parent-model link, run
+  `make host-sim-gui`.
+- Confirm that the drone and marker render in Gazebo 3D without relying on
+  RViz.
+- Confirm that manual camera navigation can see the model.
+- Then separately validate follow-camera behavior.
+
+# Follow-Up Verification Implications
+
+- A passing headless mission does not prove Gazebo GUI rendering.
+- `gz model --list` and `gz model -m ... -l` are useful to prove server-side
+  existence, but they cannot prove GUI visual drawing.
+- Any future visual fix must include a GUI check by the user or an automated
+  render/screenshot check if we add one later.
+- If the dedicated marker link renders but x500 mesh does not, the next focus
+  should be mesh/material resource loading.
+- If neither dedicated primitive marker nor x500 mesh renders, the next focus
+  should be Gazebo GUI scene subscription/render state, not the model SDF.
+
+# Open Questions
+
+- Does Gazebo GUI receive the `x500_lidar_2d_0` visual scene entries but fail to
+  draw them, or are those visual entries absent from the GUI scene?
+- Do primitive marker visuals render if attached directly to `base_link` in the
+  wrapper model?
+- Do x500 mesh visuals fail independently from the marker visuals?
+- Does `/gui/track` publication interfere with `/gui/follow`, or is follow
+  camera failure purely a timing/state-confirmation problem?
+- Can we add an automated offscreen GUI render/screenshot check later without
+  making normal development dependent on a visible GUI?
