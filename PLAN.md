@@ -140,36 +140,42 @@ inflation в `PlanningGridBuilder`.
    - `drone_city_nav/include/drone_city_nav/planner_node_config.hpp`
    - `drone_city_nav/src/planner_node_config.cpp`
 
-5. Obstacle memory:
+5. Offboard prohibited-grid consumer:
+   - `drone_city_nav/src/px4_offboard_node.cpp`
+
+6. Obstacle memory:
    - `drone_city_nav/include/drone_city_nav/obstacle_memory.hpp`
    - `drone_city_nav/src/obstacle_memory.cpp`
    - `drone_city_nav/src/obstacle_memory_node.cpp`
 
-6. Current lidar overlay:
+7. Current lidar overlay:
    - `drone_city_nav/include/drone_city_nav/current_lidar_overlay.hpp`
    - `drone_city_nav/src/current_lidar_overlay.cpp`
 
-7. ROS conversions:
+8. ROS conversions:
    - `drone_city_nav/include/drone_city_nav/ros_conversions.hpp`
    - `drone_city_nav/src/ros_conversions.cpp`
 
-8. Lidar debug and RViz:
+9. Lidar debug and RViz:
    - `drone_city_nav/src/lidar_debug_node.cpp`
    - `drone_city_nav/rviz/city_nav_debug.rviz`
 
-9. Config and docs:
+10. Debug scripts, config and docs:
+   - `scripts/record_debug_bag.sh`
    - `drone_city_nav/config/urban_mvp.yaml`
    - `drone_city_nav/config/real_drone_template.yaml`
    - `docs/MVP_SIMULATION.md`
    - `README.md`
    - `CONTRIBUTING.md`
 
-10. Tests:
+11. Tests:
+    - `drone_city_nav/CMakeLists.txt`
     - `drone_city_nav/tests/planning_grid_builder_test.cpp`
     - `drone_city_nav/tests/obstacle_memory_test.cpp`
     - `drone_city_nav/tests/current_lidar_overlay_test.cpp`
     - `drone_city_nav/tests/ros_conversions_test.cpp`
     - `drone_city_nav/tests/planner_node_config_test.cpp`
+    - `scripts/tests/test_topic_contract.py`
     - `drone_city_nav/tests/lidar_debug_renderer_test.cpp`
     - `drone_city_nav/tests/lidar_snapshot_writer_test.cpp`
 
@@ -200,10 +206,13 @@ inflation в `PlanningGridBuilder`.
 
    Что сделать:
 
-   - В `drone_city_nav/include/drone_city_nav/planner_core.hpp` убрать или
-     сделать debug-only API `pathSegmentOccupiedLengthM`.
-   - В `drone_city_nav/src/planner_core.cpp:188` оставить planning-facing
-     проверку только через `pathSegmentProhibitedLengthM`.
+   - В `drone_city_nav/include/drone_city_nav/planner_core.hpp` удалить
+     planning-facing API `pathSegmentOccupiedLengthM`.
+   - В `drone_city_nav/src/planner_core.cpp:188` удалить реализацию
+     `pathSegmentOccupiedLengthM`.
+   - В `drone_city_nav/src/planner_node.cpp:748` удалить call site
+     `pathSegmentOccupiedLengthM(...)`; summary path safety должен использовать
+     только `pathSegmentProhibitedLengthM(...)`.
    - В `drone_city_nav/src/planner_node.cpp:733` переписать summary path safety
      так, чтобы planning decision логировал:
 
@@ -366,11 +375,34 @@ inflation в `PlanningGridBuilder`.
      `lidar_debug_node.occupancy_grid_topic` на `/drone_city_nav/prohibited_grid`.
    - В `drone_city_nav/config/real_drone_template.yaml` сделать такие же
      изменения.
+   - В `drone_city_nav/src/px4_offboard_node.cpp:187` переименовать параметр
+     `occupancy_grid_topic` в `prohibited_grid_topic` и сменить default на
+     `/drone_city_nav/prohibited_grid`.
+   - В `drone_city_nav/src/px4_offboard_node.cpp:210` подписку оставить на
+     final planner output, но переименовать local variables/logs/member-facing
+     terminology с `occupancy_grid` на `prohibited_grid`.
+   - В `drone_city_nav/src/px4_offboard_node.cpp:873` сохранить local clearance
+     diagnostics на новом prohibited-grid topic. Диагностика должна продолжать
+     использовать final planner grid, а не raw memory/debug grid.
+   - В `drone_city_nav/config/urban_mvp.yaml:126` и
+     `drone_city_nav/config/real_drone_template.yaml:126` заменить
+     `px4_offboard_node.occupancy_grid_topic` на:
+
+     ```yaml
+     prohibited_grid_topic: /drone_city_nav/prohibited_grid
+     ```
+
    - В `drone_city_nav/rviz/city_nav_debug.rviz` заменить display
      `Raw Obstacle Memory Grid`, если он смотрит на inflated topic, на понятное
      имя `Prohibited Grid`.
    - Удалить все config/docs references на
      `/drone_city_nav/obstacle_memory_inflated_grid`.
+   - В `scripts/tests/test_topic_contract.py` добавить grep-contract test,
+     который проверяет:
+     - `px4_offboard_node` не объявляет `occupancy_grid_topic`;
+     - `urban_mvp.yaml` и `real_drone_template.yaml` используют
+       `px4_offboard_node.prohibited_grid_topic`;
+     - `/drone_city_nav/occupancy_grid` не используется как final planner grid.
 
 5. Защитить ROS conversions от raw/prohibited смешивания.
 
@@ -452,7 +484,38 @@ inflation в `PlanningGridBuilder`.
      `drone_city_nav/tests/lidar_snapshot_writer_test.cpp` обновить expected
      labels/topic names.
 
-7. Обновить документацию и конфиги.
+7. Обновить rosbag/debug recording script.
+
+   Что сейчас:
+
+   - `scripts/record_debug_bag.sh:15` записывает
+     `/drone_city_nav/obstacle_memory_inflated_grid`.
+   - `scripts/record_debug_bag.sh:16` записывает
+     `/drone_city_nav/occupancy_grid`.
+
+   Что не так:
+
+   - Debug bag сохраняет старый inflated memory topic.
+   - Debug bag сохраняет старое ambiguous имя final planner grid.
+
+   Как было бы лучше:
+
+   - Bag содержит raw memory и final prohibited planner output.
+   - Bag не содержит удалённый inflated memory topic.
+
+   Что сделать:
+
+   - В `scripts/record_debug_bag.sh` удалить
+     `/drone_city_nav/obstacle_memory_inflated_grid`.
+   - В `scripts/record_debug_bag.sh` заменить `/drone_city_nav/occupancy_grid`
+     на `/drone_city_nav/prohibited_grid`.
+   - В `README.md:125` и `docs/MVP_SIMULATION.md:410` обновить описание debug
+     recording, чтобы оно называло raw/prohibited topics.
+   - В `scripts/tests/test_topic_contract.py` проверить, что
+     `record_debug_bag.sh` не содержит old topics и содержит
+     `/drone_city_nav/prohibited_grid`.
+
+8. Обновить документацию и конфиги.
 
    Что сейчас:
 
@@ -485,7 +548,7 @@ inflation в `PlanningGridBuilder`.
    - В `CONTRIBUTING.md` добавить правило: planner input topics must be raw;
      debug/prohibited topics must never be wired back into planner as raw input.
 
-8. Добавить headless-friendly логи.
+9. Добавить headless-friendly логи.
 
    Что сейчас:
 
@@ -519,7 +582,7 @@ inflation в `PlanningGridBuilder`.
    - В `drone_city_nav/src/obstacle_memory_node.cpp` логировать, что node
      publishes raw memory only.
 
-9. Удалить старые references и проверить отсутствие accidental wiring.
+10. Удалить старые references и проверить отсутствие accidental wiring.
 
    Что сейчас:
 
@@ -542,6 +605,15 @@ inflation в `PlanningGridBuilder`.
      rg "obstacle_memory_inflated|inflated_grid_topic|occupancy_grid_topic"
      ```
 
+   - Дополнительно выполнить:
+
+     ```bash
+     rg "/drone_city_nav/occupancy_grid|occupancy_grid_topic" \
+       drone_city_nav scripts docs README.md CONTRIBUTING.md
+     ```
+
+   - Старые `occupancy_grid_topic` references должны отсутствовать в planner,
+     offboard, lidar debug, YAML configs и debug scripts.
    - Оставить `inflated` references только там, где речь о внутреннем состоянии
      `OccupancyGrid2D`, debug visualization или final prohibited grid rendering.
 
@@ -609,6 +681,12 @@ inflation в `PlanningGridBuilder`.
    - memory stores raw cells only;
    - hit depth stats считаются как sensor preprocessing, не inflation.
 
+4. `scripts/tests/test_topic_contract.py`:
+   - запрещает `obstacle_memory_inflated_grid` в runtime configs/scripts/docs;
+   - запрещает `occupancy_grid_topic` в planner/offboard/lidar_debug contracts;
+   - требует `/drone_city_nav/prohibited_grid` в planner output, offboard input,
+     lidar debug input и debug bag recording.
+
 Категория 2: лёгкий рефакторинг.
 
 1. `planning_grid_builder_test.cpp`:
@@ -621,7 +699,13 @@ inflation в `PlanningGridBuilder`.
    - old inflated memory topic больше не нужен;
    - `prohibited_grid_topic` имеет ожидаемый default.
 
-3. `lidar_debug_renderer_test.cpp`:
+3. Offboard config/topic contract:
+   - `px4_offboard_node` default prohibited-grid topic равен
+     `/drone_city_nav/prohibited_grid`;
+   - local clearance diagnostics остаются подключены к final prohibited grid;
+   - startup logs говорят `prohibited_grid`, а не `occupancy_grid`.
+
+4. `lidar_debug_renderer_test.cpp`:
    - renderer корректно различает current lidar, raw/prohibited grid и
      inflated debug cells.
 
@@ -640,6 +724,7 @@ inflation в `PlanningGridBuilder`.
 3. Log assertions:
    - в логах есть `inflation_owner=planner`;
    - в логах нет `obstacle_memory_inflated_grid`;
+   - в логах offboard subscriptions есть `prohibited_grid=`;
    - replan/path logs говорят `prohibited`, а не planning-facing `occupied`.
 
 # Risks and tradeoffs
