@@ -83,7 +83,8 @@ follow the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
 `GZ_GUI_FOLLOW_TARGET`, or adjust the third-person camera offset with
 `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`. The GUI launch keeps the default Gazebo GUI
 config path and unpauses the simulation separately through Gazebo world
-control.
+control. When follow mode is disabled, the launcher moves the free camera near
+the spawn point with `GZ_GUI_FREE_CAMERA_POSE="-69 -27 6 0 0.45 0"`.
 
 After a GUI run, validate deterministic Gazebo launch diagnostics:
 

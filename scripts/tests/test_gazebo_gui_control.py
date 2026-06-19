@@ -136,6 +136,36 @@ class GazeboGuiControlTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(runner.calls, [])
 
+    def test_free_camera_pose_calls_move_to_pose_service(self) -> None:
+        runner = FakeRunner()
+
+        exit_code = gui.configure_free_camera_pose(
+            pose_text="-69 -27 6 0 0.45 0",
+            wait_s=5,
+            runner=runner,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(runner.calls), 1)
+        flat_call = " ".join(runner.calls[0])
+        self.assertIn("/gui/move_to/pose", flat_call)
+        self.assertIn("gz.msgs.GUICamera", flat_call)
+        self.assertIn("position: { x: -69 y: -27 z: 6 }", flat_call)
+        self.assertIn("orientation: { x: 0 y: 0.223106", flat_call)
+        self.assertIn("w: 0.974794", flat_call)
+
+    def test_free_camera_pose_rejects_malformed_pose_before_calling_gz(self) -> None:
+        runner = FakeRunner()
+
+        exit_code = gui.configure_free_camera_pose(
+            pose_text="-69 -27 6",
+            wait_s=5,
+            runner=runner,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(runner.calls, [])
+
     def test_default_runner_converts_timeout_to_retryable_result(self) -> None:
         timeout = gui.subprocess.TimeoutExpired(
             cmd=["gz", "service"],

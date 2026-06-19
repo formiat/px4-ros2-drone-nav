@@ -41,6 +41,15 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
         self.assertIn("/world/{world}/control", helper_text)
         self.assertIn("pause: false", helper_text)
 
+    def test_free_camera_pose_uses_gui_move_to_pose(self) -> None:
+        self.assertIn("GZ_GUI_FREE_CAMERA_POSE", self.text)
+        self.assertIn("free-camera-pose", self.text)
+        helper_text = (RUNNER.parent / "gazebo_gui_control.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("/gui/move_to/pose", helper_text)
+        self.assertIn("gz.msgs.GUICamera", helper_text)
+
     def test_stale_cleanup_runs_before_gazebo_launch(self) -> None:
         cleanup_index = self.text.index("clean_stale_gazebo_processes | tee")
         launch_index = self.text.index('gz sim "${gz_args[@]}"')

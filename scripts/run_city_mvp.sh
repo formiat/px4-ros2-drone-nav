@@ -112,6 +112,8 @@ enable_gazebo_gui_follow_camera="$(
 gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
+gazebo_gui_free_camera_pose="${GZ_GUI_FREE_CAMERA_POSE:--69 -27 6 0 0.45 0}"
+gazebo_gui_free_camera_wait_s="${GZ_GUI_FREE_CAMERA_WAIT_S:-60}"
 gazebo_world_unpause_wait_s="${GZ_WORLD_UNPAUSE_WAIT_S:-60}"
 clean_stale_gazebo_processes_enabled="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_PROCESSES:-true}"
@@ -325,6 +327,15 @@ configure_gazebo_gui_follow_camera() {
     --wait-s "${wait_s}"
 }
 
+configure_gazebo_gui_free_camera() {
+  local pose="$1"
+  local wait_s="$2"
+  python3 "${repo_root}/scripts/gazebo_gui_control.py" \
+    free-camera-pose \
+    --pose "${pose}" \
+    --wait-s "${wait_s}"
+}
+
 configure_gazebo_world_running() {
   local wait_s="$1"
   python3 "${repo_root}/scripts/gazebo_gui_control.py" \
@@ -361,6 +372,7 @@ echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
+echo "Gazebo GUI free camera pose: '${gazebo_gui_free_camera_pose}'"
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
@@ -373,12 +385,14 @@ echo "Gazebo resources: ${runtime_dir}"
   gz_server_pid=""
   gz_gui_pid=""
   gz_follow_pid=""
+  gz_free_camera_pid=""
   gz_unpause_pid=""
 
   cleanup_gazebo_children() {
     local pids=()
     [[ -n "${gz_unpause_pid}" ]] && pids+=("${gz_unpause_pid}")
     [[ -n "${gz_follow_pid}" ]] && pids+=("${gz_follow_pid}")
+    [[ -n "${gz_free_camera_pid}" ]] && pids+=("${gz_free_camera_pid}")
     [[ -n "${gz_gui_pid}" ]] && pids+=("${gz_gui_pid}")
     [[ -n "${gz_server_pid}" ]] && pids+=("${gz_server_pid}")
     [[ "${#pids[@]}" -eq 0 ]] && return 0
@@ -405,6 +419,11 @@ echo "Gazebo resources: ${runtime_dir}"
         "${gazebo_gui_follow_offset}" \
         "${gazebo_gui_follow_wait_s}" &
       gz_follow_pid=$!
+    else
+      configure_gazebo_gui_free_camera \
+        "${gazebo_gui_free_camera_pose}" \
+        "${gazebo_gui_free_camera_wait_s}" &
+      gz_free_camera_pid=$!
     fi
     wait "${gz_server_pid}" "${gz_gui_pid}"
   else

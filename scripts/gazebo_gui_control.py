@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import shlex
 import subprocess
@@ -89,8 +90,45 @@ def parse_offset(value: str) -> tuple[float, float, float] | None:
         return None
 
 
+def parse_pose(value: str) -> tuple[float, float, float, float, float, float] | None:
+    pieces = value.split()
+    if len(pieces) != 6:
+        return None
+    try:
+        return (
+            float(pieces[0]),
+            float(pieces[1]),
+            float(pieces[2]),
+            float(pieces[3]),
+            float(pieces[4]),
+            float(pieces[5]),
+        )
+    except ValueError:
+        return None
+
+
 def _format_float(value: float) -> str:
     return f"{value:g}"
+
+
+def _quaternion_from_rpy(
+    roll_rad: float, pitch_rad: float, yaw_rad: float
+) -> tuple[float, float, float, float]:
+    half_roll = roll_rad * 0.5
+    half_pitch = pitch_rad * 0.5
+    half_yaw = yaw_rad * 0.5
+    cr = math.cos(half_roll)
+    sr = math.sin(half_roll)
+    cp = math.cos(half_pitch)
+    sp = math.sin(half_pitch)
+    cy = math.cos(half_yaw)
+    sy = math.sin(half_yaw)
+    return (
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    )
 
 
 def _run_service(
@@ -301,6 +339,70 @@ def configure_follow_camera(
     return 0
 
 
+def configure_free_camera_pose(
+    *,
+    pose_text: str,
+    wait_s: int,
+    runner: CommandRunner = default_runner,
+    required_confirmations: int = 1,
+) -> int:
+    pose = parse_pose(pose_text)
+    if pose is None:
+        print(
+            f"WARNING: invalid Gazebo GUI free camera pose '{pose_text}', "
+            "expected 'x y z roll pitch yaw'."
+        )
+        return 0
+
+    x, y, z, roll, pitch, yaw = pose
+    qx, qy, qz, qw = _quaternion_from_rpy(roll, pitch, yaw)
+    request = (
+        "pose: { "
+        f"position: {{ x: {_format_float(x)} y: {_format_float(y)} "
+        f"z: {_format_float(z)} }} "
+        "orientation: { "
+        f"x: {_format_float(qx)} y: {_format_float(qy)} "
+        f"z: {_format_float(qz)} w: {_format_float(qw)} "
+        "} "
+        "} "
+        "duration: 1"
+    )
+
+    confirmed_attempts = 0
+    last_response = ""
+    for attempt in range(1, wait_s + 1):
+        response = _run_service(
+            runner,
+            service="/gui/move_to/pose",
+            reqtype="gz.msgs.GUICamera",
+            reptype="gz.msgs.Boolean",
+            request=request,
+        )
+        last_response = response.combined_output
+        if response_is_true(response):
+            confirmed_attempts += 1
+            print(
+                "Gazebo GUI free camera pose command accepted: "
+                f"pose=({_format_float(x)}, {_format_float(y)}, {_format_float(z)}, "
+                f"{_format_float(roll)}, {_format_float(pitch)}, {_format_float(yaw)}) "
+                f"accepted_attempts={confirmed_attempts}"
+            )
+            if confirmed_attempts >= required_confirmations:
+                return 0
+        elif attempt == 1 or attempt % 5 == 0:
+            print(
+                "Waiting for Gazebo GUI free camera pose service "
+                f"({attempt}/{wait_s}): {last_response}"
+            )
+        time.sleep(1)
+
+    print(
+        "WARNING: Gazebo GUI free camera pose was not configured after "
+        f"{wait_s}s. Last response: {last_response}"
+    )
+    return 0
+
+
 def configure_world_running(
     *,
     world: str,
@@ -350,6 +452,10 @@ def build_parser() -> argparse.ArgumentParser:
     follow.add_argument("--offset", required=True)
     follow.add_argument("--wait-s", default="60")
 
+    free_camera = subparsers.add_parser("free-camera-pose")
+    free_camera.add_argument("--pose", required=True)
+    free_camera.add_argument("--wait-s", default="60")
+
     world = subparsers.add_parser("world-running")
     world.add_argument("--world", required=True)
     world.add_argument("--wait-s", default="60")
@@ -363,6 +469,13 @@ def main(argv: list[str] | None = None) -> int:
             target=args.target,
             offset_text=args.offset,
             wait_s=parse_wait_s(args.wait_s, default=60, label="Gazebo GUI follow"),
+        )
+    if args.command == "free-camera-pose":
+        return configure_free_camera_pose(
+            pose_text=args.pose,
+            wait_s=parse_wait_s(
+                args.wait_s, default=60, label="Gazebo GUI free camera"
+            ),
         )
     if args.command == "world-running":
         return configure_world_running(
