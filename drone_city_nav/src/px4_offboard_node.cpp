@@ -450,12 +450,16 @@ private:
           "Received path: local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
           " path_stamp_ns=%" PRIu64 " waypoints=%zu segments=%zu straight_segments=%zu "
           "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
+          "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu lt10=%zu] "
           "last=(%.2f, %.2f) continuity_target=(%.2f, %.2f) "
           "had_active_target=%s",
           received_path_update_id_, latest_planner_path_id_,
           last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
           metrics.straight_segments, metrics.turns, metrics.length_m,
-          waypoint_index_ + 1U, first.x, first.y, last.x, last.y, previous_target.x,
+          waypoint_index_ + 1U, first.x, first.y, metrics.min_segment_length_m,
+          metrics.mean_segment_length_m, metrics.max_segment_length_m,
+          metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
+          metrics.segments_shorter_than_10m, last.x, last.y, previous_target.x,
           previous_target.y, had_active_target ? "true" : "false");
       last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;

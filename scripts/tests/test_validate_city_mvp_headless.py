@@ -128,8 +128,10 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
         ros_log = make_ros_log().replace(
             "[planner_node]: Published path: waypoints=12 length=34.5m",
             (
-                "[planner_node]: Published path: reason=initial_plan "
-                "waypoints=12 segments=11 length=34.5m"
+                "[planner_node]: Published path: path_id=4 path_stamp_ns=123 "
+                "reason=initial_plan waypoints=12 segments=11 "
+                "length=34.5m segment_lengths[min=3.00 mean=8.00 max=15.00 "
+                "lt2=0 lt5=1 lt10=5]"
             ),
         )
 

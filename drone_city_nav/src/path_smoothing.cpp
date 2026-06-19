@@ -1,30 +1,12 @@
 #include "drone_city_nav/path_smoothing.hpp"
 
-#include "drone_city_nav/clearance_field.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] ClearanceField2D
-buildSmoothingClearanceField(const OccupancyGrid2D& grid,
-                             const PathSmoothingConfig& config) {
-  return ClearanceField2D::build(grid,
-                                 std::max(0.0, config.minimum_obstacle_clearance_m),
-                                 ClearanceSource::kOccupied);
-}
-
-[[nodiscard]] bool cellHasRequiredClearance(const ClearanceField2D& clearance_field,
-                                            const GridIndex cell,
-                                            const PathSmoothingConfig& config) {
-  if (!(config.minimum_obstacle_clearance_m > 0.0)) {
-    return true;
-  }
-  return clearance_field.distanceAt(cell) >= config.minimum_obstacle_clearance_m;
-}
 
 [[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
   return lhs.x * rhs.y - lhs.y * rhs.x;
@@ -58,35 +40,70 @@ buildSmoothingClearanceField(const OccupancyGrid2D& grid,
   return lateral_error_m <= lateral_tolerance_m;
 }
 
-[[nodiscard]] bool hasLineOfSight(const OccupancyGrid2D& grid,
-                                  const ClearanceField2D& clearance_field,
-                                  const GridIndex start, const GridIndex end,
-                                  const PathSmoothingConfig& config) {
-  if (!grid.contains(start) || !grid.contains(end)) {
-    return false;
+void recordRejectedLineOfSight(PathSmoothingStats& stats,
+                               const LineOfSightCheck& check) {
+  ++stats.rejected_segments;
+  switch (check.reason) {
+    case LineOfSightBlockReason::kClear:
+      break;
+    case LineOfSightBlockReason::kOutsideGrid:
+      ++stats.rejected_outside_grid;
+      break;
+    case LineOfSightBlockReason::kProhibited:
+      ++stats.rejected_prohibited;
+      stats.rejected_prohibited_cells += check.prohibited_cells;
+      break;
   }
-
-  const auto line_cells = grid.cellsOnLine(start, end);
-  return std::ranges::none_of(
-      line_cells, [&grid, &clearance_field, &config](const GridIndex cell) {
-        return grid.isProhibited(cell) ||
-               !cellHasRequiredClearance(clearance_field, cell, config);
-      });
 }
 
 } // namespace
 
+LineOfSightCheck checkLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
+                                  const GridIndex end) {
+  LineOfSightCheck result{};
+  if (!grid.contains(start) || !grid.contains(end)) {
+    result.reason = LineOfSightBlockReason::kOutsideGrid;
+    return result;
+  }
+
+  const auto line_cells = grid.cellsOnLine(start, end);
+  result.checked_cells = line_cells.size();
+  for (const GridIndex cell : line_cells) {
+    if (grid.isProhibited(cell)) {
+      ++result.prohibited_cells;
+    }
+  }
+  if (result.prohibited_cells > 0U) {
+    result.reason = LineOfSightBlockReason::kProhibited;
+    return result;
+  }
+
+  result.clear = true;
+  result.reason = LineOfSightBlockReason::kClear;
+  return result;
+}
+
 bool hasLineOfSight(const OccupancyGrid2D& grid, const GridIndex start,
-                    const GridIndex end, const PathSmoothingConfig& config) {
-  const ClearanceField2D clearance_field = buildSmoothingClearanceField(grid, config);
-  return hasLineOfSight(grid, clearance_field, start, end, config);
+                    const GridIndex end) {
+  return checkLineOfSight(grid, start, end).clear;
 }
 
 std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
-                                  const std::vector<GridIndex>& path,
-                                  const PathSmoothingConfig& config) {
+                                  const std::vector<GridIndex>& path) {
+  return smoothPathWithStats(grid, path).path;
+}
+
+PathSmoothingResult smoothPathWithStats(const OccupancyGrid2D& grid,
+                                        const std::vector<GridIndex>& path) {
+  PathSmoothingResult result{};
+  result.stats.input_points = path.size();
   if (path.size() <= 2U) {
-    return path;
+    result.path = path;
+    result.stats.output_points = result.path.size();
+    if (path.size() == 2U) {
+      result.stats.accepted_segments = 1U;
+    }
+    return result;
   }
 
   std::vector<GridIndex> smoothed;
@@ -94,20 +111,34 @@ std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
 
   std::size_t anchor = 0U;
   smoothed.push_back(path.front());
-  const ClearanceField2D clearance_field = buildSmoothingClearanceField(grid, config);
 
   while (anchor < path.size() - 1U) {
     std::size_t next = path.size() - 1U;
-    while (next > anchor + 1U &&
-           !hasLineOfSight(grid, clearance_field, path[anchor], path[next], config)) {
+    LineOfSightCheck check = checkLineOfSight(grid, path[anchor], path[next]);
+    ++result.stats.line_of_sight_checks;
+    while (next > anchor + 1U && !check.clear) {
+      recordRejectedLineOfSight(result.stats, check);
       --next;
+      check = checkLineOfSight(grid, path[anchor], path[next]);
+      ++result.stats.line_of_sight_checks;
     }
 
+    if (!check.clear) {
+      recordRejectedLineOfSight(result.stats, check);
+    }
+    ++result.stats.accepted_segments;
+    if (next > anchor + 1U) {
+      ++result.stats.shortcut_segments;
+    } else {
+      ++result.stats.forced_adjacent_segments;
+    }
     smoothed.push_back(path[next]);
     anchor = next;
   }
 
-  return smoothed;
+  result.path = std::move(smoothed);
+  result.stats.output_points = result.path.size();
+  return result;
 }
 
 std::vector<Point2> cellsToPoints(const OccupancyGrid2D& grid,

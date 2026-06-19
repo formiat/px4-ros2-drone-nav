@@ -267,6 +267,12 @@ TEST(PathMetrics, CountsGridSegmentsTurnsAndLength) {
   EXPECT_EQ(metrics.straight_segments, 3U);
   EXPECT_EQ(metrics.turns, 2U);
   EXPECT_DOUBLE_EQ(metrics.length_m, 4.0);
+  EXPECT_DOUBLE_EQ(metrics.min_segment_length_m, 1.0);
+  EXPECT_DOUBLE_EQ(metrics.mean_segment_length_m, 1.0);
+  EXPECT_DOUBLE_EQ(metrics.max_segment_length_m, 1.0);
+  EXPECT_EQ(metrics.segments_shorter_than_2m, 4U);
+  EXPECT_EQ(metrics.segments_shorter_than_5m, 4U);
+  EXPECT_EQ(metrics.segments_shorter_than_10m, 4U);
 }
 
 TEST(PathMetrics, CountsPointSegmentsTurnsAndSkipsDuplicatePoints) {
@@ -280,35 +286,38 @@ TEST(PathMetrics, CountsPointSegmentsTurnsAndSkipsDuplicatePoints) {
   EXPECT_EQ(metrics.straight_segments, 3U);
   EXPECT_EQ(metrics.turns, 2U);
   EXPECT_DOUBLE_EQ(metrics.length_m, 10.0);
+  EXPECT_DOUBLE_EQ(metrics.min_segment_length_m, 3.0);
+  EXPECT_NEAR(metrics.mean_segment_length_m, 10.0 / 3.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(metrics.max_segment_length_m, 4.0);
+  EXPECT_EQ(metrics.segments_shorter_than_2m, 0U);
+  EXPECT_EQ(metrics.segments_shorter_than_5m, 3U);
+  EXPECT_EQ(metrics.segments_shorter_than_10m, 3U);
 }
 
-TEST(PathSmoothing, RejectsShortcutTooCloseToObstacleWhenClearanceIsRequired) {
-  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
-  for (int x = 0; x < grid.width(); ++x) {
-    grid.setOccupied(GridIndex{x, 0});
-  }
+TEST(PathSmoothing, ReportsOutsideGridLineOfSight) {
+  const OccupancyGrid2D grid = makeGrid();
+
+  const LineOfSightCheck check =
+      checkLineOfSight(grid, GridIndex{-1, 0}, GridIndex{2, 0});
+
+  EXPECT_FALSE(check.clear);
+  EXPECT_EQ(check.reason, LineOfSightBlockReason::kOutsideGrid);
+  EXPECT_EQ(check.checked_cells, 0U);
+  EXPECT_EQ(check.prohibited_cells, 0U);
+}
+
+TEST(PathSmoothing, ReportsProhibitedLineOfSight) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
   grid.rebuildInflation(0.0);
 
-  EXPECT_TRUE(hasLineOfSight(grid, GridIndex{1, 1}, GridIndex{18, 1}));
+  const LineOfSightCheck check =
+      checkLineOfSight(grid, GridIndex{1, 5}, GridIndex{8, 5});
 
-  PathSmoothingConfig config{};
-  config.minimum_obstacle_clearance_m = 2.5;
-  EXPECT_FALSE(hasLineOfSight(grid, GridIndex{1, 1}, GridIndex{18, 1}, config));
-}
-
-TEST(PathSmoothing, ClearanceRequirementDoesNotDoubleCountInflation) {
-  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 20, 8}};
-  for (int x = 0; x < grid.width(); ++x) {
-    grid.setOccupied(GridIndex{x, 0});
-  }
-  grid.rebuildInflation(2.1);
-
-  PathSmoothingConfig config{};
-  config.minimum_obstacle_clearance_m = 3.0;
-  EXPECT_TRUE(hasLineOfSight(grid, GridIndex{1, 3}, GridIndex{18, 3}, config));
-
-  config.minimum_obstacle_clearance_m = 4.0;
-  EXPECT_FALSE(hasLineOfSight(grid, GridIndex{1, 3}, GridIndex{18, 3}, config));
+  EXPECT_FALSE(check.clear);
+  EXPECT_EQ(check.reason, LineOfSightBlockReason::kProhibited);
+  EXPECT_GT(check.checked_cells, 0U);
+  EXPECT_GT(check.prohibited_cells, 0U);
 }
 
 TEST(PathSmoothing, KeepsCollisionFreeSegments) {
@@ -329,6 +338,30 @@ TEST(PathSmoothing, KeepsCollisionFreeSegments) {
   for (std::size_t i = 1; i < smoothed.size(); ++i) {
     EXPECT_TRUE(hasLineOfSight(grid, smoothed[i - 1U], smoothed[i]));
   }
+}
+
+TEST(PathSmoothing, ReportsSmoothingDiagnostics) {
+  OccupancyGrid2D grid = makeGrid();
+  for (int y = 0; y < 10; ++y) {
+    grid.setOccupied(GridIndex{9, y});
+  }
+  grid.rebuildInflation(0.0);
+
+  const AStarResult astar =
+      AStarPlanner{}.plan(grid, GridIndex{1, 5}, GridIndex{18, 5});
+  ASSERT_TRUE(astar.success);
+
+  const PathSmoothingResult smoothing = smoothPathWithStats(grid, astar.path);
+
+  EXPECT_EQ(smoothing.stats.input_points, astar.path.size());
+  EXPECT_EQ(smoothing.stats.output_points, smoothing.path.size());
+  EXPECT_GT(smoothing.stats.line_of_sight_checks, 0U);
+  EXPECT_EQ(smoothing.stats.accepted_segments, smoothing.path.size() - 1U);
+  EXPECT_GT(smoothing.stats.shortcut_segments, 0U);
+  EXPECT_GT(smoothing.stats.rejected_segments, 0U);
+  EXPECT_GT(smoothing.stats.rejected_prohibited, 0U);
+  EXPECT_EQ(smoothing.stats.rejected_outside_grid, 0U);
+  EXPECT_GT(smoothing.stats.rejected_prohibited_cells, 0U);
 }
 
 TEST(PathSmoothing, CollapseCollinearPathRemovesStraightInteriorPoints) {

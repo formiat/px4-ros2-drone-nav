@@ -12,6 +12,9 @@ namespace {
 
 constexpr double kTinyDistanceSqM = 1.0e-12;
 constexpr double kTurnAngleThresholdRad = 1.0e-3;
+constexpr double kShortSegment2M = 2.0;
+constexpr double kShortSegment5M = 5.0;
+constexpr double kShortSegment10M = 10.0;
 
 struct UnitDirection2D {
   double x{0.0};
@@ -47,6 +50,26 @@ void addPathSegmentMetrics(PathMetrics& metrics,
 
   ++metrics.segments;
   metrics.length_m += segment_length_m;
+  if (metrics.segments == 1U) {
+    metrics.min_segment_length_m = segment_length_m;
+    metrics.max_segment_length_m = segment_length_m;
+  } else {
+    metrics.min_segment_length_m =
+        std::min(metrics.min_segment_length_m, segment_length_m);
+    metrics.max_segment_length_m =
+        std::max(metrics.max_segment_length_m, segment_length_m);
+  }
+  metrics.mean_segment_length_m =
+      metrics.length_m / static_cast<double>(metrics.segments);
+  if (segment_length_m < kShortSegment2M) {
+    ++metrics.segments_shorter_than_2m;
+  }
+  if (segment_length_m < kShortSegment5M) {
+    ++metrics.segments_shorter_than_5m;
+  }
+  if (segment_length_m < kShortSegment10M) {
+    ++metrics.segments_shorter_than_10m;
+  }
 
   const UnitDirection2D current{dx_m / segment_length_m, dy_m / segment_length_m};
   if (!previous.has_value()) {
@@ -365,7 +388,9 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
     return std::nullopt;
   }
 
-  result.smoothed_cells = smoothPath(grid, result.astar.path, config_.smoothing);
+  const PathSmoothingResult smoothing = smoothPathWithStats(grid, result.astar.path);
+  result.smoothed_cells = smoothing.path;
+  result.smoothing_stats = smoothing.stats;
   result.grid_stats = collectGridStats(grid);
   result.raw_path_metrics = gridPathMetrics(grid, result.astar.path);
   result.smoothed_path_metrics = gridPathMetrics(grid, result.smoothed_cells);

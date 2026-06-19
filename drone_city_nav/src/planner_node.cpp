@@ -231,14 +231,12 @@ public:
                 "Planner path preference: astar_turn_weight=%.2f "
                 "near_prohibited_penalty_radius=%.2fm "
                 "near_prohibited_penalty=%.3f "
-                "evasive_maneuvering=%s evasive_straight_weight=%.2f "
-                "smoothing_min_clearance=%.2fm",
+                "evasive_maneuvering=%s evasive_straight_weight=%.2f",
                 astar_config_.turn_cost_weight,
                 astar_config_.near_prohibited_penalty_radius_m,
                 astar_config_.near_prohibited_penalty,
                 astar_config_.evasive_maneuvering_enabled ? "true" : "false",
-                astar_config_.evasive_maneuvering_straight_cost_weight,
-                path_smoothing_config_.minimum_obstacle_clearance_m);
+                astar_config_.evasive_maneuvering_straight_cost_weight);
   }
 
 private:
@@ -288,7 +286,6 @@ private:
     min_projected_lidar_altitude_m_ = config.lidar_projection.min_projected_altitude_m;
     max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
     astar_config_ = config.planner_core.astar;
-    path_smoothing_config_ = config.path_smoothing;
     initial_heading_rad_ = config.initial_pose.heading_rad;
     px4_local_origin_ = config.initial_pose.px4_local_origin;
     static_map_debug_publish_period_s_ =
@@ -646,6 +643,38 @@ private:
         path_result->smoothed_path_metrics.turns,
         path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
         path_result->smoothed_path_clearance_m);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Path smoothing diagnostics: input_points=%zu output_points=%zu "
+        "checks=%zu accepted=%zu shortcuts=%zu forced_adjacent=%zu rejected=%zu "
+        "rejected_prohibited=%zu rejected_outside_grid=%zu "
+        "rejected_prohibited_cells=%zu "
+        "raw_segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu "
+        "lt10=%zu] "
+        "smoothed_segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu "
+        "lt10=%zu]",
+        path_result->smoothing_stats.input_points,
+        path_result->smoothing_stats.output_points,
+        path_result->smoothing_stats.line_of_sight_checks,
+        path_result->smoothing_stats.accepted_segments,
+        path_result->smoothing_stats.shortcut_segments,
+        path_result->smoothing_stats.forced_adjacent_segments,
+        path_result->smoothing_stats.rejected_segments,
+        path_result->smoothing_stats.rejected_prohibited,
+        path_result->smoothing_stats.rejected_outside_grid,
+        path_result->smoothing_stats.rejected_prohibited_cells,
+        path_result->raw_path_metrics.min_segment_length_m,
+        path_result->raw_path_metrics.mean_segment_length_m,
+        path_result->raw_path_metrics.max_segment_length_m,
+        path_result->raw_path_metrics.segments_shorter_than_2m,
+        path_result->raw_path_metrics.segments_shorter_than_5m,
+        path_result->raw_path_metrics.segments_shorter_than_10m,
+        path_result->smoothed_path_metrics.min_segment_length_m,
+        path_result->smoothed_path_metrics.mean_segment_length_m,
+        path_result->smoothed_path_metrics.max_segment_length_m,
+        path_result->smoothed_path_metrics.segments_shorter_than_2m,
+        path_result->smoothed_path_metrics.segments_shorter_than_5m,
+        path_result->smoothed_path_metrics.segments_shorter_than_10m);
     publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
                                  "combined");
   }
@@ -1184,10 +1213,15 @@ private:
                   "Published path: path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
                   " reason=%s waypoints=%zu segments=%zu "
                   "straight_segments=%zu turns=%zu length=%.2f first=(%.2f, %.2f) "
+                  "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu "
+                  "lt10=%zu] "
                   "last=(%.2f, %.2f) counters[%s] preview=%s",
                   path_id, path_stamp_ns, pathPublicationReasonName(reason), path_size,
                   metrics.segments, metrics.straight_segments, metrics.turns,
-                  metrics.length_m, first.x, first.y, last.x, last.y, counters.c_str(),
+                  metrics.length_m, first.x, first.y, metrics.min_segment_length_m,
+                  metrics.mean_segment_length_m, metrics.max_segment_length_m,
+                  metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
+                  metrics.segments_shorter_than_10m, last.x, last.y, counters.c_str(),
                   preview.str().c_str());
       last_logged_path_size_ = path_size;
       last_logged_path_first_ = first;
@@ -1252,7 +1286,6 @@ private:
   std::optional<OccupancyGrid2D> static_grid_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
-  PathSmoothingConfig path_smoothing_config_{};
 
   Pose2 current_pose_{};
   AttitudeEuler current_attitude_{};

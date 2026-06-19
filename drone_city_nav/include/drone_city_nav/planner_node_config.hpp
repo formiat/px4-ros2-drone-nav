@@ -65,7 +65,6 @@ struct PlannerNodeConfig {
 
   PlannerCoreConfig planner_core{};
   PlanningGridBuilderConfig planning_grid_builder{};
-  PathSmoothingConfig path_smoothing{};
   LidarProjectionConfig lidar_projection{};
   StaticMapSourceConfig static_map{};
   PlannerTopics topics{};

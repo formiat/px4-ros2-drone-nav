@@ -502,6 +502,10 @@ cross-track error, heading error, commanded target delta, path-update target
 hysteresis state, commanded velocity, and nearest-obstacle bearing. The same 2 Hz
 control diagnostics are written as JSON Lines to `log/offboard_blackbox.jsonl`
 for machine analysis.
+Planner logs include smoothing rejection counters and final segment-length
+statistics so headless runs can show whether short waypoint segments come from
+prohibited line-of-sight failures, grid bounds, or the remaining smoothed
+geometry.
 Mission-monitor results include final speed plus `max_observed_speed` and
 `mean_observed_speed`, so headless runs can prove that the drone moved at the
 expected scale and stopped at the goal.

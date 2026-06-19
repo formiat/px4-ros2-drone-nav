@@ -80,7 +80,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", -1.0},
        rclcpp::Parameter{"astar_near_prohibited_penalty", 5000.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
-       rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 500.0},
        rclcpp::Parameter{"stable_path_prohibited_replan_horizon_m", -5.0},
        rclcpp::Parameter{"stable_path_prohibited_confirmations_required", 0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
@@ -103,7 +102,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
-  EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 100.0);
   EXPECT_DOUBLE_EQ(config.planner_core.stable_path_prohibited_replan_horizon_m, 0.0);
   EXPECT_EQ(config.planner_core.stable_path_prohibited_confirmations_required, 1);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
@@ -116,7 +114,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", 1.5},
                 rclcpp::Parameter{"astar_near_prohibited_penalty", 0.25},
                 rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
-                rclcpp::Parameter{"path_smoothing_min_obstacle_clearance_m", 4.0},
                 rclcpp::Parameter{"use_static_map", false},
                 rclcpp::Parameter{"use_obstacle_memory", false},
                 rclcpp::Parameter{"use_current_lidar_obstacles", false},
@@ -130,8 +127,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 1.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 0.25);
   EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
-  EXPECT_DOUBLE_EQ(config.path_smoothing.minimum_obstacle_clearance_m, 4.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.smoothing.minimum_obstacle_clearance_m, 4.0);
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);

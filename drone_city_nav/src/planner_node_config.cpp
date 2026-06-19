@@ -13,11 +13,6 @@ namespace {
   return static_cast<std::int64_t>(seconds * 1.0e9);
 }
 
-[[nodiscard]] double clearanceDiagnosticRadiusM(const PathSmoothingConfig& smoothing) {
-  const double configured_clearance_m = smoothing.minimum_obstacle_clearance_m;
-  return std::max(10.0, configured_clearance_m);
-}
-
 } // namespace
 
 PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
@@ -174,12 +169,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),
                  0.0, 1000.0);
-  config.path_smoothing.minimum_obstacle_clearance_m = std::clamp(
-      node.declare_parameter<double>("path_smoothing_min_obstacle_clearance_m", 0.0),
-      0.0, 100.0);
-  config.planner_core.smoothing = config.path_smoothing;
-  config.planner_core.clearance_diagnostic_radius_m =
-      clearanceDiagnosticRadiusM(config.path_smoothing);
+  config.planner_core.clearance_diagnostic_radius_m = 10.0;
 
   config.initial_pose.use_until_px4 =
       node.declare_parameter<bool>("use_initial_pose_until_px4", true);

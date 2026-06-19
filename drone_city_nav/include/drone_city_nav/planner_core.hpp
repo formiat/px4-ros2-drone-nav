@@ -24,12 +24,17 @@ struct PathMetrics {
   std::size_t segments{0U};
   std::size_t straight_segments{0U};
   std::size_t turns{0U};
+  std::size_t segments_shorter_than_2m{0U};
+  std::size_t segments_shorter_than_5m{0U};
+  std::size_t segments_shorter_than_10m{0U};
   double length_m{0.0};
+  double min_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
+  double mean_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
+  double max_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct PlannerCoreConfig {
   AStarConfig astar{};
-  PathSmoothingConfig smoothing{};
   int nearest_free_radius_cells{10};
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
@@ -42,6 +47,7 @@ struct PlannerCoreConfig {
 struct PathComputationResult {
   AStarResult astar{};
   std::vector<GridIndex> smoothed_cells;
+  PathSmoothingStats smoothing_stats{};
   GridStats grid_stats{};
   PathMetrics raw_path_metrics{};
   PathMetrics smoothed_path_metrics{};
