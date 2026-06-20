@@ -208,6 +208,44 @@ bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, const Point2 start,
   return hasLineOfSight(grid, *start_cell, *end_cell);
 }
 
+bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
+                              const Point2 end) {
+  const auto start_cell = grid.worldToCell(start);
+  const auto end_cell = grid.worldToCell(end);
+  if (!start_cell.has_value() || !end_cell.has_value()) {
+    return false;
+  }
+
+  const std::vector<GridIndex> line_cells = grid.cellsOnLine(*start_cell, *end_cell);
+  if (line_cells.empty()) {
+    return false;
+  }
+
+  const bool starts_prohibited = grid.isProhibited(line_cells.front());
+  if (!starts_prohibited) {
+    return std::ranges::none_of(
+        line_cells, [&grid](const GridIndex cell) { return grid.isProhibited(cell); });
+  }
+
+  if (grid.isProhibited(line_cells.back())) {
+    return false;
+  }
+
+  bool escaped_prohibited_prefix = false;
+  for (const GridIndex cell : line_cells) {
+    const bool prohibited = grid.isProhibited(cell);
+    if (!prohibited) {
+      escaped_prohibited_prefix = true;
+      continue;
+    }
+    if (escaped_prohibited_prefix) {
+      return false;
+    }
+  }
+
+  return escaped_prohibited_prefix;
+}
+
 std::optional<PathProjection2D>
 closestPathProjection(const std::span<const Point2> path_points,
                       const Point2 current_position) {
@@ -310,6 +348,25 @@ bool pathIsAllowed(const OccupancyGrid2D& grid,
   return true;
 }
 
+bool pathIsTraversable(const OccupancyGrid2D& grid,
+                       const std::span<const Point2> path_points,
+                       std::size_t* const non_traversable_segment_index) {
+  if (path_points.size() < 2U) {
+    return true;
+  }
+
+  for (std::size_t index = 1U; index < path_points.size(); ++index) {
+    if (pathSegmentIsTraversable(grid, path_points[index - 1U], path_points[index])) {
+      continue;
+    }
+    if (non_traversable_segment_index != nullptr) {
+      *non_traversable_segment_index = index - 1U;
+    }
+    return false;
+  }
+  return true;
+}
+
 PlannerCore::PlannerCore(const PlannerCoreConfig& config)
     : config_{config} {
 }
@@ -349,6 +406,9 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   const PathSmoothingResult smoothing = smoothPathWithStats(grid, result.astar.path);
   result.smoothed_cells = smoothing.path;
   result.smoothing_stats = smoothing.stats;
+  if (result.smoothed_cells.empty() && !result.astar.path.empty()) {
+    result.smoothing_returned_empty_path = true;
+  }
   result.grid_stats = collectGridStats(grid);
   result.raw_path_metrics = gridPathMetrics(grid, result.astar.path);
   result.smoothed_path_metrics = gridPathMetrics(grid, result.smoothed_cells);
@@ -389,8 +449,8 @@ PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
   }
 
   decision.remaining_path = std::move(*remaining_path);
-  if (pathIsAllowed(grid, decision.remaining_path,
-                    &decision.prohibited_segment_index)) {
+  if (pathIsTraversable(grid, decision.remaining_path,
+                        &decision.prohibited_segment_index)) {
     decision.keep_path = true;
     decision.reason = StablePathDecisionReason::kClear;
     decision.prohibited_confirmations = 0;

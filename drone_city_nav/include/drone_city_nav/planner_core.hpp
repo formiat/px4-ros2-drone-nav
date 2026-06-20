@@ -56,6 +56,7 @@ struct PathComputationResult {
   std::optional<GridIndex> goal_cell;
   std::optional<GridIndex> allowed_start_cell;
   std::optional<GridIndex> allowed_goal_cell;
+  bool smoothing_returned_empty_path{false};
 };
 
 struct PathProjection2D {
@@ -105,6 +106,9 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 [[nodiscard]] bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, Point2 start,
                                         Point2 end);
 
+[[nodiscard]] bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, Point2 start,
+                                            Point2 end);
+
 [[nodiscard]] std::optional<PathProjection2D>
 closestPathProjection(std::span<const Point2> path_points, Point2 current_position);
 
@@ -116,6 +120,10 @@ closestPathProjection(std::span<const Point2> path_points, Point2 current_positi
 [[nodiscard]] bool pathIsAllowed(const OccupancyGrid2D& grid,
                                  std::span<const Point2> path_points,
                                  std::size_t* prohibited_segment_index = nullptr);
+
+[[nodiscard]] bool
+pathIsTraversable(const OccupancyGrid2D& grid, std::span<const Point2> path_points,
+                  std::size_t* non_traversable_segment_index = nullptr);
 
 class PlannerCore {
 public:

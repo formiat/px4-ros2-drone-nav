@@ -56,11 +56,12 @@ stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
 
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
-  std::size_t prohibited_segments{0U};
-  std::size_t first_prohibited_segment{0U};
-  Point2 first_prohibited_start{};
-  Point2 first_prohibited_end{};
-  bool has_prohibited_segment{false};
+  std::size_t non_traversable_segments{0U};
+  std::size_t escape_segments{0U};
+  std::size_t first_non_traversable_segment{0U};
+  Point2 first_non_traversable_start{};
+  Point2 first_non_traversable_end{};
+  bool has_non_traversable_segment{false};
 };
 
 enum class PathPublicationReason : std::uint8_t {
@@ -675,8 +676,14 @@ private:
         path_result->smoothed_path_metrics.segments_shorter_than_2m,
         path_result->smoothed_path_metrics.segments_shorter_than_5m,
         path_result->smoothed_path_metrics.segments_shorter_than_10m);
-    publishPathFromSmoothedCells(planning_grid, path_result->smoothed_cells,
-                                 "combined");
+    if (path_result->smoothing_returned_empty_path) {
+      RCLCPP_WARN(get_logger(),
+                  "Path smoothing returned an empty path; falling back to raw A* path: "
+                  "raw_points=%zu",
+                  path_result->astar.path.size());
+    }
+    publishPathFromPathCells(planning_grid, path_result->astar.path,
+                             path_result->smoothed_cells, "combined");
   }
 
   [[nodiscard]] std::optional<PathComputationResult>
@@ -726,45 +733,112 @@ private:
     return result;
   }
 
-  bool publishPathFromSmoothedCells(const OccupancyGrid2D& grid,
-                                    const std::vector<GridIndex>& smoothed_cells,
-                                    const char* source_label) {
-    std::vector<Point2> path_points = cellsToPoints(grid, smoothed_cells);
-    if (path_points.empty()) {
-      publishPath({}, PathPublicationReason::kHoldInvalidPath);
-      return false;
-    }
+  bool publishPathFromPathCells(const OccupancyGrid2D& grid,
+                                const std::vector<GridIndex>& raw_cells,
+                                const std::vector<GridIndex>& smoothed_cells,
+                                const char* source_label) {
+    struct CandidatePath {
+      std::vector<Point2> points;
+      const char* source_kind{""};
+      std::size_t input_cells{0U};
+      std::size_t pre_collapse_points{0U};
+      std::size_t collapsed_points{0U};
+      bool collapse_reverted{false};
+    };
 
-    if (!connectPublishedPathToCurrentPose(grid, path_points, source_label)) {
-      publishPath({}, PathPublicationReason::kHoldInvalidPath);
-      return false;
-    }
-
-    const std::vector<Point2> pre_collapse_path_points = path_points;
-    const std::size_t dense_path_points = path_points.size();
-    path_points = collapseCollinearPath(pre_collapse_path_points,
-                                        kPublishedPathCollinearityToleranceM);
-    const std::size_t collapsed_path_points = path_points.size();
-    if (!pathIsAllowed(grid, path_points)) {
-      if (pathIsAllowed(grid, pre_collapse_path_points)) {
-        path_points = pre_collapse_path_points;
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 3000,
-            "%s path restored pre-collapse waypoints because collinear collapse "
-            "would cross prohibited cells: before=%zu collapsed=%zu",
-            source_label, pre_collapse_path_points.size(), collapsed_path_points);
-      } else {
-        logRejectedUnsafePublishedPath(grid, pre_collapse_path_points, source_label,
-                                       "pre-collapse path crosses prohibited cells");
-        publishPath({}, PathPublicationReason::kHoldInvalidPath);
-        return false;
+    const auto build_candidate =
+        [&](const std::vector<GridIndex>& cells,
+            const char* source_kind) -> std::optional<CandidatePath> {
+      if (cells.empty()) {
+        return std::nullopt;
       }
+
+      std::vector<Point2> path_points = cellsToPoints(grid, cells);
+      if (!connectPublishedPathToCurrentPose(grid, path_points, source_label)) {
+        return std::nullopt;
+      }
+
+      const std::vector<Point2> pre_collapse_path_points = path_points;
+      path_points = collapseCollinearPath(pre_collapse_path_points,
+                                          kPublishedPathCollinearityToleranceM);
+      CandidatePath candidate{
+          std::move(path_points),          source_kind, cells.size(),
+          pre_collapse_path_points.size(), 0U,          false};
+      candidate.collapsed_points = candidate.points.size();
+
+      if (!pathIsTraversable(grid, candidate.points)) {
+        if (pathIsTraversable(grid, pre_collapse_path_points)) {
+          candidate.points = pre_collapse_path_points;
+          candidate.collapse_reverted = true;
+          RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 3000,
+              "%s path restored pre-collapse waypoints because collinear collapse "
+              "would create a non-traversable segment: source=%s before=%zu "
+              "collapsed=%zu",
+              source_label, source_kind, pre_collapse_path_points.size(),
+              candidate.collapsed_points);
+        } else {
+          logRejectedUnsafePublishedPath(
+              grid, pre_collapse_path_points, source_label,
+              "pre-collapse path contains a non-traversable segment");
+          return std::nullopt;
+        }
+      }
+
+      return candidate;
+    };
+
+    const std::vector<GridIndex>* selected_cells = &smoothed_cells;
+    const char* selected_source_kind = "smoothed";
+    bool used_raw_fallback = false;
+    if (selected_cells->empty()) {
+      RCLCPP_WARN(get_logger(),
+                  "%s path has empty smoothed cells; falling back to raw A* cells: "
+                  "raw_cells=%zu",
+                  source_label, raw_cells.size());
+      selected_cells = &raw_cells;
+      selected_source_kind = "raw";
+      used_raw_fallback = true;
     }
-    if (path_points.size() != dense_path_points) {
+
+    std::optional<CandidatePath> candidate =
+        build_candidate(*selected_cells, selected_source_kind);
+    if (!candidate.has_value() && selected_cells != &raw_cells && !raw_cells.empty()) {
+      RCLCPP_WARN(get_logger(),
+                  "%s path postprocess rejected smoothed cells; falling back to raw "
+                  "A* cells: smoothed_cells=%zu raw_cells=%zu",
+                  source_label, smoothed_cells.size(), raw_cells.size());
+      selected_cells = &raw_cells;
+      selected_source_kind = "raw";
+      used_raw_fallback = true;
+      candidate = build_candidate(*selected_cells, selected_source_kind);
+    }
+    if (!candidate.has_value()) {
+      RCLCPP_WARN(get_logger(),
+                  "%s path postprocess could not build a traversable published path: "
+                  "smoothed_cells=%zu raw_cells=%zu",
+                  source_label, smoothed_cells.size(), raw_cells.size());
+      publishPath({}, PathPublicationReason::kHoldInvalidPath);
+      return false;
+    }
+
+    std::vector<Point2> path_points = std::move(candidate->points);
+    RCLCPP_INFO(get_logger(),
+                "%s path postprocess: selected_source=%s raw_cells=%zu "
+                "smoothed_cells=%zu selected_cells=%zu pre_collapse_points=%zu "
+                "collapsed_points=%zu published_points=%zu published_segments=%zu "
+                "raw_fallback=%s collapse_reverted=%s",
+                source_label, candidate->source_kind, raw_cells.size(),
+                smoothed_cells.size(), candidate->input_cells,
+                candidate->pre_collapse_points, candidate->collapsed_points,
+                path_points.size(), !path_points.empty() ? path_points.size() - 1U : 0U,
+                used_raw_fallback ? "true" : "false",
+                candidate->collapse_reverted ? "true" : "false");
+    if (path_points.size() != candidate->pre_collapse_points) {
       RCLCPP_INFO(get_logger(),
                   "%s path collinear waypoints collapsed: before=%zu after=%zu "
                   "tolerance=%.2fm",
-                  source_label, dense_path_points, path_points.size(),
+                  source_label, candidate->pre_collapse_points, path_points.size(),
                   kPublishedPathCollinearityToleranceM);
     }
 
@@ -796,13 +870,17 @@ private:
     for (std::size_t index = 1U; index < path_points.size(); ++index) {
       const Point2 segment_start = path_points[index - 1U];
       const Point2 segment_end = path_points[index];
-      if (!pathSegmentIsAllowed(grid, segment_start, segment_end)) {
-        ++summary.prohibited_segments;
-        if (!summary.has_prohibited_segment) {
-          summary.first_prohibited_segment = index - 1U;
-          summary.first_prohibited_start = segment_start;
-          summary.first_prohibited_end = segment_end;
-          summary.has_prohibited_segment = true;
+      if (pathSegmentIsTraversable(grid, segment_start, segment_end)) {
+        if (!pathSegmentIsAllowed(grid, segment_start, segment_end)) {
+          ++summary.escape_segments;
+        }
+      } else {
+        ++summary.non_traversable_segments;
+        if (!summary.has_non_traversable_segment) {
+          summary.first_non_traversable_segment = index - 1U;
+          summary.first_non_traversable_start = segment_start;
+          summary.first_non_traversable_end = segment_end;
+          summary.has_non_traversable_segment = true;
         }
       }
     }
@@ -815,23 +893,33 @@ private:
                               const char* source_label) const {
     const PublishedPathSafetySummary summary =
         summarizePublishedPathSafety(grid, path_points);
-    const bool unsafe_path = summary.prohibited_segments > 0U;
+    const bool unsafe_path = summary.non_traversable_segments > 0U;
     if (unsafe_path) {
+      RCLCPP_WARN(
+          get_logger(),
+          "%s published path traversability: segments=%zu "
+          "non_traversable_segments=%zu escape_segments=%zu traversable=false "
+          "first_non_traversable_segment=%zu "
+          "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
+          source_label, summary.segments, summary.non_traversable_segments,
+          summary.escape_segments, summary.first_non_traversable_segment,
+          summary.first_non_traversable_start.x, summary.first_non_traversable_start.y,
+          summary.first_non_traversable_end.x, summary.first_non_traversable_end.y);
+      return;
+    }
+
+    if (summary.escape_segments > 0U) {
       RCLCPP_WARN(get_logger(),
-                  "%s published path safety: segments=%zu prohibited_segments=%zu "
-                  "strict_prohibited_intersection=true first_prohibited_segment=%zu "
-                  "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
-                  source_label, summary.segments, summary.prohibited_segments,
-                  summary.first_prohibited_segment, summary.first_prohibited_start.x,
-                  summary.first_prohibited_start.y, summary.first_prohibited_end.x,
-                  summary.first_prohibited_end.y);
+                  "%s published path traversability: segments=%zu "
+                  "non_traversable_segments=0 escape_segments=%zu traversable=true",
+                  source_label, summary.segments, summary.escape_segments);
       return;
     }
 
     RCLCPP_INFO(get_logger(),
-                "%s published path safety: segments=%zu prohibited_segments=%zu "
-                "strict_prohibited_intersection=false",
-                source_label, summary.segments, summary.prohibited_segments);
+                "%s published path traversability: segments=%zu "
+                "non_traversable_segments=0 escape_segments=0 traversable=true",
+                source_label, summary.segments);
   }
 
   [[nodiscard]] bool connectPublishedPathToCurrentPose(const OccupancyGrid2D& grid,
@@ -850,20 +938,20 @@ private:
     }
 
     if (distance_to_first_m < grid.resolution() && path_points.size() >= 2U &&
-        pathSegmentIsAllowed(grid, current_position, path_points[1])) {
+        pathSegmentIsTraversable(grid, current_position, path_points[1])) {
       path_points.front() = current_position;
       return true;
     }
 
-    if (pathSegmentIsAllowed(grid, current_position, first_path_point)) {
+    if (pathSegmentIsTraversable(grid, current_position, first_path_point)) {
       path_points.insert(path_points.begin(), current_position);
       return true;
     }
 
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
-        "%s path rejected because current pose cannot connect to the planned start "
-        "without crossing prohibited cells: current=(%.2f, %.2f) first=(%.2f, %.2f) "
+        "%s path candidate rejected because current pose cannot connect to the planned "
+        "start with a traversable segment: current=(%.2f, %.2f) first=(%.2f, %.2f) "
         "distance=%.2fm",
         source_label, current_position.x, current_position.y, first_path_point.x,
         first_path_point.y, distance_to_first_m);
@@ -876,15 +964,17 @@ private:
                                       const char* reason) const {
     const PublishedPathSafetySummary summary =
         summarizePublishedPathSafety(grid, path_points);
-    RCLCPP_WARN(get_logger(),
-                "%s path rejected before publication: reason='%s' segments=%zu "
-                "prohibited_segments=%zu first_prohibited_segment=%zu "
-                "segment_start=(%.2f, %.2f) "
-                "segment_end=(%.2f, %.2f)",
-                source_label, reason, summary.segments, summary.prohibited_segments,
-                summary.first_prohibited_segment, summary.first_prohibited_start.x,
-                summary.first_prohibited_start.y, summary.first_prohibited_end.x,
-                summary.first_prohibited_end.y);
+    RCLCPP_WARN(
+        get_logger(),
+        "%s path rejected before publication: reason='%s' segments=%zu "
+        "non_traversable_segments=%zu escape_segments=%zu "
+        "first_non_traversable_segment=%zu "
+        "segment_start=(%.2f, %.2f) "
+        "segment_end=(%.2f, %.2f)",
+        source_label, reason, summary.segments, summary.non_traversable_segments,
+        summary.escape_segments, summary.first_non_traversable_segment,
+        summary.first_non_traversable_start.x, summary.first_non_traversable_start.y,
+        summary.first_non_traversable_end.x, summary.first_non_traversable_end.y);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {

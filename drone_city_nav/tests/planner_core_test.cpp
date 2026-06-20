@@ -86,6 +86,33 @@ TEST(PathSafety, SegmentAllowedRejectsOccupiedAndInflatedCells) {
   EXPECT_TRUE(pathSegmentIsAllowed(grid, Point2{8.5, 5.5}, Point2{10.5, 5.5}));
 }
 
+TEST(PathSafety, SegmentTraversableAllowsLeavingProhibitedPrefix) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  grid.rebuildInflation(0.0);
+
+  EXPECT_FALSE(pathSegmentIsAllowed(grid, Point2{5.5, 5.5}, Point2{8.5, 5.5}));
+  EXPECT_TRUE(pathSegmentIsTraversable(grid, Point2{5.5, 5.5}, Point2{8.5, 5.5}));
+}
+
+TEST(PathSafety, SegmentTraversableRejectsEnteringProhibitedCells) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  grid.rebuildInflation(0.0);
+
+  EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5}));
+  EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, Point2{5.5, 5.5}));
+}
+
+TEST(PathSafety, SegmentTraversableRejectsReenteringProhibitedCells) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  grid.setOccupied(GridIndex{8, 5});
+  grid.rebuildInflation(0.0);
+
+  EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{5.5, 5.5}, Point2{10.5, 5.5}));
+}
+
 TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   OccupancyGrid2D grid = makeGrid();
   for (int y = 0; y < 10; ++y) {
@@ -488,6 +515,26 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
   EXPECT_EQ(decision.prohibited_segment_index, 0U);
+}
+
+TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{1, 1});
+  grid.rebuildInflation(0.0);
+
+  PlannerCoreConfig config{};
+  config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_reuse_max_deviation_m = 5.0;
+  config.stable_path_prohibited_confirmations_required = 1;
+  PlannerCore core{config};
+  const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
+
+  const StablePathDecision decision =
+      core.evaluateStablePath(grid, path, Point2{1.5, 1.5}, Point2{8.5, 1.5}, 0);
+
+  EXPECT_TRUE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
+  EXPECT_EQ(decision.prohibited_confirmations, 0);
 }
 
 TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {
