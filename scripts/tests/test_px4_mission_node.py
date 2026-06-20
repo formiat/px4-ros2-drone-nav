@@ -40,6 +40,9 @@ class FakeMissionClient:
         self.uploaded_items: list[object] = []
         self.calls: list[tuple[str, object]] = []
 
+    def set_mission_speed_parameters(self) -> None:
+        self.calls.append(("set_mission_speed_parameters", None))
+
     def upload_mission(
         self,
         items: list[object],
@@ -93,6 +96,10 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn("self._progress_timer = self.create_timer", text)
         self.assertIn("path_requires_home_resolution(request.points)", text)
         self.assertIn("_home_resolution_without_mavlink_lookup", text)
+        self.assertIn("mission_cruise_speed_mps", text)
+        self.assertIn("mission_max_speed_mps", text)
+        self.assertIn("MPC_XY_CRUISE", text)
+        self.assertIn("MPC_XY_VEL_MAX", text)
         self.assertIn("def _upload_worker_loop", text)
         self.assertIn("self._core.handle_path_points", text)
 
@@ -100,6 +107,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         values = {
             "acceptance_radius_m": 1.25,
             "cruise_altitude_m": 18.0,
+            "mission_cruise_speed_mps": 12.0,
+            "mission_max_speed_mps": 15.0,
             "home_latitude_deg": 47.0,
             "home_longitude_deg": 8.0,
             "px4_local_origin_x_m": 27.0,
@@ -195,7 +204,11 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         )
 
         self.assertTrue(result.success)
+        self.assertIn(("set_mission_speed_parameters", None), client.calls)
         self.assertEqual(2, len(client.uploaded_items))
+        self.assertTrue(any("speed_params_sent" in line for line in logs))
+        self.assertTrue(any("mission_cruise_speed_mps=12.00" in line for line in logs))
+        self.assertTrue(any("mission_max_speed_mps=15.00" in line for line in logs))
         self.assertFalse(any("mission_waypoints=" in line for line in logs))
 
     def test_empty_path_is_logged_and_not_uploaded(self) -> None:
@@ -257,7 +270,13 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(
-            ["upload_mission", "upload_timeout_s", "set_auto_mission_mode", "arm"],
+            [
+                "set_mission_speed_parameters",
+                "upload_mission",
+                "upload_timeout_s",
+                "set_auto_mission_mode",
+                "arm",
+            ],
             [call[0] for call in client.calls],
         )
 
@@ -429,6 +448,41 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(FakeMavlinkModule.MAV_CMD_REQUEST_MESSAGE, command[2])
         self.assertEqual(FakeMavlinkModule.MAVLINK_MSG_ID_HOME_POSITION, command[4])
 
+    def test_mavlink_client_sends_px4_mission_speed_parameters(self) -> None:
+        config = self.make_config(
+            mission_cruise_speed_mps=12.0,
+            mission_max_speed_mps=15.0,
+        )
+        client = mission_node.MavlinkMissionClient(config)
+        master = FakeMavlinkMaster()
+        client._master = master
+        client._mavutil = FakeMavutil
+
+        client.set_mission_speed_parameters()
+
+        self.assertEqual(
+            [
+                (b"MPC_XY_VEL_MAX", 15.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
+                (b"MPC_XY_CRUISE", 12.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
+            ],
+            [(call[2], call[3], call[4]) for call in master.param_set_calls],
+        )
+
+    def test_mavlink_client_never_sets_cruise_above_max_speed(self) -> None:
+        config = self.make_config(
+            mission_cruise_speed_mps=12.0,
+            mission_max_speed_mps=6.0,
+        )
+        client = mission_node.MavlinkMissionClient(config)
+        master = FakeMavlinkMaster()
+        client._master = master
+        client._mavutil = FakeMavutil
+
+        client.set_mission_speed_parameters()
+
+        self.assertEqual(b"MPC_XY_VEL_MAX", master.param_set_calls[0][2])
+        self.assertEqual(12.0, master.param_set_calls[0][3])
+
     def test_blackbox_upload_event_contains_planned_headless_fields(self) -> None:
         client = FakeMissionClient()
         blackbox = CapturingBlackbox()
@@ -472,6 +526,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(9, event["latest_planner_path_id"])
         self.assertIn("upload_duration_s", event)
         self.assertFalse(event["reuploading_after_success"])
+        self.assertEqual(12.0, event["mission_cruise_speed_mps"])
+        self.assertEqual(15.0, event["mission_max_speed_mps"])
         self.assertEqual(1, event["planner_path_metrics"]["waypoints"])
         self.assertEqual(1, event["mission_path_metrics"]["waypoints"])
         self.assertEqual([{"x": 27.0, "y": 27.0}], event["planner_path_points_map"])
@@ -633,6 +689,7 @@ class FakeMavlinkModule:
     MAV_MISSION_TYPE_MISSION = 0
     MAV_CMD_REQUEST_MESSAGE = 512
     MAVLINK_MSG_ID_HOME_POSITION = 242
+    MAV_PARAM_TYPE_REAL32 = 9
 
 
 class FakeMavutil:
@@ -658,6 +715,9 @@ class FakeMav:
     def command_long_send(self, *_args: object) -> None:
         self._master.command_long_calls.append(tuple(_args))
 
+    def param_set_send(self, *_args: object) -> None:
+        self._master.param_set_calls.append(tuple(_args))
+
 
 class FakeMavlinkMaster:
     def __init__(self) -> None:
@@ -667,6 +727,7 @@ class FakeMavlinkMaster:
         self.mission_counts: list[int] = []
         self.sent_item_sequences: list[int] = []
         self.command_long_calls: list[tuple[object, ...]] = []
+        self.param_set_calls: list[tuple[object, ...]] = []
         self._next_request_seq = 0
 
     def recv_match(

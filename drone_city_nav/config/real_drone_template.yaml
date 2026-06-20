@@ -163,6 +163,8 @@ px4_mission_node:
     mission_upload_timeout_s: 5.0
     mission_acceptance_radius_m: 1.5
     mission_cruise_altitude_m: 12.0
+    mission_cruise_speed_mps: 12.0
+    mission_max_speed_mps: 15.0
     mission_home_source: mavlink_home
     mission_home_latitude_deg: 0.0
     mission_home_longitude_deg: 0.0

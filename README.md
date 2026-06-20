@@ -119,7 +119,8 @@ Mission mode uploads planner paths as PX4 mission waypoints over MAVLink. It
 does not use the Offboard sharp-turn or target-switch hold logic. In
 simulation, Mission mode resolves the mission home from MAVLink
 `HOME_POSITION` so the global mission items use the same origin PX4 uses
-internally.
+internally. Before each mission upload, it sets PX4 `MPC_XY_CRUISE` from
+`mission_cruise_speed_mps` and `MPC_XY_VEL_MAX` from `mission_max_speed_mps`.
 
 Equivalent explicit command inside an interactive container shell:
 

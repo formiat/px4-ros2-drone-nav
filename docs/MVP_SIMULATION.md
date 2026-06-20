@@ -536,7 +536,9 @@ upload. Replanned paths are uploaded as fresh PX4 missions.
 
 Before upload, the Mission backend converts the final planner path directly
 into mission waypoints. It does not add intermediate waypoints, so the mission
-item count matches the planner path count.
+item count matches the planner path count. It also sets PX4 mission speed
+parameters before upload: `MPC_XY_CRUISE` from `mission_cruise_speed_mps` and
+`MPC_XY_VEL_MAX` from `mission_max_speed_mps`.
 
 For SITL, `mission_home_source` defaults to `mavlink_home`. This makes mission
 item conversion use PX4's actual `HOME_POSITION` instead of static latitude and
@@ -547,14 +549,15 @@ Mission mode does not use Offboard `sharp_turn_hold_*` or
 `target_switch_hold_*` timing parameters. Runtime logs include
 `Mission backend ready:`, `MISSION_BACKEND upload_started`,
 `MISSION_BACKEND upload_result`, `MISSION_BACKEND mode_command`,
-`MISSION_BACKEND arm_command`, `MISSION_BACKEND progress`, and emergency-stop
-markers. The backend derives upload identity from the `Path` message stamp so
-delivery races between separate `path` and `path_id` topics cannot skip a fresh
-mission. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
-default and include planner path points, mission path points, path segment
-metrics, upload duration, resolved-home diagnostics, the full uploaded
-`mission_items` list, and progress events enriched with vehicle map position,
-active mission target, distance to target, and cross-track error.
+`MISSION_BACKEND arm_command`, `MISSION_BACKEND speed_params_sent`,
+`MISSION_BACKEND progress`, and emergency-stop markers. The backend derives
+upload identity from the `Path` message stamp so delivery races between
+separate `path` and `path_id` topics cannot skip a fresh mission. JSONL
+diagnostics are written to `log/mission_blackbox.jsonl` by default and include
+planner path points, mission path points, path segment metrics, upload
+duration, mission speed parameters, resolved-home diagnostics, the full
+uploaded `mission_items` list, and progress events enriched with vehicle map
+position, active mission target, distance to target, and cross-track error.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

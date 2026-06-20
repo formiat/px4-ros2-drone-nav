@@ -57,6 +57,8 @@ class MissionBackendConfig:
     upload_timeout_s: float = 5.0
     acceptance_radius_m: float = 1.0
     cruise_altitude_m: float = 18.0
+    mission_cruise_speed_mps: float = 12.0
+    mission_max_speed_mps: float = 15.0
     home_source: str = "params"
     home_latitude_deg: float = 47.397742
     home_longitude_deg: float = 8.545594
@@ -417,6 +419,15 @@ class MavlinkMissionClient:
 
         return UploadResult.timeout("mission upload timed out")
 
+    def set_mission_speed_parameters(self) -> None:
+        self.connect(self._config.upload_timeout_s)
+        cruise_speed_mps = max(0.0, float(self._config.mission_cruise_speed_mps))
+        max_speed_mps = max(
+            cruise_speed_mps, float(self._config.mission_max_speed_mps)
+        )
+        self._send_float_parameter("MPC_XY_VEL_MAX", max_speed_mps)
+        self._send_float_parameter("MPC_XY_CRUISE", cruise_speed_mps)
+
     def set_auto_mission_mode(self) -> None:
         self.connect(self._config.upload_timeout_s)
         mavlink = self._mavutil.mavlink
@@ -573,6 +584,17 @@ class MavlinkMissionClient:
             0,
         )
 
+    def _send_float_parameter(self, name: str, value: float) -> None:
+        mavlink = self._mavutil.mavlink
+        param_type = getattr(mavlink, "MAV_PARAM_TYPE_REAL32", 9)
+        self._master.mav.param_set_send(
+            self._config.target_system,
+            self._config.target_component,
+            name.encode("ascii"),
+            float(value),
+            param_type,
+        )
+
     def _upload_result_from_ack(self, msg: Any) -> UploadResult:
         mavlink = self._mavutil.mavlink
         accepted = int(msg.type) == int(mavlink.MAV_MISSION_ACCEPTED)
@@ -720,6 +742,19 @@ class MissionBackendCore:
 
         mission_points = list(path_points)
         items = build_mission_items(mission_points, home, self.config)
+        try:
+            self.client.set_mission_speed_parameters()
+            self.logger(
+                "MISSION_BACKEND speed_params_sent "
+                f"path_id={path_id} "
+                f"mission_cruise_speed_mps={self.config.mission_cruise_speed_mps:.2f} "
+                f"mission_max_speed_mps={self.config.mission_max_speed_mps:.2f}"
+            )
+        except Exception as exc:
+            self.logger(
+                "MISSION_BACKEND speed_params_failed "
+                f"path_id={path_id} error='{exc}'"
+            )
         with self._lock:
             self.upload_attempt += 1
             upload_attempt = self.upload_attempt
@@ -965,6 +1000,8 @@ class MissionBackendCore:
             "home": asdict(home) if home is not None else None,
             "connection_url": self.config.connection_url,
             "emergency_stop_requested": self.is_emergency_stop_requested(),
+            "mission_cruise_speed_mps": self.config.mission_cruise_speed_mps,
+            "mission_max_speed_mps": self.config.mission_max_speed_mps,
         }
         if home_resolution is not None:
             delta = home_delta_ne_m(
@@ -1055,6 +1092,12 @@ class Px4MissionNode(Node):
             ),
             cruise_altitude_m=float(
                 self.declare_parameter("mission_cruise_altitude_m", 18.0).value
+            ),
+            mission_cruise_speed_mps=float(
+                self.declare_parameter("mission_cruise_speed_mps", 12.0).value
+            ),
+            mission_max_speed_mps=float(
+                self.declare_parameter("mission_max_speed_mps", 15.0).value
             ),
             home_source=self.declare_parameter("mission_home_source", "params").value,
             home_latitude_deg=float(
@@ -1159,6 +1202,8 @@ class Px4MissionNode(Node):
             f"home_source={config.home_source} "
             f"home=({config.home_latitude_deg:.7f}, {config.home_longitude_deg:.7f}, "
             f"{config.home_altitude_m:.1f}) "
+            f"mission_cruise_speed_mps={config.mission_cruise_speed_mps:.2f} "
+            f"mission_max_speed_mps={config.mission_max_speed_mps:.2f} "
             f"px4_local_origin=({config.px4_local_origin_x_m:.2f}, "
             f"{config.px4_local_origin_y_m:.2f}) "
             f"emergency_stop_resend_s={config.emergency_stop_command_resend_period_s:.2f}"
