@@ -59,8 +59,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 0.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
@@ -77,8 +75,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
        rclcpp::Parameter{"astar_max_expansions", 0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
-       rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", -1.0},
-       rclcpp::Parameter{"astar_near_prohibited_penalty", 5000.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"stable_path_prohibited_replan_horizon_m", -5.0},
        rclcpp::Parameter{"stable_path_prohibited_confirmations_required", 0},
@@ -97,8 +93,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
   EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.stable_path_prohibited_replan_horizon_m, 0.0);
@@ -110,8 +104,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   const auto node =
       makeNode("planner_node_config_nested",
                {rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
-                rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", 1.5},
-                rclcpp::Parameter{"astar_near_prohibited_penalty", 0.25},
                 rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
                 rclcpp::Parameter{"use_static_map", false},
                 rclcpp::Parameter{"use_obstacle_memory", false},
@@ -124,8 +116,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 2.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 1.5);
-  EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 0.25);
   EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
   EXPECT_FALSE(config.static_map.enabled);

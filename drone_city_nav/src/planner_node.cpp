@@ -233,12 +233,8 @@ public:
                 stable_path_prohibited_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
-                "near_prohibited_penalty_radius=%.2fm "
-                "near_prohibited_penalty=%.3f "
                 "evasive_maneuvering=%s evasive_straight_weight=%.2f",
                 astar_config_.turn_cost_weight,
-                astar_config_.near_prohibited_penalty_radius_m,
-                astar_config_.near_prohibited_penalty,
                 astar_config_.evasive_maneuvering_enabled ? "true" : "false",
                 astar_config_.evasive_maneuvering_straight_cost_weight);
   }
