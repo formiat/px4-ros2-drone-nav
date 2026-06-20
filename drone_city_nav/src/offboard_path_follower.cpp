@@ -14,30 +14,16 @@ constexpr double kTinyDistanceM = 1.0e-6;
 
 [[nodiscard]] bool turnWaypointIsCloseEnoughForSlowdown(
     const Point2 turn_waypoint, const Point2 current_position,
-    const bool local_position_valid, const OffboardPathFollowerConfig& config,
-    const double desired_speed_mps) {
+    const bool local_position_valid, const OffboardPathFollowerConfig& config) {
   if (!local_position_valid) {
     return true;
   }
 
-  const double activation_distance_m =
-      std::max(4.0 * effectiveLookaheadDistanceM(config, desired_speed_mps),
-               config.max_setpoint_distance_m + config.acceptance_radius_m);
-  return distance(current_position, turn_waypoint) <= activation_distance_m;
+  return distance(current_position, turn_waypoint) <=
+         config.turn_slowdown_preview_distance_m;
 }
 
 } // namespace
-
-double effectiveLookaheadDistanceM(const OffboardPathFollowerConfig& config,
-                                   const double desired_speed_mps) noexcept {
-  double lookahead_m = config.lookahead_distance_m;
-  if (config.dynamic_lookahead_enabled) {
-    lookahead_m = std::max(lookahead_m,
-                           std::max(0.0, desired_speed_mps) * config.lookahead_time_s);
-  }
-  return std::clamp(lookahead_m, config.min_lookahead_distance_m,
-                    config.max_lookahead_distance_m);
-}
 
 std::size_t closestWaypointIndex(const std::span<const Point2> path,
                                  const Point2 current_position) {
@@ -55,40 +41,6 @@ std::size_t closestWaypointIndex(const std::span<const Point2> path,
     }
   }
   return closest_index;
-}
-
-std::size_t lookaheadWaypointIndex(const std::span<const Point2> path,
-                                   const Point2 current_position,
-                                   const Point2 mission_goal,
-                                   const OffboardPathFollowerConfig& config,
-                                   const double desired_speed_mps) {
-  (void)mission_goal;
-  if (path.empty() || !finite2D(current_position)) {
-    return 0U;
-  }
-
-  const double lookahead_distance =
-      effectiveLookaheadDistanceM(config, desired_speed_mps);
-  const auto projection = closestOffboardPathProjection(path, current_position);
-  if (!projection.has_value()) {
-    return closestWaypointIndex(path, current_position);
-  }
-
-  double remaining_lookahead_m = lookahead_distance;
-  Point2 segment_start = projection->point;
-  for (std::size_t i = projection->segment_start_index; i + 1U < path.size(); ++i) {
-    const Point2 segment_end = path[i + 1U];
-    const double segment_length_m = distance(segment_start, segment_end);
-    if (segment_length_m > kTinyDistanceM) {
-      if (remaining_lookahead_m <= segment_length_m) {
-        return i + 1U;
-      }
-      remaining_lookahead_m -= segment_length_m;
-    }
-    segment_start = segment_end;
-  }
-
-  return path.size() - 1U;
 }
 
 std::optional<OffboardPathProjection>
@@ -128,59 +80,6 @@ closestOffboardPathProjection(const std::span<const Point2> path,
   }
 
   return best;
-}
-
-Point2 lookaheadTargetOnPath(const std::span<const Point2> path,
-                             const Point2 current_position,
-                             const std::size_t waypoint_index,
-                             const OffboardPathFollowerConfig& config,
-                             const double desired_speed_mps) {
-  if (path.empty()) {
-    return current_position;
-  }
-  if (waypoint_index >= path.size()) {
-    return path.back();
-  }
-
-  return targetOnPathAtDistance(path, current_position,
-                                effectiveLookaheadDistanceM(config, desired_speed_mps),
-                                waypoint_index > 0U ? waypoint_index - 1U : 0U);
-}
-
-Point2 targetOnPathAtDistance(const std::span<const Point2> path,
-                              const Point2 current_position,
-                              const double path_distance_m,
-                              const std::size_t minimum_segment_start_index) {
-  if (path.empty()) {
-    return current_position;
-  }
-  if (path.size() == 1U) {
-    return path.front();
-  }
-
-  const auto projection = closestOffboardPathProjection(path, current_position,
-                                                        minimum_segment_start_index);
-  if (!projection.has_value()) {
-    return path.front();
-  }
-
-  double remaining_lookahead_m = std::max(0.0, path_distance_m);
-  Point2 segment_start = projection->point;
-  for (std::size_t i = projection->segment_start_index; i + 1U < path.size(); ++i) {
-    const Point2 segment_end = path[i + 1U];
-    const double segment_length_m = distance(segment_start, segment_end);
-    if (segment_length_m > kTinyDistanceM) {
-      if (remaining_lookahead_m <= segment_length_m) {
-        const double ratio = remaining_lookahead_m / segment_length_m;
-        return Point2{segment_start.x + (segment_end.x - segment_start.x) * ratio,
-                      segment_start.y + (segment_end.y - segment_start.y) * ratio};
-      }
-      remaining_lookahead_m -= segment_length_m;
-    }
-    segment_start = segment_end;
-  }
-
-  return path.back();
 }
 
 std::size_t continuityWaypointIndex(const std::span<const Point2> path,
@@ -245,29 +144,10 @@ std::size_t advanceWaypointIndex(const std::span<const Point2> path,
   return next_index;
 }
 
-Point2 limitedTarget(const Point2 target, const Point2 current_position,
-                     const bool local_position_valid,
-                     const double max_setpoint_distance_m) {
-  if (!local_position_valid) {
-    return target;
-  }
-
-  const double dx = target.x - current_position.x;
-  const double dy = target.y - current_position.y;
-  const double target_distance = std::hypot(dx, dy);
-  if (target_distance <= max_setpoint_distance_m || !(target_distance > 0.0)) {
-    return target;
-  }
-
-  const double scale = max_setpoint_distance_m / target_distance;
-  return Point2{current_position.x + dx * scale, current_position.y + dy * scale};
-}
-
 double pathTurnAngleAtWaypoint(const std::span<const Point2> path,
                                const std::size_t index, const Point2 current_position,
                                const bool local_position_valid,
-                               const OffboardPathFollowerConfig& config,
-                               const double desired_speed_mps) {
+                               const OffboardPathFollowerConfig& config) {
   if (path.size() < 3U || index >= path.size()) {
     return 0.0;
   }
@@ -276,8 +156,8 @@ double pathTurnAngleAtWaypoint(const std::span<const Point2> path,
                               ? current_position
                               : path[index == 0U ? 0U : index - 1U];
   const Point2 current = path[index];
-  if (!turnWaypointIsCloseEnoughForSlowdown(
-          current, current_position, local_position_valid, config, desired_speed_mps)) {
+  if (!turnWaypointIsCloseEnoughForSlowdown(current, current_position,
+                                            local_position_valid, config)) {
     return 0.0;
   }
   const Point2 next = path[std::min(index + 1U, path.size() - 1U)];

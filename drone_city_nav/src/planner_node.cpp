@@ -1181,9 +1181,9 @@ private:
     }
 
     const Point2 origin = path_points.front();
-    const double lookahead_x = origin.x + 20.0;
+    const double preview_x = origin.x + 20.0;
     for (const Point2 point : path_points) {
-      if (point.x > lookahead_x) {
+      if (point.x > preview_x) {
         break;
       }
       if (std::abs(point.y - origin.y) > max_initial_lateral_deviation_m_) {

@@ -75,7 +75,7 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp` - ROS-free
-  path lookahead, waypoint advancement, target continuity, and target smoothing.
+  waypoint advancement and target continuity.
 - `drone_city_nav/include/drone_city_nav/offboard_speed_controller.hpp` -
   portable speed-profile logic used by the offboard follower.
 - `drone_city_nav/include/drone_city_nav/debug_image.hpp` - small PPM debug image
@@ -125,7 +125,7 @@ kept in `drone_city_nav_core` and covered with deterministic unit tests:
   `planner_core`.
 - Current lidar hit marking lives in `current_lidar_overlay`; the node still
   prepares scan metadata and the attitude-compensated projection pose.
-- Offboard waypoint lookahead, target continuity, and command smoothing live in
+- Offboard waypoint advancement and target continuity live in
   `offboard_path_follower`; the PX4 node still owns arming/offboard commands and
   `TrajectorySetpoint` publication.
 - Lidar snapshot low-level drawing lives in `debug_image`; full snapshot
@@ -482,8 +482,10 @@ The main simulation parameters are:
   speed before point B.
 - `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - reduce speed
   before sharp path turns.
+- `turn_slowdown_preview_distance_m` - distance from a waypoint turn where turn
+  slowdown may start applying.
 - `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
-  target motion at the 10 Hz controller rate.
+  requested speed at the 10 Hz controller rate.
 - `commanded_target_hysteresis_m` - keeps the previous commanded target after a
   path update when the newly computed target is approximately equal and the
   previous target is still near the updated path.
@@ -560,11 +562,12 @@ make quality
 - Runtime logs include obstacle-memory update statistics and distance-to-start
   and distance-to-goal values in `planner_node`,
   `px4_offboard_node`, and `mission_monitor_node`.
-- The simulation offboard follower uses a short lookahead so obstacle-avoidance
-  waypoints are followed instead of being skipped by a direct-to-goal setpoint.
+- The simulation offboard follower commands path waypoints directly; it does not
+  synthesize intermediate path targets between waypoints.
 - The simulation offboard follower has explicit requested speed, acceleration,
-  goal/turn slowdown, and a hard per-tick target-step cap. Actual speed is still
-  ultimately limited by PX4 position-controller internals.
+  goal/turn slowdown, and a hard requested-speed cap derived from the configured
+  per-tick command distance. Actual speed is still ultimately limited by PX4
+  position-controller internals.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.

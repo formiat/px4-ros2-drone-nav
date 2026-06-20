@@ -11,90 +11,21 @@ namespace {
 [[nodiscard]] OffboardPathFollowerConfig testConfig() {
   OffboardPathFollowerConfig config{};
   config.acceptance_radius_m = 1.0;
-  config.lookahead_distance_m = 8.0;
-  config.lookahead_time_s = 1.0;
-  config.min_lookahead_distance_m = 8.0;
-  config.max_lookahead_distance_m = 20.0;
+  config.turn_slowdown_preview_distance_m = 32.0;
   config.path_switch_hysteresis_m = 2.0;
   config.path_continuity_reuse_radius_m = 5.0;
   config.path_continuity_max_target_distance_m = 30.0;
-  config.max_setpoint_distance_m = 4.0;
-  config.dynamic_lookahead_enabled = true;
   return config;
 }
 
 } // namespace
 
-TEST(OffboardPathFollower, EmptyPathHoldsCurrentPosition) {
-  const Point2 current{3.0, -2.0};
+TEST(OffboardPathFollower, ClosestWaypointReturnsNearestPathPoint) {
+  const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}};
 
-  const Point2 target =
-      lookaheadTargetOnPath(std::vector<Point2>{}, current, 0U, testConfig(), 5.0);
-
-  EXPECT_DOUBLE_EQ(target.x, current.x);
-  EXPECT_DOUBLE_EQ(target.y, current.y);
-}
-
-TEST(OffboardPathFollower, LookaheadSelectsForwardWaypointThatProgressesToGoal) {
-  const std::vector<Point2> path{{0.0, 0.0}, {4.0, 0.0}, {9.0, 0.0}, {15.0, 0.0}};
-
-  const std::size_t index = lookaheadWaypointIndex(
-      path, Point2{0.0, 0.0}, Point2{15.0, 0.0}, testConfig(), 5.0);
-
-  EXPECT_EQ(index, 2U);
-}
-
-TEST(OffboardPathFollower, LookaheadFollowsPathWhenDetourMovesAwayFromGoal) {
-  const std::vector<Point2> path{
-      {18.0, 18.0}, {18.0, 6.0}, {29.0, -1.0}, {72.0, 126.0}};
-
-  const std::size_t index = lookaheadWaypointIndex(
-      path, Point2{18.0, 18.0}, Point2{72.0, 126.0}, testConfig(), 5.0);
+  const std::size_t index = closestWaypointIndex(path, Point2{4.8, 0.3});
 
   EXPECT_EQ(index, 1U);
-}
-
-TEST(OffboardPathFollower, TargetAtDistanceFollowsPolylineAroundCorner) {
-  const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {5.0, 5.0}};
-
-  const Point2 target = targetOnPathAtDistance(path, Point2{0.0, 0.0}, 7.0);
-
-  EXPECT_NEAR(target.x, 5.0, 1.0e-9);
-  EXPECT_NEAR(target.y, 2.0, 1.0e-9);
-}
-
-TEST(OffboardPathFollower, TargetAtDistanceStartsFromClosestProjection) {
-  const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
-
-  const Point2 target = targetOnPathAtDistance(path, Point2{4.0, 1.0}, 3.0);
-
-  EXPECT_NEAR(target.x, 7.0, 1.0e-9);
-  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
-}
-
-TEST(OffboardPathFollower, TargetAtDistanceRespectsMinimumSegmentOnLoopedPath) {
-  const std::vector<Point2> path{{0.0, 0.0},  {10.0, 0.0}, {10.0, 10.0},
-                                 {0.0, 10.0}, {0.0, 0.0},  {0.0, -10.0}};
-
-  const Point2 target = targetOnPathAtDistance(path, Point2{0.2, 0.1}, 5.0, 4U);
-
-  EXPECT_NEAR(target.x, 0.0, 1.0e-9);
-  EXPECT_NEAR(target.y, -5.0, 1.0e-9);
-}
-
-TEST(OffboardPathFollower, LookaheadTargetUsesWaypointAsProjectionLowerBound) {
-  OffboardPathFollowerConfig config = testConfig();
-  config.lookahead_distance_m = 5.0;
-  config.min_lookahead_distance_m = 5.0;
-  config.max_lookahead_distance_m = 5.0;
-  config.dynamic_lookahead_enabled = false;
-  const std::vector<Point2> path{{0.0, 0.0},  {10.0, 0.0}, {10.0, 10.0},
-                                 {0.0, 10.0}, {0.0, 0.0},  {0.0, -10.0}};
-
-  const Point2 target = lookaheadTargetOnPath(path, Point2{0.2, 0.1}, 4U, config, 5.0);
-
-  EXPECT_NEAR(target.x, 0.0, 1.0e-9);
-  EXPECT_NEAR(target.y, -4.9, 1.0e-9);
 }
 
 TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
@@ -115,29 +46,33 @@ TEST(OffboardPathFollower, AdvancesWaypointAfterAcceptanceRadius) {
   EXPECT_EQ(index, 2U);
 }
 
-TEST(OffboardPathFollower, ClampsTargetToMaxSetpointDistance) {
-  const Point2 target = limitedTarget(Point2{10.0, 0.0}, Point2{0.0, 0.0}, true, 4.0);
-
-  EXPECT_NEAR(target.x, 4.0, 1.0e-9);
-  EXPECT_NEAR(target.y, 0.0, 1.0e-9);
-}
-
 TEST(OffboardPathFollower, PathTurnAngleUsesNearbyWaypoint) {
   const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {5.0, 5.0}};
 
   const double angle =
-      pathTurnAngleAtWaypoint(path, 1U, Point2{4.0, 0.0}, true, testConfig(), 5.0);
+      pathTurnAngleAtWaypoint(path, 1U, Point2{4.0, 0.0}, true, testConfig());
 
   EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
 }
 
-TEST(OffboardPathFollower, PathTurnAngleUsesUpcomingWaypointEarly) {
+TEST(OffboardPathFollower, PathTurnAngleUsesConfiguredPreviewDistance) {
   const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
 
   const double angle =
-      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, testConfig(), 5.0);
+      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, testConfig());
 
   EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
+}
+
+TEST(OffboardPathFollower, PathTurnAngleIgnoresDistantWaypointOutsidePreview) {
+  OffboardPathFollowerConfig config = testConfig();
+  config.turn_slowdown_preview_distance_m = 10.0;
+  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
+
+  const double angle =
+      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, config);
+
+  EXPECT_DOUBLE_EQ(angle, 0.0);
 }
 
 } // namespace drone_city_nav

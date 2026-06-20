@@ -133,13 +133,8 @@ public:
         std::clamp(declare_parameter<double>("takeoff_hover_s", 2.0), 0.0, 30.0);
     face_target_yaw_ = declare_parameter<bool>("face_target_yaw", false);
     acceptance_radius_m_ = declare_parameter<double>("acceptance_radius_m", 1.5);
-    max_setpoint_distance_m_ = std::clamp(
-        declare_parameter<double>("max_setpoint_distance_m", 2.0), 0.5, 50.0);
     max_commanded_target_step_m_ = std::clamp(
         declare_parameter<double>("max_commanded_target_step_m", 0.25), 0.01, 10.0);
-    min_commanded_target_lead_m_ =
-        std::clamp(declare_parameter<double>("min_commanded_target_lead_m", 0.0), 0.0,
-                   max_setpoint_distance_m_);
     SpeedControllerConfig speed_config{};
     speed_config.max_commanded_target_step_m = max_commanded_target_step_m_;
     speed_config.desired_speed_mps = std::clamp(
@@ -160,6 +155,9 @@ public:
                    std::numbers::pi);
     speed_config.turn_slowdown_min_speed_mps = std::clamp(
         declare_parameter<double>("turn_slowdown_min_speed_mps", 1.5), 0.0, 50.0);
+    turn_slowdown_preview_distance_m_ =
+        std::clamp(declare_parameter<double>("turn_slowdown_preview_distance_m", 32.0),
+                   0.0, 500.0);
     speed_config.tracking_overspeed_limit_enabled =
         declare_parameter<bool>("tracking_overspeed_limit_enabled", false);
     speed_config.tracking_overspeed_limit_mps =
@@ -178,21 +176,6 @@ public:
         boundedFiniteDouble(declare_parameter<double>("max_pose_staleness_s", 1.0), 1.0,
                             0.0, 3600.0) *
         1.0e9);
-    lookahead_distance_m_ =
-        std::clamp(declare_parameter<double>("lookahead_distance_m", 6.0), 0.0, 50.0);
-    dynamic_lookahead_enabled_ =
-        declare_parameter<bool>("dynamic_lookahead_enabled", true);
-    lookahead_time_s_ =
-        std::clamp(declare_parameter<double>("lookahead_time_s", 1.2), 0.0, 10.0);
-    min_lookahead_distance_m_ = std::clamp(
-        declare_parameter<double>("min_lookahead_distance_m", lookahead_distance_m_),
-        0.0, 50.0);
-    max_lookahead_distance_m_ = std::clamp(
-        declare_parameter<double>("max_lookahead_distance_m", lookahead_distance_m_),
-        0.0, 100.0);
-    if (max_lookahead_distance_m_ < min_lookahead_distance_m_) {
-      max_lookahead_distance_m_ = min_lookahead_distance_m_;
-    }
     path_switch_hysteresis_m_ = std::clamp(
         declare_parameter<double>("path_switch_hysteresis_m", 3.0), 0.0, 100.0);
     path_continuity_reuse_radius_m_ = std::clamp(
@@ -308,11 +291,9 @@ public:
         "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
         "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
         "takeoff_hover=%.1fs "
-        "max_setpoint_distance=%.1fm commanded_target_step=%.2fm "
-        "min_commanded_target_lead=%.1fm "
-        "desired_speed=%.2fmps max_accel=%.2fmps2 lookahead=%.1fm "
-        "dynamic_lookahead=%s lookahead_time=%.2fs "
-        "lookahead_range=[%.1f, %.1f] "
+        "commanded_target_step=%.2fm "
+        "desired_speed=%.2fmps max_accel=%.2fmps2 "
+        "turn_slowdown_preview_distance=%.1fm "
         "goal_slowdown_radius=%.1fm turn_slowdown_angle=%.2frad "
         "tracking_overspeed_limit=%s tracking_overspeed_limit_mps=%.2f "
         "velocity_feedforward=%s "
@@ -324,12 +305,9 @@ public:
         "max_pose_staleness=%.2fs command_resend_period=%.2fs",
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
-        face_target_yaw_ ? "true" : "false", takeoff_hover_s_, max_setpoint_distance_m_,
-        max_commanded_target_step_m_, min_commanded_target_lead_m_,
-        speed_controller_.config().desired_speed_mps,
-        speed_controller_.config().max_accel_mps2, lookahead_distance_m_,
-        dynamic_lookahead_enabled_ ? "true" : "false", lookahead_time_s_,
-        min_lookahead_distance_m_, max_lookahead_distance_m_,
+        face_target_yaw_ ? "true" : "false", takeoff_hover_s_,
+        max_commanded_target_step_m_, speed_controller_.config().desired_speed_mps,
+        speed_controller_.config().max_accel_mps2, turn_slowdown_preview_distance_m_,
         speed_controller_.config().goal_slowdown_radius_m,
         speed_controller_.config().turn_slowdown_angle_rad,
         speed_controller_.config().tracking_overspeed_limit_enabled ? "true" : "false",
@@ -363,16 +341,10 @@ private:
   }
 
   [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const {
-    return OffboardPathFollowerConfig{acceptance_radius_m_,
-                                      lookahead_distance_m_,
-                                      lookahead_time_s_,
-                                      min_lookahead_distance_m_,
-                                      max_lookahead_distance_m_,
-                                      path_switch_hysteresis_m_,
-                                      path_continuity_reuse_radius_m_,
-                                      path_continuity_max_target_distance_m_,
-                                      max_setpoint_distance_m_,
-                                      dynamic_lookahead_enabled_};
+    return OffboardPathFollowerConfig{
+        acceptance_radius_m_, turn_slowdown_preview_distance_m_,
+        path_switch_hysteresis_m_, path_continuity_reuse_radius_m_,
+        path_continuity_max_target_distance_m_};
   }
 
   [[nodiscard]] Point2 activePathTargetForContinuity() const {
@@ -433,7 +405,11 @@ private:
     }
 
     no_path_hold_target_valid_ = false;
-    const std::size_t candidate_index = lookaheadWaypointIndex();
+    const std::size_t candidate_index =
+        localPositionFresh()
+            ? drone_city_nav::advanceWaypointIndex(path_points_, current_position_, 0U,
+                                                   pathFollowerConfig())
+            : 0U;
     waypoint_index_ =
         continuityWaypointIndex(previous_target, candidate_index, had_active_target);
     path_update_target_hysteresis_pending_ =
@@ -510,32 +486,12 @@ private:
     return drone_city_nav::closestWaypointIndex(path_points_, current_position_);
   }
 
-  [[nodiscard]] std::size_t lookaheadWaypointIndex() const {
-    if (!localPositionFresh() || path_points_.empty()) {
-      return 0U;
-    }
-    return drone_city_nav::lookaheadWaypointIndex(
-        path_points_, current_position_, mission_goal_, pathFollowerConfig(),
-        speed_controller_.config().desired_speed_mps);
-  }
-
-  [[nodiscard]] double effectiveLookaheadDistanceM() const {
-    return drone_city_nav::effectiveLookaheadDistanceM(
-        pathFollowerConfig(), speed_controller_.config().desired_speed_mps);
-  }
-
   [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
     if (!localPositionFresh() || path_points_.empty()) {
       return std::nullopt;
     }
     return drone_city_nav::closestOffboardPathProjection(path_points_,
                                                          current_position_);
-  }
-
-  [[nodiscard]] Point2 lookaheadTargetOnPath() const {
-    return drone_city_nav::lookaheadTargetOnPath(
-        path_points_, current_position_, waypoint_index_, pathFollowerConfig(),
-        speed_controller_.config().desired_speed_mps);
   }
 
   [[nodiscard]] std::size_t
@@ -772,10 +728,11 @@ private:
 
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
-    const Point2 desired_target = limitedTarget(currentTarget());
+    const Point2 desired_target = currentTarget();
     const SpeedControllerInput speed_input = makeSpeedControllerInput();
     last_speed_output_ = speed_controller_.update(speed_input);
-    const Point2 proposed_target = selectSafeCommandTarget(desired_target, speed_input);
+    const Point2 proposed_target =
+        selectCommandTarget(desired_target, speed_input.hold_position);
     const Point2 target = applyPathUpdateTargetHysteresis(
         proposed_target, previous_target, had_previous_target);
     commanded_target_ = target;
@@ -852,7 +809,7 @@ private:
     }
 
     if (localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size()) {
-      return lookaheadTargetOnPath();
+      return path_points_[waypoint_index_];
     }
 
     if (no_path_hold_target_valid_) {
@@ -866,33 +823,8 @@ private:
     return Point2{hold_x_m_, hold_y_m_};
   }
 
-  [[nodiscard]] Point2 limitedTarget(const Point2 target) const {
-    return drone_city_nav::limitedTarget(
-        target, current_position_, local_position_valid_, max_setpoint_distance_m_);
-  }
-
-  [[nodiscard]] Point2 pathTargetAtDistance(const double path_distance_m,
-                                            const Point2 fallback_target) const {
-    if (!path_valid_ || path_points_.empty() || !localPositionFresh()) {
-      return fallback_target;
-    }
-    return targetOnPathAtDistance(path_points_, current_position_, path_distance_m,
-                                  waypoint_index_ > 0U ? waypoint_index_ - 1U : 0U);
-  }
-
-  [[nodiscard]] Point2 selectCommandTargetAtLead(const double requested_lead_m,
-                                                 const Point2 fallback_target) const {
-    const double bounded_lead_m =
-        std::clamp(requested_lead_m, 0.0, max_setpoint_distance_m_);
-    if (!(bounded_lead_m > 0.0) || !localPositionFresh()) {
-      return current_position_;
-    }
-    return pathTargetAtDistance(bounded_lead_m, fallback_target);
-  }
-
-  [[nodiscard]] Point2
-  selectSafeCommandTarget(const Point2 desired_target,
-                          const SpeedControllerInput& speed_input) {
+  [[nodiscard]] Point2 selectCommandTarget(const Point2 desired_target,
+                                           const bool hold_position) {
     if (!local_position_valid_) {
       return desired_target;
     }
@@ -906,21 +838,11 @@ private:
           current_position_.y);
       return current_position_;
     }
-    if (speed_input.hold_position) {
+    if (hold_position) {
       return current_position_;
     }
 
-    double requested_lead_m = 0.0;
-    if (last_speed_output_.requested_speed_mps > 0.0) {
-      requested_lead_m =
-          std::max(last_speed_output_.target_step_m,
-                   effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps));
-    }
-
-    if (!(requested_lead_m > 0.0)) {
-      return current_position_;
-    }
-    return selectCommandTargetAtLead(requested_lead_m, desired_target);
+    return desired_target;
   }
 
   [[nodiscard]] Point2 applyPathUpdateTargetHysteresis(const Point2 proposed_target,
@@ -1006,8 +928,7 @@ private:
       return 0.0;
     }
     return drone_city_nav::pathTurnAngleAtWaypoint(
-        path_points_, index, current_position_, true, pathFollowerConfig(),
-        speed_controller_.config().desired_speed_mps);
+        path_points_, index, current_position_, true, pathFollowerConfig());
   }
 
   [[nodiscard]] const char* pathSegmentTypeName(const double turn_angle_rad) const {
@@ -1257,29 +1178,6 @@ private:
     last_commanded_yaw_rad_ = commanded_yaw_rad;
   }
 
-  Point2 clampCommandedTargetToCurrent() {
-    if (!local_position_valid_) {
-      return commanded_target_;
-    }
-
-    const double target_distance = distance(current_position_, commanded_target_);
-    if (target_distance <= max_setpoint_distance_m_ || !(target_distance > 0.0)) {
-      return commanded_target_;
-    }
-
-    const double scale = max_setpoint_distance_m_ / target_distance;
-    commanded_target_ = Point2{
-        current_position_.x + (commanded_target_.x - current_position_.x) * scale,
-        current_position_.y + (commanded_target_.y - current_position_.y) * scale};
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Clamped commanded target to current position radius: distance=%.2f "
-        "limit=%.2f target=(%.2f, %.2f)",
-        target_distance, max_setpoint_distance_m_, commanded_target_.x,
-        commanded_target_.y);
-    return commanded_target_;
-  }
-
   [[nodiscard]] double targetYaw(const Point2 target) const {
     if (!localPositionFresh()) {
       return current_heading_rad_;
@@ -1296,19 +1194,6 @@ private:
 
   [[nodiscard]] Point2 mapToPx4Local(const Point2 point) const noexcept {
     return Point2{point.x - px4_local_origin_.x, point.y - px4_local_origin_.y};
-  }
-
-  [[nodiscard]] double
-  effectiveMinimumTargetLeadM(const double requested_speed_mps) const noexcept {
-    const double desired_speed_mps = speed_controller_.config().desired_speed_mps;
-    if (!std::isfinite(requested_speed_mps) || requested_speed_mps <= 0.0 ||
-        !std::isfinite(desired_speed_mps) || desired_speed_mps <= 0.0) {
-      return 0.0;
-    }
-
-    const double speed_ratio =
-        std::clamp(requested_speed_mps / desired_speed_mps, 0.0, 1.0);
-    return min_commanded_target_lead_m_ * speed_ratio;
   }
 
   void updateNavigationStartState() {
@@ -1400,8 +1285,8 @@ private:
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f requested_speed=%.2f actual_speed=%.2f "
         "speed_limit_reason=%s allowed_speed=%.2f braking_distance=%.2f "
-        "target_step=%.2f effective_lookahead=%.2f turn_angle=%.2f "
-        "local_clearance=%.2f effective_min_lead=%.2f "
+        "target_step=%.2f turn_angle=%.2f "
+        "local_clearance=%.2f "
         "speed_limits[goal=%.2f turn=%.2f step=%.2f tracking=%.2f]",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
@@ -1415,9 +1300,7 @@ private:
         last_speed_output_.requested_speed_mps, current_speed_mps_,
         speedLimitReasonName(last_speed_output_.limit_reason),
         last_speed_output_.allowed_speed_mps, last_speed_output_.braking_distance_m,
-        last_speed_output_.target_step_m, effectiveLookaheadDistanceM(), turn_angle_rad,
-        local_clearance_m,
-        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
+        last_speed_output_.target_step_m, turn_angle_rad, local_clearance_m,
         last_speed_output_.limits.goal_limit_mps,
         last_speed_output_.limits.turn_limit_mps,
         last_speed_output_.limits.step_cap_limit_mps,
@@ -1470,7 +1353,6 @@ private:
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
         "path_segment=%s speed_limit_reason=%s local_clearance=%.2f "
-        "effective_min_lead=%.2f "
         "speed_limits[goal=%.2f turn=%.2f step=%.2f tracking=%.2f]",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, current_heading_rad_,
@@ -1484,7 +1366,6 @@ private:
         motionPhaseName(last_speed_output_.limit_reason, hold_position),
         pathSegmentTypeName(turn_angle_rad),
         speedLimitReasonName(last_speed_output_.limit_reason), local_clearance_m,
-        effectiveMinimumTargetLeadM(last_speed_output_.requested_speed_mps),
         last_speed_output_.limits.goal_limit_mps,
         last_speed_output_.limits.turn_limit_mps,
         last_speed_output_.limits.step_cap_limit_mps,
@@ -1686,7 +1567,7 @@ private:
     if (commanded_target_valid_) {
       return commanded_target_;
     }
-    return limitedTarget(currentTarget());
+    return currentTarget();
   }
 
   nav_msgs::msg::OccupancyGrid prohibited_grid_;
@@ -1707,13 +1588,8 @@ private:
   double min_navigation_altitude_m_{0.0};
   double takeoff_hover_s_{2.0};
   double acceptance_radius_m_{1.5};
-  double max_setpoint_distance_m_{2.0};
   double max_commanded_target_step_m_{0.25};
-  double min_commanded_target_lead_m_{0.0};
-  double lookahead_distance_m_{6.0};
-  double lookahead_time_s_{1.2};
-  double min_lookahead_distance_m_{6.0};
-  double max_lookahead_distance_m_{6.0};
+  double turn_slowdown_preview_distance_m_{32.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
@@ -1763,7 +1639,6 @@ private:
   bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
   bool velocity_feedforward_enabled_{false};
-  bool dynamic_lookahead_enabled_{true};
   bool latest_planner_path_id_seen_{false};
   bool flight_blackbox_enabled_{true};
   bool path_update_target_hysteresis_pending_{false};
