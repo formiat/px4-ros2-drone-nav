@@ -134,6 +134,16 @@ class UploadResult:
         return UploadResult(False, "TIMEOUT", message)
 
 
+@dataclass(frozen=True)
+class MissionUploadPlan:
+    mission_points: list[Point2]
+    anchor_skipped: bool
+    anchor_distance_m: float | None = None
+    anchor_altitude_delta_m: float | None = None
+    anchor_altitude_ready: bool | None = None
+    skipped_anchor: Point2 | None = None
+
+
 def map_to_px4_local(point: Point2, config: MissionBackendConfig) -> Point2:
     return Point2(
         point.x - config.px4_local_origin_x_m,
@@ -658,6 +668,46 @@ def path_requires_home_resolution(path_points: list[Point2]) -> bool:
     return bool(path_points)
 
 
+def prepare_mission_upload_plan(
+    path_points: list[Point2],
+    telemetry: VehicleTelemetry | None,
+    *,
+    reuploading_after_success: bool,
+    acceptance_radius_m: float,
+    cruise_altitude_m: float,
+) -> MissionUploadPlan:
+    if not reuploading_after_success or len(path_points) <= 1 or telemetry is None:
+        return MissionUploadPlan(list(path_points), False)
+
+    anchor_distance_m = distance_2d(telemetry.position, path_points[0])
+    anchor_altitude_delta_m = (
+        abs(telemetry.altitude_m - cruise_altitude_m)
+        if telemetry.altitude_m is not None
+        else None
+    )
+    anchor_altitude_ready = (
+        anchor_altitude_delta_m is not None
+        and anchor_altitude_delta_m <= max(0.0, acceptance_radius_m)
+    )
+    if anchor_distance_m > max(0.0, acceptance_radius_m) or not anchor_altitude_ready:
+        return MissionUploadPlan(
+            list(path_points),
+            False,
+            anchor_distance_m=anchor_distance_m,
+            anchor_altitude_delta_m=anchor_altitude_delta_m,
+            anchor_altitude_ready=anchor_altitude_ready,
+        )
+
+    return MissionUploadPlan(
+        list(path_points[1:]),
+        True,
+        anchor_distance_m=anchor_distance_m,
+        anchor_altitude_delta_m=anchor_altitude_delta_m,
+        anchor_altitude_ready=anchor_altitude_ready,
+        skipped_anchor=path_points[0],
+    )
+
+
 class MissionBackendCore:
     def __init__(
         self,
@@ -740,7 +790,40 @@ class MissionBackendCore:
             )
             return result
 
-        mission_points = list(path_points)
+        with self._lock:
+            telemetry = self.vehicle_telemetry
+        upload_plan = prepare_mission_upload_plan(
+            path_points,
+            telemetry,
+            reuploading_after_success=reuploading_after_success,
+            acceptance_radius_m=self.config.acceptance_radius_m,
+            cruise_altitude_m=self.config.cruise_altitude_m,
+        )
+        mission_points = upload_plan.mission_points
+        if reuploading_after_success:
+            anchor_distance = (
+                f"{upload_plan.anchor_distance_m:.2f}"
+                if upload_plan.anchor_distance_m is not None
+                else "nan"
+            )
+            anchor_altitude_delta = (
+                f"{upload_plan.anchor_altitude_delta_m:.2f}"
+                if upload_plan.anchor_altitude_delta_m is not None
+                else "nan"
+            )
+            self.logger(
+                "MISSION_BACKEND mission_anchor_check "
+                f"path_id={path_id} "
+                f"telemetry_available={str(telemetry is not None).lower()} "
+                f"anchor_distance_m={anchor_distance} "
+                f"anchor_altitude_delta_m={anchor_altitude_delta} "
+                f"anchor_altitude_ready="
+                f"{str(upload_plan.anchor_altitude_ready).lower()} "
+                f"acceptance_radius_m={self.config.acceptance_radius_m:.2f} "
+                f"anchor_skipped={str(upload_plan.anchor_skipped).lower()} "
+                f"planner_waypoints={len(path_points)} "
+                f"mission_waypoints={len(mission_points)}"
+            )
         items = build_mission_items(mission_points, home, self.config)
         try:
             self.client.set_mission_speed_parameters()
@@ -788,6 +871,7 @@ class MissionBackendCore:
             home_resolution=home_resolution,
             upload_duration_s=upload_duration_s,
             reuploading_after_success=reuploading_after_success,
+            mission_upload_plan=upload_plan,
         )
         if not result.success:
             return result
@@ -809,6 +893,7 @@ class MissionBackendCore:
                 mission_points=mission_points,
                 path_metadata=metadata,
                 home_resolution=home_resolution,
+                mission_upload_plan=upload_plan,
             )
             return skipped
 
@@ -835,6 +920,7 @@ class MissionBackendCore:
                     mission_points=mission_points,
                     path_metadata=metadata,
                     home_resolution=home_resolution,
+                    mission_upload_plan=upload_plan,
                 )
                 return skipped
             self.logger(
@@ -858,6 +944,7 @@ class MissionBackendCore:
                     mission_points=mission_points,
                     path_metadata=metadata,
                     home_resolution=home_resolution,
+                    mission_upload_plan=upload_plan,
                 )
                 return skipped
             self.logger(f"MISSION_BACKEND arm_command path_id={path_id}")
@@ -984,6 +1071,7 @@ class MissionBackendCore:
         home_resolution: HomePositionResolution | None = None,
         upload_duration_s: float | None = None,
         reuploading_after_success: bool | None = None,
+        mission_upload_plan: MissionUploadPlan | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "event": event,
@@ -1027,6 +1115,25 @@ class MissionBackendCore:
             payload["upload_duration_s"] = upload_duration_s
         if reuploading_after_success is not None:
             payload["reuploading_after_success"] = reuploading_after_success
+        if mission_upload_plan is not None:
+            payload["mission_anchor_skipped"] = mission_upload_plan.anchor_skipped
+            payload["mission_anchor_distance_m"] = (
+                mission_upload_plan.anchor_distance_m
+            )
+            payload["mission_anchor_altitude_delta_m"] = (
+                mission_upload_plan.anchor_altitude_delta_m
+            )
+            payload["mission_anchor_altitude_ready"] = (
+                mission_upload_plan.anchor_altitude_ready
+            )
+            payload["mission_anchor_acceptance_radius_m"] = (
+                self.config.acceptance_radius_m
+            )
+            payload["mission_skipped_anchor_map"] = (
+                point_to_dict(mission_upload_plan.skipped_anchor)
+                if mission_upload_plan.skipped_anchor is not None
+                else None
+            )
         if path_points is not None:
             payload["planner_path_points_map"] = path_points_to_dicts(path_points)
             payload["planner_path_metrics"] = path_segment_metrics(path_points)

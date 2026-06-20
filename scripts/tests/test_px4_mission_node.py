@@ -185,6 +185,105 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(0, metrics["segments_shorter_than_5m"])
         self.assertEqual(2, metrics["segments_shorter_than_10m"])
 
+    def test_reupload_anchor_is_skipped_when_vehicle_is_already_there(self) -> None:
+        points = [
+            mission_node.Point2(30.0, 70.0),
+            mission_node.Point2(30.5, 100.0),
+            mission_node.Point2(50.0, 120.0),
+        ]
+        telemetry = mission_node.VehicleTelemetry(
+            position=mission_node.Point2(30.2, 69.9),
+            altitude_m=18.0,
+        )
+
+        plan = mission_node.prepare_mission_upload_plan(
+            points,
+            telemetry,
+            reuploading_after_success=True,
+            acceptance_radius_m=1.0,
+            cruise_altitude_m=18.0,
+        )
+
+        self.assertTrue(plan.anchor_skipped)
+        self.assertAlmostEqual(0.224, plan.anchor_distance_m, places=3)
+        self.assertEqual(0.0, plan.anchor_altitude_delta_m)
+        self.assertTrue(plan.anchor_altitude_ready)
+        self.assertEqual(points[0], plan.skipped_anchor)
+        self.assertEqual(points[1:], plan.mission_points)
+
+    def test_reupload_anchor_is_kept_when_vehicle_is_far_from_first_point(self) -> None:
+        points = [
+            mission_node.Point2(30.0, 70.0),
+            mission_node.Point2(30.5, 100.0),
+        ]
+        telemetry = mission_node.VehicleTelemetry(
+            position=mission_node.Point2(30.0, 65.0),
+            altitude_m=18.0,
+        )
+
+        plan = mission_node.prepare_mission_upload_plan(
+            points,
+            telemetry,
+            reuploading_after_success=True,
+            acceptance_radius_m=1.0,
+            cruise_altitude_m=18.0,
+        )
+
+        self.assertFalse(plan.anchor_skipped)
+        self.assertEqual(5.0, plan.anchor_distance_m)
+        self.assertEqual(0.0, plan.anchor_altitude_delta_m)
+        self.assertTrue(plan.anchor_altitude_ready)
+        self.assertIsNone(plan.skipped_anchor)
+        self.assertEqual(points, plan.mission_points)
+
+    def test_reupload_anchor_is_kept_until_vehicle_reaches_cruise_altitude(self) -> None:
+        points = [
+            mission_node.Point2(30.0, 70.0),
+            mission_node.Point2(30.5, 100.0),
+        ]
+        telemetry = mission_node.VehicleTelemetry(
+            position=mission_node.Point2(30.2, 69.9),
+            altitude_m=4.0,
+        )
+
+        plan = mission_node.prepare_mission_upload_plan(
+            points,
+            telemetry,
+            reuploading_after_success=True,
+            acceptance_radius_m=1.0,
+            cruise_altitude_m=18.0,
+        )
+
+        self.assertFalse(plan.anchor_skipped)
+        self.assertAlmostEqual(0.224, plan.anchor_distance_m, places=3)
+        self.assertEqual(14.0, plan.anchor_altitude_delta_m)
+        self.assertFalse(plan.anchor_altitude_ready)
+        self.assertEqual(points, plan.mission_points)
+
+    def test_initial_upload_keeps_anchor_even_when_vehicle_is_near_first_point(
+        self,
+    ) -> None:
+        points = [
+            mission_node.Point2(27.0, 27.0),
+            mission_node.Point2(31.0, 90.0),
+        ]
+        telemetry = mission_node.VehicleTelemetry(
+            position=mission_node.Point2(27.1, 27.1),
+            altitude_m=0.0,
+        )
+
+        plan = mission_node.prepare_mission_upload_plan(
+            points,
+            telemetry,
+            reuploading_after_success=False,
+            acceptance_radius_m=1.0,
+            cruise_altitude_m=18.0,
+        )
+
+        self.assertFalse(plan.anchor_skipped)
+        self.assertIsNone(plan.anchor_distance_m)
+        self.assertEqual(points, plan.mission_points)
+
     def test_upload_uses_planner_waypoints_without_extra_intermediate_points(self) -> None:
         client = FakeMissionClient()
         logs: list[str] = []
@@ -210,6 +309,72 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertTrue(any("mission_cruise_speed_mps=20.00" in line for line in logs))
         self.assertTrue(any("mission_max_speed_mps=25.00" in line for line in logs))
         self.assertFalse(any("mission_waypoints=" in line for line in logs))
+
+    def test_reupload_drops_reached_anchor_before_uploading_mission_items(self) -> None:
+        client = FakeMissionClient()
+        blackbox = CapturingBlackbox()
+        logs: list[str] = []
+        core = mission_node.MissionBackendCore(
+            self.make_config(
+                px4_local_origin_x_m=0.0,
+                px4_local_origin_y_m=0.0,
+            ),
+            client,
+            logger=logs.append,
+            blackbox=blackbox,
+        )
+        home = mission_node.HomePosition(47.0, 8.0)
+        initial_points = [
+            mission_node.Point2(0.0, 0.0),
+            mission_node.Point2(20.0, 0.0),
+        ]
+        replan_points = [
+            mission_node.Point2(19.9, 0.2),
+            mission_node.Point2(30.0, 0.0),
+            mission_node.Point2(40.0, 10.0),
+        ]
+
+        first_upload = core.handle_path_points(initial_points, 21, home)
+        self.assertTrue(first_upload.success)
+        core.update_vehicle_telemetry(
+            mission_node.VehicleTelemetry(
+                position=mission_node.Point2(20.0, 0.0),
+                altitude_m=18.0,
+            )
+        )
+        reupload = core.handle_path_points(replan_points, 22, home)
+
+        self.assertTrue(reupload.success)
+        self.assertEqual(2, len(client.uploaded_items))
+        self.assertEqual([0, 1], [item.seq for item in client.uploaded_items])
+        self.assertEqual(1, client.uploaded_items[0].current)
+        self.assertEqual(0, client.uploaded_items[1].current)
+        self.assertTrue(
+            any(
+                "mission_anchor_check" in line and "anchor_skipped=true" in line
+                for line in logs
+            )
+        )
+        upload_events = [
+            event
+            for event in blackbox.events
+            if event["event"] == "upload_result" and event["path_id"] == 22
+        ]
+        self.assertEqual(1, len(upload_events))
+        event = upload_events[0]
+        self.assertTrue(event["mission_anchor_skipped"])
+        self.assertLess(event["mission_anchor_distance_m"], 1.25)
+        self.assertLess(event["mission_anchor_altitude_delta_m"], 1.25)
+        self.assertTrue(event["mission_anchor_altitude_ready"])
+        self.assertEqual(
+            [{"x": 19.9, "y": 0.2}, {"x": 30.0, "y": 0.0}, {"x": 40.0, "y": 10.0}],
+            event["planner_path_points_map"],
+        )
+        self.assertEqual(
+            [{"x": 30.0, "y": 0.0}, {"x": 40.0, "y": 10.0}],
+            event["mission_points_map"],
+        )
+        self.assertEqual({"x": 19.9, "y": 0.2}, event["mission_skipped_anchor_map"])
 
     def test_empty_path_is_logged_and_not_uploaded(self) -> None:
         client = FakeMissionClient()
@@ -526,6 +691,11 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(9, event["latest_planner_path_id"])
         self.assertIn("upload_duration_s", event)
         self.assertFalse(event["reuploading_after_success"])
+        self.assertFalse(event["mission_anchor_skipped"])
+        self.assertIsNone(event["mission_anchor_distance_m"])
+        self.assertIsNone(event["mission_anchor_altitude_delta_m"])
+        self.assertIsNone(event["mission_anchor_altitude_ready"])
+        self.assertIsNone(event["mission_skipped_anchor_map"])
         self.assertEqual(20.0, event["mission_cruise_speed_mps"])
         self.assertEqual(25.0, event["mission_max_speed_mps"])
         self.assertEqual(1, event["planner_path_metrics"]["waypoints"])
