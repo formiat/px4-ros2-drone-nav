@@ -109,12 +109,20 @@ Notion policy в inbox указан как `optional`, а промпт не со
   рекомендуемый файл: `scripts/tests/test_px4_mission_node.py`.
 - `scripts/validate_city_mvp_headless.py:26` и
   `scripts/validate_city_mvp_headless.py:232` - backend-aware validation.
+- `drone_city_nav/src/mission_monitor_node.cpp:160` и
+  `drone_city_nav/src/mission_monitor_node.cpp:356` - существующий producer
+  `/drone_city_nav/emergency_stop`, который должен оставаться рабочим для обоих
+  backend'ов.
+- `drone_city_nav/src/px4_offboard_node.cpp:261` и
+  `drone_city_nav/src/px4_offboard_node.cpp:700` - текущий Offboard consumer
+  emergency stop; Mission backend должен получить функционально эквивалентный
+  consumer через MAVLink.
 - `scripts/tests/test_run_city_mvp_launch_contract.py:13` - contract tests для env
   и launch args.
 - `scripts/tests/test_validate_city_mvp_headless.py:27` - log validator tests для
-  Offboard и Mission markers.
+  Offboard, Mission и Mission emergency-stop markers.
 - `docs/MVP_SIMULATION.md:138` и `docs/MVP_SIMULATION.md:473` - документация по
-  двум backend'ам и headless diagnostics.
+  двум backend'ам, headless diagnostics и цепочке emergency stop.
 
 # Implementation steps
 
@@ -205,11 +213,16 @@ Notion policy в inbox указан как `optional`, а промпт не со
    - Не публикует `TrajectorySetpoint` и `OffboardControlMode`.
    - Не содержит sharp-turn hold, target-switch hold или другую Offboard-specific
      waypoint timing логику.
+   - Сохраняет safety stop contract: подписывается на
+     `/drone_city_nav/emergency_stop` и при `std_msgs/Bool(data=true)` отправляет
+     MAVLink disarm/stop-safe action. Это не является Offboard waypoint timing
+     логикой и обязательно для parity с текущим Offboard поведением.
 
    Нужные параметры:
 
    - `path_topic`
    - `path_id_topic`
+   - `emergency_stop_topic`
    - `mission_connection_url`
    - `mission_upload_timeout_s`
    - `mission_acceptance_radius_m`
@@ -222,6 +235,7 @@ Notion policy в inbox указан как `optional`, а промпт не со
    - `px4_local_origin_y_m`
    - `auto_arm`
    - `auto_mission`
+   - `emergency_stop_command_resend_period_s`
    - `mission_blackbox_enabled`
    - `mission_blackbox_path`
 
@@ -250,6 +264,13 @@ Notion policy в inbox указан как `optional`, а промпт не со
                mavlink_client.set_auto_mission_mode()
            if auto_arm:
                mavlink_client.arm()
+
+   def on_emergency_stop(msg: Bool) -> None:
+       if not msg.data or emergency_stop_requested:
+           return
+       emergency_stop_requested = True
+       log("MISSION_BACKEND emergency_stop requested=true action=disarm")
+       mavlink_client.disarm(force=True)
    ```
 
 4. Конвертировать local map path в PX4 global-relative mission items.
@@ -351,6 +372,8 @@ Notion policy в inbox указан как `optional`, а промпт не со
 
    - `px4_mission_node.py` устанавливается в `lib/drone_city_nav`.
    - `package.xml` содержит `exec_depend` на `rclpy`.
+   - `package.xml` содержит `exec_depend` на `std_msgs`, если dependency больше не
+     покрывается существующим `<depend>std_msgs</depend>`.
    - Не добавлять MAVSDK/MAVROS, если `pymavlink` в dev image остаётся доступен.
 
    CMake sketch:
@@ -383,6 +406,7 @@ Notion policy в inbox указан как `optional`, а промпт не со
      ros__parameters:
        path_topic: /drone_city_nav/path
        path_id_topic: /drone_city_nav/path_id
+       emergency_stop_topic: /drone_city_nav/emergency_stop
        mission_connection_url: udpin:0.0.0.0:14540
        mission_acceptance_radius_m: 1.0
        mission_cruise_altitude_m: 18.0
@@ -394,6 +418,7 @@ Notion policy в inbox указан как `optional`, а промпт не со
        px4_local_origin_y_m: 27.0
        auto_arm: true
        auto_mission: true
+       emergency_stop_command_resend_period_s: 2.0
        mission_blackbox_enabled: true
        mission_blackbox_path: log/mission_blackbox.jsonl
    ```
@@ -414,6 +439,8 @@ Notion policy в inbox указан как `optional`, а промпт не со
      - `MISSION_BACKEND mode_command`
      - `MISSION_BACKEND arm_command`
      - `MISSION_BACKEND progress`
+     - `MISSION_BACKEND emergency_stop requested=true action=disarm`
+     - `MISSION_BACKEND emergency_stop_disarm_sent`
    - JSONL blackbox `log/mission_blackbox.jsonl` содержит:
      - `time_ns`
      - `path_id`
@@ -425,8 +452,62 @@ Notion policy в inbox указан как `optional`, а промпт не со
      - `finished`
      - `home`
      - `connection_url`
+     - `emergency_stop_requested`
+     - `emergency_stop_disarm_sent`
 
-9. Обновить headless validator под два backend'а.
+9. Сохранить emergency-stop contract для Mission backend.
+
+   Файлы:
+
+   - `drone_city_nav/scripts/px4_mission_node.py`
+   - `drone_city_nav/config/urban_mvp.yaml:112`
+   - `drone_city_nav/config/real_drone_template.yaml:113`
+   - `scripts/tests/test_px4_mission_node.py`
+   - `scripts/tests/test_validate_city_mvp_headless.py:27`
+   - `docs/MVP_SIMULATION.md:464`
+
+   Материализуемый результат:
+
+   - Mission backend подписывается на `emergency_stop_topic` с reliable QoS,
+     совместимым с текущим publisher в `mission_monitor_node`.
+   - При первом `std_msgs/Bool(data=true)` Mission backend:
+     - прекращает дальнейшие mission upload/mode/arm actions;
+     - отправляет MAVLink disarm с force parameter, аналогично текущему Offboard
+       `VEHICLE_CMD_COMPONENT_ARM_DISARM` с `param1=0`, `param2=21196`;
+     - повторяет disarm не чаще `emergency_stop_command_resend_period_s`, пока
+       vehicle не подтверждён disarmed или node не остановлен.
+   - Повторные `emergency_stop=true` сообщения не создают command spam.
+   - Logs и blackbox дают headless-доказательство, что stop дошёл до Mission
+     backend и disarm command отправлен.
+
+   Pseudocode:
+
+   ```python
+   def on_emergency_stop(msg: Bool) -> None:
+       if not msg.data:
+           return
+       if not emergency_stop_requested:
+           emergency_stop_requested = True
+           emergency_stop_started_ns = now_ns()
+           log("MISSION_BACKEND emergency_stop requested=true")
+       maybe_send_emergency_disarm()
+
+   def maybe_send_emergency_disarm() -> None:
+       if not emergency_stop_requested:
+           return
+       if now_s() - last_emergency_disarm_s < emergency_stop_command_resend_period_s:
+           return
+       mavlink_client.disarm(force=True)
+       last_emergency_disarm_s = now_s()
+       log("MISSION_BACKEND emergency_stop_disarm_sent resend_period_s=%.2f",
+           emergency_stop_command_resend_period_s)
+   ```
+
+   Это обязательный safety contract для обоих backend'ов. Он не противоречит
+   пользовательскому требованию не переносить `sharp_turn_hold_*` в Mission mode,
+   потому что emergency stop не управляет прохождением waypoint'ов.
+
+10. Обновить headless validator под два backend'а.
 
    Файлы:
 
@@ -445,9 +526,13 @@ Notion policy в inbox указан как `optional`, а промпт не со
      - `MISSION_BACKEND upload_result ... success=true`
      - `MISSION_BACKEND mode_command ... AUTO.MISSION`
      - `MISSION_BACKEND arm_command`
+   - Для Mission emergency stop проверяются отдельные markers, когда log содержит
+     `MISSION_CHECK emergency_stop=true`:
+     - `MISSION_BACKEND emergency_stop requested=true`
+     - `MISSION_BACKEND emergency_stop_disarm_sent`
    - Общие planner/lidar/static/memory checks остаются общими для обоих backend'ов.
 
-10. Покрыть selector и scripts contract тестами.
+11. Покрыть selector и scripts contract тестами.
 
     Файлы:
 
@@ -466,7 +551,7 @@ Notion policy в inbox указан как `optional`, а промпт не со
     - Тест доказывает, что validator принимает Offboard logs и Mission logs по
       разным контрактам.
 
-11. Покрыть Mission pure logic unit tests без PX4/Gazebo.
+12. Покрыть Mission pure logic unit tests без PX4/Gazebo.
 
     Файл:
 
@@ -483,10 +568,15 @@ Notion policy в inbox указан как `optional`, а промпт не со
       переводит PX4 в mission mode.
     - Edge case: home из params используется, если `mavlink_home` не пришёл до
       timeout.
+    - Emergency-stop happy path: после upload/arm fake Mission backend получает
+      `emergency_stop=true` и вызывает `disarm(force=True)`.
+    - Emergency-stop resend policy: повторные stop messages и timer ticks не
+      спамят disarm чаще `emergency_stop_command_resend_period_s`.
+    - Emergency-stop negative path: `emergency_stop=false` не вызывает disarm.
     - Fake MAVLink client проверяет порядок вызовов:
-      `clear -> count -> item(seq...) -> ack -> set_mode -> arm`.
+      `clear -> count -> item(seq...) -> ack -> set_mode -> arm -> disarm`.
 
-12. Обновить документацию запуска и ограничений.
+13. Обновить документацию запуска и ограничений.
 
     Файлы:
 
@@ -514,6 +604,9 @@ Notion policy в inbox указан как `optional`, а промпт не со
       ```
 
     - Документировано, что Offboard sharp-turn hold не применяется в Mission mode.
+    - Документировано, что `/drone_city_nav/emergency_stop` должен обрабатываться
+      обоими backend'ами: Offboard через `px4_offboard_node`, Mission через
+      `px4_mission_node`.
     - Документировано, что Mission mode требует working MAVLink endpoint и global
       home/origin conversion.
 
@@ -568,7 +661,8 @@ MISSION_CHECK=1 SMOKE_DURATION_S=300 NAVIGATION_BACKEND=mission ./scripts/sim_he
     contracts.
 - Pure Python unit tests:
   - `test_px4_mission_node.py` проверяет path-to-mission conversion,
-    upload state machine через fake MAVLink client и duplicate path handling.
+    upload state machine через fake MAVLink client, duplicate path handling и
+    emergency stop disarm/resend policy.
 - Headless smoke:
   - Offboard default smoke.
   - Mission smoke.
@@ -616,6 +710,10 @@ logic, если executable script становится слишком больш
   Mission mode будут конфликтовать. Это обязательно покрыть contract test'ом.
 - Если headless validator останется Offboard-only, Mission smoke будет ложно
   падать или пропускать важные Mission failures.
+- Если Mission backend не подпишется на `/drone_city_nav/emergency_stop`, failure
+  от `mission_monitor_node` станет no-op в Mission mode. Это критическая
+  regression относительно текущего Offboard поведения; проверять unit test'ом с
+  fake MAVLink client и headless log markers.
 - В режиме Mission не будет Offboard `sharp_turn_hold`; это ожидаемое поведение,
   но траектория может стать менее предсказуемой на резких углах. Проверять
   mission monitor и PX4 mission progress вместо Offboard target logs.
@@ -631,7 +729,3 @@ logic, если executable script становится слишком больш
 - Нужно ли при каждом replan очищать mission и загружать заново с seq=0, или
   пытаться продолжить с ближайшего waypoint? Для MVP безопаснее полный reupload с
   явным логом `replan_upload`.
-- Нужно ли Mission backend учитывать emergency stop topic? Текущий Offboard node
-  дисармит при emergency stop. Для parity стоит подписать Mission backend на
-  `/drone_city_nav/emergency_stop` и отправлять disarm, но это нужно согласовать
-  с ожидаемой безопасностью Mission mode.
