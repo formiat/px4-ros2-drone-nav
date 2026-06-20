@@ -534,6 +534,11 @@ Set `NAVIGATION_BACKEND=mission` to replace the Offboard follower with
 `pymavlink`, and optionally commands `AUTO.MISSION` plus arm after a successful
 upload. Replanned paths are uploaded as fresh PX4 missions.
 
+Before upload, the Mission backend resamples the final planner path into denser
+mission waypoints controlled by `mission_resample_spacing_m` so long simplified
+segments do not give PX4 a single sparse waypoint jump across the city. Set the
+spacing to `0.0` to upload the planner path unchanged for experiments.
+
 Mission mode does not use Offboard `sharp_turn_hold_*` or
 `target_switch_hold_*` timing parameters. Runtime logs include
 `Mission backend ready:`, `MISSION_BACKEND upload_started`,

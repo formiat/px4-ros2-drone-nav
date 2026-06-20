@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 import threading
 import unittest
@@ -130,6 +131,48 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(items[1].y, items[0].y)
         self.assertEqual(items[2].x, items[0].x)
         self.assertGreater(items[2].y, items[0].y)
+
+    def test_resample_path_for_mission_limits_segment_spacing(self) -> None:
+        points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]
+
+        resampled = mission_node.resample_path_for_mission(points, 7.5)
+
+        self.assertEqual(4, len(resampled))
+        self.assertEqual(points[0], resampled[0])
+        self.assertEqual(points[-1], resampled[-1])
+        segment_lengths = [
+            math.hypot(second.x - first.x, second.y - first.y)
+            for first, second in zip(resampled, resampled[1:])
+        ]
+        self.assertLessEqual(max(segment_lengths), 7.5)
+
+    def test_resample_path_for_mission_can_be_disabled(self) -> None:
+        points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]
+
+        self.assertEqual(points, mission_node.resample_path_for_mission(points, 0.0))
+
+    def test_upload_resamples_long_mission_segments(self) -> None:
+        client = FakeMissionClient()
+        logs: list[str] = []
+        core = mission_node.MissionBackendCore(
+            self.make_config(
+                mission_resample_spacing_m=7.5,
+                px4_local_origin_x_m=0.0,
+                px4_local_origin_y_m=0.0,
+            ),
+            client,
+            logger=logs.append,
+        )
+
+        result = core.handle_path_points(
+            [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)],
+            12,
+            mission_node.HomePosition(47.0, 8.0),
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(4, len(client.uploaded_items))
+        self.assertTrue(any("path_resampled" in line for line in logs))
 
     def test_empty_path_is_logged_and_not_uploaded(self) -> None:
         client = FakeMissionClient()

@@ -164,6 +164,7 @@ px4_mission_node:
     mission_upload_timeout_s: 5.0
     mission_acceptance_radius_m: 1.0
     mission_cruise_altitude_m: 18.0
+    mission_resample_spacing_m: 7.5
     mission_home_source: params
     mission_home_latitude_deg: 47.397742
     mission_home_longitude_deg: 8.545594
