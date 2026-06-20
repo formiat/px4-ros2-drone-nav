@@ -534,10 +534,9 @@ diagnostic `path_id` topics, converts map-frame waypoints to
 `pymavlink`, and optionally commands `AUTO.MISSION` plus arm after a successful
 upload. Replanned paths are uploaded as fresh PX4 missions.
 
-Before upload, the Mission backend resamples the final planner path into denser
-mission waypoints controlled by `mission_resample_spacing_m` so long simplified
-segments do not give PX4 a single sparse waypoint jump across the city. Set the
-spacing to `0.0` to upload the planner path unchanged for experiments.
+Before upload, the Mission backend converts the final planner path directly
+into mission waypoints. It does not add intermediate waypoints, so the mission
+item count matches the planner path count.
 
 For SITL, `mission_home_source` defaults to `mavlink_home`. This makes mission
 item conversion use PX4's actual `HOME_POSITION` instead of static latitude and
@@ -552,7 +551,7 @@ Mission mode does not use Offboard `sharp_turn_hold_*` or
 markers. The backend derives upload identity from the `Path` message stamp so
 delivery races between separate `path` and `path_id` topics cannot skip a fresh
 mission. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
-default and include planner path points, resampled mission points, path segment
+default and include planner path points, mission path points, path segment
 metrics, upload duration, resolved-home diagnostics, the full uploaded
 `mission_items` list, and progress events enriched with vehicle map position,
 active mission target, distance to target, and cross-track error.

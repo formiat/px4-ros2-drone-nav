@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib.util
-import math
 import sys
 import threading
 import unittest
@@ -159,25 +158,6 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
             mission_node.path_requires_home_resolution([mission_node.Point2(1.0, 2.0)])
         )
 
-    def test_resample_path_for_mission_limits_segment_spacing(self) -> None:
-        points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]
-
-        resampled = mission_node.resample_path_for_mission(points, 7.5)
-
-        self.assertEqual(4, len(resampled))
-        self.assertEqual(points[0], resampled[0])
-        self.assertEqual(points[-1], resampled[-1])
-        segment_lengths = [
-            math.hypot(second.x - first.x, second.y - first.y)
-            for first, second in zip(resampled, resampled[1:])
-        ]
-        self.assertLessEqual(max(segment_lengths), 7.5)
-
-    def test_resample_path_for_mission_can_be_disabled(self) -> None:
-        points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]
-
-        self.assertEqual(points, mission_node.resample_path_for_mission(points, 0.0))
-
     def test_path_segment_metrics_reports_lengths(self) -> None:
         metrics = mission_node.path_segment_metrics(
             [
@@ -196,12 +176,11 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(0, metrics["segments_shorter_than_5m"])
         self.assertEqual(2, metrics["segments_shorter_than_10m"])
 
-    def test_upload_resamples_long_mission_segments(self) -> None:
+    def test_upload_uses_planner_waypoints_without_extra_intermediate_points(self) -> None:
         client = FakeMissionClient()
         logs: list[str] = []
         core = mission_node.MissionBackendCore(
             self.make_config(
-                mission_resample_spacing_m=7.5,
                 px4_local_origin_x_m=0.0,
                 px4_local_origin_y_m=0.0,
             ),
@@ -216,8 +195,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         )
 
         self.assertTrue(result.success)
-        self.assertEqual(4, len(client.uploaded_items))
-        self.assertTrue(any("path_resampled" in line for line in logs))
+        self.assertEqual(2, len(client.uploaded_items))
+        self.assertFalse(any("mission_waypoints=" in line for line in logs))
 
     def test_empty_path_is_logged_and_not_uploaded(self) -> None:
         client = FakeMissionClient()
@@ -561,7 +540,6 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         blackbox = CapturingBlackbox()
         core = mission_node.MissionBackendCore(
             self.make_config(
-                mission_resample_spacing_m=0.0,
                 px4_local_origin_x_m=0.0,
                 px4_local_origin_y_m=0.0,
             ),
@@ -593,7 +571,6 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         blackbox = CapturingBlackbox()
         core = mission_node.MissionBackendCore(
             self.make_config(
-                mission_resample_spacing_m=0.0,
                 px4_local_origin_x_m=0.0,
                 px4_local_origin_y_m=0.0,
             ),

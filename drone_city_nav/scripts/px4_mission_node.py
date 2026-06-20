@@ -57,7 +57,6 @@ class MissionBackendConfig:
     upload_timeout_s: float = 5.0
     acceptance_radius_m: float = 1.0
     cruise_altitude_m: float = 18.0
-    mission_resample_spacing_m: float = 7.5
     home_source: str = "params"
     home_latitude_deg: float = 47.397742
     home_longitude_deg: float = 8.545594
@@ -217,24 +216,6 @@ def interpolate_2d(first: Point2, second: Point2, fraction: float) -> Point2:
         first.x + (second.x - first.x) * fraction,
         first.y + (second.y - first.y) * fraction,
     )
-
-
-def resample_path_for_mission(
-    path_points: Iterable[Point2], spacing_m: float
-) -> list[Point2]:
-    points = list(path_points)
-    if spacing_m <= 0.0 or len(points) <= 1:
-        return points
-
-    resampled = [points[0]]
-    for start, end in zip(points, points[1:]):
-        segment_length_m = distance_2d(start, end)
-        if segment_length_m <= 1.0e-9:
-            continue
-        segment_count = max(1, math.ceil(segment_length_m / spacing_m))
-        for step in range(1, segment_count + 1):
-            resampled.append(interpolate_2d(start, end, step / segment_count))
-    return resampled
 
 
 def point_to_dict(point: Point2) -> dict[str, float]:
@@ -737,17 +718,7 @@ class MissionBackendCore:
             )
             return result
 
-        mission_points = resample_path_for_mission(
-            path_points, self.config.mission_resample_spacing_m
-        )
-        if len(mission_points) != len(path_points):
-            self.logger(
-                "MISSION_BACKEND path_resampled "
-                f"path_id={path_id} original_waypoints={len(path_points)} "
-                f"mission_waypoints={len(mission_points)} "
-                f"spacing_m={self.config.mission_resample_spacing_m:.2f}"
-            )
-
+        mission_points = list(path_points)
         items = build_mission_items(mission_points, home, self.config)
         with self._lock:
             self.upload_attempt += 1
@@ -1085,9 +1056,6 @@ class Px4MissionNode(Node):
             cruise_altitude_m=float(
                 self.declare_parameter("mission_cruise_altitude_m", 18.0).value
             ),
-            mission_resample_spacing_m=float(
-                self.declare_parameter("mission_resample_spacing_m", 7.5).value
-            ),
             home_source=self.declare_parameter("mission_home_source", "params").value,
             home_latitude_deg=float(
                 self.declare_parameter("mission_home_latitude_deg", 47.397742).value
@@ -1193,8 +1161,7 @@ class Px4MissionNode(Node):
             f"{config.home_altitude_m:.1f}) "
             f"px4_local_origin=({config.px4_local_origin_x_m:.2f}, "
             f"{config.px4_local_origin_y_m:.2f}) "
-            f"emergency_stop_resend_s={config.emergency_stop_command_resend_period_s:.2f} "
-            f"mission_resample_spacing_m={config.mission_resample_spacing_m:.2f}"
+            f"emergency_stop_resend_s={config.emergency_stop_command_resend_period_s:.2f}"
         )
 
     def destroy_node(self) -> bool:

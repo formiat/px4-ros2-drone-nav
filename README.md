@@ -116,11 +116,10 @@ NAVIGATION_BACKEND=mission ./scripts/sim_gui.sh
 ```
 
 Mission mode uploads planner paths as PX4 mission waypoints over MAVLink. It
-resamples long planner segments before upload using
-`mission_resample_spacing_m` and does not use the Offboard sharp-turn or
-target-switch hold logic. In simulation, Mission mode resolves the mission
-home from MAVLink `HOME_POSITION` so the global mission items use the same
-origin PX4 uses internally.
+does not use the Offboard sharp-turn or target-switch hold logic. In
+simulation, Mission mode resolves the mission home from MAVLink
+`HOME_POSITION` so the global mission items use the same origin PX4 uses
+internally.
 
 Equivalent explicit command inside an interactive container shell:
 
