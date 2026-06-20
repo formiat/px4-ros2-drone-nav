@@ -40,6 +40,8 @@ add_library(
   src/navigation_pose.cpp
   src/offboard_path_follower.cpp
   src/offboard_speed_controller.cpp
+  src/offboard_target_continuity.cpp
+  src/offboard_velocity_limiter.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/path_smoothing.cpp
@@ -221,6 +223,18 @@ if(BUILD_TESTING)
   target_compile_features(offboard_path_follower_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_path_follower_test drone_city_nav_core)
   enable_project_warnings(offboard_path_follower_test)
+
+  ament_add_gtest(offboard_velocity_limiter_test
+                  tests/offboard_velocity_limiter_test.cpp)
+  target_compile_features(offboard_velocity_limiter_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_velocity_limiter_test drone_city_nav_core)
+  enable_project_warnings(offboard_velocity_limiter_test)
+
+  ament_add_gtest(offboard_target_continuity_test
+                  tests/offboard_target_continuity_test.cpp)
+  target_compile_features(offboard_target_continuity_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_target_continuity_test drone_city_nav_core)
+  enable_project_warnings(offboard_target_continuity_test)
 
   ament_add_gtest(lidar_projection_test tests/lidar_projection_test.cpp)
   target_compile_features(lidar_projection_test PRIVATE cxx_std_20)

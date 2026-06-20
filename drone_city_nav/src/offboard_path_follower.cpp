@@ -12,15 +12,26 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] bool turnWaypointIsCloseEnoughForSlowdown(
-    const Point2 turn_waypoint, const Point2 current_position,
-    const bool local_position_valid, const OffboardPathFollowerConfig& config) {
-  if (!local_position_valid) {
-    return true;
+[[nodiscard]] bool
+turnWaypointIsCloseEnoughForSlowdown(const double distance_to_turn_m,
+                                     const OffboardPathFollowerConfig& config) {
+  return distance_to_turn_m <= config.turn_slowdown_preview_distance_m;
+}
+
+[[nodiscard]] double turnAngleRad(const Point2 previous, const Point2 current,
+                                  const Point2 next) noexcept {
+  const Point2 incoming{current.x - previous.x, current.y - previous.y};
+  const Point2 outgoing{next.x - current.x, next.y - current.y};
+  const double incoming_length = std::hypot(incoming.x, incoming.y);
+  const double outgoing_length = std::hypot(outgoing.x, outgoing.y);
+  if (incoming_length <= kTinyDistanceM || outgoing_length <= kTinyDistanceM) {
+    return 0.0;
   }
 
-  return distance(current_position, turn_waypoint) <=
-         config.turn_slowdown_preview_distance_m;
+  const double cosine = std::clamp((incoming.x * outgoing.x + incoming.y * outgoing.y) /
+                                       (incoming_length * outgoing_length),
+                                   -1.0, 1.0);
+  return std::acos(cosine);
 }
 
 } // namespace
@@ -148,32 +159,48 @@ double pathTurnAngleAtWaypoint(const std::span<const Point2> path,
                                const std::size_t index, const Point2 current_position,
                                const bool local_position_valid,
                                const OffboardPathFollowerConfig& config) {
+  return upcomingTurnAtWaypoint(path, index, current_position, local_position_valid,
+                                config)
+      .angle_rad;
+}
+
+UpcomingTurn upcomingTurnAtWaypoint(const std::span<const Point2> path,
+                                    const std::size_t index,
+                                    const Point2 current_position,
+                                    const bool local_position_valid,
+                                    const OffboardPathFollowerConfig& config) {
+  UpcomingTurn turn{};
   if (path.size() < 3U || index >= path.size()) {
-    return 0.0;
+    return turn;
   }
 
-  const Point2 previous = index == 0U && local_position_valid
-                              ? current_position
-                              : path[index == 0U ? 0U : index - 1U];
-  const Point2 current = path[index];
-  if (!turnWaypointIsCloseEnoughForSlowdown(current, current_position,
-                                            local_position_valid, config)) {
-    return 0.0;
-  }
-  const Point2 next = path[std::min(index + 1U, path.size() - 1U)];
+  double distance_to_candidate_m =
+      local_position_valid ? distance(current_position, path[index]) : 0.0;
+  for (std::size_t candidate_index = index; candidate_index + 1U < path.size();
+       ++candidate_index) {
+    const Point2 previous =
+        candidate_index == 0U && local_position_valid
+            ? current_position
+            : path[candidate_index == 0U ? 0U : candidate_index - 1U];
+    const Point2 current = path[candidate_index];
+    const Point2 next = path[candidate_index + 1U];
+    const double angle = turnAngleRad(previous, current, next);
+    if (angle > kTinyDistanceM) {
+      if (!turnWaypointIsCloseEnoughForSlowdown(distance_to_candidate_m, config)) {
+        return turn;
+      }
+      turn.valid = true;
+      turn.waypoint_index = candidate_index;
+      turn.distance_to_turn_m = distance_to_candidate_m;
+      turn.angle_rad = angle;
+      turn.turn_point = current;
+      return turn;
+    }
 
-  const Point2 incoming{current.x - previous.x, current.y - previous.y};
-  const Point2 outgoing{next.x - current.x, next.y - current.y};
-  const double incoming_length = std::hypot(incoming.x, incoming.y);
-  const double outgoing_length = std::hypot(outgoing.x, outgoing.y);
-  if (incoming_length <= kTinyDistanceM || outgoing_length <= kTinyDistanceM) {
-    return 0.0;
+    distance_to_candidate_m += distance(path[candidate_index], next);
   }
 
-  const double cosine = std::clamp((incoming.x * outgoing.x + incoming.y * outgoing.y) /
-                                       (incoming_length * outgoing_length),
-                                   -1.0, 1.0);
-  return std::acos(cosine);
+  return turn;
 }
 
 } // namespace drone_city_nav

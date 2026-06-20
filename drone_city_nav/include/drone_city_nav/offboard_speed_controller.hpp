@@ -23,6 +23,7 @@ struct SpeedControllerConfig {
   double braking_safety_margin_m{1.0};
   double turn_slowdown_angle_rad{0.7};
   double turn_slowdown_min_speed_mps{1.5};
+  double turn_braking_safety_margin_m{2.0};
   double max_commanded_target_step_m{0.5};
   bool tracking_overspeed_limit_enabled{false};
   double tracking_overspeed_limit_mps{std::numeric_limits<double>::infinity()};
@@ -31,6 +32,9 @@ struct SpeedControllerConfig {
 struct SpeedLimitBreakdown {
   double goal_limit_mps{std::numeric_limits<double>::infinity()};
   double turn_limit_mps{std::numeric_limits<double>::infinity()};
+  double turn_entry_speed_mps{std::numeric_limits<double>::infinity()};
+  double turn_braking_distance_m{std::numeric_limits<double>::infinity()};
+  double distance_to_turn_m{std::numeric_limits<double>::infinity()};
   double step_cap_limit_mps{std::numeric_limits<double>::infinity()};
   double tracking_overspeed_limit_mps{std::numeric_limits<double>::infinity()};
 };
@@ -39,6 +43,7 @@ struct SpeedControllerInput {
   bool hold_position{true};
   double controller_dt_s{0.1};
   double distance_to_goal_m{std::numeric_limits<double>::infinity()};
+  double distance_to_turn_m{std::numeric_limits<double>::infinity()};
   double turn_angle_rad{0.0};
   double actual_speed_mps{0.0};
 };
@@ -59,6 +64,10 @@ struct SpeedControllerOutput {
 
 [[nodiscard]] double turnLimitedSpeedMps(const SpeedControllerConfig& config,
                                          double turn_angle_rad) noexcept;
+
+[[nodiscard]] double turnBrakingLimitedSpeedMps(const SpeedControllerConfig& config,
+                                                double turn_angle_rad,
+                                                double distance_to_turn_m) noexcept;
 
 [[nodiscard]] double advanceToward(double current, double target,
                                    double max_delta) noexcept;

@@ -118,6 +118,26 @@ double turnLimitedSpeedMps(const SpeedControllerConfig& config,
   return desired + std::clamp(ratio, 0.0, 1.0) * (minimum - desired);
 }
 
+double turnBrakingLimitedSpeedMps(const SpeedControllerConfig& config,
+                                  const double turn_angle_rad,
+                                  const double distance_to_turn_m) noexcept {
+  const double desired = boundedDesiredSpeed(config);
+  const double entry_speed = turnLimitedSpeedMps(config, turn_angle_rad);
+  if (desired <= 0.0 || entry_speed + kEpsilon >= desired ||
+      !finiteNonNegative(distance_to_turn_m) || !(config.max_accel_mps2 > 0.0) ||
+      !std::isfinite(config.max_accel_mps2)) {
+    return desired;
+  }
+
+  const double margin = finiteNonNegative(config.turn_braking_safety_margin_m)
+                            ? config.turn_braking_safety_margin_m
+                            : 0.0;
+  const double usable_distance_m = std::max(distance_to_turn_m - margin, 0.0);
+  const double limit = std::sqrt((entry_speed * entry_speed) +
+                                 (2.0 * config.max_accel_mps2 * usable_distance_m));
+  return std::clamp(limit, entry_speed, desired);
+}
+
 double advanceToward(const double current, const double target,
                      const double max_delta) noexcept {
   if (!std::isfinite(current) || !std::isfinite(target) ||
@@ -165,7 +185,16 @@ OffboardSpeedController::update(const SpeedControllerInput& input) {
 
   SpeedLimitBreakdown limits{};
   limits.goal_limit_mps = brakingLimitedSpeedMps(config_, input.distance_to_goal_m);
-  limits.turn_limit_mps = turnLimitedSpeedMps(config_, input.turn_angle_rad);
+  limits.turn_limit_mps = turnBrakingLimitedSpeedMps(config_, input.turn_angle_rad,
+                                                     input.distance_to_turn_m);
+  limits.turn_entry_speed_mps = turnLimitedSpeedMps(config_, input.turn_angle_rad);
+  limits.distance_to_turn_m = input.distance_to_turn_m;
+  limits.turn_braking_distance_m =
+      limits.turn_entry_speed_mps + kEpsilon < desired
+          ? ((desired * desired) -
+             (limits.turn_entry_speed_mps * limits.turn_entry_speed_mps)) /
+                (2.0 * config_.max_accel_mps2)
+          : 0.0;
   limits.step_cap_limit_mps =
       config_.max_commanded_target_step_m / input.controller_dt_s;
   limits.tracking_overspeed_limit_mps =

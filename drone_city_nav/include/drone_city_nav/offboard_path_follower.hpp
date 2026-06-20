@@ -24,6 +24,14 @@ struct OffboardPathProjection {
   Point2 point{};
 };
 
+struct UpcomingTurn {
+  bool valid{false};
+  std::size_t waypoint_index{0U};
+  double distance_to_turn_m{std::numeric_limits<double>::infinity()};
+  double angle_rad{0.0};
+  Point2 turn_point{};
+};
+
 [[nodiscard]] std::size_t closestWaypointIndex(std::span<const Point2> path,
                                                Point2 current_position);
 
@@ -46,5 +54,10 @@ advanceWaypointIndex(std::span<const Point2> path, Point2 current_position,
                                              std::size_t index, Point2 current_position,
                                              bool local_position_valid,
                                              const OffboardPathFollowerConfig& config);
+
+[[nodiscard]] UpcomingTurn
+upcomingTurnAtWaypoint(std::span<const Point2> path, std::size_t index,
+                       Point2 current_position, bool local_position_valid,
+                       const OffboardPathFollowerConfig& config);
 
 } // namespace drone_city_nav

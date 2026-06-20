@@ -480,30 +480,41 @@ The main simulation parameters are:
   progression.
 - `goal_slowdown_radius_m` and `braking_safety_margin_m` - reduce requested
   speed before point B.
-- `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - reduce speed
-  before sharp path turns.
+- `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - define the
+  entry speed for sharp path turns.
 - `turn_slowdown_preview_distance_m` - distance from a waypoint turn where turn
   slowdown may start applying.
+- `turn_braking_safety_margin_m` - extra distance reserved before the waypoint
+  turn when converting turn entry speed into a physical braking limit.
 - `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
   requested speed at the 10 Hz controller rate.
 - `commanded_target_hysteresis_m` - keeps the previous commanded target after a
-  path update when the newly computed target is approximately equal and the
-  previous target is still near the updated path.
+  path update when the previous target is still near the updated path and the
+  current-to-previous-target segment remains traversable in the latest
+  prohibited grid.
 - `tracking_overspeed_limit_enabled` and `tracking_overspeed_limit_mps` -
   optional actual-speed overspeed recovery. It is disabled by default; enable it
   with `ENABLE_TRACKING_OVERSPEED_LIMIT=true` and optionally set
   `TRACKING_OVERSPEED_LIMIT_MPS`.
-- `velocity_feedforward_enabled` - experimental feed-forward flag. It is
-  disabled by default; the MVP remains position-setpoint controlled unless this
-  is explicitly enabled for SITL validation.
+- `velocity_feedforward_enabled` - enables horizontal velocity feed-forward
+  toward the current waypoint target. This does not add lookahead or synthetic
+  intermediate targets; the position target remains the selected path waypoint.
+- `max_feedforward_vector_accel_mps2` and
+  `max_feedforward_heading_rate_radps` - limit feed-forward vector changes so a
+  replan or waypoint switch cannot command a full lateral velocity reversal in a
+  single controller tick.
 
 Runtime logs from `px4_offboard_node` include `requested_speed`,
 `actual_speed`, `speed_limit_reason`, `allowed_speed`, `braking_distance`,
-`target_step`, `turn_angle`, `local_clearance`, attitude, path id correlation,
-cross-track error, heading error, commanded target delta, path-update target
-hysteresis state, commanded velocity, and nearest-obstacle bearing. The same 2 Hz
-control diagnostics are written as JSON Lines to `log/offboard_blackbox.jsonl`
-for machine analysis.
+`target_step`, upcoming-turn validity, turn waypoint index, distance to turn,
+turn entry speed, turn braking distance, `local_clearance`, attitude, path id
+correlation, cross-track error, heading error, commanded target delta,
+path-update target-continuity reason (`kept_previous_target`,
+`switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or
+`forced_switch_previous_behind_path`), raw feed-forward velocity, limited
+feed-forward velocity, limiter deltas, and nearest-obstacle bearing. The same
+2 Hz control diagnostics are written as JSON Lines to
+`log/offboard_blackbox.jsonl` for machine analysis.
 Planner logs include smoothing rejection counters and final segment-length
 statistics so headless runs can show whether short waypoint segments come from
 prohibited line-of-sight failures, grid bounds, or the remaining smoothed

@@ -17,6 +17,7 @@ namespace {
   config.braking_safety_margin_m = 1.0;
   config.turn_slowdown_angle_rad = 0.5;
   config.turn_slowdown_min_speed_mps = 2.0;
+  config.turn_braking_safety_margin_m = 1.0;
   config.max_commanded_target_step_m = 2.0;
   return config;
 }
@@ -77,11 +78,59 @@ TEST(OffboardSpeedController, SharpTurnUsesTurnSlowdownLimit) {
   OffboardSpeedController controller{config};
   SpeedControllerInput input = cruiseInput();
   input.turn_angle_rad = 1.5707963267948966;
+  input.distance_to_turn_m = 0.0;
 
   const SpeedControllerOutput output = controller.update(input);
 
   EXPECT_NEAR(output.requested_speed_mps, 2.0, 1.0e-9);
   EXPECT_EQ(output.limit_reason, SpeedLimitReason::kTurn);
+  EXPECT_NEAR(output.limits.turn_entry_speed_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(output.limits.distance_to_turn_m, 0.0, 1.0e-9);
+}
+
+TEST(OffboardSpeedController, DistantSharpTurnDoesNotLimitCruiseSpeed) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  OffboardSpeedController controller{config};
+  SpeedControllerInput input = cruiseInput();
+  input.turn_angle_rad = 1.5707963267948966;
+  input.distance_to_turn_m = 100.0;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
+  EXPECT_NEAR(output.limits.turn_entry_speed_mps, 2.0, 1.0e-9);
+}
+
+TEST(OffboardSpeedController, NearbySharpTurnStartsPhysicalBraking) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 2.0;
+  OffboardSpeedController controller{config};
+  SpeedControllerInput input = cruiseInput();
+  input.turn_angle_rad = 1.5707963267948966;
+  input.distance_to_turn_m = 3.0;
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  const double expected_allowed = std::sqrt((2.0 * 2.0) + (2.0 * 2.0 * 2.0));
+  EXPECT_NEAR(output.allowed_speed_mps, expected_allowed, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kAcceleration);
+  EXPECT_NEAR(output.limits.turn_braking_distance_m, 5.25, 1.0e-9);
+}
+
+TEST(OffboardSpeedController, InvalidTurnDistanceDoesNotLimitCruiseSpeed) {
+  SpeedControllerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  OffboardSpeedController controller{config};
+  SpeedControllerInput input = cruiseInput();
+  input.turn_angle_rad = 1.5707963267948966;
+  input.distance_to_turn_m = std::numeric_limits<double>::infinity();
+
+  const SpeedControllerOutput output = controller.update(input);
+
+  EXPECT_NEAR(output.requested_speed_mps, 5.0, 1.0e-9);
+  EXPECT_EQ(output.limit_reason, SpeedLimitReason::kCruise);
 }
 
 TEST(OffboardSpeedController, HoldModeRequestsZeroSpeed) {
@@ -120,6 +169,7 @@ TEST(OffboardSpeedController, TrackingOverspeedLimitIsDisabledByDefault) {
   controller.setConfig(config);
   SpeedControllerInput input = cruiseInput();
   input.turn_angle_rad = std::numbers::pi;
+  input.distance_to_turn_m = 0.0;
   input.actual_speed_mps = 5.0;
 
   const SpeedControllerOutput output = controller.update(input);
@@ -143,6 +193,7 @@ TEST(OffboardSpeedController, TrackingOverspeedLimitDeceleratesWithoutStopping) 
   controller.setConfig(config);
   SpeedControllerInput input = cruiseInput();
   input.turn_angle_rad = std::numbers::pi;
+  input.distance_to_turn_m = 0.0;
   input.actual_speed_mps = 5.0;
 
   const SpeedControllerOutput output = controller.update(input);
