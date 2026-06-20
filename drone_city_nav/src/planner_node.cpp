@@ -512,20 +512,20 @@ private:
     if (result.status == PlanningGridStatus::kNoEnabledSources) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Planner has no enabled obstacle sources; publishing hold path");
+          "Planner has no enabled obstacle sources; skipping path check");
       return std::nullopt;
     }
     if (result.status == PlanningGridStatus::kStaticMapEnabledButMissing) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner static map source is enabled but not loaded; "
-                           "publishing hold path");
+                           "skipping path check");
       return std::nullopt;
     }
     if (result.status == PlanningGridStatus::kNoReadySourceData ||
         !result.grid.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Planner has no ready obstacle source data; publishing hold "
-                           "path status=%s",
+                           "Planner has no ready obstacle source data; skipping path "
+                           "check status=%s",
                            planningGridStatusName(result.status));
       return std::nullopt;
     }
@@ -539,30 +539,31 @@ private:
         timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
     const double pose_age_s = poseAgeSeconds(now_ns);
     if (pose_valid_ && !pose_fresh) {
-      invalidateCurrentPose();
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Planner invalidated stale PX4 local position before path check: "
-          "pose_age_s=%.2f",
+          "Planner skipped path check because PX4 local position is stale; keeping the "
+          "last published path: pose_age_s=%.2f",
           pose_age_s);
+      return;
     }
     if (!pose_valid_ || !finite2D(current_pose_.position)) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner is waiting for a valid PX4 local position; "
-                           "publishing hold path");
-      publishPath({}, PathPublicationReason::kHoldNoPose);
+                           "keeping the last published path");
       return;
     }
     auto planning_result = buildPlanningGrid(now_ns);
     if (!planning_result.has_value()) {
-      publishPath({}, PathPublicationReason::kHoldNoPlanningGrid);
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Planner skipped path publication because the planning grid is "
+          "not ready; keeping the last published path");
       return;
     }
     if (!planning_result->grid.has_value()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Planner grid builder returned no grid despite a ready "
-                           "result; publishing hold path");
-      publishPath({}, PathPublicationReason::kHoldNoPlanningGrid);
+                           "result; keeping the last published path");
       return;
     }
     OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
