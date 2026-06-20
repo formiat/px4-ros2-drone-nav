@@ -47,6 +47,27 @@ class TopicContractTest(unittest.TestCase):
                 self.assertIn("memory_occupied_value: 100", text)
                 self.assertNotIn("memory_occupied_threshold:", text)
 
+    def test_runtime_config_ros_parameters_are_nested_for_ros_parser(self) -> None:
+        for relative_path in (
+            "drone_city_nav/config/urban_mvp.yaml",
+            "drone_city_nav/config/real_drone_template.yaml",
+        ):
+            with self.subTest(relative_path=relative_path):
+                lines = read(relative_path).splitlines()
+                for index, line in enumerate(lines):
+                    if "ros__parameters:" not in line:
+                        continue
+                    self.assertTrue(
+                        line.startswith("  ros__parameters:"),
+                        f"{relative_path}:{index + 1} must indent ros__parameters "
+                        "with exactly two spaces",
+                    )
+                    self.assertFalse(
+                        line.startswith("    ros__parameters:"),
+                        f"{relative_path}:{index + 1} is accepted by YAML but "
+                        "rejected by the ROS params parser",
+                    )
+
     def test_node_sources_use_prohibited_grid_parameter_name(self) -> None:
         checked_paths = [
             "drone_city_nav/src/planner_node_config.cpp",
