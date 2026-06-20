@@ -83,6 +83,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn("planner_path_id_latest", text)
         self.assertIn("create_px4_sensor_qos_profile()", text)
         self.assertIn("ReliabilityPolicy.BEST_EFFORT", text)
+        self.assertIn("path_requires_home_resolution(request.points)", text)
+        self.assertIn("_home_resolution_without_mavlink_lookup", text)
         self.assertIn("def _upload_worker_loop", text)
         self.assertIn("self._core.handle_path_points", text)
 
@@ -141,6 +143,12 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
             mission_node.mission_path_id_from_stamp(123456789, 4),
         )
         self.assertEqual(4, mission_node.mission_path_id_from_stamp(0, 4))
+
+    def test_empty_path_does_not_need_home_resolution(self) -> None:
+        self.assertFalse(mission_node.path_requires_home_resolution([]))
+        self.assertTrue(
+            mission_node.path_requires_home_resolution([mission_node.Point2(1.0, 2.0)])
+        )
 
     def test_resample_path_for_mission_limits_segment_spacing(self) -> None:
         points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]

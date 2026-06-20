@@ -640,6 +640,10 @@ def create_px4_sensor_qos_profile() -> Any:
     )
 
 
+def path_requires_home_resolution(path_points: list[Point2]) -> bool:
+    return bool(path_points)
+
+
 class MissionBackendCore:
     def __init__(
         self,
@@ -1232,8 +1236,11 @@ class Px4MissionNode(Node):
                 break
 
             try:
-                home_resolution = self._resolve_home_position()
-                self._log_home_resolution(home_resolution)
+                if path_requires_home_resolution(request.points):
+                    home_resolution = self._resolve_home_position()
+                    self._log_home_resolution(home_resolution)
+                else:
+                    home_resolution = self._home_resolution_without_mavlink_lookup()
                 self._core.handle_path_points(
                     request.points,
                     request.path_id,
@@ -1248,6 +1255,15 @@ class Px4MissionNode(Node):
                 )
             finally:
                 self._path_upload_queue.task_done()
+
+    def _home_resolution_without_mavlink_lookup(self) -> HomePositionResolution:
+        return HomePositionResolution(
+            configured_home=self._home,
+            resolved_home=self._home,
+            configured_source=self._core.config.home_source,
+            used_source="not_required",
+            fallback_used=False,
+        )
 
     def _on_emergency_stop(self, msg: Bool) -> None:
         try:
