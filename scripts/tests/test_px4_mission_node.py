@@ -82,7 +82,16 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn("mission_path_id_from_stamp(path_stamp_ns", text)
         self.assertIn("planner_path_id_latest", text)
         self.assertIn("create_px4_sensor_qos_profile()", text)
+        self.assertIn("create_reliable_volatile_qos_profile(1)", text)
         self.assertIn("ReliabilityPolicy.BEST_EFFORT", text)
+        self.assertIn("ReliabilityPolicy.RELIABLE", text)
+        self.assertIn("self._path_sub = self.create_subscription", text)
+        self.assertIn("self._path_id_sub = self.create_subscription", text)
+        self.assertIn("self._emergency_stop_sub = self.create_subscription", text)
+        self.assertIn(
+            "self._vehicle_local_position_sub = self.create_subscription", text
+        )
+        self.assertIn("self._progress_timer = self.create_timer", text)
         self.assertIn("path_requires_home_resolution(request.points)", text)
         self.assertIn("_home_resolution_without_mavlink_lookup", text)
         self.assertIn("def _upload_worker_loop", text)

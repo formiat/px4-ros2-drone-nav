@@ -640,6 +640,17 @@ def create_px4_sensor_qos_profile() -> Any:
     )
 
 
+def create_reliable_volatile_qos_profile(depth: int = 1) -> Any:
+    if QoSProfile is None:
+        raise RuntimeError("rclpy QoSProfile is required to create ROS QoS")
+    return QoSProfile(
+        history=HistoryPolicy.KEEP_LAST,
+        depth=depth,
+        reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.VOLATILE,
+    )
+
+
 def path_requires_home_resolution(path_points: list[Point2]) -> bool:
     return bool(path_points)
 
@@ -1136,26 +1147,28 @@ class Px4MissionNode(Node):
         )
         self._upload_worker.start()
 
-        self.create_subscription(
+        path_qos = create_reliable_volatile_qos_profile(1)
+        self._path_sub = self.create_subscription(
             PathMsg,
             str(path_topic),
             self._on_path,
-            1,
+            path_qos,
         )
-        self.create_subscription(
+        self._path_id_sub = self.create_subscription(
             UInt64,
             str(path_id_topic),
             self._on_path_id,
-            1,
+            path_qos,
         )
-        self.create_subscription(
+        self._emergency_stop_sub = self.create_subscription(
             Bool,
             str(emergency_stop_topic),
             self._on_emergency_stop,
-            1,
+            path_qos,
         )
+        self._vehicle_local_position_sub = None
         if VehicleLocalPosition is not None:
-            self.create_subscription(
+            self._vehicle_local_position_sub = self.create_subscription(
                 VehicleLocalPosition,
                 str(px4_local_position_topic),
                 self._on_vehicle_local_position,
@@ -1166,7 +1179,7 @@ class Px4MissionNode(Node):
                 "MISSION_BACKEND vehicle_local_position_unavailable "
                 "reason=px4_msgs_import_failed"
             )
-        self.create_timer(1.0, self._on_timer)
+        self._progress_timer = self.create_timer(1.0, self._on_timer)
 
         self.get_logger().info(
             "Mission backend ready: "
