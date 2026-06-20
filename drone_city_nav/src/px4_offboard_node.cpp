@@ -143,7 +143,7 @@ public:
                        declare_parameter<double>("sharp_turn_hold_angle_deg", 60.0)),
                    0.0, std::numbers::pi);
     sharp_turn_hold_s_ =
-        std::clamp(declare_parameter<double>("sharp_turn_hold_s", 1.0), 0.0, 30.0);
+        std::clamp(declare_parameter<double>("sharp_turn_hold_s", 2.0), 0.0, 30.0);
     max_clearance_grid_staleness_ns_ = static_cast<std::int64_t>(
         std::clamp<double>(
             declare_parameter<double>("max_clearance_grid_staleness_s", 1.5), 0.0,
@@ -1680,7 +1680,7 @@ private:
   double acceptance_radius_m_{1.5};
   double turn_preview_distance_m_{32.0};
   double sharp_turn_hold_angle_rad_{std::numbers::pi / 3.0};
-  double sharp_turn_hold_s_{1.0};
+  double sharp_turn_hold_s_{2.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};

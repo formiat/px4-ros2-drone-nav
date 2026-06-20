@@ -72,7 +72,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
                 self.assertIn("sharp_turn_hold_angle_deg: 60.0", text)
-                self.assertIn("sharp_turn_hold_s: 1.0", text)
+                self.assertIn("sharp_turn_hold_s: 2.0", text)
 
 
 if __name__ == "__main__":
