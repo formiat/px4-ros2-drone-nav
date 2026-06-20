@@ -57,6 +57,10 @@ stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
   std::size_t prohibited_segments{0U};
+  std::size_t first_prohibited_segment{0U};
+  Point2 first_prohibited_start{};
+  Point2 first_prohibited_end{};
+  bool has_prohibited_segment{false};
 };
 
 enum class PathPublicationReason : std::uint8_t {
@@ -731,36 +735,30 @@ private:
       return false;
     }
 
-    if (distance(current_pose_.position, path_points.front()) < 1.0e-6) {
-      path_points.front() = current_pose_.position;
-    } else if (distance(current_pose_.position, path_points.front()) <
-               grid.resolution()) {
-      const bool direct_to_next_is_safe =
-          path_points.size() < 2U ||
-          pathSegmentIsAllowed(grid, current_pose_.position, path_points[1]);
-      if (direct_to_next_is_safe) {
-        path_points.front() = current_pose_.position;
-      } else {
-        path_points.insert(path_points.begin(), current_pose_.position);
-      }
-    } else {
-      path_points.insert(path_points.begin(), current_pose_.position);
+    if (!connectPublishedPathToCurrentPose(grid, path_points, source_label)) {
+      publishPath({}, PathPublicationReason::kHoldInvalidPath);
+      return false;
     }
 
     const std::vector<Point2> pre_collapse_path_points = path_points;
     const std::size_t dense_path_points = path_points.size();
     path_points = collapseCollinearPath(pre_collapse_path_points,
                                         kPublishedPathCollinearityToleranceM);
-    if (pre_collapse_path_points.size() >= 3U && path_points.size() >= 2U &&
-        !pathSegmentIsAllowed(grid, path_points[0], path_points[1]) &&
-        pathSegmentIsAllowed(grid, pre_collapse_path_points[0],
-                             pre_collapse_path_points[1])) {
-      path_points.insert(path_points.begin() + 1, pre_collapse_path_points[1]);
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 3000,
-          "%s path restored first waypoint after collinear collapse to keep the "
-          "first published segment allowed: restored=(%.2f, %.2f)",
-          source_label, pre_collapse_path_points[1].x, pre_collapse_path_points[1].y);
+    const std::size_t collapsed_path_points = path_points.size();
+    if (!pathIsAllowed(grid, path_points)) {
+      if (pathIsAllowed(grid, pre_collapse_path_points)) {
+        path_points = pre_collapse_path_points;
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 3000,
+            "%s path restored pre-collapse waypoints because collinear collapse "
+            "would cross prohibited cells: before=%zu collapsed=%zu",
+            source_label, pre_collapse_path_points.size(), collapsed_path_points);
+      } else {
+        logRejectedUnsafePublishedPath(grid, pre_collapse_path_points, source_label,
+                                       "pre-collapse path crosses prohibited cells");
+        publishPath({}, PathPublicationReason::kHoldInvalidPath);
+        return false;
+      }
     }
     if (path_points.size() != dense_path_points) {
       RCLCPP_INFO(get_logger(),
@@ -800,6 +798,12 @@ private:
       const Point2 segment_end = path_points[index];
       if (!pathSegmentIsAllowed(grid, segment_start, segment_end)) {
         ++summary.prohibited_segments;
+        if (!summary.has_prohibited_segment) {
+          summary.first_prohibited_segment = index - 1U;
+          summary.first_prohibited_start = segment_start;
+          summary.first_prohibited_end = segment_end;
+          summary.has_prohibited_segment = true;
+        }
       }
     }
 
@@ -815,8 +819,12 @@ private:
     if (unsafe_path) {
       RCLCPP_WARN(get_logger(),
                   "%s published path safety: segments=%zu prohibited_segments=%zu "
-                  "strict_prohibited_intersection=true",
-                  source_label, summary.segments, summary.prohibited_segments);
+                  "strict_prohibited_intersection=true first_prohibited_segment=%zu "
+                  "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
+                  source_label, summary.segments, summary.prohibited_segments,
+                  summary.first_prohibited_segment, summary.first_prohibited_start.x,
+                  summary.first_prohibited_start.y, summary.first_prohibited_end.x,
+                  summary.first_prohibited_end.y);
       return;
     }
 
@@ -824,6 +832,59 @@ private:
                 "%s published path safety: segments=%zu prohibited_segments=%zu "
                 "strict_prohibited_intersection=false",
                 source_label, summary.segments, summary.prohibited_segments);
+  }
+
+  [[nodiscard]] bool connectPublishedPathToCurrentPose(const OccupancyGrid2D& grid,
+                                                       std::vector<Point2>& path_points,
+                                                       const char* source_label) const {
+    if (path_points.empty()) {
+      return false;
+    }
+
+    const Point2 current_position = current_pose_.position;
+    const Point2 first_path_point = path_points.front();
+    const double distance_to_first_m = distance(current_position, first_path_point);
+    if (distance_to_first_m < 1.0e-6) {
+      path_points.front() = current_position;
+      return true;
+    }
+
+    if (distance_to_first_m < grid.resolution() && path_points.size() >= 2U &&
+        pathSegmentIsAllowed(grid, current_position, path_points[1])) {
+      path_points.front() = current_position;
+      return true;
+    }
+
+    if (pathSegmentIsAllowed(grid, current_position, first_path_point)) {
+      path_points.insert(path_points.begin(), current_position);
+      return true;
+    }
+
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "%s path rejected because current pose cannot connect to the planned start "
+        "without crossing prohibited cells: current=(%.2f, %.2f) first=(%.2f, %.2f) "
+        "distance=%.2fm",
+        source_label, current_position.x, current_position.y, first_path_point.x,
+        first_path_point.y, distance_to_first_m);
+    return false;
+  }
+
+  void logRejectedUnsafePublishedPath(const OccupancyGrid2D& grid,
+                                      const std::span<const Point2> path_points,
+                                      const char* source_label,
+                                      const char* reason) const {
+    const PublishedPathSafetySummary summary =
+        summarizePublishedPathSafety(grid, path_points);
+    RCLCPP_WARN(get_logger(),
+                "%s path rejected before publication: reason='%s' segments=%zu "
+                "prohibited_segments=%zu first_prohibited_segment=%zu "
+                "segment_start=(%.2f, %.2f) "
+                "segment_end=(%.2f, %.2f)",
+                source_label, reason, summary.segments, summary.prohibited_segments,
+                summary.first_prohibited_segment, summary.first_prohibited_start.x,
+                summary.first_prohibited_start.y, summary.first_prohibited_end.x,
+                summary.first_prohibited_end.y);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
