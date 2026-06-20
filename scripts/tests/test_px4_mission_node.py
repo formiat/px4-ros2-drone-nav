@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from typing import Callable
 
 
 SCRIPT_PATH = (
@@ -24,10 +25,15 @@ SPEC.loader.exec_module(mission_node)
 
 
 class FakeMissionClient:
-    def __init__(self, result: object | None = None) -> None:
+    def __init__(
+        self,
+        result: object | None = None,
+        on_upload_mission: Callable[[], None] | None = None,
+    ) -> None:
         self.result = result or mission_node.UploadResult(
             True, "MAV_MISSION_ACCEPTED", "accepted"
         )
+        self.on_upload_mission = on_upload_mission
         self.uploaded_items: list[object] = []
         self.calls: list[tuple[str, object]] = []
 
@@ -35,6 +41,8 @@ class FakeMissionClient:
         self.uploaded_items = list(items)
         self.calls.append(("upload_mission", len(items)))
         self.calls.append(("upload_timeout_s", timeout_s))
+        if self.on_upload_mission is not None:
+            self.on_upload_mission()
         return self.result
 
     def set_auto_mission_mode(self) -> None:
@@ -52,6 +60,14 @@ class FakeMissionClient:
 
 
 class Px4MissionNodeLogicTest(unittest.TestCase):
+    def test_ros_path_callback_enqueues_upload_work(self) -> None:
+        text = SCRIPT_PATH.read_text(encoding="utf-8")
+        self.assertIn("self._path_upload_queue", text)
+        self.assertIn('name="px4_mission_upload_worker"', text)
+        self.assertIn("self._path_upload_queue.put((points, path_id))", text)
+        self.assertIn("def _upload_worker_loop", text)
+        self.assertIn("self._core.handle_path_points", text)
+
     def make_config(self, **overrides: object) -> object:
         values = {
             "acceptance_radius_m": 1.25,
@@ -163,6 +179,35 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
             ["upload_mission", "upload_timeout_s", "set_auto_mission_mode", "arm"],
             [call[0] for call in client.calls],
         )
+
+    def test_emergency_stop_during_upload_skips_mode_and_arm(self) -> None:
+        core_holder: dict[str, object] = {}
+
+        def trigger_emergency_stop() -> None:
+            core_holder["core"].handle_emergency_stop(True)
+
+        client = FakeMissionClient(on_upload_mission=trigger_emergency_stop)
+        logs: list[str] = []
+        core = mission_node.MissionBackendCore(
+            self.make_config(),
+            client,
+            logger=logs.append,
+        )
+        core_holder["core"] = core
+
+        result = core.handle_path_points(
+            [mission_node.Point2(27.0, 27.0)],
+            8,
+            mission_node.HomePosition(47.0, 8.0),
+        )
+
+        self.assertFalse(result.success)
+        call_names = [call[0] for call in client.calls]
+        self.assertIn("upload_mission", call_names)
+        self.assertIn(("disarm", True), client.calls)
+        self.assertNotIn("set_auto_mission_mode", call_names)
+        self.assertNotIn("arm", call_names)
+        self.assertTrue(any("upload_post_stop_skip" in line for line in logs))
 
     def test_emergency_stop_disarms_once_then_respects_resend_period(self) -> None:
         client = FakeMissionClient()

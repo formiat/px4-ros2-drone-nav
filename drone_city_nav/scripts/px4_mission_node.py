@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import math
+import queue
+import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path as FilesystemPath
@@ -155,6 +157,7 @@ class MissionBlackbox:
     def __init__(self, path: str, enabled: bool) -> None:
         self._enabled = enabled
         self._stream = None
+        self._lock = threading.Lock()
         if not enabled:
             return
 
@@ -164,15 +167,17 @@ class MissionBlackbox:
         self._stream = blackbox_path.open("a", encoding="utf-8")
 
     def write(self, event: dict[str, Any]) -> None:
-        if self._stream is None:
-            return
-        self._stream.write(json.dumps(event, sort_keys=True) + "\n")
-        self._stream.flush()
+        with self._lock:
+            if self._stream is None:
+                return
+            self._stream.write(json.dumps(event, sort_keys=True) + "\n")
+            self._stream.flush()
 
     def close(self) -> None:
-        if self._stream is not None:
-            self._stream.close()
-            self._stream = None
+        with self._lock:
+            if self._stream is not None:
+                self._stream.close()
+                self._stream = None
 
 
 class MavlinkMissionClient:
@@ -417,6 +422,7 @@ class MissionBackendCore:
         self.logger = logger
         self.blackbox = blackbox
         self.clock = clock
+        self._lock = threading.RLock()
         self.last_uploaded_path_id: int | None = None
         self.upload_attempt = 0
         self.emergency_stop_requested = False
@@ -429,7 +435,7 @@ class MissionBackendCore:
             "MISSION_BACKEND path_received "
             f"path_id={path_id} waypoints={len(path_points)}"
         )
-        if self.emergency_stop_requested:
+        if self.is_emergency_stop_requested():
             result = UploadResult.skipped("emergency stop is active")
             self._write_blackbox("upload_skipped", path_id, result, len(path_points))
             return result
@@ -438,17 +444,21 @@ class MissionBackendCore:
             self.logger(f"MISSION_BACKEND empty_path_skip path_id={path_id}")
             self._write_blackbox("upload_skipped", path_id, result, 0)
             return result
-        if self.last_uploaded_path_id == path_id:
+        with self._lock:
+            duplicate_path_id = self.last_uploaded_path_id == path_id
+        if duplicate_path_id:
             result = UploadResult.skipped("duplicate path id")
             self.logger(f"MISSION_BACKEND duplicate_path_skip path_id={path_id}")
             self._write_blackbox("upload_skipped", path_id, result, len(path_points))
             return result
 
         items = build_mission_items(path_points, home, self.config)
-        self.upload_attempt += 1
+        with self._lock:
+            self.upload_attempt += 1
+            upload_attempt = self.upload_attempt
         self.logger(
             "MISSION_BACKEND upload_started "
-            f"path_id={path_id} waypoints={len(items)} attempt={self.upload_attempt}"
+            f"path_id={path_id} waypoints={len(items)} attempt={upload_attempt}"
         )
         result = self.client.upload_mission(items, self.config.upload_timeout_s)
         self.logger(
@@ -460,13 +470,43 @@ class MissionBackendCore:
         if not result.success:
             return result
 
-        self.last_uploaded_path_id = path_id
+        if self.is_emergency_stop_requested():
+            skipped = UploadResult.skipped("emergency stop became active after upload")
+            self.logger(
+                "MISSION_BACKEND upload_post_stop_skip "
+                f"path_id={path_id} action=skip_mode_arm"
+            )
+            self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
+            return skipped
+
+        with self._lock:
+            self.last_uploaded_path_id = path_id
         if self.config.auto_mission:
+            if self.is_emergency_stop_requested():
+                skipped = UploadResult.skipped(
+                    "emergency stop became active before mode command"
+                )
+                self.logger(
+                    "MISSION_BACKEND mode_command_skip "
+                    f"path_id={path_id} reason=emergency_stop"
+                )
+                self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
+                return skipped
             self.client.set_auto_mission_mode()
             self.logger(
                 f"MISSION_BACKEND mode_command path_id={path_id} mode=AUTO.MISSION"
             )
         if self.config.auto_arm:
+            if self.is_emergency_stop_requested():
+                skipped = UploadResult.skipped(
+                    "emergency stop became active before arm command"
+                )
+                self.logger(
+                    "MISSION_BACKEND arm_command_skip "
+                    f"path_id={path_id} reason=emergency_stop"
+                )
+                self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
+                return skipped
             self.client.arm()
             self.logger(f"MISSION_BACKEND arm_command path_id={path_id}")
         return result
@@ -474,8 +514,12 @@ class MissionBackendCore:
     def handle_emergency_stop(self, requested: bool) -> None:
         if not requested:
             return
-        if not self.emergency_stop_requested:
-            self.emergency_stop_requested = True
+        first_request = False
+        with self._lock:
+            if not self.emergency_stop_requested:
+                self.emergency_stop_requested = True
+                first_request = True
+        if first_request:
             self.logger("MISSION_BACKEND emergency_stop requested=true action=disarm")
             self._write_event(
                 {
@@ -487,16 +531,17 @@ class MissionBackendCore:
         self.maybe_send_emergency_disarm()
 
     def maybe_send_emergency_disarm(self) -> bool:
-        if not self.emergency_stop_requested:
-            return False
         now_s = self.clock()
-        if (
-            now_s - self.last_emergency_disarm_s
-            < self.config.emergency_stop_command_resend_period_s
-        ):
-            return False
+        with self._lock:
+            if not self.emergency_stop_requested:
+                return False
+            if (
+                now_s - self.last_emergency_disarm_s
+                < self.config.emergency_stop_command_resend_period_s
+            ):
+                return False
+            self.last_emergency_disarm_s = now_s
         self.client.disarm(force=True)
-        self.last_emergency_disarm_s = now_s
         self.logger(
             "MISSION_BACKEND emergency_stop_disarm_sent "
             f"resend_period_s={self.config.emergency_stop_command_resend_period_s:.2f}"
@@ -510,6 +555,10 @@ class MissionBackendCore:
             }
         )
         return True
+
+    def is_emergency_stop_requested(self) -> bool:
+        with self._lock:
+            return self.emergency_stop_requested
 
     def log_progress(self, progress: dict[str, Any] | None) -> None:
         if not progress:
@@ -536,7 +585,7 @@ class MissionBackendCore:
             "ack_type": result.ack_type,
             "message": result.message,
             "connection_url": self.config.connection_url,
-            "emergency_stop_requested": self.emergency_stop_requested,
+            "emergency_stop_requested": self.is_emergency_stop_requested(),
         }
         if items:
             payload["first_item"] = asdict(items[0])
@@ -613,6 +662,7 @@ class Px4MissionNode(Node):
         self._latest_path_id = 0
         self._received_path_count = 0
         self._blackbox = MissionBlackbox(str(blackbox_path), blackbox_enabled)
+        self._worker_join_timeout_s = max(2.0, config.upload_timeout_s + 1.0)
         self._core = MissionBackendCore(
             config,
             MavlinkMissionClient(config),
@@ -620,6 +670,16 @@ class Px4MissionNode(Node):
             blackbox=self._blackbox,
             clock=time.monotonic,
         )
+        self._worker_stop = threading.Event()
+        self._path_upload_queue: queue.Queue[tuple[list[Point2], int] | None] = (
+            queue.Queue()
+        )
+        self._upload_worker = threading.Thread(
+            target=self._upload_worker_loop,
+            name="px4_mission_upload_worker",
+            daemon=True,
+        )
+        self._upload_worker.start()
 
         self.create_subscription(
             PathMsg,
@@ -656,6 +716,14 @@ class Px4MissionNode(Node):
         )
 
     def destroy_node(self) -> bool:
+        self._worker_stop.set()
+        self._path_upload_queue.put(None)
+        self._upload_worker.join(timeout=self._worker_join_timeout_s)
+        if self._upload_worker.is_alive():
+            self.get_logger().warn(
+                "MISSION_BACKEND worker_shutdown_timeout "
+                f"timeout_s={self._worker_join_timeout_s:.1f}"
+            )
         self._blackbox.close()
         return super().destroy_node()
 
@@ -669,12 +737,34 @@ class Px4MissionNode(Node):
             Point2(float(pose.pose.position.x), float(pose.pose.position.y))
             for pose in msg.poses
         ]
-        try:
-            self._core.handle_path_points(points, path_id, self._resolve_home_position())
-        except Exception as exc:  # Keep the node alive and diagnosable in headless logs.
-            self.get_logger().error(
-                f"MISSION_BACKEND upload_exception path_id={path_id} error='{exc}'"
-            )
+        self._path_upload_queue.put((points, path_id))
+        self.get_logger().info(
+            "MISSION_BACKEND path_enqueued "
+            f"path_id={path_id} waypoints={len(points)}"
+        )
+
+    def _upload_worker_loop(self) -> None:
+        while not self._worker_stop.is_set():
+            try:
+                request = self._path_upload_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if request is None:
+                self._path_upload_queue.task_done()
+                break
+
+            points, path_id = request
+            try:
+                self._core.handle_path_points(
+                    points, path_id, self._resolve_home_position()
+                )
+            except Exception as exc:
+                self.get_logger().error(
+                    "MISSION_BACKEND upload_exception "
+                    f"path_id={path_id} error='{exc}'"
+                )
+            finally:
+                self._path_upload_queue.task_done()
 
     def _on_emergency_stop(self, msg: Bool) -> None:
         try:
