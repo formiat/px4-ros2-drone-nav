@@ -205,26 +205,38 @@ class MavlinkMissionClient:
             )
 
     def upload_mission(
-        self, items: list[MissionItemInt], timeout_s: float
+        self,
+        items: list[MissionItemInt],
+        timeout_s: float,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> UploadResult:
         self.connect(timeout_s)
         if not items:
             return UploadResult.skipped("empty mission")
+        if self._upload_cancelled(should_cancel):
+            return UploadResult.skipped("mission upload cancelled by emergency stop")
 
         self._send_mission_clear_all()
+        if self._upload_cancelled(should_cancel):
+            return UploadResult.skipped("mission upload cancelled by emergency stop")
         self._send_mission_count(len(items))
 
         sent_sequences: set[int] = set()
         deadline = time.monotonic() + timeout_s
+        receive_interval_s = 0.1
         while time.monotonic() < deadline:
+            if self._upload_cancelled(should_cancel):
+                return UploadResult.skipped("mission upload cancelled by emergency stop")
             remaining_s = max(0.0, deadline - time.monotonic())
             msg = self._master.recv_match(
                 type=["MISSION_REQUEST_INT", "MISSION_REQUEST", "MISSION_ACK"],
                 blocking=True,
-                timeout=remaining_s,
+                timeout=min(receive_interval_s, remaining_s),
             )
             if msg is None:
-                break
+                continue
+            if self._upload_cancelled(should_cancel):
+                return UploadResult.skipped("mission upload cancelled by emergency stop")
 
             msg_type = msg.get_type()
             if msg_type == "MISSION_ACK":
@@ -236,13 +248,13 @@ class MavlinkMissionClient:
             seq = int(msg.seq)
             if seq < 0 or seq >= len(items):
                 return UploadResult(False, "INVALID_SEQUENCE", f"requested seq {seq}")
+            if self._upload_cancelled(should_cancel):
+                return UploadResult.skipped("mission upload cancelled by emergency stop")
             self._send_mission_item(items[seq])
             sent_sequences.add(seq)
+            if self._upload_cancelled(should_cancel):
+                return UploadResult.skipped("mission upload cancelled by emergency stop")
 
-        if len(sent_sequences) == len(items):
-            ack = self._master.recv_match(type="MISSION_ACK", blocking=True, timeout=1.0)
-            if ack is not None:
-                return self._upload_result_from_ack(ack)
         return UploadResult.timeout("mission upload timed out")
 
     def set_auto_mission_mode(self) -> None:
@@ -390,6 +402,10 @@ class MavlinkMissionClient:
         ack_name = mission_ack_name(int(msg.type), mavlink)
         return UploadResult(accepted, ack_name, f"MISSION_ACK type={ack_name}")
 
+    @staticmethod
+    def _upload_cancelled(should_cancel: Callable[[], bool] | None) -> bool:
+        return should_cancel is not None and should_cancel()
+
 
 def mission_ack_name(ack_type: int, mavlink_module: Any | None = None) -> str:
     if mavlink_module is None:
@@ -437,19 +453,23 @@ class MissionBackendCore:
         )
         if self.is_emergency_stop_requested():
             result = UploadResult.skipped("emergency stop is active")
-            self._write_blackbox("upload_skipped", path_id, result, len(path_points))
+            self._write_blackbox(
+                "upload_skipped", path_id, result, len(path_points), home=home
+            )
             return result
         if not path_points:
             result = UploadResult.skipped("empty path")
             self.logger(f"MISSION_BACKEND empty_path_skip path_id={path_id}")
-            self._write_blackbox("upload_skipped", path_id, result, 0)
+            self._write_blackbox("upload_skipped", path_id, result, 0, home=home)
             return result
         with self._lock:
             duplicate_path_id = self.last_uploaded_path_id == path_id
         if duplicate_path_id:
             result = UploadResult.skipped("duplicate path id")
             self.logger(f"MISSION_BACKEND duplicate_path_skip path_id={path_id}")
-            self._write_blackbox("upload_skipped", path_id, result, len(path_points))
+            self._write_blackbox(
+                "upload_skipped", path_id, result, len(path_points), home=home
+            )
             return result
 
         items = build_mission_items(path_points, home, self.config)
@@ -460,13 +480,24 @@ class MissionBackendCore:
             "MISSION_BACKEND upload_started "
             f"path_id={path_id} waypoints={len(items)} attempt={upload_attempt}"
         )
-        result = self.client.upload_mission(items, self.config.upload_timeout_s)
+        result = self.client.upload_mission(
+            items, self.config.upload_timeout_s, self.is_emergency_stop_requested
+        )
         self.logger(
             "MISSION_BACKEND upload_result "
             f"path_id={path_id} success={str(result.success).lower()} "
             f"ack={result.ack_type} message='{result.message}'"
         )
-        self._write_blackbox("upload_result", path_id, result, len(items), items)
+        self._write_blackbox(
+            "upload_result",
+            path_id,
+            result,
+            len(items),
+            items,
+            home=home,
+            current_seq=len(items) - 1 if result.success and items else None,
+            finished=result.success,
+        )
         if not result.success:
             return result
 
@@ -476,38 +507,38 @@ class MissionBackendCore:
                 "MISSION_BACKEND upload_post_stop_skip "
                 f"path_id={path_id} action=skip_mode_arm"
             )
-            self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
+            self._write_blackbox(
+                "upload_skipped", path_id, skipped, len(items), items, home=home
+            )
             return skipped
 
         with self._lock:
             self.last_uploaded_path_id = path_id
         if self.config.auto_mission:
-            if self.is_emergency_stop_requested():
+            if not self._run_command_unless_emergency(
+                "mode_command", path_id, self.client.set_auto_mission_mode
+            ):
                 skipped = UploadResult.skipped(
                     "emergency stop became active before mode command"
                 )
-                self.logger(
-                    "MISSION_BACKEND mode_command_skip "
-                    f"path_id={path_id} reason=emergency_stop"
+                self._write_blackbox(
+                    "upload_skipped", path_id, skipped, len(items), items, home=home
                 )
-                self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
                 return skipped
-            self.client.set_auto_mission_mode()
             self.logger(
                 f"MISSION_BACKEND mode_command path_id={path_id} mode=AUTO.MISSION"
             )
         if self.config.auto_arm:
-            if self.is_emergency_stop_requested():
+            if not self._run_command_unless_emergency(
+                "arm_command", path_id, self.client.arm
+            ):
                 skipped = UploadResult.skipped(
                     "emergency stop became active before arm command"
                 )
-                self.logger(
-                    "MISSION_BACKEND arm_command_skip "
-                    f"path_id={path_id} reason=emergency_stop"
+                self._write_blackbox(
+                    "upload_skipped", path_id, skipped, len(items), items, home=home
                 )
-                self._write_blackbox("upload_skipped", path_id, skipped, len(items), items)
                 return skipped
-            self.client.arm()
             self.logger(f"MISSION_BACKEND arm_command path_id={path_id}")
         return result
 
@@ -525,6 +556,7 @@ class MissionBackendCore:
                 {
                     "event": "emergency_stop_requested",
                     "time_s": self.clock(),
+                    "time_ns": time.time_ns(),
                     "emergency_stop_requested": True,
                 }
             )
@@ -550,6 +582,7 @@ class MissionBackendCore:
             {
                 "event": "emergency_stop_disarm_sent",
                 "time_s": now_s,
+                "time_ns": time.time_ns(),
                 "emergency_stop_requested": True,
                 "emergency_stop_disarm_sent": True,
             }
@@ -565,7 +598,17 @@ class MissionBackendCore:
             return
         fields = " ".join(f"{key}={value}" for key, value in sorted(progress.items()))
         self.logger(f"MISSION_BACKEND progress {fields}")
-        self._write_event({"event": "progress", "time_s": self.clock(), **progress})
+        current_seq = progress.get("seq")
+        self._write_event(
+            {
+                "event": "progress",
+                "time_s": self.clock(),
+                "time_ns": time.time_ns(),
+                "current_seq": current_seq,
+                "finished": progress.get("type") == "MISSION_ITEM_REACHED",
+                **progress,
+            }
+        )
 
     def _write_blackbox(
         self,
@@ -574,16 +617,24 @@ class MissionBackendCore:
         result: UploadResult,
         waypoints: int,
         items: list[MissionItemInt] | None = None,
+        *,
+        home: HomePosition | None = None,
+        current_seq: int | None = None,
+        finished: bool | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "event": event,
             "time_s": self.clock(),
+            "time_ns": time.time_ns(),
             "path_id": path_id,
             "waypoints": waypoints,
             "upload_attempt": self.upload_attempt,
             "upload_success": result.success,
             "ack_type": result.ack_type,
             "message": result.message,
+            "current_seq": current_seq,
+            "finished": finished if finished is not None else result.success,
+            "home": asdict(home) if home is not None else None,
             "connection_url": self.config.connection_url,
             "emergency_stop_requested": self.is_emergency_stop_requested(),
         }
@@ -591,6 +642,19 @@ class MissionBackendCore:
             payload["first_item"] = asdict(items[0])
             payload["last_item"] = asdict(items[-1])
         self._write_event(payload)
+
+    def _run_command_unless_emergency(
+        self, command_name: str, path_id: int, command: Callable[[], None]
+    ) -> bool:
+        with self._lock:
+            if self.emergency_stop_requested:
+                self.logger(
+                    "MISSION_BACKEND "
+                    f"{command_name}_skip path_id={path_id} reason=emergency_stop"
+                )
+                return False
+            command()
+            return True
 
     def _write_event(self, payload: dict[str, Any]) -> None:
         if self.blackbox is not None:

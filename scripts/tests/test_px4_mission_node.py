@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 import unittest
 from pathlib import Path
 from typing import Callable
@@ -29,23 +30,36 @@ class FakeMissionClient:
         self,
         result: object | None = None,
         on_upload_mission: Callable[[], None] | None = None,
+        on_set_auto_mission_mode: Callable[[], None] | None = None,
     ) -> None:
         self.result = result or mission_node.UploadResult(
             True, "MAV_MISSION_ACCEPTED", "accepted"
         )
         self.on_upload_mission = on_upload_mission
+        self.on_set_auto_mission_mode = on_set_auto_mission_mode
         self.uploaded_items: list[object] = []
         self.calls: list[tuple[str, object]] = []
 
-    def upload_mission(self, items: list[object], timeout_s: float) -> object:
+    def upload_mission(
+        self,
+        items: list[object],
+        timeout_s: float,
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> object:
         self.uploaded_items = list(items)
         self.calls.append(("upload_mission", len(items)))
         self.calls.append(("upload_timeout_s", timeout_s))
         if self.on_upload_mission is not None:
             self.on_upload_mission()
+        if should_cancel is not None and should_cancel():
+            return mission_node.UploadResult.skipped(
+                "mission upload cancelled by emergency stop"
+            )
         return self.result
 
     def set_auto_mission_mode(self) -> None:
+        if self.on_set_auto_mission_mode is not None:
+            self.on_set_auto_mission_mode()
         self.calls.append(("set_auto_mission_mode", None))
 
     def arm(self) -> None:
@@ -207,7 +221,52 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn(("disarm", True), client.calls)
         self.assertNotIn("set_auto_mission_mode", call_names)
         self.assertNotIn("arm", call_names)
-        self.assertTrue(any("upload_post_stop_skip" in line for line in logs))
+        self.assertEqual("SKIPPED", result.ack_type)
+
+    def test_emergency_stop_cannot_complete_between_mode_guard_and_send(self) -> None:
+        core_holder: dict[str, object] = {}
+        stop_started = threading.Event()
+        stop_finished = threading.Event()
+        stop_finished_before_mode_send: list[bool] = []
+        stop_threads: list[threading.Thread] = []
+
+        def trigger_emergency_stop_from_other_thread() -> None:
+            core = core_holder["core"]
+
+            def request_stop() -> None:
+                stop_started.set()
+                core.handle_emergency_stop(True)
+                stop_finished.set()
+
+            thread = threading.Thread(target=request_stop)
+            stop_threads.append(thread)
+            thread.start()
+            self.assertTrue(stop_started.wait(timeout=1.0))
+            stop_finished.wait(timeout=0.05)
+            stop_finished_before_mode_send.append(stop_finished.is_set())
+
+        client = FakeMissionClient(
+            on_set_auto_mission_mode=trigger_emergency_stop_from_other_thread
+        )
+        core = mission_node.MissionBackendCore(
+            self.make_config(auto_arm=False),
+            client,
+        )
+        core_holder["core"] = core
+
+        result = core.handle_path_points(
+            [mission_node.Point2(27.0, 27.0)],
+            9,
+            mission_node.HomePosition(47.0, 8.0),
+        )
+        for thread in stop_threads:
+            thread.join(timeout=1.0)
+
+        self.assertTrue(result.success)
+        self.assertEqual([False], stop_finished_before_mode_send)
+        self.assertIn(("set_auto_mission_mode", None), client.calls)
+        self.assertIn(("disarm", True), client.calls)
+        self.assertTrue(core.is_emergency_stop_requested())
 
     def test_emergency_stop_disarms_once_then_respects_resend_period(self) -> None:
         client = FakeMissionClient()
@@ -252,9 +311,136 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(0, [call[0] for call in client.calls].count("upload_mission"))
 
+    def test_mavlink_upload_stops_sending_items_after_cancel(self) -> None:
+        config = self.make_config()
+        client = mission_node.MavlinkMissionClient(config)
+        master = FakeMavlinkMaster()
+        client._master = master
+        client._mavutil = FakeMavutil
+        items = [
+            mission_node.MissionItemInt(
+                seq=seq,
+                frame=6,
+                command=16,
+                current=1 if seq == 0 else 0,
+                autocontinue=1,
+                param1=0.0,
+                param2=1.0,
+                param3=0.0,
+                param4=0.0,
+                x=470000000,
+                y=80000000,
+                z=18.0,
+            )
+            for seq in range(3)
+        ]
+
+        result = client.upload_mission(items, 1.0, lambda: master.cancelled)
+
+        self.assertFalse(result.success)
+        self.assertEqual("SKIPPED", result.ack_type)
+        self.assertEqual([0], master.sent_item_sequences)
+        self.assertEqual(1, master.clear_count)
+        self.assertEqual([3], master.mission_counts)
+
+    def test_blackbox_upload_event_contains_planned_headless_fields(self) -> None:
+        client = FakeMissionClient()
+        blackbox = CapturingBlackbox()
+        core = mission_node.MissionBackendCore(
+            self.make_config(),
+            client,
+            blackbox=blackbox,
+        )
+        home = mission_node.HomePosition(47.0, 8.0, 15.0)
+
+        result = core.handle_path_points(
+            [mission_node.Point2(27.0, 27.0)],
+            11,
+            home,
+        )
+
+        self.assertTrue(result.success)
+        upload_events = [
+            event for event in blackbox.events if event["event"] == "upload_result"
+        ]
+        self.assertEqual(1, len(upload_events))
+        event = upload_events[0]
+        self.assertIsInstance(event["time_ns"], int)
+        self.assertEqual(
+            {
+                "latitude_deg": home.latitude_deg,
+                "longitude_deg": home.longitude_deg,
+                "altitude_m": home.altitude_m,
+            },
+            event["home"],
+        )
+        self.assertEqual(0, event["current_seq"])
+        self.assertTrue(event["finished"])
+
     @staticmethod
     def disarm_calls(client: FakeMissionClient) -> list[tuple[str, object]]:
         return [call for call in client.calls if call[0] == "disarm"]
+
+
+class CapturingBlackbox:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def write(self, event: dict[str, object]) -> None:
+        self.events.append(event)
+
+
+class FakeMissionRequest:
+    def __init__(self, seq: int) -> None:
+        self.seq = seq
+
+    @staticmethod
+    def get_type() -> str:
+        return "MISSION_REQUEST_INT"
+
+
+class FakeMavlinkModule:
+    MAV_MISSION_ACCEPTED = 0
+    MAV_MISSION_TYPE_MISSION = 0
+
+
+class FakeMavutil:
+    mavlink = FakeMavlinkModule
+
+
+class FakeMav:
+    def __init__(self, master: "FakeMavlinkMaster") -> None:
+        self._master = master
+
+    def mission_clear_all_send(self, *_args: object) -> None:
+        self._master.clear_count += 1
+
+    def mission_count_send(self, *_args: object) -> None:
+        self._master.mission_counts.append(int(_args[2]))
+
+    def mission_item_int_send(self, *_args: object) -> None:
+        seq = int(_args[2])
+        self._master.sent_item_sequences.append(seq)
+        if seq == 0:
+            self._master.cancelled = True
+
+
+class FakeMavlinkMaster:
+    def __init__(self) -> None:
+        self.mav = FakeMav(self)
+        self.cancelled = False
+        self.clear_count = 0
+        self.mission_counts: list[int] = []
+        self.sent_item_sequences: list[int] = []
+        self._next_request_seq = 0
+
+    def recv_match(
+        self, *, type: object, blocking: bool, timeout: float
+    ) -> FakeMissionRequest | None:
+        _ = (type, blocking, timeout)
+        seq = self._next_request_seq
+        self._next_request_seq += 1
+        return FakeMissionRequest(seq)
 
 
 if __name__ == "__main__":
