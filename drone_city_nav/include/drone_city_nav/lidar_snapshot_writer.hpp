@@ -40,9 +40,6 @@ struct LidarSnapshotCsvRow {
   double end_y_m{std::numeric_limits<double>::quiet_NaN()};
   double end_altitude_m{std::numeric_limits<double>::quiet_NaN()};
   LidarBeamProjectionStatus status{LidarBeamProjectionStatus::kInvalidScan};
-  double depth_end_x_m{std::numeric_limits<double>::quiet_NaN()};
-  double depth_end_y_m{std::numeric_limits<double>::quiet_NaN()};
-  double depth_end_altitude_m{std::numeric_limits<double>::quiet_NaN()};
   Point3 lidar_direction{};
   Point3 body_frd_direction{};
   Point3 ned_direction{};

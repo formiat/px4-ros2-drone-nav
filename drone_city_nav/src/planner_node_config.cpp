@@ -38,12 +38,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       1000.0);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
-  const double legacy_stable_path_prohibited_length_m =
-      node.declare_parameter<double>("stable_path_blocking_blocked_length_m", 2.0);
-  config.planner_core.stable_path_prohibited_length_m =
-      std::clamp(node.declare_parameter<double>("stable_path_prohibited_length_m",
-                                                legacy_stable_path_prohibited_length_m),
-                 0.0, 1000.0);
   const double legacy_stable_path_prohibited_replan_horizon_m =
       node.declare_parameter<double>("stable_path_blocking_replan_horizon_m", 25.0);
   config.planner_core.stable_path_prohibited_replan_horizon_m = std::clamp(
@@ -127,9 +121,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("max_lidar_range_m", 35.0);
   config.lidar_projection.range_hit_epsilon_m =
       node.declare_parameter<double>("range_hit_epsilon_m", 0.05);
-  config.current_lidar.sensor_hit_depth_m = std::clamp(
-      node.declare_parameter<double>("current_lidar_sensor_hit_depth_m", 0.0), 0.0,
-      100.0);
   config.lidar_projection.scan_yaw_offset_rad =
       node.declare_parameter<double>("scan_yaw_offset_rad", 0.0);
   config.current_lidar.use_px4_heading_for_scan =

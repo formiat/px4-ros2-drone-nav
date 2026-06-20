@@ -69,23 +69,29 @@ class TopicContractTest(unittest.TestCase):
         self.assertNotIn("/drone_city_nav/obstacle_memory_inflated_grid", text)
         self.assertNotIn("/drone_city_nav/occupancy_grid", text)
 
-    def test_sensor_hit_depth_names_are_not_legacy_obstacle_depth_names(self) -> None:
+    def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [
             "drone_city_nav/config/urban_mvp.yaml",
             "drone_city_nav/config/real_drone_template.yaml",
             "drone_city_nav/include/drone_city_nav/obstacle_memory.hpp",
             "drone_city_nav/include/drone_city_nav/current_lidar_overlay.hpp",
+            "drone_city_nav/include/drone_city_nav/lidar_projection.hpp",
+            "drone_city_nav/include/drone_city_nav/lidar_snapshot_writer.hpp",
             "drone_city_nav/src/obstacle_memory.cpp",
             "drone_city_nav/src/current_lidar_overlay.cpp",
+            "drone_city_nav/src/lidar_projection.cpp",
+            "drone_city_nav/src/lidar_snapshot_writer.cpp",
             "drone_city_nav/src/planner_node_config.cpp",
         ]
 
         for relative_path in checked_paths:
             with self.subTest(relative_path=relative_path):
                 text = read(relative_path)
-                self.assertIn("sensor_hit_depth", text)
-                self.assertNotIn("hit_obstacle_depth", text)
-                self.assertNotIn("current_lidar_obstacle_depth", text)
+                self.assertNotIn("sensor_hit_" "depth", text)
+                self.assertNotIn("hit_obstacle_" "depth", text)
+                self.assertNotIn("current_lidar_obstacle_" "depth", text)
+                self.assertNotIn("depth_" "endpoint", text)
+                self.assertNotIn("depth_" "end", text)
 
 
 if __name__ == "__main__":

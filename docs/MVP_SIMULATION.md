@@ -547,10 +547,9 @@ make quality
 - `obstacle_memory_node` stores bounded hit/miss scores per cell. A single free
   miss does not immediately erase a remembered obstacle, but repeated free
   evidence can clear stale cells.
-- Lidar hit endpoints are extended by the configurable `sensor_hit_depth_m`
-  before planner inflation. This is sensor preprocessing, not safety inflation:
-  it makes raw lidar evidence thick enough to survive grid discretization. Real
-  drone templates may use a larger value as deployment calibration.
+- Lidar hit endpoints mark only the measured endpoint cell before planner
+  inflation. Raw lidar sources do not add obstacle depth or source-specific
+  safety margins.
 - A* base edge costs use physical grid distance in meters. `astar_turn_cost_weight`
   prefers smoother paths by penalizing turns. `astar_evasive_maneuvering_enabled`
   switches direction preference to evasive mode, where straight continuations are

@@ -70,8 +70,6 @@ public:
         declare_parameter<double>("max_lidar_range_m", 35.0);
     memory_config_.range_hit_epsilon_m =
         declare_parameter<double>("range_hit_epsilon_m", 0.05);
-    memory_config_.sensor_hit_depth_m =
-        std::clamp(declare_parameter<double>("sensor_hit_depth_m", 0.0), 0.0, 100.0);
     memory_config_.scan_stride = static_cast<int>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("scan_stride", 1), 1, 100000));
     memory_config_.hit_weight = static_cast<int>(std::clamp<std::int64_t>(
@@ -207,16 +205,15 @@ public:
                 memory_->rawGrid().originY(), lidar_topic.c_str(),
                 attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory config: max_range=%.2f sensor_hit_depth=%.2f "
-                "stride=%d raw_memory_only=true "
+                "Obstacle memory config: max_range=%.2f stride=%d "
+                "raw_memory_only=true "
                 "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
-                memory_config_.max_lidar_range_m, memory_config_.sensor_hit_depth_m,
-                memory_config_.scan_stride, memory_config_.min_score,
-                memory_config_.max_score, memory_config_.free_score,
-                memory_config_.occupied_score,
+                memory_config_.max_lidar_range_m, memory_config_.scan_stride,
+                memory_config_.min_score, memory_config_.max_score,
+                memory_config_.free_score, memory_config_.occupied_score,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
@@ -453,16 +450,15 @@ private:
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
-        "occupied_updates=%zu sensor_hit_depth_cells=%zu "
-        "raw[occupied=%zu free=%zu unknown=%zu]",
+        "occupied_updates=%zu raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
         current_pose_.altitude_m, current_pose_.pose.yaw_rad,
         current_attitude_.roll_rad, current_attitude_.pitch_rad,
         attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
         stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
         stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated, stats.sensor_hit_depth_cells,
-        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
+        stats.occupied_cells_updated, raw_counts.occupied_cells, raw_counts.free_cells,
+        raw_counts.unknown_cells);
   }
 
   void logFirstPose(const char* source_name) {

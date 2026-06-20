@@ -208,22 +208,6 @@ bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, const Point2 start,
   return hasLineOfSight(grid, *start_cell, *end_cell);
 }
 
-double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid, const Point2 start,
-                                    const Point2 end) {
-  const auto start_cell = grid.worldToCell(start);
-  const auto end_cell = grid.worldToCell(end);
-  if (!start_cell.has_value() || !end_cell.has_value()) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  const std::vector<GridIndex> segment_cells = grid.cellsOnLine(*start_cell, *end_cell);
-  const auto prohibited_count = static_cast<double>(
-      std::ranges::count_if(segment_cells, [&grid](const GridIndex cell) {
-        return grid.isProhibited(cell);
-      }));
-  return prohibited_count * grid.resolution();
-}
-
 std::optional<PathProjection2D>
 closestPathProjection(const std::span<const Point2> path_points,
                       const Point2 current_position) {
@@ -305,32 +289,6 @@ std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
   }
 
   return remaining_path;
-}
-
-bool pathHasProhibitedCells(const OccupancyGrid2D& grid,
-                            const std::span<const Point2> path_points,
-                            const double stable_path_prohibited_length_m,
-                            std::size_t* const prohibited_segment_index,
-                            double* const prohibited_length_m) {
-  if (path_points.size() < 2U) {
-    return false;
-  }
-
-  for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    const double segment_prohibited_length_m =
-        pathSegmentProhibitedLengthM(grid, path_points[index - 1U], path_points[index]);
-    if (segment_prohibited_length_m < stable_path_prohibited_length_m) {
-      continue;
-    }
-    if (prohibited_segment_index != nullptr) {
-      *prohibited_segment_index = index - 1U;
-    }
-    if (prohibited_length_m != nullptr) {
-      *prohibited_length_m = segment_prohibited_length_m;
-    }
-    return true;
-  }
-  return false;
 }
 
 bool pathIsAllowed(const OccupancyGrid2D& grid,
@@ -431,10 +389,8 @@ PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
   }
 
   decision.remaining_path = std::move(*remaining_path);
-  const bool has_prohibited_cells = pathHasProhibitedCells(
-      grid, decision.remaining_path, config_.stable_path_prohibited_length_m,
-      &decision.prohibited_segment_index, &decision.prohibited_length_m);
-  if (!has_prohibited_cells) {
+  if (pathIsAllowed(grid, decision.remaining_path,
+                    &decision.prohibited_segment_index)) {
     decision.keep_path = true;
     decision.reason = StablePathDecisionReason::kClear;
     decision.prohibited_confirmations = 0;

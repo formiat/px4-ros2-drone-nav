@@ -77,15 +77,13 @@ TEST(OccupancyGrid2D, InflationBlocksSafetyRadius) {
   EXPECT_FALSE(grid.isProhibited(GridIndex{8, 5}));
 }
 
-TEST(PathSafety, ProhibitedLengthIncludesOccupiedAndInflatedCells) {
+TEST(PathSafety, SegmentAllowedRejectsOccupiedAndInflatedCells) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
   grid.rebuildInflation(1.1);
 
-  const double prohibited_length_m =
-      pathSegmentProhibitedLengthM(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5});
-
-  EXPECT_DOUBLE_EQ(prohibited_length_m, 3.0);
+  EXPECT_FALSE(pathSegmentIsAllowed(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5}));
+  EXPECT_TRUE(pathSegmentIsAllowed(grid, Point2{8.5, 5.5}, Point2{10.5, 5.5}));
 }
 
 TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
@@ -453,7 +451,6 @@ TEST(PlannerCore, StablePathRequiresConfirmedProhibitedIntersection) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_prohibited_length_m = 0.5;
   config.stable_path_prohibited_confirmations_required = 2;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
@@ -481,7 +478,6 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_prohibited_length_m = 0.5;
   config.stable_path_prohibited_confirmations_required = 1;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 3.5}, Point2{8.5, 3.5}};
@@ -491,7 +487,7 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
 
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
-  EXPECT_GE(decision.prohibited_length_m, 1.0);
+  EXPECT_EQ(decision.prohibited_segment_index, 0U);
 }
 
 TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {

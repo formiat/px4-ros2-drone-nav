@@ -140,10 +140,9 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       continue;
     }
 
-    const LidarBeamProjection projection =
-        projectLidarBeam(projection_pose, projection_config, scan.range_min_m,
-                         scan_range_max, scan.angle_min_rad, scan.angle_increment_rad,
-                         i, raw_range, config.sensor_hit_depth_m);
+    const LidarBeamProjection projection = projectLidarBeam(
+        projection_pose, projection_config, scan.range_min_m, scan_range_max,
+        scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
@@ -199,28 +198,6 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
         endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
     applyHit(endpoint_grid_cell, config);
     ++stats.occupied_cells_updated;
-
-    if (config.sensor_hit_depth_m <= 0.0) {
-      continue;
-    }
-
-    const Point2 depth_start = projection.endpoint;
-    const Point2 depth_end = projection.depth_endpoint;
-    const auto clipped_depth = clipSegmentToGrid(raw_grid_, depth_start, depth_end);
-    if (!clipped_depth.has_value()) {
-      continue;
-    }
-    const auto depth_end_cell = raw_grid_.worldToCell(clipped_depth->end);
-    if (!depth_end_cell.has_value()) {
-      continue;
-    }
-    const GridIndex depth_grid_cell = depth_end_cell.value();
-    const std::vector<GridIndex> depth_cells =
-        raw_grid_.cellsOnLine(endpoint_grid_cell, depth_grid_cell);
-    for (const GridIndex cell : depth_cells) {
-      applyHit(cell, config);
-      ++stats.sensor_hit_depth_cells;
-    }
   }
 
   return stats;

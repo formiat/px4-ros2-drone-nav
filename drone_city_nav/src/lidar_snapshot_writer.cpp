@@ -71,20 +71,18 @@ bool writeLidarScanCsv(const std::filesystem::path& path,
   }
 
   csv << "beam_index,angle_rad,raw_range_m,used_range_m,hit,end_x_m,end_y_m,"
-         "end_altitude_m,status,depth_end_x_m,depth_end_y_m,depth_end_altitude_m,"
-         "lidar_dir_x,lidar_dir_y,lidar_dir_z,body_frd_x,body_frd_y,body_frd_z,"
+         "end_altitude_m,status,lidar_dir_x,lidar_dir_y,lidar_dir_z,"
+         "body_frd_x,body_frd_y,body_frd_z,"
          "ned_x,ned_y,ned_z\n";
   for (const LidarSnapshotCsvRow& row : rows) {
     csv << row.beam_index << ',' << row.angle_rad << ',' << row.raw_range_m << ','
         << row.used_range_m << ',' << (row.hit ? 1 : 0) << ',' << row.end_x_m << ','
         << row.end_y_m << ',' << row.end_altitude_m << ','
-        << projectionStatusName(row.status) << ',' << row.depth_end_x_m << ','
-        << row.depth_end_y_m << ',' << row.depth_end_altitude_m << ','
-        << row.lidar_direction.x << ',' << row.lidar_direction.y << ','
-        << row.lidar_direction.z << ',' << row.body_frd_direction.x << ','
-        << row.body_frd_direction.y << ',' << row.body_frd_direction.z << ','
-        << row.ned_direction.x << ',' << row.ned_direction.y << ','
-        << row.ned_direction.z << '\n';
+        << projectionStatusName(row.status) << ',' << row.lidar_direction.x << ','
+        << row.lidar_direction.y << ',' << row.lidar_direction.z << ','
+        << row.body_frd_direction.x << ',' << row.body_frd_direction.y << ','
+        << row.body_frd_direction.z << ',' << row.ned_direction.x << ','
+        << row.ned_direction.y << ',' << row.ned_direction.z << '\n';
   }
   return csv.good();
 }

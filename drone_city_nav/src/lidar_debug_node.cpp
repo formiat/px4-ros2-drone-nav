@@ -407,14 +407,13 @@ private:
                                  lidar_mount_yaw_rad_};
   }
 
-  [[nodiscard]] LidarBeamProjection
-  projectScanBeam(const std::size_t beam_index, const float raw_range,
-                  const double sensor_hit_depth_m) const {
+  [[nodiscard]] LidarBeamProjection projectScanBeam(const std::size_t beam_index,
+                                                    const float raw_range) const {
     return projectLidarBeam(lidarProjectionPose(), lidarProjectionConfig(),
                             static_cast<double>(last_scan_.range_min), scanRangeMax(),
                             static_cast<double>(last_scan_.angle_min),
                             static_cast<double>(last_scan_.angle_increment), beam_index,
-                            raw_range, sensor_hit_depth_m);
+                            raw_range);
   }
 
   [[nodiscard]] Point2 headingDirection() const {
@@ -438,7 +437,7 @@ private:
       const float raw_range = last_scan_.ranges[i];
       ++stats.processed_beams;
 
-      const LidarBeamProjection projection = projectScanBeam(i, raw_range, 0.0);
+      const LidarBeamProjection projection = projectScanBeam(i, raw_range);
       switch (projection.status) {
         case LidarBeamProjectionStatus::kAccepted:
           ++stats.accepted_beams;
@@ -478,10 +477,7 @@ private:
           projection.used_range_m, projection.hit,
           endpoint_available ? projection.endpoint.x : nan,
           endpoint_available ? projection.endpoint.y : nan,
-          projection.endpoint_altitude_m, projection.status,
-          endpoint_available ? projection.depth_endpoint.x : nan,
-          endpoint_available ? projection.depth_endpoint.y : nan,
-          projection.depth_endpoint_altitude_m, projection.lidar_direction,
+          projection.endpoint_altitude_m, projection.status, projection.lidar_direction,
           projection.body_frd_direction, projection.ned_direction});
     }
     return rows;
@@ -708,7 +704,7 @@ private:
 
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
       const float raw_range = last_scan_.ranges[i];
-      const LidarBeamProjection projection = projectScanBeam(i, raw_range, 0.0);
+      const LidarBeamProjection projection = projectScanBeam(i, raw_range);
       if (projection.status != LidarBeamProjectionStatus::kAccepted ||
           !projection.hit) {
         continue;
@@ -825,7 +821,7 @@ private:
                         image_beam_stride_);
     for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
       const float raw_range = last_scan_.ranges[i];
-      const LidarBeamProjection projection = projectScanBeam(i, raw_range, 0.0);
+      const LidarBeamProjection projection = projectScanBeam(i, raw_range);
       projections.push_back(projection);
     }
     return projections;

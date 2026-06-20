@@ -24,33 +24,18 @@ namespace {
 
 } // namespace
 
-TEST(CurrentLidarOverlay, AcceptedHitMarksDepthCellsBehindEndpoint) {
+TEST(CurrentLidarOverlay, AcceptedHitMarksOnlyEndpoint) {
   OccupancyGrid2D grid = makeOverlayGrid();
   const std::array<float, 1> ranges{4.0F};
   LidarProjectionConfig config = overlayConfig();
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, 2.0);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config);
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);
   EXPECT_EQ(stats.hit_beams, 1U);
   EXPECT_EQ(stats.outside_hits, 0U);
-  EXPECT_TRUE(grid.isOccupied(GridIndex{5, 5}));
-  EXPECT_TRUE(grid.isOccupied(GridIndex{6, 5}));
-  EXPECT_TRUE(grid.isOccupied(GridIndex{7, 5}));
-}
-
-TEST(CurrentLidarOverlay, ZeroSensorHitDepthMarksOnlyEndpoint) {
-  OccupancyGrid2D grid = makeOverlayGrid();
-  const std::array<float, 1> ranges{4.0F};
-  LidarProjectionConfig config = overlayConfig();
-
-  const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, 0.0);
-
-  EXPECT_TRUE(stats.used);
-  EXPECT_EQ(stats.hit_beams, 1U);
   EXPECT_TRUE(grid.isOccupied(GridIndex{5, 5}));
   EXPECT_FALSE(grid.isOccupied(GridIndex{6, 5}));
   EXPECT_FALSE(grid.isOccupied(GridIndex{7, 5}));
@@ -62,7 +47,7 @@ TEST(CurrentLidarOverlay, MaxRangeBeamDoesNotMarkObstacle) {
   LidarProjectionConfig config = overlayConfig();
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, 2.0);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config);
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);
@@ -79,7 +64,7 @@ TEST(CurrentLidarOverlay, AltitudeRejectedBeamDoesNotMarkGrid) {
   const LidarProjectionPose pose{Point2{1.5, 0.5}, 5.0, 0.0, 0.0, -0.8, true, true};
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, pose, config, 2.0);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, pose, config);
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);

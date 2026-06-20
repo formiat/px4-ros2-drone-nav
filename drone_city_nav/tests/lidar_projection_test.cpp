@@ -12,8 +12,7 @@ namespace {
                                           const LidarProjectionConfig& config,
                                           const float range_m,
                                           const double angle_min_rad = 0.0) {
-  return projectLidarBeam(pose, config, 0.1, 35.0, angle_min_rad, 0.1, 0U, range_m,
-                          0.0);
+  return projectLidarBeam(pose, config, 0.1, 35.0, angle_min_rad, 0.1, 0U, range_m);
 }
 
 [[nodiscard]] double norm(const Point3 vector) {

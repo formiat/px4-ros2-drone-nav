@@ -57,7 +57,6 @@ stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
   std::size_t prohibited_segments{0U};
-  double prohibited_length_m{0.0};
 };
 
 enum class PathPublicationReason : std::uint8_t {
@@ -192,14 +191,13 @@ public:
         fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
-                "max_staleness=%.2fs sensor_hit_depth=%.2f swap_lidar_xy=%s "
+                "max_staleness=%.2fs swap_lidar_xy=%s "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 use_current_lidar_obstacles_ ? "true" : "false",
                 config.topics.lidar.c_str(), max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
-                current_lidar_sensor_hit_depth_m_,
                 swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
@@ -212,21 +210,21 @@ public:
           "with attitude compensation. Prefer lidar_mount_* parameters for physical "
           "3D projection.");
     }
-    RCLCPP_INFO(
-        get_logger(),
-        "Planner fallback policy: direct_path_fallback=%s "
-        "reuse_last_valid_path_on_failure=%s "
-        "max_initial_lateral_deviation=%.2fm "
-        "stable_path_reuse=%s stable_max_deviation=%.2fm "
-        "stable_goal_tolerance=%.2fm stable_prohibited_length=%.2fm "
-        "stable_prohibited_replan_horizon=%.2fm "
-        "stable_prohibited_confirmations=%d",
-        direct_path_fallback_ ? "true" : "false",
-        reuse_last_valid_path_on_failure_ ? "true" : "false",
-        max_initial_lateral_deviation_m_, stable_path_reuse_enabled_ ? "true" : "false",
-        stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
-        stable_path_prohibited_length_m_, stable_path_prohibited_replan_horizon_m_,
-        stable_path_prohibited_confirmations_required_);
+    RCLCPP_INFO(get_logger(),
+                "Planner fallback policy: direct_path_fallback=%s "
+                "reuse_last_valid_path_on_failure=%s "
+                "max_initial_lateral_deviation=%.2fm "
+                "stable_path_reuse=%s stable_max_deviation=%.2fm "
+                "stable_goal_tolerance=%.2fm "
+                "stable_prohibited_replan_horizon=%.2fm "
+                "stable_prohibited_confirmations=%d",
+                direct_path_fallback_ ? "true" : "false",
+                reuse_last_valid_path_on_failure_ ? "true" : "false",
+                max_initial_lateral_deviation_m_,
+                stable_path_reuse_enabled_ ? "true" : "false",
+                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
+                stable_path_prohibited_replan_horizon_m_,
+                stable_path_prohibited_confirmations_required_);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
                 "near_prohibited_penalty_radius=%.2fm "
@@ -253,8 +251,6 @@ private:
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
-    stable_path_prohibited_length_m_ =
-        config.planner_core.stable_path_prohibited_length_m;
     stable_path_prohibited_replan_horizon_m_ =
         config.planner_core.stable_path_prohibited_replan_horizon_m;
     stable_path_prohibited_confirmations_required_ =
@@ -273,7 +269,6 @@ private:
     max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
     max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
     range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;
-    current_lidar_sensor_hit_depth_m_ = config.current_lidar.sensor_hit_depth_m;
     scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
     use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
     swap_lidar_xy_to_local_frame_ =
@@ -802,12 +797,8 @@ private:
     for (std::size_t index = 1U; index < path_points.size(); ++index) {
       const Point2 segment_start = path_points[index - 1U];
       const Point2 segment_end = path_points[index];
-      const double prohibited_length_m =
-          pathSegmentProhibitedLengthM(grid, segment_start, segment_end);
-
-      if (prohibited_length_m > 0.0) {
+      if (!pathSegmentIsAllowed(grid, segment_start, segment_end)) {
         ++summary.prohibited_segments;
-        summary.prohibited_length_m += prohibited_length_m;
       }
     }
 
@@ -823,17 +814,15 @@ private:
     if (unsafe_path) {
       RCLCPP_WARN(get_logger(),
                   "%s published path safety: segments=%zu prohibited_segments=%zu "
-                  "prohibited_length=%.2fm",
-                  source_label, summary.segments, summary.prohibited_segments,
-                  summary.prohibited_length_m);
+                  "strict_prohibited_intersection=true",
+                  source_label, summary.segments, summary.prohibited_segments);
       return;
     }
 
     RCLCPP_INFO(get_logger(),
                 "%s published path safety: segments=%zu prohibited_segments=%zu "
-                "prohibited_length=%.2fm",
-                source_label, summary.segments, summary.prohibited_segments,
-                summary.prohibited_length_m);
+                "strict_prohibited_intersection=false",
+                source_label, summary.segments, summary.prohibited_segments);
   }
 
   [[nodiscard]] double currentLidarRangeMax() const {
@@ -898,8 +887,7 @@ private:
                           static_cast<double>(last_scan_.range_min), scan_range_max,
                           static_cast<double>(last_scan_.angle_min),
                           static_cast<double>(last_scan_.angle_increment)},
-            currentLidarProjectionPose(), currentLidarProjectionConfig(),
-            current_lidar_sensor_hit_depth_m_);
+            currentLidarProjectionPose(), currentLidarProjectionConfig());
     stats.used = overlay_stats.used;
     stats.processed_beams = overlay_stats.processed_beams;
     stats.hit_beams = overlay_stats.hit_beams;
@@ -1099,14 +1087,13 @@ private:
           "Current path has an unconfirmed prohibited intersection; keeping current "
           "path until it is confirmed: reason=%s confirmations=%d/%d "
           "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-          "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
-          "segment_end=(%.2f, %.2f)",
+          "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
           stable_path_prohibited_confirmations_,
           stable_path_prohibited_confirmations_required_,
           last_valid_path_points_.size(), decision.deviation_m,
-          decision.prohibited_segment_index, decision.prohibited_length_m,
-          prohibited_start.x, prohibited_start.y, prohibited_end.x, prohibited_end.y);
+          decision.prohibited_segment_index, prohibited_start.x, prohibited_start.y,
+          prohibited_end.x, prohibited_end.y);
       return true;
     }
 
@@ -1126,14 +1113,13 @@ private:
           "Current path intersects confirmed newly available prohibited obstacle data; "
           "running A* from current pose: reason=%s confirmations=%d/%d "
           "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-          "prohibited_length=%.2fm segment_start=(%.2f, %.2f) "
-          "segment_end=(%.2f, %.2f)",
+          "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
           stablePathDecisionReasonName(decision.reason),
           stable_path_prohibited_confirmations_,
           stable_path_prohibited_confirmations_required_,
           decision.remaining_path.size(), decision.deviation_m,
-          decision.prohibited_segment_index, decision.prohibited_length_m,
-          prohibited_start.x, prohibited_start.y, prohibited_end.x, prohibited_end.y);
+          decision.prohibited_segment_index, prohibited_start.x, prohibited_start.y,
+          prohibited_end.x, prohibited_end.y);
       return false;
     }
 
@@ -1165,12 +1151,10 @@ private:
         get_logger(), *get_clock(), 3000,
         "Deferring current-path replan because the prohibited segment is beyond the "
         "near planning horizon: reason=%s remaining_waypoints=%zu deviation=%.2fm "
-        "prohibited_segment=%zu prohibited_length=%.2fm "
-        "distance_to_prohibited_segment=%.2fm horizon=%.2fm",
+        "prohibited_segment=%zu distance_to_prohibited_segment=%.2fm horizon=%.2fm",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
         decision.deviation_m, decision.prohibited_segment_index,
-        decision.prohibited_length_m, distance_to_prohibited_segment_m,
-        stable_path_prohibited_replan_horizon_m_);
+        distance_to_prohibited_segment_m, stable_path_prohibited_replan_horizon_m_);
     return true;
   }
 
@@ -1318,11 +1302,9 @@ private:
   double max_initial_lateral_deviation_m_{8.0};
   double stable_path_reuse_max_deviation_m_{12.0};
   double stable_path_goal_tolerance_m_{3.0};
-  double stable_path_prohibited_length_m_{2.0};
   double stable_path_prohibited_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
-  double current_lidar_sensor_hit_depth_m_{0.0};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double static_map_debug_publish_period_s_{1.0};

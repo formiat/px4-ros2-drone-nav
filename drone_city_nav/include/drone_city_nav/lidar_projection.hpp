@@ -51,9 +51,7 @@ struct LidarBeamProjection {
   bool hit{false};
   double used_range_m{0.0};
   double endpoint_altitude_m{std::numeric_limits<double>::quiet_NaN()};
-  double depth_endpoint_altitude_m{std::numeric_limits<double>::quiet_NaN()};
   Point2 endpoint{};
-  Point2 depth_endpoint{};
   Point3 lidar_direction{};
   Point3 body_frd_direction{};
   Point3 ned_direction{};
@@ -71,7 +69,7 @@ quaternionToEuler(const std::array<float, 4>& quaternion) noexcept;
 [[nodiscard]] LidarBeamProjection
 projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& config,
                  double scan_range_min_m, double scan_range_max_m, double angle_min_rad,
-                 double angle_increment_rad, std::size_t beam_index, float raw_range,
-                 double sensor_hit_depth_m) noexcept;
+                 double angle_increment_rad, std::size_t beam_index,
+                 float raw_range) noexcept;
 
 } // namespace drone_city_nav

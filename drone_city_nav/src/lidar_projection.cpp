@@ -177,8 +177,7 @@ LidarBeamProjection
 projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& config,
                  const double scan_range_min_m, const double scan_range_max_m,
                  const double angle_min_rad, const double angle_increment_rad,
-                 const std::size_t beam_index, const float raw_range,
-                 const double sensor_hit_depth_m) noexcept {
+                 const std::size_t beam_index, const float raw_range) noexcept {
   LidarBeamProjection projection{};
   if (!validProjectionInputs(pose, config, scan_range_min_m, scan_range_max_m,
                              angle_min_rad, angle_increment_rad)) {
@@ -222,18 +221,11 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
   projection.endpoint =
       Point2{pose.position.x + projection.used_range_m * world_direction.x,
              pose.position.y + projection.used_range_m * world_direction.y};
-  const double depth_range_m =
-      projection.used_range_m + std::max(0.0, sensor_hit_depth_m);
-  projection.depth_endpoint =
-      Point2{pose.position.x + depth_range_m * world_direction.x,
-             pose.position.y + depth_range_m * world_direction.y};
 
   if (pose.altitude_valid && std::isfinite(pose.altitude_m + config.lidar_z_offset_m)) {
     const double origin_altitude_m = pose.altitude_m + config.lidar_z_offset_m;
     projection.endpoint_altitude_m =
         origin_altitude_m - projection.used_range_m * world_direction.z;
-    projection.depth_endpoint_altitude_m =
-        origin_altitude_m - depth_range_m * world_direction.z;
     if (!altitudeInRange(projection.endpoint_altitude_m, config)) {
       projection.status = LidarBeamProjectionStatus::kAltitudeRejected;
       return projection;

@@ -74,7 +74,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_resolution_m", -0.5},
        rclcpp::Parameter{"planning_grid_width_m", -10.0},
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
-       rclcpp::Parameter{"current_lidar_sensor_hit_depth_m", -2.0},
        rclcpp::Parameter{"astar_max_expansions", 0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_near_prohibited_penalty_radius_m", -1.0},
@@ -95,7 +94,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.fallback_bounds.resolution_m, 0.01);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.width_cells, 1);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
-  EXPECT_DOUBLE_EQ(config.current_lidar.sensor_hit_depth_m, 0.0);
   EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
@@ -142,15 +140,13 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
       makeNode("planner_node_config_topic_contract",
                {rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
                 rclcpp::Parameter{"memory_occupied_value", 100},
-                rclcpp::Parameter{"memory_free_value", 0},
-                rclcpp::Parameter{"current_lidar_sensor_hit_depth_m", 1.25}});
+                rclcpp::Parameter{"memory_free_value", 0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
   EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);
-  EXPECT_DOUBLE_EQ(config.current_lidar.sensor_hit_depth_m, 1.25);
 }
 
 TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {

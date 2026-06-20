@@ -497,19 +497,6 @@ TEST(ObstacleMemoryGrid, HitOutsideGridClearsInBoundsRayWithoutOccupiedEndpoint)
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kFree);
 }
 
-TEST(ObstacleMemoryGrid, SensorHitDepthClipsAtBoundary) {
-  ObstacleMemoryGrid memory{GridBounds{0.0, 0.0, 1.0, 10, 10}};
-  const std::vector<float> ranges{1.0F};
-  ObstacleMemoryConfig config{};
-  config.sensor_hit_depth_m = 5.0;
-
-  const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{8.5, 5.5}, 0.0}, makeScan(ranges), config);
-
-  EXPECT_GT(stats.sensor_hit_depth_cells, 0U);
-  EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
-}
-
 TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};

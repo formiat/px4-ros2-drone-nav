@@ -53,7 +53,6 @@ struct PlannerMemoryGridConfig {
 
 struct PlannerCurrentLidarConfig {
   bool use_px4_heading_for_scan{false};
-  double sensor_hit_depth_m{0.0};
 };
 
 struct PlannerNodeConfig {

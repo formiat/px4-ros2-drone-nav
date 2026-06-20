@@ -39,7 +39,6 @@ struct PlannerCoreConfig {
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{12.0};
-  double stable_path_prohibited_length_m{2.0};
   double stable_path_prohibited_replan_horizon_m{25.0};
   int stable_path_prohibited_confirmations_required{2};
 };
@@ -84,7 +83,6 @@ struct StablePathDecision {
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
   int prohibited_confirmations{0};
   std::size_t prohibited_segment_index{0U};
-  double prohibited_length_m{0.0};
 };
 
 [[nodiscard]] const char*
@@ -107,9 +105,6 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 [[nodiscard]] bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, Point2 start,
                                         Point2 end);
 
-[[nodiscard]] double pathSegmentProhibitedLengthM(const OccupancyGrid2D& grid,
-                                                  Point2 start, Point2 end);
-
 [[nodiscard]] std::optional<PathProjection2D>
 closestPathProjection(std::span<const Point2> path_points, Point2 current_position);
 
@@ -117,12 +112,6 @@ closestPathProjection(std::span<const Point2> path_points, Point2 current_positi
     std::span<const Point2> path_points, Point2 current_position, Point2 goal,
     double stable_path_goal_tolerance_m, double stable_path_reuse_max_deviation_m,
     double& deviation_m);
-
-[[nodiscard]] bool
-pathHasProhibitedCells(const OccupancyGrid2D& grid, std::span<const Point2> path_points,
-                       double stable_path_prohibited_length_m,
-                       std::size_t* prohibited_segment_index = nullptr,
-                       double* prohibited_length_m = nullptr);
 
 [[nodiscard]] bool pathIsAllowed(const OccupancyGrid2D& grid,
                                  std::span<const Point2> path_points,
