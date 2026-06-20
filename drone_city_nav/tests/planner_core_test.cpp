@@ -2,10 +2,12 @@
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/static_city_map.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <numbers>
 #include <vector>
 
@@ -173,18 +175,6 @@ TEST(AStarPlanner, ReportsProhibitedStartOrGoal) {
   EXPECT_EQ(result.status, AStarStatus::kProhibitedStartOrGoal);
 }
 
-TEST(AStarPlanner, ReportsExpansionBudgetExceededSeparately) {
-  OccupancyGrid2D grid = makeGrid();
-  AStarConfig config{};
-  config.max_expansions = 1U;
-
-  const AStarResult result =
-      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{18, 10}, config);
-
-  EXPECT_FALSE(result.success);
-  EXPECT_EQ(result.status, AStarStatus::kExpansionBudgetExceeded);
-}
-
 TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
   OccupancyGrid2D planning_grid = makeGrid();
   OccupancyGrid2D static_grid = makeGrid();
@@ -206,6 +196,35 @@ TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
     EXPECT_FALSE(static_grid.isOccupied(cell));
     EXPECT_FALSE(planning_grid.isProhibited(cell));
   }
+}
+
+TEST(AStarPlanner, FindsPathAcrossGeneratedCityMap) {
+  const std::filesystem::path map_path =
+      std::filesystem::path{DRONE_CITY_NAV_SOURCE_DIR} / "worlds" /
+      "generated_city.map2d";
+  const StaticCityMap static_map = loadStaticCityMap(map_path);
+  OccupancyGrid2D grid = rasterizeStaticCityMap(static_map, 0.0);
+  grid.rebuildInflation(5.0);
+
+  const auto start = grid.worldToCell(Point2{54.0, 54.0});
+  const auto goal = grid.worldToCell(Point2{216.0, 378.0});
+  if (!start.has_value() || !goal.has_value()) {
+    FAIL() << "Generated city mission endpoints must be inside the static map";
+  }
+  const GridIndex start_cell = start.value();
+  const GridIndex goal_cell = goal.value();
+  ASSERT_FALSE(grid.isProhibited(start_cell));
+  ASSERT_FALSE(grid.isProhibited(goal_cell));
+
+  AStarConfig config{};
+  config.turn_cost_weight = 50.0;
+  const AStarResult result = AStarPlanner{}.plan(grid, start_cell, goal_cell, config);
+
+  ASSERT_TRUE(result.success);
+  EXPECT_EQ(result.status, AStarStatus::kSuccess);
+  ASSERT_FALSE(result.path.empty());
+  EXPECT_EQ(result.path.front(), start_cell);
+  EXPECT_EQ(result.path.back(), goal_cell);
 }
 
 TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {

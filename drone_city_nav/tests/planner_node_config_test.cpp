@@ -73,7 +73,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_resolution_m", -0.5},
        rclcpp::Parameter{"planning_grid_width_m", -10.0},
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
-       rclcpp::Parameter{"astar_max_expansions", 0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"stable_path_prohibited_replan_horizon_m", -5.0},
@@ -91,7 +90,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.fallback_bounds.resolution_m, 0.01);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.width_cells, 1);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
-  EXPECT_EQ(config.planner_core.astar.max_expansions, 1U);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);

@@ -184,6 +184,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
+  target_compile_definitions(
+    planner_core_test
+    PRIVATE DRONE_CITY_NAV_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries(planner_core_test drone_city_nav_core)
   enable_project_warnings(planner_core_test)
 

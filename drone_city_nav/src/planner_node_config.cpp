@@ -142,10 +142,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.lidar_projection.max_projected_altitude_m =
       node.declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
 
-  config.planner_core.astar.max_expansions =
-      static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>("astar_max_expansions", 100000), 1,
-          std::numeric_limits<int>::max()));
   config.planner_core.astar.turn_cost_weight = std::clamp(
       node.declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);
   config.planner_core.astar.evasive_maneuvering_enabled =

@@ -146,8 +146,6 @@ const char* astarStatusName(const AStarStatus status) noexcept {
       return "prohibited_start_or_goal";
     case AStarStatus::kUnreachable:
       return "unreachable";
-    case AStarStatus::kExpansionBudgetExceeded:
-      return "expansion_budget_exceeded";
     case AStarStatus::kStateSpaceTooLarge:
       return "state_space_too_large";
   }
@@ -183,7 +181,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
   open.push(OpenNode{start, kStartDirectionState,
                      heuristic(start, goal, grid.resolution()), 0.0});
 
-  while (!open.empty() && result.expanded_cells < config.max_expansions) {
+  while (!open.empty()) {
     const OpenNode current = open.top();
     open.pop();
 
@@ -235,11 +233,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     }
   }
 
-  if (!open.empty() && result.expanded_cells >= config.max_expansions) {
-    result.status = AStarStatus::kExpansionBudgetExceeded;
-  } else {
-    result.status = AStarStatus::kUnreachable;
-  }
+  result.status = AStarStatus::kUnreachable;
   return result;
 }
 
