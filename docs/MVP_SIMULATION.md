@@ -44,8 +44,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 ## Main Files
 
 - `drone_city_nav/worlds/generated_city.sdf` - generated Manhattan-style static
-  city world with uniform-height buildings, visual point A at `(-85.5, -40.5)`,
-  and visual point B at `(76.5, 40.5)`.
+  city world with uniform-height buildings, visual point A at `(-171.0, -81.0)`,
+  and visual point B at `(153.0, 81.0)`.
 - `drone_city_nav/models/x500_lidar_2d/model.sdf` - local PX4 X500 wrapper with
   the 2D lidar, bright yellow Gazebo GUI tracking markers, and a yellow
   ground-projection debug disc.
@@ -403,8 +403,8 @@ The planner builds its A* grid from three obstacle sources:
   ```text
   drone_city_nav_static_map_v1
   frame_id map
-  bounds -15.0 -15.0 0.5 172.5 262.5
-  rect building_001 13.5 13.5 12.0 12.0 28.0
+  bounds -30.0 -30.0 0.5 345.0 525.0
+  rect building_001 27.0 27.0 24.0 24.0 28.0
   ```
 
 - Persistent obstacle memory from `/drone_city_nav/obstacle_memory_grid`.
