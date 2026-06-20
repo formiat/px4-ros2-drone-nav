@@ -453,6 +453,16 @@ def mission_ack_name(ack_type: int, mavlink_module: Any | None = None) -> str:
     return f"MAV_MISSION_{ack_type}"
 
 
+def mission_path_id_from_stamp(path_stamp_ns: int, fallback_path_count: int) -> int:
+    if path_stamp_ns > 0:
+        return path_stamp_ns
+    return fallback_path_count
+
+
+def stamp_to_nanoseconds(stamp: Any) -> int:
+    return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+
+
 class MissionBackendCore:
     def __init__(
         self,
@@ -682,6 +692,7 @@ class MissionBackendCore:
         if items:
             payload["first_item"] = asdict(items[0])
             payload["last_item"] = asdict(items[-1])
+            payload["mission_items"] = [asdict(item) for item in items]
         self._write_event(payload)
 
     def _run_command_unless_emergency(
@@ -767,7 +778,7 @@ class Px4MissionNode(Node):
             config.home_altitude_m,
         )
         self._home_fallback_warned = False
-        self._latest_path_id = 0
+        self._latest_planner_path_id = 0
         self._received_path_count = 0
         self._blackbox = MissionBlackbox(str(blackbox_path), blackbox_enabled)
         self._worker_join_timeout_s = max(2.0, config.upload_timeout_s + 1.0)
@@ -837,11 +848,12 @@ class Px4MissionNode(Node):
         return super().destroy_node()
 
     def _on_path_id(self, msg: UInt64) -> None:
-        self._latest_path_id = int(msg.data)
+        self._latest_planner_path_id = int(msg.data)
 
     def _on_path(self, msg: PathMsg) -> None:
         self._received_path_count += 1
-        path_id = self._latest_path_id or self._received_path_count
+        path_stamp_ns = stamp_to_nanoseconds(msg.header.stamp)
+        path_id = mission_path_id_from_stamp(path_stamp_ns, self._received_path_count)
         points = [
             Point2(float(pose.pose.position.x), float(pose.pose.position.y))
             for pose in msg.poses
@@ -849,7 +861,9 @@ class Px4MissionNode(Node):
         self._path_upload_queue.put((points, path_id))
         self.get_logger().info(
             "MISSION_BACKEND path_enqueued "
-            f"path_id={path_id} waypoints={len(points)}"
+            f"path_id={path_id} path_stamp_ns={path_stamp_ns} "
+            f"planner_path_id_latest={self._latest_planner_path_id} "
+            f"waypoints={len(points)}"
         )
 
     def _upload_worker_loop(self) -> None:

@@ -529,7 +529,7 @@ expected scale and stopped at the goal.
 
 Set `NAVIGATION_BACKEND=mission` to replace the Offboard follower with
 `px4_mission_node`. This backend subscribes to the same planner path and
-`path_id` topics, converts map-frame waypoints to
+diagnostic `path_id` topics, converts map-frame waypoints to
 `MAV_FRAME_GLOBAL_RELATIVE_ALT_INT` mission items, uploads them through
 `pymavlink`, and optionally commands `AUTO.MISSION` plus arm after a successful
 upload. Replanned paths are uploaded as fresh PX4 missions.
@@ -544,8 +544,10 @@ Mission mode does not use Offboard `sharp_turn_hold_*` or
 `Mission backend ready:`, `MISSION_BACKEND upload_started`,
 `MISSION_BACKEND upload_result`, `MISSION_BACKEND mode_command`,
 `MISSION_BACKEND arm_command`, `MISSION_BACKEND progress`, and emergency-stop
-markers. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
-default.
+markers. The backend derives upload identity from the `Path` message stamp so
+delivery races between separate `path` and `path_id` topics cannot skip a fresh
+mission. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
+default and include the full uploaded `mission_items` list.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

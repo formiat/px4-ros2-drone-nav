@@ -79,7 +79,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         text = SCRIPT_PATH.read_text(encoding="utf-8")
         self.assertIn("self._path_upload_queue", text)
         self.assertIn('name="px4_mission_upload_worker"', text)
-        self.assertIn("self._path_upload_queue.put((points, path_id))", text)
+        self.assertIn("mission_path_id_from_stamp(path_stamp_ns", text)
+        self.assertIn("planner_path_id_latest", text)
         self.assertIn("def _upload_worker_loop", text)
         self.assertIn("self._core.handle_path_points", text)
 
@@ -131,6 +132,13 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(items[1].y, items[0].y)
         self.assertEqual(items[2].x, items[0].x)
         self.assertGreater(items[2].y, items[0].y)
+
+    def test_mission_path_id_uses_path_stamp_instead_of_side_topic_id(self) -> None:
+        self.assertEqual(
+            123456789,
+            mission_node.mission_path_id_from_stamp(123456789, 4),
+        )
+        self.assertEqual(4, mission_node.mission_path_id_from_stamp(0, 4))
 
     def test_resample_path_for_mission_limits_segment_spacing(self) -> None:
         points = [mission_node.Point2(0.0, 0.0), mission_node.Point2(20.0, 0.0)]
@@ -419,6 +427,41 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         )
         self.assertEqual(0, event["current_seq"])
         self.assertTrue(event["finished"])
+        self.assertEqual(1, len(event["mission_items"]))
+        self.assertEqual(event["first_item"], event["mission_items"][0])
+        self.assertEqual(event["last_item"], event["mission_items"][-1])
+
+    def test_blackbox_upload_event_contains_all_uploaded_mission_items(self) -> None:
+        client = FakeMissionClient()
+        blackbox = CapturingBlackbox()
+        core = mission_node.MissionBackendCore(
+            self.make_config(
+                mission_resample_spacing_m=0.0,
+                px4_local_origin_x_m=0.0,
+                px4_local_origin_y_m=0.0,
+            ),
+            client,
+            blackbox=blackbox,
+        )
+
+        result = core.handle_path_points(
+            [
+                mission_node.Point2(0.0, 0.0),
+                mission_node.Point2(5.0, 0.0),
+                mission_node.Point2(5.0, 5.0),
+            ],
+            13,
+            mission_node.HomePosition(47.0, 8.0),
+        )
+
+        self.assertTrue(result.success)
+        upload_events = [
+            event for event in blackbox.events if event["event"] == "upload_result"
+        ]
+        self.assertEqual(1, len(upload_events))
+        mission_items = upload_events[0]["mission_items"]
+        self.assertEqual(3, len(mission_items))
+        self.assertEqual([0, 1, 2], [item["seq"] for item in mission_items])
 
     @staticmethod
     def disarm_calls(client: FakeMissionClient) -> list[tuple[str, object]]:
