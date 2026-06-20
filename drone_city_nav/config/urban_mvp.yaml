@@ -129,6 +129,9 @@ px4_offboard_node:
     turn_preview_distance_m: 32.0
     sharp_turn_hold_angle_deg: 60.0
     sharp_turn_hold_s: 2.0
+    target_switch_hold_s: 2.0
+    target_switch_hold_delta_m: 5.0
+    target_switch_hold_angle_deg: 45.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     flight_blackbox_enabled: true

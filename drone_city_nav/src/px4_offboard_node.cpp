@@ -83,6 +83,20 @@ constexpr std::int8_t kInflatedOccupancyValue = 80;
   return std::atan2(std::sin(angle_rad), std::cos(angle_rad));
 }
 
+[[nodiscard]] double angleBetweenVectorsRad(const Point2 first,
+                                            const Point2 second) noexcept {
+  const double first_length = std::hypot(first.x, first.y);
+  const double second_length = std::hypot(second.x, second.y);
+  if (first_length <= kTinyDistanceM || second_length <= kTinyDistanceM) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const double cosine = std::clamp((first.x * second.x + first.y * second.y) /
+                                       (first_length * second_length),
+                                   -1.0, 1.0);
+  return std::acos(cosine);
+}
+
 [[nodiscard]] std::uint64_t
 stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
   constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000U;
@@ -162,6 +176,14 @@ public:
         500.0);
     commanded_target_hysteresis_m_ = std::clamp(
         declare_parameter<double>("commanded_target_hysteresis_m", 0.5), 0.0, 10.0);
+    target_switch_hold_s_ =
+        std::clamp(declare_parameter<double>("target_switch_hold_s", 2.0), 0.0, 30.0);
+    target_switch_hold_delta_m_ = std::clamp(
+        declare_parameter<double>("target_switch_hold_delta_m", 5.0), 0.0, 500.0);
+    target_switch_hold_angle_rad_ =
+        std::clamp(radiansFromDegrees(
+                       declare_parameter<double>("target_switch_hold_angle_deg", 45.0)),
+                   0.0, std::numbers::pi);
     telemetry_log_period_ns_ = static_cast<std::int64_t>(
         std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
                    60.0) *
@@ -270,6 +292,8 @@ public:
         "takeoff_hover=%.1fs "
         "turn_preview_distance=%.1fm sharp_turn_hold_angle=%.1fdeg "
         "sharp_turn_hold=%.2fs "
+        "target_switch_hold=%.2fs target_switch_delta=%.1fm "
+        "target_switch_angle=%.1fdeg "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm "
         "commanded_target_hysteresis=%.2fm mission_goal=(%.1f, %.1f) "
@@ -280,9 +304,11 @@ public:
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", takeoff_hover_s_, turn_preview_distance_m_,
         radiansToDegrees(sharp_turn_hold_angle_rad_), sharp_turn_hold_s_,
-        path_switch_hysteresis_m_, path_continuity_reuse_radius_m_,
-        path_continuity_max_target_distance_m_, commanded_target_hysteresis_m_,
-        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        target_switch_hold_s_, target_switch_hold_delta_m_,
+        radiansToDegrees(target_switch_hold_angle_rad_), path_switch_hysteresis_m_,
+        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
+        commanded_target_hysteresis_m_, mission_goal_.x, mission_goal_.y,
+        px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
         flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
@@ -338,6 +364,7 @@ private:
     path_valid_ = !path_points_.empty();
     path_update_target_hysteresis_pending_ = false;
     sharp_turn_hold_active_ = false;
+    target_switch_hold_active_ = false;
     sharp_turn_hold_completed_index_.reset();
 
     if (!path_valid_) {
@@ -591,6 +618,7 @@ private:
 
     emergency_stop_requested_ = true;
     path_valid_ = false;
+    target_switch_hold_active_ = false;
     RCLCPP_ERROR(get_logger(),
                  "Emergency stop requested; stopping trajectory setpoints and "
                  "sending disarm commands");
@@ -753,6 +781,9 @@ private:
     if (updateSharpTurnHold()) {
       return;
     }
+    if (updateTargetSwitchHold()) {
+      return;
+    }
 
     const std::size_t previous_waypoint_index = waypoint_index_;
     const std::size_t next_waypoint_index = drone_city_nav::advanceWaypointIndex(
@@ -800,6 +831,26 @@ private:
     return false;
   }
 
+  bool updateTargetSwitchHold() {
+    if (!target_switch_hold_active_) {
+      return false;
+    }
+
+    const double elapsed_s =
+        (get_clock()->now() - target_switch_hold_started_time_).seconds();
+    if (elapsed_s + kTinyDistanceM < target_switch_hold_s_) {
+      return true;
+    }
+
+    target_switch_hold_active_ = false;
+    RCLCPP_INFO(get_logger(),
+                "Target-switch hold complete: elapsed=%.2fs required=%.2fs "
+                "pending_target=(%.2f, %.2f)",
+                elapsed_s, target_switch_hold_s_, target_switch_pending_target_.x,
+                target_switch_pending_target_.y);
+    return false;
+  }
+
   [[nodiscard]] bool
   shouldStartSharpTurnHold(const std::size_t previous_waypoint_index,
                            const std::size_t next_waypoint_index) const {
@@ -830,6 +881,59 @@ private:
                 radiansToDegrees(sharp_turn_hold_angle_rad_), sharp_turn_hold_s_,
                 current_position_.x, current_position_.y, sharp_turn_hold_target_.x,
                 sharp_turn_hold_target_.y);
+  }
+
+  [[nodiscard]] double targetSwitchAngleRad(const Point2 previous_target,
+                                            const Point2 selected_target) const {
+    const Point2 previous_vector{previous_target.x - current_position_.x,
+                                 previous_target.y - current_position_.y};
+    const Point2 selected_vector{selected_target.x - current_position_.x,
+                                 selected_target.y - current_position_.y};
+    return angleBetweenVectorsRad(previous_vector, selected_vector);
+  }
+
+  [[nodiscard]] bool shouldStartTargetSwitchHold(const Point2 selected_target,
+                                                 const bool had_previous_target,
+                                                 const double target_delta_m,
+                                                 const double target_angle_rad) const {
+    if (!(target_switch_hold_s_ > 0.0) || !had_previous_target ||
+        !localPositionFresh() || !navigationAllowed() || sharp_turn_hold_active_) {
+      return false;
+    }
+    if (target_delta_m <= kTinyDistanceM) {
+      return false;
+    }
+    if (distance(current_position_, selected_target) <= acceptance_radius_m_) {
+      return false;
+    }
+
+    const bool distance_trigger = target_switch_hold_delta_m_ > 0.0 &&
+                                  target_delta_m > target_switch_hold_delta_m_;
+    const bool angle_trigger = target_switch_hold_angle_rad_ > 0.0 &&
+                               std::isfinite(target_angle_rad) &&
+                               target_angle_rad > target_switch_hold_angle_rad_;
+    return distance_trigger || angle_trigger;
+  }
+
+  void startTargetSwitchHold(const Point2 previous_target, const Point2 selected_target,
+                             const double target_delta_m,
+                             const double target_angle_rad) {
+    target_switch_hold_active_ = true;
+    target_switch_hold_target_ = current_position_;
+    target_switch_pending_target_ = selected_target;
+    target_switch_hold_started_time_ = get_clock()->now();
+    last_target_switch_hold_delta_m_ = target_delta_m;
+    last_target_switch_hold_angle_rad_ = target_angle_rad;
+    RCLCPP_WARN(
+        get_logger(),
+        "Target-switch hold started: hold_s=%.2f delta=%.2fm "
+        "angle=%.1fdeg thresholds[delta=%.2fm angle=%.1fdeg] "
+        "current=(%.2f, %.2f) previous=(%.2f, %.2f) "
+        "selected=(%.2f, %.2f)",
+        target_switch_hold_s_, target_delta_m, radiansToDegrees(target_angle_rad),
+        target_switch_hold_delta_m_, radiansToDegrees(target_switch_hold_angle_rad_),
+        target_switch_hold_target_.x, target_switch_hold_target_.y, previous_target.x,
+        previous_target.y, selected_target.x, selected_target.y);
   }
 
   [[nodiscard]] double pathCornerAngleRad(const std::size_t waypoint_index) const {
@@ -901,6 +1005,9 @@ private:
     }
     if (sharp_turn_hold_active_) {
       return desired_target;
+    }
+    if (target_switch_hold_active_) {
+      return target_switch_hold_target_;
     }
     if (hold_position) {
       return current_position_;
@@ -981,12 +1088,25 @@ private:
             : 0U,
         last_target_continuity_decision_.selected_target_traversable ? "true"
                                                                      : "false");
-    return last_target_continuity_decision_.target;
+    const Point2 selected_target = last_target_continuity_decision_.target;
+    const double selected_delta_m = had_previous_target
+                                        ? distance(previous_target, selected_target)
+                                        : std::numeric_limits<double>::quiet_NaN();
+    const double selected_angle_rad =
+        targetSwitchAngleRad(previous_target, selected_target);
+    if (shouldStartTargetSwitchHold(selected_target, had_previous_target,
+                                    selected_delta_m, selected_angle_rad)) {
+      startTargetSwitchHold(previous_target, selected_target, selected_delta_m,
+                            selected_angle_rad);
+      return target_switch_hold_target_;
+    }
+    return selected_target;
   }
 
   [[nodiscard]] bool shouldHoldPosition() const {
-    return sharp_turn_hold_active_ || !localPositionFresh() || !navigationAllowed() ||
-           !path_valid_ || waypoint_index_ >= path_points_.size();
+    return sharp_turn_hold_active_ || target_switch_hold_active_ ||
+           !localPositionFresh() || !navigationAllowed() || !path_valid_ ||
+           waypoint_index_ >= path_points_.size();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
@@ -1013,6 +1133,9 @@ private:
   [[nodiscard]] const char* motionPhaseName(const bool hold_position) const noexcept {
     if (sharp_turn_hold_active_) {
       return "sharp_turn_hold";
+    }
+    if (target_switch_hold_active_) {
+      return "target_switch_hold";
     }
     if (no_path_hold_target_valid_) {
       return "hold_no_path";
@@ -1103,6 +1226,14 @@ private:
     }
     return std::max(0.0,
                     (get_clock()->now() - sharp_turn_hold_started_time_).seconds());
+  }
+
+  [[nodiscard]] double targetSwitchHoldElapsedS() const {
+    if (!target_switch_hold_active_) {
+      return 0.0;
+    }
+    return std::max(0.0,
+                    (get_clock()->now() - target_switch_hold_started_time_).seconds());
   }
 
   [[nodiscard]] double attitudeAgeSeconds() const {
@@ -1358,6 +1489,8 @@ private:
         "turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "sharp_turn_hold[active=%s waypoint=%zu elapsed=%.2f required=%.2f "
         "angle_threshold_rad=%.2f] "
+        "target_switch_hold[active=%s elapsed=%.2f required=%.2f "
+        "delta=%.2f angle=%.2f] "
         "local_clearance=%.2f "
         "target_continuity[reason=%s grid=%s previous_safe=%s]",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
@@ -1374,7 +1507,9 @@ private:
         sharp_turn_hold_active_ ? "true" : "false",
         sharp_turn_hold_active_ ? sharp_turn_hold_waypoint_index_ + 1U : 0U,
         sharpTurnHoldElapsedS(), sharp_turn_hold_s_, sharp_turn_hold_angle_rad_,
-        local_clearance_m,
+        target_switch_hold_active_ ? "true" : "false", targetSwitchHoldElapsedS(),
+        target_switch_hold_s_, last_target_switch_hold_delta_m_,
+        last_target_switch_hold_angle_rad_, local_clearance_m,
         targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
         last_target_continuity_grid_available_ ? "true" : "false",
         last_target_continuity_decision_.previous_target_safe ? "true" : "false");
@@ -1429,7 +1564,9 @@ private:
         "path_segment=%s local_clearance=%.2f "
         "turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
         "sharp_turn_hold[active=%s waypoint=%zu elapsed=%.2f required=%.2f "
-        "angle_threshold_rad=%.3f]",
+        "angle_threshold_rad=%.3f] "
+        "target_switch_hold[active=%s elapsed=%.2f required=%.2f "
+        "delta=%.2f angle=%.3f]",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, current_heading_rad_,
         attitude_valid_ ? "true" : "false", attitude_age_s, current_attitude_.roll_rad,
@@ -1444,7 +1581,10 @@ private:
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
         sharp_turn_hold_active_ ? "true" : "false",
         sharp_turn_hold_active_ ? sharp_turn_hold_waypoint_index_ + 1U : 0U,
-        sharpTurnHoldElapsedS(), sharp_turn_hold_s_, sharp_turn_hold_angle_rad_);
+        sharpTurnHoldElapsedS(), sharp_turn_hold_s_, sharp_turn_hold_angle_rad_,
+        target_switch_hold_active_ ? "true" : "false", targetSwitchHoldElapsedS(),
+        target_switch_hold_s_, last_target_switch_hold_delta_m_,
+        last_target_switch_hold_angle_rad_);
     RCLCPP_INFO(get_logger(),
                 "Drone path diagnostics: path_id[local_update=%" PRIu64
                 " planner=%" PRIu64 " planner_seen=%s stamp_ns=%" PRIu64
@@ -1465,7 +1605,8 @@ private:
         "target_distance=%.2f yaw=%.3f target_hysteresis_used=%s "
         "target_hysteresis_delta=%.2f target_hysteresis_path_error=%.2f "
         "target_continuity_reason=%s target_continuity_grid=%s "
-        "target_continuity_previous_safe=%s]",
+        "target_continuity_previous_safe=%s "
+        "target_switch_hold_active=%s]",
         last_commanded_target_delta_m_, last_commanded_target_distance_m_,
         last_commanded_yaw_rad_,
         last_commanded_target_hysteresis_used_ ? "true" : "false",
@@ -1473,7 +1614,8 @@ private:
         last_commanded_target_hysteresis_path_error_m_,
         targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
         last_target_continuity_grid_available_ ? "true" : "false",
-        last_target_continuity_decision_.previous_target_safe ? "true" : "false");
+        last_target_continuity_decision_.previous_target_safe ? "true" : "false",
+        target_switch_hold_active_ ? "true" : "false");
     RCLCPP_INFO(get_logger(),
                 "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
@@ -1630,6 +1772,20 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, sharp_turn_hold_s_);
     flight_blackbox_stream_ << ",\"sharp_turn_hold_angle_threshold_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, sharp_turn_hold_angle_rad_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_active\":";
+    writeJsonBool(flight_blackbox_stream_, target_switch_hold_active_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_elapsed_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, targetSwitchHoldElapsedS());
+    flight_blackbox_stream_ << ",\"target_switch_hold_required_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target_switch_hold_s_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_delta_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_target_switch_hold_delta_m_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_angle_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_target_switch_hold_angle_rad_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_delta_threshold_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target_switch_hold_delta_m_);
+    flight_blackbox_stream_ << ",\"target_switch_hold_angle_threshold_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, target_switch_hold_angle_rad_);
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"obstacle\":{\"local_clearance_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, local_clearance_m);
@@ -1667,6 +1823,8 @@ private:
   Point2 current_velocity_{};
   Point2 no_path_hold_target_{};
   Point2 sharp_turn_hold_target_{};
+  Point2 target_switch_hold_target_{};
+  Point2 target_switch_pending_target_{};
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
   Point2 last_published_target_{};
@@ -1681,6 +1839,9 @@ private:
   double turn_preview_distance_m_{32.0};
   double sharp_turn_hold_angle_rad_{std::numbers::pi / 3.0};
   double sharp_turn_hold_s_{2.0};
+  double target_switch_hold_s_{2.0};
+  double target_switch_hold_delta_m_{5.0};
+  double target_switch_hold_angle_rad_{std::numbers::pi / 4.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
@@ -1696,6 +1857,8 @@ private:
       std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_target_hysteresis_path_error_m_{
       std::numeric_limits<double>::quiet_NaN()};
+  double last_target_switch_hold_delta_m_{std::numeric_limits<double>::quiet_NaN()};
+  double last_target_switch_hold_angle_rad_{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -1726,6 +1889,7 @@ private:
   bool current_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool sharp_turn_hold_active_{false};
+  bool target_switch_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
@@ -1750,6 +1914,7 @@ private:
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time sharp_turn_hold_started_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time target_switch_hold_started_time_{0, 0, RCL_ROS_TIME};
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
