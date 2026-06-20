@@ -195,8 +195,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<std::string>("path_id_topic", "/drone_city_nav/path_id");
   config.topics.current_waypoint = node.declare_parameter<std::string>(
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
-  config.timing.replan_period_s =
-      node.declare_parameter<double>("replan_period_s", 0.5);
+  config.timing.path_prohibited_intersection_check_period_s =
+      node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
+                                     0.5);
   config.planning_grid_builder.inflation_radius_m = config.inflation_radius_m;
 
   return config;

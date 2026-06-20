@@ -29,7 +29,7 @@ struct PlannerTimingConfig {
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   std::int64_t max_current_lidar_staleness_ns{750'000'000};
   double static_map_debug_publish_period_s{1.0};
-  double replan_period_s{0.5};
+  double path_prohibited_intersection_check_period_s{0.5};
 };
 
 struct PlannerFallbackConfig {

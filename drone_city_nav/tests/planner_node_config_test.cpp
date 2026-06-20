@@ -58,6 +58,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
+  EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty_radius_m, 0.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.near_prohibited_penalty, 0.0);
 }
@@ -115,6 +116,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"use_static_map", false},
                 rclcpp::Parameter{"use_obstacle_memory", false},
                 rclcpp::Parameter{"use_current_lidar_obstacles", false},
+                rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
                 rclcpp::Parameter{"max_lidar_range_m", 22.0},
                 rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
                 rclcpp::Parameter{"compensate_lidar_attitude", true}});
@@ -128,6 +130,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
+  EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
   EXPECT_FALSE(config.planning_grid_builder.use_obstacle_memory);
   EXPECT_FALSE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);

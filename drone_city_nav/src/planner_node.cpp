@@ -162,8 +162,9 @@ public:
           [this]() { republishStaticMapDebug(); });
     }
     timer_ = create_wall_timer(
-        std::chrono::duration<double>{std::max(0.05, config.timing.replan_period_s)},
-        [this]() { replanAndPublish(); });
+        std::chrono::duration<double>{
+            std::max(0.05, config.timing.path_prohibited_intersection_check_period_s)},
+        [this]() { checkCurrentPathAndPublish(); });
 
     RCLCPP_INFO(get_logger(),
                 "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
@@ -531,7 +532,7 @@ private:
     return result;
   }
 
-  void replanAndPublish() {
+  void checkCurrentPathAndPublish() {
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     const bool pose_fresh =
         timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
@@ -540,7 +541,7 @@ private:
       invalidateCurrentPose();
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Planner invalidated stale PX4 local position before replanning: "
+          "Planner invalidated stale PX4 local position before path check: "
           "pose_age_s=%.2f",
           pose_age_s);
     }
