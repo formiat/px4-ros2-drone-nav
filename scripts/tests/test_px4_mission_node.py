@@ -81,6 +81,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn('name="px4_mission_upload_worker"', text)
         self.assertIn("mission_path_id_from_stamp(path_stamp_ns", text)
         self.assertIn("planner_path_id_latest", text)
+        self.assertIn("create_px4_sensor_qos_profile()", text)
+        self.assertIn("ReliabilityPolicy.BEST_EFFORT", text)
         self.assertIn("def _upload_worker_loop", text)
         self.assertIn("self._core.handle_path_points", text)
 
@@ -412,6 +414,25 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(1, master.clear_count)
         self.assertEqual([3], master.mission_counts)
 
+    def test_mavlink_home_position_is_requested_and_decoded(self) -> None:
+        config = self.make_config()
+        client = mission_node.MavlinkMissionClient(config)
+        master = FakeHomeMavlinkMaster()
+        client._master = master
+        client._mavutil = FakeMavutil
+
+        home = client.home_position(1.0)
+
+        self.assertIsNotNone(home)
+        assert home is not None
+        self.assertAlmostEqual(47.397742, home.latitude_deg)
+        self.assertAlmostEqual(8.545594, home.longitude_deg)
+        self.assertAlmostEqual(488.123, home.altitude_m)
+        self.assertEqual(1, len(master.command_long_calls))
+        command = master.command_long_calls[0]
+        self.assertEqual(FakeMavlinkModule.MAV_CMD_REQUEST_MESSAGE, command[2])
+        self.assertEqual(FakeMavlinkModule.MAVLINK_MSG_ID_HOME_POSITION, command[4])
+
     def test_blackbox_upload_event_contains_planned_headless_fields(self) -> None:
         client = FakeMissionClient()
         blackbox = CapturingBlackbox()
@@ -462,6 +483,61 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(1, len(event["mission_items"]))
         self.assertEqual(event["first_item"], event["mission_items"][0])
         self.assertEqual(event["last_item"], event["mission_items"][-1])
+
+    def test_blackbox_upload_event_contains_home_resolution_diagnostics(self) -> None:
+        client = FakeMissionClient()
+        blackbox = CapturingBlackbox()
+        core = mission_node.MissionBackendCore(
+            self.make_config(),
+            client,
+            blackbox=blackbox,
+        )
+        configured_home = mission_node.HomePosition(47.0, 8.0, 0.0)
+        resolved_home = mission_node.HomePosition(47.0001, 8.0002, 2.0)
+        home_resolution = mission_node.HomePositionResolution(
+            configured_home=configured_home,
+            resolved_home=resolved_home,
+            configured_source="mavlink_home",
+            used_source="mavlink_home",
+            fallback_used=False,
+        )
+
+        result = core.handle_path_points(
+            [mission_node.Point2(27.0, 27.0)],
+            15,
+            resolved_home,
+            home_resolution=home_resolution,
+        )
+
+        self.assertTrue(result.success)
+        upload_events = [
+            event for event in blackbox.events if event["event"] == "upload_result"
+        ]
+        self.assertEqual(1, len(upload_events))
+        event = upload_events[0]
+        self.assertEqual("mavlink_home", event["home_source_configured"])
+        self.assertEqual("mavlink_home", event["home_source_used"])
+        self.assertFalse(event["home_fallback_used"])
+        self.assertEqual(
+            {
+                "latitude_deg": configured_home.latitude_deg,
+                "longitude_deg": configured_home.longitude_deg,
+                "altitude_m": configured_home.altitude_m,
+            },
+            event["configured_home"],
+        )
+        self.assertGreater(event["configured_to_resolved_home_delta_m"]["x"], 0.0)
+        self.assertGreater(event["configured_to_resolved_home_delta_m"]["y"], 0.0)
+        self.assertEqual(2.0, event["configured_to_resolved_home_delta_alt_m"])
+        self.assertEqual({"x": 0.0, "y": 0.0}, event["first_waypoint_local_ne_m"])
+        self.assertAlmostEqual(
+            resolved_home.latitude_deg,
+            event["first_waypoint_global_deg"]["latitude_deg"],
+        )
+        self.assertAlmostEqual(
+            resolved_home.longitude_deg,
+            event["first_waypoint_global_deg"]["longitude_deg"],
+        )
 
     def test_blackbox_upload_event_contains_all_uploaded_mission_items(self) -> None:
         client = FakeMissionClient()
@@ -561,6 +637,8 @@ class FakeMissionRequest:
 class FakeMavlinkModule:
     MAV_MISSION_ACCEPTED = 0
     MAV_MISSION_TYPE_MISSION = 0
+    MAV_CMD_REQUEST_MESSAGE = 512
+    MAVLINK_MSG_ID_HOME_POSITION = 242
 
 
 class FakeMavutil:
@@ -583,6 +661,9 @@ class FakeMav:
         if seq == 0:
             self._master.cancelled = True
 
+    def command_long_send(self, *_args: object) -> None:
+        self._master.command_long_calls.append(tuple(_args))
+
 
 class FakeMavlinkMaster:
     def __init__(self) -> None:
@@ -591,6 +672,7 @@ class FakeMavlinkMaster:
         self.clear_count = 0
         self.mission_counts: list[int] = []
         self.sent_item_sequences: list[int] = []
+        self.command_long_calls: list[tuple[object, ...]] = []
         self._next_request_seq = 0
 
     def recv_match(
@@ -600,6 +682,22 @@ class FakeMavlinkMaster:
         seq = self._next_request_seq
         self._next_request_seq += 1
         return FakeMissionRequest(seq)
+
+
+class FakeHomePosition:
+    latitude = 473977420
+    longitude = 85455940
+    altitude = 488123
+
+
+class FakeHomeMavlinkMaster(FakeMavlinkMaster):
+    def recv_match(
+        self, *, type: object, blocking: bool, timeout: float
+    ) -> FakeHomePosition | None:
+        _ = (blocking, timeout)
+        if type == "HOME_POSITION":
+            return FakeHomePosition()
+        return None
 
 
 if __name__ == "__main__":

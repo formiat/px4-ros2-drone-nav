@@ -539,6 +539,11 @@ mission waypoints controlled by `mission_resample_spacing_m` so long simplified
 segments do not give PX4 a single sparse waypoint jump across the city. Set the
 spacing to `0.0` to upload the planner path unchanged for experiments.
 
+For SITL, `mission_home_source` defaults to `mavlink_home`. This makes mission
+item conversion use PX4's actual `HOME_POSITION` instead of static latitude and
+longitude parameters, which prevents a fixed map-to-global offset between the
+planner path and the mission PX4 executes.
+
 Mission mode does not use Offboard `sharp_turn_hold_*` or
 `target_switch_hold_*` timing parameters. Runtime logs include
 `Mission backend ready:`, `MISSION_BACKEND upload_started`,
@@ -548,9 +553,9 @@ markers. The backend derives upload identity from the `Path` message stamp so
 delivery races between separate `path` and `path_id` topics cannot skip a fresh
 mission. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
 default and include planner path points, resampled mission points, path segment
-metrics, upload duration, the full uploaded `mission_items` list, and progress
-events enriched with vehicle map position, active mission target, distance to
-target, and cross-track error.
+metrics, upload duration, resolved-home diagnostics, the full uploaded
+`mission_items` list, and progress events enriched with vehicle map position,
+active mission target, distance to target, and cross-track error.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

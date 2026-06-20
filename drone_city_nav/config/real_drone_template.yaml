@@ -164,7 +164,7 @@ px4_mission_node:
     mission_acceptance_radius_m: 1.5
     mission_cruise_altitude_m: 12.0
     mission_resample_spacing_m: 7.5
-    mission_home_source: params
+    mission_home_source: mavlink_home
     mission_home_latitude_deg: 0.0
     mission_home_longitude_deg: 0.0
     mission_home_altitude_m: 0.0

@@ -17,12 +17,17 @@ try:
     from nav_msgs.msg import Path as PathMsg
     from px4_msgs.msg import VehicleLocalPosition
     from rclpy.node import Node
+    from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
     from std_msgs.msg import Bool, UInt64
 except ImportError:  # Unit tests can import pure helpers without ROS installed.
     rclpy = None
     PathMsg = None
     VehicleLocalPosition = None
+    DurabilityPolicy = None
+    HistoryPolicy = None
     Bool = None
+    QoSProfile = None
+    ReliabilityPolicy = None
     UInt64 = None
     Node = object
 
@@ -92,6 +97,15 @@ class PathUploadMetadata:
 
 
 @dataclass(frozen=True)
+class HomePositionResolution:
+    configured_home: HomePosition
+    resolved_home: HomePosition
+    configured_source: str
+    used_source: str
+    fallback_used: bool = False
+
+
+@dataclass(frozen=True)
 class VehicleTelemetry:
     position: Point2
     altitude_m: float | None = None
@@ -144,6 +158,17 @@ def local_ne_to_global(
     latitude_deg = home.latitude_deg + math.degrees(north_m / EARTH_RADIUS_M)
     longitude_deg = home.longitude_deg + math.degrees(east_m / (EARTH_RADIUS_M * cos_lat))
     return latitude_deg, longitude_deg
+
+
+def home_delta_ne_m(reference: HomePosition, other: HomePosition) -> Point2:
+    reference_lat_rad = math.radians(reference.latitude_deg)
+    north_m = math.radians(other.latitude_deg - reference.latitude_deg) * EARTH_RADIUS_M
+    east_m = (
+        math.radians(other.longitude_deg - reference.longitude_deg)
+        * EARTH_RADIUS_M
+        * math.cos(reference_lat_rad)
+    )
+    return Point2(north_m, east_m)
 
 
 def mavlink_attr(name: str, default: int) -> int:
@@ -452,6 +477,7 @@ class MavlinkMissionClient:
 
     def home_position(self, timeout_s: float) -> HomePosition | None:
         self.connect(timeout_s)
+        self._request_home_position()
         msg = self._master.recv_match(
             type="HOME_POSITION", blocking=True, timeout=timeout_s
         )
@@ -461,6 +487,22 @@ class MavlinkMissionClient:
             latitude_deg=float(msg.latitude) / 1.0e7,
             longitude_deg=float(msg.longitude) / 1.0e7,
             altitude_m=float(msg.altitude) / 1000.0,
+        )
+
+    def _request_home_position(self) -> None:
+        mavlink = self._mavutil.mavlink
+        self._master.mav.command_long_send(
+            self._config.target_system,
+            self._config.target_component,
+            getattr(mavlink, "MAV_CMD_REQUEST_MESSAGE", 512),
+            0,
+            getattr(mavlink, "MAVLINK_MSG_ID_HOME_POSITION", 242),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         )
 
     def _send_mission_clear_all(self) -> None:
@@ -587,6 +629,17 @@ def stamp_to_nanoseconds(stamp: Any) -> int:
     return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
 
 
+def create_px4_sensor_qos_profile() -> Any:
+    if QoSProfile is None:
+        raise RuntimeError("rclpy QoSProfile is required to create PX4 sensor QoS")
+    return QoSProfile(
+        history=HistoryPolicy.KEEP_LAST,
+        depth=10,
+        reliability=ReliabilityPolicy.BEST_EFFORT,
+        durability=DurabilityPolicy.VOLATILE,
+    )
+
+
 class MissionBackendCore:
     def __init__(
         self,
@@ -618,6 +671,7 @@ class MissionBackendCore:
         path_id: int,
         home: HomePosition,
         metadata: PathUploadMetadata | None = None,
+        home_resolution: HomePositionResolution | None = None,
     ) -> UploadResult:
         self.logger(
             "MISSION_BACKEND path_received "
@@ -633,6 +687,7 @@ class MissionBackendCore:
                 home=home,
                 path_points=path_points,
                 path_metadata=metadata,
+                home_resolution=home_resolution,
             )
             return result
         if not path_points:
@@ -646,6 +701,7 @@ class MissionBackendCore:
                 home=home,
                 path_points=path_points,
                 path_metadata=metadata,
+                home_resolution=home_resolution,
             )
             return result
         with self._lock:
@@ -662,6 +718,7 @@ class MissionBackendCore:
                 home=home,
                 path_points=path_points,
                 path_metadata=metadata,
+                home_resolution=home_resolution,
             )
             return result
 
@@ -707,6 +764,7 @@ class MissionBackendCore:
             path_points=path_points,
             mission_points=mission_points,
             path_metadata=metadata,
+            home_resolution=home_resolution,
             upload_duration_s=upload_duration_s,
             reuploading_after_success=reuploading_after_success,
         )
@@ -729,6 +787,7 @@ class MissionBackendCore:
                 path_points=path_points,
                 mission_points=mission_points,
                 path_metadata=metadata,
+                home_resolution=home_resolution,
             )
             return skipped
 
@@ -754,6 +813,7 @@ class MissionBackendCore:
                     path_points=path_points,
                     mission_points=mission_points,
                     path_metadata=metadata,
+                    home_resolution=home_resolution,
                 )
                 return skipped
             self.logger(
@@ -776,6 +836,7 @@ class MissionBackendCore:
                     path_points=path_points,
                     mission_points=mission_points,
                     path_metadata=metadata,
+                    home_resolution=home_resolution,
                 )
                 return skipped
             self.logger(f"MISSION_BACKEND arm_command path_id={path_id}")
@@ -899,6 +960,7 @@ class MissionBackendCore:
         path_points: list[Point2] | None = None,
         mission_points: list[Point2] | None = None,
         path_metadata: PathUploadMetadata | None = None,
+        home_resolution: HomePositionResolution | None = None,
         upload_duration_s: float | None = None,
         reuploading_after_success: bool | None = None,
     ) -> None:
@@ -918,6 +980,23 @@ class MissionBackendCore:
             "connection_url": self.config.connection_url,
             "emergency_stop_requested": self.is_emergency_stop_requested(),
         }
+        if home_resolution is not None:
+            delta = home_delta_ne_m(
+                home_resolution.configured_home, home_resolution.resolved_home
+            )
+            payload.update(
+                {
+                    "home_source_configured": home_resolution.configured_source,
+                    "home_source_used": home_resolution.used_source,
+                    "home_fallback_used": home_resolution.fallback_used,
+                    "configured_home": asdict(home_resolution.configured_home),
+                    "configured_to_resolved_home_delta_m": point_to_dict(delta),
+                    "configured_to_resolved_home_delta_alt_m": (
+                        home_resolution.resolved_home.altitude_m
+                        - home_resolution.configured_home.altitude_m
+                    ),
+                }
+            )
         if path_metadata is not None:
             payload.update(asdict(path_metadata))
             payload["path_metadata"] = asdict(path_metadata)
@@ -928,6 +1007,16 @@ class MissionBackendCore:
         if path_points is not None:
             payload["planner_path_points_map"] = path_points_to_dicts(path_points)
             payload["planner_path_metrics"] = path_segment_metrics(path_points)
+            if path_points and home is not None:
+                first_local = map_to_px4_local(path_points[0], self.config)
+                first_lat_deg, first_lon_deg = local_ne_to_global(
+                    home, first_local.x, first_local.y
+                )
+                payload["first_waypoint_local_ne_m"] = point_to_dict(first_local)
+                payload["first_waypoint_global_deg"] = {
+                    "latitude_deg": first_lat_deg,
+                    "longitude_deg": first_lon_deg,
+                }
         if mission_points is not None:
             payload["mission_points_map"] = path_points_to_dicts(mission_points)
             payload["mission_path_metrics"] = path_segment_metrics(mission_points)
@@ -1066,7 +1155,7 @@ class Px4MissionNode(Node):
                 VehicleLocalPosition,
                 str(px4_local_position_topic),
                 self._on_vehicle_local_position,
-                10,
+                create_px4_sensor_qos_profile(),
             )
         else:
             self.get_logger().warn(
@@ -1143,11 +1232,14 @@ class Px4MissionNode(Node):
                 break
 
             try:
+                home_resolution = self._resolve_home_position()
+                self._log_home_resolution(home_resolution)
                 self._core.handle_path_points(
                     request.points,
                     request.path_id,
-                    self._resolve_home_position(),
+                    home_resolution.resolved_home,
                     request.metadata,
+                    home_resolution,
                 )
             except Exception as exc:
                 self.get_logger().error(
@@ -1188,19 +1280,53 @@ class Px4MissionNode(Node):
         except Exception as exc:
             self.get_logger().warn(f"MISSION_BACKEND timer_exception error='{exc}'")
 
-    def _resolve_home_position(self) -> HomePosition:
+    def _resolve_home_position(self) -> HomePositionResolution:
         if self._core.config.home_source != "mavlink_home":
-            return self._home
+            return HomePositionResolution(
+                configured_home=self._home,
+                resolved_home=self._home,
+                configured_source=self._core.config.home_source,
+                used_source="params",
+                fallback_used=False,
+            )
         home = self._core.client.home_position(self._core.config.upload_timeout_s)
         if home is not None:
-            return home
+            return HomePositionResolution(
+                configured_home=self._home,
+                resolved_home=home,
+                configured_source="mavlink_home",
+                used_source="mavlink_home",
+                fallback_used=False,
+            )
         if not self._home_fallback_warned:
             self.get_logger().warn(
                 "MISSION_BACKEND home_position_fallback source=mavlink_home "
                 "fallback=params"
             )
             self._home_fallback_warned = True
-        return self._home
+        return HomePositionResolution(
+            configured_home=self._home,
+            resolved_home=self._home,
+            configured_source="mavlink_home",
+            used_source="params",
+            fallback_used=True,
+        )
+
+    def _log_home_resolution(self, resolution: HomePositionResolution) -> None:
+        delta = home_delta_ne_m(resolution.configured_home, resolution.resolved_home)
+        self.get_logger().info(
+            "MISSION_BACKEND home_position_resolved "
+            f"configured_source={resolution.configured_source} "
+            f"used_source={resolution.used_source} "
+            f"fallback_used={str(resolution.fallback_used).lower()} "
+            f"resolved_home=({resolution.resolved_home.latitude_deg:.7f}, "
+            f"{resolution.resolved_home.longitude_deg:.7f}, "
+            f"{resolution.resolved_home.altitude_m:.1f}) "
+            f"configured_home=({resolution.configured_home.latitude_deg:.7f}, "
+            f"{resolution.configured_home.longitude_deg:.7f}, "
+            f"{resolution.configured_home.altitude_m:.1f}) "
+            f"configured_to_resolved_delta_ne=({delta.x:.2f}, {delta.y:.2f})"
+        )
 
 
 def main() -> None:
