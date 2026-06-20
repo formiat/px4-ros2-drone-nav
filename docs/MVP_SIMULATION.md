@@ -547,7 +547,10 @@ Mission mode does not use Offboard `sharp_turn_hold_*` or
 markers. The backend derives upload identity from the `Path` message stamp so
 delivery races between separate `path` and `path_id` topics cannot skip a fresh
 mission. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
-default and include the full uploaded `mission_items` list.
+default and include planner path points, resampled mission points, path segment
+metrics, upload duration, the full uploaded `mission_items` list, and progress
+events enriched with vehicle map position, active mission target, distance to
+target, and cross-track error.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

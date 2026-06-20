@@ -159,6 +159,24 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
 
         self.assertEqual(points, mission_node.resample_path_for_mission(points, 0.0))
 
+    def test_path_segment_metrics_reports_lengths(self) -> None:
+        metrics = mission_node.path_segment_metrics(
+            [
+                mission_node.Point2(0.0, 0.0),
+                mission_node.Point2(3.0, 4.0),
+                mission_node.Point2(9.0, 4.0),
+            ]
+        )
+
+        self.assertEqual(3, metrics["waypoints"])
+        self.assertEqual(2, metrics["segments"])
+        self.assertEqual(11.0, metrics["total_length_m"])
+        self.assertEqual(5.0, metrics["min_segment_len_m"])
+        self.assertEqual(5.5, metrics["mean_segment_len_m"])
+        self.assertEqual(6.0, metrics["max_segment_len_m"])
+        self.assertEqual(0, metrics["segments_shorter_than_5m"])
+        self.assertEqual(2, metrics["segments_shorter_than_10m"])
+
     def test_upload_resamples_long_mission_segments(self) -> None:
         client = FakeMissionClient()
         logs: list[str] = []
@@ -408,6 +426,11 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
             [mission_node.Point2(27.0, 27.0)],
             11,
             home,
+            mission_node.PathUploadMetadata(
+                path_stamp_ns=123,
+                received_path_count=2,
+                latest_planner_path_id=9,
+            ),
         )
 
         self.assertTrue(result.success)
@@ -427,6 +450,15 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         )
         self.assertEqual(0, event["current_seq"])
         self.assertTrue(event["finished"])
+        self.assertEqual(123, event["path_stamp_ns"])
+        self.assertEqual(2, event["received_path_count"])
+        self.assertEqual(9, event["latest_planner_path_id"])
+        self.assertIn("upload_duration_s", event)
+        self.assertFalse(event["reuploading_after_success"])
+        self.assertEqual(1, event["planner_path_metrics"]["waypoints"])
+        self.assertEqual(1, event["mission_path_metrics"]["waypoints"])
+        self.assertEqual([{"x": 27.0, "y": 27.0}], event["planner_path_points_map"])
+        self.assertEqual([{"x": 27.0, "y": 27.0}], event["mission_points_map"])
         self.assertEqual(1, len(event["mission_items"]))
         self.assertEqual(event["first_item"], event["mission_items"][0])
         self.assertEqual(event["last_item"], event["mission_items"][-1])
@@ -462,6 +494,47 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         mission_items = upload_events[0]["mission_items"]
         self.assertEqual(3, len(mission_items))
         self.assertEqual([0, 1, 2], [item["seq"] for item in mission_items])
+
+    def test_progress_event_contains_vehicle_route_diagnostics(self) -> None:
+        client = FakeMissionClient()
+        blackbox = CapturingBlackbox()
+        core = mission_node.MissionBackendCore(
+            self.make_config(
+                mission_resample_spacing_m=0.0,
+                px4_local_origin_x_m=0.0,
+                px4_local_origin_y_m=0.0,
+            ),
+            client,
+            blackbox=blackbox,
+        )
+
+        upload = core.handle_path_points(
+            [mission_node.Point2(0.0, 0.0), mission_node.Point2(10.0, 0.0)],
+            14,
+            mission_node.HomePosition(47.0, 8.0),
+        )
+        self.assertTrue(upload.success)
+        core.update_vehicle_telemetry(
+            mission_node.VehicleTelemetry(
+                position=mission_node.Point2(5.0, 1.0),
+                altitude_m=18.0,
+            )
+        )
+
+        core.log_progress({"type": "MISSION_CURRENT", "seq": 1})
+
+        progress_events = [
+            event for event in blackbox.events if event["event"] == "progress"
+        ]
+        self.assertEqual(1, len(progress_events))
+        event = progress_events[0]
+        self.assertTrue(event["seq_changed"])
+        self.assertEqual(14, event["mission_path_id"])
+        self.assertEqual({"x": 5.0, "y": 1.0}, event["vehicle_position_map"])
+        self.assertEqual({"x": 10.0, "y": 0.0}, event["mission_target_map"])
+        self.assertAlmostEqual(5.099, event["distance_to_mission_target_m"], places=3)
+        self.assertAlmostEqual(1.0, event["cross_track_error_m"])
+        self.assertAlmostEqual(0.5, event["along_track_fraction"])
 
     @staticmethod
     def disarm_calls(client: FakeMissionClient) -> list[tuple[str, object]]:

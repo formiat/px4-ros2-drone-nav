@@ -15,11 +15,13 @@ from typing import Any, Callable, Iterable
 try:
     import rclpy
     from nav_msgs.msg import Path as PathMsg
+    from px4_msgs.msg import VehicleLocalPosition
     from rclpy.node import Node
     from std_msgs.msg import Bool, UInt64
 except ImportError:  # Unit tests can import pure helpers without ROS installed.
     rclpy = None
     PathMsg = None
+    VehicleLocalPosition = None
     Bool = None
     UInt64 = None
     Node = object
@@ -83,6 +85,26 @@ class MissionItemInt:
 
 
 @dataclass(frozen=True)
+class PathUploadMetadata:
+    path_stamp_ns: int = 0
+    received_path_count: int = 0
+    latest_planner_path_id: int = 0
+
+
+@dataclass(frozen=True)
+class VehicleTelemetry:
+    position: Point2
+    altitude_m: float | None = None
+
+
+@dataclass(frozen=True)
+class PathUploadRequest:
+    points: list[Point2]
+    path_id: int
+    metadata: PathUploadMetadata
+
+
+@dataclass(frozen=True)
 class UploadResult:
     success: bool
     ack_type: str = "UNKNOWN"
@@ -101,6 +123,13 @@ def map_to_px4_local(point: Point2, config: MissionBackendConfig) -> Point2:
     return Point2(
         point.x - config.px4_local_origin_x_m,
         point.y - config.px4_local_origin_y_m,
+    )
+
+
+def px4_local_to_map(point: Point2, config: MissionBackendConfig) -> Point2:
+    return Point2(
+        point.x + config.px4_local_origin_x_m,
+        point.y + config.px4_local_origin_y_m,
     )
 
 
@@ -181,6 +210,101 @@ def resample_path_for_mission(
         for step in range(1, segment_count + 1):
             resampled.append(interpolate_2d(start, end, step / segment_count))
     return resampled
+
+
+def point_to_dict(point: Point2) -> dict[str, float]:
+    return {"x": point.x, "y": point.y}
+
+
+def path_points_to_dicts(points: Iterable[Point2]) -> list[dict[str, float]]:
+    return [point_to_dict(point) for point in points]
+
+
+def path_segment_metrics(points: Iterable[Point2]) -> dict[str, float | int | None]:
+    point_list = list(points)
+    segment_lengths = [
+        distance_2d(first, second)
+        for first, second in zip(point_list, point_list[1:])
+        if distance_2d(first, second) > 1.0e-9
+    ]
+    if not segment_lengths:
+        return {
+            "waypoints": len(point_list),
+            "segments": 0,
+            "total_length_m": 0.0,
+            "min_segment_len_m": None,
+            "mean_segment_len_m": None,
+            "max_segment_len_m": None,
+            "segments_shorter_than_5m": 0,
+            "segments_shorter_than_10m": 0,
+        }
+
+    total_length_m = sum(segment_lengths)
+    return {
+        "waypoints": len(point_list),
+        "segments": len(segment_lengths),
+        "total_length_m": total_length_m,
+        "min_segment_len_m": min(segment_lengths),
+        "mean_segment_len_m": total_length_m / len(segment_lengths),
+        "max_segment_len_m": max(segment_lengths),
+        "segments_shorter_than_5m": sum(
+            1 for length in segment_lengths if length < 5.0
+        ),
+        "segments_shorter_than_10m": sum(
+            1 for length in segment_lengths if length < 10.0
+        ),
+    }
+
+
+def distance_point_to_segment(point: Point2, start: Point2, end: Point2) -> tuple[float, float]:
+    dx = end.x - start.x
+    dy = end.y - start.y
+    segment_length_sq = dx * dx + dy * dy
+    if segment_length_sq <= 1.0e-12:
+        return distance_2d(point, start), 0.0
+
+    raw_fraction = ((point.x - start.x) * dx + (point.y - start.y) * dy) / segment_length_sq
+    fraction = min(1.0, max(0.0, raw_fraction))
+    projected = interpolate_2d(start, end, fraction)
+    return distance_2d(point, projected), fraction
+
+
+def mission_progress_diagnostics(
+    mission_points: list[Point2],
+    current_seq: int | None,
+    telemetry: VehicleTelemetry | None,
+) -> dict[str, Any]:
+    if current_seq is None or telemetry is None or not mission_points:
+        return {}
+
+    target_seq = min(max(current_seq, 0), len(mission_points) - 1)
+    target = mission_points[target_seq]
+    diagnostics: dict[str, Any] = {
+        "vehicle_position_map": point_to_dict(telemetry.position),
+        "vehicle_altitude_m": telemetry.altitude_m,
+        "mission_target_seq": target_seq,
+        "mission_target_map": point_to_dict(target),
+        "distance_to_mission_target_m": distance_2d(telemetry.position, target),
+    }
+    if len(mission_points) >= 2:
+        segment_start_seq = max(0, min(target_seq - 1, len(mission_points) - 2))
+        segment_end_seq = segment_start_seq + 1
+        segment_start = mission_points[segment_start_seq]
+        segment_end = mission_points[segment_end_seq]
+        cross_track_m, along_track_fraction = distance_point_to_segment(
+            telemetry.position, segment_start, segment_end
+        )
+        diagnostics.update(
+            {
+                "mission_segment_start_seq": segment_start_seq,
+                "mission_segment_end_seq": segment_end_seq,
+                "mission_segment_start_map": point_to_dict(segment_start),
+                "mission_segment_end_map": point_to_dict(segment_end),
+                "cross_track_error_m": cross_track_m,
+                "along_track_fraction": along_track_fraction,
+            }
+        )
+    return diagnostics
 
 
 class MissionBlackbox:
@@ -483,9 +607,17 @@ class MissionBackendCore:
         self.upload_attempt = 0
         self.emergency_stop_requested = False
         self.last_emergency_disarm_s = -math.inf
+        self.current_mission_points: list[Point2] = []
+        self.current_mission_path_id: int | None = None
+        self.last_progress_seq: int | None = None
+        self.vehicle_telemetry: VehicleTelemetry | None = None
 
     def handle_path_points(
-        self, path_points: list[Point2], path_id: int, home: HomePosition
+        self,
+        path_points: list[Point2],
+        path_id: int,
+        home: HomePosition,
+        metadata: PathUploadMetadata | None = None,
     ) -> UploadResult:
         self.logger(
             "MISSION_BACKEND path_received "
@@ -494,21 +626,42 @@ class MissionBackendCore:
         if self.is_emergency_stop_requested():
             result = UploadResult.skipped("emergency stop is active")
             self._write_blackbox(
-                "upload_skipped", path_id, result, len(path_points), home=home
+                "upload_skipped",
+                path_id,
+                result,
+                len(path_points),
+                home=home,
+                path_points=path_points,
+                path_metadata=metadata,
             )
             return result
         if not path_points:
             result = UploadResult.skipped("empty path")
             self.logger(f"MISSION_BACKEND empty_path_skip path_id={path_id}")
-            self._write_blackbox("upload_skipped", path_id, result, 0, home=home)
+            self._write_blackbox(
+                "upload_skipped",
+                path_id,
+                result,
+                0,
+                home=home,
+                path_points=path_points,
+                path_metadata=metadata,
+            )
             return result
         with self._lock:
             duplicate_path_id = self.last_uploaded_path_id == path_id
+            reuploading_after_success = self.last_uploaded_path_id is not None
         if duplicate_path_id:
             result = UploadResult.skipped("duplicate path id")
             self.logger(f"MISSION_BACKEND duplicate_path_skip path_id={path_id}")
             self._write_blackbox(
-                "upload_skipped", path_id, result, len(path_points), home=home
+                "upload_skipped",
+                path_id,
+                result,
+                len(path_points),
+                home=home,
+                path_points=path_points,
+                path_metadata=metadata,
             )
             return result
 
@@ -531,13 +684,16 @@ class MissionBackendCore:
             "MISSION_BACKEND upload_started "
             f"path_id={path_id} waypoints={len(items)} attempt={upload_attempt}"
         )
+        upload_started_s = self.clock()
         result = self.client.upload_mission(
             items, self.config.upload_timeout_s, self.is_emergency_stop_requested
         )
+        upload_duration_s = self.clock() - upload_started_s
         self.logger(
             "MISSION_BACKEND upload_result "
             f"path_id={path_id} success={str(result.success).lower()} "
-            f"ack={result.ack_type} message='{result.message}'"
+            f"ack={result.ack_type} upload_duration_s={upload_duration_s:.3f} "
+            f"message='{result.message}'"
         )
         self._write_blackbox(
             "upload_result",
@@ -548,6 +704,11 @@ class MissionBackendCore:
             home=home,
             current_seq=len(items) - 1 if result.success and items else None,
             finished=result.success,
+            path_points=path_points,
+            mission_points=mission_points,
+            path_metadata=metadata,
+            upload_duration_s=upload_duration_s,
+            reuploading_after_success=reuploading_after_success,
         )
         if not result.success:
             return result
@@ -559,11 +720,22 @@ class MissionBackendCore:
                 f"path_id={path_id} action=skip_mode_arm"
             )
             self._write_blackbox(
-                "upload_skipped", path_id, skipped, len(items), items, home=home
+                "upload_skipped",
+                path_id,
+                skipped,
+                len(items),
+                items,
+                home=home,
+                path_points=path_points,
+                mission_points=mission_points,
+                path_metadata=metadata,
             )
             return skipped
 
         with self._lock:
+            self.current_mission_points = list(mission_points)
+            self.current_mission_path_id = path_id
+            self.last_progress_seq = None
             self.last_uploaded_path_id = path_id
         if self.config.auto_mission:
             if not self._run_command_unless_emergency(
@@ -573,7 +745,15 @@ class MissionBackendCore:
                     "emergency stop became active before mode command"
                 )
                 self._write_blackbox(
-                    "upload_skipped", path_id, skipped, len(items), items, home=home
+                    "upload_skipped",
+                    path_id,
+                    skipped,
+                    len(items),
+                    items,
+                    home=home,
+                    path_points=path_points,
+                    mission_points=mission_points,
+                    path_metadata=metadata,
                 )
                 return skipped
             self.logger(
@@ -587,7 +767,15 @@ class MissionBackendCore:
                     "emergency stop became active before arm command"
                 )
                 self._write_blackbox(
-                    "upload_skipped", path_id, skipped, len(items), items, home=home
+                    "upload_skipped",
+                    path_id,
+                    skipped,
+                    len(items),
+                    items,
+                    home=home,
+                    path_points=path_points,
+                    mission_points=mission_points,
+                    path_metadata=metadata,
                 )
                 return skipped
             self.logger(f"MISSION_BACKEND arm_command path_id={path_id}")
@@ -644,21 +832,57 @@ class MissionBackendCore:
         with self._lock:
             return self.emergency_stop_requested
 
+    def update_vehicle_telemetry(self, telemetry: VehicleTelemetry) -> None:
+        with self._lock:
+            self.vehicle_telemetry = telemetry
+
     def log_progress(self, progress: dict[str, Any] | None) -> None:
         if not progress:
             return
-        fields = " ".join(f"{key}={value}" for key, value in sorted(progress.items()))
-        self.logger(f"MISSION_BACKEND progress {fields}")
         current_seq = progress.get("seq")
+        current_seq_int = int(current_seq) if current_seq is not None else None
+        with self._lock:
+            mission_points = list(self.current_mission_points)
+            mission_path_id = self.current_mission_path_id
+            telemetry = self.vehicle_telemetry
+            previous_seq = self.last_progress_seq
+            seq_changed = current_seq_int is not None and current_seq_int != previous_seq
+            if current_seq_int is not None:
+                self.last_progress_seq = current_seq_int
+
+        diagnostics = mission_progress_diagnostics(
+            mission_points, current_seq_int, telemetry
+        )
+        fields = " ".join(f"{key}={value}" for key, value in sorted(progress.items()))
+        if diagnostics:
+            fields += (
+                f" mission_path_id={mission_path_id} "
+                f"distance_to_target_m={diagnostics['distance_to_mission_target_m']:.2f}"
+            )
+            if "cross_track_error_m" in diagnostics:
+                fields += f" cross_track_error_m={diagnostics['cross_track_error_m']:.2f}"
+        if seq_changed:
+            self.logger(
+                "MISSION_BACKEND seq_change "
+                f"previous_seq={previous_seq} current_seq={current_seq_int} {fields}"
+            )
+        else:
+            self.logger(f"MISSION_BACKEND progress {fields}")
+
+        payload: dict[str, Any] = {
+            "event": "progress",
+            "time_s": self.clock(),
+            "time_ns": time.time_ns(),
+            "current_seq": current_seq,
+            "previous_seq": previous_seq,
+            "seq_changed": seq_changed,
+            "mission_path_id": mission_path_id,
+            "finished": progress.get("type") == "MISSION_ITEM_REACHED",
+            **progress,
+        }
+        payload.update(diagnostics)
         self._write_event(
-            {
-                "event": "progress",
-                "time_s": self.clock(),
-                "time_ns": time.time_ns(),
-                "current_seq": current_seq,
-                "finished": progress.get("type") == "MISSION_ITEM_REACHED",
-                **progress,
-            }
+            payload
         )
 
     def _write_blackbox(
@@ -672,6 +896,11 @@ class MissionBackendCore:
         home: HomePosition | None = None,
         current_seq: int | None = None,
         finished: bool | None = None,
+        path_points: list[Point2] | None = None,
+        mission_points: list[Point2] | None = None,
+        path_metadata: PathUploadMetadata | None = None,
+        upload_duration_s: float | None = None,
+        reuploading_after_success: bool | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "event": event,
@@ -689,6 +918,19 @@ class MissionBackendCore:
             "connection_url": self.config.connection_url,
             "emergency_stop_requested": self.is_emergency_stop_requested(),
         }
+        if path_metadata is not None:
+            payload.update(asdict(path_metadata))
+            payload["path_metadata"] = asdict(path_metadata)
+        if upload_duration_s is not None:
+            payload["upload_duration_s"] = upload_duration_s
+        if reuploading_after_success is not None:
+            payload["reuploading_after_success"] = reuploading_after_success
+        if path_points is not None:
+            payload["planner_path_points_map"] = path_points_to_dicts(path_points)
+            payload["planner_path_metrics"] = path_segment_metrics(path_points)
+        if mission_points is not None:
+            payload["mission_points_map"] = path_points_to_dicts(mission_points)
+            payload["mission_path_metrics"] = path_segment_metrics(mission_points)
         if items:
             payload["first_item"] = asdict(items[0])
             payload["last_item"] = asdict(items[-1])
@@ -721,6 +963,9 @@ class Px4MissionNode(Node):
         path_id_topic = self.declare_parameter("path_id_topic", "/drone_city_nav/path_id").value
         emergency_stop_topic = self.declare_parameter(
             "emergency_stop_topic", "/drone_city_nav/emergency_stop"
+        ).value
+        px4_local_position_topic = self.declare_parameter(
+            "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1"
         ).value
 
         config = MissionBackendConfig(
@@ -790,9 +1035,7 @@ class Px4MissionNode(Node):
             clock=time.monotonic,
         )
         self._worker_stop = threading.Event()
-        self._path_upload_queue: queue.Queue[tuple[list[Point2], int] | None] = (
-            queue.Queue()
-        )
+        self._path_upload_queue: queue.Queue[PathUploadRequest | None] = queue.Queue()
         self._upload_worker = threading.Thread(
             target=self._upload_worker_loop,
             name="px4_mission_upload_worker",
@@ -818,12 +1061,25 @@ class Px4MissionNode(Node):
             self._on_emergency_stop,
             1,
         )
+        if VehicleLocalPosition is not None:
+            self.create_subscription(
+                VehicleLocalPosition,
+                str(px4_local_position_topic),
+                self._on_vehicle_local_position,
+                10,
+            )
+        else:
+            self.get_logger().warn(
+                "MISSION_BACKEND vehicle_local_position_unavailable "
+                "reason=px4_msgs_import_failed"
+            )
         self.create_timer(1.0, self._on_timer)
 
         self.get_logger().info(
             "Mission backend ready: "
             f"connection={config.connection_url} path_topic='{path_topic}' "
             f"path_id_topic='{path_id_topic}' emergency_stop_topic='{emergency_stop_topic}' "
+            f"px4_local_position_topic='{px4_local_position_topic}' "
             f"auto_arm={str(config.auto_arm).lower()} "
             f"auto_mission={str(config.auto_mission).lower()} "
             f"home_source={config.home_source} "
@@ -858,7 +1114,17 @@ class Px4MissionNode(Node):
             Point2(float(pose.pose.position.x), float(pose.pose.position.y))
             for pose in msg.poses
         ]
-        self._path_upload_queue.put((points, path_id))
+        self._path_upload_queue.put(
+            PathUploadRequest(
+                points=points,
+                path_id=path_id,
+                metadata=PathUploadMetadata(
+                    path_stamp_ns=path_stamp_ns,
+                    received_path_count=self._received_path_count,
+                    latest_planner_path_id=self._latest_planner_path_id,
+                ),
+            )
+        )
         self.get_logger().info(
             "MISSION_BACKEND path_enqueued "
             f"path_id={path_id} path_stamp_ns={path_stamp_ns} "
@@ -876,15 +1142,17 @@ class Px4MissionNode(Node):
                 self._path_upload_queue.task_done()
                 break
 
-            points, path_id = request
             try:
                 self._core.handle_path_points(
-                    points, path_id, self._resolve_home_position()
+                    request.points,
+                    request.path_id,
+                    self._resolve_home_position(),
+                    request.metadata,
                 )
             except Exception as exc:
                 self.get_logger().error(
                     "MISSION_BACKEND upload_exception "
-                    f"path_id={path_id} error='{exc}'"
+                    f"path_id={request.path_id} error='{exc}'"
                 )
             finally:
                 self._path_upload_queue.task_done()
@@ -896,6 +1164,20 @@ class Px4MissionNode(Node):
             self.get_logger().error(
                 f"MISSION_BACKEND emergency_stop_exception error='{exc}'"
             )
+
+    def _on_vehicle_local_position(self, msg: Any) -> None:
+        if hasattr(msg, "xy_valid") and not bool(msg.xy_valid):
+            return
+        position = px4_local_to_map(
+            Point2(float(msg.x), float(msg.y)),
+            self._core.config,
+        )
+        altitude_m: float | None = None
+        if hasattr(msg, "z") and math.isfinite(float(msg.z)):
+            altitude_m = -float(msg.z)
+        self._core.update_vehicle_telemetry(
+            VehicleTelemetry(position=position, altitude_m=altitude_m)
+        )
 
     def _on_timer(self) -> None:
         try:
