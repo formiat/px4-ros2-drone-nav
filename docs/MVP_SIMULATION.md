@@ -233,6 +233,8 @@ selected params file in control:
 ENABLE_STATIC_MAP=false ./scripts/sim_gui.sh
 ENABLE_OBSTACLE_MEMORY=false ./scripts/sim_gui.sh
 ENABLE_CURRENT_LIDAR=false ./scripts/sim_gui.sh
+ENABLE_EVASIVE_MANEUVERING=true ./scripts/sim_gui.sh
+EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT=50 ./scripts/sim_gui.sh
 STATIC_CITY_MAP_PATH=drone_city_nav/worlds/generated_city.map2d ./scripts/sim_gui.sh
 ```
 
@@ -241,7 +243,10 @@ to use `params_file`; pass a value only when an explicit launch-time override is
 needed:
 
 ```bash
-ros2 launch drone_city_nav city_nav.launch.py use_static_map:=false
+ros2 launch drone_city_nav city_nav.launch.py \
+  use_static_map:=false \
+  evasive_maneuvering:=true \
+  evasive_maneuvering_straight_cost_weight:=50
 ```
 
 ## Lidar Debugging

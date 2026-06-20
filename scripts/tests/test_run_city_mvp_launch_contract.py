@@ -63,6 +63,15 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
         )
         self.assertNotIn('rm -rf "${lidar_debug_dir}"', self.text)
 
+    def test_evasive_maneuvering_can_be_overridden_from_environment(self) -> None:
+        self.assertIn("ENABLE_EVASIVE_MANEUVERING", self.text)
+        self.assertIn("EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT", self.text)
+        self.assertIn('ros_launch_args+=(evasive_maneuvering:="', self.text)
+        self.assertIn(
+            'evasive_maneuvering_straight_cost_weight:="',
+            self.text,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

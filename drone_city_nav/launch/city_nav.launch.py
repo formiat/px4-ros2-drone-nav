@@ -24,6 +24,19 @@ def optional_bool_override(context, launch_config, argument_name):
     )
 
 
+def optional_float_override(context, launch_config, argument_name):
+    value = launch_config.perform(context).strip()
+    if not value:
+        return None
+
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Launch argument '{argument_name}' must be a float or empty, got '{value}'"
+        ) from exc
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
@@ -44,6 +57,10 @@ def generate_launch_description():
     use_obstacle_memory = LaunchConfiguration("use_obstacle_memory")
     use_current_lidar_obstacles = LaunchConfiguration("use_current_lidar_obstacles")
     static_map_path = LaunchConfiguration("static_map_path")
+    evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
+    evasive_maneuvering_straight_cost_weight = LaunchConfiguration(
+        "evasive_maneuvering_straight_cost_weight"
+    )
     scan_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -83,6 +100,24 @@ def generate_launch_description():
         static_map_path_override = static_map_path.perform(context).strip()
         if static_map_path_override:
             planner_overrides["static_map_path"] = static_map_path_override
+
+        evasive_maneuvering_override = optional_bool_override(
+            context, evasive_maneuvering, "evasive_maneuvering"
+        )
+        if evasive_maneuvering_override is not None:
+            planner_overrides["astar_evasive_maneuvering_enabled"] = (
+                evasive_maneuvering_override
+            )
+
+        evasive_maneuvering_straight_weight_override = optional_float_override(
+            context,
+            evasive_maneuvering_straight_cost_weight,
+            "evasive_maneuvering_straight_cost_weight",
+        )
+        if evasive_maneuvering_straight_weight_override is not None:
+            planner_overrides["astar_evasive_maneuvering_straight_cost_weight"] = (
+                evasive_maneuvering_straight_weight_override
+            )
 
         planner_parameters = [params_file.perform(context)]
         if planner_overrides:
@@ -251,6 +286,22 @@ def generate_launch_description():
                 description=(
                     "Optional static city map2d path override. Leave empty to use "
                     "params_file."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "evasive_maneuvering",
+                default_value="",
+                description=(
+                    "Optional override for A* evasive maneuvering. Leave empty "
+                    "to use params_file; the default simulation params keep it off."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "evasive_maneuvering_straight_cost_weight",
+                default_value="",
+                description=(
+                    "Optional override for the A* evasive maneuvering straight "
+                    "segment penalty. Leave empty to use params_file."
                 ),
             ),
             scan_bridge,

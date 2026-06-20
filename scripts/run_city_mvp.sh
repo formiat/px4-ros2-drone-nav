@@ -75,6 +75,8 @@ enable_gz_scene_diagnostics="$(
 enable_static_map_override=""
 enable_obstacle_memory_override=""
 enable_current_lidar_override=""
+evasive_maneuvering_override=""
+evasive_maneuvering_straight_cost_weight_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
 fi
@@ -83,6 +85,14 @@ if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
 fi
 if [[ -n "${ENABLE_CURRENT_LIDAR+x}" ]]; then
   enable_current_lidar_override="$(normalize_bool "${ENABLE_CURRENT_LIDAR}")"
+fi
+if [[ -n "${ENABLE_EVASIVE_MANEUVERING+x}" ]]; then
+  evasive_maneuvering_override="$(normalize_bool "${ENABLE_EVASIVE_MANEUVERING}")"
+fi
+if [[ -n "${EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT+x}" ]]; then
+  evasive_maneuvering_straight_cost_weight_override="$(
+    printf '%s' "${EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT}"
+  )"
 fi
 static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
 static_city_map_path_override=false
@@ -350,6 +360,13 @@ export GZ_SIM_RESOURCE_PATH="${gz_resource_path}"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
+formatted_evasive_maneuvering_override="$(
+  format_override_value "${evasive_maneuvering_override}"
+)"
+formatted_evasive_maneuvering_weight_override="$(
+  format_override_value "${evasive_maneuvering_straight_cost_weight_override}"
+)"
+
 echo "Gazebo log: ${gz_log_file}"
 echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
@@ -360,6 +377,7 @@ echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
+echo "A* evasive maneuvering overrides: enabled=${formatted_evasive_maneuvering_override} straight_cost_weight=${formatted_evasive_maneuvering_weight_override}"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
@@ -497,6 +515,14 @@ if [[ -n "${enable_current_lidar_override}" ]]; then
 fi
 if [[ "${static_city_map_path_override}" == "true" ]]; then
   ros_launch_args+=(static_map_path:="${static_city_map_path}")
+fi
+if [[ -n "${evasive_maneuvering_override}" ]]; then
+  ros_launch_args+=(evasive_maneuvering:="${evasive_maneuvering_override}")
+fi
+if [[ -n "${evasive_maneuvering_straight_cost_weight_override}" ]]; then
+  ros_launch_args+=(
+    evasive_maneuvering_straight_cost_weight:="${evasive_maneuvering_straight_cost_weight_override}"
+  )
 fi
 echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
