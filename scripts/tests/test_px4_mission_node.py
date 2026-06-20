@@ -107,8 +107,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         values = {
             "acceptance_radius_m": 1.25,
             "cruise_altitude_m": 18.0,
-            "mission_cruise_speed_mps": 12.0,
-            "mission_max_speed_mps": 15.0,
+            "mission_cruise_speed_mps": 20.0,
+            "mission_max_speed_mps": 25.0,
             "home_latitude_deg": 47.0,
             "home_longitude_deg": 8.0,
             "px4_local_origin_x_m": 27.0,
@@ -207,8 +207,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertIn(("set_mission_speed_parameters", None), client.calls)
         self.assertEqual(2, len(client.uploaded_items))
         self.assertTrue(any("speed_params_sent" in line for line in logs))
-        self.assertTrue(any("mission_cruise_speed_mps=12.00" in line for line in logs))
-        self.assertTrue(any("mission_max_speed_mps=15.00" in line for line in logs))
+        self.assertTrue(any("mission_cruise_speed_mps=20.00" in line for line in logs))
+        self.assertTrue(any("mission_max_speed_mps=25.00" in line for line in logs))
         self.assertFalse(any("mission_waypoints=" in line for line in logs))
 
     def test_empty_path_is_logged_and_not_uploaded(self) -> None:
@@ -450,8 +450,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
 
     def test_mavlink_client_sends_px4_mission_speed_parameters(self) -> None:
         config = self.make_config(
-            mission_cruise_speed_mps=12.0,
-            mission_max_speed_mps=15.0,
+            mission_cruise_speed_mps=20.0,
+            mission_max_speed_mps=25.0,
         )
         client = mission_node.MavlinkMissionClient(config)
         master = FakeMavlinkMaster()
@@ -462,8 +462,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                (b"MPC_XY_VEL_MAX", 15.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
-                (b"MPC_XY_CRUISE", 12.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
+                (b"MPC_XY_VEL_MAX", 25.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
+                (b"MPC_XY_CRUISE", 20.0, FakeMavlinkModule.MAV_PARAM_TYPE_REAL32),
             ],
             [(call[2], call[3], call[4]) for call in master.param_set_calls],
         )
@@ -526,8 +526,8 @@ class Px4MissionNodeLogicTest(unittest.TestCase):
         self.assertEqual(9, event["latest_planner_path_id"])
         self.assertIn("upload_duration_s", event)
         self.assertFalse(event["reuploading_after_success"])
-        self.assertEqual(12.0, event["mission_cruise_speed_mps"])
-        self.assertEqual(15.0, event["mission_max_speed_mps"])
+        self.assertEqual(20.0, event["mission_cruise_speed_mps"])
+        self.assertEqual(25.0, event["mission_max_speed_mps"])
         self.assertEqual(1, event["planner_path_metrics"]["waypoints"])
         self.assertEqual(1, event["mission_path_metrics"]["waypoints"])
         self.assertEqual([{"x": 27.0, "y": 27.0}], event["planner_path_points_map"])

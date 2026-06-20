@@ -57,8 +57,8 @@ class MissionBackendConfig:
     upload_timeout_s: float = 5.0
     acceptance_radius_m: float = 1.0
     cruise_altitude_m: float = 18.0
-    mission_cruise_speed_mps: float = 12.0
-    mission_max_speed_mps: float = 15.0
+    mission_cruise_speed_mps: float = 20.0
+    mission_max_speed_mps: float = 25.0
     home_source: str = "params"
     home_latitude_deg: float = 47.397742
     home_longitude_deg: float = 8.545594
@@ -1094,10 +1094,10 @@ class Px4MissionNode(Node):
                 self.declare_parameter("mission_cruise_altitude_m", 18.0).value
             ),
             mission_cruise_speed_mps=float(
-                self.declare_parameter("mission_cruise_speed_mps", 12.0).value
+                self.declare_parameter("mission_cruise_speed_mps", 20.0).value
             ),
             mission_max_speed_mps=float(
-                self.declare_parameter("mission_max_speed_mps", 15.0).value
+                self.declare_parameter("mission_max_speed_mps", 25.0).value
             ),
             home_source=self.declare_parameter("mission_home_source", "params").value,
             home_latitude_deg=float(
