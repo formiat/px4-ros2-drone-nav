@@ -11,7 +11,7 @@ namespace drone_city_nav {
 
 struct OffboardPathFollowerConfig {
   double acceptance_radius_m{1.5};
-  double turn_slowdown_preview_distance_m{32.0};
+  double turn_preview_distance_m{32.0};
   double path_switch_hysteresis_m{3.0};
   double path_continuity_reuse_radius_m{6.0};
   double path_continuity_max_target_distance_m{20.0};

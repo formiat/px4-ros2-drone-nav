@@ -24,19 +24,6 @@ def optional_bool_override(context, launch_config, argument_name):
     )
 
 
-def optional_float_override(context, launch_config, argument_name):
-    value = launch_config.perform(context).strip()
-    if not value:
-        return None
-
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must be a number or empty, got '{value}'"
-        ) from exc
-
-
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
@@ -57,11 +44,6 @@ def generate_launch_description():
     use_obstacle_memory = LaunchConfiguration("use_obstacle_memory")
     use_current_lidar_obstacles = LaunchConfiguration("use_current_lidar_obstacles")
     static_map_path = LaunchConfiguration("static_map_path")
-    tracking_overspeed_limit_enabled = LaunchConfiguration(
-        "tracking_overspeed_limit_enabled"
-    )
-    tracking_overspeed_limit_mps = LaunchConfiguration("tracking_overspeed_limit_mps")
-
     scan_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -130,37 +112,13 @@ def generate_launch_description():
         ]
 
     def offboard_nodes(context, *args, **kwargs):
-        offboard_overrides = {}
-
-        overspeed_enabled_override = optional_bool_override(
-            context,
-            tracking_overspeed_limit_enabled,
-            "tracking_overspeed_limit_enabled",
-        )
-        if overspeed_enabled_override is not None:
-            offboard_overrides["tracking_overspeed_limit_enabled"] = (
-                overspeed_enabled_override
-            )
-
-        overspeed_limit_override = optional_float_override(
-            context, tracking_overspeed_limit_mps, "tracking_overspeed_limit_mps"
-        )
-        if overspeed_limit_override is not None:
-            offboard_overrides["tracking_overspeed_limit_mps"] = (
-                overspeed_limit_override
-            )
-
-        offboard_parameters = [params_file.perform(context)]
-        if offboard_overrides:
-            offboard_parameters.append(offboard_overrides)
-
         return [
             Node(
                 package="drone_city_nav",
                 executable="px4_offboard_node",
                 name="px4_offboard_node",
                 output="screen",
-                parameters=offboard_parameters,
+                parameters=[params_file.perform(context)],
             )
         ]
 
@@ -293,22 +251,6 @@ def generate_launch_description():
                 description=(
                     "Optional static city map2d path override. Leave empty to use "
                     "params_file."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "tracking_overspeed_limit_enabled",
-                default_value="",
-                description=(
-                    "Optional override for offboard tracking overspeed limiting. "
-                    "Leave empty to use params_file."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "tracking_overspeed_limit_mps",
-                default_value="",
-                description=(
-                    "Optional tracking overspeed max-speed override in m/s. "
-                    "Leave empty to use params_file."
                 ),
             ),
             scan_bridge,

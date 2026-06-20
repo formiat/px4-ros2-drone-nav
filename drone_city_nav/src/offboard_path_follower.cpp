@@ -15,7 +15,7 @@ constexpr double kTinyDistanceM = 1.0e-6;
 [[nodiscard]] bool
 turnWaypointIsCloseEnoughForSlowdown(const double distance_to_turn_m,
                                      const OffboardPathFollowerConfig& config) {
-  return distance_to_turn_m <= config.turn_slowdown_preview_distance_m;
+  return distance_to_turn_m <= config.turn_preview_distance_m;
 }
 
 [[nodiscard]] double turnAngleRad(const Point2 previous, const Point2 current,

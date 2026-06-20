@@ -76,8 +76,6 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp` - ROS-free
   waypoint advancement and target continuity.
-- `drone_city_nav/include/drone_city_nav/offboard_speed_controller.hpp` -
-  portable speed-profile logic used by the offboard follower.
 - `drone_city_nav/include/drone_city_nav/debug_image.hpp` - small PPM debug image
   primitive used by lidar snapshots.
 - `drone_city_nav/include/drone_city_nav/lidar_debug_renderer.hpp` - ROS-free
@@ -104,8 +102,6 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   tests without ROS messages.
 - `drone_city_nav/tests/offboard_path_follower_test.cpp` - deterministic
   waypoint target selection and smoothing tests.
-- `drone_city_nav/tests/offboard_speed_controller_test.cpp` - deterministic
-  speed-profile tests.
 - `drone_city_nav/tests/debug_image_test.cpp` - deterministic PPM/debug image
   primitive tests.
 - `drone_city_nav/tests/lidar_debug_renderer_test.cpp` - deterministic snapshot
@@ -469,50 +465,30 @@ to be unsafe for a complete mission, set `ALLOW_MISSION_FAILURE=true`. This
 keeps the log-marker checks useful while explicitly allowing mission monitor and
 PX4 attitude failure markers. Do not set it for full A-to-B validation.
 
-## Offboard Speed Control
+## Offboard Position Control
 
-The offboard follower uses position setpoints by default, but speed is now an
-explicit requested profile instead of only an emergent result of target motion.
-The main simulation parameters are:
+The offboard follower commands PX4 with position setpoints only. It does not
+send horizontal velocity feed-forward or requested-speed limits, because those
+values are not hard velocity limits for PX4 position control. The main
+simulation parameters are:
 
-- `desired_speed_mps` - requested cruise speed for normal path following.
-- `max_accel_mps2` - acceleration/deceleration limit for requested setpoint
-  progression.
-- `goal_slowdown_radius_m` and `braking_safety_margin_m` - reduce requested
-  speed before point B.
-- `turn_slowdown_angle_rad` and `turn_slowdown_min_speed_mps` - define the
-  entry speed for sharp path turns.
-- `turn_slowdown_preview_distance_m` - distance from a waypoint turn where turn
-  slowdown may start applying.
-- `turn_braking_safety_margin_m` - extra distance reserved before the waypoint
-  turn when converting turn entry speed into a physical braking limit.
-- `max_commanded_target_step_m` - hard per-tick safety cap that still bounds
-  requested speed at the 10 Hz controller rate.
+- `turn_preview_distance_m` - distance used by diagnostics when reporting the
+  next upcoming path turn.
+- `sharp_turn_hold_angle_deg` - waypoint corner angle that enables a fixed hold
+  before switching to the next waypoint.
+- `sharp_turn_hold_s` - fixed hold duration at a sharp-turn waypoint.
 - `commanded_target_hysteresis_m` - keeps the previous commanded target after a
   path update when the previous target is still near the updated path and the
   current-to-previous-target segment remains traversable in the latest
   prohibited grid.
-- `tracking_overspeed_limit_enabled` and `tracking_overspeed_limit_mps` -
-  optional actual-speed overspeed recovery. It is disabled by default; enable it
-  with `ENABLE_TRACKING_OVERSPEED_LIMIT=true` and optionally set
-  `TRACKING_OVERSPEED_LIMIT_MPS`.
-- `velocity_feedforward_enabled` - enables horizontal velocity feed-forward
-  toward the current waypoint target. This does not add lookahead or synthetic
-  intermediate targets; the position target remains the selected path waypoint.
-- `max_feedforward_vector_accel_mps2` and
-  `max_feedforward_heading_rate_radps` - limit feed-forward vector changes so a
-  replan or waypoint switch cannot command a full lateral velocity reversal in a
-  single controller tick.
 
-Runtime logs from `px4_offboard_node` include `requested_speed`,
-`actual_speed`, `speed_limit_reason`, `allowed_speed`, `braking_distance`,
-`target_step`, upcoming-turn validity, turn waypoint index, distance to turn,
-turn entry speed, turn braking distance, `local_clearance`, attitude, path id
-correlation, cross-track error, heading error, commanded target delta,
+Runtime logs from `px4_offboard_node` include `actual_speed`, upcoming-turn
+validity, turn waypoint index, distance to turn, sharp-turn hold state,
+`local_clearance`, attitude, path id correlation, cross-track error, heading
+error, commanded target delta,
 path-update target-continuity reason (`kept_previous_target`,
 `switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or
-`forced_switch_previous_behind_path`), raw feed-forward velocity, limited
-feed-forward velocity, limiter deltas, and nearest-obstacle bearing. The same
+`forced_switch_previous_behind_path`), and nearest-obstacle bearing. The same
 2 Hz control diagnostics are written as JSON Lines to
 `log/offboard_blackbox.jsonl` for machine analysis.
 Planner logs include smoothing rejection counters and final segment-length
@@ -522,15 +498,6 @@ geometry.
 Mission-monitor results include final speed plus `max_observed_speed` and
 `mean_observed_speed`, so headless runs can prove that the drone moved at the
 expected scale and stopped at the goal.
-
-Run a simple simulation speed sweep without editing tracked YAML files:
-
-```bash
-./scripts/run_speed_sweep.sh
-```
-
-The sweep writes temporary parameter files under `build/speed_sweep` and logs
-each run under `log/speed_sweep_<speed>`.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:
@@ -575,10 +542,9 @@ make quality
   `px4_offboard_node`, and `mission_monitor_node`.
 - The simulation offboard follower commands path waypoints directly; it does not
   synthesize intermediate path targets between waypoints.
-- The simulation offboard follower has explicit requested speed, acceleration,
-  goal/turn slowdown, and a hard requested-speed cap derived from the configured
-  per-tick command distance. Actual speed is still ultimately limited by PX4
-  position-controller internals.
+- The simulation offboard follower sends position setpoints only. At sharp
+  waypoint turns it can hold the reached waypoint for a fixed duration before
+  switching to the next waypoint.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.

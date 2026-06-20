@@ -126,25 +126,13 @@ px4_offboard_node:
     min_navigation_altitude_m: 0.0
     takeoff_hover_s: 2.0
     acceptance_radius_m: 1.5
-    max_commanded_target_step_m: 0.1
-    desired_speed_mps: 1.0
-    max_accel_mps2: 0.75
-    min_command_speed_mps: 0.0
-    goal_slowdown_radius_m: 8.0
-    braking_safety_margin_m: 1.5
-    turn_slowdown_angle_rad: 0.65
-    turn_slowdown_min_speed_mps: 0.5
-    turn_braking_safety_margin_m: 2.0
-    turn_slowdown_preview_distance_m: 12.0
-    tracking_overspeed_limit_enabled: false
-    tracking_overspeed_limit_mps: 1.0
+    turn_preview_distance_m: 12.0
+    sharp_turn_hold_angle_deg: 60.0
+    sharp_turn_hold_s: 1.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.5
     flight_blackbox_enabled: true
     flight_blackbox_path: log/offboard_blackbox.jsonl
-    velocity_feedforward_enabled: false
-    max_feedforward_vector_accel_mps2: 1.0
-    max_feedforward_heading_rate_radps: 0.8
     path_switch_hysteresis_m: 3.0
     path_continuity_reuse_radius_m: 6.0
     path_continuity_max_target_distance_m: 20.0

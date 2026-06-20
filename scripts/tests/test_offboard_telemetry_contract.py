@@ -47,7 +47,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("writeFlightBlackbox", self.offboard_text)
         self.assertIn("cross_track_error_m", self.offboard_text)
         self.assertIn("bearing_body_rad", self.offboard_text)
-        self.assertIn("velocity_speed_mps", self.offboard_text)
+        self.assertIn("sharp_turn_hold_active", self.offboard_text)
+        self.assertIn("sharp_turn_hold_required_s", self.offboard_text)
         self.assertIn("target_hysteresis_delta_m", self.offboard_text)
         self.assertIn("target_hysteresis_path_error_m", self.offboard_text)
 
@@ -70,7 +71,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
-                self.assertIn("commanded_target_hysteresis_m: 0.5", text)
+                self.assertIn("sharp_turn_hold_angle_deg: 60.0", text)
+                self.assertIn("sharp_turn_hold_s: 1.0", text)
 
 
 if __name__ == "__main__":

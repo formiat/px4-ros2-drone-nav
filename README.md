@@ -113,12 +113,6 @@ Equivalent explicit command inside an interactive container shell:
 make sim-headless
 ```
 
-Run the speed sweep:
-
-```bash
-./scripts/run_speed_sweep.sh
-```
-
 Record a debug rosbag while the simulation is running:
 
 ```bash

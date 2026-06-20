@@ -11,7 +11,7 @@ namespace {
 [[nodiscard]] OffboardPathFollowerConfig testConfig() {
   OffboardPathFollowerConfig config{};
   config.acceptance_radius_m = 1.0;
-  config.turn_slowdown_preview_distance_m = 32.0;
+  config.turn_preview_distance_m = 32.0;
   config.path_switch_hysteresis_m = 2.0;
   config.path_continuity_reuse_radius_m = 5.0;
   config.path_continuity_max_target_distance_m = 30.0;
@@ -66,7 +66,7 @@ TEST(OffboardPathFollower, PathTurnAngleUsesConfiguredPreviewDistance) {
 
 TEST(OffboardPathFollower, PathTurnAngleIgnoresDistantWaypointOutsidePreview) {
   OffboardPathFollowerConfig config = testConfig();
-  config.turn_slowdown_preview_distance_m = 10.0;
+  config.turn_preview_distance_m = 10.0;
   const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
 
   const double angle =
@@ -113,7 +113,7 @@ TEST(OffboardPathFollower, UpcomingTurnIgnoresStraightPath) {
 
 TEST(OffboardPathFollower, UpcomingTurnIgnoresDistantTurnOutsidePreview) {
   OffboardPathFollowerConfig config = testConfig();
-  config.turn_slowdown_preview_distance_m = 5.0;
+  config.turn_preview_distance_m = 5.0;
   const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
 
   const UpcomingTurn turn =
