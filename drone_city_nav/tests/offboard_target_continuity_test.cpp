@@ -1,4 +1,5 @@
 #include "drone_city_nav/offboard_target_continuity.hpp"
+#include "drone_city_nav/planner_core.hpp"
 
 #include <gtest/gtest.h>
 
@@ -21,7 +22,7 @@ TEST(OffboardTargetContinuity, KeepsPreviousTargetWhenItIsOnNewPathAndSafe) {
 
   const TargetContinuityDecision decision =
       decideTargetAfterReplan(path, Point2{2.0, 0.0}, Point2{10.1, 0.2},
-                              Point2{10.0, 0.0}, true, 1U, 1.0, &grid);
+                              Point2{10.0, 0.0}, true, 1U, 1U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason, TargetContinuityDecisionReason::kKeptPreviousTarget);
   EXPECT_TRUE(decision.previous_target_safe);
@@ -36,7 +37,7 @@ TEST(OffboardTargetContinuity, SwitchesWhenPreviousTargetIsFarFromNewPath) {
 
   const TargetContinuityDecision decision =
       decideTargetAfterReplan(path, Point2{2.0, 0.0}, Point2{10.0, 5.0},
-                              Point2{10.0, 0.0}, true, 1U, 1.0, &grid);
+                              Point2{10.0, 0.0}, true, 1U, 1U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason, TargetContinuityDecisionReason::kSwitchedToNewWaypoint);
   EXPECT_NEAR(decision.target.x, 10.0, 1.0e-9);
@@ -52,11 +53,45 @@ TEST(OffboardTargetContinuity, SwitchesWhenPreviousTargetSegmentCrossesProhibite
 
   const TargetContinuityDecision decision =
       decideTargetAfterReplan(path, Point2{2.0, 0.0}, Point2{10.0, 0.0},
-                              Point2{10.0, 0.0}, true, 1U, 1.0, &grid);
+                              Point2{10.0, 0.0}, true, 1U, 1U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason,
             TargetContinuityDecisionReason::kForcedSwitchUnsafePrevious);
   EXPECT_FALSE(decision.previous_target_safe);
+  EXPECT_TRUE(decision.selected_target_traversable);
+  EXPECT_FALSE(decision.target_waypoint_index_valid);
+  EXPECT_NEAR(decision.target.x, 2.0, 1.0e-9);
+  EXPECT_NEAR(decision.target.y, 0.0, 1.0e-9);
+  EXPECT_TRUE(pathSegmentIsTraversable(grid, Point2{2.0, 0.0}, decision.target));
+}
+
+TEST(OffboardTargetContinuity,
+     UnsafePreviousTargetUsesRawCandidateAsTraversableFallback) {
+  const std::vector<Point2> path{{10.0, 0.0}, {2.0, 10.0}, {12.0, 10.0}};
+  const Point2 current_position{2.0, 0.0};
+  const Point2 previous_target{10.0, 0.0};
+  const Point2 continuity_reused_proposed_target = previous_target;
+  OccupancyGrid2D grid = emptyGrid();
+  grid.setOccupied(GridIndex{10, 5});
+  grid.rebuildInflation(0.0);
+
+  ASSERT_FALSE(pathSegmentIsTraversable(grid, current_position, previous_target));
+  ASSERT_TRUE(pathSegmentIsTraversable(grid, current_position, path[1U]));
+
+  const TargetContinuityDecision decision = decideTargetAfterReplan(
+      path, current_position, previous_target, continuity_reused_proposed_target, true,
+      0U, 1U, 1.0, &grid);
+
+  EXPECT_EQ(decision.reason,
+            TargetContinuityDecisionReason::kForcedSwitchUnsafePrevious);
+  EXPECT_FALSE(decision.previous_target_safe);
+  EXPECT_TRUE(decision.selected_target_traversable);
+  ASSERT_TRUE(decision.target_waypoint_index_valid);
+  EXPECT_EQ(decision.target_waypoint_index, 1U);
+  EXPECT_NEAR(decision.target.x, path[1U].x, 1.0e-9);
+  EXPECT_NEAR(decision.target.y, path[1U].y, 1.0e-9);
+  EXPECT_GT(distance(decision.target, previous_target), 1.0);
+  EXPECT_TRUE(pathSegmentIsTraversable(grid, current_position, decision.target));
 }
 
 TEST(OffboardTargetContinuity, AllowsEscapeFromProhibitedAtSegmentStart) {
@@ -67,7 +102,7 @@ TEST(OffboardTargetContinuity, AllowsEscapeFromProhibitedAtSegmentStart) {
 
   const TargetContinuityDecision decision =
       decideTargetAfterReplan(path, Point2{2.1, 0.0}, Point2{10.0, 0.0},
-                              Point2{10.0, 0.0}, true, 1U, 1.0, &grid);
+                              Point2{10.0, 0.0}, true, 1U, 1U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason, TargetContinuityDecisionReason::kKeptPreviousTarget);
   EXPECT_TRUE(decision.previous_target_safe);
@@ -79,7 +114,7 @@ TEST(OffboardTargetContinuity, SwitchesWhenPreviousTargetIsBehindPathProgress) {
 
   const TargetContinuityDecision decision =
       decideTargetAfterReplan(path, Point2{20.0, 0.0}, Point2{5.0, 0.0},
-                              Point2{20.0, 0.0}, true, 2U, 1.0, &grid);
+                              Point2{20.0, 0.0}, true, 2U, 2U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason,
             TargetContinuityDecisionReason::kForcedSwitchPreviousBehindPath);
@@ -91,7 +126,7 @@ TEST(OffboardTargetContinuity, NoPreviousTargetUsesProposedTarget) {
   OccupancyGrid2D grid = emptyGrid();
 
   const TargetContinuityDecision decision = decideTargetAfterReplan(
-      path, Point2{0.0, 0.0}, Point2{}, Point2{10.0, 0.0}, false, 0U, 1.0, &grid);
+      path, Point2{0.0, 0.0}, Point2{}, Point2{10.0, 0.0}, false, 0U, 0U, 1.0, &grid);
 
   EXPECT_EQ(decision.reason, TargetContinuityDecisionReason::kNoPreviousTarget);
   EXPECT_NEAR(decision.target.x, 10.0, 1.0e-9);

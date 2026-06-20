@@ -397,6 +397,7 @@ private:
           commanded_target_ = no_path_hold_target_;
           commanded_target_valid_ = true;
           waypoint_index_ = 0U;
+          path_update_raw_candidate_index_ = 0U;
           RCLCPP_WARN(get_logger(),
                       "Received empty path: local_path_update_id=%" PRIu64
                       " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
@@ -409,6 +410,7 @@ private:
           no_path_hold_target_valid_ = false;
           commanded_target_valid_ = false;
           waypoint_index_ = 0U;
+          path_update_raw_candidate_index_ = 0U;
           RCLCPP_WARN(get_logger(),
                       "Received empty path: local_path_update_id=%" PRIu64
                       " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
@@ -427,6 +429,7 @@ private:
             ? drone_city_nav::advanceWaypointIndex(path_points_, current_position_, 0U,
                                                    pathFollowerConfig())
             : 0U;
+    path_update_raw_candidate_index_ = candidate_index;
     waypoint_index_ =
         continuityWaypointIndex(previous_target, candidate_index, had_active_target);
     path_update_target_hysteresis_pending_ =
@@ -898,8 +901,13 @@ private:
     last_target_continuity_grid_available_ = prohibited_grid.has_value();
     last_target_continuity_decision_ = decideTargetAfterReplan(
         path_points_, current_position_, previous_target, proposed_target,
-        had_previous_target, waypoint_index_, commanded_target_hysteresis_m_,
+        had_previous_target, path_update_raw_candidate_index_,
+        path_update_raw_candidate_index_, commanded_target_hysteresis_m_,
         prohibited_grid.has_value() ? &*prohibited_grid : nullptr);
+    if (last_target_continuity_decision_.target_waypoint_index_valid &&
+        last_target_continuity_decision_.target_waypoint_index < path_points_.size()) {
+      waypoint_index_ = last_target_continuity_decision_.target_waypoint_index;
+    }
     last_commanded_target_hysteresis_delta_m_ =
         last_target_continuity_decision_.target_delta_m;
     last_commanded_target_hysteresis_path_error_m_ =
@@ -913,7 +921,8 @@ private:
         "Commanded target continuity decision after path update: reason=%s "
         "kept_previous=%s prohibited_grid_available=%s previous_safe=%s "
         "delta=%.2fm path_error=%.2fm tolerance=%.2fm previous=(%.2f, %.2f) "
-        "proposed=(%.2f, %.2f) selected=(%.2f, %.2f)",
+        "proposed=(%.2f, %.2f) selected=(%.2f, %.2f) "
+        "raw_candidate=%zu selected_waypoint=%zu selected_traversable=%s",
         targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
         last_commanded_target_hysteresis_used_ ? "true" : "false",
         last_target_continuity_grid_available_ ? "true" : "false",
@@ -922,7 +931,13 @@ private:
         last_target_continuity_decision_.path_error_m, commanded_target_hysteresis_m_,
         previous_target.x, previous_target.y, proposed_target.x, proposed_target.y,
         last_target_continuity_decision_.target.x,
-        last_target_continuity_decision_.target.y);
+        last_target_continuity_decision_.target.y,
+        path_update_raw_candidate_index_ + 1U,
+        last_target_continuity_decision_.target_waypoint_index_valid
+            ? last_target_continuity_decision_.target_waypoint_index + 1U
+            : 0U,
+        last_target_continuity_decision_.selected_target_traversable ? "true"
+                                                                     : "false");
     return last_target_continuity_decision_.target;
   }
 
@@ -1786,6 +1801,7 @@ private:
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
   std::size_t waypoint_index_{0U};
+  std::size_t path_update_raw_candidate_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
   bool path_valid_{false};
