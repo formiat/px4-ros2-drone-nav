@@ -104,9 +104,9 @@ planner_node:
     astar_max_expansions: 500000
     astar_turn_cost_weight: 50.0
     astar_near_prohibited_penalty_radius_m: 2.0
-    astar_near_prohibited_penalty: 0.1
+    astar_near_prohibited_penalty: 0.5
     astar_evasive_maneuvering_enabled: false
-    astar_evasive_maneuvering_straight_cost_weight: 2.5
+    astar_evasive_maneuvering_straight_cost_weight: 50.0
     path_prohibited_intersection_check_period_s: 0.5
 
 px4_offboard_node:
