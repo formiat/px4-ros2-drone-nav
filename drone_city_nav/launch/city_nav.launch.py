@@ -48,6 +48,7 @@ def generate_launch_description():
 
     params_file = LaunchConfiguration("params_file")
     lidar_debug_output_dir = LaunchConfiguration("lidar_debug_output_dir")
+    navigation_backend = LaunchConfiguration("navigation_backend")
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
@@ -146,16 +147,32 @@ def generate_launch_description():
             ),
         ]
 
-    def offboard_nodes(context, *args, **kwargs):
-        return [
-            Node(
-                package="drone_city_nav",
-                executable="px4_offboard_node",
-                name="px4_offboard_node",
-                output="screen",
-                parameters=[params_file.perform(context)],
-            )
-        ]
+    def flight_control_nodes(context, *args, **kwargs):
+        backend = navigation_backend.perform(context).strip().lower() or "offboard"
+        if backend == "offboard":
+            return [
+                Node(
+                    package="drone_city_nav",
+                    executable="px4_offboard_node",
+                    name="px4_offboard_node",
+                    output="screen",
+                    parameters=[params_file.perform(context)],
+                )
+            ]
+        if backend == "mission":
+            return [
+                Node(
+                    package="drone_city_nav",
+                    executable="px4_mission_node.py",
+                    name="px4_mission_node",
+                    output="screen",
+                    parameters=[params_file.perform(context)],
+                )
+            ]
+        raise RuntimeError(
+            "Launch argument 'navigation_backend' must be offboard or mission, "
+            f"got '{backend}'"
+        )
 
     mission_monitor = Node(
         package="drone_city_nav",
@@ -232,6 +249,11 @@ def generate_launch_description():
                 description="Directory for lidar debug CSV, JSONL, and PPM files.",
             ),
             DeclareLaunchArgument(
+                "navigation_backend",
+                default_value="offboard",
+                description="PX4 flight-control backend: offboard or mission.",
+            ),
+            DeclareLaunchArgument(
                 "rviz_config",
                 default_value=str(default_rviz_config),
                 description="RViz config for scan, occupancy grid, and path debug.",
@@ -306,7 +328,7 @@ def generate_launch_description():
             ),
             scan_bridge,
             OpaqueFunction(function=source_nodes),
-            OpaqueFunction(function=offboard_nodes),
+            OpaqueFunction(function=flight_control_nodes),
             mission_monitor,
             lidar_debug,
             gazebo_aligned_map_tf,

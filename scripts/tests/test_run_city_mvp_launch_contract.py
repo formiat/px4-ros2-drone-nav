@@ -8,12 +8,21 @@ from pathlib import Path
 
 
 RUNNER = Path(__file__).resolve().parents[1] / "run_city_mvp.sh"
+CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
+LAUNCH_FILE = (
+    Path(__file__).resolve().parents[2]
+    / "drone_city_nav"
+    / "launch"
+    / "city_nav.launch.py"
+)
 
 
 class RunCityMvpLaunchContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = RUNNER.read_text(encoding="utf-8")
+        cls.container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
+        cls.launch_text = LAUNCH_FILE.read_text(encoding="utf-8")
 
     def test_gazebo_gui_launch_does_not_use_gui_config_override(self) -> None:
         self.assertNotIn("--gui-config", self.text)
@@ -71,6 +80,25 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
             'evasive_maneuvering_straight_cost_weight:="',
             self.text,
         )
+
+    def test_navigation_backend_is_forwarded_from_environment(self) -> None:
+        self.assertIn("NAVIGATION_BACKEND", self.container_text)
+        self.assertIn('navigation_backend="${NAVIGATION_BACKEND:-offboard}"', self.text)
+        self.assertIn("offboard|mission", self.text)
+        self.assertIn('navigation_backend:="${navigation_backend}"', self.text)
+        self.assertIn('echo "Navigation backend: ${navigation_backend}"', self.text)
+        self.assertIn('--navigation-backend "${navigation_backend}"', self.text)
+
+    def test_launch_selects_exactly_one_flight_control_backend(self) -> None:
+        self.assertIn('LaunchConfiguration("navigation_backend")', self.launch_text)
+        self.assertIn('DeclareLaunchArgument(\n                "navigation_backend"', self.launch_text)
+        self.assertIn("def flight_control_nodes", self.launch_text)
+        self.assertIn('if backend == "offboard"', self.launch_text)
+        self.assertIn('executable="px4_offboard_node"', self.launch_text)
+        self.assertIn('if backend == "mission"', self.launch_text)
+        self.assertIn('executable="px4_mission_node.py"', self.launch_text)
+        self.assertIn("OpaqueFunction(function=flight_control_nodes)", self.launch_text)
+        self.assertNotIn("OpaqueFunction(function=offboard_nodes)", self.launch_text)
 
 
 if __name__ == "__main__":

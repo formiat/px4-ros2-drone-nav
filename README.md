@@ -107,6 +107,17 @@ Run a headless smoke validation:
 ./scripts/sim_headless.sh
 ```
 
+The default flight-control backend is Offboard. Run the optional PX4 Mission
+backend by setting `NAVIGATION_BACKEND=mission`:
+
+```bash
+NAVIGATION_BACKEND=mission ./scripts/sim_headless.sh
+NAVIGATION_BACKEND=mission ./scripts/sim_gui.sh
+```
+
+Mission mode uploads planner paths as PX4 mission waypoints over MAVLink. It
+does not use the Offboard sharp-turn or target-switch hold logic.
+
 Equivalent explicit command inside an interactive container shell:
 
 ```bash
@@ -146,6 +157,10 @@ Offboard flight diagnostics are also written as JSON Lines to
 `log/offboard_blackbox.jsonl` by default. This file mirrors the 2 Hz telemetry
 logs with path ids, cross-track error, heading error, commanded target motion,
 commanded velocity, vehicle attitude, and nearest-obstacle bearing.
+
+Mission backend diagnostics are written to `log/mission_blackbox.jsonl` by
+default. Headless logs include stable `MISSION_BACKEND ...` markers for mission
+upload, AUTO.MISSION mode command, arm command, progress, and emergency disarm.
 
 ## Build System
 

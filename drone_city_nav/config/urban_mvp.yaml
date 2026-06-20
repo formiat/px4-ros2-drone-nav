@@ -155,6 +155,31 @@ px4_offboard_node:
     source_system: 1
     source_component: 1
 
+px4_mission_node:
+  ros__parameters:
+    path_topic: /drone_city_nav/path
+    path_id_topic: /drone_city_nav/path_id
+    emergency_stop_topic: /drone_city_nav/emergency_stop
+    mission_connection_url: udpin:0.0.0.0:14540
+    mission_upload_timeout_s: 5.0
+    mission_acceptance_radius_m: 1.0
+    mission_cruise_altitude_m: 18.0
+    mission_home_source: params
+    mission_home_latitude_deg: 47.397742
+    mission_home_longitude_deg: 8.545594
+    mission_home_altitude_m: 0.0
+    px4_local_origin_x_m: 27.0
+    px4_local_origin_y_m: 27.0
+    auto_arm: true
+    auto_mission: true
+    emergency_stop_command_resend_period_s: 2.0
+    mission_blackbox_enabled: true
+    mission_blackbox_path: log/mission_blackbox.jsonl
+    target_system: 1
+    target_component: 1
+    source_system: 255
+    source_component: 190
+
 lidar_debug_node:
   ros__parameters:
     lidar_topic: /scan

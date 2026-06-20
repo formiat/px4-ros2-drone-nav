@@ -74,6 +74,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
   navigation pose and GPS/compass helpers.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
+- `drone_city_nav/scripts/px4_mission_node.py` - optional PX4 Mission waypoint
+  upload backend.
 - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp` - ROS-free
   waypoint advancement and target continuity.
 - `drone_city_nav/include/drone_city_nav/debug_image.hpp` - small PPM debug image
@@ -88,7 +90,8 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
 - `drone_city_nav/config/real_drone_template.yaml` - conservative template for
-  running the planner/offboard nodes without Gazebo-specific helpers.
+  running the planner and selected flight-control backend without
+  Gazebo-specific helpers.
 - `drone_city_nav/tests/planner_core_test.cpp` - deterministic planner/grid
   tests.
 - `drone_city_nav/tests/planning_grid_builder_test.cpp` - deterministic planner
@@ -137,11 +140,12 @@ runtime nodes, or update the validation scripts in the same change.
 
 ## Runtime Profiles
 
-The core runtime nodes are `obstacle_memory_node`, `planner_node`, and
-`px4_offboard_node`. They consume ROS/PX4 topics and do not depend on Gazebo
-APIs. `planner_node` can optionally consume a static `*.map2d` obstacle file;
-for non-simulation runs, provide a site-specific map or disable
-`use_static_map`.
+The core runtime nodes are `obstacle_memory_node`, `planner_node`, and one
+flight-control backend selected by `navigation_backend`. The default backend is
+`px4_offboard_node`; the optional Mission backend is `px4_mission_node`. They
+consume ROS/PX4 topics and do not depend on Gazebo APIs. `planner_node` can
+optionally consume a static `*.map2d` obstacle file; for non-simulation runs,
+provide a site-specific map or disable `use_static_map`.
 
 Simulation launch starts two extra helpers:
 
@@ -154,6 +158,7 @@ Launch only the portable ROS/PX4 stack with a hardware-specific parameter file:
 ```bash
 ros2 launch drone_city_nav city_nav.launch.py \
   params_file:=drone_city_nav/config/real_drone_template.yaml \
+  navigation_backend:=offboard \
   enable_gazebo_bridge:=false \
   enable_mission_monitor:=false
 ```
@@ -210,7 +215,21 @@ Run the MVP stack from the repository root:
 ```
 
 Both launch variants run `city_nav.launch.py` with the simulation parameter
-file, Gazebo bridge enabled, and mission monitor enabled.
+file, Gazebo bridge enabled, mission monitor enabled, and
+`navigation_backend=offboard`.
+
+To exercise PX4 Mission mode instead of Offboard position control:
+
+```bash
+NAVIGATION_BACKEND=mission ./scripts/sim_gui.sh
+NAVIGATION_BACKEND=mission ./scripts/sim_headless.sh
+MISSION_CHECK=1 SMOKE_DURATION_S=300 NAVIGATION_BACKEND=mission ./scripts/sim_headless.sh
+```
+
+Mission mode uploads planner paths as PX4 mission waypoints through MAVLink at
+`mission_connection_url`. It requires consistent `mission_home_*` and
+`px4_local_origin_*` parameters for map-frame to global-relative waypoint
+conversion.
 
 The current-environment runner writes PX4 SITL output to
 `log/px4_city_mvp.log` and the MicroXRCEAgent log to
@@ -461,9 +480,11 @@ The default monitor config applies `uniform_building_height_m=28.0`, matching
 the default uniform-height world used by the MVP.
 The default offboard tuning advances setpoints about three times faster than the
 initial conservative MVP tuning.
-On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published and
-the offboard node stops trajectory setpoints and sends PX4 disarm commands, so a
-crashed vehicle is not commanded to recover and continue the mission.
+On a mission-monitor failure, `/drone_city_nav/emergency_stop` is published.
+The Offboard backend stops trajectory setpoints and sends PX4 disarm commands;
+the Mission backend sends MAVLink disarm commands and records
+`MISSION_BACKEND emergency_stop...` markers. In both modes, a crashed vehicle is
+not commanded to recover and continue the mission.
 
 For source-toggle smoke checks where a non-default source combination is known
 to be unsafe for a complete mission, set `ALLOW_MISSION_FAILURE=true`. This
@@ -503,6 +524,23 @@ geometry.
 Mission-monitor results include final speed plus `max_observed_speed` and
 `mean_observed_speed`, so headless runs can prove that the drone moved at the
 expected scale and stopped at the goal.
+
+## PX4 Mission Backend
+
+Set `NAVIGATION_BACKEND=mission` to replace the Offboard follower with
+`px4_mission_node`. This backend subscribes to the same planner path and
+`path_id` topics, converts map-frame waypoints to
+`MAV_FRAME_GLOBAL_RELATIVE_ALT_INT` mission items, uploads them through
+`pymavlink`, and optionally commands `AUTO.MISSION` plus arm after a successful
+upload. Replanned paths are uploaded as fresh PX4 missions.
+
+Mission mode does not use Offboard `sharp_turn_hold_*` or
+`target_switch_hold_*` timing parameters. Runtime logs include
+`Mission backend ready:`, `MISSION_BACKEND upload_started`,
+`MISSION_BACKEND upload_result`, `MISSION_BACKEND mode_command`,
+`MISSION_BACKEND arm_command`, `MISSION_BACKEND progress`, and emergency-stop
+markers. JSONL diagnostics are written to `log/mission_blackbox.jsonl` by
+default.
 
 If Gazebo GUI cannot open from Docker, allow local X11 access on the host before
 starting the dev shell:

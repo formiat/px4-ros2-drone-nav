@@ -29,6 +29,7 @@ class ValidationOptions:
     expected_memory: bool | None = None
     expected_current_lidar: bool | None = None
     enable_lidar_debug: bool = True
+    navigation_backend: str = "offboard"
     mission_check: bool = False
     allow_mission_failure: bool = False
 
@@ -98,6 +99,10 @@ def validate_logs(
     options: ValidationOptions,
 ) -> ValidationResult:
     result = ValidationResult()
+    navigation_backend = options.navigation_backend.lower()
+    if navigation_backend not in {"offboard", "mission"}:
+        result.fail(f"navigation backend is unsupported: {navigation_backend}")
+        return result
 
     result.require("Gazebo world is ready", px4_log, r"Gazebo world is ready")
     result.require(
@@ -234,21 +239,54 @@ def validate_logs(
         ros_log,
         r"Published path:.*\bwaypoints=[1-9]\d*",
     )
-    result.require(
-        "offboard command is sent",
-        ros_log,
-        r"Sent PX4 command: VEHICLE_CMD_DO_SET_MODE",
-    )
-    result.require(
-        "arm command is sent",
-        ros_log,
-        r"Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM",
-    )
-    result.require(
-        "vehicle reaches armed offboard state",
-        ros_log,
-        r"Offboard summary: .*armed=true.*offboard=true",
-    )
+    if navigation_backend == "offboard":
+        result.require(
+            "offboard command is sent",
+            ros_log,
+            r"Sent PX4 command: VEHICLE_CMD_DO_SET_MODE",
+        )
+        result.require(
+            "arm command is sent",
+            ros_log,
+            r"Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM",
+        )
+        result.require(
+            "vehicle reaches armed offboard state",
+            ros_log,
+            r"Offboard summary: .*armed=true.*offboard=true",
+        )
+    else:
+        result.require(
+            "mission backend is ready",
+            ros_log,
+            r"Mission backend ready:",
+        )
+        result.require(
+            "mission upload succeeds",
+            ros_log,
+            r"MISSION_BACKEND upload_result .*success=true",
+        )
+        result.require(
+            "mission mode command is sent",
+            ros_log,
+            r"MISSION_BACKEND mode_command .*AUTO\.MISSION",
+        )
+        result.require(
+            "mission arm command is sent",
+            ros_log,
+            r"MISSION_BACKEND arm_command",
+        )
+        if re.search(r"MISSION_CHECK emergency_stop=true", ros_log):
+            result.require(
+                "mission emergency stop is received",
+                ros_log,
+                r"MISSION_BACKEND emergency_stop requested=true",
+            )
+            result.require(
+                "mission emergency disarm is sent",
+                ros_log,
+                r"MISSION_BACKEND emergency_stop_disarm_sent",
+            )
 
     if options.enable_lidar_debug:
         result.require(
@@ -312,6 +350,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-memory", default="")
     parser.add_argument("--expected-current-lidar", default="")
     parser.add_argument("--enable-lidar-debug", default="true")
+    parser.add_argument(
+        "--navigation-backend",
+        choices=("offboard", "mission"),
+        default="offboard",
+    )
     parser.add_argument("--mission-check", action="store_true")
     parser.add_argument("--allow-mission-failure", action="store_true")
     return parser
@@ -324,6 +367,7 @@ def main(argv: list[str] | None = None) -> int:
         expected_memory=parse_bool(args.expected_memory),
         expected_current_lidar=parse_bool(args.expected_current_lidar),
         enable_lidar_debug=parse_bool(args.enable_lidar_debug) is not False,
+        navigation_backend=args.navigation_backend,
         mission_check=args.mission_check,
         allow_mission_failure=args.allow_mission_failure,
     )

@@ -72,6 +72,16 @@ enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
+navigation_backend="${NAVIGATION_BACKEND:-offboard}"
+navigation_backend="${navigation_backend,,}"
+case "${navigation_backend}" in
+  offboard|mission)
+    ;;
+  *)
+    echo "NAVIGATION_BACKEND must be offboard or mission, got '${navigation_backend}'" >&2
+    exit 1
+    ;;
+esac
 enable_static_map_override=""
 enable_obstacle_memory_override=""
 enable_current_lidar_override=""
@@ -477,6 +487,7 @@ check_headless_run() {
     --expected-memory "${expected_obstacle_memory}"
     --expected-current-lidar "${expected_current_lidar}"
     --enable-lidar-debug "${enable_lidar_debug}"
+    --navigation-backend "${navigation_backend}"
   )
   if [[ -n "${mission_check}" ]]; then
     validation_args+=(--mission-check)
@@ -499,6 +510,7 @@ check_headless_run() {
 ros_launch_args=(
   params_file:="${city_nav_params_file}"
   lidar_debug_output_dir:="${lidar_debug_dir}"
+  navigation_backend:="${navigation_backend}"
   enable_gazebo_bridge:=true
   enable_mission_monitor:=true
   enable_lidar_debug:="${enable_lidar_debug}"
@@ -524,6 +536,7 @@ if [[ -n "${evasive_maneuvering_straight_cost_weight_override}" ]]; then
     evasive_maneuvering_straight_cost_weight:="${evasive_maneuvering_straight_cost_weight_override}"
   )
 fi
+echo "Navigation backend: ${navigation_backend}"
 echo "ROS launch log: ${ros_log_file}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
