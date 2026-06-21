@@ -1,6 +1,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_target_continuity.hpp"
+#include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/types.hpp"
@@ -136,6 +137,22 @@ struct NearestObstacleDiagnostic {
   Point2 point{};
 };
 
+enum class OffboardSetpointMode : std::uint8_t {
+  kPositionHold,
+  kVelocityCruise,
+};
+
+[[nodiscard]] const char*
+offboardSetpointModeName(const OffboardSetpointMode mode) noexcept {
+  switch (mode) {
+    case OffboardSetpointMode::kPositionHold:
+      return "position_hold";
+    case OffboardSetpointMode::kVelocityCruise:
+      return "velocity_cruise";
+  }
+  return "unknown";
+}
+
 } // namespace
 
 class Px4OffboardNode final : public rclcpp::Node {
@@ -184,6 +201,40 @@ public:
         std::clamp(radiansFromDegrees(
                        declare_parameter<double>("target_switch_hold_angle_deg", 45.0)),
                    0.0, std::numbers::pi);
+    cruise_velocity_control_enabled_ =
+        declare_parameter<bool>("cruise_velocity_control_enabled", true);
+    velocity_follower_config_.cruise_speed_mps =
+        std::clamp(declare_parameter<double>("cruise_speed_mps", 12.0), 0.0, 100.0);
+    velocity_follower_config_.min_turn_speed_mps =
+        std::clamp(declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
+                   velocity_follower_config_.cruise_speed_mps);
+    velocity_follower_config_.max_accel_mps2 =
+        std::clamp(declare_parameter<double>("max_accel_mps2", 3.0), 0.0, 100.0);
+    velocity_follower_config_.max_decel_mps2 =
+        std::clamp(declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
+    velocity_follower_config_.max_lateral_accel_mps2 = std::clamp(
+        declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
+    velocity_follower_config_.turn_preview_distance_m = turn_preview_distance_m_;
+    velocity_follower_config_.turn_slowdown_min_angle_rad =
+        std::clamp(radiansFromDegrees(
+                       declare_parameter<double>("turn_slowdown_min_angle_deg", 15.0)),
+                   0.0, std::numbers::pi);
+    velocity_follower_config_.sharp_turn_angle_rad = std::clamp(
+        radiansFromDegrees(declare_parameter<double>("sharp_turn_angle_deg", 90.0)),
+        velocity_follower_config_.turn_slowdown_min_angle_rad, std::numbers::pi);
+    velocity_follower_config_.braking_margin_m =
+        std::clamp(declare_parameter<double>("braking_margin_m", 2.0), 0.0, 100.0);
+    velocity_follower_config_.cross_track_gain =
+        std::clamp(declare_parameter<double>("cross_track_gain", 0.25), 0.0, 10.0);
+    velocity_follower_config_.max_cross_track_correction_angle_rad =
+        std::clamp(radiansFromDegrees(declare_parameter<double>(
+                       "max_cross_track_correction_angle_deg", 20.0)),
+                   0.0, std::numbers::pi / 2.0);
+    velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
+    altitude_hold_kp_ =
+        std::clamp(declare_parameter<double>("altitude_hold_kp", 0.5), 0.0, 10.0);
+    max_vertical_speed_mps_ =
+        std::clamp(declare_parameter<double>("max_vertical_speed_mps", 2.0), 0.0, 20.0);
     telemetry_log_period_ns_ = static_cast<std::int64_t>(
         std::clamp(declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1,
                    60.0) *
@@ -294,6 +345,12 @@ public:
         "sharp_turn_hold=%.2fs "
         "target_switch_hold=%.2fs target_switch_delta=%.1fm "
         "target_switch_angle=%.1fdeg "
+        "velocity_cruise=%s cruise_speed=%.2fmps min_turn_speed=%.2fmps "
+        "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
+        "turn_slowdown_min_angle=%.1fdeg sharp_turn_angle=%.1fdeg "
+        "braking_margin=%.2fm cross_track_gain=%.2f "
+        "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
+        "max_vertical_speed=%.2fmps "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm "
         "commanded_target_hysteresis=%.2fm mission_goal=(%.1f, %.1f) "
@@ -305,7 +362,20 @@ public:
         face_target_yaw_ ? "true" : "false", takeoff_hover_s_, turn_preview_distance_m_,
         radiansToDegrees(sharp_turn_hold_angle_rad_), sharp_turn_hold_s_,
         target_switch_hold_s_, target_switch_hold_delta_m_,
-        radiansToDegrees(target_switch_hold_angle_rad_), path_switch_hysteresis_m_,
+        radiansToDegrees(target_switch_hold_angle_rad_),
+        cruise_velocity_control_enabled_ ? "true" : "false",
+        velocity_follower_config_.cruise_speed_mps,
+        velocity_follower_config_.min_turn_speed_mps,
+        velocity_follower_config_.max_accel_mps2,
+        velocity_follower_config_.max_decel_mps2,
+        velocity_follower_config_.max_lateral_accel_mps2,
+        radiansToDegrees(velocity_follower_config_.turn_slowdown_min_angle_rad),
+        radiansToDegrees(velocity_follower_config_.sharp_turn_angle_rad),
+        velocity_follower_config_.braking_margin_m,
+        velocity_follower_config_.cross_track_gain,
+        radiansToDegrees(
+            velocity_follower_config_.max_cross_track_correction_angle_rad),
+        altitude_hold_kp_, max_vertical_speed_mps_, path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
         commanded_target_hysteresis_m_, mission_goal_.x, mission_goal_.y,
         px4_local_origin_.x, px4_local_origin_.y,
@@ -705,8 +775,9 @@ private:
   void publishOffboardControlMode() {
     px4_msgs::msg::OffboardControlMode msg;
     msg.timestamp = nowMicros();
-    msg.position = true;
-    msg.velocity = false;
+    const OffboardSetpointMode mode = currentSetpointMode();
+    msg.position = mode == OffboardSetpointMode::kPositionHold;
+    msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
     msg.acceleration = false;
     msg.attitude = false;
     msg.body_rate = false;
@@ -717,6 +788,12 @@ private:
 
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
+
+    if (currentSetpointMode() == OffboardSetpointMode::kVelocityCruise) {
+      if (publishVelocityTrajectorySetpoint()) {
+        return;
+      }
+    }
 
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
@@ -745,8 +822,114 @@ private:
     msg.yawspeed = nan;
     updateCommandDiagnostics(target, previous_target, had_previous_target,
                              static_cast<double>(msg.yaw));
+    resetVelocityDiagnostics();
 
     trajectory_setpoint_pub_->publish(msg);
+  }
+
+  [[nodiscard]] OffboardSetpointMode currentSetpointMode() const {
+    return velocityCruiseReady() ? OffboardSetpointMode::kVelocityCruise
+                                 : OffboardSetpointMode::kPositionHold;
+  }
+
+  [[nodiscard]] bool velocityCruiseReady() const {
+    return cruise_velocity_control_enabled_ && localPositionFresh() &&
+           navigationAllowed() && path_valid_ &&
+           waypoint_index_ < path_points_.size() && !finalPathGoalReached() &&
+           !no_path_hold_target_valid_ && !sharp_turn_hold_active_ &&
+           !target_switch_hold_active_;
+  }
+
+  [[nodiscard]] bool finalPathGoalReached() const {
+    return localPositionFresh() && path_valid_ && !path_points_.empty() &&
+           distance(current_position_, path_points_.back()) <= acceptance_radius_m_;
+  }
+
+  [[nodiscard]] double consumeVelocityPlanDtS() {
+    const rclcpp::Time current_time = get_clock()->now();
+    double dt_s = static_cast<double>(kControllerPeriod.count()) / 1000.0;
+    if (last_velocity_plan_time_.nanoseconds() > 0 &&
+        current_time > last_velocity_plan_time_) {
+      dt_s =
+          std::clamp((current_time - last_velocity_plan_time_).seconds(), 0.001, 1.0);
+    }
+    last_velocity_plan_time_ = current_time;
+    return dt_s;
+  }
+
+  [[nodiscard]] double verticalVelocitySetpointNed() {
+    if (!altitude_valid_ || !(max_vertical_speed_mps_ > 0.0)) {
+      last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
+      return 0.0;
+    }
+
+    last_altitude_error_m_ = cruise_altitude_m_ - current_altitude_m_;
+    return -std::clamp(last_altitude_error_m_ * altitude_hold_kp_,
+                       -max_vertical_speed_mps_, max_vertical_speed_mps_);
+  }
+
+  [[nodiscard]] double velocityYaw(const Point2 velocity_xy) const {
+    if (!face_target_yaw_ || std::hypot(velocity_xy.x, velocity_xy.y) < 0.2) {
+      return current_heading_rad_;
+    }
+    return std::atan2(velocity_xy.y, velocity_xy.x);
+  }
+
+  bool publishVelocityTrajectorySetpoint() {
+    const bool had_previous_target = last_published_target_valid_;
+    const Point2 previous_target = last_published_target_;
+    const Point2 target = currentTarget();
+    const double dt_s = consumeVelocityPlanDtS();
+    const VelocitySetpointPlan plan = planVelocitySetpoint(
+        path_points_, current_position_, current_velocity_, current_velocity_valid_,
+        waypoint_index_, dt_s, velocity_follower_state_, velocity_follower_config_);
+    last_velocity_plan_ = plan;
+    last_velocity_plan_valid_ = plan.valid;
+    if (!plan.valid || plan.final_goal_reached) {
+      resetVelocityDiagnostics();
+      return false;
+    }
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const double vz_ned = verticalVelocitySetpointNed();
+    px4_msgs::msg::TrajectorySetpoint msg;
+    msg.timestamp = nowMicros();
+    msg.position = std::array<float, 3>{nan, nan, nan};
+    msg.velocity = std::array<float, 3>{static_cast<float>(plan.velocity_xy.x),
+                                        static_cast<float>(plan.velocity_xy.y),
+                                        static_cast<float>(vz_ned)};
+    msg.acceleration = std::array<float, 3>{nan, nan, nan};
+    msg.jerk = std::array<float, 3>{nan, nan, nan};
+    msg.yaw = static_cast<float>(velocityYaw(plan.velocity_xy));
+    msg.yawspeed = nan;
+
+    velocity_follower_state_.previous_velocity_setpoint = plan.velocity_xy;
+    velocity_follower_state_.previous_velocity_setpoint_valid = true;
+    last_velocity_setpoint_ = plan.velocity_xy;
+    last_vertical_velocity_setpoint_mps_ = vz_ned;
+    last_velocity_setpoint_speed_mps_ = plan.speed_mps;
+    last_offboard_setpoint_mode_ = OffboardSetpointMode::kVelocityCruise;
+    commanded_target_ = target;
+    commanded_target_valid_ = true;
+    last_published_target_ = target;
+    last_published_target_valid_ = true;
+    updateCommandDiagnostics(target, previous_target, had_previous_target,
+                             static_cast<double>(msg.yaw));
+    trajectory_setpoint_pub_->publish(msg);
+    return true;
+  }
+
+  void resetVelocityDiagnostics() {
+    velocity_follower_state_ = VelocityFollowerState{};
+    last_velocity_plan_valid_ = false;
+    last_velocity_plan_ = VelocitySetpointPlan{};
+    last_velocity_plan_.reason = VelocitySetpointReason::kHold;
+    last_velocity_setpoint_ = Point2{};
+    last_velocity_setpoint_speed_mps_ = 0.0;
+    last_vertical_velocity_setpoint_mps_ = 0.0;
+    last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
+    last_offboard_setpoint_mode_ = OffboardSetpointMode::kPositionHold;
+    last_velocity_plan_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
   }
 
   void publishVehicleCommand(const std::uint32_t command, const float param1 = 0.0F,
@@ -771,11 +954,13 @@ private:
     if (!path_valid_ || !localPositionFresh()) {
       return;
     }
-    if (updateSharpTurnHold()) {
-      return;
-    }
-    if (updateTargetSwitchHold()) {
-      return;
+    if (!cruise_velocity_control_enabled_) {
+      if (updateSharpTurnHold()) {
+        return;
+      }
+      if (updateTargetSwitchHold()) {
+        return;
+      }
     }
 
     const std::size_t previous_waypoint_index = waypoint_index_;
@@ -786,7 +971,8 @@ private:
       return;
     }
 
-    if (shouldStartSharpTurnHold(previous_waypoint_index, next_waypoint_index)) {
+    if (!cruise_velocity_control_enabled_ &&
+        shouldStartSharpTurnHold(previous_waypoint_index, next_waypoint_index)) {
       startSharpTurnHold(previous_waypoint_index);
       return;
     }
@@ -890,7 +1076,8 @@ private:
                                                  const double target_delta_m,
                                                  const double target_angle_rad) const {
     if (!(target_switch_hold_s_ > 0.0) || !had_previous_target ||
-        !localPositionFresh() || !navigationAllowed() || sharp_turn_hold_active_) {
+        !localPositionFresh() || !navigationAllowed() || sharp_turn_hold_active_ ||
+        cruise_velocity_control_enabled_) {
       return false;
     }
     if (target_delta_m <= kTinyDistanceM) {
@@ -1099,7 +1286,7 @@ private:
   [[nodiscard]] bool shouldHoldPosition() const {
     return sharp_turn_hold_active_ || target_switch_hold_active_ ||
            !localPositionFresh() || !navigationAllowed() || !path_valid_ ||
-           waypoint_index_ >= path_points_.size();
+           waypoint_index_ >= path_points_.size() || finalPathGoalReached();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
@@ -1475,10 +1662,14 @@ private:
         "Offboard summary: local_position=%s pose_fresh=%s pose_age_s=%.2f "
         "altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
-        "motion_phase=%s path_segment=%s "
+        "motion_phase=%s control_mode=%s path_segment=%s "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
+        "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
+        "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+        "turn_target_speed=%.2f braking_distance=%.2f "
+        "velocity_delta=%.2f cross_track_correction=%.2f altitude_error=%.2f "
         "turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "sharp_turn_hold[active=%s waypoint=%zu elapsed=%.2f required=%.2f "
         "angle_threshold_rad=%.2f] "
@@ -1492,9 +1683,19 @@ private:
         isOffboard() ? "true" : "false", path_valid_ ? "true" : "false",
         hold_position ? "true" : "false", path_valid_ ? waypoint_index_ + 1U : 0U,
         path_points_.size(), motionPhaseName(hold_position),
+        offboardSetpointModeName(last_offboard_setpoint_mode_),
         pathSegmentTypeName(turn_angle_rad), current_position_.x, current_position_.y,
         target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
-        current_speed_mps_, upcoming_turn.valid ? "true" : "false",
+        current_speed_mps_, last_velocity_setpoint_.x, last_velocity_setpoint_.y,
+        last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        velocitySetpointReasonName(last_velocity_plan_.reason),
+        last_velocity_plan_.raw_speed_limit_mps,
+        last_velocity_plan_.accel_limited_speed_mps,
+        last_velocity_plan_.turn.target_turn_speed_mps,
+        last_velocity_plan_.turn.braking_distance_m,
+        last_velocity_plan_.velocity_delta_mps,
+        last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
+        upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
         sharp_turn_hold_active_ ? "true" : "false",
@@ -1610,6 +1811,27 @@ private:
         last_target_continuity_decision_.previous_target_safe ? "true" : "false",
         target_switch_hold_active_ ? "true" : "false");
     RCLCPP_INFO(get_logger(),
+                "Drone velocity command diagnostics: control_mode=%s "
+                "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
+                "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+                "turn_target_speed=%.2f braking_distance=%.2f distance_to_turn=%.2f "
+                "turn_angle=%.3f velocity_delta=%.2f cross_track_correction=%.2f "
+                "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f)",
+                offboardSetpointModeName(last_offboard_setpoint_mode_),
+                last_velocity_setpoint_.x, last_velocity_setpoint_.y,
+                last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+                velocitySetpointReasonName(last_velocity_plan_.reason),
+                last_velocity_plan_.raw_speed_limit_mps,
+                last_velocity_plan_.accel_limited_speed_mps,
+                last_velocity_plan_.turn.target_turn_speed_mps,
+                last_velocity_plan_.turn.braking_distance_m,
+                last_velocity_plan_.turn.distance_to_turn_m,
+                last_velocity_plan_.turn.angle_rad,
+                last_velocity_plan_.velocity_delta_mps,
+                last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
+                last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
+                last_velocity_plan_.projection.x, last_velocity_plan_.projection.y);
+    RCLCPP_INFO(get_logger(),
                 "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
                 "point=(%.2f, %.2f)]",
@@ -1707,6 +1929,53 @@ private:
     flight_blackbox_stream_ << ",\"target_continuity_previous_safe\":";
     writeJsonBool(flight_blackbox_stream_,
                   last_target_continuity_decision_.previous_target_safe);
+    flight_blackbox_stream_ << "}";
+    flight_blackbox_stream_ << ",\"velocity_command\":{\"control_mode\":\""
+                            << offboardSetpointModeName(last_offboard_setpoint_mode_)
+                            << "\",\"setpoint_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_setpoint_.x);
+    flight_blackbox_stream_ << ",\"setpoint_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_setpoint_.y);
+    flight_blackbox_stream_ << ",\"setpoint_z\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_vertical_velocity_setpoint_mps_);
+    flight_blackbox_stream_ << ",\"setpoint_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_setpoint_speed_mps_);
+    flight_blackbox_stream_ << ",\"speed_limit_reason\":\""
+                            << velocitySetpointReasonName(last_velocity_plan_.reason)
+                            << "\",\"raw_speed_limit_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"accel_limited_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.accel_limited_speed_mps);
+    flight_blackbox_stream_ << ",\"turn_target_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.turn.target_turn_speed_mps);
+    flight_blackbox_stream_ << ",\"braking_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.turn.braking_distance_m);
+    flight_blackbox_stream_ << ",\"distance_to_turn_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.turn.distance_to_turn_m);
+    flight_blackbox_stream_ << ",\"turn_angle_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.turn.angle_rad);
+    flight_blackbox_stream_ << ",\"velocity_delta_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_delta_mps);
+    flight_blackbox_stream_ << ",\"cross_track_correction_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_correction_mps);
+    flight_blackbox_stream_ << ",\"altitude_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_altitude_error_m_);
+    flight_blackbox_stream_ << ",\"path_tangent_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.path_tangent.x);
+    flight_blackbox_stream_ << ",\"path_tangent_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.path_tangent.y);
+    flight_blackbox_stream_ << ",\"projection_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.x);
+    flight_blackbox_stream_ << ",\"projection_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.y);
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"path\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_valid_);
@@ -1821,6 +2090,7 @@ private:
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
   Point2 last_published_target_{};
+  Point2 last_velocity_setpoint_{};
   Point2 mission_goal_{85.0, 0.0};
   Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
@@ -1835,6 +2105,8 @@ private:
   double target_switch_hold_s_{2.0};
   double target_switch_hold_delta_m_{5.0};
   double target_switch_hold_angle_rad_{std::numbers::pi / 4.0};
+  double altitude_hold_kp_{0.5};
+  double max_vertical_speed_mps_{2.0};
   double path_switch_hysteresis_m_{3.0};
   double path_continuity_reuse_radius_m_{6.0};
   double path_continuity_max_target_distance_m_{20.0};
@@ -1852,6 +2124,9 @@ private:
       std::numeric_limits<double>::quiet_NaN()};
   double last_target_switch_hold_delta_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_target_switch_hold_angle_rad_{std::numeric_limits<double>::quiet_NaN()};
+  double last_velocity_setpoint_speed_mps_{0.0};
+  double last_vertical_velocity_setpoint_mps_{0.0};
+  double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -1883,6 +2158,7 @@ private:
   bool no_path_hold_target_valid_{false};
   bool sharp_turn_hold_active_{false};
   bool target_switch_hold_active_{false};
+  bool cruise_velocity_control_enabled_{true};
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
@@ -1904,10 +2180,17 @@ private:
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   TargetContinuityDecision last_target_continuity_decision_{};
+  VelocityFollowerConfig velocity_follower_config_{};
+  VelocityFollowerState velocity_follower_state_{};
+  VelocitySetpointPlan last_velocity_plan_{};
+  bool last_velocity_plan_valid_{false};
+  OffboardSetpointMode last_offboard_setpoint_mode_{
+      OffboardSetpointMode::kPositionHold};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time sharp_turn_hold_started_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time target_switch_hold_started_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;

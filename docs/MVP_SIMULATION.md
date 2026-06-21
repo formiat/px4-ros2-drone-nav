@@ -453,27 +453,49 @@ to be unsafe for a complete mission, set `ALLOW_MISSION_FAILURE=true`. This
 keeps the log-marker checks useful while explicitly allowing mission monitor and
 PX4 attitude failure markers. Do not set it for full A-to-B validation.
 
-## Offboard Position Control
+## Offboard Velocity Cruise Control
 
-The offboard follower commands PX4 with position setpoints only. It does not
-send horizontal velocity feed-forward or requested-speed limits, because those
-values are not hard velocity limits for PX4 position control. The main
-simulation parameters are:
+The offboard follower uses position setpoints for takeoff, no-path hold, final
+goal hold, and other fixed-position states. During normal cruise on a valid path
+it switches PX4 Offboard control to velocity setpoints: horizontal velocity is
+commanded along the current collapsed path segment, and vertical velocity keeps
+the configured cruise altitude.
+
+The follower does not synthesize intermediate path waypoints between planner
+waypoints. Corner rounding is not part of this stage. Smoothness comes from the
+velocity profile over the current collapsed polyline, acceleration/vector-delta
+limits, and bounded cross-track correction back toward the active segment.
+
+The main simulation parameters are:
 
 - `turn_preview_distance_m` - distance used by diagnostics when reporting the
   next upcoming path turn.
-- `sharp_turn_hold_angle_deg` - waypoint corner angle that enables a fixed hold
-  before switching to the next waypoint.
-- `sharp_turn_hold_s` - fixed hold duration at a sharp-turn waypoint.
+- `cruise_velocity_control_enabled` - enables velocity setpoints during cruise.
+- `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
+- `min_turn_speed_mps` - minimum requested speed near sharp turns.
+- `max_accel_mps2` and `max_decel_mps2` - speed-profile acceleration limits.
+- `max_lateral_accel_mps2` - horizontal velocity vector change limit.
+- `turn_slowdown_min_angle_deg` and `sharp_turn_angle_deg` - corner-angle range
+  used to map turn severity to target turn speed.
+- `braking_margin_m` - extra distance kept before a turn when computing
+  braking distance.
+- `cross_track_gain` and `max_cross_track_correction_angle_deg` - bounded
+  correction back toward the active path segment.
+- `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
+  cruise altitude.
+- `sharp_turn_hold_angle_deg` and `sharp_turn_hold_s` - legacy fixed hold
+  parameters. They are not used as the normal slowdown mechanism while velocity
+  cruise is enabled.
 - `commanded_target_hysteresis_m` - keeps the previous commanded target after a
   path update when the previous target is still near the updated path and the
   current-to-previous-target segment remains traversable in the latest
   prohibited grid.
 
-Runtime logs from `px4_offboard_node` include `actual_speed`, upcoming-turn
-validity, turn waypoint index, distance to turn, sharp-turn hold state,
-`local_clearance`, attitude, path id correlation, cross-track error, heading
-error, commanded target delta,
+Runtime logs from `px4_offboard_node` include `actual_speed`, current control
+mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
+targets, braking distance, upcoming-turn validity, turn waypoint index, distance
+to turn, sharp-turn hold state, `local_clearance`, attitude, path id
+correlation, cross-track error, heading error, commanded target delta,
 path-update target-continuity reason (`kept_previous_target`,
 `switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or
 `forced_switch_previous_behind_path`), and nearest-obstacle bearing. The same
@@ -528,11 +550,11 @@ make quality
 - Runtime logs include obstacle-memory update statistics and distance-to-start
   and distance-to-goal values in `planner_node`,
   `px4_offboard_node`, and `mission_monitor_node`.
-- The simulation offboard follower commands path waypoints directly; it does not
-  synthesize intermediate path targets between waypoints.
-- The simulation offboard follower sends position setpoints only. At sharp
-  waypoint turns it can hold the reached waypoint for a fixed duration before
-  switching to the next waypoint.
+- The simulation offboard follower commands cruise as velocity setpoints along
+  the current path segment; it does not synthesize intermediate path targets
+  between waypoints.
+- The simulation offboard follower still uses position setpoints for takeoff,
+  no-path hold, and final goal hold.
 - The offboard follower also applies path continuity hysteresis so frequent
   replanning updates do not immediately force large lateral target jumps when a
   nearby waypoint from the new path still matches the previous local target.

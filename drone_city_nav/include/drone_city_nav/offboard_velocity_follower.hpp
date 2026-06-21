@@ -1,0 +1,94 @@
+#pragma once
+
+#include "drone_city_nav/offboard_path_follower.hpp"
+#include "drone_city_nav/types.hpp"
+
+#include <cstddef>
+#include <limits>
+#include <span>
+
+namespace drone_city_nav {
+
+enum class VelocitySetpointReason {
+  kInvalidPath,
+  kHold,
+  kStraight,
+  kGentleTurn,
+  kBrakingForTurn,
+};
+
+struct VelocityFollowerConfig {
+  double cruise_speed_mps{12.0};
+  double min_turn_speed_mps{2.0};
+  double max_accel_mps2{3.0};
+  double max_decel_mps2{4.0};
+  double max_lateral_accel_mps2{3.0};
+  double turn_preview_distance_m{32.0};
+  double turn_slowdown_min_angle_rad{0.25};
+  double sharp_turn_angle_rad{1.5707963267948966};
+  double braking_margin_m{2.0};
+  double cross_track_gain{0.25};
+  double max_cross_track_correction_angle_rad{0.35};
+  double final_acceptance_radius_m{1.0};
+};
+
+struct VelocityFollowerState {
+  Point2 previous_velocity_setpoint{};
+  bool previous_velocity_setpoint_valid{false};
+};
+
+struct TurnSpeedPlan {
+  bool valid{false};
+  std::size_t waypoint_index{0U};
+  double angle_rad{0.0};
+  double distance_to_turn_m{std::numeric_limits<double>::infinity()};
+  double target_turn_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double braking_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct VelocityVectorLimitResult {
+  Point2 velocity{};
+  double delta_mps{0.0};
+};
+
+struct VelocitySetpointPlan {
+  bool valid{false};
+  bool final_goal_reached{false};
+  VelocitySetpointReason reason{VelocitySetpointReason::kInvalidPath};
+  Point2 velocity_xy{};
+  Point2 path_tangent{};
+  Point2 projection{};
+  Point2 cross_track_correction_velocity{};
+  double speed_mps{0.0};
+  double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
+  double cross_track_correction_mps{0.0};
+  OffboardPathProjection path_projection{};
+  TurnSpeedPlan turn{};
+};
+
+[[nodiscard]] const char*
+velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
+
+[[nodiscard]] double
+distanceFromProjectionToWaypoint(std::span<const Point2> path,
+                                 const OffboardPathProjection& projection,
+                                 std::size_t waypoint_index);
+
+[[nodiscard]] TurnSpeedPlan speedLimitForUpcomingTurn(
+    std::span<const Point2> path, const OffboardPathProjection& projection,
+    double current_speed_mps, const VelocityFollowerConfig& config);
+
+[[nodiscard]] VelocityVectorLimitResult
+limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
+                         bool previous_velocity_valid, double dt_s,
+                         double max_delta_mps2);
+
+[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
+    std::span<const Point2> path, Point2 current_position, Point2 current_velocity,
+    bool current_velocity_valid, std::size_t waypoint_index, double dt_s,
+    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
+
+} // namespace drone_city_nav
