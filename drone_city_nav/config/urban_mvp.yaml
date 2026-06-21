@@ -125,11 +125,11 @@ px4_offboard_node:
     cruise_speed_mps: 18.0
     min_turn_speed_mps: 3.0
     max_accel_mps2: 5.0
-    max_decel_mps2: 7.0
+    max_decel_mps2: 8.0
     max_lateral_accel_mps2: 5.0
     turn_slowdown_min_angle_deg: 15.0
     sharp_turn_angle_deg: 90.0
-    braking_margin_m: 5.0
+    braking_margin_m: 10.0
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0
     altitude_hold_kp: 0.5
