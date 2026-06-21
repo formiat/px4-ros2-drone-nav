@@ -96,9 +96,9 @@ waypoint'ов, а расчёт целевой скорости на текуще
   - параметры новой модели торможения.
 - `drone_city_nav/tests/offboard_velocity_follower_test.cpp`
   - unit coverage speed profile / constraints / edge cases.
-- При необходимости `drone_city_nav/tests/offboard_telemetry_contract_test.cpp`
-  или существующие script tests, если контракт blackbox/telemetry проверяется
-  текстовыми тестами.
+- `scripts/tests/test_offboard_telemetry_contract.py`
+  - contract coverage для telemetry/blackbox полей в
+    `drone_city_nav/src/px4_offboard_node.cpp`.
 
 # Implementation steps
 
@@ -119,6 +119,16 @@ waypoint'ов, а расчёт целевой скорости на текуще
    - расширить `TurnSpeedPlan` полями:
      `turn_radius_m`, `corner_cut_distance_m`, `constraint_speed_mps`,
      `allowed_speed_now_mps`, `constraint_type`.
+   - синхронизировать public declarations и definitions для
+     `speedLimitForUpcomingTurn()` и `speedLimitForFinalStop()`:
+     сейчас header объявляет параметр `current_speed_mps` в
+     `drone_city_nav/include/drone_city_nav/offboard_velocity_follower.hpp:89`,
+     а definitions в
+     `drone_city_nav/src/offboard_velocity_follower.cpp:253` и
+     `drone_city_nav/src/offboard_velocity_follower.cpp:310` его не принимают.
+     Реализация должна либо удалить stale parameter из header, либо добавить
+     его в definitions и реально использовать; unit tests должны вызывать
+     согласованную сигнатуру.
 
    Псевдоконтракт:
 
@@ -295,6 +305,12 @@ waypoint'ов, а расчёт целевой скорости на текуще
     Обязательные тесты:
     - `SmallTurnCanStillLimitSpeedWhenCloseAndFast`: малый угол вблизи даёт
       speed limit ниже cruise, если физика требует торможения.
+    - `AllowedSpeedNowDecreasesAsTurnConstraintApproaches`: один и тот же
+      path/angle/config/current speed, две позиции или projection на разных
+      расстояниях до одного и того же turn constraint; assert, что ближняя
+      позиция даёт меньший `allowed_speed_now_mps` / `raw_speed_limit_mps`,
+      чем дальняя, и оба значения finite. Это напрямую покрывает требование
+      "чем ближе к повороту, тем ниже `v_allowed_now`".
     - `LargeTurnLimitsMoreThanSmallTurnAtSameDistance`: большой угол даёт
       меньший `constraint_speed_mps` и меньший `raw_speed_limit_mps`.
     - `MostRestrictiveUpcomingConstraintWins`: среди нескольких будущих углов
@@ -311,11 +327,12 @@ waypoint'ов, а расчёт целевой скорости на текуще
     tests проверяют строки логов или blackbox fields.
     Результат: новые diagnostic поля не остаются непроверенным контрактом.
 
-    Кандидаты:
-    - `drone_city_nav/tests/offboard_telemetry_contract_test.cpp`, если файл
-      есть в текущем дереве;
-    - либо существующий script test, который читает
-      `drone_city_nav/src/px4_offboard_node.cpp`.
+    Основной существующий файл:
+    - `scripts/tests/test_offboard_telemetry_contract.py`.
+
+    Если реализации понадобится C++ contract coverage вместо script-level
+    проверки, явно добавить новый test file и подключить его в CMake, но не
+    ссылаться на несуществующий файл как на текущий артефакт.
 
 13. Удалить или нейтрализовать старую терминологию active path.
     Результат: в runtime path больше нет смысла "тормозим только перед
@@ -380,8 +397,13 @@ Skipped checks на этапе планирования:
 - Расширить `offboard_velocity_follower_test.cpp` вокруг текущих public
   функций `speedLimitForUpcomingTurn()`, `speedLimitForFinalStop()` и
   `planVelocitySetpoint()`.
+- Перед добавлением тестов согласовать signatures declarations/definitions для
+  `speedLimitForUpcomingTurn()` и `speedLimitForFinalStop()`, чтобы public API
+  не содержал stale параметров и тесты не закрепляли рассинхронизацию.
 - Проверить happy path: прямой путь держит cruise, близкий средний/резкий угол
   снижает target speed, goal снижает target speed до остановки.
+- Проверить monotonic property на одном и том же constraint: меньшая дистанция
+  до поворота даёт меньший `allowed_speed_now_mps` / `raw_speed_limit_mps`.
 - Проверить negative path: невалидный/degenerate path не даёт valid plan и не
   создаёт NaN.
 - Проверить edge cases: tiny angle, несколько поворотов в preview horizon,
@@ -392,7 +414,8 @@ Skipped checks на этапе планирования:
 - Вынести helper расчёта `TurnConstraint` / `speedLimitBeforeConstraint()` в
   `offboard_velocity_follower.cpp` с тестами через существующий public API.
 - Расширить diagnostic structs без отдельного нового production component.
-- Обновить contract tests на наличие новых полей blackbox/telemetry.
+- Обновить `scripts/tests/test_offboard_telemetry_contract.py` на наличие новых
+  полей blackbox/telemetry.
 
 ## Категория 3: тяжёлый рефакторинг
 
