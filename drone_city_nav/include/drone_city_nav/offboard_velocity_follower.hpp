@@ -86,6 +86,10 @@ limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
                          bool previous_velocity_valid, double dt_s,
                          double max_delta_mps2);
 
+[[nodiscard]] bool velocityCruisePathIsUsable(std::span<const Point2> path,
+                                              Point2 current_position,
+                                              std::size_t waypoint_index);
+
 [[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
     std::span<const Point2> path, Point2 current_position, Point2 current_velocity,
     bool current_velocity_valid, std::size_t waypoint_index, double dt_s,

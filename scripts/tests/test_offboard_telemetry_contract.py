@@ -44,6 +44,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("nearest_obstacle[valid=%s", self.offboard_text)
         self.assertIn("bearing_body_deg=%.1f", self.offboard_text)
 
+    def test_velocity_mode_requires_usable_velocity_path(self) -> None:
+        self.assertIn("velocityCruisePathIsUsable(", self.offboard_text)
+        self.assertIn("path_points_, current_position_", self.offboard_text)
+        self.assertIn("waypoint_index_) &&", self.offboard_text)
+
     def test_telemetry_writes_jsonl_flight_blackbox(self) -> None:
         self.assertIn("flight_blackbox_enabled", self.offboard_text)
         self.assertIn("flight_blackbox_path", self.offboard_text)

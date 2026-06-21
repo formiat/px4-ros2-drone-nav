@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace drone_city_nav {
 namespace {
@@ -40,6 +41,42 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return std::ranges::all_of(path, finite2D);
 }
 
+[[nodiscard]] std::optional<OffboardPathProjection>
+closestUsableVelocityProjection(const std::span<const Point2> path,
+                                const Point2 current_position,
+                                const std::size_t waypoint_index) {
+  if (path.size() < 2U || !finite2D(current_position) || !pathIsFinite(path)) {
+    return std::nullopt;
+  }
+
+  const std::size_t first_segment =
+      waypoint_index > 0U ? std::min(waypoint_index - 1U, path.size() - 2U) : 0U;
+  std::optional<OffboardPathProjection> best;
+  for (std::size_t index = first_segment; index + 1U < path.size(); ++index) {
+    const Point2 segment_start = path[index];
+    const Point2 segment_end = path[index + 1U];
+    const Point2 segment = segment_end - segment_start;
+    const double segment_length_sq = squaredDistance(segment_start, segment_end);
+    if (segment_length_sq <= kTinyDistanceM * kTinyDistanceM) {
+      continue;
+    }
+
+    const double segment_t =
+        std::clamp(((current_position.x - segment_start.x) * segment.x +
+                    (current_position.y - segment_start.y) * segment.y) /
+                       segment_length_sq,
+                   0.0, 1.0);
+    const Point2 projected{segment_start.x + segment.x * segment_t,
+                           segment_start.y + segment.y * segment_t};
+    const double distance_sq = squaredDistance(current_position, projected);
+    if (!best.has_value() || distance_sq < best->distance_sq) {
+      best = OffboardPathProjection{index, segment_t, distance_sq, projected};
+    }
+  }
+
+  return best;
+}
+
 [[nodiscard]] double turnAngleRad(const Point2 previous, const Point2 current,
                                   const Point2 next) noexcept {
   const Point2 incoming = current - previous;
@@ -76,6 +113,20 @@ constexpr double kTinyDistanceM = 1.0e-6;
     return norm(previous_state.previous_velocity_setpoint);
   }
   return 0.0;
+}
+
+[[nodiscard]] double
+effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
+  const double max_accel = sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
+  const double max_lateral =
+      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+  return std::min(max_accel, max_lateral);
+}
+
+[[nodiscard]] double
+effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
+  const double max_decel = sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+  return std::min(max_decel, effectiveVelocityDeltaAccelMps2(config));
 }
 
 [[nodiscard]] double targetTurnSpeedMps(const double angle_rad,
@@ -204,8 +255,7 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
     plan.distance_to_turn_m = distance_to_turn;
     plan.target_turn_speed_mps = targetTurnSpeedMps(angle, config);
 
-    const double max_decel =
-        sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+    const double max_decel = effectiveVelocityDeltaDecelMps2(config);
     const double braking_margin =
         sanitizedPositive(config.braking_margin_m, 2.0, 0.0, 100.0);
     plan.braking_distance_m =
@@ -257,6 +307,13 @@ VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity
   return result;
 }
 
+bool velocityCruisePathIsUsable(const std::span<const Point2> path,
+                                const Point2 current_position,
+                                const std::size_t waypoint_index) {
+  return closestUsableVelocityProjection(path, current_position, waypoint_index)
+      .has_value();
+}
+
 VelocitySetpointPlan
 planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_position,
                      const Point2 current_velocity, const bool current_velocity_valid,
@@ -278,10 +335,8 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
     return plan;
   }
 
-  const std::size_t first_segment =
-      waypoint_index > 0U ? std::min(waypoint_index - 1U, path.size() - 2U) : 0U;
   const auto projection =
-      closestOffboardPathProjection(path, current_position, first_segment);
+      closestUsableVelocityProjection(path, current_position, waypoint_index);
   if (!projection.has_value() || projection->segment_start_index + 1U >= path.size()) {
     return plan;
   }
@@ -310,8 +365,8 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
           ? norm(previous_state.previous_velocity_setpoint)
           : current_speed;
   const double dt = sanitizedPositive(dt_s, 0.1, 0.0, 10.0);
-  const double max_accel = sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
-  const double max_decel = sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+  const double max_accel = effectiveVelocityDeltaAccelMps2(config);
+  const double max_decel = effectiveVelocityDeltaDecelMps2(config);
   const double max_speed_delta =
       (raw_speed_limit >= previous_speed ? max_accel : max_decel) * dt;
   const double accel_limited_speed =
@@ -330,9 +385,7 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
   }
 
   const Point2 desired_velocity = desired_direction * accel_limited_speed;
-  const double vector_limit =
-      std::min(sanitizedPositive(config.max_accel_mps2, 3.0, 0.0, 100.0),
-               sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 0.0, 100.0));
+  const double vector_limit = effectiveVelocityDeltaAccelMps2(config);
   const VelocityVectorLimitResult limited_velocity = limitVelocityVectorDelta(
       desired_velocity, previous_state.previous_velocity_setpoint,
       previous_state.previous_velocity_setpoint_valid, dt, vector_limit);

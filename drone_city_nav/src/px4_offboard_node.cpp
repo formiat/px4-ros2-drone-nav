@@ -836,6 +836,8 @@ private:
     return cruise_velocity_control_enabled_ && localPositionFresh() &&
            navigationAllowed() && path_valid_ &&
            waypoint_index_ < path_points_.size() && !finalPathGoalReached() &&
+           velocityCruisePathIsUsable(path_points_, current_position_,
+                                      waypoint_index_) &&
            !no_path_hold_target_valid_ && !sharp_turn_hold_active_ &&
            !target_switch_hold_active_;
   }

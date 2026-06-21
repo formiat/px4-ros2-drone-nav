@@ -83,7 +83,32 @@ TEST(OffboardVelocityFollower, NearSharpTurnReducesSpeedByBrakingDistance) {
   EXPECT_NEAR(plan.turn.distance_to_turn_m, 10.0, 1.0e-9);
   EXPECT_LT(plan.raw_speed_limit_mps, 12.0);
   EXPECT_GT(plan.raw_speed_limit_mps, 2.0);
-  EXPECT_NEAR(plan.accel_limited_speed_mps, 11.6, 1.0e-9);
+  EXPECT_NEAR(plan.turn.braking_distance_m, 76.0 / 3.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 11.7, 1.0e-9);
+  EXPECT_NEAR(plan.speed_mps, 11.7, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_delta_mps, 0.3, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, BrakingDistanceUsesEffectiveVectorDeceleration) {
+  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
+  VelocityFollowerConfig config = testConfig();
+  config.max_decel_mps2 = 10.0;
+  config.max_accel_mps2 = 3.0;
+  config.max_lateral_accel_mps2 = 2.0;
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      path, Point2{20.0, 0.0}, Point2{12.0, 0.0}, true, 1U, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(plan.turn.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kBrakingForTurn);
+  EXPECT_NEAR(plan.turn.braking_distance_m, 37.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 11.8, 1.0e-9);
+  EXPECT_NEAR(plan.speed_mps, 11.8, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_delta_mps, 0.2, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, AccelerationLimitClampsSpeedIncrease) {
@@ -136,6 +161,37 @@ TEST(OffboardVelocityFollower, EmptyPathReturnsInvalidPlan) {
 
   EXPECT_FALSE(plan.valid);
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kInvalidPath);
+}
+
+TEST(OffboardVelocityFollower, VelocityCruisePathUsabilityRejectsInvalidPaths) {
+  const std::vector<Point2> empty_path{};
+  const std::vector<Point2> single_point{{0.0, 0.0}};
+  const std::vector<Point2> degenerate_path{{0.0, 0.0}, {0.0, 0.0}};
+  const std::vector<Point2> non_finite_path{
+      {0.0, 0.0}, {std::numeric_limits<double>::quiet_NaN(), 0.0}};
+  const std::vector<Point2> valid_path{{0.0, 0.0}, {10.0, 0.0}};
+
+  EXPECT_FALSE(velocityCruisePathIsUsable(empty_path, Point2{0.0, 0.0}, 0U));
+  EXPECT_FALSE(velocityCruisePathIsUsable(single_point, Point2{0.0, 0.0}, 0U));
+  EXPECT_FALSE(velocityCruisePathIsUsable(degenerate_path, Point2{1.0, 0.0}, 1U));
+  EXPECT_FALSE(velocityCruisePathIsUsable(non_finite_path, Point2{0.0, 0.0}, 1U));
+  EXPECT_FALSE(velocityCruisePathIsUsable(
+      valid_path, Point2{std::numeric_limits<double>::quiet_NaN(), 0.0}, 1U));
+  EXPECT_TRUE(velocityCruisePathIsUsable(valid_path, Point2{1.0, 0.0}, 1U));
+}
+
+TEST(OffboardVelocityFollower, DegenerateLeadingSegmentUsesNextUsableSegment) {
+  const std::vector<Point2> path{{0.0, 0.0}, {0.0, 0.0}, {10.0, 0.0}};
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(path, Point2{0.0, 0.0}, Point2{}, false, 1U, 0.1,
+                           VelocityFollowerState{}, testConfig());
+
+  ASSERT_TRUE(velocityCruisePathIsUsable(path, Point2{0.0, 0.0}, 1U));
+  ASSERT_TRUE(plan.valid);
+  EXPECT_FALSE(plan.final_goal_reached);
+  EXPECT_NEAR(plan.path_tangent.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, NonFinitePositionReturnsInvalidPlan) {
