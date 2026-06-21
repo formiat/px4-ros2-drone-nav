@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -39,6 +40,56 @@ TEST(LidarSnapshotWriter, WritesFiniteNumbersAndNullForNonFinite) {
   const std::string json = stream.str();
   EXPECT_NE(json.find("\"yaw_delta_to_attitude_rad\":null"), std::string::npos);
   EXPECT_NE(json.find("\"scan_receive_age_s\":1.2500"), std::string::npos);
+}
+
+TEST(LidarSnapshotWriter, JsonSummaryConvertsAllNonFiniteDoublesToNull) {
+  LidarSnapshotRecord record;
+  record.snapshot = "snapshot";
+  record.time_s = std::numeric_limits<double>::quiet_NaN();
+  record.position.x = std::numeric_limits<double>::infinity();
+  record.position.y = -std::numeric_limits<double>::infinity();
+  record.yaw_rad = std::numeric_limits<double>::quiet_NaN();
+  record.altitude_m = std::numeric_limits<double>::quiet_NaN();
+  record.horizontal_speed_mps = std::numeric_limits<double>::infinity();
+  record.roll_rad = std::numeric_limits<double>::quiet_NaN();
+  record.pitch_rad = std::numeric_limits<double>::infinity();
+  record.attitude_yaw_rad = -std::numeric_limits<double>::infinity();
+  record.tilt_rad = std::numeric_limits<double>::quiet_NaN();
+  record.projection_yaw_rad = std::numeric_limits<double>::quiet_NaN();
+  record.yaw_delta_to_attitude_rad = std::numeric_limits<double>::infinity();
+  record.scan_range_min_m = std::numeric_limits<double>::quiet_NaN();
+  record.scan_range_max_m = std::numeric_limits<double>::infinity();
+  record.scan_angle_min_rad = -std::numeric_limits<double>::infinity();
+  record.scan_angle_max_rad = std::numeric_limits<double>::quiet_NaN();
+  record.initial_heading_rad = std::numeric_limits<double>::infinity();
+  record.scan_yaw_offset_rad = std::numeric_limits<double>::quiet_NaN();
+  record.lidar_mount_roll_rad = std::numeric_limits<double>::quiet_NaN();
+  record.lidar_mount_pitch_rad = std::numeric_limits<double>::infinity();
+  record.lidar_mount_yaw_rad = -std::numeric_limits<double>::infinity();
+  record.min_projected_altitude_m = std::numeric_limits<double>::quiet_NaN();
+  record.max_projected_altitude_m = std::numeric_limits<double>::infinity();
+  record.max_logged_hit_points = 1U;
+  record.stats.hit_points.push_back(Point2{std::numeric_limits<double>::infinity(),
+                                           std::numeric_limits<double>::quiet_NaN()});
+
+  std::ostringstream stream;
+  writeLidarSnapshotSummary(stream, record);
+
+  const std::string json = stream.str();
+  EXPECT_EQ(json.find(":nan"), std::string::npos);
+  EXPECT_EQ(json.find(",nan"), std::string::npos);
+  EXPECT_EQ(json.find(":inf"), std::string::npos);
+  EXPECT_EQ(json.find(",inf"), std::string::npos);
+  EXPECT_EQ(json.find(":-inf"), std::string::npos);
+  EXPECT_EQ(json.find(",-inf"), std::string::npos);
+  EXPECT_NE(json.find("\"time_s\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"pose\":{\"x\":null,\"y\":null,\"yaw_rad\":null"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"horizontal_speed_mps\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"roll_rad\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"range_min\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"initial_heading_rad\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"hit_points\":[{\"x\":null,\"y\":null}]"), std::string::npos);
 }
 
 TEST(LidarSnapshotWriter, CsvContainsProjectionStatusAndHitCoordinates) {

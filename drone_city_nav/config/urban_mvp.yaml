@@ -1,7 +1,6 @@
 obstacle_memory_node:
   ros__parameters:
     frame_id: map
-    pose_source: px4_local_position
     lidar_topic: /scan
     mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
@@ -22,7 +21,6 @@ obstacle_memory_node:
     min_mapping_altitude_m: 5.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
-    swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
     lidar_mount_pitch_rad: 0.0
@@ -67,14 +65,11 @@ planner_node:
     goal_y_m: 378.0
     cruise_altitude_m: 18.0
     inflation_radius_m: 5.0
-    direct_path_fallback: false
-    reuse_last_valid_path_on_failure: false
     stable_path_reuse_enabled: true
     stable_path_reuse_max_deviation_m: 12.0
     stable_path_goal_tolerance_m: 3.0
     stable_path_prohibited_replan_horizon_m: 35.0
     stable_path_prohibited_confirmations_required: 1
-    max_initial_lateral_deviation_m: 14.0
     nearest_free_radius_cells: 30
     memory_occupied_value: 100
     memory_free_value: 0
@@ -93,7 +88,6 @@ planner_node:
     range_hit_epsilon_m: 0.05
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
-    swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
     lidar_mount_pitch_rad: 0.0
@@ -178,7 +172,6 @@ lidar_debug_node:
     initial_heading_rad: 0.0
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
-    swap_lidar_xy_to_local_frame: false
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
     lidar_mount_pitch_rad: 0.0

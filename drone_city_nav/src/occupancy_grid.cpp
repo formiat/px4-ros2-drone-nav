@@ -6,10 +6,30 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <optional>
 #include <queue>
 #include <stdexcept>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::optional<int> finiteFloorToInt(const double value) noexcept {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+
+  const double floored = std::floor(value);
+  if (!std::isfinite(floored) ||
+      floored < static_cast<double>(std::numeric_limits<int>::min()) ||
+      floored > static_cast<double>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+
+  return static_cast<int>(floored);
+}
+
+} // namespace
+
 OccupancyGrid2D::OccupancyGrid2D(const GridBounds& bounds)
     : bounds_{bounds} {
   if (!gridBoundsUsable(bounds_)) {
@@ -57,11 +77,13 @@ bool OccupancyGrid2D::contains(const GridIndex cell) const noexcept {
 
 std::optional<GridIndex>
 OccupancyGrid2D::worldToCell(const Point2 point) const noexcept {
-  const auto x =
-      static_cast<int>(std::floor((point.x - bounds_.origin_x) / bounds_.resolution_m));
-  const auto y =
-      static_cast<int>(std::floor((point.y - bounds_.origin_y) / bounds_.resolution_m));
-  const GridIndex cell{x, y};
+  const auto x = finiteFloorToInt((point.x - bounds_.origin_x) / bounds_.resolution_m);
+  const auto y = finiteFloorToInt((point.y - bounds_.origin_y) / bounds_.resolution_m);
+  if (!x.has_value() || !y.has_value()) {
+    return std::nullopt;
+  }
+
+  const GridIndex cell{*x, *y};
   if (!contains(cell)) {
     return std::nullopt;
   }

@@ -14,7 +14,6 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr std::int64_t kNowNs = 2'000'000'000LL;
 constexpr std::int64_t kFreshStampNs = 1'500'000'000LL;
 
 [[nodiscard]] ObstacleMemoryGrid makeMemory() {
@@ -33,190 +32,7 @@ constexpr std::int64_t kFreshStampNs = 1'500'000'000LL;
   return scan;
 }
 
-[[nodiscard]] GpsFixSample makeFix() {
-  return GpsFixSample{40.0, -74.0, 100.0, kFreshStampNs, 0, true, 1.0};
-}
-
-[[nodiscard]] QuaternionSample yawQuaternion(const double yaw_rad) {
-  return QuaternionSample{std::cos(yaw_rad / 2.0), 0.0, 0.0, std::sin(yaw_rad / 2.0)};
-}
-
 } // namespace
-
-TEST(NavigationPose, ProjectsWgs84ToNorthEastLocalFrame) {
-  const GeoReference origin{40.0, -74.0, 100.0, true};
-  GpsFixSample north_fix = makeFix();
-  north_fix.latitude_deg += 10.0 / 6'378'137.0 * 180.0 / std::numbers::pi;
-  GpsFixSample east_fix = makeFix();
-  east_fix.longitude_deg += 10.0 /
-                            (6'378'137.0 * std::cos(40.0 * std::numbers::pi / 180.0)) *
-                            180.0 / std::numbers::pi;
-
-  const Point2 north = projectWgs84ToLocal(north_fix, origin);
-  const Point2 east = projectWgs84ToLocal(east_fix, origin);
-
-  EXPECT_NEAR(north.x, 10.0, 0.05);
-  EXPECT_NEAR(north.y, 0.0, 0.05);
-  EXPECT_NEAR(east.x, 0.0, 0.05);
-  EXPECT_NEAR(east.y, 10.0, 0.05);
-}
-
-TEST(NavigationPose, HandlesManualAndAutoOrigin) {
-  GpsCompassConfig manual_config{};
-  manual_config.auto_initialize_origin = false;
-  manual_config.origin_latitude_deg = 40.0;
-  manual_config.origin_longitude_deg = -74.0;
-  manual_config.origin_altitude_m = 100.0;
-  GeoReference manual_origin{};
-
-  const auto manual_pose = makeNavigationPoseFromGpsCompass(
-      makeFix(), 0.0, kNowNs, manual_config, manual_origin);
-
-  ASSERT_TRUE(manual_pose.has_value());
-  const NavigationPose2D manual_pose_value =
-      manual_pose.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_TRUE(manual_origin.initialized);
-  EXPECT_NEAR(manual_pose_value.pose.position.x, 0.0, 1.0e-6);
-  EXPECT_NEAR(manual_pose_value.pose.position.y, 0.0, 1.0e-6);
-
-  GpsCompassConfig auto_config{};
-  GeoReference auto_origin{};
-  const auto auto_pose = makeNavigationPoseFromGpsCompass(makeFix(), 0.0, kNowNs,
-                                                          auto_config, auto_origin);
-
-  ASSERT_TRUE(auto_pose.has_value());
-  const NavigationPose2D auto_pose_value =
-      auto_pose.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_TRUE(auto_origin.initialized);
-  EXPECT_NEAR(auto_pose_value.pose.position.x, 0.0, 1.0e-6);
-  EXPECT_NEAR(auto_pose_value.pose.position.y, 0.0, 1.0e-6);
-}
-
-TEST(NavigationPose, RejectsInvalidGpsFixes) {
-  GpsCompassConfig config{};
-  GeoReference origin{};
-
-  GpsFixSample no_fix = makeFix();
-  no_fix.status = -1;
-  EXPECT_FALSE(makeNavigationPoseFromGpsCompass(no_fix, 0.0, kNowNs, config, origin)
-                   .has_value());
-
-  GpsFixSample nan_fix = makeFix();
-  nan_fix.latitude_deg = std::numeric_limits<double>::quiet_NaN();
-  EXPECT_FALSE(makeNavigationPoseFromGpsCompass(nan_fix, 0.0, kNowNs, config, origin)
-                   .has_value());
-
-  GpsFixSample stale_fix = makeFix();
-  stale_fix.stamp_ns = 1;
-  EXPECT_FALSE(makeNavigationPoseFromGpsCompass(stale_fix, 0.0, kNowNs, config, origin)
-                   .has_value());
-
-  GpsFixSample noisy_fix = makeFix();
-  noisy_fix.horizontal_variance_m2 = 1000.0;
-  EXPECT_FALSE(makeNavigationPoseFromGpsCompass(noisy_fix, 0.0, kNowNs, config, origin)
-                   .has_value());
-}
-
-TEST(NavigationPose, ConvertsCompassYawAndOffsets) {
-  const auto yaw = yawFromQuaternion(yawQuaternion(std::numbers::pi / 2.0));
-
-  ASSERT_TRUE(yaw.has_value());
-  const double yaw_value = yaw.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_NEAR(yaw_value, std::numbers::pi / 2.0, 1.0e-9);
-
-  GpsCompassConfig config{};
-  config.yaw_offset_rad = 0.1;
-  config.magnetic_declination_rad = 0.2;
-  config.compass_to_body_yaw_offset_rad = 0.3;
-  GeoReference origin{};
-  const auto pose =
-      makeNavigationPoseFromGpsCompass(makeFix(), 0.4, kNowNs, config, origin);
-
-  ASSERT_TRUE(pose.has_value());
-  const NavigationPose2D pose_value =
-      pose.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_NEAR(pose_value.pose.yaw_rad, 1.0, 1.0e-9);
-}
-
-TEST(NavigationPose, CompassYawStateInvalidatesUnavailableAndInvalidYaw) {
-  CompassYawState state{};
-
-  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), true, 100, state),
-            CompassYawUpdateStatus::kAccepted);
-  EXPECT_TRUE(state.valid);
-  EXPECT_NEAR(state.yaw_rad, 0.4, 1.0e-9);
-
-  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), false, 200, state),
-            CompassYawUpdateStatus::kUnavailable);
-  EXPECT_FALSE(state.valid);
-
-  EXPECT_EQ(updateCompassYawFromQuaternion(yawQuaternion(0.4), true, 300, state),
-            CompassYawUpdateStatus::kAccepted);
-  QuaternionSample invalid_quaternion = yawQuaternion(0.4);
-  invalid_quaternion.w = std::numeric_limits<double>::quiet_NaN();
-  EXPECT_EQ(updateCompassYawFromQuaternion(invalid_quaternion, true, 400, state),
-            CompassYawUpdateStatus::kInvalidYaw);
-  EXPECT_FALSE(state.valid);
-}
-
-TEST(NavigationPose, GpsCompassStateRequiresFreshCompassYaw) {
-  GpsCompassConfig config{};
-  GeoReference origin{};
-  NavigationPose2D pose{};
-  CompassYawState compass{};
-  std::optional<GpsFixSample> gps = makeFix();
-
-  ASSERT_EQ(
-      updateCompassYawFromQuaternion(yawQuaternion(0.4), true, kNowNs - 100, compass),
-      CompassYawUpdateStatus::kAccepted);
-  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs, 1000, config,
-                                                    origin, pose),
-            GpsCompassPoseUpdateStatus::kAccepted);
-  EXPECT_TRUE(navigationPoseReadyForScan(pose, kNowNs, kNowNs, 1000));
-
-  gps->stamp_ns = kNowNs + 2'000'000'000LL - 100;
-  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(
-                gps, compass, kNowNs + 2'000'000'000LL, 1000, config, origin, pose),
-            GpsCompassPoseUpdateStatus::kStaleCompassYaw);
-  EXPECT_FALSE(pose.position_valid);
-  EXPECT_FALSE(pose.yaw_valid);
-  EXPECT_FALSE(navigationPoseReadyForScan(pose, 0, kNowNs + 2'000'000'000LL, 1000));
-}
-
-TEST(NavigationPose, GpsCompassStateDoesNotRevivePoseAfterInvalidCompass) {
-  GpsCompassConfig config{};
-  GeoReference origin{};
-  NavigationPose2D pose{};
-  CompassYawState compass{};
-  std::optional<GpsFixSample> gps = makeFix();
-
-  ASSERT_EQ(
-      updateCompassYawFromQuaternion(yawQuaternion(0.4), true, kNowNs - 100, compass),
-      CompassYawUpdateStatus::kAccepted);
-  ASSERT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs, 1000, config,
-                                                    origin, pose),
-            GpsCompassPoseUpdateStatus::kAccepted);
-
-  EXPECT_EQ(
-      updateCompassYawFromQuaternion(yawQuaternion(0.4), false, kNowNs + 10, compass),
-      CompassYawUpdateStatus::kUnavailable);
-  gps->stamp_ns = kNowNs + 20;
-  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs + 30, 1000,
-                                                    config, origin, pose),
-            GpsCompassPoseUpdateStatus::kMissingCompassYaw);
-  EXPECT_FALSE(pose.position_valid);
-  EXPECT_FALSE(pose.yaw_valid);
-
-  EXPECT_EQ(
-      updateCompassYawFromQuaternion(yawQuaternion(0.7), true, kNowNs + 40, compass),
-      CompassYawUpdateStatus::kAccepted);
-  EXPECT_EQ(updateNavigationPoseFromGpsCompassState(gps, compass, kNowNs + 50, 1000,
-                                                    config, origin, pose),
-            GpsCompassPoseUpdateStatus::kAccepted);
-  EXPECT_TRUE(pose.position_valid);
-  EXPECT_TRUE(pose.yaw_valid);
-  EXPECT_NEAR(pose.pose.yaw_rad, 0.7, 1.0e-9);
-}
 
 TEST(NavigationPose, Px4LocalPoseRequiresValidHeadingWhenConfigured) {
   const Px4LocalPositionSample invalid_heading_sample{
@@ -389,6 +205,17 @@ TEST(OccupancyGrid2D, RejectsUnboundedCellCounts) {
                std::invalid_argument);
 }
 
+TEST(OccupancyGrid2D, WorldToCellRejectsNonFiniteAndOutOfRangeCoordinates) {
+  const OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 10}};
+
+  EXPECT_FALSE(grid.worldToCell(Point2{std::numeric_limits<double>::quiet_NaN(), 0.0})
+                   .has_value());
+  EXPECT_FALSE(grid.worldToCell(Point2{0.0, std::numeric_limits<double>::infinity()})
+                   .has_value());
+  EXPECT_FALSE(
+      grid.worldToCell(Point2{std::numeric_limits<double>::max(), 0.0}).has_value());
+}
+
 TEST(ObstacleMemoryGrid, ScanHitRotatesWithYaw) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
@@ -400,7 +227,7 @@ TEST(ObstacleMemoryGrid, ScanHitRotatesWithYaw) {
   EXPECT_EQ(memory.rawGrid().state(GridIndex{5, 9}), CellState::kOccupied);
 }
 
-TEST(ObstacleMemoryGrid, TiltedScanUsesPhysicalFrameInsteadOfLegacySwap) {
+TEST(ObstacleMemoryGrid, TiltedScanUsesPhysicalFrame) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
   LaserScan2DView scan = makeScan(ranges);
@@ -409,7 +236,6 @@ TEST(ObstacleMemoryGrid, TiltedScanUsesPhysicalFrameInsteadOfLegacySwap) {
   scan.altitude_valid = true;
   scan.attitude_valid = true;
   scan.compensate_attitude = true;
-  scan.swap_lidar_xy_to_local_frame = true;
   scan.min_projected_altitude_m = 1.0;
   scan.max_projected_altitude_m = 40.0;
 

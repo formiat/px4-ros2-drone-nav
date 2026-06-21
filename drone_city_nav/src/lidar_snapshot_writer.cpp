@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <ostream>
 #include <sstream>
+#include <string_view>
 
 namespace drone_city_nav {
 namespace {
@@ -45,6 +46,12 @@ void writeJsonNumberOrNull(std::ostream& stream, const double value) {
     return;
   }
   stream << "null";
+}
+
+void writeJsonNumberField(std::ostream& stream, const std::string_view name,
+                          const double value) {
+  stream << '"' << name << "\":";
+  writeJsonNumberOrNull(stream, value);
 }
 
 } // namespace
@@ -91,20 +98,34 @@ void writeLidarSnapshotSummary(std::ostream& stream,
                                const LidarSnapshotRecord& record) {
   stream << std::fixed << std::setprecision(4);
   stream << "{\"snapshot\":" << jsonString(record.snapshot) << ',';
-  stream << "\"time_s\":" << record.time_s << ',';
-  stream << "\"pose\":{\"x\":" << record.position.x << ",\"y\":" << record.position.y
-         << ",\"yaw_rad\":" << record.yaw_rad << ",\"altitude_m\":" << record.altitude_m
-         << "},";
-  stream << "\"motion\":{\"horizontal_speed_mps\":" << record.horizontal_speed_mps
-         << ",\"horizontal_speed_valid\":"
+  writeJsonNumberField(stream, "time_s", record.time_s);
+  stream << ',';
+  stream << "\"pose\":{";
+  writeJsonNumberField(stream, "x", record.position.x);
+  stream << ',';
+  writeJsonNumberField(stream, "y", record.position.y);
+  stream << ',';
+  writeJsonNumberField(stream, "yaw_rad", record.yaw_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "altitude_m", record.altitude_m);
+  stream << "},";
+  stream << "\"motion\":{";
+  writeJsonNumberField(stream, "horizontal_speed_mps", record.horizontal_speed_mps);
+  stream << ",\"horizontal_speed_valid\":"
          << (record.horizontal_speed_valid ? "true" : "false") << "},";
   stream << "\"attitude\":{\"valid\":" << (record.attitude_valid ? "true" : "false")
-         << ",\"roll_rad\":" << record.roll_rad << ",\"pitch_rad\":" << record.pitch_rad
-         << ",\"yaw_rad\":" << record.attitude_yaw_rad
-         << ",\"tilt_rad\":" << record.tilt_rad << "},";
-  stream << "\"projection\":{\"yaw_source\":" << jsonString(record.yaw_source)
-         << ",\"yaw_rad\":" << record.projection_yaw_rad
-         << ",\"px4_heading_valid\":" << (record.px4_heading_valid ? "true" : "false")
+         << ',';
+  writeJsonNumberField(stream, "roll_rad", record.roll_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "pitch_rad", record.pitch_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "yaw_rad", record.attitude_yaw_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "tilt_rad", record.tilt_rad);
+  stream << "},";
+  stream << "\"projection\":{\"yaw_source\":" << jsonString(record.yaw_source) << ',';
+  writeJsonNumberField(stream, "yaw_rad", record.projection_yaw_rad);
+  stream << ",\"px4_heading_valid\":" << (record.px4_heading_valid ? "true" : "false")
          << ",\"yaw_delta_to_attitude_rad\":";
   writeJsonNumberOrNull(stream, record.yaw_delta_to_attitude_rad);
   stream << "},";
@@ -121,27 +142,37 @@ void writeLidarSnapshotSummary(std::ostream& stream,
   stream << "},";
   stream << "\"scan\":{\"beams\":" << record.scan_beams
          << ",\"processed\":" << record.stats.processed_beams
-         << ",\"hits\":" << record.stats.hit_beams
-         << ",\"range_min\":" << record.scan_range_min_m
-         << ",\"range_max\":" << record.scan_range_max_m
-         << ",\"angle_min\":" << record.scan_angle_min_rad
-         << ",\"angle_max\":" << record.scan_angle_max_rad
-         << ",\"altitude_rejected\":" << record.stats.altitude_rejected_beams
+         << ",\"hits\":" << record.stats.hit_beams << ',';
+  writeJsonNumberField(stream, "range_min", record.scan_range_min_m);
+  stream << ',';
+  writeJsonNumberField(stream, "range_max", record.scan_range_max_m);
+  stream << ',';
+  writeJsonNumberField(stream, "angle_min", record.scan_angle_min_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "angle_max", record.scan_angle_max_rad);
+  stream << ",\"altitude_rejected\":" << record.stats.altitude_rejected_beams
          << ",\"projection_rejected\":" << record.stats.projection_rejected_beams
          << "},";
   stream << "\"projection_config\":{\"compensate_attitude\":"
          << (record.compensate_attitude ? "true" : "false")
          << ",\"use_px4_heading_for_scan\":"
-         << (record.use_px4_heading_for_scan ? "true" : "false")
-         << ",\"initial_heading_rad\":" << record.initial_heading_rad
-         << ",\"swap_lidar_xy_to_local_frame\":"
-         << (record.swap_lidar_xy_to_local_frame ? "true" : "false")
-         << ",\"scan_yaw_offset_rad\":" << record.scan_yaw_offset_rad
-         << ",\"lidar_mount_roll_rad\":" << record.lidar_mount_roll_rad
-         << ",\"lidar_mount_pitch_rad\":" << record.lidar_mount_pitch_rad
-         << ",\"lidar_mount_yaw_rad\":" << record.lidar_mount_yaw_rad
-         << ",\"min_projected_altitude_m\":" << record.min_projected_altitude_m
-         << ",\"max_projected_altitude_m\":" << record.max_projected_altitude_m << "},";
+         << (record.use_px4_heading_for_scan ? "true" : "false") << ',';
+  writeJsonNumberField(stream, "initial_heading_rad", record.initial_heading_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "scan_yaw_offset_rad", record.scan_yaw_offset_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "lidar_mount_roll_rad", record.lidar_mount_roll_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "lidar_mount_pitch_rad", record.lidar_mount_pitch_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "lidar_mount_yaw_rad", record.lidar_mount_yaw_rad);
+  stream << ',';
+  writeJsonNumberField(stream, "min_projected_altitude_m",
+                       record.min_projected_altitude_m);
+  stream << ',';
+  writeJsonNumberField(stream, "max_projected_altitude_m",
+                       record.max_projected_altitude_m);
+  stream << "},";
   stream << "\"projection_stats\":{\"accepted\":" << record.stats.accepted_beams
          << ",\"hit\":" << record.stats.hit_beams
          << ",\"altitude_rejected\":" << record.stats.altitude_rejected_beams
@@ -171,8 +202,11 @@ void writeLidarSnapshotSummary(std::ostream& stream,
     if (i != 0U) {
       stream << ',';
     }
-    stream << "{\"x\":" << record.stats.hit_points[i].x
-           << ",\"y\":" << record.stats.hit_points[i].y << '}';
+    stream << '{';
+    writeJsonNumberField(stream, "x", record.stats.hit_points[i].x);
+    stream << ',';
+    writeJsonNumberField(stream, "y", record.stats.hit_points[i].y);
+    stream << '}';
   }
   stream << "]}\n";
   stream.flush();

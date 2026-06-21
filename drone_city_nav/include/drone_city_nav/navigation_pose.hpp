@@ -16,30 +16,6 @@ struct NavigationPose2D {
   bool altitude_valid{false};
 };
 
-struct GeoReference {
-  double latitude_deg{0.0};
-  double longitude_deg{0.0};
-  double altitude_m{0.0};
-  bool initialized{false};
-};
-
-struct GpsFixSample {
-  double latitude_deg{0.0};
-  double longitude_deg{0.0};
-  double altitude_m{0.0};
-  std::int64_t stamp_ns{0};
-  int status{0};
-  bool horizontal_variance_known{false};
-  double horizontal_variance_m2{0.0};
-};
-
-struct QuaternionSample {
-  double w{1.0};
-  double x{0.0};
-  double y{0.0};
-  double z{0.0};
-};
-
 struct Px4LocalPositionSample {
   double x_m{0.0};
   double y_m{0.0};
@@ -64,40 +40,6 @@ enum class Px4LocalPoseUpdateStatus {
   kInvalidYaw,
 };
 
-struct CompassYawState {
-  double yaw_rad{0.0};
-  std::int64_t last_update_ns{0};
-  bool valid{false};
-};
-
-enum class CompassYawUpdateStatus {
-  kAccepted,
-  kUnavailable,
-  kInvalidYaw,
-};
-
-enum class GpsCompassPoseUpdateStatus {
-  kAccepted,
-  kWaitingForGps,
-  kMissingCompassYaw,
-  kStaleCompassYaw,
-  kRejectedPose,
-};
-
-struct GpsCompassConfig {
-  int min_fix_status{0};
-  std::int64_t max_gps_staleness_ns{1'000'000'000};
-  double max_gps_horizontal_variance_m2{25.0};
-  bool require_known_gps_covariance{false};
-  bool auto_initialize_origin{true};
-  double origin_latitude_deg{0.0};
-  double origin_longitude_deg{0.0};
-  double origin_altitude_m{0.0};
-  double yaw_offset_rad{0.0};
-  double magnetic_declination_rad{0.0};
-  double compass_to_body_yaw_offset_rad{0.0};
-};
-
 [[nodiscard]] double normalizeYaw(double yaw_rad) noexcept;
 
 [[nodiscard]] bool
@@ -107,29 +49,10 @@ timestampIsFresh(std::int64_t stamp_ns, std::int64_t now_ns,
 
 void invalidateNavigationPose(NavigationPose2D& pose) noexcept;
 
-void invalidateCompassYaw(CompassYawState& state) noexcept;
-
 [[nodiscard]] bool navigationPoseReadyForScan(const NavigationPose2D& pose,
                                               std::int64_t last_update_ns,
                                               std::int64_t now_ns,
                                               std::int64_t max_staleness_ns) noexcept;
-
-[[nodiscard]] bool compassYawReady(const CompassYawState& state, std::int64_t now_ns,
-                                   std::int64_t max_staleness_ns) noexcept;
-
-[[nodiscard]] bool validGpsFix(const GpsFixSample& fix, const GpsCompassConfig& config,
-                               std::int64_t now_ns) noexcept;
-
-[[nodiscard]] Point2 projectWgs84ToLocal(const GpsFixSample& fix,
-                                         const GeoReference& origin) noexcept;
-
-[[nodiscard]] std::optional<double>
-yawFromQuaternion(const QuaternionSample& quaternion) noexcept;
-
-[[nodiscard]] CompassYawUpdateStatus
-updateCompassYawFromQuaternion(const QuaternionSample& quaternion,
-                               bool orientation_available, std::int64_t receive_time_ns,
-                               CompassYawState& state) noexcept;
 
 [[nodiscard]] std::optional<NavigationPose2D>
 makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
@@ -139,16 +62,5 @@ makeNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
 updateNavigationPoseFromPx4LocalPosition(const Px4LocalPositionSample& sample,
                                          const Px4LocalPoseConfig& config,
                                          NavigationPose2D& state) noexcept;
-
-[[nodiscard]] std::optional<NavigationPose2D>
-makeNavigationPoseFromGpsCompass(const GpsFixSample& fix, double compass_yaw_rad,
-                                 std::int64_t now_ns, const GpsCompassConfig& config,
-                                 GeoReference& origin) noexcept;
-
-[[nodiscard]] GpsCompassPoseUpdateStatus updateNavigationPoseFromGpsCompassState(
-    const std::optional<GpsFixSample>& fix, const CompassYawState& compass_yaw,
-    std::int64_t now_ns, std::int64_t max_compass_staleness_ns,
-    const GpsCompassConfig& config, GeoReference& origin,
-    NavigationPose2D& state) noexcept;
 
 } // namespace drone_city_nav

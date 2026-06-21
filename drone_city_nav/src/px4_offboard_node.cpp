@@ -477,13 +477,6 @@ private:
                 flight_blackbox_path_.c_str());
   }
 
-  [[nodiscard]] std::size_t closestWaypointIndex() const {
-    if (!localPositionFresh() || path_points_.empty()) {
-      return 0U;
-    }
-    return drone_city_nav::closestWaypointIndex(path_points_, current_position_);
-  }
-
   [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
     if (!localPositionFresh() || path_points_.empty()) {
       return std::nullopt;

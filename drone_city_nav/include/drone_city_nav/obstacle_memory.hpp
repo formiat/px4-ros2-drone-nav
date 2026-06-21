@@ -23,7 +23,6 @@ struct LaserScan2DView {
   double lidar_z_offset_m{0.0};
   double min_projected_altitude_m{0.0};
   double max_projected_altitude_m{100000.0};
-  bool swap_lidar_xy_to_local_frame{false};
   bool altitude_valid{false};
   bool attitude_valid{false};
   bool compensate_attitude{false};

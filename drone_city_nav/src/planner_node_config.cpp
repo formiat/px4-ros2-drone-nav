@@ -27,10 +27,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
-  config.fallback.direct_path_fallback =
-      node.declare_parameter<bool>("direct_path_fallback", false);
-  config.fallback.reuse_last_valid_path_on_failure =
-      node.declare_parameter<bool>("reuse_last_valid_path_on_failure", false);
   config.fallback.stable_path_reuse_enabled =
       node.declare_parameter<bool>("stable_path_reuse_enabled", true);
   config.planner_core.stable_path_reuse_max_deviation_m = std::clamp(
@@ -53,8 +49,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
               "stable_path_prohibited_confirmations_required",
               legacy_stable_path_prohibited_confirmations_required),
           1, 1000));
-  config.fallback.max_initial_lateral_deviation_m =
-      node.declare_parameter<double>("max_initial_lateral_deviation_m", 8.0);
   config.planner_core.nearest_free_radius_cells =
       static_cast<int>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0,
@@ -125,8 +119,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("scan_yaw_offset_rad", 0.0);
   config.current_lidar.use_px4_heading_for_scan =
       node.declare_parameter<bool>("use_px4_heading_for_scan", false);
-  config.lidar_projection.swap_lidar_xy_to_local_frame =
-      node.declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
   config.lidar_projection.compensate_attitude =
       node.declare_parameter<bool>("compensate_lidar_attitude", false);
   config.lidar_projection.lidar_mount_roll_rad =

@@ -72,7 +72,7 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/include/drone_city_nav/lidar_projection.hpp` - shared lidar
   ray projection, PX4 attitude compensation, and projected-altitude filtering.
 - `drone_city_nav/include/drone_city_nav/navigation_pose.hpp` - portable
-  navigation pose and GPS/compass helpers.
+  navigation pose helpers for PX4 local position.
 - `drone_city_nav/src/px4_offboard_node.cpp` - PX4 offboard waypoint follower.
 - `drone_city_nav/include/drone_city_nav/offboard_path_follower.hpp` - ROS-free
   waypoint advancement and target continuity.
@@ -87,9 +87,6 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
-- `drone_city_nav/config/real_drone_template.yaml` - conservative template for
-  running the planner and Offboard flight control without Gazebo-specific
-  helpers.
 - `drone_city_nav/tests/planner_core_test.cpp` - deterministic planner/grid
   tests.
 - `drone_city_nav/tests/planning_grid_builder_test.cpp` - deterministic planner
@@ -98,7 +95,7 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   rasterization tests.
 - `drone_city_nav/tests/grid_overlay_test.cpp` - source overlay precedence tests.
 - `drone_city_nav/tests/obstacle_memory_test.cpp` - deterministic obstacle
-  memory and GPS/compass adapter tests.
+  memory and PX4 local pose adapter tests.
 - `drone_city_nav/tests/current_lidar_overlay_test.cpp` - current lidar overlay
   tests without ROS messages.
 - `drone_city_nav/tests/offboard_path_follower_test.cpp` - deterministic
@@ -150,24 +147,9 @@ Simulation launch starts two extra helpers:
 - `mission_monitor_node` for headless test assertions against the generated
   city footprints.
 
-Launch only the portable ROS/PX4 stack with a hardware-specific parameter file:
-
-```bash
-ros2 launch drone_city_nav city_nav.launch.py \
-  params_file:=drone_city_nav/config/real_drone_template.yaml \
-  enable_gazebo_bridge:=false \
-  enable_mission_monitor:=false
-```
-
-Before using the real-drone template, update the lidar topic, GPS/compass
-topics or PX4 local position topic version, frame alignment, grid origin, goal,
-altitude, and safety limits for the actual vehicle and test area. The template
-supports `pose_source: gps_compass` through `sensor_msgs/NavSatFix` and
-`sensor_msgs/Imu`, or `pose_source: px4_local_position` when PX4 estimator local
-position is available. In `gps_compass` mode, both GPS and compass yaw must stay
-fresh: `max_gps_staleness_s` bounds GPS fixes, and `max_compass_staleness_s`
-bounds compass yaw. If either source is missing, invalid, or stale, obstacle
-memory skips lidar integration instead of reusing cached heading data.
+The MVP runtime is currently configured for Gazebo/PX4 SITL through
+`urban_mvp.yaml`. Hardware-specific parameter files are intentionally not kept in
+the active supported path until a real vehicle integration is defined.
 
 In the simulation, PX4 local position starts at `(0, 0)` after the vehicle is
 spawned at visual point A. The default mission sets

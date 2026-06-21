@@ -32,9 +32,6 @@ struct UpcomingTurn {
   Point2 turn_point{};
 };
 
-[[nodiscard]] std::size_t closestWaypointIndex(std::span<const Point2> path,
-                                               Point2 current_position);
-
 [[nodiscard]] std::optional<OffboardPathProjection>
 closestOffboardPathProjection(std::span<const Point2> path, Point2 current_position,
                               std::size_t minimum_segment_start_index = 0U);
@@ -49,11 +46,6 @@ continuityWaypointIndex(std::span<const Point2> path, Point2 current_position,
 advanceWaypointIndex(std::span<const Point2> path, Point2 current_position,
                      std::size_t waypoint_index,
                      const OffboardPathFollowerConfig& config);
-
-[[nodiscard]] double pathTurnAngleAtWaypoint(std::span<const Point2> path,
-                                             std::size_t index, Point2 current_position,
-                                             bool local_position_valid,
-                                             const OffboardPathFollowerConfig& config);
 
 [[nodiscard]] UpcomingTurn
 upcomingTurnAtWaypoint(std::span<const Point2> path, std::size_t index,

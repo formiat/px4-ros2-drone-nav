@@ -7,9 +7,7 @@
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
-#include <sensor_msgs/msg/nav_sat_fix.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -17,16 +15,10 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace drone_city_nav {
 namespace {
-
-[[nodiscard]] std::int64_t toNanoseconds(const builtin_interfaces::msg::Time& stamp) {
-  return static_cast<std::int64_t>(stamp.sec) * 1'000'000'000LL +
-         static_cast<std::int64_t>(stamp.nanosec);
-}
 
 [[nodiscard]] std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid,
                                             const GridIndex cell) {
@@ -57,7 +49,6 @@ public:
     memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
 
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
-    pose_source_ = declare_parameter<std::string>("pose_source", "px4_local_position");
     mapping_enabled_ = declare_parameter<bool>("mapping_enabled", true);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
@@ -91,8 +82,6 @@ public:
         std::clamp(memory_config_.free_score, memory_config_.min_score,
                    memory_config_.occupied_score - 1);
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
-    swap_lidar_xy_to_local_frame_ =
-        declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     compensate_lidar_attitude_ =
         declare_parameter<bool>("compensate_lidar_attitude", false);
     lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
@@ -103,36 +92,6 @@ public:
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-
-    gps_config_.max_gps_staleness_ns = static_cast<std::int64_t>(
-        std::clamp<double>(declare_parameter<double>("max_gps_staleness_s", 1.0), 0.0,
-                           3600.0) *
-        1.0e9);
-    max_compass_staleness_ns_ = static_cast<std::int64_t>(
-        std::clamp<double>(declare_parameter<double>("max_compass_staleness_s", 1.0),
-                           0.0, 3600.0) *
-        1.0e9);
-    gps_config_.max_gps_horizontal_variance_m2 =
-        declare_parameter<double>("max_gps_horizontal_variance_m2", 25.0);
-    gps_config_.require_known_gps_covariance =
-        declare_parameter<bool>("require_known_gps_covariance", false);
-    gps_config_.auto_initialize_origin =
-        declare_parameter<bool>("auto_initialize_origin", true);
-    gps_config_.origin_latitude_deg =
-        declare_parameter<double>("origin_latitude_deg", 0.0);
-    gps_config_.origin_longitude_deg =
-        declare_parameter<double>("origin_longitude_deg", 0.0);
-    gps_config_.origin_altitude_m = declare_parameter<double>("origin_altitude_m", 0.0);
-    gps_config_.yaw_offset_rad = declare_parameter<double>("yaw_offset_rad", 0.0);
-    gps_config_.magnetic_declination_rad =
-        declare_parameter<double>("magnetic_declination_rad", 0.0);
-    gps_config_.compass_to_body_yaw_offset_rad =
-        declare_parameter<double>("compass_to_body_yaw_offset_rad", 0.0);
-    if (!gps_config_.auto_initialize_origin) {
-      gps_origin_ = GeoReference{gps_config_.origin_latitude_deg,
-                                 gps_config_.origin_longitude_deg,
-                                 gps_config_.origin_altitude_m, true};
-    }
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -157,9 +116,6 @@ public:
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
         "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
-    const std::string gps_topic = declare_parameter<std::string>("gps_topic", "/fix");
-    const std::string compass_imu_topic =
-        declare_parameter<std::string>("compass_imu_topic", "/imu");
 
     raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("obstacle_memory_grid_topic",
@@ -175,56 +131,34 @@ public:
         [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
           onAttitude(*msg);
         });
-
-    if (pose_source_ == "px4_local_position") {
-      local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-          local_position_topic, sensor_qos,
-          [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
-            onLocalPosition(*msg);
-          });
-    } else if (pose_source_ == "gps_compass") {
-      gps_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-          gps_topic, sensor_qos,
-          [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) { onGps(*msg); });
-      imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-          compass_imu_topic, sensor_qos,
-          [this](const sensor_msgs::msg::Imu::SharedPtr msg) { onImu(*msg); });
-    } else {
-      RCLCPP_ERROR(get_logger(),
-                   "Unsupported pose_source='%s'; scans will be skipped until a "
-                   "valid pose source is configured",
-                   pose_source_.c_str());
-    }
+    local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+        local_position_topic, sensor_qos,
+        [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+          onLocalPosition(*msg);
+        });
 
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory ready: enabled=%s pose_source=%s grid=%dx%d "
+                "Obstacle memory ready: enabled=%s pose=px4_local_position "
+                "grid=%dx%d "
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
-                mapping_enabled_ ? "true" : "false", pose_source_.c_str(),
-                memory_->rawGrid().width(), memory_->rawGrid().height(),
-                memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
-                memory_->rawGrid().originY(), lidar_topic.c_str(),
-                attitude_topic.c_str());
+                mapping_enabled_ ? "true" : "false", memory_->rawGrid().width(),
+                memory_->rawGrid().height(), memory_->rawGrid().resolution(),
+                memory_->rawGrid().originX(), memory_->rawGrid().originY(),
+                lidar_topic.c_str(), attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f stride=%d "
                 "raw_memory_only=true "
-                "score[min=%d max=%d free<=%d occupied>=%d] swap_lidar_xy=%s "
+                "score[min=%d max=%d free<=%d occupied>=%d] "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 memory_config_.max_lidar_range_m, memory_config_.scan_stride,
                 memory_config_.min_score, memory_config_.max_score,
                 memory_config_.free_score, memory_config_.occupied_score,
-                swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
-    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
-      RCLCPP_WARN(
-          get_logger(),
-          "Obstacle memory is using legacy swap_lidar_xy_to_local_frame with attitude "
-          "compensation. Prefer lidar_mount_* parameters for physical 3D projection.");
-    }
   }
 
 private:
@@ -266,47 +200,6 @@ private:
     logFirstPose("px4_local_position");
   }
 
-  void onGps(const sensor_msgs::msg::NavSatFix& msg) {
-    const bool covariance_known = msg.position_covariance_type !=
-                                  sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
-    const double horizontal_variance =
-        std::max(msg.position_covariance[0], msg.position_covariance[4]);
-    last_gps_ = GpsFixSample{msg.latitude,
-                             msg.longitude,
-                             msg.altitude,
-                             toNanoseconds(msg.header.stamp),
-                             static_cast<int>(msg.status.status),
-                             covariance_known,
-                             horizontal_variance};
-    updateGpsCompassPose();
-  }
-
-  void onImu(const sensor_msgs::msg::Imu& msg) {
-    const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const CompassYawUpdateStatus status = updateCompassYawFromQuaternion(
-        QuaternionSample{msg.orientation.w, msg.orientation.x, msg.orientation.y,
-                         msg.orientation.z},
-        msg.orientation_covariance[0] >= 0.0, now_ns, compass_yaw_);
-    if (status == CompassYawUpdateStatus::kUnavailable) {
-      invalidateCurrentPose();
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Compass IMU orientation is unavailable; invalidated gps_compass pose");
-      return;
-    }
-
-    if (status == CompassYawUpdateStatus::kInvalidYaw) {
-      invalidateCurrentPose();
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Compass IMU quaternion did not produce a valid yaw; invalidated "
-          "gps_compass pose");
-      return;
-    }
-
-    updateGpsCompassPose();
-  }
-
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
     const auto euler = quaternionToEuler(msg.q);
     if (!euler.has_value()) {
@@ -316,57 +209,6 @@ private:
 
     current_attitude_ = *euler;
     attitude_valid_ = true;
-  }
-
-  void updateGpsCompassPose() {
-    const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const bool origin_was_initialized = gps_origin_.initialized;
-    const GpsCompassPoseUpdateStatus status = updateNavigationPoseFromGpsCompassState(
-        last_gps_, compass_yaw_, now_ns, max_compass_staleness_ns_, gps_config_,
-        gps_origin_, current_pose_);
-
-    if (status == GpsCompassPoseUpdateStatus::kWaitingForGps ||
-        status == GpsCompassPoseUpdateStatus::kMissingCompassYaw) {
-      last_pose_update_ns_ = 0;
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Waiting for gps_compass pose: gps=%s compass=%s compass_fresh=%s "
-          "compass_age_s=%.2f",
-          last_gps_.has_value() ? "ready" : "missing",
-          compass_yaw_.valid ? "ready" : "missing",
-          compassYawReady(compass_yaw_, now_ns, max_compass_staleness_ns_) ? "true"
-                                                                           : "false",
-          compassAgeSeconds(now_ns));
-      return;
-    }
-
-    if (status == GpsCompassPoseUpdateStatus::kStaleCompassYaw) {
-      last_pose_update_ns_ = 0;
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "gps_compass pose rejected because compass yaw is stale: compass_age_s=%.2f",
-          compassAgeSeconds(now_ns));
-      return;
-    }
-
-    if (status == GpsCompassPoseUpdateStatus::kRejectedPose) {
-      last_pose_update_ns_ = 0;
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "gps_compass pose rejected: status=%d covariance_known=%s "
-                           "horizontal_variance=%.3f",
-                           last_gps_->status,
-                           last_gps_->horizontal_variance_known ? "true" : "false",
-                           last_gps_->horizontal_variance_m2);
-      return;
-    }
-
-    if (!origin_was_initialized && gps_origin_.initialized) {
-      RCLCPP_INFO(
-          get_logger(), "GPS origin initialized: lat=%.8f lon=%.8f altitude=%.2f",
-          gps_origin_.latitude_deg, gps_origin_.longitude_deg, gps_origin_.altitude_m);
-    }
-    last_pose_update_ns_ = now_ns;
-    logFirstPose("gps_compass");
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
@@ -420,7 +262,6 @@ private:
     scan_view.lidar_z_offset_m = lidar_z_offset_m_;
     scan_view.min_projected_altitude_m = min_projected_lidar_altitude_m_;
     scan_view.max_projected_altitude_m = max_projected_lidar_altitude_m_;
-    scan_view.swap_lidar_xy_to_local_frame = swap_lidar_xy_to_local_frame_;
     scan_view.altitude_valid = current_pose_.altitude_valid;
     scan_view.attitude_valid = attitude_valid_;
     scan_view.compensate_attitude = compensate_lidar_attitude_;
@@ -487,13 +328,6 @@ private:
     return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
   }
 
-  [[nodiscard]] double compassAgeSeconds(const std::int64_t now_ns) const {
-    if (compass_yaw_.last_update_ns <= 0 || now_ns <= compass_yaw_.last_update_ns) {
-      return std::numeric_limits<double>::infinity();
-    }
-    return static_cast<double>(now_ns - compass_yaw_.last_update_ns) / 1.0e9;
-  }
-
   void publishMemoryGrid() {
     const rclcpp::Time stamp = now();
     raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), stamp));
@@ -525,20 +359,14 @@ private:
 
   std::unique_ptr<ObstacleMemoryGrid> memory_;
   ObstacleMemoryConfig memory_config_{};
-  GpsCompassConfig gps_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
-  GeoReference gps_origin_{};
   NavigationPose2D current_pose_{};
   AttitudeEuler current_attitude_{};
-  std::optional<GpsFixSample> last_gps_;
-  CompassYawState compass_yaw_{};
 
   std::string frame_id_{"map"};
-  std::string pose_source_{"px4_local_position"};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};
-  std::int64_t max_compass_staleness_ns_{1'000'000'000};
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double lidar_z_offset_m_{0.0};
@@ -547,7 +375,6 @@ private:
   double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
-  bool swap_lidar_xy_to_local_frame_{false};
   bool use_px4_heading_for_scan_{true};
   bool compensate_lidar_attitude_{false};
   bool mapping_enabled_{true};
@@ -559,8 +386,6 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
 };
 

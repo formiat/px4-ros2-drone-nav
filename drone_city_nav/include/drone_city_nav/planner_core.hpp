@@ -96,9 +96,6 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 
 [[nodiscard]] PathMetrics pointPathMetrics(std::span<const Point2> path_points);
 
-[[nodiscard]] double nearestProhibitedDistanceM(const OccupancyGrid2D& grid,
-                                                GridIndex cell, double max_distance_m);
-
 [[nodiscard]] double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
                                                      std::span<const GridIndex> path,
                                                      double max_distance_m);
@@ -116,10 +113,6 @@ closestPathProjection(std::span<const Point2> path_points, Point2 current_positi
     std::span<const Point2> path_points, Point2 current_position, Point2 goal,
     double stable_path_goal_tolerance_m, double stable_path_reuse_max_deviation_m,
     double& deviation_m);
-
-[[nodiscard]] bool pathIsAllowed(const OccupancyGrid2D& grid,
-                                 std::span<const Point2> path_points,
-                                 std::size_t* prohibited_segment_index = nullptr);
 
 [[nodiscard]] bool
 pathIsTraversable(const OccupancyGrid2D& grid, std::span<const Point2> path_points,

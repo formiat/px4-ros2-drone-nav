@@ -188,7 +188,6 @@ def _projection_config_key(record: dict[str, Any]) -> tuple[Any, ...] | None:
         "compensate_attitude",
         "use_px4_heading_for_scan",
         "initial_heading_rad",
-        "swap_lidar_xy_to_local_frame",
         "scan_yaw_offset_rad",
         "lidar_mount_roll_rad",
         "lidar_mount_pitch_rad",

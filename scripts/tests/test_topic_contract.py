@@ -18,7 +18,6 @@ class TopicContractTest(unittest.TestCase):
     def test_runtime_files_do_not_reference_removed_inflated_memory_topic(self) -> None:
         checked_paths = [
             "drone_city_nav/config/urban_mvp.yaml",
-            "drone_city_nav/config/real_drone_template.yaml",
             "drone_city_nav/rviz/city_nav_debug.rviz",
             "scripts/record_debug_bag.sh",
             "README.md",
@@ -34,10 +33,7 @@ class TopicContractTest(unittest.TestCase):
                 self.assertNotIn("inflated_obstacle_points", text)
 
     def test_runtime_configs_use_prohibited_grid_contract(self) -> None:
-        for relative_path in (
-            "drone_city_nav/config/urban_mvp.yaml",
-            "drone_city_nav/config/real_drone_template.yaml",
-        ):
+        for relative_path in ("drone_city_nav/config/urban_mvp.yaml",):
             with self.subTest(relative_path=relative_path):
                 text = read(relative_path)
                 self.assertIn(
@@ -48,10 +44,7 @@ class TopicContractTest(unittest.TestCase):
                 self.assertNotIn("memory_occupied_threshold:", text)
 
     def test_runtime_config_ros_parameters_are_nested_for_ros_parser(self) -> None:
-        for relative_path in (
-            "drone_city_nav/config/urban_mvp.yaml",
-            "drone_city_nav/config/real_drone_template.yaml",
-        ):
+        for relative_path in ("drone_city_nav/config/urban_mvp.yaml",):
             with self.subTest(relative_path=relative_path):
                 lines = read(relative_path).splitlines()
                 for index, line in enumerate(lines):
@@ -93,7 +86,6 @@ class TopicContractTest(unittest.TestCase):
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [
             "drone_city_nav/config/urban_mvp.yaml",
-            "drone_city_nav/config/real_drone_template.yaml",
             "drone_city_nav/include/drone_city_nav/obstacle_memory.hpp",
             "drone_city_nav/include/drone_city_nav/current_lidar_overlay.hpp",
             "drone_city_nav/include/drone_city_nav/lidar_projection.hpp",

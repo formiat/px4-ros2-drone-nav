@@ -75,7 +75,6 @@ struct LidarSnapshotRecord {
   bool compensate_attitude{false};
   bool use_px4_heading_for_scan{false};
   double initial_heading_rad{0.0};
-  bool swap_lidar_xy_to_local_frame{false};
   double scan_yaw_offset_rad{0.0};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};

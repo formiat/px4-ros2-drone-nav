@@ -1,26 +1,93 @@
 #include "drone_city_nav/ros_conversions.hpp"
 
+#include "drone_city_nav/grid_config.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <utility>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] std::optional<int> finiteFloorToInt(const double value) noexcept {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+
+  const double floored = std::floor(value);
+  if (!std::isfinite(floored) ||
+      floored < static_cast<double>(std::numeric_limits<int>::min()) ||
+      floored > static_cast<double>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+
+  return static_cast<int>(floored);
+}
+
+[[nodiscard]] std::optional<int> finiteCeilToInt(const double value) noexcept {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+
+  const double ceiled = std::ceil(value);
+  if (!std::isfinite(ceiled) ||
+      ceiled < static_cast<double>(std::numeric_limits<int>::min()) ||
+      ceiled > static_cast<double>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+
+  return static_cast<int>(ceiled);
+}
+
+[[nodiscard]] std::optional<GridBounds>
+rosGridBounds(const nav_msgs::msg::OccupancyGrid& msg) noexcept {
+  if (!std::isfinite(msg.info.resolution) || !(msg.info.resolution > 0.0F) ||
+      msg.info.width == 0U || msg.info.height == 0U ||
+      msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+      msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+
+  const GridBounds bounds{msg.info.origin.position.x, msg.info.origin.position.y,
+                          static_cast<double>(msg.info.resolution),
+                          static_cast<int>(msg.info.width),
+                          static_cast<int>(msg.info.height)};
+  if (!gridBoundsUsable(bounds)) {
+    return std::nullopt;
+  }
+  return bounds;
+}
+
+[[nodiscard]] std::optional<GridIndex> worldToRosGridCell(const GridBounds& bounds,
+                                                          const Point2 point) noexcept {
+  const auto x = finiteFloorToInt((point.x - bounds.origin_x) / bounds.resolution_m);
+  const auto y = finiteFloorToInt((point.y - bounds.origin_y) / bounds.resolution_m);
+  if (!x.has_value() || !y.has_value()) {
+    return std::nullopt;
+  }
+  if (*x < 0 || *y < 0 || *x >= bounds.width_cells || *y >= bounds.height_cells) {
+    return std::nullopt;
+  }
+  return GridIndex{*x, *y};
+}
+
+} // namespace
 
 RawOccupancyGridFromRosResult
 rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
                         const RawOccupancyGridFromRosConfig& config) {
   RawOccupancyGridFromRosResult result{};
-  if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U ||
-      msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-      msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+  const auto bounds = rosGridBounds(msg);
+  if (!bounds.has_value()) {
     result.error = OccupancyGridFromRosError::kInvalidMetadata;
     return result;
   }
 
-  const auto width = static_cast<int>(msg.info.width);
-  const auto height = static_cast<int>(msg.info.height);
+  const auto width = bounds->width_cells;
+  const auto height = bounds->height_cells;
   result.expected_data_size =
       static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
   result.actual_data_size = msg.data.size();
@@ -29,9 +96,7 @@ rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
     return result;
   }
 
-  OccupancyGrid2D grid{
-      GridBounds{msg.info.origin.position.x, msg.info.origin.position.y,
-                 static_cast<double>(msg.info.resolution), width, height}};
+  OccupancyGrid2D grid{*bounds};
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const GridIndex cell{x, y};
@@ -118,34 +183,44 @@ prohibitedGridToRos(const OccupancyGrid2D& grid,
 double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
                                const Point2 point, const double search_radius_m,
                                const std::int8_t min_occupancy_value) {
-  if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U) {
+  const auto bounds = rosGridBounds(msg);
+  if (!bounds.has_value()) {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  const auto width = static_cast<int>(msg.info.width);
-  const auto height = static_cast<int>(msg.info.height);
+  const auto width = bounds->width_cells;
+  const auto height = bounds->height_cells;
   const std::size_t expected_data_size =
       static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
   if (msg.data.size() != expected_data_size) {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  const double resolution = static_cast<double>(msg.info.resolution);
-  const double origin_x = msg.info.origin.position.x;
-  const double origin_y = msg.info.origin.position.y;
-  const GridIndex center{
-      static_cast<int>(std::floor((point.x - origin_x) / resolution)),
-      static_cast<int>(std::floor((point.y - origin_y) / resolution))};
-  if (center.x < 0 || center.y < 0 || center.x >= width || center.y >= height) {
+  const double resolution = bounds->resolution_m;
+  const double origin_x = bounds->origin_x;
+  const double origin_y = bounds->origin_y;
+  const auto center = worldToRosGridCell(*bounds, point);
+  if (!center.has_value()) {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  const int radius_cells =
-      static_cast<int>(std::ceil(std::max(0.0, search_radius_m) / resolution));
-  const int min_x = std::max(center.x - radius_cells, 0);
-  const int max_x = std::min(center.x + radius_cells, width - 1);
-  const int min_y = std::max(center.y - radius_cells, 0);
-  const int max_y = std::min(center.y + radius_cells, height - 1);
+  const double safe_search_radius_m =
+      std::isfinite(search_radius_m) ? std::max(0.0, search_radius_m) : 0.0;
+  const auto radius_cells = finiteCeilToInt(safe_search_radius_m / resolution);
+  if (!radius_cells.has_value()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const auto radius = static_cast<long long>(*radius_cells);
+  const auto center_x = static_cast<long long>(center->x);
+  const auto center_y = static_cast<long long>(center->y);
+  const int min_x = static_cast<int>(
+      std::clamp(center_x - radius, 0LL, static_cast<long long>(width - 1)));
+  const int max_x = static_cast<int>(
+      std::clamp(center_x + radius, 0LL, static_cast<long long>(width - 1)));
+  const int min_y = static_cast<int>(
+      std::clamp(center_y - radius, 0LL, static_cast<long long>(height - 1)));
+  const int max_y = static_cast<int>(
+      std::clamp(center_y + radius, 0LL, static_cast<long long>(height - 1)));
 
   double nearest_clearance_m = std::numeric_limits<double>::infinity();
   for (int y = min_y; y <= max_y; ++y) {

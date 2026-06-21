@@ -34,9 +34,6 @@ struct StaticMapSourceResult {
   std::string error_message;
 };
 
-[[nodiscard]] const char*
-staticMapSourceStatusName(StaticMapSourceStatus status) noexcept;
-
 [[nodiscard]] std::filesystem::path
 resolveStaticMapPath(const std::filesystem::path& configured_path,
                      const std::filesystem::path& package_share_directory);

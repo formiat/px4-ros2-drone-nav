@@ -105,8 +105,6 @@ public:
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", false);
-    swap_lidar_xy_to_local_frame_ =
-        declare_parameter<bool>("swap_lidar_xy_to_local_frame", false);
     lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
     lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
     lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
@@ -239,12 +237,6 @@ public:
         lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
         current_pointcloud_z_m_, remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
         marker_z_m_, yawSourceName(), initial_heading_rad_);
-    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
-      RCLCPP_WARN(
-          get_logger(),
-          "Lidar debug is using legacy swap_lidar_xy_to_local_frame with attitude "
-          "compensation. Prefer lidar_mount_* parameters for physical 3D projection.");
-    }
   }
 
 private:
@@ -400,7 +392,6 @@ private:
                                  lidar_z_offset_m_,
                                  min_projected_lidar_altitude_m_,
                                  max_projected_lidar_altitude_m_,
-                                 swap_lidar_xy_to_local_frame_,
                                  compensate_lidar_attitude_,
                                  lidar_mount_roll_rad_,
                                  lidar_mount_pitch_rad_,
@@ -418,9 +409,6 @@ private:
 
   [[nodiscard]] Point2 headingDirection() const {
     const double yaw = projectionYawRad() + scan_yaw_offset_rad_;
-    if (swap_lidar_xy_to_local_frame_) {
-      return Point2{std::sin(yaw), std::cos(yaw)};
-    }
     return Point2{std::cos(yaw), std::sin(yaw)};
   }
 
@@ -751,7 +739,6 @@ private:
     record.compensate_attitude = compensate_lidar_attitude_;
     record.use_px4_heading_for_scan = use_px4_heading_for_scan_;
     record.initial_heading_rad = initial_heading_rad_;
-    record.swap_lidar_xy_to_local_frame = swap_lidar_xy_to_local_frame_;
     record.scan_yaw_offset_rad = scan_yaw_offset_rad_;
     record.lidar_mount_roll_rad = lidar_mount_roll_rad_;
     record.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
@@ -905,7 +892,6 @@ private:
   bool attitude_valid_{false};
   bool px4_heading_seen_{false};
   bool use_px4_heading_for_scan_{false};
-  bool swap_lidar_xy_to_local_frame_{false};
   bool compensate_lidar_attitude_{false};
   bool publish_lidar_radar_markers_{false};
 

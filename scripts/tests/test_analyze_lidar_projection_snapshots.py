@@ -59,7 +59,6 @@ def make_record(
             "compensate_attitude": True,
             "use_px4_heading_for_scan": True,
             "initial_heading_rad": 0.0,
-            "swap_lidar_xy_to_local_frame": False,
             "scan_yaw_offset_rad": 0.0,
             "lidar_mount_roll_rad": 0.0,
             "lidar_mount_pitch_rad": 0.0,

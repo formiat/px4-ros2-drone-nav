@@ -33,10 +33,7 @@ struct PlannerTimingConfig {
 };
 
 struct PlannerFallbackConfig {
-  bool direct_path_fallback{false};
-  bool reuse_last_valid_path_on_failure{false};
   bool stable_path_reuse_enabled{true};
-  double max_initial_lateral_deviation_m{8.0};
 };
 
 struct PlannerInitialPoseConfig {

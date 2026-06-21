@@ -33,16 +33,6 @@ namespace {
   return Point3{vector.x * inv_norm, vector.y * inv_norm, vector.z * inv_norm};
 }
 
-[[nodiscard]] Point3 legacyScanDirectionInMapFrame(const double angle_rad,
-                                                   const bool swap_xy) noexcept {
-  const double scan_x = std::cos(angle_rad);
-  const double scan_y = std::sin(angle_rad);
-  if (swap_xy) {
-    return Point3{scan_y, scan_x, 0.0};
-  }
-  return Point3{scan_x, scan_y, 0.0};
-}
-
 [[nodiscard]] Point3 scanDirectionInLidarFluFrame(const double angle_rad) noexcept {
   return Point3{std::cos(angle_rad), std::sin(angle_rad), 0.0};
 }
@@ -87,18 +77,6 @@ projectDirectionToNed(const Point3& lidar_direction, const LidarProjectionPose& 
       config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
   return normalizeOrZero(rotateRzyx(body_frd_direction, roll_rad, pitch_rad,
                                     pose.yaw_rad + config.scan_yaw_offset_rad));
-}
-
-[[nodiscard]] Point3
-legacyProjectDirectionToMap(const double beam_angle_rad,
-                            const LidarProjectionPose& pose,
-                            const LidarProjectionConfig& config) noexcept {
-  const Point3 legacy_direction = legacyScanDirectionInMapFrame(
-      beam_angle_rad, config.swap_lidar_xy_to_local_frame);
-  const double yaw_rad = config.swap_lidar_xy_to_local_frame
-                             ? -(pose.yaw_rad + config.scan_yaw_offset_rad)
-                             : pose.yaw_rad + config.scan_yaw_offset_rad;
-  return normalizeOrZero(rotateRzyx(legacy_direction, 0.0, 0.0, yaw_rad));
 }
 
 [[nodiscard]] bool validProjectionInputs(const LidarProjectionPose& pose,
@@ -193,18 +171,10 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
   const double beam_angle_rad =
       angle_min_rad + static_cast<double>(beam_index) * angle_increment_rad;
   projection.lidar_direction = scanDirectionInLidarFluFrame(beam_angle_rad);
-  if (config.compensate_attitude) {
-    projection.body_frd_direction = normalizeOrZero(
-        lidarFluToBodyFrd(mountedLidarDirection(projection.lidar_direction, config)));
-    projection.ned_direction =
-        projectDirectionToNed(projection.lidar_direction, pose, config);
-  } else {
-    // The legacy 2D path intentionally ignores roll/pitch and keeps the old
-    // map-frame axis behavior for compatibility with existing launch files.
-    projection.body_frd_direction =
-        legacyProjectDirectionToMap(beam_angle_rad, pose, config);
-    projection.ned_direction = projection.body_frd_direction;
-  }
+  projection.body_frd_direction = normalizeOrZero(
+      lidarFluToBodyFrd(mountedLidarDirection(projection.lidar_direction, config)));
+  projection.ned_direction =
+      projectDirectionToNed(projection.lidar_direction, pose, config);
 
   if (!lidarRawRangeUsable(raw_range, scan_range_min_m)) {
     projection.status = LidarBeamProjectionStatus::kInvalidRange;

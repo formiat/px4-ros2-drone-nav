@@ -20,14 +20,6 @@ namespace {
 
 } // namespace
 
-TEST(OffboardPathFollower, ClosestWaypointReturnsNearestPathPoint) {
-  const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}};
-
-  const std::size_t index = closestWaypointIndex(path, Point2{4.8, 0.3});
-
-  EXPECT_EQ(index, 1U);
-}
-
 TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
   const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {30.0, 0.0}};
 
@@ -44,35 +36,6 @@ TEST(OffboardPathFollower, AdvancesWaypointAfterAcceptanceRadius) {
       advanceWaypointIndex(path, Point2{5.2, 0.0}, 0U, testConfig());
 
   EXPECT_EQ(index, 2U);
-}
-
-TEST(OffboardPathFollower, PathTurnAngleUsesNearbyWaypoint) {
-  const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {5.0, 5.0}};
-
-  const double angle =
-      pathTurnAngleAtWaypoint(path, 1U, Point2{4.0, 0.0}, true, testConfig());
-
-  EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
-}
-
-TEST(OffboardPathFollower, PathTurnAngleUsesConfiguredPreviewDistance) {
-  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
-
-  const double angle =
-      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, testConfig());
-
-  EXPECT_NEAR(angle, std::numbers::pi / 2.0, 1.0e-9);
-}
-
-TEST(OffboardPathFollower, PathTurnAngleIgnoresDistantWaypointOutsidePreview) {
-  OffboardPathFollowerConfig config = testConfig();
-  config.turn_preview_distance_m = 10.0;
-  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
-
-  const double angle =
-      pathTurnAngleAtWaypoint(path, 1U, Point2{0.0, 0.0}, true, config);
-
-  EXPECT_DOUBLE_EQ(angle, 0.0);
 }
 
 TEST(OffboardPathFollower, UpcomingTurnReportsDistanceAndAngle) {

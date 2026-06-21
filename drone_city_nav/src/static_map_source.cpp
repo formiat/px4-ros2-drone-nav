@@ -7,18 +7,6 @@
 
 namespace drone_city_nav {
 
-const char* staticMapSourceStatusName(const StaticMapSourceStatus status) noexcept {
-  switch (status) {
-    case StaticMapSourceStatus::kDisabled:
-      return "disabled";
-    case StaticMapSourceStatus::kLoaded:
-      return "loaded";
-    case StaticMapSourceStatus::kLoadFailed:
-      return "load_failed";
-  }
-  return "unknown";
-}
-
 std::filesystem::path
 resolveStaticMapPath(const std::filesystem::path& configured_path,
                      const std::filesystem::path& package_share_directory) {

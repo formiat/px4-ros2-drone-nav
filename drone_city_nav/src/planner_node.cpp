@@ -70,8 +70,6 @@ enum class PathPublicationReason : std::uint8_t {
   kHoldNoPlanningGrid,
   kHoldInvalidPath,
   kHoldAfterPlanningFailure,
-  kReuseLastValidAfterFailure,
-  kDirectFallback,
 };
 
 [[nodiscard]] const char*
@@ -87,10 +85,6 @@ pathPublicationReasonName(const PathPublicationReason reason) noexcept {
       return "hold_invalid_path";
     case PathPublicationReason::kHoldAfterPlanningFailure:
       return "hold_after_planning_failure";
-    case PathPublicationReason::kReuseLastValidAfterFailure:
-      return "reuse_last_valid_after_failure";
-    case PathPublicationReason::kDirectFallback:
-      return "direct_fallback";
   }
 
   return "unknown";
@@ -197,36 +191,23 @@ public:
         fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
-                "max_staleness=%.2fs swap_lidar_xy=%s "
-                "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
+                "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
+                "lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 use_current_lidar_obstacles_ ? "true" : "false",
                 config.topics.lidar.c_str(), max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
-                swap_lidar_xy_to_local_frame_ ? "true" : "false",
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
-    if (compensate_lidar_attitude_ && swap_lidar_xy_to_local_frame_) {
-      RCLCPP_WARN(
-          get_logger(),
-          "Planner current lidar overlay is using legacy swap_lidar_xy_to_local_frame "
-          "with attitude compensation. Prefer lidar_mount_* parameters for physical "
-          "3D projection.");
-    }
     RCLCPP_INFO(get_logger(),
-                "Planner fallback policy: direct_path_fallback=%s "
-                "reuse_last_valid_path_on_failure=%s "
-                "max_initial_lateral_deviation=%.2fm "
-                "stable_path_reuse=%s stable_max_deviation=%.2fm "
+                "Planner path policy: stable_path_reuse=%s "
+                "stable_max_deviation=%.2fm "
                 "stable_goal_tolerance=%.2fm "
                 "stable_prohibited_replan_horizon=%.2fm "
                 "stable_prohibited_confirmations=%d",
-                direct_path_fallback_ ? "true" : "false",
-                reuse_last_valid_path_on_failure_ ? "true" : "false",
-                max_initial_lateral_deviation_m_,
                 stable_path_reuse_enabled_ ? "true" : "false",
                 stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
                 stable_path_prohibited_replan_horizon_m_,
@@ -246,9 +227,6 @@ private:
     goal_ = config.goal;
     inflation_radius_m_ = config.inflation_radius_m;
     max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
-    direct_path_fallback_ = config.fallback.direct_path_fallback;
-    reuse_last_valid_path_on_failure_ =
-        config.fallback.reuse_last_valid_path_on_failure;
     stable_path_reuse_enabled_ = config.fallback.stable_path_reuse_enabled;
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
@@ -257,7 +235,6 @@ private:
         config.planner_core.stable_path_prohibited_replan_horizon_m;
     stable_path_prohibited_confirmations_required_ =
         config.planner_core.stable_path_prohibited_confirmations_required;
-    max_initial_lateral_deviation_m_ = config.fallback.max_initial_lateral_deviation_m;
     nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
     memory_occupied_value_ = config.memory_grid.occupied_value;
     memory_free_value_ = config.memory_grid.free_value;
@@ -273,8 +250,6 @@ private:
     range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;
     scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
     use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
-    swap_lidar_xy_to_local_frame_ =
-        config.lidar_projection.swap_lidar_xy_to_local_frame;
     compensate_lidar_attitude_ = config.lidar_projection.compensate_attitude;
     lidar_mount_roll_rad_ = config.lidar_projection.lidar_mount_roll_rad;
     lidar_mount_pitch_rad_ = config.lidar_projection.lidar_mount_pitch_rad;
@@ -574,7 +549,7 @@ private:
 
     auto path_result = computePathOnGrid(planning_grid, "combined");
     if (!path_result.has_value()) {
-      publishFallbackPath();
+      publishPlanningFailureHold();
       return;
     }
     RCLCPP_INFO_THROTTLE(
@@ -839,15 +814,6 @@ private:
                   kPublishedPathCollinearityToleranceM);
     }
 
-    if (hasExcessiveInitialLateralDeviation(path_points)) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "%s path has excessive initial lateral deviation; using "
-                           "direct fallback path",
-                           source_label);
-      publishDirectGoalPath();
-      return true;
-    }
-
     last_valid_path_points_ = path_points;
     stable_path_prohibited_confirmations_ = 0;
     logPublishedPathSafety(grid, path_points, source_label);
@@ -996,7 +962,6 @@ private:
                                  lidar_z_offset_m_,
                                  min_projected_lidar_altitude_m_,
                                  max_projected_lidar_altitude_m_,
-                                 swap_lidar_xy_to_local_frame_,
                                  compensate_lidar_attitude_,
                                  lidar_mount_roll_rad_,
                                  lidar_mount_pitch_rad_,
@@ -1108,17 +1073,7 @@ private:
     logPlannerCountersThrottled();
   }
 
-  void publishLastValidPathOrEmpty() {
-    if (reuse_last_valid_path_on_failure_ && !last_valid_path_points_.empty()) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Reusing last valid path after replanning failure: waypoints=%zu",
-          last_valid_path_points_.size());
-      publishPath(last_valid_path_points_,
-                  PathPublicationReason::kReuseLastValidAfterFailure);
-      return;
-    }
-
+  void publishPlanningFailureHold() {
     if (!last_valid_path_points_.empty()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -1126,27 +1081,6 @@ private:
           "stale waypoints");
     }
     publishPath({}, PathPublicationReason::kHoldAfterPlanningFailure);
-  }
-
-  void publishFallbackPath() {
-    ++fallback_requests_;
-    if (direct_path_fallback_) {
-      publishDirectGoalPath();
-      return;
-    }
-
-    publishLastValidPathOrEmpty();
-  }
-
-  void publishDirectGoalPath() {
-    std::vector<Point2> path_points{current_pose_.position, goal_};
-    last_valid_path_points_ = path_points;
-    stable_path_prohibited_confirmations_ = 0;
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Publishing direct fallback path: start=(%.2f, %.2f) goal=(%.2f, %.2f)",
-        current_pose_.position.x, current_pose_.position.y, goal_.x, goal_.y);
-    publishPath(path_points, PathPublicationReason::kDirectFallback);
   }
 
   void invalidateCurrentPose() {
@@ -1169,26 +1103,6 @@ private:
       return std::numeric_limits<double>::infinity();
     }
     return static_cast<double>(now_ns - last_scan_update_ns_) / 1.0e9;
-  }
-
-  [[nodiscard]] bool
-  hasExcessiveInitialLateralDeviation(const std::vector<Point2>& path_points) const {
-    if (!direct_path_fallback_ || path_points.size() < 3U) {
-      return false;
-    }
-
-    const Point2 origin = path_points.front();
-    const double preview_x = origin.x + 20.0;
-    for (const Point2 point : path_points) {
-      if (point.x > preview_x) {
-        break;
-      }
-      if (std::abs(point.y - origin.y) > max_initial_lateral_deviation_m_) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
@@ -1375,14 +1289,6 @@ private:
       case PathPublicationReason::kComputedPath:
         ++computed_path_publications_;
         break;
-      case PathPublicationReason::kReuseLastValidAfterFailure:
-        ++fallback_path_publications_;
-        ++last_valid_reuse_path_publications_;
-        break;
-      case PathPublicationReason::kDirectFallback:
-        ++fallback_path_publications_;
-        ++direct_fallback_path_publications_;
-        break;
       case PathPublicationReason::kHoldNoPose:
       case PathPublicationReason::kHoldNoPlanningGrid:
       case PathPublicationReason::kHoldInvalidPath:
@@ -1399,13 +1305,7 @@ private:
             << " path_publications=" << path_publications_
             << " non_empty_path_publications=" << non_empty_path_publications_
             << " hold_path_publications=" << hold_path_publications_
-            << " computed_path_publications=" << computed_path_publications_
-            << " fallback_requests=" << fallback_requests_
-            << " fallback_path_publications=" << fallback_path_publications_
-            << " direct_fallback_path_publications="
-            << direct_fallback_path_publications_
-            << " last_valid_reuse_path_publications="
-            << last_valid_reuse_path_publications_;
+            << " computed_path_publications=" << computed_path_publications_;
     return summary.str();
   }
 
@@ -1431,14 +1331,11 @@ private:
   bool memory_grid_seen_{false};
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
-  bool direct_path_fallback_{false};
-  bool reuse_last_valid_path_on_failure_{false};
   bool stable_path_reuse_enabled_{true};
   bool use_static_map_{true};
   bool use_obstacle_memory_{true};
   bool use_current_lidar_obstacles_{true};
   bool use_px4_heading_for_scan_{false};
-  bool swap_lidar_xy_to_local_frame_{false};
   bool compensate_lidar_attitude_{false};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
@@ -1448,7 +1345,6 @@ private:
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{2.5};
   double static_map_min_blocking_height_m_{0.0};
-  double max_initial_lateral_deviation_m_{8.0};
   double stable_path_reuse_max_deviation_m_{12.0};
   double stable_path_goal_tolerance_m_{3.0};
   double stable_path_prohibited_replan_horizon_m_{25.0};
@@ -1484,10 +1380,6 @@ private:
   std::uint64_t non_empty_path_publications_{0U};
   std::uint64_t hold_path_publications_{0U};
   std::uint64_t computed_path_publications_{0U};
-  std::uint64_t fallback_requests_{0U};
-  std::uint64_t fallback_path_publications_{0U};
-  std::uint64_t direct_fallback_path_publications_{0U};
-  std::uint64_t last_valid_reuse_path_publications_{0U};
   std::uint64_t next_path_id_{1U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};

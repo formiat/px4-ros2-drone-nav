@@ -59,10 +59,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("quaternionToEuler(msg.q)", self.offboard_text)
 
     def test_runtime_configs_expose_attitude_topic(self) -> None:
-        for relative_path in (
-            "drone_city_nav/config/urban_mvp.yaml",
-            "drone_city_nav/config/real_drone_template.yaml",
-        ):
+        for relative_path in ("drone_city_nav/config/urban_mvp.yaml",):
             with self.subTest(relative_path=relative_path):
                 text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
                 self.assertIn(

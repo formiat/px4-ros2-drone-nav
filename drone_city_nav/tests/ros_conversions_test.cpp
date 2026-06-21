@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
 
 namespace drone_city_nav {
 namespace {
@@ -37,6 +39,48 @@ TEST(RosConversions, RejectsInvalidOccupancyGridMetadata) {
     return;
   }
   EXPECT_EQ(*result.error, OccupancyGridFromRosError::kInvalidMetadata);
+}
+
+TEST(RosConversions, RejectsNonFiniteAndOversizedOccupancyGridMetadata) {
+  nav_msgs::msg::OccupancyGrid nonfinite_origin = makeRosGrid(2U, 2U);
+  nonfinite_origin.info.origin.position.x = std::numeric_limits<double>::quiet_NaN();
+
+  const RawOccupancyGridFromRosResult nonfinite_result =
+      rawOccupancyGridFromRos(nonfinite_origin, RawOccupancyGridFromRosConfig{});
+
+  EXPECT_FALSE(nonfinite_result.grid.has_value());
+  ASSERT_TRUE(nonfinite_result.error.has_value());
+  if (!nonfinite_result.error.has_value()) {
+    return;
+  }
+  EXPECT_EQ(*nonfinite_result.error, OccupancyGridFromRosError::kInvalidMetadata);
+
+  nav_msgs::msg::OccupancyGrid infinite_resolution = makeRosGrid(2U, 2U);
+  infinite_resolution.info.resolution = std::numeric_limits<float>::infinity();
+
+  const RawOccupancyGridFromRosResult infinite_result =
+      rawOccupancyGridFromRos(infinite_resolution, RawOccupancyGridFromRosConfig{});
+
+  EXPECT_FALSE(infinite_result.grid.has_value());
+  ASSERT_TRUE(infinite_result.error.has_value());
+  if (!infinite_result.error.has_value()) {
+    return;
+  }
+  EXPECT_EQ(*infinite_result.error, OccupancyGridFromRosError::kInvalidMetadata);
+
+  nav_msgs::msg::OccupancyGrid oversized = makeRosGrid(1U, 1U);
+  oversized.info.width = std::numeric_limits<std::uint32_t>::max();
+  oversized.data.clear();
+
+  const RawOccupancyGridFromRosResult oversized_result =
+      rawOccupancyGridFromRos(oversized, RawOccupancyGridFromRosConfig{});
+
+  EXPECT_FALSE(oversized_result.grid.has_value());
+  ASSERT_TRUE(oversized_result.error.has_value());
+  if (!oversized_result.error.has_value()) {
+    return;
+  }
+  EXPECT_EQ(*oversized_result.error, OccupancyGridFromRosError::kInvalidMetadata);
 }
 
 TEST(RosConversions, RejectsMismatchedOccupancyGridDataSize) {
@@ -159,6 +203,15 @@ TEST(RosConversions, ClearanceReturnsNanForInvalidGridOrOutsidePoint) {
 
   EXPECT_TRUE(std::isnan(occupancyGridClearanceM(invalid, Point2{0.0, 0.0}, 4.0, 80)));
   EXPECT_TRUE(std::isnan(occupancyGridClearanceM(msg, Point2{100.0, 100.0}, 4.0, 80)));
+  EXPECT_TRUE(std::isnan(occupancyGridClearanceM(
+      msg, Point2{std::numeric_limits<double>::quiet_NaN(), 0.0}, 4.0, 80)));
+
+  nav_msgs::msg::OccupancyGrid invalid_metadata = msg;
+  invalid_metadata.info.origin.position.y = std::numeric_limits<double>::infinity();
+  EXPECT_TRUE(
+      std::isnan(occupancyGridClearanceM(invalid_metadata, Point2{0.0, 0.0}, 4.0, 80)));
+  EXPECT_TRUE(std::isnan(occupancyGridClearanceM(
+      msg, Point2{0.0, 0.0}, std::numeric_limits<double>::max(), 80)));
 }
 
 TEST(RosConversions, BuildsPathWithHeaderAltitudeAndIdentityOrientation) {

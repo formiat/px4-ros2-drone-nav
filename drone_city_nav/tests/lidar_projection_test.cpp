@@ -41,20 +41,6 @@ TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
   EXPECT_NEAR(norm(projection.ned_direction), 1.0, 1.0e-9);
 }
 
-TEST(LidarProjection, LegacySwapEndpointIsOnlyUsedWithoutAttitudeCompensation) {
-  const LidarProjectionPose pose{
-      Point2{5.0, 6.0}, 18.0, std::numbers::pi / 2.0, 0.0, 0.0, true, true};
-  LidarProjectionConfig config{};
-  config.compensate_attitude = false;
-  config.swap_lidar_xy_to_local_frame = true;
-
-  const LidarBeamProjection projection = project(pose, config, 4.0F);
-
-  EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
-  EXPECT_NEAR(projection.endpoint.x, 9.0, 1.0e-6);
-  EXPECT_NEAR(projection.endpoint.y, 6.0, 1.0e-6);
-}
-
 TEST(LidarProjection, ConfiguredMountYawReorientsLevelBeam) {
   const LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.0, 0.0, true, true};
   LidarProjectionConfig config{};
@@ -91,11 +77,10 @@ TEST(LidarProjection, PitchChangesProjectedAltitude) {
   EXPECT_LT(projection.endpoint_altitude_m, 18.3);
 }
 
-TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxesInsteadOfLegacySwap) {
+TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxes) {
   LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.25, -0.35, true, true};
   LidarProjectionConfig config{};
   config.compensate_attitude = true;
-  config.swap_lidar_xy_to_local_frame = true;
 
   const LidarBeamProjection projection = project(pose, config, 10.0F);
 

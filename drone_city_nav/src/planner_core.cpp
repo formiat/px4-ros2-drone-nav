@@ -169,17 +169,6 @@ PathMetrics pointPathMetrics(const std::span<const Point2> path_points) {
   return metrics;
 }
 
-double nearestProhibitedDistanceM(const OccupancyGrid2D& grid, const GridIndex cell,
-                                  const double max_distance_m) {
-  const ClearanceField2D clearance_field = ClearanceField2D::build(
-      grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
-      ClearanceSource::kProhibited);
-  if (!clearance_field.contains(cell)) {
-    return std::numeric_limits<double>::infinity();
-  }
-  return clearance_field.distanceAt(cell);
-}
-
 double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
                                        const std::span<const GridIndex> path,
                                        const double max_distance_m) {
@@ -327,25 +316,6 @@ std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
   }
 
   return remaining_path;
-}
-
-bool pathIsAllowed(const OccupancyGrid2D& grid,
-                   const std::span<const Point2> path_points,
-                   std::size_t* const prohibited_segment_index) {
-  if (path_points.size() < 2U) {
-    return true;
-  }
-
-  for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    if (pathSegmentIsAllowed(grid, path_points[index - 1U], path_points[index])) {
-      continue;
-    }
-    if (prohibited_segment_index != nullptr) {
-      *prohibited_segment_index = index - 1U;
-    }
-    return false;
-  }
-  return true;
 }
 
 bool pathIsTraversable(const OccupancyGrid2D& grid,

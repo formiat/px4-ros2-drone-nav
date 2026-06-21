@@ -36,24 +36,6 @@ turnWaypointIsCloseEnoughForSlowdown(const double distance_to_turn_m,
 
 } // namespace
 
-std::size_t closestWaypointIndex(const std::span<const Point2> path,
-                                 const Point2 current_position) {
-  if (path.empty() || !finite2D(current_position)) {
-    return 0U;
-  }
-
-  std::size_t closest_index = 0U;
-  double closest_distance_sq = std::numeric_limits<double>::infinity();
-  for (std::size_t i = 0U; i < path.size(); ++i) {
-    const double distance_sq = squaredDistance(current_position, path[i]);
-    if (distance_sq < closest_distance_sq) {
-      closest_distance_sq = distance_sq;
-      closest_index = i;
-    }
-  }
-  return closest_index;
-}
-
 std::optional<OffboardPathProjection>
 closestOffboardPathProjection(const std::span<const Point2> path,
                               const Point2 current_position,
@@ -153,15 +135,6 @@ std::size_t advanceWaypointIndex(const std::span<const Point2> path,
   }
 
   return next_index;
-}
-
-double pathTurnAngleAtWaypoint(const std::span<const Point2> path,
-                               const std::size_t index, const Point2 current_position,
-                               const bool local_position_valid,
-                               const OffboardPathFollowerConfig& config) {
-  return upcomingTurnAtWaypoint(path, index, current_position, local_position_valid,
-                                config)
-      .angle_rad;
 }
 
 UpcomingTurn upcomingTurnAtWaypoint(const std::span<const Point2> path,
