@@ -49,6 +49,22 @@ class ContainerEntrypointTest(unittest.TestCase):
                 )
                 self.assertLess(cleanup_index, container_index)
 
+    def test_stop_sim_uses_shared_cleanup(self) -> None:
+        text = self.read_script("stop_sim.sh")
+
+        self.assertIn('exec "${repo_root}/scripts/cleanup_sim_processes.sh" "$@"', text)
+        self.assertNotIn("docker run", text)
+
+    def test_cleanup_stops_related_simulation_containers(self) -> None:
+        text = self.read_script("cleanup_sim_processes.sh")
+
+        self.assertIn("docker ps --filter", text)
+        self.assertIn("container_has_simulation_processes", text)
+        self.assertIn('docker stop -t "${container_stop_timeout_s}"', text)
+        self.assertIn("gz[[:space:]]+sim", text)
+        self.assertIn("PX4-Autopilot", text)
+        self.assertIn("MicroXRCEAgent", text)
+
     def test_container_runner_owns_docker_invocation(self) -> None:
         text = self.read_script("container_run.sh")
 

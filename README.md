@@ -17,6 +17,7 @@ Use the top-level wrapper scripts for common workflows:
 ./scripts/test.sh
 ./scripts/sim_gui.sh
 ./scripts/sim_headless.sh
+./scripts/stop_sim.sh
 ```
 
 These wrappers start the dev container with the current UID/GID so generated and
@@ -70,10 +71,23 @@ Run the GUI simulation:
 ./scripts/sim_gui.sh
 ```
 
+Stop all running simulation leftovers, including related Gazebo/PX4/ROS
+processes and simulation containers:
+
+```bash
+./scripts/stop_sim.sh
+```
+
+Preview what would be stopped without killing anything:
+
+```bash
+./scripts/stop_sim.sh --dry-run
+```
+
 Gazebo GUI runs stop conflicting stale Gazebo simulator processes before
 starting, because this project does not support multiple simultaneous Gazebo
 instances on the same workstation. The cleanup is enabled by default and logs
-all candidate PIDs before terminating them. Use
+all candidate containers and PIDs before terminating them. Use
 `DRONE_GAZEBO_CLEAN_STALE_DRY_RUN=true` to list candidates without killing, or
 `DRONE_GAZEBO_CLEAN_STALE_PROCESSES=false` only for intentional debugging.
 
