@@ -129,6 +129,36 @@ effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
   return std::min(max_decel, effectiveVelocityDeltaAccelMps2(config));
 }
 
+[[nodiscard]] double smoothBrakingSpeedLimitMps(const double remaining_distance_m,
+                                                const double target_speed_mps,
+                                                const double cruise_speed_mps,
+                                                const double max_decel_mps2,
+                                                const double braking_margin_m) {
+  const double cruise_speed = sanitizedPositive(cruise_speed_mps, 12.0, 0.0, 100.0);
+  const double target_speed =
+      std::min(sanitizedPositive(target_speed_mps, 0.0, 0.0, 100.0), cruise_speed);
+  const double max_decel = sanitizedPositive(max_decel_mps2, 4.0, 1.0e-6, 100.0);
+  const double braking_margin = sanitizedPositive(braking_margin_m, 0.0, 0.0, 100.0);
+  const double remaining_distance = std::max(0.0, remaining_distance_m);
+  const double speed_delta_sq =
+      std::max(0.0, cruise_speed * cruise_speed - target_speed * target_speed);
+  if (speed_delta_sq <= kTinyDistanceM) {
+    return target_speed;
+  }
+
+  const double physics_braking_distance = speed_delta_sq / (2.0 * max_decel);
+  const double planned_braking_distance = physics_braking_distance + braking_margin;
+  if (planned_braking_distance <= kTinyDistanceM ||
+      remaining_distance >= planned_braking_distance) {
+    return cruise_speed;
+  }
+
+  const double profile_decel = speed_delta_sq / (2.0 * planned_braking_distance);
+  return std::min(cruise_speed, std::sqrt(std::max(0.0, target_speed * target_speed +
+                                                            2.0 * profile_decel *
+                                                                remaining_distance)));
+}
+
 [[nodiscard]] double targetTurnSpeedMps(const double angle_rad,
                                         const VelocityFollowerConfig& config) {
   const double cruise_speed =
@@ -222,7 +252,6 @@ double distanceFromProjectionToWaypoint(const std::span<const Point2> path,
 
 TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
                                         const OffboardPathProjection& projection,
-                                        const double current_speed_mps,
                                         const VelocityFollowerConfig& config) {
   TurnSpeedPlan plan{};
   if (path.size() < 3U || projection.segment_start_index + 1U >= path.size() ||
@@ -236,7 +265,6 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
       sanitizedPositive(config.turn_preview_distance_m, 32.0, 0.0, 1000.0);
   const double min_angle =
       sanitizedPositive(config.turn_slowdown_min_angle_rad, 0.25, 0.0, 3.2);
-  const double current_speed = std::max(0.0, current_speed_mps);
 
   const std::size_t first_turn_index =
       std::max<std::size_t>(1U, projection.segment_start_index + 1U);
@@ -261,7 +289,7 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
     const double braking_margin =
         sanitizedPositive(config.braking_margin_m, 2.0, 0.0, 100.0);
     plan.braking_distance_m =
-        std::max(0.0, (current_speed * current_speed -
+        std::max(0.0, (cruise_speed * cruise_speed -
                        plan.target_turn_speed_mps * plan.target_turn_speed_mps) /
                           (2.0 * max_decel)) +
         braking_margin;
@@ -270,12 +298,9 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
       return plan;
     }
 
-    const double braking_distance_without_margin =
-        std::max(0.0, distance_to_turn - braking_margin);
-    plan.raw_speed_limit_mps = std::min(
-        cruise_speed, std::sqrt(std::max(
-                          0.0, plan.target_turn_speed_mps * plan.target_turn_speed_mps +
-                                   2.0 * max_decel * braking_distance_without_margin)));
+    plan.raw_speed_limit_mps =
+        smoothBrakingSpeedLimitMps(distance_to_turn, plan.target_turn_speed_mps,
+                                   cruise_speed, max_decel, braking_margin);
     return plan;
   }
 
@@ -284,7 +309,6 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
 
 StopSpeedPlan speedLimitForFinalStop(const std::span<const Point2> path,
                                      const OffboardPathProjection& projection,
-                                     const double current_speed_mps,
                                      const VelocityFollowerConfig& config) {
   StopSpeedPlan plan{};
   if (path.size() < 2U || !pathIsFinite(path)) {
@@ -296,7 +320,6 @@ StopSpeedPlan speedLimitForFinalStop(const std::span<const Point2> path,
 
   const double cruise_speed =
       sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
-  const double current_speed = std::max(0.0, current_speed_mps);
   const double max_decel = effectiveVelocityDeltaDecelMps2(config);
   const double braking_margin =
       sanitizedPositive(config.braking_margin_m, 2.0, 0.0, 100.0);
@@ -306,8 +329,9 @@ StopSpeedPlan speedLimitForFinalStop(const std::span<const Point2> path,
   plan.valid = true;
   plan.distance_to_stop_m =
       distanceFromProjectionToWaypoint(path, projection, path.size() - 1U);
-  plan.braking_distance_m =
-      (current_speed * current_speed) / (2.0 * max_decel) + braking_margin;
+  plan.braking_distance_m = final_acceptance +
+                            (cruise_speed * cruise_speed) / (2.0 * max_decel) +
+                            braking_margin;
 
   if (plan.distance_to_stop_m <= final_acceptance) {
     plan.raw_speed_limit_mps = 0.0;
@@ -319,11 +343,9 @@ StopSpeedPlan speedLimitForFinalStop(const std::span<const Point2> path,
     return plan;
   }
 
-  const double braking_distance_without_margin =
-      std::max(0.0, plan.distance_to_stop_m - braking_margin);
-  plan.raw_speed_limit_mps = std::min(
-      cruise_speed,
-      std::sqrt(std::max(0.0, 2.0 * max_decel * braking_distance_without_margin)));
+  plan.raw_speed_limit_mps =
+      smoothBrakingSpeedLimitMps(plan.distance_to_stop_m - final_acceptance, 0.0,
+                                 cruise_speed, max_decel, braking_margin);
   return plan;
 }
 
@@ -397,10 +419,9 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
 
   const double current_speed =
       currentSpeedMps(current_velocity, current_velocity_valid, previous_state);
-  const TurnSpeedPlan turn_plan =
-      speedLimitForUpcomingTurn(path, *projection, current_speed, config);
+  const TurnSpeedPlan turn_plan = speedLimitForUpcomingTurn(path, *projection, config);
   const StopSpeedPlan final_stop_plan =
-      speedLimitForFinalStop(path, *projection, current_speed, config);
+      speedLimitForFinalStop(path, *projection, config);
   const double cruise_speed =
       sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
   const double turn_speed_limit =
