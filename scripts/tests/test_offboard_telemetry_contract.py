@@ -56,13 +56,14 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("writeFlightBlackbox", self.offboard_text)
         self.assertIn("cross_track_error_m", self.offboard_text)
         self.assertIn("bearing_body_rad", self.offboard_text)
-        self.assertIn("sharp_turn_hold_active", self.offboard_text)
-        self.assertIn("sharp_turn_hold_required_s", self.offboard_text)
+        self.assertIn("final_goal_hold_active", self.offboard_text)
         self.assertIn("target_hysteresis_delta_m", self.offboard_text)
         self.assertIn("target_hysteresis_path_error_m", self.offboard_text)
         self.assertIn("velocity_command", self.offboard_text)
         self.assertIn("setpoint_speed_mps", self.offboard_text)
         self.assertIn("raw_speed_limit_mps", self.offboard_text)
+        self.assertIn("final_stop_distance_m", self.offboard_text)
+        self.assertIn("final_stop_braking_distance_m", self.offboard_text)
         self.assertIn("cross_track_correction_mps", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
@@ -81,14 +82,14 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
-                self.assertIn("sharp_turn_hold_angle_deg: 60.0", text)
-                self.assertIn("sharp_turn_hold_s: 2.0", text)
                 self.assertIn("cruise_velocity_control_enabled: true", text)
                 self.assertIn("cruise_speed_mps: 12.0", text)
                 self.assertIn("min_turn_speed_mps: 2.0", text)
                 self.assertIn("max_accel_mps2: 3.0", text)
                 self.assertIn("max_decel_mps2: 4.0", text)
-                self.assertIn("braking_margin_m: 2.0", text)
+                self.assertIn("turn_preview_distance_m: 60.0", text)
+                self.assertIn("braking_margin_m: 8.0", text)
+                self.assertIn("telemetry_log_period_s: 0.1", text)
 
 
 if __name__ == "__main__":

@@ -117,9 +117,7 @@ px4_offboard_node:
     takeoff_hover_s: 2.0
     face_target_yaw: false
     acceptance_radius_m: 1.0
-    turn_preview_distance_m: 32.0
-    sharp_turn_hold_angle_deg: 60.0
-    sharp_turn_hold_s: 2.0
+    turn_preview_distance_m: 60.0
     target_switch_hold_s: 2.0
     target_switch_hold_delta_m: 5.0
     target_switch_hold_angle_deg: 45.0
@@ -131,13 +129,13 @@ px4_offboard_node:
     max_lateral_accel_mps2: 3.0
     turn_slowdown_min_angle_deg: 15.0
     sharp_turn_angle_deg: 90.0
-    braking_margin_m: 2.0
+    braking_margin_m: 8.0
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0
     altitude_hold_kp: 0.5
     max_vertical_speed_mps: 2.0
     max_clearance_grid_staleness_s: 1.5
-    telemetry_log_period_s: 0.5
+    telemetry_log_period_s: 0.1
     flight_blackbox_enabled: true
     flight_blackbox_path: log/offboard_blackbox.jsonl
     path_switch_hysteresis_m: 6.0

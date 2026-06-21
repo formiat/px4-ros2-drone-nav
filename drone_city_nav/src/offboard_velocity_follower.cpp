@@ -194,6 +194,8 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
       return "gentle_turn";
     case VelocitySetpointReason::kBrakingForTurn:
       return "braking_for_turn";
+    case VelocitySetpointReason::kFinalApproach:
+      return "final_approach";
   }
   return "unknown";
 }
@@ -280,6 +282,51 @@ TurnSpeedPlan speedLimitForUpcomingTurn(const std::span<const Point2> path,
   return plan;
 }
 
+StopSpeedPlan speedLimitForFinalStop(const std::span<const Point2> path,
+                                     const OffboardPathProjection& projection,
+                                     const double current_speed_mps,
+                                     const VelocityFollowerConfig& config) {
+  StopSpeedPlan plan{};
+  if (path.size() < 2U || !pathIsFinite(path)) {
+    return plan;
+  }
+  if (projection.segment_start_index + 1U != path.size() - 1U) {
+    return plan;
+  }
+
+  const double cruise_speed =
+      sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
+  const double current_speed = std::max(0.0, current_speed_mps);
+  const double max_decel = effectiveVelocityDeltaDecelMps2(config);
+  const double braking_margin =
+      sanitizedPositive(config.braking_margin_m, 2.0, 0.0, 100.0);
+  const double final_acceptance =
+      sanitizedPositive(config.final_acceptance_radius_m, 1.0, 0.0, 100.0);
+
+  plan.valid = true;
+  plan.distance_to_stop_m =
+      distanceFromProjectionToWaypoint(path, projection, path.size() - 1U);
+  plan.braking_distance_m =
+      (current_speed * current_speed) / (2.0 * max_decel) + braking_margin;
+
+  if (plan.distance_to_stop_m <= final_acceptance) {
+    plan.raw_speed_limit_mps = 0.0;
+    return plan;
+  }
+
+  if (plan.distance_to_stop_m > plan.braking_distance_m) {
+    plan.raw_speed_limit_mps = cruise_speed;
+    return plan;
+  }
+
+  const double braking_distance_without_margin =
+      std::max(0.0, plan.distance_to_stop_m - braking_margin);
+  plan.raw_speed_limit_mps = std::min(
+      cruise_speed,
+      std::sqrt(std::max(0.0, 2.0 * max_decel * braking_distance_without_margin)));
+  return plan;
+}
+
 VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity,
                                                    const Point2 previous_velocity,
                                                    const bool previous_velocity_valid,
@@ -352,12 +399,19 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
       currentSpeedMps(current_velocity, current_velocity_valid, previous_state);
   const TurnSpeedPlan turn_plan =
       speedLimitForUpcomingTurn(path, *projection, current_speed, config);
+  const StopSpeedPlan final_stop_plan =
+      speedLimitForFinalStop(path, *projection, current_speed, config);
   const double cruise_speed =
       sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
-  const double raw_speed_limit =
+  const double turn_speed_limit =
       turn_plan.valid && std::isfinite(turn_plan.raw_speed_limit_mps)
           ? std::clamp(turn_plan.raw_speed_limit_mps, 0.0, cruise_speed)
           : cruise_speed;
+  const double final_stop_speed_limit =
+      final_stop_plan.valid && std::isfinite(final_stop_plan.raw_speed_limit_mps)
+          ? std::clamp(final_stop_plan.raw_speed_limit_mps, 0.0, cruise_speed)
+          : cruise_speed;
+  const double raw_speed_limit = std::min(turn_speed_limit, final_stop_speed_limit);
 
   const double previous_speed =
       previous_state.previous_velocity_setpoint_valid &&
@@ -392,6 +446,10 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
 
   plan.valid = true;
   plan.reason = reasonFromTurnPlan(turn_plan, config);
+  if (final_stop_speed_limit + 1.0e-6 < turn_speed_limit &&
+      final_stop_speed_limit + 1.0e-6 < cruise_speed) {
+    plan.reason = VelocitySetpointReason::kFinalApproach;
+  }
   plan.velocity_xy = limited_velocity.velocity;
   plan.path_tangent = tangent;
   plan.projection = projection->point;
@@ -403,6 +461,7 @@ planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_po
   plan.cross_track_correction_mps = norm(correction);
   plan.path_projection = *projection;
   plan.turn = turn_plan;
+  plan.final_stop = final_stop_plan;
   return plan;
 }
 

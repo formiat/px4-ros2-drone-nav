@@ -468,8 +468,8 @@ limits, and bounded cross-track correction back toward the active segment.
 
 The main simulation parameters are:
 
-- `turn_preview_distance_m` - distance used by diagnostics when reporting the
-  next upcoming path turn.
+- `turn_preview_distance_m` - maximum distance used to inspect upcoming path
+  turns for velocity limiting and diagnostics.
 - `cruise_velocity_control_enabled` - enables velocity setpoints during cruise.
 - `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
 - `min_turn_speed_mps` - minimum requested speed near sharp turns.
@@ -478,18 +478,19 @@ The main simulation parameters are:
 - `turn_slowdown_min_angle_deg` and `sharp_turn_angle_deg` - corner-angle range
   used to map turn severity to target turn speed.
 - `braking_margin_m` - extra distance kept before a turn when computing
-  braking distance.
+  braking distance. The same margin is used by the final-approach stop profile
+  on the last path segment.
 - `cross_track_gain` and `max_cross_track_correction_angle_deg` - bounded
   correction back toward the active path segment.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
   cruise altitude.
-- `sharp_turn_hold_angle_deg` and `sharp_turn_hold_s` - legacy fixed hold
-  parameters. They are not used as the normal slowdown mechanism while velocity
-  cruise is enabled.
 - `commanded_target_hysteresis_m` - keeps the previous commanded target after a
   path update when the previous target is still near the updated path and the
   current-to-previous-target segment remains traversable in the latest
   prohibited grid.
+- Final goal completion is latched in the offboard node after the vehicle
+  enters the acceptance radius or crosses the final path plane. Once latched,
+  cruise velocity is not re-enabled for the same mission goal.
 
 Runtime logs from `px4_offboard_node` include `actual_speed`, current control
 mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed

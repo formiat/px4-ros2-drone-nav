@@ -15,6 +15,7 @@ enum class VelocitySetpointReason {
   kStraight,
   kGentleTurn,
   kBrakingForTurn,
+  kFinalApproach,
 };
 
 struct VelocityFollowerConfig {
@@ -47,6 +48,13 @@ struct TurnSpeedPlan {
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
 };
 
+struct StopSpeedPlan {
+  bool valid{false};
+  double distance_to_stop_m{std::numeric_limits<double>::infinity()};
+  double braking_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct VelocityVectorLimitResult {
   Point2 velocity{};
   double delta_mps{0.0};
@@ -67,6 +75,7 @@ struct VelocitySetpointPlan {
   double cross_track_correction_mps{0.0};
   OffboardPathProjection path_projection{};
   TurnSpeedPlan turn{};
+  StopSpeedPlan final_stop{};
 };
 
 [[nodiscard]] const char*
@@ -80,6 +89,11 @@ distanceFromProjectionToWaypoint(std::span<const Point2> path,
 [[nodiscard]] TurnSpeedPlan speedLimitForUpcomingTurn(
     std::span<const Point2> path, const OffboardPathProjection& projection,
     double current_speed_mps, const VelocityFollowerConfig& config);
+
+[[nodiscard]] StopSpeedPlan
+speedLimitForFinalStop(std::span<const Point2> path,
+                       const OffboardPathProjection& projection,
+                       double current_speed_mps, const VelocityFollowerConfig& config);
 
 [[nodiscard]] VelocityVectorLimitResult
 limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,

@@ -41,6 +41,7 @@ TEST(OffboardVelocityFollower, StraightPathReturnsCruiseVelocityAlongSegment) {
   ASSERT_TRUE(plan.valid);
   EXPECT_FALSE(plan.final_goal_reached);
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kStraight);
+  EXPECT_TRUE(plan.final_stop.valid);
   EXPECT_NEAR(plan.velocity_xy.x, 12.0, 1.0e-9);
   EXPECT_NEAR(plan.velocity_xy.y, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.speed_mps, 12.0, 1.0e-9);
@@ -78,6 +79,7 @@ TEST(OffboardVelocityFollower, NearSharpTurnReducesSpeedByBrakingDistance) {
 
   ASSERT_TRUE(plan.valid);
   ASSERT_TRUE(plan.turn.valid);
+  EXPECT_FALSE(plan.final_stop.valid);
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kBrakingForTurn);
   EXPECT_NEAR(plan.turn.angle_rad, std::numbers::pi / 2.0, 1.0e-9);
   EXPECT_NEAR(plan.turn.distance_to_turn_m, 10.0, 1.0e-9);
@@ -123,6 +125,41 @@ TEST(OffboardVelocityFollower, AccelerationLimitClampsSpeedIncrease) {
   ASSERT_TRUE(plan.valid);
   EXPECT_NEAR(plan.accel_limited_speed_mps, 2.3, 1.0e-9);
   EXPECT_NEAR(plan.speed_mps, 2.3, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, FinalSegmentBrakesForGoalBeforeAcceptance) {
+  const std::vector<Point2> path{{0.0, 0.0}, {100.0, 0.0}};
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      path, Point2{80.0, 0.0}, Point2{12.0, 0.0}, true, 1U, 0.1, state, testConfig());
+
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(plan.final_stop.valid);
+  EXPECT_FALSE(plan.final_goal_reached);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kFinalApproach);
+  EXPECT_NEAR(plan.final_stop.distance_to_stop_m, 20.0, 1.0e-9);
+  EXPECT_NEAR(plan.final_stop.braking_distance_m, 26.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_speed_limit_mps, std::sqrt(108.0), 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 11.7, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, FinalStopDoesNotAffectTurnBeforeFinalSegment) {
+  const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      path, Point2{20.0, 0.0}, Point2{12.0, 0.0}, true, 1U, 0.1, state, testConfig());
+
+  ASSERT_TRUE(plan.valid);
+  ASSERT_TRUE(plan.turn.valid);
+  EXPECT_FALSE(plan.final_stop.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kBrakingForTurn);
+  EXPECT_NEAR(plan.turn.distance_to_turn_m, 10.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
