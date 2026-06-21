@@ -81,24 +81,9 @@ class RunCityMvpLaunchContractTest(unittest.TestCase):
             self.text,
         )
 
-    def test_navigation_backend_is_forwarded_from_environment(self) -> None:
-        self.assertIn("NAVIGATION_BACKEND", self.container_text)
-        self.assertIn('navigation_backend="${NAVIGATION_BACKEND:-offboard}"', self.text)
-        self.assertIn("offboard|mission", self.text)
-        self.assertIn('navigation_backend:="${navigation_backend}"', self.text)
-        self.assertIn('echo "Navigation backend: ${navigation_backend}"', self.text)
-        self.assertIn('--navigation-backend "${navigation_backend}"', self.text)
-
-    def test_launch_selects_exactly_one_flight_control_backend(self) -> None:
-        self.assertIn('LaunchConfiguration("navigation_backend")', self.launch_text)
-        self.assertIn('DeclareLaunchArgument(\n                "navigation_backend"', self.launch_text)
-        self.assertIn("def flight_control_nodes", self.launch_text)
-        self.assertIn('if backend == "offboard"', self.launch_text)
+    def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="px4_offboard_node"', self.launch_text)
-        self.assertIn('if backend == "mission"', self.launch_text)
-        self.assertIn('executable="px4_mission_node.py"', self.launch_text)
-        self.assertIn("OpaqueFunction(function=flight_control_nodes)", self.launch_text)
-        self.assertNotIn("OpaqueFunction(function=offboard_nodes)", self.launch_text)
+        self.assertIn("px4_offboard,", self.launch_text)
 
 
 if __name__ == "__main__":

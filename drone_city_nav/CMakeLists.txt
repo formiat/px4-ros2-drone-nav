@@ -143,10 +143,6 @@ install(
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
-install(
-  PROGRAMS scripts/px4_mission_node.py
-  DESTINATION lib/${PROJECT_NAME})
-
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_NAME})
 

@@ -29,10 +29,7 @@ def make_ros_log(
     memory: bool = True,
     current_lidar: bool = True,
     static_map: bool = True,
-    navigation_backend: str = "offboard",
     mission_success: bool = True,
-    emergency_stop: bool = False,
-    include_mission_emergency_markers: bool = True,
     current_lidar_used_summary: bool = False,
 ) -> str:
     lines = [
@@ -44,56 +41,16 @@ def make_ros_log(
             f"current_lidar={str(current_lidar).lower()}"
         ),
         "[planner_node]: Published path: waypoints=12 length=34.5m",
+        (
+            "[px4_offboard_node]: Sent PX4 command: "
+            "VEHICLE_CMD_DO_SET_MODE param1=1 param2=6"
+        ),
+        (
+            "[px4_offboard_node]: Sent PX4 command: "
+            "VEHICLE_CMD_COMPONENT_ARM_DISARM param1=1"
+        ),
+        "[px4_offboard_node]: Offboard summary: armed=true offboard=true",
     ]
-    if navigation_backend == "offboard":
-        lines.extend(
-            [
-                (
-                    "[px4_offboard_node]: Sent PX4 command: "
-                    "VEHICLE_CMD_DO_SET_MODE param1=1 param2=6"
-                ),
-                (
-                    "[px4_offboard_node]: Sent PX4 command: "
-                    "VEHICLE_CMD_COMPONENT_ARM_DISARM param1=1"
-                ),
-                "[px4_offboard_node]: Offboard summary: armed=true offboard=true",
-            ]
-        )
-    elif navigation_backend == "mission":
-        lines.extend(
-            [
-                (
-                    "[px4_mission_node]: Mission backend ready: "
-                    "connection=udpin:0.0.0.0:14540"
-                ),
-                (
-                    "[px4_mission_node]: MISSION_BACKEND upload_result "
-                    "path_id=1 success=true ack=MAV_MISSION_ACCEPTED"
-                ),
-                (
-                    "[px4_mission_node]: MISSION_BACKEND mode_command "
-                    "path_id=1 mode=AUTO.MISSION"
-                ),
-                "[px4_mission_node]: MISSION_BACKEND arm_command path_id=1",
-            ]
-        )
-        if emergency_stop:
-            lines.append("[mission_monitor_node]: MISSION_CHECK emergency_stop=true")
-            if include_mission_emergency_markers:
-                lines.extend(
-                    [
-                        (
-                            "[px4_mission_node]: MISSION_BACKEND emergency_stop "
-                            "requested=true action=disarm"
-                        ),
-                        (
-                            "[px4_mission_node]: MISSION_BACKEND "
-                            "emergency_stop_disarm_sent resend_period_s=2.00"
-                        ),
-                    ]
-                )
-    else:
-        raise ValueError(f"unsupported test backend: {navigation_backend}")
 
     if static_map:
         lines.extend(
@@ -274,46 +231,6 @@ class CityMvpHeadlessValidatorTest(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("FAIL: mission monitor reported failure", result.errors)
-
-    def test_mission_backend_markers_pass_mission_validation(self) -> None:
-        result = validator.validate_logs(
-            ros_log=make_ros_log(navigation_backend="mission"),
-            px4_log=PX4_OK_LOG,
-            options=validator.ValidationOptions(
-                expected_static=True,
-                expected_memory=True,
-                expected_current_lidar=True,
-                enable_lidar_debug=True,
-                navigation_backend="mission",
-                mission_check=True,
-            ),
-        )
-
-        self.assertTrue(result.ok, result.errors)
-        self.assertIn("OK: mission backend is ready", result.messages)
-        self.assertIn("OK: mission upload succeeds", result.messages)
-
-    def test_mission_emergency_stop_requires_mission_disarm_markers(self) -> None:
-        result = validator.validate_logs(
-            ros_log=make_ros_log(
-                navigation_backend="mission",
-                emergency_stop=True,
-                include_mission_emergency_markers=False,
-            ),
-            px4_log=PX4_OK_LOG,
-            options=validator.ValidationOptions(
-                expected_static=True,
-                expected_memory=True,
-                expected_current_lidar=True,
-                enable_lidar_debug=True,
-                navigation_backend="mission",
-                mission_check=True,
-            ),
-        )
-
-        self.assertFalse(result.ok)
-        self.assertIn("FAIL: mission emergency stop is received", result.errors)
-        self.assertIn("FAIL: mission emergency disarm is sent", result.errors)
 
     def test_px4_critical_error_is_allowed_when_flag_is_enabled(self) -> None:
         result = validator.validate_logs(
