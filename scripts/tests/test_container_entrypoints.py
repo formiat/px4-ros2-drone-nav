@@ -58,7 +58,8 @@ class ContainerEntrypointTest(unittest.TestCase):
     def test_cleanup_stops_related_simulation_containers(self) -> None:
         text = self.read_script("cleanup_sim_processes.sh")
 
-        self.assertIn("docker ps --filter", text)
+        self.assertIn("docker ps --format", text)
+        self.assertNotIn("docker ps --filter", text)
         self.assertIn("container_has_simulation_processes", text)
         self.assertIn('docker stop -t "${container_stop_timeout_s}"', text)
         self.assertIn("gz[[:space:]]+sim", text)

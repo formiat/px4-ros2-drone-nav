@@ -34,21 +34,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       1000.0);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
-  const double legacy_stable_path_prohibited_replan_horizon_m =
-      node.declare_parameter<double>("stable_path_blocking_replan_horizon_m", 25.0);
   config.planner_core.stable_path_prohibited_replan_horizon_m = std::clamp(
-      node.declare_parameter<double>("stable_path_prohibited_replan_horizon_m",
-                                     legacy_stable_path_prohibited_replan_horizon_m),
+      node.declare_parameter<double>("stable_path_prohibited_replan_horizon_m", 25.0),
       0.0, 1000.0);
-  const std::int64_t legacy_stable_path_prohibited_confirmations_required =
-      node.declare_parameter<std::int64_t>("stable_path_blocked_confirmations_required",
-                                           2);
-  config.planner_core.stable_path_prohibited_confirmations_required =
-      static_cast<int>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>(
-              "stable_path_prohibited_confirmations_required",
-              legacy_stable_path_prohibited_confirmations_required),
-          1, 1000));
+  config.planner_core.stable_path_prohibited_confirmations_required = static_cast<int>(
+      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                   "stable_path_prohibited_confirmations_required", 2),
+                               1, 1000));
   config.planner_core.nearest_free_radius_cells =
       static_cast<int>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("nearest_free_radius_cells", 10), 0,

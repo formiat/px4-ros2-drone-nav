@@ -24,7 +24,6 @@ clean_stale_processes_enabled="$(
 clean_stale_processes_dry_run="$(
   normalize_bool "${DRONE_GAZEBO_CLEAN_STALE_DRY_RUN:-false}"
 )"
-image_name="${DRONE_GAZEBO_DEV_IMAGE:-drone-gazebo-dev:latest}"
 container_stop_timeout_s="${DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S:-10}"
 
 for arg in "$@"; do
@@ -39,7 +38,6 @@ Usage: $0 [--dry-run]
 Stops stale simulation containers and processes for this repository.
 
 Environment:
-  DRONE_GAZEBO_DEV_IMAGE                 Docker image to inspect.
   DRONE_GAZEBO_CLEAN_STALE_DRY_RUN       List candidates without stopping them.
   DRONE_GAZEBO_CLEAN_STALE_PROCESSES     Set false to disable cleanup.
   DRONE_GAZEBO_CONTAINER_STOP_TIMEOUT_S  docker stop timeout in seconds.
@@ -90,7 +88,7 @@ stop_stale_simulation_containers() {
 
   local container_ids=()
   mapfile -t container_ids < <(
-    docker ps --filter "ancestor=${image_name}" --format '{{.ID}}' 2>/dev/null || true
+    docker ps --format '{{.ID}}' 2>/dev/null || true
   )
 
   local selected_ids=()
@@ -108,7 +106,7 @@ stop_stale_simulation_containers() {
 
   echo "Simulation container cleanup: candidates=${#selected_ids[@]} dry_run=${clean_stale_processes_dry_run}"
   for container_id in "${selected_ids[@]}"; do
-    echo "Simulation container cleanup candidate: container=${container_id} image=${image_name}"
+    echo "Simulation container cleanup candidate: container=${container_id}"
   done
 
   if bool_is_true "${clean_stale_processes_dry_run}"; then
