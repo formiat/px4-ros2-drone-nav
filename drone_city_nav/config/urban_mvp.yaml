@@ -122,9 +122,9 @@ px4_offboard_node:
     target_switch_hold_delta_m: 5.0
     target_switch_hold_angle_deg: 45.0
     cruise_velocity_control_enabled: true
-    cruise_speed_mps: 18.0
+    cruise_speed_mps: 22.0
     min_turn_speed_mps: 3.0
-    max_accel_mps2: 5.0
+    max_accel_mps2: 7.0
     max_decel_mps2: 8.0
     max_lateral_accel_mps2: 5.0
     turn_slowdown_min_angle_deg: 15.0
