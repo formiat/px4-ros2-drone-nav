@@ -85,7 +85,6 @@ struct LidarSnapshotRecord {
   bool path_seen{false};
   std::size_t path_waypoints{0U};
   std::size_t remembered_hits{0U};
-  std::size_t candidate_hits{0U};
   bool image_ok{false};
   std::filesystem::path image_path;
   std::filesystem::path scan_csv_path;

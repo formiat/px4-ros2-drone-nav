@@ -341,10 +341,10 @@ The main obstacle-memory topics are:
 - `/drone_city_nav/lidar_debug_points` - current lidar hit endpoints, shown red
   in RViz.
 - `/drone_city_nav/remembered_lidar_points` - accumulated lidar hit endpoints,
-  shown yellow in RViz. The MVP config uses `min_remember_altitude_m=10.0`,
-  `remembered_hit_min_confirmations=3`, and `hit_memory_resolution_m=0.25` for
-  this visual debug memory. These points use the same attitude-compensated
-  projected-altitude filter as obstacle memory.
+  shown yellow in RViz. The MVP config uses `min_remember_altitude_m=10.0` and
+  `hit_memory_resolution_m=0.25` for this visual debug memory. Hits are remembered
+  on first observation in each debug-memory cell. These points use the same
+  attitude-compensated projected-altitude filter as obstacle memory.
 - `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
   controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/static_map_grid` - static city map layer only. It is

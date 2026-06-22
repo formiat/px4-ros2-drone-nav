@@ -175,7 +175,6 @@ lidar_debug_node:
     lidar_radar_marker_z_m: 0.05
     publish_lidar_radar_markers: false
     hit_memory_resolution_m: 0.25
-    remembered_hit_min_confirmations: 3
     min_remember_altitude_m: 10.0
     max_remembered_hit_points: 50000
     output_dir: log/lidar_debug
@@ -194,7 +193,6 @@ lidar_debug_node:
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
     beam_csv_stride: 1
-    image_beam_stride: 3
     max_logged_hit_points: 256
     max_snapshots: 0
     px4_local_origin_x_m: 54.0

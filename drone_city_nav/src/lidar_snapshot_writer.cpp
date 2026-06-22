@@ -191,7 +191,6 @@ void writeLidarSnapshotSummary(std::ostream& stream,
   stream << "\"path\":{\"seen\":" << (record.path_seen ? "true" : "false")
          << ",\"waypoints\":" << record.path_waypoints << "},";
   stream << "\"remembered_hits\":" << record.remembered_hits << ',';
-  stream << "\"candidate_hits\":" << record.candidate_hits << ',';
   stream << "\"image_ok\":" << (record.image_ok ? "true" : "false") << ',';
   stream << "\"image\":" << jsonString(record.image_path.string()) << ',';
   stream << "\"scan_csv\":" << jsonString(record.scan_csv_path.string()) << ',';

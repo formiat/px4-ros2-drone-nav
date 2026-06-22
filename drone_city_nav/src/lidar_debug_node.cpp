@@ -25,7 +25,6 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
-#include <map>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -111,8 +110,6 @@ public:
     lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
     beam_csv_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("beam_csv_stride", 1), 1, 100000));
-    image_beam_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("image_beam_stride", 4), 1, 100000));
     max_logged_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0, 100000));
     max_snapshots_ = static_cast<std::uint64_t>(
@@ -137,17 +134,10 @@ public:
         declare_parameter<bool>("publish_lidar_radar_markers", false);
     hit_memory_resolution_m_ =
         std::max(0.05, declare_parameter<double>("hit_memory_resolution_m", 0.25));
-    remembered_hit_min_confirmations_ =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>("remembered_hit_min_confirmations", 3), 1,
-            1000));
     min_remember_altitude_m_ =
         std::max(0.0, declare_parameter<double>("min_remember_altitude_m", 0.0));
     max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
         declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1,
-        1000000));
-    max_hit_candidate_cells_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-        declare_parameter<std::int64_t>("max_hit_candidate_cells", 200000), 1,
         1000000));
     current_pointcloud_z_m_ =
         declare_parameter<double>("current_lidar_pointcloud_z_m", kGroundDebugZ);
@@ -218,8 +208,8 @@ public:
         "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
         "prohibited_points='%s' "
         "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
-        "min_confirmations=%zu min_remember_altitude=%.2fm "
-        "max_remembered_hits=%zu max_candidate_cells=%zu "
+        "min_remember_altitude=%.2fm "
+        "max_remembered_hits=%zu "
         "compensate_attitude=%s lidar_z_offset=%.2f "
         "projected_altitude_range=[%.2f, %.2f] "
         "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
@@ -231,8 +221,7 @@ public:
         local_position_topic.c_str(), attitude_topic.c_str(), pointcloud_topic_.c_str(),
         remembered_pointcloud_topic_.c_str(), prohibited_pointcloud_topic_.c_str(),
         marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
-        hit_memory_resolution_m_, remembered_hit_min_confirmations_,
-        min_remember_altitude_m_, max_remembered_hit_points_, max_hit_candidate_cells_,
+        hit_memory_resolution_m_, min_remember_altitude_m_, max_remembered_hit_points_,
         compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
         min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
         lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
@@ -341,7 +330,7 @@ private:
         "yaw_delta=%.3f roll=%.3f pitch=%.3f tilt=%.3f "
         "scan_age=%.3f pose_age=%.3f heading_age=%.3f attitude_age=%.3f "
         "beams=%zu hits=%zu altitude_rejected=%zu "
-        "projection_rejected=%zu remembered_hits=%zu candidate_hits=%zu grid=%s "
+        "projection_rejected=%zu remembered_hits=%zu grid=%s "
         "path_waypoints=%zu image='%s' csv='%s'",
         prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
         current_altitude_m_, horizontal_speed_mps_,
@@ -354,15 +343,10 @@ private:
         ageSecondsOrNan(last_heading_receive_ns_, now_ns),
         ageSecondsOrNan(last_attitude_receive_ns_, now_ns), stats.processed_beams,
         stats.hit_beams, stats.altitude_rejected_beams, stats.projection_rejected_beams,
-        remembered_hit_points_.size(), hit_candidates_.size(),
-        grid_seen_ ? "true" : "false", path_seen_ ? last_path_.poses.size() : 0U,
-        image_path.string().c_str(), csv_path.string().c_str());
+        remembered_hit_points_.size(), grid_seen_ ? "true" : "false",
+        path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
+        csv_path.string().c_str());
   }
-
-  struct HitCandidate {
-    std::size_t confirmations{0U};
-    Point2 point{};
-  };
 
   [[nodiscard]] double scanRangeMax() const {
     return std::min(static_cast<double>(last_scan_.range_max), max_lidar_range_m_);
@@ -574,48 +558,6 @@ private:
            current_altitude_m_ >= min_remember_altitude_m_;
   }
 
-  void pruneHitCandidateMemory() {
-    const std::size_t before = hit_candidates_.size();
-    for (auto it = hit_candidates_.begin(); it != hit_candidates_.end();) {
-      if (remembered_hit_cells_.contains(it->first)) {
-        it = hit_candidates_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-
-    while (hit_candidates_.size() > max_hit_candidate_cells_) {
-      hit_candidates_.erase(hit_candidates_.begin());
-    }
-
-    if (hit_candidates_.size() < before) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Pruned lidar hit candidate memory: before=%zu after=%zu remembered=%zu "
-          "candidate_cap=%zu",
-          before, hit_candidates_.size(), remembered_hit_cells_.size(),
-          max_hit_candidate_cells_);
-    }
-  }
-
-  [[nodiscard]] bool ensureCandidateCapacity() {
-    if (hit_candidates_.size() < max_hit_candidate_cells_) {
-      return true;
-    }
-
-    pruneHitCandidateMemory();
-    if (hit_candidates_.size() < max_hit_candidate_cells_) {
-      return true;
-    }
-
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Dropping unconfirmed lidar hit candidates: candidates=%zu cap=%zu "
-        "remembered=%zu",
-        hit_candidates_.size(), max_hit_candidate_cells_, remembered_hit_cells_.size());
-    return false;
-  }
-
   void rememberHitPoints(const std::vector<Point2>& hit_points) {
     if (!rememberedHitsAllowed()) {
       RCLCPP_INFO_THROTTLE(
@@ -635,26 +577,6 @@ private:
       if (remembered_hit_cells_.contains(key)) {
         continue;
       }
-      auto candidate_it = hit_candidates_.find(key);
-      if (candidate_it == hit_candidates_.end()) {
-        if (!ensureCandidateCapacity()) {
-          continue;
-        }
-        candidate_it = hit_candidates_.try_emplace(key).first;
-      }
-
-      HitCandidate& candidate = candidate_it->second;
-      ++candidate.confirmations;
-      if (candidate.confirmations == 1U) {
-        candidate.point = point;
-      } else {
-        const double sample_count = static_cast<double>(candidate.confirmations);
-        candidate.point.x += (point.x - candidate.point.x) / sample_count;
-        candidate.point.y += (point.y - candidate.point.y) / sample_count;
-      }
-      if (candidate.confirmations < remembered_hit_min_confirmations_) {
-        continue;
-      }
       if (remembered_hit_points_.size() >= max_remembered_hit_points_) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                              "Remembered lidar hit memory is full: points=%zu max=%zu "
@@ -664,10 +586,8 @@ private:
         return;
       }
       remembered_hit_cells_.insert(key);
-      remembered_hit_points_.push_back(candidate.point);
-      hit_candidates_.erase(key);
+      remembered_hit_points_.push_back(point);
     }
-    pruneHitCandidateMemory();
   }
 
   [[nodiscard]] std::vector<Point2> pathPoints() const {
@@ -688,10 +608,9 @@ private:
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return hits;
     }
-    hits.reserve((last_scan_.ranges.size() + image_beam_stride_ - 1U) /
-                 image_beam_stride_);
+    hits.reserve(last_scan_.ranges.size());
 
-    for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
+    for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
       const float raw_range = last_scan_.ranges[i];
       const LidarBeamProjection projection = projectScanBeam(i, raw_range);
       if (projection.status != LidarBeamProjectionStatus::kAccepted ||
@@ -750,7 +669,6 @@ private:
     record.path_seen = path_seen_;
     record.path_waypoints = path_seen_ ? last_path_.poses.size() : 0U;
     record.remembered_hits = remembered_hit_points_.size();
-    record.candidate_hits = hit_candidates_.size();
     record.image_ok = image_ok;
     record.image_path = image_path;
     record.scan_csv_path = csv_path;
@@ -805,9 +723,8 @@ private:
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
       return projections;
     }
-    projections.reserve((last_scan_.ranges.size() + image_beam_stride_ - 1U) /
-                        image_beam_stride_);
-    for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += image_beam_stride_) {
+    projections.reserve(last_scan_.ranges.size());
+    for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
       const float raw_range = last_scan_.ranges[i];
       const LidarBeamProjection projection = projectScanBeam(i, raw_range);
       projections.push_back(projection);
@@ -869,11 +786,8 @@ private:
   double marker_z_m_{kGroundDebugZ};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
-  std::size_t image_beam_stride_{4U};
   std::size_t max_logged_hit_points_{256U};
-  std::size_t remembered_hit_min_confirmations_{3U};
   std::size_t max_remembered_hit_points_{50000U};
-  std::size_t max_hit_candidate_cells_{200000U};
   std::uint64_t max_snapshots_{0U};
   std::uint64_t snapshot_index_{0U};
   std::int64_t last_scan_receive_ns_{0};
@@ -881,7 +795,6 @@ private:
   std::int64_t last_pose_receive_ns_{0};
   std::int64_t last_heading_receive_ns_{0};
   std::int64_t last_attitude_receive_ns_{0};
-  std::map<std::pair<int, int>, HitCandidate> hit_candidates_;
   std::set<std::pair<int, int>> remembered_hit_cells_;
   std::vector<Point2> remembered_hit_points_;
   bool scan_seen_{false};
