@@ -161,12 +161,7 @@ public:
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         lidar_topic, sensor_qos,
-        [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-          last_scan_ = *msg;
-          scan_seen_ = true;
-          last_scan_receive_ns_ = get_clock()->now().nanoseconds();
-          last_scan_stamp_ns_ = toNanoseconds(msg->header.stamp);
-        });
+        [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, sensor_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -272,15 +267,52 @@ private:
     attitude_valid_ = true;
   }
 
+  void onScan(const sensor_msgs::msg::LaserScan& msg) {
+    last_scan_ = msg;
+    scan_seen_ = true;
+    last_scan_receive_ns_ = get_clock()->now().nanoseconds();
+    last_scan_stamp_ns_ = toNanoseconds(msg.header.stamp);
+
+    if (!pose_seen_) {
+      return;
+    }
+
+    last_projected_pose_ = current_pose_;
+    last_projected_altitude_m_ = current_altitude_m_;
+    last_projected_horizontal_speed_mps_ = horizontal_speed_mps_;
+    last_projected_attitude_ = attitude_;
+    last_projected_attitude_tilt_rad_ = attitude_tilt_rad_;
+    last_projected_projection_yaw_rad_ = projectionYawRad();
+    last_projected_horizontal_speed_valid_ = horizontal_speed_valid_;
+    last_projected_attitude_valid_ = attitude_valid_;
+    last_projected_px4_heading_seen_ = px4_heading_seen_;
+    last_projected_pose_receive_ns_ = last_pose_receive_ns_;
+    last_projected_heading_receive_ns_ = last_heading_receive_ns_;
+    last_projected_attitude_receive_ns_ = last_attitude_receive_ns_;
+
+    LidarSnapshotStats stats{};
+    last_scan_rows_ = collectScanRows(stats);
+    last_scan_stats_ = stats;
+    last_scan_hit_points_ = stats.hit_points;
+    last_scan_projection_seen_ = true;
+
+    rememberHitPoints(last_scan_hit_points_);
+    publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);
+    publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
+                      remembered_pointcloud_pub_);
+    publishRadarMarkers();
+  }
+
   void writeSnapshot() {
     if (max_snapshots_ > 0U && snapshot_index_ >= max_snapshots_) {
       return;
     }
-    if (!scan_seen_ || !pose_seen_) {
+    if (!scan_seen_ || !pose_seen_ || !last_scan_projection_seen_) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Lidar debug waiting for scan and pose: scan=%s pose=%s",
-                           scan_seen_ ? "true" : "false",
-                           pose_seen_ ? "true" : "false");
+                           "Lidar debug waiting for scan projection: scan=%s pose=%s "
+                           "projection=%s",
+                           scan_seen_ ? "true" : "false", pose_seen_ ? "true" : "false",
+                           last_scan_projection_seen_ ? "true" : "false");
       return;
     }
 
@@ -291,61 +323,63 @@ private:
     const std::filesystem::path csv_path =
         std::filesystem::path{output_dir_} / (prefix + "_scan.csv");
 
-    LidarSnapshotStats stats{};
-    const std::vector<LidarSnapshotCsvRow> csv_rows = collectScanRows(stats);
-    const bool csv_ok = writeLidarScanCsv(csv_path, csv_rows);
+    LidarSnapshotStats stats = last_scan_stats_;
+    const bool csv_ok = writeLidarScanCsv(csv_path, last_scan_rows_);
     if (!csv_ok) {
       RCLCPP_WARN(get_logger(), "Failed to write lidar debug CSV: '%s'",
                   csv_path.string().c_str());
     }
-    rememberHitPoints(stats.hit_points);
     countGrid(stats);
 
-    const std::vector<Point2> current_hits = collectImageScanHits();
     const std::vector<Point2> path_points = pathPoints();
     const LidarDebugRenderConfig render_config{image_size_px_, view_radius_m_};
     const std::optional<GridImageView> grid_view = gridImageView();
-    const LidarDebugFrame frame{
-        current_pose_.position, headingDirection(),    grid_view, path_points,
-        current_hits,           remembered_hit_points_};
+    const LidarDebugFrame frame{last_projected_pose_.position,
+                                headingDirection(last_projected_projection_yaw_rad_),
+                                grid_view,
+                                path_points,
+                                last_scan_hit_points_,
+                                remembered_hit_points_};
     const DebugImage image = renderLidarDebugImage(render_config, frame);
     const bool image_ok = writePpm(image_path, image);
-    publishPointCloud(stats.hit_points, current_pointcloud_z_m_, pointcloud_pub_);
+    publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);
     publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
                       remembered_pointcloud_pub_);
     publishPointCloud(collectProhibitedGridPoints(), prohibited_pointcloud_z_m_,
                       prohibited_pointcloud_pub_);
-    publishRadarMarkers();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const double projection_yaw_rad = projectionYawRad();
-    const double projection_attitude_yaw_delta_rad =
-        yawDeltaRad(projection_yaw_rad, attitude_.yaw_rad);
-    RCLCPP_INFO(
-        get_logger(),
-        "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
-        "speed=%.2f speed_valid=%s yaw_source=%s projection_yaw=%.3f "
-        "px4_heading_seen=%s attitude_valid=%s attitude_yaw=%.3f "
-        "yaw_delta=%.3f roll=%.3f pitch=%.3f tilt=%.3f "
-        "scan_age=%.3f pose_age=%.3f heading_age=%.3f attitude_age=%.3f "
-        "beams=%zu hits=%zu altitude_rejected=%zu "
-        "projection_rejected=%zu remembered_hits=%zu grid=%s "
-        "path_waypoints=%zu image='%s' csv='%s'",
-        prefix.c_str(), current_pose_.position.x, current_pose_.position.y,
-        current_altitude_m_, horizontal_speed_mps_,
-        horizontal_speed_valid_ ? "true" : "false", yawSourceName(), projection_yaw_rad,
-        px4_heading_seen_ ? "true" : "false", attitude_valid_ ? "true" : "false",
-        attitude_.yaw_rad, projection_attitude_yaw_delta_rad, attitude_.roll_rad,
-        attitude_.pitch_rad, attitude_tilt_rad_,
-        ageSecondsOrNan(last_scan_receive_ns_, now_ns),
-        ageSecondsOrNan(last_pose_receive_ns_, now_ns),
-        ageSecondsOrNan(last_heading_receive_ns_, now_ns),
-        ageSecondsOrNan(last_attitude_receive_ns_, now_ns), stats.processed_beams,
-        stats.hit_beams, stats.altitude_rejected_beams, stats.projection_rejected_beams,
-        remembered_hit_points_.size(), grid_seen_ ? "true" : "false",
-        path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
-        csv_path.string().c_str());
+    const double projection_attitude_yaw_delta_rad = yawDeltaRad(
+        last_projected_projection_yaw_rad_, last_projected_attitude_.yaw_rad);
+    RCLCPP_INFO(get_logger(),
+                "LIDAR_DEBUG snapshot=%s pose=(%.2f, %.2f) altitude=%.2f "
+                "speed=%.2f speed_valid=%s yaw_source=%s projection_yaw=%.3f "
+                "px4_heading_seen=%s attitude_valid=%s attitude_yaw=%.3f "
+                "yaw_delta=%.3f roll=%.3f pitch=%.3f tilt=%.3f "
+                "scan_age=%.3f pose_age=%.3f heading_age=%.3f attitude_age=%.3f "
+                "beams=%zu hits=%zu altitude_rejected=%zu "
+                "projection_rejected=%zu remembered_hits=%zu grid=%s "
+                "path_waypoints=%zu image='%s' csv='%s'",
+                prefix.c_str(), last_projected_pose_.position.x,
+                last_projected_pose_.position.y, last_projected_altitude_m_,
+                last_projected_horizontal_speed_mps_,
+                last_projected_horizontal_speed_valid_ ? "true" : "false",
+                yawSourceName(), last_projected_projection_yaw_rad_,
+                last_projected_px4_heading_seen_ ? "true" : "false",
+                last_projected_attitude_valid_ ? "true" : "false",
+                last_projected_attitude_.yaw_rad, projection_attitude_yaw_delta_rad,
+                last_projected_attitude_.roll_rad, last_projected_attitude_.pitch_rad,
+                last_projected_attitude_tilt_rad_,
+                ageSecondsOrNan(last_scan_receive_ns_, now_ns),
+                ageSecondsOrNan(last_projected_pose_receive_ns_, now_ns),
+                ageSecondsOrNan(last_projected_heading_receive_ns_, now_ns),
+                ageSecondsOrNan(last_projected_attitude_receive_ns_, now_ns),
+                stats.processed_beams, stats.hit_beams, stats.altitude_rejected_beams,
+                stats.projection_rejected_beams, remembered_hit_points_.size(),
+                grid_seen_ ? "true" : "false",
+                path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
+                csv_path.string().c_str());
   }
 
   [[nodiscard]] double scanRangeMax() const {
@@ -392,8 +426,8 @@ private:
                             raw_range);
   }
 
-  [[nodiscard]] Point2 headingDirection() const {
-    const double yaw = projectionYawRad() + scan_yaw_offset_rad_;
+  [[nodiscard]] Point2 headingDirection(const double projection_yaw_rad) const {
+    const double yaw = projection_yaw_rad + scan_yaw_offset_rad_;
     return Point2{std::cos(yaw), std::sin(yaw)};
   }
 
@@ -602,55 +636,37 @@ private:
     return path_points;
   }
 
-  [[nodiscard]] std::vector<Point2> collectImageScanHits() const {
-    std::vector<Point2> hits;
-    const double scan_range_max = scanRangeMax();
-    if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
-      return hits;
-    }
-    hits.reserve(last_scan_.ranges.size());
-
-    for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
-      const float raw_range = last_scan_.ranges[i];
-      const LidarBeamProjection projection = projectScanBeam(i, raw_range);
-      if (projection.status != LidarBeamProjectionStatus::kAccepted ||
-          !projection.hit) {
-        continue;
-      }
-      hits.push_back(projection.endpoint);
-    }
-    return hits;
-  }
-
   void writeSummary(const std::string& prefix, const std::filesystem::path& image_path,
                     const std::filesystem::path& csv_path,
                     const LidarSnapshotStats& stats, const bool image_ok) {
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
-    const double projection_yaw_rad = projectionYawRad();
-    const double projection_attitude_yaw_delta_rad =
-        yawDeltaRad(projection_yaw_rad, attitude_.yaw_rad);
+    const double projection_attitude_yaw_delta_rad = yawDeltaRad(
+        last_projected_projection_yaw_rad_, last_projected_attitude_.yaw_rad);
     LidarSnapshotRecord record;
     record.snapshot = prefix;
     record.time_s = now().seconds();
-    record.position = current_pose_.position;
-    record.yaw_rad = current_pose_.yaw_rad;
-    record.altitude_m = current_altitude_m_;
-    record.horizontal_speed_mps = horizontal_speed_mps_;
-    record.horizontal_speed_valid = horizontal_speed_valid_;
-    record.attitude_valid = attitude_valid_;
-    record.roll_rad = attitude_.roll_rad;
-    record.pitch_rad = attitude_.pitch_rad;
-    record.attitude_yaw_rad = attitude_.yaw_rad;
-    record.tilt_rad = attitude_tilt_rad_;
+    record.position = last_projected_pose_.position;
+    record.yaw_rad = last_projected_pose_.yaw_rad;
+    record.altitude_m = last_projected_altitude_m_;
+    record.horizontal_speed_mps = last_projected_horizontal_speed_mps_;
+    record.horizontal_speed_valid = last_projected_horizontal_speed_valid_;
+    record.attitude_valid = last_projected_attitude_valid_;
+    record.roll_rad = last_projected_attitude_.roll_rad;
+    record.pitch_rad = last_projected_attitude_.pitch_rad;
+    record.attitude_yaw_rad = last_projected_attitude_.yaw_rad;
+    record.tilt_rad = last_projected_attitude_tilt_rad_;
     record.yaw_source = yawSourceName();
-    record.projection_yaw_rad = projection_yaw_rad;
-    record.px4_heading_valid = px4_heading_seen_;
+    record.projection_yaw_rad = last_projected_projection_yaw_rad_;
+    record.px4_heading_valid = last_projected_px4_heading_seen_;
     record.yaw_delta_to_attitude_rad = projection_attitude_yaw_delta_rad;
     record.scan_receive_age_s = ageSecondsOrNan(last_scan_receive_ns_, now_ns);
     record.scan_stamp_age_s = ageSecondsOrNan(last_scan_stamp_ns_, now_ns);
-    record.pose_receive_age_s = ageSecondsOrNan(last_pose_receive_ns_, now_ns);
-    record.heading_receive_age_s = ageSecondsOrNan(last_heading_receive_ns_, now_ns);
-    record.attitude_receive_age_s = ageSecondsOrNan(last_attitude_receive_ns_, now_ns);
+    record.pose_receive_age_s =
+        ageSecondsOrNan(last_projected_pose_receive_ns_, now_ns);
+    record.heading_receive_age_s =
+        ageSecondsOrNan(last_projected_heading_receive_ns_, now_ns);
+    record.attitude_receive_age_s =
+        ageSecondsOrNan(last_projected_attitude_receive_ns_, now_ns);
     record.scan_beams = last_scan_.ranges.size();
     record.scan_range_min_m = last_scan_.range_min;
     record.scan_range_max_m = last_scan_.range_max;
@@ -741,8 +757,8 @@ private:
     LidarRadarMarkerConfig config;
     config.stamp = now();
     config.frame_id = "map";
-    config.drone_position = current_pose_.position;
-    config.heading_direction = headingDirection();
+    config.drone_position = last_projected_pose_.position;
+    config.heading_direction = headingDirection(last_projected_projection_yaw_rad_);
     config.scan_range_max_m = scanRangeMax();
     config.marker_z_m = marker_z_m_;
     visualization_msgs::msg::MarkerArray markers =
@@ -795,16 +811,32 @@ private:
   std::int64_t last_pose_receive_ns_{0};
   std::int64_t last_heading_receive_ns_{0};
   std::int64_t last_attitude_receive_ns_{0};
+  std::int64_t last_projected_pose_receive_ns_{0};
+  std::int64_t last_projected_heading_receive_ns_{0};
+  std::int64_t last_projected_attitude_receive_ns_{0};
   std::set<std::pair<int, int>> remembered_hit_cells_;
+  std::vector<LidarSnapshotCsvRow> last_scan_rows_;
+  LidarSnapshotStats last_scan_stats_{};
+  std::vector<Point2> last_scan_hit_points_;
   std::vector<Point2> remembered_hit_points_;
+  Pose2 last_projected_pose_{};
+  AttitudeEuler last_projected_attitude_{};
+  double last_projected_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
+  double last_projected_horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double last_projected_attitude_tilt_rad_{std::numeric_limits<double>::quiet_NaN()};
+  double last_projected_projection_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
   bool scan_seen_{false};
+  bool last_scan_projection_seen_{false};
   bool grid_seen_{false};
   bool path_seen_{false};
   bool pose_seen_{false};
   bool altitude_valid_{false};
   bool horizontal_speed_valid_{false};
+  bool last_projected_horizontal_speed_valid_{false};
   bool attitude_valid_{false};
+  bool last_projected_attitude_valid_{false};
   bool px4_heading_seen_{false};
+  bool last_projected_px4_heading_seen_{false};
   bool use_px4_heading_for_scan_{false};
   bool compensate_lidar_attitude_{false};
   bool publish_lidar_radar_markers_{false};
