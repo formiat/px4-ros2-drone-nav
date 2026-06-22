@@ -124,10 +124,16 @@ px4_offboard_node:
     max_accel_mps2: 7.0
     max_decel_mps2: 8.0
     max_lateral_accel_mps2: 6.0
-    turn_radius_base_m: 10.0
-    braking_margin_m: 45.0
+    speed_profile_sample_step_m: 1.0
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0
+    corner_rounding_enabled: true
+    corner_rounding_min_radius_m: 3.0
+    corner_rounding_max_radius_m: 30.0
+    corner_rounding_min_segment_remainder_m: 1.0
+    corner_rounding_collision_sample_step_m: 0.25
+    rounded_trajectory_debug_topic: /drone_city_nav/rounded_trajectory_path
+    rounded_trajectory_debug_sample_step_m: 1.0
     altitude_hold_kp: 0.5
     max_vertical_speed_mps: 2.0
     max_clearance_grid_staleness_s: 1.5

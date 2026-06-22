@@ -1,0 +1,83 @@
+#pragma once
+
+#include "drone_city_nav/types.hpp"
+
+#include <cstddef>
+#include <limits>
+#include <optional>
+#include <span>
+#include <vector>
+
+namespace drone_city_nav {
+
+enum class TrajectorySegmentKind {
+  kLine,
+  kArc,
+};
+
+struct TrajectorySegment {
+  TrajectorySegmentKind kind{TrajectorySegmentKind::kLine};
+  Point2 start{};
+  Point2 end{};
+  Point2 center{};
+  double radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double start_angle_rad{std::numeric_limits<double>::quiet_NaN()};
+  double sweep_rad{0.0};
+  double s_start_m{0.0};
+  double length_m{0.0};
+};
+
+struct TrajectoryProjection {
+  bool valid{false};
+  std::size_t segment_index{0U};
+  double segment_t{0.0};
+  double s_m{0.0};
+  Point2 point{};
+  Point2 tangent{};
+  double curvature_1pm{0.0};
+  double distance_sq{std::numeric_limits<double>::infinity()};
+};
+
+struct TrajectoryMetrics {
+  std::size_t line_segments{0U};
+  std::size_t arc_segments{0U};
+  double length_m{0.0};
+};
+
+[[nodiscard]] const char*
+trajectorySegmentKindName(TrajectorySegmentKind kind) noexcept;
+
+[[nodiscard]] TrajectorySegment makeLineSegment(Point2 start, Point2 end);
+
+[[nodiscard]] TrajectorySegment makeArcSegment(Point2 start, Point2 end, Point2 center,
+                                               double sweep_rad);
+
+void assignTrajectoryStationing(std::vector<TrajectorySegment>& trajectory);
+
+[[nodiscard]] std::vector<TrajectorySegment>
+lineTrajectoryFromPoints(std::span<const Point2> points);
+
+[[nodiscard]] bool trajectoryIsUsable(std::span<const TrajectorySegment> trajectory);
+
+[[nodiscard]] TrajectoryMetrics
+trajectoryMetrics(std::span<const TrajectorySegment> trajectory);
+
+[[nodiscard]] double trajectoryLengthM(std::span<const TrajectorySegment> trajectory);
+
+[[nodiscard]] Point2 trajectoryPointAtS(std::span<const TrajectorySegment> trajectory,
+                                        double s_m);
+
+[[nodiscard]] Point2 trajectoryTangentAtS(std::span<const TrajectorySegment> trajectory,
+                                          double s_m);
+
+[[nodiscard]] double
+trajectoryCurvatureAtS(std::span<const TrajectorySegment> trajectory, double s_m);
+
+[[nodiscard]] std::optional<TrajectoryProjection>
+projectOnTrajectory(std::span<const TrajectorySegment> trajectory, Point2 point,
+                    double minimum_s_m = 0.0);
+
+[[nodiscard]] std::vector<Point2>
+sampleTrajectory(std::span<const TrajectorySegment> trajectory, double step_m);
+
+} // namespace drone_city_nav

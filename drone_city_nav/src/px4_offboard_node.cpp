@@ -1,9 +1,11 @@
+#include "drone_city_nav/corner_rounding.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_target_continuity.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -186,11 +188,8 @@ public:
         std::clamp(declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
     velocity_follower_config_.max_lateral_accel_mps2 = std::clamp(
         declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
-    velocity_follower_config_.turn_preview_distance_m = turn_preview_distance_m_;
-    velocity_follower_config_.turn_radius_base_m =
-        std::clamp(declare_parameter<double>("turn_radius_base_m", 10.0), 0.1, 1000.0);
-    velocity_follower_config_.braking_margin_m =
-        std::clamp(declare_parameter<double>("braking_margin_m", 2.0), 0.0, 100.0);
+    velocity_follower_config_.speed_profile_sample_step_m = std::clamp(
+        declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
     velocity_follower_config_.cross_track_gain =
         std::clamp(declare_parameter<double>("cross_track_gain", 0.25), 0.0, 10.0);
     velocity_follower_config_.max_cross_track_correction_angle_rad =
@@ -198,6 +197,24 @@ public:
                        "max_cross_track_correction_angle_deg", 20.0)),
                    0.0, std::numbers::pi / 2.0);
     velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
+    corner_rounding_config_.enabled =
+        declare_parameter<bool>("corner_rounding_enabled", true);
+    corner_rounding_config_.min_radius_m = std::clamp(
+        declare_parameter<double>("corner_rounding_min_radius_m", 3.0), 0.1, 1000.0);
+    corner_rounding_config_.max_radius_m =
+        std::clamp(declare_parameter<double>("corner_rounding_max_radius_m", 30.0),
+                   corner_rounding_config_.min_radius_m, 1000.0);
+    corner_rounding_config_.min_segment_remainder_m = std::clamp(
+        declare_parameter<double>("corner_rounding_min_segment_remainder_m", 1.0), 0.0,
+        100.0);
+    corner_rounding_config_.collision_sample_step_m = std::clamp(
+        declare_parameter<double>("corner_rounding_collision_sample_step_m", 0.25),
+        0.05, 10.0);
+    rounded_trajectory_debug_topic_ = declare_parameter<std::string>(
+        "rounded_trajectory_debug_topic", "/drone_city_nav/rounded_trajectory_path");
+    rounded_trajectory_debug_sample_step_m_ = std::clamp(
+        declare_parameter<double>("rounded_trajectory_debug_sample_step_m", 1.0), 0.1,
+        20.0);
     altitude_hold_kp_ =
         std::clamp(declare_parameter<double>("altitude_hold_kp", 0.5), 0.0, 10.0);
     max_vertical_speed_mps_ =
@@ -297,6 +314,8 @@ public:
         declare_parameter<std::string>("vehicle_command_topic",
                                        "/fmu/in/vehicle_command"),
         px4_qos);
+    rounded_trajectory_pub_ = create_publisher<nav_msgs::msg::Path>(
+        rounded_trajectory_debug_topic_, rclcpp::QoS{1}.transient_local());
 
     timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
     last_command_time_ =
@@ -311,9 +330,12 @@ public:
         "turn_preview_distance=%.1fm "
         "velocity_cruise=%s cruise_speed=%.2fmps min_turn_speed=%.2fmps "
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
-        "turn_radius_base=%.2fm braking_margin=%.2fm cross_track_gain=%.2f "
+        "speed_profile_sample_step=%.2fm cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
+        "corner_rounding[enabled=%s min_radius=%.2fm max_radius=%.2fm "
+        "segment_remainder=%.2fm collision_step=%.2fm debug_topic='%s' "
+        "debug_sample_step=%.2fm] "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
         "path_continuity_max_target_distance=%.1fm "
         "commanded_target_hysteresis=%.2fm mission_goal=(%.1f, %.1f) "
@@ -329,12 +351,17 @@ public:
         velocity_follower_config_.max_accel_mps2,
         velocity_follower_config_.max_decel_mps2,
         velocity_follower_config_.max_lateral_accel_mps2,
-        velocity_follower_config_.turn_radius_base_m,
-        velocity_follower_config_.braking_margin_m,
+        velocity_follower_config_.speed_profile_sample_step_m,
         velocity_follower_config_.cross_track_gain,
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
-        altitude_hold_kp_, max_vertical_speed_mps_, path_switch_hysteresis_m_,
+        altitude_hold_kp_, max_vertical_speed_mps_,
+        corner_rounding_config_.enabled ? "true" : "false",
+        corner_rounding_config_.min_radius_m, corner_rounding_config_.max_radius_m,
+        corner_rounding_config_.min_segment_remainder_m,
+        corner_rounding_config_.collision_sample_step_m,
+        rounded_trajectory_debug_topic_.c_str(),
+        rounded_trajectory_debug_sample_step_m_, path_switch_hysteresis_m_,
         path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
         commanded_target_hysteresis_m_, mission_goal_.x, mission_goal_.y,
         px4_local_origin_.x, px4_local_origin_.y,
@@ -381,6 +408,96 @@ private:
     return current_position_;
   }
 
+  [[nodiscard]] std_msgs::msg::Header makeDebugHeader() const {
+    std_msgs::msg::Header header;
+    header.stamp = get_clock()->now();
+    header.frame_id = "map";
+    return header;
+  }
+
+  void publishRoundedTrajectoryDebug() {
+    if (!rounded_trajectory_pub_) {
+      return;
+    }
+    const std::vector<Point2> samples =
+        sampleTrajectory(trajectory_, rounded_trajectory_debug_sample_step_m_);
+    last_rounded_trajectory_debug_samples_ = samples.size();
+    rounded_trajectory_pub_->publish(
+        pathToRos(std::span<const Point2>{samples.data(), samples.size()},
+                  makeDebugHeader(), 0.0));
+  }
+
+  void clearRoundedTrajectory() {
+    trajectory_.clear();
+    trajectory_speed_profile_ = TrajectorySpeedProfile{};
+    trajectory_valid_ = false;
+    last_trajectory_metrics_ = TrajectoryMetrics{};
+    last_corner_rounding_stats_ = CornerRoundingStats{};
+    last_rounded_trajectory_debug_samples_ = 0U;
+    publishRoundedTrajectoryDebug();
+  }
+
+  void rebuildRoundedTrajectory(const char* source_label) {
+    if (path_points_.size() < 2U) {
+      clearRoundedTrajectory();
+      return;
+    }
+
+    const std::optional<OccupancyGrid2D> prohibited_grid =
+        prohibitedGridForTargetContinuity();
+    const bool can_round =
+        corner_rounding_config_.enabled && prohibited_grid.has_value();
+    if (can_round) {
+      const CornerRoundingResult rounded =
+          roundCorners(path_points_, corner_rounding_config_, &*prohibited_grid);
+      trajectory_ = rounded.segments;
+      last_corner_rounding_stats_ = rounded.stats;
+    } else {
+      trajectory_ = lineTrajectoryFromPoints(path_points_);
+      last_corner_rounding_stats_ = CornerRoundingStats{};
+      last_corner_rounding_stats_.input_points = path_points_.size();
+      last_corner_rounding_stats_.output_segments = trajectory_.size();
+    }
+
+    if (!trajectoryIsUsable(trajectory_)) {
+      trajectory_ = lineTrajectoryFromPoints(path_points_);
+      last_corner_rounding_stats_ = CornerRoundingStats{};
+      last_corner_rounding_stats_.input_points = path_points_.size();
+      last_corner_rounding_stats_.output_segments = trajectory_.size();
+    }
+
+    trajectory_speed_profile_ =
+        buildTrajectorySpeedProfile(trajectory_, velocity_follower_config_);
+    trajectory_valid_ =
+        trajectoryIsUsable(trajectory_) && trajectory_speed_profile_.valid;
+    last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
+    publishRoundedTrajectoryDebug();
+    RCLCPP_INFO(
+        get_logger(),
+        "Rounded trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
+        " planner_path_id=%" PRIu64
+        " path_points=%zu valid=%s grid_available=%s rounding_enabled=%s "
+        "line_segments=%zu arc_segments=%zu total_length=%.2f debug_samples=%zu "
+        "rounding[corners_seen=%zu rounded=%zu skipped_straight=%zu "
+        "skipped_short=%zu skipped_collision=%zu skipped_degenerate=%zu "
+        "radius_min=%.2f radius_mean=%.2f radius_max=%.2f]",
+        source_label, received_path_update_id_, latest_planner_path_id_,
+        path_points_.size(), trajectory_valid_ ? "true" : "false",
+        prohibited_grid.has_value() ? "true" : "false",
+        corner_rounding_config_.enabled ? "true" : "false",
+        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
+        last_trajectory_metrics_.length_m, last_rounded_trajectory_debug_samples_,
+        last_corner_rounding_stats_.corners_seen,
+        last_corner_rounding_stats_.corners_rounded,
+        last_corner_rounding_stats_.skipped_straight,
+        last_corner_rounding_stats_.skipped_short_segments,
+        last_corner_rounding_stats_.skipped_collision,
+        last_corner_rounding_stats_.skipped_degenerate,
+        last_corner_rounding_stats_.min_radius_m,
+        last_corner_rounding_stats_.mean_radius_m,
+        last_corner_rounding_stats_.max_radius_m);
+  }
+
   void onPath(const nav_msgs::msg::Path& path) {
     ++received_path_update_id_;
     last_received_path_stamp_ns_ = stampNanoseconds(path.header.stamp);
@@ -394,6 +511,7 @@ private:
     path_update_target_hysteresis_pending_ = false;
 
     if (!path_valid_) {
+      clearRoundedTrajectory();
       if (last_logged_path_size_ != 0U) {
         if (local_position_valid_) {
           no_path_hold_target_ = current_position_;
@@ -438,6 +556,7 @@ private:
         continuityWaypointIndex(previous_target, candidate_index, had_active_target);
     path_update_target_hysteresis_pending_ =
         had_active_target && commanded_target_hysteresis_m_ > 0.0;
+    rebuildRoundedTrajectory("path_update");
     const Point2 first = path_points_.front();
     const Point2 last = path_points_.back();
     const bool path_changed = path_points_.size() != last_logged_path_size_ ||
@@ -676,6 +795,9 @@ private:
                   static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
                   msg.info.origin.position.y);
     }
+    if (path_valid_) {
+      rebuildRoundedTrajectory("prohibited_grid_update");
+    }
   }
 
   void onTimer() {
@@ -891,10 +1013,14 @@ private:
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
     const Point2 target = currentTarget();
+    if (!trajectory_valid_) {
+      rebuildRoundedTrajectory("velocity_setpoint_rebuild");
+    }
     const double dt_s = consumeVelocityPlanDtS();
-    const VelocitySetpointPlan plan = planVelocitySetpoint(
-        path_points_, current_position_, current_velocity_, current_velocity_valid_,
-        waypoint_index_, dt_s, velocity_follower_state_, velocity_follower_config_);
+    const VelocitySetpointPlan plan =
+        planVelocitySetpoint(trajectory_, trajectory_speed_profile_, current_position_,
+                             current_velocity_, current_velocity_valid_, dt_s,
+                             velocity_follower_state_, velocity_follower_config_);
     last_velocity_plan_ = plan;
     last_velocity_plan_valid_ = plan.valid;
     if (!plan.valid || plan.final_goal_reached) {
@@ -1476,6 +1602,9 @@ private:
         "altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
         "motion_phase=%s control_mode=%s path_segment=%s "
+        "trajectory[valid=%s line_segments=%zu arc_segments=%zu length=%.2f "
+        "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
+        "debug_samples=%zu rounded_corners=%zu skipped_collision=%zu] "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
@@ -1497,10 +1626,20 @@ private:
         hold_position ? "true" : "false", path_valid_ ? waypoint_index_ + 1U : 0U,
         path_points_.size(), motionPhaseName(hold_position),
         offboardSetpointModeName(last_offboard_setpoint_mode_),
-        pathSegmentTypeName(turn_angle_rad), current_position_.x, current_position_.y,
-        target.x, target.y, target_distance, path_goal_distance, mission_goal_distance,
-        current_speed_mps_, last_velocity_setpoint_.x, last_velocity_setpoint_.y,
-        last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        pathSegmentTypeName(turn_angle_rad), trajectory_valid_ ? "true" : "false",
+        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
+        last_trajectory_metrics_.length_m, last_velocity_plan_.trajectory_s_m,
+        last_velocity_plan_.trajectory_segment_index,
+        trajectorySegmentKindName(last_velocity_plan_.trajectory_segment_kind),
+        last_velocity_plan_.trajectory_curvature_1pm,
+        last_velocity_plan_.trajectory_arc_radius_m,
+        last_rounded_trajectory_debug_samples_,
+        last_corner_rounding_stats_.corners_rounded,
+        last_corner_rounding_stats_.skipped_collision, current_position_.x,
+        current_position_.y, target.x, target.y, target_distance, path_goal_distance,
+        mission_goal_distance, current_speed_mps_, last_velocity_setpoint_.x,
+        last_velocity_setpoint_.y, last_vertical_velocity_setpoint_mps_,
+        last_velocity_setpoint_speed_mps_,
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.accel_limited_speed_mps,
@@ -1617,39 +1756,50 @@ private:
         targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
         last_target_continuity_grid_available_ ? "true" : "false",
         last_target_continuity_decision_.previous_target_safe ? "true" : "false");
-    RCLCPP_INFO(get_logger(),
-                "Drone velocity command diagnostics: control_mode=%s "
-                "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
-                "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
-                "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
-                "allowed=%.2f turn_angle=%.3f turn_radius=%.2f] "
-                "turn_target_speed=%.2f braking_distance=%.2f distance_to_turn=%.2f "
-                "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
-                "turn_angle=%.3f velocity_delta=%.2f cross_track_correction=%.2f "
-                "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f)",
-                offboardSetpointModeName(last_offboard_setpoint_mode_),
-                last_velocity_setpoint_.x, last_velocity_setpoint_.y,
-                last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
-                velocitySetpointReasonName(last_velocity_plan_.reason),
-                last_velocity_plan_.raw_speed_limit_mps,
-                last_velocity_plan_.accel_limited_speed_mps,
-                speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
-                last_velocity_plan_.limiting_constraint_index,
-                last_velocity_plan_.limiting_constraint_distance_m,
-                last_velocity_plan_.limiting_constraint_speed_mps,
-                last_velocity_plan_.limiting_allowed_speed_now_mps,
-                last_velocity_plan_.limiting_turn_angle_rad,
-                last_velocity_plan_.limiting_turn_radius_m,
-                last_velocity_plan_.turn.target_turn_speed_mps,
-                last_velocity_plan_.turn.braking_distance_m,
-                last_velocity_plan_.turn.distance_to_turn_m,
-                last_velocity_plan_.final_stop.distance_to_stop_m,
-                last_velocity_plan_.final_stop.braking_distance_m,
-                last_velocity_plan_.turn.angle_rad,
-                last_velocity_plan_.velocity_delta_mps,
-                last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
-                last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
-                last_velocity_plan_.projection.x, last_velocity_plan_.projection.y);
+    RCLCPP_INFO(
+        get_logger(),
+        "Drone velocity command diagnostics: control_mode=%s "
+        "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
+        "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+        "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
+        "allowed=%.2f turn_angle=%.3f turn_radius=%.2f] "
+        "turn_target_speed=%.2f braking_distance=%.2f distance_to_turn=%.2f "
+        "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
+        "turn_angle=%.3f velocity_delta=%.2f cross_track_correction=%.2f "
+        "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
+        "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
+        "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f rounded=%zu "
+        "skipped_collision=%zu]",
+        offboardSetpointModeName(last_offboard_setpoint_mode_),
+        last_velocity_setpoint_.x, last_velocity_setpoint_.y,
+        last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        velocitySetpointReasonName(last_velocity_plan_.reason),
+        last_velocity_plan_.raw_speed_limit_mps,
+        last_velocity_plan_.accel_limited_speed_mps,
+        speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
+        last_velocity_plan_.limiting_constraint_index,
+        last_velocity_plan_.limiting_constraint_distance_m,
+        last_velocity_plan_.limiting_constraint_speed_mps,
+        last_velocity_plan_.limiting_allowed_speed_now_mps,
+        last_velocity_plan_.limiting_turn_angle_rad,
+        last_velocity_plan_.limiting_turn_radius_m,
+        last_velocity_plan_.turn.target_turn_speed_mps,
+        last_velocity_plan_.turn.braking_distance_m,
+        last_velocity_plan_.turn.distance_to_turn_m,
+        last_velocity_plan_.final_stop.distance_to_stop_m,
+        last_velocity_plan_.final_stop.braking_distance_m,
+        last_velocity_plan_.turn.angle_rad, last_velocity_plan_.velocity_delta_mps,
+        last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
+        last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
+        last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
+        trajectory_valid_ ? "true" : "false", last_velocity_plan_.trajectory_s_m,
+        last_velocity_plan_.trajectory_segment_index,
+        trajectorySegmentKindName(last_velocity_plan_.trajectory_segment_kind),
+        last_velocity_plan_.trajectory_curvature_1pm,
+        last_velocity_plan_.trajectory_arc_radius_m,
+        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
+        last_trajectory_metrics_.length_m, last_corner_rounding_stats_.corners_rounded,
+        last_corner_rounding_stats_.skipped_collision);
     RCLCPP_INFO(get_logger(),
                 "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
@@ -1821,6 +1971,44 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.x);
     flight_blackbox_stream_ << ",\"projection_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.y);
+    flight_blackbox_stream_ << ",\"trajectory_valid\":";
+    writeJsonBool(flight_blackbox_stream_, trajectory_valid_);
+    flight_blackbox_stream_ << ",\"trajectory_s_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.trajectory_s_m);
+    flight_blackbox_stream_ << ",\"trajectory_segment_index\":"
+                            << last_velocity_plan_.trajectory_segment_index;
+    flight_blackbox_stream_ << ",\"trajectory_segment_type\":\""
+                            << trajectorySegmentKindName(
+                                   last_velocity_plan_.trajectory_segment_kind)
+                            << "\"";
+    flight_blackbox_stream_ << ",\"trajectory_curvature_1pm\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.trajectory_curvature_1pm);
+    flight_blackbox_stream_ << ",\"trajectory_arc_radius_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.trajectory_arc_radius_m);
+    flight_blackbox_stream_ << ",\"trajectory_total_length_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, last_trajectory_metrics_.length_m);
+    flight_blackbox_stream_ << ",\"trajectory_line_segments\":"
+                            << last_trajectory_metrics_.line_segments;
+    flight_blackbox_stream_ << ",\"trajectory_arc_segments\":"
+                            << last_trajectory_metrics_.arc_segments;
+    flight_blackbox_stream_ << ",\"speed_profile_limit_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"speed_profile_reason\":\""
+                            << speedConstraintTypeName(
+                                   last_velocity_plan_.limiting_constraint_type)
+                            << "\"";
+    flight_blackbox_stream_ << ",\"speed_profile_distance_to_constraint_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_constraint_distance_m);
+    flight_blackbox_stream_ << ",\"rounded_corners\":"
+                            << last_corner_rounding_stats_.corners_rounded;
+    flight_blackbox_stream_ << ",\"rounding_skipped_collision\":"
+                            << last_corner_rounding_stats_.skipped_collision;
+    flight_blackbox_stream_ << ",\"rounding_skipped_short_segments\":"
+                            << last_corner_rounding_stats_.skipped_short_segments;
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"path\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_valid_);
@@ -1939,6 +2127,7 @@ private:
   double last_velocity_setpoint_speed_mps_{0.0};
   double last_vertical_velocity_setpoint_mps_{0.0};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
+  double rounded_trajectory_debug_sample_step_m_{1.0};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -1992,15 +2181,24 @@ private:
   VelocityFollowerConfig velocity_follower_config_{};
   VelocityFollowerState velocity_follower_state_{};
   VelocitySetpointPlan last_velocity_plan_{};
+  CornerRoundingConfig corner_rounding_config_{};
+  CornerRoundingStats last_corner_rounding_stats_{};
+  TrajectoryMetrics last_trajectory_metrics_{};
+  TrajectorySpeedProfile trajectory_speed_profile_{};
   bool last_velocity_plan_valid_{false};
+  bool trajectory_valid_{false};
   OffboardSetpointMode last_offboard_setpoint_mode_{
       OffboardSetpointMode::kPositionHold};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
+  std::string rounded_trajectory_debug_topic_{
+      "/drone_city_nav/rounded_trajectory_path"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
+  std::vector<TrajectorySegment> trajectory_;
+  std::size_t last_rounded_trajectory_debug_samples_{0U};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
@@ -2015,6 +2213,7 @@ private:
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr
       trajectory_setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr rounded_trajectory_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
