@@ -37,6 +37,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("velocity_setpoint=(%.2f, %.2f, %.2f)", self.offboard_text)
         self.assertIn("speed_limit_reason=%s", self.offboard_text)
         self.assertIn("limiting_constraint[type=%s", self.offboard_text)
+        self.assertIn("trajectory[valid=%s", self.offboard_text)
+        self.assertIn("arc_radius=%.2f", self.offboard_text)
         self.assertIn("braking_distance=%.2f", self.offboard_text)
         self.assertIn("target_hysteresis_used=%s", self.offboard_text)
         self.assertIn("applyPathUpdateTargetHysteresis", self.offboard_text)
@@ -71,6 +73,20 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("final_stop_distance_m", self.offboard_text)
         self.assertIn("final_stop_braking_distance_m", self.offboard_text)
         self.assertIn("cross_track_correction_mps", self.offboard_text)
+        self.assertIn("trajectory_valid", self.offboard_text)
+        self.assertIn("trajectory_total_length_m", self.offboard_text)
+        self.assertIn("trajectory_line_segments", self.offboard_text)
+        self.assertIn("trajectory_arc_segments", self.offboard_text)
+        self.assertIn("trajectory_s_m", self.offboard_text)
+        self.assertIn("trajectory_segment_type", self.offboard_text)
+        self.assertIn("trajectory_curvature_1pm", self.offboard_text)
+        self.assertIn("trajectory_arc_radius_m", self.offboard_text)
+        self.assertIn("speed_profile_limit_mps", self.offboard_text)
+        self.assertIn("speed_profile_reason", self.offboard_text)
+        self.assertIn("speed_profile_distance_to_constraint_m", self.offboard_text)
+        self.assertIn("rounded_corners", self.offboard_text)
+        self.assertIn("rounding_skipped_collision", self.offboard_text)
+        self.assertIn("rounding_skipped_short_segments", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
@@ -94,8 +110,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("max_accel_mps2: 7.0", text)
                 self.assertIn("max_decel_mps2: 8.0", text)
                 self.assertIn("turn_preview_distance_m: 90.0", text)
-                self.assertIn("turn_radius_base_m: 10.0", text)
-                self.assertIn("braking_margin_m: 45.0", text)
+                self.assertIn("speed_profile_sample_step_m: 1.0", text)
+                self.assertIn("corner_rounding_enabled: true", text)
+                self.assertIn("corner_rounding_min_radius_m: 3.0", text)
+                self.assertIn("corner_rounding_max_radius_m: 30.0", text)
+                self.assertIn("corner_rounding_min_segment_remainder_m: 1.0", text)
+                self.assertIn("corner_rounding_collision_sample_step_m: 0.25", text)
+                self.assertIn(
+                    "rounded_trajectory_debug_topic: /drone_city_nav/rounded_trajectory_path",
+                    text,
+                )
+                self.assertIn("rounded_trajectory_debug_sample_step_m: 1.0", text)
                 self.assertIn("telemetry_log_period_s: 0.1", text)
 
 

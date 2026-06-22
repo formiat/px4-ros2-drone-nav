@@ -67,6 +67,8 @@ struct TrajectorySpeedSample {
   std::size_t segment_index{0U};
   double curvature_1pm{0.0};
   double radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double constraint_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double constraint_limit_mps{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct TrajectorySpeedProfile {

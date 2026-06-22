@@ -458,27 +458,46 @@ PX4 attitude failure markers. Do not set it for full A-to-B validation.
 The offboard follower uses position setpoints for takeoff, no-path hold, final
 goal hold, and other fixed-position states. During normal cruise on a valid path
 it switches PX4 Offboard control to velocity setpoints: horizontal velocity is
-commanded along the current collapsed path segment, and vertical velocity keeps
-the configured cruise altitude.
+commanded along the current rounded trajectory tangent, and vertical velocity
+keeps the configured cruise altitude.
 
 The follower does not synthesize intermediate path waypoints between planner
-waypoints. Corner rounding is not part of this stage. Smoothness comes from the
-velocity profile over the current collapsed polyline, acceleration/vector-delta
-limits, and bounded cross-track correction back toward the active segment.
+waypoints. Planner waypoints remain the route contract, while the offboard node
+builds an internal typed trajectory from `line` and `arc` segments after
+line-of-sight path collapse. Rounded-trajectory samples are published only for
+RViz/debug visibility on `/drone_city_nav/rounded_trajectory_path`; they are not
+fed back as control waypoints. Smoothness comes from the velocity profile over
+the final line/arc trajectory, acceleration/vector-delta limits, and bounded
+cross-track correction back toward the current trajectory projection.
 
 The main simulation parameters are:
 
-- `turn_preview_distance_m` - maximum distance used to inspect upcoming path
-  turns for velocity limiting and diagnostics.
+- `turn_preview_distance_m` - legacy path-turn preview distance used for
+  waypoint/path diagnostics. Active cruise speed limiting is based on the
+  trajectory speed profile instead.
 - `cruise_velocity_control_enabled` - enables velocity setpoints during cruise.
 - `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
-- `min_turn_speed_mps` - minimum requested speed near sharp turns.
-- `max_accel_mps2` and `max_decel_mps2` - speed-profile acceleration limits.
-- `max_lateral_accel_mps2` - horizontal velocity vector change limit.
-- `turn_radius_base_m` - base radius used to convert continuous turn severity
-  into target turn speed with the lateral-acceleration model.
-- `braking_margin_m` - extra distance kept before a turn when computing
-  braking distance. The same margin is used by the final-approach stop profile.
+- `min_turn_speed_mps` - lower bound for the speed allowed by curved trajectory
+  segments.
+- `max_accel_mps2` and `max_decel_mps2` - speed-profile acceleration limits for
+  forward/backward passes over the trajectory.
+- `max_lateral_accel_mps2` - lateral acceleration budget used to convert arc
+  radius/curvature into allowed turn speed, and horizontal velocity-vector
+  change limit.
+- `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
+  samples. Segment boundaries and arc interior samples are added separately so
+  short arcs cannot be skipped by a large regular step.
+- `corner_rounding_enabled` - enables conversion of sharp path corners into
+  typed arc segments when the arc stays inside the latest prohibited grid.
+- `corner_rounding_min_radius_m` and `corner_rounding_max_radius_m` - allowed
+  radius range for rounded corners.
+- `corner_rounding_min_segment_remainder_m` - straight-line length preserved on
+  each side of a rounded corner.
+- `corner_rounding_collision_sample_step_m` - sample spacing used to reject arcs
+  that intersect prohibited cells.
+- `rounded_trajectory_debug_topic` and
+  `rounded_trajectory_debug_sample_step_m` - debug path topic and visualization
+  sample spacing for the internal rounded trajectory.
 - `cross_track_gain` and `max_cross_track_correction_angle_deg` - bounded
   correction back toward the active path segment.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
@@ -494,9 +513,10 @@ The main simulation parameters are:
 Runtime logs from `px4_offboard_node` include `actual_speed`, current control
 mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
 targets, limiting speed constraint type, limiting constraint distance, braking
-distance, upcoming-turn validity, turn waypoint index, distance to turn,
-`local_clearance`, attitude, path id
-correlation, cross-track error, heading error, commanded target delta,
+distance, trajectory station, segment type, curvature, arc radius, rounded
+corner counters, upcoming-turn validity, turn waypoint index, distance to turn,
+`local_clearance`, attitude, path id correlation, cross-track error, heading
+error, commanded target delta,
 path-update target-continuity reason (`kept_previous_target`,
 `switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or
 `forced_switch_previous_behind_path`), and nearest-obstacle bearing. The same

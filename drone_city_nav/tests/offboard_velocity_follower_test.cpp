@@ -104,6 +104,41 @@ TEST(OffboardVelocityFollower, ProfileStartsBrakingBeforeArc) {
   EXPECT_GT(far_before.profiled_limit_mps, before_arc.profiled_limit_mps);
 }
 
+TEST(OffboardVelocityFollower, ShortArcIsConstrainedWhenShorterThanSampleStep) {
+  VelocityFollowerConfig config = testConfig();
+  config.speed_profile_sample_step_m = 50.0;
+  const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(2.0);
+  ASSERT_LT(trajectory[1].length_m, config.speed_profile_sample_step_m);
+
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+  const TrajectorySpeedSample arc_sample = speedProfileSampleAtS(
+      profile, trajectory[1].s_start_m + trajectory[1].length_m * 0.5);
+
+  ASSERT_TRUE(profile.valid);
+  EXPECT_EQ(arc_sample.reason, SpeedConstraintType::kArc);
+  EXPECT_NEAR(arc_sample.geometric_limit_mps, std::sqrt(3.0 * 2.0), 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, ProjectionNearArcEndKeepsArcConstraint) {
+  VelocityFollowerConfig config = testConfig();
+  config.speed_profile_sample_step_m = 50.0;
+  const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(2.0);
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+  const double projection_s = trajectory[1].s_start_m + trajectory[1].length_m - 0.05;
+  const Point2 current_position = trajectoryPointAtS(trajectory, projection_s);
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, current_position, Point2{}, false, 0.1,
+                           VelocityFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kArc);
+  EXPECT_NEAR(plan.limiting_constraint_speed_mps, std::sqrt(3.0 * 2.0), 1.0e-9);
+  EXPECT_LT(plan.limiting_constraint_distance_m, 0.1);
+}
+
 TEST(OffboardVelocityFollower, FinalStopProfileLimitsSpeedNearGoal) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
@@ -121,6 +156,24 @@ TEST(OffboardVelocityFollower, FinalStopProfileLimitsSpeedNearGoal) {
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
   EXPECT_LT(plan.raw_speed_limit_mps, testConfig().cruise_speed_mps);
   EXPECT_GT(plan.raw_speed_limit_mps, 0.0);
+  EXPECT_NEAR(plan.limiting_constraint_distance_m, 5.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, PreArcBrakingReportsDistanceToArcConstraint) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_decel_mps2 = 2.0;
+  const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(3.0);
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{18.0, 0.0}, Point2{}, false, 0.1,
+                           VelocityFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kArc);
+  EXPECT_NEAR(plan.limiting_constraint_distance_m, 2.0, 1.0e-9);
+  EXPECT_NEAR(plan.limiting_constraint_speed_mps, std::sqrt(3.0 * 3.0), 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
