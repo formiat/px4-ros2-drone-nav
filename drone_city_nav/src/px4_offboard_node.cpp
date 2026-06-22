@@ -178,6 +178,10 @@ public:
         std::clamp(declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
     velocity_follower_config_.max_lateral_accel_mps2 = std::clamp(
         declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
+    velocity_follower_config_.speed_profile_decel_mps2 =
+        std::clamp(declare_parameter<double>("speed_profile_decel_mps2",
+                                             velocity_follower_config_.max_decel_mps2),
+                   0.0, 100.0);
     velocity_follower_config_.speed_profile_sample_step_m = std::clamp(
         declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
     velocity_follower_config_.cross_track_gain =
@@ -187,6 +191,8 @@ public:
                        "max_cross_track_correction_angle_deg", 20.0)),
                    0.0, std::numbers::pi / 2.0);
     velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
+    velocity_follower_config_.final_hold_max_speed_mps = std::clamp(
+        declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
     corner_rounding_config_.enabled =
         declare_parameter<bool>("corner_rounding_enabled", true);
     corner_rounding_config_.min_radius_m = std::clamp(
@@ -320,7 +326,8 @@ public:
         "turn_preview_distance=%.1fm "
         "velocity_cruise=%s cruise_speed=%.2fmps min_turn_speed=%.2fmps "
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
-        "speed_profile_sample_step=%.2fm cross_track_gain=%.2f "
+        "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
+        "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
         "corner_rounding[enabled=%s min_radius=%.2fm max_radius=%.2fm "
@@ -339,7 +346,9 @@ public:
         velocity_follower_config_.max_accel_mps2,
         velocity_follower_config_.max_decel_mps2,
         velocity_follower_config_.max_lateral_accel_mps2,
+        velocity_follower_config_.speed_profile_decel_mps2,
         velocity_follower_config_.speed_profile_sample_step_m,
+        velocity_follower_config_.final_hold_max_speed_mps,
         velocity_follower_config_.cross_track_gain,
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
@@ -839,9 +848,19 @@ private:
     if (final_goal_hold_active_) {
       return true;
     }
-    return localPositionFresh() && path_valid_ && !path_points_.empty() &&
-           (distance(current_position_, path_points_.back()) <= acceptance_radius_m_ ||
-            finalPathGoalPassed());
+    if (!localPositionFresh() || !path_valid_ || path_points_.empty()) {
+      return false;
+    }
+    const bool geometrically_reached =
+        distance(current_position_, path_points_.back()) <= acceptance_radius_m_ ||
+        finalPathGoalPassed();
+    if (!geometrically_reached) {
+      return false;
+    }
+    if (!current_velocity_valid_ || !std::isfinite(current_speed_mps_)) {
+      return true;
+    }
+    return current_speed_mps_ <= velocity_follower_config_.final_hold_max_speed_mps;
   }
 
   [[nodiscard]] bool finalPathGoalPassed() const {

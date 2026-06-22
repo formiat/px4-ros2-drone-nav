@@ -79,8 +79,17 @@ effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
 
 [[nodiscard]] double
 effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
-  const double max_decel = sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
-  return std::min(max_decel, effectiveVelocityDeltaAccelMps2(config));
+  return sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+}
+
+[[nodiscard]] double
+effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
+  const double fallback = effectiveVelocityDeltaDecelMps2(config);
+  return sanitizedPositive(config.speed_profile_decel_mps2, fallback, 1.0e-6, 100.0);
+}
+
+[[nodiscard]] double finalHoldMaxSpeedMps(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.final_hold_max_speed_mps, 0.8, 0.0, 100.0);
 }
 
 [[nodiscard]] Point2 boundedCrossTrackCorrection(Point2 correction_velocity,
@@ -292,7 +301,7 @@ buildTrajectorySpeedProfile(const std::span<const TrajectorySegment> trajectory,
   profile.samples.back().constraint_s_m = profile.samples.back().s_m;
   profile.samples.back().constraint_limit_mps = 0.0;
 
-  const double max_decel = effectiveVelocityDeltaDecelMps2(config);
+  const double max_decel = effectiveSpeedProfileDecelMps2(config);
   for (std::size_t i = profile.samples.size() - 1U; i > 0U; --i) {
     const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
     const double allowed =
@@ -336,6 +345,15 @@ VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity
                                                    const bool previous_velocity_valid,
                                                    const double dt_s,
                                                    const double max_delta_mps2) {
+  return limitVelocityVectorDelta(desired_velocity, previous_velocity,
+                                  previous_velocity_valid, dt_s, max_delta_mps2,
+                                  max_delta_mps2);
+}
+
+VelocityVectorLimitResult
+limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_velocity,
+                         const bool previous_velocity_valid, const double dt_s,
+                         const double max_accel_mps2, const double max_decel_mps2) {
   VelocityVectorLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -345,16 +363,39 @@ VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity
   }
 
   const double dt = sanitizedPositive(dt_s, 0.1, 0.0, 10.0);
-  const double max_delta = sanitizedPositive(max_delta_mps2, 3.0, 0.0, 100.0) * dt;
+  const double max_accel_delta =
+      sanitizedPositive(max_accel_mps2, 3.0, 0.0, 100.0) * dt;
+  const double max_decel_delta =
+      sanitizedPositive(max_decel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
   const Point2 delta = desired_velocity - previous_velocity;
-  const double delta_norm = norm(delta);
-  result.delta_mps = delta_norm;
-  if (delta_norm <= max_delta || !(delta_norm > kTinyDistanceM)) {
+  const double previous_speed = norm(previous_velocity);
+  if (!(previous_speed > kTinyDistanceM)) {
+    const double delta_norm = norm(delta);
+    result.delta_mps = delta_norm;
+    if (delta_norm <= max_accel_delta || !(delta_norm > kTinyDistanceM)) {
+      return result;
+    }
+    result.velocity = previous_velocity + delta * (max_accel_delta / delta_norm);
+    result.delta_mps = max_accel_delta;
     return result;
   }
 
-  result.velocity = previous_velocity + delta * (max_delta / delta_norm);
-  result.delta_mps = max_delta;
+  const Point2 forward{previous_velocity.x / previous_speed,
+                       previous_velocity.y / previous_speed};
+  const double longitudinal_delta = delta.x * forward.x + delta.y * forward.y;
+  const Point2 longitudinal{forward.x * longitudinal_delta,
+                            forward.y * longitudinal_delta};
+  const Point2 lateral{delta.x - longitudinal.x, delta.y - longitudinal.y};
+  const double limited_longitudinal_delta =
+      std::clamp(longitudinal_delta, -max_decel_delta, max_accel_delta);
+  Point2 limited_lateral = lateral;
+  const double lateral_norm = norm(lateral);
+  if (lateral_norm > max_accel_delta && lateral_norm > kTinyDistanceM) {
+    limited_lateral = lateral * (max_accel_delta / lateral_norm);
+  }
+  result.velocity =
+      previous_velocity + forward * limited_longitudinal_delta + limited_lateral;
+  result.delta_mps = norm(result.velocity - previous_velocity);
   return result;
 }
 
@@ -379,7 +420,10 @@ VelocitySetpointPlan planVelocitySetpoint(
   const Point2 final_point = trajectory.back().end;
   const double final_acceptance =
       sanitizedPositive(config.final_acceptance_radius_m, 1.0, 0.0, 100.0);
-  if (distance(current_position, final_point) <= final_acceptance) {
+  const double current_speed =
+      currentSpeedMps(current_velocity, current_velocity_valid, previous_state);
+  if (distance(current_position, final_point) <= final_acceptance &&
+      current_speed <= finalHoldMaxSpeedMps(config)) {
     plan.valid = true;
     plan.final_goal_reached = true;
     plan.reason = VelocitySetpointReason::kHold;
@@ -393,8 +437,6 @@ VelocitySetpointPlan planVelocitySetpoint(
     return plan;
   }
 
-  const double current_speed =
-      currentSpeedMps(current_velocity, current_velocity_valid, previous_state);
   const TrajectorySpeedSample speed_sample =
       speedProfileSampleAtS(speed_profile, projection->s_m);
   const double cruise_speed = sanitizedCruiseSpeed(config);
@@ -427,10 +469,12 @@ VelocitySetpointPlan planVelocitySetpoint(
   }
 
   const Point2 desired_velocity = desired_direction * accel_limited_speed;
-  const double vector_limit = effectiveVelocityDeltaAccelMps2(config);
+  const double vector_accel_limit = effectiveVelocityDeltaAccelMps2(config);
+  const double vector_decel_limit = effectiveVelocityDeltaDecelMps2(config);
   const VelocityVectorLimitResult limited_velocity = limitVelocityVectorDelta(
       desired_velocity, previous_state.previous_velocity_setpoint,
-      previous_state.previous_velocity_setpoint_valid, dt, vector_limit);
+      previous_state.previous_velocity_setpoint_valid, dt, vector_accel_limit,
+      vector_decel_limit);
 
   plan.valid = true;
   plan.reason = VelocitySetpointReason::kStraight;
@@ -477,12 +521,20 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.turn.distance_to_turn_m = plan.limiting_constraint_distance_m;
   plan.turn.target_turn_speed_mps = speed_sample.geometric_limit_mps;
   plan.turn.braking_distance_m = std::numeric_limits<double>::quiet_NaN();
+  if (plan.turn.valid) {
+    const double turn_delta = std::max(0.0, current_speed * current_speed -
+                                                speed_sample.constraint_limit_mps *
+                                                    speed_sample.constraint_limit_mps);
+    plan.turn.braking_distance_m =
+        turn_delta / (2.0 * effectiveSpeedProfileDecelMps2(config));
+  }
   plan.turn.raw_speed_limit_mps = speed_sample.profiled_limit_mps;
 
   plan.final_stop.valid = true;
   plan.final_stop.distance_to_stop_m =
       distanceFromTrajectorySToEnd(trajectory, projection->s_m);
-  plan.final_stop.braking_distance_m = std::numeric_limits<double>::quiet_NaN();
+  plan.final_stop.braking_distance_m =
+      current_speed * current_speed / (2.0 * effectiveSpeedProfileDecelMps2(config));
   plan.final_stop.raw_speed_limit_mps = speed_sample.profiled_limit_mps;
 
   return plan;

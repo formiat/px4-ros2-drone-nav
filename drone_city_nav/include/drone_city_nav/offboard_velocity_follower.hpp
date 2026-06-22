@@ -30,10 +30,12 @@ struct VelocityFollowerConfig {
   double max_accel_mps2{3.0};
   double max_decel_mps2{4.0};
   double max_lateral_accel_mps2{3.0};
+  double speed_profile_decel_mps2{4.0};
   double speed_profile_sample_step_m{1.0};
   double cross_track_gain{0.25};
   double max_cross_track_correction_angle_rad{0.35};
   double final_acceptance_radius_m{1.0};
+  double final_hold_max_speed_mps{0.8};
 };
 
 struct VelocityFollowerState {
@@ -131,6 +133,11 @@ speedProfileSampleAtS(const TrajectorySpeedProfile& profile, double s_m);
 limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
                          bool previous_velocity_valid, double dt_s,
                          double max_delta_mps2);
+
+[[nodiscard]] VelocityVectorLimitResult
+limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
+                         bool previous_velocity_valid, double dt_s,
+                         double max_accel_mps2, double max_decel_mps2);
 
 [[nodiscard]] bool velocityCruisePathIsUsable(std::span<const Point2> path,
                                               Point2 current_position,
