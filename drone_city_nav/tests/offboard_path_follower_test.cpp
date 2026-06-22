@@ -12,22 +12,10 @@ namespace {
   OffboardPathFollowerConfig config{};
   config.acceptance_radius_m = 1.0;
   config.turn_preview_distance_m = 32.0;
-  config.path_switch_hysteresis_m = 2.0;
-  config.path_continuity_reuse_radius_m = 5.0;
-  config.path_continuity_max_target_distance_m = 30.0;
   return config;
 }
 
 } // namespace
-
-TEST(OffboardPathFollower, ContinuityKeepsNearPreviousTarget) {
-  const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}, {30.0, 0.0}};
-
-  const std::size_t index = continuityWaypointIndex(
-      path, Point2{9.0, 0.0}, Point2{10.2, 0.1}, 3U, true, testConfig());
-
-  EXPECT_EQ(index, 1U);
-}
 
 TEST(OffboardPathFollower, AdvancesWaypointAfterAcceptanceRadius) {
   const std::vector<Point2> path{{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}};

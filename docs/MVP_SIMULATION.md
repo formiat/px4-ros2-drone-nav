@@ -502,10 +502,6 @@ The main simulation parameters are:
   correction back toward the active path segment.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
   cruise altitude.
-- `commanded_target_hysteresis_m` - keeps the previous commanded target after a
-  path update when the previous target is still near the updated path and the
-  current-to-previous-target segment remains traversable in the latest
-  prohibited grid.
 - Final goal completion is latched in the offboard node after the vehicle
   enters the acceptance radius or crosses the final path plane. Once latched,
   cruise velocity is not re-enabled for the same mission goal.

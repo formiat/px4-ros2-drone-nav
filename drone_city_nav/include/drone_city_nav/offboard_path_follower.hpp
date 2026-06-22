@@ -12,9 +12,6 @@ namespace drone_city_nav {
 struct OffboardPathFollowerConfig {
   double acceptance_radius_m{1.5};
   double turn_preview_distance_m{32.0};
-  double path_switch_hysteresis_m{3.0};
-  double path_continuity_reuse_radius_m{6.0};
-  double path_continuity_max_target_distance_m{20.0};
 };
 
 struct OffboardPathProjection {
@@ -35,12 +32,6 @@ struct UpcomingTurn {
 [[nodiscard]] std::optional<OffboardPathProjection>
 closestOffboardPathProjection(std::span<const Point2> path, Point2 current_position,
                               std::size_t minimum_segment_start_index = 0U);
-
-[[nodiscard]] std::size_t
-continuityWaypointIndex(std::span<const Point2> path, Point2 current_position,
-                        Point2 previous_target, std::size_t candidate_index,
-                        bool had_active_target,
-                        const OffboardPathFollowerConfig& config);
 
 [[nodiscard]] std::size_t
 advanceWaypointIndex(std::span<const Point2> path, Point2 current_position,

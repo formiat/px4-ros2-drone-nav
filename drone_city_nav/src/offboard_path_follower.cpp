@@ -75,42 +75,6 @@ closestOffboardPathProjection(const std::span<const Point2> path,
   return best;
 }
 
-std::size_t continuityWaypointIndex(const std::span<const Point2> path,
-                                    const Point2 current_position,
-                                    const Point2 previous_target,
-                                    const std::size_t candidate_index,
-                                    const bool had_active_target,
-                                    const OffboardPathFollowerConfig& config) {
-  if (!had_active_target || path.empty() || config.path_switch_hysteresis_m <= 0.0 ||
-      config.path_continuity_reuse_radius_m <= 0.0 || candidate_index >= path.size()) {
-    return candidate_index;
-  }
-  if (distance(current_position, previous_target) >
-      config.path_continuity_max_target_distance_m) {
-    return candidate_index;
-  }
-
-  if (distance(previous_target, path[candidate_index]) <=
-      config.path_switch_hysteresis_m) {
-    return candidate_index;
-  }
-
-  std::size_t closest_index = candidate_index;
-  double closest_distance = std::numeric_limits<double>::infinity();
-  for (std::size_t i = 0U; i < path.size(); ++i) {
-    const double waypoint_distance = distance(previous_target, path[i]);
-    if (waypoint_distance < closest_distance) {
-      closest_distance = waypoint_distance;
-      closest_index = i;
-    }
-  }
-
-  if (closest_distance <= config.path_continuity_reuse_radius_m) {
-    return closest_index;
-  }
-  return candidate_index;
-}
-
 std::size_t advanceWaypointIndex(const std::span<const Point2> path,
                                  const Point2 current_position,
                                  const std::size_t waypoint_index,

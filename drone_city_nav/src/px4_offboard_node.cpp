@@ -1,7 +1,6 @@
 #include "drone_city_nav/corner_rounding.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
-#include "drone_city_nav/offboard_target_continuity.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
@@ -166,15 +165,6 @@ public:
         boundedFiniteDouble(declare_parameter<double>("max_pose_staleness_s", 1.0), 1.0,
                             0.0, 3600.0) *
         1.0e9);
-    path_switch_hysteresis_m_ = std::clamp(
-        declare_parameter<double>("path_switch_hysteresis_m", 3.0), 0.0, 100.0);
-    path_continuity_reuse_radius_m_ = std::clamp(
-        declare_parameter<double>("path_continuity_reuse_radius_m", 6.0), 0.0, 100.0);
-    path_continuity_max_target_distance_m_ = std::clamp(
-        declare_parameter<double>("path_continuity_max_target_distance_m", 20.0), 0.0,
-        500.0);
-    commanded_target_hysteresis_m_ = std::clamp(
-        declare_parameter<double>("commanded_target_hysteresis_m", 0.5), 0.0, 10.0);
     cruise_velocity_control_enabled_ =
         declare_parameter<bool>("cruise_velocity_control_enabled", true);
     velocity_follower_config_.cruise_speed_mps =
@@ -336,9 +326,7 @@ public:
         "corner_rounding[enabled=%s min_radius=%.2fm max_radius=%.2fm "
         "segment_remainder=%.2fm collision_step=%.2fm debug_topic='%s' "
         "debug_sample_step=%.2fm] "
-        "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
-        "path_continuity_max_target_distance=%.1fm "
-        "commanded_target_hysteresis=%.2fm mission_goal=(%.1f, %.1f) "
+        "mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
         "flight_blackbox=%s flight_blackbox_path='%s' "
         "max_pose_staleness=%.2fs command_resend_period=%.2fs",
@@ -361,9 +349,7 @@ public:
         corner_rounding_config_.min_segment_remainder_m,
         corner_rounding_config_.collision_sample_step_m,
         rounded_trajectory_debug_topic_.c_str(),
-        rounded_trajectory_debug_sample_step_m_, path_switch_hysteresis_m_,
-        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_,
-        commanded_target_hysteresis_m_, mission_goal_.x, mission_goal_.y,
+        rounded_trajectory_debug_sample_step_m_, mission_goal_.x, mission_goal_.y,
         px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
         flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
@@ -390,22 +376,7 @@ private:
   }
 
   [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const {
-    return OffboardPathFollowerConfig{
-        acceptance_radius_m_, turn_preview_distance_m_, path_switch_hysteresis_m_,
-        path_continuity_reuse_radius_m_, path_continuity_max_target_distance_m_};
-  }
-
-  [[nodiscard]] Point2 activePathTargetForContinuity() const {
-    if (last_published_target_valid_) {
-      return last_published_target_;
-    }
-    if (commanded_target_valid_) {
-      return commanded_target_;
-    }
-    if (path_valid_ && waypoint_index_ < path_points_.size()) {
-      return path_points_[waypoint_index_];
-    }
-    return current_position_;
+    return OffboardPathFollowerConfig{acceptance_radius_m_, turn_preview_distance_m_};
   }
 
   [[nodiscard]] std_msgs::msg::Header makeDebugHeader() const {
@@ -443,8 +414,7 @@ private:
       return;
     }
 
-    const std::optional<OccupancyGrid2D> prohibited_grid =
-        prohibitedGridForTargetContinuity();
+    const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
     const bool can_round =
         corner_rounding_config_.enabled && prohibited_grid.has_value();
     if (can_round) {
@@ -501,14 +471,9 @@ private:
   void onPath(const nav_msgs::msg::Path& path) {
     ++received_path_update_id_;
     last_received_path_stamp_ns_ = stampNanoseconds(path.header.stamp);
-    const bool had_active_target =
-        path_valid_ && localPositionFresh() && waypoint_index_ < path_points_.size();
-    const Point2 previous_target =
-        had_active_target ? activePathTargetForContinuity() : Point2{};
 
     path_points_ = pathPointsFromMessage(path);
     path_valid_ = !path_points_.empty();
-    path_update_target_hysteresis_pending_ = false;
 
     if (!path_valid_) {
       clearRoundedTrajectory();
@@ -519,7 +484,6 @@ private:
           commanded_target_ = no_path_hold_target_;
           commanded_target_valid_ = true;
           waypoint_index_ = 0U;
-          path_update_raw_candidate_index_ = 0U;
           RCLCPP_WARN(get_logger(),
                       "Received empty path: local_path_update_id=%" PRIu64
                       " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
@@ -532,7 +496,6 @@ private:
           no_path_hold_target_valid_ = false;
           commanded_target_valid_ = false;
           waypoint_index_ = 0U;
-          path_update_raw_candidate_index_ = 0U;
           RCLCPP_WARN(get_logger(),
                       "Received empty path: local_path_update_id=%" PRIu64
                       " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
@@ -551,11 +514,7 @@ private:
             ? drone_city_nav::advanceWaypointIndex(path_points_, current_position_, 0U,
                                                    pathFollowerConfig())
             : 0U;
-    path_update_raw_candidate_index_ = candidate_index;
-    waypoint_index_ =
-        continuityWaypointIndex(previous_target, candidate_index, had_active_target);
-    path_update_target_hysteresis_pending_ =
-        had_active_target && commanded_target_hysteresis_m_ > 0.0;
+    waypoint_index_ = candidate_index;
     rebuildRoundedTrajectory("path_update");
     const Point2 first = path_points_.front();
     const Point2 last = path_points_.back();
@@ -570,16 +529,14 @@ private:
           " path_stamp_ns=%" PRIu64 " waypoints=%zu segments=%zu straight_segments=%zu "
           "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
           "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu lt10=%zu] "
-          "last=(%.2f, %.2f) continuity_target=(%.2f, %.2f) "
-          "had_active_target=%s",
+          "last=(%.2f, %.2f)",
           received_path_update_id_, latest_planner_path_id_,
           last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
           metrics.straight_segments, metrics.turns, metrics.length_m,
           waypoint_index_ + 1U, first.x, first.y, metrics.min_segment_length_m,
           metrics.mean_segment_length_m, metrics.max_segment_length_m,
           metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
-          metrics.segments_shorter_than_10m, last.x, last.y, previous_target.x,
-          previous_target.y, had_active_target ? "true" : "false");
+          metrics.segments_shorter_than_10m, last.x, last.y);
       last_logged_path_size_ = path_points_.size();
       last_logged_path_first_ = first;
       last_logged_path_last_ = last;
@@ -628,45 +585,6 @@ private:
     }
     return drone_city_nav::closestOffboardPathProjection(path_points_,
                                                          current_position_);
-  }
-
-  [[nodiscard]] std::size_t
-  continuityWaypointIndex(const Point2 previous_target,
-                          const std::size_t candidate_index,
-                          const bool had_active_target) const {
-    if (!had_active_target || path_switch_hysteresis_m_ <= 0.0 ||
-        path_continuity_reuse_radius_m_ <= 0.0 ||
-        candidate_index >= path_points_.size()) {
-      return candidate_index;
-    }
-    if (distance(current_position_, previous_target) >
-        path_continuity_max_target_distance_m_) {
-      return candidate_index;
-    }
-
-    const std::size_t closest_index = drone_city_nav::continuityWaypointIndex(
-        path_points_, current_position_, previous_target, candidate_index,
-        had_active_target, pathFollowerConfig());
-    const double closest_distance =
-        closest_index < path_points_.size()
-            ? distance(previous_target, path_points_[closest_index])
-            : std::numeric_limits<double>::infinity();
-    if (closest_index != candidate_index) {
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 3000,
-          "Path continuity kept waypoint near previous target: candidate=%zu "
-          "kept=%zu previous_target=(%.2f, %.2f) closest_distance=%.2f",
-          candidate_index + 1U, closest_index + 1U, previous_target.x,
-          previous_target.y, closest_distance);
-      return closest_index;
-    }
-
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 3000,
-                         "Path continuity allowed target switch: candidate=%zu "
-                         "previous_target=(%.2f, %.2f) closest_distance=%.2f",
-                         candidate_index + 1U, previous_target.x, previous_target.y,
-                         closest_distance);
-    return candidate_index;
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -877,10 +795,7 @@ private:
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
     const Point2 desired_target = currentTarget();
-    const Point2 proposed_target =
-        selectCommandTarget(desired_target, shouldHoldPosition());
-    const Point2 target = applyPathUpdateTargetHysteresis(
-        proposed_target, previous_target, had_previous_target);
+    const Point2 target = selectCommandTarget(desired_target, shouldHoldPosition());
     commanded_target_ = target;
     commanded_target_valid_ = local_position_valid_;
     last_published_target_ = target;
@@ -1165,82 +1080,6 @@ private:
     return desired_target;
   }
 
-  [[nodiscard]] Point2 applyPathUpdateTargetHysteresis(const Point2 proposed_target,
-                                                       const Point2 previous_target,
-                                                       const bool had_previous_target) {
-    last_commanded_target_hysteresis_used_ = false;
-    last_commanded_target_hysteresis_delta_m_ =
-        std::numeric_limits<double>::quiet_NaN();
-    last_commanded_target_hysteresis_path_error_m_ =
-        std::numeric_limits<double>::quiet_NaN();
-
-    if (!path_update_target_hysteresis_pending_) {
-      return proposed_target;
-    }
-    path_update_target_hysteresis_pending_ = false;
-
-    if (!localPositionFresh()) {
-      last_target_continuity_grid_available_ = false;
-      last_target_continuity_decision_ = TargetContinuityDecision{};
-      last_target_continuity_decision_.target = proposed_target;
-      last_commanded_target_hysteresis_delta_m_ =
-          had_previous_target ? distance(previous_target, proposed_target)
-                              : std::numeric_limits<double>::quiet_NaN();
-      RCLCPP_INFO(
-          get_logger(),
-          "Commanded target continuity switched to proposed target because local "
-          "position is stale: reason=%s previous=(%.2f, %.2f) proposed=(%.2f, %.2f)",
-          targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
-          previous_target.x, previous_target.y, proposed_target.x, proposed_target.y);
-      return proposed_target;
-    }
-
-    const std::optional<OccupancyGrid2D> prohibited_grid =
-        prohibitedGridForTargetContinuity();
-    last_target_continuity_grid_available_ = prohibited_grid.has_value();
-    last_target_continuity_decision_ = decideTargetAfterReplan(
-        path_points_, current_position_, previous_target, proposed_target,
-        had_previous_target, path_update_raw_candidate_index_,
-        path_update_raw_candidate_index_, commanded_target_hysteresis_m_,
-        prohibited_grid.has_value() ? &*prohibited_grid : nullptr);
-    if (last_target_continuity_decision_.target_waypoint_index_valid &&
-        last_target_continuity_decision_.target_waypoint_index < path_points_.size()) {
-      waypoint_index_ = last_target_continuity_decision_.target_waypoint_index;
-    }
-    last_commanded_target_hysteresis_delta_m_ =
-        last_target_continuity_decision_.target_delta_m;
-    last_commanded_target_hysteresis_path_error_m_ =
-        last_target_continuity_decision_.path_error_m;
-    last_commanded_target_hysteresis_used_ =
-        last_target_continuity_decision_.reason ==
-        TargetContinuityDecisionReason::kKeptPreviousTarget;
-
-    RCLCPP_INFO(
-        get_logger(),
-        "Commanded target continuity decision after path update: reason=%s "
-        "kept_previous=%s prohibited_grid_available=%s previous_safe=%s "
-        "delta=%.2fm path_error=%.2fm tolerance=%.2fm previous=(%.2f, %.2f) "
-        "proposed=(%.2f, %.2f) selected=(%.2f, %.2f) "
-        "raw_candidate=%zu selected_waypoint=%zu selected_traversable=%s",
-        targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
-        last_commanded_target_hysteresis_used_ ? "true" : "false",
-        last_target_continuity_grid_available_ ? "true" : "false",
-        last_target_continuity_decision_.previous_target_safe ? "true" : "false",
-        last_target_continuity_decision_.target_delta_m,
-        last_target_continuity_decision_.path_error_m, commanded_target_hysteresis_m_,
-        previous_target.x, previous_target.y, proposed_target.x, proposed_target.y,
-        last_target_continuity_decision_.target.x,
-        last_target_continuity_decision_.target.y,
-        path_update_raw_candidate_index_ + 1U,
-        last_target_continuity_decision_.target_waypoint_index_valid
-            ? last_target_continuity_decision_.target_waypoint_index + 1U
-            : 0U,
-        last_target_continuity_decision_.selected_target_traversable ? "true"
-                                                                     : "false");
-    const Point2 selected_target = last_target_continuity_decision_.target;
-    return selected_target;
-  }
-
   [[nodiscard]] bool shouldHoldPosition() const {
     return final_goal_hold_active_ || !localPositionFresh() || !navigationAllowed() ||
            !path_valid_ || waypoint_index_ >= path_points_.size() ||
@@ -1305,8 +1144,7 @@ private:
            now_ns - last_local_position_update_ns_ <= max_pose_staleness_ns_;
   }
 
-  [[nodiscard]] std::optional<OccupancyGrid2D>
-  prohibitedGridForTargetContinuity() const {
+  [[nodiscard]] std::optional<OccupancyGrid2D> currentProhibitedGrid() const {
     if (!prohibitedGridFresh() || !(prohibited_grid_.info.resolution > 0.0F) ||
         prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U ||
         prohibited_grid_.info.width >
@@ -1617,8 +1455,7 @@ private:
         "velocity_delta=%.2f cross_track_correction=%.2f altitude_error=%.2f "
         "turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
-        "local_clearance=%.2f "
-        "target_continuity[reason=%s grid=%s previous_safe=%s]",
+        "local_clearance=%.2f",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -1659,10 +1496,7 @@ private:
         upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
-        final_goal_hold_active_ ? "true" : "false", local_clearance_m,
-        targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
-        last_target_continuity_grid_available_ ? "true" : "false",
-        last_target_continuity_decision_.previous_target_safe ? "true" : "false");
+        final_goal_hold_active_ ? "true" : "false", local_clearance_m);
   }
 
   void logTelemetry() {
@@ -1741,21 +1575,11 @@ private:
                 path_tracking.heading_error_rad, path_tracking.path_heading_rad,
                 path_tracking.segment_start_index, path_tracking.segment_t,
                 path_tracking.projection.x, path_tracking.projection.y);
-    RCLCPP_INFO(
-        get_logger(),
-        "Drone command diagnostics: command[target_delta=%.2f "
-        "target_distance=%.2f yaw=%.3f target_hysteresis_used=%s "
-        "target_hysteresis_delta=%.2f target_hysteresis_path_error=%.2f "
-        "target_continuity_reason=%s target_continuity_grid=%s "
-        "target_continuity_previous_safe=%s]",
-        last_commanded_target_delta_m_, last_commanded_target_distance_m_,
-        last_commanded_yaw_rad_,
-        last_commanded_target_hysteresis_used_ ? "true" : "false",
-        last_commanded_target_hysteresis_delta_m_,
-        last_commanded_target_hysteresis_path_error_m_,
-        targetContinuityDecisionReasonName(last_target_continuity_decision_.reason),
-        last_target_continuity_grid_available_ ? "true" : "false",
-        last_target_continuity_decision_.previous_target_safe ? "true" : "false");
+    RCLCPP_INFO(get_logger(),
+                "Drone command diagnostics: command[target_delta=%.2f "
+                "target_distance=%.2f yaw=%.3f]",
+                last_commanded_target_delta_m_, last_commanded_target_distance_m_,
+                last_commanded_yaw_rad_);
     RCLCPP_INFO(
         get_logger(),
         "Drone velocity command diagnostics: control_mode=%s "
@@ -1882,22 +1706,6 @@ private:
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"command\":{\"yaw_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_commanded_yaw_rad_);
-    flight_blackbox_stream_ << ",\"target_hysteresis_used\":";
-    writeJsonBool(flight_blackbox_stream_, last_commanded_target_hysteresis_used_);
-    flight_blackbox_stream_ << ",\"target_hysteresis_delta_m\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_commanded_target_hysteresis_delta_m_);
-    flight_blackbox_stream_ << ",\"target_hysteresis_path_error_m\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_commanded_target_hysteresis_path_error_m_);
-    flight_blackbox_stream_ << ",\"target_continuity_reason\":\""
-                            << targetContinuityDecisionReasonName(
-                                   last_target_continuity_decision_.reason)
-                            << "\",\"target_continuity_grid_available\":";
-    writeJsonBool(flight_blackbox_stream_, last_target_continuity_grid_available_);
-    flight_blackbox_stream_ << ",\"target_continuity_previous_safe\":";
-    writeJsonBool(flight_blackbox_stream_,
-                  last_target_continuity_decision_.previous_target_safe);
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"velocity_command\":{\"control_mode\":\""
                             << offboardSetpointModeName(last_offboard_setpoint_mode_)
@@ -2109,10 +1917,6 @@ private:
   double turn_preview_distance_m_{32.0};
   double altitude_hold_kp_{0.5};
   double max_vertical_speed_mps_{2.0};
-  double path_switch_hysteresis_m_{3.0};
-  double path_continuity_reuse_radius_m_{6.0};
-  double path_continuity_max_target_distance_m_{20.0};
-  double commanded_target_hysteresis_m_{0.5};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
@@ -2120,10 +1924,6 @@ private:
   double last_commanded_target_delta_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_target_distance_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
-  double last_commanded_target_hysteresis_delta_m_{
-      std::numeric_limits<double>::quiet_NaN()};
-  double last_commanded_target_hysteresis_path_error_m_{
-      std::numeric_limits<double>::quiet_NaN()};
   double last_velocity_setpoint_speed_mps_{0.0};
   double last_vertical_velocity_setpoint_mps_{0.0};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
@@ -2139,7 +1939,6 @@ private:
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
   std::size_t waypoint_index_{0U};
-  std::size_t path_update_raw_candidate_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
   bool path_valid_{false};
@@ -2165,9 +1964,6 @@ private:
   bool navigation_started_{false};
   bool latest_planner_path_id_seen_{false};
   bool flight_blackbox_enabled_{true};
-  bool path_update_target_hysteresis_pending_{false};
-  bool last_commanded_target_hysteresis_used_{false};
-  bool last_target_continuity_grid_available_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -2177,7 +1973,6 @@ private:
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
-  TargetContinuityDecision last_target_continuity_decision_{};
   VelocityFollowerConfig velocity_follower_config_{};
   VelocityFollowerState velocity_follower_state_{};
   VelocitySetpointPlan last_velocity_plan_{};
