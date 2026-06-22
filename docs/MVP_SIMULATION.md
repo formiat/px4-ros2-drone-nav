@@ -479,8 +479,11 @@ The main simulation parameters are:
 - `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
 - `min_turn_speed_mps` - lower bound for the speed allowed by curved trajectory
   segments.
-- `max_accel_mps2` and `max_decel_mps2` - speed-profile acceleration limits for
-  forward/backward passes over the trajectory.
+- `max_accel_mps2` - acceleration limit for increasing commanded cruise speed.
+- `max_decel_mps2` - longitudinal deceleration limit for reducing the commanded
+  velocity setpoint.
+- `speed_profile_decel_mps2` - conservative trajectory-profile deceleration
+  budget used to begin slowing before arcs and the final goal.
 - `max_lateral_accel_mps2` - lateral acceleration budget used to convert arc
   radius/curvature into allowed turn speed, and horizontal velocity-vector
   change limit.

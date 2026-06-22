@@ -123,9 +123,9 @@ px4_offboard_node:
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
     max_accel_mps2: 7.0
-    max_decel_mps2: 12.0
+    max_decel_mps2: 20.0
     max_lateral_accel_mps2: 6.0
-    speed_profile_decel_mps2: 4.0
+    speed_profile_decel_mps2: 3.0
     speed_profile_sample_step_m: 1.0
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.25
