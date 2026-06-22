@@ -140,6 +140,16 @@ void writeLidarSnapshotSummary(std::ostream& stream,
   stream << ",\"attitude_receive_age_s\":";
   writeJsonNumberOrNull(stream, record.attitude_receive_age_s);
   stream << "},";
+  stream << "\"motion_compensation\":{\"enabled\":"
+         << (record.motion_compensation_enabled ? "true" : "false")
+         << ",\"scan_deskew_enabled\":"
+         << (record.scan_deskew_enabled ? "true" : "false") << ',';
+  writeJsonNumberField(stream, "pose_prediction_s", record.pose_prediction_s);
+  stream << ',';
+  writeJsonNumberField(stream, "scan_duration_s", record.scan_duration_s);
+  stream << ',';
+  writeJsonNumberField(stream, "scan_time_increment_s", record.scan_time_increment_s);
+  stream << "},";
   stream << "\"scan\":{\"beams\":" << record.scan_beams
          << ",\"processed\":" << record.stats.processed_beams
          << ",\"hits\":" << record.stats.hit_beams << ',';
