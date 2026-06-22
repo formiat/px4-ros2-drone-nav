@@ -90,22 +90,6 @@ pathPublicationReasonName(const PathPublicationReason reason) noexcept {
   return "unknown";
 }
 
-[[nodiscard]] double
-pathDistanceToSegmentStart(const std::span<const Point2> path_points,
-                           const std::size_t segment_start_index) noexcept {
-  if (path_points.size() < 2U) {
-    return 0.0;
-  }
-
-  const std::size_t bounded_segment_start =
-      std::min(segment_start_index, path_points.size() - 1U);
-  double distance_m = 0.0;
-  for (std::size_t index = 1U; index <= bounded_segment_start; ++index) {
-    distance_m += distance(path_points[index - 1U], path_points[index]);
-  }
-  return distance_m;
-}
-
 } // namespace
 
 class PlannerNode final : public rclcpp::Node {
@@ -205,13 +189,9 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner path policy: stable_path_reuse=%s "
                 "stable_max_deviation=%.2fm "
-                "stable_goal_tolerance=%.2fm "
-                "stable_prohibited_replan_horizon=%.2fm "
-                "stable_prohibited_confirmations=%d",
+                "stable_goal_tolerance=%.2fm",
                 stable_path_reuse_enabled_ ? "true" : "false",
-                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_,
-                stable_path_prohibited_replan_horizon_m_,
-                stable_path_prohibited_confirmations_required_);
+                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
                 "evasive_maneuvering=%s evasive_straight_weight=%.2f",
@@ -231,10 +211,6 @@ private:
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
-    stable_path_prohibited_replan_horizon_m_ =
-        config.planner_core.stable_path_prohibited_replan_horizon_m;
-    stable_path_prohibited_confirmations_required_ =
-        config.planner_core.stable_path_prohibited_confirmations_required;
     nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
     memory_occupied_value_ = config.memory_grid.occupied_value;
     memory_free_value_ = config.memory_grid.free_value;
@@ -815,7 +791,6 @@ private:
     }
 
     last_valid_path_points_ = path_points;
-    stable_path_prohibited_confirmations_ = 0;
     logPublishedPathSafety(grid, path_points, source_label);
     publishPath(path_points, PathPublicationReason::kComputedPath);
     return true;
@@ -1053,7 +1028,6 @@ private:
 
     if (points.empty()) {
       last_valid_path_points_.clear();
-      stable_path_prohibited_confirmations_ = 0;
     }
 
     const PathMetrics metrics = pointPathMetrics(points);
@@ -1111,8 +1085,7 @@ private:
     }
 
     const StablePathDecision decision = planner_core_.evaluateStablePath(
-        grid, last_valid_path_points_, current_pose_.position, goal_,
-        stable_path_prohibited_confirmations_);
+        grid, last_valid_path_points_, current_pose_.position, goal_);
     if (decision.reason == StablePathDecisionReason::kDeviationTooLarge) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -1128,41 +1101,8 @@ private:
       return false;
     }
 
-    if ((decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed ||
-         decision.reason == StablePathDecisionReason::kProhibitedConfirmed) &&
-        deferDistantStablePathBlockIfApplicable(decision)) {
-      return true;
-    }
-
-    if (decision.reason == StablePathDecisionReason::kProhibitedUnconfirmed) {
-      stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
-      last_valid_path_points_ = decision.remaining_path;
-      const Point2 prohibited_start =
-          decision.prohibited_segment_index < last_valid_path_points_.size()
-              ? last_valid_path_points_[decision.prohibited_segment_index]
-              : Point2{};
-      const Point2 prohibited_end =
-          decision.prohibited_segment_index + 1U < last_valid_path_points_.size()
-              ? last_valid_path_points_[decision.prohibited_segment_index + 1U]
-              : Point2{};
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 3000,
-          "Current path has an unconfirmed prohibited intersection; keeping current "
-          "path until it is confirmed: reason=%s confirmations=%d/%d "
-          "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-          "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
-          stablePathDecisionReasonName(decision.reason),
-          stable_path_prohibited_confirmations_,
-          stable_path_prohibited_confirmations_required_,
-          last_valid_path_points_.size(), decision.deviation_m,
-          decision.prohibited_segment_index, prohibited_start.x, prohibited_start.y,
-          prohibited_end.x, prohibited_end.y);
-      return true;
-    }
-
     if (decision.reason == StablePathDecisionReason::kProhibitedConfirmed) {
-      ++confirmed_replans_;
-      stable_path_prohibited_confirmations_ = decision.prohibited_confirmations;
+      ++prohibited_replans_;
       const Point2 prohibited_start =
           decision.prohibited_segment_index < decision.remaining_path.size()
               ? decision.remaining_path[decision.prohibited_segment_index]
@@ -1173,20 +1113,16 @@ private:
               : Point2{};
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 3000,
-          "Current path intersects confirmed newly available prohibited obstacle data; "
-          "running A* from current pose: reason=%s confirmations=%d/%d "
+          "Current path intersects newly available prohibited obstacle data; "
+          "running A* from current pose: reason=%s "
           "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
           "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
-          stablePathDecisionReasonName(decision.reason),
-          stable_path_prohibited_confirmations_,
-          stable_path_prohibited_confirmations_required_,
-          decision.remaining_path.size(), decision.deviation_m,
-          decision.prohibited_segment_index, prohibited_start.x, prohibited_start.y,
-          prohibited_end.x, prohibited_end.y);
+          stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
+          decision.deviation_m, decision.prohibited_segment_index, prohibited_start.x,
+          prohibited_start.y, prohibited_end.x, prohibited_end.y);
       return false;
     }
 
-    stable_path_prohibited_confirmations_ = 0;
     last_valid_path_points_ = decision.remaining_path;
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -1194,30 +1130,6 @@ private:
         "reason=%s remaining_waypoints=%zu deviation=%.2fm distance_to_goal=%.2f",
         stablePathDecisionReasonName(decision.reason), last_valid_path_points_.size(),
         decision.deviation_m, distance(current_pose_.position, goal_));
-    return true;
-  }
-
-  bool deferDistantStablePathBlockIfApplicable(const StablePathDecision& decision) {
-    if (!(stable_path_prohibited_replan_horizon_m_ > 0.0)) {
-      return false;
-    }
-    const double distance_to_prohibited_segment_m = pathDistanceToSegmentStart(
-        decision.remaining_path, decision.prohibited_segment_index);
-    if (!std::isfinite(distance_to_prohibited_segment_m) ||
-        distance_to_prohibited_segment_m <= stable_path_prohibited_replan_horizon_m_) {
-      return false;
-    }
-
-    stable_path_prohibited_confirmations_ = 0;
-    last_valid_path_points_ = decision.remaining_path;
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "Deferring current-path replan because the prohibited segment is beyond the "
-        "near planning horizon: reason=%s remaining_waypoints=%zu deviation=%.2fm "
-        "prohibited_segment=%zu distance_to_prohibited_segment=%.2fm horizon=%.2fm",
-        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.prohibited_segment_index,
-        distance_to_prohibited_segment_m, stable_path_prohibited_replan_horizon_m_);
     return true;
   }
 
@@ -1301,7 +1213,7 @@ private:
     std::ostringstream summary;
     summary << "astar_runs=" << astar_runs_ << " astar_successes=" << astar_successes_
             << " astar_failures=" << astar_failures_
-            << " confirmed_replans=" << confirmed_replans_
+            << " prohibited_replans=" << prohibited_replans_
             << " path_publications=" << path_publications_
             << " non_empty_path_publications=" << non_empty_path_publications_
             << " hold_path_publications=" << hold_path_publications_
@@ -1347,7 +1259,6 @@ private:
   double static_map_min_blocking_height_m_{0.0};
   double stable_path_reuse_max_deviation_m_{3.0};
   double stable_path_goal_tolerance_m_{3.0};
-  double stable_path_prohibited_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};
   double scan_yaw_offset_rad_{0.0};
@@ -1367,15 +1278,13 @@ private:
   int nearest_free_radius_cells_{10};
   int memory_occupied_value_{100};
   int memory_free_value_{0};
-  int stable_path_prohibited_confirmations_required_{2};
-  int stable_path_prohibited_confirmations_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   std::size_t static_map_rectangles_{0U};
   std::size_t static_map_occupied_cells_{0U};
   std::uint64_t astar_runs_{0U};
   std::uint64_t astar_successes_{0U};
   std::uint64_t astar_failures_{0U};
-  std::uint64_t confirmed_replans_{0U};
+  std::uint64_t prohibited_replans_{0U};
   std::uint64_t path_publications_{0U};
   std::uint64_t non_empty_path_publications_{0U};
   std::uint64_t hold_path_publications_{0U};

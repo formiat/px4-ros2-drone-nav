@@ -102,8 +102,6 @@ stablePathDecisionReasonName(const StablePathDecisionReason reason) noexcept {
       return "deviation_too_large";
     case StablePathDecisionReason::kClear:
       return "clear";
-    case StablePathDecisionReason::kProhibitedUnconfirmed:
-      return "prohibited_unconfirmed";
     case StablePathDecisionReason::kProhibitedConfirmed:
       return "prohibited_confirmed";
   }
@@ -391,11 +389,9 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   return result;
 }
 
-StablePathDecision
-PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
-                                const std::span<const Point2> previous_path,
-                                const Point2 current_position, const Point2 goal,
-                                const int current_prohibited_confirmations) const {
+StablePathDecision PlannerCore::evaluateStablePath(
+    const OccupancyGrid2D& grid, const std::span<const Point2> previous_path,
+    const Point2 current_position, const Point2 goal) const {
   StablePathDecision decision{};
   if (previous_path.size() < 2U) {
     decision.reason = StablePathDecisionReason::kNoPreviousPath;
@@ -423,15 +419,6 @@ PlannerCore::evaluateStablePath(const OccupancyGrid2D& grid,
                         &decision.prohibited_segment_index)) {
     decision.keep_path = true;
     decision.reason = StablePathDecisionReason::kClear;
-    decision.prohibited_confirmations = 0;
-    return decision;
-  }
-
-  decision.prohibited_confirmations = std::max(0, current_prohibited_confirmations) + 1;
-  if (decision.prohibited_confirmations <
-      config_.stable_path_prohibited_confirmations_required) {
-    decision.keep_path = true;
-    decision.reason = StablePathDecisionReason::kProhibitedUnconfirmed;
     return decision;
   }
 

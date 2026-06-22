@@ -457,36 +457,29 @@ TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{5.0, 1.0}, Point2{9.0, 1.0}};
 
   const StablePathDecision decision =
-      core.evaluateStablePath(grid, path, Point2{3.0, 1.0}, Point2{9.0, 1.0}, 0);
+      core.evaluateStablePath(grid, path, Point2{3.0, 1.0}, Point2{9.0, 1.0});
 
   EXPECT_TRUE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
   ASSERT_GE(decision.remaining_path.size(), 2U);
-  EXPECT_EQ(decision.prohibited_confirmations, 0);
 }
 
-TEST(PlannerCore, StablePathRequiresConfirmedProhibitedIntersection) {
+TEST(PlannerCore, StablePathRejectsProhibitedIntersectionImmediately) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
   grid.rebuildInflation(0.0);
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_prohibited_confirmations_required = 2;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
 
-  const StablePathDecision first =
-      core.evaluateStablePath(grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, 0);
-  const StablePathDecision second = core.evaluateStablePath(
-      grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5}, first.prohibited_confirmations);
+  const StablePathDecision decision =
+      core.evaluateStablePath(grid, path, Point2{2.5, 1.5}, Point2{8.5, 1.5});
 
-  EXPECT_TRUE(first.keep_path);
-  EXPECT_EQ(first.reason, StablePathDecisionReason::kProhibitedUnconfirmed);
-  EXPECT_EQ(first.prohibited_confirmations, 1);
-  EXPECT_FALSE(second.keep_path);
-  EXPECT_EQ(second.reason, StablePathDecisionReason::kProhibitedConfirmed);
-  EXPECT_EQ(second.prohibited_confirmations, 2);
+  EXPECT_FALSE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
+  EXPECT_EQ(decision.prohibited_segment_index, 0U);
 }
 
 TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
@@ -499,12 +492,11 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_prohibited_confirmations_required = 1;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 3.5}, Point2{8.5, 3.5}};
 
   const StablePathDecision decision =
-      core.evaluateStablePath(grid, path, Point2{2.5, 3.5}, Point2{8.5, 3.5}, 0);
+      core.evaluateStablePath(grid, path, Point2{2.5, 3.5}, Point2{8.5, 3.5});
 
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
@@ -519,16 +511,14 @@ TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   config.stable_path_reuse_max_deviation_m = 5.0;
-  config.stable_path_prohibited_confirmations_required = 1;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
 
   const StablePathDecision decision =
-      core.evaluateStablePath(grid, path, Point2{1.5, 1.5}, Point2{8.5, 1.5}, 0);
+      core.evaluateStablePath(grid, path, Point2{1.5, 1.5}, Point2{8.5, 1.5});
 
   EXPECT_TRUE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
-  EXPECT_EQ(decision.prohibited_confirmations, 0);
 }
 
 TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {
@@ -540,7 +530,7 @@ TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {
   const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{9.0, 1.0}};
 
   const StablePathDecision decision =
-      core.evaluateStablePath(grid, path, Point2{3.0, 4.0}, Point2{9.0, 1.0}, 0);
+      core.evaluateStablePath(grid, path, Point2{3.0, 4.0}, Point2{9.0, 1.0});
 
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kDeviationTooLarge);

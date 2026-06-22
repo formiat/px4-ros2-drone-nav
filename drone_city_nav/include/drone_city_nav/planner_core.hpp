@@ -39,8 +39,6 @@ struct PlannerCoreConfig {
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{3.0};
-  double stable_path_prohibited_replan_horizon_m{25.0};
-  int stable_path_prohibited_confirmations_required{2};
 };
 
 struct PathComputationResult {
@@ -73,7 +71,6 @@ enum class StablePathDecisionReason {
   kProjectionUnavailable,
   kDeviationTooLarge,
   kClear,
-  kProhibitedUnconfirmed,
   kProhibitedConfirmed,
 };
 
@@ -82,7 +79,6 @@ struct StablePathDecision {
   StablePathDecisionReason reason{StablePathDecisionReason::kDisabled};
   std::vector<Point2> remaining_path;
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
-  int prohibited_confirmations{0};
   std::size_t prohibited_segment_index{0U};
 };
 
@@ -130,8 +126,7 @@ public:
 
   [[nodiscard]] StablePathDecision
   evaluateStablePath(const OccupancyGrid2D& grid, std::span<const Point2> previous_path,
-                     Point2 current_position, Point2 goal,
-                     int current_prohibited_confirmations) const;
+                     Point2 current_position, Point2 goal) const;
 
 private:
   PlannerCoreConfig config_{};
