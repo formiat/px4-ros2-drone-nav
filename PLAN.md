@@ -370,7 +370,24 @@ waypoint'ов, а расчёт целевой скорости на текуще
    ./scripts/dev_shell.sh make quality
    ```
 
-4. Симуляционные проверки не запускать автоматически. После отдельной явной
+4. Script-level contract checks, если реализация меняет
+   `scripts/tests/test_offboard_telemetry_contract.py`, telemetry/blackbox
+   строки в `drone_city_nav/src/px4_offboard_node.cpp` или config values,
+   которые этот script проверяет:
+
+   ```bash
+   ./scripts/dev_shell.sh make test-scripts
+   ```
+
+   Текущий baseline risk: на момент планирования эта команда падает в
+   `scripts/tests/test_offboard_telemetry_contract.py:86`, потому что test
+   ожидает `cruise_speed_mps: 12.0`, а
+   `drone_city_nav/config/urban_mvp.yaml:125` уже содержит
+   `cruise_speed_mps: 22.0`. Будущая реализация должна либо обновить contract
+   test вместе с актуальными config values, либо отдельно закрыть эту
+   рассинхронизацию до финальной проверки.
+
+5. Симуляционные проверки не запускать автоматически. После отдельной явной
    команды пользователя использовать:
 
    ```bash
@@ -389,6 +406,10 @@ Skipped checks на этапе планирования:
   policy `optional`.
 - GitLab read: не требуется, потому что prompt не содержит GitLab MR/review.
 - Simulation run: запрещено запускать без явной команды пользователя.
+- `make test-scripts` на этапе планирования был проверен как baseline и сейчас
+  падает на существующей рассинхронизации telemetry contract/config; это не
+  исправлялось в plan-раунде, но должно быть закрыто при реализации, если
+  затрагиваются telemetry/blackbox/config contract fields.
 
 # Testing strategy
 
@@ -439,6 +460,13 @@ Skipped checks на этапе планирования:
   параметры. Нужно решить: сохранить alias на один релиз или удалить сразу.
 - Диагностика: новые JSON поля должны писаться через `writeJsonNumberOrNull()`,
   иначе можно вернуть проблему non-finite JSON.
+- Script-level contract: текущий `scripts/tests/test_offboard_telemetry_contract.py`
+  уже рассинхронизирован с `urban_mvp.yaml` по speed config values
+  (`cruise_speed_mps: 12.0` в test против `22.0` в YAML). Если будущая
+  реализация меняет telemetry/blackbox/config fields, нужно обновить этот
+  contract test и запускать `./scripts/dev_shell.sh make test-scripts`, иначе
+  можно оставить headless/debug contract красным несмотря на зелёный
+  `make quality`.
 - Интеграция PX4: меняется только velocity setpoint magnitude, но если новый
   speed profile часто ограничивает скорость, PX4 может выглядеть более
   медленным на прямых до настройки параметров.
