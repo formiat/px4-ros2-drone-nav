@@ -350,6 +350,12 @@ const PlannerCoreConfig& PlannerCore::config() const noexcept {
 std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal) const {
+  return computePath(grid, current_position, goal, config_.astar);
+}
+
+std::optional<PathComputationResult>
+PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
+                         const Point2 goal, const AStarConfig& astar_config) const {
   PathComputationResult result{};
   result.start_cell = grid.worldToCell(current_position);
   result.goal_cell = grid.worldToCell(goal);
@@ -366,7 +372,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   }
 
   result.astar = planner_.plan(grid, *result.allowed_start_cell,
-                               *result.allowed_goal_cell, config_.astar);
+                               *result.allowed_goal_cell, astar_config);
   if (!result.astar.success) {
     return std::nullopt;
   }

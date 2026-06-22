@@ -127,6 +127,14 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),
                  0.0, 1000.0);
+  config.planner_core.astar.initial_heading_bias_enabled =
+      node.declare_parameter<bool>("astar_initial_heading_bias_enabled", false);
+  config.planner_core.astar.initial_heading_bias_min_speed_mps = std::clamp(
+      node.declare_parameter<double>("astar_initial_heading_bias_min_speed_mps", 0.5),
+      0.0, 100.0);
+  config.planner_core.astar.initial_heading_bias_weight = std::clamp(
+      node.declare_parameter<double>("astar_initial_heading_bias_weight", 50.0), 0.0,
+      1000.0);
   config.planner_core.clearance_diagnostic_radius_m = 10.0;
 
   config.initial_pose.use_until_px4 =

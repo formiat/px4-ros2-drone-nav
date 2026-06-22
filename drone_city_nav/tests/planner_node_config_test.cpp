@@ -59,6 +59,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
+  EXPECT_FALSE(config.planner_core.astar.initial_heading_bias_enabled);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 50.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
@@ -75,6 +78,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
+       rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
+       rclcpp::Parameter{"astar_initial_heading_bias_weight", 5000.0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -91,6 +96,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
 }
 
@@ -99,6 +106,9 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
       makeNode("planner_node_config_nested",
                {rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
                 rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
+                rclcpp::Parameter{"astar_initial_heading_bias_enabled", true},
+                rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
+                rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
                 rclcpp::Parameter{"use_static_map", false},
                 rclcpp::Parameter{"use_obstacle_memory", false},
                 rclcpp::Parameter{"use_current_lidar_obstacles", false},
@@ -111,6 +121,9 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
 
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 2.0);
   EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
+  EXPECT_TRUE(config.planner_core.astar.initial_heading_bias_enabled);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 1.25);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 75.0);
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);

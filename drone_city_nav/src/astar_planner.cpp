@@ -112,6 +112,37 @@ struct CompareOpenNode {
   return config.turn_cost_weight;
 }
 
+[[nodiscard]] double initialHeadingBiasCost(const AStarConfig& config,
+                                            const int current_direction_state,
+                                            const GridIndex offset) noexcept {
+  if (!config.initial_heading_bias_enabled ||
+      current_direction_state != kStartDirectionState ||
+      !(config.initial_heading_bias_weight > 0.0)) {
+    return 0.0;
+  }
+
+  const double speed_mps = std::hypot(config.initial_heading_bias_velocity_x_mps,
+                                      config.initial_heading_bias_velocity_y_mps);
+  if (!std::isfinite(speed_mps) ||
+      speed_mps < std::max(0.0, config.initial_heading_bias_min_speed_mps)) {
+    return 0.0;
+  }
+
+  const double move_norm =
+      std::hypot(static_cast<double>(offset.x), static_cast<double>(offset.y));
+  if (!(move_norm > 0.0)) {
+    return 0.0;
+  }
+
+  const double velocity_x = config.initial_heading_bias_velocity_x_mps / speed_mps;
+  const double velocity_y = config.initial_heading_bias_velocity_y_mps / speed_mps;
+  const double move_x = static_cast<double>(offset.x) / move_norm;
+  const double move_y = static_cast<double>(offset.y) / move_norm;
+  const double alignment =
+      std::clamp(move_x * velocity_x + move_y * velocity_y, -1.0, 1.0);
+  return config.initial_heading_bias_weight * (1.0 - alignment);
+}
+
 [[nodiscard]] std::vector<GridIndex>
 reconstructPath(const OccupancyGrid2D& grid, const std::vector<std::size_t>& parents,
                 const std::size_t start_state_index,
@@ -221,7 +252,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       const double tentative_g =
           g_scores[current_index] + step_distance_m +
           directionPreferenceCost(config, current.direction_state,
-                                  next_direction_state);
+                                  next_direction_state) +
+          initialHeadingBiasCost(config, current.direction_state, offset);
       if (tentative_g >= g_scores[next_index]) {
         continue;
       }

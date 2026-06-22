@@ -561,6 +561,10 @@ make quality
   prefers smoother paths by penalizing turns. `astar_evasive_maneuvering_enabled`
   switches direction preference to evasive mode, where straight continuations are
   penalized by `astar_evasive_maneuvering_straight_cost_weight` instead.
+  `astar_initial_heading_bias_enabled` adds a velocity-aligned soft penalty only
+  to the first A* step when current speed is above
+  `astar_initial_heading_bias_min_speed_mps`; it discourages left/right path
+  flapping without forbidding a necessary turn.
 - The offboard node converts PX4 local position into the planner map frame using
   `px4_local_origin_*` parameters, and converts map-frame targets back to PX4
   local setpoints.

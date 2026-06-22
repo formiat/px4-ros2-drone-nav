@@ -123,6 +123,9 @@ public:
 
   [[nodiscard]] std::optional<PathComputationResult>
   computePath(const OccupancyGrid2D& grid, Point2 current_position, Point2 goal) const;
+  [[nodiscard]] std::optional<PathComputationResult>
+  computePath(const OccupancyGrid2D& grid, Point2 current_position, Point2 goal,
+              const AStarConfig& astar_config) const;
 
   [[nodiscard]] StablePathDecision
   evaluateStablePath(const OccupancyGrid2D& grid, std::span<const Point2> previous_path,

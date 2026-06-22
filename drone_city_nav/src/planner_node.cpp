@@ -194,10 +194,15 @@ public:
                 stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
-                "evasive_maneuvering=%s evasive_straight_weight=%.2f",
+                "evasive_maneuvering=%s evasive_straight_weight=%.2f "
+                "initial_heading_bias=%s initial_heading_min_speed=%.2fm/s "
+                "initial_heading_weight=%.2f",
                 astar_config_.turn_cost_weight,
                 astar_config_.evasive_maneuvering_enabled ? "true" : "false",
-                astar_config_.evasive_maneuvering_straight_cost_weight);
+                astar_config_.evasive_maneuvering_straight_cost_weight,
+                astar_config_.initial_heading_bias_enabled ? "true" : "false",
+                astar_config_.initial_heading_bias_min_speed_mps,
+                astar_config_.initial_heading_bias_weight);
   }
 
 private:
@@ -244,6 +249,9 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
     if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
       invalidateCurrentPose();
+      current_velocity_ = Point2{};
+      current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
+      current_velocity_valid_ = false;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Planner invalidated cached pose after invalid PX4 local position: "
@@ -263,6 +271,16 @@ private:
       altitude_valid_ = true;
     } else {
       altitude_valid_ = false;
+    }
+    if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
+      current_velocity_ =
+          Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
+      current_speed_mps_ = std::hypot(current_velocity_.x, current_velocity_.y);
+      current_velocity_valid_ = true;
+    } else {
+      current_velocity_ = Point2{};
+      current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
+      current_velocity_valid_ = false;
     }
     pose_valid_ = true;
     last_pose_update_ns_ = get_clock()->now().nanoseconds();
@@ -523,7 +541,9 @@ private:
       return;
     }
 
-    auto path_result = computePathOnGrid(planning_grid, "combined");
+    const AStarConfig planning_astar_config = astarConfigForCurrentVelocity();
+    auto path_result =
+        computePathOnGrid(planning_grid, "combined", planning_astar_config);
     if (!path_result.has_value()) {
       publishPlanningFailureHold();
       return;
@@ -543,6 +563,8 @@ private:
         "overlay_preserved=%zu outside=%zu] "
         "source=combined astar_status=%s expanded=%zu cost=%.2f raw_path=%zu "
         "smoothed_path=%zu "
+        "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
+        "weight=%.2f velocity=(%.2f, %.2f)] "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
@@ -584,6 +606,12 @@ private:
         astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,
         path_result->smoothed_path_metrics.points,
+        planning_astar_config.initial_heading_bias_enabled ? "true" : "false",
+        initialHeadingBiasActive(planning_astar_config) ? "true" : "false",
+        current_speed_mps_, planning_astar_config.initial_heading_bias_min_speed_mps,
+        planning_astar_config.initial_heading_bias_weight,
+        planning_astar_config.initial_heading_bias_velocity_x_mps,
+        planning_astar_config.initial_heading_bias_velocity_y_mps,
         path_result->raw_path_metrics.segments,
         path_result->raw_path_metrics.straight_segments,
         path_result->raw_path_metrics.turns, path_result->raw_path_metrics.length_m,
@@ -634,8 +662,28 @@ private:
                              path_result->smoothed_cells, "combined");
   }
 
+  [[nodiscard]] AStarConfig astarConfigForCurrentVelocity() const {
+    AStarConfig config = astar_config_;
+    if (current_velocity_valid_ && std::isfinite(current_speed_mps_) &&
+        current_speed_mps_ >= config.initial_heading_bias_min_speed_mps) {
+      config.initial_heading_bias_velocity_x_mps = current_velocity_.x;
+      config.initial_heading_bias_velocity_y_mps = current_velocity_.y;
+    }
+    return config;
+  }
+
+  [[nodiscard]] static bool
+  initialHeadingBiasActive(const AStarConfig& config) noexcept {
+    const double speed_mps = std::hypot(config.initial_heading_bias_velocity_x_mps,
+                                        config.initial_heading_bias_velocity_y_mps);
+    return config.initial_heading_bias_enabled &&
+           config.initial_heading_bias_weight > 0.0 && std::isfinite(speed_mps) &&
+           speed_mps >= config.initial_heading_bias_min_speed_mps;
+  }
+
   [[nodiscard]] std::optional<PathComputationResult>
-  computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label) {
+  computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
+                    const AStarConfig& astar_config) {
     const auto start_cell = grid.worldToCell(current_pose_.position);
     const auto goal_cell = grid.worldToCell(goal_);
     if (!start_cell.has_value() || !goal_cell.has_value()) {
@@ -666,7 +714,8 @@ private:
                            allowed_goal->x, allowed_goal->y);
     }
 
-    auto result = planner_core_.computePath(grid, current_pose_.position, goal_);
+    auto result =
+        planner_core_.computePath(grid, current_pose_.position, goal_, astar_config);
     ++astar_runs_;
     if (!result.has_value()) {
       ++astar_failures_;
@@ -1233,6 +1282,7 @@ private:
   AStarConfig astar_config_{};
 
   Pose2 current_pose_{};
+  Point2 current_velocity_{};
   AttitudeEuler current_attitude_{};
   Point2 start_{};
   Point2 goal_{};
@@ -1251,6 +1301,7 @@ private:
   bool compensate_lidar_attitude_{false};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
+  bool current_velocity_valid_{false};
   std::string frame_id_{"map"};
   std::string static_map_path_param_{"worlds/generated_city.map2d"};
   std::filesystem::path static_map_resolved_path_;
@@ -1265,6 +1316,7 @@ private:
   double initial_heading_rad_{0.0};
   double static_map_debug_publish_period_s_{1.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
+  double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};

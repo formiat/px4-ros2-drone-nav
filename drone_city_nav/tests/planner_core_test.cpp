@@ -275,6 +275,31 @@ TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {
             directionChanges(normal_result.path));
 }
 
+TEST(AStarPlanner, InitialHeadingBiasPrefersVelocityAlignedFirstStep) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 7, 7}};
+  for (int y = 1; y <= 5; ++y) {
+    grid.setOccupied(GridIndex{3, y});
+  }
+  grid.rebuildInflation(0.0);
+
+  const GridIndex start{3, 6};
+  const GridIndex goal{3, 0};
+  AStarConfig config{};
+  config.initial_heading_bias_enabled = true;
+  config.initial_heading_bias_min_speed_mps = 0.5;
+  config.initial_heading_bias_weight = 50.0;
+  config.initial_heading_bias_velocity_x_mps = 5.0;
+  config.initial_heading_bias_velocity_y_mps = 0.0;
+
+  const AStarResult result = AStarPlanner{}.plan(grid, start, goal, config);
+
+  ASSERT_TRUE(result.success);
+  ASSERT_GE(result.path.size(), 2U);
+  EXPECT_EQ(result.path.front(), start);
+  EXPECT_EQ(result.path.back(), goal);
+  EXPECT_GT(result.path[1].x, start.x);
+}
+
 TEST(PathMetrics, CountsGridSegmentsTurnsAndLength) {
   const OccupancyGrid2D grid = makeGrid();
   const std::vector<GridIndex> path{{0, 0}, {1, 0}, {2, 0}, {2, 1}, {3, 1}};
