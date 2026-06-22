@@ -1345,7 +1345,7 @@ private:
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{2.5};
   double static_map_min_blocking_height_m_{0.0};
-  double stable_path_reuse_max_deviation_m_{12.0};
+  double stable_path_reuse_max_deviation_m_{3.0};
   double stable_path_goal_tolerance_m_{3.0};
   double stable_path_prohibited_replan_horizon_m_{25.0};
   double max_lidar_range_m_{35.0};

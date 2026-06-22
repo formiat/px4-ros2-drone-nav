@@ -30,7 +30,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.fallback.stable_path_reuse_enabled =
       node.declare_parameter<bool>("stable_path_reuse_enabled", true);
   config.planner_core.stable_path_reuse_max_deviation_m = std::clamp(
-      node.declare_parameter<double>("stable_path_reuse_max_deviation_m", 12.0), 0.0,
+      node.declare_parameter<double>("stable_path_reuse_max_deviation_m", 3.0), 0.0,
       1000.0);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
