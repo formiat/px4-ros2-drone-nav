@@ -13,8 +13,8 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] bool
-turnWaypointIsCloseEnoughForSlowdown(const double distance_to_turn_m,
-                                     const OffboardPathFollowerConfig& config) {
+turnWaypointIsWithinPreviewDistance(const double distance_to_turn_m,
+                                    const OffboardPathFollowerConfig& config) {
   return distance_to_turn_m <= config.turn_preview_distance_m;
 }
 
@@ -159,7 +159,7 @@ UpcomingTurn upcomingTurnAtWaypoint(const std::span<const Point2> path,
     const Point2 next = path[candidate_index + 1U];
     const double angle = turnAngleRad(previous, current, next);
     if (angle > kTinyDistanceM) {
-      if (!turnWaypointIsCloseEnoughForSlowdown(distance_to_candidate_m, config)) {
+      if (!turnWaypointIsWithinPreviewDistance(distance_to_candidate_m, config)) {
         return turn;
       }
       turn.valid = true;
