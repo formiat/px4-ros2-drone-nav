@@ -38,7 +38,7 @@ struct PlannerCoreConfig {
   int nearest_free_radius_cells{10};
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
-  double stable_path_reuse_max_deviation_m{3.0};
+  double stable_path_reuse_max_deviation_m{1.0};
 };
 
 struct PathComputationResult {
