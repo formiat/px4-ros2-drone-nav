@@ -209,13 +209,8 @@ public:
     velocity_follower_config_.max_lateral_accel_mps2 = std::clamp(
         declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
     velocity_follower_config_.turn_preview_distance_m = turn_preview_distance_m_;
-    velocity_follower_config_.turn_slowdown_min_angle_rad =
-        std::clamp(radiansFromDegrees(
-                       declare_parameter<double>("turn_slowdown_min_angle_deg", 15.0)),
-                   0.0, std::numbers::pi);
-    velocity_follower_config_.sharp_turn_angle_rad = std::clamp(
-        radiansFromDegrees(declare_parameter<double>("sharp_turn_angle_deg", 90.0)),
-        velocity_follower_config_.turn_slowdown_min_angle_rad, std::numbers::pi);
+    velocity_follower_config_.turn_radius_base_m =
+        std::clamp(declare_parameter<double>("turn_radius_base_m", 10.0), 0.1, 1000.0);
     velocity_follower_config_.braking_margin_m =
         std::clamp(declare_parameter<double>("braking_margin_m", 2.0), 0.0, 100.0);
     velocity_follower_config_.cross_track_gain =
@@ -340,8 +335,7 @@ public:
         "target_switch_angle=%.1fdeg "
         "velocity_cruise=%s cruise_speed=%.2fmps min_turn_speed=%.2fmps "
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
-        "turn_slowdown_min_angle=%.1fdeg sharp_turn_angle=%.1fdeg "
-        "braking_margin=%.2fm cross_track_gain=%.2f "
+        "turn_radius_base=%.2fm braking_margin=%.2fm cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
         "path_switch_hysteresis=%.1fm path_continuity_reuse_radius=%.1fm "
@@ -361,8 +355,7 @@ public:
         velocity_follower_config_.max_accel_mps2,
         velocity_follower_config_.max_decel_mps2,
         velocity_follower_config_.max_lateral_accel_mps2,
-        radiansToDegrees(velocity_follower_config_.turn_slowdown_min_angle_rad),
-        radiansToDegrees(velocity_follower_config_.sharp_turn_angle_rad),
+        velocity_follower_config_.turn_radius_base_m,
         velocity_follower_config_.braking_margin_m,
         velocity_follower_config_.cross_track_gain,
         radiansToDegrees(
@@ -1266,7 +1259,7 @@ private:
     if (turn_angle_rad < 0.15) {
       return "straight";
     }
-    if (turn_angle_rad < velocity_follower_config_.sharp_turn_angle_rad) {
+    if (turn_angle_rad < std::numbers::pi / 2.0) {
       return "gentle_turn";
     }
     return "sharp_turn";
@@ -1622,6 +1615,8 @@ private:
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
         "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
         "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+        "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
+        "turn_angle=%.3f turn_radius=%.2f] "
         "turn_target_speed=%.2f braking_distance=%.2f "
         "final_stop[distance=%.2f braking_distance=%.2f] "
         "velocity_delta=%.2f cross_track_correction=%.2f altitude_error=%.2f "
@@ -1645,6 +1640,13 @@ private:
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.accel_limited_speed_mps,
+        speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
+        last_velocity_plan_.limiting_constraint_index,
+        last_velocity_plan_.limiting_constraint_distance_m,
+        last_velocity_plan_.limiting_constraint_speed_mps,
+        last_velocity_plan_.limiting_allowed_speed_now_mps,
+        last_velocity_plan_.limiting_turn_angle_rad,
+        last_velocity_plan_.limiting_turn_radius_m,
         last_velocity_plan_.turn.target_turn_speed_mps,
         last_velocity_plan_.turn.braking_distance_m,
         last_velocity_plan_.final_stop.distance_to_stop_m,
@@ -1765,6 +1767,8 @@ private:
                 "Drone velocity command diagnostics: control_mode=%s "
                 "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
                 "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+                "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
+                "allowed=%.2f turn_angle=%.3f turn_radius=%.2f] "
                 "turn_target_speed=%.2f braking_distance=%.2f distance_to_turn=%.2f "
                 "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
                 "turn_angle=%.3f velocity_delta=%.2f cross_track_correction=%.2f "
@@ -1775,6 +1779,13 @@ private:
                 velocitySetpointReasonName(last_velocity_plan_.reason),
                 last_velocity_plan_.raw_speed_limit_mps,
                 last_velocity_plan_.accel_limited_speed_mps,
+                speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
+                last_velocity_plan_.limiting_constraint_index,
+                last_velocity_plan_.limiting_constraint_distance_m,
+                last_velocity_plan_.limiting_constraint_speed_mps,
+                last_velocity_plan_.limiting_allowed_speed_now_mps,
+                last_velocity_plan_.limiting_turn_angle_rad,
+                last_velocity_plan_.limiting_turn_radius_m,
                 last_velocity_plan_.turn.target_turn_speed_mps,
                 last_velocity_plan_.turn.braking_distance_m,
                 last_velocity_plan_.turn.distance_to_turn_m,
@@ -1903,6 +1914,26 @@ private:
     flight_blackbox_stream_ << ",\"accel_limited_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.accel_limited_speed_mps);
+    flight_blackbox_stream_ << ",\"limiting_constraint_type\":\""
+                            << speedConstraintTypeName(
+                                   last_velocity_plan_.limiting_constraint_type)
+                            << "\",\"limiting_constraint_index\":"
+                            << last_velocity_plan_.limiting_constraint_index;
+    flight_blackbox_stream_ << ",\"limiting_constraint_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_constraint_distance_m);
+    flight_blackbox_stream_ << ",\"limiting_constraint_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_constraint_speed_mps);
+    flight_blackbox_stream_ << ",\"limiting_allowed_speed_now_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_allowed_speed_now_mps);
+    flight_blackbox_stream_ << ",\"limiting_turn_angle_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_turn_angle_rad);
+    flight_blackbox_stream_ << ",\"limiting_turn_radius_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.limiting_turn_radius_m);
     flight_blackbox_stream_ << ",\"turn_target_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.turn.target_turn_speed_mps);

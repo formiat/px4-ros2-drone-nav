@@ -127,8 +127,7 @@ px4_offboard_node:
     max_accel_mps2: 7.0
     max_decel_mps2: 8.0
     max_lateral_accel_mps2: 6.0
-    turn_slowdown_min_angle_deg: 15.0
-    sharp_turn_angle_deg: 90.0
+    turn_radius_base_m: 10.0
     braking_margin_m: 45.0
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0

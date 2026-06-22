@@ -475,11 +475,10 @@ The main simulation parameters are:
 - `min_turn_speed_mps` - minimum requested speed near sharp turns.
 - `max_accel_mps2` and `max_decel_mps2` - speed-profile acceleration limits.
 - `max_lateral_accel_mps2` - horizontal velocity vector change limit.
-- `turn_slowdown_min_angle_deg` and `sharp_turn_angle_deg` - corner-angle range
-  used to map turn severity to target turn speed.
+- `turn_radius_base_m` - base radius used to convert continuous turn severity
+  into target turn speed with the lateral-acceleration model.
 - `braking_margin_m` - extra distance kept before a turn when computing
-  braking distance. The same margin is used by the final-approach stop profile
-  on the last path segment.
+  braking distance. The same margin is used by the final-approach stop profile.
 - `cross_track_gain` and `max_cross_track_correction_angle_deg` - bounded
   correction back toward the active path segment.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
@@ -494,8 +493,9 @@ The main simulation parameters are:
 
 Runtime logs from `px4_offboard_node` include `actual_speed`, current control
 mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
-targets, braking distance, upcoming-turn validity, turn waypoint index, distance
-to turn, sharp-turn hold state, `local_clearance`, attitude, path id
+targets, limiting speed constraint type, limiting constraint distance, braking
+distance, upcoming-turn validity, turn waypoint index, distance to turn,
+`local_clearance`, attitude, path id
 correlation, cross-track error, heading error, commanded target delta,
 path-update target-continuity reason (`kept_previous_target`,
 `switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or

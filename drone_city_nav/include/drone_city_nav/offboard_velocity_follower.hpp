@@ -13,9 +13,14 @@ enum class VelocitySetpointReason {
   kInvalidPath,
   kHold,
   kStraight,
-  kGentleTurn,
   kBrakingForTurn,
   kFinalApproach,
+};
+
+enum class SpeedConstraintType {
+  kNone,
+  kTurn,
+  kGoal,
 };
 
 struct VelocityFollowerConfig {
@@ -25,8 +30,7 @@ struct VelocityFollowerConfig {
   double max_decel_mps2{4.0};
   double max_lateral_accel_mps2{3.0};
   double turn_preview_distance_m{32.0};
-  double turn_slowdown_min_angle_rad{0.25};
-  double sharp_turn_angle_rad{1.5707963267948966};
+  double turn_radius_base_m{10.0};
   double braking_margin_m{2.0};
   double cross_track_gain{0.25};
   double max_cross_track_correction_angle_rad{0.35};
@@ -42,6 +46,7 @@ struct TurnSpeedPlan {
   bool valid{false};
   std::size_t waypoint_index{0U};
   double angle_rad{0.0};
+  double turn_radius_m{std::numeric_limits<double>::quiet_NaN()};
   double distance_to_turn_m{std::numeric_limits<double>::infinity()};
   double target_turn_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double braking_distance_m{std::numeric_limits<double>::quiet_NaN()};
@@ -73,6 +78,13 @@ struct VelocitySetpointPlan {
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_correction_mps{0.0};
+  SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
+  std::size_t limiting_constraint_index{0U};
+  double limiting_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double limiting_turn_angle_rad{std::numeric_limits<double>::quiet_NaN()};
+  double limiting_turn_radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double limiting_constraint_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double limiting_allowed_speed_now_mps{std::numeric_limits<double>::quiet_NaN()};
   OffboardPathProjection path_projection{};
   TurnSpeedPlan turn{};
   StopSpeedPlan final_stop{};
@@ -81,19 +93,23 @@ struct VelocitySetpointPlan {
 [[nodiscard]] const char*
 velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
 
+[[nodiscard]] const char*
+speedConstraintTypeName(SpeedConstraintType constraint_type) noexcept;
+
 [[nodiscard]] double
 distanceFromProjectionToWaypoint(std::span<const Point2> path,
                                  const OffboardPathProjection& projection,
                                  std::size_t waypoint_index);
 
-[[nodiscard]] TurnSpeedPlan speedLimitForUpcomingTurn(
-    std::span<const Point2> path, const OffboardPathProjection& projection,
-    double current_speed_mps, const VelocityFollowerConfig& config);
+[[nodiscard]] TurnSpeedPlan
+speedLimitForUpcomingTurn(std::span<const Point2> path,
+                          const OffboardPathProjection& projection,
+                          const VelocityFollowerConfig& config);
 
 [[nodiscard]] StopSpeedPlan
 speedLimitForFinalStop(std::span<const Point2> path,
                        const OffboardPathProjection& projection,
-                       double current_speed_mps, const VelocityFollowerConfig& config);
+                       const VelocityFollowerConfig& config);
 
 [[nodiscard]] VelocityVectorLimitResult
 limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
