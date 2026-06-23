@@ -31,6 +31,7 @@ add_library(
   src/astar_planner.cpp
   src/clearance_field.cpp
   src/corner_rounding.cpp
+  src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
   src/grid_config.cpp
@@ -47,7 +48,9 @@ add_library(
   src/planning_grid_builder.cpp
   src/planner_core.cpp
   src/static_city_map.cpp
-  src/trajectory.cpp)
+  src/racing_line.cpp
+  src/trajectory.cpp
+  src/trajectory_planner.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
   drone_city_nav_core
@@ -224,6 +227,21 @@ if(BUILD_TESTING)
   target_compile_features(corner_rounding_test PRIVATE cxx_std_20)
   target_link_libraries(corner_rounding_test drone_city_nav_core)
   enable_project_warnings(corner_rounding_test)
+
+  ament_add_gtest(corridor_test tests/corridor_test.cpp)
+  target_compile_features(corridor_test PRIVATE cxx_std_20)
+  target_link_libraries(corridor_test drone_city_nav_core)
+  enable_project_warnings(corridor_test)
+
+  ament_add_gtest(racing_line_test tests/racing_line_test.cpp)
+  target_compile_features(racing_line_test PRIVATE cxx_std_20)
+  target_link_libraries(racing_line_test drone_city_nav_core)
+  enable_project_warnings(racing_line_test)
+
+  ament_add_gtest(trajectory_planner_test tests/trajectory_planner_test.cpp)
+  target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_planner_test drone_city_nav_core)
+  enable_project_warnings(trajectory_planner_test)
 
   ament_add_gtest(offboard_path_follower_test
                   tests/offboard_path_follower_test.cpp)

@@ -50,7 +50,16 @@ Visualization Manager:
       Enabled: true
       Line Style: Lines
       Line Width: 0.18
-      Name: Planned Path
+      Name: Final Trajectory
+      Topic:
+        Value: /drone_city_nav/final_trajectory_path
+    - Alpha: 1
+      Class: rviz_default_plugins/Path
+      Color: 80; 120; 255
+      Enabled: false
+      Line Style: Lines
+      Line Width: 0.08
+      Name: Rough A* Route
       Topic:
         Value: /drone_city_nav/path
     - Alpha: 1

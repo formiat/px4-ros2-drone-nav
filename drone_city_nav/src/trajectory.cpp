@@ -110,6 +110,11 @@ segmentIndexAtS(const std::span<const TrajectorySegment> trajectory,
          std::isfinite(segment.sweep_rad);
 }
 
+[[nodiscard]] bool sampleIsFinite(const TrajectoryPointSample& sample) noexcept {
+  return std::isfinite(sample.s_m) && finite2D(sample.point) &&
+         finite2D(sample.tangent) && std::isfinite(sample.curvature_1pm);
+}
+
 } // namespace
 
 const char* trajectorySegmentKindName(const TrajectorySegmentKind kind) noexcept {
@@ -172,6 +177,19 @@ lineTrajectoryFromPoints(const std::span<const Point2> points) {
   return trajectory;
 }
 
+std::vector<TrajectorySegment>
+lineTrajectoryFromSamples(const std::span<const TrajectoryPointSample> samples) {
+  std::vector<Point2> points;
+  points.reserve(samples.size());
+  for (const TrajectoryPointSample& sample : samples) {
+    if (!sampleIsFinite(sample)) {
+      return {};
+    }
+    points.push_back(sample.point);
+  }
+  return lineTrajectoryFromPoints(points);
+}
+
 bool trajectoryIsUsable(const std::span<const TrajectorySegment> trajectory) {
   if (trajectory.empty()) {
     return false;
@@ -179,6 +197,21 @@ bool trajectoryIsUsable(const std::span<const TrajectorySegment> trajectory) {
   return std::ranges::all_of(trajectory, [](const TrajectorySegment& segment) {
     return segment.length_m > kTinyDistanceM && segmentIsFinite(segment);
   });
+}
+
+bool trajectorySamplesAreUsable(const std::span<const TrajectoryPointSample> samples) {
+  if (samples.size() < 2U) {
+    return false;
+  }
+  double previous_s = -std::numeric_limits<double>::infinity();
+  for (const TrajectoryPointSample& sample : samples) {
+    if (!sampleIsFinite(sample) || sample.s_m + kTinyDistanceM < previous_s ||
+        !(norm(sample.tangent) > kTinyDistanceM)) {
+      return false;
+    }
+    previous_s = sample.s_m;
+  }
+  return true;
 }
 
 TrajectoryMetrics
@@ -323,6 +356,43 @@ sampleTrajectory(const std::span<const TrajectorySegment> trajectory,
   if (samples.empty() || squaredDistance(samples.back(), trajectory.back().end) >
                              kTinyDistanceM * kTinyDistanceM) {
     samples.push_back(trajectory.back().end);
+  }
+  return samples;
+}
+
+std::vector<TrajectoryPointSample>
+sampleTrajectoryDetailed(const std::span<const TrajectorySegment> trajectory,
+                         const double step_m) {
+  std::vector<TrajectoryPointSample> samples;
+  if (!trajectoryIsUsable(trajectory)) {
+    return samples;
+  }
+
+  const double length = trajectoryLengthM(trajectory);
+  const double step = std::clamp(std::isfinite(step_m) ? step_m : 1.0, 0.05, 1000.0);
+  const std::size_t sample_count =
+      static_cast<std::size_t>(std::ceil(length / step)) + 1U;
+  samples.reserve(sample_count + 1U);
+  for (std::size_t i = 0U; i <= sample_count; ++i) {
+    const double s = std::min(length, static_cast<double>(i) * step);
+    TrajectoryPointSample sample{};
+    sample.s_m = s;
+    sample.point = trajectoryPointAtS(trajectory, s);
+    sample.tangent = trajectoryTangentAtS(trajectory, s);
+    sample.curvature_1pm = trajectoryCurvatureAtS(trajectory, s);
+    samples.push_back(sample);
+    if (s >= length) {
+      break;
+    }
+  }
+  if (samples.empty() || squaredDistance(samples.back().point, trajectory.back().end) >
+                             kTinyDistanceM * kTinyDistanceM) {
+    TrajectoryPointSample sample{};
+    sample.s_m = length;
+    sample.point = trajectory.back().end;
+    sample.tangent = trajectoryTangentAtS(trajectory, length);
+    sample.curvature_1pm = trajectoryCurvatureAtS(trajectory, length);
+    samples.push_back(sample);
   }
   return samples;
 }

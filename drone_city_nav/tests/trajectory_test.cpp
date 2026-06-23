@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <ranges>
 #include <vector>
 
 namespace drone_city_nav {
@@ -73,6 +74,38 @@ TEST(Trajectory, MetricsAndSamplingCoverEndPoint) {
   ASSERT_FALSE(samples.empty());
   EXPECT_NEAR(samples.back().x, 3.0, 1.0e-9);
   EXPECT_NEAR(samples.back().y, 1.0, 1.0e-9);
+}
+
+TEST(Trajectory, DetailedSamplesAreMonotonicAndPreserveCurvature) {
+  std::vector<TrajectorySegment> trajectory{
+      makeLineSegment(Point2{0.0, 0.0}, Point2{2.0, 0.0}),
+      makeArcSegment(Point2{2.0, 0.0}, Point2{3.0, 1.0}, Point2{2.0, 1.0},
+                     -std::numbers::pi / 2.0)};
+  assignTrajectoryStationing(trajectory);
+
+  const std::vector<TrajectoryPointSample> samples =
+      sampleTrajectoryDetailed(trajectory, 0.25);
+
+  ASSERT_TRUE(trajectorySamplesAreUsable(samples));
+  for (std::size_t i = 1U; i < samples.size(); ++i) {
+    EXPECT_GE(samples[i].s_m, samples[i - 1U].s_m);
+  }
+  const auto arc_sample = std::ranges::find_if(
+      samples, [](const auto& sample) { return std::abs(sample.curvature_1pm) > 0.5; });
+  ASSERT_NE(arc_sample, samples.end());
+  EXPECT_NEAR(arc_sample->curvature_1pm, -1.0, 1.0e-9);
+}
+
+TEST(Trajectory, LineTrajectoryFromSamplesRejectsNonFiniteSample) {
+  std::vector<TrajectoryPointSample> samples(2U);
+  samples[0].point = Point2{0.0, 0.0};
+  samples[0].tangent = Point2{1.0, 0.0};
+  samples[1].s_m = 1.0;
+  samples[1].point = Point2{std::numeric_limits<double>::quiet_NaN(), 0.0};
+  samples[1].tangent = Point2{1.0, 0.0};
+
+  EXPECT_TRUE(lineTrajectoryFromSamples(samples).empty());
+  EXPECT_FALSE(trajectorySamplesAreUsable(samples));
 }
 
 TEST(Trajectory, InvalidInputsReturnInvalidProjection) {

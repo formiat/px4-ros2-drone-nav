@@ -176,6 +176,33 @@ geometricSpeedSampleAtS(const std::span<const TrajectorySegment> trajectory,
                                         s_m, config);
 }
 
+[[nodiscard]] TrajectorySpeedSample
+geometricSpeedSampleFromPointSample(const TrajectoryPointSample& point_sample,
+                                    const std::size_t sample_index,
+                                    const VelocityFollowerConfig& config) {
+  TrajectorySpeedSample sample{};
+  const double cruise_speed = sanitizedCruiseSpeed(config);
+  const double min_turn_speed = sanitizedMinTurnSpeed(config);
+  const double max_lateral_accel =
+      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+  sample.s_m = point_sample.s_m;
+  sample.segment_index = sample_index;
+  sample.curvature_1pm = point_sample.curvature_1pm;
+  sample.radius_m = std::numeric_limits<double>::quiet_NaN();
+  sample.reason = SpeedConstraintType::kNone;
+  sample.geometric_limit_mps = cruise_speed;
+  if (std::abs(sample.curvature_1pm) > kTinyDistanceM) {
+    sample.radius_m = 1.0 / std::abs(sample.curvature_1pm);
+    sample.reason = SpeedConstraintType::kArc;
+    sample.geometric_limit_mps = std::clamp(
+        std::sqrt(max_lateral_accel * sample.radius_m), min_turn_speed, cruise_speed);
+  }
+  sample.profiled_limit_mps = sample.geometric_limit_mps;
+  sample.constraint_s_m = sample.s_m;
+  sample.constraint_limit_mps = sample.geometric_limit_mps;
+  return sample;
+}
+
 void mergeSpeedSample(std::vector<TrajectorySpeedSample>& samples,
                       const TrajectorySpeedSample& candidate) {
   constexpr double kMergeToleranceM = 1.0e-6;
@@ -219,6 +246,47 @@ firstProfileSampleNotBefore(const TrajectorySpeedProfile& profile, const double 
   return static_cast<std::size_t>(std::distance(profile.samples.begin(), it));
 }
 
+void finalizeSpeedProfile(TrajectorySpeedProfile& profile,
+                          const VelocityFollowerConfig& config) {
+  if (profile.samples.empty()) {
+    return;
+  }
+  profile.samples.back().profiled_limit_mps = 0.0;
+  profile.samples.back().geometric_limit_mps = 0.0;
+  profile.samples.back().reason = SpeedConstraintType::kGoal;
+  profile.samples.back().constraint_s_m = profile.samples.back().s_m;
+  profile.samples.back().constraint_limit_mps = 0.0;
+
+  const double max_decel = effectiveSpeedProfileDecelMps2(config);
+  for (std::size_t i = profile.samples.size() - 1U; i > 0U; --i) {
+    const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
+    const double allowed =
+        limitedSpeedForDistance(profile.samples[i].profiled_limit_mps, ds, max_decel);
+    if (allowed < profile.samples[i - 1U].profiled_limit_mps) {
+      profile.samples[i - 1U].profiled_limit_mps = allowed;
+      profile.samples[i - 1U].reason = profile.samples[i].reason;
+      profile.samples[i - 1U].segment_index = profile.samples[i].segment_index;
+      profile.samples[i - 1U].curvature_1pm = profile.samples[i].curvature_1pm;
+      profile.samples[i - 1U].radius_m = profile.samples[i].radius_m;
+      profile.samples[i - 1U].constraint_s_m = profile.samples[i].constraint_s_m;
+      profile.samples[i - 1U].constraint_limit_mps =
+          profile.samples[i].constraint_limit_mps;
+    }
+  }
+
+  const double max_accel = effectiveVelocityDeltaAccelMps2(config);
+  for (std::size_t i = 1U; i < profile.samples.size(); ++i) {
+    const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
+    const double allowed = limitedSpeedForDistance(
+        profile.samples[i - 1U].profiled_limit_mps, ds, max_accel);
+    if (allowed < profile.samples[i].profiled_limit_mps) {
+      profile.samples[i].profiled_limit_mps = allowed;
+    }
+  }
+
+  profile.valid = true;
+}
+
 } // namespace
 
 const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noexcept {
@@ -229,7 +297,7 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
       return "hold";
     case VelocitySetpointReason::kStraight:
       return "straight";
-    case VelocitySetpointReason::kBrakingForTurn:
+    case VelocitySetpointReason::kTrajectorySpeedProfile:
       return "trajectory_profile";
     case VelocitySetpointReason::kFinalApproach:
       return "final_approach";
@@ -295,40 +363,24 @@ buildTrajectorySpeedProfile(const std::span<const TrajectorySegment> trajectory,
   if (profile.samples.empty()) {
     return profile;
   }
-  profile.samples.back().profiled_limit_mps = 0.0;
-  profile.samples.back().geometric_limit_mps = 0.0;
-  profile.samples.back().reason = SpeedConstraintType::kGoal;
-  profile.samples.back().constraint_s_m = profile.samples.back().s_m;
-  profile.samples.back().constraint_limit_mps = 0.0;
+  finalizeSpeedProfile(profile, config);
+  return profile;
+}
 
-  const double max_decel = effectiveSpeedProfileDecelMps2(config);
-  for (std::size_t i = profile.samples.size() - 1U; i > 0U; --i) {
-    const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
-    const double allowed =
-        limitedSpeedForDistance(profile.samples[i].profiled_limit_mps, ds, max_decel);
-    if (allowed < profile.samples[i - 1U].profiled_limit_mps) {
-      profile.samples[i - 1U].profiled_limit_mps = allowed;
-      profile.samples[i - 1U].reason = profile.samples[i].reason;
-      profile.samples[i - 1U].segment_index = profile.samples[i].segment_index;
-      profile.samples[i - 1U].curvature_1pm = profile.samples[i].curvature_1pm;
-      profile.samples[i - 1U].radius_m = profile.samples[i].radius_m;
-      profile.samples[i - 1U].constraint_s_m = profile.samples[i].constraint_s_m;
-      profile.samples[i - 1U].constraint_limit_mps =
-          profile.samples[i].constraint_limit_mps;
-    }
+TrajectorySpeedProfile buildTrajectorySpeedProfile(
+    const std::span<const TrajectoryPointSample> trajectory_samples,
+    const VelocityFollowerConfig& config) {
+  TrajectorySpeedProfile profile{};
+  if (!trajectorySamplesAreUsable(trajectory_samples)) {
+    return profile;
   }
 
-  const double max_accel = effectiveVelocityDeltaAccelMps2(config);
-  for (std::size_t i = 1U; i < profile.samples.size(); ++i) {
-    const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
-    const double allowed = limitedSpeedForDistance(
-        profile.samples[i - 1U].profiled_limit_mps, ds, max_accel);
-    if (allowed < profile.samples[i].profiled_limit_mps) {
-      profile.samples[i].profiled_limit_mps = allowed;
-    }
+  profile.samples.reserve(trajectory_samples.size());
+  for (std::size_t i = 0U; i < trajectory_samples.size(); ++i) {
+    mergeSpeedSample(profile.samples, geometricSpeedSampleFromPointSample(
+                                          trajectory_samples[i], i, config));
   }
-
-  profile.valid = true;
+  finalizeSpeedProfile(profile, config);
   return profile;
 }
 
@@ -397,13 +449,6 @@ limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_ve
       previous_velocity + forward * limited_longitudinal_delta + limited_lateral;
   result.delta_mps = norm(result.velocity - previous_velocity);
   return result;
-}
-
-bool velocityCruisePathIsUsable(const std::span<const Point2> path,
-                                const Point2 current_position,
-                                const std::size_t /*waypoint_index*/) {
-  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(path);
-  return projectOnTrajectory(trajectory, current_position).has_value();
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -480,7 +525,7 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.reason = VelocitySetpointReason::kStraight;
   if (speed_sample.reason == SpeedConstraintType::kArc &&
       raw_speed_limit + 1.0e-6 < cruise_speed) {
-    plan.reason = VelocitySetpointReason::kBrakingForTurn;
+    plan.reason = VelocitySetpointReason::kTrajectorySpeedProfile;
   } else if (speed_sample.reason == SpeedConstraintType::kGoal &&
              raw_speed_limit + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kFinalApproach;
@@ -502,8 +547,7 @@ VelocitySetpointPlan planVelocitySetpoint(
           : std::max(0.0, speed_sample.constraint_s_m - projection->s_m);
   plan.limiting_constraint_speed_mps = speed_sample.constraint_limit_mps;
   plan.limiting_allowed_speed_now_mps = speed_sample.profiled_limit_mps;
-  plan.limiting_turn_angle_rad = std::numeric_limits<double>::quiet_NaN();
-  plan.limiting_turn_radius_m = speed_sample.radius_m;
+  plan.limiting_curve_radius_m = speed_sample.radius_m;
   plan.trajectory_s_m = projection->s_m;
   plan.trajectory_segment_index = projection->segment_index;
   plan.trajectory_segment_kind =
@@ -514,22 +558,6 @@ VelocitySetpointPlan planVelocitySetpoint(
                                      : std::numeric_limits<double>::quiet_NaN();
   plan.trajectory_projection = *projection;
 
-  plan.turn.valid = speed_sample.reason == SpeedConstraintType::kArc;
-  plan.turn.waypoint_index = speed_sample.segment_index;
-  plan.turn.angle_rad = std::numeric_limits<double>::quiet_NaN();
-  plan.turn.turn_radius_m = speed_sample.radius_m;
-  plan.turn.distance_to_turn_m = plan.limiting_constraint_distance_m;
-  plan.turn.target_turn_speed_mps = speed_sample.geometric_limit_mps;
-  plan.turn.braking_distance_m = std::numeric_limits<double>::quiet_NaN();
-  if (plan.turn.valid) {
-    const double turn_delta = std::max(0.0, current_speed * current_speed -
-                                                speed_sample.constraint_limit_mps *
-                                                    speed_sample.constraint_limit_mps);
-    plan.turn.braking_distance_m =
-        turn_delta / (2.0 * effectiveSpeedProfileDecelMps2(config));
-  }
-  plan.turn.raw_speed_limit_mps = speed_sample.profiled_limit_mps;
-
   plan.final_stop.valid = true;
   plan.final_stop.distance_to_stop_m =
       distanceFromTrajectorySToEnd(trajectory, projection->s_m);
@@ -538,19 +566,6 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.final_stop.raw_speed_limit_mps = speed_sample.profiled_limit_mps;
 
   return plan;
-}
-
-VelocitySetpointPlan
-planVelocitySetpoint(const std::span<const Point2> path, const Point2 current_position,
-                     const Point2 current_velocity, const bool current_velocity_valid,
-                     const std::size_t /*waypoint_index*/, const double dt_s,
-                     const VelocityFollowerState& previous_state,
-                     const VelocityFollowerConfig& config) {
-  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(path);
-  const TrajectorySpeedProfile profile =
-      buildTrajectorySpeedProfile(trajectory, config);
-  return planVelocitySetpoint(trajectory, profile, current_position, current_velocity,
-                              current_velocity_valid, dt_s, previous_state, config);
 }
 
 } // namespace drone_city_nav

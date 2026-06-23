@@ -178,6 +178,26 @@ TEST(OffboardVelocityFollower, PreArcBrakingReportsDistanceToArcConstraint) {
   EXPECT_NEAR(plan.limiting_constraint_speed_mps, std::sqrt(3.0 * 3.0), 1.0e-9);
 }
 
+TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
+  VelocityFollowerConfig config = testConfig();
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 6U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i);
+    sample.point = Point2{static_cast<double>(i), 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.curvature_1pm = i == 3U ? 0.2 : 0.0;
+    samples.push_back(sample);
+  }
+
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  ASSERT_TRUE(profile.valid);
+  const TrajectorySpeedSample curve_sample = speedProfileSampleAtS(profile, 3.0);
+  EXPECT_EQ(curve_sample.reason, SpeedConstraintType::kArc);
+  EXPECT_NEAR(curve_sample.geometric_limit_mps, std::sqrt(3.0 / 0.2), 1.0e-9);
+}
+
 TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
   const VelocityVectorLimitResult result =
       limitVelocityVectorDelta(Point2{0.0, 12.0}, Point2{12.0, 0.0}, true, 0.1, 3.0);
@@ -263,18 +283,6 @@ TEST(OffboardVelocityFollower, FastGoalFlyThroughKeepsVelocityBrakingActive) {
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kFinalApproach);
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
   EXPECT_LT(plan.raw_speed_limit_mps, testConfig().cruise_speed_mps);
-}
-
-TEST(OffboardVelocityFollower, PathCompatibilityWrapperUsesLineTrajectory) {
-  const std::vector<Point2> path{{0.0, 0.0}, {10.0, 0.0}};
-
-  const VelocitySetpointPlan plan =
-      planVelocitySetpoint(path, Point2{2.0, 0.0}, Point2{}, false, 1U, 0.1,
-                           VelocityFollowerState{}, testConfig());
-
-  ASSERT_TRUE(plan.valid);
-  EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
-  EXPECT_TRUE(velocityCruisePathIsUsable(path, Point2{1.0, 0.0}, 1U));
 }
 
 TEST(OffboardVelocityFollower, NonFinitePositionReturnsInvalidPlan) {

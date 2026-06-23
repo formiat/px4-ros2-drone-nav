@@ -324,11 +324,13 @@ model being absent from non-empty Gazebo pose/scene data.
 
 The RViz config shows red current lidar hit points from
 `/drone_city_nav/lidar_debug_points`, yellow accumulated lidar hit points from
-`/drone_city_nav/remembered_lidar_points`, and `/drone_city_nav/path`. The
-standard RViz `Map` display for `/drone_city_nav/prohibited_grid` is kept
-disabled by default because this GUI is intended to show remembered lidar wall
-hits, not filled occupancy-grid cells. All debug overlays are published in the
-`map` frame, so no Gazebo lidar TF tree is required.
+`/drone_city_nav/remembered_lidar_points`, and the final executable trajectory
+from `/drone_city_nav/final_trajectory_path`. The rough A* route remains
+available as a disabled debug path on `/drone_city_nav/path`. The standard RViz
+`Map` display for `/drone_city_nav/prohibited_grid` is kept disabled by default
+because this GUI is intended to show remembered lidar wall hits, not filled
+occupancy-grid cells. All debug overlays are published in the `map` frame, so
+no Gazebo lidar TF tree is required.
 The RViz config also includes a disabled `Static City Map` display for
 `/drone_city_nav/static_map_grid`; enable it when you need to inspect the raw
 occupancy-grid encoding. The green `Static City Map Points` display is enabled
@@ -458,17 +460,18 @@ PX4 attitude failure markers. Do not set it for full A-to-B validation.
 The offboard follower uses position setpoints for takeoff, no-path hold, final
 goal hold, and other fixed-position states. During normal cruise on a valid path
 it switches PX4 Offboard control to velocity setpoints: horizontal velocity is
-commanded along the current rounded trajectory tangent, and vertical velocity
+commanded along the current final trajectory tangent, and vertical velocity
 keeps the configured cruise altitude.
 
 The follower does not synthesize intermediate path waypoints between planner
-waypoints. Planner waypoints remain the route contract, while the offboard node
-builds an internal typed trajectory from `line` and `arc` segments after
-line-of-sight path collapse. Rounded-trajectory samples are published only for
-RViz/debug visibility on `/drone_city_nav/rounded_trajectory_path`; they are not
-fed back as control waypoints. Smoothness comes from the velocity profile over
-the final line/arc trajectory, acceleration/vector-delta limits, and bounded
-cross-track correction back toward the current trajectory projection.
+waypoints. Planner waypoints remain the rough route contract, while the offboard
+node builds the executable racing trajectory from corridor samples, lateral
+racing-line offsets, optional baseline line/arc rounding, and a curvature-based
+speed profile. Final-trajectory samples are published on
+`/drone_city_nav/final_trajectory_path`; they are not fed back as position
+targets. Smoothness comes from the velocity profile over the final trajectory,
+acceleration/vector-delta limits, and bounded cross-track correction back toward
+the current trajectory projection.
 
 The main simulation parameters are:
 
@@ -490,17 +493,20 @@ The main simulation parameters are:
 - `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
   samples. Segment boundaries and arc interior samples are added separately so
   short arcs cannot be skipped by a large regular step.
-- `corner_rounding_enabled` - enables conversion of sharp path corners into
-  typed arc segments when the arc stays inside the latest prohibited grid.
-- `corner_rounding_min_radius_m` and `corner_rounding_max_radius_m` - allowed
-  radius range for rounded corners.
-- `corner_rounding_min_segment_remainder_m` - straight-line length preserved on
-  each side of a rounded corner.
-- `corner_rounding_collision_sample_step_m` - sample spacing used to reject arcs
-  that intersect prohibited cells.
-- `rounded_trajectory_debug_topic` and
-  `rounded_trajectory_debug_sample_step_m` - debug path topic and visualization
-  sample spacing for the internal rounded trajectory.
+- `racing_trajectory_enabled` - enables the corridor/racing-line trajectory
+  layer. When disabled for tests, the offboard node falls back to the internal
+  baseline trajectory builder.
+- `corridor_max_radius_m`, `corridor_sample_step_m`, and
+  `corridor_safety_margin_m` - corridor sampling and lateral free-space bounds
+  around the rough route.
+- `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
+  `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
+  local optimizer controls for lateral offsets inside the corridor.
+- `trajectory_baseline_rounding_*` - internal fallback rounding controls used
+  by the final trajectory planner; this is not a separate runtime mode.
+- `final_trajectory_debug_topic` and `final_trajectory_debug_sample_step_m` -
+  debug path topic and visualization sample spacing for the executable final
+  trajectory.
 - `cross_track_gain` and `max_cross_track_correction_angle_deg` - bounded
   correction back toward the active path segment.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
@@ -511,15 +517,12 @@ The main simulation parameters are:
 
 Runtime logs from `px4_offboard_node` include `actual_speed`, current control
 mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
-targets, limiting speed constraint type, limiting constraint distance, braking
-distance, trajectory station, segment type, curvature, arc radius, rounded
-corner counters, upcoming-turn validity, turn waypoint index, distance to turn,
-`local_clearance`, attitude, path id correlation, cross-track error, heading
-error, commanded target delta,
-path-update target-continuity reason (`kept_previous_target`,
-`switched_to_new_waypoint`, `forced_switch_unsafe_previous`, or
-`forced_switch_previous_behind_path`), and nearest-obstacle bearing. The same
-2 Hz control diagnostics are written as JSON Lines to
+targets, limiting speed constraint type, limiting constraint distance, final
+stop braking distance, trajectory station, segment type, curvature, curve
+radius, final trajectory sample count, corridor width, racing-line cost and
+offset metrics, `local_clearance`, attitude, path id correlation, cross-track
+error, heading error, commanded target delta, and nearest-obstacle bearing. The
+same control diagnostics are written as JSON Lines to
 `log/offboard_blackbox.jsonl` for machine analysis.
 Planner logs include smoothing rejection counters and final segment-length
 statistics so headless runs can show whether short waypoint segments come from
@@ -575,14 +578,10 @@ make quality
   and distance-to-goal values in `planner_node`,
   `px4_offboard_node`, and `mission_monitor_node`.
 - The simulation offboard follower commands cruise as velocity setpoints along
-  the current path segment; it does not synthesize intermediate path targets
-  between waypoints.
+  the final trajectory projection; it does not synthesize intermediate position
+  targets between waypoints.
 - The simulation offboard follower still uses position setpoints for takeoff,
   no-path hold, and final goal hold.
-- The offboard follower also applies path continuity hysteresis so frequent
-  replanning updates do not immediately force large lateral target jumps when a
-  nearby waypoint from the new path still matches the previous local target.
-  This continuity is disabled for far-away targets such as the final goal.
 - When obstacle-memory mapping is enabled, the simulation obstacle-memory node
   ignores persistent lidar map updates below `min_mapping_altitude_m`. The
   planner still overlays fresh lidar hits onto its temporary A* grid when

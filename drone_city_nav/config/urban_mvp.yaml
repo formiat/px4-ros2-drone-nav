@@ -126,17 +126,30 @@ px4_offboard_node:
     max_decel_mps2: 20.0
     max_lateral_accel_mps2: 6.0
     speed_profile_decel_mps2: 3.0
-    speed_profile_sample_step_m: 1.0
+    speed_profile_sample_step_m: 0.5
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0
-    corner_rounding_enabled: true
-    corner_rounding_min_radius_m: 3.0
-    corner_rounding_max_radius_m: 30.0
-    corner_rounding_min_segment_remainder_m: 1.0
-    corner_rounding_collision_sample_step_m: 0.25
-    rounded_trajectory_debug_topic: /drone_city_nav/rounded_trajectory_path
-    rounded_trajectory_debug_sample_step_m: 1.0
+    racing_trajectory_enabled: true
+    trajectory_baseline_rounding_min_radius_m: 3.0
+    trajectory_baseline_rounding_max_radius_m: 30.0
+    trajectory_baseline_rounding_min_segment_remainder_m: 1.0
+    trajectory_baseline_rounding_collision_sample_step_m: 0.25
+    corridor_max_radius_m: 40.0
+    corridor_sample_step_m: 1.0
+    corridor_ray_step_m: 0.0
+    corridor_safety_margin_m: 0.5
+    racing_line_max_iterations: 80
+    racing_line_initial_offset_step_m: 2.0
+    racing_line_min_offset_step_m: 0.1
+    racing_line_cooling_ratio: 0.5
+    racing_line_weight_length: 1.0
+    racing_line_weight_curvature: 25.0
+    racing_line_weight_curvature_change: 10.0
+    racing_line_weight_center_bias: 0.02
+    racing_line_max_length_ratio: 1.25
+    final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
+    final_trajectory_debug_sample_step_m: 1.0
     altitude_hold_kp: 0.5
     max_vertical_speed_mps: 2.0
     max_clearance_grid_staleness_s: 1.5
@@ -164,7 +177,7 @@ lidar_debug_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     prohibited_grid_topic: /drone_city_nav/prohibited_grid
-    path_topic: /drone_city_nav/path
+    path_topic: /drone_city_nav/final_trajectory_path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
     remembered_pointcloud_topic: /drone_city_nav/remembered_lidar_points
     prohibited_pointcloud_topic: /drone_city_nav/prohibited_obstacle_points

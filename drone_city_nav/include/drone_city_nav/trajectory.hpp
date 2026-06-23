@@ -44,6 +44,15 @@ struct TrajectoryMetrics {
   double length_m{0.0};
 };
 
+struct TrajectoryPointSample {
+  double s_m{0.0};
+  Point2 point{};
+  Point2 tangent{};
+  double curvature_1pm{0.0};
+  double left_bound_m{std::numeric_limits<double>::quiet_NaN()};
+  double right_bound_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 [[nodiscard]] const char*
 trajectorySegmentKindName(TrajectorySegmentKind kind) noexcept;
 
@@ -57,7 +66,13 @@ void assignTrajectoryStationing(std::vector<TrajectorySegment>& trajectory);
 [[nodiscard]] std::vector<TrajectorySegment>
 lineTrajectoryFromPoints(std::span<const Point2> points);
 
+[[nodiscard]] std::vector<TrajectorySegment>
+lineTrajectoryFromSamples(std::span<const TrajectoryPointSample> samples);
+
 [[nodiscard]] bool trajectoryIsUsable(std::span<const TrajectorySegment> trajectory);
+
+[[nodiscard]] bool
+trajectorySamplesAreUsable(std::span<const TrajectoryPointSample> samples);
 
 [[nodiscard]] TrajectoryMetrics
 trajectoryMetrics(std::span<const TrajectorySegment> trajectory);
@@ -79,5 +94,8 @@ projectOnTrajectory(std::span<const TrajectorySegment> trajectory, Point2 point,
 
 [[nodiscard]] std::vector<Point2>
 sampleTrajectory(std::span<const TrajectorySegment> trajectory, double step_m);
+
+[[nodiscard]] std::vector<TrajectoryPointSample>
+sampleTrajectoryDetailed(std::span<const TrajectorySegment> trajectory, double step_m);
 
 } // namespace drone_city_nav

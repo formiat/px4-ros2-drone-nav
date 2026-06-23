@@ -14,7 +14,7 @@ enum class VelocitySetpointReason {
   kInvalidPath,
   kHold,
   kStraight,
-  kBrakingForTurn,
+  kTrajectorySpeedProfile,
   kFinalApproach,
 };
 
@@ -41,17 +41,6 @@ struct VelocityFollowerConfig {
 struct VelocityFollowerState {
   Point2 previous_velocity_setpoint{};
   bool previous_velocity_setpoint_valid{false};
-};
-
-struct TurnSpeedPlan {
-  bool valid{false};
-  std::size_t waypoint_index{0U};
-  double angle_rad{0.0};
-  double turn_radius_m{std::numeric_limits<double>::quiet_NaN()};
-  double distance_to_turn_m{std::numeric_limits<double>::infinity()};
-  double target_turn_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-  double braking_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct StopSpeedPlan {
@@ -99,8 +88,7 @@ struct VelocitySetpointPlan {
   SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
   std::size_t limiting_constraint_index{0U};
   double limiting_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  double limiting_turn_angle_rad{std::numeric_limits<double>::quiet_NaN()};
-  double limiting_turn_radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double limiting_curve_radius_m{std::numeric_limits<double>::quiet_NaN()};
   double limiting_constraint_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double limiting_allowed_speed_now_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_s_m{std::numeric_limits<double>::quiet_NaN()};
@@ -109,7 +97,6 @@ struct VelocitySetpointPlan {
   double trajectory_curvature_1pm{0.0};
   double trajectory_arc_radius_m{std::numeric_limits<double>::quiet_NaN()};
   TrajectoryProjection trajectory_projection{};
-  TurnSpeedPlan turn{};
   StopSpeedPlan final_stop{};
 };
 
@@ -126,6 +113,10 @@ distanceFromTrajectorySToEnd(std::span<const TrajectorySegment> trajectory, doub
 buildTrajectorySpeedProfile(std::span<const TrajectorySegment> trajectory,
                             const VelocityFollowerConfig& config);
 
+[[nodiscard]] TrajectorySpeedProfile
+buildTrajectorySpeedProfile(std::span<const TrajectoryPointSample> trajectory_samples,
+                            const VelocityFollowerConfig& config);
+
 [[nodiscard]] TrajectorySpeedSample
 speedProfileSampleAtS(const TrajectorySpeedProfile& profile, double s_m);
 
@@ -139,19 +130,10 @@ limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,
                          bool previous_velocity_valid, double dt_s,
                          double max_accel_mps2, double max_decel_mps2);
 
-[[nodiscard]] bool velocityCruisePathIsUsable(std::span<const Point2> path,
-                                              Point2 current_position,
-                                              std::size_t waypoint_index);
-
 [[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
     std::span<const TrajectorySegment> trajectory,
     const TrajectorySpeedProfile& speed_profile, Point2 current_position,
     Point2 current_velocity, bool current_velocity_valid, double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
-
-[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
-    std::span<const Point2> path, Point2 current_position, Point2 current_velocity,
-    bool current_velocity_valid, std::size_t waypoint_index, double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
 
 } // namespace drone_city_nav

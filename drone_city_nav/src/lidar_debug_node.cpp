@@ -127,8 +127,8 @@ public:
         declare_parameter<std::string>("lidar_topic", "/scan");
     const std::string prohibited_grid_topic = declare_parameter<std::string>(
         "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
-    const std::string path_topic =
-        declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
+    const std::string path_topic = declare_parameter<std::string>(
+        "path_topic", "/drone_city_nav/final_trajectory_path");
     pointcloud_topic_ = declare_parameter<std::string>(
         "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
     remembered_pointcloud_topic_ = declare_parameter<std::string>(
