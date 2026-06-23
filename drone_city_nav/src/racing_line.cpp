@@ -74,6 +74,32 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
   return points;
 }
 
+void applyOffsetDelta(std::vector<double>& offsets,
+                      const std::span<const CorridorSample> corridor_samples,
+                      const std::size_t center_index, const double delta_m) {
+  constexpr std::array<std::pair<int, double>, 5U> kSmoothingKernel{
+      {{-2, 0.25}, {-1, 0.5}, {0, 1.0}, {1, 0.5}, {2, 0.25}}};
+  if (offsets.size() != corridor_samples.size() || offsets.size() <= 2U) {
+    return;
+  }
+
+  for (const auto& [relative_index, weight] : kSmoothingKernel) {
+    if (relative_index < 0 &&
+        center_index < static_cast<std::size_t>(-relative_index)) {
+      continue;
+    }
+    const std::size_t index =
+        relative_index < 0 ? center_index - static_cast<std::size_t>(-relative_index)
+                           : center_index + static_cast<std::size_t>(relative_index);
+    if (index == 0U || index + 1U >= offsets.size()) {
+      continue;
+    }
+    offsets[index] = std::clamp(offsets[index] + delta_m * weight,
+                                -corridor_samples[index].right_bound_m,
+                                corridor_samples[index].left_bound_m);
+  }
+}
+
 enum class InitialOffsetSeed : std::uint8_t {
   kCenterline,
   kCorridorMidline,
@@ -310,12 +336,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
        ++iteration) {
     bool changed = false;
     for (std::size_t i = 1U; i + 1U < sample_count; ++i) {
-      double best_offset = offsets[i];
+      std::vector<double> best_offsets = offsets;
       for (const double delta : {-step, 0.0, step}) {
         std::vector<double> candidate_offsets = offsets;
-        candidate_offsets[i] =
-            std::clamp(offsets[i] + delta, -corridor_samples[i].right_bound_m,
-                       corridor_samples[i].left_bound_m);
+        applyOffsetDelta(candidate_offsets, corridor_samples, i, delta);
         std::vector<Point2> candidate_points =
             pointsFromOffsets(corridor_samples, candidate_offsets);
         ++result.stats.candidate_evaluations;
@@ -328,12 +352,12 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
             candidate_points, candidate_offsets, evaluation, config, max_length_m);
         if (candidate_cost + 1.0e-9 < best_cost) {
           best_cost = candidate_cost;
-          best_offset = candidate_offsets[i];
+          best_offsets = std::move(candidate_offsets);
           best_points = std::move(candidate_points);
           changed = true;
         }
       }
-      offsets[i] = best_offset;
+      offsets = std::move(best_offsets);
     }
     ++result.stats.iterations;
     if (!changed) {

@@ -963,6 +963,25 @@ private:
       return;
     }
 
+    const bool start_command_needed =
+        (auto_offboard_ && !isOffboard()) || (auto_arm_ && !isArmed());
+    if (start_command_needed && !missionStartReady()) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Waiting for valid mission trajectory before arming/offboard: "
+          "pose_fresh=%s path_valid=%s waypoint=%zu/%zu trajectory_valid=%s "
+          "trajectory_status=%.*s grid_seen=%s",
+          localPositionFresh() ? "true" : "false", path_valid_ ? "true" : "false",
+          waypoint_index_, path_points_.size(),
+          finalTrajectoryReady() ? "true" : "false",
+          static_cast<int>(
+              trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
+                  .size()),
+          trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
+          prohibited_grid_valid_ ? "true" : "false");
+      return;
+    }
+
     if (auto_offboard_ && !isOffboard()) {
       publishVehicleCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE,
                             1.0F, 6.0F);
@@ -1335,6 +1354,10 @@ private:
     return finalTrajectoryReady();
   }
 
+  [[nodiscard]] bool missionStartReady() const {
+    return localPositionFresh() && pathFollowingReady();
+  }
+
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
     if (!path_valid_ || !localPositionFresh()) {
       return UpcomingTurn{};
@@ -1397,7 +1420,7 @@ private:
   }
 
   [[nodiscard]] std::optional<OccupancyGrid2D> currentProhibitedGrid() const {
-    if (!prohibitedGridFresh() || !(prohibited_grid_.info.resolution > 0.0F) ||
+    if (!prohibited_grid_valid_ || !(prohibited_grid_.info.resolution > 0.0F) ||
         prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U ||
         prohibited_grid_.info.width >
             static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
