@@ -1,9 +1,12 @@
 #include "drone_city_nav/racing_line.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <ranges>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
@@ -57,6 +60,42 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
                      corridor_samples[i].normal * offsets[i]);
   }
   return points;
+}
+
+enum class InitialOffsetSeed : std::uint8_t {
+  kCenterline,
+  kCorridorMidline,
+  kLeftBiased,
+  kRightBiased,
+};
+
+[[nodiscard]] double offsetForSeed(const CorridorSample& sample,
+                                   const InitialOffsetSeed seed) noexcept {
+  switch (seed) {
+    case InitialOffsetSeed::kCenterline:
+      return 0.0;
+    case InitialOffsetSeed::kCorridorMidline:
+      return std::clamp(0.5 * (sample.left_bound_m - sample.right_bound_m),
+                        -sample.right_bound_m, sample.left_bound_m);
+    case InitialOffsetSeed::kLeftBiased:
+      return 0.75 * sample.left_bound_m;
+    case InitialOffsetSeed::kRightBiased:
+      return -0.75 * sample.right_bound_m;
+  }
+  return 0.0;
+}
+
+[[nodiscard]] std::vector<double>
+offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
+                const InitialOffsetSeed seed) {
+  std::vector<double> offsets(corridor_samples.size(), 0.0);
+  if (corridor_samples.size() <= 2U) {
+    return offsets;
+  }
+  for (std::size_t i = 1U; i + 1U < corridor_samples.size(); ++i) {
+    offsets[i] = offsetForSeed(corridor_samples[i], seed);
+  }
+  return offsets;
 }
 
 [[nodiscard]] double pathLength(const std::span<const Point2> points) {
@@ -193,16 +232,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   }
 
   const std::size_t sample_count = corridor_samples.size();
-  std::vector<double> offsets(sample_count, 0.0);
-  std::vector<Point2> centerline = pointsFromOffsets(corridor_samples, offsets);
-  if (!pathTraversable(prohibited_grid, centerline)) {
-    ++result.stats.collision_rejections;
-    return result;
-  }
-
+  const std::vector<double> zero_offsets(sample_count, 0.0);
+  const std::vector<Point2> centerline =
+      pointsFromOffsets(corridor_samples, zero_offsets);
   result.stats.centerline_length_m = pathLength(centerline);
-  double best_cost = costForPoints(centerline, offsets, config);
-  result.stats.initial_cost = best_cost;
 
   const double min_step =
       sanitizedPositive(config.min_offset_step_m, 0.1, 0.001, 100.0);
@@ -213,6 +246,38 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       config.max_iterations, 1U, static_cast<std::size_t>(10000U));
   const double max_length_ratio =
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
+
+  std::vector<double> offsets;
+  std::vector<Point2> best_points;
+  double best_cost = std::numeric_limits<double>::infinity();
+  constexpr std::array kInitialSeeds{
+      InitialOffsetSeed::kCenterline, InitialOffsetSeed::kCorridorMidline,
+      InitialOffsetSeed::kLeftBiased, InitialOffsetSeed::kRightBiased};
+  for (const InitialOffsetSeed seed : kInitialSeeds) {
+    std::vector<double> candidate_offsets = offsetsFromSeed(corridor_samples, seed);
+    std::vector<Point2> candidate_points =
+        pointsFromOffsets(corridor_samples, candidate_offsets);
+    ++result.stats.candidate_evaluations;
+    if (pathLength(candidate_points) >
+        result.stats.centerline_length_m * max_length_ratio) {
+      continue;
+    }
+    if (!pathTraversable(prohibited_grid, candidate_points)) {
+      ++result.stats.collision_rejections;
+      continue;
+    }
+    const double candidate_cost =
+        costForPoints(candidate_points, candidate_offsets, config);
+    if (candidate_cost < best_cost) {
+      best_cost = candidate_cost;
+      offsets = std::move(candidate_offsets);
+      best_points = std::move(candidate_points);
+    }
+  }
+  if (offsets.empty()) {
+    return result;
+  }
+  result.stats.initial_cost = best_cost;
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
@@ -240,6 +305,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         if (candidate_cost + 1.0e-9 < best_cost) {
           best_cost = candidate_cost;
           best_offset = candidate_offsets[i];
+          best_points = std::move(candidate_points);
           changed = true;
         }
       }
@@ -251,7 +317,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     }
   }
 
-  std::vector<Point2> final_points = pointsFromOffsets(corridor_samples, offsets);
+  std::vector<Point2> final_points = std::move(best_points);
+  if (final_points.empty()) {
+    final_points = pointsFromOffsets(corridor_samples, offsets);
+  }
   if (!pathTraversable(prohibited_grid, final_points)) {
     ++result.stats.collision_rejections;
     return result;

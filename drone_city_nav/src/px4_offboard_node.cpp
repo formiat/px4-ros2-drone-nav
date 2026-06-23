@@ -511,43 +511,72 @@ private:
   }
 
   void addCorridorDebugMarkers(visualization_msgs::msg::MarkerArray& markers) const {
-    auto ribs = makeDebugMarker("racing_corridor_ribs", 0,
-                                visualization_msgs::msg::Marker::LINE_LIST);
+    auto obsolete_ribs = makeDebugMarker("racing_corridor_ribs", 0,
+                                         visualization_msgs::msg::Marker::LINE_LIST);
+    obsolete_ribs.action = visualization_msgs::msg::Marker::DELETE;
+
+    auto fill = makeDebugMarker("racing_corridor_fill", 0,
+                                visualization_msgs::msg::Marker::TRIANGLE_LIST);
     auto left = makeDebugMarker("racing_corridor_left", 0,
                                 visualization_msgs::msg::Marker::LINE_STRIP);
     auto right = makeDebugMarker("racing_corridor_right", 0,
                                  visualization_msgs::msg::Marker::LINE_STRIP);
-    for (auto* marker : {&ribs, &left, &right}) {
+    fill.scale.x = 1.0;
+    fill.scale.y = 1.0;
+    fill.scale.z = 1.0;
+    fill.color.r = 0.55F;
+    fill.color.g = 0.78F;
+    fill.color.b = 1.0F;
+    fill.color.a = 0.22F;
+    for (auto* marker : {&left, &right}) {
       marker->scale.x = 0.16;
-      marker->color.r = 1.0F;
-      marker->color.g = 0.18F;
-      marker->color.b = 0.12F;
-      marker->color.a = marker == &ribs ? 0.22F : 0.45F;
+      marker->color.r = 0.70F;
+      marker->color.g = 0.90F;
+      marker->color.b = 1.0F;
+      marker->color.a = 0.70F;
     }
 
     if (corridor_debug_samples_.empty()) {
-      ribs.action = visualization_msgs::msg::Marker::DELETE;
+      fill.action = visualization_msgs::msg::Marker::DELETE;
       left.action = visualization_msgs::msg::Marker::DELETE;
       right.action = visualization_msgs::msg::Marker::DELETE;
-      markers.markers.push_back(ribs);
+      markers.markers.push_back(obsolete_ribs);
+      markers.markers.push_back(fill);
       markers.markers.push_back(left);
       markers.markers.push_back(right);
       return;
     }
 
+    const auto leftEdge = [](const CorridorSample& sample) {
+      return Point2{sample.center.x + sample.normal.x * sample.left_bound_m,
+                    sample.center.y + sample.normal.y * sample.left_bound_m};
+    };
+    const auto rightEdge = [](const CorridorSample& sample) {
+      return Point2{sample.center.x - sample.normal.x * sample.right_bound_m,
+                    sample.center.y - sample.normal.y * sample.right_bound_m};
+    };
+
     for (const CorridorSample& sample : corridor_debug_samples_) {
-      const Point2 left_point{sample.center.x + sample.normal.x * sample.left_bound_m,
-                              sample.center.y + sample.normal.y * sample.left_bound_m};
-      const Point2 right_point{sample.center.x - sample.normal.x * sample.right_bound_m,
-                               sample.center.y -
-                                   sample.normal.y * sample.right_bound_m};
-      ribs.points.push_back(markerPoint(left_point, kRvizGroundZ));
-      ribs.points.push_back(markerPoint(right_point, kRvizGroundZ));
+      const Point2 left_point = leftEdge(sample);
+      const Point2 right_point = rightEdge(sample);
       left.points.push_back(markerPoint(left_point, kRvizGroundZ + 0.02));
       right.points.push_back(markerPoint(right_point, kRvizGroundZ + 0.02));
     }
+    for (std::size_t i = 1U; i < corridor_debug_samples_.size(); ++i) {
+      const Point2 left_previous = leftEdge(corridor_debug_samples_[i - 1U]);
+      const Point2 right_previous = rightEdge(corridor_debug_samples_[i - 1U]);
+      const Point2 left_current = leftEdge(corridor_debug_samples_[i]);
+      const Point2 right_current = rightEdge(corridor_debug_samples_[i]);
+      fill.points.push_back(markerPoint(left_previous, kRvizGroundZ - 0.01));
+      fill.points.push_back(markerPoint(right_previous, kRvizGroundZ - 0.01));
+      fill.points.push_back(markerPoint(left_current, kRvizGroundZ - 0.01));
+      fill.points.push_back(markerPoint(right_previous, kRvizGroundZ - 0.01));
+      fill.points.push_back(markerPoint(right_current, kRvizGroundZ - 0.01));
+      fill.points.push_back(markerPoint(left_current, kRvizGroundZ - 0.01));
+    }
 
-    markers.markers.push_back(ribs);
+    markers.markers.push_back(obsolete_ribs);
+    markers.markers.push_back(fill);
     markers.markers.push_back(left);
     markers.markers.push_back(right);
   }

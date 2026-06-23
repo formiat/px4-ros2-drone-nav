@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <vector>
 
 namespace drone_city_nav {
@@ -32,6 +33,24 @@ namespace {
     sample.left_bound_m = 5.0;
     sample.right_bound_m = 1.0;
     sample.clearance_m = 5.0;
+    samples.push_back(sample);
+  }
+  return samples;
+}
+
+[[nodiscard]] std::vector<CorridorSample>
+straightCorridorWithBlockedCenterline(const double left_bound_m,
+                                      const double right_bound_m) {
+  std::vector<CorridorSample> samples;
+  for (int i = 0; i <= 4; ++i) {
+    CorridorSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.center = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.normal = Point2{0.0, 1.0};
+    sample.left_bound_m = left_bound_m;
+    sample.right_bound_m = right_bound_m;
+    sample.clearance_m = std::max(left_bound_m, right_bound_m);
     samples.push_back(sample);
   }
   return samples;
@@ -78,12 +97,28 @@ TEST(RacingLine, ResultIsDeterministic) {
   }
 }
 
-TEST(RacingLine, ProhibitedCenterlineReturnsInvalidResult) {
+TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   OccupancyGrid2D grid = openGrid();
-  for (int y = 15; y < 30; ++y) {
-    grid.setOccupied(GridIndex{30, y});
+  for (int x = 28; x <= 32; ++x) {
+    grid.setOccupied(GridIndex{x, 20});
   }
-  const std::vector<CorridorSample> corridor = wideLeftTurnCorridor();
+  const std::vector<CorridorSample> corridor =
+      straightCorridorWithBlockedCenterline(5.0, 1.0);
+
+  const RacingLineResult result = optimizeRacingLine(corridor, grid, testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_GT(result.stats.collision_rejections, 0U);
+  EXPECT_GT(result.stats.max_abs_offset_m, 0.1);
+}
+
+TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
+  OccupancyGrid2D grid = openGrid();
+  for (int x = 28; x <= 32; ++x) {
+    grid.setOccupied(GridIndex{x, 20});
+  }
+  const std::vector<CorridorSample> corridor =
+      straightCorridorWithBlockedCenterline(0.0, 0.0);
 
   const RacingLineResult result = optimizeRacingLine(corridor, grid, testConfig());
 
