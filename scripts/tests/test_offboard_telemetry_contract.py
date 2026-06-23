@@ -9,12 +9,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OFFBOARD_NODE = REPO_ROOT / "drone_city_nav/src/px4_offboard_node.cpp"
+TRAJECTORY_PLANNER = REPO_ROOT / "drone_city_nav/src/trajectory_planner.cpp"
 
 
 class OffboardTelemetryContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.offboard_text = OFFBOARD_NODE.read_text(encoding="utf-8")
+        cls.trajectory_planner_text = TRAJECTORY_PLANNER.read_text(encoding="utf-8")
 
     def test_telemetry_logs_attitude_at_runtime_rate(self) -> None:
         self.assertIn("telemetry_log_period_s", self.offboard_text)
@@ -53,6 +55,19 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("velocityCruiseReady()", self.offboard_text)
         self.assertIn("cruise_velocity_control_enabled_ &&", self.offboard_text)
 
+    def test_final_trajectory_rebuilds_after_grid_lifecycle_events(self) -> None:
+        self.assertIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
+        self.assertIn("trajectoryGridRebuildReason(", self.offboard_text)
+        self.assertIn("buildCorridor(", self.offboard_text)
+        self.assertIn(
+            "TrajectoryPlannerFallbackReason::kMissingGrid",
+            self.trajectory_planner_text,
+        )
+        self.assertIn('"missing_grid_fallback"', self.trajectory_planner_text)
+        self.assertIn('"prohibited_intersection"', self.trajectory_planner_text)
+        self.assertIn('"corridor_bounds_changed"', self.trajectory_planner_text)
+        self.assertIn("Final trajectory grid-triggered rebuild", self.offboard_text)
+
     def test_telemetry_writes_jsonl_flight_blackbox(self) -> None:
         self.assertIn("flight_blackbox_enabled", self.offboard_text)
         self.assertIn("flight_blackbox_path", self.offboard_text)
@@ -89,6 +104,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("racing_line_cost_final", self.offboard_text)
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertIn("baseline_rounded_corners", self.offboard_text)
+        self.assertIn("rough_route_debug_turn_angle_rad", self.offboard_text)
+        self.assertIn("rough_route_debug_segment_type", self.offboard_text)
+        self.assertNotIn('\\"turn_angle_rad\\"', self.offboard_text)
+        self.assertNotIn('\\"turn_valid\\"', self.offboard_text)
+        self.assertNotIn('\\"turn_distance_m\\"', self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
@@ -127,6 +147,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("corridor_max_radius_m: 40.0", text)
                 self.assertIn("corridor_sample_step_m: 1.0", text)
                 self.assertIn("corridor_safety_margin_m: 0.5", text)
+                self.assertIn("corridor_rebuild_width_threshold_m: 0.5", text)
                 self.assertIn("racing_line_max_iterations: 80", text)
                 self.assertIn("racing_line_weight_curvature: 25.0", text)
                 self.assertIn(

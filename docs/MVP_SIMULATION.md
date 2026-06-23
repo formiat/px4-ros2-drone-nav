@@ -496,9 +496,11 @@ The main simulation parameters are:
 - `racing_trajectory_enabled` - enables the corridor/racing-line trajectory
   layer. When disabled for tests, the offboard node falls back to the internal
   baseline trajectory builder.
-- `corridor_max_radius_m`, `corridor_sample_step_m`, and
-  `corridor_safety_margin_m` - corridor sampling and lateral free-space bounds
-  around the rough route.
+- `corridor_max_radius_m`, `corridor_sample_step_m`,
+  `corridor_safety_margin_m`, and `corridor_rebuild_width_threshold_m` -
+  corridor sampling, lateral free-space bounds around the rough route, and the
+  minimum material corridor-width change that triggers a final-trajectory
+  rebuild after a new prohibited grid arrives.
 - `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
   `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.
@@ -523,7 +525,9 @@ radius, final trajectory sample count, corridor width, racing-line cost and
 offset metrics, `local_clearance`, attitude, path id correlation, cross-track
 error, heading error, commanded target delta, and nearest-obstacle bearing. The
 same control diagnostics are written as JSON Lines to
-`log/offboard_blackbox.jsonl` for machine analysis.
+`log/offboard_blackbox.jsonl` for machine analysis. Legacy path-turn values, if
+emitted, are explicitly named `rough_route_debug_*` and are not active speed or
+trajectory-control fields.
 Planner logs include smoothing rejection counters and final segment-length
 statistics so headless runs can show whether short waypoint segments come from
 prohibited line-of-sight failures, grid bounds, or the remaining smoothed

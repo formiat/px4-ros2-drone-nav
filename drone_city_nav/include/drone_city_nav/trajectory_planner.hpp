@@ -22,6 +22,14 @@ enum class TrajectoryPlannerFallbackReason {
   kBaselineInvalid,
 };
 
+enum class TrajectoryGridRebuildReason {
+  kNone,
+  kInvalidTrajectory,
+  kMissingGridFallback,
+  kProhibitedIntersection,
+  kCorridorBoundsChanged,
+};
+
 struct TrajectoryPlannerConfig {
   bool racing_trajectory_enabled{true};
   CornerRoundingConfig baseline_rounding{};
@@ -57,6 +65,18 @@ struct TrajectoryPlannerInput {
   const OccupancyGrid2D* prohibited_grid{nullptr};
 };
 
+struct TrajectoryGridRebuildDecisionInput {
+  bool trajectory_valid{false};
+  bool racing_trajectory_enabled{true};
+  bool final_trajectory_intersects_prohibited{false};
+  bool current_corridor_valid{false};
+  double corridor_width_threshold_m{0.5};
+  TrajectoryPlannerFallbackReason fallback_reason{
+      TrajectoryPlannerFallbackReason::kNone};
+  CorridorStats previous_corridor{};
+  CorridorStats current_corridor{};
+};
+
 struct TrajectoryPlannerResult {
   std::vector<TrajectorySegment> compact_segments;
   std::vector<TrajectoryPointSample> samples;
@@ -67,6 +87,12 @@ struct TrajectoryPlannerResult {
 
 [[nodiscard]] std::string_view
 trajectoryPlannerFallbackReasonName(TrajectoryPlannerFallbackReason reason) noexcept;
+
+[[nodiscard]] std::string_view
+trajectoryGridRebuildReasonName(TrajectoryGridRebuildReason reason) noexcept;
+
+[[nodiscard]] TrajectoryGridRebuildReason
+trajectoryGridRebuildReason(const TrajectoryGridRebuildDecisionInput& input) noexcept;
 
 [[nodiscard]] TrajectoryPlannerResult
 planTrajectory(const TrajectoryPlannerInput& input,

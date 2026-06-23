@@ -139,6 +139,7 @@ px4_offboard_node:
     corridor_sample_step_m: 1.0
     corridor_ray_step_m: 0.0
     corridor_safety_margin_m: 0.5
+    corridor_rebuild_width_threshold_m: 0.5
     racing_line_max_iterations: 80
     racing_line_initial_offset_step_m: 2.0
     racing_line_min_offset_step_m: 0.1

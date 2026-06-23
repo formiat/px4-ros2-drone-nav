@@ -56,6 +56,31 @@ void computeSpeedProfileStats(const TrajectorySpeedProfile& profile,
   stats.speed_profile_mean_mps = sum / static_cast<double>(profile.samples.size());
 }
 
+[[nodiscard]] bool materiallyDifferent(const double lhs, const double rhs,
+                                       const double threshold) noexcept {
+  if (!std::isfinite(lhs) || !std::isfinite(rhs)) {
+    return std::isfinite(lhs) != std::isfinite(rhs);
+  }
+  return std::abs(lhs - rhs) > threshold;
+}
+
+[[nodiscard]] bool corridorStatsChangedMaterially(const CorridorStats& previous,
+                                                  const CorridorStats& current,
+                                                  const double threshold) noexcept {
+  if (previous.samples == 0U) {
+    return true;
+  }
+  if (current.samples != previous.samples ||
+      current.route_prohibited_samples != previous.route_prohibited_samples) {
+    return true;
+  }
+  return materiallyDifferent(current.min_width_m, previous.min_width_m, threshold) ||
+         materiallyDifferent(current.mean_width_m, previous.mean_width_m, threshold) ||
+         materiallyDifferent(current.max_width_m, previous.max_width_m, threshold) ||
+         materiallyDifferent(current.min_clearance_m, previous.min_clearance_m,
+                             threshold);
+}
+
 void finalizeResult(TrajectoryPlannerResult& result,
                     const TrajectoryPlannerConfig& config) {
   const TrajectoryMetrics metrics = trajectoryMetrics(result.compact_segments);
@@ -84,12 +109,19 @@ baselineTrajectory(const std::span<const Point2> route_points,
   TrajectoryPlannerResult result{};
   result.stats.input_points = route_points.size();
   result.stats.fallback_reason = reason;
-  const CornerRoundingResult rounded =
-      roundCorners(route_points, config.baseline_rounding, prohibited_grid);
-  result.compact_segments = rounded.segments;
-  result.stats.baseline_rounding = rounded.stats;
-  if (!trajectoryIsUsable(result.compact_segments)) {
+  if (prohibited_grid == nullptr) {
     result.compact_segments = lineTrajectoryFromPoints(route_points);
+  } else {
+    const CornerRoundingResult rounded =
+        roundCorners(route_points, config.baseline_rounding, prohibited_grid);
+    result.compact_segments = rounded.segments;
+    result.stats.baseline_rounding = rounded.stats;
+    if (!trajectoryIsUsable(result.compact_segments)) {
+      result.compact_segments = lineTrajectoryFromPoints(route_points);
+      result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kBaselineInvalid;
+    }
+  }
+  if (!trajectoryIsUsable(result.compact_segments)) {
     result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kBaselineInvalid;
   }
   result.samples =
@@ -121,6 +153,44 @@ std::string_view trajectoryPlannerFallbackReasonName(
       return "baseline_invalid";
   }
   return "unknown";
+}
+
+std::string_view
+trajectoryGridRebuildReasonName(const TrajectoryGridRebuildReason reason) noexcept {
+  switch (reason) {
+    case TrajectoryGridRebuildReason::kNone:
+      return "none";
+    case TrajectoryGridRebuildReason::kInvalidTrajectory:
+      return "invalid_trajectory";
+    case TrajectoryGridRebuildReason::kMissingGridFallback:
+      return "missing_grid_fallback";
+    case TrajectoryGridRebuildReason::kProhibitedIntersection:
+      return "prohibited_intersection";
+    case TrajectoryGridRebuildReason::kCorridorBoundsChanged:
+      return "corridor_bounds_changed";
+  }
+  return "unknown";
+}
+
+TrajectoryGridRebuildReason
+trajectoryGridRebuildReason(const TrajectoryGridRebuildDecisionInput& input) noexcept {
+  if (!input.trajectory_valid) {
+    return TrajectoryGridRebuildReason::kInvalidTrajectory;
+  }
+  if (input.fallback_reason == TrajectoryPlannerFallbackReason::kMissingGrid) {
+    return TrajectoryGridRebuildReason::kMissingGridFallback;
+  }
+  if (input.final_trajectory_intersects_prohibited) {
+    return TrajectoryGridRebuildReason::kProhibitedIntersection;
+  }
+  if (input.racing_trajectory_enabled) {
+    if (!input.current_corridor_valid ||
+        corridorStatsChangedMaterially(input.previous_corridor, input.current_corridor,
+                                       input.corridor_width_threshold_m)) {
+      return TrajectoryGridRebuildReason::kCorridorBoundsChanged;
+    }
+  }
+  return TrajectoryGridRebuildReason::kNone;
 }
 
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,

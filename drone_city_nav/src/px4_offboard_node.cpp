@@ -35,6 +35,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -220,6 +221,9 @@ public:
         std::clamp(declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
     trajectory_planner_config_.corridor.safety_margin_m = std::clamp(
         declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
+    corridor_rebuild_width_threshold_m_ =
+        std::clamp(declare_parameter<double>("corridor_rebuild_width_threshold_m", 0.5),
+                   0.0, 100.0);
     trajectory_planner_config_.racing_line.max_iterations =
         static_cast<std::size_t>(std::clamp<std::int64_t>(
             declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,
@@ -372,7 +376,8 @@ public:
         "racing_trajectory[enabled=%s final_topic='%s' debug_sample_step=%.2fm "
         "baseline_rounding[min_radius=%.2fm max_radius=%.2fm "
         "segment_remainder=%.2fm collision_step=%.2fm] "
-        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm] "
+        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
+        "rebuild_width_threshold=%.2fm] "
         "racing_line[iterations=%zu offset_step=%.2fm min_step=%.2fm "
         "weights(length=%.2f curvature=%.2f curvature_change=%.2f center=%.3f)] "
         "mission_goal=(%.1f, %.1f) "
@@ -404,6 +409,7 @@ public:
         trajectory_planner_config_.corridor.max_radius_m,
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
+        corridor_rebuild_width_threshold_m_,
         trajectory_planner_config_.racing_line.max_iterations,
         trajectory_planner_config_.racing_line.initial_offset_step_m,
         trajectory_planner_config_.racing_line.min_offset_step_m,
@@ -794,9 +800,18 @@ private:
     }
     if (path_valid_) {
       const std::optional<OccupancyGrid2D> grid = currentProhibitedGrid();
-      if (!trajectory_valid_ || !grid.has_value() ||
-          finalTrajectoryIntersectsProhibited(*grid)) {
+      if (!grid.has_value()) {
         rebuildFinalTrajectory("prohibited_grid_update");
+      } else {
+        const std::string_view rebuild_reason = finalTrajectoryGridRebuildReason(*grid);
+        if (rebuild_reason != "none") {
+          RCLCPP_INFO(get_logger(),
+                      "Final trajectory grid-triggered rebuild: reason=%.*s "
+                      "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64,
+                      static_cast<int>(rebuild_reason.size()), rebuild_reason.data(),
+                      received_path_update_id_, latest_planner_path_id_);
+          rebuildFinalTrajectory("prohibited_grid_update");
+        }
       }
     }
   }
@@ -1273,6 +1288,34 @@ private:
     return grid;
   }
 
+  [[nodiscard]] std::string_view
+  finalTrajectoryGridRebuildReason(const OccupancyGrid2D& grid) const {
+    CorridorStats current_corridor{};
+    bool current_corridor_valid = false;
+    if (trajectory_planner_config_.racing_trajectory_enabled &&
+        path_points_.size() >= 2U) {
+      const CorridorResult current = buildCorridor(
+          std::span<const Point2>{path_points_.data(), path_points_.size()}, grid,
+          trajectory_planner_config_.corridor);
+      current_corridor = current.stats;
+      current_corridor_valid = current.valid;
+    }
+
+    const TrajectoryGridRebuildDecisionInput input{
+        .trajectory_valid = trajectory_valid_,
+        .racing_trajectory_enabled =
+            trajectory_planner_config_.racing_trajectory_enabled,
+        .final_trajectory_intersects_prohibited =
+            finalTrajectoryIntersectsProhibited(grid),
+        .current_corridor_valid = current_corridor_valid,
+        .corridor_width_threshold_m = corridor_rebuild_width_threshold_m_,
+        .fallback_reason = last_trajectory_planner_stats_.fallback_reason,
+        .previous_corridor = last_trajectory_planner_stats_.corridor,
+        .current_corridor = current_corridor,
+    };
+    return trajectoryGridRebuildReasonName(trajectoryGridRebuildReason(input));
+  }
+
   [[nodiscard]] bool
   finalTrajectoryIntersectsProhibited(const OccupancyGrid2D& grid) const {
     if (final_trajectory_samples_.size() < 2U) {
@@ -1553,7 +1596,7 @@ private:
         "Offboard summary: local_position=%s pose_fresh=%s pose_age_s=%.2f "
         "altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
-        "motion_phase=%s control_mode=%s path_segment=%s "
+        "motion_phase=%s control_mode=%s rough_route_segment=%s "
         "trajectory[valid=%s line_segments=%zu arc_segments=%zu length=%.2f "
         "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
         "samples=%zu debug_samples=%zu fallback=%.*s "
@@ -1567,7 +1610,7 @@ private:
         "curve_radius=%.2f] "
         "final_stop[distance=%.2f braking_distance=%.2f] "
         "velocity_delta=%.2f cross_track_correction=%.2f altitude_error=%.2f "
-        "turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
+        "rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
         "local_clearance=%.2f",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
@@ -1663,8 +1706,8 @@ private:
         "target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-        "path_segment=%s local_clearance=%.2f "
-        "turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
+        "rough_route_segment=%s local_clearance=%.2f "
+        "rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
         "final_goal_hold=%s",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, current_heading_rad_,
@@ -1976,20 +2019,20 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, path_goal_distance_m);
     flight_blackbox_stream_ << ",\"mission_goal_distance_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, mission_goal_distance_m);
-    flight_blackbox_stream_ << ",\"turn_angle_rad\":";
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_angle_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.angle_rad);
-    flight_blackbox_stream_ << ",\"turn_valid\":";
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_valid\":";
     writeJsonBool(flight_blackbox_stream_, upcoming_turn.valid);
-    flight_blackbox_stream_ << ",\"turn_waypoint_index\":"
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_waypoint_index\":"
                             << (upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U
                                                     : 0U);
-    flight_blackbox_stream_ << ",\"turn_distance_m\":";
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_distance_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.distance_to_turn_m);
-    flight_blackbox_stream_ << ",\"turn_point_x\":";
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_point_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.turn_point.x);
-    flight_blackbox_stream_ << ",\"turn_point_y\":";
+    flight_blackbox_stream_ << ",\"rough_route_debug_turn_point_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.turn_point.y);
-    flight_blackbox_stream_ << ",\"segment_type\":\""
+    flight_blackbox_stream_ << ",\"rough_route_debug_segment_type\":\""
                             << pathSegmentTypeName(upcoming_turn.angle_rad) << "\"";
     flight_blackbox_stream_ << ",\"tracking\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_tracking.valid);
@@ -2077,6 +2120,7 @@ private:
   double last_vertical_velocity_setpoint_mps_{0.0};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
+  double corridor_rebuild_width_threshold_m_{0.5};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};

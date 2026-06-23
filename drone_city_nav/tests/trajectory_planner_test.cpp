@@ -63,6 +63,21 @@ TEST(TrajectoryPlanner, MissingGridUsesBaselineFallback) {
   EXPECT_TRUE(result.speed_profile.valid);
 }
 
+TEST(TrajectoryPlanner, MissingGridDoesNotRoundUnknownCorners) {
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+
+  const TrajectoryPlannerResult result = planTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             nullptr},
+      testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.fallback_reason,
+            TrajectoryPlannerFallbackReason::kMissingGrid);
+  EXPECT_EQ(result.stats.arc_segments, 0U);
+  EXPECT_EQ(result.stats.baseline_rounding.corners_rounded, 0U);
+}
+
 TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
@@ -78,6 +93,63 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_TRUE(result.speed_profile.valid);
   EXPECT_GT(result.stats.corridor.samples, 0U);
   EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
+}
+
+TEST(TrajectoryGridRebuildReason, MissingGridFallbackRebuildsOnFirstGrid) {
+  TrajectoryGridRebuildDecisionInput input{};
+  input.trajectory_valid = true;
+  input.fallback_reason = TrajectoryPlannerFallbackReason::kMissingGrid;
+
+  EXPECT_EQ(trajectoryGridRebuildReason(input),
+            TrajectoryGridRebuildReason::kMissingGridFallback);
+}
+
+TEST(TrajectoryGridRebuildReason, UnchangedCorridorDoesNotChurn) {
+  CorridorStats corridor{};
+  corridor.samples = 5U;
+  corridor.min_width_m = 8.0;
+  corridor.mean_width_m = 9.0;
+  corridor.max_width_m = 10.0;
+  corridor.min_clearance_m = 4.0;
+
+  TrajectoryGridRebuildDecisionInput input{};
+  input.trajectory_valid = true;
+  input.current_corridor_valid = true;
+  input.previous_corridor = corridor;
+  input.current_corridor = corridor;
+  input.corridor_width_threshold_m = 0.5;
+
+  EXPECT_EQ(trajectoryGridRebuildReason(input), TrajectoryGridRebuildReason::kNone);
+}
+
+TEST(TrajectoryGridRebuildReason, ProhibitedIntersectionForcesRebuild) {
+  TrajectoryGridRebuildDecisionInput input{};
+  input.trajectory_valid = true;
+  input.final_trajectory_intersects_prohibited = true;
+
+  EXPECT_EQ(trajectoryGridRebuildReason(input),
+            TrajectoryGridRebuildReason::kProhibitedIntersection);
+}
+
+TEST(TrajectoryGridRebuildReason, MaterialCorridorChangeForcesRebuild) {
+  CorridorStats previous{};
+  previous.samples = 5U;
+  previous.min_width_m = 8.0;
+  previous.mean_width_m = 9.0;
+  previous.max_width_m = 10.0;
+  previous.min_clearance_m = 4.0;
+  CorridorStats current = previous;
+  current.min_width_m = 7.0;
+
+  TrajectoryGridRebuildDecisionInput input{};
+  input.trajectory_valid = true;
+  input.current_corridor_valid = true;
+  input.previous_corridor = previous;
+  input.current_corridor = current;
+  input.corridor_width_threshold_m = 0.5;
+
+  EXPECT_EQ(trajectoryGridRebuildReason(input),
+            TrajectoryGridRebuildReason::kCorridorBoundsChanged);
 }
 
 } // namespace drone_city_nav
