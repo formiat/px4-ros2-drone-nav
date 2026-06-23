@@ -5,13 +5,25 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <ranges>
 #include <utility>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
+constexpr double kCollisionPenalty = 1.0e9;
+constexpr double kOutsideGridPenalty = 1.0e9;
+constexpr double kLengthOverrunPenalty = 1.0e6;
+
+struct PathEvaluation {
+  double length_m{0.0};
+  std::size_t prohibited_cells{0U};
+  std::size_t outside_grid_segments{0U};
+
+  [[nodiscard]] bool traversable() const noexcept {
+    return prohibited_cells == 0U && outside_grid_segments == 0U;
+  }
+};
 
 [[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
   return Point2{lhs.x + rhs.x, lhs.y + rhs.y};
@@ -118,29 +130,32 @@ offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
   return 2.0 * signed_double_area / (a * b * c);
 }
 
-[[nodiscard]] bool segmentTraversable(const OccupancyGrid2D& grid, const Point2 start,
-                                      const Point2 end) {
-  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
-  const std::optional<GridIndex> end_cell = grid.worldToCell(end);
-  if (!start_cell.has_value() || !end_cell.has_value()) {
-    return false;
-  }
-  const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
-  return std::ranges::all_of(
-      cells, [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
-}
-
-[[nodiscard]] bool pathTraversable(const OccupancyGrid2D& grid,
-                                   const std::span<const Point2> points) {
+[[nodiscard]] PathEvaluation evaluatePath(const OccupancyGrid2D& grid,
+                                          const std::span<const Point2> points) {
+  PathEvaluation evaluation{};
   if (points.size() < 2U) {
-    return false;
+    ++evaluation.outside_grid_segments;
+    return evaluation;
   }
+
   for (std::size_t i = 1U; i < points.size(); ++i) {
-    if (!segmentTraversable(grid, points[i - 1U], points[i])) {
-      return false;
+    evaluation.length_m += distance(points[i - 1U], points[i]);
+    const Point2 start = points[i - 1U];
+    const Point2 end = points[i];
+    const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+    const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      ++evaluation.outside_grid_segments;
+      continue;
+    }
+    const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
+    for (const GridIndex cell : cells) {
+      if (grid.isProhibited(cell)) {
+        ++evaluation.prohibited_cells;
+      }
     }
   }
-  return true;
+  return evaluation;
 }
 
 [[nodiscard]] double costForPoints(const std::span<const Point2> points,
@@ -181,6 +196,21 @@ offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
   return weight_length * pathLength(points) + weight_curvature * curvature_cost +
          weight_curvature_change * curvature_change_cost +
          weight_center_bias * center_bias_cost;
+}
+
+[[nodiscard]] double scoreForCandidate(const std::span<const Point2> points,
+                                       const std::span<const double> offsets,
+                                       const PathEvaluation& evaluation,
+                                       const RacingLineConfig& config,
+                                       const double max_length_m) {
+  double score = costForPoints(points, offsets, config);
+  score += static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
+  score += static_cast<double>(evaluation.outside_grid_segments) * kOutsideGridPenalty;
+  if (std::isfinite(max_length_m) && evaluation.length_m > max_length_m) {
+    const double overrun_m = evaluation.length_m - max_length_m;
+    score += overrun_m * overrun_m * kLengthOverrunPenalty;
+  }
+  return score;
 }
 
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
@@ -246,6 +276,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       config.max_iterations, 1U, static_cast<std::size_t>(10000U));
   const double max_length_ratio =
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
+  const double max_length_m = result.stats.centerline_length_m * max_length_ratio;
 
   std::vector<double> offsets;
   std::vector<Point2> best_points;
@@ -258,16 +289,12 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     std::vector<Point2> candidate_points =
         pointsFromOffsets(corridor_samples, candidate_offsets);
     ++result.stats.candidate_evaluations;
-    if (pathLength(candidate_points) >
-        result.stats.centerline_length_m * max_length_ratio) {
-      continue;
-    }
-    if (!pathTraversable(prohibited_grid, candidate_points)) {
+    const PathEvaluation evaluation = evaluatePath(prohibited_grid, candidate_points);
+    if (!evaluation.traversable()) {
       ++result.stats.collision_rejections;
-      continue;
     }
-    const double candidate_cost =
-        costForPoints(candidate_points, candidate_offsets, config);
+    const double candidate_cost = scoreForCandidate(candidate_points, candidate_offsets,
+                                                    evaluation, config, max_length_m);
     if (candidate_cost < best_cost) {
       best_cost = candidate_cost;
       offsets = std::move(candidate_offsets);
@@ -292,16 +319,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         std::vector<Point2> candidate_points =
             pointsFromOffsets(corridor_samples, candidate_offsets);
         ++result.stats.candidate_evaluations;
-        if (pathLength(candidate_points) >
-            result.stats.centerline_length_m * max_length_ratio) {
-          continue;
-        }
-        if (!pathTraversable(prohibited_grid, candidate_points)) {
+        const PathEvaluation evaluation =
+            evaluatePath(prohibited_grid, candidate_points);
+        if (!evaluation.traversable()) {
           ++result.stats.collision_rejections;
-          continue;
         }
-        const double candidate_cost =
-            costForPoints(candidate_points, candidate_offsets, config);
+        const double candidate_cost = scoreForCandidate(
+            candidate_points, candidate_offsets, evaluation, config, max_length_m);
         if (candidate_cost + 1.0e-9 < best_cost) {
           best_cost = candidate_cost;
           best_offset = candidate_offsets[i];
@@ -321,7 +345,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   if (final_points.empty()) {
     final_points = pointsFromOffsets(corridor_samples, offsets);
   }
-  if (!pathTraversable(prohibited_grid, final_points)) {
+  const PathEvaluation final_evaluation = evaluatePath(prohibited_grid, final_points);
+  if (!final_evaluation.traversable()) {
     ++result.stats.collision_rejections;
     return result;
   }
