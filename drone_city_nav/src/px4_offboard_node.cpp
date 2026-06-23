@@ -180,8 +180,6 @@ public:
         boundedFiniteDouble(declare_parameter<double>("max_pose_staleness_s", 1.0), 1.0,
                             0.0, 3600.0) *
         1.0e9);
-    cruise_velocity_control_enabled_ =
-        declare_parameter<bool>("cruise_velocity_control_enabled", true);
     velocity_follower_config_.cruise_speed_mps =
         std::clamp(declare_parameter<double>("cruise_speed_mps", 12.0), 0.0, 100.0);
     velocity_follower_config_.min_turn_speed_mps =
@@ -367,7 +365,8 @@ public:
         "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
         "takeoff_hover=%.1fs "
         "turn_preview_distance=%.1fm "
-        "velocity_cruise=%s cruise_speed=%.2fmps min_turn_speed=%.2fmps "
+        "velocity_cruise=final_trajectory_only cruise_speed=%.2fmps "
+        "min_turn_speed=%.2fmps "
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
         "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
@@ -386,7 +385,6 @@ public:
         cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
         auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
         face_target_yaw_ ? "true" : "false", takeoff_hover_s_, turn_preview_distance_m_,
-        cruise_velocity_control_enabled_ ? "true" : "false",
         velocity_follower_config_.cruise_speed_mps,
         velocity_follower_config_.min_turn_speed_mps,
         velocity_follower_config_.max_accel_mps2,
@@ -979,16 +977,26 @@ private:
   void publishTrajectorySetpoint() {
     advanceWaypointIfNeeded();
 
-    if (currentSetpointMode() == OffboardSetpointMode::kVelocityCruise) {
+    const bool velocity_cruise_requested =
+        currentSetpointMode() == OffboardSetpointMode::kVelocityCruise;
+    if (velocity_cruise_requested) {
       if (publishVelocityTrajectorySetpoint()) {
         return;
       }
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Velocity cruise requested but no valid velocity setpoint was produced; "
+          "holding current position; rough route waypoints are not executable "
+          "setpoints");
     }
 
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
-    const Point2 desired_target = currentTarget();
-    const Point2 target = selectCommandTarget(desired_target, shouldHoldPosition());
+    const Point2 desired_target = velocity_cruise_requested && local_position_valid_
+                                      ? current_position_
+                                      : currentTarget();
+    const Point2 target = selectCommandTarget(
+        desired_target, velocity_cruise_requested || shouldHoldPosition());
     commanded_target_ = target;
     commanded_target_valid_ = local_position_valid_;
     last_published_target_ = target;
@@ -1020,8 +1028,7 @@ private:
   }
 
   [[nodiscard]] bool velocityCruiseReady() const {
-    return cruise_velocity_control_enabled_ && localPositionFresh() &&
-           navigationAllowed() && pathFollowingReady() &&
+    return localPositionFresh() && navigationAllowed() && pathFollowingReady() &&
            waypoint_index_ < path_points_.size() && !finalPathGoalReached() &&
            !no_path_hold_target_valid_;
   }
@@ -1296,7 +1303,7 @@ private:
     if (!path_valid_ || waypoint_index_ >= path_points_.size()) {
       return false;
     }
-    return !cruise_velocity_control_enabled_ || finalTrajectoryReady();
+    return finalTrajectoryReady();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
@@ -1327,7 +1334,7 @@ private:
     if (no_path_hold_target_valid_) {
       return "hold_no_path";
     }
-    if (path_valid_ && cruise_velocity_control_enabled_ && !finalTrajectoryReady()) {
+    if (path_valid_ && !finalTrajectoryReady()) {
       return "hold_invalid_trajectory";
     }
     if (hold_position) {
@@ -2246,7 +2253,6 @@ private:
   bool current_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool final_goal_hold_active_{false};
-  bool cruise_velocity_control_enabled_{true};
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};

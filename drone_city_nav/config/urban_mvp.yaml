@@ -118,7 +118,6 @@ px4_offboard_node:
     face_target_yaw: false
     acceptance_radius_m: 1.0
     turn_preview_distance_m: 90.0
-    cruise_velocity_control_enabled: true
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
     max_accel_mps2: 7.0

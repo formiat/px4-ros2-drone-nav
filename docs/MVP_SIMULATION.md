@@ -478,7 +478,6 @@ The main simulation parameters are:
 - `turn_preview_distance_m` - legacy path-turn preview distance used for
   waypoint/path diagnostics. Active cruise speed limiting is based on the
   trajectory speed profile instead.
-- `cruise_velocity_control_enabled` - enables velocity setpoints during cruise.
 - `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
 - `min_turn_speed_mps` - lower bound for the speed allowed by curved trajectory
   segments.

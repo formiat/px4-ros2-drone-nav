@@ -53,7 +53,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("trajectory_speed_profile_", self.offboard_text)
         self.assertIn("planVelocitySetpoint(trajectory_, trajectory_speed_profile_", self.offboard_text)
         self.assertIn("velocityCruiseReady()", self.offboard_text)
-        self.assertIn("cruise_velocity_control_enabled_ &&", self.offboard_text)
+        self.assertIn("finalTrajectoryReady()", self.offboard_text)
+        self.assertNotIn("cruise_velocity_control_enabled_", self.offboard_text)
 
     def test_final_trajectory_rebuilds_after_grid_lifecycle_events(self) -> None:
         self.assertIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
@@ -124,7 +125,6 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
-                self.assertIn("cruise_velocity_control_enabled: true", text)
                 self.assertIn("cruise_speed_mps: 22.0", text)
                 self.assertIn("min_turn_speed_mps: 1.5", text)
                 self.assertIn("max_accel_mps2: 7.0", text)
