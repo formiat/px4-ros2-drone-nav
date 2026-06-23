@@ -69,7 +69,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
       "planner_node_config_clamps",
       {rclcpp::Parameter{"max_pose_staleness_s", -5.0},
        rclcpp::Parameter{"max_current_lidar_staleness_s", 9999.0},
-       rclcpp::Parameter{"nearest_free_radius_cells", -10},
        rclcpp::Parameter{"memory_occupied_value", 500},
        rclcpp::Parameter{"memory_free_value", -20},
        rclcpp::Parameter{"static_map_min_blocking_height_m", -1.0},
@@ -86,7 +85,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
 
   EXPECT_EQ(config.timing.max_pose_staleness_ns, 0);
   EXPECT_EQ(config.timing.max_current_lidar_staleness_ns, 3'600'000'000'000LL);
-  EXPECT_EQ(config.planner_core.nearest_free_radius_cells, 0);
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);
   EXPECT_DOUBLE_EQ(config.static_map.min_blocking_height_m, 0.0);

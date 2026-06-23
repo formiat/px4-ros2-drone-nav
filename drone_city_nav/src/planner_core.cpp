@@ -362,17 +362,12 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   if (!result.start_cell.has_value() || !result.goal_cell.has_value()) {
     return std::nullopt;
   }
-
-  result.allowed_start_cell =
-      grid.nearestAllowed(*result.start_cell, config_.nearest_free_radius_cells);
-  result.allowed_goal_cell =
-      grid.nearestAllowed(*result.goal_cell, config_.nearest_free_radius_cells);
-  if (!result.allowed_start_cell.has_value() || !result.allowed_goal_cell.has_value()) {
+  if (grid.isProhibited(*result.start_cell) || grid.isProhibited(*result.goal_cell)) {
     return std::nullopt;
   }
 
-  result.astar = planner_.plan(grid, *result.allowed_start_cell,
-                               *result.allowed_goal_cell, astar_config);
+  result.astar =
+      planner_.plan(grid, *result.start_cell, *result.goal_cell, astar_config);
   if (!result.astar.success) {
     return std::nullopt;
   }

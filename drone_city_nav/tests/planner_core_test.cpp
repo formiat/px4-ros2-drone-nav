@@ -438,30 +438,28 @@ TEST(PathSmoothing, CollapseCollinearPathUsesLateralTolerance) {
   EXPECT_EQ(collapseCollinearPath(bent_path, 0.05).size(), 3U);
 }
 
-TEST(PlannerCore, ComputePathAdjustsProhibitedEndpoints) {
+TEST(PlannerCore, ComputePathRejectsProhibitedStart) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{1, 1});
   grid.rebuildInflation(0.0);
 
-  PlannerCoreConfig config{};
-  config.nearest_free_radius_cells = 2;
-  PlannerCore core{config};
+  PlannerCore core{};
 
   const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
 
-  ASSERT_TRUE(result.has_value());
-  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
-  const PathComputationResult& path_result = result.value();
-  ASSERT_TRUE(path_result.start_cell.has_value());
-  ASSERT_TRUE(path_result.allowed_start_cell.has_value());
-  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
-  const GridIndex start_cell = path_result.start_cell.value();
-  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
-  const GridIndex allowed_start_cell = path_result.allowed_start_cell.value();
-  EXPECT_EQ(start_cell, (GridIndex{1, 1}));
-  EXPECT_NE(allowed_start_cell, start_cell);
-  EXPECT_FALSE(grid.isProhibited(allowed_start_cell));
-  EXPECT_FALSE(path_result.smoothed_cells.empty());
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(PlannerCore, ComputePathRejectsProhibitedGoal) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{18, 5});
+  grid.rebuildInflation(0.0);
+
+  PlannerCore core{};
+
+  const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
+
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST(PlannerCore, ComputePathRejectsOutOfGridGoal) {

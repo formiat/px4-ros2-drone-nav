@@ -48,8 +48,6 @@ public:
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;
-  [[nodiscard]] std::optional<GridIndex> nearestAllowed(GridIndex seed,
-                                                        int max_radius_cells) const;
 
 private:
   GridBounds bounds_{};

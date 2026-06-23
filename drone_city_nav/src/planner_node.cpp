@@ -216,7 +216,6 @@ private:
     stable_path_reuse_max_deviation_m_ =
         config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
-    nearest_free_radius_cells_ = config.planner_core.nearest_free_radius_cells;
     memory_occupied_value_ = config.memory_grid.occupied_value;
     memory_free_value_ = config.memory_grid.free_value;
     use_static_map_ = config.static_map.enabled;
@@ -687,31 +686,25 @@ private:
     const auto start_cell = grid.worldToCell(current_pose_.position);
     const auto goal_cell = grid.worldToCell(goal_);
     if (!start_cell.has_value() || !goal_cell.has_value()) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Start or goal is outside the %s planning grid",
-                           source_label);
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
+                            "Start or goal is outside the %s planning grid: "
+                            "start=(%.2f, %.2f) goal=(%.2f, %.2f)",
+                            source_label, current_pose_.position.x,
+                            current_pose_.position.y, goal_.x, goal_.y);
       return std::nullopt;
     }
-
-    const auto allowed_start = grid.nearestAllowed(
-        *start_cell, planner_core_.config().nearest_free_radius_cells);
-    const auto allowed_goal = grid.nearestAllowed(
-        *goal_cell, planner_core_.config().nearest_free_radius_cells);
-    if (!allowed_start.has_value() || !allowed_goal.has_value()) {
-      RCLCPP_WARN_THROTTLE(
+    const bool start_prohibited = grid.isProhibited(*start_cell);
+    const bool goal_prohibited = grid.isProhibited(*goal_cell);
+    if (start_prohibited || goal_prohibited) {
+      RCLCPP_ERROR_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "No allowed start or goal cell is available on %s grid after inflation",
-          source_label);
+          "Start or goal is inside prohibited space on %s grid; refusing to move "
+          "planning endpoints: start_cell=(%d,%d) prohibited=%s goal_cell=(%d,%d) "
+          "prohibited=%s",
+          source_label, start_cell->x, start_cell->y,
+          start_prohibited ? "true" : "false", goal_cell->x, goal_cell->y,
+          goal_prohibited ? "true" : "false");
       return std::nullopt;
-    }
-
-    if (*allowed_start != *start_cell || *allowed_goal != *goal_cell) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Planning endpoints adjusted on %s grid after inflation: "
-                           "start=(%d,%d)->(%d,%d) goal=(%d,%d)->(%d,%d)",
-                           source_label, start_cell->x, start_cell->y, allowed_start->x,
-                           allowed_start->y, goal_cell->x, goal_cell->y,
-                           allowed_goal->x, allowed_goal->y);
     }
 
     auto result =
@@ -722,7 +715,7 @@ private:
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d)", source_label,
-          allowed_start->x, allowed_start->y, allowed_goal->x, allowed_goal->y);
+          start_cell->x, start_cell->y, goal_cell->x, goal_cell->y);
       return std::nullopt;
     }
 
@@ -1327,7 +1320,6 @@ private:
   std::int64_t max_current_lidar_staleness_ns_{750'000'000};
   std::int64_t last_pose_update_ns_{0};
   std::int64_t last_scan_update_ns_{0};
-  int nearest_free_radius_cells_{10};
   int memory_occupied_value_{100};
   int memory_free_value_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};

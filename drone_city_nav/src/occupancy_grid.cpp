@@ -249,32 +249,4 @@ std::vector<GridIndex> OccupancyGrid2D::cellsOnLine(const GridIndex start,
   return cells;
 }
 
-std::optional<GridIndex>
-OccupancyGrid2D::nearestAllowed(const GridIndex seed,
-                                const int max_radius_cells) const {
-  if (!contains(seed)) {
-    return std::nullopt;
-  }
-  if (!isProhibited(seed)) {
-    return seed;
-  }
-
-  const int bounded_radius = std::max(0, max_radius_cells);
-  for (int radius = 1; radius <= bounded_radius; ++radius) {
-    for (int dy = -radius; dy <= radius; ++dy) {
-      for (int dx = -radius; dx <= radius; ++dx) {
-        if (std::max(std::abs(dx), std::abs(dy)) != radius) {
-          continue;
-        }
-        const GridIndex candidate{seed.x + dx, seed.y + dy};
-        if (contains(candidate) && !isProhibited(candidate)) {
-          return candidate;
-        }
-      }
-    }
-  }
-
-  return std::nullopt;
-}
-
 } // namespace drone_city_nav

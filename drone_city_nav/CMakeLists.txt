@@ -30,7 +30,6 @@ add_library(
   drone_city_nav_core
   src/astar_planner.cpp
   src/clearance_field.cpp
-  src/corner_rounding.cpp
   src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
@@ -222,11 +221,6 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_test drone_city_nav_core)
   enable_project_warnings(trajectory_test)
-
-  ament_add_gtest(corner_rounding_test tests/corner_rounding_test.cpp)
-  target_compile_features(corner_rounding_test PRIVATE cxx_std_20)
-  target_link_libraries(corner_rounding_test drone_city_nav_core)
-  enable_project_warnings(corner_rounding_test)
 
   ament_add_gtest(corridor_test tests/corridor_test.cpp)
   target_compile_features(corridor_test PRIVATE cxx_std_20)

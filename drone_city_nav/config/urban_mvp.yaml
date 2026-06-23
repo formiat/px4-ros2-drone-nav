@@ -68,7 +68,6 @@ planner_node:
     stable_path_reuse_enabled: true
     stable_path_reuse_max_deviation_m: 1.0
     stable_path_goal_tolerance_m: 3.0
-    nearest_free_radius_cells: 30
     memory_occupied_value: 100
     memory_free_value: 0
     use_static_map: true
