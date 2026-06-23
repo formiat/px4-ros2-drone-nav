@@ -130,11 +130,6 @@ px4_offboard_node:
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.25
     max_cross_track_correction_angle_deg: 20.0
-    racing_trajectory_enabled: true
-    trajectory_baseline_rounding_min_radius_m: 3.0
-    trajectory_baseline_rounding_max_radius_m: 30.0
-    trajectory_baseline_rounding_min_segment_remainder_m: 1.0
-    trajectory_baseline_rounding_collision_sample_step_m: 0.25
     corridor_max_radius_m: 40.0
     corridor_sample_step_m: 1.0
     corridor_ray_step_m: 0.0

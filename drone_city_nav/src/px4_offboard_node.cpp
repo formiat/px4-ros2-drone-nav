@@ -196,23 +196,6 @@ public:
     velocity_follower_config_.final_hold_max_speed_mps = std::clamp(
         declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
     trajectory_planner_config_.speed_profile = velocity_follower_config_;
-    trajectory_planner_config_.racing_trajectory_enabled =
-        declare_parameter<bool>("racing_trajectory_enabled", true);
-    trajectory_planner_config_.baseline_rounding.enabled = true;
-    trajectory_planner_config_.baseline_rounding.min_radius_m = std::clamp(
-        declare_parameter<double>("trajectory_baseline_rounding_min_radius_m", 3.0),
-        0.1, 1000.0);
-    trajectory_planner_config_.baseline_rounding.max_radius_m = std::clamp(
-        declare_parameter<double>("trajectory_baseline_rounding_max_radius_m", 30.0),
-        trajectory_planner_config_.baseline_rounding.min_radius_m, 1000.0);
-    trajectory_planner_config_.baseline_rounding.min_segment_remainder_m =
-        std::clamp(declare_parameter<double>(
-                       "trajectory_baseline_rounding_min_segment_remainder_m", 1.0),
-                   0.0, 100.0);
-    trajectory_planner_config_.baseline_rounding.collision_sample_step_m =
-        std::clamp(declare_parameter<double>(
-                       "trajectory_baseline_rounding_collision_sample_step_m", 0.25),
-                   0.05, 10.0);
     trajectory_planner_config_.corridor.max_radius_m = std::clamp(
         declare_parameter<double>("corridor_max_radius_m", 40.0), 1.0, 5000.0);
     trajectory_planner_config_.corridor.sample_step_m =
@@ -373,9 +356,7 @@ public:
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
-        "racing_trajectory[enabled=%s final_topic='%s' debug_sample_step=%.2fm "
-        "baseline_rounding[min_radius=%.2fm max_radius=%.2fm "
-        "segment_remainder=%.2fm collision_step=%.2fm] "
+        "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm] "
         "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
         "rebuild_width_threshold=%.2fm] "
         "racing_line[iterations=%zu offset_step=%.2fm min_step=%.2fm "
@@ -400,12 +381,7 @@ public:
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
         altitude_hold_kp_, max_vertical_speed_mps_,
-        trajectory_planner_config_.racing_trajectory_enabled ? "true" : "false",
         final_trajectory_debug_topic_.c_str(), final_trajectory_debug_sample_step_m_,
-        trajectory_planner_config_.baseline_rounding.min_radius_m,
-        trajectory_planner_config_.baseline_rounding.max_radius_m,
-        trajectory_planner_config_.baseline_rounding.min_segment_remainder_m,
-        trajectory_planner_config_.baseline_rounding.collision_sample_step_m,
         trajectory_planner_config_.corridor.max_radius_m,
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
@@ -501,56 +477,47 @@ private:
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
     publishFinalTrajectoryDebug();
-    RCLCPP_INFO(get_logger(),
-                "Final trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
-                " planner_path_id=%" PRIu64
-                " path_points=%zu valid=%s grid_available=%s rounding_enabled=%s "
-                "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
-                "debug_samples=%zu fallback=%.*s "
-                "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-                "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu] "
-                "racing_line[iterations=%zu evals=%zu collision_rejections=%zu "
-                "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
-                "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
-                "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
-                "baseline_rounding[corners_seen=%zu rounded=%zu skipped_collision=%zu]",
-                source_label, received_path_update_id_, latest_planner_path_id_,
-                path_points_.size(), trajectory_valid_ ? "true" : "false",
-                prohibited_grid.has_value() ? "true" : "false",
-                config.baseline_rounding.enabled ? "true" : "false",
-                last_trajectory_metrics_.line_segments,
-                last_trajectory_metrics_.arc_segments,
-                last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
-                last_final_trajectory_debug_samples_,
-                static_cast<int>(trajectoryPlannerFallbackReasonName(
-                                     last_trajectory_planner_stats_.fallback_reason)
-                                     .size()),
-                trajectoryPlannerFallbackReasonName(
-                    last_trajectory_planner_stats_.fallback_reason)
-                    .data(),
-                last_trajectory_planner_stats_.corridor.samples,
-                last_trajectory_planner_stats_.corridor.min_width_m,
-                last_trajectory_planner_stats_.corridor.mean_width_m,
-                last_trajectory_planner_stats_.corridor.max_width_m,
-                last_trajectory_planner_stats_.corridor.min_clearance_m,
-                last_trajectory_planner_stats_.corridor.mean_clearance_m,
-                last_trajectory_planner_stats_.corridor.route_prohibited_samples,
-                last_trajectory_planner_stats_.racing_line.iterations,
-                last_trajectory_planner_stats_.racing_line.candidate_evaluations,
-                last_trajectory_planner_stats_.racing_line.collision_rejections,
-                last_trajectory_planner_stats_.racing_line.initial_cost,
-                last_trajectory_planner_stats_.racing_line.final_cost,
-                last_trajectory_planner_stats_.racing_line.centerline_length_m,
-                last_trajectory_planner_stats_.racing_line.final_length_m,
-                last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
-                last_trajectory_planner_stats_.racing_line.max_abs_curvature_1pm,
-                last_trajectory_planner_stats_.speed_profile_min_mps,
-                last_trajectory_planner_stats_.speed_profile_mean_mps,
-                last_trajectory_planner_stats_.speed_profile_max_mps,
-                last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
-                last_trajectory_planner_stats_.baseline_rounding.corners_seen,
-                last_trajectory_planner_stats_.baseline_rounding.corners_rounded,
-                last_trajectory_planner_stats_.baseline_rounding.skipped_collision);
+    RCLCPP_INFO(
+        get_logger(),
+        "Final trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
+        " planner_path_id=%" PRIu64 " path_points=%zu valid=%s grid_available=%s "
+        "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
+        "debug_samples=%zu status=%.*s "
+        "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
+        "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu] "
+        "racing_line[iterations=%zu evals=%zu collision_rejections=%zu "
+        "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
+        "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
+        "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
+        source_label, received_path_update_id_, latest_planner_path_id_,
+        path_points_.size(), trajectory_valid_ ? "true" : "false",
+        prohibited_grid.has_value() ? "true" : "false",
+        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
+        last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
+        last_final_trajectory_debug_samples_,
+        static_cast<int>(
+            trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
+        trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
+        last_trajectory_planner_stats_.corridor.samples,
+        last_trajectory_planner_stats_.corridor.min_width_m,
+        last_trajectory_planner_stats_.corridor.mean_width_m,
+        last_trajectory_planner_stats_.corridor.max_width_m,
+        last_trajectory_planner_stats_.corridor.min_clearance_m,
+        last_trajectory_planner_stats_.corridor.mean_clearance_m,
+        last_trajectory_planner_stats_.corridor.route_prohibited_samples,
+        last_trajectory_planner_stats_.racing_line.iterations,
+        last_trajectory_planner_stats_.racing_line.candidate_evaluations,
+        last_trajectory_planner_stats_.racing_line.collision_rejections,
+        last_trajectory_planner_stats_.racing_line.initial_cost,
+        last_trajectory_planner_stats_.racing_line.final_cost,
+        last_trajectory_planner_stats_.racing_line.centerline_length_m,
+        last_trajectory_planner_stats_.racing_line.final_length_m,
+        last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
+        last_trajectory_planner_stats_.racing_line.max_abs_curvature_1pm,
+        last_trajectory_planner_stats_.speed_profile_min_mps,
+        last_trajectory_planner_stats_.speed_profile_mean_mps,
+        last_trajectory_planner_stats_.speed_profile_max_mps,
+        last_trajectory_planner_stats_.speed_profile_curvature_limited_samples);
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
@@ -1292,8 +1259,7 @@ private:
   finalTrajectoryGridRebuildReason(const OccupancyGrid2D& grid) const {
     CorridorStats current_corridor{};
     bool current_corridor_valid = false;
-    if (trajectory_planner_config_.racing_trajectory_enabled &&
-        path_points_.size() >= 2U) {
+    if (path_points_.size() >= 2U) {
       const CorridorResult current = buildCorridor(
           std::span<const Point2>{path_points_.data(), path_points_.size()}, grid,
           trajectory_planner_config_.corridor);
@@ -1303,13 +1269,11 @@ private:
 
     const TrajectoryGridRebuildDecisionInput input{
         .trajectory_valid = trajectory_valid_,
-        .racing_trajectory_enabled =
-            trajectory_planner_config_.racing_trajectory_enabled,
         .final_trajectory_intersects_prohibited =
             finalTrajectoryIntersectsProhibited(grid),
         .current_corridor_valid = current_corridor_valid,
         .corridor_width_threshold_m = corridor_rebuild_width_threshold_m_,
-        .fallback_reason = last_trajectory_planner_stats_.fallback_reason,
+        .status = last_trajectory_planner_stats_.status,
         .previous_corridor = last_trajectory_planner_stats_.corridor,
         .current_corridor = current_corridor,
     };
@@ -1599,7 +1563,7 @@ private:
         "motion_phase=%s control_mode=%s rough_route_segment=%s "
         "trajectory[valid=%s line_segments=%zu arc_segments=%zu length=%.2f "
         "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
-        "samples=%zu debug_samples=%zu fallback=%.*s "
+        "samples=%zu debug_samples=%zu status=%.*s "
         "corridor_width[min=%.2f mean=%.2f] racing_offset_max=%.2f] "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
@@ -1628,12 +1592,9 @@ private:
         last_velocity_plan_.trajectory_curvature_1pm,
         last_velocity_plan_.trajectory_arc_radius_m, final_trajectory_samples_.size(),
         last_final_trajectory_debug_samples_,
-        static_cast<int>(trajectoryPlannerFallbackReasonName(
-                             last_trajectory_planner_stats_.fallback_reason)
-                             .size()),
-        trajectoryPlannerFallbackReasonName(
-            last_trajectory_planner_stats_.fallback_reason)
-            .data(),
+        static_cast<int>(
+            trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
+        trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
         last_trajectory_planner_stats_.corridor.min_width_m,
         last_trajectory_planner_stats_.corridor.mean_width_m,
         last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
@@ -1753,7 +1714,7 @@ private:
         "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
         "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
         "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
-        "fallback=%.*s corridor_width_min=%.2f racing_offset_max=%.2f]",
+        "status=%.*s corridor_width_min=%.2f racing_offset_max=%.2f]",
         offboardSetpointModeName(last_offboard_setpoint_mode_),
         last_velocity_setpoint_.x, last_velocity_setpoint_.y,
         last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
@@ -1779,12 +1740,9 @@ private:
         last_velocity_plan_.trajectory_arc_radius_m,
         last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
         last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
-        static_cast<int>(trajectoryPlannerFallbackReasonName(
-                             last_trajectory_planner_stats_.fallback_reason)
-                             .size()),
-        trajectoryPlannerFallbackReasonName(
-            last_trajectory_planner_stats_.fallback_reason)
-            .data(),
+        static_cast<int>(
+            trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
+        trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
         last_trajectory_planner_stats_.corridor.min_width_m,
         last_trajectory_planner_stats_.racing_line.max_abs_offset_m);
     RCLCPP_INFO(get_logger(),
@@ -1962,9 +1920,9 @@ private:
                           last_velocity_plan_.limiting_constraint_distance_m);
     flight_blackbox_stream_ << ",\"final_trajectory_samples\":"
                             << final_trajectory_samples_.size();
-    flight_blackbox_stream_ << ",\"trajectory_fallback_reason\":\""
-                            << trajectoryPlannerFallbackReasonName(
-                                   last_trajectory_planner_stats_.fallback_reason)
+    flight_blackbox_stream_ << ",\"trajectory_planner_status\":\""
+                            << trajectoryPlannerStatusName(
+                                   last_trajectory_planner_stats_.status)
                             << "\"";
     flight_blackbox_stream_ << ",\"corridor_samples\":"
                             << last_trajectory_planner_stats_.corridor.samples;
@@ -2006,9 +1964,6 @@ private:
     flight_blackbox_stream_
         << ",\"speed_profile_limited_by_curvature_count\":"
         << last_trajectory_planner_stats_.speed_profile_curvature_limited_samples;
-    flight_blackbox_stream_
-        << ",\"baseline_rounded_corners\":"
-        << last_trajectory_planner_stats_.baseline_rounding.corners_rounded;
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"path\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_valid_);

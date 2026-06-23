@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/corner_rounding.hpp"
 #include "drone_city_nav/corridor.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/racing_line.hpp"
@@ -12,27 +11,23 @@
 
 namespace drone_city_nav {
 
-enum class TrajectoryPlannerFallbackReason {
-  kNone,
+enum class TrajectoryPlannerStatus {
+  kOk,
   kInvalidRoute,
   kMissingGrid,
-  kRacingDisabled,
   kCorridorInvalid,
   kRacingLineInvalid,
-  kBaselineInvalid,
+  kInvalidTrajectory,
 };
 
 enum class TrajectoryGridRebuildReason {
   kNone,
   kInvalidTrajectory,
-  kMissingGridFallback,
   kProhibitedIntersection,
   kCorridorBoundsChanged,
 };
 
 struct TrajectoryPlannerConfig {
-  bool racing_trajectory_enabled{true};
-  CornerRoundingConfig baseline_rounding{};
   CorridorConfig corridor{};
   RacingLineConfig racing_line{};
   VelocityFollowerConfig speed_profile{};
@@ -53,9 +48,7 @@ struct TrajectoryPlannerStats {
   double speed_profile_max_mps{0.0};
   double speed_profile_mean_mps{0.0};
   std::size_t speed_profile_curvature_limited_samples{0U};
-  TrajectoryPlannerFallbackReason fallback_reason{
-      TrajectoryPlannerFallbackReason::kNone};
-  CornerRoundingStats baseline_rounding{};
+  TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   CorridorStats corridor{};
   RacingLineStats racing_line{};
 };
@@ -67,12 +60,10 @@ struct TrajectoryPlannerInput {
 
 struct TrajectoryGridRebuildDecisionInput {
   bool trajectory_valid{false};
-  bool racing_trajectory_enabled{true};
   bool final_trajectory_intersects_prohibited{false};
   bool current_corridor_valid{false};
   double corridor_width_threshold_m{0.5};
-  TrajectoryPlannerFallbackReason fallback_reason{
-      TrajectoryPlannerFallbackReason::kNone};
+  TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   CorridorStats previous_corridor{};
   CorridorStats current_corridor{};
 };
@@ -86,7 +77,7 @@ struct TrajectoryPlannerResult {
 };
 
 [[nodiscard]] std::string_view
-trajectoryPlannerFallbackReasonName(TrajectoryPlannerFallbackReason reason) noexcept;
+trajectoryPlannerStatusName(TrajectoryPlannerStatus status) noexcept;
 
 [[nodiscard]] std::string_view
 trajectoryGridRebuildReasonName(TrajectoryGridRebuildReason reason) noexcept;

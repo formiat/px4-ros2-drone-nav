@@ -493,9 +493,6 @@ The main simulation parameters are:
 - `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
   samples. Segment boundaries and arc interior samples are added separately so
   short arcs cannot be skipped by a large regular step.
-- `racing_trajectory_enabled` - enables the corridor/racing-line trajectory
-  layer. When disabled for tests, the offboard node falls back to the internal
-  baseline trajectory builder.
 - `corridor_max_radius_m`, `corridor_sample_step_m`,
   `corridor_safety_margin_m`, and `corridor_rebuild_width_threshold_m` -
   corridor sampling, lateral free-space bounds around the rough route, and the
@@ -504,8 +501,6 @@ The main simulation parameters are:
 - `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
   `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.
-- `trajectory_baseline_rounding_*` - internal fallback rounding controls used
-  by the final trajectory planner; this is not a separate runtime mode.
 - `final_trajectory_debug_topic` and `final_trajectory_debug_sample_step_m` -
   debug path topic and visualization sample spacing for the executable final
   trajectory.

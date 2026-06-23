@@ -59,11 +59,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
         self.assertIn("trajectoryGridRebuildReason(", self.offboard_text)
         self.assertIn("buildCorridor(", self.offboard_text)
-        self.assertIn(
-            "TrajectoryPlannerFallbackReason::kMissingGrid",
-            self.trajectory_planner_text,
-        )
-        self.assertIn('"missing_grid_fallback"', self.trajectory_planner_text)
+        self.assertIn("TrajectoryPlannerStatus::kMissingGrid", self.trajectory_planner_text)
+        self.assertIn("trajectoryPlannerStatusName", self.trajectory_planner_text)
         self.assertIn('"prohibited_intersection"', self.trajectory_planner_text)
         self.assertIn('"corridor_bounds_changed"', self.trajectory_planner_text)
         self.assertIn("Final trajectory grid-triggered rebuild", self.offboard_text)
@@ -99,11 +96,12 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("speed_profile_reason", self.offboard_text)
         self.assertIn("speed_profile_distance_to_constraint_m", self.offboard_text)
         self.assertIn("final_trajectory_samples", self.offboard_text)
-        self.assertIn("trajectory_fallback_reason", self.offboard_text)
+        self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
-        self.assertIn("baseline_rounded_corners", self.offboard_text)
+        self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
+        self.assertNotIn("baseline_rounded_corners", self.offboard_text)
         self.assertIn("rough_route_debug_turn_angle_rad", self.offboard_text)
         self.assertIn("rough_route_debug_segment_type", self.offboard_text)
         self.assertNotIn('\\"turn_angle_rad\\"', self.offboard_text)
@@ -134,16 +132,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("speed_profile_decel_mps2: 3.0", text)
                 self.assertIn("turn_preview_distance_m: 90.0", text)
                 self.assertIn("speed_profile_sample_step_m: 0.5", text)
-                self.assertIn("racing_trajectory_enabled: true", text)
-                self.assertIn("trajectory_baseline_rounding_min_radius_m: 3.0", text)
-                self.assertIn("trajectory_baseline_rounding_max_radius_m: 30.0", text)
-                self.assertIn(
-                    "trajectory_baseline_rounding_min_segment_remainder_m: 1.0", text
-                )
-                self.assertIn(
-                    "trajectory_baseline_rounding_collision_sample_step_m: 0.25",
-                    text,
-                )
+                self.assertNotIn("racing_trajectory_enabled", text)
+                self.assertNotIn("trajectory_baseline_rounding_", text)
                 self.assertIn("corridor_max_radius_m: 40.0", text)
                 self.assertIn("corridor_sample_step_m: 1.0", text)
                 self.assertIn("corridor_safety_margin_m: 0.5", text)

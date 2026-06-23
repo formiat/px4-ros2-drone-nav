@@ -20,7 +20,6 @@ namespace {
 
 [[nodiscard]] TrajectoryPlannerConfig testConfig() {
   TrajectoryPlannerConfig config{};
-  config.racing_trajectory_enabled = true;
   config.corridor.max_radius_m = 10.0;
   config.corridor.sample_step_m = 2.5;
   config.corridor.safety_margin_m = 0.0;
@@ -44,11 +43,10 @@ TEST(TrajectoryPlanner, EmptyRouteIsInvalid) {
       planTrajectory(TrajectoryPlannerInput{}, testConfig());
 
   EXPECT_FALSE(result.valid);
-  EXPECT_EQ(result.stats.fallback_reason,
-            TrajectoryPlannerFallbackReason::kInvalidRoute);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidRoute);
 }
 
-TEST(TrajectoryPlanner, MissingGridUsesBaselineFallback) {
+TEST(TrajectoryPlanner, MissingGridIsInvalid) {
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}};
 
   const TrajectoryPlannerResult result = planTrajectory(
@@ -56,14 +54,14 @@ TEST(TrajectoryPlanner, MissingGridUsesBaselineFallback) {
                              nullptr},
       testConfig());
 
-  ASSERT_TRUE(result.valid);
-  EXPECT_EQ(result.stats.fallback_reason,
-            TrajectoryPlannerFallbackReason::kMissingGrid);
-  EXPECT_FALSE(result.samples.empty());
-  EXPECT_TRUE(result.speed_profile.valid);
+  EXPECT_FALSE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kMissingGrid);
+  EXPECT_TRUE(result.compact_segments.empty());
+  EXPECT_TRUE(result.samples.empty());
+  EXPECT_FALSE(result.speed_profile.valid);
 }
 
-TEST(TrajectoryPlanner, MissingGridDoesNotRoundUnknownCorners) {
+TEST(TrajectoryPlanner, MissingGridDoesNotBuildUnknownCorners) {
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
 
   const TrajectoryPlannerResult result = planTrajectory(
@@ -71,11 +69,10 @@ TEST(TrajectoryPlanner, MissingGridDoesNotRoundUnknownCorners) {
                              nullptr},
       testConfig());
 
-  ASSERT_TRUE(result.valid);
-  EXPECT_EQ(result.stats.fallback_reason,
-            TrajectoryPlannerFallbackReason::kMissingGrid);
+  EXPECT_FALSE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kMissingGrid);
   EXPECT_EQ(result.stats.arc_segments, 0U);
-  EXPECT_EQ(result.stats.baseline_rounding.corners_rounded, 0U);
+  EXPECT_TRUE(result.compact_segments.empty());
 }
 
 TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
@@ -88,20 +85,20 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
       testConfig());
 
   ASSERT_TRUE(result.valid);
-  EXPECT_EQ(result.stats.fallback_reason, TrajectoryPlannerFallbackReason::kNone);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
   EXPECT_GE(result.samples.size(), 3U);
   EXPECT_TRUE(result.speed_profile.valid);
   EXPECT_GT(result.stats.corridor.samples, 0U);
   EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
 }
 
-TEST(TrajectoryGridRebuildReason, MissingGridFallbackRebuildsOnFirstGrid) {
+TEST(TrajectoryGridRebuildReason, InvalidTrajectoryRebuildsOnFirstGrid) {
   TrajectoryGridRebuildDecisionInput input{};
-  input.trajectory_valid = true;
-  input.fallback_reason = TrajectoryPlannerFallbackReason::kMissingGrid;
+  input.trajectory_valid = false;
+  input.status = TrajectoryPlannerStatus::kMissingGrid;
 
   EXPECT_EQ(trajectoryGridRebuildReason(input),
-            TrajectoryGridRebuildReason::kMissingGridFallback);
+            TrajectoryGridRebuildReason::kInvalidTrajectory);
 }
 
 TEST(TrajectoryGridRebuildReason, UnchangedCorridorDoesNotChurn) {

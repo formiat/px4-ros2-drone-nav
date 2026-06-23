@@ -7,12 +7,6 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] std::vector<TrajectoryPointSample>
-fallbackSamplesFromSegments(const std::span<const TrajectorySegment> segments,
-                            const double sample_step_m) {
-  return sampleTrajectoryDetailed(segments, sample_step_m);
-}
-
 void computeCurvatureStats(const std::span<const TrajectoryPointSample> samples,
                            TrajectoryPlannerStats& stats) {
   if (samples.empty()) {
@@ -94,63 +88,29 @@ void finalizeResult(TrajectoryPlannerResult& result,
   result.valid = trajectoryIsUsable(result.compact_segments) &&
                  trajectorySamplesAreUsable(result.samples) &&
                  result.speed_profile.valid;
-  if (!result.valid &&
-      result.stats.fallback_reason == TrajectoryPlannerFallbackReason::kNone) {
-    result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kBaselineInvalid;
+  if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
   }
   (void)config;
 }
 
-[[nodiscard]] TrajectoryPlannerResult
-baselineTrajectory(const std::span<const Point2> route_points,
-                   const OccupancyGrid2D* prohibited_grid,
-                   const TrajectoryPlannerConfig& config,
-                   const TrajectoryPlannerFallbackReason reason) {
-  TrajectoryPlannerResult result{};
-  result.stats.input_points = route_points.size();
-  result.stats.fallback_reason = reason;
-  if (prohibited_grid == nullptr) {
-    result.compact_segments = lineTrajectoryFromPoints(route_points);
-  } else {
-    const CornerRoundingResult rounded =
-        roundCorners(route_points, config.baseline_rounding, prohibited_grid);
-    result.compact_segments = rounded.segments;
-    result.stats.baseline_rounding = rounded.stats;
-    if (!trajectoryIsUsable(result.compact_segments)) {
-      result.compact_segments = lineTrajectoryFromPoints(route_points);
-      result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kBaselineInvalid;
-    }
-  }
-  if (!trajectoryIsUsable(result.compact_segments)) {
-    result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kBaselineInvalid;
-  }
-  result.samples =
-      fallbackSamplesFromSegments(result.compact_segments, config.debug_sample_step_m);
-  result.speed_profile =
-      buildTrajectorySpeedProfile(result.samples, config.speed_profile);
-  finalizeResult(result, config);
-  return result;
-}
-
 } // namespace
 
-std::string_view trajectoryPlannerFallbackReasonName(
-    const TrajectoryPlannerFallbackReason reason) noexcept {
-  switch (reason) {
-    case TrajectoryPlannerFallbackReason::kNone:
+std::string_view
+trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
+  switch (status) {
+    case TrajectoryPlannerStatus::kOk:
       return "none";
-    case TrajectoryPlannerFallbackReason::kInvalidRoute:
+    case TrajectoryPlannerStatus::kInvalidRoute:
       return "invalid_route";
-    case TrajectoryPlannerFallbackReason::kMissingGrid:
+    case TrajectoryPlannerStatus::kMissingGrid:
       return "missing_grid";
-    case TrajectoryPlannerFallbackReason::kRacingDisabled:
-      return "racing_disabled";
-    case TrajectoryPlannerFallbackReason::kCorridorInvalid:
+    case TrajectoryPlannerStatus::kCorridorInvalid:
       return "corridor_invalid";
-    case TrajectoryPlannerFallbackReason::kRacingLineInvalid:
+    case TrajectoryPlannerStatus::kRacingLineInvalid:
       return "racing_line_invalid";
-    case TrajectoryPlannerFallbackReason::kBaselineInvalid:
-      return "baseline_invalid";
+    case TrajectoryPlannerStatus::kInvalidTrajectory:
+      return "invalid_trajectory";
   }
   return "unknown";
 }
@@ -162,8 +122,6 @@ trajectoryGridRebuildReasonName(const TrajectoryGridRebuildReason reason) noexce
       return "none";
     case TrajectoryGridRebuildReason::kInvalidTrajectory:
       return "invalid_trajectory";
-    case TrajectoryGridRebuildReason::kMissingGridFallback:
-      return "missing_grid_fallback";
     case TrajectoryGridRebuildReason::kProhibitedIntersection:
       return "prohibited_intersection";
     case TrajectoryGridRebuildReason::kCorridorBoundsChanged:
@@ -177,18 +135,13 @@ trajectoryGridRebuildReason(const TrajectoryGridRebuildDecisionInput& input) noe
   if (!input.trajectory_valid) {
     return TrajectoryGridRebuildReason::kInvalidTrajectory;
   }
-  if (input.fallback_reason == TrajectoryPlannerFallbackReason::kMissingGrid) {
-    return TrajectoryGridRebuildReason::kMissingGridFallback;
-  }
   if (input.final_trajectory_intersects_prohibited) {
     return TrajectoryGridRebuildReason::kProhibitedIntersection;
   }
-  if (input.racing_trajectory_enabled) {
-    if (!input.current_corridor_valid ||
-        corridorStatsChangedMaterially(input.previous_corridor, input.current_corridor,
-                                       input.corridor_width_threshold_m)) {
-      return TrajectoryGridRebuildReason::kCorridorBoundsChanged;
-    }
+  if (!input.current_corridor_valid ||
+      corridorStatsChangedMaterially(input.previous_corridor, input.current_corridor,
+                                     input.corridor_width_threshold_m)) {
+    return TrajectoryGridRebuildReason::kCorridorBoundsChanged;
   }
   return TrajectoryGridRebuildReason::kNone;
 }
@@ -198,41 +151,33 @@ TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
   TrajectoryPlannerResult result{};
   result.stats.input_points = input.route_points.size();
   if (input.route_points.size() < 2U) {
-    result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kInvalidRoute;
+    result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
     return result;
   }
   if (input.prohibited_grid == nullptr) {
-    return baselineTrajectory(input.route_points, nullptr, config,
-                              TrajectoryPlannerFallbackReason::kMissingGrid);
-  }
-  if (!config.racing_trajectory_enabled) {
-    return baselineTrajectory(input.route_points, input.prohibited_grid, config,
-                              TrajectoryPlannerFallbackReason::kRacingDisabled);
+    result.stats.status = TrajectoryPlannerStatus::kMissingGrid;
+    return result;
   }
 
   const CorridorResult corridor =
       buildCorridor(input.route_points, *input.prohibited_grid, config.corridor);
   if (!corridor.valid) {
-    TrajectoryPlannerResult fallback =
-        baselineTrajectory(input.route_points, input.prohibited_grid, config,
-                           TrajectoryPlannerFallbackReason::kCorridorInvalid);
-    fallback.stats.corridor = corridor.stats;
-    return fallback;
+    result.stats.status = TrajectoryPlannerStatus::kCorridorInvalid;
+    result.stats.corridor = corridor.stats;
+    return result;
   }
 
   const RacingLineResult racing =
       optimizeRacingLine(corridor.samples, *input.prohibited_grid, config.racing_line);
   if (!racing.valid) {
-    TrajectoryPlannerResult fallback =
-        baselineTrajectory(input.route_points, input.prohibited_grid, config,
-                           TrajectoryPlannerFallbackReason::kRacingLineInvalid);
-    fallback.stats.corridor = corridor.stats;
-    fallback.stats.racing_line = racing.stats;
-    return fallback;
+    result.stats.status = TrajectoryPlannerStatus::kRacingLineInvalid;
+    result.stats.corridor = corridor.stats;
+    result.stats.racing_line = racing.stats;
+    return result;
   }
 
   result.stats.input_points = input.route_points.size();
-  result.stats.fallback_reason = TrajectoryPlannerFallbackReason::kNone;
+  result.stats.status = TrajectoryPlannerStatus::kOk;
   result.stats.corridor = corridor.stats;
   result.stats.racing_line = racing.stats;
   result.samples = racing.samples;
