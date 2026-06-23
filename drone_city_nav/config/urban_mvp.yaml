@@ -145,6 +145,7 @@ px4_offboard_node:
     racing_line_max_length_ratio: 1.25
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
     final_trajectory_debug_sample_step_m: 1.0
+    offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers
     altitude_hold_kp: 0.5
     max_vertical_speed_mps: 2.0
     max_clearance_grid_staleness_s: 1.5

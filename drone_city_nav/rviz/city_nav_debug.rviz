@@ -53,6 +53,17 @@ Visualization Manager:
       Name: Final Trajectory
       Topic:
         Value: /drone_city_nav/final_trajectory_path
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Drone And Corridor
+      Namespaces:
+        drone_heading: true
+        drone_position: true
+        racing_corridor_left: true
+        racing_corridor_ribs: true
+        racing_corridor_right: true
+      Topic:
+        Value: /drone_city_nav/offboard_debug_markers
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 80; 120; 255

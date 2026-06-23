@@ -7,6 +7,7 @@
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
@@ -18,6 +19,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/u_int64.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
 #include <array>
@@ -46,6 +49,7 @@ constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kLocalClearanceDiagnosticRadiusM = 12.0;
 constexpr std::int8_t kInflatedOccupancyValue = 80;
+constexpr double kRvizGroundZ = 0.08;
 
 [[nodiscard]] std::uint8_t boundedUint8(const std::int64_t value) {
   return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
@@ -85,6 +89,15 @@ constexpr std::int8_t kInflatedOccupancyValue = 80;
 
 [[nodiscard]] double normalizeAngle(const double angle_rad) noexcept {
   return std::atan2(std::sin(angle_rad), std::cos(angle_rad));
+}
+
+[[nodiscard]] geometry_msgs::msg::Point markerPoint(const Point2 point,
+                                                    const double z_m) {
+  geometry_msgs::msg::Point msg;
+  msg.x = point.x;
+  msg.y = point.y;
+  msg.z = z_m;
+  return msg;
 }
 
 [[nodiscard]] std::uint64_t
@@ -237,6 +250,8 @@ public:
         20.0);
     trajectory_planner_config_.debug_sample_step_m =
         final_trajectory_debug_sample_step_m_;
+    offboard_debug_marker_topic_ = declare_parameter<std::string>(
+        "offboard_debug_marker_topic", "/drone_city_nav/offboard_debug_markers");
     altitude_hold_kp_ =
         std::clamp(declare_parameter<double>("altitude_hold_kp", 0.5), 0.0, 10.0);
     max_vertical_speed_mps_ =
@@ -338,6 +353,8 @@ public:
         px4_qos);
     final_trajectory_pub_ = create_publisher<nav_msgs::msg::Path>(
         final_trajectory_debug_topic_, rclcpp::QoS{1}.transient_local());
+    offboard_debug_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+        offboard_debug_marker_topic_, rclcpp::QoS{1}.transient_local());
 
     timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
     last_command_time_ =
@@ -356,7 +373,8 @@ public:
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
-        "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm] "
+        "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm "
+        "marker_topic='%s'] "
         "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
         "rebuild_width_threshold=%.2fm] "
         "racing_line[iterations=%zu offset_step=%.2fm min_step=%.2fm "
@@ -382,6 +400,7 @@ public:
             velocity_follower_config_.max_cross_track_correction_angle_rad),
         altitude_hold_kp_, max_vertical_speed_mps_,
         final_trajectory_debug_topic_.c_str(), final_trajectory_debug_sample_step_m_,
+        offboard_debug_marker_topic_.c_str(),
         trajectory_planner_config_.corridor.max_radius_m,
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
@@ -444,8 +463,110 @@ private:
                   makeDebugHeader(), 0.0));
   }
 
+  [[nodiscard]] visualization_msgs::msg::Marker
+  makeDebugMarker(const std::string& marker_namespace, const int marker_id,
+                  const int marker_type) const {
+    visualization_msgs::msg::Marker marker;
+    marker.header = makeDebugHeader();
+    marker.ns = marker_namespace;
+    marker.id = marker_id;
+    marker.type = marker_type;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    return marker;
+  }
+
+  void addDroneDebugMarkers(visualization_msgs::msg::MarkerArray& markers) const {
+    auto position =
+        makeDebugMarker("drone_position", 0, visualization_msgs::msg::Marker::SPHERE);
+    position.scale.x = 2.5;
+    position.scale.y = 2.5;
+    position.scale.z = 0.25;
+    position.color.r = 0.68F;
+    position.color.g = 0.20F;
+    position.color.b = 1.0F;
+    position.color.a = 1.0F;
+
+    auto heading =
+        makeDebugMarker("drone_heading", 0, visualization_msgs::msg::Marker::ARROW);
+    heading.scale.x = 0.25;
+    heading.scale.y = 0.75;
+    heading.scale.z = 1.0;
+    heading.color = position.color;
+
+    if (!localPositionFresh()) {
+      position.action = visualization_msgs::msg::Marker::DELETE;
+      heading.action = visualization_msgs::msg::Marker::DELETE;
+      markers.markers.push_back(position);
+      markers.markers.push_back(heading);
+      return;
+    }
+
+    position.pose.position = markerPoint(current_position_, kRvizGroundZ);
+    const Point2 heading_end{current_position_.x + std::cos(current_heading_rad_) * 4.0,
+                             current_position_.y +
+                                 std::sin(current_heading_rad_) * 4.0};
+    heading.points.push_back(markerPoint(current_position_, kRvizGroundZ + 0.06));
+    heading.points.push_back(markerPoint(heading_end, kRvizGroundZ + 0.06));
+    markers.markers.push_back(position);
+    markers.markers.push_back(heading);
+  }
+
+  void addCorridorDebugMarkers(visualization_msgs::msg::MarkerArray& markers) const {
+    auto ribs = makeDebugMarker("racing_corridor_ribs", 0,
+                                visualization_msgs::msg::Marker::LINE_LIST);
+    auto left = makeDebugMarker("racing_corridor_left", 0,
+                                visualization_msgs::msg::Marker::LINE_STRIP);
+    auto right = makeDebugMarker("racing_corridor_right", 0,
+                                 visualization_msgs::msg::Marker::LINE_STRIP);
+    for (auto* marker : {&ribs, &left, &right}) {
+      marker->scale.x = 0.16;
+      marker->color.r = 1.0F;
+      marker->color.g = 0.18F;
+      marker->color.b = 0.12F;
+      marker->color.a = marker == &ribs ? 0.22F : 0.45F;
+    }
+
+    if (corridor_debug_samples_.empty()) {
+      ribs.action = visualization_msgs::msg::Marker::DELETE;
+      left.action = visualization_msgs::msg::Marker::DELETE;
+      right.action = visualization_msgs::msg::Marker::DELETE;
+      markers.markers.push_back(ribs);
+      markers.markers.push_back(left);
+      markers.markers.push_back(right);
+      return;
+    }
+
+    for (const CorridorSample& sample : corridor_debug_samples_) {
+      const Point2 left_point{sample.center.x + sample.normal.x * sample.left_bound_m,
+                              sample.center.y + sample.normal.y * sample.left_bound_m};
+      const Point2 right_point{sample.center.x - sample.normal.x * sample.right_bound_m,
+                               sample.center.y -
+                                   sample.normal.y * sample.right_bound_m};
+      ribs.points.push_back(markerPoint(left_point, kRvizGroundZ));
+      ribs.points.push_back(markerPoint(right_point, kRvizGroundZ));
+      left.points.push_back(markerPoint(left_point, kRvizGroundZ + 0.02));
+      right.points.push_back(markerPoint(right_point, kRvizGroundZ + 0.02));
+    }
+
+    markers.markers.push_back(ribs);
+    markers.markers.push_back(left);
+    markers.markers.push_back(right);
+  }
+
+  void publishOffboardDebugMarkers() {
+    if (!offboard_debug_marker_pub_) {
+      return;
+    }
+    visualization_msgs::msg::MarkerArray markers;
+    addDroneDebugMarkers(markers);
+    addCorridorDebugMarkers(markers);
+    offboard_debug_marker_pub_->publish(markers);
+  }
+
   void clearFinalTrajectory() {
     trajectory_.clear();
+    corridor_debug_samples_.clear();
     final_trajectory_samples_.clear();
     trajectory_speed_profile_ = TrajectorySpeedProfile{};
     trajectory_valid_ = false;
@@ -453,6 +574,7 @@ private:
     last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
     last_final_trajectory_debug_samples_ = 0U;
     publishFinalTrajectoryDebug();
+    publishOffboardDebugMarkers();
   }
 
   void rebuildFinalTrajectory(const char* source_label) {
@@ -471,12 +593,17 @@ private:
             prohibited_grid.has_value() ? &*prohibited_grid : nullptr},
         config);
     trajectory_ = planned.compact_segments;
+    corridor_debug_samples_ = planned.corridor_samples;
     final_trajectory_samples_ = planned.samples;
     trajectory_speed_profile_ = planned.speed_profile;
     trajectory_valid_ = planned.valid;
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
+    if (!trajectory_valid_) {
+      resetVelocityDiagnostics();
+    }
     publishFinalTrajectoryDebug();
+    publishOffboardDebugMarkers();
     RCLCPP_INFO(
         get_logger(),
         "Final trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
@@ -792,6 +919,7 @@ private:
     updateFinalGoalHold();
     publishOffboardControlMode();
     publishTrajectorySetpoint();
+    publishOffboardDebugMarkers();
     logTelemetry();
     logControlSummary();
 
@@ -893,7 +1021,7 @@ private:
 
   [[nodiscard]] bool velocityCruiseReady() const {
     return cruise_velocity_control_enabled_ && localPositionFresh() &&
-           navigationAllowed() && path_valid_ &&
+           navigationAllowed() && pathFollowingReady() &&
            waypoint_index_ < path_points_.size() && !finalPathGoalReached() &&
            !no_path_hold_target_valid_;
   }
@@ -1077,7 +1205,7 @@ private:
   }
 
   void advanceWaypointIfNeeded() {
-    if (!path_valid_ || !localPositionFresh() || final_goal_hold_active_) {
+    if (!pathFollowingReady() || !localPositionFresh() || final_goal_hold_active_) {
       return;
     }
     const std::size_t previous_waypoint_index = waypoint_index_;
@@ -1113,7 +1241,7 @@ private:
       return final_goal_hold_target_;
     }
 
-    if (localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size()) {
+    if (localPositionFresh() && pathFollowingReady()) {
       return path_points_[waypoint_index_];
     }
 
@@ -1155,8 +1283,20 @@ private:
 
   [[nodiscard]] bool shouldHoldPosition() const {
     return final_goal_hold_active_ || !localPositionFresh() || !navigationAllowed() ||
-           !path_valid_ || waypoint_index_ >= path_points_.size() ||
+           !pathFollowingReady() || waypoint_index_ >= path_points_.size() ||
            finalPathGoalReached();
+  }
+
+  [[nodiscard]] bool finalTrajectoryReady() const {
+    return trajectory_valid_ && trajectoryIsUsable(trajectory_) &&
+           trajectory_speed_profile_.valid && final_trajectory_samples_.size() >= 2U;
+  }
+
+  [[nodiscard]] bool pathFollowingReady() const {
+    if (!path_valid_ || waypoint_index_ >= path_points_.size()) {
+      return false;
+    }
+    return !cruise_velocity_control_enabled_ || finalTrajectoryReady();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
@@ -1186,6 +1326,9 @@ private:
     }
     if (no_path_hold_target_valid_) {
       return "hold_no_path";
+    }
+    if (path_valid_ && cruise_velocity_control_enabled_ && !finalTrajectoryReady()) {
+      return "hold_invalid_trajectory";
     }
     if (hold_position) {
       return "hold";
@@ -2137,9 +2280,11 @@ private:
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::string final_trajectory_debug_topic_{"/drone_city_nav/final_trajectory_path"};
+  std::string offboard_debug_marker_topic_{"/drone_city_nav/offboard_debug_markers"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;
+  std::vector<CorridorSample> corridor_debug_samples_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
   std::size_t last_final_trajectory_debug_samples_{0U};
 
@@ -2157,6 +2302,8 @@ private:
       trajectory_setpoint_pub_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr final_trajectory_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+      offboard_debug_marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

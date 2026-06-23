@@ -161,6 +161,7 @@ TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
 
   const CorridorResult corridor =
       buildCorridor(input.route_points, *input.prohibited_grid, config.corridor);
+  result.corridor_samples = corridor.samples;
   if (!corridor.valid) {
     result.stats.status = TrajectoryPlannerStatus::kCorridorInvalid;
     result.stats.corridor = corridor.stats;

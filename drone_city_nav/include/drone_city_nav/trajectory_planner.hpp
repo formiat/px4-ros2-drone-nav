@@ -70,6 +70,7 @@ struct TrajectoryGridRebuildDecisionInput {
 
 struct TrajectoryPlannerResult {
   std::vector<TrajectorySegment> compact_segments;
+  std::vector<CorridorSample> corridor_samples;
   std::vector<TrajectoryPointSample> samples;
   TrajectorySpeedProfile speed_profile;
   TrajectoryPlannerStats stats{};

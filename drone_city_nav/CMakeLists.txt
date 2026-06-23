@@ -105,10 +105,12 @@ target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
   px4_offboard_node
+  geometry_msgs
   nav_msgs
   px4_msgs
   rclcpp
-  std_msgs)
+  std_msgs
+  visualization_msgs)
 enable_project_warnings(px4_offboard_node)
 
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)

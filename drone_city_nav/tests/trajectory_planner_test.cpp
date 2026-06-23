@@ -87,6 +87,7 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
   EXPECT_GE(result.samples.size(), 3U);
+  EXPECT_EQ(result.corridor_samples.size(), result.stats.corridor.samples);
   EXPECT_TRUE(result.speed_profile.valid);
   EXPECT_GT(result.stats.corridor.samples, 0U);
   EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
