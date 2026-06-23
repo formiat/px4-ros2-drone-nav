@@ -97,6 +97,10 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("speed_profile_reason", self.offboard_text)
         self.assertIn("speed_profile_distance_to_constraint_m", self.offboard_text)
         self.assertIn("final_trajectory_samples", self.offboard_text)
+        self.assertIn("trajectory_shape_segment_len_min_m", self.offboard_text)
+        self.assertIn("trajectory_shape_max_heading_delta_rad", self.offboard_text)
+        self.assertIn("trajectory_shape_max_curvature_jump_1pm", self.offboard_text)
+        self.assertIn("trajectory_shape_max_offset_delta_m", self.offboard_text)
         self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
@@ -108,6 +112,14 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertNotIn('\\"turn_angle_rad\\"', self.offboard_text)
         self.assertNotIn('\\"turn_valid\\"', self.offboard_text)
         self.assertNotIn('\\"turn_distance_m\\"', self.offboard_text)
+
+    def test_final_trajectory_samples_csv_dump_is_written(self) -> None:
+        self.assertIn("writeFinalTrajectorySamplesCsv", self.offboard_text)
+        self.assertIn("log\"} / \"final_trajectory_samples", self.offboard_text)
+        self.assertIn("latest.csv", self.offboard_text)
+        self.assertIn("sample_index,s_m,x,y", self.offboard_text)
+        self.assertIn("racing_offset_m", self.offboard_text)
+        self.assertIn("speed_profiled_limit_mps", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)

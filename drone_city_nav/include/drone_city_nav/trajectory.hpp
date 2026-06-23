@@ -51,6 +51,7 @@ struct TrajectoryPointSample {
   double curvature_1pm{0.0};
   double left_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double right_bound_m{std::numeric_limits<double>::quiet_NaN()};
+  double racing_offset_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] const char*

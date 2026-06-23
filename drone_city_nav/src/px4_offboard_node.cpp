@@ -119,6 +119,125 @@ void writeJsonNumberOrNull(std::ostream& stream, const double value) {
   stream << "null";
 }
 
+void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
+  if (std::isfinite(value)) {
+    stream << value;
+  }
+}
+
+struct TrajectoryShapeDiagnostics {
+  std::size_t segment_count{0U};
+  std::size_t segments_shorter_than_0_5m{0U};
+  std::size_t segments_shorter_than_1m{0U};
+  std::size_t segments_shorter_than_2m{0U};
+  std::size_t max_heading_delta_index{0U};
+  std::size_t max_curvature_jump_index{0U};
+  std::size_t max_offset_delta_index{0U};
+  std::size_t max_offset_second_delta_index{0U};
+  double min_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
+  double mean_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
+  double max_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
+  double max_heading_delta_rad{0.0};
+  double max_curvature_jump_1pm{0.0};
+  double max_offset_delta_m{0.0};
+  double max_offset_second_delta_m{0.0};
+  Point2 max_heading_delta_point{};
+  Point2 max_curvature_jump_point{};
+  Point2 max_offset_delta_point{};
+  Point2 max_offset_second_delta_point{};
+};
+
+[[nodiscard]] TrajectoryShapeDiagnostics
+trajectoryShapeDiagnostics(const std::span<const TrajectoryPointSample> samples) {
+  TrajectoryShapeDiagnostics diagnostics{};
+  if (samples.size() < 2U) {
+    return diagnostics;
+  }
+
+  diagnostics.segment_count = samples.size() - 1U;
+  diagnostics.min_segment_length_m = std::numeric_limits<double>::infinity();
+  double segment_length_sum = 0.0;
+  double previous_heading_rad = std::numeric_limits<double>::quiet_NaN();
+  bool previous_heading_valid = false;
+
+  for (std::size_t i = 1U; i < samples.size(); ++i) {
+    const Point2 delta{samples[i].point.x - samples[i - 1U].point.x,
+                       samples[i].point.y - samples[i - 1U].point.y};
+    const double segment_length_m = std::hypot(delta.x, delta.y);
+    diagnostics.min_segment_length_m =
+        std::min(diagnostics.min_segment_length_m, segment_length_m);
+    diagnostics.max_segment_length_m =
+        std::max(diagnostics.max_segment_length_m, segment_length_m);
+    segment_length_sum += segment_length_m;
+    if (segment_length_m < 0.5) {
+      ++diagnostics.segments_shorter_than_0_5m;
+    }
+    if (segment_length_m < 1.0) {
+      ++diagnostics.segments_shorter_than_1m;
+    }
+    if (segment_length_m < 2.0) {
+      ++diagnostics.segments_shorter_than_2m;
+    }
+
+    if (segment_length_m > kTinyDistanceM) {
+      const double heading_rad = std::atan2(delta.y, delta.x);
+      if (previous_heading_valid) {
+        const double heading_delta_rad =
+            std::abs(normalizeAngle(heading_rad - previous_heading_rad));
+        if (heading_delta_rad > diagnostics.max_heading_delta_rad) {
+          diagnostics.max_heading_delta_rad = heading_delta_rad;
+          diagnostics.max_heading_delta_index = i;
+          diagnostics.max_heading_delta_point = samples[i].point;
+        }
+      }
+      previous_heading_rad = heading_rad;
+      previous_heading_valid = true;
+    }
+
+    const double curvature_jump =
+        std::abs(samples[i].curvature_1pm - samples[i - 1U].curvature_1pm);
+    if (curvature_jump > diagnostics.max_curvature_jump_1pm) {
+      diagnostics.max_curvature_jump_1pm = curvature_jump;
+      diagnostics.max_curvature_jump_index = i;
+      diagnostics.max_curvature_jump_point = samples[i].point;
+    }
+
+    if (std::isfinite(samples[i].racing_offset_m) &&
+        std::isfinite(samples[i - 1U].racing_offset_m)) {
+      const double offset_delta =
+          std::abs(samples[i].racing_offset_m - samples[i - 1U].racing_offset_m);
+      if (offset_delta > diagnostics.max_offset_delta_m) {
+        diagnostics.max_offset_delta_m = offset_delta;
+        diagnostics.max_offset_delta_index = i;
+        diagnostics.max_offset_delta_point = samples[i].point;
+      }
+    }
+  }
+
+  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
+    if (!std::isfinite(samples[i - 1U].racing_offset_m) ||
+        !std::isfinite(samples[i].racing_offset_m) ||
+        !std::isfinite(samples[i + 1U].racing_offset_m)) {
+      continue;
+    }
+    const double offset_second_delta =
+        std::abs(samples[i + 1U].racing_offset_m - 2.0 * samples[i].racing_offset_m +
+                 samples[i - 1U].racing_offset_m);
+    if (offset_second_delta > diagnostics.max_offset_second_delta_m) {
+      diagnostics.max_offset_second_delta_m = offset_second_delta;
+      diagnostics.max_offset_second_delta_index = i;
+      diagnostics.max_offset_second_delta_point = samples[i].point;
+    }
+  }
+
+  diagnostics.mean_segment_length_m =
+      segment_length_sum / static_cast<double>(diagnostics.segment_count);
+  if (!std::isfinite(diagnostics.min_segment_length_m)) {
+    diagnostics.min_segment_length_m = std::numeric_limits<double>::quiet_NaN();
+  }
+  return diagnostics;
+}
+
 struct PathTrackingDiagnostics {
   bool valid{false};
   std::size_t segment_start_index{0U};
@@ -599,6 +718,7 @@ private:
     trajectory_valid_ = false;
     last_trajectory_metrics_ = TrajectoryMetrics{};
     last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
+    last_trajectory_shape_diagnostics_ = TrajectoryShapeDiagnostics{};
     last_final_trajectory_debug_samples_ = 0U;
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
@@ -626,11 +746,14 @@ private:
     trajectory_valid_ = planned.valid;
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
+    last_trajectory_shape_diagnostics_ =
+        trajectoryShapeDiagnostics(final_trajectory_samples_);
     if (!trajectory_valid_) {
       resetVelocityDiagnostics();
     }
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
+    const std::string samples_csv_path = writeFinalTrajectorySamplesCsv(source_label);
     RCLCPP_INFO(
         get_logger(),
         "Final trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
@@ -642,7 +765,15 @@ private:
         "racing_line[iterations=%zu evals=%zu collision_rejections=%zu "
         "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
         "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
-        "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
+        "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
+        "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
+        "lt0_5=%zu lt1=%zu lt2=%zu max_heading_delta=%.1fdeg "
+        "heading_index=%zu heading_point=(%.2f, %.2f) "
+        "max_curvature_jump=%.4f curvature_index=%zu "
+        "curvature_point=(%.2f, %.2f) max_offset_delta=%.2f "
+        "offset_index=%zu offset_point=(%.2f, %.2f) "
+        "max_offset_second_delta=%.2f offset_second_index=%zu "
+        "offset_second_point=(%.2f, %.2f)] samples_csv='%s'",
         source_label, received_path_update_id_, latest_planner_path_id_,
         path_points_.size(), trajectory_valid_ ? "true" : "false",
         prohibited_grid.has_value() ? "true" : "false",
@@ -671,7 +802,31 @@ private:
         last_trajectory_planner_stats_.speed_profile_min_mps,
         last_trajectory_planner_stats_.speed_profile_mean_mps,
         last_trajectory_planner_stats_.speed_profile_max_mps,
-        last_trajectory_planner_stats_.speed_profile_curvature_limited_samples);
+        last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
+        last_trajectory_shape_diagnostics_.segment_count,
+        last_trajectory_shape_diagnostics_.min_segment_length_m,
+        last_trajectory_shape_diagnostics_.mean_segment_length_m,
+        last_trajectory_shape_diagnostics_.max_segment_length_m,
+        last_trajectory_shape_diagnostics_.segments_shorter_than_0_5m,
+        last_trajectory_shape_diagnostics_.segments_shorter_than_1m,
+        last_trajectory_shape_diagnostics_.segments_shorter_than_2m,
+        radiansToDegrees(last_trajectory_shape_diagnostics_.max_heading_delta_rad),
+        last_trajectory_shape_diagnostics_.max_heading_delta_index,
+        last_trajectory_shape_diagnostics_.max_heading_delta_point.x,
+        last_trajectory_shape_diagnostics_.max_heading_delta_point.y,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_1pm,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_index,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_point.x,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_point.y,
+        last_trajectory_shape_diagnostics_.max_offset_delta_m,
+        last_trajectory_shape_diagnostics_.max_offset_delta_index,
+        last_trajectory_shape_diagnostics_.max_offset_delta_point.x,
+        last_trajectory_shape_diagnostics_.max_offset_delta_point.y,
+        last_trajectory_shape_diagnostics_.max_offset_second_delta_m,
+        last_trajectory_shape_diagnostics_.max_offset_second_delta_index,
+        last_trajectory_shape_diagnostics_.max_offset_second_delta_point.x,
+        last_trajectory_shape_diagnostics_.max_offset_second_delta_point.y,
+        samples_csv_path.c_str());
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
@@ -783,6 +938,110 @@ private:
     flight_blackbox_stream_ << std::setprecision(6);
     RCLCPP_INFO(get_logger(), "Writing flight blackbox telemetry to '%s'",
                 flight_blackbox_path_.c_str());
+  }
+
+  [[nodiscard]] std::filesystem::path finalTrajectorySamplesDirectory() const {
+    const std::filesystem::path blackbox_path{flight_blackbox_path_};
+    const std::filesystem::path parent = blackbox_path.parent_path();
+    if (parent.empty()) {
+      return std::filesystem::path{"log"} / "final_trajectory_samples";
+    }
+    return parent / "final_trajectory_samples";
+  }
+
+  bool writeFinalTrajectorySamplesCsvFile(const std::filesystem::path& path,
+                                          const char* source_label) const {
+    std::ofstream stream{path, std::ios::out | std::ios::trunc};
+    if (!stream.is_open()) {
+      return false;
+    }
+
+    stream << std::setprecision(9);
+    stream << "# source=" << source_label
+           << " local_path_update_id=" << received_path_update_id_
+           << " planner_path_id=" << latest_planner_path_id_
+           << " trajectory_valid=" << (trajectory_valid_ ? "true" : "false")
+           << " trajectory_status="
+           << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
+           << "\n";
+    stream << "sample_index,s_m,x,y,tangent_x,tangent_y,curvature_1pm,"
+              "arc_radius_m,left_bound_m,right_bound_m,racing_offset_m,"
+              "speed_geometric_limit_mps,speed_profiled_limit_mps,"
+              "speed_reason,constraint_s_m,constraint_limit_mps\n";
+    for (std::size_t i = 0U; i < final_trajectory_samples_.size(); ++i) {
+      const TrajectoryPointSample& sample = final_trajectory_samples_[i];
+      const TrajectorySpeedSample speed_sample =
+          trajectory_speed_profile_.valid
+              ? speedProfileSampleAtS(trajectory_speed_profile_, sample.s_m)
+              : TrajectorySpeedSample{};
+      stream << i << ",";
+      writeCsvNumberOrEmpty(stream, sample.s_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.point.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.point.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.curvature_1pm);
+      stream << ",";
+      if (std::abs(sample.curvature_1pm) > kTinyDistanceM) {
+        writeCsvNumberOrEmpty(stream, 1.0 / std::abs(sample.curvature_1pm));
+      }
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.left_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.right_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.racing_offset_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, speed_sample.geometric_limit_mps);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, speed_sample.profiled_limit_mps);
+      stream << "," << speedConstraintTypeName(speed_sample.reason) << ",";
+      writeCsvNumberOrEmpty(stream, speed_sample.constraint_s_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, speed_sample.constraint_limit_mps);
+      stream << "\n";
+    }
+    return stream.good();
+  }
+
+  [[nodiscard]] std::string
+  writeFinalTrajectorySamplesCsv(const char* source_label) const {
+    if (final_trajectory_samples_.empty()) {
+      return {};
+    }
+
+    const std::filesystem::path directory = finalTrajectorySamplesDirectory();
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+      RCLCPP_WARN(get_logger(),
+                  "Failed to create final trajectory samples directory '%s': %s",
+                  directory.string().c_str(), error.message().c_str());
+      return {};
+    }
+
+    const std::filesystem::path timestamped_path =
+        directory / ("trajectory_" + std::to_string(get_clock()->now().nanoseconds()) +
+                     "_local_" + std::to_string(received_path_update_id_) +
+                     "_planner_" + std::to_string(latest_planner_path_id_) + ".csv");
+    const std::filesystem::path latest_path = directory / "latest.csv";
+
+    if (!writeFinalTrajectorySamplesCsvFile(timestamped_path, source_label)) {
+      RCLCPP_WARN(get_logger(), "Failed to write final trajectory samples CSV '%s'",
+                  timestamped_path.string().c_str());
+      return {};
+    }
+    if (!writeFinalTrajectorySamplesCsvFile(latest_path, source_label)) {
+      RCLCPP_WARN(get_logger(),
+                  "Failed to update latest final trajectory samples CSV '%s'",
+                  latest_path.string().c_str());
+    }
+    return timestamped_path.string();
   }
 
   [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
@@ -2166,6 +2425,64 @@ private:
     flight_blackbox_stream_
         << ",\"speed_profile_limited_by_curvature_count\":"
         << last_trajectory_planner_stats_.speed_profile_curvature_limited_samples;
+    flight_blackbox_stream_ << ",\"trajectory_shape_segment_count\":"
+                            << last_trajectory_shape_diagnostics_.segment_count;
+    flight_blackbox_stream_ << ",\"trajectory_shape_segment_len_min_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.min_segment_length_m);
+    flight_blackbox_stream_ << ",\"trajectory_shape_segment_len_mean_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.mean_segment_length_m);
+    flight_blackbox_stream_ << ",\"trajectory_shape_segment_len_max_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_segment_length_m);
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_segments_lt_0_5m\":"
+        << last_trajectory_shape_diagnostics_.segments_shorter_than_0_5m;
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_segments_lt_1m\":"
+        << last_trajectory_shape_diagnostics_.segments_shorter_than_1m;
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_segments_lt_2m\":"
+        << last_trajectory_shape_diagnostics_.segments_shorter_than_2m;
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_heading_delta_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_heading_delta_rad);
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_max_heading_delta_index\":"
+        << last_trajectory_shape_diagnostics_.max_heading_delta_index;
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_heading_delta_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_heading_delta_point.x);
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_heading_delta_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_heading_delta_point.y);
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_curvature_jump_1pm\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_curvature_jump_1pm);
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_max_curvature_jump_index\":"
+        << last_trajectory_shape_diagnostics_.max_curvature_jump_index;
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_curvature_jump_x\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_point.x);
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_curvature_jump_y\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_shape_diagnostics_.max_curvature_jump_point.y);
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_offset_delta_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_offset_delta_m);
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_max_offset_delta_index\":"
+        << last_trajectory_shape_diagnostics_.max_offset_delta_index;
+    flight_blackbox_stream_ << ",\"trajectory_shape_max_offset_second_delta_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_shape_diagnostics_.max_offset_second_delta_m);
+    flight_blackbox_stream_
+        << ",\"trajectory_shape_max_offset_second_delta_index\":"
+        << last_trajectory_shape_diagnostics_.max_offset_second_delta_index;
     flight_blackbox_stream_ << "}";
     flight_blackbox_stream_ << ",\"path\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_valid_);
@@ -2328,6 +2645,7 @@ private:
   TrajectoryPlannerConfig trajectory_planner_config_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   TrajectoryMetrics last_trajectory_metrics_{};
+  TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
   bool last_velocity_plan_valid_{false};
   bool trajectory_valid_{false};

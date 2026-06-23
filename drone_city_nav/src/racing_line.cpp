@@ -381,6 +381,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     sample.point = final_points[i];
     sample.left_bound_m = corridor_samples[i].left_bound_m;
     sample.right_bound_m = corridor_samples[i].right_bound_m;
+    sample.racing_offset_m = offsets[i];
     result.stats.max_abs_offset_m =
         std::max(result.stats.max_abs_offset_m, std::abs(offsets[i]));
     result.samples.push_back(sample);
