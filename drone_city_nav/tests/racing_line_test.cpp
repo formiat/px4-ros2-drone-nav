@@ -147,4 +147,31 @@ TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
   EXPECT_GT(result.stats.collision_rejections, 0U);
 }
 
+TEST(RacingLine, OptimizerSampleStepUsesCoarseCorridor) {
+  const OccupancyGrid2D grid = openGrid();
+  std::vector<CorridorSample> corridor;
+  for (int i = 0; i <= 20; ++i) {
+    CorridorSample sample{};
+    sample.s_m = static_cast<double>(i);
+    sample.center = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.normal = Point2{0.0, 1.0};
+    sample.left_bound_m = 4.0;
+    sample.right_bound_m = 4.0;
+    sample.clearance_m = 4.0;
+    corridor.push_back(sample);
+  }
+  RacingLineConfig config = testConfig();
+  config.optimizer_sample_step_m = 5.0;
+
+  const RacingLineResult result = optimizeRacingLine(corridor, grid, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.input_samples, corridor.size());
+  EXPECT_LT(result.stats.optimizer_samples, result.stats.input_samples);
+  EXPECT_EQ(result.samples.size(), result.stats.optimizer_samples);
+  EXPECT_EQ(result.samples.front().point.x, corridor.front().center.x);
+  EXPECT_EQ(result.samples.back().point.x, corridor.back().center.x);
+}
+
 } // namespace drone_city_nav

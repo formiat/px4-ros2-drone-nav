@@ -28,18 +28,21 @@
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 namespace drone_city_nav {
@@ -145,6 +148,26 @@ struct TrajectoryShapeDiagnostics {
   Point2 max_curvature_jump_point{};
   Point2 max_offset_delta_point{};
   Point2 max_offset_second_delta_point{};
+};
+
+struct TrajectoryBuildRequest {
+  std::uint64_t job_id{0U};
+  std::uint64_t local_path_update_id{0U};
+  std::uint64_t planner_path_id{0U};
+  std::string source_label;
+  std::vector<Point2> path_points;
+  std::optional<OccupancyGrid2D> prohibited_grid;
+  TrajectoryPlannerConfig config{};
+};
+
+struct TrajectoryBuildResult {
+  std::uint64_t job_id{0U};
+  std::uint64_t local_path_update_id{0U};
+  std::uint64_t planner_path_id{0U};
+  std::string source_label;
+  TrajectoryPlannerResult planned;
+  bool grid_available{false};
+  double duration_ms{0.0};
 };
 
 [[nodiscard]] TrajectoryShapeDiagnostics
@@ -351,6 +374,9 @@ public:
     trajectory_planner_config_.racing_line.min_offset_step_m =
         std::clamp(declare_parameter<double>("racing_line_min_offset_step_m", 0.1),
                    0.001, trajectory_planner_config_.racing_line.initial_offset_step_m);
+    trajectory_planner_config_.racing_line.optimizer_sample_step_m = std::clamp(
+        declare_parameter<double>("racing_line_optimizer_sample_step_m", 5.0), 0.0,
+        100.0);
     trajectory_planner_config_.racing_line.cooling_ratio = std::clamp(
         declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
     trajectory_planner_config_.racing_line.weight_length = std::clamp(
@@ -505,7 +531,8 @@ public:
         "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
         "lateral_limit_window=%.2fm lateral_limit_ratio=%.2f "
         "lateral_limit_margin=%.2fm] "
-        "racing_line[iterations=%zu offset_step=%.2fm min_step=%.2fm "
+        "racing_line[iterations=%zu optimizer_sample_step=%.2fm "
+        "offset_step=%.2fm min_step=%.2fm "
         "weights(length=%.2f curvature=%.2f curvature_change=%.2f "
         "offset_change=%.2f offset_second_change=%.2f center=%.3f)] "
         "mission_goal=(%.1f, %.1f) "
@@ -536,6 +563,7 @@ public:
         trajectory_planner_config_.corridor.lateral_limit_ratio,
         trajectory_planner_config_.corridor.lateral_limit_margin_m,
         trajectory_planner_config_.racing_line.max_iterations,
+        trajectory_planner_config_.racing_line.optimizer_sample_step_m,
         trajectory_planner_config_.racing_line.initial_offset_step_m,
         trajectory_planner_config_.racing_line.min_offset_step_m,
         trajectory_planner_config_.racing_line.weight_length,
@@ -556,7 +584,17 @@ public:
         path_topic.c_str(), path_id_topic.c_str(), local_position_topic.c_str(),
         attitude_topic.c_str(), vehicle_status_topic.c_str(),
         emergency_stop_topic.c_str(), prohibited_grid_topic.c_str());
+    startTrajectoryWorker();
   }
+
+  ~Px4OffboardNode() override {
+    stopTrajectoryWorker();
+  }
+
+  Px4OffboardNode(const Px4OffboardNode&) = delete;
+  Px4OffboardNode& operator=(const Px4OffboardNode&) = delete;
+  Px4OffboardNode(Px4OffboardNode&&) = delete;
+  Px4OffboardNode& operator=(Px4OffboardNode&&) = delete;
 
 private:
   [[nodiscard]] std::vector<Point2>
@@ -726,6 +764,7 @@ private:
   }
 
   void clearFinalTrajectory() {
+    cancelPendingTrajectoryBuilds();
     trajectory_.clear();
     corridor_debug_samples_.clear();
     final_trajectory_samples_.clear();
@@ -739,25 +778,22 @@ private:
     publishOffboardDebugMarkers();
   }
 
-  void rebuildFinalTrajectory(const char* source_label) {
-    if (path_points_.size() < 2U) {
-      clearFinalTrajectory();
-      return;
-    }
-
-    const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
+  [[nodiscard]] TrajectoryPlannerConfig currentTrajectoryPlannerConfig() const {
     TrajectoryPlannerConfig config = trajectory_planner_config_;
     config.speed_profile = velocity_follower_config_;
     config.debug_sample_step_m = final_trajectory_debug_sample_step_m_;
-    const TrajectoryPlannerResult planned = planTrajectory(
-        TrajectoryPlannerInput{
-            std::span<const Point2>{path_points_.data(), path_points_.size()},
-            prohibited_grid.has_value() ? &*prohibited_grid : nullptr},
-        config);
-    trajectory_ = planned.compact_segments;
-    corridor_debug_samples_ = planned.corridor_samples;
-    final_trajectory_samples_ = planned.samples;
-    trajectory_speed_profile_ = planned.speed_profile;
+    return config;
+  }
+
+  void applyFinalTrajectoryResult(TrajectoryPlannerResult planned,
+                                  const std::string& source_label,
+                                  const bool grid_available,
+                                  const double build_duration_ms,
+                                  const std::uint64_t build_job_id) {
+    trajectory_ = std::move(planned.compact_segments);
+    corridor_debug_samples_ = std::move(planned.corridor_samples);
+    final_trajectory_samples_ = std::move(planned.samples);
+    trajectory_speed_profile_ = std::move(planned.speed_profile);
     trajectory_valid_ = planned.valid;
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
@@ -768,17 +804,20 @@ private:
     }
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
-    const std::string samples_csv_path = writeFinalTrajectorySamplesCsv(source_label);
+    const std::string samples_csv_path =
+        writeFinalTrajectorySamplesCsv(source_label.c_str());
     RCLCPP_INFO(
         get_logger(),
-        "Final trajectory rebuilt: source=%s local_path_update_id=%" PRIu64
+        "Final trajectory rebuilt: source=%s build_job=%" PRIu64
+        " build_duration_ms=%.1f local_path_update_id=%" PRIu64
         " planner_path_id=%" PRIu64 " path_points=%zu valid=%s grid_available=%s "
         "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
         "debug_samples=%zu status=%.*s "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
         "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu "
         "lateral_limited=%zu lateral_reduction_max=%.2f] "
-        "racing_line[iterations=%zu evals=%zu collision_rejections=%zu "
+        "racing_line[input_samples=%zu optimizer_samples=%zu output_samples=%zu "
+        "iterations=%zu evals=%zu collision_rejections=%zu "
         "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
         "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
@@ -790,9 +829,9 @@ private:
         "offset_index=%zu offset_point=(%.2f, %.2f) "
         "max_offset_second_delta=%.2f offset_second_index=%zu "
         "offset_second_point=(%.2f, %.2f)] samples_csv='%s'",
-        source_label, received_path_update_id_, latest_planner_path_id_,
-        path_points_.size(), trajectory_valid_ ? "true" : "false",
-        prohibited_grid.has_value() ? "true" : "false",
+        source_label.c_str(), build_job_id, build_duration_ms, received_path_update_id_,
+        latest_planner_path_id_, path_points_.size(),
+        trajectory_valid_ ? "true" : "false", grid_available ? "true" : "false",
         last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
         last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
         last_final_trajectory_debug_samples_,
@@ -808,6 +847,9 @@ private:
         last_trajectory_planner_stats_.corridor.route_prohibited_samples,
         last_trajectory_planner_stats_.corridor.lateral_limited_samples,
         last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m,
+        last_trajectory_planner_stats_.racing_line.input_samples,
+        last_trajectory_planner_stats_.racing_line.optimizer_samples,
+        last_trajectory_planner_stats_.racing_line.output_samples,
         last_trajectory_planner_stats_.racing_line.iterations,
         last_trajectory_planner_stats_.racing_line.candidate_evaluations,
         last_trajectory_planner_stats_.racing_line.collision_rejections,
@@ -845,6 +887,180 @@ private:
         last_trajectory_shape_diagnostics_.max_offset_second_delta_point.x,
         last_trajectory_shape_diagnostics_.max_offset_second_delta_point.y,
         samples_csv_path.c_str());
+  }
+
+  void rebuildFinalTrajectory(const char* source_label) {
+    if (path_points_.size() < 2U) {
+      clearFinalTrajectory();
+      return;
+    }
+
+    const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
+    const TrajectoryPlannerConfig config = currentTrajectoryPlannerConfig();
+    const auto started_at = std::chrono::steady_clock::now();
+    TrajectoryPlannerResult planned = planBaselineTrajectory(
+        TrajectoryPlannerInput{
+            std::span<const Point2>{path_points_.data(), path_points_.size()},
+            prohibited_grid.has_value() ? &*prohibited_grid : nullptr},
+        config);
+    const double duration_ms =
+        static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::steady_clock::now() - started_at)
+                                .count()) /
+        1000.0;
+    const std::string baseline_label = std::string{source_label} + "_baseline";
+    applyFinalTrajectoryResult(std::move(planned), baseline_label,
+                               prohibited_grid.has_value(), duration_ms, 0U);
+    if (trajectory_valid_ && prohibited_grid.has_value()) {
+      enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config);
+    }
+  }
+
+  void enqueueRacingTrajectoryBuild(const char* source_label,
+                                    const OccupancyGrid2D& prohibited_grid,
+                                    const TrajectoryPlannerConfig& config) {
+    TrajectoryBuildRequest request{};
+    request.job_id = ++latest_trajectory_build_job_id_;
+    request.local_path_update_id = received_path_update_id_;
+    request.planner_path_id = latest_planner_path_id_;
+    request.source_label = std::string{source_label} + "_racing_async";
+    request.path_points = path_points_;
+    request.prohibited_grid = prohibited_grid;
+    request.config = config;
+
+    bool replaced_pending_request = false;
+    bool worker_busy = false;
+    {
+      std::lock_guard lock{trajectory_worker_mutex_};
+      replaced_pending_request = pending_trajectory_request_.has_value();
+      worker_busy = trajectory_worker_busy_;
+      pending_trajectory_request_ = std::move(request);
+    }
+    trajectory_worker_cv_.notify_one();
+    RCLCPP_INFO(get_logger(),
+                "Queued async racing trajectory build: job=%" PRIu64
+                " local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+                " path_points=%zu optimizer_sample_step=%.2fm worker_busy=%s "
+                "replaced_pending=%s",
+                latest_trajectory_build_job_id_, received_path_update_id_,
+                latest_planner_path_id_, path_points_.size(),
+                config.racing_line.optimizer_sample_step_m,
+                worker_busy ? "true" : "false",
+                replaced_pending_request ? "true" : "false");
+  }
+
+  void cancelPendingTrajectoryBuilds() {
+    std::lock_guard lock{trajectory_worker_mutex_};
+    pending_trajectory_request_.reset();
+    ++latest_trajectory_build_job_id_;
+  }
+
+  void startTrajectoryWorker() {
+    trajectory_worker_ = std::thread{[this]() { trajectoryWorkerLoop(); }};
+  }
+
+  void stopTrajectoryWorker() {
+    {
+      std::lock_guard lock{trajectory_worker_mutex_};
+      trajectory_worker_stop_requested_ = true;
+      pending_trajectory_request_.reset();
+    }
+    trajectory_worker_cv_.notify_all();
+    if (trajectory_worker_.joinable()) {
+      trajectory_worker_.join();
+    }
+  }
+
+  void trajectoryWorkerLoop() {
+    while (true) {
+      TrajectoryBuildRequest request;
+      {
+        std::unique_lock lock{trajectory_worker_mutex_};
+        trajectory_worker_cv_.wait(lock, [this]() {
+          return trajectory_worker_stop_requested_ ||
+                 pending_trajectory_request_.has_value();
+        });
+        if (trajectory_worker_stop_requested_) {
+          return;
+        }
+        if (!pending_trajectory_request_.has_value()) {
+          continue;
+        }
+        request = std::move(pending_trajectory_request_.value());
+        pending_trajectory_request_.reset();
+        trajectory_worker_busy_ = true;
+      }
+
+      const auto started_at = std::chrono::steady_clock::now();
+      TrajectoryPlannerResult planned = planRacingTrajectory(
+          TrajectoryPlannerInput{std::span<const Point2>{request.path_points.data(),
+                                                         request.path_points.size()},
+                                 request.prohibited_grid.has_value()
+                                     ? &*request.prohibited_grid
+                                     : nullptr},
+          request.config);
+      const double duration_ms =
+          static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                  std::chrono::steady_clock::now() - started_at)
+                                  .count()) /
+          1000.0;
+
+      TrajectoryBuildResult result{};
+      result.job_id = request.job_id;
+      result.local_path_update_id = request.local_path_update_id;
+      result.planner_path_id = request.planner_path_id;
+      result.source_label = request.source_label;
+      result.planned = std::move(planned);
+      result.grid_available = request.prohibited_grid.has_value();
+      result.duration_ms = duration_ms;
+
+      {
+        std::lock_guard lock{trajectory_worker_mutex_};
+        trajectory_worker_busy_ = false;
+        completed_trajectory_result_ = std::move(result);
+      }
+    }
+  }
+
+  void applyCompletedTrajectoryBuild() {
+    std::optional<TrajectoryBuildResult> result;
+    {
+      std::lock_guard lock{trajectory_worker_mutex_};
+      if (!completed_trajectory_result_.has_value()) {
+        return;
+      }
+      result = std::move(completed_trajectory_result_);
+      completed_trajectory_result_.reset();
+    }
+
+    if (result->job_id != latest_trajectory_build_job_id_ ||
+        result->local_path_update_id != received_path_update_id_ || !path_valid_) {
+      RCLCPP_INFO(get_logger(),
+                  "Discarding stale async racing trajectory: job=%" PRIu64
+                  " latest_job=%" PRIu64 " result_path_update=%" PRIu64
+                  " current_path_update=%" PRIu64 " path_valid=%s duration_ms=%.1f",
+                  result->job_id, latest_trajectory_build_job_id_,
+                  result->local_path_update_id, received_path_update_id_,
+                  path_valid_ ? "true" : "false", result->duration_ms);
+      return;
+    }
+    if (!result->planned.valid) {
+      RCLCPP_WARN(
+          get_logger(),
+          "Async racing trajectory rejected; keeping current baseline trajectory: "
+          "job=%" PRIu64 " local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+          " duration_ms=%.1f status=%.*s",
+          result->job_id, result->local_path_update_id, result->planner_path_id,
+          result->duration_ms,
+          static_cast<int>(
+              trajectoryPlannerStatusName(result->planned.stats.status).size()),
+          trajectoryPlannerStatusName(result->planned.stats.status).data());
+      return;
+    }
+
+    applyFinalTrajectoryResult(std::move(result->planned), result->source_label,
+                               result->grid_available, result->duration_ms,
+                               result->job_id);
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
@@ -1211,6 +1427,7 @@ private:
       return;
     }
 
+    applyCompletedTrajectoryBuild();
     updateFinalGoalHold();
     publishOffboardControlMode();
     publishTrajectorySetpoint();
@@ -2363,6 +2580,9 @@ private:
         last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m);
     flight_blackbox_stream_ << ",\"racing_line_iterations\":"
                             << last_trajectory_planner_stats_.racing_line.iterations;
+    flight_blackbox_stream_
+        << ",\"racing_line_optimizer_samples\":"
+        << last_trajectory_planner_stats_.racing_line.optimizer_samples;
     flight_blackbox_stream_ << ",\"racing_line_cost_initial\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.racing_line.initial_cost);
@@ -2630,6 +2850,14 @@ private:
   std::vector<CorridorSample> corridor_debug_samples_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
   std::size_t last_final_trajectory_debug_samples_{0U};
+  std::uint64_t latest_trajectory_build_job_id_{0U};
+  std::mutex trajectory_worker_mutex_;
+  std::condition_variable trajectory_worker_cv_;
+  std::optional<TrajectoryBuildRequest> pending_trajectory_request_;
+  std::optional<TrajectoryBuildResult> completed_trajectory_result_;
+  std::thread trajectory_worker_;
+  bool trajectory_worker_stop_requested_{false};
+  bool trajectory_worker_busy_{false};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;

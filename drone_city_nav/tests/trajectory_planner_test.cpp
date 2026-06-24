@@ -93,4 +93,22 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
 }
 
+TEST(TrajectoryPlanner, BaselineTrajectoryIsImmediateCenterline) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+
+  const TrajectoryPlannerResult result = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             &grid},
+      testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_TRUE(result.speed_profile.valid);
+  EXPECT_GT(result.stats.corridor.samples, 0U);
+  EXPECT_EQ(result.stats.racing_line.candidate_evaluations, 0U);
+  EXPECT_EQ(result.stats.racing_line.input_samples, result.stats.corridor.samples);
+  EXPECT_EQ(result.stats.racing_line.optimizer_samples, result.stats.corridor.samples);
+}
+
 } // namespace drone_city_nav

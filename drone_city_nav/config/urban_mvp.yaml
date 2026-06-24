@@ -136,6 +136,7 @@ px4_offboard_node:
     corridor_lateral_limit_ratio: 1.25
     corridor_lateral_limit_margin_m: 1.0
     racing_line_max_iterations: 80
+    racing_line_optimizer_sample_step_m: 5.0
     racing_line_initial_offset_step_m: 2.0
     racing_line_min_offset_step_m: 0.1
     racing_line_cooling_ratio: 0.5

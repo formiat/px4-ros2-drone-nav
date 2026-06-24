@@ -69,6 +69,37 @@ void finalizeResult(TrajectoryPlannerResult& result,
   (void)config;
 }
 
+[[nodiscard]] std::vector<TrajectoryPointSample>
+centerlineSamplesFromCorridor(const std::span<const CorridorSample> corridor_samples) {
+  std::vector<TrajectoryPointSample> samples;
+  samples.reserve(corridor_samples.size());
+  for (const CorridorSample& corridor_sample : corridor_samples) {
+    TrajectoryPointSample sample{};
+    sample.s_m = corridor_sample.s_m;
+    sample.point = corridor_sample.center;
+    sample.tangent = corridor_sample.tangent;
+    sample.left_bound_m = corridor_sample.left_bound_m;
+    sample.right_bound_m = corridor_sample.right_bound_m;
+    sample.racing_offset_m = 0.0;
+    samples.push_back(sample);
+  }
+  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
+    const Point2 previous = samples[i - 1U].point;
+    const Point2 current = samples[i].point;
+    const Point2 next = samples[i + 1U].point;
+    const double a = distance(previous, current);
+    const double b = distance(current, next);
+    const double c = distance(previous, next);
+    if (a > 1.0e-6 && b > 1.0e-6 && c > 1.0e-6) {
+      const double signed_double_area =
+          (current.x - previous.x) * (next.y - previous.y) -
+          (current.y - previous.y) * (next.x - previous.x);
+      samples[i].curvature_1pm = 2.0 * signed_double_area / (a * b * c);
+    }
+  }
+  return samples;
+}
+
 } // namespace
 
 std::string_view
@@ -90,8 +121,49 @@ trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
   return "unknown";
 }
 
-TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
-                                       const TrajectoryPlannerConfig& config) {
+TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& input,
+                                               const TrajectoryPlannerConfig& config) {
+  TrajectoryPlannerResult result{};
+  result.stats.input_points = input.route_points.size();
+  if (input.route_points.size() < 2U) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
+    return result;
+  }
+  if (input.prohibited_grid == nullptr) {
+    result.stats.status = TrajectoryPlannerStatus::kMissingGrid;
+    return result;
+  }
+
+  const CorridorResult corridor =
+      buildCorridor(input.route_points, *input.prohibited_grid, config.corridor);
+  result.corridor_samples = corridor.samples;
+  if (!corridor.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kCorridorInvalid;
+    result.stats.corridor = corridor.stats;
+    return result;
+  }
+
+  result.stats.input_points = input.route_points.size();
+  result.stats.status = TrajectoryPlannerStatus::kOk;
+  result.stats.corridor = corridor.stats;
+  result.corridor_samples = corridor.samples;
+  result.samples = centerlineSamplesFromCorridor(corridor.samples);
+  result.compact_segments = lineTrajectoryFromSamples(result.samples);
+  result.stats.racing_line.input_samples = corridor.samples.size();
+  result.stats.racing_line.optimizer_samples = corridor.samples.size();
+  result.stats.racing_line.output_samples = result.samples.size();
+  result.stats.racing_line.centerline_length_m =
+      trajectoryLengthM(result.compact_segments);
+  result.stats.racing_line.final_length_m =
+      result.stats.racing_line.centerline_length_m;
+  result.speed_profile =
+      buildTrajectorySpeedProfile(result.samples, config.speed_profile);
+  finalizeResult(result, config);
+  return result;
+}
+
+TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input,
+                                             const TrajectoryPlannerConfig& config) {
   TrajectoryPlannerResult result{};
   result.stats.input_points = input.route_points.size();
   if (input.route_points.size() < 2U) {
@@ -131,6 +203,11 @@ TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
   finalizeResult(result, config);
   return result;
+}
+
+TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
+                                       const TrajectoryPlannerConfig& config) {
+  return planRacingTrajectory(input, config);
 }
 
 } // namespace drone_city_nav

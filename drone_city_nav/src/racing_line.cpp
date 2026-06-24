@@ -136,6 +136,34 @@ offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
   return offsets;
 }
 
+[[nodiscard]] std::vector<CorridorSample>
+optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
+                         const RacingLineConfig& config) {
+  const double sample_step_m =
+      sanitizedPositive(config.optimizer_sample_step_m, 0.0, 0.0, 5000.0);
+  if (!(sample_step_m > kTinyDistanceM) || corridor_samples.size() <= 2U) {
+    return std::vector<CorridorSample>{corridor_samples.begin(),
+                                       corridor_samples.end()};
+  }
+
+  std::vector<CorridorSample> samples;
+  samples.reserve(corridor_samples.size());
+  samples.push_back(corridor_samples.front());
+  double last_s_m = corridor_samples.front().s_m;
+  for (std::size_t i = 1U; i + 1U < corridor_samples.size(); ++i) {
+    if (corridor_samples[i].s_m - last_s_m + kTinyDistanceM < sample_step_m) {
+      continue;
+    }
+    samples.push_back(corridor_samples[i]);
+    last_s_m = corridor_samples[i].s_m;
+  }
+  if (distance(samples.back().center, corridor_samples.back().center) >
+      kTinyDistanceM) {
+    samples.push_back(corridor_samples.back());
+  }
+  return samples;
+}
+
 [[nodiscard]] double pathLength(const std::span<const Point2> points) {
   double length = 0.0;
   for (std::size_t i = 1U; i < points.size(); ++i) {
@@ -303,10 +331,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     return result;
   }
 
-  const std::size_t sample_count = corridor_samples.size();
+  const std::vector<CorridorSample> optimizer_samples =
+      optimizerCorridorSamples(corridor_samples, config);
+  const std::size_t sample_count = optimizer_samples.size();
+  result.stats.optimizer_samples = sample_count;
   const std::vector<double> zero_offsets(sample_count, 0.0);
   const std::vector<Point2> centerline =
-      pointsFromOffsets(corridor_samples, zero_offsets);
+      pointsFromOffsets(optimizer_samples, zero_offsets);
   result.stats.centerline_length_m = pathLength(centerline);
 
   const double min_step =
@@ -327,9 +358,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       InitialOffsetSeed::kCenterline, InitialOffsetSeed::kCorridorMidline,
       InitialOffsetSeed::kLeftBiased, InitialOffsetSeed::kRightBiased};
   for (const InitialOffsetSeed seed : kInitialSeeds) {
-    std::vector<double> candidate_offsets = offsetsFromSeed(corridor_samples, seed);
+    std::vector<double> candidate_offsets = offsetsFromSeed(optimizer_samples, seed);
     std::vector<Point2> candidate_points =
-        pointsFromOffsets(corridor_samples, candidate_offsets);
+        pointsFromOffsets(optimizer_samples, candidate_offsets);
     ++result.stats.candidate_evaluations;
     const PathEvaluation evaluation = evaluatePath(prohibited_grid, candidate_points);
     if (!evaluation.traversable()) {
@@ -355,9 +386,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       std::vector<double> best_offsets = offsets;
       for (const double delta : {-step, 0.0, step}) {
         std::vector<double> candidate_offsets = offsets;
-        applyOffsetDelta(candidate_offsets, corridor_samples, i, delta);
+        applyOffsetDelta(candidate_offsets, optimizer_samples, i, delta);
         std::vector<Point2> candidate_points =
-            pointsFromOffsets(corridor_samples, candidate_offsets);
+            pointsFromOffsets(optimizer_samples, candidate_offsets);
         ++result.stats.candidate_evaluations;
         const PathEvaluation evaluation =
             evaluatePath(prohibited_grid, candidate_points);
@@ -383,7 +414,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
 
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
-    final_points = pointsFromOffsets(corridor_samples, offsets);
+    final_points = pointsFromOffsets(optimizer_samples, offsets);
   }
   const PathEvaluation final_evaluation = evaluatePath(prohibited_grid, final_points);
   if (!final_evaluation.traversable()) {
@@ -395,8 +426,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   for (std::size_t i = 0U; i < sample_count; ++i) {
     TrajectoryPointSample sample{};
     sample.point = final_points[i];
-    sample.left_bound_m = corridor_samples[i].left_bound_m;
-    sample.right_bound_m = corridor_samples[i].right_bound_m;
+    sample.left_bound_m = optimizer_samples[i].left_bound_m;
+    sample.right_bound_m = optimizer_samples[i].right_bound_m;
     sample.racing_offset_m = offsets[i];
     result.stats.max_abs_offset_m =
         std::max(result.stats.max_abs_offset_m, std::abs(offsets[i]));

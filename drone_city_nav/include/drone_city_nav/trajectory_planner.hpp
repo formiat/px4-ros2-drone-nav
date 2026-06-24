@@ -67,4 +67,12 @@ trajectoryPlannerStatusName(TrajectoryPlannerStatus status) noexcept;
 planTrajectory(const TrajectoryPlannerInput& input,
                const TrajectoryPlannerConfig& config);
 
+[[nodiscard]] TrajectoryPlannerResult
+planBaselineTrajectory(const TrajectoryPlannerInput& input,
+                       const TrajectoryPlannerConfig& config);
+
+[[nodiscard]] TrajectoryPlannerResult
+planRacingTrajectory(const TrajectoryPlannerInput& input,
+                     const TrajectoryPlannerConfig& config);
+
 } // namespace drone_city_nav
