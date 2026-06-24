@@ -132,7 +132,6 @@ px4_offboard_node:
     corridor_sample_step_m: 1.0
     corridor_ray_step_m: 0.0
     corridor_safety_margin_m: 0.5
-    corridor_rebuild_width_threshold_m: 0.5
     racing_line_max_iterations: 80
     racing_line_initial_offset_step_m: 2.0
     racing_line_min_offset_step_m: 0.1
@@ -140,6 +139,8 @@ px4_offboard_node:
     racing_line_weight_length: 1.0
     racing_line_weight_curvature: 25.0
     racing_line_weight_curvature_change: 10.0
+    racing_line_weight_offset_change: 1.0
+    racing_line_weight_offset_second_change: 10.0
     racing_line_weight_center_bias: 0.02
     racing_line_max_length_ratio: 1.25
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path

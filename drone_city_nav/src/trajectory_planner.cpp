@@ -50,31 +50,6 @@ void computeSpeedProfileStats(const TrajectorySpeedProfile& profile,
   stats.speed_profile_mean_mps = sum / static_cast<double>(profile.samples.size());
 }
 
-[[nodiscard]] bool materiallyDifferent(const double lhs, const double rhs,
-                                       const double threshold) noexcept {
-  if (!std::isfinite(lhs) || !std::isfinite(rhs)) {
-    return std::isfinite(lhs) != std::isfinite(rhs);
-  }
-  return std::abs(lhs - rhs) > threshold;
-}
-
-[[nodiscard]] bool corridorStatsChangedMaterially(const CorridorStats& previous,
-                                                  const CorridorStats& current,
-                                                  const double threshold) noexcept {
-  if (previous.samples == 0U) {
-    return true;
-  }
-  if (current.samples != previous.samples ||
-      current.route_prohibited_samples != previous.route_prohibited_samples) {
-    return true;
-  }
-  return materiallyDifferent(current.min_width_m, previous.min_width_m, threshold) ||
-         materiallyDifferent(current.mean_width_m, previous.mean_width_m, threshold) ||
-         materiallyDifferent(current.max_width_m, previous.max_width_m, threshold) ||
-         materiallyDifferent(current.min_clearance_m, previous.min_clearance_m,
-                             threshold);
-}
-
 void finalizeResult(TrajectoryPlannerResult& result,
                     const TrajectoryPlannerConfig& config) {
   const TrajectoryMetrics metrics = trajectoryMetrics(result.compact_segments);
@@ -113,37 +88,6 @@ trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
       return "invalid_trajectory";
   }
   return "unknown";
-}
-
-std::string_view
-trajectoryGridRebuildReasonName(const TrajectoryGridRebuildReason reason) noexcept {
-  switch (reason) {
-    case TrajectoryGridRebuildReason::kNone:
-      return "none";
-    case TrajectoryGridRebuildReason::kInvalidTrajectory:
-      return "invalid_trajectory";
-    case TrajectoryGridRebuildReason::kProhibitedIntersection:
-      return "prohibited_intersection";
-    case TrajectoryGridRebuildReason::kCorridorBoundsChanged:
-      return "corridor_bounds_changed";
-  }
-  return "unknown";
-}
-
-TrajectoryGridRebuildReason
-trajectoryGridRebuildReason(const TrajectoryGridRebuildDecisionInput& input) noexcept {
-  if (!input.trajectory_valid) {
-    return TrajectoryGridRebuildReason::kInvalidTrajectory;
-  }
-  if (input.final_trajectory_intersects_prohibited) {
-    return TrajectoryGridRebuildReason::kProhibitedIntersection;
-  }
-  if (!input.current_corridor_valid ||
-      corridorStatsChangedMaterially(input.previous_corridor, input.current_corridor,
-                                     input.corridor_width_threshold_m)) {
-    return TrajectoryGridRebuildReason::kCorridorBoundsChanged;
-  }
-  return TrajectoryGridRebuildReason::kNone;
 }
 
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,

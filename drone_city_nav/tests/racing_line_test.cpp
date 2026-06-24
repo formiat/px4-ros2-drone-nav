@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace drone_city_nav {
@@ -64,22 +65,42 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   config.weight_length = 1.0;
   config.weight_curvature = 50.0;
   config.weight_curvature_change = 5.0;
+  config.weight_offset_change = 1.0;
+  config.weight_offset_second_change = 10.0;
   config.weight_center_bias = 0.0;
   return config;
 }
 
+[[nodiscard]] double maxOffsetDelta(const std::vector<TrajectoryPointSample>& samples) {
+  double max_delta = 0.0;
+  for (std::size_t i = 1U; i < samples.size(); ++i) {
+    max_delta = std::max(max_delta, std::abs(samples[i].racing_offset_m -
+                                             samples[i - 1U].racing_offset_m));
+  }
+  return max_delta;
+}
+
 } // namespace
 
-TEST(RacingLine, WideCornerUsesLateralOffset) {
+TEST(RacingLine, WideCornerProducesTraversableSmoothLine) {
   const OccupancyGrid2D grid = openGrid();
   const RacingLineResult result =
       optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.samples.size(), wideLeftTurnCorridor().size());
-  EXPECT_GT(result.stats.max_abs_offset_m, 0.5);
   EXPECT_LE(result.stats.final_length_m,
             result.stats.centerline_length_m * testConfig().max_length_ratio);
+  EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
+}
+
+TEST(RacingLine, PenalizesOffsetSpikes) {
+  const OccupancyGrid2D grid = openGrid();
+  const RacingLineResult result =
+      optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
 }
 
 TEST(RacingLine, ResultIsDeterministic) {

@@ -56,15 +56,19 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("finalTrajectoryReady()", self.offboard_text)
         self.assertNotIn("cruise_velocity_control_enabled_", self.offboard_text)
 
-    def test_final_trajectory_rebuilds_after_grid_lifecycle_events(self) -> None:
-        self.assertIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
-        self.assertIn("trajectoryGridRebuildReason(", self.offboard_text)
-        self.assertIn("buildCorridor(", self.offboard_text)
+    def test_final_trajectory_does_not_rebuild_on_grid_churn(self) -> None:
+        self.assertNotIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
+        self.assertNotIn("trajectoryGridRebuildReason(", self.offboard_text)
+        self.assertIn("buildCorridor(", self.trajectory_planner_text)
         self.assertIn("TrajectoryPlannerStatus::kMissingGrid", self.trajectory_planner_text)
         self.assertIn("trajectoryPlannerStatusName", self.trajectory_planner_text)
-        self.assertIn('"prohibited_intersection"', self.trajectory_planner_text)
-        self.assertIn('"corridor_bounds_changed"', self.trajectory_planner_text)
-        self.assertIn("Final trajectory grid-triggered rebuild", self.offboard_text)
+        self.assertNotIn('"prohibited_intersection"', self.trajectory_planner_text)
+        self.assertNotIn('"corridor_bounds_changed"', self.trajectory_planner_text)
+        self.assertNotIn("Final trajectory grid-triggered rebuild", self.offboard_text)
+        self.assertIn(
+            "Final trajectory rebuild after first usable prohibited grid",
+            self.offboard_text,
+        )
 
     def test_telemetry_writes_jsonl_flight_blackbox(self) -> None:
         self.assertIn("flight_blackbox_enabled", self.offboard_text)
@@ -149,9 +153,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("corridor_max_radius_m: 40.0", text)
                 self.assertIn("corridor_sample_step_m: 1.0", text)
                 self.assertIn("corridor_safety_margin_m: 0.5", text)
-                self.assertIn("corridor_rebuild_width_threshold_m: 0.5", text)
+                self.assertNotIn("corridor_rebuild_width_threshold_m", text)
                 self.assertIn("racing_line_max_iterations: 80", text)
                 self.assertIn("racing_line_weight_curvature: 25.0", text)
+                self.assertIn("racing_line_weight_offset_change: 1.0", text)
+                self.assertIn("racing_line_weight_offset_second_change: 10.0", text)
                 self.assertIn(
                     "final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path",
                     text,

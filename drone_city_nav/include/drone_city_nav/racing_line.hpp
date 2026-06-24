@@ -19,6 +19,8 @@ struct RacingLineConfig {
   double weight_length{1.0};
   double weight_curvature{25.0};
   double weight_curvature_change{10.0};
+  double weight_offset_change{1.0};
+  double weight_offset_second_change{10.0};
   double weight_center_bias{0.02};
   double max_length_ratio{1.25};
 };

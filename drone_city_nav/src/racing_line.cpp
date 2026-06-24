@@ -77,8 +77,8 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
 void applyOffsetDelta(std::vector<double>& offsets,
                       const std::span<const CorridorSample> corridor_samples,
                       const std::size_t center_index, const double delta_m) {
-  constexpr std::array<std::pair<int, double>, 5U> kSmoothingKernel{
-      {{-2, 0.25}, {-1, 0.5}, {0, 1.0}, {1, 0.5}, {2, 0.25}}};
+  constexpr std::array<std::pair<int, double>, 7U> kSmoothingKernel{
+      {{-3, 0.125}, {-2, 0.25}, {-1, 0.5}, {0, 1.0}, {1, 0.5}, {2, 0.25}, {3, 0.125}}};
   if (offsets.size() != corridor_samples.size() || offsets.size() <= 2U) {
     return;
   }
@@ -196,16 +196,30 @@ offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
       sanitizedPositive(config.weight_curvature, 25.0, 0.0, 1.0e9);
   const double weight_curvature_change =
       sanitizedPositive(config.weight_curvature_change, 10.0, 0.0, 1.0e9);
+  const double weight_offset_change =
+      sanitizedPositive(config.weight_offset_change, 1.0, 0.0, 1.0e9);
+  const double weight_offset_second_change =
+      sanitizedPositive(config.weight_offset_second_change, 10.0, 0.0, 1.0e9);
   const double weight_center_bias =
       sanitizedPositive(config.weight_center_bias, 0.02, 0.0, 1.0e6);
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
+  double offset_change_cost = 0.0;
+  double offset_second_change_cost = 0.0;
   double center_bias_cost = 0.0;
   double previous_curvature = 0.0;
   bool previous_curvature_valid = false;
   for (const double offset : offsets) {
     center_bias_cost += offset * offset;
+  }
+  for (std::size_t i = 1U; i < offsets.size(); ++i) {
+    const double change = offsets[i] - offsets[i - 1U];
+    offset_change_cost += change * change;
+  }
+  for (std::size_t i = 1U; i + 1U < offsets.size(); ++i) {
+    const double second_change = offsets[i + 1U] - 2.0 * offsets[i] + offsets[i - 1U];
+    offset_second_change_cost += second_change * second_change;
   }
   for (std::size_t i = 1U; i + 1U < points.size(); ++i) {
     const double curvature =
@@ -221,6 +235,8 @@ offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
 
   return weight_length * pathLength(points) + weight_curvature * curvature_cost +
          weight_curvature_change * curvature_change_cost +
+         weight_offset_change * offset_change_cost +
+         weight_offset_second_change * offset_second_change_cost +
          weight_center_bias * center_bias_cost;
 }
 

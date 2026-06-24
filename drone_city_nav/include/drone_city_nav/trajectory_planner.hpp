@@ -20,13 +20,6 @@ enum class TrajectoryPlannerStatus {
   kInvalidTrajectory,
 };
 
-enum class TrajectoryGridRebuildReason {
-  kNone,
-  kInvalidTrajectory,
-  kProhibitedIntersection,
-  kCorridorBoundsChanged,
-};
-
 struct TrajectoryPlannerConfig {
   CorridorConfig corridor{};
   RacingLineConfig racing_line{};
@@ -58,16 +51,6 @@ struct TrajectoryPlannerInput {
   const OccupancyGrid2D* prohibited_grid{nullptr};
 };
 
-struct TrajectoryGridRebuildDecisionInput {
-  bool trajectory_valid{false};
-  bool final_trajectory_intersects_prohibited{false};
-  bool current_corridor_valid{false};
-  double corridor_width_threshold_m{0.5};
-  TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
-  CorridorStats previous_corridor{};
-  CorridorStats current_corridor{};
-};
-
 struct TrajectoryPlannerResult {
   std::vector<TrajectorySegment> compact_segments;
   std::vector<CorridorSample> corridor_samples;
@@ -79,12 +62,6 @@ struct TrajectoryPlannerResult {
 
 [[nodiscard]] std::string_view
 trajectoryPlannerStatusName(TrajectoryPlannerStatus status) noexcept;
-
-[[nodiscard]] std::string_view
-trajectoryGridRebuildReasonName(TrajectoryGridRebuildReason reason) noexcept;
-
-[[nodiscard]] TrajectoryGridRebuildReason
-trajectoryGridRebuildReason(const TrajectoryGridRebuildDecisionInput& input) noexcept;
 
 [[nodiscard]] TrajectoryPlannerResult
 planTrajectory(const TrajectoryPlannerInput& input,
