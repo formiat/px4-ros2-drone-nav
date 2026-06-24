@@ -42,8 +42,8 @@ std::string finalTrajectorySamplesCsvHeader() {
   return "sample_index,s_m,x,y,tangent_x,tangent_y,curvature_1pm,"
          "arc_radius_m,left_bound_m,right_bound_m,racing_offset_m,"
          "speed_geometric_limit_mps,speed_profiled_limit_mps,speed_reason,"
-         "constraint_s_m,constraint_limit_mps,profiled_time_from_start_s,"
-         "profiled_time_to_finish_s";
+         "speed_limit_source,constraint_s_m,constraint_limit_mps,"
+         "profiled_time_from_start_s,profiled_time_to_finish_s";
 }
 
 std::string finalTrajectorySamplesCsvRow(const std::size_t sample_index,
@@ -79,7 +79,8 @@ std::string finalTrajectorySamplesCsvRow(const std::size_t sample_index,
   writeCsvNumberOrEmpty(stream, speed_sample.geometric_limit_mps);
   stream << ",";
   writeCsvNumberOrEmpty(stream, speed_sample.profiled_limit_mps);
-  stream << "," << speedConstraintTypeName(speed_sample.reason) << ",";
+  stream << "," << speedConstraintTypeName(speed_sample.reason) << ","
+         << speedConstraintTypeName(speed_sample.reason) << ",";
   writeCsvNumberOrEmpty(stream, speed_sample.constraint_s_m);
   stream << ",";
   writeCsvNumberOrEmpty(stream, speed_sample.constraint_limit_mps);
@@ -90,12 +91,10 @@ std::string finalTrajectorySamplesCsvRow(const std::size_t sample_index,
   return stream.str();
 }
 
-std::string
-finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
-                                      const TrajectoryShapeDiagnostics& shape) {
+std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
   std::ostringstream stream;
   stream << std::setprecision(9);
-  stream << "{\"racing_final_estimated_time_s\":";
+  stream << "\"racing_final_estimated_time_s\":";
   writeJsonNumberOrNull(stream, stats.racing_line.estimated_time_s);
   appendJsonNumber(stream, "racing_final_min_speed_limit_mps",
                    stats.racing_line.min_speed_limit_mps);
@@ -132,6 +131,15 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                    stats.racing_line.pre_regularization_max_curvature_jump_1pm);
   appendJsonNumber(stream, "racing_post_regularization_max_curvature_jump_1pm",
                    stats.racing_line.post_regularization_max_curvature_jump_1pm);
+  return stream.str();
+}
+
+std::string
+finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
+                                      const TrajectoryShapeDiagnostics& shape) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "{" << racingLineDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
   appendJsonNumber(stream, "trajectory_shape_max_curvature_jump_1pm",
                    shape.max_curvature_jump_1pm);

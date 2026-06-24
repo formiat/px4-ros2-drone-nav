@@ -2,9 +2,45 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
 
 namespace drone_city_nav {
+namespace {
+
+template<std::size_t Size>
+void expectContainsAll(const std::string& text,
+                       const std::array<const char*, Size>& expected_tokens) {
+  for (const char* token : expected_tokens) {
+    EXPECT_NE(text.find(token), std::string::npos) << token;
+  }
+}
+
+[[nodiscard]] TrajectoryPlannerStats populatedStats() {
+  TrajectoryPlannerStats stats{};
+  stats.racing_line.estimated_time_s = 12.5;
+  stats.racing_line.min_speed_limit_mps = 1.0;
+  stats.racing_line.max_speed_limit_mps = 10.0;
+  stats.racing_line.curvature_limited_samples = 3U;
+  stats.racing_line.centerline_estimated_time_s = 14.0;
+  stats.racing_line.centerline_min_speed_limit_mps = 2.0;
+  stats.racing_line.centerline_max_speed_limit_mps = 11.0;
+  stats.racing_line.centerline_curvature_limited_samples = 4U;
+  stats.racing_line.best_candidate_estimated_time_s = 12.25;
+  stats.racing_line.best_candidate_score = 42.0;
+  stats.racing_line.best_candidate_min_speed_limit_mps = 1.5;
+  stats.racing_line.best_candidate_max_speed_limit_mps = 10.5;
+  stats.racing_line.best_candidate_curvature_limited_samples = 5U;
+  stats.racing_line.time_gain_s = 1.5;
+  stats.racing_line.regularization_applied = true;
+  stats.racing_line.regularization_iterations = 2U;
+  stats.racing_line.regularization_time_delta_s = 0.1;
+  stats.racing_line.pre_regularization_max_curvature_jump_1pm = 0.4;
+  stats.racing_line.post_regularization_max_curvature_jump_1pm = 0.2;
+  return stats;
+}
+
+} // namespace
 
 TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   TrajectoryPointSample sample{};
@@ -27,8 +63,21 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   const std::string row =
       finalTrajectorySamplesCsvRow(7U, sample, speed_sample, 1.25, 3.5);
 
-  EXPECT_NE(header.find("profiled_time_from_start_s"), std::string::npos);
-  EXPECT_NE(header.find("profiled_time_to_finish_s"), std::string::npos);
+  expectContainsAll(header, std::array{
+                                "sample_index",
+                                "s_m",
+                                "x",
+                                "y",
+                                "curvature_1pm",
+                                "speed_geometric_limit_mps",
+                                "speed_profiled_limit_mps",
+                                "speed_reason",
+                                "speed_limit_source",
+                                "constraint_s_m",
+                                "constraint_limit_mps",
+                                "profiled_time_from_start_s",
+                                "profiled_time_to_finish_s",
+                            });
   EXPECT_NE(row.find("arc"), std::string::npos);
   EXPECT_NE(row.find("1.25"), std::string::npos);
   EXPECT_NE(row.find("3.5"), std::string::npos);
@@ -36,31 +85,63 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
 }
 
 TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
-  TrajectoryPlannerStats stats{};
-  stats.racing_line.estimated_time_s = 12.5;
-  stats.racing_line.centerline_estimated_time_s = 14.0;
-  stats.racing_line.best_candidate_estimated_time_s = 12.25;
-  stats.racing_line.best_candidate_score = 42.0;
-  stats.racing_line.time_gain_s = 1.5;
-  stats.racing_line.regularization_applied = true;
-  stats.racing_line.regularization_iterations = 2U;
-  stats.racing_line.regularization_time_delta_s = 0.1;
-  stats.racing_line.pre_regularization_max_curvature_jump_1pm = 0.4;
-  stats.racing_line.post_regularization_max_curvature_jump_1pm = 0.2;
-
   TrajectoryShapeDiagnostics shape{};
   shape.segment_count = 9U;
   shape.max_curvature_jump_1pm = 0.2;
   shape.max_heading_delta_rad = 0.3;
   shape.max_offset_delta_m = 0.4;
 
-  const std::string json = finalTrajectoryDiagnosticsSummaryJson(stats, shape);
+  const std::string json =
+      finalTrajectoryDiagnosticsSummaryJson(populatedStats(), shape);
 
   EXPECT_NE(json.find("\"racing_final_estimated_time_s\":12.5"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_final_min_speed_limit_mps\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_final_max_speed_limit_mps\":10"), std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_estimated_time_s\":14"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_shape_segment_count\":9"), std::string::npos);
   EXPECT_EQ(json.find("nan"), std::string::npos);
+}
+
+TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys) {
+  const std::string fragment = racingLineDiagnosticsJsonFields(populatedStats());
+
+  expectContainsAll(fragment,
+                    std::array{
+                        "\"racing_final_estimated_time_s\"",
+                        "\"racing_final_min_speed_limit_mps\"",
+                        "\"racing_final_max_speed_limit_mps\"",
+                        "\"racing_final_curvature_limited_samples\"",
+                        "\"racing_centerline_estimated_time_s\"",
+                        "\"racing_centerline_min_speed_limit_mps\"",
+                        "\"racing_centerline_max_speed_limit_mps\"",
+                        "\"racing_centerline_curvature_limited_samples\"",
+                        "\"racing_best_candidate_estimated_time_s\"",
+                        "\"racing_best_candidate_score\"",
+                        "\"racing_best_candidate_min_speed_limit_mps\"",
+                        "\"racing_best_candidate_max_speed_limit_mps\"",
+                        "\"racing_best_candidate_curvature_limited_samples\"",
+                        "\"racing_time_gain_s\"",
+                        "\"racing_regularization_time_delta_s\"",
+                        "\"racing_regularization_iterations\"",
+                        "\"racing_regularization_applied\"",
+                        "\"racing_pre_regularization_max_curvature_jump_1pm\"",
+                        "\"racing_post_regularization_max_curvature_jump_1pm\"",
+                    });
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
+TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetrics) {
+  const std::string fragment =
+      racingLineDiagnosticsJsonFields(TrajectoryPlannerStats{});
+
+  EXPECT_NE(fragment.find("\"racing_final_estimated_time_s\":null"), std::string::npos);
+  EXPECT_NE(fragment.find("\"racing_centerline_estimated_time_s\":null"),
+            std::string::npos);
+  EXPECT_NE(fragment.find("\"racing_best_candidate_score\":null"), std::string::npos);
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
 } // namespace drone_city_nav

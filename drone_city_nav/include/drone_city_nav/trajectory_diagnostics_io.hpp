@@ -19,6 +19,9 @@ finalTrajectorySamplesCsvRow(std::size_t sample_index,
                              double time_from_start_s, double time_to_finish_s);
 
 [[nodiscard]] std::string
+racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
+
+[[nodiscard]] std::string
 finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                                       const TrajectoryShapeDiagnostics& shape);
 
