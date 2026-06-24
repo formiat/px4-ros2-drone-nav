@@ -1,5 +1,7 @@
 #include "drone_city_nav/racing_line.hpp"
 
+#include "drone_city_nav/trajectory_diagnostics.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -23,6 +25,11 @@ struct PathEvaluation {
   [[nodiscard]] bool traversable() const noexcept {
     return prohibited_cells == 0U && outside_grid_segments == 0U;
   }
+};
+
+struct CandidateScore {
+  double score{std::numeric_limits<double>::infinity()};
+  TraversalTimeEstimate traversal_time{};
 };
 
 [[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
@@ -72,6 +79,26 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
                      corridor_samples[i].normal * offsets[i]);
   }
   return points;
+}
+
+[[nodiscard]] std::vector<TrajectoryPointSample>
+samplesFromPointsAndOffsets(const std::span<const CorridorSample> corridor_samples,
+                            const std::span<const Point2> points,
+                            const std::span<const double> offsets) {
+  std::vector<TrajectoryPointSample> samples;
+  if (corridor_samples.size() != points.size() || points.size() != offsets.size()) {
+    return samples;
+  }
+  samples.reserve(points.size());
+  for (std::size_t i = 0U; i < points.size(); ++i) {
+    TrajectoryPointSample sample{};
+    sample.point = points[i];
+    sample.left_bound_m = corridor_samples[i].left_bound_m;
+    sample.right_bound_m = corridor_samples[i].right_bound_m;
+    sample.racing_offset_m = offsets[i];
+    samples.push_back(sample);
+  }
+  return samples;
 }
 
 void applyOffsetDelta(std::vector<double>& offsets,
@@ -184,6 +211,8 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
   return 2.0 * signed_double_area / (a * b * c);
 }
 
+void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
+
 [[nodiscard]] PathEvaluation evaluatePath(const OccupancyGrid2D& grid,
                                           const std::span<const Point2> points) {
   PathEvaluation evaluation{};
@@ -268,11 +297,12 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
          weight_center_bias * center_bias_cost;
 }
 
-[[nodiscard]] double scoreForCandidate(const std::span<const Point2> points,
-                                       const std::span<const double> offsets,
-                                       const PathEvaluation& evaluation,
-                                       const RacingLineConfig& config,
-                                       const double max_length_m) {
+[[nodiscard]] CandidateScore scoreForCandidate(
+    const std::span<const CorridorSample> corridor_samples,
+    const std::span<const Point2> points, const std::span<const double> offsets,
+    const PathEvaluation& evaluation, const RacingLineConfig& config,
+    const VelocityFollowerConfig& speed_config, const double max_length_m) {
+  CandidateScore result{};
   double score = costForPoints(points, offsets, config);
   score += static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
   score += static_cast<double>(evaluation.outside_grid_segments) * kOutsideGridPenalty;
@@ -280,7 +310,19 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
     const double overrun_m = evaluation.length_m - max_length_m;
     score += overrun_m * overrun_m * kLengthOverrunPenalty;
   }
-  return score;
+  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
+  if (evaluation.traversable()) {
+    std::vector<TrajectoryPointSample> samples =
+        samplesFromPointsAndOffsets(corridor_samples, points, offsets);
+    populateSampleGeometry(samples);
+    result.traversal_time = estimateTraversalTime(samples, speed_config, true);
+    if (weight_time > 0.0 && result.traversal_time.valid &&
+        std::isfinite(result.traversal_time.estimated_time_s)) {
+      score += weight_time * result.traversal_time.estimated_time_s;
+    }
+  }
+  result.score = score;
+  return result;
 }
 
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
@@ -319,12 +361,82 @@ void updateCurvatureStats(const std::span<const TrajectoryPointSample> samples,
   }
 }
 
+void copyTraversalEstimateToFinalStats(const TraversalTimeEstimate& estimate,
+                                       RacingLineStats& stats) {
+  stats.estimated_time_s = estimate.estimated_time_s;
+  stats.min_speed_limit_mps = estimate.min_speed_limit_mps;
+  stats.max_speed_limit_mps = estimate.max_speed_limit_mps;
+  stats.curvature_limited_samples = estimate.curvature_limited_samples;
+}
+
+void copyTraversalEstimateToCenterlineStats(const TraversalTimeEstimate& estimate,
+                                            RacingLineStats& stats) {
+  stats.centerline_estimated_time_s = estimate.estimated_time_s;
+  stats.centerline_min_speed_limit_mps = estimate.min_speed_limit_mps;
+  stats.centerline_max_speed_limit_mps = estimate.max_speed_limit_mps;
+  stats.centerline_curvature_limited_samples = estimate.curvature_limited_samples;
+}
+
+void copyTraversalEstimateToBestCandidateStats(const TraversalTimeEstimate& estimate,
+                                               const double score,
+                                               RacingLineStats& stats) {
+  stats.best_candidate_estimated_time_s = estimate.estimated_time_s;
+  stats.best_candidate_score = score;
+  stats.best_candidate_min_speed_limit_mps = estimate.min_speed_limit_mps;
+  stats.best_candidate_max_speed_limit_mps = estimate.max_speed_limit_mps;
+  stats.best_candidate_curvature_limited_samples = estimate.curvature_limited_samples;
+}
+
+[[nodiscard]] bool updateBestCandidate(
+    const std::span<const CorridorSample> corridor_samples,
+    const std::span<const double> candidate_offsets,
+    const std::span<const Point2> candidate_points,
+    const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
+    const VelocityFollowerConfig& speed_config, const double max_length_m,
+    double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
+    RacingLineStats& stats) {
+  ++stats.candidate_evaluations;
+  const PathEvaluation evaluation = evaluatePath(prohibited_grid, candidate_points);
+  if (!evaluation.traversable()) {
+    ++stats.collision_rejections;
+  }
+  const CandidateScore candidate_score =
+      scoreForCandidate(corridor_samples, candidate_points, candidate_offsets,
+                        evaluation, config, speed_config, max_length_m);
+  if (candidate_score.score + 1.0e-9 < best_cost) {
+    best_cost = candidate_score.score;
+    offsets.assign(candidate_offsets.begin(), candidate_offsets.end());
+    best_points.assign(candidate_points.begin(), candidate_points.end());
+    copyTraversalEstimateToBestCandidateStats(candidate_score.traversal_time,
+                                              candidate_score.score, stats);
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::vector<double>
+smoothedOffsets(const std::span<const double> offsets,
+                const std::span<const CorridorSample> corridor_samples) {
+  std::vector<double> smoothed{offsets.begin(), offsets.end()};
+  if (offsets.size() <= 2U || offsets.size() != corridor_samples.size()) {
+    return smoothed;
+  }
+  for (std::size_t i = 1U; i + 1U < offsets.size(); ++i) {
+    const double value =
+        0.25 * offsets[i - 1U] + 0.5 * offsets[i] + 0.25 * offsets[i + 1U];
+    smoothed[i] = std::clamp(value, -corridor_samples[i].right_bound_m,
+                             corridor_samples[i].left_bound_m);
+  }
+  return smoothed;
+}
+
 } // namespace
 
 RacingLineResult
 optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
                    const OccupancyGrid2D& prohibited_grid,
-                   const RacingLineConfig& config) {
+                   const RacingLineConfig& config,
+                   const VelocityFollowerConfig& speed_config) {
   RacingLineResult result{};
   result.stats.input_samples = corridor_samples.size();
   if (!config.enabled || corridor_samples.size() < 2U) {
@@ -339,6 +451,11 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   const std::vector<Point2> centerline =
       pointsFromOffsets(optimizer_samples, zero_offsets);
   result.stats.centerline_length_m = pathLength(centerline);
+  std::vector<TrajectoryPointSample> centerline_samples =
+      samplesFromPointsAndOffsets(optimizer_samples, centerline, zero_offsets);
+  populateSampleGeometry(centerline_samples);
+  copyTraversalEstimateToCenterlineStats(
+      estimateTraversalTime(centerline_samples, speed_config, true), result.stats);
 
   const double min_step =
       sanitizedPositive(config.min_offset_step_m, 0.1, 0.001, 100.0);
@@ -361,18 +478,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     std::vector<double> candidate_offsets = offsetsFromSeed(optimizer_samples, seed);
     std::vector<Point2> candidate_points =
         pointsFromOffsets(optimizer_samples, candidate_offsets);
-    ++result.stats.candidate_evaluations;
-    const PathEvaluation evaluation = evaluatePath(prohibited_grid, candidate_points);
-    if (!evaluation.traversable()) {
-      ++result.stats.collision_rejections;
-    }
-    const double candidate_cost = scoreForCandidate(candidate_points, candidate_offsets,
-                                                    evaluation, config, max_length_m);
-    if (candidate_cost < best_cost) {
-      best_cost = candidate_cost;
-      offsets = std::move(candidate_offsets);
-      best_points = std::move(candidate_points);
-    }
+    (void)updateBestCandidate(optimizer_samples, candidate_offsets, candidate_points,
+                              prohibited_grid, config, speed_config, max_length_m,
+                              best_cost, offsets, best_points, result.stats);
   }
   if (offsets.empty()) {
     return result;
@@ -389,18 +497,15 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         applyOffsetDelta(candidate_offsets, optimizer_samples, i, delta);
         std::vector<Point2> candidate_points =
             pointsFromOffsets(optimizer_samples, candidate_offsets);
-        ++result.stats.candidate_evaluations;
-        const PathEvaluation evaluation =
-            evaluatePath(prohibited_grid, candidate_points);
-        if (!evaluation.traversable()) {
-          ++result.stats.collision_rejections;
-        }
-        const double candidate_cost = scoreForCandidate(
-            candidate_points, candidate_offsets, evaluation, config, max_length_m);
-        if (candidate_cost + 1.0e-9 < best_cost) {
-          best_cost = candidate_cost;
-          best_offsets = std::move(candidate_offsets);
-          best_points = std::move(candidate_points);
+        std::vector<double> accepted_offsets;
+        std::vector<Point2> accepted_points;
+        const bool accepted = updateBestCandidate(
+            optimizer_samples, candidate_offsets, candidate_points, prohibited_grid,
+            config, speed_config, max_length_m, best_cost, accepted_offsets,
+            accepted_points, result.stats);
+        if (accepted) {
+          best_offsets = std::move(accepted_offsets);
+          best_points = std::move(accepted_points);
           changed = true;
         }
       }
@@ -416,6 +521,53 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   if (final_points.empty()) {
     final_points = pointsFromOffsets(optimizer_samples, offsets);
   }
+  std::vector<TrajectoryPointSample> pre_regularization_samples =
+      samplesFromPointsAndOffsets(optimizer_samples, final_points, offsets);
+  populateSampleGeometry(pre_regularization_samples);
+  const TrajectoryShapeDiagnostics pre_diagnostics =
+      computeTrajectoryShapeDiagnostics(pre_regularization_samples);
+  result.stats.pre_regularization_max_curvature_jump_1pm =
+      pre_diagnostics.max_curvature_jump_1pm;
+  const TraversalTimeEstimate best_time =
+      estimateTraversalTime(pre_regularization_samples, speed_config, true);
+
+  std::vector<double> final_offsets = offsets;
+  const std::size_t regularization_iterations = std::clamp<std::size_t>(
+      config.regularization_iterations, 0U, static_cast<std::size_t>(100U));
+  for (std::size_t iteration = 0U; iteration < regularization_iterations; ++iteration) {
+    std::vector<double> candidate_offsets =
+        smoothedOffsets(final_offsets, optimizer_samples);
+    std::vector<Point2> candidate_points =
+        pointsFromOffsets(optimizer_samples, candidate_offsets);
+    const PathEvaluation candidate_evaluation =
+        evaluatePath(prohibited_grid, candidate_points);
+    if (!candidate_evaluation.traversable()) {
+      ++result.stats.collision_rejections;
+      break;
+    }
+    std::vector<TrajectoryPointSample> candidate_samples = samplesFromPointsAndOffsets(
+        optimizer_samples, candidate_points, candidate_offsets);
+    populateSampleGeometry(candidate_samples);
+    const TrajectoryShapeDiagnostics candidate_diagnostics =
+        computeTrajectoryShapeDiagnostics(candidate_samples);
+    const TraversalTimeEstimate candidate_time =
+        estimateTraversalTime(candidate_samples, speed_config, true);
+    const double max_regression = sanitizedPositive(
+        config.regularization_max_time_regression_s, 0.5, 0.0, 3600.0);
+    const bool time_acceptable =
+        !best_time.valid || !candidate_time.valid ||
+        candidate_time.estimated_time_s <= best_time.estimated_time_s + max_regression;
+    if (candidate_diagnostics.max_curvature_jump_1pm + 1.0e-9 >=
+            pre_diagnostics.max_curvature_jump_1pm ||
+        !time_acceptable) {
+      break;
+    }
+    final_offsets = std::move(candidate_offsets);
+    final_points = std::move(candidate_points);
+    result.stats.regularization_applied = true;
+    ++result.stats.regularization_iterations;
+  }
+
   const PathEvaluation final_evaluation = evaluatePath(prohibited_grid, final_points);
   if (!final_evaluation.traversable()) {
     ++result.stats.collision_rejections;
@@ -428,15 +580,32 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     sample.point = final_points[i];
     sample.left_bound_m = optimizer_samples[i].left_bound_m;
     sample.right_bound_m = optimizer_samples[i].right_bound_m;
-    sample.racing_offset_m = offsets[i];
+    sample.racing_offset_m = final_offsets[i];
     result.stats.max_abs_offset_m =
-        std::max(result.stats.max_abs_offset_m, std::abs(offsets[i]));
+        std::max(result.stats.max_abs_offset_m, std::abs(final_offsets[i]));
     result.samples.push_back(sample);
   }
   populateSampleGeometry(result.samples);
   result.stats.output_samples = result.samples.size();
   result.stats.final_length_m = pathLength(final_points);
   result.stats.final_cost = best_cost;
+  const TrajectoryShapeDiagnostics post_diagnostics =
+      computeTrajectoryShapeDiagnostics(result.samples);
+  result.stats.post_regularization_max_curvature_jump_1pm =
+      post_diagnostics.max_curvature_jump_1pm;
+  const TraversalTimeEstimate final_time =
+      estimateTraversalTime(result.samples, speed_config, true);
+  copyTraversalEstimateToFinalStats(final_time, result.stats);
+  if (std::isfinite(result.stats.centerline_estimated_time_s) &&
+      std::isfinite(result.stats.estimated_time_s)) {
+    result.stats.time_gain_s =
+        result.stats.centerline_estimated_time_s - result.stats.estimated_time_s;
+  }
+  if (std::isfinite(result.stats.best_candidate_estimated_time_s) &&
+      std::isfinite(result.stats.estimated_time_s)) {
+    result.stats.regularization_time_delta_s =
+        result.stats.estimated_time_s - result.stats.best_candidate_estimated_time_s;
+  }
   updateCurvatureStats(result.samples, result.stats);
   result.valid = trajectorySamplesAreUsable(result.samples);
   return result;

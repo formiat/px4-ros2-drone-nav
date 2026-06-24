@@ -198,6 +198,50 @@ TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
   EXPECT_NEAR(curve_sample.geometric_limit_mps, std::sqrt(3.0 / 0.2), 1.0e-9);
 }
 
+TEST(OffboardVelocityFollower, EstimatesTraversalTimeFromSampledTrajectory) {
+  VelocityFollowerConfig config = testConfig();
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 11U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 2.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    samples.push_back(sample);
+  }
+
+  const TraversalTimeEstimate estimate = estimateTraversalTime(samples, config, false);
+
+  ASSERT_TRUE(estimate.valid);
+  EXPECT_TRUE(std::isfinite(estimate.estimated_time_s));
+  EXPECT_NEAR(estimate.estimated_time_s, 20.0 / config.cruise_speed_mps, 1.0e-9);
+  EXPECT_NEAR(estimate.min_speed_limit_mps, config.cruise_speed_mps, 1.0e-9);
+  EXPECT_NEAR(estimate.max_speed_limit_mps, config.cruise_speed_mps, 1.0e-9);
+  EXPECT_EQ(estimate.curvature_limited_samples, 0U);
+}
+
+TEST(OffboardVelocityFollower, ProfiledTraversalTimeAccountsForFinalStop) {
+  VelocityFollowerConfig config = testConfig();
+  config.speed_profile_decel_mps2 = 2.0;
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 21U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i);
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    samples.push_back(sample);
+  }
+
+  const TraversalTimeEstimate geometric = estimateTraversalTime(samples, config, false);
+  const TraversalTimeEstimate profiled = estimateTraversalTime(samples, config, true);
+
+  ASSERT_TRUE(geometric.valid);
+  ASSERT_TRUE(profiled.valid);
+  EXPECT_GT(profiled.estimated_time_s, geometric.estimated_time_s);
+  EXPECT_NEAR(profiled.min_speed_limit_mps, 0.0, 1.0e-9);
+  EXPECT_LT(profiled.max_speed_limit_mps, config.cruise_speed_mps);
+  EXPECT_GT(profiled.max_speed_limit_mps, config.min_turn_speed_mps);
+}
+
 TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
   const VelocityVectorLimitResult result =
       limitVelocityVectorDelta(Point2{0.0, 12.0}, Point2{12.0, 0.0}, true, 0.1, 3.0);

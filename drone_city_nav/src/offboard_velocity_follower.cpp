@@ -392,6 +392,78 @@ TrajectorySpeedSample speedProfileSampleAtS(const TrajectorySpeedProfile& profil
   return profile.samples[firstProfileSampleNotBefore(profile, s_m)];
 }
 
+TraversalTimeEstimate
+estimateTraversalTime(const std::span<const TrajectoryPointSample> trajectory_samples,
+                      const VelocityFollowerConfig& config,
+                      const bool use_forward_backward_profile) {
+  TraversalTimeEstimate estimate{};
+  if (!trajectorySamplesAreUsable(trajectory_samples)) {
+    return estimate;
+  }
+
+  TrajectorySpeedProfile profile{};
+  if (use_forward_backward_profile) {
+    profile = buildTrajectorySpeedProfile(trajectory_samples, config);
+  } else {
+    profile.samples.reserve(trajectory_samples.size());
+    for (std::size_t i = 0U; i < trajectory_samples.size(); ++i) {
+      mergeSpeedSample(profile.samples, geometricSpeedSampleFromPointSample(
+                                            trajectory_samples[i], i, config));
+    }
+    profile.valid = !profile.samples.empty();
+  }
+  if (!profile.valid || profile.samples.empty()) {
+    return estimate;
+  }
+
+  constexpr double kMinimumIntegrationSpeedMps = 0.1;
+  estimate.valid = true;
+  estimate.estimated_time_s = 0.0;
+  for (const TrajectorySpeedSample& sample : profile.samples) {
+    const double speed_limit = use_forward_backward_profile
+                                   ? sample.profiled_limit_mps
+                                   : sample.geometric_limit_mps;
+    if (std::isfinite(speed_limit)) {
+      if (!std::isfinite(estimate.min_speed_limit_mps)) {
+        estimate.min_speed_limit_mps = speed_limit;
+        estimate.max_speed_limit_mps = speed_limit;
+      } else {
+        estimate.min_speed_limit_mps =
+            std::min(estimate.min_speed_limit_mps, speed_limit);
+        estimate.max_speed_limit_mps =
+            std::max(estimate.max_speed_limit_mps, speed_limit);
+      }
+    }
+    if (sample.reason == SpeedConstraintType::kArc) {
+      ++estimate.curvature_limited_samples;
+    }
+  }
+
+  for (std::size_t i = 1U; i < trajectory_samples.size(); ++i) {
+    double ds = trajectory_samples[i].s_m - trajectory_samples[i - 1U].s_m;
+    if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
+      ds = distance(trajectory_samples[i - 1U].point, trajectory_samples[i].point);
+    }
+    if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
+      continue;
+    }
+    const TrajectorySpeedSample start =
+        speedProfileSampleAtS(profile, trajectory_samples[i - 1U].s_m);
+    const TrajectorySpeedSample end =
+        speedProfileSampleAtS(profile, trajectory_samples[i].s_m);
+    const double start_speed = use_forward_backward_profile ? start.profiled_limit_mps
+                                                            : start.geometric_limit_mps;
+    const double end_speed =
+        use_forward_backward_profile ? end.profiled_limit_mps : end.geometric_limit_mps;
+    const double average_speed =
+        std::max(kMinimumIntegrationSpeedMps, 0.5 * (start_speed + end_speed));
+    if (std::isfinite(average_speed)) {
+      estimate.estimated_time_s += ds / average_speed;
+    }
+  }
+  return estimate;
+}
+
 VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity,
                                                    const Point2 previous_velocity,
                                                    const bool previous_velocity_valid,

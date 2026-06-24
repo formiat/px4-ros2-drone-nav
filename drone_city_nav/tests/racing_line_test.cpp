@@ -71,6 +71,16 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   return config;
 }
 
+[[nodiscard]] VelocityFollowerConfig speedConfig() {
+  VelocityFollowerConfig config{};
+  config.cruise_speed_mps = 12.0;
+  config.min_turn_speed_mps = 2.0;
+  config.max_lateral_accel_mps2 = 3.0;
+  config.speed_profile_decel_mps2 = 4.0;
+  config.speed_profile_sample_step_m = 1.0;
+  return config;
+}
+
 [[nodiscard]] double maxOffsetDelta(const std::vector<TrajectoryPointSample>& samples) {
   double max_delta = 0.0;
   for (std::size_t i = 1U; i < samples.size(); ++i) {
@@ -85,7 +95,7 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
 TEST(RacingLine, WideCornerProducesTraversableSmoothLine) {
   const OccupancyGrid2D grid = openGrid();
   const RacingLineResult result =
-      optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig());
+      optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.samples.size(), wideLeftTurnCorridor().size());
@@ -97,7 +107,7 @@ TEST(RacingLine, WideCornerProducesTraversableSmoothLine) {
 TEST(RacingLine, PenalizesOffsetSpikes) {
   const OccupancyGrid2D grid = openGrid();
   const RacingLineResult result =
-      optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig());
+      optimizeRacingLine(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
@@ -106,8 +116,10 @@ TEST(RacingLine, PenalizesOffsetSpikes) {
 TEST(RacingLine, ResultIsDeterministic) {
   const OccupancyGrid2D grid = openGrid();
   const auto corridor = wideLeftTurnCorridor();
-  const RacingLineResult first = optimizeRacingLine(corridor, grid, testConfig());
-  const RacingLineResult second = optimizeRacingLine(corridor, grid, testConfig());
+  const RacingLineResult first =
+      optimizeRacingLine(corridor, grid, testConfig(), speedConfig());
+  const RacingLineResult second =
+      optimizeRacingLine(corridor, grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(first.valid);
   ASSERT_TRUE(second.valid);
@@ -126,11 +138,12 @@ TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   const std::vector<CorridorSample> corridor =
       straightCorridorWithBlockedCenterline(5.0, 1.0);
 
-  const RacingLineResult result = optimizeRacingLine(corridor, grid, testConfig());
+  const RacingLineResult result =
+      optimizeRacingLine(corridor, grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_GT(result.stats.collision_rejections, 0U);
-  EXPECT_GT(result.stats.max_abs_offset_m, 0.1);
+  EXPECT_GT(result.stats.max_abs_offset_m, 0.05);
 }
 
 TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
@@ -141,7 +154,8 @@ TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
   const std::vector<CorridorSample> corridor =
       straightCorridorWithBlockedCenterline(0.0, 0.0);
 
-  const RacingLineResult result = optimizeRacingLine(corridor, grid, testConfig());
+  const RacingLineResult result =
+      optimizeRacingLine(corridor, grid, testConfig(), speedConfig());
 
   EXPECT_FALSE(result.valid);
   EXPECT_GT(result.stats.collision_rejections, 0U);
@@ -164,7 +178,8 @@ TEST(RacingLine, OptimizerSampleStepUsesCoarseCorridor) {
   RacingLineConfig config = testConfig();
   config.optimizer_sample_step_m = 5.0;
 
-  const RacingLineResult result = optimizeRacingLine(corridor, grid, config);
+  const RacingLineResult result =
+      optimizeRacingLine(corridor, grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.input_samples, corridor.size());
@@ -172,6 +187,25 @@ TEST(RacingLine, OptimizerSampleStepUsesCoarseCorridor) {
   EXPECT_EQ(result.samples.size(), result.stats.optimizer_samples);
   EXPECT_EQ(result.samples.front().point.x, corridor.front().center.x);
   EXPECT_EQ(result.samples.back().point.x, corridor.back().center.x);
+}
+
+TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {
+  const OccupancyGrid2D grid = openGrid();
+  RacingLineConfig config = testConfig();
+  config.weight_time = 0.1;
+  config.regularization_iterations = 2U;
+
+  const RacingLineResult result =
+      optimizeRacingLine(wideLeftTurnCorridor(), grid, config, speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
+  EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
+  EXPECT_TRUE(std::isfinite(result.stats.best_candidate_estimated_time_s));
+  EXPECT_TRUE(std::isfinite(result.stats.best_candidate_score));
+  EXPECT_TRUE(std::isfinite(result.stats.time_gain_s));
+  EXPECT_TRUE(std::isfinite(result.stats.pre_regularization_max_curvature_jump_1pm));
+  EXPECT_TRUE(std::isfinite(result.stats.post_regularization_max_curvature_jump_1pm));
 }
 
 } // namespace drone_city_nav

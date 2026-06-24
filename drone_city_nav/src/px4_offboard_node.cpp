@@ -4,6 +4,9 @@
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/trajectory.hpp"
+#include "drone_city_nav/trajectory_debug_markers.hpp"
+#include "drone_city_nav/trajectory_diagnostics.hpp"
+#include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -33,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -128,28 +132,6 @@ void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
   }
 }
 
-struct TrajectoryShapeDiagnostics {
-  std::size_t segment_count{0U};
-  std::size_t segments_shorter_than_0_5m{0U};
-  std::size_t segments_shorter_than_1m{0U};
-  std::size_t segments_shorter_than_2m{0U};
-  std::size_t max_heading_delta_index{0U};
-  std::size_t max_curvature_jump_index{0U};
-  std::size_t max_offset_delta_index{0U};
-  std::size_t max_offset_second_delta_index{0U};
-  double min_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
-  double mean_segment_length_m{std::numeric_limits<double>::quiet_NaN()};
-  double max_segment_length_m{0.0};
-  double max_heading_delta_rad{0.0};
-  double max_curvature_jump_1pm{0.0};
-  double max_offset_delta_m{0.0};
-  double max_offset_second_delta_m{0.0};
-  Point2 max_heading_delta_point{};
-  Point2 max_curvature_jump_point{};
-  Point2 max_offset_delta_point{};
-  Point2 max_offset_second_delta_point{};
-};
-
 struct TrajectoryBuildRequest {
   std::uint64_t job_id{0U};
   std::uint64_t local_path_update_id{0U};
@@ -170,97 +152,6 @@ struct TrajectoryBuildResult {
   double duration_ms{0.0};
   std::size_t route_points{0U};
 };
-
-[[nodiscard]] TrajectoryShapeDiagnostics
-trajectoryShapeDiagnostics(const std::span<const TrajectoryPointSample> samples) {
-  TrajectoryShapeDiagnostics diagnostics{};
-  if (samples.size() < 2U) {
-    return diagnostics;
-  }
-
-  diagnostics.segment_count = samples.size() - 1U;
-  diagnostics.min_segment_length_m = std::numeric_limits<double>::infinity();
-  double segment_length_sum = 0.0;
-  double previous_heading_rad = std::numeric_limits<double>::quiet_NaN();
-  bool previous_heading_valid = false;
-
-  for (std::size_t i = 1U; i < samples.size(); ++i) {
-    const Point2 delta{samples[i].point.x - samples[i - 1U].point.x,
-                       samples[i].point.y - samples[i - 1U].point.y};
-    const double segment_length_m = std::hypot(delta.x, delta.y);
-    diagnostics.min_segment_length_m =
-        std::min(diagnostics.min_segment_length_m, segment_length_m);
-    diagnostics.max_segment_length_m =
-        std::max(diagnostics.max_segment_length_m, segment_length_m);
-    segment_length_sum += segment_length_m;
-    if (segment_length_m < 0.5) {
-      ++diagnostics.segments_shorter_than_0_5m;
-    }
-    if (segment_length_m < 1.0) {
-      ++diagnostics.segments_shorter_than_1m;
-    }
-    if (segment_length_m < 2.0) {
-      ++diagnostics.segments_shorter_than_2m;
-    }
-
-    if (segment_length_m > kTinyDistanceM) {
-      const double heading_rad = std::atan2(delta.y, delta.x);
-      if (previous_heading_valid) {
-        const double heading_delta_rad =
-            std::abs(normalizeAngle(heading_rad - previous_heading_rad));
-        if (heading_delta_rad > diagnostics.max_heading_delta_rad) {
-          diagnostics.max_heading_delta_rad = heading_delta_rad;
-          diagnostics.max_heading_delta_index = i;
-          diagnostics.max_heading_delta_point = samples[i].point;
-        }
-      }
-      previous_heading_rad = heading_rad;
-      previous_heading_valid = true;
-    }
-
-    const double curvature_jump =
-        std::abs(samples[i].curvature_1pm - samples[i - 1U].curvature_1pm);
-    if (curvature_jump > diagnostics.max_curvature_jump_1pm) {
-      diagnostics.max_curvature_jump_1pm = curvature_jump;
-      diagnostics.max_curvature_jump_index = i;
-      diagnostics.max_curvature_jump_point = samples[i].point;
-    }
-
-    if (std::isfinite(samples[i].racing_offset_m) &&
-        std::isfinite(samples[i - 1U].racing_offset_m)) {
-      const double offset_delta =
-          std::abs(samples[i].racing_offset_m - samples[i - 1U].racing_offset_m);
-      if (offset_delta > diagnostics.max_offset_delta_m) {
-        diagnostics.max_offset_delta_m = offset_delta;
-        diagnostics.max_offset_delta_index = i;
-        diagnostics.max_offset_delta_point = samples[i].point;
-      }
-    }
-  }
-
-  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-    if (!std::isfinite(samples[i - 1U].racing_offset_m) ||
-        !std::isfinite(samples[i].racing_offset_m) ||
-        !std::isfinite(samples[i + 1U].racing_offset_m)) {
-      continue;
-    }
-    const double offset_second_delta =
-        std::abs(samples[i + 1U].racing_offset_m - 2.0 * samples[i].racing_offset_m +
-                 samples[i - 1U].racing_offset_m);
-    if (offset_second_delta > diagnostics.max_offset_second_delta_m) {
-      diagnostics.max_offset_second_delta_m = offset_second_delta;
-      diagnostics.max_offset_second_delta_index = i;
-      diagnostics.max_offset_second_delta_point = samples[i].point;
-    }
-  }
-
-  diagnostics.mean_segment_length_m =
-      segment_length_sum / static_cast<double>(diagnostics.segment_count);
-  if (!std::isfinite(diagnostics.min_segment_length_m)) {
-    diagnostics.min_segment_length_m = std::numeric_limits<double>::quiet_NaN();
-  }
-  return diagnostics;
-}
 
 struct PathTrackingDiagnostics {
   bool valid{false};
@@ -396,8 +287,18 @@ public:
         1.0e9);
     trajectory_planner_config_.racing_line.weight_center_bias = std::clamp(
         declare_parameter<double>("racing_line_weight_center_bias", 0.02), 0.0, 1.0e6);
+    trajectory_planner_config_.racing_line.weight_time = std::clamp(
+        declare_parameter<double>("racing_line_weight_time", 0.05), 0.0, 1.0e9);
     trajectory_planner_config_.racing_line.max_length_ratio = std::clamp(
         declare_parameter<double>("racing_line_max_length_ratio", 1.25), 1.0, 100.0);
+    trajectory_planner_config_.racing_line.regularization_iterations =
+        static_cast<std::size_t>(std::clamp<std::int64_t>(
+            declare_parameter<std::int64_t>("racing_line_regularization_iterations", 2),
+            0, 100));
+    trajectory_planner_config_.racing_line.regularization_max_time_regression_s =
+        std::clamp(declare_parameter<double>(
+                       "racing_line_regularization_max_time_regression_s", 0.5),
+                   0.0, 3600.0);
     final_trajectory_debug_topic_ = declare_parameter<std::string>(
         "final_trajectory_debug_topic", "/drone_city_nav/final_trajectory_path");
     final_trajectory_debug_sample_step_m_ = std::clamp(
@@ -765,6 +666,12 @@ private:
     visualization_msgs::msg::MarkerArray markers;
     addDroneDebugMarkers(markers);
     addCorridorDebugMarkers(markers);
+    visualization_msgs::msg::MarkerArray trajectory_markers =
+        buildTrajectoryDebugMarkers(makeDebugHeader(), final_trajectory_samples_,
+                                    trajectory_speed_profile_, kRvizGroundZ);
+    markers.markers.insert(markers.markers.end(),
+                           std::make_move_iterator(trajectory_markers.markers.begin()),
+                           std::make_move_iterator(trajectory_markers.markers.end()));
     offboard_debug_marker_pub_->publish(markers);
   }
 
@@ -806,7 +713,7 @@ private:
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
     last_trajectory_shape_diagnostics_ =
-        trajectoryShapeDiagnostics(final_trajectory_samples_);
+        computeTrajectoryShapeDiagnostics(final_trajectory_samples_);
     if (!trajectory_valid_) {
       resetVelocityDiagnostics();
     }
@@ -831,7 +738,13 @@ private:
         "racing_line[input_samples=%zu optimizer_samples=%zu output_samples=%zu "
         "iterations=%zu evals=%zu collision_rejections=%zu "
         "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
-        "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
+        "length_final=%.2f max_offset=%.2f curvature_max=%.4f "
+        "time_final=%.2f time_centerline=%.2f time_gain=%.2f "
+        "time_best_candidate=%.2f best_candidate_score=%.3f "
+        "speed_limit_min=%.2f speed_limit_max=%.2f "
+        "curvature_limited_samples=%zu regularization_applied=%s "
+        "regularization_iterations=%zu regularization_time_delta=%.2f "
+        "curvature_jump_pre=%.4f curvature_jump_post=%.4f] "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
         "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
         "lt0_5=%zu lt1=%zu lt2=%zu max_heading_delta=%.1fdeg "
@@ -874,6 +787,22 @@ private:
         last_trajectory_planner_stats_.racing_line.final_length_m,
         last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
         last_trajectory_planner_stats_.racing_line.max_abs_curvature_1pm,
+        last_trajectory_planner_stats_.racing_line.estimated_time_s,
+        last_trajectory_planner_stats_.racing_line.centerline_estimated_time_s,
+        last_trajectory_planner_stats_.racing_line.time_gain_s,
+        last_trajectory_planner_stats_.racing_line.best_candidate_estimated_time_s,
+        last_trajectory_planner_stats_.racing_line.best_candidate_score,
+        last_trajectory_planner_stats_.racing_line.min_speed_limit_mps,
+        last_trajectory_planner_stats_.racing_line.max_speed_limit_mps,
+        last_trajectory_planner_stats_.racing_line.curvature_limited_samples,
+        last_trajectory_planner_stats_.racing_line.regularization_applied ? "true"
+                                                                          : "false",
+        last_trajectory_planner_stats_.racing_line.regularization_iterations,
+        last_trajectory_planner_stats_.racing_line.regularization_time_delta_s,
+        last_trajectory_planner_stats_.racing_line
+            .pre_regularization_max_curvature_jump_1pm,
+        last_trajectory_planner_stats_.racing_line
+            .post_regularization_max_curvature_jump_1pm,
         last_trajectory_planner_stats_.speed_profile_min_mps,
         last_trajectory_planner_stats_.speed_profile_mean_mps,
         last_trajectory_planner_stats_.speed_profile_max_mps,
@@ -1261,6 +1190,40 @@ private:
     return diagnosticDumpDirectory("corridor_samples");
   }
 
+  [[nodiscard]] std::vector<double> finalTrajectoryProfiledTimesFromStart() const {
+    std::vector<double> times(final_trajectory_samples_.size(),
+                              std::numeric_limits<double>::quiet_NaN());
+    if (final_trajectory_samples_.empty() || !trajectory_speed_profile_.valid) {
+      return times;
+    }
+
+    constexpr double kMinimumIntegrationSpeedMps = 0.1;
+    times.front() = 0.0;
+    for (std::size_t i = 1U; i < final_trajectory_samples_.size(); ++i) {
+      double ds =
+          final_trajectory_samples_[i].s_m - final_trajectory_samples_[i - 1U].s_m;
+      if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
+        ds = distance(final_trajectory_samples_[i - 1U].point,
+                      final_trajectory_samples_[i].point);
+      }
+      if (!(ds > kTinyDistanceM) || !std::isfinite(ds) ||
+          !std::isfinite(times[i - 1U])) {
+        continue;
+      }
+      const TrajectorySpeedSample start = speedProfileSampleAtS(
+          trajectory_speed_profile_, final_trajectory_samples_[i - 1U].s_m);
+      const TrajectorySpeedSample end = speedProfileSampleAtS(
+          trajectory_speed_profile_, final_trajectory_samples_[i].s_m);
+      const double average_speed =
+          std::max(kMinimumIntegrationSpeedMps,
+                   0.5 * (start.profiled_limit_mps + end.profiled_limit_mps));
+      if (std::isfinite(average_speed)) {
+        times[i] = times[i - 1U] + ds / average_speed;
+      }
+    }
+    return times;
+  }
+
   bool writeFinalTrajectorySamplesCsvFile(const std::filesystem::path& path,
                                           const char* source_label) const {
     std::ofstream stream{path, std::ios::out | std::ios::trunc};
@@ -1276,48 +1239,40 @@ private:
            << " trajectory_status="
            << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
            << "\n";
-    stream << "sample_index,s_m,x,y,tangent_x,tangent_y,curvature_1pm,"
-              "arc_radius_m,left_bound_m,right_bound_m,racing_offset_m,"
-              "speed_geometric_limit_mps,speed_profiled_limit_mps,"
-              "speed_reason,constraint_s_m,constraint_limit_mps\n";
+    stream << finalTrajectorySamplesCsvHeader() << "\n";
+    const std::vector<double> times_from_start =
+        finalTrajectoryProfiledTimesFromStart();
+    const double total_time_s = times_from_start.empty()
+                                    ? std::numeric_limits<double>::quiet_NaN()
+                                    : times_from_start.back();
     for (std::size_t i = 0U; i < final_trajectory_samples_.size(); ++i) {
       const TrajectoryPointSample& sample = final_trajectory_samples_[i];
       const TrajectorySpeedSample speed_sample =
           trajectory_speed_profile_.valid
               ? speedProfileSampleAtS(trajectory_speed_profile_, sample.s_m)
               : TrajectorySpeedSample{};
-      stream << i << ",";
-      writeCsvNumberOrEmpty(stream, sample.s_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.point.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.point.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.tangent.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.tangent.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.curvature_1pm);
-      stream << ",";
-      if (std::abs(sample.curvature_1pm) > kTinyDistanceM) {
-        writeCsvNumberOrEmpty(stream, 1.0 / std::abs(sample.curvature_1pm));
-      }
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.left_bound_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.right_bound_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.racing_offset_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, speed_sample.geometric_limit_mps);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, speed_sample.profiled_limit_mps);
-      stream << "," << speedConstraintTypeName(speed_sample.reason) << ",";
-      writeCsvNumberOrEmpty(stream, speed_sample.constraint_s_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, speed_sample.constraint_limit_mps);
-      stream << "\n";
+      const double time_from_start_s = i < times_from_start.size()
+                                           ? times_from_start[i]
+                                           : std::numeric_limits<double>::quiet_NaN();
+      const double time_to_finish_s =
+          std::isfinite(total_time_s) && std::isfinite(time_from_start_s)
+              ? std::max(0.0, total_time_s - time_from_start_s)
+              : std::numeric_limits<double>::quiet_NaN();
+      stream << finalTrajectorySamplesCsvRow(i, sample, speed_sample, time_from_start_s,
+                                             time_to_finish_s)
+             << "\n";
     }
+    return stream.good();
+  }
+
+  bool writeFinalTrajectorySummaryJsonFile(const std::filesystem::path& path) const {
+    std::ofstream stream{path, std::ios::out | std::ios::trunc};
+    if (!stream.is_open()) {
+      return false;
+    }
+    stream << finalTrajectoryDiagnosticsSummaryJson(last_trajectory_planner_stats_,
+                                                    last_trajectory_shape_diagnostics_)
+           << "\n";
     return stream.good();
   }
 
@@ -1341,7 +1296,11 @@ private:
         directory / ("trajectory_" + std::to_string(get_clock()->now().nanoseconds()) +
                      "_local_" + std::to_string(received_path_update_id_) +
                      "_planner_" + std::to_string(latest_planner_path_id_) + ".csv");
+    const std::filesystem::path timestamped_summary_path =
+        timestamped_path.parent_path() /
+        (timestamped_path.stem().string() + "_summary.json");
     const std::filesystem::path latest_path = directory / "latest.csv";
+    const std::filesystem::path latest_summary_path = directory / "latest_summary.json";
 
     if (!writeFinalTrajectorySamplesCsvFile(timestamped_path, source_label)) {
       RCLCPP_WARN(get_logger(), "Failed to write final trajectory samples CSV '%s'",
@@ -1352,6 +1311,15 @@ private:
       RCLCPP_WARN(get_logger(),
                   "Failed to update latest final trajectory samples CSV '%s'",
                   latest_path.string().c_str());
+    }
+    if (!writeFinalTrajectorySummaryJsonFile(timestamped_summary_path)) {
+      RCLCPP_WARN(get_logger(), "Failed to write final trajectory summary JSON '%s'",
+                  timestamped_summary_path.string().c_str());
+    }
+    if (!writeFinalTrajectorySummaryJsonFile(latest_summary_path)) {
+      RCLCPP_WARN(get_logger(),
+                  "Failed to update latest final trajectory summary JSON '%s'",
+                  latest_summary_path.string().c_str());
     }
     return timestamped_path.string();
   }
@@ -2780,6 +2748,55 @@ private:
     flight_blackbox_stream_ << ",\"racing_line_max_offset_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.racing_line.max_abs_offset_m);
+    flight_blackbox_stream_ << ",\"racing_line_time_final_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_planner_stats_.racing_line.estimated_time_s);
+    flight_blackbox_stream_ << ",\"racing_line_time_centerline_s\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.centerline_estimated_time_s);
+    flight_blackbox_stream_ << ",\"racing_line_time_gain_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_planner_stats_.racing_line.time_gain_s);
+    flight_blackbox_stream_ << ",\"racing_line_time_best_candidate_s\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.best_candidate_estimated_time_s);
+    flight_blackbox_stream_ << ",\"racing_line_best_candidate_score\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.best_candidate_score);
+    flight_blackbox_stream_ << ",\"racing_line_speed_limit_min_mps\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.min_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"racing_line_speed_limit_max_mps\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.max_speed_limit_mps);
+    flight_blackbox_stream_
+        << ",\"racing_line_curvature_limited_samples\":"
+        << last_trajectory_planner_stats_.racing_line.curvature_limited_samples;
+    flight_blackbox_stream_ << ",\"racing_line_regularization_applied\":";
+    writeJsonBool(flight_blackbox_stream_,
+                  last_trajectory_planner_stats_.racing_line.regularization_applied);
+    flight_blackbox_stream_
+        << ",\"racing_line_regularization_iterations\":"
+        << last_trajectory_planner_stats_.racing_line.regularization_iterations;
+    flight_blackbox_stream_ << ",\"racing_line_regularization_time_delta_s\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.racing_line.regularization_time_delta_s);
+    flight_blackbox_stream_
+        << ",\"racing_line_pre_regularization_curvature_jump_1pm\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_planner_stats_.racing_line
+                              .pre_regularization_max_curvature_jump_1pm);
+    flight_blackbox_stream_
+        << ",\"racing_line_post_regularization_curvature_jump_1pm\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_planner_stats_.racing_line
+                              .post_regularization_max_curvature_jump_1pm);
     flight_blackbox_stream_ << ",\"curvature_min_1pm\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.curvature_min_1pm);

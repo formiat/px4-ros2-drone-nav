@@ -67,6 +67,14 @@ struct TrajectorySpeedProfile {
   bool valid{false};
 };
 
+struct TraversalTimeEstimate {
+  bool valid{false};
+  double estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
+  double min_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double max_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  std::size_t curvature_limited_samples{0U};
+};
+
 struct VelocityVectorLimitResult {
   Point2 velocity{};
   double delta_mps{0.0};
@@ -119,6 +127,11 @@ buildTrajectorySpeedProfile(std::span<const TrajectoryPointSample> trajectory_sa
 
 [[nodiscard]] TrajectorySpeedSample
 speedProfileSampleAtS(const TrajectorySpeedProfile& profile, double s_m);
+
+[[nodiscard]] TraversalTimeEstimate
+estimateTraversalTime(std::span<const TrajectoryPointSample> trajectory_samples,
+                      const VelocityFollowerConfig& config,
+                      bool use_forward_backward_profile);
 
 [[nodiscard]] VelocityVectorLimitResult
 limitVelocityVectorDelta(Point2 desired_velocity, Point2 previous_velocity,

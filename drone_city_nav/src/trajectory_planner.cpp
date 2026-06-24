@@ -158,6 +158,21 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
       result.stats.racing_line.centerline_length_m;
   result.speed_profile =
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
+  const TraversalTimeEstimate estimate =
+      estimateTraversalTime(result.samples, config.speed_profile, true);
+  result.stats.racing_line.estimated_time_s = estimate.estimated_time_s;
+  result.stats.racing_line.min_speed_limit_mps = estimate.min_speed_limit_mps;
+  result.stats.racing_line.max_speed_limit_mps = estimate.max_speed_limit_mps;
+  result.stats.racing_line.curvature_limited_samples =
+      estimate.curvature_limited_samples;
+  result.stats.racing_line.centerline_estimated_time_s = estimate.estimated_time_s;
+  result.stats.racing_line.centerline_min_speed_limit_mps =
+      estimate.min_speed_limit_mps;
+  result.stats.racing_line.centerline_max_speed_limit_mps =
+      estimate.max_speed_limit_mps;
+  result.stats.racing_line.centerline_curvature_limited_samples =
+      estimate.curvature_limited_samples;
+  result.stats.racing_line.time_gain_s = 0.0;
   finalizeResult(result, config);
   return result;
 }
@@ -185,7 +200,8 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   }
 
   const RacingLineResult racing =
-      optimizeRacingLine(corridor.samples, *input.prohibited_grid, config.racing_line);
+      optimizeRacingLine(corridor.samples, *input.prohibited_grid, config.racing_line,
+                         config.speed_profile);
   if (!racing.valid) {
     result.stats.status = TrajectoryPlannerStatus::kRacingLineInvalid;
     result.stats.corridor = corridor.stats;

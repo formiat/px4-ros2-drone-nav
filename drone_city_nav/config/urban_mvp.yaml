@@ -147,7 +147,10 @@ px4_offboard_node:
     racing_line_weight_offset_change: 1.0
     racing_line_weight_offset_second_change: 10.0
     racing_line_weight_center_bias: 0.02
+    racing_line_weight_time: 0.05
     racing_line_max_length_ratio: 1.25
+    racing_line_regularization_iterations: 2
+    racing_line_regularization_max_time_regression_s: 0.5
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
     final_trajectory_debug_sample_step_m: 1.0
     offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers
