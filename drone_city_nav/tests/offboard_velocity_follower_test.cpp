@@ -17,10 +17,7 @@ namespace {
   config.max_accel_mps2 = 3.0;
   config.max_decel_mps2 = 4.0;
   config.max_lateral_accel_mps2 = 3.0;
-  config.speed_profile_decel_mps2 = 4.0;
   config.speed_profile_sample_step_m = 1.0;
-  config.cross_track_gain = 0.25;
-  config.max_cross_track_correction_angle_rad = 0.35;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;
   return config;
@@ -180,6 +177,7 @@ TEST(OffboardVelocityFollower, PreArcBrakingReportsDistanceToArcConstraint) {
 
 TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
   VelocityFollowerConfig config = testConfig();
+  config.speed_profile_decel_mps2 = 4.0;
   std::vector<TrajectoryPointSample> samples;
   for (std::size_t i = 0U; i < 6U; ++i) {
     TrajectoryPointSample sample{};
@@ -280,6 +278,7 @@ TEST(OffboardVelocityFollower, CrossTrackCorrectionIsBounded) {
             std::max(plan.accel_limited_speed_mps, 1.0) *
                     std::tan(config.max_cross_track_correction_angle_rad) +
                 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_cross_track_error_m, 10.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, EmptyTrajectoryReturnsInvalidPlan) {

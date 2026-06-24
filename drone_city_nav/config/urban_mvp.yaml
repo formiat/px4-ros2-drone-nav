@@ -123,11 +123,11 @@ px4_offboard_node:
     max_accel_mps2: 7.0
     max_decel_mps2: 20.0
     max_lateral_accel_mps2: 6.0
-    speed_profile_decel_mps2: 3.0
+    speed_profile_decel_mps2: 2.0
     speed_profile_sample_step_m: 0.5
     final_hold_max_speed_mps: 0.8
-    cross_track_gain: 0.25
-    max_cross_track_correction_angle_deg: 20.0
+    cross_track_gain: 0.5
+    max_cross_track_correction_angle_deg: 45.0
     corridor_max_radius_m: 40.0
     corridor_sample_step_m: 1.0
     corridor_ray_step_m: 0.0

@@ -52,7 +52,7 @@
 namespace drone_city_nav {
 namespace {
 
-constexpr auto kControllerPeriod = std::chrono::milliseconds{100};
+constexpr auto kControllerPeriod = std::chrono::milliseconds{50};
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kLocalClearanceDiagnosticRadiusM = 12.0;
 constexpr std::int8_t kInflatedOccupancyValue = 80;
@@ -225,17 +225,15 @@ public:
         std::clamp(declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
     velocity_follower_config_.max_lateral_accel_mps2 = std::clamp(
         declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
-    velocity_follower_config_.speed_profile_decel_mps2 =
-        std::clamp(declare_parameter<double>("speed_profile_decel_mps2",
-                                             velocity_follower_config_.max_decel_mps2),
-                   0.0, 100.0);
+    velocity_follower_config_.speed_profile_decel_mps2 = std::clamp(
+        declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
     velocity_follower_config_.speed_profile_sample_step_m = std::clamp(
         declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
     velocity_follower_config_.cross_track_gain =
-        std::clamp(declare_parameter<double>("cross_track_gain", 0.25), 0.0, 10.0);
+        std::clamp(declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
     velocity_follower_config_.max_cross_track_correction_angle_rad =
         std::clamp(radiansFromDegrees(declare_parameter<double>(
-                       "max_cross_track_correction_angle_deg", 20.0)),
+                       "max_cross_track_correction_angle_deg", 45.0)),
                    0.0, std::numbers::pi / 2.0);
     velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
     velocity_follower_config_.final_hold_max_speed_mps = std::clamp(
@@ -922,25 +920,19 @@ private:
 
     const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
     const TrajectoryPlannerConfig config = currentTrajectoryPlannerConfig();
-    const auto started_at = std::chrono::steady_clock::now();
-    TrajectoryPlannerResult planned = planBaselineTrajectory(
-        TrajectoryPlannerInput{
-            std::span<const Point2>{route_points.data(), route_points.size()},
-            prohibited_grid.has_value() ? &*prohibited_grid : nullptr},
-        config);
-    const double duration_ms =
-        static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                std::chrono::steady_clock::now() - started_at)
-                                .count()) /
-        1000.0;
-    const std::string baseline_label = std::string{source_label} + "_baseline";
-    applyFinalTrajectoryResult(std::move(planned), baseline_label,
-                               prohibited_grid.has_value(), duration_ms, 0U,
-                               route_points.size());
-    if (trajectory_valid_ && prohibited_grid.has_value()) {
-      enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config,
-                                   route_points);
+    if (!prohibited_grid.has_value()) {
+      if (!trajectory_valid_) {
+        clearFinalTrajectory();
+      }
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Cannot rebuild racing trajectory without a fresh prohibited grid: "
+          "source=%s path_points=%zu route_points=%zu waypoint=%zu/%zu",
+          source_label, path_points_.size(), route_points.size(), waypoint_index_ + 1U,
+          path_points_.size());
+      return;
     }
+    enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config, route_points);
   }
 
   void enqueueRacingTrajectoryBuild(const char* source_label,
@@ -981,6 +973,11 @@ private:
     std::lock_guard lock{trajectory_worker_mutex_};
     pending_trajectory_request_.reset();
     ++latest_trajectory_build_job_id_;
+  }
+
+  [[nodiscard]] bool trajectoryBuildPendingOrBusy() {
+    std::lock_guard lock{trajectory_worker_mutex_};
+    return pending_trajectory_request_.has_value() || trajectory_worker_busy_;
   }
 
   void startTrajectoryWorker() {
@@ -1074,16 +1071,16 @@ private:
       return;
     }
     if (!result->planned.valid) {
-      RCLCPP_WARN(
-          get_logger(),
-          "Async racing trajectory rejected; keeping current baseline trajectory: "
-          "job=%" PRIu64 " local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
-          " duration_ms=%.1f status=%.*s",
-          result->job_id, result->local_path_update_id, result->planner_path_id,
-          result->duration_ms,
-          static_cast<int>(
-              trajectoryPlannerStatusName(result->planned.stats.status).size()),
-          trajectoryPlannerStatusName(result->planned.stats.status).data());
+      RCLCPP_WARN(get_logger(),
+                  "Async racing trajectory rejected; keeping current racing trajectory "
+                  "or hold: "
+                  "job=%" PRIu64 " local_path_update_id=%" PRIu64
+                  " planner_path_id=%" PRIu64 " duration_ms=%.1f status=%.*s",
+                  result->job_id, result->local_path_update_id, result->planner_path_id,
+                  result->duration_ms,
+                  static_cast<int>(
+                      trajectoryPlannerStatusName(result->planned.stats.status).size()),
+                  trajectoryPlannerStatusName(result->planned.stats.status).data());
       return;
     }
 
@@ -1846,7 +1843,7 @@ private:
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
     const Point2 target = currentTarget();
-    if (!trajectory_valid_) {
+    if (!trajectory_valid_ && !trajectoryBuildPendingOrBusy()) {
       rebuildFinalTrajectory("velocity_setpoint_rebuild");
     }
     const double dt_s = consumeVelocityPlanDtS();
@@ -2389,7 +2386,8 @@ private:
         "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
         "curve_radius=%.2f] "
         "final_stop[distance=%.2f braking_distance=%.2f] "
-        "velocity_delta=%.2f cross_track_correction=%.2f altitude_error=%.2f "
+        "velocity_delta=%.2f trajectory_cross_track=%.2f "
+        "cross_track_correction=%.2f altitude_error=%.2f "
         "rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
         "local_clearance=%.2f",
@@ -2430,6 +2428,7 @@ private:
         last_velocity_plan_.final_stop.distance_to_stop_m,
         last_velocity_plan_.final_stop.braking_distance_m,
         last_velocity_plan_.velocity_delta_mps,
+        last_velocity_plan_.trajectory_cross_track_error_m,
         last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
         upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
@@ -2526,7 +2525,8 @@ private:
         "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
         "allowed=%.2f curve_radius=%.2f] "
         "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
-        "velocity_delta=%.2f cross_track_correction=%.2f "
+        "velocity_delta=%.2f trajectory_cross_track=%.2f "
+        "cross_track_correction=%.2f "
         "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
         "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
         "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
@@ -2546,6 +2546,7 @@ private:
         last_velocity_plan_.final_stop.distance_to_stop_m,
         last_velocity_plan_.final_stop.braking_distance_m,
         last_velocity_plan_.velocity_delta_mps,
+        last_velocity_plan_.trajectory_cross_track_error_m,
         last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
         last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
         last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
@@ -2692,6 +2693,9 @@ private:
     flight_blackbox_stream_ << ",\"cross_track_correction_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.cross_track_correction_mps);
+    flight_blackbox_stream_ << ",\"trajectory_cross_track_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.trajectory_cross_track_error_m);
     flight_blackbox_stream_ << ",\"altitude_error_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_altitude_error_m_);
     flight_blackbox_stream_ << ",\"path_tangent_x\":";

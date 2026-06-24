@@ -30,10 +30,10 @@ struct VelocityFollowerConfig {
   double max_accel_mps2{3.0};
   double max_decel_mps2{4.0};
   double max_lateral_accel_mps2{3.0};
-  double speed_profile_decel_mps2{4.0};
+  double speed_profile_decel_mps2{2.0};
   double speed_profile_sample_step_m{1.0};
-  double cross_track_gain{0.25};
-  double max_cross_track_correction_angle_rad{0.35};
+  double cross_track_gain{0.5};
+  double max_cross_track_correction_angle_rad{0.7853981633974483};
   double final_acceptance_radius_m{1.0};
   double final_hold_max_speed_mps{0.8};
 };
@@ -93,6 +93,7 @@ struct VelocitySetpointPlan {
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_correction_mps{0.0};
+  double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
   std::size_t limiting_constraint_index{0U};
   double limiting_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};

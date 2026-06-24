@@ -611,6 +611,7 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.accel_limited_speed_mps = accel_limited_speed;
   plan.velocity_delta_mps = limited_velocity.delta_mps;
   plan.cross_track_correction_mps = norm(correction);
+  plan.trajectory_cross_track_error_m = std::sqrt(projection->distance_sq);
   plan.limiting_constraint_type = speed_sample.reason;
   plan.limiting_constraint_index = speed_sample.segment_index;
   plan.limiting_constraint_distance_m =

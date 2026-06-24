@@ -68,10 +68,6 @@ planTrajectory(const TrajectoryPlannerInput& input,
                const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryPlannerResult
-planBaselineTrajectory(const TrajectoryPlannerInput& input,
-                       const TrajectoryPlannerConfig& config);
-
-[[nodiscard]] TrajectoryPlannerResult
 planRacingTrajectory(const TrajectoryPlannerInput& input,
                      const TrajectoryPlannerConfig& config);
 
