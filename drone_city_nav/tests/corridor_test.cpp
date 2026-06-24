@@ -44,12 +44,36 @@ TEST(Corridor, StraightPassageHasSymmetricBounds) {
 TEST(Corridor, RouteInsideProhibitedIsInvalid) {
   OccupancyGrid2D grid = corridorGrid();
   grid.setOccupied(GridIndex{5, 5});
+  CorridorConfig config = testConfig();
+  config.center_recovery_max_m = 0.0;
   const std::vector<Point2> route{{5.5, 5.5}, {12.5, 5.5}};
 
-  const CorridorResult result = buildCorridor(route, grid, testConfig());
+  const CorridorResult result = buildCorridor(route, grid, config);
 
   EXPECT_FALSE(result.valid);
   EXPECT_GT(result.stats.route_prohibited_samples, 0U);
+}
+
+TEST(Corridor, ProhibitedRouteSampleCanRecoverToNearbyFreeCenter) {
+  OccupancyGrid2D grid = corridorGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  CorridorConfig config = testConfig();
+  config.sample_step_m = 1.0;
+  config.center_recovery_max_m = 1.5;
+  const std::vector<Point2> route{{4.5, 5.5}, {8.5, 5.5}};
+
+  const CorridorResult result = buildCorridor(route, grid, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.route_prohibited_samples, 0U);
+  EXPECT_GT(result.stats.center_recovered_samples, 0U);
+  EXPECT_EQ(result.stats.center_unrecoverable_samples, 0U);
+  EXPECT_GT(result.stats.max_center_recovery_m, 0.0);
+  EXPECT_TRUE(std::any_of(result.samples.begin(), result.samples.end(),
+                          [](const CorridorSample& sample) {
+                            return sample.center_recovery_m > 0.0 &&
+                                   sample.center.y != sample.route_center.y;
+                          }));
 }
 
 TEST(Corridor, OutsideGridLimitsBounds) {

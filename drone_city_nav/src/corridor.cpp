@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace drone_city_nav {
@@ -49,15 +50,55 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return std::clamp(value, min_value, max_value);
 }
 
+[[nodiscard]] double corridorRayStep(const OccupancyGrid2D& grid,
+                                     const CorridorConfig& config,
+                                     const double max_radius) noexcept {
+  return config.ray_step_m > 0.0 && std::isfinite(config.ray_step_m)
+             ? std::clamp(config.ray_step_m, 0.02, max_radius)
+             : std::max(0.02, grid.resolution() * 0.5);
+}
+
+[[nodiscard]] bool pointIsProhibited(const OccupancyGrid2D& grid, const Point2 point) {
+  const std::optional<GridIndex> cell = grid.worldToCell(point);
+  return !cell.has_value() || grid.isProhibited(*cell);
+}
+
+[[nodiscard]] std::optional<Point2>
+recoverCorridorCenter(const OccupancyGrid2D& grid, const Point2 center,
+                      const Point2 normal, const double max_recovery_m,
+                      const double search_step_m, double& recovery_m) {
+  if (!(max_recovery_m > kTinyDistanceM) || !(search_step_m > kTinyDistanceM)) {
+    return std::nullopt;
+  }
+
+  const int search_steps =
+      static_cast<int>(std::ceil((max_recovery_m + kTinyDistanceM) / search_step_m));
+  for (int step_index = 1; step_index <= search_steps; ++step_index) {
+    const double distance_m =
+        std::min(max_recovery_m, static_cast<double>(step_index) * search_step_m);
+    const Point2 left_candidate = center + normal * distance_m;
+    if (!pointIsProhibited(grid, left_candidate)) {
+      recovery_m = distance_m;
+      return left_candidate;
+    }
+
+    const Point2 right_candidate = center + normal * -distance_m;
+    if (!pointIsProhibited(grid, right_candidate)) {
+      recovery_m = distance_m;
+      return right_candidate;
+    }
+  }
+
+  return std::nullopt;
+}
+
 [[nodiscard]] double raycastBound(const OccupancyGrid2D& grid, const Point2 origin,
                                   const Point2 direction, const CorridorConfig& config,
                                   CorridorStats& stats) {
   const double max_radius = sanitizedPositive(config.max_radius_m, 40.0, 0.1, 5000.0);
   const double safety_margin =
       sanitizedPositive(config.safety_margin_m, 0.5, 0.0, max_radius);
-  const double ray_step = config.ray_step_m > 0.0 && std::isfinite(config.ray_step_m)
-                              ? std::clamp(config.ray_step_m, 0.02, max_radius)
-                              : std::max(0.02, grid.resolution() * 0.5);
+  const double ray_step = corridorRayStep(grid, config, max_radius);
 
   double last_clear_distance = 0.0;
   const int ray_steps =
@@ -72,9 +113,6 @@ constexpr double kTinyDistanceM = 1.0e-6;
       return std::max(0.0, last_clear_distance - safety_margin);
     }
     if (grid.isProhibited(*cell)) {
-      if (distance_m <= kTinyDistanceM) {
-        ++stats.route_prohibited_samples;
-      }
       return std::max(0.0, last_clear_distance - safety_margin);
     }
     last_clear_distance = distance_m;
@@ -177,6 +215,9 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
   const double max_radius = sanitizedPositive(config.max_radius_m, 40.0, 0.1, 5000.0);
   const double sample_step =
       sanitizedPositive(config.sample_step_m, 1.0, 0.05, std::max(0.05, max_radius));
+  const double ray_step = corridorRayStep(prohibited_grid, config, max_radius);
+  const double center_recovery_max_m =
+      sanitizedPositive(config.center_recovery_max_m, 3.0, 0.0, max_radius);
   const ClearanceField2D clearance_field = ClearanceField2D::build(
       prohibited_grid, max_radius, ClearanceSource::kProhibited);
 
@@ -187,18 +228,37 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
 
   for (std::size_t i = 0U; i <= sample_count; ++i) {
     const double s_m = std::min(length, static_cast<double>(i) * sample_step);
-    const Point2 center = trajectoryPointAtS(route, s_m);
+    const Point2 route_center = trajectoryPointAtS(route, s_m);
     const Point2 tangent = normalized(trajectoryTangentAtS(route, s_m));
-    if (!finite2D(center) || !(norm(tangent) > kTinyDistanceM)) {
+    if (!finite2D(route_center) || !(norm(tangent) > kTinyDistanceM)) {
       continue;
     }
 
     const Point2 normal = leftNormal(tangent);
+    Point2 center = route_center;
+    double center_recovery_m = 0.0;
+    if (pointIsProhibited(prohibited_grid, route_center)) {
+      if (const std::optional<Point2> recovered_center =
+              recoverCorridorCenter(prohibited_grid, route_center, normal,
+                                    center_recovery_max_m, ray_step, center_recovery_m);
+          recovered_center.has_value()) {
+        center = *recovered_center;
+        ++result.stats.center_recovered_samples;
+        result.stats.max_center_recovery_m =
+            std::max(result.stats.max_center_recovery_m, center_recovery_m);
+      } else {
+        ++result.stats.route_prohibited_samples;
+        ++result.stats.center_unrecoverable_samples;
+      }
+    }
+
     CorridorSample sample{};
     sample.s_m = s_m;
+    sample.route_center = route_center;
     sample.center = center;
     sample.tangent = tangent;
     sample.normal = normal;
+    sample.center_recovery_m = center_recovery_m;
     sample.left_bound_m =
         raycastBound(prohibited_grid, center, normal, config, result.stats);
     sample.right_bound_m =
@@ -236,8 +296,9 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
     result.stats.mean_clearance_m =
         clearance_sum / static_cast<double>(result.samples.size());
   }
-  result.valid =
-      result.samples.size() >= 2U && result.stats.route_prohibited_samples == 0U;
+  result.valid = result.samples.size() >= 2U &&
+                 result.stats.route_prohibited_samples == 0U &&
+                 result.stats.center_unrecoverable_samples == 0U;
   return result;
 }
 

@@ -108,6 +108,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("trajectory_shape_max_offset_delta_m", self.offboard_text)
         self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
+        self.assertIn("corridor_center_recovered_samples", self.offboard_text)
+        self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
+        self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
@@ -130,7 +133,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("writeCorridorSamplesCsv", self.offboard_text)
         self.assertIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
         self.assertIn("corridor_csv", self.offboard_text)
-        self.assertIn("center_x,center_y,tangent_x,tangent_y", self.offboard_text)
+        self.assertIn("route_center_x,route_center_y,center_x,center_y", self.offboard_text)
+        self.assertIn("center_recovery_m", self.offboard_text)
         self.assertIn("left_edge_x,left_edge_y,right_edge_x,right_edge_y", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
@@ -161,6 +165,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("corridor_max_radius_m: 40.0", text)
                 self.assertIn("corridor_sample_step_m: 1.0", text)
                 self.assertIn("corridor_safety_margin_m: 0.5", text)
+                self.assertIn("corridor_center_recovery_max_m: 3.0", text)
                 self.assertNotIn("corridor_rebuild_width_threshold_m", text)
                 self.assertIn("racing_line_max_iterations: 80", text)
                 self.assertIn("racing_line_weight_curvature: 25.0", text)

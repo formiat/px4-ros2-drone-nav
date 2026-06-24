@@ -358,6 +358,8 @@ public:
         std::clamp(declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
     trajectory_planner_config_.corridor.safety_margin_m = std::clamp(
         declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
+    trajectory_planner_config_.corridor.center_recovery_max_m = std::clamp(
+        declare_parameter<double>("corridor_center_recovery_max_m", 3.0), 0.0, 5000.0);
     trajectory_planner_config_.corridor.lateral_limit_window_m =
         std::clamp(declare_parameter<double>("corridor_lateral_limit_window_m", 20.0),
                    0.1, 5000.0);
@@ -530,6 +532,7 @@ public:
         "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm "
         "marker_topic='%s'] "
         "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
+        "center_recovery_max=%.2fm "
         "lateral_limit_window=%.2fm lateral_limit_ratio=%.2f "
         "lateral_limit_margin=%.2fm] "
         "racing_line[iterations=%zu optimizer_sample_step=%.2fm "
@@ -560,6 +563,7 @@ public:
         trajectory_planner_config_.corridor.max_radius_m,
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
+        trajectory_planner_config_.corridor.center_recovery_max_m,
         trajectory_planner_config_.corridor.lateral_limit_window_m,
         trajectory_planner_config_.corridor.lateral_limit_ratio,
         trajectory_planner_config_.corridor.lateral_limit_margin_m,
@@ -821,6 +825,8 @@ private:
         "debug_samples=%zu status=%.*s "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
         "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu "
+        "recovered_centers=%zu unrecoverable_centers=%zu "
+        "center_recovery_max=%.2f "
         "lateral_limited=%zu lateral_reduction_max=%.2f] "
         "racing_line[input_samples=%zu optimizer_samples=%zu output_samples=%zu "
         "iterations=%zu evals=%zu collision_rejections=%zu "
@@ -851,6 +857,9 @@ private:
         last_trajectory_planner_stats_.corridor.min_clearance_m,
         last_trajectory_planner_stats_.corridor.mean_clearance_m,
         last_trajectory_planner_stats_.corridor.route_prohibited_samples,
+        last_trajectory_planner_stats_.corridor.center_recovered_samples,
+        last_trajectory_planner_stats_.corridor.center_unrecoverable_samples,
+        last_trajectory_planner_stats_.corridor.max_center_recovery_m,
         last_trajectory_planner_stats_.corridor.lateral_limited_samples,
         last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m,
         last_trajectory_planner_stats_.racing_line.input_samples,
@@ -1364,8 +1373,9 @@ private:
            << " trajectory_status="
            << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
            << "\n";
-    stream << "sample_index,s_m,center_x,center_y,tangent_x,tangent_y,"
-              "normal_x,normal_y,left_bound_m,right_bound_m,width_m,clearance_m,"
+    stream << "sample_index,s_m,route_center_x,route_center_y,center_x,center_y,"
+              "tangent_x,tangent_y,normal_x,normal_y,center_recovery_m,"
+              "left_bound_m,right_bound_m,width_m,clearance_m,"
               "left_edge_x,left_edge_y,right_edge_x,right_edge_y\n";
     for (std::size_t i = 0U; i < corridor_debug_samples_.size(); ++i) {
       const CorridorSample& sample = corridor_debug_samples_[i];
@@ -1375,6 +1385,10 @@ private:
                               sample.center.y - sample.normal.y * sample.right_bound_m};
       stream << i << ",";
       writeCsvNumberOrEmpty(stream, sample.s_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.route_center.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.route_center.y);
       stream << ",";
       writeCsvNumberOrEmpty(stream, sample.center.x);
       stream << ",";
@@ -1387,6 +1401,8 @@ private:
       writeCsvNumberOrEmpty(stream, sample.normal.x);
       stream << ",";
       writeCsvNumberOrEmpty(stream, sample.normal.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
       stream << ",";
       writeCsvNumberOrEmpty(stream, sample.left_bound_m);
       stream << ",";
@@ -2736,6 +2752,16 @@ private:
     flight_blackbox_stream_
         << ",\"corridor_lateral_limited_samples\":"
         << last_trajectory_planner_stats_.corridor.lateral_limited_samples;
+    flight_blackbox_stream_
+        << ",\"corridor_center_recovered_samples\":"
+        << last_trajectory_planner_stats_.corridor.center_recovered_samples;
+    flight_blackbox_stream_
+        << ",\"corridor_center_unrecoverable_samples\":"
+        << last_trajectory_planner_stats_.corridor.center_unrecoverable_samples;
+    flight_blackbox_stream_ << ",\"corridor_center_recovery_max_m\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.corridor.max_center_recovery_m);
     flight_blackbox_stream_ << ",\"corridor_lateral_reduction_max_m\":";
     writeJsonNumberOrNull(
         flight_blackbox_stream_,
