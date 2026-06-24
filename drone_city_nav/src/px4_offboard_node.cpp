@@ -1586,7 +1586,7 @@ private:
                   static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
                   msg.info.origin.position.y);
     }
-    if (path_valid_ && !finalTrajectoryReady()) {
+    if (path_valid_ && !finalTrajectoryReady() && !trajectoryBuildPendingOrBusy()) {
       RCLCPP_INFO(get_logger(),
                   "Final trajectory rebuild after first usable prohibited grid: "
                   "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64,
@@ -1627,9 +1627,9 @@ private:
     if (start_command_needed && !missionStartReady()) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Waiting for valid mission trajectory before arming/offboard: "
+          "Waiting for mission start prerequisites before arming/offboard: "
           "pose_fresh=%s path_valid=%s waypoint=%zu/%zu trajectory_valid=%s "
-          "trajectory_status=%.*s grid_seen=%s",
+          "trajectory_status=%.*s grid_seen=%s trajectory_build_busy=%s",
           localPositionFresh() ? "true" : "false", path_valid_ ? "true" : "false",
           waypoint_index_, path_points_.size(),
           finalTrajectoryReady() ? "true" : "false",
@@ -1637,7 +1637,8 @@ private:
               trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
                   .size()),
           trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
-          prohibited_grid_valid_ ? "true" : "false");
+          prohibited_grid_valid_ ? "true" : "false",
+          trajectoryBuildPendingOrBusy() ? "true" : "false");
       return;
     }
 
@@ -2014,7 +2015,7 @@ private:
   }
 
   [[nodiscard]] bool missionStartReady() const {
-    return localPositionFresh() && pathFollowingReady();
+    return localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
