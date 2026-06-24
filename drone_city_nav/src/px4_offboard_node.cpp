@@ -274,23 +274,28 @@ public:
     trajectory_planner_config_.racing_line.cooling_ratio = std::clamp(
         declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
     trajectory_planner_config_.racing_line.weight_length = std::clamp(
-        declare_parameter<double>("racing_line_weight_length", 1.0), 0.0, 1.0e6);
+        declare_parameter<double>("racing_line_weight_length", 0.02), 0.0, 1.0e6);
     trajectory_planner_config_.racing_line.weight_curvature = std::clamp(
-        declare_parameter<double>("racing_line_weight_curvature", 25.0), 0.0, 1.0e9);
+        declare_parameter<double>("racing_line_weight_curvature", 250.0), 0.0, 1.0e9);
     trajectory_planner_config_.racing_line.weight_curvature_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_curvature_change", 10.0), 0.0,
+        declare_parameter<double>("racing_line_weight_curvature_change", 100.0), 0.0,
         1.0e9);
     trajectory_planner_config_.racing_line.weight_offset_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_offset_change", 1.0), 0.0, 1.0e9);
+        declare_parameter<double>("racing_line_weight_offset_change", 0.5), 0.0, 1.0e9);
     trajectory_planner_config_.racing_line.weight_offset_second_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_offset_second_change", 10.0), 0.0,
+        declare_parameter<double>("racing_line_weight_offset_second_change", 5.0), 0.0,
         1.0e9);
     trajectory_planner_config_.racing_line.weight_center_bias = std::clamp(
-        declare_parameter<double>("racing_line_weight_center_bias", 0.02), 0.0, 1.0e6);
+        declare_parameter<double>("racing_line_weight_center_bias", 0.0), 0.0, 1.0e6);
     trajectory_planner_config_.racing_line.weight_time = std::clamp(
-        declare_parameter<double>("racing_line_weight_time", 0.05), 0.0, 1.0e9);
+        declare_parameter<double>("racing_line_weight_time", 50.0), 0.0, 1.0e9);
+    trajectory_planner_config_.racing_line.weight_edge_margin = std::clamp(
+        declare_parameter<double>("racing_line_weight_edge_margin", 80.0), 0.0, 1.0e9);
+    trajectory_planner_config_.racing_line.desired_edge_margin_m =
+        std::clamp(declare_parameter<double>("racing_line_desired_edge_margin_m", 4.0),
+                   0.0, 1000.0);
     trajectory_planner_config_.racing_line.max_length_ratio = std::clamp(
-        declare_parameter<double>("racing_line_max_length_ratio", 1.25), 1.0, 100.0);
+        declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
     trajectory_planner_config_.racing_line.regularization_iterations =
         static_cast<std::size_t>(std::clamp<std::int64_t>(
             declare_parameter<std::int64_t>("racing_line_regularization_iterations", 2),
@@ -438,8 +443,9 @@ public:
         "lateral_limit_margin=%.2fm] "
         "racing_line[iterations=%zu optimizer_sample_step=%.2fm "
         "offset_step=%.2fm min_step=%.2fm "
-        "weights(length=%.2f curvature=%.2f curvature_change=%.2f "
-        "offset_change=%.2f offset_second_change=%.2f center=%.3f)] "
+        "weights(length=%.3f time=%.2f curvature=%.2f curvature_change=%.2f "
+        "offset_change=%.2f offset_second_change=%.2f center=%.3f "
+        "edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)] "
         "mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
         "flight_blackbox=%s flight_blackbox_path='%s' "
@@ -473,11 +479,15 @@ public:
         trajectory_planner_config_.racing_line.initial_offset_step_m,
         trajectory_planner_config_.racing_line.min_offset_step_m,
         trajectory_planner_config_.racing_line.weight_length,
+        trajectory_planner_config_.racing_line.weight_time,
         trajectory_planner_config_.racing_line.weight_curvature,
         trajectory_planner_config_.racing_line.weight_curvature_change,
         trajectory_planner_config_.racing_line.weight_offset_change,
         trajectory_planner_config_.racing_line.weight_offset_second_change,
-        trajectory_planner_config_.racing_line.weight_center_bias, mission_goal_.x,
+        trajectory_planner_config_.racing_line.weight_center_bias,
+        trajectory_planner_config_.racing_line.weight_edge_margin,
+        trajectory_planner_config_.racing_line.desired_edge_margin_m,
+        trajectory_planner_config_.racing_line.max_length_ratio, mission_goal_.x,
         mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
         flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
@@ -738,7 +748,13 @@ private:
         "racing_line[input_samples=%zu optimizer_samples=%zu output_samples=%zu "
         "iterations=%zu evals=%zu collision_rejections=%zu "
         "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
-        "length_final=%.2f max_offset=%.2f curvature_max=%.4f "
+        "length_final=%.2f length_ratio=%.3f max_offset=%.2f "
+        "edge_margin[min=%.2f mean=%.2f limited=%zu] "
+        "curvature_max=%.4f "
+        "cost_breakdown[length=%.3f time=%.3f curvature=%.3f "
+        "curvature_change=%.3f offset_change=%.3f "
+        "offset_second=%.3f center=%.3f edge=%.3f collision=%.3f "
+        "outside=%.3f overrun=%.3f] "
         "time_final=%.2f time_centerline=%.2f time_gain=%.2f "
         "time_best_candidate=%.2f best_candidate_score=%.3f "
         "speed_limit_min=%.2f speed_limit_max=%.2f "
@@ -785,8 +801,23 @@ private:
         last_trajectory_planner_stats_.racing_line.final_cost,
         last_trajectory_planner_stats_.racing_line.centerline_length_m,
         last_trajectory_planner_stats_.racing_line.final_length_m,
+        last_trajectory_planner_stats_.racing_line.final_length_ratio,
         last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
+        last_trajectory_planner_stats_.racing_line.min_edge_margin_m,
+        last_trajectory_planner_stats_.racing_line.mean_edge_margin_m,
+        last_trajectory_planner_stats_.racing_line.edge_margin_limited_samples,
         last_trajectory_planner_stats_.racing_line.max_abs_curvature_1pm,
+        last_trajectory_planner_stats_.racing_line.cost_length,
+        last_trajectory_planner_stats_.racing_line.cost_time,
+        last_trajectory_planner_stats_.racing_line.cost_curvature,
+        last_trajectory_planner_stats_.racing_line.cost_curvature_change,
+        last_trajectory_planner_stats_.racing_line.cost_offset_change,
+        last_trajectory_planner_stats_.racing_line.cost_offset_second_change,
+        last_trajectory_planner_stats_.racing_line.cost_center_bias,
+        last_trajectory_planner_stats_.racing_line.cost_edge_margin,
+        last_trajectory_planner_stats_.racing_line.cost_collision,
+        last_trajectory_planner_stats_.racing_line.cost_outside_grid,
+        last_trajectory_planner_stats_.racing_line.cost_length_overrun,
         last_trajectory_planner_stats_.racing_line.estimated_time_s,
         last_trajectory_planner_stats_.racing_line.centerline_estimated_time_s,
         last_trajectory_planner_stats_.racing_line.time_gain_s,

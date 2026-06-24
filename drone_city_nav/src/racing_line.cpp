@@ -27,9 +27,30 @@ struct PathEvaluation {
   }
 };
 
+struct CostBreakdown {
+  double length_cost{0.0};
+  double time_cost{0.0};
+  double curvature_cost{0.0};
+  double curvature_change_cost{0.0};
+  double offset_change_cost{0.0};
+  double offset_second_change_cost{0.0};
+  double center_bias_cost{0.0};
+  double edge_margin_cost{0.0};
+  double collision_cost{0.0};
+  double outside_grid_cost{0.0};
+  double length_overrun_cost{0.0};
+
+  [[nodiscard]] double total() const noexcept {
+    return length_cost + time_cost + curvature_cost + curvature_change_cost +
+           offset_change_cost + offset_second_change_cost + center_bias_cost +
+           edge_margin_cost + collision_cost + outside_grid_cost + length_overrun_cost;
+  }
+};
+
 struct CandidateScore {
   double score{std::numeric_limits<double>::infinity()};
   TraversalTimeEstimate traversal_time{};
+  CostBreakdown breakdown{};
 };
 
 [[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
@@ -211,6 +232,31 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
   return 2.0 * signed_double_area / (a * b * c);
 }
 
+[[nodiscard]] double edgeMarginM(const CorridorSample& sample,
+                                 const double offset_m) noexcept {
+  return std::min(sample.left_bound_m - offset_m, sample.right_bound_m + offset_m);
+}
+
+[[nodiscard]] double turnSeverity(const double curvature_1pm) noexcept {
+  constexpr double kCurvatureScale = 0.05;
+  const double abs_curvature = std::abs(curvature_1pm);
+  if (!(abs_curvature > 0.0) || !std::isfinite(abs_curvature)) {
+    return 0.0;
+  }
+  return abs_curvature / (abs_curvature + kCurvatureScale);
+}
+
+[[nodiscard]] double effectiveDesiredEdgeMarginM(const CorridorSample& sample,
+                                                 const RacingLineConfig& config) {
+  const double desired_margin =
+      sanitizedPositive(config.desired_edge_margin_m, 0.0, 0.0, 1000.0);
+  const double corridor_width = sample.left_bound_m + sample.right_bound_m;
+  if (!(desired_margin > 0.0) || !(corridor_width > 0.0)) {
+    return 0.0;
+  }
+  return std::min(desired_margin, 0.45 * corridor_width);
+}
+
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
 
 [[nodiscard]] PathEvaluation evaluatePath(const OccupancyGrid2D& grid,
@@ -241,24 +287,31 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
   return evaluation;
 }
 
-[[nodiscard]] double costForPoints(const std::span<const Point2> points,
-                                   const std::span<const double> offsets,
-                                   const RacingLineConfig& config) {
+[[nodiscard]] CostBreakdown
+costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
+                       const std::span<const Point2> points,
+                       const std::span<const double> offsets,
+                       const RacingLineConfig& config) {
+  CostBreakdown breakdown{};
   if (points.size() < 2U) {
-    return std::numeric_limits<double>::infinity();
+    breakdown.outside_grid_cost = kOutsideGridPenalty;
+    return breakdown;
   }
 
-  const double weight_length = sanitizedPositive(config.weight_length, 1.0, 0.0, 1.0e6);
+  const double weight_length =
+      sanitizedPositive(config.weight_length, 0.02, 0.0, 1.0e6);
   const double weight_curvature =
-      sanitizedPositive(config.weight_curvature, 25.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature, 250.0, 0.0, 1.0e9);
   const double weight_curvature_change =
-      sanitizedPositive(config.weight_curvature_change, 10.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature_change, 100.0, 0.0, 1.0e9);
   const double weight_offset_change =
-      sanitizedPositive(config.weight_offset_change, 1.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
-      sanitizedPositive(config.weight_offset_second_change, 10.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_offset_second_change, 5.0, 0.0, 1.0e9);
   const double weight_center_bias =
-      sanitizedPositive(config.weight_center_bias, 0.02, 0.0, 1.0e6);
+      sanitizedPositive(config.weight_center_bias, 0.0, 0.0, 1.0e6);
+  const double weight_edge_margin =
+      sanitizedPositive(config.weight_edge_margin, 80.0, 0.0, 1.0e9);
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
@@ -282,6 +335,16 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     const double curvature =
         discreteCurvature(points[i - 1U], points[i], points[i + 1U]);
     curvature_cost += curvature * curvature;
+    if (i < corridor_samples.size() && i < offsets.size()) {
+      const double desired_margin =
+          effectiveDesiredEdgeMarginM(corridor_samples[i], config);
+      const double margin = edgeMarginM(corridor_samples[i], offsets[i]);
+      const double deficit = desired_margin - margin;
+      if (deficit > 0.0) {
+        breakdown.edge_margin_cost +=
+            turnSeverity(curvature) * deficit * deficit * weight_edge_margin;
+      }
+    }
     if (previous_curvature_valid) {
       const double change = curvature - previous_curvature;
       curvature_change_cost += change * change;
@@ -290,11 +353,14 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     previous_curvature_valid = true;
   }
 
-  return weight_length * pathLength(points) + weight_curvature * curvature_cost +
-         weight_curvature_change * curvature_change_cost +
-         weight_offset_change * offset_change_cost +
-         weight_offset_second_change * offset_second_change_cost +
-         weight_center_bias * center_bias_cost;
+  breakdown.length_cost = weight_length * pathLength(points);
+  breakdown.curvature_cost = weight_curvature * curvature_cost;
+  breakdown.curvature_change_cost = weight_curvature_change * curvature_change_cost;
+  breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
+  breakdown.offset_second_change_cost =
+      weight_offset_second_change * offset_second_change_cost;
+  breakdown.center_bias_cost = weight_center_bias * center_bias_cost;
+  return breakdown;
 }
 
 [[nodiscard]] CandidateScore scoreForCandidate(
@@ -303,14 +369,17 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     const PathEvaluation& evaluation, const RacingLineConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m) {
   CandidateScore result{};
-  double score = costForPoints(points, offsets, config);
-  score += static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
-  score += static_cast<double>(evaluation.outside_grid_segments) * kOutsideGridPenalty;
+  result.breakdown = costBreakdownForPoints(corridor_samples, points, offsets, config);
+  result.breakdown.collision_cost =
+      static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
+  result.breakdown.outside_grid_cost =
+      static_cast<double>(evaluation.outside_grid_segments) * kOutsideGridPenalty;
   if (std::isfinite(max_length_m) && evaluation.length_m > max_length_m) {
     const double overrun_m = evaluation.length_m - max_length_m;
-    score += overrun_m * overrun_m * kLengthOverrunPenalty;
+    result.breakdown.length_overrun_cost =
+        overrun_m * overrun_m * kLengthOverrunPenalty;
   }
-  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
+  const double weight_time = sanitizedPositive(config.weight_time, 50.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     std::vector<TrajectoryPointSample> samples =
         samplesFromPointsAndOffsets(corridor_samples, points, offsets);
@@ -318,10 +387,10 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     result.traversal_time = estimateTraversalTime(samples, speed_config, true);
     if (weight_time > 0.0 && result.traversal_time.valid &&
         std::isfinite(result.traversal_time.estimated_time_s)) {
-      score += weight_time * result.traversal_time.estimated_time_s;
+      result.breakdown.time_cost = weight_time * result.traversal_time.estimated_time_s;
     }
   }
-  result.score = score;
+  result.score = result.breakdown.total();
   return result;
 }
 
@@ -385,6 +454,50 @@ void copyTraversalEstimateToBestCandidateStats(const TraversalTimeEstimate& esti
   stats.best_candidate_min_speed_limit_mps = estimate.min_speed_limit_mps;
   stats.best_candidate_max_speed_limit_mps = estimate.max_speed_limit_mps;
   stats.best_candidate_curvature_limited_samples = estimate.curvature_limited_samples;
+}
+
+void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& stats) {
+  stats.cost_length = breakdown.length_cost;
+  stats.cost_time = breakdown.time_cost;
+  stats.cost_curvature = breakdown.curvature_cost;
+  stats.cost_curvature_change = breakdown.curvature_change_cost;
+  stats.cost_offset_change = breakdown.offset_change_cost;
+  stats.cost_offset_second_change = breakdown.offset_second_change_cost;
+  stats.cost_center_bias = breakdown.center_bias_cost;
+  stats.cost_edge_margin = breakdown.edge_margin_cost;
+  stats.cost_collision = breakdown.collision_cost;
+  stats.cost_outside_grid = breakdown.outside_grid_cost;
+  stats.cost_length_overrun = breakdown.length_overrun_cost;
+}
+
+void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
+                           const RacingLineConfig& config, RacingLineStats& stats) {
+  double margin_sum = 0.0;
+  std::size_t margin_count = 0U;
+  for (const TrajectoryPointSample& sample : samples) {
+    CorridorSample bounds{};
+    bounds.left_bound_m = sample.left_bound_m;
+    bounds.right_bound_m = sample.right_bound_m;
+    const double margin = edgeMarginM(bounds, sample.racing_offset_m);
+    if (!std::isfinite(margin)) {
+      continue;
+    }
+    if (!std::isfinite(stats.min_edge_margin_m)) {
+      stats.min_edge_margin_m = margin;
+    } else {
+      stats.min_edge_margin_m = std::min(stats.min_edge_margin_m, margin);
+    }
+    margin_sum += margin;
+    ++margin_count;
+
+    const double desired_margin = effectiveDesiredEdgeMarginM(bounds, config);
+    if (turnSeverity(sample.curvature_1pm) > 1.0e-3 && desired_margin - margin > 0.0) {
+      ++stats.edge_margin_limited_samples;
+    }
+  }
+  if (margin_count > 0U) {
+    stats.mean_edge_margin_m = margin_sum / static_cast<double>(margin_count);
+  }
 }
 
 [[nodiscard]] bool updateBestCandidate(
@@ -573,6 +686,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     ++result.stats.collision_rejections;
     return result;
   }
+  const CandidateScore final_score =
+      scoreForCandidate(optimizer_samples, final_points, final_offsets,
+                        final_evaluation, config, speed_config, max_length_m);
 
   result.samples.reserve(sample_count);
   for (std::size_t i = 0U; i < sample_count; ++i) {
@@ -588,7 +704,12 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   populateSampleGeometry(result.samples);
   result.stats.output_samples = result.samples.size();
   result.stats.final_length_m = pathLength(final_points);
-  result.stats.final_cost = best_cost;
+  if (result.stats.centerline_length_m > kTinyDistanceM) {
+    result.stats.final_length_ratio =
+        result.stats.final_length_m / result.stats.centerline_length_m;
+  }
+  result.stats.final_cost = final_score.score;
+  copyCostBreakdownToStats(final_score.breakdown, result.stats);
   const TrajectoryShapeDiagnostics post_diagnostics =
       computeTrajectoryShapeDiagnostics(result.samples);
   result.stats.post_regularization_max_curvature_jump_1pm =
@@ -607,6 +728,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         result.stats.estimated_time_s - result.stats.best_candidate_estimated_time_s;
   }
   updateCurvatureStats(result.samples, result.stats);
+  updateEdgeMarginStats(result.samples, config, result.stats);
   result.valid = trajectorySamplesAreUsable(result.samples);
   return result;
 }

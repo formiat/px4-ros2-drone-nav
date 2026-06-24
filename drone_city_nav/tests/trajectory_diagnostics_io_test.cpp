@@ -37,6 +37,24 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.regularization_time_delta_s = 0.1;
   stats.racing_line.pre_regularization_max_curvature_jump_1pm = 0.4;
   stats.racing_line.post_regularization_max_curvature_jump_1pm = 0.2;
+  stats.racing_line.centerline_length_m = 100.0;
+  stats.racing_line.final_length_m = 108.0;
+  stats.racing_line.final_length_ratio = 1.08;
+  stats.racing_line.max_abs_offset_m = 3.0;
+  stats.racing_line.min_edge_margin_m = 2.5;
+  stats.racing_line.mean_edge_margin_m = 4.5;
+  stats.racing_line.edge_margin_limited_samples = 6U;
+  stats.racing_line.cost_length = 2.0;
+  stats.racing_line.cost_time = 625.0;
+  stats.racing_line.cost_curvature = 12.0;
+  stats.racing_line.cost_curvature_change = 3.0;
+  stats.racing_line.cost_offset_change = 1.0;
+  stats.racing_line.cost_offset_second_change = 4.0;
+  stats.racing_line.cost_center_bias = 0.0;
+  stats.racing_line.cost_edge_margin = 7.0;
+  stats.racing_line.cost_collision = 0.0;
+  stats.racing_line.cost_outside_grid = 0.0;
+  stats.racing_line.cost_length_overrun = 0.0;
   return stats;
 }
 
@@ -98,6 +116,10 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_final_min_speed_limit_mps\":1"), std::string::npos);
   EXPECT_NE(json.find("\"racing_final_max_speed_limit_mps\":10"), std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_estimated_time_s\":14"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_length_m\":100"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_final_length_ratio\":1.08"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_cost_time\":625"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_cost_edge_margin\":7"), std::string::npos);
   EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
@@ -114,6 +136,24 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_final_min_speed_limit_mps\"",
                         "\"racing_final_max_speed_limit_mps\"",
                         "\"racing_final_curvature_limited_samples\"",
+                        "\"racing_centerline_length_m\"",
+                        "\"racing_final_length_m\"",
+                        "\"racing_final_length_ratio\"",
+                        "\"racing_max_abs_offset_m\"",
+                        "\"racing_min_edge_margin_m\"",
+                        "\"racing_mean_edge_margin_m\"",
+                        "\"racing_edge_margin_limited_samples\"",
+                        "\"racing_cost_length\"",
+                        "\"racing_cost_time\"",
+                        "\"racing_cost_curvature\"",
+                        "\"racing_cost_curvature_change\"",
+                        "\"racing_cost_offset_change\"",
+                        "\"racing_cost_offset_second_change\"",
+                        "\"racing_cost_center_bias\"",
+                        "\"racing_cost_edge_margin\"",
+                        "\"racing_cost_collision\"",
+                        "\"racing_cost_outside_grid\"",
+                        "\"racing_cost_length_overrun\"",
                         "\"racing_centerline_estimated_time_s\"",
                         "\"racing_centerline_min_speed_limit_mps\"",
                         "\"racing_centerline_max_speed_limit_mps\"",
@@ -141,6 +181,8 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetric
   EXPECT_NE(fragment.find("\"racing_centerline_estimated_time_s\":null"),
             std::string::npos);
   EXPECT_NE(fragment.find("\"racing_best_candidate_score\":null"), std::string::npos);
+  EXPECT_NE(fragment.find("\"racing_final_length_ratio\":null"), std::string::npos);
+  EXPECT_NE(fragment.find("\"racing_cost_time\":null"), std::string::npos);
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 

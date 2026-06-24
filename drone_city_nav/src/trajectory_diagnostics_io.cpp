@@ -102,6 +102,37 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.max_speed_limit_mps);
   appendJsonSize(stream, "racing_final_curvature_limited_samples",
                  stats.racing_line.curvature_limited_samples);
+  appendJsonNumber(stream, "racing_centerline_length_m",
+                   stats.racing_line.centerline_length_m);
+  appendJsonNumber(stream, "racing_final_length_m", stats.racing_line.final_length_m);
+  appendJsonNumber(stream, "racing_final_length_ratio",
+                   stats.racing_line.final_length_ratio);
+  appendJsonNumber(stream, "racing_max_abs_offset_m",
+                   stats.racing_line.max_abs_offset_m);
+  appendJsonNumber(stream, "racing_min_edge_margin_m",
+                   stats.racing_line.min_edge_margin_m);
+  appendJsonNumber(stream, "racing_mean_edge_margin_m",
+                   stats.racing_line.mean_edge_margin_m);
+  appendJsonSize(stream, "racing_edge_margin_limited_samples",
+                 stats.racing_line.edge_margin_limited_samples);
+  appendJsonNumber(stream, "racing_cost_length", stats.racing_line.cost_length);
+  appendJsonNumber(stream, "racing_cost_time", stats.racing_line.cost_time);
+  appendJsonNumber(stream, "racing_cost_curvature", stats.racing_line.cost_curvature);
+  appendJsonNumber(stream, "racing_cost_curvature_change",
+                   stats.racing_line.cost_curvature_change);
+  appendJsonNumber(stream, "racing_cost_offset_change",
+                   stats.racing_line.cost_offset_change);
+  appendJsonNumber(stream, "racing_cost_offset_second_change",
+                   stats.racing_line.cost_offset_second_change);
+  appendJsonNumber(stream, "racing_cost_center_bias",
+                   stats.racing_line.cost_center_bias);
+  appendJsonNumber(stream, "racing_cost_edge_margin",
+                   stats.racing_line.cost_edge_margin);
+  appendJsonNumber(stream, "racing_cost_collision", stats.racing_line.cost_collision);
+  appendJsonNumber(stream, "racing_cost_outside_grid",
+                   stats.racing_line.cost_outside_grid);
+  appendJsonNumber(stream, "racing_cost_length_overrun",
+                   stats.racing_line.cost_length_overrun);
   appendJsonNumber(stream, "racing_centerline_estimated_time_s",
                    stats.racing_line.centerline_estimated_time_s);
   appendJsonNumber(stream, "racing_centerline_min_speed_limit_mps",

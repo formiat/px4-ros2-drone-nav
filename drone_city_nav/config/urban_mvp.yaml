@@ -141,14 +141,16 @@ px4_offboard_node:
     racing_line_initial_offset_step_m: 2.0
     racing_line_min_offset_step_m: 0.1
     racing_line_cooling_ratio: 0.5
-    racing_line_weight_length: 1.0
-    racing_line_weight_curvature: 25.0
-    racing_line_weight_curvature_change: 10.0
-    racing_line_weight_offset_change: 1.0
-    racing_line_weight_offset_second_change: 10.0
-    racing_line_weight_center_bias: 0.02
-    racing_line_weight_time: 0.05
-    racing_line_max_length_ratio: 1.25
+    racing_line_weight_length: 0.02
+    racing_line_weight_curvature: 250.0
+    racing_line_weight_curvature_change: 100.0
+    racing_line_weight_offset_change: 0.5
+    racing_line_weight_offset_second_change: 5.0
+    racing_line_weight_center_bias: 0.0
+    racing_line_weight_time: 50.0
+    racing_line_weight_edge_margin: 80.0
+    racing_line_desired_edge_margin_m: 4.0
+    racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path

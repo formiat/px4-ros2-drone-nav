@@ -17,6 +17,9 @@ TEST(Px4OffboardConfig, DefaultYamlExposesTimeAwareRacingLineParameters) {
   const std::string yaml = buffer.str();
 
   EXPECT_NE(yaml.find("racing_line_weight_time:"), std::string::npos);
+  EXPECT_NE(yaml.find("racing_line_weight_length: 0.02"), std::string::npos);
+  EXPECT_NE(yaml.find("racing_line_weight_edge_margin:"), std::string::npos);
+  EXPECT_NE(yaml.find("racing_line_desired_edge_margin_m:"), std::string::npos);
   EXPECT_NE(yaml.find("racing_line_regularization_iterations:"), std::string::npos);
   EXPECT_NE(yaml.find("racing_line_regularization_max_time_regression_s:"),
             std::string::npos);
