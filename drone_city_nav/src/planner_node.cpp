@@ -695,16 +695,27 @@ private:
     }
     const bool start_prohibited = grid.isProhibited(*start_cell);
     const bool goal_prohibited = grid.isProhibited(*goal_cell);
-    if (start_prohibited || goal_prohibited) {
+    if (goal_prohibited || grid.isOccupied(*start_cell)) {
       RCLCPP_ERROR_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Start or goal is inside prohibited space on %s grid; refusing to move "
-          "planning endpoints: start_cell=(%d,%d) prohibited=%s goal_cell=(%d,%d) "
-          "prohibited=%s",
+          "Start or goal is not plannable on %s grid; refusing to move planning "
+          "endpoints: start_cell=(%d,%d) occupied=%s inflated=%s prohibited=%s "
+          "goal_cell=(%d,%d) occupied=%s inflated=%s prohibited=%s",
           source_label, start_cell->x, start_cell->y,
+          grid.isOccupied(*start_cell) ? "true" : "false",
+          grid.isInflated(*start_cell) ? "true" : "false",
           start_prohibited ? "true" : "false", goal_cell->x, goal_cell->y,
+          grid.isOccupied(*goal_cell) ? "true" : "false",
+          grid.isInflated(*goal_cell) ? "true" : "false",
           goal_prohibited ? "true" : "false");
       return std::nullopt;
+    }
+    if (start_prohibited) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Start is inside inflated prohibited space on %s grid; attempting "
+          "escape-start planning: start_cell=(%d,%d)",
+          source_label, start_cell->x, start_cell->y);
     }
 
     auto result =
@@ -720,6 +731,16 @@ private:
     }
 
     ++astar_successes_;
+    if (result->start_escape_used && result->requested_start_cell.has_value() &&
+        result->start_cell.has_value()) {
+      RCLCPP_WARN(
+          get_logger(),
+          "A* recovered from inflated start on %s grid: requested_start=(%d,%d) "
+          "escape_start=(%d,%d) escape_distance=%.2fm",
+          source_label, result->requested_start_cell->x,
+          result->requested_start_cell->y, result->start_cell->x, result->start_cell->y,
+          result->start_escape_distance_m);
+    }
     return result;
   }
 

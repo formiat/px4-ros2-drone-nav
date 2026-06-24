@@ -33,6 +33,14 @@ normalizedClearanceDiagnosticRadiusM(const double configured_radius_m) noexcept 
   return 10.0;
 }
 
+[[nodiscard]] double
+normalizedEscapeSearchRadiusM(const double configured_radius_m) noexcept {
+  if (std::isfinite(configured_radius_m) && configured_radius_m > 0.0) {
+    return configured_radius_m;
+  }
+  return 10.0;
+}
+
 [[nodiscard]] bool directionChanged(const UnitDirection2D previous,
                                     const UnitDirection2D current) noexcept {
   const double dot =
@@ -233,6 +241,54 @@ bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
   return escaped_prohibited_prefix;
 }
 
+std::optional<GridIndex> nearestAllowedEscapeStartCell(
+    const OccupancyGrid2D& grid, const GridIndex prohibited_start_cell,
+    const Point2 current_position, const double max_search_radius_m) {
+  if (!grid.contains(prohibited_start_cell) || !finite2D(current_position) ||
+      !grid.isProhibited(prohibited_start_cell) ||
+      grid.isOccupied(prohibited_start_cell)) {
+    return std::nullopt;
+  }
+
+  const double resolution_m = grid.resolution();
+  if (!(resolution_m > 0.0)) {
+    return std::nullopt;
+  }
+
+  const double search_radius_m = normalizedEscapeSearchRadiusM(max_search_radius_m);
+  const int radius_cells =
+      std::max(1, static_cast<int>(std::ceil(search_radius_m / resolution_m)));
+  const double radius_sq_m = search_radius_m * search_radius_m;
+
+  std::optional<GridIndex> best_cell;
+  double best_distance_sq_m = std::numeric_limits<double>::infinity();
+  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+      const GridIndex candidate{prohibited_start_cell.x + dx,
+                                prohibited_start_cell.y + dy};
+      if (!grid.contains(candidate) || grid.isProhibited(candidate)) {
+        continue;
+      }
+
+      const Point2 candidate_center = grid.cellCenter(candidate);
+      const double candidate_distance_sq_m =
+          squaredDistance(current_position, candidate_center);
+      if (candidate_distance_sq_m > radius_sq_m ||
+          candidate_distance_sq_m >= best_distance_sq_m) {
+        continue;
+      }
+      if (!pathSegmentIsTraversable(grid, current_position, candidate_center)) {
+        continue;
+      }
+
+      best_cell = candidate;
+      best_distance_sq_m = candidate_distance_sq_m;
+    }
+  }
+
+  return best_cell;
+}
+
 std::optional<PathProjection2D>
 closestPathProjection(const std::span<const Point2> path_points,
                       const Point2 current_position) {
@@ -357,13 +413,28 @@ std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal, const AStarConfig& astar_config) const {
   PathComputationResult result{};
-  result.start_cell = grid.worldToCell(current_position);
+  result.requested_start_cell = grid.worldToCell(current_position);
+  result.start_cell = result.requested_start_cell;
   result.goal_cell = grid.worldToCell(goal);
   if (!result.start_cell.has_value() || !result.goal_cell.has_value()) {
     return std::nullopt;
   }
-  if (grid.isProhibited(*result.start_cell) || grid.isProhibited(*result.goal_cell)) {
+  if (grid.isProhibited(*result.goal_cell)) {
     return std::nullopt;
+  }
+
+  if (grid.isProhibited(*result.start_cell)) {
+    const std::optional<GridIndex> escape_start_cell =
+        nearestAllowedEscapeStartCell(grid, *result.start_cell, current_position,
+                                      config_.start_prohibited_escape_search_radius_m);
+    if (!escape_start_cell.has_value()) {
+      return std::nullopt;
+    }
+
+    result.start_escape_used = true;
+    result.start_escape_distance_m =
+        distance(current_position, grid.cellCenter(*escape_start_cell));
+    result.start_cell = *escape_start_cell;
   }
 
   result.astar =

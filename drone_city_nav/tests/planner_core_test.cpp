@@ -438,7 +438,7 @@ TEST(PathSmoothing, CollapseCollinearPathUsesLateralTolerance) {
   EXPECT_EQ(collapseCollinearPath(bent_path, 0.05).size(), 3U);
 }
 
-TEST(PlannerCore, ComputePathRejectsProhibitedStart) {
+TEST(PlannerCore, ComputePathRejectsOccupiedStart) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{1, 1});
   grid.rebuildInflation(0.0);
@@ -448,6 +448,33 @@ TEST(PlannerCore, ComputePathRejectsProhibitedStart) {
   const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
 
   EXPECT_FALSE(result.has_value());
+}
+
+TEST(PlannerCore, ComputePathEscapesInflatedStart) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{5, 5});
+  grid.rebuildInflation(1.1);
+  ASSERT_FALSE(grid.isOccupied(GridIndex{4, 5}));
+  ASSERT_TRUE(grid.isInflated(GridIndex{4, 5}));
+
+  PlannerCore core{};
+
+  const auto result = core.computePath(grid, Point2{4.5, 5.5}, Point2{18.5, 5.5});
+
+  ASSERT_TRUE(result.has_value());
+  const PathComputationResult& path_result =
+      result.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(path_result.start_escape_used);
+  EXPECT_EQ(path_result.requested_start_cell, (GridIndex{4, 5}));
+  ASSERT_TRUE(path_result.start_cell.has_value());
+  const GridIndex escape_start =
+      path_result.start_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_FALSE(grid.isProhibited(escape_start));
+  ASSERT_FALSE(path_result.astar.path.empty());
+  EXPECT_EQ(path_result.astar.path.front(), escape_start);
+  EXPECT_EQ(path_result.astar.path.back(), (GridIndex{18, 5}));
+  EXPECT_TRUE(
+      pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, grid.cellCenter(escape_start)));
 }
 
 TEST(PlannerCore, ComputePathRejectsProhibitedGoal) {

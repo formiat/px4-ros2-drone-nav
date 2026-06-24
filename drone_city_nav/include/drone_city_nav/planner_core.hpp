@@ -38,6 +38,7 @@ struct PlannerCoreConfig {
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
   double stable_path_reuse_max_deviation_m{1.0};
+  double start_prohibited_escape_search_radius_m{10.0};
 };
 
 struct PathComputationResult {
@@ -50,7 +51,10 @@ struct PathComputationResult {
   double raw_path_clearance_m{std::numeric_limits<double>::infinity()};
   double smoothed_path_clearance_m{std::numeric_limits<double>::infinity()};
   std::optional<GridIndex> start_cell;
+  std::optional<GridIndex> requested_start_cell;
   std::optional<GridIndex> goal_cell;
+  bool start_escape_used{false};
+  double start_escape_distance_m{0.0};
   bool smoothing_returned_empty_path{false};
 };
 
