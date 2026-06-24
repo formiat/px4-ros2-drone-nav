@@ -48,7 +48,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
 
     def test_velocity_mode_uses_final_trajectory_planner(self) -> None:
         self.assertIn("rebuildFinalTrajectory(", self.offboard_text)
-        self.assertIn("planTrajectory(", self.offboard_text)
+        self.assertIn("planBaselineTrajectory(", self.offboard_text)
+        self.assertIn("planRacingTrajectory(", self.offboard_text)
         self.assertIn("final_trajectory_samples_", self.offboard_text)
         self.assertIn("trajectory_speed_profile_", self.offboard_text)
         self.assertIn("planVelocitySetpoint(trajectory_, trajectory_speed_profile_", self.offboard_text)
@@ -119,11 +120,18 @@ class OffboardTelemetryContractTest(unittest.TestCase):
 
     def test_final_trajectory_samples_csv_dump_is_written(self) -> None:
         self.assertIn("writeFinalTrajectorySamplesCsv", self.offboard_text)
-        self.assertIn("log\"} / \"final_trajectory_samples", self.offboard_text)
+        self.assertIn('diagnosticDumpDirectory("final_trajectory_samples")', self.offboard_text)
         self.assertIn("latest.csv", self.offboard_text)
         self.assertIn("sample_index,s_m,x,y", self.offboard_text)
         self.assertIn("racing_offset_m", self.offboard_text)
         self.assertIn("speed_profiled_limit_mps", self.offboard_text)
+
+    def test_corridor_samples_csv_dump_is_written(self) -> None:
+        self.assertIn("writeCorridorSamplesCsv", self.offboard_text)
+        self.assertIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
+        self.assertIn("corridor_csv", self.offboard_text)
+        self.assertIn("center_x,center_y,tangent_x,tangent_y", self.offboard_text)
+        self.assertIn("left_edge_x,left_edge_y,right_edge_x,right_edge_y", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)

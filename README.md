@@ -160,6 +160,10 @@ Offboard flight diagnostics are also written as JSON Lines to
 `log/offboard_blackbox.jsonl` by default. This file mirrors the 2 Hz telemetry
 logs with path ids, cross-track error, heading error, commanded target motion,
 commanded velocity, vehicle attitude, and nearest-obstacle bearing.
+Final trajectory samples are dumped to `log/final_trajectory_samples/` on every
+trajectory rebuild. Corridor samples are dumped to `log/corridor_samples/` on
+every corridor rebuild. Each directory contains timestamped history files and a
+`latest.csv` shortcut for the most recent rebuild.
 
 ## Build System
 

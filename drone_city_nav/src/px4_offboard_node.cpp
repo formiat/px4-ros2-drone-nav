@@ -810,6 +810,7 @@ private:
     publishOffboardDebugMarkers();
     const std::string samples_csv_path =
         writeFinalTrajectorySamplesCsv(source_label.c_str());
+    const std::string corridor_csv_path = writeCorridorSamplesCsv(source_label.c_str());
     RCLCPP_INFO(
         get_logger(),
         "Final trajectory rebuilt: source=%s build_job=%" PRIu64
@@ -833,7 +834,7 @@ private:
         "curvature_point=(%.2f, %.2f) max_offset_delta=%.2f "
         "offset_index=%zu offset_point=(%.2f, %.2f) "
         "max_offset_second_delta=%.2f offset_second_index=%zu "
-        "offset_second_point=(%.2f, %.2f)] samples_csv='%s'",
+        "offset_second_point=(%.2f, %.2f)] samples_csv='%s' corridor_csv='%s'",
         source_label.c_str(), build_job_id, build_duration_ms, received_path_update_id_,
         latest_planner_path_id_, path_points_.size(), last_trajectory_route_points_,
         trajectory_valid_ ? "true" : "false", grid_available ? "true" : "false",
@@ -891,7 +892,7 @@ private:
         last_trajectory_shape_diagnostics_.max_offset_second_delta_index,
         last_trajectory_shape_diagnostics_.max_offset_second_delta_point.x,
         last_trajectory_shape_diagnostics_.max_offset_second_delta_point.y,
-        samples_csv_path.c_str());
+        samples_csv_path.c_str(), corridor_csv_path.c_str());
   }
 
   [[nodiscard]] std::vector<Point2> activeTrajectoryRoutePoints() {
@@ -1233,13 +1234,22 @@ private:
                 flight_blackbox_path_.c_str());
   }
 
-  [[nodiscard]] std::filesystem::path finalTrajectorySamplesDirectory() const {
+  [[nodiscard]] std::filesystem::path
+  diagnosticDumpDirectory(const std::string_view name) const {
     const std::filesystem::path blackbox_path{flight_blackbox_path_};
     const std::filesystem::path parent = blackbox_path.parent_path();
     if (parent.empty()) {
-      return std::filesystem::path{"log"} / "final_trajectory_samples";
+      return std::filesystem::path{"log"} / name;
     }
-    return parent / "final_trajectory_samples";
+    return parent / name;
+  }
+
+  [[nodiscard]] std::filesystem::path finalTrajectorySamplesDirectory() const {
+    return diagnosticDumpDirectory("final_trajectory_samples");
+  }
+
+  [[nodiscard]] std::filesystem::path corridorSamplesDirectory() const {
+    return diagnosticDumpDirectory("corridor_samples");
   }
 
   bool writeFinalTrajectorySamplesCsvFile(const std::filesystem::path& path,
@@ -1332,6 +1342,99 @@ private:
     if (!writeFinalTrajectorySamplesCsvFile(latest_path, source_label)) {
       RCLCPP_WARN(get_logger(),
                   "Failed to update latest final trajectory samples CSV '%s'",
+                  latest_path.string().c_str());
+    }
+    return timestamped_path.string();
+  }
+
+  bool writeCorridorSamplesCsvFile(const std::filesystem::path& path,
+                                   const char* source_label) const {
+    std::ofstream stream{path, std::ios::out | std::ios::trunc};
+    if (!stream.is_open()) {
+      return false;
+    }
+
+    stream << std::setprecision(9);
+    stream << "# source=" << source_label
+           << " local_path_update_id=" << received_path_update_id_
+           << " planner_path_id=" << latest_planner_path_id_
+           << " path_points=" << path_points_.size()
+           << " route_points=" << last_trajectory_route_points_
+           << " trajectory_valid=" << (trajectory_valid_ ? "true" : "false")
+           << " trajectory_status="
+           << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
+           << "\n";
+    stream << "sample_index,s_m,center_x,center_y,tangent_x,tangent_y,"
+              "normal_x,normal_y,left_bound_m,right_bound_m,width_m,clearance_m,"
+              "left_edge_x,left_edge_y,right_edge_x,right_edge_y\n";
+    for (std::size_t i = 0U; i < corridor_debug_samples_.size(); ++i) {
+      const CorridorSample& sample = corridor_debug_samples_[i];
+      const Point2 left_edge{sample.center.x + sample.normal.x * sample.left_bound_m,
+                             sample.center.y + sample.normal.y * sample.left_bound_m};
+      const Point2 right_edge{sample.center.x - sample.normal.x * sample.right_bound_m,
+                              sample.center.y - sample.normal.y * sample.right_bound_m};
+      stream << i << ",";
+      writeCsvNumberOrEmpty(stream, sample.s_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.normal.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.normal.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.left_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.right_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.left_bound_m + sample.right_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.clearance_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, left_edge.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, left_edge.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, right_edge.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, right_edge.y);
+      stream << "\n";
+    }
+    return stream.good();
+  }
+
+  [[nodiscard]] std::string writeCorridorSamplesCsv(const char* source_label) const {
+    if (corridor_debug_samples_.empty()) {
+      return {};
+    }
+
+    const std::filesystem::path directory = corridorSamplesDirectory();
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+      RCLCPP_WARN(get_logger(), "Failed to create corridor samples directory '%s': %s",
+                  directory.string().c_str(), error.message().c_str());
+      return {};
+    }
+
+    const std::filesystem::path timestamped_path =
+        directory / ("corridor_" + std::to_string(get_clock()->now().nanoseconds()) +
+                     "_local_" + std::to_string(received_path_update_id_) +
+                     "_planner_" + std::to_string(latest_planner_path_id_) + ".csv");
+    const std::filesystem::path latest_path = directory / "latest.csv";
+
+    if (!writeCorridorSamplesCsvFile(timestamped_path, source_label)) {
+      RCLCPP_WARN(get_logger(), "Failed to write corridor samples CSV '%s'",
+                  timestamped_path.string().c_str());
+      return {};
+    }
+    if (!writeCorridorSamplesCsvFile(latest_path, source_label)) {
+      RCLCPP_WARN(get_logger(), "Failed to update latest corridor samples CSV '%s'",
                   latest_path.string().c_str());
     }
     return timestamped_path.string();
