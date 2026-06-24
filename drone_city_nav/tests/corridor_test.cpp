@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -61,6 +62,30 @@ TEST(Corridor, OutsideGridLimitsBounds) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_GT(result.stats.outside_grid_samples, 0U);
+}
+
+TEST(Corridor, LocalLateralLimitClipsSideOpening) {
+  OccupancyGrid2D grid = corridorGrid();
+  grid.setFree(GridIndex{10, 9});
+  CorridorConfig config = testConfig();
+  config.sample_step_m = 1.0;
+  config.lateral_limit_window_m = 4.0;
+  config.lateral_limit_ratio = 1.0;
+  config.lateral_limit_margin_m = 0.0;
+  const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
+
+  const CorridorResult result = buildCorridor(route, grid, config);
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_GT(result.stats.lateral_limited_samples, 0U);
+  ASSERT_GT(result.stats.max_lateral_bound_reduction_m, 1.0);
+  const auto opening_sample = std::min_element(
+      result.samples.begin(), result.samples.end(),
+      [](const CorridorSample& lhs, const CorridorSample& rhs) {
+        return std::abs(lhs.center.x - 10.5) < std::abs(rhs.center.x - 10.5);
+      });
+  ASSERT_NE(opening_sample, result.samples.end());
+  EXPECT_LE(opening_sample->left_bound_m, 3.5);
 }
 
 } // namespace drone_city_nav

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -92,6 +93,71 @@ void updateRange(double& min_value, double& max_value, const double value,
   max_value = std::max(max_value, value);
 }
 
+[[nodiscard]] double median(std::vector<double>& values) {
+  if (values.empty()) {
+    return 0.0;
+  }
+  std::sort(values.begin(), values.end());
+  const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2U);
+  if (values.size() % 2U == 1U) {
+    return *middle;
+  }
+  return (*(middle - 1) + *middle) * 0.5;
+}
+
+[[nodiscard]] double localMedianBound(const std::span<const CorridorSample> samples,
+                                      const std::size_t index, const double window_m,
+                                      const bool left_bound) {
+  std::vector<double> values;
+  values.reserve(samples.size());
+  const double center_s = samples[index].s_m;
+  for (const CorridorSample& sample : samples) {
+    if (std::abs(sample.s_m - center_s) > window_m) {
+      continue;
+    }
+    const double bound = left_bound ? sample.left_bound_m : sample.right_bound_m;
+    if (std::isfinite(bound) && bound >= 0.0) {
+      values.push_back(bound);
+    }
+  }
+  return median(values);
+}
+
+void applyLocalLateralLimit(std::vector<CorridorSample>& samples,
+                            const CorridorConfig& config, CorridorStats& stats) {
+  if (samples.size() < 3U) {
+    return;
+  }
+  const double window_m =
+      sanitizedPositive(config.lateral_limit_window_m, 20.0, 0.05, 5000.0);
+  const double ratio = sanitizedPositive(config.lateral_limit_ratio, 1.25, 1.0, 100.0);
+  const double margin_m =
+      sanitizedPositive(config.lateral_limit_margin_m, 1.0, 0.0, 5000.0);
+  const std::vector<CorridorSample> raw_samples = samples;
+
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    const double left_limit =
+        localMedianBound(raw_samples, i, window_m, true) * ratio + margin_m;
+    const double right_limit =
+        localMedianBound(raw_samples, i, window_m, false) * ratio + margin_m;
+    const double old_left = samples[i].left_bound_m;
+    const double old_right = samples[i].right_bound_m;
+    samples[i].left_bound_m =
+        std::min(samples[i].left_bound_m, std::max(0.0, left_limit));
+    samples[i].right_bound_m =
+        std::min(samples[i].right_bound_m, std::max(0.0, right_limit));
+
+    const double left_reduction = std::max(0.0, old_left - samples[i].left_bound_m);
+    const double right_reduction = std::max(0.0, old_right - samples[i].right_bound_m);
+    const double max_reduction = std::max(left_reduction, right_reduction);
+    if (max_reduction > kTinyDistanceM) {
+      ++stats.lateral_limited_samples;
+      stats.max_lateral_bound_reduction_m =
+          std::max(stats.max_lateral_bound_reduction_m, max_reduction);
+    }
+  }
+}
+
 } // namespace
 
 CorridorResult buildCorridor(const std::span<const Point2> route_points,
@@ -119,8 +185,6 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
       static_cast<std::size_t>(std::ceil(length / sample_step)) + 1U;
   result.samples.reserve(sample_count + 1U);
 
-  double width_sum = 0.0;
-  double clearance_sum = 0.0;
   for (std::size_t i = 0U; i <= sample_count; ++i) {
     const double s_m = std::min(length, static_cast<double>(i) * sample_step);
     const Point2 center = trajectoryPointAtS(route, s_m);
@@ -145,20 +209,28 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
       sample.clearance_m = clearance_field.distanceAt(*cell);
     }
     result.samples.push_back(sample);
-    const double width = sample.left_bound_m + sample.right_bound_m;
-    width_sum += width;
-    clearance_sum += sample.clearance_m;
-    const bool first = result.samples.size() == 1U;
-    updateRange(result.stats.min_width_m, result.stats.max_width_m, width, first);
-    updateRange(result.stats.min_clearance_m, result.stats.max_clearance_m,
-                sample.clearance_m, first);
 
     if (s_m >= length) {
       break;
     }
   }
 
+  applyLocalLateralLimit(result.samples, config, result.stats);
+
   result.stats.samples = result.samples.size();
+  double width_sum = 0.0;
+  double clearance_sum = 0.0;
+  bool first_sample = true;
+  for (const CorridorSample& sample : result.samples) {
+    const double width = sample.left_bound_m + sample.right_bound_m;
+    width_sum += width;
+    clearance_sum += sample.clearance_m;
+    updateRange(result.stats.min_width_m, result.stats.max_width_m, width,
+                first_sample);
+    updateRange(result.stats.min_clearance_m, result.stats.max_clearance_m,
+                sample.clearance_m, first_sample);
+    first_sample = false;
+  }
   if (!result.samples.empty()) {
     result.stats.mean_width_m = width_sum / static_cast<double>(result.samples.size());
     result.stats.mean_clearance_m =

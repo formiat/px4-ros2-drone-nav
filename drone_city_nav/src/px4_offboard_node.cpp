@@ -334,6 +334,13 @@ public:
         std::clamp(declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
     trajectory_planner_config_.corridor.safety_margin_m = std::clamp(
         declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
+    trajectory_planner_config_.corridor.lateral_limit_window_m =
+        std::clamp(declare_parameter<double>("corridor_lateral_limit_window_m", 20.0),
+                   0.1, 5000.0);
+    trajectory_planner_config_.corridor.lateral_limit_ratio = std::clamp(
+        declare_parameter<double>("corridor_lateral_limit_ratio", 1.25), 1.0, 100.0);
+    trajectory_planner_config_.corridor.lateral_limit_margin_m = std::clamp(
+        declare_parameter<double>("corridor_lateral_limit_margin_m", 1.0), 0.0, 5000.0);
     trajectory_planner_config_.racing_line.max_iterations =
         static_cast<std::size_t>(std::clamp<std::int64_t>(
             declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,
@@ -495,7 +502,9 @@ public:
         "max_vertical_speed=%.2fmps "
         "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm "
         "marker_topic='%s'] "
-        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm] "
+        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
+        "lateral_limit_window=%.2fm lateral_limit_ratio=%.2f "
+        "lateral_limit_margin=%.2fm] "
         "racing_line[iterations=%zu offset_step=%.2fm min_step=%.2fm "
         "weights(length=%.2f curvature=%.2f curvature_change=%.2f "
         "offset_change=%.2f offset_second_change=%.2f center=%.3f)] "
@@ -523,6 +532,9 @@ public:
         trajectory_planner_config_.corridor.max_radius_m,
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
+        trajectory_planner_config_.corridor.lateral_limit_window_m,
+        trajectory_planner_config_.corridor.lateral_limit_ratio,
+        trajectory_planner_config_.corridor.lateral_limit_margin_m,
         trajectory_planner_config_.racing_line.max_iterations,
         trajectory_planner_config_.racing_line.initial_offset_step_m,
         trajectory_planner_config_.racing_line.min_offset_step_m,
@@ -764,7 +776,8 @@ private:
         "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
         "debug_samples=%zu status=%.*s "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-        "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu] "
+        "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu "
+        "lateral_limited=%zu lateral_reduction_max=%.2f] "
         "racing_line[iterations=%zu evals=%zu collision_rejections=%zu "
         "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
         "length_final=%.2f max_offset=%.2f curvature_max=%.4f] "
@@ -793,6 +806,8 @@ private:
         last_trajectory_planner_stats_.corridor.min_clearance_m,
         last_trajectory_planner_stats_.corridor.mean_clearance_m,
         last_trajectory_planner_stats_.corridor.route_prohibited_samples,
+        last_trajectory_planner_stats_.corridor.lateral_limited_samples,
+        last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m,
         last_trajectory_planner_stats_.racing_line.iterations,
         last_trajectory_planner_stats_.racing_line.candidate_evaluations,
         last_trajectory_planner_stats_.racing_line.collision_rejections,
@@ -2339,6 +2354,13 @@ private:
     flight_blackbox_stream_ << ",\"corridor_width_mean_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.corridor.mean_width_m);
+    flight_blackbox_stream_
+        << ",\"corridor_lateral_limited_samples\":"
+        << last_trajectory_planner_stats_.corridor.lateral_limited_samples;
+    flight_blackbox_stream_ << ",\"corridor_lateral_reduction_max_m\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m);
     flight_blackbox_stream_ << ",\"racing_line_iterations\":"
                             << last_trajectory_planner_stats_.racing_line.iterations;
     flight_blackbox_stream_ << ",\"racing_line_cost_initial\":";
