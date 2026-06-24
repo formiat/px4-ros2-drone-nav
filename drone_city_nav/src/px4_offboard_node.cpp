@@ -155,7 +155,7 @@ struct TrajectoryBuildRequest {
   std::uint64_t local_path_update_id{0U};
   std::uint64_t planner_path_id{0U};
   std::string source_label;
-  std::vector<Point2> path_points;
+  std::vector<Point2> route_points;
   std::optional<OccupancyGrid2D> prohibited_grid;
   TrajectoryPlannerConfig config{};
 };
@@ -168,6 +168,7 @@ struct TrajectoryBuildResult {
   TrajectoryPlannerResult planned;
   bool grid_available{false};
   double duration_ms{0.0};
+  std::size_t route_points{0U};
 };
 
 [[nodiscard]] TrajectoryShapeDiagnostics
@@ -774,6 +775,7 @@ private:
     last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
     last_trajectory_shape_diagnostics_ = TrajectoryShapeDiagnostics{};
     last_final_trajectory_debug_samples_ = 0U;
+    last_trajectory_route_points_ = 0U;
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
   }
@@ -789,12 +791,14 @@ private:
                                   const std::string& source_label,
                                   const bool grid_available,
                                   const double build_duration_ms,
-                                  const std::uint64_t build_job_id) {
+                                  const std::uint64_t build_job_id,
+                                  const std::size_t route_points) {
     trajectory_ = std::move(planned.compact_segments);
     corridor_debug_samples_ = std::move(planned.corridor_samples);
     final_trajectory_samples_ = std::move(planned.samples);
     trajectory_speed_profile_ = std::move(planned.speed_profile);
     trajectory_valid_ = planned.valid;
+    last_trajectory_route_points_ = route_points;
     last_trajectory_planner_stats_ = planned.stats;
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
     last_trajectory_shape_diagnostics_ =
@@ -810,7 +814,8 @@ private:
         get_logger(),
         "Final trajectory rebuilt: source=%s build_job=%" PRIu64
         " build_duration_ms=%.1f local_path_update_id=%" PRIu64
-        " planner_path_id=%" PRIu64 " path_points=%zu valid=%s grid_available=%s "
+        " planner_path_id=%" PRIu64
+        " path_points=%zu route_points=%zu valid=%s grid_available=%s "
         "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
         "debug_samples=%zu status=%.*s "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
@@ -830,7 +835,7 @@ private:
         "max_offset_second_delta=%.2f offset_second_index=%zu "
         "offset_second_point=(%.2f, %.2f)] samples_csv='%s'",
         source_label.c_str(), build_job_id, build_duration_ms, received_path_update_id_,
-        latest_planner_path_id_, path_points_.size(),
+        latest_planner_path_id_, path_points_.size(), last_trajectory_route_points_,
         trajectory_valid_ ? "true" : "false", grid_available ? "true" : "false",
         last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
         last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
@@ -889,9 +894,59 @@ private:
         samples_csv_path.c_str());
   }
 
+  [[nodiscard]] std::vector<Point2> activeTrajectoryRoutePoints() {
+    std::vector<Point2> route_points;
+    if (path_points_.size() < 2U) {
+      return route_points;
+    }
+
+    const bool pose_fresh = localPositionFresh();
+    const std::size_t start_index = std::min(
+        [&]() {
+          if (pose_fresh) {
+            const std::size_t next_index = drone_city_nav::advanceWaypointIndex(
+                path_points_, current_position_, waypoint_index_, pathFollowerConfig());
+            waypoint_index_ = next_index;
+            route_points.push_back(current_position_);
+            return next_index;
+          }
+          route_points.push_back(path_points_.front());
+          return std::size_t{1U};
+        }(),
+        path_points_.size() - 1U);
+    constexpr double kDuplicateRoutePointDistanceM = 0.05;
+    for (std::size_t i = start_index; i < path_points_.size(); ++i) {
+      if (route_points.empty() || distance(route_points.back(), path_points_[i]) >
+                                      kDuplicateRoutePointDistanceM) {
+        route_points.push_back(path_points_[i]);
+      }
+    }
+
+    if (route_points.size() < 2U) {
+      const Point2 goal = path_points_.back();
+      if (route_points.empty() ||
+          distance(route_points.back(), goal) > kDuplicateRoutePointDistanceM) {
+        route_points.push_back(goal);
+      }
+    }
+
+    return route_points;
+  }
+
   void rebuildFinalTrajectory(const char* source_label) {
     if (path_points_.size() < 2U) {
       clearFinalTrajectory();
+      return;
+    }
+
+    std::vector<Point2> route_points = activeTrajectoryRoutePoints();
+    if (route_points.size() < 2U) {
+      clearFinalTrajectory();
+      RCLCPP_WARN(get_logger(),
+                  "Cannot rebuild final trajectory from fewer than two active route "
+                  "points: source=%s path_points=%zu route_points=%zu waypoint=%zu/%zu",
+                  source_label, path_points_.size(), route_points.size(),
+                  waypoint_index_ + 1U, path_points_.size());
       return;
     }
 
@@ -900,7 +955,7 @@ private:
     const auto started_at = std::chrono::steady_clock::now();
     TrajectoryPlannerResult planned = planBaselineTrajectory(
         TrajectoryPlannerInput{
-            std::span<const Point2>{path_points_.data(), path_points_.size()},
+            std::span<const Point2>{route_points.data(), route_points.size()},
             prohibited_grid.has_value() ? &*prohibited_grid : nullptr},
         config);
     const double duration_ms =
@@ -910,21 +965,24 @@ private:
         1000.0;
     const std::string baseline_label = std::string{source_label} + "_baseline";
     applyFinalTrajectoryResult(std::move(planned), baseline_label,
-                               prohibited_grid.has_value(), duration_ms, 0U);
+                               prohibited_grid.has_value(), duration_ms, 0U,
+                               route_points.size());
     if (trajectory_valid_ && prohibited_grid.has_value()) {
-      enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config);
+      enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config,
+                                   route_points);
     }
   }
 
   void enqueueRacingTrajectoryBuild(const char* source_label,
                                     const OccupancyGrid2D& prohibited_grid,
-                                    const TrajectoryPlannerConfig& config) {
+                                    const TrajectoryPlannerConfig& config,
+                                    const std::vector<Point2>& route_points) {
     TrajectoryBuildRequest request{};
     request.job_id = ++latest_trajectory_build_job_id_;
     request.local_path_update_id = received_path_update_id_;
     request.planner_path_id = latest_planner_path_id_;
     request.source_label = std::string{source_label} + "_racing_async";
-    request.path_points = path_points_;
+    request.route_points = route_points;
     request.prohibited_grid = prohibited_grid;
     request.config = config;
 
@@ -940,10 +998,10 @@ private:
     RCLCPP_INFO(get_logger(),
                 "Queued async racing trajectory build: job=%" PRIu64
                 " local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
-                " path_points=%zu optimizer_sample_step=%.2fm worker_busy=%s "
-                "replaced_pending=%s",
+                " path_points=%zu route_points=%zu optimizer_sample_step=%.2fm "
+                "worker_busy=%s replaced_pending=%s",
                 latest_trajectory_build_job_id_, received_path_update_id_,
-                latest_planner_path_id_, path_points_.size(),
+                latest_planner_path_id_, path_points_.size(), route_points.size(),
                 config.racing_line.optimizer_sample_step_m,
                 worker_busy ? "true" : "false",
                 replaced_pending_request ? "true" : "false");
@@ -993,8 +1051,8 @@ private:
 
       const auto started_at = std::chrono::steady_clock::now();
       TrajectoryPlannerResult planned = planRacingTrajectory(
-          TrajectoryPlannerInput{std::span<const Point2>{request.path_points.data(),
-                                                         request.path_points.size()},
+          TrajectoryPlannerInput{std::span<const Point2>{request.route_points.data(),
+                                                         request.route_points.size()},
                                  request.prohibited_grid.has_value()
                                      ? &*request.prohibited_grid
                                      : nullptr},
@@ -1013,6 +1071,7 @@ private:
       result.planned = std::move(planned);
       result.grid_available = request.prohibited_grid.has_value();
       result.duration_ms = duration_ms;
+      result.route_points = request.route_points.size();
 
       {
         std::lock_guard lock{trajectory_worker_mutex_};
@@ -1060,7 +1119,7 @@ private:
 
     applyFinalTrajectoryResult(std::move(result->planned), result->source_label,
                                result->grid_available, result->duration_ms,
-                               result->job_id);
+                               result->job_id, result->route_points);
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
@@ -2850,6 +2909,7 @@ private:
   std::vector<CorridorSample> corridor_debug_samples_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
   std::size_t last_final_trajectory_debug_samples_{0U};
+  std::size_t last_trajectory_route_points_{0U};
   std::uint64_t latest_trajectory_build_job_id_{0U};
   std::mutex trajectory_worker_mutex_;
   std::condition_variable trajectory_worker_cv_;
