@@ -102,14 +102,21 @@ Simulation should not be run automatically unless the user explicitly asks for i
   - `publishOffboardDebugMarkers(...)`
   - `writeFinalTrajectorySamplesCsvFile(...)`
   - blackbox writer
+- `drone_city_nav/CMakeLists.txt`
+  - `drone_city_nav_core` production source list
+  - `px4_offboard_node` executable source list for ROS-message marker helpers
+  - `ament_add_gtest(...)` blocks for every new test file
 - `drone_city_nav/config/urban_mvp.yaml`
   - racing/time/debug parameters
 - Tests:
   - `drone_city_nav/tests/racing_line_test.cpp`
   - `drone_city_nav/tests/offboard_velocity_follower_test.cpp`
   - `drone_city_nav/tests/trajectory_planner_test.cpp`
-  - `drone_city_nav/tests/planner_node_config_test.cpp` or existing config test that covers offboard parameters
-  - marker/debug tests if marker helpers are extracted from `px4_offboard_node.cpp`
+  - `drone_city_nav/tests/planner_node_config_test.cpp`
+  - `drone_city_nav/tests/px4_offboard_config_test.cpp`
+  - `drone_city_nav/tests/trajectory_diagnostics_test.cpp`
+  - `drone_city_nav/tests/trajectory_debug_markers_test.cpp`
+  - `drone_city_nav/tests/trajectory_diagnostics_io_test.cpp`
 
 # Implementation steps
 
@@ -156,7 +163,8 @@ Simulation should not be run automatically unless the user explicitly asks for i
    - `drone_city_nav/include/drone_city_nav/racing_line.hpp`
    - `drone_city_nav/src/px4_offboard_node.cpp`
    - `drone_city_nav/config/urban_mvp.yaml`
-   - config tests
+   - `drone_city_nav/tests/px4_offboard_config_test.cpp`
+   - `drone_city_nav/CMakeLists.txt`
 
    Code anchors:
    - `RacingLineConfig`
@@ -166,14 +174,27 @@ Simulation should not be run automatically unless the user explicitly asks for i
 
    Materialized result:
    - Add `double weight_time{0.0};` to `RacingLineConfig`.
-   - Add stats:
+   - Add final accepted trajectory stats. These are computed after regularization, so they describe the trajectory actually handed to the follower:
      - `estimated_time_s`
-     - `centerline_estimated_time_s`
-     - `time_gain_s`
      - `min_speed_limit_mps`
      - `max_speed_limit_mps`
      - `curvature_limited_samples`
+   - Add centerline baseline stats. These describe the unoptimized corridor centerline built from the same corridor samples:
+     - `centerline_estimated_time_s`
+     - `centerline_min_speed_limit_mps`
+     - `centerline_max_speed_limit_mps`
+     - `centerline_curvature_limited_samples`
+   - Add best optimizer candidate stats before the regularization pass:
+     - `best_candidate_estimated_time_s`
+     - `best_candidate_score`
+     - `best_candidate_min_speed_limit_mps`
+     - `best_candidate_max_speed_limit_mps`
+     - `best_candidate_curvature_limited_samples`
+   - Add derived comparison stats:
+     - `time_gain_s = centerline_estimated_time_s - estimated_time_s`
+     - `regularization_time_delta_s = estimated_time_s - best_candidate_estimated_time_s`
    - Add parameter `racing_line_weight_time` with a conservative default. Recommended initial value: `0.05` or `0.1`, then tune from logs. If implementation wants zero-risk rollout, default can be `0.0`, but the planned stage goal is to enable a small nonzero value in `urban_mvp.yaml`.
+   - Add `ament_add_gtest(px4_offboard_config_test tests/px4_offboard_config_test.cpp)` in `drone_city_nav/CMakeLists.txt`, with `rclcpp` dependency if the test instantiates parameter loading.
 
 3. Pass speed-profile config into the racing optimizer.
 
@@ -251,10 +272,11 @@ Simulation should not be run automatically unless the user explicitly asks for i
 6. Move or expose trajectory shape diagnostics so curvature sanity is testable outside `px4_offboard_node`.
 
    Files:
-   - `drone_city_nav/include/drone_city_nav/trajectory.hpp` or a new small header `trajectory_diagnostics.hpp`
-   - `drone_city_nav/src/trajectory.cpp` or new `trajectory_diagnostics.cpp`
+   - `drone_city_nav/include/drone_city_nav/trajectory_diagnostics.hpp`
+   - `drone_city_nav/src/trajectory_diagnostics.cpp`
    - `drone_city_nav/src/px4_offboard_node.cpp`
-   - `drone_city_nav/tests/trajectory_test.cpp`
+   - `drone_city_nav/tests/trajectory_diagnostics_test.cpp`
+   - `drone_city_nav/CMakeLists.txt`
 
    Code anchors:
    - current private `TrajectoryShapeDiagnostics` near `px4_offboard_node.cpp:137`
@@ -274,6 +296,8 @@ Simulation should not be run automatically unless the user explicitly asks for i
      - `max_offset_delta_m`
      - segment length stats
    - Add unit tests for a smooth arc and for an artificial curvature spike.
+   - Add `src/trajectory_diagnostics.cpp` to `drone_city_nav_core` in `drone_city_nav/CMakeLists.txt`.
+   - Add `ament_add_gtest(trajectory_diagnostics_test tests/trajectory_diagnostics_test.cpp)` linked to `drone_city_nav_core`.
 
 7. Add trajectory-sample regularization for curvature spikes.
 
@@ -304,10 +328,10 @@ Simulation should not be run automatically unless the user explicitly asks for i
 
    Files:
    - `drone_city_nav/src/px4_offboard_node.cpp`
-   - optionally new helper files:
-     - `drone_city_nav/include/drone_city_nav/trajectory_debug_markers.hpp`
-     - `drone_city_nav/src/trajectory_debug_markers.cpp`
-     - `drone_city_nav/tests/trajectory_debug_markers_test.cpp`
+   - `drone_city_nav/include/drone_city_nav/trajectory_debug_markers.hpp`
+   - `drone_city_nav/src/trajectory_debug_markers.cpp`
+   - `drone_city_nav/tests/trajectory_debug_markers_test.cpp`
+   - `drone_city_nav/CMakeLists.txt`
    - `drone_city_nav/config/urban_mvp.yaml`
 
    Code anchors:
@@ -324,28 +348,54 @@ Simulation should not be run automatically unless the user explicitly asks for i
    - Use `visualization_msgs::msg::Marker::LINE_LIST` or segmented `LINE_STRIP` markers with per-point colors.
    - Publish on existing `offboard_debug_marker_topic` unless a separate topic is cleaner.
    - Use stable namespaces and DELETE markers when trajectory is invalid/empty so RViz does not show stale debug.
+   - Add `src/trajectory_debug_markers.cpp` to the `px4_offboard_node` executable source list, following the existing `lidar_debug_node src/lidar_radar_markers.cpp` pattern rather than putting ROS-message marker code into `drone_city_nav_core`.
+   - Add `ament_add_gtest(trajectory_debug_markers_test tests/trajectory_debug_markers_test.cpp src/trajectory_debug_markers.cpp)` in `drone_city_nav/CMakeLists.txt`, link `drone_city_nav_core`, and add `ament_target_dependencies(... visualization_msgs std_msgs geometry_msgs)` as required by the helper.
    - Add a pure helper test for color mapping:
      - low speed maps to slow color;
      - high speed maps to fast color;
      - high curvature maps to high-curvature color;
      - markers use `map` frame and `kRvizGroundZ`.
+     - invalid/empty trajectory emits DELETE markers for `final_trajectory_speed_colormap` and `final_trajectory_curvature_colormap`.
 
 9. Extend CSV final trajectory samples with time/speed diagnostics.
 
    Files:
+   - `drone_city_nav/include/drone_city_nav/trajectory_diagnostics_io.hpp`
+   - `drone_city_nav/src/trajectory_diagnostics_io.cpp`
    - `drone_city_nav/src/px4_offboard_node.cpp`
-   - CSV parsing/expectation tests if present
+   - `drone_city_nav/tests/trajectory_diagnostics_io_test.cpp`
+   - `drone_city_nav/CMakeLists.txt`
 
    Code anchors:
    - `writeFinalTrajectorySamplesCsvFile(...)`
 
    Materialized result:
+   - Extract pure formatting helpers so CSV/summary contracts are unit-testable without launching ROS:
+
+     ```cpp
+     [[nodiscard]] std::string finalTrajectorySamplesCsvHeader();
+     [[nodiscard]] std::string finalTrajectorySamplesCsvRow(
+         const TrajectoryPointSample& sample,
+         const TrajectorySpeedSample& speed_sample,
+         double time_from_start_s,
+         double time_to_finish_s);
+     [[nodiscard]] std::string finalTrajectoryDiagnosticsSummaryJson(
+         const TrajectoryPlannerStats& stats,
+         const TrajectoryShapeDiagnostics& shape);
+     ```
+
    - Add per-sample columns:
      - `profiled_time_from_start_s`
      - `profiled_time_to_finish_s`
      - `speed_limit_source`
      - current `curvature_1pm`, `speed_geometric_limit_mps`, `speed_profiled_limit_mps` remain.
-   - Add aggregate metadata either as a companion JSON/CSV summary or repeated first columns only if current CSV convention supports it. Preferred: add a small summary JSON next to CSV to avoid breaking row parsing.
+   - Add aggregate metadata as a companion summary JSON next to the CSV, not repeated in each row. This avoids breaking row semantics and gives headless runs a stable file for aggregate diagnostics.
+   - Add `src/trajectory_diagnostics_io.cpp` to `drone_city_nav_core` in `drone_city_nav/CMakeLists.txt`.
+   - Add `ament_add_gtest(trajectory_diagnostics_io_test tests/trajectory_diagnostics_io_test.cpp)` linked to `drone_city_nav_core`.
+   - Add deterministic tests:
+     - CSV header contains all required old and new columns;
+     - CSV row has finite numeric fields for normal samples;
+     - summary JSON parses and contains `estimated_time_s`, `centerline_estimated_time_s`, `time_gain_s`, min/max speed limits and curvature-limited counts.
 
 10. Extend blackbox and log summary with time-aware stats.
 
@@ -353,6 +403,10 @@ Simulation should not be run automatically unless the user explicitly asks for i
     - `drone_city_nav/src/px4_offboard_node.cpp`
     - `drone_city_nav/src/trajectory_planner.cpp`
     - `drone_city_nav/include/drone_city_nav/trajectory_planner.hpp`
+    - `drone_city_nav/include/drone_city_nav/trajectory_diagnostics_io.hpp`
+    - `drone_city_nav/src/trajectory_diagnostics_io.cpp`
+    - `drone_city_nav/tests/trajectory_diagnostics_io_test.cpp`
+    - `drone_city_nav/CMakeLists.txt`
 
     Code anchors:
     - trajectory log around `px4_offboard_node.cpp:835`
@@ -360,23 +414,36 @@ Simulation should not be run automatically unless the user explicitly asks for i
     - `computeSpeedProfileStats(...)`
 
     Materialized result:
-    - Log and blackbox fields:
-      - `racing_estimated_time_s`
+    - Log and blackbox fields for final accepted trajectory:
+      - `racing_final_estimated_time_s`
+      - `racing_final_min_speed_limit_mps`
+      - `racing_final_max_speed_limit_mps`
+      - `racing_final_curvature_limited_samples`
+    - Log and blackbox fields for centerline baseline:
       - `racing_centerline_estimated_time_s`
+      - `racing_centerline_min_speed_limit_mps`
+      - `racing_centerline_max_speed_limit_mps`
+      - `racing_centerline_curvature_limited_samples`
+    - Log and blackbox fields for best optimizer candidate before regularization:
+      - `racing_best_candidate_estimated_time_s`
+      - `racing_best_candidate_score`
+      - `racing_best_candidate_min_speed_limit_mps`
+      - `racing_best_candidate_max_speed_limit_mps`
+      - `racing_best_candidate_curvature_limited_samples`
+    - Log and blackbox derived fields:
       - `racing_time_gain_s`
-      - `racing_min_speed_limit_mps`
-      - `racing_max_speed_limit_mps`
-      - `racing_curvature_limited_samples`
+      - `racing_regularization_time_delta_s`
       - regularization fields from step 7
     - Keep existing `speed_profile_min_mps`, `speed_profile_mean_mps`, `speed_profile_max_mps`, `speed_profile_limited_by_curvature_count`.
-    - Add tests or at least JSONL parse tests if blackbox writer has existing coverage.
+    - Add deterministic JSON field tests through `trajectory_diagnostics_io_test`: generate a representative summary/blackbox fragment, parse it with the existing test JSON parser or a lightweight local parser, and assert all required keys exist and contain finite numbers.
 
 11. Add tuning parameters and defaults.
 
     Files:
     - `drone_city_nav/config/urban_mvp.yaml`
     - `drone_city_nav/src/px4_offboard_node.cpp`
-    - config tests
+    - `drone_city_nav/tests/px4_offboard_config_test.cpp`
+    - `drone_city_nav/CMakeLists.txt`
 
     Code anchors:
     - parameter declaration around existing racing weights
@@ -398,8 +465,10 @@ Simulation should not be run automatically unless the user explicitly asks for i
     - `drone_city_nav/tests/racing_line_test.cpp`
     - `drone_city_nav/tests/offboard_velocity_follower_test.cpp`
     - `drone_city_nav/tests/trajectory_planner_test.cpp`
-    - `drone_city_nav/tests/trajectory_test.cpp`
-    - marker/debug test file if helpers are extracted
+    - `drone_city_nav/tests/trajectory_diagnostics_test.cpp`
+    - `drone_city_nav/tests/trajectory_debug_markers_test.cpp`
+    - `drone_city_nav/tests/trajectory_diagnostics_io_test.cpp`
+    - `drone_city_nav/CMakeLists.txt`
 
     Materialized result:
     - Happy path:
@@ -414,6 +483,11 @@ Simulation should not be run automatically unless the user explicitly asks for i
       - 90-degree arc has lower speed limit and higher estimated time;
       - very short trajectory remains valid and finite;
       - curvature spike is detected and regularization reduces it or logs why it could not.
+   - CMake wiring:
+     - add every new test with `ament_add_gtest(...)`;
+     - link core-only tests to `drone_city_nav_core`;
+     - for ROS marker tests, include `src/trajectory_debug_markers.cpp` in the test target and add required `ament_target_dependencies`;
+     - keep new production helpers either in `drone_city_nav_core` when they are ROS-message-free, or in the specific executable/test targets when they depend on ROS visualization messages.
 
 # Verification plan
 
@@ -475,13 +549,15 @@ For a later user-approved headless run, expected artifacts to inspect:
      - `planRacingTrajectory(...)` returns valid trajectory, speed profile, racing time stats;
      - centerline time and final time are finite;
      - `time_gain_s` has expected sign in a controlled corridor.
-   - `trajectory_test.cpp` or new diagnostics test:
+   - `trajectory_diagnostics_test.cpp`:
      - curvature spike diagnostics identify an artificial spike;
      - regularization reduces spike or reports a blocked reason.
-   - Marker helper tests:
+   - `trajectory_debug_markers_test.cpp`:
      - speed/curvature color markers are deterministic;
      - stale markers are deleted when trajectory is invalid.
-   - CSV/blackbox schema tests if existing writer code is extractable enough for direct tests.
+   - `trajectory_diagnostics_io_test.cpp`:
+     - CSV header and row schema are deterministic;
+     - summary JSON/blackbox fragment contains all required keys and finite numeric values.
 
 3. Тяжёлый.
 
@@ -489,7 +565,7 @@ For a later user-approved headless run, expected artifacts to inspect:
 
    - With static map headless run:
      - mission completes;
-     - `racing_estimated_time_s` is finite;
+     - `racing_final_estimated_time_s` is finite;
      - final trajectory speed map shows slow zones at high curvature;
      - actual mission time does not regress badly versus previous baseline.
    - No-static headless run:
