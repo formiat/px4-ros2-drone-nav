@@ -366,7 +366,14 @@ TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlann
   EXPECT_NEAR(plan.speed_after_lookahead_mps, 4.0, 1.0e-9);
   EXPECT_EQ(plan.lookahead_limiting_constraint_type, SpeedConstraintType::kArc);
   EXPECT_NEAR(plan.lookahead_limiting_constraint_distance_m, 8.0, 1.0e-9);
+  EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kArc);
+  EXPECT_NEAR(plan.limiting_curve_radius_m, 4.0, 1.0e-9);
   EXPECT_NEAR(plan.cross_track_limited_speed_mps, 4.0, 1.0e-9);
+  EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
+  EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.0, 1.0e-9);
+  EXPECT_FALSE(std::isfinite(plan.trajectory_arc_radius_m));
+  EXPECT_NEAR(plan.curvature_feedforward_accel_mps2, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.acceleration_xy_mps2, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, CrossTrackCorrectionRateLimitSmoothsCorrection) {
@@ -421,35 +428,13 @@ TEST(OffboardVelocityFollower,
             moving_away_from_path.cross_track_correction_mps);
 }
 
-TEST(OffboardVelocityFollower, CurvatureSpeedSampleAddsAccelerationFeedforward) {
-  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
-  TrajectorySpeedProfile profile{};
-  profile.valid = true;
-  profile.samples = {
-      TrajectorySpeedSample{.s_m = 0.0,
-                            .geometric_limit_mps = 12.0,
-                            .profiled_limit_mps = 12.0,
-                            .reason = SpeedConstraintType::kNone,
-                            .segment_index = 0U,
-                            .curvature_1pm = 0.0},
-      TrajectorySpeedSample{.s_m = 10.0,
-                            .geometric_limit_mps = 12.0,
-                            .profiled_limit_mps = 12.0,
-                            .reason = SpeedConstraintType::kArc,
-                            .segment_index = 0U,
-                            .curvature_1pm = 0.05,
-                            .radius_m = 20.0,
-                            .constraint_s_m = 10.0,
-                            .constraint_limit_mps = 12.0},
-      TrajectorySpeedSample{.s_m = 100.0,
-                            .geometric_limit_mps = 0.0,
-                            .profiled_limit_mps = 0.0,
-                            .reason = SpeedConstraintType::kGoal,
-                            .segment_index = 0U,
-                            .curvature_1pm = 0.0,
-                            .constraint_s_m = 100.0,
-                            .constraint_limit_mps = 0.0},
-  };
+TEST(OffboardVelocityFollower, ArcProjectionAddsAccelerationFeedforward) {
+  const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
+  const double current_s_m = trajectory[1].s_start_m + 1.0;
+  const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
+  const Point2 current_tangent = trajectoryTangentAtS(trajectory, current_s_m);
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
   config.max_feedforward_accel_mps2 = 6.0;
   VelocityFollowerState state{};
@@ -457,39 +442,25 @@ TEST(OffboardVelocityFollower, CurvatureSpeedSampleAddsAccelerationFeedforward) 
   state.previous_velocity_setpoint_valid = true;
 
   const VelocitySetpointPlan plan =
-      planVelocitySetpoint(trajectory, profile, Point2{10.0, 0.0}, Point2{12.0, 0.0},
+      planVelocitySetpoint(trajectory, profile, current_position,
+                           Point2{current_tangent.x * 12.0, current_tangent.y * 12.0},
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.05, 1.0e-9);
+  EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
+  EXPECT_NEAR(plan.trajectory_curvature_1pm, -0.05, 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_arc_radius_m, 20.0, 1.0e-9);
   EXPECT_GT(plan.acceleration_xy_mps2, 0.0);
-  EXPECT_NEAR(plan.acceleration_xy.x, 0.0, 1.0e-9);
-  EXPECT_GT(plan.acceleration_xy.y, 0.0);
+  EXPECT_GT(std::abs(plan.acceleration_xy.x) + std::abs(plan.acceleration_xy.y), 0.0);
 }
 
 TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) {
-  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
-  TrajectorySpeedProfile profile{};
-  profile.valid = true;
-  profile.samples = {
-      TrajectorySpeedSample{.s_m = 0.0,
-                            .geometric_limit_mps = 12.0,
-                            .profiled_limit_mps = 12.0,
-                            .reason = SpeedConstraintType::kArc,
-                            .segment_index = 0U,
-                            .curvature_1pm = 0.05,
-                            .radius_m = 20.0,
-                            .constraint_s_m = 0.0,
-                            .constraint_limit_mps = 12.0},
-      TrajectorySpeedSample{.s_m = 100.0,
-                            .geometric_limit_mps = 0.0,
-                            .profiled_limit_mps = 0.0,
-                            .reason = SpeedConstraintType::kGoal,
-                            .segment_index = 0U,
-                            .curvature_1pm = 0.0,
-                            .constraint_s_m = 100.0,
-                            .constraint_limit_mps = 0.0},
-  };
+  const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
+  const double current_s_m = trajectory[1].s_start_m + 1.0;
+  const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
+  const Point2 current_tangent = trajectoryTangentAtS(trajectory, current_s_m);
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
   config.max_feedforward_accel_mps2 = 6.0;
   config.max_feedforward_jerk_mps3 = 1.0;
@@ -500,7 +471,8 @@ TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) 
   state.previous_feedforward_acceleration_setpoint_valid = true;
 
   const VelocitySetpointPlan plan =
-      planVelocitySetpoint(trajectory, profile, Point2{0.0, 0.0}, Point2{12.0, 0.0},
+      planVelocitySetpoint(trajectory, profile, current_position,
+                           Point2{current_tangent.x * 12.0, current_tangent.y * 12.0},
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);

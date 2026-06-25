@@ -86,22 +86,6 @@ previousCommandSpeedMps(const VelocityFollowerState& previous_state,
   return current_speed_mps;
 }
 
-[[nodiscard]] std::size_t
-segmentIndexForS(const std::span<const TrajectorySegment> trajectory,
-                 const double s_m) {
-  if (trajectory.empty()) {
-    return 0U;
-  }
-  for (std::size_t i = 0U; i < trajectory.size(); ++i) {
-    const double segment_end_s =
-        trajectory[i].s_start_m + std::max(0.0, trajectory[i].length_m);
-    if (s_m <= segment_end_s) {
-      return i;
-    }
-  }
-  return trajectory.size() - 1U;
-}
-
 [[nodiscard]] VectorRateLimitResult
 limitVectorRate(const Point2 desired, const Point2 previous, const bool previous_valid,
                 const double dt_s, const double max_rate) {
@@ -325,11 +309,11 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.trajectory_s_m = projection->s_m;
   plan.trajectory_segment_index = projection->segment_index;
   plan.trajectory_segment_kind =
-      trajectory[segmentIndexForS(trajectory, projection->s_m)].kind;
-  plan.trajectory_curvature_1pm = scalar_speed.limiting_curvature_1pm;
+      trajectory[std::min(projection->segment_index, trajectory.size() - 1U)].kind;
+  plan.trajectory_curvature_1pm = projection->curvature_1pm;
   plan.trajectory_arc_radius_m =
-      std::abs(scalar_speed.limiting_curvature_1pm) > kTinyDistanceM
-          ? 1.0 / std::abs(scalar_speed.limiting_curvature_1pm)
+      std::abs(plan.trajectory_curvature_1pm) > kTinyDistanceM
+          ? 1.0 / std::abs(plan.trajectory_curvature_1pm)
           : std::numeric_limits<double>::quiet_NaN();
   plan.trajectory_projection = *projection;
 
