@@ -105,6 +105,9 @@ planner_node:
     max_lateral_accel_mps2: 5.0
     speed_profile_decel_mps2: 2.0
     speed_profile_sample_step_m: 0.5
+    speed_profile_lookahead_time_s: 1.0
+    speed_profile_lookahead_min_m: 5.0
+    speed_profile_lookahead_max_m: 35.0
     corridor_max_radius_m: 40.0
     corridor_sample_step_m: 1.0
     corridor_ray_step_m: 0.0
@@ -157,6 +160,9 @@ px4_offboard_node:
     max_lateral_accel_mps2: 5.0
     speed_profile_decel_mps2: 2.0
     speed_profile_sample_step_m: 0.5
+    speed_profile_lookahead_time_s: 1.0
+    speed_profile_lookahead_min_m: 5.0
+    speed_profile_lookahead_max_m: 35.0
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.8

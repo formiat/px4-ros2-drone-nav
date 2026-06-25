@@ -200,6 +200,15 @@ public:
         declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
     velocity_follower_config_.speed_profile_sample_step_m = std::clamp(
         declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
+    velocity_follower_config_.speed_profile_lookahead_time_s = std::clamp(
+        declare_parameter<double>("speed_profile_lookahead_time_s", 1.0), 0.0, 30.0);
+    velocity_follower_config_.speed_profile_lookahead_min_m = std::clamp(
+        declare_parameter<double>("speed_profile_lookahead_min_m", 5.0), 0.0, 500.0);
+    const double requested_speed_profile_lookahead_max_m = std::clamp(
+        declare_parameter<double>("speed_profile_lookahead_max_m", 35.0), 0.0, 5000.0);
+    velocity_follower_config_.speed_profile_lookahead_max_m =
+        std::max(requested_speed_profile_lookahead_max_m,
+                 velocity_follower_config_.speed_profile_lookahead_min_m);
     velocity_follower_config_.cross_track_gain =
         std::clamp(declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
     velocity_follower_config_.cross_track_derivative_gain = std::clamp(
@@ -358,6 +367,7 @@ public:
         "min_turn_speed=%.2fmps "
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
         "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
+        "speed_profile_lookahead[time=%.2fs min=%.2fm max=%.2fm] "
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg "
         "max_cross_track_correction_rate=%.2fmps2 "
@@ -382,6 +392,9 @@ public:
         velocity_follower_config_.max_lateral_accel_mps2,
         velocity_follower_config_.speed_profile_decel_mps2,
         velocity_follower_config_.speed_profile_sample_step_m,
+        velocity_follower_config_.speed_profile_lookahead_time_s,
+        velocity_follower_config_.speed_profile_lookahead_min_m,
+        velocity_follower_config_.speed_profile_lookahead_max_m,
         velocity_follower_config_.final_hold_max_speed_mps,
         velocity_follower_config_.cross_track_gain,
         radiansToDegrees(
@@ -1838,6 +1851,9 @@ private:
         "raw_accel_feedforward_norm=%.2f accel_feedforward_jerk=%.2f "
         "curvature_feedforward_accel=%.2f "
         "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
+        "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
+        "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
+        "distance=%.2f] "
         "cross_track_speed_factor=%.2f cross_track_limited_speed=%.2f "
         "final_command_speed=%.2f accel_limited_speed=%.2f "
         "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
@@ -1886,6 +1902,12 @@ private:
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.profile_speed_limit_mps,
+        last_velocity_plan_.speed_lookahead_distance_m,
+        last_velocity_plan_.lookahead_speed_limit_mps,
+        last_velocity_plan_.speed_after_lookahead_mps,
+        speedConstraintTypeName(last_velocity_plan_.lookahead_limiting_constraint_type),
+        last_velocity_plan_.lookahead_limiting_constraint_index,
+        last_velocity_plan_.lookahead_limiting_constraint_distance_m,
         last_velocity_plan_.cross_track_speed_factor,
         last_velocity_plan_.cross_track_limited_speed_mps,
         last_velocity_plan_.final_command_speed_mps,
@@ -2006,6 +2028,9 @@ private:
         "accel_feedforward_delta=%.2f accel_feedforward_jerk=%.2f "
         "curvature_feedforward_accel=%.2f "
         "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
+        "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
+        "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
+        "distance=%.2f] "
         "cross_track_speed_factor=%.2f cross_track_limited_speed=%.2f "
         "final_command_speed=%.2f accel_limited_speed=%.2f "
         "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
@@ -2046,6 +2071,12 @@ private:
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.profile_speed_limit_mps,
+        last_velocity_plan_.speed_lookahead_distance_m,
+        last_velocity_plan_.lookahead_speed_limit_mps,
+        last_velocity_plan_.speed_after_lookahead_mps,
+        speedConstraintTypeName(last_velocity_plan_.lookahead_limiting_constraint_type),
+        last_velocity_plan_.lookahead_limiting_constraint_index,
+        last_velocity_plan_.lookahead_limiting_constraint_distance_m,
         last_velocity_plan_.cross_track_speed_factor,
         last_velocity_plan_.cross_track_limited_speed_mps,
         last_velocity_plan_.final_command_speed_mps,
@@ -2247,6 +2278,24 @@ private:
     flight_blackbox_stream_ << ",\"profile_speed_limit_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.profile_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"lookahead_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.speed_lookahead_distance_m);
+    flight_blackbox_stream_ << ",\"lookahead_speed_limit_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.lookahead_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"speed_after_lookahead_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.speed_after_lookahead_mps);
+    flight_blackbox_stream_
+        << ",\"lookahead_limiting_constraint_type\":\""
+        << speedConstraintTypeName(
+               last_velocity_plan_.lookahead_limiting_constraint_type)
+        << "\",\"lookahead_limiting_constraint_index\":"
+        << last_velocity_plan_.lookahead_limiting_constraint_index;
+    flight_blackbox_stream_ << ",\"lookahead_limiting_constraint_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.lookahead_limiting_constraint_distance_m);
     flight_blackbox_stream_ << ",\"cross_track_speed_factor\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.cross_track_speed_factor);
@@ -2368,6 +2417,12 @@ private:
     flight_blackbox_stream_ << ",\"speed_profile_limit_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.profile_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"speed_profile_lookahead_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.speed_lookahead_distance_m);
+    flight_blackbox_stream_ << ",\"speed_profile_lookahead_limit_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.lookahead_speed_limit_mps);
     flight_blackbox_stream_ << ",\"speed_profile_reason\":\""
                             << speedConstraintTypeName(
                                    last_velocity_plan_.limiting_constraint_type)

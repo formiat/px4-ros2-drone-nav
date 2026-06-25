@@ -1,8 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/corridor.hpp"
-#include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/racing_line.hpp"
+#include "drone_city_nav/trajectory_speed_planner.hpp"
 
 #include <cstddef>
 #include <span>

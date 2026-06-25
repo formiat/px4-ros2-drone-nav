@@ -145,6 +145,16 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
   config.trajectory_planner.speed_profile.speed_profile_sample_step_m = std::clamp(
       node.declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
+  config.trajectory_planner.speed_profile.speed_profile_lookahead_time_s = std::clamp(
+      node.declare_parameter<double>("speed_profile_lookahead_time_s", 1.0), 0.0, 30.0);
+  config.trajectory_planner.speed_profile.speed_profile_lookahead_min_m = std::clamp(
+      node.declare_parameter<double>("speed_profile_lookahead_min_m", 5.0), 0.0, 500.0);
+  const double requested_speed_profile_lookahead_max_m =
+      std::clamp(node.declare_parameter<double>("speed_profile_lookahead_max_m", 35.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.speed_profile.speed_profile_lookahead_max_m =
+      std::max(requested_speed_profile_lookahead_max_m,
+               config.trajectory_planner.speed_profile.speed_profile_lookahead_min_m);
   config.trajectory_planner.corridor.max_radius_m = std::clamp(
       node.declare_parameter<double>("corridor_max_radius_m", 40.0), 1.0, 5000.0);
   config.trajectory_planner.corridor.sample_step_m = std::clamp(

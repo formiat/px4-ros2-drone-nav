@@ -317,6 +317,58 @@ TEST(OffboardVelocityFollower, CrossTrackSpeedGuardReducesSpeedWhenFarFromPath) 
   EXPECT_LE(plan.final_command_speed_mps, 4.3);
 }
 
+TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlanner) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  TrajectorySpeedProfile profile{};
+  profile.valid = true;
+  profile.samples = {
+      TrajectorySpeedSample{.s_m = 0.0,
+                            .geometric_limit_mps = 12.0,
+                            .profiled_limit_mps = 12.0,
+                            .reason = SpeedConstraintType::kNone,
+                            .constraint_s_m = 0.0,
+                            .constraint_limit_mps = 12.0},
+      TrajectorySpeedSample{.s_m = 8.0,
+                            .geometric_limit_mps = 4.0,
+                            .profiled_limit_mps = 4.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 0U,
+                            .curvature_1pm = 0.25,
+                            .radius_m = 4.0,
+                            .constraint_s_m = 8.0,
+                            .constraint_limit_mps = 4.0},
+      TrajectorySpeedSample{.s_m = 100.0,
+                            .geometric_limit_mps = 0.0,
+                            .profiled_limit_mps = 0.0,
+                            .reason = SpeedConstraintType::kGoal,
+                            .segment_index = 0U,
+                            .constraint_s_m = 100.0,
+                            .constraint_limit_mps = 0.0},
+  };
+  VelocityFollowerConfig config = testConfig();
+  config.max_decel_mps2 = 100.0;
+  config.speed_profile_lookahead_time_s = 1.0;
+  config.speed_profile_lookahead_min_m = 5.0;
+  config.speed_profile_lookahead_max_m = 35.0;
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{0.0, 0.0}, Point2{12.0, 0.0},
+                           true, 1.0, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTrajectorySpeedProfile);
+  EXPECT_NEAR(plan.profile_speed_limit_mps, 12.0, 1.0e-9);
+  EXPECT_NEAR(plan.speed_lookahead_distance_m, 12.0, 1.0e-9);
+  EXPECT_NEAR(plan.lookahead_speed_limit_mps, 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.speed_after_lookahead_mps, 4.0, 1.0e-9);
+  EXPECT_EQ(plan.lookahead_limiting_constraint_type, SpeedConstraintType::kArc);
+  EXPECT_NEAR(plan.lookahead_limiting_constraint_distance_m, 8.0, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_limited_speed_mps, 4.0, 1.0e-9);
+}
+
 TEST(OffboardVelocityFollower, CrossTrackCorrectionRateLimitSmoothsCorrection) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =

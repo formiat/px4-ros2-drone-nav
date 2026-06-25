@@ -51,7 +51,10 @@ add_library(
   src/trajectory.cpp
   src/trajectory_diagnostics.cpp
   src/trajectory_diagnostics_io.cpp
-  src/trajectory_planner.cpp)
+  src/trajectory_planner.cpp
+  src/trajectory_speed_planner.cpp
+  src/velocity_command_planner.cpp
+  src/velocity_smoother.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
   drone_city_nav_core
@@ -274,6 +277,23 @@ if(BUILD_TESTING)
   target_compile_features(offboard_velocity_follower_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_velocity_follower_test drone_city_nav_core)
   enable_project_warnings(offboard_velocity_follower_test)
+
+  ament_add_gtest(trajectory_speed_planner_test
+                  tests/trajectory_speed_planner_test.cpp)
+  target_compile_features(trajectory_speed_planner_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_speed_planner_test drone_city_nav_core)
+  enable_project_warnings(trajectory_speed_planner_test)
+
+  ament_add_gtest(velocity_command_planner_test
+                  tests/velocity_command_planner_test.cpp)
+  target_compile_features(velocity_command_planner_test PRIVATE cxx_std_20)
+  target_link_libraries(velocity_command_planner_test drone_city_nav_core)
+  enable_project_warnings(velocity_command_planner_test)
+
+  ament_add_gtest(velocity_smoother_test tests/velocity_smoother_test.cpp)
+  target_compile_features(velocity_smoother_test PRIVATE cxx_std_20)
+  target_link_libraries(velocity_smoother_test drone_city_nav_core)
+  enable_project_warnings(velocity_smoother_test)
 
   ament_add_gtest(px4_offboard_config_test tests/px4_offboard_config_test.cpp)
   target_compile_features(px4_offboard_config_test PRIVATE cxx_std_20)

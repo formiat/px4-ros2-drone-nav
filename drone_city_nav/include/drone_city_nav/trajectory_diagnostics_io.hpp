@@ -1,9 +1,9 @@
 #pragma once
 
-#include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
+#include "drone_city_nav/trajectory_speed_planner.hpp"
 
 #include <cstddef>
 #include <string>
