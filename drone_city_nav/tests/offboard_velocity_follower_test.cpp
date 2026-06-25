@@ -205,10 +205,8 @@ TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
   EXPECT_NEAR(curve_sample.geometric_limit_mps, std::sqrt(3.0 / 0.2), 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsCurrentAcceleration) {
+TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsVelocityAnticipation) {
   VelocityFollowerConfig config = testConfig();
-  config.max_feedforward_accel_mps2 = 6.0;
-  config.max_feedforward_jerk_mps3 = 100.0;
   std::vector<TrajectoryPointSample> samples;
   for (std::size_t i = 0U; i < 6U; ++i) {
     TrajectoryPointSample sample{};
@@ -230,8 +228,9 @@ TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsCurrentAcceleratio
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.1, 1.0e-9);
   EXPECT_NEAR(plan.trajectory_arc_radius_m, 10.0, 1.0e-9);
-  EXPECT_GT(plan.curvature_feedforward_accel_mps2, 0.0);
-  EXPECT_GT(plan.acceleration_xy_mps2, 0.0);
+  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
+  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
+  EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
 }
 
 TEST(OffboardVelocityFollower, EstimatesTraversalTimeFromSampledTrajectory) {
@@ -395,8 +394,8 @@ TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlann
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.0, 1.0e-9);
   EXPECT_FALSE(std::isfinite(plan.trajectory_arc_radius_m));
-  EXPECT_NEAR(plan.curvature_feedforward_accel_mps2, 0.0, 1.0e-9);
-  EXPECT_NEAR(plan.acceleration_xy_mps2, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_curvature_anticipation_mps, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, CrossTrackCorrectionRateLimitSmoothsCorrection) {
@@ -451,7 +450,7 @@ TEST(OffboardVelocityFollower,
             moving_away_from_path.cross_track_correction_mps);
 }
 
-TEST(OffboardVelocityFollower, ArcProjectionAddsAccelerationFeedforward) {
+TEST(OffboardVelocityFollower, ArcProjectionAddsVelocityAnticipation) {
   const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
   const double current_s_m = trajectory[1].s_start_m + 1.0;
   const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
@@ -459,7 +458,6 @@ TEST(OffboardVelocityFollower, ArcProjectionAddsAccelerationFeedforward) {
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
-  config.max_feedforward_accel_mps2 = 6.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
@@ -473,11 +471,14 @@ TEST(OffboardVelocityFollower, ArcProjectionAddsAccelerationFeedforward) {
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, -0.05, 1.0e-9);
   EXPECT_NEAR(plan.trajectory_arc_radius_m, 20.0, 1.0e-9);
-  EXPECT_GT(plan.acceleration_xy_mps2, 0.0);
-  EXPECT_GT(std::abs(plan.acceleration_xy.x) + std::abs(plan.acceleration_xy.y), 0.0);
+  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
+  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
+  EXPECT_GT(std::abs(plan.curvature_anticipation_velocity.x) +
+                std::abs(plan.curvature_anticipation_velocity.y),
+            0.0);
 }
 
-TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) {
+TEST(OffboardVelocityFollower, CurvatureAnticipationRateLimitSmoothsVelocityBias) {
   const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
   const double current_s_m = trajectory[1].s_start_m + 1.0;
   const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
@@ -485,13 +486,12 @@ TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) 
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
-  config.max_feedforward_accel_mps2 = 6.0;
-  config.max_feedforward_jerk_mps3 = 1.0;
+  config.max_curvature_velocity_anticipation_rate_mps2 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
-  state.previous_feedforward_acceleration_setpoint = Point2{};
-  state.previous_feedforward_acceleration_setpoint_valid = true;
+  state.previous_curvature_anticipation_velocity = Point2{};
+  state.previous_curvature_anticipation_velocity_valid = true;
 
   const VelocitySetpointPlan plan =
       planVelocitySetpoint(trajectory, profile, current_position,
@@ -499,10 +499,9 @@ TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) 
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.raw_acceleration_xy_mps2, 6.0, 1.0e-9);
-  EXPECT_NEAR(plan.acceleration_xy_mps2, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.acceleration_delta_mps2, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.acceleration_jerk_mps3, 1.0, 1.0e-9);
+  EXPECT_GT(plan.raw_curvature_anticipation_mps, plan.curvature_anticipation_mps);
+  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_anticipation_delta_mps, 0.1, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, VelocityJerkLimitDoesNotBlockLongitudinalBraking) {

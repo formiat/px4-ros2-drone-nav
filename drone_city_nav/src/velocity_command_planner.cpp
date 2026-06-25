@@ -80,17 +80,35 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
   return result;
 }
 
-[[nodiscard]] Point2 boundedCrossTrackCorrection(Point2 correction_velocity,
-                                                 const double base_speed_mps,
-                                                 const VelocityFollowerConfig& config) {
-  const double max_angle =
-      sanitizedPositive(config.max_cross_track_correction_angle_rad, 0.35, 0.0, 1.4);
+[[nodiscard]] Point2 boundedCorrectionByAngle(const Point2 correction_velocity,
+                                              const double base_speed_mps,
+                                              const double max_angle_rad) {
+  const double max_angle = sanitizedPositive(max_angle_rad, 0.35, 0.0, 1.4);
   const double max_correction_mps = std::max(base_speed_mps, 1.0) * std::tan(max_angle);
   const double correction_speed = norm(correction_velocity);
   if (correction_speed <= max_correction_mps || !(correction_speed > kTinyDistanceM)) {
     return correction_velocity;
   }
   return correction_velocity * (max_correction_mps / correction_speed);
+}
+
+[[nodiscard]] Point2
+curvatureAnticipationVelocity(const TrajectoryProjection& projection,
+                              const double scalar_speed_mps,
+                              const VelocityFollowerConfig& config, double& angle_rad) {
+  angle_rad = 0.0;
+  const double speed = std::max(0.0, scalar_speed_mps);
+  const double anticipation_time_s =
+      sanitizedPositive(config.curvature_velocity_anticipation_time_s, 0.5, 0.0, 10.0);
+  const double max_angle = sanitizedPositive(
+      config.max_curvature_velocity_anticipation_angle_rad, 0.7, 0.0, 1.4);
+  angle_rad = std::clamp(projection.curvature_1pm * speed * anticipation_time_s,
+                         -max_angle, max_angle);
+  if (!(std::abs(angle_rad) > kTinyDistanceM)) {
+    return Point2{};
+  }
+  const Point2 left_normal{-projection.tangent.y, projection.tangent.x};
+  return left_normal * (std::max(speed, 1.0) * std::tan(angle_rad));
 }
 
 } // namespace
@@ -124,14 +142,27 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   }
 
   const Point2 bounded_correction =
-      boundedCrossTrackCorrection(requested_correction, query.scalar_speed_mps, config);
+      boundedCorrectionByAngle(requested_correction, query.scalar_speed_mps,
+                               config.max_cross_track_correction_angle_rad);
   const VectorRateLimitResult limited_correction = limitVectorRate(
       bounded_correction, query.previous_cross_track_correction_velocity,
       query.previous_cross_track_correction_velocity_valid, query.dt_s,
       config.max_cross_track_correction_rate_mps2);
   const Point2 correction = limited_correction.value;
-  const Point2 desired_direction = normalized(
-      query.projection.tangent * std::max(query.scalar_speed_mps, 1.0) + correction);
+
+  double curvature_anticipation_angle_rad = 0.0;
+  const Point2 raw_curvature_anticipation =
+      curvatureAnticipationVelocity(query.projection, query.scalar_speed_mps, config,
+                                    curvature_anticipation_angle_rad);
+  const VectorRateLimitResult limited_curvature_anticipation = limitVectorRate(
+      raw_curvature_anticipation, query.previous_curvature_anticipation_velocity,
+      query.previous_curvature_anticipation_velocity_valid, query.dt_s,
+      config.max_curvature_velocity_anticipation_rate_mps2);
+  const Point2 curvature_anticipation = limited_curvature_anticipation.value;
+
+  const Point2 desired_direction =
+      normalized(query.projection.tangent * std::max(query.scalar_speed_mps, 1.0) +
+                 correction + curvature_anticipation);
   if (!(norm(desired_direction) > kTinyDistanceM)) {
     return plan;
   }
@@ -142,11 +173,17 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.desired_velocity_xy = desired_velocity;
   plan.raw_cross_track_correction_velocity = requested_correction;
   plan.cross_track_correction_velocity = correction;
+  plan.raw_curvature_anticipation_velocity = raw_curvature_anticipation;
+  plan.curvature_anticipation_velocity = curvature_anticipation;
   plan.raw_cross_track_correction_mps = norm(requested_correction);
   plan.cross_track_correction_mps = norm(correction);
   plan.cross_track_correction_delta_mps = limited_correction.delta;
   plan.desired_velocity_tangent_mps = dot(desired_velocity, query.projection.tangent);
   plan.desired_velocity_normal_mps = dot(desired_velocity, left_normal);
+  plan.raw_curvature_anticipation_mps = norm(raw_curvature_anticipation);
+  plan.curvature_anticipation_mps = norm(curvature_anticipation);
+  plan.curvature_anticipation_delta_mps = limited_curvature_anticipation.delta;
+  plan.curvature_anticipation_angle_rad = curvature_anticipation_angle_rad;
   return plan;
 }
 

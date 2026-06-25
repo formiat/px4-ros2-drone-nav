@@ -48,8 +48,10 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("desired_velocity=(%.2f, %.2f)", self.offboard_text)
         self.assertIn("velocity_tracking_error=%.2f", self.offboard_text)
         self.assertIn("velocity_setpoint_jerk=%.2f", self.offboard_text)
-        self.assertIn("accel_feedforward=(%.2f, %.2f)", self.offboard_text)
-        self.assertIn("accel_feedforward_jerk=%.2f", self.offboard_text)
+        self.assertIn("curvature_anticipation=(%.2f, %.2f)", self.offboard_text)
+        self.assertIn("curvature_anticipation_angle=%.1fdeg", self.offboard_text)
+        self.assertNotIn("accel_feedforward=(%.2f, %.2f)", self.offboard_text)
+        self.assertNotIn("accel_feedforward_jerk=%.2f", self.offboard_text)
         self.assertIn("speed_limit_reason=%s", self.offboard_text)
         self.assertIn("profile_speed_limit=%.2f", self.offboard_text)
         self.assertIn("lookahead_distance=%.2f", self.offboard_text)
@@ -88,6 +90,13 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("finalTrajectoryReady()", self.offboard_text)
         self.assertNotIn("cruise_velocity_control_enabled_", self.offboard_text)
 
+    def test_velocity_mode_does_not_command_px4_acceleration(self) -> None:
+        self.assertIn("msg.acceleration = false;", self.offboard_text)
+        self.assertIn(
+            "msg.acceleration = std::array<float, 3>{nan, nan, nan};",
+            self.offboard_text,
+        )
+
     def test_final_trajectory_does_not_rebuild_on_grid_churn(self) -> None:
         self.assertNotIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
         self.assertNotIn("trajectoryGridRebuildReason(", self.offboard_text)
@@ -115,13 +124,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("desired_setpoint_x", self.offboard_text)
         self.assertIn("desired_setpoint_y", self.offboard_text)
         self.assertIn("desired_setpoint_speed_mps", self.offboard_text)
-        self.assertIn("setpoint_accel_norm_mps2", self.offboard_text)
-        self.assertIn("raw_setpoint_accel_norm_mps2", self.offboard_text)
+        self.assertIn("curvature_anticipation_mps", self.offboard_text)
+        self.assertIn("raw_curvature_anticipation_mps", self.offboard_text)
         self.assertIn("velocity_setpoint_accel_norm_mps2", self.offboard_text)
         self.assertIn("velocity_setpoint_jerk_mps3", self.offboard_text)
-        self.assertIn("setpoint_accel_delta_mps2", self.offboard_text)
-        self.assertIn("setpoint_accel_jerk_mps3", self.offboard_text)
-        self.assertIn("curvature_feedforward_accel_mps2", self.offboard_text)
+        self.assertIn("curvature_anticipation_delta_mps", self.offboard_text)
+        self.assertIn("curvature_anticipation_angle_rad", self.offboard_text)
+        self.assertNotIn('"setpoint_accel_norm_mps2"', self.offboard_text)
+        self.assertNotIn('"raw_setpoint_accel_norm_mps2"', self.offboard_text)
+        self.assertNotIn('"setpoint_accel_delta_mps2"', self.offboard_text)
+        self.assertNotIn('"setpoint_accel_jerk_mps3"', self.offboard_text)
+        self.assertNotIn('"curvature_feedforward_accel_mps2"', self.offboard_text)
         self.assertIn("raw_speed_limit_mps", self.offboard_text)
         self.assertIn("profile_speed_limit_mps", self.offboard_text)
         self.assertIn("lookahead_distance_m", self.offboard_text)
@@ -238,10 +251,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertNotIn("cross_track_speed_guard_start_m:", text)
                 self.assertNotIn("cross_track_speed_guard_full_m:", text)
                 self.assertNotIn("cross_track_speed_guard_min_factor:", text)
-                self.assertIn("max_feedforward_accel_mps2: 5.0", text)
-                self.assertIn("max_feedforward_jerk_mps3: 12.0", text)
+                self.assertIn("curvature_velocity_anticipation_time_s: 0.5", text)
+                self.assertIn(
+                    "max_curvature_velocity_anticipation_angle_deg: 40.0", text
+                )
+                self.assertIn(
+                    "max_curvature_velocity_anticipation_rate_mps2: 8.0", text
+                )
                 self.assertIn("max_velocity_jerk_mps3: 12.0", text)
-                self.assertIn("acceleration_feedforward_scale: 1.0", text)
+                self.assertNotIn("max_feedforward_accel_mps2:", text)
+                self.assertNotIn("max_feedforward_jerk_mps3:", text)
+                self.assertNotIn("acceleration_feedforward_scale:", text)
                 self.assertNotIn("racing_trajectory_enabled", text)
                 self.assertNotIn("trajectory_baseline_rounding_", text)
                 self.assertIn("corridor_max_radius_m: 40.0", text)

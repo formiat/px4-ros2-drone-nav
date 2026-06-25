@@ -220,14 +220,19 @@ public:
     velocity_follower_config_.max_cross_track_correction_rate_mps2 = std::clamp(
         declare_parameter<double>("max_cross_track_correction_rate_mps2", 8.0), 0.0,
         100.0);
-    velocity_follower_config_.max_feedforward_accel_mps2 = std::clamp(
-        declare_parameter<double>("max_feedforward_accel_mps2", 6.0), 0.0, 100.0);
-    velocity_follower_config_.max_feedforward_jerk_mps3 = std::clamp(
-        declare_parameter<double>("max_feedforward_jerk_mps3", 12.0), 0.0, 1000.0);
+    velocity_follower_config_.curvature_velocity_anticipation_time_s = std::clamp(
+        declare_parameter<double>("curvature_velocity_anticipation_time_s", 0.5), 0.0,
+        10.0);
+    velocity_follower_config_.max_curvature_velocity_anticipation_angle_rad =
+        std::clamp(radiansFromDegrees(declare_parameter<double>(
+                       "max_curvature_velocity_anticipation_angle_deg", 40.0)),
+                   0.0, std::numbers::pi / 2.0);
+    velocity_follower_config_.max_curvature_velocity_anticipation_rate_mps2 =
+        std::clamp(declare_parameter<double>(
+                       "max_curvature_velocity_anticipation_rate_mps2", 8.0),
+                   0.0, 100.0);
     velocity_follower_config_.max_velocity_jerk_mps3 = std::clamp(
         declare_parameter<double>("max_velocity_jerk_mps3", 12.0), 0.0, 1000.0);
-    velocity_follower_config_.acceleration_feedforward_scale = std::clamp(
-        declare_parameter<double>("acceleration_feedforward_scale", 1.0), 0.0, 10.0);
     velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
     velocity_follower_config_.final_hold_max_speed_mps = std::clamp(
         declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
@@ -361,7 +366,9 @@ public:
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg "
         "max_cross_track_correction_rate=%.2fmps2 "
-        "max_feedforward_jerk=%.2fmps3 max_velocity_jerk=%.2fmps3 "
+        "curvature_velocity_anticipation[time=%.2fs max_angle=%.1fdeg "
+        "rate=%.2fmps2] "
+        "max_velocity_jerk=%.2fmps3 "
         "altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
         "executable_trajectory[source=planner_final_path final_topic='%s' "
@@ -389,7 +396,10 @@ public:
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
         velocity_follower_config_.max_cross_track_correction_rate_mps2,
-        velocity_follower_config_.max_feedforward_jerk_mps3,
+        velocity_follower_config_.curvature_velocity_anticipation_time_s,
+        radiansToDegrees(
+            velocity_follower_config_.max_curvature_velocity_anticipation_angle_rad),
+        velocity_follower_config_.max_curvature_velocity_anticipation_rate_mps2,
         velocity_follower_config_.max_velocity_jerk_mps3, altitude_hold_kp_,
         max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
         final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),
@@ -1103,7 +1113,7 @@ private:
     const OffboardSetpointMode mode = currentSetpointMode();
     msg.position = mode == OffboardSetpointMode::kPositionHold;
     msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
-    msg.acceleration = mode == OffboardSetpointMode::kVelocityCruise;
+    msg.acceleration = false;
     msg.attitude = false;
     msg.body_rate = false;
     msg.thrust_and_torque = false;
@@ -1293,9 +1303,7 @@ private:
     msg.velocity = std::array<float, 3>{static_cast<float>(plan.velocity_xy.x),
                                         static_cast<float>(plan.velocity_xy.y),
                                         static_cast<float>(vz_ned)};
-    msg.acceleration =
-        std::array<float, 3>{static_cast<float>(plan.acceleration_xy.x),
-                             static_cast<float>(plan.acceleration_xy.y), nan};
+    msg.acceleration = std::array<float, 3>{nan, nan, nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw = static_cast<float>(velocityYaw(plan.velocity_xy));
     msg.yawspeed = nan;
@@ -1306,13 +1314,12 @@ private:
         plan.velocity_setpoint_acceleration_xy;
     velocity_follower_state_.previous_velocity_acceleration_setpoint_valid =
         std::isfinite(plan.velocity_setpoint_acceleration_mps2);
-    velocity_follower_state_.previous_feedforward_acceleration_setpoint =
-        plan.acceleration_xy;
-    velocity_follower_state_.previous_feedforward_acceleration_setpoint_valid =
-        std::isfinite(plan.acceleration_xy_mps2);
     velocity_follower_state_.previous_cross_track_correction_velocity =
         plan.cross_track_correction_velocity;
     velocity_follower_state_.previous_cross_track_correction_velocity_valid = true;
+    velocity_follower_state_.previous_curvature_anticipation_velocity =
+        plan.curvature_anticipation_velocity;
+    velocity_follower_state_.previous_curvature_anticipation_velocity_valid = true;
     last_velocity_setpoint_ = plan.velocity_xy;
     last_vertical_velocity_setpoint_mps_ = vz_ned;
     last_velocity_setpoint_speed_mps_ = plan.speed_mps;
@@ -1820,9 +1827,9 @@ private:
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
         "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
         "velocity_setpoint_accel=%.2f velocity_setpoint_jerk=%.2f "
-        "accel_feedforward=(%.2f, %.2f) accel_feedforward_norm=%.2f "
-        "raw_accel_feedforward_norm=%.2f accel_feedforward_jerk=%.2f "
-        "curvature_feedforward_accel=%.2f "
+        "curvature_anticipation=(%.2f, %.2f) curvature_anticipation_norm=%.2f "
+        "raw_curvature_anticipation_norm=%.2f curvature_anticipation_delta=%.2f "
+        "curvature_anticipation_angle=%.1fdeg "
         "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
         "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
         "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -1867,11 +1874,12 @@ private:
         last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
         last_velocity_plan_.velocity_setpoint_acceleration_mps2,
         last_velocity_plan_.velocity_setpoint_jerk_mps3,
-        last_velocity_plan_.acceleration_xy.x, last_velocity_plan_.acceleration_xy.y,
-        last_velocity_plan_.acceleration_xy_mps2,
-        last_velocity_plan_.raw_acceleration_xy_mps2,
-        last_velocity_plan_.acceleration_jerk_mps3,
-        last_velocity_plan_.curvature_feedforward_accel_mps2,
+        last_velocity_plan_.curvature_anticipation_velocity.x,
+        last_velocity_plan_.curvature_anticipation_velocity.y,
+        last_velocity_plan_.curvature_anticipation_mps,
+        last_velocity_plan_.raw_curvature_anticipation_mps,
+        last_velocity_plan_.curvature_anticipation_delta_mps,
+        radiansToDegrees(last_velocity_plan_.curvature_anticipation_angle_rad),
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.profile_speed_limit_mps,
@@ -1996,10 +2004,9 @@ private:
         "velocity_tracking_error=%.2f desired_limiter_delta=%.2f "
         "velocity_setpoint_accel=(%.2f, %.2f) velocity_setpoint_accel_norm=%.2f "
         "velocity_setpoint_jerk=%.2f "
-        "accel_feedforward=(%.2f, %.2f) accel_feedforward_norm=%.2f "
-        "raw_accel_feedforward=(%.2f, %.2f) raw_accel_feedforward_norm=%.2f "
-        "accel_feedforward_delta=%.2f accel_feedforward_jerk=%.2f "
-        "curvature_feedforward_accel=%.2f "
+        "curvature_anticipation=(%.2f, %.2f) curvature_anticipation_norm=%.2f "
+        "raw_curvature_anticipation=(%.2f, %.2f) raw_curvature_anticipation_norm=%.2f "
+        "curvature_anticipation_delta=%.2f curvature_anticipation_angle=%.1fdeg "
         "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
         "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
         "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -2033,14 +2040,14 @@ private:
         last_velocity_plan_.velocity_setpoint_acceleration_xy.y,
         last_velocity_plan_.velocity_setpoint_acceleration_mps2,
         last_velocity_plan_.velocity_setpoint_jerk_mps3,
-        last_velocity_plan_.acceleration_xy.x, last_velocity_plan_.acceleration_xy.y,
-        last_velocity_plan_.acceleration_xy_mps2,
-        last_velocity_plan_.raw_acceleration_xy.x,
-        last_velocity_plan_.raw_acceleration_xy.y,
-        last_velocity_plan_.raw_acceleration_xy_mps2,
-        last_velocity_plan_.acceleration_delta_mps2,
-        last_velocity_plan_.acceleration_jerk_mps3,
-        last_velocity_plan_.curvature_feedforward_accel_mps2,
+        last_velocity_plan_.curvature_anticipation_velocity.x,
+        last_velocity_plan_.curvature_anticipation_velocity.y,
+        last_velocity_plan_.curvature_anticipation_mps,
+        last_velocity_plan_.raw_curvature_anticipation_velocity.x,
+        last_velocity_plan_.raw_curvature_anticipation_velocity.y,
+        last_velocity_plan_.raw_curvature_anticipation_mps,
+        last_velocity_plan_.curvature_anticipation_delta_mps,
+        radiansToDegrees(last_velocity_plan_.curvature_anticipation_angle_rad),
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.profile_speed_limit_mps,
@@ -2204,24 +2211,24 @@ private:
     flight_blackbox_stream_ << ",\"desired_setpoint_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.desired_speed_mps);
-    flight_blackbox_stream_ << ",\"setpoint_accel_x\":";
+    flight_blackbox_stream_ << ",\"curvature_anticipation_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.acceleration_xy.x);
-    flight_blackbox_stream_ << ",\"setpoint_accel_y\":";
+                          last_velocity_plan_.curvature_anticipation_velocity.x);
+    flight_blackbox_stream_ << ",\"curvature_anticipation_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.acceleration_xy.y);
-    flight_blackbox_stream_ << ",\"setpoint_accel_norm_mps2\":";
+                          last_velocity_plan_.curvature_anticipation_velocity.y);
+    flight_blackbox_stream_ << ",\"curvature_anticipation_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.acceleration_xy_mps2);
-    flight_blackbox_stream_ << ",\"raw_setpoint_accel_x\":";
+                          last_velocity_plan_.curvature_anticipation_mps);
+    flight_blackbox_stream_ << ",\"raw_curvature_anticipation_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.raw_acceleration_xy.x);
-    flight_blackbox_stream_ << ",\"raw_setpoint_accel_y\":";
+                          last_velocity_plan_.raw_curvature_anticipation_velocity.x);
+    flight_blackbox_stream_ << ",\"raw_curvature_anticipation_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.raw_acceleration_xy.y);
-    flight_blackbox_stream_ << ",\"raw_setpoint_accel_norm_mps2\":";
+                          last_velocity_plan_.raw_curvature_anticipation_velocity.y);
+    flight_blackbox_stream_ << ",\"raw_curvature_anticipation_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.raw_acceleration_xy_mps2);
+                          last_velocity_plan_.raw_curvature_anticipation_mps);
     flight_blackbox_stream_ << ",\"velocity_setpoint_accel_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.velocity_setpoint_acceleration_xy.x);
@@ -2234,15 +2241,12 @@ private:
     flight_blackbox_stream_ << ",\"velocity_setpoint_jerk_mps3\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.velocity_setpoint_jerk_mps3);
-    flight_blackbox_stream_ << ",\"setpoint_accel_delta_mps2\":";
+    flight_blackbox_stream_ << ",\"curvature_anticipation_delta_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.acceleration_delta_mps2);
-    flight_blackbox_stream_ << ",\"setpoint_accel_jerk_mps3\":";
+                          last_velocity_plan_.curvature_anticipation_delta_mps);
+    flight_blackbox_stream_ << ",\"curvature_anticipation_angle_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.acceleration_jerk_mps3);
-    flight_blackbox_stream_ << ",\"curvature_feedforward_accel_mps2\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.curvature_feedforward_accel_mps2);
+                          last_velocity_plan_.curvature_anticipation_angle_rad);
     flight_blackbox_stream_ << ",\"speed_limit_reason\":\""
                             << velocitySetpointReasonName(last_velocity_plan_.reason)
                             << "\",\"raw_speed_limit_mps\":";

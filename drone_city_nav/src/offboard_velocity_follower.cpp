@@ -12,25 +12,12 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 
-struct VectorRateLimitResult {
-  Point2 value{};
-  double delta{std::numeric_limits<double>::quiet_NaN()};
-};
-
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
-  return Point2{lhs.x + rhs.x, lhs.y + rhs.y};
-}
-
 [[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
   return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
-}
-
-[[nodiscard]] Point2 operator*(const Point2 point, const double scale) noexcept {
-  return Point2{point.x * scale, point.y * scale};
 }
 
 [[nodiscard]] double norm(const Point2 point) noexcept {
@@ -85,62 +72,6 @@ previousCommandSpeedMps(const VelocityFollowerState& previous_state,
     return norm(previous_state.previous_velocity_setpoint);
   }
   return current_speed_mps;
-}
-
-[[nodiscard]] VectorRateLimitResult
-limitVectorRate(const Point2 desired, const Point2 previous, const bool previous_valid,
-                const double dt_s, const double max_rate) {
-  VectorRateLimitResult result{};
-  result.value = desired;
-  if (!previous_valid || !finite2D(previous) || !finite2D(desired)) {
-    return result;
-  }
-  const double sanitized_rate = sanitizedPositive(max_rate, 0.0, 0.0, 1000.0);
-  const Point2 delta = desired - previous;
-  const double delta_norm = norm(delta);
-  result.delta = delta_norm;
-  if (!(sanitized_rate > 0.0)) {
-    return result;
-  }
-  const double dt = sanitizedPositive(dt_s, 0.1, 0.0, 10.0);
-  const double max_delta = sanitized_rate * dt;
-  if (delta_norm <= max_delta || !(delta_norm > kTinyDistanceM)) {
-    return result;
-  }
-  result.value = previous + delta * (max_delta / delta_norm);
-  result.delta = max_delta;
-  return result;
-}
-
-void fillFeedforwardAcceleration(VelocitySetpointPlan& plan,
-                                 const TrajectoryProjection& projection,
-                                 const VelocityFollowerState& previous_state,
-                                 const double dt_s,
-                                 const VelocityFollowerConfig& config) {
-  const Point2 left_normal{-projection.tangent.y, projection.tangent.x};
-  const double feedforward_scale =
-      sanitizedPositive(config.acceleration_feedforward_scale, 1.0, 0.0, 10.0);
-  const double feedforward_accel = plan.trajectory_curvature_1pm * plan.speed_mps *
-                                   plan.speed_mps * feedforward_scale;
-  const double max_feedforward_accel = sanitizedPositive(
-      config.max_feedforward_accel_mps2, config.max_accel_mps2, 0.0, 100.0);
-  const double limited_feedforward_accel =
-      std::clamp(feedforward_accel, -max_feedforward_accel, max_feedforward_accel);
-  const Point2 raw_acceleration_xy = left_normal * limited_feedforward_accel;
-  const VectorRateLimitResult limited_acceleration = limitVectorRate(
-      raw_acceleration_xy, previous_state.previous_feedforward_acceleration_setpoint,
-      previous_state.previous_feedforward_acceleration_setpoint_valid, dt_s,
-      config.max_feedforward_jerk_mps3);
-
-  plan.acceleration_xy = limited_acceleration.value;
-  plan.raw_acceleration_xy = raw_acceleration_xy;
-  plan.acceleration_xy_mps2 = norm(plan.acceleration_xy);
-  plan.raw_acceleration_xy_mps2 = norm(plan.raw_acceleration_xy);
-  plan.acceleration_delta_mps2 = limited_acceleration.delta;
-  plan.acceleration_jerk_mps3 = std::isfinite(limited_acceleration.delta)
-                                    ? limited_acceleration.delta / dt_s
-                                    : std::numeric_limits<double>::quiet_NaN();
-  plan.curvature_feedforward_accel_mps2 = limited_feedforward_accel;
 }
 
 } // namespace
@@ -214,7 +145,11 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .previous_cross_track_correction_velocity =
               previous_state.previous_cross_track_correction_velocity,
           .previous_cross_track_correction_velocity_valid =
-              previous_state.previous_cross_track_correction_velocity_valid},
+              previous_state.previous_cross_track_correction_velocity_valid,
+          .previous_curvature_anticipation_velocity =
+              previous_state.previous_curvature_anticipation_velocity,
+          .previous_curvature_anticipation_velocity_valid =
+              previous_state.previous_curvature_anticipation_velocity_valid},
       config);
   if (!command.valid) {
     return plan;
@@ -261,6 +196,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.raw_cross_track_correction_velocity =
       command.raw_cross_track_correction_velocity;
   plan.cross_track_correction_velocity = command.cross_track_correction_velocity;
+  plan.raw_curvature_anticipation_velocity =
+      command.raw_curvature_anticipation_velocity;
+  plan.curvature_anticipation_velocity = command.curvature_anticipation_velocity;
   plan.raw_speed_limit_mps = scalar_speed.cross_track_limited_speed_mps;
   plan.profile_speed_limit_mps = scalar_speed.profile_speed_limit_mps;
   plan.speed_lookahead_distance_m = scalar_speed.lookahead_distance_m;
@@ -296,6 +234,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.cross_track_correction_mps = command.cross_track_correction_mps;
   plan.cross_track_correction_delta_mps = command.cross_track_correction_delta_mps;
   plan.cross_track_lateral_velocity_mps = command.cross_track_lateral_velocity_mps;
+  plan.raw_curvature_anticipation_mps = command.raw_curvature_anticipation_mps;
+  plan.curvature_anticipation_mps = command.curvature_anticipation_mps;
+  plan.curvature_anticipation_delta_mps = command.curvature_anticipation_delta_mps;
+  plan.curvature_anticipation_angle_rad = command.curvature_anticipation_angle_rad;
   plan.trajectory_cross_track_error_m = std::sqrt(projection.distance_sq);
   plan.limiting_constraint_type = scalar_speed.constraint_type;
   plan.limiting_constraint_index = scalar_speed.constraint_index;
@@ -320,7 +262,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       current_speed * current_speed / (2.0 * effectiveSpeedProfileDecelMps2(config));
   plan.final_stop.raw_speed_limit_mps = scalar_speed.limiting_allowed_speed_now_mps;
 
-  fillFeedforwardAcceleration(plan, projection, previous_state, dt, config);
   return plan;
 }
 

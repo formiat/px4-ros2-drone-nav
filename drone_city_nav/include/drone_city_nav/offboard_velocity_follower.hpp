@@ -25,10 +25,10 @@ struct VelocityFollowerState {
   bool previous_velocity_setpoint_valid{false};
   Point2 previous_velocity_acceleration_setpoint{};
   bool previous_velocity_acceleration_setpoint_valid{false};
-  Point2 previous_feedforward_acceleration_setpoint{};
-  bool previous_feedforward_acceleration_setpoint_valid{false};
   Point2 previous_cross_track_correction_velocity{};
   bool previous_cross_track_correction_velocity_valid{false};
+  Point2 previous_curvature_anticipation_velocity{};
+  bool previous_curvature_anticipation_velocity_valid{false};
 };
 
 struct StopSpeedPlan {
@@ -44,22 +44,17 @@ struct VelocitySetpointPlan {
   VelocitySetpointReason reason{VelocitySetpointReason::kInvalidPath};
   Point2 velocity_xy{};
   Point2 desired_velocity_xy{};
-  Point2 acceleration_xy{};
-  Point2 raw_acceleration_xy{};
   Point2 velocity_setpoint_acceleration_xy{};
   Point2 path_tangent{};
   Point2 projection{};
   Point2 raw_cross_track_correction_velocity{};
   Point2 cross_track_correction_velocity{};
+  Point2 raw_curvature_anticipation_velocity{};
+  Point2 curvature_anticipation_velocity{};
   double speed_mps{0.0};
   double desired_speed_mps{0.0};
-  double acceleration_xy_mps2{0.0};
-  double raw_acceleration_xy_mps2{0.0};
   double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
-  double acceleration_delta_mps2{std::numeric_limits<double>::quiet_NaN()};
-  double acceleration_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
-  double curvature_feedforward_accel_mps2{0.0};
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double profile_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double speed_lookahead_distance_m{std::numeric_limits<double>::quiet_NaN()};
@@ -86,6 +81,10 @@ struct VelocitySetpointPlan {
   double cross_track_correction_mps{0.0};
   double cross_track_correction_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
+  double raw_curvature_anticipation_mps{0.0};
+  double curvature_anticipation_mps{0.0};
+  double curvature_anticipation_delta_mps{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_anticipation_angle_rad{0.0};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
   std::size_t limiting_constraint_index{0U};

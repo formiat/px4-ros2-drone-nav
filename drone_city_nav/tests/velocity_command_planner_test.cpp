@@ -16,6 +16,12 @@ namespace {
   return projection;
 }
 
+[[nodiscard]] TrajectoryProjection curvedProjectionOnXAxis(const double curvature_1pm) {
+  TrajectoryProjection projection = projectionOnXAxis();
+  projection.curvature_1pm = curvature_1pm;
+  return projection;
+}
+
 [[nodiscard]] VelocityFollowerConfig testConfig() {
   VelocityFollowerConfig config{};
   config.cross_track_gain = 1.0;
@@ -112,6 +118,51 @@ TEST(VelocityCommandPlanner, CorrectionRateLimitSmoothsCorrectionVelocity) {
   ASSERT_TRUE(plan.valid);
   EXPECT_NEAR(plan.cross_track_correction_delta_mps, 0.1, 1.0e-9);
   EXPECT_NEAR(plan.cross_track_correction_mps, 0.1, 1.0e-9);
+}
+
+TEST(VelocityCommandPlanner, CurvatureAnticipationBendsVelocityDirection) {
+  VelocityFollowerConfig config = testConfig();
+  config.curvature_velocity_anticipation_time_s = 0.5;
+  config.max_curvature_velocity_anticipation_angle_rad = 1.0;
+
+  const VelocityCommandPlan plan = planVelocityCommand(
+      VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1},
+      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
+  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
+  EXPECT_NEAR(plan.curvature_anticipation_angle_rad, 0.5, 1.0e-9);
+  EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
+  EXPECT_LT(plan.desired_velocity_tangent_mps, 10.0);
+}
+
+TEST(VelocityCommandPlanner, CurvatureAnticipationRateLimitSmoothsVelocityBias) {
+  VelocityFollowerConfig config = testConfig();
+  config.curvature_velocity_anticipation_time_s = 0.5;
+  config.max_curvature_velocity_anticipation_angle_rad = 1.0;
+  config.max_curvature_velocity_anticipation_rate_mps2 = 1.0;
+
+  const VelocityCommandPlan plan = planVelocityCommand(
+      VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1,
+                           .previous_curvature_anticipation_velocity = Point2{},
+                           .previous_curvature_anticipation_velocity_valid = true},
+      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_GT(plan.raw_curvature_anticipation_mps, plan.curvature_anticipation_mps);
+  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_anticipation_delta_mps, 0.1, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, InvalidProjectionReturnsInvalidPlan) {
