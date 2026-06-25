@@ -93,6 +93,10 @@ trajectoryCurvatureAtS(std::span<const TrajectorySegment> trajectory, double s_m
 projectOnTrajectory(std::span<const TrajectorySegment> trajectory, Point2 point,
                     double minimum_s_m = 0.0);
 
+[[nodiscard]] std::optional<TrajectoryProjection>
+projectOnTrajectorySamples(std::span<const TrajectoryPointSample> samples, Point2 point,
+                           double minimum_s_m = 0.0);
+
 [[nodiscard]] std::vector<Point2>
 sampleTrajectory(std::span<const TrajectorySegment> trajectory, double step_m);
 

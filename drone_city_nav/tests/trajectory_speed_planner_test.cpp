@@ -120,7 +120,6 @@ TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
   const ScalarSpeedPlan plan =
       planScalarSpeed(simpleProfile(),
                       ScalarSpeedQuery{.trajectory_s_m = 0.0,
-                                       .cross_track_error_m = 0.0,
                                        .previous_command_speed_mps = 12.0,
                                        .current_speed_mps = 12.0,
                                        .dt_s = 1.0},
@@ -143,7 +142,6 @@ TEST(TrajectorySpeedPlanner, LookaheadDistanceIsClamped) {
   const ScalarSpeedPlan slow =
       planScalarSpeed(simpleProfile(),
                       ScalarSpeedQuery{.trajectory_s_m = 0.0,
-                                       .cross_track_error_m = 0.0,
                                        .previous_command_speed_mps = 1.0,
                                        .current_speed_mps = 1.0,
                                        .dt_s = 0.1},
@@ -151,7 +149,6 @@ TEST(TrajectorySpeedPlanner, LookaheadDistanceIsClamped) {
   const ScalarSpeedPlan fast =
       planScalarSpeed(simpleProfile(),
                       ScalarSpeedQuery{.trajectory_s_m = 0.0,
-                                       .cross_track_error_m = 0.0,
                                        .previous_command_speed_mps = 100.0,
                                        .current_speed_mps = 100.0,
                                        .dt_s = 0.1},
@@ -169,7 +166,6 @@ TEST(TrajectorySpeedPlanner, InvalidInputReturnsInvalidScalarPlan) {
   const ScalarSpeedPlan nonfinite_plan = planScalarSpeed(
       simpleProfile(),
       ScalarSpeedQuery{.trajectory_s_m = std::numeric_limits<double>::quiet_NaN(),
-                       .cross_track_error_m = 0.0,
                        .previous_command_speed_mps = 0.0,
                        .current_speed_mps = 0.0,
                        .dt_s = 0.1},

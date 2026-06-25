@@ -18,6 +18,14 @@ constexpr double kTwoPi = 2.0 * std::numbers::pi;
   return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
 }
 
+[[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
+  return Point2{lhs.x + rhs.x, lhs.y + rhs.y};
+}
+
+[[nodiscard]] Point2 operator*(const Point2 point, const double scale) noexcept {
+  return Point2{point.x * scale, point.y * scale};
+}
+
 [[nodiscard]] double norm(const Point2 point) noexcept {
   return std::hypot(point.x, point.y);
 }
@@ -373,6 +381,64 @@ projectOnTrajectory(const std::span<const TrajectorySegment> trajectory,
       projection.distance_sq = distance_sq;
       best = projection;
     }
+  }
+
+  return best;
+}
+
+std::optional<TrajectoryProjection>
+projectOnTrajectorySamples(const std::span<const TrajectoryPointSample> samples,
+                           const Point2 point, const double minimum_s_m) {
+  if (!finite2D(point) || !trajectorySamplesAreUsable(samples)) {
+    return std::nullopt;
+  }
+
+  const double max_s = std::max(0.0, samples.back().s_m);
+  const double min_s =
+      std::clamp(std::isfinite(minimum_s_m) ? minimum_s_m : 0.0, 0.0, max_s);
+  std::optional<TrajectoryProjection> best;
+  for (std::size_t i = 0U; i + 1U < samples.size(); ++i) {
+    const TrajectoryPointSample& start = samples[i];
+    const TrajectoryPointSample& end = samples[i + 1U];
+    const double station_delta_m = end.s_m - start.s_m;
+    const Point2 line = end.point - start.point;
+    const double length_sq = squaredDistance(start.point, end.point);
+    if (!(station_delta_m > kTinyDistanceM) ||
+        !(length_sq > kTinyDistanceM * kTinyDistanceM)) {
+      continue;
+    }
+
+    const double segment_min_t =
+        end.s_m <= min_s ? 1.0 : std::max(0.0, (min_s - start.s_m) / station_delta_m);
+    double t =
+        ((point.x - start.point.x) * line.x + (point.y - start.point.y) * line.y) /
+        length_sq;
+    t = std::max(clampSegmentT(t), clampSegmentT(segment_min_t));
+
+    const Point2 projected{start.point.x + line.x * t, start.point.y + line.y * t};
+    const double distance_sq = squaredDistance(point, projected);
+    if (best.has_value() && distance_sq >= best->distance_sq) {
+      continue;
+    }
+
+    Point2 tangent = normalized(start.tangent * (1.0 - t) + end.tangent * t);
+    if (!(norm(tangent) > kTinyDistanceM)) {
+      tangent = normalized(line);
+    }
+    if (!(norm(tangent) > kTinyDistanceM)) {
+      continue;
+    }
+
+    TrajectoryProjection projection{};
+    projection.valid = true;
+    projection.segment_index = i;
+    projection.segment_t = t;
+    projection.s_m = start.s_m + station_delta_m * t;
+    projection.point = projected;
+    projection.tangent = tangent;
+    projection.curvature_1pm = start.curvature_1pm * (1.0 - t) + end.curvature_1pm * t;
+    projection.distance_sq = distance_sq;
+    best = projection;
   }
 
   return best;

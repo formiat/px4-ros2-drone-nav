@@ -215,21 +215,11 @@ public:
         declare_parameter<double>("cross_track_derivative_gain", 0.8), 0.0, 10.0);
     velocity_follower_config_.max_cross_track_correction_angle_rad =
         std::clamp(radiansFromDegrees(declare_parameter<double>(
-                       "max_cross_track_correction_angle_deg", 45.0)),
+                       "max_cross_track_correction_angle_deg", 55.0)),
                    0.0, std::numbers::pi / 2.0);
     velocity_follower_config_.max_cross_track_correction_rate_mps2 = std::clamp(
-        declare_parameter<double>("max_cross_track_correction_rate_mps2", 4.0), 0.0,
+        declare_parameter<double>("max_cross_track_correction_rate_mps2", 8.0), 0.0,
         100.0);
-    velocity_follower_config_.cross_track_speed_guard_start_m = std::clamp(
-        declare_parameter<double>("cross_track_speed_guard_start_m", 2.0), 0.0, 100.0);
-    const double requested_cross_track_speed_guard_full_m = std::clamp(
-        declare_parameter<double>("cross_track_speed_guard_full_m", 6.0), 0.0, 100.0);
-    velocity_follower_config_.cross_track_speed_guard_full_m =
-        std::max(requested_cross_track_speed_guard_full_m,
-                 velocity_follower_config_.cross_track_speed_guard_start_m + 1.0e-3);
-    velocity_follower_config_.cross_track_speed_guard_min_factor = std::clamp(
-        declare_parameter<double>("cross_track_speed_guard_min_factor", 0.35), 0.0,
-        1.0);
     velocity_follower_config_.max_feedforward_accel_mps2 = std::clamp(
         declare_parameter<double>("max_feedforward_accel_mps2", 6.0), 0.0, 100.0);
     velocity_follower_config_.max_feedforward_jerk_mps3 = std::clamp(
@@ -371,7 +361,6 @@ public:
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg "
         "max_cross_track_correction_rate=%.2fmps2 "
-        "cross_track_speed_guard[start=%.2fm full=%.2fm min_factor=%.2f] "
         "max_feedforward_jerk=%.2fmps3 max_velocity_jerk=%.2fmps3 "
         "altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
@@ -400,9 +389,6 @@ public:
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
         velocity_follower_config_.max_cross_track_correction_rate_mps2,
-        velocity_follower_config_.cross_track_speed_guard_start_m,
-        velocity_follower_config_.cross_track_speed_guard_full_m,
-        velocity_follower_config_.cross_track_speed_guard_min_factor,
         velocity_follower_config_.max_feedforward_jerk_mps3,
         velocity_follower_config_.max_velocity_jerk_mps3, altitude_hold_kp_,
         max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
@@ -613,8 +599,7 @@ private:
     trajectory_ = lineTrajectoryFromSamples(final_trajectory_samples_);
     trajectory_speed_profile_ = buildTrajectorySpeedProfile(final_trajectory_samples_,
                                                             velocity_follower_config_);
-    trajectory_valid_ = trajectoryIsUsable(trajectory_) &&
-                        trajectorySamplesAreUsable(final_trajectory_samples_) &&
+    trajectory_valid_ = trajectorySamplesAreUsable(final_trajectory_samples_) &&
                         trajectory_speed_profile_.valid;
     last_trajectory_route_points_ = path_points_.size();
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
@@ -911,14 +896,6 @@ private:
                   latest_summary_path.string().c_str());
     }
     return timestamped_path.string();
-  }
-
-  [[nodiscard]] std::optional<OffboardPathProjection> closestPathProjection() const {
-    if (!localPositionFresh() || path_points_.empty()) {
-      return std::nullopt;
-    }
-    return drone_city_nav::closestOffboardPathProjection(path_points_,
-                                                         current_position_);
   }
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -1297,10 +1274,10 @@ private:
     const Point2 previous_target = last_published_target_;
     const Point2 target = currentTarget();
     const double dt_s = consumeVelocityPlanDtS();
-    const VelocitySetpointPlan plan =
-        planVelocitySetpoint(trajectory_, trajectory_speed_profile_, current_position_,
-                             current_velocity_, current_velocity_valid_, dt_s,
-                             velocity_follower_state_, velocity_follower_config_);
+    const VelocitySetpointPlan plan = planVelocitySetpoint(
+        final_trajectory_samples_, trajectory_speed_profile_, current_position_,
+        current_velocity_, current_velocity_valid_, dt_s, velocity_follower_state_,
+        velocity_follower_config_);
     last_velocity_plan_ = plan;
     last_velocity_plan_valid_ = plan.valid;
     if (!plan.valid || plan.final_goal_reached) {
@@ -1465,7 +1442,7 @@ private:
   }
 
   [[nodiscard]] bool finalTrajectoryReady() const {
-    return trajectory_valid_ && trajectoryIsUsable(trajectory_) &&
+    return trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
            trajectory_speed_profile_.valid && final_trajectory_samples_.size() >= 2U;
   }
 
@@ -1604,30 +1581,26 @@ private:
 
   [[nodiscard]] PathTrackingDiagnostics pathTrackingDiagnostics() const {
     PathTrackingDiagnostics diagnostics{};
-    const auto projection = closestPathProjection();
-    if (!projection.has_value() || path_points_.size() < 2U) {
+    const auto projection =
+        projectOnTrajectorySamples(final_trajectory_samples_, current_position_);
+    if (!projection.has_value()) {
       return diagnostics;
     }
 
-    const std::size_t segment_index =
-        std::min(projection->segment_start_index, path_points_.size() - 2U);
-    const Point2 segment_start = path_points_[segment_index];
-    const Point2 segment_end = path_points_[segment_index + 1U];
-    const Point2 segment{segment_end.x - segment_start.x,
-                         segment_end.y - segment_start.y};
-    const double segment_length_m = std::hypot(segment.x, segment.y);
-    if (!(segment_length_m > kTinyDistanceM)) {
+    if (!(std::hypot(projection->tangent.x, projection->tangent.y) > kTinyDistanceM)) {
       return diagnostics;
     }
 
-    const Point2 relative{current_position_.x - segment_start.x,
-                          current_position_.y - segment_start.y};
+    const Point2 left_normal{-projection->tangent.y, projection->tangent.x};
+    const Point2 relative{current_position_.x - projection->point.x,
+                          current_position_.y - projection->point.y};
     const double signed_error_m =
-        (segment.x * relative.y - segment.y * relative.x) / segment_length_m;
-    const double path_heading_rad = std::atan2(segment.y, segment.x);
+        relative.x * left_normal.x + relative.y * left_normal.y;
+    const double path_heading_rad =
+        std::atan2(projection->tangent.y, projection->tangent.x);
 
     diagnostics.valid = true;
-    diagnostics.segment_start_index = segment_index;
+    diagnostics.segment_start_index = projection->segment_index;
     diagnostics.segment_t = projection->segment_t;
     diagnostics.cross_track_error_m = std::sqrt(projection->distance_sq);
     diagnostics.signed_cross_track_error_m = signed_error_m;

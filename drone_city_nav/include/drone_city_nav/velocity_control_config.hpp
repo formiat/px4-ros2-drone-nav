@@ -15,11 +15,8 @@ struct VelocityFollowerConfig {
   double speed_profile_lookahead_max_m{35.0};
   double cross_track_gain{0.5};
   double cross_track_derivative_gain{0.8};
-  double max_cross_track_correction_angle_rad{0.7853981633974483};
-  double max_cross_track_correction_rate_mps2{4.0};
-  double cross_track_speed_guard_start_m{2.0};
-  double cross_track_speed_guard_full_m{6.0};
-  double cross_track_speed_guard_min_factor{0.35};
+  double max_cross_track_correction_angle_rad{0.9599310885968813};
+  double max_cross_track_correction_rate_mps2{8.0};
   double max_feedforward_accel_mps2{3.0};
   double max_feedforward_jerk_mps3{12.0};
   double max_velocity_jerk_mps3{12.0};

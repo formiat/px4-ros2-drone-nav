@@ -47,25 +47,6 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.speed_profile_decel_mps2, fallback, 1.0e-6, 100.0);
 }
 
-[[nodiscard]] double crossTrackSpeedFactor(const double cross_track_error_m,
-                                           const VelocityFollowerConfig& config) {
-  const double guard_start =
-      sanitizedPositive(config.cross_track_speed_guard_start_m, 2.0, 0.0, 100.0);
-  const double requested_guard_full =
-      sanitizedPositive(config.cross_track_speed_guard_full_m, 6.0, 0.0, 100.0);
-  const double guard_full = std::max(requested_guard_full, guard_start + 1.0e-3);
-  const double min_factor =
-      sanitizedPositive(config.cross_track_speed_guard_min_factor, 0.35, 0.0, 1.0);
-  if (!std::isfinite(cross_track_error_m) || cross_track_error_m <= guard_start) {
-    return 1.0;
-  }
-  if (cross_track_error_m >= guard_full) {
-    return min_factor;
-  }
-  const double t = (cross_track_error_m - guard_start) / (guard_full - guard_start);
-  return 1.0 - t * (1.0 - min_factor);
-}
-
 [[nodiscard]] double segmentEndS(const TrajectorySegment& segment) noexcept {
   return segment.s_start_m + std::max(0.0, segment.length_m);
 }
@@ -432,10 +413,8 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
     plan.limiting_curve_radius_m = lookahead_sample.radius_m;
     plan.limiting_curvature_1pm = lookahead_sample.curvature_1pm;
   }
-  plan.cross_track_speed_factor =
-      crossTrackSpeedFactor(query.cross_track_error_m, config);
-  plan.cross_track_limited_speed_mps =
-      plan.speed_after_lookahead_mps * plan.cross_track_speed_factor;
+  plan.cross_track_speed_factor = 1.0;
+  plan.cross_track_limited_speed_mps = plan.speed_after_lookahead_mps;
 
   const double previous_speed =
       sanitizedNonNegative(query.previous_command_speed_mps, current_speed);
@@ -443,10 +422,9 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
   const double max_accel = effectiveVelocityDeltaAccelMps2(config);
   const double max_decel = effectiveVelocityDeltaDecelMps2(config);
   const double max_speed_delta =
-      (plan.cross_track_limited_speed_mps >= previous_speed ? max_accel : max_decel) *
-      dt;
+      (plan.speed_after_lookahead_mps >= previous_speed ? max_accel : max_decel) * dt;
   plan.accel_limited_speed_mps =
-      previous_speed + std::clamp(plan.cross_track_limited_speed_mps - previous_speed,
+      previous_speed + std::clamp(plan.speed_after_lookahead_mps - previous_speed,
                                   -max_speed_delta, max_speed_delta);
   plan.final_scalar_speed_mps = plan.accel_limited_speed_mps;
   return plan;

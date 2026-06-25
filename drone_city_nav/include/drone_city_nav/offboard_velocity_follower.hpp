@@ -111,4 +111,10 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
     Point2 current_velocity, bool current_velocity_valid, double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
 
+[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
+    std::span<const TrajectoryPointSample> trajectory_samples,
+    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
+    Point2 current_velocity, bool current_velocity_valid, double dt_s,
+    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
+
 } // namespace drone_city_nav

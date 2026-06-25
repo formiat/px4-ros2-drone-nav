@@ -18,9 +18,6 @@ namespace {
   config.max_decel_mps2 = 4.0;
   config.max_lateral_accel_mps2 = 3.0;
   config.speed_profile_sample_step_m = 1.0;
-  config.cross_track_speed_guard_start_m = 2.0;
-  config.cross_track_speed_guard_full_m = 6.0;
-  config.cross_track_speed_guard_min_factor = 0.35;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;
   return config;
@@ -208,6 +205,35 @@ TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
   EXPECT_NEAR(curve_sample.geometric_limit_mps, std::sqrt(3.0 / 0.2), 1.0e-9);
 }
 
+TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsCurrentAcceleration) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_feedforward_accel_mps2 = 6.0;
+  config.max_feedforward_jerk_mps3 = 100.0;
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 6U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 2.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.curvature_1pm = 0.1;
+    samples.push_back(sample);
+  }
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{6.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      samples, profile, Point2{4.0, 0.0}, Point2{6.0, 0.0}, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
+  EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_arc_radius_m, 10.0, 1.0e-9);
+  EXPECT_GT(plan.curvature_feedforward_accel_mps2, 0.0);
+  EXPECT_GT(plan.acceleration_xy_mps2, 0.0);
+}
+
 TEST(OffboardVelocityFollower, EstimatesTraversalTimeFromSampledTrajectory) {
   VelocityFollowerConfig config = testConfig();
   std::vector<TrajectoryPointSample> samples;
@@ -293,14 +319,11 @@ TEST(OffboardVelocityFollower, CrossTrackCorrectionIsBounded) {
   EXPECT_NEAR(plan.trajectory_cross_track_error_m, 10.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, CrossTrackSpeedGuardReducesSpeedWhenFarFromPath) {
+TEST(OffboardVelocityFollower, CrossTrackErrorDoesNotReduceScalarSpeed) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
-  config.cross_track_speed_guard_start_m = 2.0;
-  config.cross_track_speed_guard_full_m = 6.0;
-  config.cross_track_speed_guard_min_factor = 0.35;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{4.2, 0.0};
   state.previous_velocity_setpoint_valid = true;
@@ -311,10 +334,10 @@ TEST(OffboardVelocityFollower, CrossTrackSpeedGuardReducesSpeedWhenFarFromPath) 
 
   ASSERT_TRUE(plan.valid);
   EXPECT_NEAR(plan.profile_speed_limit_mps, 12.0, 1.0e-9);
-  EXPECT_NEAR(plan.cross_track_speed_factor, 0.35, 1.0e-9);
-  EXPECT_NEAR(plan.cross_track_limited_speed_mps, 4.2, 1.0e-9);
-  EXPECT_NEAR(plan.raw_speed_limit_mps, 4.2, 1.0e-9);
-  EXPECT_LE(plan.final_command_speed_mps, 4.3);
+  EXPECT_NEAR(plan.cross_track_speed_factor, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_limited_speed_mps, 12.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_speed_limit_mps, 12.0, 1.0e-9);
+  EXPECT_GT(plan.accel_limited_speed_mps, 4.2);
 }
 
 TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlanner) {

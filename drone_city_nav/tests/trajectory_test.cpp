@@ -96,6 +96,31 @@ TEST(Trajectory, DetailedSamplesAreMonotonicAndPreserveCurvature) {
   EXPECT_NEAR(arc_sample->curvature_1pm, -1.0, 1.0e-9);
 }
 
+TEST(Trajectory, ProjectsOnSamplesWithInterpolatedTangentAndCurvature) {
+  std::vector<TrajectoryPointSample> samples(2U);
+  samples[0].s_m = 0.0;
+  samples[0].point = Point2{0.0, 0.0};
+  samples[0].tangent = Point2{1.0, 0.0};
+  samples[0].curvature_1pm = 0.0;
+  samples[1].s_m = 10.0;
+  samples[1].point = Point2{10.0, 0.0};
+  samples[1].tangent = Point2{0.0, 1.0};
+  samples[1].curvature_1pm = 0.2;
+
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectorySamples(samples, Point2{5.0, 2.0});
+
+  ASSERT_TRUE(projection.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): asserted above.
+  const TrajectoryProjection projection_value = projection.value();
+  EXPECT_NEAR(projection_value.point.x, 5.0, 1.0e-9);
+  EXPECT_NEAR(projection_value.point.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection_value.s_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(projection_value.tangent.x, std::sqrt(0.5), 1.0e-9);
+  EXPECT_NEAR(projection_value.tangent.y, std::sqrt(0.5), 1.0e-9);
+  EXPECT_NEAR(projection_value.curvature_1pm, 0.1, 1.0e-9);
+}
+
 TEST(Trajectory, LineTrajectoryFromSamplesRejectsNonFiniteSample) {
   std::vector<TrajectoryPointSample> samples(2U);
   samples[0].point = Point2{0.0, 0.0};

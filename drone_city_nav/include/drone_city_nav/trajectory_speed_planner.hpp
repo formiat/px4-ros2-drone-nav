@@ -44,7 +44,6 @@ struct TraversalTimeEstimate {
 
 struct ScalarSpeedQuery {
   double trajectory_s_m{std::numeric_limits<double>::quiet_NaN()};
-  double cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double previous_command_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double dt_s{std::numeric_limits<double>::quiet_NaN()};

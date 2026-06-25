@@ -166,11 +166,8 @@ px4_offboard_node:
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.8
-    max_cross_track_correction_angle_deg: 30.0
-    max_cross_track_correction_rate_mps2: 4.0
-    cross_track_speed_guard_start_m: 2.0
-    cross_track_speed_guard_full_m: 6.0
-    cross_track_speed_guard_min_factor: 0.35
+    max_cross_track_correction_angle_deg: 55.0
+    max_cross_track_correction_rate_mps2: 8.0
     max_feedforward_accel_mps2: 5.0
     max_feedforward_jerk_mps3: 12.0
     max_velocity_jerk_mps3: 12.0
