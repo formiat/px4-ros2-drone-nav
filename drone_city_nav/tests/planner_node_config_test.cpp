@@ -62,6 +62,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_FALSE(config.planner_core.astar.initial_heading_bias_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 50.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
@@ -79,6 +82,10 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 5000.0},
+       rclcpp::Parameter{"cruise_speed_mps", 5000.0},
+       rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
+       rclcpp::Parameter{"corridor_max_radius_m", -10.0},
+       rclcpp::Parameter{"racing_line_weight_time", -2.0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -96,6 +103,10 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 1000.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 100.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
 }
 
@@ -111,6 +122,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"use_obstacle_memory", false},
                 rclcpp::Parameter{"use_current_lidar_obstacles", false},
                 rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
+                rclcpp::Parameter{"racing_line_weight_curvature", 125.0},
+                rclcpp::Parameter{"corridor_sample_step_m", 2.0},
                 rclcpp::Parameter{"max_lidar_range_m", 22.0},
                 rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
                 rclcpp::Parameter{"compensate_lidar_attitude", true}});
@@ -128,6 +141,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
   EXPECT_FALSE(config.planning_grid_builder.use_obstacle_memory);
   EXPECT_FALSE(config.planning_grid_builder.use_current_lidar_obstacles);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 125.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);

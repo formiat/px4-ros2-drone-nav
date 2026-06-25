@@ -33,7 +33,13 @@ struct VelocityFollowerConfig {
   double speed_profile_decel_mps2{2.0};
   double speed_profile_sample_step_m{1.0};
   double cross_track_gain{0.5};
+  double cross_track_derivative_gain{0.8};
   double max_cross_track_correction_angle_rad{0.7853981633974483};
+  double max_cross_track_correction_rate_mps2{4.0};
+  double max_feedforward_accel_mps2{3.0};
+  double max_feedforward_jerk_mps3{12.0};
+  double max_velocity_jerk_mps3{12.0};
+  double acceleration_feedforward_scale{1.0};
   double final_acceptance_radius_m{1.0};
   double final_hold_max_speed_mps{0.8};
 };
@@ -41,6 +47,12 @@ struct VelocityFollowerConfig {
 struct VelocityFollowerState {
   Point2 previous_velocity_setpoint{};
   bool previous_velocity_setpoint_valid{false};
+  Point2 previous_velocity_acceleration_setpoint{};
+  bool previous_velocity_acceleration_setpoint_valid{false};
+  Point2 previous_feedforward_acceleration_setpoint{};
+  bool previous_feedforward_acceleration_setpoint_valid{false};
+  Point2 previous_cross_track_correction_velocity{};
+  bool previous_cross_track_correction_velocity_valid{false};
 };
 
 struct StopSpeedPlan {
@@ -85,14 +97,38 @@ struct VelocitySetpointPlan {
   bool final_goal_reached{false};
   VelocitySetpointReason reason{VelocitySetpointReason::kInvalidPath};
   Point2 velocity_xy{};
+  Point2 desired_velocity_xy{};
+  Point2 acceleration_xy{};
+  Point2 raw_acceleration_xy{};
+  Point2 velocity_setpoint_acceleration_xy{};
   Point2 path_tangent{};
   Point2 projection{};
+  Point2 raw_cross_track_correction_velocity{};
   Point2 cross_track_correction_velocity{};
   double speed_mps{0.0};
+  double desired_speed_mps{0.0};
+  double acceleration_xy_mps2{0.0};
+  double raw_acceleration_xy_mps2{0.0};
+  double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
+  double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
+  double acceleration_delta_mps2{std::numeric_limits<double>::quiet_NaN()};
+  double acceleration_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_feedforward_accel_mps2{0.0};
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
+  double velocity_tracking_error_mps{std::numeric_limits<double>::quiet_NaN()};
+  double current_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};
+  double current_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
+  double setpoint_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};
+  double setpoint_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
+  double raw_cross_track_correction_mps{0.0};
   double cross_track_correction_mps{0.0};
+  double cross_track_correction_delta_mps{std::numeric_limits<double>::quiet_NaN()};
+  double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
   std::size_t limiting_constraint_index{0U};

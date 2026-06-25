@@ -9,6 +9,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
+#include "drone_city_nav/trajectory_planner.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -63,6 +64,16 @@ struct PublishedPathSafetySummary {
   Point2 first_non_traversable_end{};
   bool has_non_traversable_segment{false};
 };
+
+[[nodiscard]] std::vector<Point2>
+trajectorySamplePoints(const std::span<const TrajectoryPointSample> samples) {
+  std::vector<Point2> points;
+  points.reserve(samples.size());
+  for (const TrajectoryPointSample& sample : samples) {
+    points.push_back(sample.point);
+  }
+  return points;
+}
 
 enum class PathPublicationReason : std::uint8_t {
   kComputedPath,
@@ -166,6 +177,48 @@ public:
                 config.topics.prohibited_grid.c_str());
     RCLCPP_INFO(
         get_logger(),
+        "Planner trajectory pipeline: output_path=final_racing_trajectory "
+        "rough_astar_scope=internal_seed "
+        "speed[cruise=%.2fmps min_turn=%.2fmps max_accel=%.2fmps2 "
+        "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
+        "sample_step=%.2fm] "
+        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
+        "center_recovery_max=%.2fm lateral_window=%.2fm lateral_ratio=%.2f "
+        "lateral_margin=%.2fm] "
+        "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
+        "min_step=%.2fm weights(length=%.3f time=%.2f curvature=%.2f "
+        "curvature_change=%.2f offset_change=%.2f offset_second=%.2f "
+        "center=%.3f edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)]",
+        trajectory_planner_config_.speed_profile.cruise_speed_mps,
+        trajectory_planner_config_.speed_profile.min_turn_speed_mps,
+        trajectory_planner_config_.speed_profile.max_accel_mps2,
+        trajectory_planner_config_.speed_profile.max_decel_mps2,
+        trajectory_planner_config_.speed_profile.max_lateral_accel_mps2,
+        trajectory_planner_config_.speed_profile.speed_profile_decel_mps2,
+        trajectory_planner_config_.speed_profile.speed_profile_sample_step_m,
+        trajectory_planner_config_.corridor.max_radius_m,
+        trajectory_planner_config_.corridor.sample_step_m,
+        trajectory_planner_config_.corridor.safety_margin_m,
+        trajectory_planner_config_.corridor.center_recovery_max_m,
+        trajectory_planner_config_.corridor.lateral_limit_window_m,
+        trajectory_planner_config_.corridor.lateral_limit_ratio,
+        trajectory_planner_config_.corridor.lateral_limit_margin_m,
+        trajectory_planner_config_.racing_line.max_iterations,
+        trajectory_planner_config_.racing_line.optimizer_sample_step_m,
+        trajectory_planner_config_.racing_line.initial_offset_step_m,
+        trajectory_planner_config_.racing_line.min_offset_step_m,
+        trajectory_planner_config_.racing_line.weight_length,
+        trajectory_planner_config_.racing_line.weight_time,
+        trajectory_planner_config_.racing_line.weight_curvature,
+        trajectory_planner_config_.racing_line.weight_curvature_change,
+        trajectory_planner_config_.racing_line.weight_offset_change,
+        trajectory_planner_config_.racing_line.weight_offset_second_change,
+        trajectory_planner_config_.racing_line.weight_center_bias,
+        trajectory_planner_config_.racing_line.weight_edge_margin,
+        trajectory_planner_config_.racing_line.desired_edge_margin_m,
+        trajectory_planner_config_.racing_line.max_length_ratio);
+    RCLCPP_INFO(
+        get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
         "static_path='%s' fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
         use_static_map_ ? "true" : "false", use_obstacle_memory_ ? "true" : "false",
@@ -188,10 +241,9 @@ public:
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
     RCLCPP_INFO(get_logger(),
                 "Planner path policy: stable_path_reuse=%s "
-                "stable_max_deviation=%.2fm "
                 "stable_goal_tolerance=%.2fm",
                 stable_path_reuse_enabled_ ? "true" : "false",
-                stable_path_reuse_max_deviation_m_, stable_path_goal_tolerance_m_);
+                stable_path_goal_tolerance_m_);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
                 "evasive_maneuvering=%s evasive_straight_weight=%.2f "
@@ -213,8 +265,6 @@ private:
     inflation_radius_m_ = config.inflation_radius_m;
     max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
     stable_path_reuse_enabled_ = config.fallback.stable_path_reuse_enabled;
-    stable_path_reuse_max_deviation_m_ =
-        config.planner_core.stable_path_reuse_max_deviation_m;
     stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
     memory_occupied_value_ = config.memory_grid.occupied_value;
     memory_free_value_ = config.memory_grid.free_value;
@@ -238,6 +288,7 @@ private:
     min_projected_lidar_altitude_m_ = config.lidar_projection.min_projected_altitude_m;
     max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
     astar_config_ = config.planner_core.astar;
+    trajectory_planner_config_ = config.trajectory_planner;
     initial_heading_rad_ = config.initial_pose.heading_rad;
     px4_local_origin_ = config.initial_pose.px4_local_origin;
     static_map_debug_publish_period_s_ =
@@ -765,7 +816,7 @@ private:
       }
 
       std::vector<Point2> path_points = cellsToPoints(grid, cells);
-      if (!connectPublishedPathToCurrentPose(grid, path_points, source_label)) {
+      if (!connectRouteToCurrentPose(grid, path_points, source_label)) {
         return std::nullopt;
       }
 
@@ -789,7 +840,7 @@ private:
               source_label, source_kind, pre_collapse_path_points.size(),
               candidate.collapsed_points);
         } else {
-          logRejectedUnsafePublishedPath(
+          logRejectedUnsafeRoute(
               grid, pre_collapse_path_points, source_label,
               "pre-collapse path contains a non-traversable segment");
           return std::nullopt;
@@ -826,36 +877,126 @@ private:
     }
     if (!candidate.has_value()) {
       RCLCPP_WARN(get_logger(),
-                  "%s path postprocess could not build a traversable published path: "
+                  "%s path postprocess could not build a traversable route seed: "
                   "smoothed_cells=%zu raw_cells=%zu",
                   source_label, smoothed_cells.size(), raw_cells.size());
       publishPath({}, PathPublicationReason::kHoldInvalidPath);
       return false;
     }
 
-    std::vector<Point2> path_points = std::move(candidate->points);
+    const std::vector<Point2> route_points = std::move(candidate->points);
     RCLCPP_INFO(get_logger(),
                 "%s path postprocess: selected_source=%s raw_cells=%zu "
                 "smoothed_cells=%zu selected_cells=%zu pre_collapse_points=%zu "
-                "collapsed_points=%zu published_points=%zu published_segments=%zu "
+                "collapsed_points=%zu route_points=%zu route_segments=%zu "
                 "raw_fallback=%s collapse_reverted=%s",
                 source_label, candidate->source_kind, raw_cells.size(),
                 smoothed_cells.size(), candidate->input_cells,
                 candidate->pre_collapse_points, candidate->collapsed_points,
-                path_points.size(), !path_points.empty() ? path_points.size() - 1U : 0U,
+                route_points.size(),
+                !route_points.empty() ? route_points.size() - 1U : 0U,
                 used_raw_fallback ? "true" : "false",
                 candidate->collapse_reverted ? "true" : "false");
-    if (path_points.size() != candidate->pre_collapse_points) {
+    if (route_points.size() != candidate->pre_collapse_points) {
       RCLCPP_INFO(get_logger(),
                   "%s path collinear waypoints collapsed: before=%zu after=%zu "
                   "tolerance=%.2fm",
-                  source_label, candidate->pre_collapse_points, path_points.size(),
+                  source_label, candidate->pre_collapse_points, route_points.size(),
                   kPublishedPathCollinearityToleranceM);
     }
 
-    last_valid_path_points_ = path_points;
-    logPublishedPathSafety(grid, path_points, source_label);
-    publishPath(path_points, PathPublicationReason::kComputedPath);
+    const auto started_at = std::chrono::steady_clock::now();
+    TrajectoryPlannerResult trajectory_result = planRacingTrajectory(
+        TrajectoryPlannerInput{
+            std::span<const Point2>{route_points.data(), route_points.size()}, &grid},
+        trajectory_planner_config_);
+    const double duration_ms =
+        static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::steady_clock::now() - started_at)
+                                .count()) /
+        1000.0;
+    if (!trajectory_result.valid) {
+      RCLCPP_WARN(
+          get_logger(),
+          "%s racing trajectory build failed; rough A* route will not be published as "
+          "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
+          "corridor[samples=%zu width_min=%.2f width_mean=%.2f] "
+          "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
+          source_label,
+          static_cast<int>(
+              trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
+          trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+          route_points.size(), duration_ms, trajectory_result.stats.corridor.samples,
+          trajectory_result.stats.corridor.min_width_m,
+          trajectory_result.stats.corridor.mean_width_m,
+          trajectory_result.stats.racing_line.iterations,
+          trajectory_result.stats.racing_line.candidate_evaluations,
+          trajectory_result.stats.racing_line.collision_rejections);
+      publishPath({}, PathPublicationReason::kHoldInvalidPath);
+      return false;
+    }
+
+    std::vector<Point2> trajectory_points =
+        trajectorySamplePoints(trajectory_result.samples);
+    if (trajectory_points.size() < 2U || !pathIsTraversable(grid, trajectory_points)) {
+      RCLCPP_WARN(
+          get_logger(),
+          "%s racing trajectory build produced a non-traversable runtime trajectory; "
+          "holding instead of publishing rough A* route: route_points=%zu "
+          "trajectory_points=%zu duration_ms=%.1f status=%.*s",
+          source_label, route_points.size(), trajectory_points.size(), duration_ms,
+          static_cast<int>(
+              trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
+          trajectoryPlannerStatusName(trajectory_result.stats.status).data());
+      publishPath({}, PathPublicationReason::kHoldInvalidPath);
+      return false;
+    }
+
+    RCLCPP_INFO(
+        get_logger(),
+        "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
+        "duration_ms=%.1f status=%.*s length=%.2f samples=%zu "
+        "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
+        "lateral_limited=%zu] "
+        "racing_line[iterations=%zu evals=%zu cost_initial=%.3f cost_final=%.3f "
+        "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
+        "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
+        "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
+        "speed_limit_max=%.2f curvature_limited=%zu] "
+        "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
+        source_label, route_points.size(), trajectory_points.size(), duration_ms,
+        static_cast<int>(
+            trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
+        trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+        trajectory_result.stats.length_m, trajectory_result.stats.samples,
+        trajectory_result.stats.corridor.samples,
+        trajectory_result.stats.corridor.min_width_m,
+        trajectory_result.stats.corridor.mean_width_m,
+        trajectory_result.stats.corridor.max_width_m,
+        trajectory_result.stats.corridor.lateral_limited_samples,
+        trajectory_result.stats.racing_line.iterations,
+        trajectory_result.stats.racing_line.candidate_evaluations,
+        trajectory_result.stats.racing_line.initial_cost,
+        trajectory_result.stats.racing_line.final_cost,
+        trajectory_result.stats.racing_line.centerline_length_m,
+        trajectory_result.stats.racing_line.final_length_m,
+        trajectory_result.stats.racing_line.final_length_ratio,
+        trajectory_result.stats.racing_line.max_abs_offset_m,
+        trajectory_result.stats.racing_line.min_edge_margin_m,
+        trajectory_result.stats.racing_line.estimated_time_s,
+        trajectory_result.stats.racing_line.centerline_estimated_time_s,
+        trajectory_result.stats.racing_line.time_gain_s,
+        trajectory_result.stats.racing_line.min_speed_limit_mps,
+        trajectory_result.stats.racing_line.max_speed_limit_mps,
+        trajectory_result.stats.racing_line.curvature_limited_samples,
+        trajectory_result.stats.speed_profile_min_mps,
+        trajectory_result.stats.speed_profile_mean_mps,
+        trajectory_result.stats.speed_profile_max_mps,
+        trajectory_result.stats.speed_profile_curvature_limited_samples);
+
+    last_valid_path_points_ = trajectory_points;
+    logPublishedPathSafety(grid, trajectory_points, "final_trajectory");
+    publishPath(trajectory_points, PathPublicationReason::kComputedPath);
     return true;
   }
 
@@ -923,9 +1064,9 @@ private:
                 source_label, summary.segments);
   }
 
-  [[nodiscard]] bool connectPublishedPathToCurrentPose(const OccupancyGrid2D& grid,
-                                                       std::vector<Point2>& path_points,
-                                                       const char* source_label) const {
+  [[nodiscard]] bool connectRouteToCurrentPose(const OccupancyGrid2D& grid,
+                                               std::vector<Point2>& path_points,
+                                               const char* source_label) const {
     if (path_points.empty()) {
       return false;
     }
@@ -951,7 +1092,8 @@ private:
 
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
-        "%s path candidate rejected because current pose cannot connect to the planned "
+        "%s route candidate rejected because current pose cannot connect to the "
+        "planned "
         "start with a traversable segment: current=(%.2f, %.2f) first=(%.2f, %.2f) "
         "distance=%.2fm",
         source_label, current_position.x, current_position.y, first_path_point.x,
@@ -959,15 +1101,14 @@ private:
     return false;
   }
 
-  void logRejectedUnsafePublishedPath(const OccupancyGrid2D& grid,
-                                      const std::span<const Point2> path_points,
-                                      const char* source_label,
-                                      const char* reason) const {
+  void logRejectedUnsafeRoute(const OccupancyGrid2D& grid,
+                              const std::span<const Point2> path_points,
+                              const char* source_label, const char* reason) const {
     const PublishedPathSafetySummary summary =
         summarizePublishedPathSafety(grid, path_points);
     RCLCPP_WARN(
         get_logger(),
-        "%s path rejected before publication: reason='%s' segments=%zu "
+        "%s route rejected before racing trajectory build: reason='%s' segments=%zu "
         "non_traversable_segments=%zu escape_segments=%zu "
         "first_non_traversable_segment=%zu "
         "segment_start=(%.2f, %.2f) "
@@ -1149,16 +1290,8 @@ private:
 
     const StablePathDecision decision = planner_core_.evaluateStablePath(
         grid, last_valid_path_points_, current_pose_.position, goal_);
-    if (decision.reason == StablePathDecisionReason::kDeviationTooLarge) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Current path cannot be reused because the vehicle is too far from it: "
-          "deviation=%.2fm limit=%.2fm",
-          decision.deviation_m, stable_path_reuse_max_deviation_m_);
-    }
     if (decision.reason == StablePathDecisionReason::kGoalMismatch ||
         decision.reason == StablePathDecisionReason::kProjectionUnavailable ||
-        decision.reason == StablePathDecisionReason::kDeviationTooLarge ||
         decision.reason == StablePathDecisionReason::kNoPreviousPath ||
         decision.reason == StablePathDecisionReason::kDisabled) {
       return false;
@@ -1294,6 +1427,7 @@ private:
   std::optional<OccupancyGrid2D> static_grid_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
+  TrajectoryPlannerConfig trajectory_planner_config_{};
 
   Pose2 current_pose_{};
   Point2 current_velocity_{};
@@ -1322,7 +1456,6 @@ private:
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{2.5};
   double static_map_min_blocking_height_m_{0.0};
-  double stable_path_reuse_max_deviation_m_{1.0};
   double stable_path_goal_tolerance_m_{3.0};
   double max_lidar_range_m_{35.0};
   double range_hit_epsilon_m_{0.05};

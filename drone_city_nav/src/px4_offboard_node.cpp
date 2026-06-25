@@ -31,7 +31,6 @@
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
-#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -39,14 +38,13 @@
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <numbers>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <thread>
 #include <vector>
 
 namespace drone_city_nav {
@@ -126,33 +124,6 @@ void writeJsonNumberOrNull(std::ostream& stream, const double value) {
   stream << "null";
 }
 
-void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
-  if (std::isfinite(value)) {
-    stream << value;
-  }
-}
-
-struct TrajectoryBuildRequest {
-  std::uint64_t job_id{0U};
-  std::uint64_t local_path_update_id{0U};
-  std::uint64_t planner_path_id{0U};
-  std::string source_label;
-  std::vector<Point2> route_points;
-  std::optional<OccupancyGrid2D> prohibited_grid;
-  TrajectoryPlannerConfig config{};
-};
-
-struct TrajectoryBuildResult {
-  std::uint64_t job_id{0U};
-  std::uint64_t local_path_update_id{0U};
-  std::uint64_t planner_path_id{0U};
-  std::string source_label;
-  TrajectoryPlannerResult planned;
-  bool grid_available{false};
-  double duration_ms{0.0};
-  std::size_t route_points{0U};
-};
-
 struct PathTrackingDiagnostics {
   bool valid{false};
   std::size_t segment_start_index{0U};
@@ -231,84 +202,31 @@ public:
         declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
     velocity_follower_config_.cross_track_gain =
         std::clamp(declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
+    velocity_follower_config_.cross_track_derivative_gain = std::clamp(
+        declare_parameter<double>("cross_track_derivative_gain", 0.8), 0.0, 10.0);
     velocity_follower_config_.max_cross_track_correction_angle_rad =
         std::clamp(radiansFromDegrees(declare_parameter<double>(
                        "max_cross_track_correction_angle_deg", 45.0)),
                    0.0, std::numbers::pi / 2.0);
+    velocity_follower_config_.max_cross_track_correction_rate_mps2 = std::clamp(
+        declare_parameter<double>("max_cross_track_correction_rate_mps2", 4.0), 0.0,
+        100.0);
+    velocity_follower_config_.max_feedforward_accel_mps2 = std::clamp(
+        declare_parameter<double>("max_feedforward_accel_mps2", 6.0), 0.0, 100.0);
+    velocity_follower_config_.max_feedforward_jerk_mps3 = std::clamp(
+        declare_parameter<double>("max_feedforward_jerk_mps3", 12.0), 0.0, 1000.0);
+    velocity_follower_config_.max_velocity_jerk_mps3 = std::clamp(
+        declare_parameter<double>("max_velocity_jerk_mps3", 12.0), 0.0, 1000.0);
+    velocity_follower_config_.acceleration_feedforward_scale = std::clamp(
+        declare_parameter<double>("acceleration_feedforward_scale", 1.0), 0.0, 10.0);
     velocity_follower_config_.final_acceptance_radius_m = acceptance_radius_m_;
     velocity_follower_config_.final_hold_max_speed_mps = std::clamp(
         declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
-    trajectory_planner_config_.speed_profile = velocity_follower_config_;
-    trajectory_planner_config_.corridor.max_radius_m = std::clamp(
-        declare_parameter<double>("corridor_max_radius_m", 40.0), 1.0, 5000.0);
-    trajectory_planner_config_.corridor.sample_step_m =
-        std::clamp(declare_parameter<double>("corridor_sample_step_m", 1.0), 0.1, 20.0);
-    trajectory_planner_config_.corridor.ray_step_m =
-        std::clamp(declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
-    trajectory_planner_config_.corridor.safety_margin_m = std::clamp(
-        declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
-    trajectory_planner_config_.corridor.center_recovery_max_m = std::clamp(
-        declare_parameter<double>("corridor_center_recovery_max_m", 3.0), 0.0, 5000.0);
-    trajectory_planner_config_.corridor.lateral_limit_window_m =
-        std::clamp(declare_parameter<double>("corridor_lateral_limit_window_m", 20.0),
-                   0.1, 5000.0);
-    trajectory_planner_config_.corridor.lateral_limit_ratio = std::clamp(
-        declare_parameter<double>("corridor_lateral_limit_ratio", 1.25), 1.0, 100.0);
-    trajectory_planner_config_.corridor.lateral_limit_margin_m = std::clamp(
-        declare_parameter<double>("corridor_lateral_limit_margin_m", 1.0), 0.0, 5000.0);
-    trajectory_planner_config_.racing_line.max_iterations =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,
-            10000));
-    trajectory_planner_config_.racing_line.initial_offset_step_m =
-        std::clamp(declare_parameter<double>("racing_line_initial_offset_step_m", 2.0),
-                   0.001, 500.0);
-    trajectory_planner_config_.racing_line.min_offset_step_m =
-        std::clamp(declare_parameter<double>("racing_line_min_offset_step_m", 0.1),
-                   0.001, trajectory_planner_config_.racing_line.initial_offset_step_m);
-    trajectory_planner_config_.racing_line.optimizer_sample_step_m = std::clamp(
-        declare_parameter<double>("racing_line_optimizer_sample_step_m", 5.0), 0.0,
-        100.0);
-    trajectory_planner_config_.racing_line.cooling_ratio = std::clamp(
-        declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
-    trajectory_planner_config_.racing_line.weight_length = std::clamp(
-        declare_parameter<double>("racing_line_weight_length", 0.02), 0.0, 1.0e6);
-    trajectory_planner_config_.racing_line.weight_curvature = std::clamp(
-        declare_parameter<double>("racing_line_weight_curvature", 250.0), 0.0, 1.0e9);
-    trajectory_planner_config_.racing_line.weight_curvature_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_curvature_change", 100.0), 0.0,
-        1.0e9);
-    trajectory_planner_config_.racing_line.weight_offset_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_offset_change", 0.5), 0.0, 1.0e9);
-    trajectory_planner_config_.racing_line.weight_offset_second_change = std::clamp(
-        declare_parameter<double>("racing_line_weight_offset_second_change", 5.0), 0.0,
-        1.0e9);
-    trajectory_planner_config_.racing_line.weight_center_bias = std::clamp(
-        declare_parameter<double>("racing_line_weight_center_bias", 0.0), 0.0, 1.0e6);
-    trajectory_planner_config_.racing_line.weight_time = std::clamp(
-        declare_parameter<double>("racing_line_weight_time", 50.0), 0.0, 1.0e9);
-    trajectory_planner_config_.racing_line.weight_edge_margin = std::clamp(
-        declare_parameter<double>("racing_line_weight_edge_margin", 80.0), 0.0, 1.0e9);
-    trajectory_planner_config_.racing_line.desired_edge_margin_m =
-        std::clamp(declare_parameter<double>("racing_line_desired_edge_margin_m", 4.0),
-                   0.0, 1000.0);
-    trajectory_planner_config_.racing_line.max_length_ratio = std::clamp(
-        declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
-    trajectory_planner_config_.racing_line.regularization_iterations =
-        static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>("racing_line_regularization_iterations", 2),
-            0, 100));
-    trajectory_planner_config_.racing_line.regularization_max_time_regression_s =
-        std::clamp(declare_parameter<double>(
-                       "racing_line_regularization_max_time_regression_s", 0.5),
-                   0.0, 3600.0);
     final_trajectory_debug_topic_ = declare_parameter<std::string>(
         "final_trajectory_debug_topic", "/drone_city_nav/final_trajectory_path");
     final_trajectory_debug_sample_step_m_ = std::clamp(
         declare_parameter<double>("final_trajectory_debug_sample_step_m", 1.0), 0.1,
         20.0);
-    trajectory_planner_config_.debug_sample_step_m =
-        final_trajectory_debug_sample_step_m_;
     offboard_debug_marker_topic_ = declare_parameter<std::string>(
         "offboard_debug_marker_topic", "/drone_city_nav/offboard_debug_markers");
     altitude_hold_kp_ =
@@ -431,19 +349,14 @@ public:
         "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
         "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
-        "max_cross_track_correction_angle=%.1fdeg altitude_hold_kp=%.2f "
+        "max_cross_track_correction_angle=%.1fdeg "
+        "max_cross_track_correction_rate=%.2fmps2 "
+        "max_feedforward_jerk=%.2fmps3 max_velocity_jerk=%.2fmps3 "
+        "altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
-        "racing_trajectory[final_topic='%s' debug_sample_step=%.2fm "
+        "executable_trajectory[source=planner_final_path final_topic='%s' "
+        "debug_sample_step=%.2fm "
         "marker_topic='%s'] "
-        "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
-        "center_recovery_max=%.2fm "
-        "lateral_limit_window=%.2fm lateral_limit_ratio=%.2f "
-        "lateral_limit_margin=%.2fm] "
-        "racing_line[iterations=%zu optimizer_sample_step=%.2fm "
-        "offset_step=%.2fm min_step=%.2fm "
-        "weights(length=%.3f time=%.2f curvature=%.2f curvature_change=%.2f "
-        "offset_change=%.2f offset_second_change=%.2f center=%.3f "
-        "edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)] "
         "mission_goal=(%.1f, %.1f) "
         "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
         "flight_blackbox=%s flight_blackbox_path='%s' "
@@ -462,31 +375,12 @@ public:
         velocity_follower_config_.cross_track_gain,
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
-        altitude_hold_kp_, max_vertical_speed_mps_,
-        final_trajectory_debug_topic_.c_str(), final_trajectory_debug_sample_step_m_,
-        offboard_debug_marker_topic_.c_str(),
-        trajectory_planner_config_.corridor.max_radius_m,
-        trajectory_planner_config_.corridor.sample_step_m,
-        trajectory_planner_config_.corridor.safety_margin_m,
-        trajectory_planner_config_.corridor.center_recovery_max_m,
-        trajectory_planner_config_.corridor.lateral_limit_window_m,
-        trajectory_planner_config_.corridor.lateral_limit_ratio,
-        trajectory_planner_config_.corridor.lateral_limit_margin_m,
-        trajectory_planner_config_.racing_line.max_iterations,
-        trajectory_planner_config_.racing_line.optimizer_sample_step_m,
-        trajectory_planner_config_.racing_line.initial_offset_step_m,
-        trajectory_planner_config_.racing_line.min_offset_step_m,
-        trajectory_planner_config_.racing_line.weight_length,
-        trajectory_planner_config_.racing_line.weight_time,
-        trajectory_planner_config_.racing_line.weight_curvature,
-        trajectory_planner_config_.racing_line.weight_curvature_change,
-        trajectory_planner_config_.racing_line.weight_offset_change,
-        trajectory_planner_config_.racing_line.weight_offset_second_change,
-        trajectory_planner_config_.racing_line.weight_center_bias,
-        trajectory_planner_config_.racing_line.weight_edge_margin,
-        trajectory_planner_config_.racing_line.desired_edge_margin_m,
-        trajectory_planner_config_.racing_line.max_length_ratio, mission_goal_.x,
-        mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+        velocity_follower_config_.max_cross_track_correction_rate_mps2,
+        velocity_follower_config_.max_feedforward_jerk_mps3,
+        velocity_follower_config_.max_velocity_jerk_mps3, altitude_hold_kp_,
+        max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
+        final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),
+        mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
         static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
         flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
         static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
@@ -498,12 +392,9 @@ public:
         path_topic.c_str(), path_id_topic.c_str(), local_position_topic.c_str(),
         attitude_topic.c_str(), vehicle_status_topic.c_str(),
         emergency_stop_topic.c_str(), prohibited_grid_topic.c_str());
-    startTrajectoryWorker();
   }
 
-  ~Px4OffboardNode() override {
-    stopTrajectoryWorker();
-  }
+  ~Px4OffboardNode() override = default;
 
   Px4OffboardNode(const Px4OffboardNode&) = delete;
   Px4OffboardNode& operator=(const Px4OffboardNode&) = delete;
@@ -596,84 +487,12 @@ private:
     markers.markers.push_back(heading);
   }
 
-  void addCorridorDebugMarkers(visualization_msgs::msg::MarkerArray& markers) const {
-    auto obsolete_ribs = makeDebugMarker("racing_corridor_ribs", 0,
-                                         visualization_msgs::msg::Marker::LINE_LIST);
-    obsolete_ribs.action = visualization_msgs::msg::Marker::DELETE;
-
-    auto fill = makeDebugMarker("racing_corridor_fill", 0,
-                                visualization_msgs::msg::Marker::TRIANGLE_LIST);
-    auto left = makeDebugMarker("racing_corridor_left", 0,
-                                visualization_msgs::msg::Marker::LINE_STRIP);
-    auto right = makeDebugMarker("racing_corridor_right", 0,
-                                 visualization_msgs::msg::Marker::LINE_STRIP);
-    fill.scale.x = 1.0;
-    fill.scale.y = 1.0;
-    fill.scale.z = 1.0;
-    fill.color.r = 0.55F;
-    fill.color.g = 0.78F;
-    fill.color.b = 1.0F;
-    fill.color.a = 0.22F;
-    for (auto* marker : {&left, &right}) {
-      marker->scale.x = 0.16;
-      marker->color.r = 0.70F;
-      marker->color.g = 0.90F;
-      marker->color.b = 1.0F;
-      marker->color.a = 0.70F;
-    }
-
-    if (corridor_debug_samples_.empty()) {
-      fill.action = visualization_msgs::msg::Marker::DELETE;
-      left.action = visualization_msgs::msg::Marker::DELETE;
-      right.action = visualization_msgs::msg::Marker::DELETE;
-      markers.markers.push_back(obsolete_ribs);
-      markers.markers.push_back(fill);
-      markers.markers.push_back(left);
-      markers.markers.push_back(right);
-      return;
-    }
-
-    const auto leftEdge = [](const CorridorSample& sample) {
-      return Point2{sample.center.x + sample.normal.x * sample.left_bound_m,
-                    sample.center.y + sample.normal.y * sample.left_bound_m};
-    };
-    const auto rightEdge = [](const CorridorSample& sample) {
-      return Point2{sample.center.x - sample.normal.x * sample.right_bound_m,
-                    sample.center.y - sample.normal.y * sample.right_bound_m};
-    };
-
-    for (const CorridorSample& sample : corridor_debug_samples_) {
-      const Point2 left_point = leftEdge(sample);
-      const Point2 right_point = rightEdge(sample);
-      left.points.push_back(markerPoint(left_point, kRvizGroundZ + 0.02));
-      right.points.push_back(markerPoint(right_point, kRvizGroundZ + 0.02));
-    }
-    for (std::size_t i = 1U; i < corridor_debug_samples_.size(); ++i) {
-      const Point2 left_previous = leftEdge(corridor_debug_samples_[i - 1U]);
-      const Point2 right_previous = rightEdge(corridor_debug_samples_[i - 1U]);
-      const Point2 left_current = leftEdge(corridor_debug_samples_[i]);
-      const Point2 right_current = rightEdge(corridor_debug_samples_[i]);
-      fill.points.push_back(markerPoint(left_previous, kRvizGroundZ - 0.01));
-      fill.points.push_back(markerPoint(right_previous, kRvizGroundZ - 0.01));
-      fill.points.push_back(markerPoint(left_current, kRvizGroundZ - 0.01));
-      fill.points.push_back(markerPoint(right_previous, kRvizGroundZ - 0.01));
-      fill.points.push_back(markerPoint(right_current, kRvizGroundZ - 0.01));
-      fill.points.push_back(markerPoint(left_current, kRvizGroundZ - 0.01));
-    }
-
-    markers.markers.push_back(obsolete_ribs);
-    markers.markers.push_back(fill);
-    markers.markers.push_back(left);
-    markers.markers.push_back(right);
-  }
-
   void publishOffboardDebugMarkers() {
     if (!offboard_debug_marker_pub_) {
       return;
     }
     visualization_msgs::msg::MarkerArray markers;
     addDroneDebugMarkers(markers);
-    addCorridorDebugMarkers(markers);
     visualization_msgs::msg::MarkerArray trajectory_markers =
         buildTrajectoryDebugMarkers(makeDebugHeader(), final_trajectory_samples_,
                                     trajectory_speed_profile_, kRvizGroundZ);
@@ -684,9 +503,7 @@ private:
   }
 
   void clearFinalTrajectory() {
-    cancelPendingTrajectoryBuilds();
     trajectory_.clear();
-    corridor_debug_samples_.clear();
     final_trajectory_samples_.clear();
     trajectory_speed_profile_ = TrajectorySpeedProfile{};
     trajectory_valid_ = false;
@@ -699,139 +516,93 @@ private:
     publishOffboardDebugMarkers();
   }
 
-  [[nodiscard]] TrajectoryPlannerConfig currentTrajectoryPlannerConfig() const {
-    TrajectoryPlannerConfig config = trajectory_planner_config_;
-    config.speed_profile = velocity_follower_config_;
-    config.debug_sample_step_m = final_trajectory_debug_sample_step_m_;
-    return config;
+  void updatePlannerStatsForReceivedTrajectory() {
+    last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
+    last_trajectory_planner_stats_.status =
+        trajectory_valid_ ? TrajectoryPlannerStatus::kOk
+                          : TrajectoryPlannerStatus::kInvalidTrajectory;
+    last_trajectory_planner_stats_.input_points = path_points_.size();
+    last_trajectory_planner_stats_.samples = final_trajectory_samples_.size();
+    last_trajectory_planner_stats_.compact_segments = trajectory_.size();
+    last_trajectory_planner_stats_.line_segments =
+        last_trajectory_metrics_.line_segments;
+    last_trajectory_planner_stats_.arc_segments = last_trajectory_metrics_.arc_segments;
+    last_trajectory_planner_stats_.length_m = last_trajectory_metrics_.length_m;
+
+    double curvature_abs_sum = 0.0;
+    for (std::size_t i = 0U; i < final_trajectory_samples_.size(); ++i) {
+      const double curvature = final_trajectory_samples_[i].curvature_1pm;
+      if (i == 0U) {
+        last_trajectory_planner_stats_.curvature_min_1pm = curvature;
+        last_trajectory_planner_stats_.curvature_max_1pm = curvature;
+      } else {
+        last_trajectory_planner_stats_.curvature_min_1pm =
+            std::min(last_trajectory_planner_stats_.curvature_min_1pm, curvature);
+        last_trajectory_planner_stats_.curvature_max_1pm =
+            std::max(last_trajectory_planner_stats_.curvature_max_1pm, curvature);
+      }
+      curvature_abs_sum += std::abs(curvature);
+    }
+    if (!final_trajectory_samples_.empty()) {
+      last_trajectory_planner_stats_.curvature_mean_abs_1pm =
+          curvature_abs_sum / static_cast<double>(final_trajectory_samples_.size());
+    }
+
+    double speed_sum = 0.0;
+    for (std::size_t i = 0U; i < trajectory_speed_profile_.samples.size(); ++i) {
+      const TrajectorySpeedSample& sample = trajectory_speed_profile_.samples[i];
+      const double speed = sample.profiled_limit_mps;
+      if (i == 0U) {
+        last_trajectory_planner_stats_.speed_profile_min_mps = speed;
+        last_trajectory_planner_stats_.speed_profile_max_mps = speed;
+      } else {
+        last_trajectory_planner_stats_.speed_profile_min_mps =
+            std::min(last_trajectory_planner_stats_.speed_profile_min_mps, speed);
+        last_trajectory_planner_stats_.speed_profile_max_mps =
+            std::max(last_trajectory_planner_stats_.speed_profile_max_mps, speed);
+      }
+      speed_sum += speed;
+      if (sample.reason == SpeedConstraintType::kArc) {
+        ++last_trajectory_planner_stats_.speed_profile_curvature_limited_samples;
+      }
+    }
+    if (!trajectory_speed_profile_.samples.empty()) {
+      last_trajectory_planner_stats_.speed_profile_mean_mps =
+          speed_sum / static_cast<double>(trajectory_speed_profile_.samples.size());
+    }
   }
 
-  void applyFinalTrajectoryResult(TrajectoryPlannerResult planned,
-                                  const std::string& source_label,
-                                  const bool grid_available,
-                                  const double build_duration_ms,
-                                  const std::uint64_t build_job_id,
-                                  const std::size_t route_points) {
-    trajectory_ = std::move(planned.compact_segments);
-    corridor_debug_samples_ = std::move(planned.corridor_samples);
-    final_trajectory_samples_ = std::move(planned.samples);
-    trajectory_speed_profile_ = std::move(planned.speed_profile);
-    trajectory_valid_ = planned.valid;
-    last_trajectory_route_points_ = route_points;
-    last_trajectory_planner_stats_ = planned.stats;
+  void applyReceivedFinalTrajectoryPath(const char* source_label) {
+    final_trajectory_samples_ = trajectoryPointSamplesFromPoints(path_points_);
+    trajectory_ = lineTrajectoryFromSamples(final_trajectory_samples_);
+    trajectory_speed_profile_ = buildTrajectorySpeedProfile(final_trajectory_samples_,
+                                                            velocity_follower_config_);
+    trajectory_valid_ = trajectoryIsUsable(trajectory_) &&
+                        trajectorySamplesAreUsable(final_trajectory_samples_) &&
+                        trajectory_speed_profile_.valid;
+    last_trajectory_route_points_ = path_points_.size();
     last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
     last_trajectory_shape_diagnostics_ =
         computeTrajectoryShapeDiagnostics(final_trajectory_samples_);
+    updatePlannerStatsForReceivedTrajectory();
     if (!trajectory_valid_) {
       resetVelocityDiagnostics();
     }
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
-    const std::string samples_csv_path =
-        writeFinalTrajectorySamplesCsv(source_label.c_str());
-    const std::string corridor_csv_path = writeCorridorSamplesCsv(source_label.c_str());
+    const std::string samples_csv_path = writeFinalTrajectorySamplesCsv(source_label);
     RCLCPP_INFO(
         get_logger(),
-        "Final trajectory rebuilt: source=%s build_job=%" PRIu64
-        " build_duration_ms=%.1f local_path_update_id=%" PRIu64
+        "Received executable final trajectory: source=%s local_path_update_id=%" PRIu64
         " planner_path_id=%" PRIu64
-        " path_points=%zu route_points=%zu valid=%s grid_available=%s "
-        "line_segments=%zu arc_segments=%zu total_length=%.2f samples=%zu "
-        "debug_samples=%zu status=%.*s "
-        "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-        "clearance_min=%.2f clearance_mean=%.2f invalid_route_samples=%zu "
-        "recovered_centers=%zu unrecoverable_centers=%zu "
-        "center_recovery_max=%.2f "
-        "lateral_limited=%zu lateral_reduction_max=%.2f] "
-        "racing_line[input_samples=%zu optimizer_samples=%zu output_samples=%zu "
-        "iterations=%zu evals=%zu collision_rejections=%zu "
-        "cost_initial=%.3f cost_final=%.3f length_initial=%.2f "
-        "length_final=%.2f length_ratio=%.3f max_offset=%.2f "
-        "edge_margin[min=%.2f mean=%.2f limited=%zu] "
-        "curvature_max=%.4f "
-        "cost_breakdown[length=%.3f time=%.3f curvature=%.3f "
-        "curvature_change=%.3f offset_change=%.3f "
-        "offset_second=%.3f center=%.3f edge=%.3f collision=%.3f "
-        "outside=%.3f overrun=%.3f] "
-        "time_final=%.2f time_centerline=%.2f time_gain=%.2f "
-        "time_best_candidate=%.2f best_candidate_score=%.3f "
-        "speed_limit_min=%.2f speed_limit_max=%.2f "
-        "curvature_limited_samples=%zu regularization_applied=%s "
-        "regularization_iterations=%zu regularization_time_delta=%.2f "
-        "curvature_jump_pre=%.4f curvature_jump_post=%.4f] "
+        " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
         "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
-        "lt0_5=%zu lt1=%zu lt2=%zu max_heading_delta=%.1fdeg "
-        "heading_index=%zu heading_point=(%.2f, %.2f) "
-        "max_curvature_jump=%.4f curvature_index=%zu "
-        "curvature_point=(%.2f, %.2f) max_offset_delta=%.2f "
-        "offset_index=%zu offset_point=(%.2f, %.2f) "
-        "max_offset_second_delta=%.2f offset_second_index=%zu "
-        "offset_second_point=(%.2f, %.2f)] samples_csv='%s' corridor_csv='%s'",
-        source_label.c_str(), build_job_id, build_duration_ms, received_path_update_id_,
-        latest_planner_path_id_, path_points_.size(), last_trajectory_route_points_,
-        trajectory_valid_ ? "true" : "false", grid_available ? "true" : "false",
-        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.arc_segments,
-        last_trajectory_metrics_.length_m, final_trajectory_samples_.size(),
-        last_final_trajectory_debug_samples_,
-        static_cast<int>(
-            trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
-        trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
-        last_trajectory_planner_stats_.corridor.samples,
-        last_trajectory_planner_stats_.corridor.min_width_m,
-        last_trajectory_planner_stats_.corridor.mean_width_m,
-        last_trajectory_planner_stats_.corridor.max_width_m,
-        last_trajectory_planner_stats_.corridor.min_clearance_m,
-        last_trajectory_planner_stats_.corridor.mean_clearance_m,
-        last_trajectory_planner_stats_.corridor.route_prohibited_samples,
-        last_trajectory_planner_stats_.corridor.center_recovered_samples,
-        last_trajectory_planner_stats_.corridor.center_unrecoverable_samples,
-        last_trajectory_planner_stats_.corridor.max_center_recovery_m,
-        last_trajectory_planner_stats_.corridor.lateral_limited_samples,
-        last_trajectory_planner_stats_.corridor.max_lateral_bound_reduction_m,
-        last_trajectory_planner_stats_.racing_line.input_samples,
-        last_trajectory_planner_stats_.racing_line.optimizer_samples,
-        last_trajectory_planner_stats_.racing_line.output_samples,
-        last_trajectory_planner_stats_.racing_line.iterations,
-        last_trajectory_planner_stats_.racing_line.candidate_evaluations,
-        last_trajectory_planner_stats_.racing_line.collision_rejections,
-        last_trajectory_planner_stats_.racing_line.initial_cost,
-        last_trajectory_planner_stats_.racing_line.final_cost,
-        last_trajectory_planner_stats_.racing_line.centerline_length_m,
-        last_trajectory_planner_stats_.racing_line.final_length_m,
-        last_trajectory_planner_stats_.racing_line.final_length_ratio,
-        last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
-        last_trajectory_planner_stats_.racing_line.min_edge_margin_m,
-        last_trajectory_planner_stats_.racing_line.mean_edge_margin_m,
-        last_trajectory_planner_stats_.racing_line.edge_margin_limited_samples,
-        last_trajectory_planner_stats_.racing_line.max_abs_curvature_1pm,
-        last_trajectory_planner_stats_.racing_line.cost_length,
-        last_trajectory_planner_stats_.racing_line.cost_time,
-        last_trajectory_planner_stats_.racing_line.cost_curvature,
-        last_trajectory_planner_stats_.racing_line.cost_curvature_change,
-        last_trajectory_planner_stats_.racing_line.cost_offset_change,
-        last_trajectory_planner_stats_.racing_line.cost_offset_second_change,
-        last_trajectory_planner_stats_.racing_line.cost_center_bias,
-        last_trajectory_planner_stats_.racing_line.cost_edge_margin,
-        last_trajectory_planner_stats_.racing_line.cost_collision,
-        last_trajectory_planner_stats_.racing_line.cost_outside_grid,
-        last_trajectory_planner_stats_.racing_line.cost_length_overrun,
-        last_trajectory_planner_stats_.racing_line.estimated_time_s,
-        last_trajectory_planner_stats_.racing_line.centerline_estimated_time_s,
-        last_trajectory_planner_stats_.racing_line.time_gain_s,
-        last_trajectory_planner_stats_.racing_line.best_candidate_estimated_time_s,
-        last_trajectory_planner_stats_.racing_line.best_candidate_score,
-        last_trajectory_planner_stats_.racing_line.min_speed_limit_mps,
-        last_trajectory_planner_stats_.racing_line.max_speed_limit_mps,
-        last_trajectory_planner_stats_.racing_line.curvature_limited_samples,
-        last_trajectory_planner_stats_.racing_line.regularization_applied ? "true"
-                                                                          : "false",
-        last_trajectory_planner_stats_.racing_line.regularization_iterations,
-        last_trajectory_planner_stats_.racing_line.regularization_time_delta_s,
-        last_trajectory_planner_stats_.racing_line
-            .pre_regularization_max_curvature_jump_1pm,
-        last_trajectory_planner_stats_.racing_line
-            .post_regularization_max_curvature_jump_1pm,
+        "max_heading_delta=%.1fdeg max_curvature_jump=%.4f] samples_csv='%s'",
+        source_label, received_path_update_id_, latest_planner_path_id_,
+        path_points_.size(), trajectory_valid_ ? "true" : "false",
+        last_trajectory_metrics_.line_segments, last_trajectory_metrics_.length_m,
+        final_trajectory_samples_.size(),
         last_trajectory_planner_stats_.speed_profile_min_mps,
         last_trajectory_planner_stats_.speed_profile_mean_mps,
         last_trajectory_planner_stats_.speed_profile_max_mps,
@@ -840,253 +611,9 @@ private:
         last_trajectory_shape_diagnostics_.min_segment_length_m,
         last_trajectory_shape_diagnostics_.mean_segment_length_m,
         last_trajectory_shape_diagnostics_.max_segment_length_m,
-        last_trajectory_shape_diagnostics_.segments_shorter_than_0_5m,
-        last_trajectory_shape_diagnostics_.segments_shorter_than_1m,
-        last_trajectory_shape_diagnostics_.segments_shorter_than_2m,
         radiansToDegrees(last_trajectory_shape_diagnostics_.max_heading_delta_rad),
-        last_trajectory_shape_diagnostics_.max_heading_delta_index,
-        last_trajectory_shape_diagnostics_.max_heading_delta_point.x,
-        last_trajectory_shape_diagnostics_.max_heading_delta_point.y,
         last_trajectory_shape_diagnostics_.max_curvature_jump_1pm,
-        last_trajectory_shape_diagnostics_.max_curvature_jump_index,
-        last_trajectory_shape_diagnostics_.max_curvature_jump_point.x,
-        last_trajectory_shape_diagnostics_.max_curvature_jump_point.y,
-        last_trajectory_shape_diagnostics_.max_offset_delta_m,
-        last_trajectory_shape_diagnostics_.max_offset_delta_index,
-        last_trajectory_shape_diagnostics_.max_offset_delta_point.x,
-        last_trajectory_shape_diagnostics_.max_offset_delta_point.y,
-        last_trajectory_shape_diagnostics_.max_offset_second_delta_m,
-        last_trajectory_shape_diagnostics_.max_offset_second_delta_index,
-        last_trajectory_shape_diagnostics_.max_offset_second_delta_point.x,
-        last_trajectory_shape_diagnostics_.max_offset_second_delta_point.y,
-        samples_csv_path.c_str(), corridor_csv_path.c_str());
-  }
-
-  [[nodiscard]] std::vector<Point2> activeTrajectoryRoutePoints() {
-    std::vector<Point2> route_points;
-    if (path_points_.size() < 2U) {
-      return route_points;
-    }
-
-    const bool pose_fresh = localPositionFresh();
-    const std::size_t start_index = std::min(
-        [&]() {
-          if (pose_fresh) {
-            const std::size_t next_index = drone_city_nav::advanceWaypointIndex(
-                path_points_, current_position_, waypoint_index_, pathFollowerConfig());
-            waypoint_index_ = next_index;
-            route_points.push_back(current_position_);
-            return next_index;
-          }
-          route_points.push_back(path_points_.front());
-          return std::size_t{1U};
-        }(),
-        path_points_.size() - 1U);
-    constexpr double kDuplicateRoutePointDistanceM = 0.05;
-    for (std::size_t i = start_index; i < path_points_.size(); ++i) {
-      if (route_points.empty() || distance(route_points.back(), path_points_[i]) >
-                                      kDuplicateRoutePointDistanceM) {
-        route_points.push_back(path_points_[i]);
-      }
-    }
-
-    if (route_points.size() < 2U) {
-      const Point2 goal = path_points_.back();
-      if (route_points.empty() ||
-          distance(route_points.back(), goal) > kDuplicateRoutePointDistanceM) {
-        route_points.push_back(goal);
-      }
-    }
-
-    return route_points;
-  }
-
-  void rebuildFinalTrajectory(const char* source_label) {
-    if (path_points_.size() < 2U) {
-      clearFinalTrajectory();
-      return;
-    }
-
-    std::vector<Point2> route_points = activeTrajectoryRoutePoints();
-    if (route_points.size() < 2U) {
-      clearFinalTrajectory();
-      RCLCPP_WARN(get_logger(),
-                  "Cannot rebuild final trajectory from fewer than two active route "
-                  "points: source=%s path_points=%zu route_points=%zu waypoint=%zu/%zu",
-                  source_label, path_points_.size(), route_points.size(),
-                  waypoint_index_ + 1U, path_points_.size());
-      return;
-    }
-
-    const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
-    const TrajectoryPlannerConfig config = currentTrajectoryPlannerConfig();
-    if (!prohibited_grid.has_value()) {
-      if (!trajectory_valid_) {
-        clearFinalTrajectory();
-      }
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 2000,
-          "Cannot rebuild racing trajectory without a fresh prohibited grid: "
-          "source=%s path_points=%zu route_points=%zu waypoint=%zu/%zu",
-          source_label, path_points_.size(), route_points.size(), waypoint_index_ + 1U,
-          path_points_.size());
-      return;
-    }
-    enqueueRacingTrajectoryBuild(source_label, *prohibited_grid, config, route_points);
-  }
-
-  void enqueueRacingTrajectoryBuild(const char* source_label,
-                                    const OccupancyGrid2D& prohibited_grid,
-                                    const TrajectoryPlannerConfig& config,
-                                    const std::vector<Point2>& route_points) {
-    TrajectoryBuildRequest request{};
-    request.job_id = ++latest_trajectory_build_job_id_;
-    request.local_path_update_id = received_path_update_id_;
-    request.planner_path_id = latest_planner_path_id_;
-    request.source_label = std::string{source_label} + "_racing_async";
-    request.route_points = route_points;
-    request.prohibited_grid = prohibited_grid;
-    request.config = config;
-
-    bool replaced_pending_request = false;
-    bool worker_busy = false;
-    {
-      std::lock_guard lock{trajectory_worker_mutex_};
-      replaced_pending_request = pending_trajectory_request_.has_value();
-      worker_busy = trajectory_worker_busy_;
-      pending_trajectory_request_ = std::move(request);
-    }
-    trajectory_worker_cv_.notify_one();
-    RCLCPP_INFO(get_logger(),
-                "Queued async racing trajectory build: job=%" PRIu64
-                " local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
-                " path_points=%zu route_points=%zu optimizer_sample_step=%.2fm "
-                "worker_busy=%s replaced_pending=%s",
-                latest_trajectory_build_job_id_, received_path_update_id_,
-                latest_planner_path_id_, path_points_.size(), route_points.size(),
-                config.racing_line.optimizer_sample_step_m,
-                worker_busy ? "true" : "false",
-                replaced_pending_request ? "true" : "false");
-  }
-
-  void cancelPendingTrajectoryBuilds() {
-    std::lock_guard lock{trajectory_worker_mutex_};
-    pending_trajectory_request_.reset();
-    ++latest_trajectory_build_job_id_;
-  }
-
-  [[nodiscard]] bool trajectoryBuildPendingOrBusy() {
-    std::lock_guard lock{trajectory_worker_mutex_};
-    return pending_trajectory_request_.has_value() || trajectory_worker_busy_;
-  }
-
-  void startTrajectoryWorker() {
-    trajectory_worker_ = std::thread{[this]() { trajectoryWorkerLoop(); }};
-  }
-
-  void stopTrajectoryWorker() {
-    {
-      std::lock_guard lock{trajectory_worker_mutex_};
-      trajectory_worker_stop_requested_ = true;
-      pending_trajectory_request_.reset();
-    }
-    trajectory_worker_cv_.notify_all();
-    if (trajectory_worker_.joinable()) {
-      trajectory_worker_.join();
-    }
-  }
-
-  void trajectoryWorkerLoop() {
-    while (true) {
-      TrajectoryBuildRequest request;
-      {
-        std::unique_lock lock{trajectory_worker_mutex_};
-        trajectory_worker_cv_.wait(lock, [this]() {
-          return trajectory_worker_stop_requested_ ||
-                 pending_trajectory_request_.has_value();
-        });
-        if (trajectory_worker_stop_requested_) {
-          return;
-        }
-        if (!pending_trajectory_request_.has_value()) {
-          continue;
-        }
-        request = std::move(pending_trajectory_request_.value());
-        pending_trajectory_request_.reset();
-        trajectory_worker_busy_ = true;
-      }
-
-      const auto started_at = std::chrono::steady_clock::now();
-      TrajectoryPlannerResult planned = planRacingTrajectory(
-          TrajectoryPlannerInput{std::span<const Point2>{request.route_points.data(),
-                                                         request.route_points.size()},
-                                 request.prohibited_grid.has_value()
-                                     ? &*request.prohibited_grid
-                                     : nullptr},
-          request.config);
-      const double duration_ms =
-          static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                  std::chrono::steady_clock::now() - started_at)
-                                  .count()) /
-          1000.0;
-
-      TrajectoryBuildResult result{};
-      result.job_id = request.job_id;
-      result.local_path_update_id = request.local_path_update_id;
-      result.planner_path_id = request.planner_path_id;
-      result.source_label = request.source_label;
-      result.planned = std::move(planned);
-      result.grid_available = request.prohibited_grid.has_value();
-      result.duration_ms = duration_ms;
-      result.route_points = request.route_points.size();
-
-      {
-        std::lock_guard lock{trajectory_worker_mutex_};
-        trajectory_worker_busy_ = false;
-        completed_trajectory_result_ = std::move(result);
-      }
-    }
-  }
-
-  void applyCompletedTrajectoryBuild() {
-    std::optional<TrajectoryBuildResult> result;
-    {
-      std::lock_guard lock{trajectory_worker_mutex_};
-      if (!completed_trajectory_result_.has_value()) {
-        return;
-      }
-      result = std::move(completed_trajectory_result_);
-      completed_trajectory_result_.reset();
-    }
-
-    if (result->job_id != latest_trajectory_build_job_id_ ||
-        result->local_path_update_id != received_path_update_id_ || !path_valid_) {
-      RCLCPP_INFO(get_logger(),
-                  "Discarding stale async racing trajectory: job=%" PRIu64
-                  " latest_job=%" PRIu64 " result_path_update=%" PRIu64
-                  " current_path_update=%" PRIu64 " path_valid=%s duration_ms=%.1f",
-                  result->job_id, latest_trajectory_build_job_id_,
-                  result->local_path_update_id, received_path_update_id_,
-                  path_valid_ ? "true" : "false", result->duration_ms);
-      return;
-    }
-    if (!result->planned.valid) {
-      RCLCPP_WARN(get_logger(),
-                  "Async racing trajectory rejected; keeping current racing trajectory "
-                  "or hold: "
-                  "job=%" PRIu64 " local_path_update_id=%" PRIu64
-                  " planner_path_id=%" PRIu64 " duration_ms=%.1f status=%.*s",
-                  result->job_id, result->local_path_update_id, result->planner_path_id,
-                  result->duration_ms,
-                  static_cast<int>(
-                      trajectoryPlannerStatusName(result->planned.stats.status).size()),
-                  trajectoryPlannerStatusName(result->planned.stats.status).data());
-      return;
-    }
-
-    applyFinalTrajectoryResult(std::move(result->planned), result->source_label,
-                               result->grid_available, result->duration_ms,
-                               result->job_id, result->route_points);
+        samples_csv_path.c_str());
   }
 
   void onPath(const nav_msgs::msg::Path& path) {
@@ -1136,7 +663,7 @@ private:
                                                    pathFollowerConfig())
             : 0U;
     waypoint_index_ = candidate_index;
-    rebuildFinalTrajectory("path_update");
+    applyReceivedFinalTrajectoryPath("path_update");
     const Point2 first = path_points_.front();
     const Point2 last = path_points_.back();
     const bool path_changed = path_points_.size() != last_logged_path_size_ ||
@@ -1212,10 +739,6 @@ private:
 
   [[nodiscard]] std::filesystem::path finalTrajectorySamplesDirectory() const {
     return diagnosticDumpDirectory("final_trajectory_samples");
-  }
-
-  [[nodiscard]] std::filesystem::path corridorSamplesDirectory() const {
-    return diagnosticDumpDirectory("corridor_samples");
   }
 
   [[nodiscard]] std::vector<double> finalTrajectoryProfiledTimesFromStart() const {
@@ -1348,106 +871,6 @@ private:
       RCLCPP_WARN(get_logger(),
                   "Failed to update latest final trajectory summary JSON '%s'",
                   latest_summary_path.string().c_str());
-    }
-    return timestamped_path.string();
-  }
-
-  bool writeCorridorSamplesCsvFile(const std::filesystem::path& path,
-                                   const char* source_label) const {
-    std::ofstream stream{path, std::ios::out | std::ios::trunc};
-    if (!stream.is_open()) {
-      return false;
-    }
-
-    stream << std::setprecision(9);
-    stream << "# source=" << source_label
-           << " local_path_update_id=" << received_path_update_id_
-           << " planner_path_id=" << latest_planner_path_id_
-           << " path_points=" << path_points_.size()
-           << " route_points=" << last_trajectory_route_points_
-           << " trajectory_valid=" << (trajectory_valid_ ? "true" : "false")
-           << " trajectory_status="
-           << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
-           << "\n";
-    stream << "sample_index,s_m,route_center_x,route_center_y,center_x,center_y,"
-              "tangent_x,tangent_y,normal_x,normal_y,center_recovery_m,"
-              "left_bound_m,right_bound_m,width_m,clearance_m,"
-              "left_edge_x,left_edge_y,right_edge_x,right_edge_y\n";
-    for (std::size_t i = 0U; i < corridor_debug_samples_.size(); ++i) {
-      const CorridorSample& sample = corridor_debug_samples_[i];
-      const Point2 left_edge{sample.center.x + sample.normal.x * sample.left_bound_m,
-                             sample.center.y + sample.normal.y * sample.left_bound_m};
-      const Point2 right_edge{sample.center.x - sample.normal.x * sample.right_bound_m,
-                              sample.center.y - sample.normal.y * sample.right_bound_m};
-      stream << i << ",";
-      writeCsvNumberOrEmpty(stream, sample.s_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.route_center.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.route_center.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.center.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.center.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.tangent.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.tangent.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.normal.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.normal.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.left_bound_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.right_bound_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.left_bound_m + sample.right_bound_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.clearance_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, left_edge.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, left_edge.y);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, right_edge.x);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, right_edge.y);
-      stream << "\n";
-    }
-    return stream.good();
-  }
-
-  [[nodiscard]] std::string writeCorridorSamplesCsv(const char* source_label) const {
-    if (corridor_debug_samples_.empty()) {
-      return {};
-    }
-
-    const std::filesystem::path directory = corridorSamplesDirectory();
-    std::error_code error;
-    std::filesystem::create_directories(directory, error);
-    if (error) {
-      RCLCPP_WARN(get_logger(), "Failed to create corridor samples directory '%s': %s",
-                  directory.string().c_str(), error.message().c_str());
-      return {};
-    }
-
-    const std::filesystem::path timestamped_path =
-        directory / ("corridor_" + std::to_string(get_clock()->now().nanoseconds()) +
-                     "_local_" + std::to_string(received_path_update_id_) +
-                     "_planner_" + std::to_string(latest_planner_path_id_) + ".csv");
-    const std::filesystem::path latest_path = directory / "latest.csv";
-
-    if (!writeCorridorSamplesCsvFile(timestamped_path, source_label)) {
-      RCLCPP_WARN(get_logger(), "Failed to write corridor samples CSV '%s'",
-                  timestamped_path.string().c_str());
-      return {};
-    }
-    if (!writeCorridorSamplesCsvFile(latest_path, source_label)) {
-      RCLCPP_WARN(get_logger(), "Failed to update latest corridor samples CSV '%s'",
-                  latest_path.string().c_str());
     }
     return timestamped_path.string();
   }
@@ -1586,13 +1009,6 @@ private:
                   static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
                   msg.info.origin.position.y);
     }
-    if (path_valid_ && !finalTrajectoryReady() && !trajectoryBuildPendingOrBusy()) {
-      RCLCPP_INFO(get_logger(),
-                  "Final trajectory rebuild after first usable prohibited grid: "
-                  "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64,
-                  received_path_update_id_, latest_planner_path_id_);
-      rebuildFinalTrajectory("prohibited_grid_update");
-    }
   }
 
   void onTimer() {
@@ -1601,7 +1017,6 @@ private:
       return;
     }
 
-    applyCompletedTrajectoryBuild();
     updateFinalGoalHold();
     publishOffboardControlMode();
     publishTrajectorySetpoint();
@@ -1629,7 +1044,7 @@ private:
           get_logger(), *get_clock(), 2000,
           "Waiting for mission start prerequisites before arming/offboard: "
           "pose_fresh=%s path_valid=%s waypoint=%zu/%zu trajectory_valid=%s "
-          "trajectory_status=%.*s grid_seen=%s trajectory_build_busy=%s",
+          "trajectory_status=%.*s grid_seen=%s",
           localPositionFresh() ? "true" : "false", path_valid_ ? "true" : "false",
           waypoint_index_, path_points_.size(),
           finalTrajectoryReady() ? "true" : "false",
@@ -1637,8 +1052,7 @@ private:
               trajectoryPlannerStatusName(last_trajectory_planner_stats_.status)
                   .size()),
           trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
-          prohibited_grid_valid_ ? "true" : "false",
-          trajectoryBuildPendingOrBusy() ? "true" : "false");
+          prohibited_grid_valid_ ? "true" : "false");
       return;
     }
 
@@ -1674,7 +1088,7 @@ private:
     const OffboardSetpointMode mode = currentSetpointMode();
     msg.position = mode == OffboardSetpointMode::kPositionHold;
     msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
-    msg.acceleration = false;
+    msg.acceleration = mode == OffboardSetpointMode::kVelocityCruise;
     msg.attitude = false;
     msg.body_rate = false;
     msg.thrust_and_torque = false;
@@ -1844,9 +1258,6 @@ private:
     const bool had_previous_target = last_published_target_valid_;
     const Point2 previous_target = last_published_target_;
     const Point2 target = currentTarget();
-    if (!trajectory_valid_ && !trajectoryBuildPendingOrBusy()) {
-      rebuildFinalTrajectory("velocity_setpoint_rebuild");
-    }
     const double dt_s = consumeVelocityPlanDtS();
     const VelocitySetpointPlan plan =
         planVelocitySetpoint(trajectory_, trajectory_speed_profile_, current_position_,
@@ -1867,13 +1278,26 @@ private:
     msg.velocity = std::array<float, 3>{static_cast<float>(plan.velocity_xy.x),
                                         static_cast<float>(plan.velocity_xy.y),
                                         static_cast<float>(vz_ned)};
-    msg.acceleration = std::array<float, 3>{nan, nan, nan};
+    msg.acceleration =
+        std::array<float, 3>{static_cast<float>(plan.acceleration_xy.x),
+                             static_cast<float>(plan.acceleration_xy.y), nan};
     msg.jerk = std::array<float, 3>{nan, nan, nan};
     msg.yaw = static_cast<float>(velocityYaw(plan.velocity_xy));
     msg.yawspeed = nan;
 
     velocity_follower_state_.previous_velocity_setpoint = plan.velocity_xy;
     velocity_follower_state_.previous_velocity_setpoint_valid = true;
+    velocity_follower_state_.previous_velocity_acceleration_setpoint =
+        plan.velocity_setpoint_acceleration_xy;
+    velocity_follower_state_.previous_velocity_acceleration_setpoint_valid =
+        std::isfinite(plan.velocity_setpoint_acceleration_mps2);
+    velocity_follower_state_.previous_feedforward_acceleration_setpoint =
+        plan.acceleration_xy;
+    velocity_follower_state_.previous_feedforward_acceleration_setpoint_valid =
+        std::isfinite(plan.acceleration_xy_mps2);
+    velocity_follower_state_.previous_cross_track_correction_velocity =
+        plan.cross_track_correction_velocity;
+    velocity_follower_state_.previous_cross_track_correction_velocity_valid = true;
     last_velocity_setpoint_ = plan.velocity_xy;
     last_vertical_velocity_setpoint_mps_ = vz_ned;
     last_velocity_setpoint_speed_mps_ = plan.speed_mps;
@@ -2015,7 +1439,8 @@ private:
   }
 
   [[nodiscard]] bool missionStartReady() const {
-    return localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size();
+    return localPositionFresh() && path_valid_ &&
+           waypoint_index_ < path_points_.size() && finalTrajectoryReady();
   }
 
   [[nodiscard]] UpcomingTurn upcomingTurnAtWaypoint(const std::size_t index) const {
@@ -2374,7 +1799,7 @@ private:
         "Offboard summary: local_position=%s pose_fresh=%s pose_age_s=%.2f "
         "altitude=%.2f nav_allowed=%s "
         "status=%s armed=%s offboard=%s path=%s hold=%s waypoint=%zu/%zu "
-        "motion_phase=%s control_mode=%s rough_route_segment=%s "
+        "motion_phase=%s control_mode=%s final_trajectory_segment=%s "
         "trajectory[valid=%s line_segments=%zu arc_segments=%zu length=%.2f "
         "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
         "samples=%zu debug_samples=%zu status=%.*s "
@@ -2383,13 +1808,19 @@ private:
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
         "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
+        "velocity_setpoint_accel=%.2f velocity_setpoint_jerk=%.2f "
+        "accel_feedforward=(%.2f, %.2f) accel_feedforward_norm=%.2f "
+        "raw_accel_feedforward_norm=%.2f accel_feedforward_jerk=%.2f "
+        "curvature_feedforward_accel=%.2f "
         "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
         "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
         "curve_radius=%.2f] "
         "final_stop[distance=%.2f braking_distance=%.2f] "
         "velocity_delta=%.2f trajectory_cross_track=%.2f "
-        "cross_track_correction=%.2f altitude_error=%.2f "
-        "rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
+        "cross_track_correction=%.2f raw_cross_track_correction=%.2f "
+        "cross_track_delta=%.2f cross_track_lateral_velocity=%.2f "
+        "altitude_error=%.2f "
+        "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
         "local_clearance=%.2f",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
@@ -2417,6 +1848,13 @@ private:
         path_goal_distance, mission_goal_distance, current_speed_mps_,
         last_velocity_setpoint_.x, last_velocity_setpoint_.y,
         last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        last_velocity_plan_.velocity_setpoint_acceleration_mps2,
+        last_velocity_plan_.velocity_setpoint_jerk_mps3,
+        last_velocity_plan_.acceleration_xy.x, last_velocity_plan_.acceleration_xy.y,
+        last_velocity_plan_.acceleration_xy_mps2,
+        last_velocity_plan_.raw_acceleration_xy_mps2,
+        last_velocity_plan_.acceleration_jerk_mps3,
+        last_velocity_plan_.curvature_feedforward_accel_mps2,
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.accel_limited_speed_mps,
@@ -2430,7 +1868,10 @@ private:
         last_velocity_plan_.final_stop.braking_distance_m,
         last_velocity_plan_.velocity_delta_mps,
         last_velocity_plan_.trajectory_cross_track_error_m,
-        last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
+        last_velocity_plan_.cross_track_correction_mps,
+        last_velocity_plan_.raw_cross_track_correction_mps,
+        last_velocity_plan_.cross_track_correction_delta_mps,
+        last_velocity_plan_.cross_track_lateral_velocity_mps, last_altitude_error_m_,
         upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
@@ -2483,8 +1924,8 @@ private:
         "target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-        "rough_route_segment=%s local_clearance=%.2f "
-        "rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
+        "final_trajectory_segment=%s local_clearance=%.2f "
+        "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
         "final_goal_hold=%s",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, current_heading_rad_,
@@ -2522,12 +1963,25 @@ private:
         get_logger(),
         "Drone velocity command diagnostics: control_mode=%s "
         "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
+        "desired_velocity=(%.2f, %.2f) desired_speed=%.2f "
+        "velocity_tracking_error=%.2f desired_limiter_delta=%.2f "
+        "velocity_setpoint_accel=(%.2f, %.2f) velocity_setpoint_accel_norm=%.2f "
+        "velocity_setpoint_jerk=%.2f "
+        "accel_feedforward=(%.2f, %.2f) accel_feedforward_norm=%.2f "
+        "raw_accel_feedforward=(%.2f, %.2f) raw_accel_feedforward_norm=%.2f "
+        "accel_feedforward_delta=%.2f accel_feedforward_jerk=%.2f "
+        "curvature_feedforward_accel=%.2f "
         "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
         "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
         "allowed=%.2f curve_radius=%.2f] "
         "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
         "velocity_delta=%.2f trajectory_cross_track=%.2f "
-        "cross_track_correction=%.2f "
+        "cross_track_correction=%.2f cross_track_correction_vec=(%.2f, %.2f) "
+        "raw_cross_track_correction=%.2f raw_cross_track_correction_vec=(%.2f, %.2f) "
+        "cross_track_delta=%.2f cross_track_lateral_velocity=%.2f "
+        "velocity_basis[current_tangent=%.2f current_normal=%.2f "
+        "desired_tangent=%.2f desired_normal=%.2f "
+        "setpoint_tangent=%.2f setpoint_normal=%.2f] "
         "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
         "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
         "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
@@ -2535,6 +1989,23 @@ private:
         offboardSetpointModeName(last_offboard_setpoint_mode_),
         last_velocity_setpoint_.x, last_velocity_setpoint_.y,
         last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        last_velocity_plan_.desired_velocity_xy.x,
+        last_velocity_plan_.desired_velocity_xy.y,
+        last_velocity_plan_.desired_speed_mps,
+        last_velocity_plan_.velocity_tracking_error_mps,
+        last_velocity_plan_.desired_velocity_delta_mps,
+        last_velocity_plan_.velocity_setpoint_acceleration_xy.x,
+        last_velocity_plan_.velocity_setpoint_acceleration_xy.y,
+        last_velocity_plan_.velocity_setpoint_acceleration_mps2,
+        last_velocity_plan_.velocity_setpoint_jerk_mps3,
+        last_velocity_plan_.acceleration_xy.x, last_velocity_plan_.acceleration_xy.y,
+        last_velocity_plan_.acceleration_xy_mps2,
+        last_velocity_plan_.raw_acceleration_xy.x,
+        last_velocity_plan_.raw_acceleration_xy.y,
+        last_velocity_plan_.raw_acceleration_xy_mps2,
+        last_velocity_plan_.acceleration_delta_mps2,
+        last_velocity_plan_.acceleration_jerk_mps3,
+        last_velocity_plan_.curvature_feedforward_accel_mps2,
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
         last_velocity_plan_.accel_limited_speed_mps,
@@ -2548,7 +2019,20 @@ private:
         last_velocity_plan_.final_stop.braking_distance_m,
         last_velocity_plan_.velocity_delta_mps,
         last_velocity_plan_.trajectory_cross_track_error_m,
-        last_velocity_plan_.cross_track_correction_mps, last_altitude_error_m_,
+        last_velocity_plan_.cross_track_correction_mps,
+        last_velocity_plan_.cross_track_correction_velocity.x,
+        last_velocity_plan_.cross_track_correction_velocity.y,
+        last_velocity_plan_.raw_cross_track_correction_mps,
+        last_velocity_plan_.raw_cross_track_correction_velocity.x,
+        last_velocity_plan_.raw_cross_track_correction_velocity.y,
+        last_velocity_plan_.cross_track_correction_delta_mps,
+        last_velocity_plan_.cross_track_lateral_velocity_mps,
+        last_velocity_plan_.current_velocity_tangent_mps,
+        last_velocity_plan_.current_velocity_normal_mps,
+        last_velocity_plan_.desired_velocity_tangent_mps,
+        last_velocity_plan_.desired_velocity_normal_mps,
+        last_velocity_plan_.setpoint_velocity_tangent_mps,
+        last_velocity_plan_.setpoint_velocity_normal_mps, last_altitude_error_m_,
         last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
         last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
         trajectory_valid_ ? "true" : "false", last_velocity_plan_.trajectory_s_m,
@@ -2657,6 +2141,54 @@ private:
                           last_vertical_velocity_setpoint_mps_);
     flight_blackbox_stream_ << ",\"setpoint_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_setpoint_speed_mps_);
+    flight_blackbox_stream_ << ",\"desired_setpoint_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_velocity_xy.x);
+    flight_blackbox_stream_ << ",\"desired_setpoint_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_velocity_xy.y);
+    flight_blackbox_stream_ << ",\"desired_setpoint_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_speed_mps);
+    flight_blackbox_stream_ << ",\"setpoint_accel_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.acceleration_xy.x);
+    flight_blackbox_stream_ << ",\"setpoint_accel_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.acceleration_xy.y);
+    flight_blackbox_stream_ << ",\"setpoint_accel_norm_mps2\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.acceleration_xy_mps2);
+    flight_blackbox_stream_ << ",\"raw_setpoint_accel_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_acceleration_xy.x);
+    flight_blackbox_stream_ << ",\"raw_setpoint_accel_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_acceleration_xy.y);
+    flight_blackbox_stream_ << ",\"raw_setpoint_accel_norm_mps2\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_acceleration_xy_mps2);
+    flight_blackbox_stream_ << ",\"velocity_setpoint_accel_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_setpoint_acceleration_xy.x);
+    flight_blackbox_stream_ << ",\"velocity_setpoint_accel_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_setpoint_acceleration_xy.y);
+    flight_blackbox_stream_ << ",\"velocity_setpoint_accel_norm_mps2\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_setpoint_acceleration_mps2);
+    flight_blackbox_stream_ << ",\"velocity_setpoint_jerk_mps3\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_setpoint_jerk_mps3);
+    flight_blackbox_stream_ << ",\"setpoint_accel_delta_mps2\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.acceleration_delta_mps2);
+    flight_blackbox_stream_ << ",\"setpoint_accel_jerk_mps3\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.acceleration_jerk_mps3);
+    flight_blackbox_stream_ << ",\"curvature_feedforward_accel_mps2\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.curvature_feedforward_accel_mps2);
     flight_blackbox_stream_ << ",\"speed_limit_reason\":\""
                             << velocitySetpointReasonName(last_velocity_plan_.reason)
                             << "\",\"raw_speed_limit_mps\":";
@@ -2691,9 +2223,54 @@ private:
     flight_blackbox_stream_ << ",\"velocity_delta_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.velocity_delta_mps);
+    flight_blackbox_stream_ << ",\"desired_velocity_delta_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_velocity_delta_mps);
+    flight_blackbox_stream_ << ",\"velocity_tracking_error_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.velocity_tracking_error_mps);
     flight_blackbox_stream_ << ",\"cross_track_correction_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.cross_track_correction_mps);
+    flight_blackbox_stream_ << ",\"cross_track_correction_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_correction_velocity.x);
+    flight_blackbox_stream_ << ",\"cross_track_correction_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_correction_velocity.y);
+    flight_blackbox_stream_ << ",\"raw_cross_track_correction_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_cross_track_correction_mps);
+    flight_blackbox_stream_ << ",\"raw_cross_track_correction_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_cross_track_correction_velocity.x);
+    flight_blackbox_stream_ << ",\"raw_cross_track_correction_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.raw_cross_track_correction_velocity.y);
+    flight_blackbox_stream_ << ",\"cross_track_correction_delta_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_correction_delta_mps);
+    flight_blackbox_stream_ << ",\"cross_track_lateral_velocity_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_lateral_velocity_mps);
+    flight_blackbox_stream_ << ",\"current_velocity_tangent_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.current_velocity_tangent_mps);
+    flight_blackbox_stream_ << ",\"current_velocity_normal_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.current_velocity_normal_mps);
+    flight_blackbox_stream_ << ",\"desired_velocity_tangent_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_velocity_tangent_mps);
+    flight_blackbox_stream_ << ",\"desired_velocity_normal_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.desired_velocity_normal_mps);
+    flight_blackbox_stream_ << ",\"setpoint_velocity_tangent_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.setpoint_velocity_tangent_mps);
+    flight_blackbox_stream_ << ",\"setpoint_velocity_normal_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.setpoint_velocity_normal_mps);
     flight_blackbox_stream_ << ",\"trajectory_cross_track_error_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.trajectory_cross_track_error_m);
@@ -2925,20 +2502,20 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, path_goal_distance_m);
     flight_blackbox_stream_ << ",\"mission_goal_distance_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, mission_goal_distance_m);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_angle_rad\":";
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_angle_rad\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.angle_rad);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_valid\":";
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_valid\":";
     writeJsonBool(flight_blackbox_stream_, upcoming_turn.valid);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_waypoint_index\":"
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_waypoint_index\":"
                             << (upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U
                                                     : 0U);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_distance_m\":";
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_distance_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.distance_to_turn_m);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_point_x\":";
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_point_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.turn_point.x);
-    flight_blackbox_stream_ << ",\"rough_route_debug_turn_point_y\":";
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_turn_point_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, upcoming_turn.turn_point.y);
-    flight_blackbox_stream_ << ",\"rough_route_debug_segment_type\":\""
+    flight_blackbox_stream_ << ",\"final_trajectory_debug_segment_type\":\""
                             << pathSegmentTypeName(upcoming_turn.angle_rad) << "\"";
     flight_blackbox_stream_ << ",\"tracking\":{\"valid\":";
     writeJsonBool(flight_blackbox_stream_, path_tracking.valid);
@@ -3073,7 +2650,6 @@ private:
   VelocityFollowerConfig velocity_follower_config_{};
   VelocityFollowerState velocity_follower_state_{};
   VelocitySetpointPlan last_velocity_plan_{};
-  TrajectoryPlannerConfig trajectory_planner_config_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
@@ -3091,18 +2667,9 @@ private:
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;
-  std::vector<CorridorSample> corridor_debug_samples_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
   std::size_t last_final_trajectory_debug_samples_{0U};
   std::size_t last_trajectory_route_points_{0U};
-  std::uint64_t latest_trajectory_build_job_id_{0U};
-  std::mutex trajectory_worker_mutex_;
-  std::condition_variable trajectory_worker_cv_;
-  std::optional<TrajectoryBuildRequest> pending_trajectory_request_;
-  std::optional<TrajectoryBuildResult> completed_trajectory_result_;
-  std::thread trajectory_worker_;
-  bool trajectory_worker_stop_requested_{false};
-  bool trajectory_worker_busy_{false};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;

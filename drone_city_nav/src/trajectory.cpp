@@ -22,6 +22,10 @@ constexpr double kTwoPi = 2.0 * std::numbers::pi;
   return std::hypot(point.x, point.y);
 }
 
+[[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
+  return lhs.x * rhs.y - lhs.y * rhs.x;
+}
+
 [[nodiscard]] Point2 normalized(const Point2 point) noexcept {
   const double length = norm(point);
   if (!(length > kTinyDistanceM)) {
@@ -113,6 +117,47 @@ segmentIndexAtS(const std::span<const TrajectorySegment> trajectory,
 [[nodiscard]] bool sampleIsFinite(const TrajectoryPointSample& sample) noexcept {
   return std::isfinite(sample.s_m) && finite2D(sample.point) &&
          finite2D(sample.tangent) && std::isfinite(sample.curvature_1pm);
+}
+
+[[nodiscard]] double signedCurvatureFromTriplet(const Point2 previous,
+                                                const Point2 current,
+                                                const Point2 next) noexcept {
+  const Point2 a = current - previous;
+  const Point2 b = next - current;
+  const Point2 c = next - previous;
+  const double ab = norm(a);
+  const double bc = norm(b);
+  const double ac = norm(c);
+  const double denominator = ab * bc * ac;
+  if (!(denominator > kTinyDistanceM)) {
+    return 0.0;
+  }
+  return 2.0 * cross(a, b) / denominator;
+}
+
+[[nodiscard]] Point2 sampleTangentFromNeighbors(const std::span<const Point2> points,
+                                                const std::size_t index) noexcept {
+  if (points.size() < 2U || index >= points.size()) {
+    return Point2{1.0, 0.0};
+  }
+  if (index == 0U) {
+    return normalized(points[1U] - points[0U]);
+  }
+  if (index + 1U == points.size()) {
+    return normalized(points[index] - points[index - 1U]);
+  }
+
+  const Point2 previous_direction = normalized(points[index] - points[index - 1U]);
+  const Point2 next_direction = normalized(points[index + 1U] - points[index]);
+  Point2 tangent = normalized(Point2{previous_direction.x + next_direction.x,
+                                     previous_direction.y + next_direction.y});
+  if (!(norm(tangent) > kTinyDistanceM)) {
+    tangent = next_direction;
+  }
+  if (!(norm(tangent) > kTinyDistanceM)) {
+    tangent = previous_direction;
+  }
+  return tangent;
 }
 
 } // namespace
@@ -393,6 +438,47 @@ sampleTrajectoryDetailed(const std::span<const TrajectorySegment> trajectory,
     sample.tangent = trajectoryTangentAtS(trajectory, length);
     sample.curvature_1pm = trajectoryCurvatureAtS(trajectory, length);
     samples.push_back(sample);
+  }
+  return samples;
+}
+
+std::vector<TrajectoryPointSample>
+trajectoryPointSamplesFromPoints(const std::span<const Point2> points) {
+  std::vector<TrajectoryPointSample> samples;
+  if (points.size() < 2U) {
+    return samples;
+  }
+
+  samples.reserve(points.size());
+  double s_m = 0.0;
+  for (std::size_t i = 0U; i < points.size(); ++i) {
+    if (!finite2D(points[i])) {
+      return {};
+    }
+    if (i > 0U) {
+      const double ds = distance(points[i - 1U], points[i]);
+      if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
+        continue;
+      }
+      s_m += ds;
+    }
+
+    TrajectoryPointSample sample{};
+    sample.s_m = s_m;
+    sample.point = points[i];
+    sample.tangent = sampleTangentFromNeighbors(points, i);
+    if (!(norm(sample.tangent) > kTinyDistanceM)) {
+      return {};
+    }
+    if (i > 0U && i + 1U < points.size()) {
+      sample.curvature_1pm =
+          signedCurvatureFromTriplet(points[i - 1U], points[i], points[i + 1U]);
+    }
+    samples.push_back(sample);
+  }
+
+  if (samples.size() < 2U) {
+    return {};
   }
   return samples;
 }

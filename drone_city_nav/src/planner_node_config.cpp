@@ -29,9 +29,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
   config.fallback.stable_path_reuse_enabled =
       node.declare_parameter<bool>("stable_path_reuse_enabled", true);
-  config.planner_core.stable_path_reuse_max_deviation_m = std::clamp(
-      node.declare_parameter<double>("stable_path_reuse_max_deviation_m", 1.0), 0.0,
-      1000.0);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
   config.memory_grid.occupied_value = static_cast<int>(std::clamp<std::int64_t>(
@@ -132,6 +129,95 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("astar_initial_heading_bias_weight", 50.0), 0.0,
       1000.0);
   config.planner_core.clearance_diagnostic_radius_m = 10.0;
+
+  config.trajectory_planner.speed_profile.cruise_speed_mps =
+      std::clamp(node.declare_parameter<double>("cruise_speed_mps", 12.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.min_turn_speed_mps =
+      std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
+                 config.trajectory_planner.speed_profile.cruise_speed_mps);
+  config.trajectory_planner.speed_profile.max_accel_mps2 =
+      std::clamp(node.declare_parameter<double>("max_accel_mps2", 3.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.max_decel_mps2 =
+      std::clamp(node.declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.max_lateral_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.speed_profile_decel_mps2 = std::clamp(
+      node.declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.speed_profile_sample_step_m = std::clamp(
+      node.declare_parameter<double>("speed_profile_sample_step_m", 1.0), 0.1, 10.0);
+  config.trajectory_planner.corridor.max_radius_m = std::clamp(
+      node.declare_parameter<double>("corridor_max_radius_m", 40.0), 1.0, 5000.0);
+  config.trajectory_planner.corridor.sample_step_m = std::clamp(
+      node.declare_parameter<double>("corridor_sample_step_m", 1.0), 0.1, 20.0);
+  config.trajectory_planner.corridor.ray_step_m =
+      std::clamp(node.declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
+  config.trajectory_planner.corridor.safety_margin_m = std::clamp(
+      node.declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
+  config.trajectory_planner.corridor.center_recovery_max_m =
+      std::clamp(node.declare_parameter<double>("corridor_center_recovery_max_m", 3.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.corridor.lateral_limit_window_m = std::clamp(
+      node.declare_parameter<double>("corridor_lateral_limit_window_m", 20.0), 0.1,
+      5000.0);
+  config.trajectory_planner.corridor.lateral_limit_ratio = std::clamp(
+      node.declare_parameter<double>("corridor_lateral_limit_ratio", 1.25), 1.0, 100.0);
+  config.trajectory_planner.corridor.lateral_limit_margin_m =
+      std::clamp(node.declare_parameter<double>("corridor_lateral_limit_margin_m", 1.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.racing_line.max_iterations =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,
+          10000));
+  config.trajectory_planner.racing_line.initial_offset_step_m = std::clamp(
+      node.declare_parameter<double>("racing_line_initial_offset_step_m", 2.0), 0.001,
+      500.0);
+  config.trajectory_planner.racing_line.min_offset_step_m =
+      std::clamp(node.declare_parameter<double>("racing_line_min_offset_step_m", 0.1),
+                 0.001, config.trajectory_planner.racing_line.initial_offset_step_m);
+  config.trajectory_planner.racing_line.optimizer_sample_step_m = std::clamp(
+      node.declare_parameter<double>("racing_line_optimizer_sample_step_m", 5.0), 0.0,
+      100.0);
+  config.trajectory_planner.racing_line.cooling_ratio = std::clamp(
+      node.declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
+  config.trajectory_planner.racing_line.weight_length = std::clamp(
+      node.declare_parameter<double>("racing_line_weight_length", 0.02), 0.0, 1.0e6);
+  config.trajectory_planner.racing_line.weight_curvature =
+      std::clamp(node.declare_parameter<double>("racing_line_weight_curvature", 250.0),
+                 0.0, 1.0e9);
+  config.trajectory_planner.racing_line.weight_curvature_change = std::clamp(
+      node.declare_parameter<double>("racing_line_weight_curvature_change", 100.0), 0.0,
+      1.0e9);
+  config.trajectory_planner.racing_line.weight_offset_change = std::clamp(
+      node.declare_parameter<double>("racing_line_weight_offset_change", 0.5), 0.0,
+      1.0e9);
+  config.trajectory_planner.racing_line.weight_offset_second_change = std::clamp(
+      node.declare_parameter<double>("racing_line_weight_offset_second_change", 5.0),
+      0.0, 1.0e9);
+  config.trajectory_planner.racing_line.weight_center_bias =
+      std::clamp(node.declare_parameter<double>("racing_line_weight_center_bias", 0.0),
+                 0.0, 1.0e6);
+  config.trajectory_planner.racing_line.weight_time = std::clamp(
+      node.declare_parameter<double>("racing_line_weight_time", 50.0), 0.0, 1.0e9);
+  config.trajectory_planner.racing_line.weight_edge_margin =
+      std::clamp(node.declare_parameter<double>("racing_line_weight_edge_margin", 80.0),
+                 0.0, 1.0e9);
+  config.trajectory_planner.racing_line.desired_edge_margin_m = std::clamp(
+      node.declare_parameter<double>("racing_line_desired_edge_margin_m", 4.0), 0.0,
+      1000.0);
+  config.trajectory_planner.racing_line.max_length_ratio = std::clamp(
+      node.declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
+  config.trajectory_planner.racing_line.regularization_iterations =
+      static_cast<std::size_t>(
+          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                       "racing_line_regularization_iterations", 2),
+                                   0, 100));
+  config.trajectory_planner.racing_line.regularization_max_time_regression_s =
+      std::clamp(node.declare_parameter<double>(
+                     "racing_line_regularization_max_time_regression_s", 0.5),
+                 0.0, 3600.0);
+  config.trajectory_planner.debug_sample_step_m = std::clamp(
+      node.declare_parameter<double>("final_trajectory_debug_sample_step_m", 1.0), 0.1,
+      20.0);
 
   config.initial_pose.use_until_px4 =
       node.declare_parameter<bool>("use_initial_pose_until_px4", true);

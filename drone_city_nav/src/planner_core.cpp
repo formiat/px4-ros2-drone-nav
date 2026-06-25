@@ -106,8 +106,6 @@ stablePathDecisionReasonName(const StablePathDecisionReason reason) noexcept {
       return "goal_mismatch";
     case StablePathDecisionReason::kProjectionUnavailable:
       return "projection_unavailable";
-    case StablePathDecisionReason::kDeviationTooLarge:
-      return "deviation_too_large";
     case StablePathDecisionReason::kClear:
       return "clear";
     case StablePathDecisionReason::kProhibitedConfirmed:
@@ -328,8 +326,7 @@ closestPathProjection(const std::span<const Point2> path_points,
 
 std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
     const std::span<const Point2> path_points, const Point2 current_position,
-    const Point2 goal, const double stable_path_goal_tolerance_m,
-    const double stable_path_reuse_max_deviation_m, double& deviation_m) {
+    const Point2 goal, const double stable_path_goal_tolerance_m, double& deviation_m) {
   deviation_m = std::numeric_limits<double>::quiet_NaN();
   if (path_points.size() < 2U || !finite2D(current_position)) {
     return std::nullopt;
@@ -344,10 +341,6 @@ std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
   }
 
   deviation_m = std::sqrt(projection->distance_sq);
-  if (deviation_m > stable_path_reuse_max_deviation_m) {
-    return std::nullopt;
-  }
-
   std::vector<Point2> remaining_path;
   remaining_path.reserve(path_points.size() - projection->segment_start_index + 1U);
   remaining_path.push_back(current_position);
@@ -476,13 +469,9 @@ StablePathDecision PlannerCore::evaluateStablePath(
 
   auto remaining_path = remainingPathFromCurrentPose(
       previous_path, current_position, goal, config_.stable_path_goal_tolerance_m,
-      config_.stable_path_reuse_max_deviation_m, decision.deviation_m);
+      decision.deviation_m);
   if (!remaining_path.has_value()) {
-    decision.reason =
-        std::isfinite(decision.deviation_m) &&
-                decision.deviation_m > config_.stable_path_reuse_max_deviation_m
-            ? StablePathDecisionReason::kDeviationTooLarge
-            : StablePathDecisionReason::kProjectionUnavailable;
+    decision.reason = StablePathDecisionReason::kProjectionUnavailable;
     return decision;
   }
 

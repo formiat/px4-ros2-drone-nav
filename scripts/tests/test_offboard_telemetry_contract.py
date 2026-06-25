@@ -9,14 +9,22 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OFFBOARD_NODE = REPO_ROOT / "drone_city_nav/src/px4_offboard_node.cpp"
+PLANNER_NODE = REPO_ROOT / "drone_city_nav/src/planner_node.cpp"
 TRAJECTORY_PLANNER = REPO_ROOT / "drone_city_nav/src/trajectory_planner.cpp"
+TRAJECTORY_DIAGNOSTICS_IO = (
+    REPO_ROOT / "drone_city_nav/src/trajectory_diagnostics_io.cpp"
+)
 
 
 class OffboardTelemetryContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.offboard_text = OFFBOARD_NODE.read_text(encoding="utf-8")
+        cls.planner_text = PLANNER_NODE.read_text(encoding="utf-8")
         cls.trajectory_planner_text = TRAJECTORY_PLANNER.read_text(encoding="utf-8")
+        cls.trajectory_diagnostics_io_text = TRAJECTORY_DIAGNOSTICS_IO.read_text(
+            encoding="utf-8"
+        )
 
     def test_telemetry_logs_attitude_at_runtime_rate(self) -> None:
         self.assertIn("telemetry_log_period_s", self.offboard_text)
@@ -37,6 +45,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("command[target_delta=%.2f", self.offboard_text)
         self.assertIn("Drone velocity command diagnostics:", self.offboard_text)
         self.assertIn("velocity_setpoint=(%.2f, %.2f, %.2f)", self.offboard_text)
+        self.assertIn("desired_velocity=(%.2f, %.2f)", self.offboard_text)
+        self.assertIn("velocity_tracking_error=%.2f", self.offboard_text)
+        self.assertIn("velocity_setpoint_jerk=%.2f", self.offboard_text)
+        self.assertIn("accel_feedforward=(%.2f, %.2f)", self.offboard_text)
+        self.assertIn("accel_feedforward_jerk=%.2f", self.offboard_text)
         self.assertIn("speed_limit_reason=%s", self.offboard_text)
         self.assertIn("limiting_constraint[type=%s", self.offboard_text)
         self.assertIn("trajectory[valid=%s", self.offboard_text)
@@ -46,10 +59,16 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("nearest_obstacle[valid=%s", self.offboard_text)
         self.assertIn("bearing_body_deg=%.1f", self.offboard_text)
 
-    def test_velocity_mode_uses_final_trajectory_planner(self) -> None:
-        self.assertIn("rebuildFinalTrajectory(", self.offboard_text)
-        self.assertIn("planBaselineTrajectory(", self.offboard_text)
-        self.assertIn("planRacingTrajectory(", self.offboard_text)
+    def test_velocity_mode_consumes_planner_final_trajectory(self) -> None:
+        self.assertNotIn("rebuildFinalTrajectory(", self.offboard_text)
+        self.assertNotIn("planBaselineTrajectory(", self.offboard_text)
+        self.assertNotIn("planRacingTrajectory(", self.offboard_text)
+        self.assertIn("planRacingTrajectory(", self.planner_text)
+        self.assertIn("rough A* route will not be published", self.planner_text)
+        self.assertIn("applyReceivedFinalTrajectoryPath(", self.offboard_text)
+        self.assertIn("trajectoryPointSamplesFromPoints(", self.offboard_text)
+        self.assertIn("lineTrajectoryFromSamples(", self.offboard_text)
+        self.assertIn("buildTrajectorySpeedProfile(", self.offboard_text)
         self.assertIn("final_trajectory_samples_", self.offboard_text)
         self.assertIn("trajectory_speed_profile_", self.offboard_text)
         self.assertIn("planVelocitySetpoint(trajectory_, trajectory_speed_profile_", self.offboard_text)
@@ -60,16 +79,13 @@ class OffboardTelemetryContractTest(unittest.TestCase):
     def test_final_trajectory_does_not_rebuild_on_grid_churn(self) -> None:
         self.assertNotIn("finalTrajectoryGridRebuildReason(", self.offboard_text)
         self.assertNotIn("trajectoryGridRebuildReason(", self.offboard_text)
+        self.assertNotIn("Final trajectory rebuild", self.offboard_text)
+        self.assertNotIn("grid-triggered rebuild", self.offboard_text)
         self.assertIn("buildCorridor(", self.trajectory_planner_text)
         self.assertIn("TrajectoryPlannerStatus::kMissingGrid", self.trajectory_planner_text)
         self.assertIn("trajectoryPlannerStatusName", self.trajectory_planner_text)
         self.assertNotIn('"prohibited_intersection"', self.trajectory_planner_text)
         self.assertNotIn('"corridor_bounds_changed"', self.trajectory_planner_text)
-        self.assertNotIn("Final trajectory grid-triggered rebuild", self.offboard_text)
-        self.assertIn(
-            "Final trajectory rebuild after first usable prohibited grid",
-            self.offboard_text,
-        )
 
     def test_telemetry_writes_jsonl_flight_blackbox(self) -> None:
         self.assertIn("flight_blackbox_enabled", self.offboard_text)
@@ -81,6 +97,16 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("final_goal_hold_active", self.offboard_text)
         self.assertIn("velocity_command", self.offboard_text)
         self.assertIn("setpoint_speed_mps", self.offboard_text)
+        self.assertIn("desired_setpoint_x", self.offboard_text)
+        self.assertIn("desired_setpoint_y", self.offboard_text)
+        self.assertIn("desired_setpoint_speed_mps", self.offboard_text)
+        self.assertIn("setpoint_accel_norm_mps2", self.offboard_text)
+        self.assertIn("raw_setpoint_accel_norm_mps2", self.offboard_text)
+        self.assertIn("velocity_setpoint_accel_norm_mps2", self.offboard_text)
+        self.assertIn("velocity_setpoint_jerk_mps3", self.offboard_text)
+        self.assertIn("setpoint_accel_delta_mps2", self.offboard_text)
+        self.assertIn("setpoint_accel_jerk_mps3", self.offboard_text)
+        self.assertIn("curvature_feedforward_accel_mps2", self.offboard_text)
         self.assertIn("raw_speed_limit_mps", self.offboard_text)
         self.assertIn("limiting_constraint_type", self.offboard_text)
         self.assertIn("limiting_constraint_distance_m", self.offboard_text)
@@ -90,6 +116,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("final_stop_distance_m", self.offboard_text)
         self.assertIn("final_stop_braking_distance_m", self.offboard_text)
         self.assertIn("cross_track_correction_mps", self.offboard_text)
+        self.assertIn("cross_track_correction_x", self.offboard_text)
+        self.assertIn("cross_track_correction_y", self.offboard_text)
+        self.assertIn("raw_cross_track_correction_mps", self.offboard_text)
+        self.assertIn("cross_track_correction_delta_mps", self.offboard_text)
+        self.assertIn("cross_track_lateral_velocity_mps", self.offboard_text)
+        self.assertIn("current_velocity_tangent_mps", self.offboard_text)
+        self.assertIn("current_velocity_normal_mps", self.offboard_text)
+        self.assertIn("desired_velocity_tangent_mps", self.offboard_text)
+        self.assertIn("desired_velocity_normal_mps", self.offboard_text)
+        self.assertIn("setpoint_velocity_tangent_mps", self.offboard_text)
+        self.assertIn("setpoint_velocity_normal_mps", self.offboard_text)
         self.assertIn("trajectory_valid", self.offboard_text)
         self.assertIn("trajectory_total_length_m", self.offboard_text)
         self.assertIn("trajectory_line_segments", self.offboard_text)
@@ -115,8 +152,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
         self.assertNotIn("baseline_rounded_corners", self.offboard_text)
-        self.assertIn("rough_route_debug_turn_angle_rad", self.offboard_text)
-        self.assertIn("rough_route_debug_segment_type", self.offboard_text)
+        self.assertIn("final_trajectory_debug_turn_angle_rad", self.offboard_text)
+        self.assertIn("final_trajectory_debug_segment_type", self.offboard_text)
+        self.assertNotIn("rough_route_debug", self.offboard_text)
         self.assertNotIn('\\"turn_angle_rad\\"', self.offboard_text)
         self.assertNotIn('\\"turn_valid\\"', self.offboard_text)
         self.assertNotIn('\\"turn_distance_m\\"', self.offboard_text)
@@ -125,17 +163,23 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("writeFinalTrajectorySamplesCsv", self.offboard_text)
         self.assertIn('diagnosticDumpDirectory("final_trajectory_samples")', self.offboard_text)
         self.assertIn("latest.csv", self.offboard_text)
-        self.assertIn("sample_index,s_m,x,y", self.offboard_text)
-        self.assertIn("racing_offset_m", self.offboard_text)
-        self.assertIn("speed_profiled_limit_mps", self.offboard_text)
+        self.assertIn("finalTrajectorySamplesCsvHeader()", self.offboard_text)
+        self.assertIn(
+            "sample_index,s_m,x,y",
+            self.trajectory_diagnostics_io_text,
+        )
+        self.assertIn("racing_offset_m", self.trajectory_diagnostics_io_text)
+        self.assertIn(
+            "speed_profiled_limit_mps",
+            self.trajectory_diagnostics_io_text,
+        )
 
-    def test_corridor_samples_csv_dump_is_written(self) -> None:
-        self.assertIn("writeCorridorSamplesCsv", self.offboard_text)
-        self.assertIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
-        self.assertIn("corridor_csv", self.offboard_text)
-        self.assertIn("route_center_x,route_center_y,center_x,center_y", self.offboard_text)
-        self.assertIn("center_recovery_m", self.offboard_text)
-        self.assertIn("left_edge_x,left_edge_y,right_edge_x,right_edge_y", self.offboard_text)
+    def test_corridor_samples_are_planner_owned(self) -> None:
+        self.assertIn("result.corridor_samples = corridor.samples", self.trajectory_planner_text)
+        self.assertNotIn("corridor_debug_samples_", self.offboard_text)
+        self.assertNotIn("writeCorridorSamplesCsv", self.offboard_text)
+        self.assertNotIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
+        self.assertNotIn("racing_corridor_", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
@@ -157,9 +201,14 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("min_turn_speed_mps: 1.5", text)
                 self.assertIn("max_accel_mps2: 7.0", text)
                 self.assertIn("max_decel_mps2: 20.0", text)
-                self.assertIn("speed_profile_decel_mps2: 3.0", text)
+                self.assertIn("speed_profile_decel_mps2: 2.0", text)
                 self.assertIn("turn_preview_distance_m: 90.0", text)
                 self.assertIn("speed_profile_sample_step_m: 0.5", text)
+                self.assertIn("cross_track_derivative_gain: 0.8", text)
+                self.assertIn("max_feedforward_accel_mps2: 5.0", text)
+                self.assertIn("max_feedforward_jerk_mps3: 12.0", text)
+                self.assertIn("max_velocity_jerk_mps3: 12.0", text)
+                self.assertIn("acceleration_feedforward_scale: 1.0", text)
                 self.assertNotIn("racing_trajectory_enabled", text)
                 self.assertNotIn("trajectory_baseline_rounding_", text)
                 self.assertIn("corridor_max_radius_m: 40.0", text)
@@ -168,14 +217,16 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("corridor_center_recovery_max_m: 3.0", text)
                 self.assertNotIn("corridor_rebuild_width_threshold_m", text)
                 self.assertIn("racing_line_max_iterations: 80", text)
-                self.assertIn("racing_line_weight_curvature: 25.0", text)
-                self.assertIn("racing_line_weight_offset_change: 1.0", text)
-                self.assertIn("racing_line_weight_offset_second_change: 10.0", text)
+                self.assertIn("racing_line_weight_curvature: 250.0", text)
+                self.assertIn("racing_line_weight_offset_change: 0.5", text)
+                self.assertIn("racing_line_weight_offset_second_change: 5.0", text)
                 self.assertIn(
                     "final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path",
                     text,
                 )
                 self.assertIn("final_trajectory_debug_sample_step_m: 1.0", text)
+                self.assertNotIn("executable_trajectory_max_step_m:", text)
+                self.assertNotIn("trajectory_result_stale_cross_track_m:", text)
                 self.assertIn("telemetry_log_period_s: 0.1", text)
 
 

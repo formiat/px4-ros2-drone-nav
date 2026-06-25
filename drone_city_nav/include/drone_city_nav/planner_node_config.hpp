@@ -4,6 +4,7 @@
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/static_map_source.hpp"
+#include "drone_city_nav/trajectory_planner.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -60,6 +61,7 @@ struct PlannerNodeConfig {
   double inflation_radius_m{2.5};
 
   PlannerCoreConfig planner_core{};
+  TrajectoryPlannerConfig trajectory_planner{};
   PlanningGridBuilderConfig planning_grid_builder{};
   LidarProjectionConfig lidar_projection{};
   StaticMapSourceConfig static_map{};

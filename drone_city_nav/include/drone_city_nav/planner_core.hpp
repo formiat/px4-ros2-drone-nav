@@ -37,7 +37,6 @@ struct PlannerCoreConfig {
   AStarConfig astar{};
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
-  double stable_path_reuse_max_deviation_m{1.0};
   double start_prohibited_escape_search_radius_m{10.0};
 };
 
@@ -70,7 +69,6 @@ enum class StablePathDecisionReason {
   kNoPreviousPath,
   kGoalMismatch,
   kProjectionUnavailable,
-  kDeviationTooLarge,
   kClear,
   kProhibitedConfirmed,
 };
@@ -106,10 +104,10 @@ stablePathDecisionReasonName(StablePathDecisionReason reason) noexcept;
 [[nodiscard]] std::optional<PathProjection2D>
 closestPathProjection(std::span<const Point2> path_points, Point2 current_position);
 
-[[nodiscard]] std::optional<std::vector<Point2>> remainingPathFromCurrentPose(
-    std::span<const Point2> path_points, Point2 current_position, Point2 goal,
-    double stable_path_goal_tolerance_m, double stable_path_reuse_max_deviation_m,
-    double& deviation_m);
+[[nodiscard]] std::optional<std::vector<Point2>>
+remainingPathFromCurrentPose(std::span<const Point2> path_points,
+                             Point2 current_position, Point2 goal,
+                             double stable_path_goal_tolerance_m, double& deviation_m);
 
 [[nodiscard]] bool
 pathIsTraversable(const OccupancyGrid2D& grid, std::span<const Point2> path_points,

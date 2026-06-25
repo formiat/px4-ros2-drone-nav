@@ -502,7 +502,6 @@ TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   OccupancyGrid2D grid = makeGrid();
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
-  config.stable_path_reuse_max_deviation_m = 5.0;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{5.0, 1.0}, Point2{9.0, 1.0}};
 
@@ -520,7 +519,6 @@ TEST(PlannerCore, StablePathRejectsProhibitedIntersectionImmediately) {
   grid.rebuildInflation(0.0);
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
-  config.stable_path_reuse_max_deviation_m = 5.0;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
 
@@ -541,7 +539,6 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
 
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
-  config.stable_path_reuse_max_deviation_m = 5.0;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 3.5}, Point2{8.5, 3.5}};
 
@@ -560,7 +557,6 @@ TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {
 
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
-  config.stable_path_reuse_max_deviation_m = 5.0;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.5, 1.5}, Point2{8.5, 1.5}};
 
@@ -571,20 +567,19 @@ TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
 }
 
-TEST(PlannerCore, StablePathRejectsLargeDeviationFromPath) {
+TEST(PlannerCore, StablePathKeepsClearPathDespiteLargeDeviation) {
   OccupancyGrid2D grid = makeGrid();
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
-  config.stable_path_reuse_max_deviation_m = 0.5;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{9.0, 1.0}};
 
   const StablePathDecision decision =
       core.evaluateStablePath(grid, path, Point2{3.0, 4.0}, Point2{9.0, 1.0});
 
-  EXPECT_FALSE(decision.keep_path);
-  EXPECT_EQ(decision.reason, StablePathDecisionReason::kDeviationTooLarge);
-  EXPECT_GT(decision.deviation_m, config.stable_path_reuse_max_deviation_m);
+  EXPECT_TRUE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
+  EXPECT_GT(decision.deviation_m, 0.5);
 }
 
 } // namespace drone_city_nav

@@ -99,4 +99,7 @@ sampleTrajectory(std::span<const TrajectorySegment> trajectory, double step_m);
 [[nodiscard]] std::vector<TrajectoryPointSample>
 sampleTrajectoryDetailed(std::span<const TrajectorySegment> trajectory, double step_m);
 
+[[nodiscard]] std::vector<TrajectoryPointSample>
+trajectoryPointSamplesFromPoints(std::span<const Point2> points);
+
 } // namespace drone_city_nav

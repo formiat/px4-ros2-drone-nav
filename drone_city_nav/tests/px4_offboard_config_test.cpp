@@ -6,7 +6,7 @@
 
 namespace drone_city_nav {
 
-TEST(Px4OffboardConfig, DefaultYamlExposesTimeAwareRacingLineParameters) {
+TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   const std::string config_path =
       std::string{DRONE_CITY_NAV_SOURCE_DIR} + "/config/urban_mvp.yaml";
   std::ifstream stream{config_path};
@@ -25,7 +25,15 @@ TEST(Px4OffboardConfig, DefaultYamlExposesTimeAwareRacingLineParameters) {
             std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_decel_mps2: 2.0"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
-  EXPECT_NE(yaml.find("max_cross_track_correction_angle_deg: 45.0"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.8"), std::string::npos);
+  EXPECT_NE(yaml.find("max_cross_track_correction_angle_deg: 30.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_cross_track_correction_rate_mps2: 4.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_feedforward_accel_mps2: 5.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_feedforward_jerk_mps3: 12.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_velocity_jerk_mps3: 12.0"), std::string::npos);
+  EXPECT_NE(yaml.find("acceleration_feedforward_scale: 1.0"), std::string::npos);
+  EXPECT_EQ(yaml.find("executable_trajectory_max_step_m:"), std::string::npos);
+  EXPECT_EQ(yaml.find("trajectory_result_stale_cross_track_m:"), std::string::npos);
 }
 
 } // namespace drone_city_nav
