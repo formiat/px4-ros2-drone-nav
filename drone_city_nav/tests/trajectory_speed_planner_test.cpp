@@ -134,6 +134,16 @@ TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
   EXPECT_NEAR(plan.lookahead_constraint_distance_m, 8.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, SpeedProfileSampleInterpolatesBetweenSamples) {
+  const TrajectorySpeedSample sample = speedProfileSampleAtS(simpleProfile(), 4.0);
+
+  EXPECT_EQ(sample.reason, SpeedConstraintType::kArc);
+  EXPECT_NEAR(sample.profiled_limit_mps, std::sqrt(80.0), 1.0e-9);
+  EXPECT_NEAR(sample.geometric_limit_mps, std::sqrt(80.0), 1.0e-9);
+  EXPECT_NEAR(sample.constraint_s_m, 8.0, 1.0e-9);
+  EXPECT_NEAR(sample.constraint_limit_mps, 4.0, 1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, LookaheadDistanceIsClamped) {
   VelocityFollowerConfig config = testConfig();
   config.speed_profile_lookahead_min_m = 5.0;

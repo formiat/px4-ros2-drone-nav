@@ -76,7 +76,7 @@ TEST(VelocitySmoother, JerkLimitSmoothsLateralDirectionChange) {
   EXPECT_LT(plan.velocity_xy.x, 12.0);
 }
 
-TEST(VelocitySmoother, JerkLimitDoesNotBlockLongitudinalBraking) {
+TEST(VelocitySmoother, JerkLimitSmoothsLongitudinalBraking) {
   VelocityFollowerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   config.max_lateral_accel_mps2 = 100.0;
@@ -93,10 +93,11 @@ TEST(VelocitySmoother, JerkLimitDoesNotBlockLongitudinalBraking) {
       config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.velocity_xy.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_xy.x, 11.99, 1.0e-9);
   EXPECT_NEAR(plan.velocity_xy.y, 0.0, 1.0e-9);
-  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, -20.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, -0.1, 1.0e-9);
   EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_jerk_mps3, 1.0, 1.0e-9);
 }
 
 TEST(VelocitySmoother, ResetStateDoesNotPullNewDesiredVelocityTowardOldState) {

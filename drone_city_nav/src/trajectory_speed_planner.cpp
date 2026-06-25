@@ -174,6 +174,17 @@ void mergeSpeedSample(std::vector<TrajectorySpeedSample>& samples,
                         2.0 * acceleration_mps2 * std::max(0.0, distance_m)));
 }
 
+[[nodiscard]] double interpolateSpeed(const double start_speed_mps,
+                                      const double end_speed_mps,
+                                      const double ratio) noexcept {
+  if (!std::isfinite(start_speed_mps) || !std::isfinite(end_speed_mps)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double start_sq = start_speed_mps * start_speed_mps;
+  const double end_sq = end_speed_mps * end_speed_mps;
+  return std::sqrt(std::max(0.0, start_sq + (end_sq - start_sq) * ratio));
+}
+
 [[nodiscard]] std::size_t
 firstProfileSampleNotBefore(const TrajectorySpeedProfile& profile, const double s_m) {
   if (profile.samples.empty()) {
@@ -186,6 +197,31 @@ firstProfileSampleNotBefore(const TrajectorySpeedProfile& profile, const double 
     return profile.samples.size() - 1U;
   }
   return static_cast<std::size_t>(std::distance(profile.samples.begin(), it));
+}
+
+[[nodiscard]] TrajectorySpeedSample
+interpolateProfileSample(const TrajectorySpeedSample& start,
+                         const TrajectorySpeedSample& end, const double s_m) {
+  const double ds = end.s_m - start.s_m;
+  if (!(ds > kTinyDistanceM)) {
+    return end;
+  }
+  const double ratio = std::clamp((s_m - start.s_m) / ds, 0.0, 1.0);
+  const TrajectorySpeedSample& limiting =
+      start.profiled_limit_mps <= end.profiled_limit_mps ? start : end;
+
+  TrajectorySpeedSample sample = limiting;
+  sample.s_m = std::clamp(s_m, start.s_m, end.s_m);
+  sample.geometric_limit_mps =
+      interpolateSpeed(start.geometric_limit_mps, end.geometric_limit_mps, ratio);
+  sample.profiled_limit_mps =
+      interpolateSpeed(start.profiled_limit_mps, end.profiled_limit_mps, ratio);
+  sample.curvature_1pm =
+      start.curvature_1pm + (end.curvature_1pm - start.curvature_1pm) * ratio;
+  sample.radius_m = std::abs(sample.curvature_1pm) > kTinyDistanceM
+                        ? 1.0 / std::abs(sample.curvature_1pm)
+                        : std::numeric_limits<double>::quiet_NaN();
+  return sample;
 }
 
 void finalizeSpeedProfile(TrajectorySpeedProfile& profile,
@@ -342,10 +378,22 @@ TrajectorySpeedProfile buildTrajectorySpeedProfile(
 
 TrajectorySpeedSample speedProfileSampleAtS(const TrajectorySpeedProfile& profile,
                                             const double s_m) {
-  if (!profile.valid || profile.samples.empty()) {
+  if (!profile.valid || profile.samples.empty() || !std::isfinite(s_m)) {
     return TrajectorySpeedSample{};
   }
-  return profile.samples[firstProfileSampleNotBefore(profile, s_m)];
+  const std::size_t end_index = firstProfileSampleNotBefore(profile, s_m);
+  if (end_index == 0U) {
+    return profile.samples.front();
+  }
+  if (end_index >= profile.samples.size()) {
+    return profile.samples.back();
+  }
+  const TrajectorySpeedSample& end = profile.samples[end_index];
+  if (s_m >= end.s_m) {
+    return end;
+  }
+  const TrajectorySpeedSample& start = profile.samples[end_index - 1U];
+  return interpolateProfileSample(start, end, s_m);
 }
 
 ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
@@ -420,7 +468,8 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
       sanitizedNonNegative(query.previous_command_speed_mps, current_speed);
   const double dt = sanitizedPositive(query.dt_s, 0.1, 0.0, 10.0);
   const double max_accel = effectiveVelocityDeltaAccelMps2(config);
-  const double max_decel = effectiveVelocityDeltaDecelMps2(config);
+  const double max_decel = std::min(effectiveVelocityDeltaDecelMps2(config),
+                                    effectiveSpeedProfileDecelMps2(config));
   const double max_speed_delta =
       (plan.speed_after_lookahead_mps >= previous_speed ? max_accel : max_decel) * dt;
   plan.accel_limited_speed_mps =

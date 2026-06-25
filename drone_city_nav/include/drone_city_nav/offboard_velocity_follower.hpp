@@ -27,6 +27,8 @@ struct VelocityFollowerState {
   bool previous_velocity_acceleration_setpoint_valid{false};
   Point2 previous_lateral_control_velocity{};
   bool previous_lateral_control_velocity_valid{false};
+  double previous_scalar_speed_command_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool previous_scalar_speed_command_valid{false};
 };
 
 struct StopSpeedPlan {

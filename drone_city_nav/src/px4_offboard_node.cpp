@@ -1307,6 +1307,10 @@ private:
     velocity_follower_state_.previous_lateral_control_velocity =
         plan.lateral_control_velocity;
     velocity_follower_state_.previous_lateral_control_velocity_valid = true;
+    velocity_follower_state_.previous_scalar_speed_command_mps =
+        plan.accel_limited_speed_mps;
+    velocity_follower_state_.previous_scalar_speed_command_valid =
+        std::isfinite(plan.accel_limited_speed_mps);
     last_velocity_setpoint_ = plan.velocity_xy;
     last_vertical_velocity_setpoint_mps_ = vz_ned;
     last_velocity_setpoint_speed_mps_ = plan.speed_mps;

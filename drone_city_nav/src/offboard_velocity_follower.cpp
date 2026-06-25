@@ -67,9 +67,9 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
 [[nodiscard]] double
 previousCommandSpeedMps(const VelocityFollowerState& previous_state,
                         const double current_speed_mps) {
-  if (previous_state.previous_velocity_setpoint_valid &&
-      finite2D(previous_state.previous_velocity_setpoint)) {
-    return norm(previous_state.previous_velocity_setpoint);
+  if (previous_state.previous_scalar_speed_command_valid &&
+      std::isfinite(previous_state.previous_scalar_speed_command_mps)) {
+    return std::max(0.0, previous_state.previous_scalar_speed_command_mps);
   }
   return current_speed_mps;
 }

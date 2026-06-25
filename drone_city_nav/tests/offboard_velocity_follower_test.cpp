@@ -339,6 +339,27 @@ TEST(OffboardVelocityFollower, CrossTrackErrorDoesNotReduceScalarSpeed) {
   EXPECT_GT(plan.accel_limited_speed_mps, 4.2);
 }
 
+TEST(OffboardVelocityFollower, ScalarSpeedStateIsIndependentFromVectorSetpoint) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
+  VelocityFollowerConfig config = testConfig();
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{0.5, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_scalar_speed_command_mps = 10.0;
+  state.previous_scalar_speed_command_valid = true;
+
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      trajectory, profile, Point2{10.0, 0.0}, Point2{}, false, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 10.3, 1.0e-9);
+  EXPECT_GT(plan.accel_limited_speed_mps,
+            std::hypot(state.previous_velocity_setpoint.x,
+                       state.previous_velocity_setpoint.y));
+}
+
 TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlanner) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   TrajectorySpeedProfile profile{};
@@ -505,7 +526,7 @@ TEST(OffboardVelocityFollower, LateralControlRateLimitSmoothsCurvatureFeedforwar
   EXPECT_NEAR(plan.lateral_control_delta_mps, 0.1, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, VelocityJerkLimitDoesNotBlockLongitudinalBraking) {
+TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsLongitudinalBraking) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   TrajectorySpeedProfile profile{};
   profile.valid = true;
@@ -545,11 +566,12 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitDoesNotBlockLongitudinalBraking)
 
   ASSERT_TRUE(plan.valid);
   EXPECT_NEAR(plan.raw_speed_limit_mps, 2.0, 1.0e-9);
-  EXPECT_NEAR(plan.accel_limited_speed_mps, 10.0, 1.0e-9);
-  EXPECT_NEAR(plan.velocity_xy.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 11.8, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_xy.x, 11.99, 1.0e-9);
   EXPECT_NEAR(plan.velocity_xy.y, 0.0, 1.0e-9);
-  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, -20.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, -0.1, 1.0e-9);
   EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_jerk_mps3, 1.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {

@@ -139,13 +139,9 @@ limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_v
   const double previous_longitudinal_accel = dot(previous_acceleration, forward);
   const double previous_lateral_accel = dot(previous_acceleration, left_normal);
   const double max_accel_delta = max_jerk * dt;
-  double limited_longitudinal_accel = requested_longitudinal_accel;
-  if (requested_longitudinal_accel >= previous_longitudinal_accel ||
-      requested_longitudinal_accel >= 0.0) {
-    limited_longitudinal_accel = std::clamp(
-        requested_longitudinal_accel, previous_longitudinal_accel - max_accel_delta,
-        previous_longitudinal_accel + max_accel_delta);
-  }
+  const double limited_longitudinal_accel = std::clamp(
+      requested_longitudinal_accel, previous_longitudinal_accel - max_accel_delta,
+      previous_longitudinal_accel + max_accel_delta);
   const double limited_lateral_accel =
       std::clamp(requested_lateral_accel, previous_lateral_accel - max_accel_delta,
                  previous_lateral_accel + max_accel_delta);
