@@ -93,15 +93,15 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
 }
 
 [[nodiscard]] Point2
-curvatureAnticipationVelocity(const TrajectoryProjection& projection,
-                              const double scalar_speed_mps,
-                              const VelocityFollowerConfig& config, double& angle_rad) {
+curvatureFeedforwardVelocity(const TrajectoryProjection& projection,
+                             const double scalar_speed_mps,
+                             const VelocityFollowerConfig& config, double& angle_rad) {
   angle_rad = 0.0;
   const double speed = std::max(0.0, scalar_speed_mps);
   const double anticipation_time_s =
-      sanitizedPositive(config.curvature_velocity_anticipation_time_s, 0.5, 0.0, 10.0);
-  const double max_angle = sanitizedPositive(
-      config.max_curvature_velocity_anticipation_angle_rad, 0.7, 0.0, 1.4);
+      sanitizedPositive(config.curvature_feedforward_time_s, 0.5, 0.0, 10.0);
+  const double max_angle =
+      sanitizedPositive(config.max_curvature_feedforward_angle_rad, 0.7, 0.0, 1.4);
   angle_rad = std::clamp(projection.curvature_1pm * speed * anticipation_time_s,
                          -max_angle, max_angle);
   if (!(std::abs(angle_rad) > kTinyDistanceM)) {
@@ -129,40 +129,39 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   const double cross_track_derivative_gain =
       sanitizedPositive(config.cross_track_derivative_gain, 0.8, 0.0, 10.0);
   const Point2 cross_track_direction = normalized(cross_track);
-  Point2 requested_correction{};
+  Point2 cross_track_feedback{};
+  Point2 cross_track_derivative_damping{};
   if (norm(cross_track_direction) > kTinyDistanceM) {
     plan.cross_track_lateral_velocity_mps =
         query.current_velocity_valid && finite2D(query.current_velocity)
             ? dot(query.current_velocity, cross_track_direction)
             : 0.0;
-    const double correction_speed = std::max(
-        0.0, cross_track_gain * cross_track_error -
-                 cross_track_derivative_gain * plan.cross_track_lateral_velocity_mps);
-    requested_correction = cross_track_direction * correction_speed;
+    cross_track_feedback =
+        cross_track_direction * (cross_track_gain * cross_track_error);
+    cross_track_derivative_damping =
+        cross_track_direction *
+        (-cross_track_derivative_gain * plan.cross_track_lateral_velocity_mps);
   }
 
-  const Point2 bounded_correction =
-      boundedCorrectionByAngle(requested_correction, query.scalar_speed_mps,
-                               config.max_cross_track_correction_angle_rad);
-  const VectorRateLimitResult limited_correction = limitVectorRate(
-      bounded_correction, query.previous_cross_track_correction_velocity,
-      query.previous_cross_track_correction_velocity_valid, query.dt_s,
-      config.max_cross_track_correction_rate_mps2);
-  const Point2 correction = limited_correction.value;
+  double curvature_feedforward_angle_rad = 0.0;
+  const Point2 curvature_feedforward =
+      curvatureFeedforwardVelocity(query.projection, query.scalar_speed_mps, config,
+                                   curvature_feedforward_angle_rad);
+  const Point2 raw_lateral_control =
+      cross_track_feedback + cross_track_derivative_damping + curvature_feedforward;
 
-  double curvature_anticipation_angle_rad = 0.0;
-  const Point2 raw_curvature_anticipation =
-      curvatureAnticipationVelocity(query.projection, query.scalar_speed_mps, config,
-                                    curvature_anticipation_angle_rad);
-  const VectorRateLimitResult limited_curvature_anticipation = limitVectorRate(
-      raw_curvature_anticipation, query.previous_curvature_anticipation_velocity,
-      query.previous_curvature_anticipation_velocity_valid, query.dt_s,
-      config.max_curvature_velocity_anticipation_rate_mps2);
-  const Point2 curvature_anticipation = limited_curvature_anticipation.value;
+  const Point2 bounded_lateral_control =
+      boundedCorrectionByAngle(raw_lateral_control, query.scalar_speed_mps,
+                               config.max_lateral_control_angle_rad);
+  const VectorRateLimitResult limited_lateral_control =
+      limitVectorRate(bounded_lateral_control, query.previous_lateral_control_velocity,
+                      query.previous_lateral_control_velocity_valid, query.dt_s,
+                      config.max_lateral_control_rate_mps2);
+  const Point2 lateral_control = limited_lateral_control.value;
 
   const Point2 desired_direction =
       normalized(query.projection.tangent * std::max(query.scalar_speed_mps, 1.0) +
-                 correction + curvature_anticipation);
+                 lateral_control);
   if (!(norm(desired_direction) > kTinyDistanceM)) {
     return plan;
   }
@@ -171,19 +170,20 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   const Point2 left_normal{-query.projection.tangent.y, query.projection.tangent.x};
   plan.valid = true;
   plan.desired_velocity_xy = desired_velocity;
-  plan.raw_cross_track_correction_velocity = requested_correction;
-  plan.cross_track_correction_velocity = correction;
-  plan.raw_curvature_anticipation_velocity = raw_curvature_anticipation;
-  plan.curvature_anticipation_velocity = curvature_anticipation;
-  plan.raw_cross_track_correction_mps = norm(requested_correction);
-  plan.cross_track_correction_mps = norm(correction);
-  plan.cross_track_correction_delta_mps = limited_correction.delta;
+  plan.cross_track_feedback_velocity = cross_track_feedback;
+  plan.cross_track_derivative_damping_velocity = cross_track_derivative_damping;
+  plan.curvature_feedforward_velocity = curvature_feedforward;
+  plan.raw_lateral_control_velocity = raw_lateral_control;
+  plan.lateral_control_velocity = lateral_control;
+  plan.cross_track_feedback_mps = norm(cross_track_feedback);
+  plan.cross_track_derivative_damping_mps = norm(cross_track_derivative_damping);
+  plan.curvature_feedforward_mps = norm(curvature_feedforward);
+  plan.curvature_feedforward_angle_rad = curvature_feedforward_angle_rad;
+  plan.raw_lateral_control_mps = norm(raw_lateral_control);
+  plan.lateral_control_mps = norm(lateral_control);
+  plan.lateral_control_delta_mps = limited_lateral_control.delta;
   plan.desired_velocity_tangent_mps = dot(desired_velocity, query.projection.tangent);
   plan.desired_velocity_normal_mps = dot(desired_velocity, left_normal);
-  plan.raw_curvature_anticipation_mps = norm(raw_curvature_anticipation);
-  plan.curvature_anticipation_mps = norm(curvature_anticipation);
-  plan.curvature_anticipation_delta_mps = limited_curvature_anticipation.delta;
-  plan.curvature_anticipation_angle_rad = curvature_anticipation_angle_rad;
   return plan;
 }
 

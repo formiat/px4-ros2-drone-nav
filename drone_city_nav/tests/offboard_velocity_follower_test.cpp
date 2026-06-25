@@ -228,8 +228,8 @@ TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsVelocityAnticipati
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.1, 1.0e-9);
   EXPECT_NEAR(plan.trajectory_arc_radius_m, 10.0, 1.0e-9);
-  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
-  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
+  EXPECT_GT(plan.curvature_feedforward_mps, 0.0);
+  EXPECT_GT(plan.lateral_control_mps, 0.0);
   EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
 }
 
@@ -295,13 +295,13 @@ TEST(OffboardVelocityFollower, VectorDeltaAllowsAggressiveLongitudinalBraking) {
   EXPECT_NEAR(result.velocity.y, 0.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, CrossTrackCorrectionIsBounded) {
+TEST(OffboardVelocityFollower, LateralControlIsBounded) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 10.0;
-  config.max_cross_track_correction_angle_rad = 0.1;
+  config.max_lateral_control_angle_rad = 0.1;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
@@ -311,9 +311,9 @@ TEST(OffboardVelocityFollower, CrossTrackCorrectionIsBounded) {
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_LE(plan.cross_track_correction_mps,
+  EXPECT_LE(plan.lateral_control_mps,
             std::max(plan.accel_limited_speed_mps, 1.0) *
-                    std::tan(config.max_cross_track_correction_angle_rad) +
+                    std::tan(config.max_lateral_control_angle_rad) +
                 1.0e-9);
   EXPECT_NEAR(plan.trajectory_cross_track_error_m, 10.0, 1.0e-9);
 }
@@ -394,32 +394,32 @@ TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlann
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.0, 1.0e-9);
   EXPECT_FALSE(std::isfinite(plan.trajectory_arc_radius_m));
-  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.0, 1.0e-9);
-  EXPECT_NEAR(plan.raw_curvature_anticipation_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_lateral_control_mps, 0.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, CrossTrackCorrectionRateLimitSmoothsCorrection) {
+TEST(OffboardVelocityFollower, LateralControlRateLimitSmoothsCorrection) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 10.0;
-  config.max_cross_track_correction_angle_rad = 1.0;
-  config.max_cross_track_correction_rate_mps2 = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
+  config.max_lateral_control_rate_mps2 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
-  state.previous_cross_track_correction_velocity = Point2{};
-  state.previous_cross_track_correction_velocity_valid = true;
+  state.previous_lateral_control_velocity = Point2{};
+  state.previous_lateral_control_velocity_valid = true;
 
   const VelocitySetpointPlan plan =
       planVelocitySetpoint(trajectory, profile, Point2{10.0, 10.0}, Point2{12.0, 0.0},
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_GT(plan.raw_cross_track_correction_mps, plan.cross_track_correction_mps);
-  EXPECT_NEAR(plan.cross_track_correction_delta_mps, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.cross_track_correction_mps, 0.1, 1.0e-9);
+  EXPECT_GT(plan.raw_lateral_control_mps, plan.lateral_control_mps);
+  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_mps, 0.1, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower,
@@ -430,7 +430,7 @@ TEST(OffboardVelocityFollower,
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 1.0;
-  config.max_cross_track_correction_angle_rad = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
@@ -446,11 +446,12 @@ TEST(OffboardVelocityFollower,
   ASSERT_TRUE(moving_away_from_path.valid);
   EXPECT_GT(moving_toward_path.cross_track_lateral_velocity_mps, 0.0);
   EXPECT_LT(moving_away_from_path.cross_track_lateral_velocity_mps, 0.0);
-  EXPECT_LT(moving_toward_path.cross_track_correction_mps,
-            moving_away_from_path.cross_track_correction_mps);
+  EXPECT_LT(moving_toward_path.lateral_control_mps,
+            moving_away_from_path.lateral_control_mps);
+  EXPECT_GT(moving_toward_path.cross_track_derivative_damping_mps, 0.0);
 }
 
-TEST(OffboardVelocityFollower, ArcProjectionAddsVelocityAnticipation) {
+TEST(OffboardVelocityFollower, ArcProjectionAddsCurvatureFeedforward) {
   const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
   const double current_s_m = trajectory[1].s_start_m + 1.0;
   const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
@@ -471,14 +472,14 @@ TEST(OffboardVelocityFollower, ArcProjectionAddsVelocityAnticipation) {
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kArc);
   EXPECT_NEAR(plan.trajectory_curvature_1pm, -0.05, 1.0e-9);
   EXPECT_NEAR(plan.trajectory_arc_radius_m, 20.0, 1.0e-9);
-  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
-  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
-  EXPECT_GT(std::abs(plan.curvature_anticipation_velocity.x) +
-                std::abs(plan.curvature_anticipation_velocity.y),
+  EXPECT_GT(plan.curvature_feedforward_mps, 0.0);
+  EXPECT_GT(plan.lateral_control_mps, 0.0);
+  EXPECT_GT(std::abs(plan.curvature_feedforward_velocity.x) +
+                std::abs(plan.curvature_feedforward_velocity.y),
             0.0);
 }
 
-TEST(OffboardVelocityFollower, CurvatureAnticipationRateLimitSmoothsVelocityBias) {
+TEST(OffboardVelocityFollower, LateralControlRateLimitSmoothsCurvatureFeedforward) {
   const std::vector<TrajectorySegment> trajectory = trajectoryWithArc(20.0);
   const double current_s_m = trajectory[1].s_start_m + 1.0;
   const Point2 current_position = trajectoryPointAtS(trajectory, current_s_m);
@@ -486,12 +487,12 @@ TEST(OffboardVelocityFollower, CurvatureAnticipationRateLimitSmoothsVelocityBias
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
-  config.max_curvature_velocity_anticipation_rate_mps2 = 1.0;
+  config.max_lateral_control_rate_mps2 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
-  state.previous_curvature_anticipation_velocity = Point2{};
-  state.previous_curvature_anticipation_velocity_valid = true;
+  state.previous_lateral_control_velocity = Point2{};
+  state.previous_lateral_control_velocity_valid = true;
 
   const VelocitySetpointPlan plan =
       planVelocitySetpoint(trajectory, profile, current_position,
@@ -499,9 +500,9 @@ TEST(OffboardVelocityFollower, CurvatureAnticipationRateLimitSmoothsVelocityBias
                            true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_GT(plan.raw_curvature_anticipation_mps, plan.curvature_anticipation_mps);
-  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.curvature_anticipation_delta_mps, 0.1, 1.0e-9);
+  EXPECT_GT(plan.raw_lateral_control_mps, plan.lateral_control_mps);
+  EXPECT_NEAR(plan.lateral_control_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.1, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, VelocityJerkLimitDoesNotBlockLongitudinalBraking) {
@@ -560,7 +561,7 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {
   config.max_lateral_accel_mps2 = 100.0;
   config.max_decel_mps2 = 100.0;
   config.cross_track_gain = 10.0;
-  config.max_cross_track_correction_angle_rad = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
   config.max_velocity_jerk_mps3 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};

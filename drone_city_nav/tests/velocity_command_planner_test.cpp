@@ -26,8 +26,8 @@ namespace {
   VelocityFollowerConfig config{};
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 1.0;
-  config.max_cross_track_correction_angle_rad = 1.0;
-  config.max_cross_track_correction_rate_mps2 = 100.0;
+  config.max_lateral_control_angle_rad = 1.0;
+  config.max_lateral_control_rate_mps2 = 100.0;
   return config;
 }
 
@@ -50,10 +50,10 @@ TEST(VelocityCommandPlanner, StraightTrajectoryReturnsTangentVelocity) {
   EXPECT_NEAR(plan.desired_velocity_normal_mps, 0.0, 1.0e-9);
 }
 
-TEST(VelocityCommandPlanner, CrossTrackCorrectionIsBoundedByAngle) {
+TEST(VelocityCommandPlanner, LateralControlIsBoundedByAngle) {
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 10.0;
-  config.max_cross_track_correction_angle_rad = 0.1;
+  config.max_lateral_control_angle_rad = 0.1;
 
   const VelocityCommandPlan plan =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(100.0),
@@ -65,14 +65,15 @@ TEST(VelocityCommandPlanner, CrossTrackCorrectionIsBoundedByAngle) {
                           config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_LE(plan.cross_track_correction_mps,
-            10.0 * std::tan(config.max_cross_track_correction_angle_rad) + 1.0e-9);
-  EXPECT_GT(plan.raw_cross_track_correction_mps, plan.cross_track_correction_mps);
+  EXPECT_LE(plan.lateral_control_mps,
+            10.0 * std::tan(config.max_lateral_control_angle_rad) + 1.0e-9);
+  EXPECT_GT(plan.raw_lateral_control_mps, plan.lateral_control_mps);
+  EXPECT_GT(plan.cross_track_feedback_mps, 0.0);
 }
 
 TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
   VelocityFollowerConfig config = testConfig();
-  config.max_cross_track_correction_angle_rad = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
 
   const VelocityCommandPlan moving_toward =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
@@ -95,14 +96,14 @@ TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
   ASSERT_TRUE(moving_away.valid);
   EXPECT_GT(moving_toward.cross_track_lateral_velocity_mps, 0.0);
   EXPECT_LT(moving_away.cross_track_lateral_velocity_mps, 0.0);
-  EXPECT_LT(moving_toward.cross_track_correction_mps,
-            moving_away.cross_track_correction_mps);
+  EXPECT_LT(moving_toward.lateral_control_mps, moving_away.lateral_control_mps);
+  EXPECT_GT(moving_toward.cross_track_derivative_damping_mps, 0.0);
 }
 
-TEST(VelocityCommandPlanner, CorrectionRateLimitSmoothsCorrectionVelocity) {
+TEST(VelocityCommandPlanner, LateralControlRateLimitSmoothsVelocity) {
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 10.0;
-  config.max_cross_track_correction_rate_mps2 = 1.0;
+  config.max_lateral_control_rate_mps2 = 1.0;
 
   const VelocityCommandPlan plan = planVelocityCommand(
       VelocityCommandQuery{.projection = projectionOnXAxis(100.0),
@@ -111,19 +112,19 @@ TEST(VelocityCommandPlanner, CorrectionRateLimitSmoothsCorrectionVelocity) {
                            .current_velocity_valid = true,
                            .scalar_speed_mps = 10.0,
                            .dt_s = 0.1,
-                           .previous_cross_track_correction_velocity = Point2{},
-                           .previous_cross_track_correction_velocity_valid = true},
+                           .previous_lateral_control_velocity = Point2{},
+                           .previous_lateral_control_velocity_valid = true},
       config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.cross_track_correction_delta_mps, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.cross_track_correction_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_mps, 0.1, 1.0e-9);
 }
 
-TEST(VelocityCommandPlanner, CurvatureAnticipationBendsVelocityDirection) {
+TEST(VelocityCommandPlanner, CurvatureFeedforwardBendsVelocityDirection) {
   VelocityFollowerConfig config = testConfig();
-  config.curvature_velocity_anticipation_time_s = 0.5;
-  config.max_curvature_velocity_anticipation_angle_rad = 1.0;
+  config.curvature_feedforward_time_s = 0.5;
+  config.max_curvature_feedforward_angle_rad = 1.0;
 
   const VelocityCommandPlan plan = planVelocityCommand(
       VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
@@ -135,18 +136,18 @@ TEST(VelocityCommandPlanner, CurvatureAnticipationBendsVelocityDirection) {
       config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_GT(plan.raw_curvature_anticipation_mps, 0.0);
-  EXPECT_GT(plan.curvature_anticipation_mps, 0.0);
-  EXPECT_NEAR(plan.curvature_anticipation_angle_rad, 0.5, 1.0e-9);
+  EXPECT_GT(plan.curvature_feedforward_mps, 0.0);
+  EXPECT_GT(plan.lateral_control_mps, 0.0);
+  EXPECT_NEAR(plan.curvature_feedforward_angle_rad, 0.5, 1.0e-9);
   EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
   EXPECT_LT(plan.desired_velocity_tangent_mps, 10.0);
 }
 
-TEST(VelocityCommandPlanner, CurvatureAnticipationRateLimitSmoothsVelocityBias) {
+TEST(VelocityCommandPlanner, LateralControlRateLimitSmoothsCurvatureFeedforward) {
   VelocityFollowerConfig config = testConfig();
-  config.curvature_velocity_anticipation_time_s = 0.5;
-  config.max_curvature_velocity_anticipation_angle_rad = 1.0;
-  config.max_curvature_velocity_anticipation_rate_mps2 = 1.0;
+  config.curvature_feedforward_time_s = 0.5;
+  config.max_curvature_feedforward_angle_rad = 1.0;
+  config.max_lateral_control_rate_mps2 = 1.0;
 
   const VelocityCommandPlan plan = planVelocityCommand(
       VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
@@ -155,14 +156,14 @@ TEST(VelocityCommandPlanner, CurvatureAnticipationRateLimitSmoothsVelocityBias) 
                            .current_velocity_valid = true,
                            .scalar_speed_mps = 10.0,
                            .dt_s = 0.1,
-                           .previous_curvature_anticipation_velocity = Point2{},
-                           .previous_curvature_anticipation_velocity_valid = true},
+                           .previous_lateral_control_velocity = Point2{},
+                           .previous_lateral_control_velocity_valid = true},
       config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_GT(plan.raw_curvature_anticipation_mps, plan.curvature_anticipation_mps);
-  EXPECT_NEAR(plan.curvature_anticipation_mps, 0.1, 1.0e-9);
-  EXPECT_NEAR(plan.curvature_anticipation_delta_mps, 0.1, 1.0e-9);
+  EXPECT_GT(plan.raw_lateral_control_mps, plan.lateral_control_mps);
+  EXPECT_NEAR(plan.lateral_control_mps, 0.1, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.1, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, InvalidProjectionReturnsInvalidPlan) {

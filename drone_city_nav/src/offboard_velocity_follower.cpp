@@ -135,21 +135,16 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   }
 
   const VelocityCommandPlan command = planVelocityCommand(
-      VelocityCommandQuery{
-          .projection = projection,
-          .current_position = current_position,
-          .current_velocity = current_velocity,
-          .current_velocity_valid = current_velocity_valid,
-          .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
-          .dt_s = dt,
-          .previous_cross_track_correction_velocity =
-              previous_state.previous_cross_track_correction_velocity,
-          .previous_cross_track_correction_velocity_valid =
-              previous_state.previous_cross_track_correction_velocity_valid,
-          .previous_curvature_anticipation_velocity =
-              previous_state.previous_curvature_anticipation_velocity,
-          .previous_curvature_anticipation_velocity_valid =
-              previous_state.previous_curvature_anticipation_velocity_valid},
+      VelocityCommandQuery{.projection = projection,
+                           .current_position = current_position,
+                           .current_velocity = current_velocity,
+                           .current_velocity_valid = current_velocity_valid,
+                           .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
+                           .dt_s = dt,
+                           .previous_lateral_control_velocity =
+                               previous_state.previous_lateral_control_velocity,
+                           .previous_lateral_control_velocity_valid =
+                               previous_state.previous_lateral_control_velocity_valid},
       config);
   if (!command.valid) {
     return plan;
@@ -193,12 +188,12 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
   plan.path_tangent = projection.tangent;
   plan.projection = projection.point;
-  plan.raw_cross_track_correction_velocity =
-      command.raw_cross_track_correction_velocity;
-  plan.cross_track_correction_velocity = command.cross_track_correction_velocity;
-  plan.raw_curvature_anticipation_velocity =
-      command.raw_curvature_anticipation_velocity;
-  plan.curvature_anticipation_velocity = command.curvature_anticipation_velocity;
+  plan.cross_track_feedback_velocity = command.cross_track_feedback_velocity;
+  plan.cross_track_derivative_damping_velocity =
+      command.cross_track_derivative_damping_velocity;
+  plan.curvature_feedforward_velocity = command.curvature_feedforward_velocity;
+  plan.raw_lateral_control_velocity = command.raw_lateral_control_velocity;
+  plan.lateral_control_velocity = command.lateral_control_velocity;
   plan.raw_speed_limit_mps = scalar_speed.cross_track_limited_speed_mps;
   plan.profile_speed_limit_mps = scalar_speed.profile_speed_limit_mps;
   plan.speed_lookahead_distance_m = scalar_speed.lookahead_distance_m;
@@ -230,14 +225,14 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.desired_velocity_normal_mps = command.desired_velocity_normal_mps;
   plan.setpoint_velocity_tangent_mps = dot(plan.velocity_xy, projection.tangent);
   plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
-  plan.raw_cross_track_correction_mps = command.raw_cross_track_correction_mps;
-  plan.cross_track_correction_mps = command.cross_track_correction_mps;
-  plan.cross_track_correction_delta_mps = command.cross_track_correction_delta_mps;
+  plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
+  plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
   plan.cross_track_lateral_velocity_mps = command.cross_track_lateral_velocity_mps;
-  plan.raw_curvature_anticipation_mps = command.raw_curvature_anticipation_mps;
-  plan.curvature_anticipation_mps = command.curvature_anticipation_mps;
-  plan.curvature_anticipation_delta_mps = command.curvature_anticipation_delta_mps;
-  plan.curvature_anticipation_angle_rad = command.curvature_anticipation_angle_rad;
+  plan.curvature_feedforward_mps = command.curvature_feedforward_mps;
+  plan.curvature_feedforward_angle_rad = command.curvature_feedforward_angle_rad;
+  plan.raw_lateral_control_mps = command.raw_lateral_control_mps;
+  plan.lateral_control_mps = command.lateral_control_mps;
+  plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
   plan.trajectory_cross_track_error_m = std::sqrt(projection.distance_sq);
   plan.limiting_constraint_type = scalar_speed.constraint_type;
   plan.limiting_constraint_index = scalar_speed.constraint_index;
