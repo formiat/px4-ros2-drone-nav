@@ -211,6 +211,16 @@ public:
     velocity_follower_config_.max_cross_track_correction_rate_mps2 = std::clamp(
         declare_parameter<double>("max_cross_track_correction_rate_mps2", 4.0), 0.0,
         100.0);
+    velocity_follower_config_.cross_track_speed_guard_start_m = std::clamp(
+        declare_parameter<double>("cross_track_speed_guard_start_m", 2.0), 0.0, 100.0);
+    const double requested_cross_track_speed_guard_full_m = std::clamp(
+        declare_parameter<double>("cross_track_speed_guard_full_m", 6.0), 0.0, 100.0);
+    velocity_follower_config_.cross_track_speed_guard_full_m =
+        std::max(requested_cross_track_speed_guard_full_m,
+                 velocity_follower_config_.cross_track_speed_guard_start_m + 1.0e-3);
+    velocity_follower_config_.cross_track_speed_guard_min_factor = std::clamp(
+        declare_parameter<double>("cross_track_speed_guard_min_factor", 0.35), 0.0,
+        1.0);
     velocity_follower_config_.max_feedforward_accel_mps2 = std::clamp(
         declare_parameter<double>("max_feedforward_accel_mps2", 6.0), 0.0, 100.0);
     velocity_follower_config_.max_feedforward_jerk_mps3 = std::clamp(
@@ -351,6 +361,7 @@ public:
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
         "max_cross_track_correction_angle=%.1fdeg "
         "max_cross_track_correction_rate=%.2fmps2 "
+        "cross_track_speed_guard[start=%.2fm full=%.2fm min_factor=%.2f] "
         "max_feedforward_jerk=%.2fmps3 max_velocity_jerk=%.2fmps3 "
         "altitude_hold_kp=%.2f "
         "max_vertical_speed=%.2fmps "
@@ -376,6 +387,9 @@ public:
         radiansToDegrees(
             velocity_follower_config_.max_cross_track_correction_angle_rad),
         velocity_follower_config_.max_cross_track_correction_rate_mps2,
+        velocity_follower_config_.cross_track_speed_guard_start_m,
+        velocity_follower_config_.cross_track_speed_guard_full_m,
+        velocity_follower_config_.cross_track_speed_guard_min_factor,
         velocity_follower_config_.max_feedforward_jerk_mps3,
         velocity_follower_config_.max_velocity_jerk_mps3, altitude_hold_kp_,
         max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
@@ -572,6 +586,15 @@ private:
     }
   }
 
+  void resetVelocitySmootherState(const std::string_view reason,
+                                  const bool count_path_update_reset) {
+    velocity_follower_state_ = VelocityFollowerState{};
+    last_velocity_smoother_reset_reason_ = std::string{reason};
+    if (count_path_update_reset) {
+      ++path_update_velocity_smoother_reset_count_;
+    }
+  }
+
   void applyReceivedFinalTrajectoryPath(const char* source_label) {
     final_trajectory_samples_ = trajectoryPointSamplesFromPoints(path_points_);
     trajectory_ = lineTrajectoryFromSamples(final_trajectory_samples_);
@@ -587,6 +610,8 @@ private:
     updatePlannerStatsForReceivedTrajectory();
     if (!trajectory_valid_) {
       resetVelocityDiagnostics();
+    } else {
+      resetVelocitySmootherState("new_trajectory", true);
     }
     publishFinalTrajectoryDebug();
     publishOffboardDebugMarkers();
@@ -1313,7 +1338,7 @@ private:
   }
 
   void resetVelocityDiagnostics() {
-    velocity_follower_state_ = VelocityFollowerState{};
+    resetVelocitySmootherState("diagnostics_reset", false);
     last_velocity_plan_valid_ = false;
     last_velocity_plan_ = VelocitySetpointPlan{};
     last_velocity_plan_.reason = VelocitySetpointReason::kHold;
@@ -1812,13 +1837,16 @@ private:
         "accel_feedforward=(%.2f, %.2f) accel_feedforward_norm=%.2f "
         "raw_accel_feedforward_norm=%.2f accel_feedforward_jerk=%.2f "
         "curvature_feedforward_accel=%.2f "
-        "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+        "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
+        "cross_track_speed_factor=%.2f cross_track_limited_speed=%.2f "
+        "final_command_speed=%.2f accel_limited_speed=%.2f "
         "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
         "curve_radius=%.2f] "
         "final_stop[distance=%.2f braking_distance=%.2f] "
         "velocity_delta=%.2f trajectory_cross_track=%.2f "
         "cross_track_correction=%.2f raw_cross_track_correction=%.2f "
         "cross_track_delta=%.2f cross_track_lateral_velocity=%.2f "
+        "smoother[reset_reason=%s path_update_resets=%" PRIu64 "] "
         "altitude_error=%.2f "
         "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
@@ -1857,6 +1885,10 @@ private:
         last_velocity_plan_.curvature_feedforward_accel_mps2,
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
+        last_velocity_plan_.profile_speed_limit_mps,
+        last_velocity_plan_.cross_track_speed_factor,
+        last_velocity_plan_.cross_track_limited_speed_mps,
+        last_velocity_plan_.final_command_speed_mps,
         last_velocity_plan_.accel_limited_speed_mps,
         speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
         last_velocity_plan_.limiting_constraint_index,
@@ -1871,7 +1903,9 @@ private:
         last_velocity_plan_.cross_track_correction_mps,
         last_velocity_plan_.raw_cross_track_correction_mps,
         last_velocity_plan_.cross_track_correction_delta_mps,
-        last_velocity_plan_.cross_track_lateral_velocity_mps, last_altitude_error_m_,
+        last_velocity_plan_.cross_track_lateral_velocity_mps,
+        last_velocity_smoother_reset_reason_.c_str(),
+        path_update_velocity_smoother_reset_count_, last_altitude_error_m_,
         upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
@@ -1971,7 +2005,9 @@ private:
         "raw_accel_feedforward=(%.2f, %.2f) raw_accel_feedforward_norm=%.2f "
         "accel_feedforward_delta=%.2f accel_feedforward_jerk=%.2f "
         "curvature_feedforward_accel=%.2f "
-        "speed_limit_reason=%s raw_speed_limit=%.2f accel_limited_speed=%.2f "
+        "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
+        "cross_track_speed_factor=%.2f cross_track_limited_speed=%.2f "
+        "final_command_speed=%.2f accel_limited_speed=%.2f "
         "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
         "allowed=%.2f curve_radius=%.2f] "
         "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
@@ -1982,6 +2018,7 @@ private:
         "velocity_basis[current_tangent=%.2f current_normal=%.2f "
         "desired_tangent=%.2f desired_normal=%.2f "
         "setpoint_tangent=%.2f setpoint_normal=%.2f] "
+        "smoother[reset_reason=%s path_update_resets=%" PRIu64 "] "
         "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
         "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
         "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
@@ -2008,6 +2045,10 @@ private:
         last_velocity_plan_.curvature_feedforward_accel_mps2,
         velocitySetpointReasonName(last_velocity_plan_.reason),
         last_velocity_plan_.raw_speed_limit_mps,
+        last_velocity_plan_.profile_speed_limit_mps,
+        last_velocity_plan_.cross_track_speed_factor,
+        last_velocity_plan_.cross_track_limited_speed_mps,
+        last_velocity_plan_.final_command_speed_mps,
         last_velocity_plan_.accel_limited_speed_mps,
         speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
         last_velocity_plan_.limiting_constraint_index,
@@ -2032,7 +2073,9 @@ private:
         last_velocity_plan_.desired_velocity_tangent_mps,
         last_velocity_plan_.desired_velocity_normal_mps,
         last_velocity_plan_.setpoint_velocity_tangent_mps,
-        last_velocity_plan_.setpoint_velocity_normal_mps, last_altitude_error_m_,
+        last_velocity_plan_.setpoint_velocity_normal_mps,
+        last_velocity_smoother_reset_reason_.c_str(),
+        path_update_velocity_smoother_reset_count_, last_altitude_error_m_,
         last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
         last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
         trajectory_valid_ ? "true" : "false", last_velocity_plan_.trajectory_s_m,
@@ -2141,6 +2184,13 @@ private:
                           last_vertical_velocity_setpoint_mps_);
     flight_blackbox_stream_ << ",\"setpoint_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_setpoint_speed_mps_);
+    flight_blackbox_stream_ << ",\"final_command_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.final_command_speed_mps);
+    flight_blackbox_stream_ << ",\"smoother_reset_reason\":\""
+                            << last_velocity_smoother_reset_reason_ << "\"";
+    flight_blackbox_stream_ << ",\"path_update_reset_count\":"
+                            << path_update_velocity_smoother_reset_count_;
     flight_blackbox_stream_ << ",\"desired_setpoint_x\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.desired_velocity_xy.x);
@@ -2194,6 +2244,15 @@ private:
                             << "\",\"raw_speed_limit_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.raw_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"profile_speed_limit_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.profile_speed_limit_mps);
+    flight_blackbox_stream_ << ",\"cross_track_speed_factor\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_speed_factor);
+    flight_blackbox_stream_ << ",\"cross_track_limited_speed_mps\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.cross_track_limited_speed_mps);
     flight_blackbox_stream_ << ",\"accel_limited_speed_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_velocity_plan_.accel_limited_speed_mps);
@@ -2308,7 +2367,7 @@ private:
                             << last_trajectory_metrics_.arc_segments;
     flight_blackbox_stream_ << ",\"speed_profile_limit_mps\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
-                          last_velocity_plan_.raw_speed_limit_mps);
+                          last_velocity_plan_.profile_speed_limit_mps);
     flight_blackbox_stream_ << ",\"speed_profile_reason\":\""
                             << speedConstraintTypeName(
                                    last_velocity_plan_.limiting_constraint_type)
@@ -2613,6 +2672,7 @@ private:
   std::uint64_t latest_planner_path_id_{0U};
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
+  std::uint64_t path_update_velocity_smoother_reset_count_{0U};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
@@ -2664,6 +2724,7 @@ private:
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::string final_trajectory_debug_topic_{"/drone_city_nav/final_trajectory_path"};
   std::string offboard_debug_marker_topic_{"/drone_city_nav/offboard_debug_markers"};
+  std::string last_velocity_smoother_reset_reason_{"none"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;

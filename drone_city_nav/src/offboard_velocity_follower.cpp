@@ -121,6 +121,25 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
   return correction_velocity * (max_correction_mps / correction_speed);
 }
 
+[[nodiscard]] double crossTrackSpeedFactor(const double cross_track_error_m,
+                                           const VelocityFollowerConfig& config) {
+  const double guard_start =
+      sanitizedPositive(config.cross_track_speed_guard_start_m, 2.0, 0.0, 100.0);
+  const double requested_guard_full =
+      sanitizedPositive(config.cross_track_speed_guard_full_m, 6.0, 0.0, 100.0);
+  const double guard_full = std::max(requested_guard_full, guard_start + 1.0e-3);
+  const double min_factor =
+      sanitizedPositive(config.cross_track_speed_guard_min_factor, 0.35, 0.0, 1.0);
+  if (!std::isfinite(cross_track_error_m) || cross_track_error_m <= guard_start) {
+    return 1.0;
+  }
+  if (cross_track_error_m >= guard_full) {
+    return min_factor;
+  }
+  const double t = (cross_track_error_m - guard_start) / (guard_full - guard_start);
+  return 1.0 - t * (1.0 - min_factor);
+}
+
 [[nodiscard]] VectorRateLimitResult
 limitVectorRate(const Point2 desired, const Point2 previous, const bool previous_valid,
                 const double dt_s, const double max_rate) {
@@ -168,13 +187,45 @@ limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_v
     return result;
   }
 
-  const VectorRateLimitResult limited_acceleration = limitVectorRate(
-      requested_acceleration, previous_acceleration, true, dt, max_jerk_mps3);
-  result.acceleration = limited_acceleration.value;
+  const double max_jerk = sanitizedPositive(max_jerk_mps3, 0.0, 0.0, 1000.0);
+  if (!(max_jerk > 0.0)) {
+    return result;
+  }
+
+  const double previous_speed = norm(previous_velocity);
+  if (!(previous_speed > kTinyDistanceM)) {
+    const VectorRateLimitResult limited_acceleration = limitVectorRate(
+        requested_acceleration, previous_acceleration, true, dt, max_jerk);
+    result.acceleration = limited_acceleration.value;
+    result.acceleration_norm_mps2 = norm(result.acceleration);
+    result.jerk_mps3 = std::isfinite(limited_acceleration.delta)
+                           ? limited_acceleration.delta / dt
+                           : std::numeric_limits<double>::quiet_NaN();
+    result.velocity = previous_velocity + result.acceleration * dt;
+    return result;
+  }
+
+  const Point2 forward = previous_velocity * (1.0 / previous_speed);
+  const Point2 left_normal{-forward.y, forward.x};
+  const double requested_longitudinal_accel = dot(requested_acceleration, forward);
+  const double requested_lateral_accel = dot(requested_acceleration, left_normal);
+  const double previous_longitudinal_accel = dot(previous_acceleration, forward);
+  const double previous_lateral_accel = dot(previous_acceleration, left_normal);
+  const double max_accel_delta = max_jerk * dt;
+  double limited_longitudinal_accel = requested_longitudinal_accel;
+  if (requested_longitudinal_accel >= previous_longitudinal_accel ||
+      requested_longitudinal_accel >= 0.0) {
+    limited_longitudinal_accel = std::clamp(
+        requested_longitudinal_accel, previous_longitudinal_accel - max_accel_delta,
+        previous_longitudinal_accel + max_accel_delta);
+  }
+  const double limited_lateral_accel =
+      std::clamp(requested_lateral_accel, previous_lateral_accel - max_accel_delta,
+                 previous_lateral_accel + max_accel_delta);
+  result.acceleration =
+      forward * limited_longitudinal_accel + left_normal * limited_lateral_accel;
   result.acceleration_norm_mps2 = norm(result.acceleration);
-  result.jerk_mps3 = std::isfinite(limited_acceleration.delta)
-                         ? limited_acceleration.delta / dt
-                         : std::numeric_limits<double>::quiet_NaN();
+  result.jerk_mps3 = norm(result.acceleration - previous_acceleration) / dt;
   result.velocity = previous_velocity + result.acceleration * dt;
   return result;
 }
@@ -633,8 +684,13 @@ VelocitySetpointPlan planVelocitySetpoint(
   const double cruise_speed = sanitizedCruiseSpeed(config);
   const Point2 cross_track = projection->point - current_position;
   const double cross_track_error = std::sqrt(projection->distance_sq);
-  const double raw_speed_limit =
+  const double profile_speed_limit =
       std::clamp(speed_sample.profiled_limit_mps, 0.0, cruise_speed);
+  const double cross_track_speed_factor =
+      crossTrackSpeedFactor(cross_track_error, config);
+  const double cross_track_limited_speed =
+      profile_speed_limit * cross_track_speed_factor;
+  const double raw_speed_limit = cross_track_limited_speed;
 
   const double previous_speed =
       previous_state.previous_velocity_setpoint_valid &&
@@ -705,6 +761,7 @@ VelocitySetpointPlan planVelocitySetpoint(
   plan.velocity_xy = jerk_limited_velocity.velocity;
   plan.desired_velocity_xy = desired_velocity;
   plan.speed_mps = norm(plan.velocity_xy);
+  plan.final_command_speed_mps = plan.speed_mps;
   plan.desired_speed_mps = norm(plan.desired_velocity_xy);
   const Point2 left_normal{-projection->tangent.y, projection->tangent.x};
   const double feedforward_scale =
@@ -738,6 +795,9 @@ VelocitySetpointPlan planVelocitySetpoint(
                                     : std::numeric_limits<double>::quiet_NaN();
   plan.curvature_feedforward_accel_mps2 = limited_feedforward_accel;
   plan.raw_speed_limit_mps = raw_speed_limit;
+  plan.profile_speed_limit_mps = profile_speed_limit;
+  plan.cross_track_speed_factor = cross_track_speed_factor;
+  plan.cross_track_limited_speed_mps = cross_track_limited_speed;
   plan.accel_limited_speed_mps = accel_limited_speed;
   plan.velocity_delta_mps =
       previous_state.previous_velocity_setpoint_valid &&

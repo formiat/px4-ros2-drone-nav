@@ -36,6 +36,9 @@ struct VelocityFollowerConfig {
   double cross_track_derivative_gain{0.8};
   double max_cross_track_correction_angle_rad{0.7853981633974483};
   double max_cross_track_correction_rate_mps2{4.0};
+  double cross_track_speed_guard_start_m{2.0};
+  double cross_track_speed_guard_full_m{6.0};
+  double cross_track_speed_guard_min_factor{0.35};
   double max_feedforward_accel_mps2{3.0};
   double max_feedforward_jerk_mps3{12.0};
   double max_velocity_jerk_mps3{12.0};
@@ -115,6 +118,10 @@ struct VelocitySetpointPlan {
   double acceleration_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
   double curvature_feedforward_accel_mps2{0.0};
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double profile_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double cross_track_speed_factor{1.0};
+  double cross_track_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double final_command_speed_mps{0.0};
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double desired_velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};

@@ -18,6 +18,9 @@ namespace {
   config.max_decel_mps2 = 4.0;
   config.max_lateral_accel_mps2 = 3.0;
   config.speed_profile_sample_step_m = 1.0;
+  config.cross_track_speed_guard_start_m = 2.0;
+  config.cross_track_speed_guard_full_m = 6.0;
+  config.cross_track_speed_guard_min_factor = 0.35;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;
   return config;
@@ -290,6 +293,30 @@ TEST(OffboardVelocityFollower, CrossTrackCorrectionIsBounded) {
   EXPECT_NEAR(plan.trajectory_cross_track_error_m, 10.0, 1.0e-9);
 }
 
+TEST(OffboardVelocityFollower, CrossTrackSpeedGuardReducesSpeedWhenFarFromPath) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_speed_guard_start_m = 2.0;
+  config.cross_track_speed_guard_full_m = 6.0;
+  config.cross_track_speed_guard_min_factor = 0.35;
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{4.2, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{10.0, 10.0}, Point2{4.2, 0.0},
+                           true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.profile_speed_limit_mps, 12.0, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_speed_factor, 0.35, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_limited_speed_mps, 4.2, 1.0e-9);
+  EXPECT_NEAR(plan.raw_speed_limit_mps, 4.2, 1.0e-9);
+  EXPECT_LE(plan.final_command_speed_mps, 4.3);
+}
+
 TEST(OffboardVelocityFollower, CrossTrackCorrectionRateLimitSmoothsCorrection) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
@@ -431,6 +458,53 @@ TEST(OffboardVelocityFollower, FeedforwardJerkLimitSmoothsAccelerationSetpoint) 
   EXPECT_NEAR(plan.acceleration_jerk_mps3, 1.0, 1.0e-9);
 }
 
+TEST(OffboardVelocityFollower, VelocityJerkLimitDoesNotBlockLongitudinalBraking) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  TrajectorySpeedProfile profile{};
+  profile.valid = true;
+  profile.samples = {
+      TrajectorySpeedSample{.s_m = 0.0,
+                            .geometric_limit_mps = 2.0,
+                            .profiled_limit_mps = 2.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 0U,
+                            .curvature_1pm = 0.2,
+                            .radius_m = 5.0,
+                            .constraint_s_m = 0.0,
+                            .constraint_limit_mps = 2.0},
+      TrajectorySpeedSample{.s_m = 100.0,
+                            .geometric_limit_mps = 0.0,
+                            .profiled_limit_mps = 0.0,
+                            .reason = SpeedConstraintType::kGoal,
+                            .segment_index = 0U,
+                            .curvature_1pm = 0.0,
+                            .constraint_s_m = 100.0,
+                            .constraint_limit_mps = 0.0},
+  };
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  config.max_lateral_accel_mps2 = 100.0;
+  config.max_decel_mps2 = 20.0;
+  config.max_velocity_jerk_mps3 = 1.0;
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_velocity_acceleration_setpoint = Point2{};
+  state.previous_velocity_acceleration_setpoint_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{0.0, 0.0}, Point2{12.0, 0.0},
+                           true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.raw_speed_limit_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_xy.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_xy.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, -20.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.y, 0.0, 1.0e-9);
+}
+
 TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
@@ -454,9 +528,9 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {
 
   ASSERT_TRUE(plan.valid);
   EXPECT_GT(plan.desired_velocity_delta_mps, 0.0);
-  EXPECT_LE(plan.velocity_setpoint_acceleration_mps2, 0.1 + 1.0e-9);
-  EXPECT_NEAR(plan.velocity_setpoint_jerk_mps3, 1.0, 1.0e-9);
-  EXPECT_LE(plan.velocity_delta_mps, 0.01 + 1.0e-9);
+  EXPECT_LE(std::abs(plan.velocity_setpoint_acceleration_xy.y), 0.1 + 1.0e-9);
+  EXPECT_LE(std::abs(plan.velocity_xy.y), 0.01 + 1.0e-9);
+  EXPECT_LT(plan.velocity_xy.x, 12.0);
 }
 
 TEST(OffboardVelocityFollower, EmptyTrajectoryReturnsInvalidPlan) {
