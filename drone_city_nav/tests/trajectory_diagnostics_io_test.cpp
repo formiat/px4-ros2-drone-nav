@@ -77,7 +77,9 @@ void expectContainsAll(const std::string& text,
   stats.corridor.mean_width_m = 24.25;
   stats.corridor.max_width_m = 58.75;
   stats.corridor.lateral_limited_samples = 9U;
+  stats.corridor.centered_samples = 31U;
   stats.corridor.max_center_recovery_m = 1.25;
+  stats.corridor.max_centering_shift_m = 6.75;
   stats.corridor.max_lateral_bound_reduction_m = 2.5;
   stats.input_points = 8U;
   stats.samples = 78U;
@@ -267,6 +269,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.max_width_m, 58.75);
   EXPECT_EQ(parsed_value.stats.corridor.lateral_limited_samples, 9U);
+  EXPECT_EQ(parsed_value.stats.corridor.centered_samples, 31U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.max_centering_shift_m, 6.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_m, 108.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);

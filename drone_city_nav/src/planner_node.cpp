@@ -254,6 +254,7 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
                 "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
+                "motion_compensation=%s pose_prediction=%.3fs "
                 "lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
@@ -261,7 +262,9 @@ public:
                 config.topics.lidar.c_str(), max_lidar_range_m_,
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
-                compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+                compensate_lidar_attitude_ ? "true" : "false",
+                motion_compensate_lidar_pose_ ? "true" : "false",
+                lidar_pose_prediction_s_, lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
     RCLCPP_INFO(get_logger(),
@@ -305,6 +308,8 @@ private:
     range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;
     scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
     use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
+    motion_compensate_lidar_pose_ = config.current_lidar.motion_compensate_lidar_pose;
+    lidar_pose_prediction_s_ = config.current_lidar.lidar_pose_prediction_s;
     compensate_lidar_attitude_ = config.lidar_projection.compensate_attitude;
     lidar_mount_roll_rad_ = config.lidar_projection.lidar_mount_roll_rad;
     lidar_mount_pitch_rad_ = config.lidar_projection.lidar_mount_pitch_rad;
@@ -418,15 +423,30 @@ private:
     last_scan_ = msg;
     scan_seen_ = true;
     last_scan_update_ns_ = get_clock()->now().nanoseconds();
+    last_scan_projection_pose_valid_ = pose_valid_;
+    if (last_scan_projection_pose_valid_) {
+      last_scan_projection_pose_ = currentLidarProjectionPose();
+      const double prediction_s =
+          currentLidarPosePredictionSeconds(last_scan_update_ns_, last_pose_update_ns_);
+      last_scan_pose_prediction_s_ = prediction_s;
+      if (prediction_s > 0.0 && current_velocity_valid_) {
+        last_scan_projection_pose_.position.x += current_velocity_.x * prediction_s;
+        last_scan_projection_pose_.position.y += current_velocity_.y * prediction_s;
+      }
+    } else {
+      last_scan_pose_prediction_s_ = 0.0;
+    }
     if (!scan_seen_logged_) {
       scan_seen_logged_ = true;
       RCLCPP_INFO(get_logger(),
                   "First planner lidar scan: beams=%zu range=[%.2f, %.2f] "
-                  "angle=[%.2f, %.2f]",
+                  "angle=[%.2f, %.2f] projection_pose=%s prediction=%.3fs",
                   last_scan_.ranges.size(), static_cast<double>(last_scan_.range_min),
                   static_cast<double>(last_scan_.range_max),
                   static_cast<double>(last_scan_.angle_min),
-                  static_cast<double>(last_scan_.angle_max));
+                  static_cast<double>(last_scan_.angle_max),
+                  last_scan_projection_pose_valid_ ? "true" : "false",
+                  last_scan_pose_prediction_s_);
     }
   }
 
@@ -982,7 +1002,7 @@ private:
         "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
         "duration_ms=%.1f status=%.*s length=%.2f samples=%zu "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-        "lateral_limited=%zu] "
+        "centered=%zu center_shift_max=%.2f lateral_limited=%zu] "
         "racing_line[iterations=%zu evals=%zu cost_initial=%.3f cost_final=%.3f "
         "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
         "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
@@ -1003,6 +1023,8 @@ private:
         trajectory_result.stats.corridor.min_width_m,
         trajectory_result.stats.corridor.mean_width_m,
         trajectory_result.stats.corridor.max_width_m,
+        trajectory_result.stats.corridor.centered_samples,
+        trajectory_result.stats.corridor.max_centering_shift_m,
         trajectory_result.stats.corridor.lateral_limited_samples,
         trajectory_result.stats.racing_line.iterations,
         trajectory_result.stats.racing_line.candidate_evaluations,
@@ -1169,6 +1191,20 @@ private:
     return std::min(static_cast<double>(last_scan_.range_max), max_lidar_range_m_);
   }
 
+  [[nodiscard]] double
+  currentLidarPosePredictionSeconds(const std::int64_t scan_receive_ns,
+                                    const std::int64_t pose_receive_ns) const {
+    if (!motion_compensate_lidar_pose_ || !current_velocity_valid_) {
+      return 0.0;
+    }
+    double pose_lag_s = 0.0;
+    if (scan_receive_ns > 0 && pose_receive_ns > 0 &&
+        scan_receive_ns > pose_receive_ns) {
+      pose_lag_s = static_cast<double>(scan_receive_ns - pose_receive_ns) / 1.0e9;
+    }
+    return std::clamp(pose_lag_s + lidar_pose_prediction_s_, 0.0, 1.0);
+  }
+
   [[nodiscard]] LidarProjectionPose currentLidarProjectionPose() const {
     return LidarProjectionPose{current_pose_.position,
                                current_altitude_m_,
@@ -1212,6 +1248,12 @@ private:
           scanAgeSeconds(now_ns));
       return stats;
     }
+    if (!last_scan_projection_pose_valid_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Planner current lidar overlay is waiting for a valid scan projection pose");
+      return stats;
+    }
 
     const double scan_range_max = currentLidarRangeMax();
     if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
@@ -1226,7 +1268,7 @@ private:
                           static_cast<double>(last_scan_.range_min), scan_range_max,
                           static_cast<double>(last_scan_.angle_min),
                           static_cast<double>(last_scan_.angle_increment)},
-            currentLidarProjectionPose(), currentLidarProjectionConfig());
+            last_scan_projection_pose_, currentLidarProjectionConfig());
     stats.used = overlay_stats.used;
     stats.processed_beams = overlay_stats.processed_beams;
     stats.hit_beams = overlay_stats.hit_beams;
@@ -1328,6 +1370,7 @@ private:
     current_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
     pose_valid_ = false;
     altitude_valid_ = false;
+    last_scan_projection_pose_valid_ = false;
     last_pose_update_ns_ = 0;
   }
 
@@ -1494,6 +1537,7 @@ private:
   Pose2 current_pose_{};
   Point2 current_velocity_{};
   AttitudeEuler current_attitude_{};
+  LidarProjectionPose last_scan_projection_pose_{};
   Point2 start_{};
   Point2 goal_{};
   Point2 px4_local_origin_{};
@@ -1508,10 +1552,12 @@ private:
   bool use_obstacle_memory_{true};
   bool use_current_lidar_obstacles_{true};
   bool use_px4_heading_for_scan_{false};
+  bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{false};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
   bool current_velocity_valid_{false};
+  bool last_scan_projection_pose_valid_{false};
   std::string frame_id_{"map"};
   std::string static_map_path_param_{"worlds/generated_city.map2d"};
   std::filesystem::path static_map_resolved_path_;
@@ -1526,6 +1572,8 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
+  double last_scan_pose_prediction_s_{0.0};
+  double lidar_pose_prediction_s_{0.0};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};

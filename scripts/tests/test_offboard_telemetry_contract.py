@@ -218,7 +218,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("corridor_width_max_m", self.offboard_text)
         self.assertIn("corridor_center_recovered_samples", self.offboard_text)
         self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
+        self.assertIn("corridor_centered_samples", self.offboard_text)
         self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
+        self.assertIn("corridor_centering_shift_max_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
         self.assertIn("turnSmoothingDiagnosticsJsonFields", self.offboard_text)
         self.assertIn(

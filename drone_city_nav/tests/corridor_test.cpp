@@ -41,6 +41,21 @@ TEST(Corridor, StraightPassageHasSymmetricBounds) {
   EXPECT_GT(result.stats.mean_width_m, 5.0);
 }
 
+TEST(Corridor, OffsetRouteRecentersToFreeSpaceMidline) {
+  const OccupancyGrid2D grid = corridorGrid();
+  const std::vector<Point2> route{{1.5, 4.5}, {18.5, 4.5}};
+
+  const CorridorResult result = buildCorridor(route, grid, testConfig());
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_GT(result.samples.size(), 2U);
+  EXPECT_GT(result.stats.centered_samples, 0U);
+  EXPECT_GT(result.stats.max_centering_shift_m, 0.5);
+  const CorridorSample middle = result.samples[result.samples.size() / 2U];
+  EXPECT_GT(middle.center.y, middle.route_center.y);
+  EXPECT_NEAR(middle.left_bound_m, middle.right_bound_m, 1.0);
+}
+
 TEST(Corridor, RouteInsideProhibitedIsInvalid) {
   OccupancyGrid2D grid = corridorGrid();
   grid.setOccupied(GridIndex{5, 5});

@@ -186,6 +186,9 @@ corridorSampleAtS(const std::span<const CorridorSample> corridor_samples,
     sample.center_recovery_m =
         previous.center_recovery_m +
         (next.center_recovery_m - previous.center_recovery_m) * t;
+    sample.centering_shift_m =
+        previous.centering_shift_m +
+        (next.centering_shift_m - previous.centering_shift_m) * t;
     return sample;
   }
   return corridor_samples.back();

@@ -2557,10 +2557,16 @@ private:
     flight_blackbox_stream_
         << ",\"corridor_center_unrecoverable_samples\":"
         << last_trajectory_planner_stats_.corridor.center_unrecoverable_samples;
+    flight_blackbox_stream_ << ",\"corridor_centered_samples\":"
+                            << last_trajectory_planner_stats_.corridor.centered_samples;
     flight_blackbox_stream_ << ",\"corridor_center_recovery_max_m\":";
     writeJsonNumberOrNull(
         flight_blackbox_stream_,
         last_trajectory_planner_stats_.corridor.max_center_recovery_m);
+    flight_blackbox_stream_ << ",\"corridor_centering_shift_max_m\":";
+    writeJsonNumberOrNull(
+        flight_blackbox_stream_,
+        last_trajectory_planner_stats_.corridor.max_centering_shift_m);
     flight_blackbox_stream_ << ",\"corridor_lateral_reduction_max_m\":";
     writeJsonNumberOrNull(
         flight_blackbox_stream_,

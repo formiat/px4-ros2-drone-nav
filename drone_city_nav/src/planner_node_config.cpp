@@ -98,6 +98,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("scan_yaw_offset_rad", 0.0);
   config.current_lidar.use_px4_heading_for_scan =
       node.declare_parameter<bool>("use_px4_heading_for_scan", false);
+  config.current_lidar.motion_compensate_lidar_pose =
+      node.declare_parameter<bool>("motion_compensate_lidar_pose", true);
+  config.current_lidar.lidar_pose_prediction_s = std::clamp(
+      node.declare_parameter<double>("lidar_pose_prediction_s", 0.0), 0.0, 1.0);
   config.lidar_projection.compensate_attitude =
       node.declare_parameter<bool>("compensate_lidar_attitude", false);
   config.lidar_projection.lidar_mount_roll_rad =

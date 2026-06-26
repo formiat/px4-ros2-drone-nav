@@ -29,9 +29,9 @@ format:
 	./scripts/format_cpp_changed.sh
 
 .PHONY: sim-gui
-sim-gui:
+sim-gui: build
 	./scripts/run_city_mvp.sh
 
 .PHONY: sim-headless
-sim-headless:
+sim-headless: build
 	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_city_mvp.sh

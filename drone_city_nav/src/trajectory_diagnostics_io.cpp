@@ -382,6 +382,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                  stats.corridor.center_recovered_samples);
   appendJsonSize(stream, "corridor_center_unrecoverable_samples",
                  stats.corridor.center_unrecoverable_samples);
+  appendJsonSize(stream, "corridor_centered_samples", stats.corridor.centered_samples);
   appendJsonSize(stream, "corridor_outside_grid_samples",
                  stats.corridor.outside_grid_samples);
   appendJsonSize(stream, "corridor_lateral_limited_samples",
@@ -395,6 +396,8 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonNumber(stream, "corridor_clearance_max_m", stats.corridor.max_clearance_m);
   appendJsonNumber(stream, "corridor_center_recovery_max_m",
                    stats.corridor.max_center_recovery_m);
+  appendJsonNumber(stream, "corridor_centering_shift_max_m",
+                   stats.corridor.max_centering_shift_m);
   appendJsonNumber(stream, "corridor_lateral_reduction_max_m",
                    stats.corridor.max_lateral_bound_reduction_m);
   appendJsonSize(stream, "racing_line_input_samples", stats.racing_line.input_samples);
@@ -450,6 +453,7 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 corridor.center_recovered_samples);
   parseJsonSize(json, "corridor_center_unrecoverable_samples",
                 corridor.center_unrecoverable_samples);
+  parseJsonSize(json, "corridor_centered_samples", corridor.centered_samples);
   parseJsonSize(json, "corridor_outside_grid_samples", corridor.outside_grid_samples);
   parseJsonSize(json, "corridor_lateral_limited_samples",
                 corridor.lateral_limited_samples);
@@ -461,6 +465,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "corridor_clearance_max_m", corridor.max_clearance_m);
   parseJsonDouble(json, "corridor_center_recovery_max_m",
                   corridor.max_center_recovery_m);
+  parseJsonDouble(json, "corridor_centering_shift_max_m",
+                  corridor.max_centering_shift_m);
   parseJsonDouble(json, "corridor_lateral_reduction_max_m",
                   corridor.max_lateral_bound_reduction_m);
 

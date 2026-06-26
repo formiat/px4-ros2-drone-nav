@@ -52,6 +52,10 @@ public:
     mapping_enabled_ = declare_parameter<bool>("mapping_enabled", true);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
+    motion_compensate_lidar_pose_ =
+        declare_parameter<bool>("motion_compensate_lidar_pose", true);
+    lidar_pose_prediction_s_ =
+        std::clamp(declare_parameter<double>("lidar_pose_prediction_s", 0.0), 0.0, 1.0);
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
     max_pose_staleness_ns_ = static_cast<std::int64_t>(
         std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
@@ -151,6 +155,7 @@ public:
                 "score[min=%d max=%d free<=%d occupied>=%d] "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
+                "motion_compensation=%s pose_prediction=%.3fs "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 memory_config_.max_lidar_range_m, memory_config_.scan_stride,
                 memory_config_.min_score, memory_config_.max_score,
@@ -158,7 +163,9 @@ public:
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+                motion_compensate_lidar_pose_ ? "true" : "false",
+                lidar_pose_prediction_s_, lidar_mount_roll_rad_, lidar_mount_pitch_rad_,
+                lidar_mount_yaw_rad_);
   }
 
 private:
@@ -176,6 +183,8 @@ private:
         sample, px4_local_pose_config_, current_pose_);
     if (status == Px4LocalPoseUpdateStatus::kInvalidPosition) {
       last_pose_update_ns_ = 0;
+      current_velocity_ = Point2{};
+      current_velocity_valid_ = false;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Obstacle memory invalidated cached pose after invalid PX4 local position: "
@@ -187,6 +196,8 @@ private:
 
     if (status == Px4LocalPoseUpdateStatus::kInvalidYaw) {
       last_pose_update_ns_ = 0;
+      current_velocity_ = Point2{};
+      current_velocity_valid_ = false;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
           "Obstacle memory invalidated cached pose after PX4 local position without "
@@ -197,6 +208,14 @@ private:
     }
 
     last_pose_update_ns_ = get_clock()->now().nanoseconds();
+    if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
+      current_velocity_ =
+          Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
+      current_velocity_valid_ = true;
+    } else {
+      current_velocity_ = Point2{};
+      current_velocity_valid_ = false;
+    }
     logFirstPose("px4_local_position");
   }
 
@@ -249,6 +268,13 @@ private:
       return;
     }
 
+    const double pose_prediction_s = posePredictionSeconds(now_ns);
+    Pose2 scan_pose = current_pose_.pose;
+    if (pose_prediction_s > 0.0 && current_velocity_valid_) {
+      scan_pose.position.x += current_velocity_.x * pose_prediction_s;
+      scan_pose.position.y += current_velocity_.y * pose_prediction_s;
+    }
+
     LaserScan2DView scan_view{};
     scan_view.ranges = std::span<const float>{scan.ranges.data(), scan.ranges.size()};
     scan_view.angle_min_rad = static_cast<double>(scan.angle_min);
@@ -269,7 +295,7 @@ private:
     scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
     scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
     const ObstacleMemoryStats stats =
-        memory_->integrateScan(current_pose_.pose, scan_view, memory_config_);
+        memory_->integrateScan(scan_pose, scan_view, memory_config_);
 
     if (!scan_seen_) {
       scan_seen_ = true;
@@ -289,17 +315,18 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
+        "scan_pose=(%.2f, %.2f) pose_prediction=%.3f "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
-        current_pose_.altitude_m, current_pose_.pose.yaw_rad,
-        current_attitude_.roll_rad, current_attitude_.pitch_rad,
-        attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
-        stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
-        stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated, raw_counts.occupied_cells, raw_counts.free_cells,
-        raw_counts.unknown_cells);
+        current_pose_.altitude_m, current_pose_.pose.yaw_rad, scan_pose.position.x,
+        scan_pose.position.y, pose_prediction_s, current_attitude_.roll_rad,
+        current_attitude_.pitch_rad, attitude_valid_ ? "true" : "false",
+        stats.processed_beams, stats.hit_beams, stats.invalid_ranges,
+        stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
+        stats.free_cells_updated, stats.occupied_cells_updated,
+        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
   }
 
   void logFirstPose(const char* source_name) {
@@ -319,6 +346,8 @@ private:
   void invalidateCurrentPose() {
     invalidateNavigationPose(current_pose_);
     last_pose_update_ns_ = 0;
+    current_velocity_ = Point2{};
+    current_velocity_valid_ = false;
   }
 
   [[nodiscard]] double poseAgeSeconds(const std::int64_t now_ns) const {
@@ -326,6 +355,18 @@ private:
       return std::numeric_limits<double>::infinity();
     }
     return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
+  }
+
+  [[nodiscard]] double posePredictionSeconds(const std::int64_t scan_receive_ns) const {
+    if (!motion_compensate_lidar_pose_ || !current_velocity_valid_) {
+      return 0.0;
+    }
+    double pose_lag_s = 0.0;
+    if (scan_receive_ns > 0 && last_pose_update_ns_ > 0 &&
+        scan_receive_ns > last_pose_update_ns_) {
+      pose_lag_s = static_cast<double>(scan_receive_ns - last_pose_update_ns_) / 1.0e9;
+    }
+    return std::clamp(pose_lag_s + lidar_pose_prediction_s_, 0.0, 1.0);
   }
 
   void publishMemoryGrid() {
@@ -362,6 +403,7 @@ private:
   Px4LocalPoseConfig px4_local_pose_config_{};
   NavigationPose2D current_pose_{};
   AttitudeEuler current_attitude_{};
+  Point2 current_velocity_{};
 
   std::string frame_id_{"map"};
   double min_mapping_altitude_m_{0.0};
@@ -375,12 +417,15 @@ private:
   double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
+  double lidar_pose_prediction_s_{0.0};
   bool use_px4_heading_for_scan_{true};
+  bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{false};
   bool mapping_enabled_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
   bool attitude_valid_{false};
+  bool current_velocity_valid_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr

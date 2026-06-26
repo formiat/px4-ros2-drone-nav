@@ -252,6 +252,25 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
       }
     }
 
+    double left_bound =
+        raycastBound(prohibited_grid, center, normal, config, result.stats);
+    double right_bound =
+        raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
+    double centering_shift_m = 0.5 * (left_bound - right_bound);
+    const Point2 centered = center + normal * centering_shift_m;
+    if (std::abs(centering_shift_m) > kTinyDistanceM &&
+        !pointIsProhibited(prohibited_grid, centered)) {
+      center = centered;
+      left_bound = raycastBound(prohibited_grid, center, normal, config, result.stats);
+      right_bound =
+          raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
+      ++result.stats.centered_samples;
+      result.stats.max_centering_shift_m =
+          std::max(result.stats.max_centering_shift_m, std::abs(centering_shift_m));
+    } else {
+      centering_shift_m = 0.0;
+    }
+
     CorridorSample sample{};
     sample.s_m = s_m;
     sample.route_center = route_center;
@@ -259,10 +278,9 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
     sample.tangent = tangent;
     sample.normal = normal;
     sample.center_recovery_m = center_recovery_m;
-    sample.left_bound_m =
-        raycastBound(prohibited_grid, center, normal, config, result.stats);
-    sample.right_bound_m =
-        raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
+    sample.centering_shift_m = centering_shift_m;
+    sample.left_bound_m = left_bound;
+    sample.right_bound_m = right_bound;
 
     const std::optional<GridIndex> cell = prohibited_grid.worldToCell(center);
     if (cell.has_value()) {
