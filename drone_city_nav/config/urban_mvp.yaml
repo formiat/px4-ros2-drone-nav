@@ -70,7 +70,6 @@ planner_node:
     inflation_radius_m: 5.0
     stable_path_reuse_enabled: true
     stable_path_goal_tolerance_m: 3.0
-    stable_path_max_deviation_m: 5.0
     memory_occupied_value: 100
     memory_free_value: 0
     use_static_map: true

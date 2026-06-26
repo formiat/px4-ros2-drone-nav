@@ -106,8 +106,6 @@ stablePathDecisionReasonName(const StablePathDecisionReason reason) noexcept {
       return "goal_mismatch";
     case StablePathDecisionReason::kProjectionUnavailable:
       return "projection_unavailable";
-    case StablePathDecisionReason::kDeviationExceeded:
-      return "deviation_exceeded";
     case StablePathDecisionReason::kClear:
       return "clear";
     case StablePathDecisionReason::kProhibitedConfirmed:
@@ -478,13 +476,6 @@ StablePathDecision PlannerCore::evaluateStablePath(
   }
 
   decision.remaining_path = std::move(*remaining_path);
-  if (std::isfinite(config_.stable_path_max_deviation_m) &&
-      config_.stable_path_max_deviation_m >= 0.0 &&
-      decision.deviation_m > config_.stable_path_max_deviation_m) {
-    decision.reason = StablePathDecisionReason::kDeviationExceeded;
-    return decision;
-  }
-
   if (pathIsTraversable(grid, decision.remaining_path,
                         &decision.prohibited_segment_index)) {
     decision.keep_path = true;
