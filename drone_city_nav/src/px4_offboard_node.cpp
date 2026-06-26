@@ -53,7 +53,7 @@ namespace {
 
 constexpr auto kControllerPeriod = std::chrono::milliseconds{50};
 constexpr double kTinyDistanceM = 1.0e-6;
-constexpr double kLocalClearanceDiagnosticRadiusM = 12.0;
+constexpr double kProhibitedGridClearanceDiagnosticRadiusM = 12.0;
 constexpr std::int8_t kInflatedOccupancyValue = 80;
 constexpr double kRvizGroundZ = 0.08;
 
@@ -136,7 +136,7 @@ struct PathTrackingDiagnostics {
   Point2 projection{};
 };
 
-struct NearestObstacleDiagnostic {
+struct NearestProhibitedCellDiagnostic {
   bool valid{false};
   double clearance_m{std::numeric_limits<double>::quiet_NaN()};
   double bearing_map_rad{std::numeric_limits<double>::quiet_NaN()};
@@ -1675,14 +1675,14 @@ private:
     return diagnostics;
   }
 
-  [[nodiscard]] double estimateLocalClearanceM(const Point2 point) const {
+  [[nodiscard]] double estimateProhibitedGridClearanceM(const Point2 point) const {
     return estimateGridClearanceM(point, kInflatedOccupancyValue);
   }
 
-  [[nodiscard]] NearestObstacleDiagnostic
-  nearestObstacleDiagnostic(const Point2 point,
-                            const std::int8_t min_occupancy_value) const {
-    NearestObstacleDiagnostic diagnostic{};
+  [[nodiscard]] NearestProhibitedCellDiagnostic
+  nearestProhibitedCellDiagnostic(const Point2 point,
+                                  const std::int8_t min_occupancy_value) const {
+    NearestProhibitedCellDiagnostic diagnostic{};
     if (!prohibitedGridFresh() || !(prohibited_grid_.info.resolution > 0.0F) ||
         prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U) {
       return diagnostic;
@@ -1706,8 +1706,8 @@ private:
       return diagnostic;
     }
 
-    const int radius_cells =
-        static_cast<int>(std::ceil(kLocalClearanceDiagnosticRadiusM / resolution));
+    const int radius_cells = static_cast<int>(
+        std::ceil(kProhibitedGridClearanceDiagnosticRadiusM / resolution));
     const int min_x = std::max(center.x - radius_cells, 0);
     const int max_x = std::min(center.x + radius_cells, width - 1);
     const int min_y = std::max(center.y - radius_cells, 0);
@@ -1757,8 +1757,9 @@ private:
       return std::numeric_limits<double>::quiet_NaN();
     }
 
-    return occupancyGridClearanceM(
-        prohibited_grid_, point, kLocalClearanceDiagnosticRadiusM, min_occupancy_value);
+    return occupancyGridClearanceM(prohibited_grid_, point,
+                                   kProhibitedGridClearanceDiagnosticRadiusM,
+                                   min_occupancy_value);
   }
 
   void updateCommandDiagnostics(const Point2 target, const Point2 previous_target,
@@ -1861,9 +1862,9 @@ private:
         local_position_valid_ && path_valid_
             ? distance(current_position_, path_points_.back())
             : std::numeric_limits<double>::quiet_NaN();
-    const double local_clearance_m = local_position_valid_
-                                         ? estimateLocalClearanceM(current_position_)
-                                         : std::numeric_limits<double>::quiet_NaN();
+    const double prohibited_grid_clearance_m =
+        local_position_valid_ ? estimateProhibitedGridClearanceM(current_position_)
+                              : std::numeric_limits<double>::quiet_NaN();
     const bool hold_position = shouldHoldPosition();
     const bool pose_fresh = localPositionFresh();
     const double pose_age_s = localPositionAgeSeconds();
@@ -1905,7 +1906,7 @@ private:
         "altitude_error=%.2f "
         "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
         "final_goal_hold=%s "
-        "local_clearance=%.2f",
+        "prohibited_grid_clearance=%.2f",
         local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
         pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
         vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -1980,7 +1981,7 @@ private:
         upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
-        final_goal_hold_active_ ? "true" : "false", local_clearance_m);
+        final_goal_hold_active_ ? "true" : "false", prohibited_grid_clearance_m);
   }
 
   void logTelemetry() {
@@ -2001,11 +2002,12 @@ private:
     const double path_goal_distance =
         path_valid_ ? distance(current_position_, path_points_.back())
                     : std::numeric_limits<double>::quiet_NaN();
-    const NearestObstacleDiagnostic nearest_obstacle =
-        nearestObstacleDiagnostic(current_position_, kInflatedOccupancyValue);
-    const double local_clearance_m = nearest_obstacle.valid
-                                         ? nearest_obstacle.clearance_m
-                                         : estimateLocalClearanceM(current_position_);
+    const NearestProhibitedCellDiagnostic nearest_prohibited_cell =
+        nearestProhibitedCellDiagnostic(current_position_, kInflatedOccupancyValue);
+    const double prohibited_grid_clearance_m =
+        nearest_prohibited_cell.valid
+            ? nearest_prohibited_cell.clearance_m
+            : estimateProhibitedGridClearanceM(current_position_);
     const bool hold_position = shouldHoldPosition();
     const bool pose_fresh = localPositionFresh();
     const double pose_age_s = localPositionAgeSeconds();
@@ -2029,7 +2031,7 @@ private:
         "target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-        "final_trajectory_segment=%s local_clearance=%.2f "
+        "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
         "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
         "final_goal_hold=%s",
         current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
@@ -2041,7 +2043,7 @@ private:
         target.y, target_distance, path_goal_distance, mission_goal_distance,
         path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
         motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
-        local_clearance_m, upcoming_turn.valid ? "true" : "false",
+        prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
         upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
         upcoming_turn.distance_to_turn_m, turn_angle_rad,
         final_goal_hold_active_ ? "true" : "false");
@@ -2180,28 +2182,31 @@ private:
         last_velocity_plan_.predicted_cross_track_error_m,
         last_velocity_plan_.response_delay_distance_m);
     RCLCPP_INFO(get_logger(),
-                "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
+                "Drone obstacle diagnostics: nearest_prohibited_cell[valid=%s "
+                "prohibited_grid_clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
                 "point=(%.2f, %.2f)]",
-                nearest_obstacle.valid ? "true" : "false", nearest_obstacle.clearance_m,
-                nearest_obstacle.bearing_map_rad, nearest_obstacle.bearing_body_rad,
-                nearest_obstacle.bearing_body_deg, nearest_obstacle.point.x,
-                nearest_obstacle.point.y);
+                nearest_prohibited_cell.valid ? "true" : "false",
+                nearest_prohibited_cell.clearance_m,
+                nearest_prohibited_cell.bearing_map_rad,
+                nearest_prohibited_cell.bearing_body_rad,
+                nearest_prohibited_cell.bearing_body_deg,
+                nearest_prohibited_cell.point.x, nearest_prohibited_cell.point.y);
     writeFlightBlackbox(now_ns, target, target_distance, path_goal_distance,
-                        mission_goal_distance, local_clearance_m, pose_fresh,
+                        mission_goal_distance, prohibited_grid_clearance_m, pose_fresh,
                         pose_age_s, attitude_age_s, upcoming_turn, hold_position,
-                        path_tracking, nearest_obstacle);
+                        path_tracking, nearest_prohibited_cell);
   }
 
-  void writeFlightBlackbox(const std::int64_t now_ns, const Point2 target,
-                           const double target_distance_m,
-                           const double path_goal_distance_m,
-                           const double mission_goal_distance_m,
-                           const double local_clearance_m, const bool pose_fresh,
-                           const double pose_age_s, const double attitude_age_s,
-                           const UpcomingTurn& upcoming_turn, const bool hold_position,
-                           const PathTrackingDiagnostics& path_tracking,
-                           const NearestObstacleDiagnostic& nearest_obstacle) {
+  void
+  writeFlightBlackbox(const std::int64_t now_ns, const Point2 target,
+                      const double target_distance_m, const double path_goal_distance_m,
+                      const double mission_goal_distance_m,
+                      const double prohibited_grid_clearance_m, const bool pose_fresh,
+                      const double pose_age_s, const double attitude_age_s,
+                      const UpcomingTurn& upcoming_turn, const bool hold_position,
+                      const PathTrackingDiagnostics& path_tracking,
+                      const NearestProhibitedCellDiagnostic& nearest_prohibited_cell) {
     if (!flight_blackbox_enabled_ || !flight_blackbox_stream_.is_open()) {
       return;
     }
@@ -2754,22 +2759,25 @@ private:
                             << "\",\"final_goal_hold_active\":";
     writeJsonBool(flight_blackbox_stream_, final_goal_hold_active_);
     flight_blackbox_stream_ << "}";
-    flight_blackbox_stream_ << ",\"obstacle\":{\"local_clearance_m\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, local_clearance_m);
-    flight_blackbox_stream_ << ",\"nearest_valid\":";
-    writeJsonBool(flight_blackbox_stream_, nearest_obstacle.valid);
-    flight_blackbox_stream_ << ",\"nearest_clearance_m\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.clearance_m);
-    flight_blackbox_stream_ << ",\"bearing_map_rad\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_map_rad);
-    flight_blackbox_stream_ << ",\"bearing_body_rad\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_body_rad);
-    flight_blackbox_stream_ << ",\"bearing_body_deg\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.bearing_body_deg);
-    flight_blackbox_stream_ << ",\"point_x\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.point.x);
-    flight_blackbox_stream_ << ",\"point_y\":";
-    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_obstacle.point.y);
+    flight_blackbox_stream_ << ",\"obstacle\":{\"prohibited_grid_clearance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, prohibited_grid_clearance_m);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_valid\":";
+    writeJsonBool(flight_blackbox_stream_, nearest_prohibited_cell.valid);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_grid_clearance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_prohibited_cell.clearance_m);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_bearing_map_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          nearest_prohibited_cell.bearing_map_rad);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_bearing_body_rad\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          nearest_prohibited_cell.bearing_body_rad);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_bearing_body_deg\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          nearest_prohibited_cell.bearing_body_deg);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_prohibited_cell.point.x);
+    flight_blackbox_stream_ << ",\"nearest_prohibited_cell_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_, nearest_prohibited_cell.point.y);
     flight_blackbox_stream_ << "}}\n";
   }
 

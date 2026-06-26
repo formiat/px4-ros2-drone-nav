@@ -520,9 +520,9 @@ mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
 targets, limiting speed constraint type, limiting constraint distance, final
 stop braking distance, trajectory station, segment type, curvature, curve
 radius, final trajectory sample count, corridor width, racing-line cost and
-offset metrics, `local_clearance`, attitude, path id correlation, cross-track
-error, heading error, commanded target delta, and nearest-obstacle bearing. The
-same control diagnostics are written as JSON Lines to
+offset metrics, `prohibited_grid_clearance`, attitude, path id correlation,
+cross-track error, heading error, commanded target delta, and nearest
+prohibited-cell bearing. The same control diagnostics are written as JSON Lines to
 `log/offboard_blackbox.jsonl` for machine analysis. Legacy path-turn values, if
 emitted, are explicitly named `rough_route_debug_*` and are not active speed or
 trajectory-control fields.
