@@ -57,6 +57,17 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
   stats.racing_line.cost_length_overrun = 0.0;
+  stats.straightening.input_samples = 64U;
+  stats.straightening.output_samples = 22U;
+  stats.straightening.collapsed_segments = 5U;
+  stats.straightening.rejected_too_short = 7U;
+  stats.straightening.rejected_shape = 11U;
+  stats.straightening.rejected_prohibited = 1U;
+  stats.straightening.rejected_corridor = 2U;
+  stats.straightening.max_heading_delta_before_rad = 0.9;
+  stats.straightening.max_heading_delta_after_rad = 0.35;
+  stats.straightening.max_curvature_jump_before_1pm = 0.6;
+  stats.straightening.max_curvature_jump_after_1pm = 0.18;
   stats.turn_smoothing.input_samples = 48U;
   stats.turn_smoothing.output_samples = 72U;
   stats.turn_smoothing.detected_corners = 3U;
@@ -159,6 +170,10 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_straightening_collapsed_segments\":5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_straightening_heading_delta_after_rad\":0.35"),
+            std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_heading_delta_after_rad\":0.4"),
             std::string::npos);
@@ -208,6 +223,28 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_regularization_applied\"",
                         "\"racing_pre_regularization_max_curvature_jump_1pm\"",
                         "\"racing_post_regularization_max_curvature_jump_1pm\"",
+                    });
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
+TEST(TrajectoryDiagnosticsIo,
+     TrajectoryStraighteningJsonFragmentContainsBlackboxRequiredKeys) {
+  const std::string fragment =
+      trajectoryStraighteningDiagnosticsJsonFields(populatedStats());
+
+  expectContainsAll(fragment,
+                    std::array{
+                        "\"trajectory_straightening_input_samples\"",
+                        "\"trajectory_straightening_output_samples\"",
+                        "\"trajectory_straightening_collapsed_segments\"",
+                        "\"trajectory_straightening_rejected_too_short\"",
+                        "\"trajectory_straightening_rejected_shape\"",
+                        "\"trajectory_straightening_rejected_prohibited\"",
+                        "\"trajectory_straightening_rejected_corridor\"",
+                        "\"trajectory_straightening_heading_delta_before_rad\"",
+                        "\"trajectory_straightening_heading_delta_after_rad\"",
+                        "\"trajectory_straightening_curvature_jump_before_1pm\"",
+                        "\"trajectory_straightening_curvature_jump_after_1pm\"",
                     });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
@@ -275,6 +312,11 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.min_edge_margin_m, 2.5);
+  EXPECT_EQ(parsed_value.stats.straightening.input_samples, 64U);
+  EXPECT_EQ(parsed_value.stats.straightening.output_samples, 22U);
+  EXPECT_EQ(parsed_value.stats.straightening.collapsed_segments, 5U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_before_rad, 0.9);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_after_rad, 0.35);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);

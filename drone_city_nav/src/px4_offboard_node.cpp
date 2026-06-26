@@ -557,6 +557,8 @@ private:
     }
     last_trajectory_planner_stats_.corridor = diagnostics.stats.corridor;
     last_trajectory_planner_stats_.racing_line = diagnostics.stats.racing_line;
+    last_trajectory_planner_stats_.straightening = diagnostics.stats.straightening;
+    last_trajectory_planner_stats_.turn_smoothing = diagnostics.stats.turn_smoothing;
   }
 
   void updatePlannerStatsForReceivedTrajectory() {
@@ -2587,6 +2589,9 @@ private:
                           last_trajectory_planner_stats_.racing_line.max_abs_offset_m);
     flight_blackbox_stream_ << ","
                             << racingLineDiagnosticsJsonFields(
+                                   last_trajectory_planner_stats_);
+    flight_blackbox_stream_ << ","
+                            << trajectoryStraighteningDiagnosticsJsonFields(
                                    last_trajectory_planner_stats_);
     flight_blackbox_stream_ << ","
                             << turnSmoothingDiagnosticsJsonFields(

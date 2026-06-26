@@ -30,6 +30,9 @@ finalTrajectorySamplesCsvRow(std::size_t sample_index,
 racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
 
 [[nodiscard]] std::string
+trajectoryStraighteningDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
+
+[[nodiscard]] std::string
 turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
 
 [[nodiscard]] std::string

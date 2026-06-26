@@ -32,6 +32,8 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <numbers>
 #include <optional>
@@ -960,6 +962,7 @@ private:
                                 std::chrono::steady_clock::now() - started_at)
                                 .count()) /
         1000.0;
+    writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
     if (!trajectory_result.valid) {
       RCLCPP_WARN(
           get_logger(),
@@ -1008,6 +1011,10 @@ private:
         "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
         "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
         "speed_limit_max=%.2f curvature_limited=%zu] "
+        "straightening[input=%zu output=%zu collapsed=%zu "
+        "rejected(short=%zu shape=%zu prohibited=%zu corridor=%zu) "
+        "heading_before=%.1fdeg heading_after=%.1fdeg "
+        "curvature_jump_before=%.3f curvature_jump_after=%.3f] "
         "turn_smoothing[detected=%zu attempted=%zu smoothed=%zu "
         "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
         "heading_before=%.1fdeg heading_after=%.1fdeg "
@@ -1041,6 +1048,19 @@ private:
         trajectory_result.stats.racing_line.min_speed_limit_mps,
         trajectory_result.stats.racing_line.max_speed_limit_mps,
         trajectory_result.stats.racing_line.curvature_limited_samples,
+        trajectory_result.stats.straightening.input_samples,
+        trajectory_result.stats.straightening.output_samples,
+        trajectory_result.stats.straightening.collapsed_segments,
+        trajectory_result.stats.straightening.rejected_too_short,
+        trajectory_result.stats.straightening.rejected_shape,
+        trajectory_result.stats.straightening.rejected_prohibited,
+        trajectory_result.stats.straightening.rejected_corridor,
+        radiansToDegrees(
+            trajectory_result.stats.straightening.max_heading_delta_before_rad),
+        radiansToDegrees(
+            trajectory_result.stats.straightening.max_heading_delta_after_rad),
+        trajectory_result.stats.straightening.max_curvature_jump_before_1pm,
+        trajectory_result.stats.straightening.max_curvature_jump_after_1pm,
         trajectory_result.stats.turn_smoothing.detected_corners,
         trajectory_result.stats.turn_smoothing.attempted_corners,
         trajectory_result.stats.turn_smoothing.smoothed_corners,
@@ -1353,6 +1373,102 @@ private:
     std_msgs::msg::String msg;
     msg.data = trajectoryPlannerDiagnosticsJson(path_id, path_stamp_ns, stats);
     trajectory_diagnostics_pub_->publish(msg);
+  }
+
+  [[nodiscard]] static std::filesystem::path corridorSamplesDirectory() {
+    return std::filesystem::path{"log"} / "corridor_samples";
+  }
+
+  static void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
+    if (std::isfinite(value)) {
+      stream << value;
+    }
+  }
+
+  bool writeCorridorSamplesCsvFile(const std::filesystem::path& path,
+                                   const TrajectoryPlannerResult& result,
+                                   const char* source_label,
+                                   const std::uint64_t candidate_path_id) const {
+    std::ofstream stream{path, std::ios::out | std::ios::trunc};
+    if (!stream.is_open()) {
+      return false;
+    }
+
+    stream << std::setprecision(9);
+    stream << "# source=" << source_label << " candidate_path_id=" << candidate_path_id
+           << " status=" << trajectoryPlannerStatusName(result.stats.status)
+           << " valid=" << (result.valid ? "true" : "false") << "\n";
+    stream << "sample_index,s_m,route_x,route_y,center_x,center_y,tangent_x,"
+              "tangent_y,normal_x,normal_y,left_bound_m,right_bound_m,width_m,"
+              "clearance_m,center_recovery_m,centering_shift_m\n";
+    for (std::size_t i = 0U; i < result.corridor_samples.size(); ++i) {
+      const CorridorSample& sample = result.corridor_samples[i];
+      stream << i << ",";
+      writeCsvNumberOrEmpty(stream, sample.s_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.route_center.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.route_center.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.tangent.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.normal.x);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.normal.y);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.left_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.right_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.left_bound_m + sample.right_bound_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.clearance_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
+      stream << ",";
+      writeCsvNumberOrEmpty(stream, sample.centering_shift_m);
+      stream << "\n";
+    }
+    return stream.good();
+  }
+
+  void writeCorridorSamplesDump(const TrajectoryPlannerResult& result,
+                                const char* source_label,
+                                const std::uint64_t candidate_path_id) const {
+    if (result.corridor_samples.empty()) {
+      return;
+    }
+
+    const std::filesystem::path directory = corridorSamplesDirectory();
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) {
+      RCLCPP_WARN(get_logger(), "Failed to create corridor samples directory '%s': %s",
+                  directory.string().c_str(), error.message().c_str());
+      return;
+    }
+
+    const std::int64_t stamp_ns = get_clock()->now().nanoseconds();
+    const std::filesystem::path latest_path = directory / "latest.csv";
+    const std::filesystem::path history_path =
+        directory / ("path_" + std::to_string(candidate_path_id) + "_" +
+                     std::to_string(stamp_ns) + ".csv");
+    const bool wrote_latest = writeCorridorSamplesCsvFile(
+        latest_path, result, source_label, candidate_path_id);
+    const bool wrote_history = writeCorridorSamplesCsvFile(
+        history_path, result, source_label, candidate_path_id);
+    if (!wrote_latest || !wrote_history) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Failed to write corridor samples dump: latest='%s' history='%s'",
+          latest_path.string().c_str(), history_path.string().c_str());
+    }
   }
 
   void publishPlanningFailureHold() {

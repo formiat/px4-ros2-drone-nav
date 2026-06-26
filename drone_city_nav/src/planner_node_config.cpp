@@ -230,6 +230,26 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "racing_line_regularization_max_time_regression_s", 0.5),
                  0.0, 3600.0);
+  config.trajectory_planner.straightening.min_segment_length_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_min_segment_length_m", 20.0),
+                 0.0, 100000.0);
+  config.trajectory_planner.straightening.validation_step_m = std::clamp(
+      node.declare_parameter<double>("trajectory_straightening_validation_step_m", 2.0),
+      0.1, 1000.0);
+  config.trajectory_planner.straightening.min_corridor_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_min_corridor_margin_m", 0.5),
+                 0.0, 1000.0);
+  config.trajectory_planner.straightening.max_path_length_ratio =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_max_path_length_ratio", 1.035),
+                 1.0, 100.0);
+  config.trajectory_planner.straightening.max_heading_error_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_max_heading_error_deg", 20.0) *
+                     std::numbers::pi / 180.0,
+                 0.0, std::numbers::pi);
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,
