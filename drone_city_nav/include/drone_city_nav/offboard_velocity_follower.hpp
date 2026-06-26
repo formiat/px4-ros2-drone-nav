@@ -47,6 +47,9 @@ struct VelocitySetpointPlan {
   Point2 velocity_setpoint_acceleration_xy{};
   Point2 path_tangent{};
   Point2 projection{};
+  Point2 current_projection{};
+  Point2 predicted_position{};
+  Point2 predicted_projection{};
   Point2 cross_track_feedback_velocity{};
   Point2 cross_track_derivative_damping_velocity{};
   Point2 curvature_feedforward_velocity{};
@@ -87,6 +90,11 @@ struct VelocitySetpointPlan {
   double lateral_control_mps{0.0};
   double lateral_control_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double prediction_horizon_s{0.0};
+  double prediction_distance_m{0.0};
+  double response_delay_distance_m{std::numeric_limits<double>::quiet_NaN()};
   SpeedConstraintType limiting_constraint_type{SpeedConstraintType::kNone};
   std::size_t limiting_constraint_index{0U};
   double limiting_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};

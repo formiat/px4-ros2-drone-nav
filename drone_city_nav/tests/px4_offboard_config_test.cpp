@@ -27,6 +27,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_NE(yaml.find("speed_profile_lookahead_time_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_min_m: 5.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_max_m: 35.0"), std::string::npos);
+  EXPECT_NE(yaml.find("tracking_prediction_horizon_s: 0.45"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_diagnostics_topic: "
                       "/drone_city_nav/trajectory_diagnostics"),
             std::string::npos);

@@ -168,6 +168,7 @@ px4_offboard_node:
     final_hold_max_speed_mps: 0.8
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.8
+    tracking_prediction_horizon_s: 0.45
     max_lateral_control_angle_deg: 55.0
     max_lateral_control_rate_mps2: 8.0
     curvature_feedforward_time_s: 0.5

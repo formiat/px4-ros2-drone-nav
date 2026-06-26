@@ -214,6 +214,8 @@ public:
         std::clamp(declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
     velocity_follower_config_.cross_track_derivative_gain = std::clamp(
         declare_parameter<double>("cross_track_derivative_gain", 0.8), 0.0, 10.0);
+    velocity_follower_config_.tracking_prediction_horizon_s = std::clamp(
+        declare_parameter<double>("tracking_prediction_horizon_s", 0.45), 0.0, 2.0);
     velocity_follower_config_.max_lateral_control_angle_rad =
         std::clamp(radiansFromDegrees(declare_parameter<double>(
                        "max_lateral_control_angle_deg", 55.0)),
@@ -366,6 +368,7 @@ public:
         "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
         "speed_profile_lookahead[time=%.2fs min=%.2fm max=%.2fm] "
         "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
+        "tracking_prediction_horizon=%.2fs "
         "max_lateral_control_angle=%.1fdeg "
         "max_lateral_control_rate=%.2fmps2 "
         "curvature_feedforward[time=%.2fs max_angle=%.1fdeg] "
@@ -394,6 +397,7 @@ public:
         velocity_follower_config_.speed_profile_lookahead_max_m,
         velocity_follower_config_.final_hold_max_speed_mps,
         velocity_follower_config_.cross_track_gain,
+        velocity_follower_config_.tracking_prediction_horizon_s,
         radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),
         velocity_follower_config_.max_lateral_control_rate_mps2,
         velocity_follower_config_.curvature_feedforward_time_s,
@@ -1875,6 +1879,9 @@ private:
         "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
         "samples=%zu debug_samples=%zu status=%.*s "
         "corridor_width[min=%.2f mean=%.2f] racing_offset_max=%.2f] "
+        "tracking_prediction[horizon=%.2fs distance=%.2f "
+        "predicted=(%.2f, %.2f) current_cross=%.2f predicted_cross=%.2f "
+        "response_delay_distance=%.2f] "
         "current=(%.2f, %.2f) target=(%.2f, %.2f) "
         "distance_to_target=%.2f distance_to_path_goal=%.2f "
         "distance_to_mission_goal=%.2f actual_speed=%.2f "
@@ -1920,10 +1927,17 @@ private:
         last_trajectory_planner_stats_.corridor.min_width_m,
         last_trajectory_planner_stats_.corridor.mean_width_m,
         last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
-        current_position_.x, current_position_.y, target.x, target.y, target_distance,
-        path_goal_distance, mission_goal_distance, current_speed_mps_,
-        last_velocity_setpoint_.x, last_velocity_setpoint_.y,
-        last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
+        last_velocity_plan_.prediction_horizon_s,
+        last_velocity_plan_.prediction_distance_m,
+        last_velocity_plan_.predicted_position.x,
+        last_velocity_plan_.predicted_position.y,
+        last_velocity_plan_.current_cross_track_error_m,
+        last_velocity_plan_.predicted_cross_track_error_m,
+        last_velocity_plan_.response_delay_distance_m, current_position_.x,
+        current_position_.y, target.x, target.y, target_distance, path_goal_distance,
+        mission_goal_distance, current_speed_mps_, last_velocity_setpoint_.x,
+        last_velocity_setpoint_.y, last_vertical_velocity_setpoint_mps_,
+        last_velocity_setpoint_speed_mps_,
         last_velocity_plan_.velocity_setpoint_acceleration_mps2,
         last_velocity_plan_.velocity_setpoint_jerk_mps3,
         last_velocity_plan_.cross_track_feedback_mps,
@@ -2079,7 +2093,10 @@ private:
         "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
         "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
         "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
-        "status=%.*s corridor_width_min=%.2f racing_offset_max=%.2f]",
+        "status=%.*s corridor_width_min=%.2f racing_offset_max=%.2f] "
+        "tracking_prediction[horizon=%.2fs distance=%.2f predicted=(%.2f, %.2f) "
+        "current_projection=(%.2f, %.2f) predicted_projection=(%.2f, %.2f) "
+        "current_cross=%.2f predicted_cross=%.2f response_delay_distance=%.2f]",
         offboardSetpointModeName(last_offboard_setpoint_mode_),
         last_velocity_setpoint_.x, last_velocity_setpoint_.y,
         last_vertical_velocity_setpoint_mps_, last_velocity_setpoint_speed_mps_,
@@ -2150,7 +2167,18 @@ private:
             trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
         trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
         last_trajectory_planner_stats_.corridor.min_width_m,
-        last_trajectory_planner_stats_.racing_line.max_abs_offset_m);
+        last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
+        last_velocity_plan_.prediction_horizon_s,
+        last_velocity_plan_.prediction_distance_m,
+        last_velocity_plan_.predicted_position.x,
+        last_velocity_plan_.predicted_position.y,
+        last_velocity_plan_.current_projection.x,
+        last_velocity_plan_.current_projection.y,
+        last_velocity_plan_.predicted_projection.x,
+        last_velocity_plan_.predicted_projection.y,
+        last_velocity_plan_.current_cross_track_error_m,
+        last_velocity_plan_.predicted_cross_track_error_m,
+        last_velocity_plan_.response_delay_distance_m);
     RCLCPP_INFO(get_logger(),
                 "Drone obstacle diagnostics: nearest_obstacle[valid=%s clearance=%.2f "
                 "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
@@ -2427,6 +2455,39 @@ private:
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.x);
     flight_blackbox_stream_ << ",\"projection_y\":";
     writeJsonNumberOrNull(flight_blackbox_stream_, last_velocity_plan_.projection.y);
+    flight_blackbox_stream_ << ",\"tracking_prediction_horizon_s\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.prediction_horizon_s);
+    flight_blackbox_stream_ << ",\"tracking_prediction_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.prediction_distance_m);
+    flight_blackbox_stream_ << ",\"tracking_predicted_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.predicted_position.x);
+    flight_blackbox_stream_ << ",\"tracking_predicted_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.predicted_position.y);
+    flight_blackbox_stream_ << ",\"current_projection_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.current_projection.x);
+    flight_blackbox_stream_ << ",\"current_projection_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.current_projection.y);
+    flight_blackbox_stream_ << ",\"predicted_projection_x\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.predicted_projection.x);
+    flight_blackbox_stream_ << ",\"predicted_projection_y\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.predicted_projection.y);
+    flight_blackbox_stream_ << ",\"current_cross_track_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.current_cross_track_error_m);
+    flight_blackbox_stream_ << ",\"predicted_cross_track_error_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.predicted_cross_track_error_m);
+    flight_blackbox_stream_ << ",\"response_delay_distance_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_velocity_plan_.response_delay_distance_m);
     flight_blackbox_stream_ << ",\"trajectory_valid\":";
     writeJsonBool(flight_blackbox_stream_, trajectory_valid_);
     flight_blackbox_stream_ << ",\"trajectory_s_m\":";

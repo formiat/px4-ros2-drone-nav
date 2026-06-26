@@ -20,6 +20,7 @@ namespace {
   config.speed_profile_sample_step_m = 1.0;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;
+  config.tracking_prediction_horizon_s = 0.0;
   return config;
 }
 
@@ -70,6 +71,65 @@ TEST(OffboardVelocityFollower, StraightTrajectoryReturnsCruiseVelocityAlongTange
   EXPECT_NEAR(plan.setpoint_velocity_normal_mps, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.trajectory_s_m, 10.0, 1.0e-9);
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
+}
+
+TEST(OffboardVelocityFollower, PredictionHorizonProjectsControlAheadOfCurrentPose) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig config = testConfig();
+  config.tracking_prediction_horizon_s = 0.5;
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{10.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_scalar_speed_command_mps = 10.0;
+  state.previous_scalar_speed_command_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{10.0, 10.0}, Point2{10.0, 0.0},
+                           true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.prediction_horizon_s, 0.5, 1.0e-9);
+  EXPECT_NEAR(plan.prediction_distance_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.predicted_position.x, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.predicted_position.y, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.current_projection.x, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.current_projection.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.predicted_projection.x, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.predicted_projection.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.projection.x, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_s_m, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.current_cross_track_error_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.predicted_cross_track_error_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_cross_track_error_m, plan.predicted_cross_track_error_m,
+              1.0e-9);
+  EXPECT_NEAR(plan.response_delay_distance_m, 5.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, PredictionHorizonIsIncludedInFinalBrakingDistance) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig config = testConfig();
+  config.tracking_prediction_horizon_s = 0.5;
+  config.speed_profile_decel_mps2 = 2.0;
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{10.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_scalar_speed_command_mps = 10.0;
+  state.previous_scalar_speed_command_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{80.0, 0.0}, Point2{10.0, 0.0},
+                           true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_FALSE(plan.final_goal_reached);
+  EXPECT_NEAR(plan.trajectory_s_m, 85.0, 1.0e-9);
+  EXPECT_NEAR(plan.final_stop.distance_to_stop_m, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.response_delay_distance_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.final_stop.braking_distance_m, 30.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, NarrowArcGetsLowerGeometricLimitThanWideArc) {

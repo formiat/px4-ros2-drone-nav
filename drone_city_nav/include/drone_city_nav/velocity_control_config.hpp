@@ -15,6 +15,7 @@ struct VelocityFollowerConfig {
   double speed_profile_lookahead_max_m{35.0};
   double cross_track_gain{0.5};
   double cross_track_derivative_gain{0.8};
+  double tracking_prediction_horizon_s{0.45};
   double max_lateral_control_angle_rad{0.9599310885968813};
   double max_lateral_control_rate_mps2{8.0};
   double curvature_feedforward_time_s{0.5};

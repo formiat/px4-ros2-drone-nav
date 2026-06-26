@@ -20,6 +20,14 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
 }
 
+[[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
+  return Point2{lhs.x + rhs.x, lhs.y + rhs.y};
+}
+
+[[nodiscard]] Point2 operator*(const Point2 point, const double scale) noexcept {
+  return Point2{point.x * scale, point.y * scale};
+}
+
 [[nodiscard]] double norm(const Point2 point) noexcept {
   return std::hypot(point.x, point.y);
 }
@@ -49,6 +57,21 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
 
 [[nodiscard]] double finalHoldMaxSpeedMps(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.final_hold_max_speed_mps, 0.8, 0.0, 100.0);
+}
+
+[[nodiscard]] double
+trackingPredictionHorizonS(const VelocityFollowerConfig& config) noexcept {
+  return sanitizedPositive(config.tracking_prediction_horizon_s, 0.45, 0.0, 2.0);
+}
+
+[[nodiscard]] Point2 predictedTrackingPosition(const Point2 current_position,
+                                               const Point2 current_velocity,
+                                               const bool current_velocity_valid,
+                                               const double horizon_s) noexcept {
+  if (!(horizon_s > 0.0) || !current_velocity_valid || !finite2D(current_velocity)) {
+    return current_position;
+  }
+  return current_position + current_velocity * horizon_s;
 }
 
 [[nodiscard]] double currentSpeedMps(const Point2 current_velocity,
@@ -95,14 +118,18 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
 namespace {
 
 VelocitySetpointPlan planVelocitySetpointFromProjection(
-    const TrajectoryProjection& projection, const Point2 final_point,
+    const TrajectoryProjection& control_projection,
+    const TrajectoryProjection& current_projection, const Point2 predicted_position,
+    const double prediction_horizon_s, const Point2 final_point,
     const double trajectory_length_m, const TrajectorySegmentKind segment_kind,
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
   VelocitySetpointPlan plan{};
-  if (!finite2D(current_position) || !finite2D(final_point) || !projection.valid ||
-      !(norm(projection.tangent) > kTinyDistanceM) ||
+  if (!finite2D(current_position) || !finite2D(predicted_position) ||
+      !finite2D(final_point) || !control_projection.valid ||
+      !current_projection.valid ||
+      !(norm(control_projection.tangent) > kTinyDistanceM) ||
       !std::isfinite(trajectory_length_m) || !speed_profile.valid ||
       speed_profile.samples.empty()) {
     return plan;
@@ -113,18 +140,35 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       sanitizedPositive(config.final_acceptance_radius_m, 1.0, 0.0, 100.0);
   const double current_speed =
       currentSpeedMps(current_velocity, current_velocity_valid, previous_state);
+  const double bounded_prediction_horizon = std::max(0.0, prediction_horizon_s);
+  const double prediction_distance = distance(current_position, predicted_position);
+  const double response_delay_distance = current_speed * bounded_prediction_horizon;
   if (distance(current_position, final_point) <= final_acceptance &&
       current_speed <= finalHoldMaxSpeedMps(config)) {
     plan.valid = true;
     plan.final_goal_reached = true;
     plan.reason = VelocitySetpointReason::kHold;
     plan.projection = final_point;
+    plan.current_projection = current_projection.point;
+    plan.predicted_position = predicted_position;
+    plan.predicted_projection = control_projection.point;
+    plan.prediction_horizon_s = bounded_prediction_horizon;
+    plan.prediction_distance_m = prediction_distance;
+    plan.response_delay_distance_m = response_delay_distance;
+    plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
+    plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
+    plan.trajectory_cross_track_error_m = plan.predicted_cross_track_error_m;
+    plan.trajectory_s_m = control_projection.s_m;
+    plan.trajectory_segment_index = control_projection.segment_index;
+    plan.trajectory_segment_kind = segment_kind;
+    plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
+    plan.trajectory_projection = control_projection;
     return plan;
   }
 
   const ScalarSpeedPlan scalar_speed = planScalarSpeed(
       speed_profile,
-      ScalarSpeedQuery{.trajectory_s_m = projection.s_m,
+      ScalarSpeedQuery{.trajectory_s_m = control_projection.s_m,
                        .previous_command_speed_mps =
                            previousCommandSpeedMps(previous_state, current_speed),
                        .current_speed_mps = current_speed,
@@ -135,8 +179,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   }
 
   const VelocityCommandPlan command = planVelocityCommand(
-      VelocityCommandQuery{.projection = projection,
-                           .current_position = current_position,
+      VelocityCommandQuery{.projection = control_projection,
+                           .current_position = predicted_position,
                            .current_velocity = current_velocity,
                            .current_velocity_valid = current_velocity_valid,
                            .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
@@ -186,8 +230,11 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.velocity_setpoint_acceleration_mps2 =
       smoothed.velocity_setpoint_acceleration_mps2;
   plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
-  plan.path_tangent = projection.tangent;
-  plan.projection = projection.point;
+  plan.path_tangent = control_projection.tangent;
+  plan.projection = control_projection.point;
+  plan.current_projection = current_projection.point;
+  plan.predicted_position = predicted_position;
+  plan.predicted_projection = control_projection.point;
   plan.cross_track_feedback_velocity = command.cross_track_feedback_velocity;
   plan.cross_track_derivative_damping_velocity =
       command.cross_track_derivative_damping_velocity;
@@ -212,10 +259,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       current_velocity_valid && finite2D(current_velocity)
           ? norm(plan.velocity_xy - current_velocity)
           : std::numeric_limits<double>::quiet_NaN();
-  const Point2 left_normal{-projection.tangent.y, projection.tangent.x};
+  const Point2 left_normal{-control_projection.tangent.y, control_projection.tangent.x};
   plan.current_velocity_tangent_mps =
       current_velocity_valid && finite2D(current_velocity)
-          ? dot(current_velocity, projection.tangent)
+          ? dot(current_velocity, control_projection.tangent)
           : std::numeric_limits<double>::quiet_NaN();
   plan.current_velocity_normal_mps =
       current_velocity_valid && finite2D(current_velocity)
@@ -223,7 +270,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           : std::numeric_limits<double>::quiet_NaN();
   plan.desired_velocity_tangent_mps = command.desired_velocity_tangent_mps;
   plan.desired_velocity_normal_mps = command.desired_velocity_normal_mps;
-  plan.setpoint_velocity_tangent_mps = dot(plan.velocity_xy, projection.tangent);
+  plan.setpoint_velocity_tangent_mps =
+      dot(plan.velocity_xy, control_projection.tangent);
   plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
   plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
@@ -233,27 +281,33 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.raw_lateral_control_mps = command.raw_lateral_control_mps;
   plan.lateral_control_mps = command.lateral_control_mps;
   plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
-  plan.trajectory_cross_track_error_m = std::sqrt(projection.distance_sq);
+  plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
+  plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
+  plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
+  plan.prediction_horizon_s = bounded_prediction_horizon;
+  plan.prediction_distance_m = prediction_distance;
+  plan.response_delay_distance_m = response_delay_distance;
   plan.limiting_constraint_type = scalar_speed.constraint_type;
   plan.limiting_constraint_index = scalar_speed.constraint_index;
   plan.limiting_constraint_distance_m = scalar_speed.limiting_constraint_distance_m;
   plan.limiting_constraint_speed_mps = scalar_speed.limiting_constraint_speed_mps;
   plan.limiting_allowed_speed_now_mps = scalar_speed.limiting_allowed_speed_now_mps;
   plan.limiting_curve_radius_m = scalar_speed.limiting_curve_radius_m;
-  plan.trajectory_s_m = projection.s_m;
-  plan.trajectory_segment_index = projection.segment_index;
+  plan.trajectory_s_m = control_projection.s_m;
+  plan.trajectory_segment_index = control_projection.segment_index;
   plan.trajectory_segment_kind = segment_kind;
-  plan.trajectory_curvature_1pm = projection.curvature_1pm;
+  plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
   plan.trajectory_arc_radius_m =
       std::abs(plan.trajectory_curvature_1pm) > kTinyDistanceM
           ? 1.0 / std::abs(plan.trajectory_curvature_1pm)
           : std::numeric_limits<double>::quiet_NaN();
-  plan.trajectory_projection = projection;
+  plan.trajectory_projection = control_projection;
 
   plan.final_stop.valid = true;
   plan.final_stop.distance_to_stop_m =
-      std::max(0.0, trajectory_length_m - std::max(0.0, projection.s_m));
+      std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
   plan.final_stop.braking_distance_m =
+      response_delay_distance +
       current_speed * current_speed / (2.0 * effectiveSpeedProfileDecelMps2(config));
   plan.final_stop.raw_speed_limit_mps = scalar_speed.limiting_allowed_speed_now_mps;
 
@@ -270,17 +324,26 @@ VelocitySetpointPlan planVelocitySetpoint(
   if (!trajectoryIsUsable(trajectory)) {
     return VelocitySetpointPlan{};
   }
-  const std::optional<TrajectoryProjection> projection =
+  const std::optional<TrajectoryProjection> current_projection =
       projectOnTrajectory(trajectory, current_position);
-  if (!projection.has_value()) {
+  if (!current_projection.has_value()) {
+    return VelocitySetpointPlan{};
+  }
+  const double prediction_horizon = trackingPredictionHorizonS(config);
+  const Point2 predicted_position = predictedTrackingPosition(
+      current_position, current_velocity, current_velocity_valid, prediction_horizon);
+  const std::optional<TrajectoryProjection> control_projection =
+      projectOnTrajectory(trajectory, predicted_position);
+  if (!control_projection.has_value()) {
     return VelocitySetpointPlan{};
   }
   const TrajectorySegment& segment =
-      trajectory[std::min(projection->segment_index, trajectory.size() - 1U)];
+      trajectory[std::min(control_projection->segment_index, trajectory.size() - 1U)];
   return planVelocitySetpointFromProjection(
-      *projection, trajectory.back().end, trajectoryLengthM(trajectory), segment.kind,
-      speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
-      previous_state, config);
+      *control_projection, *current_projection, predicted_position, prediction_horizon,
+      trajectory.back().end, trajectoryLengthM(trajectory), segment.kind, speed_profile,
+      current_position, current_velocity, current_velocity_valid, dt_s, previous_state,
+      config);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -291,19 +354,28 @@ VelocitySetpointPlan planVelocitySetpoint(
   if (!trajectorySamplesAreUsable(trajectory_samples)) {
     return VelocitySetpointPlan{};
   }
-  const std::optional<TrajectoryProjection> projection =
+  const std::optional<TrajectoryProjection> current_projection =
       projectOnTrajectorySamples(trajectory_samples, current_position);
-  if (!projection.has_value()) {
+  if (!current_projection.has_value()) {
+    return VelocitySetpointPlan{};
+  }
+  const double prediction_horizon = trackingPredictionHorizonS(config);
+  const Point2 predicted_position = predictedTrackingPosition(
+      current_position, current_velocity, current_velocity_valid, prediction_horizon);
+  const std::optional<TrajectoryProjection> control_projection =
+      projectOnTrajectorySamples(trajectory_samples, predicted_position);
+  if (!control_projection.has_value()) {
     return VelocitySetpointPlan{};
   }
   const TrajectorySegmentKind segment_kind =
-      std::abs(projection->curvature_1pm) > kTinyDistanceM
+      std::abs(control_projection->curvature_1pm) > kTinyDistanceM
           ? TrajectorySegmentKind::kArc
           : TrajectorySegmentKind::kLine;
   return planVelocitySetpointFromProjection(
-      *projection, trajectory_samples.back().point, trajectory_samples.back().s_m,
-      segment_kind, speed_profile, current_position, current_velocity,
-      current_velocity_valid, dt_s, previous_state, config);
+      *control_projection, *current_projection, predicted_position, prediction_horizon,
+      trajectory_samples.back().point, trajectory_samples.back().s_m, segment_kind,
+      speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
+      previous_state, config);
 }
 
 } // namespace drone_city_nav
