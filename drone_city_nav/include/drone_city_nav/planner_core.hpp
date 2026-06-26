@@ -55,6 +55,9 @@ struct PathComputationResult {
   bool start_escape_used{false};
   double start_escape_distance_m{0.0};
   bool smoothing_returned_empty_path{false};
+  double total_duration_ms{0.0};
+  double astar_duration_ms{0.0};
+  double smoothing_duration_ms{0.0};
 };
 
 struct PathProjection2D {

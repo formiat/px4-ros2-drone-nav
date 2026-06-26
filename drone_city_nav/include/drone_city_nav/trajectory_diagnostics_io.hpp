@@ -36,6 +36,9 @@ trajectoryStraighteningDiagnosticsJsonFields(const TrajectoryPlannerStats& stats
 turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
 
 [[nodiscard]] std::string
+trajectoryTimingDiagnosticsJsonFields(const TrajectoryPlannerStats& stats);
+
+[[nodiscard]] std::string
 finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                                       const TrajectoryShapeDiagnostics& shape);
 

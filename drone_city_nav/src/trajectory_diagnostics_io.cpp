@@ -362,12 +362,31 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
   return stream.str();
 }
 
+std::string trajectoryTimingDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"trajectory_total_duration_ms\":";
+  writeJsonNumberOrNull(stream, stats.total_duration_ms);
+  appendJsonNumber(stream, "trajectory_corridor_duration_ms",
+                   stats.corridor_duration_ms);
+  appendJsonNumber(stream, "trajectory_racing_line_duration_ms",
+                   stats.racing_line_duration_ms);
+  appendJsonNumber(stream, "trajectory_straightening_duration_ms",
+                   stats.straightening_duration_ms);
+  appendJsonNumber(stream, "trajectory_turn_smoothing_duration_ms",
+                   stats.turn_smoothing_duration_ms);
+  appendJsonNumber(stream, "trajectory_speed_profile_duration_ms",
+                   stats.speed_profile_duration_ms);
+  return stream.str();
+}
+
 std::string
 finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                                       const TrajectoryShapeDiagnostics& shape) {
   std::ostringstream stream;
   stream << std::setprecision(9);
-  stream << "{" << racingLineDiagnosticsJsonFields(stats);
+  stream << "{" << trajectoryTimingDiagnosticsJsonFields(stats);
+  stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << trajectoryStraighteningDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
@@ -404,6 +423,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonNumber(stream, "speed_profile_mean_mps", stats.speed_profile_mean_mps);
   appendJsonSize(stream, "speed_profile_curvature_limited_samples",
                  stats.speed_profile_curvature_limited_samples);
+  stream << "," << trajectoryTimingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "corridor_input_points", stats.corridor.input_points);
   appendJsonSize(stream, "corridor_samples", stats.corridor.samples);
   appendJsonSize(stream, "corridor_route_prohibited_samples",
@@ -474,6 +494,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   envelope.stats.speed_profile_mean_mps);
   parseJsonSize(json, "speed_profile_curvature_limited_samples",
                 envelope.stats.speed_profile_curvature_limited_samples);
+  parseJsonDouble(json, "trajectory_total_duration_ms",
+                  envelope.stats.total_duration_ms);
+  parseJsonDouble(json, "trajectory_corridor_duration_ms",
+                  envelope.stats.corridor_duration_ms);
+  parseJsonDouble(json, "trajectory_racing_line_duration_ms",
+                  envelope.stats.racing_line_duration_ms);
+  parseJsonDouble(json, "trajectory_straightening_duration_ms",
+                  envelope.stats.straightening_duration_ms);
+  parseJsonDouble(json, "trajectory_turn_smoothing_duration_ms",
+                  envelope.stats.turn_smoothing_duration_ms);
+  parseJsonDouble(json, "trajectory_speed_profile_duration_ms",
+                  envelope.stats.speed_profile_duration_ms);
 
   CorridorStats& corridor = envelope.stats.corridor;
   parseJsonSize(json, "corridor_input_points", corridor.input_points);

@@ -3,6 +3,7 @@
 #include "drone_city_nav/clearance_field.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <optional>
 #include <utility>
@@ -39,6 +40,14 @@ normalizedEscapeSearchRadiusM(const double configured_radius_m) noexcept {
     return configured_radius_m;
   }
   return 10.0;
+}
+
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - start)
+                                 .count()) /
+         1000.0;
 }
 
 [[nodiscard]] bool directionChanged(const UnitDirection2D previous,
@@ -405,6 +414,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal, const AStarConfig& astar_config) const {
+  const auto total_started_at = std::chrono::steady_clock::now();
   PathComputationResult result{};
   result.requested_start_cell = grid.worldToCell(current_position);
   result.start_cell = result.requested_start_cell;
@@ -430,13 +440,17 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
     result.start_cell = *escape_start_cell;
   }
 
+  const auto astar_started_at = std::chrono::steady_clock::now();
   result.astar =
       planner_.plan(grid, *result.start_cell, *result.goal_cell, astar_config);
+  result.astar_duration_ms = elapsedMilliseconds(astar_started_at);
   if (!result.astar.success) {
     return std::nullopt;
   }
 
+  const auto smoothing_started_at = std::chrono::steady_clock::now();
   const PathSmoothingResult smoothing = smoothPathWithStats(grid, result.astar.path);
+  result.smoothing_duration_ms = elapsedMilliseconds(smoothing_started_at);
   result.smoothed_cells = smoothing.path;
   result.smoothing_stats = smoothing.stats;
   if (result.smoothed_cells.empty() && !result.astar.path.empty()) {
@@ -451,6 +465,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   result.smoothed_path_clearance_m = pathMinimumProhibitedClearanceM(
       grid, result.smoothed_cells,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
+  result.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
 }
 

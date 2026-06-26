@@ -64,6 +64,14 @@ stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
          static_cast<std::uint64_t>(stamp.nanosec);
 }
 
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - start)
+                                 .count()) /
+         1000.0;
+}
+
 struct PublishedPathSafetySummary {
   std::size_t segments{0U};
   std::size_t non_traversable_segments{0U};
@@ -618,7 +626,10 @@ private:
                            "keeping the last published path");
       return;
     }
+    const auto planning_grid_started_at = std::chrono::steady_clock::now();
     auto planning_result = buildPlanningGrid(now_ns);
+    const double planning_grid_duration_ms =
+        elapsedMilliseconds(planning_grid_started_at);
     if (!planning_result.has_value()) {
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
@@ -665,7 +676,8 @@ private:
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
-        "path_clearance[raw=%.2f smoothed=%.2f]",
+        "path_clearance[raw=%.2f smoothed=%.2f] "
+        "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_),
@@ -716,7 +728,9 @@ private:
         path_result->smoothed_path_metrics.straight_segments,
         path_result->smoothed_path_metrics.turns,
         path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
-        path_result->smoothed_path_clearance_m);
+        path_result->smoothed_path_clearance_m, planning_grid_duration_ms,
+        path_result->total_duration_ms, path_result->astar_duration_ms,
+        path_result->smoothing_duration_ms);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Path smoothing diagnostics: input_points=%zu output_points=%zu "
@@ -816,15 +830,20 @@ private:
           source_label, start_cell->x, start_cell->y);
     }
 
+    const auto path_compute_started_at = std::chrono::steady_clock::now();
     auto result =
         planner_core_.computePath(grid, current_pose_.position, goal_, astar_config);
+    const double path_compute_duration_ms =
+        elapsedMilliseconds(path_compute_started_at);
     ++astar_runs_;
     if (!result.has_value()) {
       ++astar_failures_;
       RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d)", source_label,
-          start_cell->x, start_cell->y, goal_cell->x, goal_cell->y);
+          "A* did not find a path on %s grid: start=(%d,%d) goal=(%d,%d) "
+          "duration_ms=%.1f",
+          source_label, start_cell->x, start_cell->y, goal_cell->x, goal_cell->y,
+          path_compute_duration_ms);
       return std::nullopt;
     }
 
@@ -968,13 +987,21 @@ private:
           get_logger(),
           "%s racing trajectory build failed; rough A* route will not be published as "
           "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
+          "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
+          "turn_smoothing=%.1f speed_profile=%.1f] "
           "corridor[samples=%zu width_min=%.2f width_mean=%.2f] "
           "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
           source_label,
           static_cast<int>(
               trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
           trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-          route_points.size(), duration_ms, trajectory_result.stats.corridor.samples,
+          route_points.size(), duration_ms, trajectory_result.stats.total_duration_ms,
+          trajectory_result.stats.corridor_duration_ms,
+          trajectory_result.stats.racing_line_duration_ms,
+          trajectory_result.stats.straightening_duration_ms,
+          trajectory_result.stats.turn_smoothing_duration_ms,
+          trajectory_result.stats.speed_profile_duration_ms,
+          trajectory_result.stats.corridor.samples,
           trajectory_result.stats.corridor.min_width_m,
           trajectory_result.stats.corridor.mean_width_m,
           trajectory_result.stats.racing_line.iterations,
@@ -991,11 +1018,19 @@ private:
           get_logger(),
           "%s racing trajectory build produced a non-traversable runtime trajectory; "
           "holding instead of publishing rough A* route: route_points=%zu "
-          "trajectory_points=%zu duration_ms=%.1f status=%.*s",
+          "trajectory_points=%zu duration_ms=%.1f status=%.*s "
+          "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
+          "turn_smoothing=%.1f speed_profile=%.1f]",
           source_label, route_points.size(), trajectory_points.size(), duration_ms,
           static_cast<int>(
               trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
-          trajectoryPlannerStatusName(trajectory_result.stats.status).data());
+          trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+          trajectory_result.stats.total_duration_ms,
+          trajectory_result.stats.corridor_duration_ms,
+          trajectory_result.stats.racing_line_duration_ms,
+          trajectory_result.stats.straightening_duration_ms,
+          trajectory_result.stats.turn_smoothing_duration_ms,
+          trajectory_result.stats.speed_profile_duration_ms);
       publishPath({}, PathPublicationReason::kHoldInvalidPath);
       return false;
     }
@@ -1003,7 +1038,10 @@ private:
     RCLCPP_INFO(
         get_logger(),
         "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
-        "duration_ms=%.1f status=%.*s length=%.2f samples=%zu "
+        "duration_ms=%.1f status=%.*s "
+        "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
+        "turn_smoothing=%.1f speed_profile=%.1f] "
+        "length=%.2f samples=%zu "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
         "centered=%zu center_shift_max=%.2f lateral_limited=%zu] "
         "racing_line[iterations=%zu evals=%zu cost_initial=%.3f cost_final=%.3f "
@@ -1025,6 +1063,12 @@ private:
         static_cast<int>(
             trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
         trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+        trajectory_result.stats.total_duration_ms,
+        trajectory_result.stats.corridor_duration_ms,
+        trajectory_result.stats.racing_line_duration_ms,
+        trajectory_result.stats.straightening_duration_ms,
+        trajectory_result.stats.turn_smoothing_duration_ms,
+        trajectory_result.stats.speed_profile_duration_ms,
         trajectory_result.stats.length_m, trajectory_result.stats.samples,
         trajectory_result.stats.corridor.samples,
         trajectory_result.stats.corridor.min_width_m,

@@ -102,6 +102,12 @@ void expectContainsAll(const std::string& text,
   stats.speed_profile_mean_mps = 13.4;
   stats.speed_profile_max_mps = 19.1;
   stats.speed_profile_curvature_limited_samples = 69U;
+  stats.total_duration_ms = 123.4;
+  stats.corridor_duration_ms = 5.5;
+  stats.racing_line_duration_ms = 99.9;
+  stats.straightening_duration_ms = 6.25;
+  stats.turn_smoothing_duration_ms = 8.75;
+  stats.speed_profile_duration_ms = 1.5;
   return stats;
 }
 
@@ -167,6 +173,9 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_final_length_ratio\":1.08"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_time\":625"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_edge_margin\":7"), std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_total_duration_ms\":123.4"), std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_racing_line_duration_ms\":99.9"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
@@ -272,6 +281,20 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
+TEST(TrajectoryDiagnosticsIo, TimingJsonFragmentContainsBlackboxRequiredKeys) {
+  const std::string fragment = trajectoryTimingDiagnosticsJsonFields(populatedStats());
+
+  expectContainsAll(fragment, std::array{
+                                  "\"trajectory_total_duration_ms\"",
+                                  "\"trajectory_corridor_duration_ms\"",
+                                  "\"trajectory_racing_line_duration_ms\"",
+                                  "\"trajectory_straightening_duration_ms\"",
+                                  "\"trajectory_turn_smoothing_duration_ms\"",
+                                  "\"trajectory_speed_profile_duration_ms\"",
+                              });
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
 TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetrics) {
   const std::string fragment =
       racingLineDiagnosticsJsonFields(TrajectoryPlannerStats{});
@@ -326,6 +349,12 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_applied_outer_shift_m, 6.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.total_duration_ms, 123.4);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor_duration_ms, 5.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line_duration_ms, 99.9);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening_duration_ms, 6.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing_duration_ms, 8.75);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_duration_ms, 1.5);
 }
 
 } // namespace drone_city_nav

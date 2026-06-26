@@ -45,6 +45,12 @@ struct TrajectoryPlannerStats {
   double speed_profile_max_mps{0.0};
   double speed_profile_mean_mps{0.0};
   std::size_t speed_profile_curvature_limited_samples{0U};
+  double total_duration_ms{0.0};
+  double corridor_duration_ms{0.0};
+  double racing_line_duration_ms{0.0};
+  double straightening_duration_ms{0.0};
+  double turn_smoothing_duration_ms{0.0};
+  double speed_profile_duration_ms{0.0};
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   CorridorStats corridor{};
   RacingLineStats racing_line{};

@@ -559,6 +559,18 @@ private:
     last_trajectory_planner_stats_.racing_line = diagnostics.stats.racing_line;
     last_trajectory_planner_stats_.straightening = diagnostics.stats.straightening;
     last_trajectory_planner_stats_.turn_smoothing = diagnostics.stats.turn_smoothing;
+    last_trajectory_planner_stats_.total_duration_ms =
+        diagnostics.stats.total_duration_ms;
+    last_trajectory_planner_stats_.corridor_duration_ms =
+        diagnostics.stats.corridor_duration_ms;
+    last_trajectory_planner_stats_.racing_line_duration_ms =
+        diagnostics.stats.racing_line_duration_ms;
+    last_trajectory_planner_stats_.straightening_duration_ms =
+        diagnostics.stats.straightening_duration_ms;
+    last_trajectory_planner_stats_.turn_smoothing_duration_ms =
+        diagnostics.stats.turn_smoothing_duration_ms;
+    last_trajectory_planner_stats_.speed_profile_duration_ms =
+        diagnostics.stats.speed_profile_duration_ms;
   }
 
   void updatePlannerStatsForReceivedTrajectory() {
@@ -2539,6 +2551,9 @@ private:
                             << trajectoryPlannerStatusName(
                                    last_trajectory_planner_stats_.status)
                             << "\"";
+    flight_blackbox_stream_ << ","
+                            << trajectoryTimingDiagnosticsJsonFields(
+                                   last_trajectory_planner_stats_);
     flight_blackbox_stream_ << ",\"corridor_samples\":"
                             << last_trajectory_planner_stats_.corridor.samples;
     flight_blackbox_stream_ << ",\"corridor_width_min_m\":";
