@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -45,6 +46,10 @@ namespace {
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
+}
+
+[[nodiscard]] double radiansToDegrees(const double radians) noexcept {
+  return radians * 180.0 / std::numbers::pi;
 }
 
 constexpr double kPublishedPathCollinearityToleranceM = 0.05;
@@ -192,7 +197,11 @@ public:
         "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
         "min_step=%.2fm weights(length=%.3f time=%.2f curvature=%.2f "
         "curvature_change=%.2f offset_change=%.2f offset_second=%.2f "
-        "center=%.3f edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)]",
+        "center=%.3f edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)] "
+        "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
+        "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
+        "outer_shift=[%.2f, %.2f] corridor_margin=%.2fm max_length_ratio=%.2f "
+        "max_passes=%zu]",
         trajectory_planner_config_.speed_profile.cruise_speed_mps,
         trajectory_planner_config_.speed_profile.min_turn_speed_mps,
         trajectory_planner_config_.speed_profile.max_accel_mps2,
@@ -220,7 +229,19 @@ public:
         trajectory_planner_config_.racing_line.weight_center_bias,
         trajectory_planner_config_.racing_line.weight_edge_margin,
         trajectory_planner_config_.racing_line.desired_edge_margin_m,
-        trajectory_planner_config_.racing_line.max_length_ratio);
+        trajectory_planner_config_.racing_line.max_length_ratio,
+        radiansToDegrees(
+            trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
+        trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
+        trajectory_planner_config_.turn_smoothing.entry_distance_m,
+        trajectory_planner_config_.turn_smoothing.exit_distance_m,
+        trajectory_planner_config_.turn_smoothing.sample_step_m,
+        trajectory_planner_config_.turn_smoothing.outer_bias_ratio,
+        trajectory_planner_config_.turn_smoothing.min_outer_shift_m,
+        trajectory_planner_config_.turn_smoothing.max_outer_shift_m,
+        trajectory_planner_config_.turn_smoothing.min_corridor_margin_m,
+        trajectory_planner_config_.turn_smoothing.max_length_ratio,
+        trajectory_planner_config_.turn_smoothing.max_passes);
     RCLCPP_INFO(
         get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
@@ -967,6 +988,11 @@ private:
         "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
         "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
         "speed_limit_max=%.2f curvature_limited=%zu] "
+        "turn_smoothing[detected=%zu attempted=%zu smoothed=%zu "
+        "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
+        "heading_before=%.1fdeg heading_after=%.1fdeg "
+        "curvature_jump_before=%.3f curvature_jump_after=%.3f "
+        "min_inner_margin=%.2f max_outer_shift=%.2f] "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
         source_label, route_points.size(), trajectory_points.size(), duration_ms,
         static_cast<int>(
@@ -993,6 +1019,21 @@ private:
         trajectory_result.stats.racing_line.min_speed_limit_mps,
         trajectory_result.stats.racing_line.max_speed_limit_mps,
         trajectory_result.stats.racing_line.curvature_limited_samples,
+        trajectory_result.stats.turn_smoothing.detected_corners,
+        trajectory_result.stats.turn_smoothing.attempted_corners,
+        trajectory_result.stats.turn_smoothing.smoothed_corners,
+        trajectory_result.stats.turn_smoothing.rejected_prohibited,
+        trajectory_result.stats.turn_smoothing.rejected_corridor,
+        trajectory_result.stats.turn_smoothing.rejected_length,
+        trajectory_result.stats.turn_smoothing.rejected_not_improved,
+        radiansToDegrees(
+            trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
+        radiansToDegrees(
+            trajectory_result.stats.turn_smoothing.max_heading_delta_after_rad),
+        trajectory_result.stats.turn_smoothing.max_curvature_jump_before_1pm,
+        trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
+        trajectory_result.stats.turn_smoothing.min_inner_margin_m,
+        trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
         trajectory_result.stats.speed_profile_min_mps,
         trajectory_result.stats.speed_profile_mean_mps,
         trajectory_result.stats.speed_profile_max_mps,

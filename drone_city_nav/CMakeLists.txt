@@ -53,6 +53,7 @@ add_library(
   src/trajectory_diagnostics_io.cpp
   src/trajectory_planner.cpp
   src/trajectory_speed_planner.cpp
+  src/turn_smoothing.cpp
   src/velocity_command_planner.cpp
   src/velocity_smoother.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
@@ -260,6 +261,11 @@ if(BUILD_TESTING)
   target_compile_features(racing_line_test PRIVATE cxx_std_20)
   target_link_libraries(racing_line_test drone_city_nav_core)
   enable_project_warnings(racing_line_test)
+
+  ament_add_gtest(turn_smoothing_test tests/turn_smoothing_test.cpp)
+  target_compile_features(turn_smoothing_test PRIVATE cxx_std_20)
+  target_link_libraries(turn_smoothing_test drone_city_nav_core)
+  enable_project_warnings(turn_smoothing_test)
 
   ament_add_gtest(trajectory_planner_test tests/trajectory_planner_test.cpp)
   target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)

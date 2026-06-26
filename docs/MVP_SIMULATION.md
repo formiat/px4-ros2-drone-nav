@@ -463,11 +463,11 @@ it switches PX4 Offboard control to velocity setpoints: horizontal velocity is
 commanded along the current final trajectory tangent, and vertical velocity
 keeps the configured cruise altitude.
 
-The follower does not synthesize intermediate path waypoints between planner
-waypoints. Planner waypoints remain the rough route contract, while the offboard
-node builds the executable racing trajectory from corridor samples, lateral
-racing-line offsets, optional baseline line/arc rounding, and a curvature-based
-speed profile. Final-trajectory samples are published on
+The follower does not synthesize intermediate path waypoints. The planner keeps
+the rough A* route internal, builds a corridor around it, optimizes a racing
+line, applies turn smoothing when the optimized line still has sharp kinks, and
+publishes only the final racing trajectory as the runtime path.
+Final-trajectory samples are published on
 `/drone_city_nav/final_trajectory_path`; they are not fed back as position
 targets. Smoothness comes from the velocity profile over the final trajectory,
 acceleration/vector-delta limits, and bounded cross-track correction back toward
@@ -492,14 +492,16 @@ The main simulation parameters are:
 - `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
   samples. Segment boundaries and arc interior samples are added separately so
   short arcs cannot be skipped by a large regular step.
-- `corridor_max_radius_m`, `corridor_sample_step_m`,
-  `corridor_safety_margin_m`, and `corridor_rebuild_width_threshold_m` -
-  corridor sampling, lateral free-space bounds around the rough route, and the
-  minimum material corridor-width change that triggers a final-trajectory
-  rebuild after a new prohibited grid arrives.
+- `corridor_max_radius_m`, `corridor_sample_step_m`, and
+  `corridor_safety_margin_m` - corridor sampling and lateral free-space bounds
+  around the rough route.
 - `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
   `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.
+- `turn_smoothing_*` - post-processing for residual sharp kinks after racing
+  line optimization. It can widen a single-corner line inside the corridor while
+  rejecting candidates that leave the corridor, cross prohibited cells, or
+  increase length too much.
 - `final_trajectory_debug_topic` and `final_trajectory_debug_sample_step_m` -
   debug path topic and visualization sample spacing for the executable final
   trajectory.
@@ -520,8 +522,9 @@ mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
 targets, limiting speed constraint type, limiting constraint distance, final
 stop braking distance, trajectory station, segment type, curvature, curve
 radius, final trajectory sample count, corridor width, racing-line cost and
-offset metrics, `prohibited_grid_clearance`, attitude, path id correlation,
-cross-track error, heading error, commanded target delta, and nearest
+offset metrics, turn-smoothing attempt/rejection metrics,
+`prohibited_grid_clearance`, attitude, path id correlation, cross-track error,
+heading error, commanded target delta, and nearest
 prohibited-cell bearing. The same control diagnostics are written as JSON Lines to
 `log/offboard_blackbox.jsonl` for machine analysis. Legacy path-turn values, if
 emitted, are explicitly named `rough_route_debug_*` and are not active speed or

@@ -126,7 +126,14 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   result.stats.status = TrajectoryPlannerStatus::kOk;
   result.stats.corridor = corridor.stats;
   result.stats.racing_line = racing.stats;
-  result.samples = racing.samples;
+  const TurnSmoothingResult turn_smoothing = smoothTrajectoryTurns(
+      racing.samples, corridor.samples, *input.prohibited_grid, config.turn_smoothing);
+  result.stats.turn_smoothing = turn_smoothing.stats;
+  if (!turn_smoothing.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    return result;
+  }
+  result.samples = turn_smoothing.samples;
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   result.speed_profile =
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);

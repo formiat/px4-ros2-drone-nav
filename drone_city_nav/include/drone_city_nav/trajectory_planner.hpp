@@ -3,6 +3,7 @@
 #include "drone_city_nav/corridor.hpp"
 #include "drone_city_nav/racing_line.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
+#include "drone_city_nav/turn_smoothing.hpp"
 
 #include <cstddef>
 #include <span>
@@ -23,6 +24,7 @@ enum class TrajectoryPlannerStatus {
 struct TrajectoryPlannerConfig {
   CorridorConfig corridor{};
   RacingLineConfig racing_line{};
+  TurnSmoothingConfig turn_smoothing{};
   VelocityFollowerConfig speed_profile{};
   double debug_sample_step_m{1.0};
 };
@@ -44,6 +46,7 @@ struct TrajectoryPlannerStats {
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   CorridorStats corridor{};
   RacingLineStats racing_line{};
+  TurnSmoothingStats turn_smoothing{};
 };
 
 struct TrajectoryPlannerInput {

@@ -57,6 +57,21 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
   stats.racing_line.cost_length_overrun = 0.0;
+  stats.turn_smoothing.input_samples = 48U;
+  stats.turn_smoothing.output_samples = 72U;
+  stats.turn_smoothing.detected_corners = 3U;
+  stats.turn_smoothing.attempted_corners = 2U;
+  stats.turn_smoothing.smoothed_corners = 1U;
+  stats.turn_smoothing.rejected_prohibited = 0U;
+  stats.turn_smoothing.rejected_corridor = 1U;
+  stats.turn_smoothing.rejected_length = 0U;
+  stats.turn_smoothing.rejected_not_improved = 0U;
+  stats.turn_smoothing.max_heading_delta_before_rad = 1.2;
+  stats.turn_smoothing.max_heading_delta_after_rad = 0.4;
+  stats.turn_smoothing.max_curvature_jump_before_1pm = 0.5;
+  stats.turn_smoothing.max_curvature_jump_after_1pm = 0.2;
+  stats.turn_smoothing.min_inner_margin_m = 2.25;
+  stats.turn_smoothing.max_applied_outer_shift_m = 6.5;
   stats.corridor.samples = 42U;
   stats.corridor.min_width_m = 17.5;
   stats.corridor.mean_width_m = 24.25;
@@ -142,6 +157,9 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"turn_smoothing_heading_delta_after_rad\":0.4"),
+            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_shape_segment_count\":9"), std::string::npos);
   EXPECT_EQ(json.find("nan"), std::string::npos);
 }
@@ -192,6 +210,29 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
+TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredKeys) {
+  const std::string fragment = turnSmoothingDiagnosticsJsonFields(populatedStats());
+
+  expectContainsAll(fragment, std::array{
+                                  "\"turn_smoothing_input_samples\"",
+                                  "\"turn_smoothing_output_samples\"",
+                                  "\"turn_smoothing_detected_corners\"",
+                                  "\"turn_smoothing_attempted_corners\"",
+                                  "\"turn_smoothing_smoothed_corners\"",
+                                  "\"turn_smoothing_rejected_prohibited\"",
+                                  "\"turn_smoothing_rejected_corridor\"",
+                                  "\"turn_smoothing_rejected_length\"",
+                                  "\"turn_smoothing_rejected_not_improved\"",
+                                  "\"turn_smoothing_heading_delta_before_rad\"",
+                                  "\"turn_smoothing_heading_delta_after_rad\"",
+                                  "\"turn_smoothing_curvature_jump_before_1pm\"",
+                                  "\"turn_smoothing_curvature_jump_after_1pm\"",
+                                  "\"turn_smoothing_min_inner_margin_m\"",
+                                  "\"turn_smoothing_max_outer_shift_m\"",
+                              });
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
 TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetrics) {
   const std::string fragment =
       racingLineDiagnosticsJsonFields(TrajectoryPlannerStats{});
@@ -230,6 +271,13 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.min_edge_margin_m, 2.5);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_before_rad, 1.2);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_after_rad, 0.4);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.min_inner_margin_m, 2.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_applied_outer_shift_m, 6.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
 }

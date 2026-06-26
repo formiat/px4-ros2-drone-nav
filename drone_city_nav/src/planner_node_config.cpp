@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace drone_city_nav {
 namespace {
@@ -225,6 +226,47 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "racing_line_regularization_max_time_regression_s", 0.5),
                  0.0, 3600.0);
+  config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
+          std::numbers::pi / 180.0,
+      0.0, std::numbers::pi);
+  config.trajectory_planner.turn_smoothing.trigger_min_radius_m = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_trigger_min_radius_m", 12.0), 0.0,
+      10000.0);
+  config.trajectory_planner.turn_smoothing.entry_distance_m = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_entry_distance_m", 45.0), 0.1,
+      5000.0);
+  config.trajectory_planner.turn_smoothing.exit_distance_m =
+      std::clamp(node.declare_parameter<double>("turn_smoothing_exit_distance_m", 45.0),
+                 0.1, 5000.0);
+  config.trajectory_planner.turn_smoothing.sample_step_m = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_sample_step_m", 1.0), 0.1, 20.0);
+  config.trajectory_planner.turn_smoothing.outer_bias_ratio = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_outer_bias_ratio", 0.45), 0.0,
+      1.0);
+  config.trajectory_planner.turn_smoothing.min_outer_shift_m = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_min_outer_shift_m", 2.0), 0.0,
+      5000.0);
+  config.trajectory_planner.turn_smoothing.max_outer_shift_m =
+      std::max(config.trajectory_planner.turn_smoothing.min_outer_shift_m,
+               std::clamp(node.declare_parameter<double>(
+                              "turn_smoothing_max_outer_shift_m", 12.0),
+                          0.0, 5000.0));
+  config.trajectory_planner.turn_smoothing.min_corridor_margin_m = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_min_corridor_margin_m", 0.5), 0.0,
+      1000.0);
+  config.trajectory_planner.turn_smoothing.max_length_ratio = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_max_length_ratio", 1.25), 1.0,
+      100.0);
+  config.trajectory_planner.turn_smoothing.min_heading_improvement_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "turn_smoothing_min_heading_improvement_deg", 3.0) *
+                     std::numbers::pi / 180.0,
+                 0.0, std::numbers::pi);
+  config.trajectory_planner.turn_smoothing.max_passes =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("turn_smoothing_max_passes", 8), 0,
+          100));
   config.trajectory_planner.debug_sample_step_m = std::clamp(
       node.declare_parameter<double>("final_trajectory_debug_sample_step_m", 1.0), 0.1,
       20.0);

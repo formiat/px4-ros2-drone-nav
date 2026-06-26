@@ -220,6 +220,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
         self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
+        self.assertIn("turnSmoothingDiagnosticsJsonFields", self.offboard_text)
+        self.assertIn(
+            "turn_smoothing_smoothed_corners", self.trajectory_diagnostics_io_text
+        )
+        self.assertIn(
+            "turn_smoothing_heading_delta_after_rad",
+            self.trajectory_diagnostics_io_text,
+        )
+        self.assertIn(
+            "turn_smoothing_max_outer_shift_m", self.trajectory_diagnostics_io_text
+        )
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
         self.assertNotIn("baseline_rounded_corners", self.offboard_text)
@@ -247,6 +258,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
 
     def test_corridor_samples_are_planner_owned(self) -> None:
         self.assertIn("result.corridor_samples = corridor.samples", self.trajectory_planner_text)
+        self.assertIn("smoothTrajectoryTurns(", self.trajectory_planner_text)
         self.assertNotIn("corridor_debug_samples_", self.offboard_text)
         self.assertNotIn("writeCorridorSamplesCsv", self.offboard_text)
         self.assertNotIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
@@ -316,6 +328,12 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("racing_line_weight_curvature: 250.0", text)
                 self.assertIn("racing_line_weight_offset_change: 0.5", text)
                 self.assertIn("racing_line_weight_offset_second_change: 5.0", text)
+                self.assertIn("turn_smoothing_trigger_heading_delta_deg: 37.0", text)
+                self.assertIn("turn_smoothing_trigger_min_radius_m: 12.0", text)
+                self.assertIn("turn_smoothing_entry_distance_m: 45.0", text)
+                self.assertIn("turn_smoothing_exit_distance_m: 45.0", text)
+                self.assertIn("turn_smoothing_outer_bias_ratio: 0.45", text)
+                self.assertIn("turn_smoothing_max_passes: 8", text)
                 self.assertIn(
                     "final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path",
                     text,

@@ -23,6 +23,11 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_NE(yaml.find("racing_line_regularization_iterations:"), std::string::npos);
   EXPECT_NE(yaml.find("racing_line_regularization_max_time_regression_s:"),
             std::string::npos);
+  EXPECT_NE(yaml.find("turn_smoothing_trigger_heading_delta_deg: 37.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("turn_smoothing_entry_distance_m: 45.0"), std::string::npos);
+  EXPECT_NE(yaml.find("turn_smoothing_outer_bias_ratio: 0.45"), std::string::npos);
+  EXPECT_NE(yaml.find("turn_smoothing_max_passes: 8"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_decel_mps2: 2.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_time_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_min_m: 5.0"), std::string::npos);

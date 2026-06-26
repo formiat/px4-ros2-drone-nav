@@ -2582,6 +2582,9 @@ private:
     flight_blackbox_stream_ << ","
                             << racingLineDiagnosticsJsonFields(
                                    last_trajectory_planner_stats_);
+    flight_blackbox_stream_ << ","
+                            << turnSmoothingDiagnosticsJsonFields(
+                                   last_trajectory_planner_stats_);
     flight_blackbox_stream_ << ",\"racing_line_time_final_s\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.racing_line.estimated_time_s);

@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,10 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
+                   37.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 45.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.exit_distance_m, 45.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
@@ -88,6 +93,9 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
        rclcpp::Parameter{"corridor_max_radius_m", -10.0},
        rclcpp::Parameter{"racing_line_weight_time", -2.0},
+       rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
+       rclcpp::Parameter{"turn_smoothing_entry_distance_m", -5.0},
+       rclcpp::Parameter{"turn_smoothing_max_length_ratio", -2.0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -109,6 +117,10 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
+                   std::numbers::pi);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 0.1);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_length_ratio, 1.0);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
 }
 
@@ -125,6 +137,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"use_current_lidar_obstacles", false},
                 rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
                 rclcpp::Parameter{"racing_line_weight_curvature", 125.0},
+                rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
+                rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
                 rclcpp::Parameter{"corridor_sample_step_m", 2.0},
                 rclcpp::Parameter{"max_lidar_range_m", 22.0},
                 rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
@@ -144,6 +158,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.planning_grid_builder.use_obstacle_memory);
   EXPECT_FALSE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 125.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);

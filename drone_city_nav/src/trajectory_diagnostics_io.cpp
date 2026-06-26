@@ -298,12 +298,48 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   return stream.str();
 }
 
+std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"turn_smoothing_input_samples\":" << stats.turn_smoothing.input_samples;
+  appendJsonSize(stream, "turn_smoothing_output_samples",
+                 stats.turn_smoothing.output_samples);
+  appendJsonSize(stream, "turn_smoothing_detected_corners",
+                 stats.turn_smoothing.detected_corners);
+  appendJsonSize(stream, "turn_smoothing_attempted_corners",
+                 stats.turn_smoothing.attempted_corners);
+  appendJsonSize(stream, "turn_smoothing_smoothed_corners",
+                 stats.turn_smoothing.smoothed_corners);
+  appendJsonSize(stream, "turn_smoothing_rejected_prohibited",
+                 stats.turn_smoothing.rejected_prohibited);
+  appendJsonSize(stream, "turn_smoothing_rejected_corridor",
+                 stats.turn_smoothing.rejected_corridor);
+  appendJsonSize(stream, "turn_smoothing_rejected_length",
+                 stats.turn_smoothing.rejected_length);
+  appendJsonSize(stream, "turn_smoothing_rejected_not_improved",
+                 stats.turn_smoothing.rejected_not_improved);
+  appendJsonNumber(stream, "turn_smoothing_heading_delta_before_rad",
+                   stats.turn_smoothing.max_heading_delta_before_rad);
+  appendJsonNumber(stream, "turn_smoothing_heading_delta_after_rad",
+                   stats.turn_smoothing.max_heading_delta_after_rad);
+  appendJsonNumber(stream, "turn_smoothing_curvature_jump_before_1pm",
+                   stats.turn_smoothing.max_curvature_jump_before_1pm);
+  appendJsonNumber(stream, "turn_smoothing_curvature_jump_after_1pm",
+                   stats.turn_smoothing.max_curvature_jump_after_1pm);
+  appendJsonNumber(stream, "turn_smoothing_min_inner_margin_m",
+                   stats.turn_smoothing.min_inner_margin_m);
+  appendJsonNumber(stream, "turn_smoothing_max_outer_shift_m",
+                   stats.turn_smoothing.max_applied_outer_shift_m);
+  return stream.str();
+}
+
 std::string
 finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                                       const TrajectoryShapeDiagnostics& shape) {
   std::ostringstream stream;
   stream << std::setprecision(9);
   stream << "{" << racingLineDiagnosticsJsonFields(stats);
+  stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
   appendJsonNumber(stream, "trajectory_shape_max_curvature_jump_1pm",
                    shape.max_curvature_jump_1pm);
@@ -369,6 +405,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonSize(stream, "racing_line_collision_rejections",
                  stats.racing_line.collision_rejections);
   stream << "," << racingLineDiagnosticsJsonFields(stats);
+  stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
   stream << "}";
   return stream.str();
 }
@@ -489,6 +526,35 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);
   parseJsonSize(json, "racing_edge_margin_limited_samples",
                 racing.edge_margin_limited_samples);
+
+  TurnSmoothingStats& turn_smoothing = envelope.stats.turn_smoothing;
+  parseJsonSize(json, "turn_smoothing_input_samples", turn_smoothing.input_samples);
+  parseJsonSize(json, "turn_smoothing_output_samples", turn_smoothing.output_samples);
+  parseJsonSize(json, "turn_smoothing_detected_corners",
+                turn_smoothing.detected_corners);
+  parseJsonSize(json, "turn_smoothing_attempted_corners",
+                turn_smoothing.attempted_corners);
+  parseJsonSize(json, "turn_smoothing_smoothed_corners",
+                turn_smoothing.smoothed_corners);
+  parseJsonSize(json, "turn_smoothing_rejected_prohibited",
+                turn_smoothing.rejected_prohibited);
+  parseJsonSize(json, "turn_smoothing_rejected_corridor",
+                turn_smoothing.rejected_corridor);
+  parseJsonSize(json, "turn_smoothing_rejected_length", turn_smoothing.rejected_length);
+  parseJsonSize(json, "turn_smoothing_rejected_not_improved",
+                turn_smoothing.rejected_not_improved);
+  parseJsonDouble(json, "turn_smoothing_heading_delta_before_rad",
+                  turn_smoothing.max_heading_delta_before_rad);
+  parseJsonDouble(json, "turn_smoothing_heading_delta_after_rad",
+                  turn_smoothing.max_heading_delta_after_rad);
+  parseJsonDouble(json, "turn_smoothing_curvature_jump_before_1pm",
+                  turn_smoothing.max_curvature_jump_before_1pm);
+  parseJsonDouble(json, "turn_smoothing_curvature_jump_after_1pm",
+                  turn_smoothing.max_curvature_jump_after_1pm);
+  parseJsonDouble(json, "turn_smoothing_min_inner_margin_m",
+                  turn_smoothing.min_inner_margin_m);
+  parseJsonDouble(json, "turn_smoothing_max_outer_shift_m",
+                  turn_smoothing.max_applied_outer_shift_m);
   return envelope;
 }
 
