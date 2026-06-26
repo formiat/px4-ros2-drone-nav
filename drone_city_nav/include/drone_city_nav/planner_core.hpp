@@ -81,6 +81,7 @@ struct StablePathDecision {
   StablePathDecisionReason reason{StablePathDecisionReason::kDisabled};
   std::vector<Point2> remaining_path;
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
+  double endpoint_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
   std::size_t prohibited_segment_index{0U};
 };
 

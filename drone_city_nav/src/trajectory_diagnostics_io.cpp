@@ -295,6 +295,12 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.pre_regularization_max_curvature_jump_1pm);
   appendJsonNumber(stream, "racing_post_regularization_max_curvature_jump_1pm",
                    stats.racing_line.post_regularization_max_curvature_jump_1pm);
+  appendJsonSize(stream, "racing_skipped_noop_candidates",
+                 stats.racing_line.skipped_noop_candidates);
+  appendJsonNumber(stream, "racing_candidate_path_evaluation_duration_ms",
+                   stats.racing_line.candidate_path_evaluation_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_score_duration_ms",
+                   stats.racing_line.candidate_score_duration_ms);
   return stream.str();
 }
 
@@ -381,8 +387,42 @@ std::string trajectoryTimingDiagnosticsJsonFields(const TrajectoryPlannerStats& 
                    stats.straightening_duration_ms);
   appendJsonNumber(stream, "trajectory_turn_smoothing_duration_ms",
                    stats.turn_smoothing_duration_ms);
+  appendJsonNumber(stream, "trajectory_curve_refinement_duration_ms",
+                   stats.curve_refinement_duration_ms);
   appendJsonNumber(stream, "trajectory_speed_profile_duration_ms",
                    stats.speed_profile_duration_ms);
+  return stream.str();
+}
+
+std::string curveRefinementDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"curve_refinement_input_samples\":"
+         << stats.curve_refinement.input_samples;
+  appendJsonSize(stream, "curve_refinement_output_samples",
+                 stats.curve_refinement.output_samples);
+  appendJsonSize(stream, "curve_refinement_rejected_prohibited_segments",
+                 stats.curve_refinement.rejected_prohibited_segments);
+  appendJsonSize(stream, "curve_refinement_rejected_corridor_samples",
+                 stats.curve_refinement.rejected_corridor_samples);
+  appendJsonNumber(stream, "curve_refinement_sample_step_m",
+                   stats.curve_refinement.sample_step_m);
+  appendJsonNumber(stream, "curve_refinement_tangent_scale",
+                   stats.curve_refinement.tangent_scale);
+  appendJsonNumber(stream, "curve_refinement_min_corridor_margin_m",
+                   stats.curve_refinement.min_corridor_margin_m);
+  appendJsonNumber(stream, "curve_refinement_max_segment_length_m",
+                   stats.curve_refinement.max_segment_length_m);
+  appendJsonNumber(stream, "curve_refinement_max_heading_delta_rad",
+                   stats.curve_refinement.max_heading_delta_rad);
+  stream << ",\"curve_refinement_valid\":"
+         << (stats.curve_refinement.valid ? "true" : "false");
+  appendJsonNumber(stream, "final_start_route_distance_m",
+                   stats.final_start_route_distance_m);
+  appendJsonNumber(stream, "final_endpoint_route_distance_m",
+                   stats.final_endpoint_route_distance_m);
+  stream << ",\"final_invariants_ok\":"
+         << (stats.final_invariants_ok ? "true" : "false");
   return stream.str();
 }
 
@@ -395,6 +435,7 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << trajectoryStraighteningDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
+  stream << "," << curveRefinementDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
   appendJsonNumber(stream, "trajectory_shape_max_curvature_jump_1pm",
                    shape.max_curvature_jump_1pm);
@@ -439,6 +480,8 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonSize(stream, "corridor_center_unrecoverable_samples",
                  stats.corridor.center_unrecoverable_samples);
   appendJsonSize(stream, "corridor_centered_samples", stats.corridor.centered_samples);
+  appendJsonSize(stream, "corridor_endpoint_anchored_samples",
+                 stats.corridor.endpoint_anchored_samples);
   appendJsonSize(stream, "corridor_outside_grid_samples",
                  stats.corridor.outside_grid_samples);
   appendJsonSize(stream, "corridor_lateral_limited_samples",
@@ -454,18 +497,26 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                    stats.corridor.max_center_recovery_m);
   appendJsonNumber(stream, "corridor_centering_shift_max_m",
                    stats.corridor.max_centering_shift_m);
+  appendJsonNumber(stream, "corridor_endpoint_anchor_reduction_max_m",
+                   stats.corridor.max_endpoint_anchor_reduction_m);
   appendJsonNumber(stream, "corridor_lateral_reduction_max_m",
                    stats.corridor.max_lateral_bound_reduction_m);
   appendJsonSize(stream, "racing_line_input_samples", stats.racing_line.input_samples);
+  appendJsonSize(stream, "racing_line_optimizer_samples",
+                 stats.racing_line.optimizer_samples);
   appendJsonSize(stream, "racing_line_output_samples",
                  stats.racing_line.output_samples);
+  appendJsonSize(stream, "racing_line_iterations", stats.racing_line.iterations);
   appendJsonSize(stream, "racing_line_candidate_evaluations",
                  stats.racing_line.candidate_evaluations);
   appendJsonSize(stream, "racing_line_collision_rejections",
                  stats.racing_line.collision_rejections);
+  appendJsonNumber(stream, "racing_line_cost_initial", stats.racing_line.initial_cost);
+  appendJsonNumber(stream, "racing_line_cost_final", stats.racing_line.final_cost);
   stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << trajectoryStraighteningDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
+  stream << "," << curveRefinementDiagnosticsJsonFields(stats);
   stream << "}";
   return stream.str();
 }
@@ -510,6 +561,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   envelope.stats.straightening_duration_ms);
   parseJsonDouble(json, "trajectory_turn_smoothing_duration_ms",
                   envelope.stats.turn_smoothing_duration_ms);
+  parseJsonDouble(json, "trajectory_curve_refinement_duration_ms",
+                  envelope.stats.curve_refinement_duration_ms);
   parseJsonDouble(json, "trajectory_speed_profile_duration_ms",
                   envelope.stats.speed_profile_duration_ms);
 
@@ -523,6 +576,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "corridor_center_unrecoverable_samples",
                 corridor.center_unrecoverable_samples);
   parseJsonSize(json, "corridor_centered_samples", corridor.centered_samples);
+  parseJsonSize(json, "corridor_endpoint_anchored_samples",
+                corridor.endpoint_anchored_samples);
   parseJsonSize(json, "corridor_outside_grid_samples", corridor.outside_grid_samples);
   parseJsonSize(json, "corridor_lateral_limited_samples",
                 corridor.lateral_limited_samples);
@@ -536,6 +591,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   corridor.max_center_recovery_m);
   parseJsonDouble(json, "corridor_centering_shift_max_m",
                   corridor.max_centering_shift_m);
+  parseJsonDouble(json, "corridor_endpoint_anchor_reduction_max_m",
+                  corridor.max_endpoint_anchor_reduction_m);
   parseJsonDouble(json, "corridor_lateral_reduction_max_m",
                   corridor.max_lateral_bound_reduction_m);
 
@@ -596,6 +653,11 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.pre_regularization_max_curvature_jump_1pm);
   parseJsonDouble(json, "racing_post_regularization_max_curvature_jump_1pm",
                   racing.post_regularization_max_curvature_jump_1pm);
+  parseJsonSize(json, "racing_skipped_noop_candidates", racing.skipped_noop_candidates);
+  parseJsonDouble(json, "racing_candidate_path_evaluation_duration_ms",
+                  racing.candidate_path_evaluation_duration_ms);
+  parseJsonDouble(json, "racing_candidate_score_duration_ms",
+                  racing.candidate_score_duration_ms);
   parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
   parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);
@@ -660,6 +722,28 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   turn_smoothing.min_inner_margin_m);
   parseJsonDouble(json, "turn_smoothing_max_outer_shift_m",
                   turn_smoothing.max_applied_outer_shift_m);
+
+  CurveRefinementStats& refinement = envelope.stats.curve_refinement;
+  parseJsonSize(json, "curve_refinement_input_samples", refinement.input_samples);
+  parseJsonSize(json, "curve_refinement_output_samples", refinement.output_samples);
+  parseJsonSize(json, "curve_refinement_rejected_prohibited_segments",
+                refinement.rejected_prohibited_segments);
+  parseJsonSize(json, "curve_refinement_rejected_corridor_samples",
+                refinement.rejected_corridor_samples);
+  parseJsonDouble(json, "curve_refinement_sample_step_m", refinement.sample_step_m);
+  parseJsonDouble(json, "curve_refinement_tangent_scale", refinement.tangent_scale);
+  parseJsonDouble(json, "curve_refinement_min_corridor_margin_m",
+                  refinement.min_corridor_margin_m);
+  parseJsonDouble(json, "curve_refinement_max_segment_length_m",
+                  refinement.max_segment_length_m);
+  parseJsonDouble(json, "curve_refinement_max_heading_delta_rad",
+                  refinement.max_heading_delta_rad);
+  parseJsonBool(json, "curve_refinement_valid", refinement.valid);
+  parseJsonDouble(json, "final_start_route_distance_m",
+                  envelope.stats.final_start_route_distance_m);
+  parseJsonDouble(json, "final_endpoint_route_distance_m",
+                  envelope.stats.final_endpoint_route_distance_m);
+  parseJsonBool(json, "final_invariants_ok", envelope.stats.final_invariants_ok);
   return envelope;
 }
 

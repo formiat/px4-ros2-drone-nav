@@ -171,6 +171,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.corridor.center_recovery_max_m =
       std::clamp(node.declare_parameter<double>("corridor_center_recovery_max_m", 3.0),
                  0.0, 5000.0);
+  config.trajectory_planner.corridor.endpoint_anchor_distance_m = std::clamp(
+      node.declare_parameter<double>("corridor_endpoint_anchor_distance_m", 20.0), 0.0,
+      5000.0);
   config.trajectory_planner.corridor.lateral_limit_window_m = std::clamp(
       node.declare_parameter<double>("corridor_lateral_limit_window_m", 20.0), 0.1,
       5000.0);
@@ -192,6 +195,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.racing_line.optimizer_sample_step_m = std::clamp(
       node.declare_parameter<double>("racing_line_optimizer_sample_step_m", 5.0), 0.0,
       100.0);
+  config.trajectory_planner.racing_line.endpoint_anchor_distance_m = std::clamp(
+      node.declare_parameter<double>("racing_line_endpoint_anchor_distance_m", 20.0),
+      0.0, 5000.0);
   config.trajectory_planner.racing_line.cooling_ratio = std::clamp(
       node.declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
   config.trajectory_planner.racing_line.weight_length = std::clamp(
@@ -306,6 +312,19 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.debug_sample_step_m = std::clamp(
       node.declare_parameter<double>("final_trajectory_debug_sample_step_m", 1.0), 0.1,
       20.0);
+  config.trajectory_planner.curve_refinement_sample_step_m = std::clamp(
+      node.declare_parameter<double>("curve_refinement_sample_step_m", 1.0), 0.1, 20.0);
+  config.trajectory_planner.curve_refinement_tangent_scale = std::clamp(
+      node.declare_parameter<double>("curve_refinement_tangent_scale", 0.45), 0.0, 2.0);
+  config.trajectory_planner.curve_refinement_min_corridor_margin_m = std::clamp(
+      node.declare_parameter<double>("curve_refinement_min_corridor_margin_m", 0.5),
+      0.0, 1000.0);
+  config.trajectory_planner.final_endpoint_tolerance_m = std::clamp(
+      node.declare_parameter<double>("final_trajectory_endpoint_tolerance_m", 0.75),
+      0.0, 1000.0);
+  config.trajectory_planner.final_max_segment_length_m = std::clamp(
+      node.declare_parameter<double>("final_trajectory_max_segment_length_m", 2.0), 0.1,
+      1000.0);
 
   config.initial_pose.use_until_px4 =
       node.declare_parameter<bool>("use_initial_pose_until_px4", true);

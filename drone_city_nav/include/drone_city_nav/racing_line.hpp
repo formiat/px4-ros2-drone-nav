@@ -19,6 +19,7 @@ struct RacingLineConfig {
   double initial_offset_step_m{2.0};
   double min_offset_step_m{0.1};
   double cooling_ratio{0.5};
+  double endpoint_anchor_distance_m{20.0};
   double weight_length{0.02};
   double weight_curvature{250.0};
   double weight_curvature_change{100.0};
@@ -39,7 +40,10 @@ struct RacingLineStats {
   std::size_t output_samples{0U};
   std::size_t iterations{0U};
   std::size_t candidate_evaluations{0U};
+  std::size_t skipped_noop_candidates{0U};
   std::size_t collision_rejections{0U};
+  double candidate_path_evaluation_duration_ms{0.0};
+  double candidate_score_duration_ms{0.0};
   double initial_cost{0.0};
   double final_cost{0.0};
   double centerline_length_m{0.0};

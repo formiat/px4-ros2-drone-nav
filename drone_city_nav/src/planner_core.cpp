@@ -477,7 +477,8 @@ StablePathDecision PlannerCore::evaluateStablePath(
     decision.reason = StablePathDecisionReason::kNoPreviousPath;
     return decision;
   }
-  if (distance(previous_path.back(), goal) > config_.stable_path_goal_tolerance_m) {
+  decision.endpoint_goal_distance_m = distance(previous_path.back(), goal);
+  if (decision.endpoint_goal_distance_m > config_.stable_path_goal_tolerance_m) {
     decision.reason = StablePathDecisionReason::kGoalMismatch;
     return decision;
   }

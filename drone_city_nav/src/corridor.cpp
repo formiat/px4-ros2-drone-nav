@@ -222,6 +222,31 @@ void limitCenteringShiftSlope(const std::span<const CorridorSample> samples,
   return 0.0;
 }
 
+[[nodiscard]] double smoothStep01(const double value) noexcept {
+  const double t = std::clamp(value, 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+
+[[nodiscard]] double endpointAnchorScale(const std::span<const CorridorSample> samples,
+                                         const std::size_t index,
+                                         const double anchor_distance_m) noexcept {
+  if (samples.empty() || index >= samples.size() ||
+      !(anchor_distance_m > kTinyDistanceM)) {
+    return 1.0;
+  }
+  const double length_m = samples.back().s_m;
+  if (!(length_m > kTinyDistanceM)) {
+    return 0.0;
+  }
+  const double effective_anchor_distance_m =
+      std::min(anchor_distance_m, length_m * 0.25);
+  const double start_scale =
+      smoothStep01(samples[index].s_m / effective_anchor_distance_m);
+  const double end_scale =
+      smoothStep01((length_m - samples[index].s_m) / effective_anchor_distance_m);
+  return std::min(start_scale, end_scale);
+}
+
 void applySmoothedCorridorCentering(std::vector<CorridorSample>& samples,
                                     const OccupancyGrid2D& prohibited_grid,
                                     const CorridorConfig& config,
@@ -239,6 +264,19 @@ void applySmoothedCorridorCentering(std::vector<CorridorSample>& samples,
     shifts.push_back(localWeightedCenteringShift(raw_samples, i, window_m));
   }
   limitCenteringShiftSlope(raw_samples, shifts);
+
+  const double endpoint_anchor_distance_m = sanitizedPositive(
+      config.endpoint_anchor_distance_m, 20.0, 0.0, std::numeric_limits<double>::max());
+  for (std::size_t i = 0U; i < shifts.size(); ++i) {
+    const double original_shift = shifts[i];
+    shifts[i] *= endpointAnchorScale(raw_samples, i, endpoint_anchor_distance_m);
+    const double reduction_m = std::abs(original_shift - shifts[i]);
+    if (reduction_m > kTinyDistanceM) {
+      ++stats.endpoint_anchored_samples;
+      stats.max_endpoint_anchor_reduction_m =
+          std::max(stats.max_endpoint_anchor_reduction_m, reduction_m);
+    }
+  }
 
   stats.centered_samples = 0U;
   stats.max_centering_shift_m = 0.0;
