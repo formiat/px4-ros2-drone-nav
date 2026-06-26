@@ -1,9 +1,12 @@
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 
 #include <cmath>
+#include <cstdlib>
 #include <iomanip>
+#include <limits>
 #include <ostream>
 #include <sstream>
+#include <string>
 #include <string_view>
 
 namespace drone_city_nav {
@@ -34,6 +37,136 @@ void appendJsonNumber(std::ostream& stream, const std::string_view key,
 void appendJsonSize(std::ostream& stream, const std::string_view key,
                     const std::size_t value) {
   stream << ",\"" << key << "\":" << value;
+}
+
+void appendJsonUint64(std::ostream& stream, const std::string_view key,
+                      const std::uint64_t value) {
+  stream << ",\"" << key << "\":" << value;
+}
+
+[[nodiscard]] std::optional<std::string_view>
+jsonValueForKey(const std::string_view json, const std::string_view key) {
+  const std::string pattern = "\"" + std::string{key} + "\":";
+  const std::size_t key_position = json.find(pattern);
+  if (key_position == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::size_t value_begin = key_position + pattern.size();
+  while (value_begin < json.size() &&
+         (json[value_begin] == ' ' || json[value_begin] == '\t' ||
+          json[value_begin] == '\n' || json[value_begin] == '\r')) {
+    ++value_begin;
+  }
+  if (value_begin >= json.size()) {
+    return std::nullopt;
+  }
+
+  if (json[value_begin] == '"') {
+    const std::size_t string_end = json.find('"', value_begin + 1U);
+    if (string_end == std::string_view::npos) {
+      return std::nullopt;
+    }
+    return json.substr(value_begin + 1U, string_end - value_begin - 1U);
+  }
+
+  std::size_t value_end = value_begin;
+  while (value_end < json.size() && json[value_end] != ',' && json[value_end] != '}') {
+    ++value_end;
+  }
+  while (value_end > value_begin &&
+         (json[value_end - 1U] == ' ' || json[value_end - 1U] == '\t' ||
+          json[value_end - 1U] == '\n' || json[value_end - 1U] == '\r')) {
+    --value_end;
+  }
+  return json.substr(value_begin, value_end - value_begin);
+}
+
+void parseJsonDouble(const std::string_view json, const std::string_view key,
+                     double& output) {
+  const std::optional<std::string_view> value = jsonValueForKey(json, key);
+  if (!value.has_value()) {
+    return;
+  }
+  if (*value == "null") {
+    output = std::numeric_limits<double>::quiet_NaN();
+    return;
+  }
+
+  const std::string value_string{*value};
+  char* end = nullptr;
+  const double parsed = std::strtod(value_string.c_str(), &end);
+  if (end != value_string.c_str() && *end == '\0') {
+    output = parsed;
+  }
+}
+
+void parseJsonSize(const std::string_view json, const std::string_view key,
+                   std::size_t& output) {
+  const std::optional<std::string_view> value = jsonValueForKey(json, key);
+  if (!value.has_value() || *value == "null") {
+    return;
+  }
+
+  const std::string value_string{*value};
+  char* end = nullptr;
+  const double parsed = std::strtod(value_string.c_str(), &end);
+  if (end != value_string.c_str() && *end == '\0' && std::isfinite(parsed) &&
+      parsed >= 0.0) {
+    output = static_cast<std::size_t>(parsed);
+  }
+}
+
+[[nodiscard]] bool parseJsonUint64(const std::string_view json,
+                                   const std::string_view key, std::uint64_t& output) {
+  const std::optional<std::string_view> value = jsonValueForKey(json, key);
+  if (!value.has_value() || *value == "null") {
+    return false;
+  }
+  const std::string value_string{*value};
+  char* end = nullptr;
+  const unsigned long long parsed = std::strtoull(value_string.c_str(), &end, 10);
+  if (end == value_string.c_str() || *end != '\0') {
+    return false;
+  }
+  output = static_cast<std::uint64_t>(parsed);
+  return true;
+}
+
+void parseJsonBool(const std::string_view json, const std::string_view key,
+                   bool& output) {
+  const std::optional<std::string_view> value = jsonValueForKey(json, key);
+  if (!value.has_value()) {
+    return;
+  }
+  if (*value == "true") {
+    output = true;
+    return;
+  }
+  if (*value == "false") {
+    output = false;
+  }
+}
+
+[[nodiscard]] TrajectoryPlannerStatus
+parseTrajectoryPlannerStatusName(const std::string_view value) {
+  if (value == trajectoryPlannerStatusName(TrajectoryPlannerStatus::kInvalidRoute)) {
+    return TrajectoryPlannerStatus::kInvalidRoute;
+  }
+  if (value == trajectoryPlannerStatusName(TrajectoryPlannerStatus::kMissingGrid)) {
+    return TrajectoryPlannerStatus::kMissingGrid;
+  }
+  if (value == trajectoryPlannerStatusName(TrajectoryPlannerStatus::kCorridorInvalid)) {
+    return TrajectoryPlannerStatus::kCorridorInvalid;
+  }
+  if (value ==
+      trajectoryPlannerStatusName(TrajectoryPlannerStatus::kRacingLineInvalid)) {
+    return TrajectoryPlannerStatus::kRacingLineInvalid;
+  }
+  if (value ==
+      trajectoryPlannerStatusName(TrajectoryPlannerStatus::kInvalidTrajectory)) {
+    return TrajectoryPlannerStatus::kInvalidTrajectory;
+  }
+  return TrajectoryPlannerStatus::kOk;
 }
 
 } // namespace
@@ -180,6 +313,183 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                    shape.max_offset_delta_m);
   stream << "}";
   return stream.str();
+}
+
+std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
+                                             const std::uint64_t path_stamp_ns,
+                                             const TrajectoryPlannerStats& stats) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "{\"planner_path_id\":" << planner_path_id;
+  appendJsonUint64(stream, "path_stamp_ns", path_stamp_ns);
+  stream << ",\"trajectory_status\":\"" << trajectoryPlannerStatusName(stats.status)
+         << "\"";
+  appendJsonSize(stream, "trajectory_input_points", stats.input_points);
+  appendJsonSize(stream, "trajectory_compact_segments", stats.compact_segments);
+  appendJsonSize(stream, "trajectory_line_segments", stats.line_segments);
+  appendJsonSize(stream, "trajectory_arc_segments", stats.arc_segments);
+  appendJsonSize(stream, "trajectory_samples", stats.samples);
+  appendJsonNumber(stream, "trajectory_length_m", stats.length_m);
+  appendJsonNumber(stream, "curvature_min_1pm", stats.curvature_min_1pm);
+  appendJsonNumber(stream, "curvature_max_1pm", stats.curvature_max_1pm);
+  appendJsonNumber(stream, "curvature_mean_abs_1pm", stats.curvature_mean_abs_1pm);
+  appendJsonNumber(stream, "speed_profile_min_mps", stats.speed_profile_min_mps);
+  appendJsonNumber(stream, "speed_profile_max_mps", stats.speed_profile_max_mps);
+  appendJsonNumber(stream, "speed_profile_mean_mps", stats.speed_profile_mean_mps);
+  appendJsonSize(stream, "speed_profile_curvature_limited_samples",
+                 stats.speed_profile_curvature_limited_samples);
+  appendJsonSize(stream, "corridor_input_points", stats.corridor.input_points);
+  appendJsonSize(stream, "corridor_samples", stats.corridor.samples);
+  appendJsonSize(stream, "corridor_route_prohibited_samples",
+                 stats.corridor.route_prohibited_samples);
+  appendJsonSize(stream, "corridor_center_recovered_samples",
+                 stats.corridor.center_recovered_samples);
+  appendJsonSize(stream, "corridor_center_unrecoverable_samples",
+                 stats.corridor.center_unrecoverable_samples);
+  appendJsonSize(stream, "corridor_outside_grid_samples",
+                 stats.corridor.outside_grid_samples);
+  appendJsonSize(stream, "corridor_lateral_limited_samples",
+                 stats.corridor.lateral_limited_samples);
+  appendJsonNumber(stream, "corridor_width_min_m", stats.corridor.min_width_m);
+  appendJsonNumber(stream, "corridor_width_mean_m", stats.corridor.mean_width_m);
+  appendJsonNumber(stream, "corridor_width_max_m", stats.corridor.max_width_m);
+  appendJsonNumber(stream, "corridor_clearance_min_m", stats.corridor.min_clearance_m);
+  appendJsonNumber(stream, "corridor_clearance_mean_m",
+                   stats.corridor.mean_clearance_m);
+  appendJsonNumber(stream, "corridor_clearance_max_m", stats.corridor.max_clearance_m);
+  appendJsonNumber(stream, "corridor_center_recovery_max_m",
+                   stats.corridor.max_center_recovery_m);
+  appendJsonNumber(stream, "corridor_lateral_reduction_max_m",
+                   stats.corridor.max_lateral_bound_reduction_m);
+  appendJsonSize(stream, "racing_line_input_samples", stats.racing_line.input_samples);
+  appendJsonSize(stream, "racing_line_output_samples",
+                 stats.racing_line.output_samples);
+  appendJsonSize(stream, "racing_line_candidate_evaluations",
+                 stats.racing_line.candidate_evaluations);
+  appendJsonSize(stream, "racing_line_collision_rejections",
+                 stats.racing_line.collision_rejections);
+  stream << "," << racingLineDiagnosticsJsonFields(stats);
+  stream << "}";
+  return stream.str();
+}
+
+std::optional<TrajectoryPlannerDiagnosticsEnvelope>
+parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
+  TrajectoryPlannerDiagnosticsEnvelope envelope{};
+  if (!parseJsonUint64(json, "planner_path_id", envelope.planner_path_id) ||
+      !parseJsonUint64(json, "path_stamp_ns", envelope.path_stamp_ns)) {
+    return std::nullopt;
+  }
+
+  if (const std::optional<std::string_view> status =
+          jsonValueForKey(json, "trajectory_status");
+      status.has_value()) {
+    envelope.stats.status = parseTrajectoryPlannerStatusName(*status);
+  }
+
+  parseJsonSize(json, "trajectory_input_points", envelope.stats.input_points);
+  parseJsonSize(json, "trajectory_compact_segments", envelope.stats.compact_segments);
+  parseJsonSize(json, "trajectory_line_segments", envelope.stats.line_segments);
+  parseJsonSize(json, "trajectory_arc_segments", envelope.stats.arc_segments);
+  parseJsonSize(json, "trajectory_samples", envelope.stats.samples);
+  parseJsonDouble(json, "trajectory_length_m", envelope.stats.length_m);
+  parseJsonDouble(json, "curvature_min_1pm", envelope.stats.curvature_min_1pm);
+  parseJsonDouble(json, "curvature_max_1pm", envelope.stats.curvature_max_1pm);
+  parseJsonDouble(json, "curvature_mean_abs_1pm",
+                  envelope.stats.curvature_mean_abs_1pm);
+  parseJsonDouble(json, "speed_profile_min_mps", envelope.stats.speed_profile_min_mps);
+  parseJsonDouble(json, "speed_profile_max_mps", envelope.stats.speed_profile_max_mps);
+  parseJsonDouble(json, "speed_profile_mean_mps",
+                  envelope.stats.speed_profile_mean_mps);
+  parseJsonSize(json, "speed_profile_curvature_limited_samples",
+                envelope.stats.speed_profile_curvature_limited_samples);
+
+  CorridorStats& corridor = envelope.stats.corridor;
+  parseJsonSize(json, "corridor_input_points", corridor.input_points);
+  parseJsonSize(json, "corridor_samples", corridor.samples);
+  parseJsonSize(json, "corridor_route_prohibited_samples",
+                corridor.route_prohibited_samples);
+  parseJsonSize(json, "corridor_center_recovered_samples",
+                corridor.center_recovered_samples);
+  parseJsonSize(json, "corridor_center_unrecoverable_samples",
+                corridor.center_unrecoverable_samples);
+  parseJsonSize(json, "corridor_outside_grid_samples", corridor.outside_grid_samples);
+  parseJsonSize(json, "corridor_lateral_limited_samples",
+                corridor.lateral_limited_samples);
+  parseJsonDouble(json, "corridor_width_min_m", corridor.min_width_m);
+  parseJsonDouble(json, "corridor_width_mean_m", corridor.mean_width_m);
+  parseJsonDouble(json, "corridor_width_max_m", corridor.max_width_m);
+  parseJsonDouble(json, "corridor_clearance_min_m", corridor.min_clearance_m);
+  parseJsonDouble(json, "corridor_clearance_mean_m", corridor.mean_clearance_m);
+  parseJsonDouble(json, "corridor_clearance_max_m", corridor.max_clearance_m);
+  parseJsonDouble(json, "corridor_center_recovery_max_m",
+                  corridor.max_center_recovery_m);
+  parseJsonDouble(json, "corridor_lateral_reduction_max_m",
+                  corridor.max_lateral_bound_reduction_m);
+
+  RacingLineStats& racing = envelope.stats.racing_line;
+  parseJsonSize(json, "racing_line_input_samples", racing.input_samples);
+  parseJsonSize(json, "racing_line_optimizer_samples", racing.optimizer_samples);
+  parseJsonSize(json, "racing_line_output_samples", racing.output_samples);
+  parseJsonSize(json, "racing_line_iterations", racing.iterations);
+  parseJsonSize(json, "racing_line_candidate_evaluations",
+                racing.candidate_evaluations);
+  parseJsonSize(json, "racing_line_collision_rejections", racing.collision_rejections);
+  parseJsonDouble(json, "racing_line_cost_initial", racing.initial_cost);
+  parseJsonDouble(json, "racing_line_cost_final", racing.final_cost);
+  parseJsonDouble(json, "racing_centerline_length_m", racing.centerline_length_m);
+  parseJsonDouble(json, "racing_final_length_m", racing.final_length_m);
+  parseJsonDouble(json, "racing_final_length_ratio", racing.final_length_ratio);
+  parseJsonDouble(json, "racing_cost_length", racing.cost_length);
+  parseJsonDouble(json, "racing_cost_time", racing.cost_time);
+  parseJsonDouble(json, "racing_cost_curvature", racing.cost_curvature);
+  parseJsonDouble(json, "racing_cost_curvature_change", racing.cost_curvature_change);
+  parseJsonDouble(json, "racing_cost_offset_change", racing.cost_offset_change);
+  parseJsonDouble(json, "racing_cost_offset_second_change",
+                  racing.cost_offset_second_change);
+  parseJsonDouble(json, "racing_cost_center_bias", racing.cost_center_bias);
+  parseJsonDouble(json, "racing_cost_edge_margin", racing.cost_edge_margin);
+  parseJsonDouble(json, "racing_cost_collision", racing.cost_collision);
+  parseJsonDouble(json, "racing_cost_outside_grid", racing.cost_outside_grid);
+  parseJsonDouble(json, "racing_cost_length_overrun", racing.cost_length_overrun);
+  parseJsonDouble(json, "racing_final_estimated_time_s", racing.estimated_time_s);
+  parseJsonDouble(json, "racing_final_min_speed_limit_mps", racing.min_speed_limit_mps);
+  parseJsonDouble(json, "racing_final_max_speed_limit_mps", racing.max_speed_limit_mps);
+  parseJsonSize(json, "racing_final_curvature_limited_samples",
+                racing.curvature_limited_samples);
+  parseJsonDouble(json, "racing_centerline_estimated_time_s",
+                  racing.centerline_estimated_time_s);
+  parseJsonDouble(json, "racing_centerline_min_speed_limit_mps",
+                  racing.centerline_min_speed_limit_mps);
+  parseJsonDouble(json, "racing_centerline_max_speed_limit_mps",
+                  racing.centerline_max_speed_limit_mps);
+  parseJsonSize(json, "racing_centerline_curvature_limited_samples",
+                racing.centerline_curvature_limited_samples);
+  parseJsonDouble(json, "racing_best_candidate_estimated_time_s",
+                  racing.best_candidate_estimated_time_s);
+  parseJsonDouble(json, "racing_best_candidate_score", racing.best_candidate_score);
+  parseJsonDouble(json, "racing_best_candidate_min_speed_limit_mps",
+                  racing.best_candidate_min_speed_limit_mps);
+  parseJsonDouble(json, "racing_best_candidate_max_speed_limit_mps",
+                  racing.best_candidate_max_speed_limit_mps);
+  parseJsonSize(json, "racing_best_candidate_curvature_limited_samples",
+                racing.best_candidate_curvature_limited_samples);
+  parseJsonDouble(json, "racing_time_gain_s", racing.time_gain_s);
+  parseJsonDouble(json, "racing_regularization_time_delta_s",
+                  racing.regularization_time_delta_s);
+  parseJsonSize(json, "racing_regularization_iterations",
+                racing.regularization_iterations);
+  parseJsonBool(json, "racing_regularization_applied", racing.regularization_applied);
+  parseJsonDouble(json, "racing_pre_regularization_max_curvature_jump_1pm",
+                  racing.pre_regularization_max_curvature_jump_1pm);
+  parseJsonDouble(json, "racing_post_regularization_max_curvature_jump_1pm",
+                  racing.post_regularization_max_curvature_jump_1pm);
+  parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
+  parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
+  parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);
+  parseJsonSize(json, "racing_edge_margin_limited_samples",
+                racing.edge_margin_limited_samples);
+  return envelope;
 }
 
 } // namespace drone_city_nav

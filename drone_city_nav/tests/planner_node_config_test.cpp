@@ -58,6 +58,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
+  EXPECT_EQ(config.topics.trajectory_diagnostics,
+            "/drone_city_nav/trajectory_diagnostics");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_FALSE(config.planner_core.astar.initial_heading_bias_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
@@ -152,12 +154,15 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   const auto node =
       makeNode("planner_node_config_topic_contract",
                {rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
+                rclcpp::Parameter{"trajectory_diagnostics_topic",
+                                  "/custom/trajectory_diagnostics"},
                 rclcpp::Parameter{"memory_occupied_value", 100},
                 rclcpp::Parameter{"memory_free_value", 0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
   EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
+  EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);
 }

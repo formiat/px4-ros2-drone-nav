@@ -23,6 +23,7 @@ struct PlannerTopics {
   std::string static_map_points{"/drone_city_nav/static_map_points"};
   std::string path{"/drone_city_nav/path"};
   std::string path_id{"/drone_city_nav/path_id"};
+  std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
   std::string current_waypoint{"/drone_city_nav/current_waypoint"};
 };
 

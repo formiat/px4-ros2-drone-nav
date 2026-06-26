@@ -9,6 +9,7 @@
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
+#include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -20,6 +21,7 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/u_int64.hpp>
 
 #include <algorithm>
@@ -146,6 +148,8 @@ public:
                                                       rclcpp::QoS{1}.reliable());
     path_id_pub_ = create_publisher<std_msgs::msg::UInt64>(config.topics.path_id,
                                                            rclcpp::QoS{1}.reliable());
+    trajectory_diagnostics_pub_ = create_publisher<std_msgs::msg::String>(
+        config.topics.trajectory_diagnostics, rclcpp::QoS{1}.reliable());
     waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
         config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
@@ -996,7 +1000,8 @@ private:
 
     last_valid_path_points_ = trajectory_points;
     logPublishedPathSafety(grid, trajectory_points, "final_trajectory");
-    publishPath(trajectory_points, PathPublicationReason::kComputedPath);
+    publishPath(trajectory_points, PathPublicationReason::kComputedPath,
+                &trajectory_result.stats);
     return true;
   }
 
@@ -1226,7 +1231,8 @@ private:
   }
 
   void publishPath(const std::vector<Point2>& points,
-                   const PathPublicationReason reason) {
+                   const PathPublicationReason reason,
+                   const TrajectoryPlannerStats* trajectory_stats = nullptr) {
     recordPathPublication(reason, points.empty());
     const std::uint64_t path_id = next_path_id_++;
 
@@ -1235,13 +1241,17 @@ private:
     }
 
     const PathMetrics metrics = pointPathMetrics(points);
-    const nav_msgs::msg::Path path =
-        pathToRos(std::span<const Point2>{points.data(), points.size()},
-                  makePlannerHeader(), kGroundDebugZ);
+    const std_msgs::msg::Header header = makePlannerHeader();
+    const std::uint64_t path_stamp_ns = stampNanoseconds(header.stamp);
+    const nav_msgs::msg::Path path = pathToRos(
+        std::span<const Point2>{points.data(), points.size()}, header, kGroundDebugZ);
 
     std_msgs::msg::UInt64 path_id_msg;
     path_id_msg.data = path_id;
     path_id_pub_->publish(path_id_msg);
+    if (trajectory_stats != nullptr && !points.empty()) {
+      publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats);
+    }
     path_pub_->publish(path);
     if (!path.poses.empty()) {
       waypoint_pub_->publish(path.poses.front());
@@ -1249,6 +1259,17 @@ private:
 
     logPathUpdate(path, metrics, reason, path_id);
     logPlannerCountersThrottled();
+  }
+
+  void publishTrajectoryDiagnostics(const std::uint64_t path_id,
+                                    const std::uint64_t path_stamp_ns,
+                                    const TrajectoryPlannerStats& stats) const {
+    if (!trajectory_diagnostics_pub_) {
+      return;
+    }
+    std_msgs::msg::String msg;
+    msg.data = trajectoryPlannerDiagnosticsJson(path_id, path_stamp_ns, stats);
+    trajectory_diagnostics_pub_->publish(msg);
   }
 
   void publishPlanningFailureHold() {
@@ -1502,6 +1523,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr timer_;

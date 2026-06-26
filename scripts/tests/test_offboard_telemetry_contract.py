@@ -192,6 +192,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("trajectory_shape_max_offset_delta_m", self.offboard_text)
         self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
+        self.assertIn("corridor_width_max_m", self.offboard_text)
         self.assertIn("corridor_center_recovered_samples", self.offboard_text)
         self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
         self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
@@ -242,6 +243,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                     "px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude", text
                 )
                 self.assertIn("path_id_topic: /drone_city_nav/path_id", text)
+                self.assertIn(
+                    "trajectory_diagnostics_topic: "
+                    "/drone_city_nav/trajectory_diagnostics",
+                    text,
+                )
                 self.assertIn("flight_blackbox_enabled: true", text)
                 self.assertIn("flight_blackbox_path: log/offboard_blackbox.jsonl", text)
                 self.assertIn("cruise_speed_mps: 22.0", text)

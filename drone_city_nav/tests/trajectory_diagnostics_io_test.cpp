@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 namespace drone_city_nav {
@@ -55,6 +57,23 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
   stats.racing_line.cost_length_overrun = 0.0;
+  stats.corridor.samples = 42U;
+  stats.corridor.min_width_m = 17.5;
+  stats.corridor.mean_width_m = 24.25;
+  stats.corridor.max_width_m = 58.75;
+  stats.corridor.lateral_limited_samples = 9U;
+  stats.corridor.max_center_recovery_m = 1.25;
+  stats.corridor.max_lateral_bound_reduction_m = 2.5;
+  stats.input_points = 8U;
+  stats.samples = 78U;
+  stats.length_m = 412.25;
+  stats.curvature_min_1pm = -0.05;
+  stats.curvature_max_1pm = 0.06;
+  stats.curvature_mean_abs_1pm = 0.02;
+  stats.speed_profile_min_mps = 0.0;
+  stats.speed_profile_mean_mps = 13.4;
+  stats.speed_profile_max_mps = 19.1;
+  stats.speed_profile_curvature_limited_samples = 69U;
   return stats;
 }
 
@@ -184,6 +203,35 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetric
   EXPECT_NE(fragment.find("\"racing_final_length_ratio\":null"), std::string::npos);
   EXPECT_NE(fragment.find("\"racing_cost_time\":null"), std::string::npos);
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
+TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
+  const std::uint64_t planner_path_id = 42U;
+  const std::uint64_t path_stamp_ns = 1'782'477'871'305'471'587ULL;
+  const std::string json = trajectoryPlannerDiagnosticsJson(
+      planner_path_id, path_stamp_ns, populatedStats());
+
+  const std::optional<TrajectoryPlannerDiagnosticsEnvelope> parsed =
+      parseTrajectoryPlannerDiagnosticsJson(json);
+
+  ASSERT_TRUE(parsed.has_value());
+  const TrajectoryPlannerDiagnosticsEnvelope parsed_value =
+      parsed.value_or(TrajectoryPlannerDiagnosticsEnvelope{});
+  EXPECT_EQ(parsed_value.planner_path_id, planner_path_id);
+  EXPECT_EQ(parsed_value.path_stamp_ns, path_stamp_ns);
+  EXPECT_EQ(parsed_value.stats.samples, 78U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.length_m, 412.25);
+  EXPECT_EQ(parsed_value.stats.corridor.samples, 42U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.min_width_m, 17.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.max_width_m, 58.75);
+  EXPECT_EQ(parsed_value.stats.corridor.lateral_limited_samples, 9U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_m, 108.0);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.min_edge_margin_m, 2.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
+  EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
 }
 
 } // namespace drone_city_nav

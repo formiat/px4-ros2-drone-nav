@@ -21,6 +21,7 @@
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/u_int64.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -280,6 +281,8 @@ public:
         declare_parameter<std::string>("path_topic", "/drone_city_nav/path");
     const std::string path_id_topic =
         declare_parameter<std::string>("path_id_topic", "/drone_city_nav/path_id");
+    const std::string trajectory_diagnostics_topic = declare_parameter<std::string>(
+        "trajectory_diagnostics_topic", "/drone_city_nav/trajectory_diagnostics");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
@@ -300,6 +303,11 @@ public:
     path_id_sub_ = create_subscription<std_msgs::msg::UInt64>(
         path_id_topic, rclcpp::QoS{1}.reliable(),
         [this](const std_msgs::msg::UInt64::SharedPtr msg) { onPathId(*msg); });
+    trajectory_diagnostics_sub_ = create_subscription<std_msgs::msg::String>(
+        trajectory_diagnostics_topic, rclcpp::QoS{1}.reliable(),
+        [this](const std_msgs::msg::String::SharedPtr msg) {
+          onTrajectoryDiagnostics(*msg);
+        });
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, px4_qos,
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -529,6 +537,24 @@ private:
     publishOffboardDebugMarkers();
   }
 
+  [[nodiscard]] bool trajectoryDiagnosticsMatchesCurrentPath(
+      const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) const {
+    if (diagnostics.path_stamp_ns != last_received_path_stamp_ns_) {
+      return false;
+    }
+    return !latest_planner_path_id_seen_ ||
+           diagnostics.planner_path_id == latest_planner_path_id_;
+  }
+
+  void mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
+      const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) {
+    if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
+      return;
+    }
+    last_trajectory_planner_stats_.corridor = diagnostics.stats.corridor;
+    last_trajectory_planner_stats_.racing_line = diagnostics.stats.racing_line;
+  }
+
   void updatePlannerStatsForReceivedTrajectory() {
     last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
     last_trajectory_planner_stats_.status =
@@ -582,6 +608,10 @@ private:
     if (!trajectory_speed_profile_.samples.empty()) {
       last_trajectory_planner_stats_.speed_profile_mean_mps =
           speed_sum / static_cast<double>(trajectory_speed_profile_.samples.size());
+    }
+    if (latest_trajectory_diagnostics_.has_value()) {
+      mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
+          *latest_trajectory_diagnostics_);
     }
   }
 
@@ -717,6 +747,38 @@ private:
   void onPathId(const std_msgs::msg::UInt64& msg) {
     latest_planner_path_id_ = msg.data;
     latest_planner_path_id_seen_ = true;
+  }
+
+  void onTrajectoryDiagnostics(const std_msgs::msg::String& msg) {
+    const std::optional<TrajectoryPlannerDiagnosticsEnvelope> diagnostics =
+        parseTrajectoryPlannerDiagnosticsJson(msg.data);
+    if (!diagnostics.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Ignoring malformed trajectory diagnostics message: bytes=%zu",
+          msg.data.size());
+      return;
+    }
+
+    latest_trajectory_diagnostics_ = diagnostics;
+    if (!path_valid_ || !trajectoryDiagnosticsMatchesCurrentPath(*diagnostics)) {
+      return;
+    }
+
+    mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*diagnostics);
+    RCLCPP_INFO(get_logger(),
+                "Applied planner trajectory diagnostics: planner_path_id=%" PRIu64
+                " path_stamp_ns=%" PRIu64
+                " corridor_width[min=%.2f mean=%.2f max=%.2f] "
+                "racing[length=%.2f time=%.2f gain=%.2f max_offset=%.2f]",
+                diagnostics->planner_path_id, diagnostics->path_stamp_ns,
+                diagnostics->stats.corridor.min_width_m,
+                diagnostics->stats.corridor.mean_width_m,
+                diagnostics->stats.corridor.max_width_m,
+                diagnostics->stats.racing_line.final_length_m,
+                diagnostics->stats.racing_line.estimated_time_s,
+                diagnostics->stats.racing_line.time_gain_s,
+                diagnostics->stats.racing_line.max_abs_offset_m);
   }
 
   void openFlightBlackbox() {
@@ -2417,6 +2479,9 @@ private:
     flight_blackbox_stream_ << ",\"corridor_width_mean_m\":";
     writeJsonNumberOrNull(flight_blackbox_stream_,
                           last_trajectory_planner_stats_.corridor.mean_width_m);
+    flight_blackbox_stream_ << ",\"corridor_width_max_m\":";
+    writeJsonNumberOrNull(flight_blackbox_stream_,
+                          last_trajectory_planner_stats_.corridor.max_width_m);
     flight_blackbox_stream_
         << ",\"corridor_lateral_limited_samples\":"
         << last_trajectory_planner_stats_.corridor.lateral_limited_samples;
@@ -2739,6 +2804,7 @@ private:
   VelocityFollowerState velocity_follower_state_{};
   VelocitySetpointPlan last_velocity_plan_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
+  std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
@@ -2762,6 +2828,7 @@ private:
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
