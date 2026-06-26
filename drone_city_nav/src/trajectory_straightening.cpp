@@ -140,6 +140,148 @@ nearestCorridorSample(const std::span<const CorridorSample> corridor_samples,
   return true;
 }
 
+[[nodiscard]] double pointToSegmentDistanceM(const Point2 point,
+                                             const Point2 segment_start,
+                                             const Point2 segment_end) noexcept {
+  const Point2 segment = segment_end - segment_start;
+  const double length_sq = dot(segment, segment);
+  if (!(length_sq > kTinyDistanceM * kTinyDistanceM)) {
+    return distance(point, segment_start);
+  }
+  const double t =
+      std::clamp(dot(point - segment_start, segment) / length_sq, 0.0, 1.0);
+  const Point2 projection = segment_start + segment * t;
+  return distance(point, projection);
+}
+
+[[nodiscard]] double edgeMarginM(const CorridorSample& corridor,
+                                 const Point2 point) noexcept {
+  const double offset_m = dot(point - corridor.center, corridor.normal);
+  return std::min(corridor.left_bound_m - offset_m, corridor.right_bound_m + offset_m);
+}
+
+[[nodiscard]] double edgeMarginM(const TrajectoryPointSample& sample) noexcept {
+  return std::min(sample.left_bound_m - sample.racing_offset_m,
+                  sample.right_bound_m + sample.racing_offset_m);
+}
+
+[[nodiscard]] std::optional<double>
+rangeMinimumEdgeMarginM(const std::span<const TrajectoryPointSample> samples,
+                        const std::size_t start_index, const std::size_t end_index) {
+  std::optional<double> min_margin;
+  for (std::size_t i = start_index; i <= end_index; ++i) {
+    const double margin = edgeMarginM(samples[i]);
+    if (!std::isfinite(margin)) {
+      continue;
+    }
+    if (!min_margin.has_value() || margin < *min_margin) {
+      min_margin = margin;
+    }
+  }
+  return min_margin;
+}
+
+[[nodiscard]] std::optional<double>
+lineMinimumEdgeMarginM(const Point2 start, const Point2 end,
+                       const std::span<const CorridorSample> corridor,
+                       const double step_m) {
+  const double length = distance(start, end);
+  if (!(length > kTinyDistanceM) || !finite2D(start) || !finite2D(end)) {
+    return std::nullopt;
+  }
+
+  std::optional<double> min_margin;
+  const std::size_t steps =
+      std::max<std::size_t>(1U, static_cast<std::size_t>(std::ceil(length / step_m)));
+  for (std::size_t i = 0U; i <= steps; ++i) {
+    const double t = static_cast<double>(i) / static_cast<double>(steps);
+    const Point2 point = start + (end - start) * t;
+    const std::optional<CorridorSample> sample = nearestCorridorSample(corridor, point);
+    if (!sample.has_value()) {
+      return std::nullopt;
+    }
+    const double margin = edgeMarginM(*sample, point);
+    if (!std::isfinite(margin)) {
+      continue;
+    }
+    if (!min_margin.has_value() || margin < *min_margin) {
+      min_margin = margin;
+    }
+  }
+  return min_margin;
+}
+
+[[nodiscard]] bool
+rangeCurvatureIsSmallEnough(const std::span<const TrajectoryPointSample> samples,
+                            const std::size_t start_index, const std::size_t end_index,
+                            const TrajectoryStraighteningConfig& config,
+                            TrajectoryStraighteningStats& stats) {
+  const double max_abs_curvature =
+      sanitizedPositive(config.max_abs_curvature_1pm, 0.0025, 0.0, 1000.0);
+  if (!(max_abs_curvature > 0.0)) {
+    return true;
+  }
+
+  for (std::size_t i = start_index + 1U; i < end_index; ++i) {
+    const double curvature = samples[i].curvature_1pm;
+    if (std::isfinite(curvature) && std::abs(curvature) > max_abs_curvature) {
+      ++stats.rejected_curvature;
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool rangeChordDeviationIsSmallEnough(
+    const std::span<const TrajectoryPointSample> samples, const std::size_t start_index,
+    const std::size_t end_index, const TrajectoryStraighteningConfig& config,
+    TrajectoryStraighteningStats& stats) {
+  const double max_chord_deviation =
+      sanitizedPositive(config.max_chord_deviation_m, 1.0, 0.0, 10000.0);
+  if (!(max_chord_deviation > 0.0)) {
+    return true;
+  }
+
+  const Point2 start = samples[start_index].point;
+  const Point2 end = samples[end_index].point;
+  for (std::size_t i = start_index + 1U; i < end_index; ++i) {
+    if (pointToSegmentDistanceM(samples[i].point, start, end) > max_chord_deviation) {
+      ++stats.rejected_chord_deviation;
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool rangeEdgeMarginIsPreserved(
+    const std::span<const TrajectoryPointSample> samples, const std::size_t start_index,
+    const std::size_t end_index, const std::span<const CorridorSample> corridor_samples,
+    const TrajectoryStraighteningConfig& config, TrajectoryStraighteningStats& stats) {
+  const std::optional<double> source_margin =
+      rangeMinimumEdgeMarginM(samples, start_index, end_index);
+  if (!source_margin.has_value()) {
+    return true;
+  }
+
+  const double validation_step =
+      sanitizedPositive(config.validation_step_m, 2.0, 0.1, 1000.0);
+  const std::optional<double> line_margin =
+      lineMinimumEdgeMarginM(samples[start_index].point, samples[end_index].point,
+                             corridor_samples, validation_step);
+  if (!line_margin.has_value()) {
+    ++stats.rejected_edge_margin;
+    return false;
+  }
+
+  const double max_loss =
+      sanitizedPositive(config.max_edge_margin_loss_m, 0.25, 0.0, 1000.0);
+  if (*line_margin + max_loss < *source_margin) {
+    ++stats.rejected_edge_margin;
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] bool
 rangeShapeIsStraightEnough(const std::span<const TrajectoryPointSample> samples,
                            const std::size_t start_index, const std::size_t end_index,
@@ -161,7 +303,7 @@ rangeShapeIsStraightEnough(const std::span<const TrajectoryPointSample> samples,
   }
 
   const double max_length_ratio =
-      sanitizedPositive(config.max_path_length_ratio, 1.035, 1.0, 100.0);
+      sanitizedPositive(config.max_path_length_ratio, 1.01, 1.0, 100.0);
   if (subpath_length > chord_length * max_length_ratio) {
     ++stats.rejected_shape;
     return false;
@@ -169,8 +311,8 @@ rangeShapeIsStraightEnough(const std::span<const TrajectoryPointSample> samples,
 
   const Point2 chord_direction =
       normalized(samples[end_index].point - samples[start_index].point);
-  const double max_heading_error =
-      sanitizedPositive(config.max_heading_error_rad, 0.35, 0.0, std::numbers::pi);
+  const double max_heading_error = sanitizedPositive(
+      config.max_heading_error_rad, 0.08726646259971647, 0.0, std::numbers::pi);
   for (std::size_t i = start_index + 1U; i <= end_index; ++i) {
     const Point2 local_direction = normalized(samples[i].point - samples[i - 1U].point);
     if (headingErrorRad(chord_direction, local_direction) > max_heading_error) {
@@ -192,6 +334,13 @@ rangeShapeIsStraightEnough(const std::span<const TrajectoryPointSample> samples,
   if (!rangeShapeIsStraightEnough(samples, start_index, end_index, config, stats)) {
     return false;
   }
+  if (!rangeCurvatureIsSmallEnough(samples, start_index, end_index, config, stats)) {
+    return false;
+  }
+  if (!rangeChordDeviationIsSmallEnough(samples, start_index, end_index, config,
+                                        stats)) {
+    return false;
+  }
   const Point2 start = samples[start_index].point;
   const Point2 end = samples[end_index].point;
   if (!segmentIsTraversable(prohibited_grid, start, end)) {
@@ -205,6 +354,10 @@ rangeShapeIsStraightEnough(const std::span<const TrajectoryPointSample> samples,
   if (!lineInsideCorridor(start, end, corridor_samples, validation_step,
                           corridor_margin)) {
     ++stats.rejected_corridor;
+    return false;
+  }
+  if (!rangeEdgeMarginIsPreserved(samples, start_index, end_index, corridor_samples,
+                                  config, stats)) {
     return false;
   }
   return true;

@@ -208,6 +208,9 @@ public:
         "min_step=%.2fm weights(length=%.3f time=%.2f curvature=%.2f "
         "curvature_change=%.2f offset_change=%.2f offset_second=%.2f "
         "center=%.3f edge=%.2f edge_margin=%.2fm max_length_ratio=%.2f)] "
+        "straightening[min_segment=%.2fm validation_step=%.2fm "
+        "corridor_margin=%.2fm max_length_ratio=%.3f max_heading=%.1fdeg "
+        "max_chord=%.2fm max_curvature=%.4f edge_loss=%.2fm] "
         "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
         "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
         "outer_shift=[%.2f, %.2f] corridor_margin=%.2fm max_length_ratio=%.2f "
@@ -240,6 +243,15 @@ public:
         trajectory_planner_config_.racing_line.weight_edge_margin,
         trajectory_planner_config_.racing_line.desired_edge_margin_m,
         trajectory_planner_config_.racing_line.max_length_ratio,
+        trajectory_planner_config_.straightening.min_segment_length_m,
+        trajectory_planner_config_.straightening.validation_step_m,
+        trajectory_planner_config_.straightening.min_corridor_margin_m,
+        trajectory_planner_config_.straightening.max_path_length_ratio,
+        radiansToDegrees(
+            trajectory_planner_config_.straightening.max_heading_error_rad),
+        trajectory_planner_config_.straightening.max_chord_deviation_m,
+        trajectory_planner_config_.straightening.max_abs_curvature_1pm,
+        trajectory_planner_config_.straightening.max_edge_margin_loss_m,
         radiansToDegrees(
             trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
         trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
@@ -1050,7 +1062,8 @@ private:
         "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
         "speed_limit_max=%.2f curvature_limited=%zu] "
         "straightening[input=%zu output=%zu collapsed=%zu "
-        "rejected(short=%zu shape=%zu prohibited=%zu corridor=%zu) "
+        "rejected(short=%zu shape=%zu curvature=%zu chord=%zu prohibited=%zu "
+        "corridor=%zu edge=%zu) "
         "heading_before=%.1fdeg heading_after=%.1fdeg "
         "curvature_jump_before=%.3f curvature_jump_after=%.3f] "
         "turn_smoothing[detected=%zu attempted=%zu smoothed=%zu "
@@ -1097,8 +1110,11 @@ private:
         trajectory_result.stats.straightening.collapsed_segments,
         trajectory_result.stats.straightening.rejected_too_short,
         trajectory_result.stats.straightening.rejected_shape,
+        trajectory_result.stats.straightening.rejected_curvature,
+        trajectory_result.stats.straightening.rejected_chord_deviation,
         trajectory_result.stats.straightening.rejected_prohibited,
         trajectory_result.stats.straightening.rejected_corridor,
+        trajectory_result.stats.straightening.rejected_edge_margin,
         radiansToDegrees(
             trajectory_result.stats.straightening.max_heading_delta_before_rad),
         radiansToDegrees(

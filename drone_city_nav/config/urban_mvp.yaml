@@ -138,6 +138,14 @@ planner_node:
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
+    trajectory_straightening_min_segment_length_m: 20.0
+    trajectory_straightening_validation_step_m: 2.0
+    trajectory_straightening_min_corridor_margin_m: 0.5
+    trajectory_straightening_max_path_length_ratio: 1.01
+    trajectory_straightening_max_heading_error_deg: 5.0
+    trajectory_straightening_max_chord_deviation_m: 1.0
+    trajectory_straightening_max_curvature_1pm: 0.0025
+    trajectory_straightening_max_edge_margin_loss_m: 0.25
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0
     turn_smoothing_entry_distance_m: 45.0

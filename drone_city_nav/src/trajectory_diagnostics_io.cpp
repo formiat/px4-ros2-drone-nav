@@ -312,10 +312,16 @@ trajectoryStraighteningDiagnosticsJsonFields(const TrajectoryPlannerStats& stats
                  stats.straightening.rejected_too_short);
   appendJsonSize(stream, "trajectory_straightening_rejected_shape",
                  stats.straightening.rejected_shape);
+  appendJsonSize(stream, "trajectory_straightening_rejected_curvature",
+                 stats.straightening.rejected_curvature);
+  appendJsonSize(stream, "trajectory_straightening_rejected_chord_deviation",
+                 stats.straightening.rejected_chord_deviation);
   appendJsonSize(stream, "trajectory_straightening_rejected_prohibited",
                  stats.straightening.rejected_prohibited);
   appendJsonSize(stream, "trajectory_straightening_rejected_corridor",
                  stats.straightening.rejected_corridor);
+  appendJsonSize(stream, "trajectory_straightening_rejected_edge_margin",
+                 stats.straightening.rejected_edge_margin);
   appendJsonNumber(stream, "trajectory_straightening_heading_delta_before_rad",
                    stats.straightening.max_heading_delta_before_rad);
   appendJsonNumber(stream, "trajectory_straightening_heading_delta_after_rad",
@@ -607,10 +613,16 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 straightening.rejected_too_short);
   parseJsonSize(json, "trajectory_straightening_rejected_shape",
                 straightening.rejected_shape);
+  parseJsonSize(json, "trajectory_straightening_rejected_curvature",
+                straightening.rejected_curvature);
+  parseJsonSize(json, "trajectory_straightening_rejected_chord_deviation",
+                straightening.rejected_chord_deviation);
   parseJsonSize(json, "trajectory_straightening_rejected_prohibited",
                 straightening.rejected_prohibited);
   parseJsonSize(json, "trajectory_straightening_rejected_corridor",
                 straightening.rejected_corridor);
+  parseJsonSize(json, "trajectory_straightening_rejected_edge_margin",
+                straightening.rejected_edge_margin);
   parseJsonDouble(json, "trajectory_straightening_heading_delta_before_rad",
                   straightening.max_heading_delta_before_rad);
   parseJsonDouble(json, "trajectory_straightening_heading_delta_after_rad",

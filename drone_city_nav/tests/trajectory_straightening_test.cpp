@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <numbers>
 #include <span>
 #include <vector>
 
@@ -40,6 +41,9 @@ buildOpenCorridor(const std::vector<Point2>& route, const OccupancyGrid2D& grid)
   config.min_corridor_margin_m = 0.5;
   config.max_path_length_ratio = 1.04;
   config.max_heading_error_rad = 0.25;
+  config.max_chord_deviation_m = 2.0;
+  config.max_abs_curvature_1pm = 0.0;
+  config.max_edge_margin_loss_m = 1.0;
   return config;
 }
 
@@ -84,6 +88,62 @@ TEST(TrajectoryStraightening, DoesNotCollapseSharpCorner) {
   EXPECT_EQ(result.samples.size(), samples.size());
   EXPECT_EQ(result.stats.collapsed_segments, 0U);
   EXPECT_GT(result.stats.rejected_shape, 0U);
+}
+
+TEST(TrajectoryStraightening, DoesNotCollapseCurvedTrajectoryByDefault) {
+  const OccupancyGrid2D grid = openGrid();
+  const std::vector<Point2> curve{{0.0, 0.0},   {5.0, 0.8},   {10.0, 3.0},
+                                  {15.0, 6.7},  {20.0, 12.0}, {25.0, 18.7},
+                                  {30.0, 27.0}, {35.0, 36.8}, {40.0, 48.0}};
+  const std::vector<CorridorSample> corridor = buildOpenCorridor(curve, grid);
+  const std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::span<const Point2>{curve.data(), curve.size()});
+
+  TrajectoryStraighteningConfig config{};
+  config.min_segment_length_m = 5.0;
+  config.validation_step_m = 2.0;
+  config.min_corridor_margin_m = 0.5;
+  config.max_path_length_ratio = 2.0;
+  config.max_heading_error_rad = std::numbers::pi;
+  config.max_chord_deviation_m = 100.0;
+  config.max_abs_curvature_1pm = 0.0025;
+
+  const TrajectoryStraighteningResult result = straightenTrajectory(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.changed);
+  EXPECT_EQ(result.samples.size(), samples.size());
+  EXPECT_EQ(result.stats.collapsed_segments, 0U);
+  EXPECT_GT(result.stats.rejected_curvature, 0U);
+}
+
+TEST(TrajectoryStraightening, RejectsLineThatCutsTooFarInsideCurve) {
+  const OccupancyGrid2D grid = openGrid();
+  const std::vector<Point2> curve{{0.0, 0.0},   {8.0, 0.4},   {16.0, 1.6},
+                                  {24.0, 3.7},  {32.0, 6.5},  {40.0, 10.0},
+                                  {48.0, 14.2}, {56.0, 19.2}, {64.0, 25.0}};
+  const std::vector<CorridorSample> corridor = buildOpenCorridor(curve, grid);
+  const std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::span<const Point2>{curve.data(), curve.size()});
+
+  TrajectoryStraighteningConfig config{};
+  config.min_segment_length_m = 5.0;
+  config.validation_step_m = 2.0;
+  config.min_corridor_margin_m = 0.5;
+  config.max_path_length_ratio = 2.0;
+  config.max_heading_error_rad = std::numbers::pi;
+  config.max_chord_deviation_m = 1.0;
+  config.max_abs_curvature_1pm = 0.0;
+
+  const TrajectoryStraighteningResult result = straightenTrajectory(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_GT(result.samples.size(), 2U);
+  EXPECT_GT(result.stats.rejected_chord_deviation, 0U);
 }
 
 } // namespace drone_city_nav

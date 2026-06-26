@@ -62,8 +62,11 @@ void expectContainsAll(const std::string& text,
   stats.straightening.collapsed_segments = 5U;
   stats.straightening.rejected_too_short = 7U;
   stats.straightening.rejected_shape = 11U;
+  stats.straightening.rejected_curvature = 13U;
+  stats.straightening.rejected_chord_deviation = 17U;
   stats.straightening.rejected_prohibited = 1U;
   stats.straightening.rejected_corridor = 2U;
+  stats.straightening.rejected_edge_margin = 19U;
   stats.straightening.max_heading_delta_before_rad = 0.9;
   stats.straightening.max_heading_delta_after_rad = 0.35;
   stats.straightening.max_curvature_jump_before_1pm = 0.6;
@@ -183,6 +186,12 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_straightening_heading_delta_after_rad\":0.35"),
             std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_straightening_rejected_curvature\":13"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_straightening_rejected_chord_deviation\":17"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_straightening_rejected_edge_margin\":19"),
+            std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_heading_delta_after_rad\":0.4"),
             std::string::npos);
@@ -248,8 +257,11 @@ TEST(TrajectoryDiagnosticsIo,
                         "\"trajectory_straightening_collapsed_segments\"",
                         "\"trajectory_straightening_rejected_too_short\"",
                         "\"trajectory_straightening_rejected_shape\"",
+                        "\"trajectory_straightening_rejected_curvature\"",
+                        "\"trajectory_straightening_rejected_chord_deviation\"",
                         "\"trajectory_straightening_rejected_prohibited\"",
                         "\"trajectory_straightening_rejected_corridor\"",
+                        "\"trajectory_straightening_rejected_edge_margin\"",
                         "\"trajectory_straightening_heading_delta_before_rad\"",
                         "\"trajectory_straightening_heading_delta_after_rad\"",
                         "\"trajectory_straightening_curvature_jump_before_1pm\"",
@@ -338,6 +350,9 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.straightening.input_samples, 64U);
   EXPECT_EQ(parsed_value.stats.straightening.output_samples, 22U);
   EXPECT_EQ(parsed_value.stats.straightening.collapsed_segments, 5U);
+  EXPECT_EQ(parsed_value.stats.straightening.rejected_curvature, 13U);
+  EXPECT_EQ(parsed_value.stats.straightening.rejected_chord_deviation, 17U);
+  EXPECT_EQ(parsed_value.stats.straightening.rejected_edge_margin, 19U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_before_rad, 0.9);
   EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_after_rad, 0.35);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);

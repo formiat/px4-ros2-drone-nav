@@ -243,13 +243,25 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                  0.0, 1000.0);
   config.trajectory_planner.straightening.max_path_length_ratio =
       std::clamp(node.declare_parameter<double>(
-                     "trajectory_straightening_max_path_length_ratio", 1.035),
+                     "trajectory_straightening_max_path_length_ratio", 1.01),
                  1.0, 100.0);
   config.trajectory_planner.straightening.max_heading_error_rad =
       std::clamp(node.declare_parameter<double>(
-                     "trajectory_straightening_max_heading_error_deg", 20.0) *
+                     "trajectory_straightening_max_heading_error_deg", 5.0) *
                      std::numbers::pi / 180.0,
                  0.0, std::numbers::pi);
+  config.trajectory_planner.straightening.max_chord_deviation_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_max_chord_deviation_m", 1.0),
+                 0.0, 10000.0);
+  config.trajectory_planner.straightening.max_abs_curvature_1pm =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_max_curvature_1pm", 0.0025),
+                 0.0, 1000.0);
+  config.trajectory_planner.straightening.max_edge_margin_loss_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_straightening_max_edge_margin_loss_m", 0.25),
+                 0.0, 1000.0);
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,
