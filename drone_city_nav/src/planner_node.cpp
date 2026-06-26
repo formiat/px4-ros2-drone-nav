@@ -271,9 +271,10 @@ public:
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
     RCLCPP_INFO(get_logger(),
                 "Planner path policy: stable_path_reuse=%s "
-                "stable_goal_tolerance=%.2fm",
+                "stable_goal_tolerance=%.2fm stable_max_deviation=%.2fm",
                 stable_path_reuse_enabled_ ? "true" : "false",
-                stable_path_goal_tolerance_m_);
+                stable_path_goal_tolerance_m_,
+                config.planner_core.stable_path_max_deviation_m);
     RCLCPP_INFO(get_logger(),
                 "Planner path preference: astar_turn_weight=%.2f "
                 "evasive_maneuvering=%s evasive_straight_weight=%.2f "
@@ -1515,6 +1516,16 @@ private:
         decision.reason == StablePathDecisionReason::kProjectionUnavailable ||
         decision.reason == StablePathDecisionReason::kNoPreviousPath ||
         decision.reason == StablePathDecisionReason::kDisabled) {
+      return false;
+    }
+
+    if (decision.reason == StablePathDecisionReason::kDeviationExceeded) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "Current path deviation exceeded stable reuse limit; running A* from "
+          "current pose: reason=%s remaining_waypoints=%zu deviation=%.2fm",
+          stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
+          decision.deviation_m);
       return false;
     }
 

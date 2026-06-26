@@ -571,6 +571,7 @@ TEST(PlannerCore, StablePathKeepsClearPathDespiteLargeDeviation) {
   OccupancyGrid2D grid = makeGrid();
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_max_deviation_m = 5.0;
   PlannerCore core{config};
   const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{9.0, 1.0}};
 
@@ -579,7 +580,23 @@ TEST(PlannerCore, StablePathKeepsClearPathDespiteLargeDeviation) {
 
   EXPECT_TRUE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
-  EXPECT_GT(decision.deviation_m, 0.5);
+  EXPECT_NEAR(decision.deviation_m, 3.0, 1.0e-9);
+}
+
+TEST(PlannerCore, StablePathRejectsExcessiveDeviation) {
+  OccupancyGrid2D grid = makeGrid();
+  PlannerCoreConfig config{};
+  config.stable_path_goal_tolerance_m = 1.0;
+  config.stable_path_max_deviation_m = 5.0;
+  PlannerCore core{config};
+  const std::vector<Point2> path{Point2{1.0, 1.0}, Point2{9.0, 1.0}};
+
+  const StablePathDecision decision =
+      core.evaluateStablePath(grid, path, Point2{3.0, 7.0}, Point2{9.0, 1.0});
+
+  EXPECT_FALSE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kDeviationExceeded);
+  EXPECT_GT(decision.deviation_m, config.stable_path_max_deviation_m);
 }
 
 } // namespace drone_city_nav

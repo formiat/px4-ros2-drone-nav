@@ -32,6 +32,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<bool>("stable_path_reuse_enabled", true);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
+  config.planner_core.stable_path_max_deviation_m = std::clamp(
+      node.declare_parameter<double>("stable_path_max_deviation_m", 5.0), 0.0, 1000.0);
   config.memory_grid.occupied_value = static_cast<int>(std::clamp<std::int64_t>(
       node.declare_parameter<std::int64_t>("memory_occupied_value", 100), 1, 100));
   config.memory_grid.free_value = static_cast<int>(std::clamp<std::int64_t>(

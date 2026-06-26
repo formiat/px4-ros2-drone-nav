@@ -37,6 +37,7 @@ struct PlannerCoreConfig {
   AStarConfig astar{};
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
+  double stable_path_max_deviation_m{5.0};
   double start_prohibited_escape_search_radius_m{10.0};
 };
 
@@ -69,6 +70,7 @@ enum class StablePathDecisionReason {
   kNoPreviousPath,
   kGoalMismatch,
   kProjectionUnavailable,
+  kDeviationExceeded,
   kClear,
   kProhibitedConfirmed,
 };
