@@ -81,7 +81,13 @@ ament_target_dependencies(
   std_msgs)
 enable_project_warnings(drone_city_nav_ros_adapters)
 
-add_executable(planner_node src/planner_node.cpp)
+add_executable(
+  planner_node
+  src/planner_node.cpp
+  src/planner_node_inputs.cpp
+  src/planner_node_lifecycle.cpp
+  src/planner_node_publish.cpp
+  src/planner_node_runtime.cpp)
 target_compile_features(planner_node PRIVATE cxx_std_20)
 target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
@@ -106,8 +112,15 @@ ament_target_dependencies(
   sensor_msgs)
 enable_project_warnings(obstacle_memory_node)
 
-add_executable(px4_offboard_node src/px4_offboard_node.cpp
-                                 src/trajectory_debug_markers.cpp)
+add_executable(
+  px4_offboard_node
+  src/px4_offboard_node.cpp
+  src/px4_offboard_node_control.cpp
+  src/px4_offboard_node_inputs.cpp
+  src/px4_offboard_node_lifecycle.cpp
+  src/px4_offboard_node_telemetry.cpp
+  src/px4_offboard_node_trajectory.cpp
+  src/trajectory_debug_markers.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
@@ -130,7 +143,14 @@ ament_target_dependencies(
   std_msgs)
 enable_project_warnings(mission_monitor_node)
 
-add_executable(lidar_debug_node src/lidar_debug_node.cpp src/lidar_radar_markers.cpp)
+add_executable(
+  lidar_debug_node
+  src/lidar_debug_node.cpp
+  src/lidar_debug_node_callbacks.cpp
+  src/lidar_debug_node_lifecycle.cpp
+  src/lidar_debug_node_points.cpp
+  src/lidar_debug_node_snapshot.cpp
+  src/lidar_radar_markers.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
 target_link_libraries(lidar_debug_node drone_city_nav_core)
 ament_target_dependencies(

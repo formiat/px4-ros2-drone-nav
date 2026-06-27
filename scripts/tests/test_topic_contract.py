@@ -64,9 +64,9 @@ class TopicContractTest(unittest.TestCase):
     def test_node_sources_use_prohibited_grid_parameter_name(self) -> None:
         checked_paths = [
             "drone_city_nav/src/planner_node_config.cpp",
-            "drone_city_nav/src/planner_node.cpp",
-            "drone_city_nav/src/px4_offboard_node.cpp",
-            "drone_city_nav/src/lidar_debug_node.cpp",
+            "drone_city_nav/src/planner_node_lifecycle.cpp",
+            "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
+            "drone_city_nav/src/lidar_debug_node_lifecycle.cpp",
         ]
 
         for relative_path in checked_paths:

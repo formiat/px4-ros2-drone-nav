@@ -8,19 +8,38 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-OFFBOARD_NODE = REPO_ROOT / "drone_city_nav/src/px4_offboard_node.cpp"
-PLANNER_NODE = REPO_ROOT / "drone_city_nav/src/planner_node.cpp"
+OFFBOARD_SOURCES = [
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node.hpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_control.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_inputs.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_telemetry.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_trajectory.cpp",
+]
+PLANNER_SOURCES = [
+    REPO_ROOT / "drone_city_nav/src/planner_node.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_node.hpp",
+    REPO_ROOT / "drone_city_nav/src/planner_node_inputs.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_node_lifecycle.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_node_publish.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_node_runtime.cpp",
+]
 TRAJECTORY_PLANNER = REPO_ROOT / "drone_city_nav/src/trajectory_planner.cpp"
 TRAJECTORY_DIAGNOSTICS_IO = (
     REPO_ROOT / "drone_city_nav/src/trajectory_diagnostics_io.cpp"
 )
 
 
+def read_all(paths: list[Path]) -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
 class OffboardTelemetryContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.offboard_text = OFFBOARD_NODE.read_text(encoding="utf-8")
-        cls.planner_text = PLANNER_NODE.read_text(encoding="utf-8")
+        cls.offboard_text = read_all(OFFBOARD_SOURCES)
+        cls.planner_text = read_all(PLANNER_SOURCES)
         cls.trajectory_planner_text = TRAJECTORY_PLANNER.read_text(encoding="utf-8")
         cls.trajectory_diagnostics_io_text = TRAJECTORY_DIAGNOSTICS_IO.read_text(
             encoding="utf-8"
