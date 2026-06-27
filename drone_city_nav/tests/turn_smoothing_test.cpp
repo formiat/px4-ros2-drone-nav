@@ -126,4 +126,28 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
             before.max_heading_delta_rad);
 }
 
+TEST(TurnSmoothing, TriesLongerFallbackWindowsAfterShorterOnesFail) {
+  OccupancyGrid2D grid = openGrid();
+  const std::vector<CorridorSample> corridor = wideCornerCorridor(grid);
+  const std::vector<TrajectoryPointSample> samples = samplesFromCorridor(corridor);
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      grid.setOccupied(GridIndex{x, y});
+    }
+  }
+  TurnSmoothingConfig config = smoothingConfig();
+  config.entry_distance_m = 45.0;
+  config.exit_distance_m = 45.0;
+  config.max_passes = 1U;
+
+  const TurnSmoothingResult result = smoothTrajectoryTurns(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config);
+
+  EXPECT_FALSE(result.changed);
+  EXPECT_EQ(result.stats.attempted_corners, 1U);
+  EXPECT_EQ(result.stats.candidate_attempts, 48U);
+  EXPECT_EQ(result.stats.rejected_prohibited, 1U);
+}
+
 } // namespace drone_city_nav
