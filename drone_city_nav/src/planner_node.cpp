@@ -1062,11 +1062,13 @@ private:
         "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
         "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
         "speed_limit_max=%.2f curvature_limited=%zu] "
-        "turn_smoothing[detected=%zu attempted=%zu smoothed=%zu "
+        "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
+        "smoothed=%zu "
         "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
         "heading_before=%.1fdeg heading_after=%.1fdeg "
         "curvature_jump_before=%.3f curvature_jump_after=%.3f "
-        "min_inner_margin=%.2f max_outer_shift=%.2f] "
+        "min_inner_margin=%.2f max_outer_shift=%.2f "
+        "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f)] "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
         source_label, route_points.size(), trajectory_points.size(), duration_ms,
         static_cast<int>(
@@ -1103,6 +1105,7 @@ private:
         trajectory_result.stats.racing_line.curvature_limited_samples,
         trajectory_result.stats.turn_smoothing.detected_corners,
         trajectory_result.stats.turn_smoothing.attempted_corners,
+        trajectory_result.stats.turn_smoothing.candidate_attempts,
         trajectory_result.stats.turn_smoothing.smoothed_corners,
         trajectory_result.stats.turn_smoothing.rejected_prohibited,
         trajectory_result.stats.turn_smoothing.rejected_corridor,
@@ -1116,6 +1119,9 @@ private:
         trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
         trajectory_result.stats.turn_smoothing.min_inner_margin_m,
         trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
+        trajectory_result.stats.turn_smoothing.accepted_entry_distance_m,
+        trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
+        trajectory_result.stats.turn_smoothing.accepted_shift_scale,
         trajectory_result.stats.speed_profile_min_mps,
         trajectory_result.stats.speed_profile_mean_mps,
         trajectory_result.stats.speed_profile_max_mps,

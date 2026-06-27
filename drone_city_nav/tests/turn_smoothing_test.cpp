@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <span>
 #include <vector>
 
@@ -85,7 +86,11 @@ TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.changed);
   EXPECT_GT(result.stats.attempted_corners, 0U);
+  EXPECT_GT(result.stats.candidate_attempts, 0U);
   EXPECT_GT(result.stats.smoothed_corners, 0U);
+  EXPECT_TRUE(std::isfinite(result.stats.accepted_entry_distance_m));
+  EXPECT_TRUE(std::isfinite(result.stats.accepted_exit_distance_m));
+  EXPECT_TRUE(std::isfinite(result.stats.accepted_shift_scale));
   EXPECT_GT(result.samples.size(), samples.size());
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);
@@ -111,7 +116,9 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.changed);
+  EXPECT_GT(result.stats.candidate_attempts, 0U);
   EXPECT_GT(result.stats.smoothed_corners, 0U);
+  EXPECT_TRUE(std::isfinite(result.stats.accepted_entry_distance_m));
   EXPECT_EQ(result.stats.rejected_prohibited, 0U);
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);

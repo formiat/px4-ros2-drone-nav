@@ -32,6 +32,7 @@ struct TurnSmoothingStats {
   std::size_t output_samples{0U};
   std::size_t detected_corners{0U};
   std::size_t attempted_corners{0U};
+  std::size_t candidate_attempts{0U};
   std::size_t smoothed_corners{0U};
   std::size_t rejected_prohibited{0U};
   std::size_t rejected_corridor{0U};
@@ -43,6 +44,9 @@ struct TurnSmoothingStats {
   double max_curvature_jump_after_1pm{0.0};
   double min_inner_margin_m{std::numeric_limits<double>::quiet_NaN()};
   double max_applied_outer_shift_m{0.0};
+  double accepted_entry_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_shift_scale{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct TurnSmoothingResult {

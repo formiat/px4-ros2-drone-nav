@@ -7,6 +7,7 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -73,6 +74,24 @@ constexpr double kTinyDistanceM = 1.0e-6;
     return fallback;
   }
   return std::clamp(value, min_value, max_value);
+}
+
+[[nodiscard]] std::vector<double>
+distanceFallbackCandidates(const double max_distance_m) {
+  std::vector<double> candidates;
+  if (!(max_distance_m > kTinyDistanceM)) {
+    return candidates;
+  }
+  candidates.push_back(max_distance_m);
+  constexpr double kFallbackStepM = 5.0;
+  constexpr double kMinFallbackDistanceM = 5.0;
+  double candidate =
+      std::floor((max_distance_m - kTinyDistanceM) / kFallbackStepM) * kFallbackStepM;
+  while (candidate >= kMinFallbackDistanceM - kTinyDistanceM) {
+    candidates.push_back(candidate);
+    candidate -= kFallbackStepM;
+  }
+  return candidates;
 }
 
 [[nodiscard]] double discreteCurvature(const Point2 previous, const Point2 current,
@@ -282,6 +301,9 @@ struct SmoothingAttempt {
   std::vector<TrajectoryPointSample> samples;
   SmoothingRejectReason reject_reason{SmoothingRejectReason::kNone};
   double applied_shift_m{0.0};
+  double entry_distance_m{0.0};
+  double exit_distance_m{0.0};
+  double shift_scale{0.0};
   bool accepted{false};
 };
 
@@ -504,6 +526,9 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
                 const TurnSmoothingConfig& config, const double entry_distance_m,
                 const double exit_distance_m, const double outward_shift_scale) {
   SmoothingAttempt attempt{};
+  attempt.entry_distance_m = entry_distance_m;
+  attempt.exit_distance_m = exit_distance_m;
+  attempt.shift_scale = outward_shift_scale;
   const std::size_t entry_index =
       findEntryIndex(samples, corner.index, entry_distance_m);
   const std::size_t exit_index = findExitIndex(samples, corner.index, exit_distance_m);
@@ -639,15 +664,18 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         sanitizedPositive(config.entry_distance_m, 45.0, 0.1, 5000.0);
     const double exit_distance =
         sanitizedPositive(config.exit_distance_m, 45.0, 0.1, 5000.0);
-    constexpr std::array<double, 4U> kDistanceScales = {1.0, 30.0 / 45.0, 20.0 / 45.0,
-                                                        12.0 / 45.0};
+    const std::vector<double> entry_candidates =
+        distanceFallbackCandidates(entry_distance);
     constexpr std::array<double, 4U> kShiftScales = {1.0, 0.5, 0.25, 0.0};
     bool rejected_prohibited = false;
     bool rejected_corridor = false;
     bool rejected_length = false;
     std::optional<SmoothingAttempt> accepted_attempt;
-    for (const double distance_scale : kDistanceScales) {
+    for (const double entry_candidate : entry_candidates) {
+      const double distance_scale =
+          entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
       for (const double shift_scale : kShiftScales) {
+        ++result.stats.candidate_attempts;
         SmoothingAttempt attempt =
             trySmoothCorner(result.samples, corridor_samples, prohibited_grid, *corner,
                             config, entry_distance * distance_scale,
@@ -680,6 +708,9 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
     ++result.stats.smoothed_corners;
     result.stats.max_applied_outer_shift_m = std::max(
         result.stats.max_applied_outer_shift_m, accepted_attempt->applied_shift_m);
+    result.stats.accepted_entry_distance_m = accepted_attempt->entry_distance_m;
+    result.stats.accepted_exit_distance_m = accepted_attempt->exit_distance_m;
+    result.stats.accepted_shift_scale = accepted_attempt->shift_scale;
   }
 
   populateSampleGeometry(result.samples);

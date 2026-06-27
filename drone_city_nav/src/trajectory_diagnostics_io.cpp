@@ -314,6 +314,8 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.detected_corners);
   appendJsonSize(stream, "turn_smoothing_attempted_corners",
                  stats.turn_smoothing.attempted_corners);
+  appendJsonSize(stream, "turn_smoothing_candidate_attempts",
+                 stats.turn_smoothing.candidate_attempts);
   appendJsonSize(stream, "turn_smoothing_smoothed_corners",
                  stats.turn_smoothing.smoothed_corners);
   appendJsonSize(stream, "turn_smoothing_rejected_prohibited",
@@ -336,6 +338,12 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                    stats.turn_smoothing.min_inner_margin_m);
   appendJsonNumber(stream, "turn_smoothing_max_outer_shift_m",
                    stats.turn_smoothing.max_applied_outer_shift_m);
+  appendJsonNumber(stream, "turn_smoothing_accepted_entry_distance_m",
+                   stats.turn_smoothing.accepted_entry_distance_m);
+  appendJsonNumber(stream, "turn_smoothing_accepted_exit_distance_m",
+                   stats.turn_smoothing.accepted_exit_distance_m);
+  appendJsonNumber(stream, "turn_smoothing_accepted_shift_scale",
+                   stats.turn_smoothing.accepted_shift_scale);
   return stream.str();
 }
 
@@ -578,6 +586,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 turn_smoothing.detected_corners);
   parseJsonSize(json, "turn_smoothing_attempted_corners",
                 turn_smoothing.attempted_corners);
+  parseJsonSize(json, "turn_smoothing_candidate_attempts",
+                turn_smoothing.candidate_attempts);
   parseJsonSize(json, "turn_smoothing_smoothed_corners",
                 turn_smoothing.smoothed_corners);
   parseJsonSize(json, "turn_smoothing_rejected_prohibited",
@@ -599,6 +609,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   turn_smoothing.min_inner_margin_m);
   parseJsonDouble(json, "turn_smoothing_max_outer_shift_m",
                   turn_smoothing.max_applied_outer_shift_m);
+  parseJsonDouble(json, "turn_smoothing_accepted_entry_distance_m",
+                  turn_smoothing.accepted_entry_distance_m);
+  parseJsonDouble(json, "turn_smoothing_accepted_exit_distance_m",
+                  turn_smoothing.accepted_exit_distance_m);
+  parseJsonDouble(json, "turn_smoothing_accepted_shift_scale",
+                  turn_smoothing.accepted_shift_scale);
 
   return envelope;
 }
