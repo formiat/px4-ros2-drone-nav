@@ -216,11 +216,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
         self.assertIn("corridor_width_max_m", self.offboard_text)
+        self.assertIn("corridor_lateral_limited_samples", self.offboard_text)
         self.assertIn("corridor_center_recovered_samples", self.offboard_text)
         self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
-        self.assertIn("corridor_centered_samples", self.offboard_text)
         self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
-        self.assertIn("corridor_centering_shift_max_m", self.offboard_text)
+        self.assertIn("corridor_lateral_reduction_max_m", self.offboard_text)
         self.assertIn("racing_line_cost_final", self.offboard_text)
         self.assertIn("turnSmoothingDiagnosticsJsonFields", self.offboard_text)
         self.assertIn(
@@ -298,7 +298,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("turn_preview_distance_m: 90.0", text)
                 self.assertIn("speed_profile_sample_step_m: 0.5", text)
                 self.assertIn("cross_track_derivative_gain: 0.8", text)
-                self.assertIn("tracking_prediction_horizon_s: 0.45", text)
+                self.assertIn("tracking_prediction_horizon_s: 0.35", text)
                 self.assertIn("max_lateral_control_angle_deg: 55.0", text)
                 self.assertIn("max_lateral_control_rate_mps2: 8.0", text)
                 self.assertNotIn("max_cross_track_correction_angle_deg:", text)
@@ -306,8 +306,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertNotIn("cross_track_speed_guard_start_m:", text)
                 self.assertNotIn("cross_track_speed_guard_full_m:", text)
                 self.assertNotIn("cross_track_speed_guard_min_factor:", text)
-                self.assertIn("curvature_feedforward_time_s: 0.5", text)
-                self.assertIn("max_curvature_feedforward_angle_deg: 40.0", text)
+                self.assertIn("curvature_feedforward_time_s: 0.35", text)
+                self.assertIn("max_curvature_feedforward_angle_deg: 35.0", text)
                 self.assertNotIn("curvature_velocity_anticipation_time_s:", text)
                 self.assertNotIn(
                     "max_curvature_velocity_anticipation_angle_deg:", text
