@@ -227,6 +227,39 @@ TEST(AStarPlanner, FindsPathAcrossGeneratedCityMap) {
   EXPECT_EQ(result.path.back(), goal_cell);
 }
 
+TEST(AStarPlanner, HeuristicWeightKeepsGeneratedCityRouteReachable) {
+  const std::filesystem::path map_path =
+      std::filesystem::path{DRONE_CITY_NAV_SOURCE_DIR} / "worlds" /
+      "generated_city.map2d";
+  const StaticCityMap static_map = loadStaticCityMap(map_path);
+  OccupancyGrid2D grid = rasterizeStaticCityMap(static_map, 0.0);
+  grid.rebuildInflation(5.0);
+
+  const auto start = grid.worldToCell(Point2{54.0, 54.0});
+  const auto goal = grid.worldToCell(Point2{216.0, 378.0});
+  if (!start.has_value() || !goal.has_value()) {
+    FAIL() << "Generated city mission endpoints must be inside the static map";
+  }
+  const GridIndex start_cell = start.value();
+  const GridIndex goal_cell = goal.value();
+
+  AStarConfig standard_config{};
+  standard_config.turn_cost_weight = 50.0;
+  const AStarResult standard_result =
+      AStarPlanner{}.plan(grid, start_cell, goal_cell, standard_config);
+
+  AStarConfig weighted_config = standard_config;
+  weighted_config.heuristic_weight = 1.2;
+  const AStarResult weighted_result =
+      AStarPlanner{}.plan(grid, start_cell, goal_cell, weighted_config);
+
+  ASSERT_TRUE(standard_result.success);
+  ASSERT_TRUE(weighted_result.success);
+  EXPECT_EQ(weighted_result.path.front(), start_cell);
+  EXPECT_EQ(weighted_result.path.back(), goal_cell);
+  EXPECT_LE(weighted_result.expanded_cells, standard_result.expanded_cells);
+}
+
 TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 12, 8}};
   const std::vector<GridIndex> occupied_cells{

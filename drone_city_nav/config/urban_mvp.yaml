@@ -96,6 +96,7 @@ planner_node:
     lidar_z_offset_m: 0.315
     min_projected_lidar_altitude_m: 1.0
     max_projected_lidar_altitude_m: 40.0
+    astar_heuristic_weight: 1.2
     astar_turn_cost_weight: 50.0
     astar_evasive_maneuvering_enabled: false
     astar_evasive_maneuvering_straight_cost_weight: 50.0

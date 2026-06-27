@@ -62,6 +62,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);
   EXPECT_FALSE(config.planner_core.astar.initial_heading_bias_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 50.0);
@@ -87,6 +88,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"planning_grid_resolution_m", -0.5},
        rclcpp::Parameter{"planning_grid_width_m", -10.0},
        rclcpp::Parameter{"planning_grid_height_m", 0.0},
+       rclcpp::Parameter{"astar_heuristic_weight", 5000.0},
        rclcpp::Parameter{"astar_turn_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
@@ -111,6 +113,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.fallback_bounds.resolution_m, 0.01);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.width_cells, 1);
   EXPECT_EQ(config.planning_grid_builder.fallback_bounds.height_cells, 1);
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 10.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.evasive_maneuvering_straight_cost_weight,
                    1000.0);
@@ -131,7 +134,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
 TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   const auto node =
       makeNode("planner_node_config_nested",
-               {rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
+               {rclcpp::Parameter{"astar_heuristic_weight", 1.2},
+                rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
                 rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
                 rclcpp::Parameter{"astar_initial_heading_bias_enabled", true},
                 rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
@@ -152,6 +156,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
+  EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.2);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.turn_cost_weight, 2.0);
   EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
   EXPECT_TRUE(config.planner_core.astar.initial_heading_bias_enabled);

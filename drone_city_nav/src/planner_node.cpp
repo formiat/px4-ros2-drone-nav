@@ -285,11 +285,12 @@ public:
                 stable_path_reuse_enabled_ ? "true" : "false",
                 stable_path_goal_tolerance_m_);
     RCLCPP_INFO(get_logger(),
-                "Planner path preference: astar_turn_weight=%.2f "
+                "Planner path preference: astar_heuristic_weight=%.2f "
+                "astar_turn_weight=%.2f "
                 "evasive_maneuvering=%s evasive_straight_weight=%.2f "
                 "initial_heading_bias=%s initial_heading_min_speed=%.2fm/s "
                 "initial_heading_weight=%.2f",
-                astar_config_.turn_cost_weight,
+                astar_config_.heuristic_weight, astar_config_.turn_cost_weight,
                 astar_config_.evasive_maneuvering_enabled ? "true" : "false",
                 astar_config_.evasive_maneuvering_straight_cost_weight,
                 astar_config_.initial_heading_bias_enabled ? "true" : "false",
@@ -683,8 +684,8 @@ private:
         "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
         "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
         "overlay_preserved=%zu outside=%zu] "
-        "source=combined astar_status=%s expanded=%zu cost=%.2f raw_path=%zu "
-        "smoothed_path=%zu "
+        "source=combined astar_status=%s heuristic_weight=%.2f expanded=%zu "
+        "cost=%.2f raw_path=%zu smoothed_path=%zu "
         "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
         "weight=%.2f velocity=(%.2f, %.2f)] "
         "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
@@ -728,7 +729,8 @@ private:
         planning_result->current_lidar.overlay_occupied_cells_applied,
         planning_result->current_lidar.overlay_occupied_cells_preserved,
         planning_result->current_lidar.outside_hits,
-        astarStatusName(path_result->astar.status), path_result->astar.expanded_cells,
+        astarStatusName(path_result->astar.status),
+        planning_astar_config.heuristic_weight, path_result->astar.expanded_cells,
         path_result->astar.total_cost, path_result->raw_path_metrics.points,
         path_result->smoothed_path_metrics.points,
         planning_astar_config.initial_heading_bias_enabled ? "true" : "false",

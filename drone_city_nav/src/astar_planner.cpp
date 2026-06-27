@@ -53,6 +53,15 @@ struct CompareOpenNode {
   return std::hypot(dx, dy) * resolution_m;
 }
 
+[[nodiscard]] double weightedHeuristic(const GridIndex from, const GridIndex to,
+                                       const double resolution_m,
+                                       const AStarConfig& config) noexcept {
+  const double weight = std::isfinite(config.heuristic_weight)
+                            ? std::max(1.0, config.heuristic_weight)
+                            : 1.0;
+  return weight * heuristic(from, to, resolution_m);
+}
+
 [[nodiscard]] double stepDistanceM(const GridIndex offset,
                                    const double resolution_m) noexcept {
   const double cell_distance =
@@ -210,7 +219,7 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
   const std::size_t start_index = stateIndex(grid, start, kStartDirectionState);
   g_scores[start_index] = 0.0;
   open.push(OpenNode{start, kStartDirectionState,
-                     heuristic(start, goal, grid.resolution()), 0.0});
+                     weightedHeuristic(start, goal, grid.resolution(), config), 0.0});
 
   while (!open.empty()) {
     const OpenNode current = open.top();
@@ -260,7 +269,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
 
       parents[next_index] = current_index;
       g_scores[next_index] = tentative_g;
-      const double f_score = tentative_g + heuristic(next, goal, grid.resolution());
+      const double f_score =
+          tentative_g + weightedHeuristic(next, goal, grid.resolution(), config);
       open.push(OpenNode{next, next_direction_state, f_score, tentative_g});
     }
   }
