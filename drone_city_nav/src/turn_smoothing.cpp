@@ -1,7 +1,9 @@
 #include "drone_city_nav/turn_smoothing.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <optional>
@@ -268,6 +270,21 @@ struct CornerCandidate {
   double turn_sign{1.0};
 };
 
+enum class SmoothingRejectReason : std::uint8_t {
+  kNone,
+  kProhibited,
+  kCorridor,
+  kLength,
+  kNotImproved,
+};
+
+struct SmoothingAttempt {
+  std::vector<TrajectoryPointSample> samples;
+  SmoothingRejectReason reject_reason{SmoothingRejectReason::kNone};
+  double applied_shift_m{0.0};
+  bool accepted{false};
+};
+
 [[nodiscard]] CornerCandidate
 cornerCandidateAt(const std::span<const TrajectoryPointSample> samples,
                   const std::size_t index, const TurnSmoothingConfig& config) {
@@ -385,7 +402,8 @@ buildBezierSamples(const std::span<const TrajectoryPointSample> samples,
                    const std::span<const CorridorSample> corridor_samples,
                    const std::size_t entry_index, const std::size_t corner_index,
                    const std::size_t exit_index, const CornerCandidate& corner,
-                   const TurnSmoothingConfig& config, double& applied_shift_m) {
+                   const TurnSmoothingConfig& config, const double outward_shift_scale,
+                   double& applied_shift_m) {
   const Point2 p0 = samples[entry_index].point;
   const Point2 p3 = samples[exit_index].point;
   const Point2 incoming =
@@ -398,9 +416,11 @@ buildBezierSamples(const std::span<const TrajectoryPointSample> samples,
 
   const Point2 entry_outward = leftNormal(incoming) * -corner.turn_sign;
   const Point2 exit_outward = leftNormal(outgoing) * -corner.turn_sign;
+  const double shift_scale = std::clamp(outward_shift_scale, 0.0, 1.0);
   const double entry_shift =
-      outwardShiftFor(samples[entry_index], entry_outward, config);
-  const double exit_shift = outwardShiftFor(samples[exit_index], exit_outward, config);
+      outwardShiftFor(samples[entry_index], entry_outward, config) * shift_scale;
+  const double exit_shift =
+      outwardShiftFor(samples[exit_index], exit_outward, config) * shift_scale;
   applied_shift_m = std::max(entry_shift, exit_shift);
 
   const double local_length = pathLength(samples, entry_index, exit_index);
@@ -477,6 +497,102 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
          after.max_curvature_jump_1pm + 1.0e-9 < before.max_curvature_jump_1pm;
 }
 
+[[nodiscard]] SmoothingAttempt
+trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
+                const std::span<const CorridorSample> corridor_samples,
+                const OccupancyGrid2D& prohibited_grid, const CornerCandidate& corner,
+                const TurnSmoothingConfig& config, const double entry_distance_m,
+                const double exit_distance_m, const double outward_shift_scale) {
+  SmoothingAttempt attempt{};
+  const std::size_t entry_index =
+      findEntryIndex(samples, corner.index, entry_distance_m);
+  const std::size_t exit_index = findExitIndex(samples, corner.index, exit_distance_m);
+  if (entry_index >= corner.index || exit_index <= corner.index) {
+    attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    return attempt;
+  }
+
+  std::vector<TrajectoryPointSample> replacement = buildBezierSamples(
+      samples, corridor_samples, entry_index, corner.index, exit_index, corner, config,
+      outward_shift_scale, attempt.applied_shift_m);
+  if (replacement.size() < 3U) {
+    attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    return attempt;
+  }
+
+  std::vector<TrajectoryPointSample> candidate =
+      replaceRange(samples, entry_index, exit_index, replacement);
+  if (!pathIsTraversable(prohibited_grid, candidate)) {
+    attempt.reject_reason = SmoothingRejectReason::kProhibited;
+    return attempt;
+  }
+  const double corridor_margin =
+      sanitizedPositive(config.min_corridor_margin_m, 0.5, 0.0, 1000.0);
+  if (!pathInsideCorridor(candidate, corridor_samples, corridor_margin)) {
+    attempt.reject_reason = SmoothingRejectReason::kCorridor;
+    return attempt;
+  }
+
+  const double previous_length = pathLength(samples);
+  const double candidate_length = pathLength(candidate);
+  const double max_length_ratio =
+      sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
+  if (previous_length > kTinyDistanceM &&
+      candidate_length > previous_length * max_length_ratio) {
+    attempt.reject_reason = SmoothingRejectReason::kLength;
+    return attempt;
+  }
+
+  const TrajectoryShapeDiagnostics before_shape =
+      computeTrajectoryShapeDiagnostics(samples);
+  const TrajectoryShapeDiagnostics after_shape =
+      computeTrajectoryShapeDiagnostics(candidate);
+  if (!improvedShape(before_shape, after_shape, config)) {
+    attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    return attempt;
+  }
+
+  attempt.samples = std::move(candidate);
+  attempt.reject_reason = SmoothingRejectReason::kNone;
+  attempt.accepted = true;
+  return attempt;
+}
+
+[[nodiscard]] SmoothingRejectReason
+dominantRejectReason(const bool rejected_prohibited, const bool rejected_corridor,
+                     const bool rejected_length) noexcept {
+  if (rejected_prohibited) {
+    return SmoothingRejectReason::kProhibited;
+  }
+  if (rejected_corridor) {
+    return SmoothingRejectReason::kCorridor;
+  }
+  if (rejected_length) {
+    return SmoothingRejectReason::kLength;
+  }
+  return SmoothingRejectReason::kNotImproved;
+}
+
+void incrementRejectStat(TurnSmoothingStats& stats,
+                         const SmoothingRejectReason reason) noexcept {
+  switch (reason) {
+    case SmoothingRejectReason::kProhibited:
+      ++stats.rejected_prohibited;
+      break;
+    case SmoothingRejectReason::kCorridor:
+      ++stats.rejected_corridor;
+      break;
+    case SmoothingRejectReason::kLength:
+      ++stats.rejected_length;
+      break;
+    case SmoothingRejectReason::kNotImproved:
+      ++stats.rejected_not_improved;
+      break;
+    case SmoothingRejectReason::kNone:
+      break;
+  }
+}
+
 } // namespace
 
 TurnSmoothingResult
@@ -523,61 +639,47 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         sanitizedPositive(config.entry_distance_m, 45.0, 0.1, 5000.0);
     const double exit_distance =
         sanitizedPositive(config.exit_distance_m, 45.0, 0.1, 5000.0);
-    const std::size_t entry_index =
-        findEntryIndex(result.samples, corner->index, entry_distance);
-    const std::size_t exit_index =
-        findExitIndex(result.samples, corner->index, exit_distance);
-    if (entry_index >= corner->index || exit_index <= corner->index) {
-      ++result.stats.rejected_not_improved;
+    constexpr std::array<double, 4U> kDistanceScales = {1.0, 30.0 / 45.0, 20.0 / 45.0,
+                                                        12.0 / 45.0};
+    constexpr std::array<double, 4U> kShiftScales = {1.0, 0.5, 0.25, 0.0};
+    bool rejected_prohibited = false;
+    bool rejected_corridor = false;
+    bool rejected_length = false;
+    std::optional<SmoothingAttempt> accepted_attempt;
+    for (const double distance_scale : kDistanceScales) {
+      for (const double shift_scale : kShiftScales) {
+        SmoothingAttempt attempt =
+            trySmoothCorner(result.samples, corridor_samples, prohibited_grid, *corner,
+                            config, entry_distance * distance_scale,
+                            exit_distance * distance_scale, shift_scale);
+        if (attempt.accepted) {
+          accepted_attempt = std::move(attempt);
+          break;
+        }
+        rejected_prohibited =
+            rejected_prohibited ||
+            attempt.reject_reason == SmoothingRejectReason::kProhibited;
+        rejected_corridor = rejected_corridor ||
+                            attempt.reject_reason == SmoothingRejectReason::kCorridor;
+        rejected_length =
+            rejected_length || attempt.reject_reason == SmoothingRejectReason::kLength;
+      }
+      if (accepted_attempt.has_value()) {
+        break;
+      }
+    }
+    if (!accepted_attempt.has_value()) {
+      incrementRejectStat(result.stats,
+                          dominantRejectReason(rejected_prohibited, rejected_corridor,
+                                               rejected_length));
       break;
     }
 
-    double applied_shift_m = 0.0;
-    const std::vector<TrajectoryPointSample> replacement =
-        buildBezierSamples(result.samples, corridor_samples, entry_index, corner->index,
-                           exit_index, *corner, config, applied_shift_m);
-    if (replacement.size() < 3U) {
-      ++result.stats.rejected_not_improved;
-      break;
-    }
-
-    std::vector<TrajectoryPointSample> candidate =
-        replaceRange(result.samples, entry_index, exit_index, replacement);
-    if (!pathIsTraversable(prohibited_grid, candidate)) {
-      ++result.stats.rejected_prohibited;
-      break;
-    }
-    const double corridor_margin =
-        sanitizedPositive(config.min_corridor_margin_m, 0.5, 0.0, 1000.0);
-    if (!pathInsideCorridor(candidate, corridor_samples, corridor_margin)) {
-      ++result.stats.rejected_corridor;
-      break;
-    }
-
-    const double previous_length = pathLength(result.samples);
-    const double candidate_length = pathLength(candidate);
-    const double max_length_ratio =
-        sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
-    if (previous_length > kTinyDistanceM &&
-        candidate_length > previous_length * max_length_ratio) {
-      ++result.stats.rejected_length;
-      break;
-    }
-
-    const TrajectoryShapeDiagnostics before_shape =
-        computeTrajectoryShapeDiagnostics(result.samples);
-    const TrajectoryShapeDiagnostics after_shape =
-        computeTrajectoryShapeDiagnostics(candidate);
-    if (!improvedShape(before_shape, after_shape, config)) {
-      ++result.stats.rejected_not_improved;
-      break;
-    }
-
-    result.samples = std::move(candidate);
+    result.samples = std::move(accepted_attempt->samples);
     result.changed = true;
     ++result.stats.smoothed_corners;
-    result.stats.max_applied_outer_shift_m =
-        std::max(result.stats.max_applied_outer_shift_m, applied_shift_m);
+    result.stats.max_applied_outer_shift_m = std::max(
+        result.stats.max_applied_outer_shift_m, accepted_attempt->applied_shift_m);
   }
 
   populateSampleGeometry(result.samples);

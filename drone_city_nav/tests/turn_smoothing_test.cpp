@@ -95,4 +95,28 @@ TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
   EXPECT_EQ(result.stats.rejected_corridor, 0U);
 }
 
+TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
+  OccupancyGrid2D grid = openGrid();
+  const std::vector<CorridorSample> corridor = wideCornerCorridor(grid);
+  const std::vector<TrajectoryPointSample> samples = samplesFromCorridor(corridor);
+  const TrajectoryShapeDiagnostics before = computeTrajectoryShapeDiagnostics(samples);
+  const GridIndex obstacle_cell{58, 28};
+  ASSERT_TRUE(grid.contains(obstacle_cell));
+  grid.setOccupied(obstacle_cell);
+
+  const TurnSmoothingResult result = smoothTrajectoryTurns(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid,
+      smoothingConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.changed);
+  EXPECT_GT(result.stats.smoothed_corners, 0U);
+  EXPECT_EQ(result.stats.rejected_prohibited, 0U);
+  EXPECT_LT(result.stats.max_heading_delta_after_rad,
+            result.stats.max_heading_delta_before_rad);
+  EXPECT_LT(computeTrajectoryShapeDiagnostics(result.samples).max_heading_delta_rad,
+            before.max_heading_delta_rad);
+}
+
 } // namespace drone_city_nav
