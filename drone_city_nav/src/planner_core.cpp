@@ -456,15 +456,31 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   if (result.smoothed_cells.empty() && !result.astar.path.empty()) {
     result.smoothing_returned_empty_path = true;
   }
+  const auto grid_stats_started_at = std::chrono::steady_clock::now();
   result.grid_stats = collectGridStats(grid);
+  result.grid_stats_duration_ms = elapsedMilliseconds(grid_stats_started_at);
+
+  const auto raw_metrics_started_at = std::chrono::steady_clock::now();
   result.raw_path_metrics = gridPathMetrics(grid, result.astar.path);
+  result.raw_path_metrics_duration_ms = elapsedMilliseconds(raw_metrics_started_at);
+
+  const auto smoothed_metrics_started_at = std::chrono::steady_clock::now();
   result.smoothed_path_metrics = gridPathMetrics(grid, result.smoothed_cells);
+  result.smoothed_path_metrics_duration_ms =
+      elapsedMilliseconds(smoothed_metrics_started_at);
+
+  const auto raw_clearance_started_at = std::chrono::steady_clock::now();
   result.raw_path_clearance_m = pathMinimumProhibitedClearanceM(
       grid, result.astar.path,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
+  result.raw_path_clearance_duration_ms = elapsedMilliseconds(raw_clearance_started_at);
+
+  const auto smoothed_clearance_started_at = std::chrono::steady_clock::now();
   result.smoothed_path_clearance_m = pathMinimumProhibitedClearanceM(
       grid, result.smoothed_cells,
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
+  result.smoothed_path_clearance_duration_ms =
+      elapsedMilliseconds(smoothed_clearance_started_at);
   result.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
 }

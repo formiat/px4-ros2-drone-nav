@@ -691,7 +691,9 @@ private:
         "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
         "smoothed_turns=%zu smoothed_length=%.2f] "
         "path_clearance[raw=%.2f smoothed=%.2f] "
-        "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f]",
+        "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f "
+        "core_breakdown[grid_stats=%.1f raw_metrics=%.1f smoothed_metrics=%.1f "
+        "raw_clearance=%.1f smoothed_clearance=%.1f]]",
         current_pose_.position.x, current_pose_.position.y,
         distance(current_pose_.position, start_),
         distance(current_pose_.position, goal_),
@@ -744,7 +746,11 @@ private:
         path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
         path_result->smoothed_path_clearance_m, planning_grid_duration_ms,
         path_result->total_duration_ms, path_result->astar_duration_ms,
-        path_result->smoothing_duration_ms);
+        path_result->smoothing_duration_ms, path_result->grid_stats_duration_ms,
+        path_result->raw_path_metrics_duration_ms,
+        path_result->smoothed_path_metrics_duration_ms,
+        path_result->raw_path_clearance_duration_ms,
+        path_result->smoothed_path_clearance_duration_ms);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Path smoothing diagnostics: input_points=%zu output_points=%zu "

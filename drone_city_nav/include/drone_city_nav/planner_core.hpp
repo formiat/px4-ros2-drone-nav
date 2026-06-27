@@ -58,6 +58,11 @@ struct PathComputationResult {
   double total_duration_ms{0.0};
   double astar_duration_ms{0.0};
   double smoothing_duration_ms{0.0};
+  double grid_stats_duration_ms{0.0};
+  double raw_path_metrics_duration_ms{0.0};
+  double smoothed_path_metrics_duration_ms{0.0};
+  double raw_path_clearance_duration_ms{0.0};
+  double smoothed_path_clearance_duration_ms{0.0};
 };
 
 struct PathProjection2D {
