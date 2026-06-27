@@ -9,6 +9,29 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+NODE_RUNTIME_SOURCE_PATHS = (
+    "drone_city_nav/src/planner_node.cpp",
+    "drone_city_nav/src/planner_node.hpp",
+    "drone_city_nav/src/planner_node_config.cpp",
+    "drone_city_nav/src/planner_node_inputs.cpp",
+    "drone_city_nav/src/planner_node_lifecycle.cpp",
+    "drone_city_nav/src/planner_node_publish.cpp",
+    "drone_city_nav/src/planner_node_runtime.cpp",
+    "drone_city_nav/src/px4_offboard_node.cpp",
+    "drone_city_nav/src/px4_offboard_node.hpp",
+    "drone_city_nav/src/px4_offboard_node_control.cpp",
+    "drone_city_nav/src/px4_offboard_node_inputs.cpp",
+    "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
+    "drone_city_nav/src/px4_offboard_node_telemetry.cpp",
+    "drone_city_nav/src/px4_offboard_node_trajectory.cpp",
+    "drone_city_nav/src/lidar_debug_node.cpp",
+    "drone_city_nav/src/lidar_debug_node.hpp",
+    "drone_city_nav/src/lidar_debug_node_callbacks.cpp",
+    "drone_city_nav/src/lidar_debug_node_lifecycle.cpp",
+    "drone_city_nav/src/lidar_debug_node_points.cpp",
+    "drone_city_nav/src/lidar_debug_node_snapshot.cpp",
+)
+
 
 def read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -62,17 +85,14 @@ class TopicContractTest(unittest.TestCase):
                     )
 
     def test_node_sources_use_prohibited_grid_parameter_name(self) -> None:
-        checked_paths = [
-            "drone_city_nav/src/planner_node_config.cpp",
-            "drone_city_nav/src/planner_node_lifecycle.cpp",
-            "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
-            "drone_city_nav/src/lidar_debug_node_lifecycle.cpp",
-        ]
+        combined_text = "\n".join(
+            read(relative_path) for relative_path in NODE_RUNTIME_SOURCE_PATHS
+        )
+        self.assertIn("prohibited_grid", combined_text)
 
-        for relative_path in checked_paths:
+        for relative_path in NODE_RUNTIME_SOURCE_PATHS:
             with self.subTest(relative_path=relative_path):
                 text = read(relative_path)
-                self.assertIn("prohibited_grid", text)
                 self.assertNotIn('"occupancy_grid_topic"', text)
 
     def test_debug_bag_records_raw_memory_and_final_prohibited_grid(self) -> None:

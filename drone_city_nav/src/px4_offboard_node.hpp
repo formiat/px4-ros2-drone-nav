@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
@@ -219,8 +220,6 @@ private:
   diagnosticDumpDirectory(const std::string_view name) const;
 
   [[nodiscard]] std::filesystem::path finalTrajectorySamplesDirectory() const;
-
-  [[nodiscard]] std::vector<double> finalTrajectoryProfiledTimesFromStart() const;
 
   bool writeFinalTrajectorySamplesCsvFile(const std::filesystem::path& path,
                                           const char* source_label) const;

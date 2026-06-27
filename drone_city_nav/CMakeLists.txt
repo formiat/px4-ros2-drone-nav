@@ -30,9 +30,11 @@ add_library(
   drone_city_nav_core
   src/astar_planner.cpp
   src/clearance_field.cpp
+  src/corridor_samples_io.cpp
   src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
+  src/final_trajectory_debug_io.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/lidar_debug_renderer.cpp
@@ -67,6 +69,7 @@ enable_project_warnings(drone_city_nav_core)
 add_library(
   drone_city_nav_ros_adapters
   src/planner_node_config.cpp
+  src/lidar_debug_pointclouds.cpp
   src/ros_conversions.cpp
   src/static_map_debug.cpp
   src/static_map_source.cpp)
@@ -152,7 +155,8 @@ add_executable(
   src/lidar_debug_node_snapshot.cpp
   src/lidar_radar_markers.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
-target_link_libraries(lidar_debug_node drone_city_nav_core)
+target_link_libraries(lidar_debug_node drone_city_nav_core
+                      drone_city_nav_ros_adapters)
 ament_target_dependencies(
   lidar_debug_node
   nav_msgs
@@ -198,6 +202,12 @@ if(BUILD_TESTING)
   target_compile_features(lidar_snapshot_writer_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_snapshot_writer_test drone_city_nav_core)
   enable_project_warnings(lidar_snapshot_writer_test)
+
+  ament_add_gtest(final_trajectory_debug_io_test
+                  tests/final_trajectory_debug_io_test.cpp)
+  target_compile_features(final_trajectory_debug_io_test PRIVATE cxx_std_20)
+  target_link_libraries(final_trajectory_debug_io_test drone_city_nav_core)
+  enable_project_warnings(final_trajectory_debug_io_test)
 
   ament_add_gtest(clearance_field_test tests/clearance_field_test.cpp)
   target_compile_features(clearance_field_test PRIVATE cxx_std_20)
@@ -283,6 +293,11 @@ if(BUILD_TESTING)
   target_link_libraries(corridor_test drone_city_nav_core)
   enable_project_warnings(corridor_test)
 
+  ament_add_gtest(corridor_samples_io_test tests/corridor_samples_io_test.cpp)
+  target_compile_features(corridor_samples_io_test PRIVATE cxx_std_20)
+  target_link_libraries(corridor_samples_io_test drone_city_nav_core)
+  enable_project_warnings(corridor_samples_io_test)
+
   ament_add_gtest(racing_line_test tests/racing_line_test.cpp)
   target_compile_features(racing_line_test PRIVATE cxx_std_20)
   target_link_libraries(racing_line_test drone_city_nav_core)
@@ -362,6 +377,13 @@ if(BUILD_TESTING)
   target_link_libraries(static_map_debug_test drone_city_nav_ros_adapters)
   ament_target_dependencies(static_map_debug_test nav_msgs sensor_msgs std_msgs)
   enable_project_warnings(static_map_debug_test)
+
+  ament_add_gtest(lidar_debug_pointclouds_test
+                  tests/lidar_debug_pointclouds_test.cpp)
+  target_compile_features(lidar_debug_pointclouds_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_debug_pointclouds_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(lidar_debug_pointclouds_test nav_msgs sensor_msgs)
+  enable_project_warnings(lidar_debug_pointclouds_test)
 endif()
 
 ament_export_include_directories(include)

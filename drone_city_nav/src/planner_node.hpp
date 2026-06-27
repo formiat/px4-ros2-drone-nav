@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/corridor_samples_io.hpp"
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
@@ -206,8 +207,6 @@ private:
                                     const TrajectoryPlannerStats& stats) const;
 
   [[nodiscard]] static std::filesystem::path corridorSamplesDirectory();
-
-  static void writeCsvNumberOrEmpty(std::ostream& stream, const double value);
 
   bool writeCorridorSamplesCsvFile(const std::filesystem::path& path,
                                    const TrajectoryPlannerResult& result,

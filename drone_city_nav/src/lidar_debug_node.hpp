@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/debug_image.hpp"
+#include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_debug_renderer.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"

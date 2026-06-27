@@ -412,40 +412,6 @@ Px4OffboardNode::finalTrajectorySamplesDirectory() const {
   return diagnosticDumpDirectory("final_trajectory_samples");
 }
 
-[[nodiscard]] std::vector<double>
-Px4OffboardNode::finalTrajectoryProfiledTimesFromStart() const {
-  std::vector<double> times(final_trajectory_samples_.size(),
-                            std::numeric_limits<double>::quiet_NaN());
-  if (final_trajectory_samples_.empty() || !trajectory_speed_profile_.valid) {
-    return times;
-  }
-
-  constexpr double kMinimumIntegrationSpeedMps = 0.1;
-  times.front() = 0.0;
-  for (std::size_t i = 1U; i < final_trajectory_samples_.size(); ++i) {
-    double ds =
-        final_trajectory_samples_[i].s_m - final_trajectory_samples_[i - 1U].s_m;
-    if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
-      ds = distance(final_trajectory_samples_[i - 1U].point,
-                    final_trajectory_samples_[i].point);
-    }
-    if (!(ds > kTinyDistanceM) || !std::isfinite(ds) || !std::isfinite(times[i - 1U])) {
-      continue;
-    }
-    const TrajectorySpeedSample start = speedProfileSampleAtS(
-        trajectory_speed_profile_, final_trajectory_samples_[i - 1U].s_m);
-    const TrajectorySpeedSample end = speedProfileSampleAtS(
-        trajectory_speed_profile_, final_trajectory_samples_[i].s_m);
-    const double average_speed =
-        std::max(kMinimumIntegrationSpeedMps,
-                 0.5 * (start.profiled_limit_mps + end.profiled_limit_mps));
-    if (std::isfinite(average_speed)) {
-      times[i] = times[i - 1U] + ds / average_speed;
-    }
-  }
-  return times;
-}
-
 bool Px4OffboardNode::writeFinalTrajectorySamplesCsvFile(
     const std::filesystem::path& path, const char* source_label) const {
   std::ofstream stream{path, std::ios::out | std::ios::trunc};
@@ -454,35 +420,16 @@ bool Px4OffboardNode::writeFinalTrajectorySamplesCsvFile(
   }
 
   stream << std::setprecision(9);
-  stream << "# source=" << source_label
-         << " local_path_update_id=" << received_path_update_id_
-         << " planner_path_id=" << latest_planner_path_id_
-         << " trajectory_valid=" << (trajectory_valid_ ? "true" : "false")
-         << " trajectory_status="
-         << trajectoryPlannerStatusName(last_trajectory_planner_stats_.status) << "\n";
-  stream << finalTrajectorySamplesCsvHeader() << "\n";
-  const std::vector<double> times_from_start = finalTrajectoryProfiledTimesFromStart();
-  const double total_time_s = times_from_start.empty()
-                                  ? std::numeric_limits<double>::quiet_NaN()
-                                  : times_from_start.back();
-  for (std::size_t i = 0U; i < final_trajectory_samples_.size(); ++i) {
-    const TrajectoryPointSample& sample = final_trajectory_samples_[i];
-    const TrajectorySpeedSample speed_sample =
-        trajectory_speed_profile_.valid
-            ? speedProfileSampleAtS(trajectory_speed_profile_, sample.s_m)
-            : TrajectorySpeedSample{};
-    const double time_from_start_s = i < times_from_start.size()
-                                         ? times_from_start[i]
-                                         : std::numeric_limits<double>::quiet_NaN();
-    const double time_to_finish_s =
-        std::isfinite(total_time_s) && std::isfinite(time_from_start_s)
-            ? std::max(0.0, total_time_s - time_from_start_s)
-            : std::numeric_limits<double>::quiet_NaN();
-    stream << finalTrajectorySamplesCsvRow(i, sample, speed_sample, time_from_start_s,
-                                           time_to_finish_s)
-           << "\n";
-  }
-  return stream.good();
+  const FinalTrajectorySamplesCsvInput input{
+      .source_label = source_label,
+      .local_path_update_id = received_path_update_id_,
+      .planner_path_id = latest_planner_path_id_,
+      .trajectory_valid = trajectory_valid_,
+      .trajectory_status = last_trajectory_planner_stats_.status,
+      .samples = final_trajectory_samples_,
+      .speed_profile = &trajectory_speed_profile_,
+  };
+  return drone_city_nav::writeFinalTrajectorySamplesCsv(stream, input);
 }
 
 bool Px4OffboardNode::writeFinalTrajectorySummaryJsonFile(
@@ -491,10 +438,8 @@ bool Px4OffboardNode::writeFinalTrajectorySummaryJsonFile(
   if (!stream.is_open()) {
     return false;
   }
-  stream << finalTrajectoryDiagnosticsSummaryJson(last_trajectory_planner_stats_,
-                                                  last_trajectory_shape_diagnostics_)
-         << "\n";
-  return stream.good();
+  return drone_city_nav::writeFinalTrajectorySummaryJson(
+      stream, last_trajectory_planner_stats_, last_trajectory_shape_diagnostics_);
 }
 
 [[nodiscard]] std::string

@@ -29,6 +29,9 @@ TRAJECTORY_PLANNER = REPO_ROOT / "drone_city_nav/src/trajectory_planner.cpp"
 TRAJECTORY_DIAGNOSTICS_IO = (
     REPO_ROOT / "drone_city_nav/src/trajectory_diagnostics_io.cpp"
 )
+FINAL_TRAJECTORY_DEBUG_IO = (
+    REPO_ROOT / "drone_city_nav/src/final_trajectory_debug_io.cpp"
+)
 
 
 def read_all(paths: list[Path]) -> str:
@@ -42,6 +45,9 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         cls.planner_text = read_all(PLANNER_SOURCES)
         cls.trajectory_planner_text = TRAJECTORY_PLANNER.read_text(encoding="utf-8")
         cls.trajectory_diagnostics_io_text = TRAJECTORY_DIAGNOSTICS_IO.read_text(
+            encoding="utf-8"
+        )
+        cls.final_trajectory_debug_io_text = FINAL_TRAJECTORY_DEBUG_IO.read_text(
             encoding="utf-8"
         )
 
@@ -263,10 +269,15 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertNotIn('\\"turn_distance_m\\"', self.offboard_text)
 
     def test_final_trajectory_samples_csv_dump_is_written(self) -> None:
-        self.assertIn("writeFinalTrajectorySamplesCsv", self.offboard_text)
+        self.assertIn(
+            "drone_city_nav::writeFinalTrajectorySamplesCsv", self.offboard_text
+        )
         self.assertIn('diagnosticDumpDirectory("final_trajectory_samples")', self.offboard_text)
         self.assertIn("latest.csv", self.offboard_text)
-        self.assertIn("finalTrajectorySamplesCsvHeader()", self.offboard_text)
+        self.assertIn(
+            "finalTrajectorySamplesCsvHeader()",
+            self.final_trajectory_debug_io_text,
+        )
         self.assertIn(
             "sample_index,s_m,x,y",
             self.trajectory_diagnostics_io_text,
