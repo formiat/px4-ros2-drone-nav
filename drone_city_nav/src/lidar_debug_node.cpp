@@ -128,6 +128,8 @@ public:
         declare_parameter<std::string>("lidar_topic", "/scan");
     const std::string prohibited_grid_topic = declare_parameter<std::string>(
         "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
+    const std::string memory_grid_topic = declare_parameter<std::string>(
+        "memory_grid_topic", "/drone_city_nav/obstacle_memory_grid");
     const std::string path_topic = declare_parameter<std::string>(
         "path_topic", "/drone_city_nav/final_trajectory_path");
     pointcloud_topic_ = declare_parameter<std::string>(
@@ -136,6 +138,8 @@ public:
         "remembered_pointcloud_topic", "/drone_city_nav/remembered_lidar_points");
     prohibited_pointcloud_topic_ = declare_parameter<std::string>(
         "prohibited_pointcloud_topic", "/drone_city_nav/prohibited_obstacle_points");
+    raw_memory_pointcloud_topic_ = declare_parameter<std::string>(
+        "raw_memory_pointcloud_topic", "/drone_city_nav/raw_memory_obstacle_points");
     marker_topic_ = declare_parameter<std::string>(
         "marker_topic", "/drone_city_nav/lidar_radar_markers");
     publish_lidar_radar_markers_ =
@@ -153,6 +157,8 @@ public:
         declare_parameter<double>("remembered_lidar_pointcloud_z_m", kGroundDebugZ);
     prohibited_pointcloud_z_m_ =
         declare_parameter<double>("prohibited_pointcloud_z_m", kGroundDebugZ);
+    raw_memory_pointcloud_z_m_ =
+        declare_parameter<double>("raw_memory_pointcloud_z_m", kGroundDebugZ);
     marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", kGroundDebugZ);
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
@@ -185,6 +191,13 @@ public:
         [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
           last_grid_ = *msg;
           grid_seen_ = true;
+          publishProhibitedPointCloud();
+        });
+    memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+        memory_grid_topic, rclcpp::QoS{1}.transient_local(),
+        [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+          publishPointCloud(collectOccupiedGridPoints(*msg), raw_memory_pointcloud_z_m_,
+                            raw_memory_pointcloud_pub_);
         });
     path_sub_ = create_subscription<nav_msgs::msg::Path>(
         path_topic, rclcpp::QoS{1}.reliable(),
@@ -198,6 +211,8 @@ public:
         remembered_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
     prohibited_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
         prohibited_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
+    raw_memory_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        raw_memory_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
         marker_topic_, rclcpp::QoS{1}.reliable());
 
@@ -207,9 +222,10 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-        "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' path='%s' "
+        "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
+        "memory_grid='%s' path='%s' "
         "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
-        "prohibited_points='%s' "
+        "prohibited_points='%s' raw_memory_points='%s' "
         "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
         "min_remember_altitude=%.2fm "
         "max_remembered_hits=%zu "
@@ -218,13 +234,15 @@ public:
         "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
         "motion_compensation=%s pose_latency=%.3fs scan_deskew=%s "
         "scan_duration_override=%.3fs "
-        "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f] "
+        "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f, "
+        "raw_memory=%.2f] "
         "marker_z=%.2f "
         "yaw_source=%s initial_heading=%.3f",
         output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-        lidar_topic.c_str(), prohibited_grid_topic.c_str(), path_topic.c_str(),
-        local_position_topic.c_str(), attitude_topic.c_str(), pointcloud_topic_.c_str(),
-        remembered_pointcloud_topic_.c_str(), prohibited_pointcloud_topic_.c_str(),
+        lidar_topic.c_str(), prohibited_grid_topic.c_str(), memory_grid_topic.c_str(),
+        path_topic.c_str(), local_position_topic.c_str(), attitude_topic.c_str(),
+        pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
+        prohibited_pointcloud_topic_.c_str(), raw_memory_pointcloud_topic_.c_str(),
         marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
         hit_memory_resolution_m_, min_remember_altitude_m_, max_remembered_hit_points_,
         compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
@@ -233,7 +251,7 @@ public:
         motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
         lidar_scan_deskew_ ? "true" : "false", lidar_scan_duration_override_s_,
         current_pointcloud_z_m_, remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
-        marker_z_m_, yawSourceName(), initial_heading_rad_);
+        raw_memory_pointcloud_z_m_, marker_z_m_, yawSourceName(), initial_heading_rad_);
   }
 
 private:
@@ -374,8 +392,7 @@ private:
     publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);
     publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
                       remembered_pointcloud_pub_);
-    publishPointCloud(collectProhibitedGridPoints(), prohibited_pointcloud_z_m_,
-                      prohibited_pointcloud_pub_);
+    publishProhibitedPointCloud();
 
     writeSummary(prefix, image_path, csv_path, stats, image_ok);
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -638,35 +655,37 @@ private:
     }
   }
 
-  [[nodiscard]] std::vector<Point2> collectProhibitedGridPoints() const {
+  [[nodiscard]] std::vector<Point2>
+  collectGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
+                    const std::uint8_t min_value, const std::uint8_t max_value) const {
     std::vector<Point2> points;
-    if (!grid_seen_) {
-      return points;
-    }
-
-    const double resolution = static_cast<double>(last_grid_.info.resolution);
+    const double resolution = static_cast<double>(grid.info.resolution);
     if (!(resolution > 0.0)) {
       return points;
     }
 
-    const auto width = static_cast<int>(last_grid_.info.width);
-    const auto height = static_cast<int>(last_grid_.info.height);
+    const auto width = static_cast<int>(grid.info.width);
+    const auto height = static_cast<int>(grid.info.height);
     const std::size_t expected_cells =
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-    if (width <= 0 || height <= 0 || last_grid_.data.size() < expected_cells) {
+    if (width <= 0 || height <= 0 || grid.data.size() < expected_cells) {
       return points;
     }
 
     points.reserve(expected_cells / 8U);
-    const double origin_x = last_grid_.info.origin.position.x;
-    const double origin_y = last_grid_.info.origin.position.y;
+    const double origin_x = grid.info.origin.position.x;
+    const double origin_y = grid.info.origin.position.y;
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
         const std::size_t index =
             static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
             static_cast<std::size_t>(x);
-        const std::int8_t value = last_grid_.data[index];
-        if (value >= 80 && value < 100) {
+        const std::int8_t raw_value = grid.data[index];
+        if (raw_value < 0) {
+          continue;
+        }
+        const auto value = static_cast<std::uint8_t>(raw_value);
+        if (value >= min_value && value <= max_value) {
           points.push_back(
               Point2{origin_x + (static_cast<double>(x) + 0.5) * resolution,
                      origin_y + (static_cast<double>(y) + 0.5) * resolution});
@@ -674,6 +693,23 @@ private:
       }
     }
     return points;
+  }
+
+  [[nodiscard]] std::vector<Point2> collectProhibitedGridPoints() const {
+    if (!grid_seen_) {
+      return {};
+    }
+    return collectGridPoints(last_grid_, 80, 99);
+  }
+
+  [[nodiscard]] std::vector<Point2>
+  collectOccupiedGridPoints(const nav_msgs::msg::OccupancyGrid& grid) const {
+    return collectGridPoints(grid, 100, 100);
+  }
+
+  void publishProhibitedPointCloud() {
+    publishPointCloud(collectProhibitedGridPoints(), prohibited_pointcloud_z_m_,
+                      prohibited_pointcloud_pub_);
   }
 
   [[nodiscard]] std::pair<int, int> hitMemoryKey(const Point2 point) const {
@@ -802,6 +838,9 @@ private:
   void publishPointCloud(
       const std::vector<Point2>& points, const double z_m,
       const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher) {
+    if (!publisher) {
+      return;
+    }
     sensor_msgs::msg::PointCloud2 cloud;
     cloud.header.stamp = now();
     cloud.header.frame_id = "map";
@@ -876,6 +915,7 @@ private:
   std::string pointcloud_topic_;
   std::string remembered_pointcloud_topic_;
   std::string prohibited_pointcloud_topic_;
+  std::string raw_memory_pointcloud_topic_;
   std::string marker_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
@@ -908,6 +948,7 @@ private:
   double current_pointcloud_z_m_{kGroundDebugZ};
   double remembered_pointcloud_z_m_{kGroundDebugZ};
   double prohibited_pointcloud_z_m_{kGroundDebugZ};
+  double raw_memory_pointcloud_z_m_{kGroundDebugZ};
   double marker_z_m_{kGroundDebugZ};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
@@ -963,6 +1004,7 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
+  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
@@ -972,6 +1014,8 @@ private:
       remembered_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       prohibited_pointcloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+      raw_memory_pointcloud_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

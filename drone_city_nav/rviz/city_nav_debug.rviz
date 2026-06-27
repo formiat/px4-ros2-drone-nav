@@ -101,6 +101,20 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/remembered_lidar_points
+    - Alpha: 0.85
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 235; 235; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Raw Memory Cells
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.22
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/raw_memory_obstacle_points
     - Alpha: 0.30
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

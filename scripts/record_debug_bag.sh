@@ -11,6 +11,8 @@ ros2 bag record \
   /scan \
   /drone_city_nav/lidar_debug_points \
   /drone_city_nav/remembered_lidar_points \
+  /drone_city_nav/raw_memory_obstacle_points \
+  /drone_city_nav/prohibited_obstacle_points \
   /drone_city_nav/obstacle_memory_grid \
   /drone_city_nav/prohibited_grid \
   /drone_city_nav/path \

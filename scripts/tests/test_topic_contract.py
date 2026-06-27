@@ -80,6 +80,8 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertIn("/drone_city_nav/obstacle_memory_grid", text)
         self.assertIn("/drone_city_nav/prohibited_grid", text)
+        self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
+        self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
         self.assertNotIn("/drone_city_nav/obstacle_memory_inflated_grid", text)
         self.assertNotIn("/drone_city_nav/occupancy_grid", text)
 
