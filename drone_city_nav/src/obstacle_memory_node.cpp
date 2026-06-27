@@ -1,4 +1,5 @@
 #include "drone_city_nav/grid_config.hpp"
+#include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
@@ -54,8 +55,8 @@ public:
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     motion_compensate_lidar_pose_ =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
-    lidar_pose_prediction_s_ =
-        std::clamp(declare_parameter<double>("lidar_pose_prediction_s", 0.0), 0.0, 1.0);
+    lidar_pose_latency_s_ =
+        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
     min_mapping_altitude_m_ = declare_parameter<double>("min_mapping_altitude_m", 0.0);
     max_pose_staleness_ns_ = static_cast<std::int64_t>(
         std::clamp<double>(declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0,
@@ -155,7 +156,7 @@ public:
                 "score[min=%d max=%d free<=%d occupied>=%d] "
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
-                "motion_compensation=%s pose_prediction=%.3fs "
+                "motion_compensation=%s pose_latency=%.3fs "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
                 memory_config_.max_lidar_range_m, memory_config_.scan_stride,
                 memory_config_.min_score, memory_config_.max_score,
@@ -163,9 +164,8 @@ public:
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                motion_compensate_lidar_pose_ ? "true" : "false",
-                lidar_pose_prediction_s_, lidar_mount_roll_rad_, lidar_mount_pitch_rad_,
-                lidar_mount_yaw_rad_);
+                motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
   }
 
 private:
@@ -268,12 +268,14 @@ private:
       return;
     }
 
-    const double pose_prediction_s = posePredictionSeconds(now_ns);
+    const double pose_lag_s = poseReceiveLagSeconds(now_ns);
+    const LidarPoseMotionCompensationResult motion_compensation =
+        compensateLidarPoseForLatency(current_pose_.pose.position, current_velocity_,
+                                      motion_compensate_lidar_pose_,
+                                      current_velocity_valid_, pose_lag_s,
+                                      lidar_pose_latency_s_);
     Pose2 scan_pose = current_pose_.pose;
-    if (pose_prediction_s > 0.0 && current_velocity_valid_) {
-      scan_pose.position.x += current_velocity_.x * pose_prediction_s;
-      scan_pose.position.y += current_velocity_.y * pose_prediction_s;
-    }
+    scan_pose.position = motion_compensation.position;
 
     LaserScan2DView scan_view{};
     scan_view.ranges = std::span<const float>{scan.ranges.data(), scan.ranges.size()};
@@ -315,18 +317,22 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
-        "scan_pose=(%.2f, %.2f) pose_prediction=%.3f "
+        "scan_pose=(%.2f, %.2f) pose_lag=%.3fs pose_latency=%.3fs "
+        "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
         current_pose_.altitude_m, current_pose_.pose.yaw_rad, scan_pose.position.x,
-        scan_pose.position.y, pose_prediction_s, current_attitude_.roll_rad,
-        current_attitude_.pitch_rad, attitude_valid_ ? "true" : "false",
-        stats.processed_beams, stats.hit_beams, stats.invalid_ranges,
-        stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
-        stats.free_cells_updated, stats.occupied_cells_updated,
-        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
+        scan_pose.position.y, motion_compensation.pose_lag_s,
+        motion_compensation.latency_s, motion_compensation.applied_shift.x,
+        motion_compensation.applied_shift.y, motion_compensation.applied_shift_m,
+        current_attitude_.roll_rad, current_attitude_.pitch_rad,
+        attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
+        stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
+        stats.outside_hit_endpoints, stats.free_cells_updated,
+        stats.occupied_cells_updated, raw_counts.occupied_cells, raw_counts.free_cells,
+        raw_counts.unknown_cells);
   }
 
   void logFirstPose(const char* source_name) {
@@ -357,16 +363,12 @@ private:
     return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
   }
 
-  [[nodiscard]] double posePredictionSeconds(const std::int64_t scan_receive_ns) const {
-    if (!motion_compensate_lidar_pose_ || !current_velocity_valid_) {
-      return 0.0;
-    }
-    double pose_lag_s = 0.0;
+  [[nodiscard]] double poseReceiveLagSeconds(const std::int64_t scan_receive_ns) const {
     if (scan_receive_ns > 0 && last_pose_update_ns_ > 0 &&
         scan_receive_ns > last_pose_update_ns_) {
-      pose_lag_s = static_cast<double>(scan_receive_ns - last_pose_update_ns_) / 1.0e9;
+      return static_cast<double>(scan_receive_ns - last_pose_update_ns_) / 1.0e9;
     }
-    return std::clamp(pose_lag_s + lidar_pose_prediction_s_, 0.0, 1.0);
+    return 0.0;
   }
 
   void publishMemoryGrid() {
@@ -417,7 +419,7 @@ private:
   double lidar_mount_yaw_rad_{0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
-  double lidar_pose_prediction_s_{0.0};
+  double lidar_pose_latency_s_{0.05};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{false};

@@ -205,6 +205,12 @@ if(BUILD_TESTING)
   target_link_libraries(current_lidar_overlay_test drone_city_nav_core)
   enable_project_warnings(current_lidar_overlay_test)
 
+  ament_add_gtest(lidar_motion_compensation_test
+                  tests/lidar_motion_compensation_test.cpp)
+  target_compile_features(lidar_motion_compensation_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_motion_compensation_test drone_city_nav_core)
+  enable_project_warnings(lidar_motion_compensation_test)
+
   ament_add_gtest(planning_grid_builder_test
                   tests/planning_grid_builder_test.cpp)
   target_compile_features(planning_grid_builder_test PRIVATE cxx_std_20)

@@ -66,7 +66,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 50.0);
   EXPECT_TRUE(config.current_lidar.motion_compensate_lidar_pose);
-  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_prediction_s, 0.0);
+  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
@@ -91,7 +91,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 5000.0},
-       rclcpp::Parameter{"lidar_pose_prediction_s", 5.0},
+       rclcpp::Parameter{"lidar_pose_latency_s", 5.0},
        rclcpp::Parameter{"cruise_speed_mps", 5000.0},
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
        rclcpp::Parameter{"corridor_max_radius_m", -10.0},
@@ -116,7 +116,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    1000.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 1000.0);
-  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_prediction_s, 1.0);
+  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
@@ -147,7 +147,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"max_lidar_range_m", 22.0},
                 rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
                 rclcpp::Parameter{"motion_compensate_lidar_pose", false},
-                rclcpp::Parameter{"lidar_pose_prediction_s", 0.25},
+                rclcpp::Parameter{"lidar_pose_latency_s", 0.25},
                 rclcpp::Parameter{"compensate_lidar_attitude", true}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -170,7 +170,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
   EXPECT_FALSE(config.current_lidar.motion_compensate_lidar_pose);
-  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_prediction_s, 0.25);
+  EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.25);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
 }
 

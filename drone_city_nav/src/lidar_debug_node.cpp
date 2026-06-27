@@ -1,5 +1,6 @@
 #include "drone_city_nav/debug_image.hpp"
 #include "drone_city_nav/lidar_debug_renderer.hpp"
+#include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_radar_markers.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
@@ -98,8 +99,8 @@ public:
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     motion_compensate_lidar_pose_ =
         declare_parameter<bool>("motion_compensate_lidar_pose", true);
-    lidar_pose_prediction_s_ =
-        std::clamp(declare_parameter<double>("lidar_pose_prediction_s", 0.0), 0.0, 1.0);
+    lidar_pose_latency_s_ =
+        std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
     lidar_scan_deskew_ = declare_parameter<bool>("lidar_scan_deskew", false);
     lidar_scan_duration_override_s_ = std::clamp(
         declare_parameter<double>("lidar_scan_duration_override_s", 0.0), 0.0, 1.0);
@@ -215,7 +216,7 @@ public:
         "compensate_attitude=%s lidar_z_offset=%.2f "
         "projected_altitude_range=[%.2f, %.2f] "
         "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
-        "motion_compensation=%s pose_prediction=%.3fs scan_deskew=%s "
+        "motion_compensation=%s pose_latency=%.3fs scan_deskew=%s "
         "scan_duration_override=%.3fs "
         "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f] "
         "marker_z=%.2f "
@@ -229,7 +230,7 @@ public:
         compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
         min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
         lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-        motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_prediction_s_,
+        motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
         lidar_scan_deskew_ ? "true" : "false", lidar_scan_duration_override_s_,
         current_pointcloud_z_m_, remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
         marker_z_m_, yawSourceName(), initial_heading_rad_);
@@ -307,13 +308,16 @@ private:
     last_projected_attitude_receive_ns_ = last_attitude_receive_ns_;
     last_projected_scan_duration_s_ = scanDurationSeconds(msg);
     last_projected_scan_time_increment_s_ = scanTimeIncrementSeconds(msg);
-    last_projected_pose_prediction_s_ = posePredictionSeconds();
-    if (motion_compensate_lidar_pose_ && last_projected_horizontal_speed_valid_) {
-      last_projected_pose_.position.x +=
-          last_projected_velocity_.x * last_projected_pose_prediction_s_;
-      last_projected_pose_.position.y +=
-          last_projected_velocity_.y * last_projected_pose_prediction_s_;
-    }
+    const LidarPoseMotionCompensationResult motion_compensation =
+        compensateLidarPoseForLatency(
+            current_pose_.position, current_velocity_, motion_compensate_lidar_pose_,
+            horizontal_speed_valid_, poseReceiveLagSeconds(), lidar_pose_latency_s_);
+    last_projected_pose_.position = motion_compensation.position;
+    last_projected_pose_lag_s_ = motion_compensation.pose_lag_s;
+    last_projected_pose_latency_s_ = motion_compensation.latency_s;
+    last_projected_motion_time_offset_s_ = motion_compensation.signed_time_offset_s;
+    last_projected_motion_shift_ = motion_compensation.applied_shift;
+    last_projected_motion_shift_m_ = motion_compensation.applied_shift_m;
 
     LidarSnapshotStats stats{};
     last_scan_rows_ = collectScanRows(stats);
@@ -383,7 +387,9 @@ private:
                 "px4_heading_seen=%s attitude_valid=%s attitude_yaw=%.3f "
                 "yaw_delta=%.3f roll=%.3f pitch=%.3f tilt=%.3f "
                 "scan_age=%.3f pose_age=%.3f heading_age=%.3f attitude_age=%.3f "
-                "pose_prediction=%.3f scan_duration=%.3f scan_time_increment=%.6f "
+                "pose_lag=%.3f pose_latency=%.3f motion_time_offset=%.3f "
+                "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
+                "scan_duration=%.3f scan_time_increment=%.6f "
                 "beams=%zu hits=%zu altitude_rejected=%zu "
                 "projection_rejected=%zu remembered_hits=%zu grid=%s "
                 "path_waypoints=%zu image='%s' csv='%s'",
@@ -401,9 +407,11 @@ private:
                 ageSecondsOrNan(last_projected_pose_receive_ns_, now_ns),
                 ageSecondsOrNan(last_projected_heading_receive_ns_, now_ns),
                 ageSecondsOrNan(last_projected_attitude_receive_ns_, now_ns),
-                last_projected_pose_prediction_s_, last_projected_scan_duration_s_,
-                last_projected_scan_time_increment_s_, stats.processed_beams,
-                stats.hit_beams, stats.altitude_rejected_beams,
+                last_projected_pose_lag_s_, last_projected_pose_latency_s_,
+                last_projected_motion_time_offset_s_, last_projected_motion_shift_.x,
+                last_projected_motion_shift_.y, last_projected_motion_shift_m_,
+                last_projected_scan_duration_s_, last_projected_scan_time_increment_s_,
+                stats.processed_beams, stats.hit_beams, stats.altitude_rejected_beams,
                 stats.projection_rejected_beams, remembered_hit_points_.size(),
                 grid_seen_ ? "true" : "false",
                 path_seen_ ? last_path_.poses.size() : 0U, image_path.string().c_str(),
@@ -460,13 +468,6 @@ private:
     }
     return static_cast<double>(last_scan_receive_ns_ - last_pose_receive_ns_) /
            static_cast<double>(kNanosecondsPerSecond);
-  }
-
-  [[nodiscard]] double posePredictionSeconds() const noexcept {
-    if (!motion_compensate_lidar_pose_ || !horizontal_speed_valid_) {
-      return 0.0;
-    }
-    return std::clamp(poseReceiveLagSeconds() + lidar_pose_prediction_s_, 0.0, 1.0);
   }
 
   [[nodiscard]] double beamAgeSeconds(const std::size_t beam_index) const noexcept {
@@ -765,7 +766,11 @@ private:
         ageSecondsOrNan(last_projected_attitude_receive_ns_, now_ns);
     record.motion_compensation_enabled = motion_compensate_lidar_pose_;
     record.scan_deskew_enabled = lidar_scan_deskew_;
-    record.pose_prediction_s = last_projected_pose_prediction_s_;
+    record.pose_lag_s = last_projected_pose_lag_s_;
+    record.pose_latency_s = last_projected_pose_latency_s_;
+    record.motion_time_offset_s = last_projected_motion_time_offset_s_;
+    record.motion_shift = last_projected_motion_shift_;
+    record.motion_shift_m = last_projected_motion_shift_m_;
     record.scan_duration_s = last_projected_scan_duration_s_;
     record.scan_time_increment_s = last_projected_scan_time_increment_s_;
     record.scan_beams = last_scan_.ranges.size();
@@ -890,7 +895,7 @@ private:
   double range_hit_epsilon_m_{0.05};
   double initial_heading_rad_{0.0};
   double scan_yaw_offset_rad_{0.0};
-  double lidar_pose_prediction_s_{0.0};
+  double lidar_pose_latency_s_{0.05};
   double lidar_scan_duration_override_s_{0.0};
   double hit_memory_resolution_m_{0.25};
   double min_remember_altitude_m_{0.0};
@@ -930,9 +935,13 @@ private:
   double last_projected_horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_projected_attitude_tilt_rad_{std::numeric_limits<double>::quiet_NaN()};
   double last_projected_projection_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
-  double last_projected_pose_prediction_s_{0.0};
+  double last_projected_pose_lag_s_{0.0};
+  double last_projected_pose_latency_s_{0.0};
+  double last_projected_motion_time_offset_s_{0.0};
+  double last_projected_motion_shift_m_{0.0};
   double last_projected_scan_duration_s_{0.0};
   double last_projected_scan_time_increment_s_{0.0};
+  Point2 last_projected_motion_shift_{};
   bool scan_seen_{false};
   bool last_scan_projection_seen_{false};
   bool grid_seen_{false};

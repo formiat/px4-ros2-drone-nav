@@ -144,7 +144,17 @@ void writeLidarSnapshotSummary(std::ostream& stream,
          << (record.motion_compensation_enabled ? "true" : "false")
          << ",\"scan_deskew_enabled\":"
          << (record.scan_deskew_enabled ? "true" : "false") << ',';
-  writeJsonNumberField(stream, "pose_prediction_s", record.pose_prediction_s);
+  writeJsonNumberField(stream, "pose_lag_s", record.pose_lag_s);
+  stream << ',';
+  writeJsonNumberField(stream, "pose_latency_s", record.pose_latency_s);
+  stream << ',';
+  writeJsonNumberField(stream, "motion_time_offset_s", record.motion_time_offset_s);
+  stream << ',';
+  writeJsonNumberField(stream, "motion_shift_x_m", record.motion_shift.x);
+  stream << ',';
+  writeJsonNumberField(stream, "motion_shift_y_m", record.motion_shift.y);
+  stream << ',';
+  writeJsonNumberField(stream, "motion_shift_m", record.motion_shift_m);
   stream << ',';
   writeJsonNumberField(stream, "scan_duration_s", record.scan_duration_s);
   stream << ',';

@@ -1,5 +1,6 @@
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
+#include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
@@ -265,7 +266,7 @@ public:
     RCLCPP_INFO(get_logger(),
                 "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
                 "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
-                "motion_compensation=%s pose_prediction=%.3fs "
+                "motion_compensation=%s pose_latency=%.3fs "
                 "lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
@@ -274,10 +275,10 @@ public:
                 static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
                 use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
                 compensate_lidar_attitude_ ? "true" : "false",
-                motion_compensate_lidar_pose_ ? "true" : "false",
-                lidar_pose_prediction_s_, lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+                motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+                lidar_z_offset_m_, min_projected_lidar_altitude_m_,
+                max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
+                lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
     RCLCPP_INFO(get_logger(),
                 "Planner path policy: stable_path_reuse=%s "
                 "stable_goal_tolerance=%.2fm",
@@ -320,7 +321,7 @@ private:
     scan_yaw_offset_rad_ = config.lidar_projection.scan_yaw_offset_rad;
     use_px4_heading_for_scan_ = config.current_lidar.use_px4_heading_for_scan;
     motion_compensate_lidar_pose_ = config.current_lidar.motion_compensate_lidar_pose;
-    lidar_pose_prediction_s_ = config.current_lidar.lidar_pose_prediction_s;
+    lidar_pose_latency_s_ = config.current_lidar.lidar_pose_latency_s;
     compensate_lidar_attitude_ = config.lidar_projection.compensate_attitude;
     lidar_mount_roll_rad_ = config.lidar_projection.lidar_mount_roll_rad;
     lidar_mount_pitch_rad_ = config.lidar_projection.lidar_mount_pitch_rad;
@@ -437,27 +438,39 @@ private:
     last_scan_projection_pose_valid_ = pose_valid_;
     if (last_scan_projection_pose_valid_) {
       last_scan_projection_pose_ = currentLidarProjectionPose();
-      const double prediction_s =
-          currentLidarPosePredictionSeconds(last_scan_update_ns_, last_pose_update_ns_);
-      last_scan_pose_prediction_s_ = prediction_s;
-      if (prediction_s > 0.0 && current_velocity_valid_) {
-        last_scan_projection_pose_.position.x += current_velocity_.x * prediction_s;
-        last_scan_projection_pose_.position.y += current_velocity_.y * prediction_s;
-      }
+      const LidarPoseMotionCompensationResult motion_compensation =
+          compensateLidarPoseForLatency(
+              last_scan_projection_pose_.position, current_velocity_,
+              motion_compensate_lidar_pose_, current_velocity_valid_,
+              currentLidarPoseReceiveLagSeconds(last_scan_update_ns_,
+                                                last_pose_update_ns_),
+              lidar_pose_latency_s_);
+      last_scan_projection_pose_.position = motion_compensation.position;
+      last_scan_pose_lag_s_ = motion_compensation.pose_lag_s;
+      last_scan_pose_latency_s_ = motion_compensation.latency_s;
+      last_scan_motion_shift_ = motion_compensation.applied_shift;
+      last_scan_motion_shift_m_ = motion_compensation.applied_shift_m;
     } else {
-      last_scan_pose_prediction_s_ = 0.0;
+      last_scan_pose_lag_s_ = 0.0;
+      last_scan_pose_latency_s_ = 0.0;
+      last_scan_motion_shift_ = Point2{};
+      last_scan_motion_shift_m_ = 0.0;
     }
     if (!scan_seen_logged_) {
       scan_seen_logged_ = true;
       RCLCPP_INFO(get_logger(),
                   "First planner lidar scan: beams=%zu range=[%.2f, %.2f] "
-                  "angle=[%.2f, %.2f] projection_pose=%s prediction=%.3fs",
+                  "angle=[%.2f, %.2f] projection_pose=%s pose_lag=%.3fs "
+                  "pose_latency=%.3fs motion_shift=(%.2f, %.2f) "
+                  "motion_shift_m=%.2f",
                   last_scan_.ranges.size(), static_cast<double>(last_scan_.range_min),
                   static_cast<double>(last_scan_.range_max),
                   static_cast<double>(last_scan_.angle_min),
                   static_cast<double>(last_scan_.angle_max),
                   last_scan_projection_pose_valid_ ? "true" : "false",
-                  last_scan_pose_prediction_s_);
+                  last_scan_pose_lag_s_, last_scan_pose_latency_s_,
+                  last_scan_motion_shift_.x, last_scan_motion_shift_.y,
+                  last_scan_motion_shift_m_);
     }
   }
 
@@ -1239,17 +1252,13 @@ private:
   }
 
   [[nodiscard]] double
-  currentLidarPosePredictionSeconds(const std::int64_t scan_receive_ns,
+  currentLidarPoseReceiveLagSeconds(const std::int64_t scan_receive_ns,
                                     const std::int64_t pose_receive_ns) const {
-    if (!motion_compensate_lidar_pose_ || !current_velocity_valid_) {
-      return 0.0;
-    }
-    double pose_lag_s = 0.0;
     if (scan_receive_ns > 0 && pose_receive_ns > 0 &&
         scan_receive_ns > pose_receive_ns) {
-      pose_lag_s = static_cast<double>(scan_receive_ns - pose_receive_ns) / 1.0e9;
+      return static_cast<double>(scan_receive_ns - pose_receive_ns) / 1.0e9;
     }
-    return std::clamp(pose_lag_s + lidar_pose_prediction_s_, 0.0, 1.0);
+    return 0.0;
   }
 
   [[nodiscard]] LidarProjectionPose currentLidarProjectionPose() const {
@@ -1723,8 +1732,11 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
-  double last_scan_pose_prediction_s_{0.0};
-  double lidar_pose_prediction_s_{0.0};
+  double last_scan_pose_lag_s_{0.0};
+  double last_scan_pose_latency_s_{0.0};
+  double last_scan_motion_shift_m_{0.0};
+  double lidar_pose_latency_s_{0.05};
+  Point2 last_scan_motion_shift_{};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};

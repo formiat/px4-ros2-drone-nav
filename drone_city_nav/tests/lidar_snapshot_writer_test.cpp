@@ -31,6 +31,11 @@ TEST(LidarSnapshotWriter, WritesFiniteNumbersAndNullForNonFinite) {
   record.snapshot = "snapshot";
   record.yaw_delta_to_attitude_rad = std::numeric_limits<double>::quiet_NaN();
   record.scan_receive_age_s = 1.25;
+  record.pose_lag_s = 0.01;
+  record.pose_latency_s = 0.05;
+  record.motion_time_offset_s = -0.04;
+  record.motion_shift = Point2{-0.8, 0.2};
+  record.motion_shift_m = 0.824621;
   record.image_path = "/tmp/image.ppm";
   record.scan_csv_path = "/tmp/scan.csv";
 
@@ -40,6 +45,10 @@ TEST(LidarSnapshotWriter, WritesFiniteNumbersAndNullForNonFinite) {
   const std::string json = stream.str();
   EXPECT_NE(json.find("\"yaw_delta_to_attitude_rad\":null"), std::string::npos);
   EXPECT_NE(json.find("\"scan_receive_age_s\":1.2500"), std::string::npos);
+  EXPECT_NE(json.find("\"pose_latency_s\":0.0500"), std::string::npos);
+  EXPECT_NE(json.find("\"motion_time_offset_s\":-0.0400"), std::string::npos);
+  EXPECT_NE(json.find("\"motion_shift_x_m\":-0.8000"), std::string::npos);
+  EXPECT_NE(json.find("\"motion_shift_y_m\":0.2000"), std::string::npos);
 }
 
 TEST(LidarSnapshotWriter, JsonSummaryConvertsAllNonFiniteDoublesToNull) {
@@ -57,6 +66,12 @@ TEST(LidarSnapshotWriter, JsonSummaryConvertsAllNonFiniteDoublesToNull) {
   record.tilt_rad = std::numeric_limits<double>::quiet_NaN();
   record.projection_yaw_rad = std::numeric_limits<double>::quiet_NaN();
   record.yaw_delta_to_attitude_rad = std::numeric_limits<double>::infinity();
+  record.pose_lag_s = std::numeric_limits<double>::quiet_NaN();
+  record.pose_latency_s = std::numeric_limits<double>::infinity();
+  record.motion_time_offset_s = -std::numeric_limits<double>::infinity();
+  record.motion_shift.x = std::numeric_limits<double>::quiet_NaN();
+  record.motion_shift.y = std::numeric_limits<double>::infinity();
+  record.motion_shift_m = -std::numeric_limits<double>::infinity();
   record.scan_range_min_m = std::numeric_limits<double>::quiet_NaN();
   record.scan_range_max_m = std::numeric_limits<double>::infinity();
   record.scan_angle_min_rad = -std::numeric_limits<double>::infinity();
@@ -86,6 +101,9 @@ TEST(LidarSnapshotWriter, JsonSummaryConvertsAllNonFiniteDoublesToNull) {
   EXPECT_NE(json.find("\"pose\":{\"x\":null,\"y\":null,\"yaw_rad\":null"),
             std::string::npos);
   EXPECT_NE(json.find("\"horizontal_speed_mps\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"pose_latency_s\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"motion_shift_x_m\":null"), std::string::npos);
+  EXPECT_NE(json.find("\"motion_shift_y_m\":null"), std::string::npos);
   EXPECT_NE(json.find("\"roll_rad\":null"), std::string::npos);
   EXPECT_NE(json.find("\"range_min\":null"), std::string::npos);
   EXPECT_NE(json.find("\"initial_heading_rad\":null"), std::string::npos);

@@ -22,7 +22,7 @@ obstacle_memory_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     motion_compensate_lidar_pose: true
-    lidar_pose_prediction_s: 0.15
+    lidar_pose_latency_s: 0.05
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
     lidar_mount_pitch_rad: 0.0
@@ -88,7 +88,7 @@ planner_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     motion_compensate_lidar_pose: true
-    lidar_pose_prediction_s: 0.15
+    lidar_pose_latency_s: 0.05
     compensate_lidar_attitude: true
     lidar_mount_roll_rad: 0.0
     lidar_mount_pitch_rad: 0.0
@@ -240,7 +240,7 @@ lidar_debug_node:
     scan_yaw_offset_rad: 0.0
     use_px4_heading_for_scan: true
     motion_compensate_lidar_pose: true
-    lidar_pose_prediction_s: 0.15
+    lidar_pose_latency_s: 0.05
     lidar_scan_deskew: false
     lidar_scan_duration_override_s: 0.0
     compensate_lidar_attitude: true
