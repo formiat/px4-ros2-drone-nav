@@ -19,7 +19,6 @@ struct RacingLineConfig {
   double initial_offset_step_m{2.0};
   double min_offset_step_m{0.1};
   double cooling_ratio{0.5};
-  double endpoint_anchor_distance_m{20.0};
   double weight_length{0.02};
   double weight_curvature{250.0};
   double weight_curvature_change{100.0};

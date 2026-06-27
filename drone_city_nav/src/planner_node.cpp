@@ -202,23 +202,17 @@ public:
         "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
         "sample_step=%.2fm] "
         "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
-        "center_recovery_max=%.2fm endpoint_anchor=%.2fm "
+        "center_recovery_max=%.2fm "
         "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm] "
         "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
-        "min_step=%.2fm endpoint_anchor=%.2fm weights(length=%.3f time=%.2f "
+        "min_step=%.2fm weights(length=%.3f time=%.2f "
         "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
         "offset_second=%.2f center=%.3f edge=%.2f edge_margin=%.2fm "
         "max_length_ratio=%.2f)] "
-        "straightening[min_segment=%.2fm validation_step=%.2fm "
-        "corridor_margin=%.2fm max_length_ratio=%.3f max_heading=%.1fdeg "
-        "max_chord=%.2fm max_curvature=%.4f edge_loss=%.2fm] "
         "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
         "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
         "outer_shift=[%.2f, %.2f] corridor_margin=%.2fm max_length_ratio=%.2f "
-        "max_passes=%zu] "
-        "curve_refinement[sample_step=%.2fm tangent_scale=%.2f "
-        "corridor_margin=%.2fm] final_invariants[endpoint_tolerance=%.2fm "
-        "max_segment=%.2fm]",
+        "max_passes=%zu]",
         trajectory_planner_config_.speed_profile.cruise_speed_mps,
         trajectory_planner_config_.speed_profile.min_turn_speed_mps,
         trajectory_planner_config_.speed_profile.max_accel_mps2,
@@ -230,7 +224,6 @@ public:
         trajectory_planner_config_.corridor.sample_step_m,
         trajectory_planner_config_.corridor.safety_margin_m,
         trajectory_planner_config_.corridor.center_recovery_max_m,
-        trajectory_planner_config_.corridor.endpoint_anchor_distance_m,
         trajectory_planner_config_.corridor.lateral_limit_window_m,
         trajectory_planner_config_.corridor.lateral_limit_ratio,
         trajectory_planner_config_.corridor.lateral_limit_margin_m,
@@ -238,7 +231,6 @@ public:
         trajectory_planner_config_.racing_line.optimizer_sample_step_m,
         trajectory_planner_config_.racing_line.initial_offset_step_m,
         trajectory_planner_config_.racing_line.min_offset_step_m,
-        trajectory_planner_config_.racing_line.endpoint_anchor_distance_m,
         trajectory_planner_config_.racing_line.weight_length,
         trajectory_planner_config_.racing_line.weight_time,
         trajectory_planner_config_.racing_line.weight_curvature,
@@ -249,15 +241,6 @@ public:
         trajectory_planner_config_.racing_line.weight_edge_margin,
         trajectory_planner_config_.racing_line.desired_edge_margin_m,
         trajectory_planner_config_.racing_line.max_length_ratio,
-        trajectory_planner_config_.straightening.min_segment_length_m,
-        trajectory_planner_config_.straightening.validation_step_m,
-        trajectory_planner_config_.straightening.min_corridor_margin_m,
-        trajectory_planner_config_.straightening.max_path_length_ratio,
-        radiansToDegrees(
-            trajectory_planner_config_.straightening.max_heading_error_rad),
-        trajectory_planner_config_.straightening.max_chord_deviation_m,
-        trajectory_planner_config_.straightening.max_abs_curvature_1pm,
-        trajectory_planner_config_.straightening.max_edge_margin_loss_m,
         radiansToDegrees(
             trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
         trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
@@ -269,12 +252,7 @@ public:
         trajectory_planner_config_.turn_smoothing.max_outer_shift_m,
         trajectory_planner_config_.turn_smoothing.min_corridor_margin_m,
         trajectory_planner_config_.turn_smoothing.max_length_ratio,
-        trajectory_planner_config_.turn_smoothing.max_passes,
-        trajectory_planner_config_.curve_refinement_sample_step_m,
-        trajectory_planner_config_.curve_refinement_tangent_scale,
-        trajectory_planner_config_.curve_refinement_min_corridor_margin_m,
-        trajectory_planner_config_.final_endpoint_tolerance_m,
-        trajectory_planner_config_.final_max_segment_length_m);
+        trajectory_planner_config_.turn_smoothing.max_passes);
     RCLCPP_INFO(
         get_logger(),
         "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
@@ -1010,12 +988,10 @@ private:
           get_logger(),
           "%s racing trajectory build failed; rough A* route will not be published as "
           "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
-          "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
-          "turn_smoothing=%.1f curve_refinement=%.1f speed_profile=%.1f] "
+          "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+          "turn_smoothing=%.1f speed_profile=%.1f] "
           "corridor[samples=%zu width_min=%.2f width_mean=%.2f] "
-          "racing_line[iterations=%zu evals=%zu collision_rejections=%zu] "
-          "curve_refinement[input=%zu output=%zu rejected(prohibited=%zu "
-          "corridor=%zu)] final_endpoint_distance=%.2fm",
+          "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
           source_label,
           static_cast<int>(
               trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
@@ -1023,21 +999,14 @@ private:
           route_points.size(), duration_ms, trajectory_result.stats.total_duration_ms,
           trajectory_result.stats.corridor_duration_ms,
           trajectory_result.stats.racing_line_duration_ms,
-          trajectory_result.stats.straightening_duration_ms,
           trajectory_result.stats.turn_smoothing_duration_ms,
-          trajectory_result.stats.curve_refinement_duration_ms,
           trajectory_result.stats.speed_profile_duration_ms,
           trajectory_result.stats.corridor.samples,
           trajectory_result.stats.corridor.min_width_m,
           trajectory_result.stats.corridor.mean_width_m,
           trajectory_result.stats.racing_line.iterations,
           trajectory_result.stats.racing_line.candidate_evaluations,
-          trajectory_result.stats.racing_line.collision_rejections,
-          trajectory_result.stats.curve_refinement.input_samples,
-          trajectory_result.stats.curve_refinement.output_samples,
-          trajectory_result.stats.curve_refinement.rejected_prohibited_segments,
-          trajectory_result.stats.curve_refinement.rejected_corridor_samples,
-          trajectory_result.stats.final_endpoint_route_distance_m);
+          trajectory_result.stats.racing_line.collision_rejections);
       publishPath({}, PathPublicationReason::kHoldInvalidPath);
       return false;
     }
@@ -1050,8 +1019,8 @@ private:
           "%s racing trajectory build produced a non-traversable runtime trajectory; "
           "holding instead of publishing rough A* route: route_points=%zu "
           "trajectory_points=%zu duration_ms=%.1f status=%.*s "
-          "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
-          "turn_smoothing=%.1f curve_refinement=%.1f speed_profile=%.1f]",
+          "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+          "turn_smoothing=%.1f speed_profile=%.1f]",
           source_label, route_points.size(), trajectory_points.size(), duration_ms,
           static_cast<int>(
               trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
@@ -1059,9 +1028,7 @@ private:
           trajectory_result.stats.total_duration_ms,
           trajectory_result.stats.corridor_duration_ms,
           trajectory_result.stats.racing_line_duration_ms,
-          trajectory_result.stats.straightening_duration_ms,
           trajectory_result.stats.turn_smoothing_duration_ms,
-          trajectory_result.stats.curve_refinement_duration_ms,
           trajectory_result.stats.speed_profile_duration_ms);
       publishPath({}, PathPublicationReason::kHoldInvalidPath);
       return false;
@@ -1071,32 +1038,22 @@ private:
         get_logger(),
         "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
         "duration_ms=%.1f status=%.*s "
-        "timing[total=%.1f corridor=%.1f racing_line=%.1f straightening=%.1f "
-        "turn_smoothing=%.1f curve_refinement=%.1f speed_profile=%.1f] "
+        "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+        "turn_smoothing=%.1f speed_profile=%.1f] "
         "length=%.2f samples=%zu "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-        "centered=%zu endpoint_anchored=%zu center_shift_max=%.2f "
-        "endpoint_anchor_reduction_max=%.2f lateral_limited=%zu] "
+        "lateral_limited=%zu] "
         "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
         "eval_time=%.1fms score_time=%.1fms cost_initial=%.3f cost_final=%.3f "
         "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
         "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
         "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
         "speed_limit_max=%.2f curvature_limited=%zu] "
-        "straightening[input=%zu output=%zu collapsed=%zu "
-        "rejected(short=%zu shape=%zu curvature=%zu chord=%zu prohibited=%zu "
-        "corridor=%zu edge=%zu) "
-        "heading_before=%.1fdeg heading_after=%.1fdeg "
-        "curvature_jump_before=%.3f curvature_jump_after=%.3f] "
         "turn_smoothing[detected=%zu attempted=%zu smoothed=%zu "
         "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
         "heading_before=%.1fdeg heading_after=%.1fdeg "
         "curvature_jump_before=%.3f curvature_jump_after=%.3f "
         "min_inner_margin=%.2f max_outer_shift=%.2f] "
-        "curve_refinement[input=%zu output=%zu sample_step=%.2fm "
-        "tangent_scale=%.2f max_segment=%.2f max_heading=%.1fdeg "
-        "rejected(prohibited=%zu corridor=%zu)] "
-        "final_invariants[start_distance=%.2fm endpoint_distance=%.2fm ok=%s] "
         "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
         source_label, route_points.size(), trajectory_points.size(), duration_ms,
         static_cast<int>(
@@ -1105,19 +1062,13 @@ private:
         trajectory_result.stats.total_duration_ms,
         trajectory_result.stats.corridor_duration_ms,
         trajectory_result.stats.racing_line_duration_ms,
-        trajectory_result.stats.straightening_duration_ms,
         trajectory_result.stats.turn_smoothing_duration_ms,
-        trajectory_result.stats.curve_refinement_duration_ms,
         trajectory_result.stats.speed_profile_duration_ms,
         trajectory_result.stats.length_m, trajectory_result.stats.samples,
         trajectory_result.stats.corridor.samples,
         trajectory_result.stats.corridor.min_width_m,
         trajectory_result.stats.corridor.mean_width_m,
         trajectory_result.stats.corridor.max_width_m,
-        trajectory_result.stats.corridor.centered_samples,
-        trajectory_result.stats.corridor.endpoint_anchored_samples,
-        trajectory_result.stats.corridor.max_centering_shift_m,
-        trajectory_result.stats.corridor.max_endpoint_anchor_reduction_m,
         trajectory_result.stats.corridor.lateral_limited_samples,
         trajectory_result.stats.racing_line.iterations,
         trajectory_result.stats.racing_line.candidate_evaluations,
@@ -1137,22 +1088,6 @@ private:
         trajectory_result.stats.racing_line.min_speed_limit_mps,
         trajectory_result.stats.racing_line.max_speed_limit_mps,
         trajectory_result.stats.racing_line.curvature_limited_samples,
-        trajectory_result.stats.straightening.input_samples,
-        trajectory_result.stats.straightening.output_samples,
-        trajectory_result.stats.straightening.collapsed_segments,
-        trajectory_result.stats.straightening.rejected_too_short,
-        trajectory_result.stats.straightening.rejected_shape,
-        trajectory_result.stats.straightening.rejected_curvature,
-        trajectory_result.stats.straightening.rejected_chord_deviation,
-        trajectory_result.stats.straightening.rejected_prohibited,
-        trajectory_result.stats.straightening.rejected_corridor,
-        trajectory_result.stats.straightening.rejected_edge_margin,
-        radiansToDegrees(
-            trajectory_result.stats.straightening.max_heading_delta_before_rad),
-        radiansToDegrees(
-            trajectory_result.stats.straightening.max_heading_delta_after_rad),
-        trajectory_result.stats.straightening.max_curvature_jump_before_1pm,
-        trajectory_result.stats.straightening.max_curvature_jump_after_1pm,
         trajectory_result.stats.turn_smoothing.detected_corners,
         trajectory_result.stats.turn_smoothing.attempted_corners,
         trajectory_result.stats.turn_smoothing.smoothed_corners,
@@ -1168,18 +1103,6 @@ private:
         trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
         trajectory_result.stats.turn_smoothing.min_inner_margin_m,
         trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
-        trajectory_result.stats.curve_refinement.input_samples,
-        trajectory_result.stats.curve_refinement.output_samples,
-        trajectory_result.stats.curve_refinement.sample_step_m,
-        trajectory_result.stats.curve_refinement.tangent_scale,
-        trajectory_result.stats.curve_refinement.max_segment_length_m,
-        radiansToDegrees(
-            trajectory_result.stats.curve_refinement.max_heading_delta_rad),
-        trajectory_result.stats.curve_refinement.rejected_prohibited_segments,
-        trajectory_result.stats.curve_refinement.rejected_corridor_samples,
-        trajectory_result.stats.final_start_route_distance_m,
-        trajectory_result.stats.final_endpoint_route_distance_m,
-        trajectory_result.stats.final_invariants_ok ? "true" : "false",
         trajectory_result.stats.speed_profile_min_mps,
         trajectory_result.stats.speed_profile_mean_mps,
         trajectory_result.stats.speed_profile_max_mps,
@@ -1504,7 +1427,7 @@ private:
            << " valid=" << (result.valid ? "true" : "false") << "\n";
     stream << "sample_index,s_m,route_x,route_y,center_x,center_y,tangent_x,"
               "tangent_y,normal_x,normal_y,left_bound_m,right_bound_m,width_m,"
-              "clearance_m,center_recovery_m,centering_shift_m\n";
+              "clearance_m,center_recovery_m\n";
     for (std::size_t i = 0U; i < result.corridor_samples.size(); ++i) {
       const CorridorSample& sample = result.corridor_samples[i];
       stream << i << ",";
@@ -1535,8 +1458,6 @@ private:
       writeCsvNumberOrEmpty(stream, sample.clearance_m);
       stream << ",";
       writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
-      stream << ",";
-      writeCsvNumberOrEmpty(stream, sample.centering_shift_m);
       stream << "\n";
     }
     return stream.good();

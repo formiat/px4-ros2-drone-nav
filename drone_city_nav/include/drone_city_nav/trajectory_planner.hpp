@@ -3,11 +3,9 @@
 #include "drone_city_nav/corridor.hpp"
 #include "drone_city_nav/racing_line.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
-#include "drone_city_nav/trajectory_straightening.hpp"
 #include "drone_city_nav/turn_smoothing.hpp"
 
 #include <cstddef>
-#include <limits>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -26,28 +24,9 @@ enum class TrajectoryPlannerStatus {
 struct TrajectoryPlannerConfig {
   CorridorConfig corridor{};
   RacingLineConfig racing_line{};
-  TrajectoryStraighteningConfig straightening{};
   TurnSmoothingConfig turn_smoothing{};
   VelocityFollowerConfig speed_profile{};
   double debug_sample_step_m{1.0};
-  double curve_refinement_sample_step_m{1.0};
-  double curve_refinement_tangent_scale{0.45};
-  double curve_refinement_min_corridor_margin_m{0.5};
-  double final_endpoint_tolerance_m{0.75};
-  double final_max_segment_length_m{2.0};
-};
-
-struct CurveRefinementStats {
-  std::size_t input_samples{0U};
-  std::size_t output_samples{0U};
-  std::size_t rejected_prohibited_segments{0U};
-  std::size_t rejected_corridor_samples{0U};
-  double sample_step_m{0.0};
-  double tangent_scale{0.0};
-  double min_corridor_margin_m{0.0};
-  double max_segment_length_m{0.0};
-  double max_heading_delta_rad{0.0};
-  bool valid{false};
 };
 
 struct TrajectoryPlannerStats {
@@ -67,19 +46,12 @@ struct TrajectoryPlannerStats {
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double racing_line_duration_ms{0.0};
-  double straightening_duration_ms{0.0};
   double turn_smoothing_duration_ms{0.0};
-  double curve_refinement_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
-  double final_start_route_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  double final_endpoint_route_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  bool final_invariants_ok{false};
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   CorridorStats corridor{};
   RacingLineStats racing_line{};
-  TrajectoryStraighteningStats straightening{};
   TurnSmoothingStats turn_smoothing{};
-  CurveRefinementStats curve_refinement{};
 };
 
 struct TrajectoryPlannerInput {

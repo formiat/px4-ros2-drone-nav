@@ -12,9 +12,6 @@ namespace drone_city_nav {
 namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
-constexpr double kMaxCenteringShiftSlope = 0.35;
-constexpr double kMinCenteringShiftStepM = 0.5;
-constexpr int kCenteringShiftRecoverySteps = 8;
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
@@ -146,157 +143,6 @@ void updateRange(double& min_value, double& max_value, const double value,
   return (*(middle - 1) + *middle) * 0.5;
 }
 
-[[nodiscard]] double clampCenteringShift(const CorridorSample& sample,
-                                         const double shift) noexcept {
-  if (!std::isfinite(shift)) {
-    return 0.0;
-  }
-  const double left_bound = std::max(0.0, sample.left_bound_m);
-  const double right_bound = std::max(0.0, sample.right_bound_m);
-  return std::clamp(shift, -right_bound, left_bound);
-}
-
-[[nodiscard]] double
-localWeightedCenteringShift(const std::span<const CorridorSample> samples,
-                            const std::size_t index, const double window_m) {
-  const double window = std::max(window_m, kTinyDistanceM);
-  const double center_s = samples[index].s_m;
-  double weighted_sum = 0.0;
-  double weight_sum = 0.0;
-  for (const CorridorSample& sample : samples) {
-    const double distance_m = std::abs(sample.s_m - center_s);
-    if (distance_m > window) {
-      continue;
-    }
-    const double weight =
-        distance_m <= kTinyDistanceM ? 1.0 : std::max(0.0, 1.0 - distance_m / window);
-    if (!(weight > 0.0) || !std::isfinite(sample.centering_shift_m)) {
-      continue;
-    }
-    weighted_sum += sample.centering_shift_m * weight;
-    weight_sum += weight;
-  }
-  if (!(weight_sum > 0.0)) {
-    return clampCenteringShift(samples[index], samples[index].centering_shift_m);
-  }
-  return clampCenteringShift(samples[index], weighted_sum / weight_sum);
-}
-
-void limitCenteringShiftSlope(const std::span<const CorridorSample> samples,
-                              std::vector<double>& shifts) {
-  if (samples.size() < 2U || shifts.size() != samples.size()) {
-    return;
-  }
-
-  for (std::size_t i = 1U; i < shifts.size(); ++i) {
-    const double ds_m = std::abs(samples[i].s_m - samples[i - 1U].s_m);
-    const double max_delta_m =
-        std::max(kMinCenteringShiftStepM, kMaxCenteringShiftSlope * ds_m);
-    shifts[i] = std::clamp(shifts[i], shifts[i - 1U] - max_delta_m,
-                           shifts[i - 1U] + max_delta_m);
-    shifts[i] = clampCenteringShift(samples[i], shifts[i]);
-  }
-
-  for (std::size_t i = shifts.size() - 1U; i > 0U; --i) {
-    const std::size_t current = i - 1U;
-    const double ds_m = std::abs(samples[i].s_m - samples[current].s_m);
-    const double max_delta_m =
-        std::max(kMinCenteringShiftStepM, kMaxCenteringShiftSlope * ds_m);
-    shifts[current] =
-        std::clamp(shifts[current], shifts[i] - max_delta_m, shifts[i] + max_delta_m);
-    shifts[current] = clampCenteringShift(samples[current], shifts[current]);
-  }
-}
-
-[[nodiscard]] double recoverValidCenteringShift(const OccupancyGrid2D& grid,
-                                                const CorridorSample& sample,
-                                                const double requested_shift) {
-  double shift = clampCenteringShift(sample, requested_shift);
-  for (int attempt = 0; attempt <= kCenteringShiftRecoverySteps; ++attempt) {
-    const Point2 candidate = sample.center + sample.normal * shift;
-    if (finite2D(candidate) && !pointIsProhibited(grid, candidate)) {
-      return shift;
-    }
-    shift *= 0.5;
-  }
-  return 0.0;
-}
-
-[[nodiscard]] double smoothStep01(const double value) noexcept {
-  const double t = std::clamp(value, 0.0, 1.0);
-  return t * t * (3.0 - 2.0 * t);
-}
-
-[[nodiscard]] double endpointAnchorScale(const std::span<const CorridorSample> samples,
-                                         const std::size_t index,
-                                         const double anchor_distance_m) noexcept {
-  if (samples.empty() || index >= samples.size() ||
-      !(anchor_distance_m > kTinyDistanceM)) {
-    return 1.0;
-  }
-  const double length_m = samples.back().s_m;
-  if (!(length_m > kTinyDistanceM)) {
-    return 0.0;
-  }
-  const double effective_anchor_distance_m =
-      std::min(anchor_distance_m, length_m * 0.25);
-  const double start_scale =
-      smoothStep01(samples[index].s_m / effective_anchor_distance_m);
-  const double end_scale =
-      smoothStep01((length_m - samples[index].s_m) / effective_anchor_distance_m);
-  return std::min(start_scale, end_scale);
-}
-
-void applySmoothedCorridorCentering(std::vector<CorridorSample>& samples,
-                                    const OccupancyGrid2D& prohibited_grid,
-                                    const CorridorConfig& config,
-                                    CorridorStats& stats) {
-  if (samples.empty()) {
-    return;
-  }
-
-  const double window_m =
-      sanitizedPositive(config.lateral_limit_window_m, 20.0, 0.05, 5000.0);
-  std::vector<double> shifts;
-  shifts.reserve(samples.size());
-  const std::span<const CorridorSample> raw_samples{samples.data(), samples.size()};
-  for (std::size_t i = 0U; i < samples.size(); ++i) {
-    shifts.push_back(localWeightedCenteringShift(raw_samples, i, window_m));
-  }
-  limitCenteringShiftSlope(raw_samples, shifts);
-
-  const double endpoint_anchor_distance_m = sanitizedPositive(
-      config.endpoint_anchor_distance_m, 20.0, 0.0, std::numeric_limits<double>::max());
-  for (std::size_t i = 0U; i < shifts.size(); ++i) {
-    const double original_shift = shifts[i];
-    shifts[i] *= endpointAnchorScale(raw_samples, i, endpoint_anchor_distance_m);
-    const double reduction_m = std::abs(original_shift - shifts[i]);
-    if (reduction_m > kTinyDistanceM) {
-      ++stats.endpoint_anchored_samples;
-      stats.max_endpoint_anchor_reduction_m =
-          std::max(stats.max_endpoint_anchor_reduction_m, reduction_m);
-    }
-  }
-
-  stats.centered_samples = 0U;
-  stats.max_centering_shift_m = 0.0;
-  for (std::size_t i = 0U; i < samples.size(); ++i) {
-    CorridorSample& sample = samples[i];
-    const double shift = recoverValidCenteringShift(prohibited_grid, sample, shifts[i]);
-    sample.centering_shift_m = std::abs(shift) > kTinyDistanceM ? shift : 0.0;
-    sample.center = sample.center + sample.normal * sample.centering_shift_m;
-    sample.left_bound_m =
-        raycastBound(prohibited_grid, sample.center, sample.normal, config, stats);
-    sample.right_bound_m = raycastBound(prohibited_grid, sample.center,
-                                        sample.normal * -1.0, config, stats);
-    if (std::abs(sample.centering_shift_m) > kTinyDistanceM) {
-      ++stats.centered_samples;
-      stats.max_centering_shift_m =
-          std::max(stats.max_centering_shift_m, std::abs(sample.centering_shift_m));
-    }
-  }
-}
-
 [[nodiscard]] double localMedianBound(const std::span<const CorridorSample> samples,
                                       const std::size_t index, const double window_m,
                                       const bool left_bound) {
@@ -406,12 +252,6 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
       }
     }
 
-    const double left_bound =
-        raycastBound(prohibited_grid, center, normal, config, result.stats);
-    const double right_bound =
-        raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
-    const double centering_shift_m = 0.5 * (left_bound - right_bound);
-
     CorridorSample sample{};
     sample.s_m = s_m;
     sample.route_center = route_center;
@@ -419,9 +259,10 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
     sample.tangent = tangent;
     sample.normal = normal;
     sample.center_recovery_m = center_recovery_m;
-    sample.centering_shift_m = centering_shift_m;
-    sample.left_bound_m = left_bound;
-    sample.right_bound_m = right_bound;
+    sample.left_bound_m =
+        raycastBound(prohibited_grid, center, normal, config, result.stats);
+    sample.right_bound_m =
+        raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
 
     const std::optional<GridIndex> cell = prohibited_grid.worldToCell(center);
     if (cell.has_value()) {
@@ -434,7 +275,6 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
     }
   }
 
-  applySmoothedCorridorCentering(result.samples, prohibited_grid, config, result.stats);
   applyLocalLateralLimit(result.samples, config, result.stats);
 
   result.stats.samples = result.samples.size();

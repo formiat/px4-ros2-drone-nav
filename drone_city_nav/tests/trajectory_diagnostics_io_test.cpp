@@ -57,20 +57,6 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
   stats.racing_line.cost_length_overrun = 0.0;
-  stats.straightening.input_samples = 64U;
-  stats.straightening.output_samples = 22U;
-  stats.straightening.collapsed_segments = 5U;
-  stats.straightening.rejected_too_short = 7U;
-  stats.straightening.rejected_shape = 11U;
-  stats.straightening.rejected_curvature = 13U;
-  stats.straightening.rejected_chord_deviation = 17U;
-  stats.straightening.rejected_prohibited = 1U;
-  stats.straightening.rejected_corridor = 2U;
-  stats.straightening.rejected_edge_margin = 19U;
-  stats.straightening.max_heading_delta_before_rad = 0.9;
-  stats.straightening.max_heading_delta_after_rad = 0.35;
-  stats.straightening.max_curvature_jump_before_1pm = 0.6;
-  stats.straightening.max_curvature_jump_after_1pm = 0.18;
   stats.turn_smoothing.input_samples = 48U;
   stats.turn_smoothing.output_samples = 72U;
   stats.turn_smoothing.detected_corners = 3U;
@@ -91,9 +77,7 @@ void expectContainsAll(const std::string& text,
   stats.corridor.mean_width_m = 24.25;
   stats.corridor.max_width_m = 58.75;
   stats.corridor.lateral_limited_samples = 9U;
-  stats.corridor.centered_samples = 31U;
   stats.corridor.max_center_recovery_m = 1.25;
-  stats.corridor.max_centering_shift_m = 6.75;
   stats.corridor.max_lateral_bound_reduction_m = 2.5;
   stats.input_points = 8U;
   stats.samples = 78U;
@@ -108,7 +92,6 @@ void expectContainsAll(const std::string& text,
   stats.total_duration_ms = 123.4;
   stats.corridor_duration_ms = 5.5;
   stats.racing_line_duration_ms = 99.9;
-  stats.straightening_duration_ms = 6.25;
   stats.turn_smoothing_duration_ms = 8.75;
   stats.speed_profile_duration_ms = 1.5;
   return stats;
@@ -182,16 +165,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_best_candidate_estimated_time_s\":12.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_straightening_collapsed_segments\":5"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_straightening_heading_delta_after_rad\":0.35"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_straightening_rejected_curvature\":13"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_straightening_rejected_chord_deviation\":17"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_straightening_rejected_edge_margin\":19"),
-            std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_heading_delta_after_rad\":0.4"),
             std::string::npos);
@@ -245,31 +218,6 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
-TEST(TrajectoryDiagnosticsIo,
-     TrajectoryStraighteningJsonFragmentContainsBlackboxRequiredKeys) {
-  const std::string fragment =
-      trajectoryStraighteningDiagnosticsJsonFields(populatedStats());
-
-  expectContainsAll(fragment,
-                    std::array{
-                        "\"trajectory_straightening_input_samples\"",
-                        "\"trajectory_straightening_output_samples\"",
-                        "\"trajectory_straightening_collapsed_segments\"",
-                        "\"trajectory_straightening_rejected_too_short\"",
-                        "\"trajectory_straightening_rejected_shape\"",
-                        "\"trajectory_straightening_rejected_curvature\"",
-                        "\"trajectory_straightening_rejected_chord_deviation\"",
-                        "\"trajectory_straightening_rejected_prohibited\"",
-                        "\"trajectory_straightening_rejected_corridor\"",
-                        "\"trajectory_straightening_rejected_edge_margin\"",
-                        "\"trajectory_straightening_heading_delta_before_rad\"",
-                        "\"trajectory_straightening_heading_delta_after_rad\"",
-                        "\"trajectory_straightening_curvature_jump_before_1pm\"",
-                        "\"trajectory_straightening_curvature_jump_after_1pm\"",
-                    });
-  EXPECT_EQ(fragment.find("nan"), std::string::npos);
-}
-
 TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredKeys) {
   const std::string fragment = turnSmoothingDiagnosticsJsonFields(populatedStats());
 
@@ -300,7 +248,6 @@ TEST(TrajectoryDiagnosticsIo, TimingJsonFragmentContainsBlackboxRequiredKeys) {
                                   "\"trajectory_total_duration_ms\"",
                                   "\"trajectory_corridor_duration_ms\"",
                                   "\"trajectory_racing_line_duration_ms\"",
-                                  "\"trajectory_straightening_duration_ms\"",
                                   "\"trajectory_turn_smoothing_duration_ms\"",
                                   "\"trajectory_speed_profile_duration_ms\"",
                               });
@@ -341,20 +288,10 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.max_width_m, 58.75);
   EXPECT_EQ(parsed_value.stats.corridor.lateral_limited_samples, 9U);
-  EXPECT_EQ(parsed_value.stats.corridor.centered_samples, 31U);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.max_centering_shift_m, 6.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_m, 108.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.min_edge_margin_m, 2.5);
-  EXPECT_EQ(parsed_value.stats.straightening.input_samples, 64U);
-  EXPECT_EQ(parsed_value.stats.straightening.output_samples, 22U);
-  EXPECT_EQ(parsed_value.stats.straightening.collapsed_segments, 5U);
-  EXPECT_EQ(parsed_value.stats.straightening.rejected_curvature, 13U);
-  EXPECT_EQ(parsed_value.stats.straightening.rejected_chord_deviation, 17U);
-  EXPECT_EQ(parsed_value.stats.straightening.rejected_edge_margin, 19U);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_before_rad, 0.9);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening.max_heading_delta_after_rad, 0.35);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);
@@ -367,7 +304,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.total_duration_ms, 123.4);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor_duration_ms, 5.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line_duration_ms, 99.9);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.straightening_duration_ms, 6.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing_duration_ms, 8.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_duration_ms, 1.5);
 }

@@ -557,7 +557,6 @@ private:
     }
     last_trajectory_planner_stats_.corridor = diagnostics.stats.corridor;
     last_trajectory_planner_stats_.racing_line = diagnostics.stats.racing_line;
-    last_trajectory_planner_stats_.straightening = diagnostics.stats.straightening;
     last_trajectory_planner_stats_.turn_smoothing = diagnostics.stats.turn_smoothing;
     last_trajectory_planner_stats_.total_duration_ms =
         diagnostics.stats.total_duration_ms;
@@ -565,8 +564,6 @@ private:
         diagnostics.stats.corridor_duration_ms;
     last_trajectory_planner_stats_.racing_line_duration_ms =
         diagnostics.stats.racing_line_duration_ms;
-    last_trajectory_planner_stats_.straightening_duration_ms =
-        diagnostics.stats.straightening_duration_ms;
     last_trajectory_planner_stats_.turn_smoothing_duration_ms =
         diagnostics.stats.turn_smoothing_duration_ms;
     last_trajectory_planner_stats_.speed_profile_duration_ms =
@@ -2574,16 +2571,10 @@ private:
     flight_blackbox_stream_
         << ",\"corridor_center_unrecoverable_samples\":"
         << last_trajectory_planner_stats_.corridor.center_unrecoverable_samples;
-    flight_blackbox_stream_ << ",\"corridor_centered_samples\":"
-                            << last_trajectory_planner_stats_.corridor.centered_samples;
     flight_blackbox_stream_ << ",\"corridor_center_recovery_max_m\":";
     writeJsonNumberOrNull(
         flight_blackbox_stream_,
         last_trajectory_planner_stats_.corridor.max_center_recovery_m);
-    flight_blackbox_stream_ << ",\"corridor_centering_shift_max_m\":";
-    writeJsonNumberOrNull(
-        flight_blackbox_stream_,
-        last_trajectory_planner_stats_.corridor.max_centering_shift_m);
     flight_blackbox_stream_ << ",\"corridor_lateral_reduction_max_m\":";
     writeJsonNumberOrNull(
         flight_blackbox_stream_,
@@ -2604,9 +2595,6 @@ private:
                           last_trajectory_planner_stats_.racing_line.max_abs_offset_m);
     flight_blackbox_stream_ << ","
                             << racingLineDiagnosticsJsonFields(
-                                   last_trajectory_planner_stats_);
-    flight_blackbox_stream_ << ","
-                            << trajectoryStraighteningDiagnosticsJsonFields(
                                    last_trajectory_planner_stats_);
     flight_blackbox_stream_ << ","
                             << turnSmoothingDiagnosticsJsonFields(

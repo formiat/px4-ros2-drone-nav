@@ -99,44 +99,6 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
          1000.0;
 }
 
-[[nodiscard]] double smoothStep01(const double value) noexcept {
-  const double t = std::clamp(value, 0.0, 1.0);
-  return t * t * (3.0 - 2.0 * t);
-}
-
-[[nodiscard]] double
-endpointAnchorScale(const std::span<const CorridorSample> corridor_samples,
-                    const std::size_t index, const double anchor_distance_m) noexcept {
-  if (corridor_samples.empty() || index >= corridor_samples.size() ||
-      !(anchor_distance_m > kTinyDistanceM)) {
-    return 1.0;
-  }
-  const double length_m = corridor_samples.back().s_m;
-  if (!(length_m > kTinyDistanceM)) {
-    return 0.0;
-  }
-  const double effective_anchor_distance_m =
-      std::min(anchor_distance_m, length_m * 0.25);
-  const double start_scale =
-      smoothStep01(corridor_samples[index].s_m / effective_anchor_distance_m);
-  const double end_scale = smoothStep01((length_m - corridor_samples[index].s_m) /
-                                        effective_anchor_distance_m);
-  return std::min(start_scale, end_scale);
-}
-
-[[nodiscard]] std::vector<double>
-effectiveOffsets(const std::span<const CorridorSample> corridor_samples,
-                 const std::span<const double> offsets,
-                 const double anchor_distance_m) {
-  std::vector<double> effective_offsets;
-  effective_offsets.reserve(offsets.size());
-  for (std::size_t i = 0U; i < offsets.size(); ++i) {
-    const double scale = endpointAnchorScale(corridor_samples, i, anchor_distance_m);
-    effective_offsets.push_back(offsets[i] * scale);
-  }
-  return effective_offsets;
-}
-
 [[nodiscard]] std::vector<Point2>
 pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
                   const std::span<const double> offsets) {
@@ -562,8 +524,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
 
 [[nodiscard]] bool updateBestCandidate(
     const std::span<const CorridorSample> corridor_samples,
-    const std::span<const double> raw_candidate_offsets,
-    const std::span<const double> effective_candidate_offsets,
+    const std::span<const double> candidate_offsets,
     const std::span<const Point2> candidate_points,
     const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
@@ -579,12 +540,12 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   }
   const auto score_started_at = std::chrono::steady_clock::now();
   const CandidateScore candidate_score =
-      scoreForCandidate(corridor_samples, candidate_points, effective_candidate_offsets,
+      scoreForCandidate(corridor_samples, candidate_points, candidate_offsets,
                         evaluation, config, speed_config, max_length_m);
   stats.candidate_score_duration_ms += elapsedMilliseconds(score_started_at);
   if (candidate_score.score + 1.0e-9 < best_cost) {
     best_cost = candidate_score.score;
-    offsets.assign(raw_candidate_offsets.begin(), raw_candidate_offsets.end());
+    offsets.assign(candidate_offsets.begin(), candidate_offsets.end());
     best_points.assign(candidate_points.begin(), candidate_points.end());
     copyTraversalEstimateToBestCandidateStats(candidate_score.traversal_time,
                                               candidate_score.score, stats);
@@ -646,8 +607,6 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   const double max_length_ratio =
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
   const double max_length_m = result.stats.centerline_length_m * max_length_ratio;
-  const double endpoint_anchor_distance_m = sanitizedPositive(
-      config.endpoint_anchor_distance_m, 20.0, 0.0, std::numeric_limits<double>::max());
 
   std::vector<double> offsets;
   std::vector<Point2> best_points;
@@ -657,12 +616,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       InitialOffsetSeed::kLeftBiased, InitialOffsetSeed::kRightBiased};
   for (const InitialOffsetSeed seed : kInitialSeeds) {
     std::vector<double> candidate_offsets = offsetsFromSeed(optimizer_samples, seed);
-    std::vector<double> effective_candidate_offsets = effectiveOffsets(
-        optimizer_samples, candidate_offsets, endpoint_anchor_distance_m);
     std::vector<Point2> candidate_points =
-        pointsFromOffsets(optimizer_samples, effective_candidate_offsets);
-    (void)updateBestCandidate(optimizer_samples, candidate_offsets,
-                              effective_candidate_offsets, candidate_points,
+        pointsFromOffsets(optimizer_samples, candidate_offsets);
+    (void)updateBestCandidate(optimizer_samples, candidate_offsets, candidate_points,
                               prohibited_grid, config, speed_config, max_length_m,
                               best_cost, offsets, best_points, result.stats);
   }
@@ -683,16 +639,14 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
           ++result.stats.skipped_noop_candidates;
           continue;
         }
-        std::vector<double> effective_candidate_offsets = effectiveOffsets(
-            optimizer_samples, candidate_offsets, endpoint_anchor_distance_m);
         std::vector<Point2> candidate_points =
-            pointsFromOffsets(optimizer_samples, effective_candidate_offsets);
+            pointsFromOffsets(optimizer_samples, candidate_offsets);
         std::vector<double> accepted_offsets;
         std::vector<Point2> accepted_points;
         const bool accepted = updateBestCandidate(
-            optimizer_samples, candidate_offsets, effective_candidate_offsets,
-            candidate_points, prohibited_grid, config, speed_config, max_length_m,
-            best_cost, accepted_offsets, accepted_points, result.stats);
+            optimizer_samples, candidate_offsets, candidate_points, prohibited_grid,
+            config, speed_config, max_length_m, best_cost, accepted_offsets,
+            accepted_points, result.stats);
         if (accepted) {
           best_offsets = std::move(accepted_offsets);
           best_points = std::move(accepted_points);
@@ -709,15 +663,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
 
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
-    const std::vector<double> effective_offsets =
-        effectiveOffsets(optimizer_samples, offsets, endpoint_anchor_distance_m);
-    final_points = pointsFromOffsets(optimizer_samples, effective_offsets);
+    final_points = pointsFromOffsets(optimizer_samples, offsets);
   }
-  std::vector<double> final_effective_offsets =
-      effectiveOffsets(optimizer_samples, offsets, endpoint_anchor_distance_m);
   std::vector<TrajectoryPointSample> pre_regularization_samples =
-      samplesFromPointsAndOffsets(optimizer_samples, final_points,
-                                  final_effective_offsets);
+      samplesFromPointsAndOffsets(optimizer_samples, final_points, offsets);
   populateSampleGeometry(pre_regularization_samples);
   const TrajectoryShapeDiagnostics pre_diagnostics =
       computeTrajectoryShapeDiagnostics(pre_regularization_samples);
@@ -732,10 +681,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   for (std::size_t iteration = 0U; iteration < regularization_iterations; ++iteration) {
     std::vector<double> candidate_offsets =
         smoothedOffsets(final_offsets, optimizer_samples);
-    std::vector<double> effective_candidate_offsets = effectiveOffsets(
-        optimizer_samples, candidate_offsets, endpoint_anchor_distance_m);
     std::vector<Point2> candidate_points =
-        pointsFromOffsets(optimizer_samples, effective_candidate_offsets);
+        pointsFromOffsets(optimizer_samples, candidate_offsets);
     const PathEvaluation candidate_evaluation =
         evaluatePath(prohibited_grid, candidate_points);
     if (!candidate_evaluation.traversable()) {
@@ -743,7 +690,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       break;
     }
     std::vector<TrajectoryPointSample> candidate_samples = samplesFromPointsAndOffsets(
-        optimizer_samples, candidate_points, effective_candidate_offsets);
+        optimizer_samples, candidate_points, candidate_offsets);
     populateSampleGeometry(candidate_samples);
     const TrajectoryShapeDiagnostics candidate_diagnostics =
         computeTrajectoryShapeDiagnostics(candidate_samples);
@@ -760,22 +707,17 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       break;
     }
     final_offsets = std::move(candidate_offsets);
-    final_effective_offsets = std::move(effective_candidate_offsets);
     final_points = std::move(candidate_points);
     result.stats.regularization_applied = true;
     ++result.stats.regularization_iterations;
   }
-  final_effective_offsets =
-      effectiveOffsets(optimizer_samples, final_offsets, endpoint_anchor_distance_m);
-  final_points = pointsFromOffsets(optimizer_samples, final_effective_offsets);
-
   const PathEvaluation final_evaluation = evaluatePath(prohibited_grid, final_points);
   if (!final_evaluation.traversable()) {
     ++result.stats.collision_rejections;
     return result;
   }
   const CandidateScore final_score =
-      scoreForCandidate(optimizer_samples, final_points, final_effective_offsets,
+      scoreForCandidate(optimizer_samples, final_points, final_offsets,
                         final_evaluation, config, speed_config, max_length_m);
 
   result.samples.reserve(sample_count);
@@ -784,9 +726,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     sample.point = final_points[i];
     sample.left_bound_m = optimizer_samples[i].left_bound_m;
     sample.right_bound_m = optimizer_samples[i].right_bound_m;
-    sample.racing_offset_m = final_effective_offsets[i];
+    sample.racing_offset_m = final_offsets[i];
     result.stats.max_abs_offset_m =
-        std::max(result.stats.max_abs_offset_m, std::abs(final_effective_offsets[i]));
+        std::max(result.stats.max_abs_offset_m, std::abs(final_offsets[i]));
     result.samples.push_back(sample);
   }
   populateSampleGeometry(result.samples);

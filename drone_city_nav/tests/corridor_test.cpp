@@ -41,21 +41,6 @@ TEST(Corridor, StraightPassageHasSymmetricBounds) {
   EXPECT_GT(result.stats.mean_width_m, 5.0);
 }
 
-TEST(Corridor, OffsetRouteRecentersToFreeSpaceMidline) {
-  const OccupancyGrid2D grid = corridorGrid();
-  const std::vector<Point2> route{{1.5, 4.5}, {18.5, 4.5}};
-
-  const CorridorResult result = buildCorridor(route, grid, testConfig());
-
-  ASSERT_TRUE(result.valid);
-  ASSERT_GT(result.samples.size(), 2U);
-  EXPECT_GT(result.stats.centered_samples, 0U);
-  EXPECT_GT(result.stats.max_centering_shift_m, 0.5);
-  const CorridorSample middle = result.samples[result.samples.size() / 2U];
-  EXPECT_GT(middle.center.y, middle.route_center.y);
-  EXPECT_NEAR(middle.left_bound_m, middle.right_bound_m, 1.0);
-}
-
 TEST(Corridor, RouteInsideProhibitedIsInvalid) {
   OccupancyGrid2D grid = corridorGrid();
   grid.setOccupied(GridIndex{5, 5});
@@ -125,42 +110,6 @@ TEST(Corridor, LocalLateralLimitClipsSideOpening) {
       });
   ASSERT_NE(opening_sample, result.samples.end());
   EXPECT_LE(opening_sample->left_bound_m, 3.5);
-}
-
-TEST(Corridor, CenteringSmoothsAlternatingSideOpenings) {
-  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 32, 22}};
-  for (int x = 0; x < grid.width(); ++x) {
-    grid.setOccupied(GridIndex{x, 5});
-    grid.setOccupied(GridIndex{x, 15});
-  }
-  for (int x = 8; x <= 10; ++x) {
-    grid.setFree(GridIndex{x, 15});
-  }
-  for (int x = 13; x <= 15; ++x) {
-    grid.setFree(GridIndex{x, 5});
-  }
-  for (int x = 18; x <= 20; ++x) {
-    grid.setFree(GridIndex{x, 15});
-  }
-
-  CorridorConfig config = testConfig();
-  config.max_radius_m = 20.0;
-  config.sample_step_m = 1.0;
-  config.lateral_limit_window_m = 8.0;
-  const std::vector<Point2> route{{1.5, 10.5}, {30.5, 10.5}};
-
-  const CorridorResult result = buildCorridor(route, grid, config);
-
-  ASSERT_TRUE(result.valid);
-  ASSERT_GT(result.samples.size(), 2U);
-  EXPECT_GT(result.stats.centered_samples, 0U);
-  double max_adjacent_center_jump_m = 0.0;
-  for (std::size_t i = 1U; i < result.samples.size(); ++i) {
-    max_adjacent_center_jump_m =
-        std::max(max_adjacent_center_jump_m, std::abs(result.samples[i].center.y -
-                                                      result.samples[i - 1U].center.y));
-  }
-  EXPECT_LE(max_adjacent_center_jump_m, 0.75);
 }
 
 } // namespace drone_city_nav

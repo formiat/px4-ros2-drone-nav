@@ -16,7 +16,6 @@ struct CorridorConfig {
   double ray_step_m{0.0};
   double safety_margin_m{0.5};
   double center_recovery_max_m{3.0};
-  double endpoint_anchor_distance_m{20.0};
   double lateral_limit_window_m{20.0};
   double lateral_limit_ratio{1.25};
   double lateral_limit_margin_m{1.0};
@@ -32,7 +31,6 @@ struct CorridorSample {
   double right_bound_m{0.0};
   double clearance_m{0.0};
   double center_recovery_m{0.0};
-  double centering_shift_m{0.0};
 };
 
 struct CorridorStats {
@@ -41,8 +39,6 @@ struct CorridorStats {
   std::size_t route_prohibited_samples{0U};
   std::size_t center_recovered_samples{0U};
   std::size_t center_unrecoverable_samples{0U};
-  std::size_t centered_samples{0U};
-  std::size_t endpoint_anchored_samples{0U};
   std::size_t outside_grid_samples{0U};
   std::size_t lateral_limited_samples{0U};
   double min_width_m{0.0};
@@ -52,8 +48,6 @@ struct CorridorStats {
   double mean_clearance_m{0.0};
   double max_clearance_m{0.0};
   double max_center_recovery_m{0.0};
-  double max_centering_shift_m{0.0};
-  double max_endpoint_anchor_reduction_m{0.0};
   double max_lateral_bound_reduction_m{0.0};
 };
 

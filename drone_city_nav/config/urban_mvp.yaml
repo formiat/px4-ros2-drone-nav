@@ -118,13 +118,11 @@ planner_node:
     corridor_ray_step_m: 0.0
     corridor_safety_margin_m: 0.5
     corridor_center_recovery_max_m: 3.0
-    corridor_endpoint_anchor_distance_m: 20.0
     corridor_lateral_limit_window_m: 20.0
     corridor_lateral_limit_ratio: 1.25
     corridor_lateral_limit_margin_m: 1.0
     racing_line_max_iterations: 80
     racing_line_optimizer_sample_step_m: 5.0
-    racing_line_endpoint_anchor_distance_m: 20.0
     racing_line_initial_offset_step_m: 2.0
     racing_line_min_offset_step_m: 0.1
     racing_line_cooling_ratio: 0.5
@@ -140,14 +138,6 @@ planner_node:
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
-    trajectory_straightening_min_segment_length_m: 20.0
-    trajectory_straightening_validation_step_m: 2.0
-    trajectory_straightening_min_corridor_margin_m: 0.5
-    trajectory_straightening_max_path_length_ratio: 1.01
-    trajectory_straightening_max_heading_error_deg: 5.0
-    trajectory_straightening_max_chord_deviation_m: 1.0
-    trajectory_straightening_max_curvature_1pm: 0.0025
-    trajectory_straightening_max_edge_margin_loss_m: 0.25
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0
     turn_smoothing_entry_distance_m: 45.0
@@ -160,11 +150,6 @@ planner_node:
     turn_smoothing_max_length_ratio: 1.25
     turn_smoothing_min_heading_improvement_deg: 3.0
     turn_smoothing_max_passes: 8
-    curve_refinement_sample_step_m: 1.0
-    curve_refinement_tangent_scale: 0.45
-    curve_refinement_min_corridor_margin_m: 0.5
-    final_trajectory_endpoint_tolerance_m: 0.75
-    final_trajectory_max_segment_length_m: 2.0
     final_trajectory_debug_sample_step_m: 1.0
 
 px4_offboard_node:
