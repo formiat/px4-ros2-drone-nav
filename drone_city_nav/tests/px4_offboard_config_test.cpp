@@ -32,7 +32,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_NE(yaml.find("speed_profile_lookahead_time_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_min_m: 5.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_profile_lookahead_max_m: 35.0"), std::string::npos);
-  EXPECT_NE(yaml.find("tracking_prediction_horizon_s: 0.45"), std::string::npos);
+  EXPECT_NE(yaml.find("tracking_prediction_horizon_s: 0.35"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_diagnostics_topic: "
                       "/drone_city_nav/trajectory_diagnostics"),
             std::string::npos);
@@ -43,8 +43,8 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_EQ(yaml.find("cross_track_speed_guard_start_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_full_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_min_factor:"), std::string::npos);
-  EXPECT_NE(yaml.find("curvature_feedforward_time_s: 0.5"), std::string::npos);
-  EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 40.0"), std::string::npos);
+  EXPECT_NE(yaml.find("curvature_feedforward_time_s: 0.35"), std::string::npos);
+  EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 35.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_velocity_jerk_mps3: 12.0"), std::string::npos);
   EXPECT_EQ(yaml.find("max_cross_track_correction_angle_deg:"), std::string::npos);
   EXPECT_EQ(yaml.find("max_cross_track_correction_rate_mps2:"), std::string::npos);
