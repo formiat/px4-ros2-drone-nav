@@ -71,16 +71,9 @@ void Px4OffboardNode::handleEmergencyStop() {
 }
 
 void Px4OffboardNode::publishOffboardControlMode() {
-  px4_msgs::msg::OffboardControlMode msg;
-  msg.timestamp = nowMicros();
   const OffboardSetpointMode mode = currentSetpointMode();
-  msg.position = mode == OffboardSetpointMode::kPositionHold;
-  msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
-  msg.acceleration = false;
-  msg.attitude = false;
-  msg.body_rate = false;
-  msg.thrust_and_torque = false;
-  msg.direct_actuator = false;
+  const px4_msgs::msg::OffboardControlMode msg =
+      buildOffboardControlMode(nowMicros(), mode);
   offboard_control_mode_pub_->publish(msg);
 }
 
@@ -111,20 +104,11 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
   commanded_target_valid_ = local_position_valid_;
   last_published_target_ = target;
   last_published_target_valid_ = true;
-  const float nan = std::numeric_limits<float>::quiet_NaN();
 
-  px4_msgs::msg::TrajectorySetpoint msg;
-  msg.timestamp = nowMicros();
   const Point2 px4_local_target = mapToPx4Local(target);
-  msg.position = std::array<float, 3>{
-      static_cast<float>(px4_local_target.x), static_cast<float>(px4_local_target.y),
-      static_cast<float>(-std::abs(cruise_altitude_m_))};
-  msg.velocity = std::array<float, 3>{nan, nan, nan};
-  msg.acceleration = std::array<float, 3>{nan, nan, nan};
-  msg.jerk = std::array<float, 3>{nan, nan, nan};
-  msg.yaw =
-      static_cast<float>(face_target_yaw_ ? targetYaw(target) : current_heading_rad_);
-  msg.yawspeed = nan;
+  const double yaw_rad = face_target_yaw_ ? targetYaw(target) : current_heading_rad_;
+  const px4_msgs::msg::TrajectorySetpoint msg = buildPositionTrajectorySetpoint(
+      nowMicros(), px4_local_target, cruise_altitude_m_, yaw_rad);
   updateCommandDiagnostics(target, previous_target, had_previous_target,
                            static_cast<double>(msg.yaw));
   resetVelocityDiagnostics();
@@ -256,18 +240,9 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
     return false;
   }
 
-  const float nan = std::numeric_limits<float>::quiet_NaN();
   const double vz_ned = verticalVelocitySetpointNed();
-  px4_msgs::msg::TrajectorySetpoint msg;
-  msg.timestamp = nowMicros();
-  msg.position = std::array<float, 3>{nan, nan, nan};
-  msg.velocity = std::array<float, 3>{static_cast<float>(plan.velocity_xy.x),
-                                      static_cast<float>(plan.velocity_xy.y),
-                                      static_cast<float>(vz_ned)};
-  msg.acceleration = std::array<float, 3>{nan, nan, nan};
-  msg.jerk = std::array<float, 3>{nan, nan, nan};
-  msg.yaw = static_cast<float>(velocityYaw(plan.velocity_xy));
-  msg.yawspeed = nan;
+  const px4_msgs::msg::TrajectorySetpoint msg = buildVelocityTrajectorySetpoint(
+      nowMicros(), plan.velocity_xy, vz_ned, velocityYaw(plan.velocity_xy));
 
   velocity_follower_state_.previous_velocity_setpoint = plan.velocity_xy;
   velocity_follower_state_.previous_velocity_setpoint_valid = true;
@@ -311,16 +286,10 @@ void Px4OffboardNode::resetVelocityDiagnostics() {
 
 void Px4OffboardNode::publishVehicleCommand(const std::uint32_t command,
                                             const float param1, const float param2) {
-  px4_msgs::msg::VehicleCommand msg;
-  msg.timestamp = nowMicros();
-  msg.command = command;
-  msg.param1 = param1;
-  msg.param2 = param2;
-  msg.target_system = target_system_;
-  msg.target_component = target_component_;
-  msg.source_system = source_system_;
-  msg.source_component = source_component_;
-  msg.from_external = true;
+  const VehicleCommandEndpoint endpoint{target_system_, target_component_,
+                                        source_system_, source_component_};
+  const px4_msgs::msg::VehicleCommand msg =
+      buildVehicleCommand(nowMicros(), command, param1, param2, endpoint);
   vehicle_command_pub_->publish(msg);
   RCLCPP_INFO(get_logger(), "Sent PX4 command: %s (%u) param1=%.2f param2=%.2f",
               commandName(command), static_cast<unsigned int>(command),

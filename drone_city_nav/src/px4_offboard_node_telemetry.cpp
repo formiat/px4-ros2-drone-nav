@@ -225,13 +225,11 @@ void Px4OffboardNode::writeFlightBlackbox(
     return;
   }
 
-  flight_blackbox_stream_ << "{\"time_ns\":" << now_ns;
-  flight_blackbox_stream_ << ",\"path_id\":{\"local_update\":"
-                          << received_path_update_id_
-                          << ",\"planner\":" << latest_planner_path_id_
-                          << ",\"planner_seen\":";
-  writeJsonBool(flight_blackbox_stream_, latest_planner_path_id_seen_);
-  flight_blackbox_stream_ << ",\"stamp_ns\":" << last_received_path_stamp_ns_ << "}";
+  flight_blackbox_stream_ << "{\"time_ns\":" << now_ns << ",";
+  writeBlackboxPathId(flight_blackbox_stream_,
+                      OffboardBlackboxPathId{
+                          received_path_update_id_, latest_planner_path_id_,
+                          latest_planner_path_id_seen_, last_received_path_stamp_ns_});
   flight_blackbox_stream_ << ",\"pose\":{\"fresh\":";
   writeJsonBool(flight_blackbox_stream_, pose_fresh);
   flight_blackbox_stream_ << ",\"age_s\":";

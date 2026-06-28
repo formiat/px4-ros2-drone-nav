@@ -1,8 +1,10 @@
 #pragma once
 
 #include "drone_city_nav/debug_image.hpp"
+#include "drone_city_nav/lidar_debug_node_config.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_debug_renderer.hpp"
+#include "drone_city_nav/lidar_debug_snapshot_pipeline.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_radar_markers.hpp"
@@ -47,37 +49,10 @@ inline constexpr double kGroundDebugZ = 0.05;
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] inline std::string zeroPadded(const std::uint64_t value,
-                                            const int width) {
-  std::ostringstream stream;
-  stream << std::setw(width) << std::setfill('0') << value;
-  return stream.str();
-}
-
 [[nodiscard]] inline std::int64_t
 toNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
   return static_cast<std::int64_t>(stamp.sec) * kNanosecondsPerSecond +
          static_cast<std::int64_t>(stamp.nanosec);
-}
-
-[[nodiscard]] inline double ageSecondsOrNan(const std::int64_t stamp_ns,
-                                            const std::int64_t now_ns) noexcept {
-  if (stamp_ns <= 0 || now_ns <= 0) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  if (stamp_ns >= now_ns) {
-    return 0.0;
-  }
-  return static_cast<double>(now_ns - stamp_ns) /
-         static_cast<double>(kNanosecondsPerSecond);
-}
-
-[[nodiscard]] inline double yawDeltaRad(const double lhs_rad,
-                                        const double rhs_rad) noexcept {
-  if (!std::isfinite(lhs_rad) || !std::isfinite(rhs_rad)) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  return std::remainder(lhs_rad - rhs_rad, 2.0 * std::numbers::pi);
 }
 
 class LidarDebugNode final : public rclcpp::Node {

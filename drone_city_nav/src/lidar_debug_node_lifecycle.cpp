@@ -4,16 +4,18 @@ namespace drone_city_nav {
 
 LidarDebugNode::LidarDebugNode()
     : Node{"lidar_debug_node"} {
-  output_dir_ = declare_parameter<std::string>("output_dir", "log/lidar_debug");
-  snapshot_period_s_ =
-      std::max(0.1, declare_parameter<double>("snapshot_period_s", 1.0));
+  LidarDebugNodeConfig config;
+  config.output_dir = declare_parameter<std::string>("output_dir", config.output_dir);
+  config.snapshot_period_s =
+      declare_parameter<double>("snapshot_period_s", config.snapshot_period_s);
   image_size_px_ = static_cast<int>(std::clamp<std::int64_t>(
       declare_parameter<std::int64_t>("image_size_px", 900), 200, 4000));
-  view_radius_m_ = std::max(5.0, declare_parameter<double>("view_radius_m", 45.0));
-  max_lidar_range_m_ =
-      std::max(1.0, declare_parameter<double>("max_lidar_range_m", 35.0));
-  range_hit_epsilon_m_ =
-      std::max(0.0, declare_parameter<double>("range_hit_epsilon_m", 0.05));
+  config.view_radius_m =
+      declare_parameter<double>("view_radius_m", config.view_radius_m);
+  config.max_lidar_range_m =
+      declare_parameter<double>("max_lidar_range_m", config.max_lidar_range_m);
+  config.range_hit_epsilon_m =
+      declare_parameter<double>("range_hit_epsilon_m", config.range_hit_epsilon_m);
   initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
   current_pose_.yaw_rad = initial_heading_rad_;
   px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
@@ -38,11 +40,11 @@ LidarDebugNode::LidarDebugNode()
   lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
   lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
   lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
-  beam_csv_stride_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-      declare_parameter<std::int64_t>("beam_csv_stride", 1), 1, 100000));
-  max_logged_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-      declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0, 100000));
-  max_snapshots_ = static_cast<std::uint64_t>(
+  config.beam_csv_stride = static_cast<std::size_t>(
+      std::max<std::int64_t>(declare_parameter<std::int64_t>("beam_csv_stride", 1), 0));
+  config.max_logged_hit_points = static_cast<std::size_t>(std::max<std::int64_t>(
+      declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0));
+  config.max_snapshots = static_cast<std::uint64_t>(
       std::clamp<std::int64_t>(declare_parameter<std::int64_t>("max_snapshots", 0), 0,
                                std::numeric_limits<std::int32_t>::max()));
 
@@ -66,12 +68,23 @@ LidarDebugNode::LidarDebugNode()
                                                  "/drone_city_nav/lidar_radar_markers");
   publish_lidar_radar_markers_ =
       declare_parameter<bool>("publish_lidar_radar_markers", false);
-  hit_memory_resolution_m_ =
-      std::max(0.05, declare_parameter<double>("hit_memory_resolution_m", 0.25));
+  config.hit_memory_resolution_m = declare_parameter<double>(
+      "hit_memory_resolution_m", config.hit_memory_resolution_m);
   min_remember_altitude_m_ =
       std::max(0.0, declare_parameter<double>("min_remember_altitude_m", 0.0));
-  max_remembered_hit_points_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
-      declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 1, 1000000));
+  config.max_remembered_hit_points = static_cast<std::size_t>(std::max<std::int64_t>(
+      declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 0));
+  sanitizeLidarDebugNodeConfig(config);
+  output_dir_ = config.output_dir;
+  snapshot_period_s_ = config.snapshot_period_s;
+  view_radius_m_ = config.view_radius_m;
+  max_lidar_range_m_ = config.max_lidar_range_m;
+  range_hit_epsilon_m_ = config.range_hit_epsilon_m;
+  beam_csv_stride_ = config.beam_csv_stride;
+  max_logged_hit_points_ = config.max_logged_hit_points;
+  max_snapshots_ = config.max_snapshots;
+  hit_memory_resolution_m_ = config.hit_memory_resolution_m;
+  max_remembered_hit_points_ = config.max_remembered_hit_points;
   current_pointcloud_z_m_ =
       declare_parameter<double>("current_lidar_pointcloud_z_m", kGroundDebugZ);
   remembered_pointcloud_z_m_ =

@@ -1,6 +1,21 @@
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] bool segmentTraversableForGrid(const Point2 start, const Point2 end,
+                                             const void* context) {
+  const auto& grid = *static_cast<const OccupancyGrid2D*>(context);
+  return pathSegmentIsTraversable(grid, start, end);
+}
+
+[[nodiscard]] bool segmentAllowedForGrid(const Point2 start, const Point2 end,
+                                         const void* context) {
+  const auto& grid = *static_cast<const OccupancyGrid2D*>(context);
+  return pathSegmentIsAllowed(grid, start, end);
+}
+
+} // namespace
 
 bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
                                            const std::vector<GridIndex>& raw_cells,
@@ -260,31 +275,8 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
 
 [[nodiscard]] PublishedPathSafetySummary PlannerNode::summarizePublishedPathSafety(
     const OccupancyGrid2D& grid, const std::span<const Point2> path_points) const {
-  PublishedPathSafetySummary summary{};
-  if (path_points.size() < 2U) {
-    return summary;
-  }
-
-  summary.segments = path_points.size() - 1U;
-  for (std::size_t index = 1U; index < path_points.size(); ++index) {
-    const Point2 segment_start = path_points[index - 1U];
-    const Point2 segment_end = path_points[index];
-    if (pathSegmentIsTraversable(grid, segment_start, segment_end)) {
-      if (!pathSegmentIsAllowed(grid, segment_start, segment_end)) {
-        ++summary.escape_segments;
-      }
-    } else {
-      ++summary.non_traversable_segments;
-      if (!summary.has_non_traversable_segment) {
-        summary.first_non_traversable_segment = index - 1U;
-        summary.first_non_traversable_start = segment_start;
-        summary.first_non_traversable_end = segment_end;
-        summary.has_non_traversable_segment = true;
-      }
-    }
-  }
-
-  return summary;
+  return summarizePathSafety(path_points, segmentTraversableForGrid,
+                             segmentAllowedForGrid, &grid);
 }
 
 void PlannerNode::logPublishedPathSafety(const OccupancyGrid2D& grid,

@@ -8,7 +8,10 @@
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/planner_diagnostics_format.hpp"
 #include "drone_city_nav/planner_node_config.hpp"
+#include "drone_city_nav/planner_path_publication.hpp"
+#include "drone_city_nav/planner_runtime_state.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
@@ -75,16 +78,6 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
          1000.0;
 }
 
-struct PublishedPathSafetySummary {
-  std::size_t segments{0U};
-  std::size_t non_traversable_segments{0U};
-  std::size_t escape_segments{0U};
-  std::size_t first_non_traversable_segment{0U};
-  Point2 first_non_traversable_start{};
-  Point2 first_non_traversable_end{};
-  bool has_non_traversable_segment{false};
-};
-
 [[nodiscard]] inline std::vector<Point2>
 trajectorySamplePoints(const std::span<const TrajectoryPointSample> samples) {
   std::vector<Point2> points;
@@ -93,32 +86,6 @@ trajectorySamplePoints(const std::span<const TrajectoryPointSample> samples) {
     points.push_back(sample.point);
   }
   return points;
-}
-
-enum class PathPublicationReason : std::uint8_t {
-  kComputedPath,
-  kHoldNoPose,
-  kHoldNoPlanningGrid,
-  kHoldInvalidPath,
-  kHoldAfterPlanningFailure,
-};
-
-[[nodiscard]] inline const char*
-pathPublicationReasonName(const PathPublicationReason reason) noexcept {
-  switch (reason) {
-    case PathPublicationReason::kComputedPath:
-      return "computed_path";
-    case PathPublicationReason::kHoldNoPose:
-      return "hold_no_pose";
-    case PathPublicationReason::kHoldNoPlanningGrid:
-      return "hold_no_planning_grid";
-    case PathPublicationReason::kHoldInvalidPath:
-      return "hold_invalid_path";
-    case PathPublicationReason::kHoldAfterPlanningFailure:
-      return "hold_after_planning_failure";
-  }
-
-  return "unknown";
 }
 
 class PlannerNode final : public rclcpp::Node {

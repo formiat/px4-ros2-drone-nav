@@ -2,12 +2,16 @@
 
 #include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/offboard_blackbox.hpp"
+#include "drone_city_nav/offboard_debug_markers.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
+#include "drone_city_nav/offboard_trajectory_state.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/px4_offboard_node_config.hpp"
+#include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/trajectory.hpp"
-#include "drone_city_nav/trajectory_debug_markers.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
@@ -59,35 +63,6 @@ inline constexpr double kProhibitedGridClearanceDiagnosticRadiusM = 12.0;
 inline constexpr std::int8_t kInflatedOccupancyValue = 80;
 inline constexpr double kRvizGroundZ = 0.08;
 
-[[nodiscard]] inline std::uint8_t boundedUint8(const std::int64_t value) {
-  return static_cast<std::uint8_t>(std::clamp<std::int64_t>(value, 0, 255));
-}
-
-[[nodiscard]] inline std::uint16_t boundedUint16(const std::int64_t value) {
-  return static_cast<std::uint16_t>(std::clamp<std::int64_t>(value, 0, 65535));
-}
-
-[[nodiscard]] inline const char* commandName(const std::uint32_t command) noexcept {
-  switch (command) {
-    case px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE:
-      return "VEHICLE_CMD_DO_SET_MODE";
-    case px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM:
-      return "VEHICLE_CMD_COMPONENT_ARM_DISARM";
-    default:
-      return "UNKNOWN";
-  }
-}
-
-[[nodiscard]] inline double boundedFiniteDouble(const double value,
-                                                const double fallback,
-                                                const double min_value,
-                                                const double max_value) noexcept {
-  if (!std::isfinite(value)) {
-    return fallback;
-  }
-  return std::clamp(value, min_value, max_value);
-}
-
 [[nodiscard]] inline double radiansToDegrees(const double radians) noexcept {
   return radians * 180.0 / std::numbers::pi;
 }
@@ -100,32 +75,12 @@ inline constexpr double kRvizGroundZ = 0.08;
   return std::atan2(std::sin(angle_rad), std::cos(angle_rad));
 }
 
-[[nodiscard]] inline geometry_msgs::msg::Point markerPoint(const Point2 point,
-                                                           const double z_m) {
-  geometry_msgs::msg::Point msg;
-  msg.x = point.x;
-  msg.y = point.y;
-  msg.z = z_m;
-  return msg;
-}
-
-[[nodiscard]] inline std::uint64_t
-stampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
-  constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000U;
-  return static_cast<std::uint64_t>(stamp.sec) * kNanosecondsPerSecond +
-         static_cast<std::uint64_t>(stamp.nanosec);
-}
-
 inline void writeJsonBool(std::ostream& stream, const bool value) {
-  stream << (value ? "true" : "false");
+  writeBlackboxJsonBool(stream, value);
 }
 
 inline void writeJsonNumberOrNull(std::ostream& stream, const double value) {
-  if (std::isfinite(value)) {
-    stream << value;
-    return;
-  }
-  stream << "null";
+  writeBlackboxJsonNumberOrNull(stream, value);
 }
 
 struct PathTrackingDiagnostics {
@@ -148,22 +103,6 @@ struct NearestProhibitedCellDiagnostic {
   Point2 point{};
 };
 
-enum class OffboardSetpointMode : std::uint8_t {
-  kPositionHold,
-  kVelocityCruise,
-};
-
-[[nodiscard]] inline const char*
-offboardSetpointModeName(const OffboardSetpointMode mode) noexcept {
-  switch (mode) {
-    case OffboardSetpointMode::kPositionHold:
-      return "position_hold";
-    case OffboardSetpointMode::kVelocityCruise:
-      return "velocity_cruise";
-  }
-  return "unknown";
-}
-
 class Px4OffboardNode final : public rclcpp::Node {
 public:
   Px4OffboardNode();
@@ -176,20 +115,11 @@ public:
   Px4OffboardNode& operator=(Px4OffboardNode&&) = delete;
 
 private:
-  [[nodiscard]] std::vector<Point2>
-  pathPointsFromMessage(const nav_msgs::msg::Path& path) const;
-
   [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const;
 
   [[nodiscard]] std_msgs::msg::Header makeDebugHeader() const;
 
   void publishFinalTrajectoryDebug();
-
-  [[nodiscard]] visualization_msgs::msg::Marker
-  makeDebugMarker(const std::string& marker_namespace, const int marker_id,
-                  const int marker_type) const;
-
-  void addDroneDebugMarkers(visualization_msgs::msg::MarkerArray& markers) const;
 
   void publishOffboardDebugMarkers();
 

@@ -12,17 +12,11 @@ void PlannerNode::invalidateCurrentPose() {
 }
 
 [[nodiscard]] double PlannerNode::poseAgeSeconds(const std::int64_t now_ns) const {
-  if (last_pose_update_ns_ <= 0 || now_ns <= last_pose_update_ns_) {
-    return std::numeric_limits<double>::infinity();
-  }
-  return static_cast<double>(now_ns - last_pose_update_ns_) / 1.0e9;
+  return ageSecondsFromStamp(last_pose_update_ns_, now_ns);
 }
 
 [[nodiscard]] double PlannerNode::scanAgeSeconds(const std::int64_t now_ns) const {
-  if (last_scan_update_ns_ <= 0 || now_ns <= last_scan_update_ns_) {
-    return std::numeric_limits<double>::infinity();
-  }
-  return static_cast<double>(now_ns - last_scan_update_ns_) / 1.0e9;
+  return ageSecondsFromStamp(last_scan_update_ns_, now_ns);
 }
 
 bool PlannerNode::keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
@@ -109,15 +103,12 @@ void PlannerNode::logPathUpdate(const nav_msgs::msg::Path& path,
       squaredDistance(first, last_logged_path_first_) > 0.01 ||
       squaredDistance(last, last_logged_path_last_) > 0.01;
   if (path_changed || endpoint_changed) {
-    std::ostringstream preview;
-    const std::size_t preview_count = std::min<std::size_t>(path_size, 6U);
-    for (std::size_t i = 0U; i < preview_count; ++i) {
-      if (i != 0U) {
-        preview << " -> ";
-      }
-      preview << "(" << path.poses[i].pose.position.x << ", "
-              << path.poses[i].pose.position.y << ")";
+    std::vector<Point2> preview_points;
+    preview_points.reserve(path.poses.size());
+    for (const auto& pose : path.poses) {
+      preview_points.push_back(Point2{pose.pose.position.x, pose.pose.position.y});
     }
+    const std::string preview = pathPreview(preview_points, 6U);
     RCLCPP_INFO(get_logger(),
                 "Published path: path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
                 " reason=%s waypoints=%zu segments=%zu "
@@ -131,7 +122,7 @@ void PlannerNode::logPathUpdate(const nav_msgs::msg::Path& path,
                 metrics.mean_segment_length_m, metrics.max_segment_length_m,
                 metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
                 metrics.segments_shorter_than_10m, last.x, last.y, counters.c_str(),
-                preview.str().c_str());
+                preview.c_str());
     last_logged_path_size_ = path_size;
     last_logged_path_first_ = first;
     last_logged_path_last_ = last;
@@ -140,35 +131,21 @@ void PlannerNode::logPathUpdate(const nav_msgs::msg::Path& path,
 
 void PlannerNode::recordPathPublication(const PathPublicationReason reason,
                                         const bool empty_path) {
-  ++path_publications_;
-  if (empty_path) {
-    ++hold_path_publications_;
-  } else {
-    ++non_empty_path_publications_;
-  }
-
-  switch (reason) {
-    case PathPublicationReason::kComputedPath:
-      ++computed_path_publications_;
-      break;
-    case PathPublicationReason::kHoldNoPose:
-    case PathPublicationReason::kHoldNoPlanningGrid:
-    case PathPublicationReason::kHoldInvalidPath:
-    case PathPublicationReason::kHoldAfterPlanningFailure:
-      break;
-  }
+  PathPublicationCounters counters{path_publications_, non_empty_path_publications_,
+                                   hold_path_publications_,
+                                   computed_path_publications_};
+  drone_city_nav::recordPathPublication(counters, reason, empty_path);
+  path_publications_ = counters.path_publications;
+  non_empty_path_publications_ = counters.non_empty_path_publications;
+  hold_path_publications_ = counters.hold_path_publications;
+  computed_path_publications_ = counters.computed_path_publications;
 }
 
 [[nodiscard]] std::string PlannerNode::plannerCountersSummary() const {
-  std::ostringstream summary;
-  summary << "astar_runs=" << astar_runs_ << " astar_successes=" << astar_successes_
-          << " astar_failures=" << astar_failures_
-          << " prohibited_replans=" << prohibited_replans_
-          << " path_publications=" << path_publications_
-          << " non_empty_path_publications=" << non_empty_path_publications_
-          << " hold_path_publications=" << hold_path_publications_
-          << " computed_path_publications=" << computed_path_publications_;
-  return summary.str();
+  return drone_city_nav::plannerCountersSummary(PlannerCountersSnapshot{
+      astar_runs_, astar_successes_, astar_failures_, prohibited_replans_,
+      PathPublicationCounters{path_publications_, non_empty_path_publications_,
+                              hold_path_publications_, computed_path_publications_}});
 }
 
 void PlannerNode::logPlannerCountersThrottled() {

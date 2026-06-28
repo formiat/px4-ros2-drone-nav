@@ -16,7 +16,7 @@ void LidarDebugNode::writeSnapshot() {
   }
 
   ++snapshot_index_;
-  const std::string prefix = "snapshot_" + zeroPadded(snapshot_index_, 6);
+  const std::string prefix = lidarSnapshotPrefix(snapshot_index_);
   const std::filesystem::path image_path =
       std::filesystem::path{output_dir_} / (prefix + ".ppm");
   const std::filesystem::path csv_path =
@@ -102,30 +102,16 @@ void LidarDebugNode::writeSnapshot() {
 
 [[nodiscard]] double LidarDebugNode::scanTimeIncrementSeconds(
     const sensor_msgs::msg::LaserScan& scan) const noexcept {
-  if (std::isfinite(scan.time_increment) && scan.time_increment > 0.0F) {
-    return static_cast<double>(scan.time_increment);
-  }
-  const double duration_s = scanDurationSeconds(scan);
-  if (duration_s > 0.0 && scan.ranges.size() > 1U) {
-    return duration_s / static_cast<double>(scan.ranges.size() - 1U);
-  }
-  return 0.0;
+  return lidarScanTimeIncrementSeconds(static_cast<double>(scan.scan_time),
+                                       static_cast<double>(scan.time_increment),
+                                       scan.ranges.size());
 }
 
 [[nodiscard]] double LidarDebugNode::scanDurationSeconds(
     const sensor_msgs::msg::LaserScan& scan) const noexcept {
-  if (lidar_scan_duration_override_s_ > 0.0) {
-    return lidar_scan_duration_override_s_;
-  }
-  if (std::isfinite(scan.scan_time) && scan.scan_time > 0.0F) {
-    return static_cast<double>(scan.scan_time);
-  }
-  if (std::isfinite(scan.time_increment) && scan.time_increment > 0.0F &&
-      scan.ranges.size() > 1U) {
-    return static_cast<double>(scan.time_increment) *
-           static_cast<double>(scan.ranges.size() - 1U);
-  }
-  return 0.0;
+  return lidarScanDurationSeconds(static_cast<double>(scan.scan_time),
+                                  static_cast<double>(scan.time_increment),
+                                  scan.ranges.size(), lidar_scan_duration_override_s_);
 }
 
 [[nodiscard]] double LidarDebugNode::poseReceiveLagSeconds() const noexcept {

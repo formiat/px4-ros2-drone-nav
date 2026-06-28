@@ -38,9 +38,12 @@ add_library(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/lidar_debug_renderer.cpp
+  src/lidar_debug_node_config.cpp
+  src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_projection.cpp
   src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
+  src/offboard_blackbox.cpp
   src/offboard_path_follower.cpp
   src/offboard_velocity_follower.cpp
   src/obstacle_memory.cpp
@@ -48,6 +51,10 @@ add_library(
   src/path_smoothing.cpp
   src/planning_grid_builder.cpp
   src/planner_core.cpp
+  src/planner_diagnostics_format.cpp
+  src/planner_path_publication.cpp
+  src/planner_runtime_state.cpp
+  src/px4_offboard_node_config.cpp
   src/static_city_map.cpp
   src/racing_line.cpp
   src/trajectory.cpp
@@ -68,20 +75,26 @@ enable_project_warnings(drone_city_nav_core)
 
 add_library(
   drone_city_nav_ros_adapters
+  src/offboard_debug_markers.cpp
+  src/offboard_trajectory_state.cpp
   src/planner_node_config.cpp
+  src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
   src/ros_conversions.cpp
   src/static_map_debug.cpp
-  src/static_map_source.cpp)
+  src/static_map_source.cpp
+  src/trajectory_debug_markers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
 target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_core)
 ament_target_dependencies(
   drone_city_nav_ros_adapters
   geometry_msgs
   nav_msgs
+  px4_msgs
   rclcpp
   sensor_msgs
-  std_msgs)
+  std_msgs
+  visualization_msgs)
 enable_project_warnings(drone_city_nav_ros_adapters)
 
 add_executable(
@@ -122,8 +135,7 @@ add_executable(
   src/px4_offboard_node_inputs.cpp
   src/px4_offboard_node_lifecycle.cpp
   src/px4_offboard_node_telemetry.cpp
-  src/px4_offboard_node_trajectory.cpp
-  src/trajectory_debug_markers.cpp)
+  src/px4_offboard_node_trajectory.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
@@ -202,6 +214,18 @@ if(BUILD_TESTING)
   target_compile_features(lidar_snapshot_writer_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_snapshot_writer_test drone_city_nav_core)
   enable_project_warnings(lidar_snapshot_writer_test)
+
+  ament_add_gtest(lidar_debug_snapshot_pipeline_test
+                  tests/lidar_debug_snapshot_pipeline_test.cpp)
+  target_compile_features(lidar_debug_snapshot_pipeline_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_debug_snapshot_pipeline_test drone_city_nav_core)
+  enable_project_warnings(lidar_debug_snapshot_pipeline_test)
+
+  ament_add_gtest(lidar_debug_node_config_test
+                  tests/lidar_debug_node_config_test.cpp)
+  target_compile_features(lidar_debug_node_config_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_debug_node_config_test drone_city_nav_core)
+  enable_project_warnings(lidar_debug_node_config_test)
 
   ament_add_gtest(final_trajectory_debug_io_test
                   tests/final_trajectory_debug_io_test.cpp)
@@ -298,6 +322,24 @@ if(BUILD_TESTING)
   target_link_libraries(corridor_samples_io_test drone_city_nav_core)
   enable_project_warnings(corridor_samples_io_test)
 
+  ament_add_gtest(planner_path_publication_test
+                  tests/planner_path_publication_test.cpp)
+  target_compile_features(planner_path_publication_test PRIVATE cxx_std_20)
+  target_link_libraries(planner_path_publication_test drone_city_nav_core)
+  enable_project_warnings(planner_path_publication_test)
+
+  ament_add_gtest(planner_diagnostics_format_test
+                  tests/planner_diagnostics_format_test.cpp)
+  target_compile_features(planner_diagnostics_format_test PRIVATE cxx_std_20)
+  target_link_libraries(planner_diagnostics_format_test drone_city_nav_core)
+  enable_project_warnings(planner_diagnostics_format_test)
+
+  ament_add_gtest(planner_runtime_state_test
+                  tests/planner_runtime_state_test.cpp)
+  target_compile_features(planner_runtime_state_test PRIVATE cxx_std_20)
+  target_link_libraries(planner_runtime_state_test drone_city_nav_core)
+  enable_project_warnings(planner_runtime_state_test)
+
   ament_add_gtest(racing_line_test tests/racing_line_test.cpp)
   target_compile_features(racing_line_test PRIVATE cxx_std_20)
   target_link_libraries(racing_line_test drone_city_nav_core)
@@ -348,6 +390,41 @@ if(BUILD_TESTING)
     px4_offboard_config_test
     PRIVATE DRONE_CITY_NAV_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   enable_project_warnings(px4_offboard_config_test)
+
+  ament_add_gtest(px4_offboard_node_config_test
+                  tests/px4_offboard_node_config_test.cpp)
+  target_compile_features(px4_offboard_node_config_test PRIVATE cxx_std_20)
+  target_link_libraries(px4_offboard_node_config_test drone_city_nav_core)
+  enable_project_warnings(px4_offboard_node_config_test)
+
+  ament_add_gtest(offboard_blackbox_test tests/offboard_blackbox_test.cpp)
+  target_compile_features(offboard_blackbox_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_blackbox_test drone_city_nav_core)
+  enable_project_warnings(offboard_blackbox_test)
+
+  ament_add_gtest(px4_offboard_setpoint_io_test
+                  tests/px4_offboard_setpoint_io_test.cpp)
+  target_compile_features(px4_offboard_setpoint_io_test PRIVATE cxx_std_20)
+  target_link_libraries(px4_offboard_setpoint_io_test
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(px4_offboard_setpoint_io_test px4_msgs)
+  enable_project_warnings(px4_offboard_setpoint_io_test)
+
+  ament_add_gtest(offboard_debug_markers_test
+                  tests/offboard_debug_markers_test.cpp)
+  target_compile_features(offboard_debug_markers_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_debug_markers_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(offboard_debug_markers_test std_msgs
+                            visualization_msgs)
+  enable_project_warnings(offboard_debug_markers_test)
+
+  ament_add_gtest(offboard_trajectory_state_test
+                  tests/offboard_trajectory_state_test.cpp)
+  target_compile_features(offboard_trajectory_state_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_trajectory_state_test
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(offboard_trajectory_state_test geometry_msgs nav_msgs)
+  enable_project_warnings(offboard_trajectory_state_test)
 
   ament_add_gtest(lidar_projection_test tests/lidar_projection_test.cpp)
   target_compile_features(lidar_projection_test PRIVATE cxx_std_20)

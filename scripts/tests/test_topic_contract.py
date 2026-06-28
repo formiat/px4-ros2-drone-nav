@@ -27,9 +27,11 @@ NODE_RUNTIME_SOURCE_PATHS = (
     "drone_city_nav/src/lidar_debug_node.cpp",
     "drone_city_nav/src/lidar_debug_node.hpp",
     "drone_city_nav/src/lidar_debug_node_callbacks.cpp",
+    "drone_city_nav/src/lidar_debug_node_config.cpp",
     "drone_city_nav/src/lidar_debug_node_lifecycle.cpp",
     "drone_city_nav/src/lidar_debug_node_points.cpp",
     "drone_city_nav/src/lidar_debug_node_snapshot.cpp",
+    "drone_city_nav/src/lidar_debug_snapshot_pipeline.cpp",
 )
 
 

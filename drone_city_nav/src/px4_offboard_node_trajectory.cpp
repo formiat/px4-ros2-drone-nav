@@ -2,16 +2,6 @@
 
 namespace drone_city_nav {
 
-[[nodiscard]] std::vector<Point2>
-Px4OffboardNode::pathPointsFromMessage(const nav_msgs::msg::Path& path) const {
-  std::vector<Point2> points;
-  points.reserve(path.poses.size());
-  for (const auto& pose : path.poses) {
-    points.push_back(Point2{pose.pose.position.x, pose.pose.position.y});
-  }
-  return points;
-}
-
 [[nodiscard]] OffboardPathFollowerConfig Px4OffboardNode::pathFollowerConfig() const {
   return OffboardPathFollowerConfig{acceptance_radius_m_, turn_preview_distance_m_};
 }
@@ -37,67 +27,15 @@ void Px4OffboardNode::publishFinalTrajectoryDebug() {
       std::span<const Point2>{samples.data(), samples.size()}, makeDebugHeader(), 0.0));
 }
 
-[[nodiscard]] visualization_msgs::msg::Marker
-Px4OffboardNode::makeDebugMarker(const std::string& marker_namespace,
-                                 const int marker_id, const int marker_type) const {
-  visualization_msgs::msg::Marker marker;
-  marker.header = makeDebugHeader();
-  marker.ns = marker_namespace;
-  marker.id = marker_id;
-  marker.type = marker_type;
-  marker.action = visualization_msgs::msg::Marker::ADD;
-  marker.pose.orientation.w = 1.0;
-  return marker;
-}
-
-void Px4OffboardNode::addDroneDebugMarkers(
-    visualization_msgs::msg::MarkerArray& markers) const {
-  auto position =
-      makeDebugMarker("drone_position", 0, visualization_msgs::msg::Marker::SPHERE);
-  position.scale.x = 2.5;
-  position.scale.y = 2.5;
-  position.scale.z = 0.25;
-  position.color.r = 0.68F;
-  position.color.g = 0.20F;
-  position.color.b = 1.0F;
-  position.color.a = 1.0F;
-
-  auto heading =
-      makeDebugMarker("drone_heading", 0, visualization_msgs::msg::Marker::ARROW);
-  heading.scale.x = 0.25;
-  heading.scale.y = 0.75;
-  heading.scale.z = 1.0;
-  heading.color = position.color;
-
-  if (!localPositionFresh()) {
-    position.action = visualization_msgs::msg::Marker::DELETE;
-    heading.action = visualization_msgs::msg::Marker::DELETE;
-    markers.markers.push_back(position);
-    markers.markers.push_back(heading);
-    return;
-  }
-
-  position.pose.position = markerPoint(current_position_, kRvizGroundZ);
-  const Point2 heading_end{current_position_.x + std::cos(current_heading_rad_) * 4.0,
-                           current_position_.y + std::sin(current_heading_rad_) * 4.0};
-  heading.points.push_back(markerPoint(current_position_, kRvizGroundZ + 0.06));
-  heading.points.push_back(markerPoint(heading_end, kRvizGroundZ + 0.06));
-  markers.markers.push_back(position);
-  markers.markers.push_back(heading);
-}
-
 void Px4OffboardNode::publishOffboardDebugMarkers() {
   if (!offboard_debug_marker_pub_) {
     return;
   }
-  visualization_msgs::msg::MarkerArray markers;
-  addDroneDebugMarkers(markers);
-  visualization_msgs::msg::MarkerArray trajectory_markers =
-      buildTrajectoryDebugMarkers(makeDebugHeader(), final_trajectory_samples_,
-                                  trajectory_speed_profile_, kRvizGroundZ);
-  markers.markers.insert(markers.markers.end(),
-                         std::make_move_iterator(trajectory_markers.markers.begin()),
-                         std::make_move_iterator(trajectory_markers.markers.end()));
+  const DroneDebugMarkerState drone_state{localPositionFresh(), current_position_,
+                                          current_heading_rad_};
+  visualization_msgs::msg::MarkerArray markers = buildOffboardDebugMarkers(
+      makeDebugHeader(), drone_state, final_trajectory_samples_,
+      trajectory_speed_profile_, kRvizGroundZ);
   offboard_debug_marker_pub_->publish(markers);
 }
 
@@ -117,11 +55,9 @@ void Px4OffboardNode::clearFinalTrajectory() {
 
 [[nodiscard]] bool Px4OffboardNode::trajectoryDiagnosticsMatchesCurrentPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) const {
-  if (diagnostics.path_stamp_ns != last_received_path_stamp_ns_) {
-    return false;
-  }
-  return !latest_planner_path_id_seen_ ||
-         diagnostics.planner_path_id == latest_planner_path_id_;
+  return trajectoryDiagnosticsMatchesPath(diagnostics, last_received_path_stamp_ns_,
+                                          latest_planner_path_id_seen_,
+                                          latest_planner_path_id_);
 }
 
 void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
@@ -129,74 +65,14 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
-  last_trajectory_planner_stats_.corridor = diagnostics.stats.corridor;
-  last_trajectory_planner_stats_.racing_line = diagnostics.stats.racing_line;
-  last_trajectory_planner_stats_.turn_smoothing = diagnostics.stats.turn_smoothing;
-  last_trajectory_planner_stats_.total_duration_ms =
-      diagnostics.stats.total_duration_ms;
-  last_trajectory_planner_stats_.corridor_duration_ms =
-      diagnostics.stats.corridor_duration_ms;
-  last_trajectory_planner_stats_.racing_line_duration_ms =
-      diagnostics.stats.racing_line_duration_ms;
-  last_trajectory_planner_stats_.turn_smoothing_duration_ms =
-      diagnostics.stats.turn_smoothing_duration_ms;
-  last_trajectory_planner_stats_.speed_profile_duration_ms =
-      diagnostics.stats.speed_profile_duration_ms;
+  mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
+                                             diagnostics);
 }
 
 void Px4OffboardNode::updatePlannerStatsForReceivedTrajectory() {
-  last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
-  last_trajectory_planner_stats_.status =
-      trajectory_valid_ ? TrajectoryPlannerStatus::kOk
-                        : TrajectoryPlannerStatus::kInvalidTrajectory;
-  last_trajectory_planner_stats_.input_points = path_points_.size();
-  last_trajectory_planner_stats_.samples = final_trajectory_samples_.size();
-  last_trajectory_planner_stats_.compact_segments = trajectory_.size();
-  last_trajectory_planner_stats_.line_segments = last_trajectory_metrics_.line_segments;
-  last_trajectory_planner_stats_.arc_segments = last_trajectory_metrics_.arc_segments;
-  last_trajectory_planner_stats_.length_m = last_trajectory_metrics_.length_m;
-
-  double curvature_abs_sum = 0.0;
-  for (std::size_t i = 0U; i < final_trajectory_samples_.size(); ++i) {
-    const double curvature = final_trajectory_samples_[i].curvature_1pm;
-    if (i == 0U) {
-      last_trajectory_planner_stats_.curvature_min_1pm = curvature;
-      last_trajectory_planner_stats_.curvature_max_1pm = curvature;
-    } else {
-      last_trajectory_planner_stats_.curvature_min_1pm =
-          std::min(last_trajectory_planner_stats_.curvature_min_1pm, curvature);
-      last_trajectory_planner_stats_.curvature_max_1pm =
-          std::max(last_trajectory_planner_stats_.curvature_max_1pm, curvature);
-    }
-    curvature_abs_sum += std::abs(curvature);
-  }
-  if (!final_trajectory_samples_.empty()) {
-    last_trajectory_planner_stats_.curvature_mean_abs_1pm =
-        curvature_abs_sum / static_cast<double>(final_trajectory_samples_.size());
-  }
-
-  double speed_sum = 0.0;
-  for (std::size_t i = 0U; i < trajectory_speed_profile_.samples.size(); ++i) {
-    const TrajectorySpeedSample& sample = trajectory_speed_profile_.samples[i];
-    const double speed = sample.profiled_limit_mps;
-    if (i == 0U) {
-      last_trajectory_planner_stats_.speed_profile_min_mps = speed;
-      last_trajectory_planner_stats_.speed_profile_max_mps = speed;
-    } else {
-      last_trajectory_planner_stats_.speed_profile_min_mps =
-          std::min(last_trajectory_planner_stats_.speed_profile_min_mps, speed);
-      last_trajectory_planner_stats_.speed_profile_max_mps =
-          std::max(last_trajectory_planner_stats_.speed_profile_max_mps, speed);
-    }
-    speed_sum += speed;
-    if (sample.reason == SpeedConstraintType::kArc) {
-      ++last_trajectory_planner_stats_.speed_profile_curvature_limited_samples;
-    }
-  }
-  if (!trajectory_speed_profile_.samples.empty()) {
-    last_trajectory_planner_stats_.speed_profile_mean_mps =
-        speed_sum / static_cast<double>(trajectory_speed_profile_.samples.size());
-  }
+  last_trajectory_planner_stats_ = buildReceivedTrajectoryPlannerStats(
+      path_points_, final_trajectory_samples_, trajectory_, last_trajectory_metrics_,
+      trajectory_speed_profile_, trajectory_valid_);
   if (latest_trajectory_diagnostics_.has_value()) {
     mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*latest_trajectory_diagnostics_);
   }
@@ -212,17 +88,19 @@ void Px4OffboardNode::resetVelocitySmootherState(const std::string_view reason,
 }
 
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(const char* source_label) {
-  final_trajectory_samples_ = trajectoryPointSamplesFromPoints(path_points_);
-  trajectory_ = lineTrajectoryFromSamples(final_trajectory_samples_);
-  trajectory_speed_profile_ =
-      buildTrajectorySpeedProfile(final_trajectory_samples_, velocity_follower_config_);
-  trajectory_valid_ = trajectorySamplesAreUsable(final_trajectory_samples_) &&
-                      trajectory_speed_profile_.valid;
+  const OffboardTrajectoryState state =
+      buildOffboardTrajectoryState(path_points_, velocity_follower_config_);
+  final_trajectory_samples_ = state.samples;
+  trajectory_ = state.trajectory;
+  trajectory_speed_profile_ = state.speed_profile;
+  trajectory_valid_ = state.valid;
   last_trajectory_route_points_ = path_points_.size();
-  last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
-  last_trajectory_shape_diagnostics_ =
-      computeTrajectoryShapeDiagnostics(final_trajectory_samples_);
-  updatePlannerStatsForReceivedTrajectory();
+  last_trajectory_metrics_ = state.metrics;
+  last_trajectory_shape_diagnostics_ = state.shape;
+  last_trajectory_planner_stats_ = state.stats;
+  if (latest_trajectory_diagnostics_.has_value()) {
+    mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*latest_trajectory_diagnostics_);
+  }
   if (!trajectory_valid_) {
     resetVelocityDiagnostics();
   } else {
@@ -258,9 +136,9 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(const char* source_label)
 
 void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   ++received_path_update_id_;
-  last_received_path_stamp_ns_ = stampNanoseconds(path.header.stamp);
+  last_received_path_stamp_ns_ = messageStampNanoseconds(path.header.stamp);
 
-  path_points_ = pathPointsFromMessage(path);
+  path_points_ = drone_city_nav::pathPointsFromMessage(path);
   path_valid_ = !path_points_.empty();
 
   if (!path_valid_) {

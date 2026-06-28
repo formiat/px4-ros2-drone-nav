@@ -16,6 +16,11 @@ OFFBOARD_SOURCES = [
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_telemetry.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_trajectory.cpp",
+    REPO_ROOT / "drone_city_nav/src/offboard_blackbox.cpp",
+    REPO_ROOT / "drone_city_nav/src/offboard_debug_markers.cpp",
+    REPO_ROOT / "drone_city_nav/src/offboard_trajectory_state.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_config.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_setpoint_io.cpp",
 ]
 PLANNER_SOURCES = [
     REPO_ROOT / "drone_city_nav/src/planner_node.cpp",
@@ -24,6 +29,9 @@ PLANNER_SOURCES = [
     REPO_ROOT / "drone_city_nav/src/planner_node_lifecycle.cpp",
     REPO_ROOT / "drone_city_nav/src/planner_node_publish.cpp",
     REPO_ROOT / "drone_city_nav/src/planner_node_runtime.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_diagnostics_format.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_path_publication.cpp",
+    REPO_ROOT / "drone_city_nav/src/planner_runtime_state.cpp",
 ]
 TRAJECTORY_PLANNER = REPO_ROOT / "drone_city_nav/src/trajectory_planner.cpp"
 TRAJECTORY_DIAGNOSTICS_IO = (
