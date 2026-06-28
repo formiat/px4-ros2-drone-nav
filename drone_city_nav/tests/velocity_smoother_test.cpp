@@ -13,9 +13,9 @@ namespace {
   config.max_accel_mps2 = 3.0;
   config.max_decel_mps2 = 20.0;
   config.max_lateral_accel_mps2 = 3.0;
-  config.velocity_lateral_response_accel_mps2 = 7.0;
+  config.velocity_lateral_response_accel_mps2 = 5.0;
   config.max_velocity_jerk_mps3 = 12.0;
-  config.max_lateral_velocity_jerk_mps3 = 18.0;
+  config.max_lateral_velocity_jerk_mps3 = 14.0;
   return config;
 }
 

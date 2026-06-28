@@ -89,8 +89,16 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.acceptance_radius_m, 1.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 2.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_derivative_gain, 0.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_angle_rad,
                    55.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_rate_mps2, 5.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.velocity_lateral_response_accel_mps2, 5.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_time_s, 0.25);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
+                   30.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 14.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.adaptive_lateral_response_max_factor, 1.2);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);

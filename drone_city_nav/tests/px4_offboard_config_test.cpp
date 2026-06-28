@@ -37,19 +37,19 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
                       "/drone_city_nav/trajectory_diagnostics"),
             std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.8"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_angle_deg: 55.0"), std::string::npos);
-  EXPECT_NE(yaml.find("max_lateral_control_rate_mps2: 8.0"), std::string::npos);
-  EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 7.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_lateral_control_rate_mps2: 5.0"), std::string::npos);
+  EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 5.0"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_start_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_full_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_min_factor:"), std::string::npos);
-  EXPECT_NE(yaml.find("curvature_feedforward_time_s: 0.35"), std::string::npos);
-  EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 35.0"), std::string::npos);
+  EXPECT_NE(yaml.find("curvature_feedforward_time_s: 0.25"), std::string::npos);
+  EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 30.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_velocity_jerk_mps3: 12.0"), std::string::npos);
-  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 18.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 14.0"), std::string::npos);
   EXPECT_NE(yaml.find("adaptive_lateral_response_scale_m: 3.0"), std::string::npos);
-  EXPECT_NE(yaml.find("adaptive_lateral_response_max_factor: 1.4"), std::string::npos);
+  EXPECT_NE(yaml.find("adaptive_lateral_response_max_factor: 1.2"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_update_max_start_cross_track_m: 8.0"),
             std::string::npos);
   EXPECT_EQ(yaml.find("max_cross_track_correction_angle_deg:"), std::string::npos);
