@@ -518,6 +518,16 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
                                  const TurnSmoothingConfig& config) {
   const double min_improvement = sanitizedPositive(config.min_heading_improvement_rad,
                                                    0.05, 0.0, std::numbers::pi);
+  constexpr double kMaxAcceptedHeadingDeltaRad = std::numbers::pi / 2.0;
+  constexpr double kCurvatureJumpRegressionTolerance = 0.25;
+  constexpr double kCurvatureJumpRegressionFactor = 2.0;
+  const double max_allowed_curvature_jump =
+      std::max(before.max_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
+               before.max_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
+  if (after.max_heading_delta_rad > kMaxAcceptedHeadingDeltaRad ||
+      after.max_curvature_jump_1pm > max_allowed_curvature_jump) {
+    return false;
+  }
   if (after.max_heading_delta_rad + min_improvement < before.max_heading_delta_rad) {
     return true;
   }

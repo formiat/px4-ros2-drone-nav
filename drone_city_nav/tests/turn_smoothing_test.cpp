@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <span>
 #include <vector>
 
@@ -70,6 +72,12 @@ wideCornerCorridor(const OccupancyGrid2D& grid) {
   return config;
 }
 
+[[nodiscard]] double
+maxAcceptedCurvatureJumpAfter(const TrajectoryShapeDiagnostics& before) {
+  return std::max(before.max_curvature_jump_1pm + 0.25,
+                  before.max_curvature_jump_1pm * 2.0);
+}
+
 } // namespace
 
 TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
@@ -94,6 +102,9 @@ TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
   EXPECT_GT(result.samples.size(), samples.size());
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);
+  EXPECT_LE(result.stats.max_heading_delta_after_rad, std::numbers::pi / 2.0);
+  EXPECT_LE(result.stats.max_curvature_jump_after_1pm,
+            maxAcceptedCurvatureJumpAfter(before));
   EXPECT_LT(computeTrajectoryShapeDiagnostics(result.samples).max_heading_delta_rad,
             before.max_heading_delta_rad);
   EXPECT_EQ(result.stats.rejected_prohibited, 0U);
@@ -122,6 +133,9 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
   EXPECT_EQ(result.stats.rejected_prohibited, 0U);
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);
+  EXPECT_LE(result.stats.max_heading_delta_after_rad, std::numbers::pi / 2.0);
+  EXPECT_LE(result.stats.max_curvature_jump_after_1pm,
+            maxAcceptedCurvatureJumpAfter(before));
   EXPECT_LT(computeTrajectoryShapeDiagnostics(result.samples).max_heading_delta_rad,
             before.max_heading_delta_rad);
 }
