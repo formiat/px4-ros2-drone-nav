@@ -135,7 +135,7 @@ planner_node:
     racing_line_weight_center_bias: 0.0
     racing_line_weight_time: 50.0
     racing_line_weight_edge_margin: 80.0
-    racing_line_desired_edge_margin_m: 4.0
+    racing_line_desired_edge_margin_m: 6.0
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
@@ -190,9 +190,13 @@ px4_offboard_node:
     tracking_prediction_horizon_s: 0.35
     max_lateral_control_angle_deg: 55.0
     max_lateral_control_rate_mps2: 8.0
+    velocity_lateral_response_accel_mps2: 9.0
     curvature_feedforward_time_s: 0.35
     max_curvature_feedforward_angle_deg: 35.0
     max_velocity_jerk_mps3: 12.0
+    max_lateral_velocity_jerk_mps3: 24.0
+    adaptive_lateral_response_scale_m: 3.0
+    adaptive_lateral_response_max_factor: 2.5
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
     final_trajectory_debug_sample_step_m: 1.0
     offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers

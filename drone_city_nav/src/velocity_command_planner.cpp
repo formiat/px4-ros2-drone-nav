@@ -111,6 +111,23 @@ curvatureFeedforwardVelocity(const TrajectoryProjection& projection,
   return left_normal * (std::max(speed, 1.0) * std::tan(angle_rad));
 }
 
+[[nodiscard]] double
+adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
+                              const VelocityFollowerConfig& config) noexcept {
+  if (!std::isfinite(query.current_cross_track_error_m) ||
+      !std::isfinite(query.predicted_cross_track_error_m) ||
+      query.predicted_cross_track_error_m <= query.current_cross_track_error_m) {
+    return 1.0;
+  }
+
+  const double scale_m =
+      sanitizedPositive(config.adaptive_lateral_response_scale_m, 3.0, 1.0e-6, 1000.0);
+  const double max_factor =
+      sanitizedPositive(config.adaptive_lateral_response_max_factor, 2.5, 1.0, 100.0);
+  return std::clamp(1.0 + query.predicted_cross_track_error_m / scale_m, 1.0,
+                    max_factor);
+}
+
 } // namespace
 
 VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
@@ -147,16 +164,19 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   const Point2 curvature_feedforward =
       curvatureFeedforwardVelocity(query.projection, query.scalar_speed_mps, config,
                                    curvature_feedforward_angle_rad);
+  const double adaptive_lateral_response_factor =
+      adaptiveLateralResponseFactor(query, config);
   const Point2 raw_lateral_control =
-      cross_track_feedback + cross_track_derivative_damping + curvature_feedforward;
+      (cross_track_feedback + cross_track_derivative_damping + curvature_feedforward) *
+      adaptive_lateral_response_factor;
 
   const Point2 bounded_lateral_control =
       boundedCorrectionByAngle(raw_lateral_control, query.scalar_speed_mps,
                                config.max_lateral_control_angle_rad);
-  const VectorRateLimitResult limited_lateral_control =
-      limitVectorRate(bounded_lateral_control, query.previous_lateral_control_velocity,
-                      query.previous_lateral_control_velocity_valid, query.dt_s,
-                      config.max_lateral_control_rate_mps2);
+  const VectorRateLimitResult limited_lateral_control = limitVectorRate(
+      bounded_lateral_control, query.previous_lateral_control_velocity,
+      query.previous_lateral_control_velocity_valid, query.dt_s,
+      config.max_lateral_control_rate_mps2 * adaptive_lateral_response_factor);
   const Point2 lateral_control = limited_lateral_control.value;
 
   const Point2 desired_direction =
@@ -182,6 +202,7 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.raw_lateral_control_mps = norm(raw_lateral_control);
   plan.lateral_control_mps = norm(lateral_control);
   plan.lateral_control_delta_mps = limited_lateral_control.delta;
+  plan.adaptive_lateral_response_factor = adaptive_lateral_response_factor;
   plan.desired_velocity_tangent_mps = dot(desired_velocity, query.projection.tangent);
   plan.desired_velocity_normal_mps = dot(desired_velocity, left_normal);
   return plan;

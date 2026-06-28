@@ -763,7 +763,8 @@ void Px4OffboardNode::logControlSummary() {
       "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
       "velocity_setpoint_accel=%.2f velocity_setpoint_jerk=%.2f "
       "lateral_control[feedback=%.2f derivative=%.2f curvature_ff=%.2f "
-      "raw=%.2f final=%.2f delta=%.2f curvature_angle=%.1fdeg] "
+      "raw=%.2f final=%.2f delta=%.2f adaptive_response=%.2f "
+      "curvature_angle=%.1fdeg] "
       "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -821,6 +822,7 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_plan_.raw_lateral_control_mps,
       last_velocity_plan_.lateral_control_mps,
       last_velocity_plan_.lateral_control_delta_mps,
+      last_velocity_plan_.adaptive_lateral_response_factor,
       radiansToDegrees(last_velocity_plan_.curvature_feedforward_angle_rad),
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.raw_speed_limit_mps,

@@ -93,7 +93,8 @@ void Px4OffboardNode::logTelemetry() {
       "velocity_setpoint_jerk=%.2f "
       "lateral_control[feedback=(%.2f, %.2f) derivative=(%.2f, %.2f) "
       "curvature_ff=(%.2f, %.2f) raw=(%.2f, %.2f) final=(%.2f, %.2f) "
-      "final_norm=%.2f delta=%.2f curvature_angle=%.1fdeg] "
+      "final_norm=%.2f delta=%.2f adaptive_response=%.2f "
+      "curvature_angle=%.1fdeg] "
       "speed_limit_reason=%s raw_speed_limit=%.2f profile_speed_limit=%.2f "
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -138,6 +139,7 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.lateral_control_velocity.y,
       last_velocity_plan_.lateral_control_mps,
       last_velocity_plan_.lateral_control_delta_mps,
+      last_velocity_plan_.adaptive_lateral_response_factor,
       radiansToDegrees(last_velocity_plan_.curvature_feedforward_angle_rad),
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.raw_speed_limit_mps,

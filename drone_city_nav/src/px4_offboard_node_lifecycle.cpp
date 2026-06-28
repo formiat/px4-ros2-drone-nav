@@ -108,8 +108,10 @@ Px4OffboardNode::Px4OffboardNode()
       "tracking_prediction_horizon=%.2fs "
       "max_lateral_control_angle=%.1fdeg "
       "max_lateral_control_rate=%.2fmps2 "
+      "velocity_lateral_response_accel=%.2fmps2 "
       "curvature_feedforward[time=%.2fs max_angle=%.1fdeg] "
-      "max_velocity_jerk=%.2fmps3 "
+      "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
+      "adaptive_lateral_response[scale=%.2fm max_factor=%.2f] "
       "altitude_hold_kp=%.2f "
       "max_vertical_speed=%.2fmps "
       "executable_trajectory[source=planner_final_path final_topic='%s' "
@@ -137,9 +139,13 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.tracking_prediction_horizon_s,
       radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),
       velocity_follower_config_.max_lateral_control_rate_mps2,
+      velocity_follower_config_.velocity_lateral_response_accel_mps2,
       velocity_follower_config_.curvature_feedforward_time_s,
       radiansToDegrees(velocity_follower_config_.max_curvature_feedforward_angle_rad),
-      velocity_follower_config_.max_velocity_jerk_mps3, altitude_hold_kp_,
+      velocity_follower_config_.max_velocity_jerk_mps3,
+      velocity_follower_config_.max_lateral_velocity_jerk_mps3,
+      velocity_follower_config_.adaptive_lateral_response_scale_m,
+      velocity_follower_config_.adaptive_lateral_response_max_factor, altitude_hold_kp_,
       max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
       final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),
       mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,

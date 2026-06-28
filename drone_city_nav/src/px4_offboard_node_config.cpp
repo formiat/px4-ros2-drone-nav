@@ -110,6 +110,9 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                  0.0, std::numbers::pi / 2.0);
   config.velocity_follower.max_lateral_control_rate_mps2 = std::clamp(
       node.declare_parameter<double>("max_lateral_control_rate_mps2", 8.0), 0.0, 100.0);
+  config.velocity_follower.velocity_lateral_response_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("velocity_lateral_response_accel_mps2", 9.0), 0.0,
+      100.0);
   config.velocity_follower.curvature_feedforward_time_s = std::clamp(
       node.declare_parameter<double>("curvature_feedforward_time_s", 0.5), 0.0, 10.0);
   config.velocity_follower.max_curvature_feedforward_angle_rad =
@@ -118,6 +121,15 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                  0.0, std::numbers::pi / 2.0);
   config.velocity_follower.max_velocity_jerk_mps3 = std::clamp(
       node.declare_parameter<double>("max_velocity_jerk_mps3", 12.0), 0.0, 1000.0);
+  config.velocity_follower.max_lateral_velocity_jerk_mps3 =
+      std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 24.0),
+                 0.0, 1000.0);
+  config.velocity_follower.adaptive_lateral_response_scale_m = std::clamp(
+      node.declare_parameter<double>("adaptive_lateral_response_scale_m", 3.0), 0.1,
+      1000.0);
+  config.velocity_follower.adaptive_lateral_response_max_factor = std::clamp(
+      node.declare_parameter<double>("adaptive_lateral_response_max_factor", 2.5), 1.0,
+      100.0);
   config.velocity_follower.final_hold_max_speed_mps = std::clamp(
       node.declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
 

@@ -19,6 +19,7 @@ struct VelocitySmootherInput {
   bool previous_velocity_setpoint_valid{false};
   bool previous_velocity_acceleration_setpoint_valid{false};
   double dt_s{std::numeric_limits<double>::quiet_NaN()};
+  double lateral_response_factor{1.0};
 };
 
 struct VelocitySmootherPlan {

@@ -218,7 +218,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>("racing_line_weight_edge_margin", 80.0),
                  0.0, 1.0e9);
   config.trajectory_planner.racing_line.desired_edge_margin_m = std::clamp(
-      node.declare_parameter<double>("racing_line_desired_edge_margin_m", 4.0), 0.0,
+      node.declare_parameter<double>("racing_line_desired_edge_margin_m", 6.0), 0.0,
       1000.0);
   config.trajectory_planner.racing_line.max_length_ratio = std::clamp(
       node.declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);

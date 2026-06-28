@@ -56,15 +56,22 @@ struct VelocityJerkLimitResult {
 
 [[nodiscard]] double
 effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
-  const double max_accel = sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
-  const double max_lateral =
-      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
-  return std::min(max_accel, max_lateral);
+  return sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double
 effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+}
+
+[[nodiscard]] double
+effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
+                                  const double response_factor) {
+  const double lateral_response_accel =
+      sanitizedPositive(config.velocity_lateral_response_accel_mps2,
+                        config.max_lateral_accel_mps2, 1.0e-6, 100.0);
+  const double factor = sanitizedPositive(response_factor, 1.0, 1.0, 100.0);
+  return lateral_response_accel * factor;
 }
 
 [[nodiscard]] VectorRateLimitResult
@@ -92,12 +99,11 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
   return result;
 }
 
-[[nodiscard]] VelocityJerkLimitResult
-limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_velocity,
-                          const bool previous_velocity_valid,
-                          const Point2 previous_acceleration,
-                          const bool previous_acceleration_valid, const double dt_s,
-                          const double max_jerk_mps3) {
+[[nodiscard]] VelocityJerkLimitResult limitVelocitySetpointJerk(
+    const Point2 desired_velocity, const Point2 previous_velocity,
+    const bool previous_velocity_valid, const Point2 previous_acceleration,
+    const bool previous_acceleration_valid, const double dt_s,
+    const double max_longitudinal_jerk_mps3, const double max_lateral_jerk_mps3) {
   VelocityJerkLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -114,13 +120,17 @@ limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_v
     return result;
   }
 
-  const double max_jerk = sanitizedPositive(max_jerk_mps3, 0.0, 0.0, 1000.0);
-  if (!(max_jerk > 0.0)) {
+  const double max_longitudinal_jerk =
+      sanitizedPositive(max_longitudinal_jerk_mps3, 0.0, 0.0, 1000.0);
+  const double max_lateral_jerk =
+      sanitizedPositive(max_lateral_jerk_mps3, max_longitudinal_jerk, 0.0, 1000.0);
+  if (!(max_longitudinal_jerk > 0.0) && !(max_lateral_jerk > 0.0)) {
     return result;
   }
 
   const double previous_speed = norm(previous_velocity);
   if (!(previous_speed > kTinyDistanceM)) {
+    const double max_jerk = std::max(max_longitudinal_jerk, max_lateral_jerk);
     const VectorRateLimitResult limited_acceleration = limitVectorRate(
         requested_acceleration, previous_acceleration, true, dt, max_jerk);
     result.acceleration = limited_acceleration.value;
@@ -138,13 +148,15 @@ limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_v
   const double requested_lateral_accel = dot(requested_acceleration, left_normal);
   const double previous_longitudinal_accel = dot(previous_acceleration, forward);
   const double previous_lateral_accel = dot(previous_acceleration, left_normal);
-  const double max_accel_delta = max_jerk * dt;
-  const double limited_longitudinal_accel = std::clamp(
-      requested_longitudinal_accel, previous_longitudinal_accel - max_accel_delta,
-      previous_longitudinal_accel + max_accel_delta);
-  const double limited_lateral_accel =
-      std::clamp(requested_lateral_accel, previous_lateral_accel - max_accel_delta,
-                 previous_lateral_accel + max_accel_delta);
+  const double max_longitudinal_accel_delta = max_longitudinal_jerk * dt;
+  const double max_lateral_accel_delta = max_lateral_jerk * dt;
+  const double limited_longitudinal_accel =
+      std::clamp(requested_longitudinal_accel,
+                 previous_longitudinal_accel - max_longitudinal_accel_delta,
+                 previous_longitudinal_accel + max_longitudinal_accel_delta);
+  const double limited_lateral_accel = std::clamp(
+      requested_lateral_accel, previous_lateral_accel - max_lateral_accel_delta,
+      previous_lateral_accel + max_lateral_accel_delta);
   result.acceleration =
       forward * limited_longitudinal_accel + left_normal * limited_lateral_accel;
   result.acceleration_norm_mps2 = norm(result.acceleration);
@@ -153,22 +165,10 @@ limitVelocitySetpointJerk(const Point2 desired_velocity, const Point2 previous_v
   return result;
 }
 
-} // namespace
-
-VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity,
-                                                   const Point2 previous_velocity,
-                                                   const bool previous_velocity_valid,
-                                                   const double dt_s,
-                                                   const double max_delta_mps2) {
-  return limitVelocityVectorDelta(desired_velocity, previous_velocity,
-                                  previous_velocity_valid, dt_s, max_delta_mps2,
-                                  max_delta_mps2);
-}
-
-VelocityVectorLimitResult
-limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_velocity,
-                         const bool previous_velocity_valid, const double dt_s,
-                         const double max_accel_mps2, const double max_decel_mps2) {
+[[nodiscard]] VelocityVectorLimitResult limitVelocityVectorDeltaWithLateral(
+    const Point2 desired_velocity, const Point2 previous_velocity,
+    const bool previous_velocity_valid, const double dt_s, const double max_accel_mps2,
+    const double max_decel_mps2, const double max_lateral_accel_mps2) {
   VelocityVectorLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -182,6 +182,8 @@ limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_ve
       sanitizedPositive(max_accel_mps2, 3.0, 0.0, 100.0) * dt;
   const double max_decel_delta =
       sanitizedPositive(max_decel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
+  const double max_lateral_delta =
+      sanitizedPositive(max_lateral_accel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
   const Point2 delta = desired_velocity - previous_velocity;
   const double previous_speed = norm(previous_velocity);
   if (!(previous_speed > kTinyDistanceM)) {
@@ -205,13 +207,34 @@ limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_ve
       std::clamp(longitudinal_delta, -max_decel_delta, max_accel_delta);
   Point2 limited_lateral = lateral;
   const double lateral_norm = norm(lateral);
-  if (lateral_norm > max_accel_delta && lateral_norm > kTinyDistanceM) {
-    limited_lateral = lateral * (max_accel_delta / lateral_norm);
+  if (lateral_norm > max_lateral_delta && lateral_norm > kTinyDistanceM) {
+    limited_lateral = lateral * (max_lateral_delta / lateral_norm);
   }
   result.velocity =
       previous_velocity + forward * limited_longitudinal_delta + limited_lateral;
   result.delta_mps = norm(result.velocity - previous_velocity);
   return result;
+}
+
+} // namespace
+
+VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity,
+                                                   const Point2 previous_velocity,
+                                                   const bool previous_velocity_valid,
+                                                   const double dt_s,
+                                                   const double max_delta_mps2) {
+  return limitVelocityVectorDelta(desired_velocity, previous_velocity,
+                                  previous_velocity_valid, dt_s, max_delta_mps2,
+                                  max_delta_mps2);
+}
+
+VelocityVectorLimitResult
+limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_velocity,
+                         const bool previous_velocity_valid, const double dt_s,
+                         const double max_accel_mps2, const double max_decel_mps2) {
+  return limitVelocityVectorDeltaWithLateral(
+      desired_velocity, previous_velocity, previous_velocity_valid, dt_s,
+      max_accel_mps2, max_decel_mps2, max_accel_mps2);
 }
 
 VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
@@ -221,16 +244,21 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
     return plan;
   }
 
-  const VelocityVectorLimitResult limited_velocity = limitVelocityVectorDelta(
-      input.desired_velocity_xy, input.previous_velocity_setpoint,
-      input.previous_velocity_setpoint_valid, input.dt_s,
-      effectiveVelocityDeltaAccelMps2(config), effectiveVelocityDeltaDecelMps2(config));
+  const VelocityVectorLimitResult limited_velocity =
+      limitVelocityVectorDeltaWithLateral(
+          input.desired_velocity_xy, input.previous_velocity_setpoint,
+          input.previous_velocity_setpoint_valid, input.dt_s,
+          effectiveVelocityDeltaAccelMps2(config),
+          effectiveVelocityDeltaDecelMps2(config),
+          effectiveLateralResponseAccelMps2(config, input.lateral_response_factor));
   const VelocityJerkLimitResult jerk_limited_velocity = limitVelocitySetpointJerk(
       limited_velocity.velocity, input.previous_velocity_setpoint,
       input.previous_velocity_setpoint_valid,
       input.previous_velocity_acceleration_setpoint,
       input.previous_velocity_acceleration_setpoint_valid, input.dt_s,
-      config.max_velocity_jerk_mps3);
+      config.max_velocity_jerk_mps3,
+      config.max_lateral_velocity_jerk_mps3 *
+          sanitizedPositive(input.lateral_response_factor, 1.0, 1.0, 100.0));
 
   plan.valid = true;
   plan.velocity_xy = jerk_limited_velocity.velocity;

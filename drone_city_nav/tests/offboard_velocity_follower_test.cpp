@@ -614,6 +614,7 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsLongitudinalBraking) {
   config.max_lateral_accel_mps2 = 100.0;
   config.max_decel_mps2 = 20.0;
   config.max_velocity_jerk_mps3 = 1.0;
+  config.max_lateral_velocity_jerk_mps3 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;
@@ -641,10 +642,12 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {
   VelocityFollowerConfig config = testConfig();
   config.max_accel_mps2 = 100.0;
   config.max_lateral_accel_mps2 = 100.0;
+  config.velocity_lateral_response_accel_mps2 = 100.0;
   config.max_decel_mps2 = 100.0;
   config.cross_track_gain = 10.0;
   config.max_lateral_control_angle_rad = 1.0;
   config.max_velocity_jerk_mps3 = 1.0;
+  config.max_lateral_velocity_jerk_mps3 = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
   state.previous_velocity_setpoint_valid = true;

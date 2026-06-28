@@ -179,16 +179,19 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   }
 
   const VelocityCommandPlan command = planVelocityCommand(
-      VelocityCommandQuery{.projection = control_projection,
-                           .current_position = predicted_position,
-                           .current_velocity = current_velocity,
-                           .current_velocity_valid = current_velocity_valid,
-                           .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
-                           .dt_s = dt,
-                           .previous_lateral_control_velocity =
-                               previous_state.previous_lateral_control_velocity,
-                           .previous_lateral_control_velocity_valid =
-                               previous_state.previous_lateral_control_velocity_valid},
+      VelocityCommandQuery{
+          .projection = control_projection,
+          .current_position = predicted_position,
+          .current_velocity = current_velocity,
+          .current_velocity_valid = current_velocity_valid,
+          .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
+          .dt_s = dt,
+          .previous_lateral_control_velocity =
+              previous_state.previous_lateral_control_velocity,
+          .previous_lateral_control_velocity_valid =
+              previous_state.previous_lateral_control_velocity_valid,
+          .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
+          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
       config);
   if (!command.valid) {
     return plan;
@@ -204,7 +207,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
               previous_state.previous_velocity_setpoint_valid,
           .previous_velocity_acceleration_setpoint_valid =
               previous_state.previous_velocity_acceleration_setpoint_valid,
-          .dt_s = dt},
+          .dt_s = dt,
+          .lateral_response_factor = command.adaptive_lateral_response_factor},
       config);
   if (!smoothed.valid) {
     return plan;
@@ -281,6 +285,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.raw_lateral_control_mps = command.raw_lateral_control_mps;
   plan.lateral_control_mps = command.lateral_control_mps;
   plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
+  plan.adaptive_lateral_response_factor = command.adaptive_lateral_response_factor;
   plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
   plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
   plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);

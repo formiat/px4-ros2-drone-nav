@@ -148,6 +148,8 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_control_mps);
   stream << ",\"lateral_control_delta_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_control_delta_mps);
+  stream << ",\"adaptive_lateral_response_factor\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.adaptive_lateral_response_factor);
   stream << ",\"velocity_setpoint_accel_x\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.velocity_setpoint_acceleration_xy.x);

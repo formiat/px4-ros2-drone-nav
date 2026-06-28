@@ -72,6 +72,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.trajectory_segment_kind = TrajectorySegmentKind::kArc;
   record.velocity_plan.trajectory_curvature_1pm = 0.1;
   record.velocity_plan.trajectory_arc_radius_m = 10.0;
+  record.velocity_plan.adaptive_lateral_response_factor = 2.5;
   record.velocity_smoother_reset_reason = "path_update";
   record.path_update_velocity_smoother_reset_count = 3U;
   record.last_altitude_error_m = 0.2;
@@ -128,6 +129,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"velocity\":{\"valid\":true");
   expectJsonField(json, "\"target\":{\"x\":10");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");
+  expectJsonField(json, "\"adaptive_lateral_response_factor\":2.5");
   expectJsonField(json, "\"speed_limit_reason\":\"trajectory_profile\"");
   expectJsonField(json, "\"trajectory_segment_type\":\"arc\"");
   expectJsonField(json, "\"trajectory_planner_status\":\"none\"");
