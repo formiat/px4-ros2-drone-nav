@@ -59,6 +59,7 @@ struct RacingLineStats {
   double cost_time{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_heading_jump{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_second_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_center_bias{std::numeric_limits<double>::quiet_NaN()};

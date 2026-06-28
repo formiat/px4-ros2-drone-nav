@@ -511,7 +511,7 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
                                  const TurnSmoothingConfig& config) {
   const double min_improvement = sanitizedPositive(config.min_heading_improvement_rad,
                                                    0.05, 0.0, std::numbers::pi);
-  constexpr double kMaxAcceptedHeadingDeltaRad = std::numbers::pi / 2.0;
+  constexpr double kMaxAcceptedHeadingDeltaRad = std::numbers::pi / 3.0;
   constexpr double kCurvatureJumpRegressionTolerance = 0.25;
   constexpr double kCurvatureJumpRegressionFactor = 2.0;
   const double max_allowed_curvature_jump =

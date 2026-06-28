@@ -268,6 +268,7 @@ TEST(RacingLine, ReportsTimeFirstCostBreakdownAndEdgeMargins) {
   EXPECT_TRUE(std::isfinite(result.stats.cost_length));
   EXPECT_TRUE(std::isfinite(result.stats.cost_time));
   EXPECT_TRUE(std::isfinite(result.stats.cost_curvature));
+  EXPECT_TRUE(std::isfinite(result.stats.cost_heading_jump));
   EXPECT_TRUE(std::isfinite(result.stats.cost_edge_margin));
   EXPECT_TRUE(std::isfinite(result.stats.min_edge_margin_m));
   EXPECT_TRUE(std::isfinite(result.stats.mean_edge_margin_m));

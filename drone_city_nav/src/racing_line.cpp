@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <future>
 #include <limits>
+#include <numbers>
 #include <utility>
 
 namespace drone_city_nav {
@@ -18,6 +19,10 @@ constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kCollisionPenalty = 1.0e9;
 constexpr double kOutsideGridPenalty = 1.0e9;
 constexpr double kLengthOverrunPenalty = 1.0e6;
+constexpr double kHeadingJumpPenalty = 1.0e6;
+constexpr double kHeadingJumpHardPenalty = 1.0e9;
+constexpr double kHeadingJumpSoftLimitRad = std::numbers::pi / 2.0;
+constexpr double kHeadingJumpHardLimitRad = 2.0 * std::numbers::pi / 3.0;
 
 struct PathEvaluation {
   double length_m{0.0};
@@ -34,6 +39,7 @@ struct CostBreakdown {
   double time_cost{0.0};
   double curvature_cost{0.0};
   double curvature_change_cost{0.0};
+  double heading_jump_cost{0.0};
   double offset_change_cost{0.0};
   double offset_second_change_cost{0.0};
   double center_bias_cost{0.0};
@@ -44,8 +50,9 @@ struct CostBreakdown {
 
   [[nodiscard]] double total() const noexcept {
     return length_cost + time_cost + curvature_cost + curvature_change_cost +
-           offset_change_cost + offset_second_change_cost + center_bias_cost +
-           edge_margin_cost + collision_cost + outside_grid_cost + length_overrun_cost;
+           heading_jump_cost + offset_change_cost + offset_second_change_cost +
+           center_bias_cost + edge_margin_cost + collision_cost + outside_grid_cost +
+           length_overrun_cost;
   }
 };
 
@@ -447,6 +454,15 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);
     populateSampleGeometry(scratch_samples);
     stats.candidate_sample_build_duration_ms += elapsedMilliseconds(sample_started_at);
+    const TrajectoryShapeDiagnostics shape =
+        computeTrajectoryShapeDiagnostics(scratch_samples);
+    const double heading_jump_overrun =
+        std::max(0.0, shape.max_heading_delta_rad - kHeadingJumpSoftLimitRad);
+    result.breakdown.heading_jump_cost =
+        heading_jump_overrun * heading_jump_overrun * kHeadingJumpPenalty;
+    if (shape.max_heading_delta_rad > kHeadingJumpHardLimitRad) {
+      result.breakdown.heading_jump_cost += kHeadingJumpHardPenalty;
+    }
     result.traversal_time = estimateTraversalTime(scratch_samples, speed_config, true);
     if (weight_time > 0.0 && result.traversal_time.valid &&
         std::isfinite(result.traversal_time.estimated_time_s)) {
@@ -524,6 +540,7 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& s
   stats.cost_time = breakdown.time_cost;
   stats.cost_curvature = breakdown.curvature_cost;
   stats.cost_curvature_change = breakdown.curvature_change_cost;
+  stats.cost_heading_jump = breakdown.heading_jump_cost;
   stats.cost_offset_change = breakdown.offset_change_cost;
   stats.cost_offset_second_change = breakdown.offset_second_change_cost;
   stats.cost_center_bias = breakdown.center_bias_cost;

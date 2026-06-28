@@ -57,6 +57,7 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_time = 625.0;
   stats.racing_line.cost_curvature = 12.0;
   stats.racing_line.cost_curvature_change = 3.0;
+  stats.racing_line.cost_heading_jump = 5.5;
   stats.racing_line.cost_offset_change = 1.0;
   stats.racing_line.cost_offset_second_change = 4.0;
   stats.racing_line.cost_center_bias = 0.0;
@@ -170,6 +171,7 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_final_length_ratio\":1.08"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_time\":625"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_edge_margin\":7"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_cost_heading_jump\":5.5"), std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_point_build_duration_ms\":1.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_sample_build_duration_ms\":2.5"),
@@ -211,6 +213,7 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_cost_time\"",
                         "\"racing_cost_curvature\"",
                         "\"racing_cost_curvature_change\"",
+                        "\"racing_cost_heading_jump\"",
                         "\"racing_cost_offset_change\"",
                         "\"racing_cost_offset_second_change\"",
                         "\"racing_cost_center_bias\"",
@@ -294,6 +297,7 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentWritesNullForNonFiniteMetric
   EXPECT_NE(fragment.find("\"racing_best_candidate_score\":null"), std::string::npos);
   EXPECT_NE(fragment.find("\"racing_final_length_ratio\":null"), std::string::npos);
   EXPECT_NE(fragment.find("\"racing_cost_time\":null"), std::string::npos);
+  EXPECT_NE(fragment.find("\"racing_cost_heading_jump\":null"), std::string::npos);
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
