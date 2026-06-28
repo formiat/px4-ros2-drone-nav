@@ -186,61 +186,23 @@ LidarDebugNode::headingDirection(const double projection_yaw_rad) const {
 
 [[nodiscard]] std::vector<LidarSnapshotCsvRow>
 LidarDebugNode::collectScanRows(LidarSnapshotStats& stats) const {
-  std::vector<LidarSnapshotCsvRow> rows;
   const double scan_range_max = scanRangeMax();
-  if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
-    return rows;
-  }
-  rows.reserve((last_scan_.ranges.size() + beam_csv_stride_ - 1U) / beam_csv_stride_);
-
-  for (std::size_t i = 0U; i < last_scan_.ranges.size(); i += beam_csv_stride_) {
-    const float raw_range = last_scan_.ranges[i];
-    ++stats.processed_beams;
-
-    const LidarBeamProjection projection = projectScanBeam(i, raw_range);
-    switch (projection.status) {
-      case LidarBeamProjectionStatus::kAccepted:
-        ++stats.accepted_beams;
-        if (projection.hit) {
-          ++stats.hit_beams;
-          stats.hit_points.push_back(projection.endpoint);
-        }
-        if (std::isfinite(projection.endpoint_altitude_m)) {
-          stats.endpoint_altitude_min_m =
-              std::min(stats.endpoint_altitude_min_m, projection.endpoint_altitude_m);
-          stats.endpoint_altitude_max_m =
-              std::max(stats.endpoint_altitude_max_m, projection.endpoint_altitude_m);
-        }
-        break;
-      case LidarBeamProjectionStatus::kAltitudeRejected:
-        ++stats.altitude_rejected_beams;
-        break;
-      case LidarBeamProjectionStatus::kInvalidRange:
-        ++stats.invalid_range_beams;
-        ++stats.projection_rejected_beams;
-        break;
-      case LidarBeamProjectionStatus::kInvalidScan:
-        ++stats.invalid_scan_beams;
-        ++stats.projection_rejected_beams;
-        break;
-    }
-
-    const bool endpoint_available =
-        projection.status == LidarBeamProjectionStatus::kAccepted ||
-        projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    const double angle_rad =
-        static_cast<double>(last_scan_.angle_min) +
-        static_cast<double>(i) * static_cast<double>(last_scan_.angle_increment);
-    rows.push_back(LidarSnapshotCsvRow{
-        i, angle_rad, std::isfinite(raw_range) ? static_cast<double>(raw_range) : nan,
-        projection.used_range_m, projection.hit,
-        endpoint_available ? projection.endpoint.x : nan,
-        endpoint_available ? projection.endpoint.y : nan,
-        projection.endpoint_altitude_m, projection.status, projection.lidar_direction,
-        projection.body_frd_direction, projection.ned_direction});
-  }
-  return rows;
+  const LidarDebugSnapshotOutput output = buildLidarDebugSnapshotOutput(
+      LidarDebugSnapshotInput{
+          scan_seen_, pose_seen_, last_scan_projection_seen_,
+          std::span<const float>{last_scan_.ranges.data(), last_scan_.ranges.size()},
+          static_cast<double>(last_scan_.range_min), scan_range_max,
+          static_cast<double>(last_scan_.angle_min),
+          static_cast<double>(last_scan_.angle_increment), beam_csv_stride_,
+          remembered_hit_points_.size()},
+      [](const std::size_t beam_index, const float raw_range,
+         const void* context) -> LidarBeamProjection {
+        return static_cast<const LidarDebugNode*>(context)->projectScanBeam(beam_index,
+                                                                            raw_range);
+      },
+      this);
+  stats = output.stats;
+  return output.rows;
 }
 
 [[nodiscard]] std::optional<GridImageView> LidarDebugNode::gridImageView() const {

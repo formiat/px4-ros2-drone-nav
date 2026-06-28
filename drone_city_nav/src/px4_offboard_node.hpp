@@ -117,6 +117,8 @@ public:
 private:
   [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const;
 
+  void applyConfig(const Px4OffboardNodeConfig& config);
+
   [[nodiscard]] std_msgs::msg::Header makeDebugHeader() const;
 
   void publishFinalTrajectoryDebug();

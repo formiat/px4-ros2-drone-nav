@@ -15,6 +15,12 @@ namespace {
   return pathSegmentIsAllowed(grid, start, end);
 }
 
+[[nodiscard]] bool pathTraversableForGrid(const std::span<const Point2> points,
+                                          const void* context) {
+  const auto& grid = *static_cast<const OccupancyGrid2D*>(context);
+  return pathIsTraversable(grid, points);
+}
+
 } // namespace
 
 bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
@@ -42,29 +48,31 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
       return std::nullopt;
     }
 
-    const std::vector<Point2> pre_collapse_path_points = path_points;
-    path_points = collapseCollinearPath(pre_collapse_path_points,
-                                        kPublishedPathCollinearityToleranceM);
-    CandidatePath candidate{std::move(path_points),          source_kind, cells.size(),
-                            pre_collapse_path_points.size(), 0U,          false};
-    candidate.collapsed_points = candidate.points.size();
-
-    if (!pathIsTraversable(grid, candidate.points)) {
-      if (pathIsTraversable(grid, pre_collapse_path_points)) {
-        candidate.points = pre_collapse_path_points;
-        candidate.collapse_reverted = true;
-        RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 3000,
-            "%s path restored pre-collapse waypoints because collinear collapse "
-            "would create a non-traversable segment: source=%s before=%zu "
-            "collapsed=%zu",
-            source_label, source_kind, pre_collapse_path_points.size(),
-            candidate.collapsed_points);
-      } else {
-        logRejectedUnsafeRoute(grid, pre_collapse_path_points, source_label,
-                               "pre-collapse path contains a non-traversable segment");
-        return std::nullopt;
-      }
+    const RouteCandidateDecision route_decision =
+        selectRouteCandidate(path_points, kPublishedPathCollinearityToleranceM,
+                             pathTraversableForGrid, &grid);
+    if (route_decision.status == RouteCandidateStatus::kRejectedNonTraversable) {
+      logRejectedUnsafeRoute(grid, path_points, source_label,
+                             "pre-collapse path contains a non-traversable segment");
+      return std::nullopt;
+    }
+    if (route_decision.status == RouteCandidateStatus::kEmptyInput) {
+      return std::nullopt;
+    }
+    CandidatePath candidate{route_decision.points,
+                            source_kind,
+                            cells.size(),
+                            route_decision.pre_collapse_points,
+                            route_decision.collapsed_points,
+                            route_decision.collapse_reverted};
+    if (candidate.collapse_reverted) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 3000,
+          "%s path restored pre-collapse waypoints because collinear collapse "
+          "would create a non-traversable segment: source=%s before=%zu "
+          "collapsed=%zu",
+          source_label, source_kind, candidate.pre_collapse_points,
+          candidate.collapsed_points);
     }
 
     return candidate;

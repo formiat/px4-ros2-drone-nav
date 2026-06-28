@@ -260,20 +260,21 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
     }
   }
 
-  if (result.status == PlanningGridStatus::kNoEnabledSources) {
+  const PlannerGridReadinessDecision grid_readiness =
+      evaluatePlannerGridReadiness(result);
+  if (grid_readiness.reason == PlannerGridReadinessReason::kNoEnabledSources) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planner has no enabled obstacle sources; skipping path check");
     return std::nullopt;
   }
-  if (result.status == PlanningGridStatus::kStaticMapEnabledButMissing) {
+  if (grid_readiness.reason == PlannerGridReadinessReason::kStaticMapMissing) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Planner static map source is enabled but not loaded; "
                          "skipping path check");
     return std::nullopt;
   }
-  if (result.status == PlanningGridStatus::kNoReadySourceData ||
-      !result.grid.has_value()) {
+  if (!grid_readiness.ready) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Planner has no ready obstacle source data; skipping path "
                          "check status=%s",
@@ -289,7 +290,10 @@ void PlannerNode::checkCurrentPathAndPublish() {
   const bool pose_fresh =
       timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
   const double pose_age_s = poseAgeSeconds(now_ns);
-  if (pose_valid_ && !pose_fresh) {
+  const PlannerRuntimeReadinessDecision runtime_readiness =
+      evaluatePlannerRuntimeReadiness(PlannerRuntimeReadinessInput{
+          pose_valid_, finite2D(current_pose_.position), pose_fresh});
+  if (runtime_readiness.reason == PlannerRuntimeReadinessReason::kStalePose) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planner skipped path check because PX4 local position is stale; keeping the "
@@ -297,7 +301,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
         pose_age_s);
     return;
   }
-  if (!pose_valid_ || !finite2D(current_pose_.position)) {
+  if (!runtime_readiness.ready) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Planner is waiting for a valid PX4 local position; "
                          "keeping the last published path");

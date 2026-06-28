@@ -26,10 +26,8 @@ bool PlannerNode::keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
 
   const StablePathDecision decision = planner_core_.evaluateStablePath(
       grid, last_valid_path_points_, current_pose_.position, goal_);
-  if (decision.reason == StablePathDecisionReason::kGoalMismatch ||
-      decision.reason == StablePathDecisionReason::kProjectionUnavailable ||
-      decision.reason == StablePathDecisionReason::kNoPreviousPath ||
-      decision.reason == StablePathDecisionReason::kDisabled) {
+  if (stablePathRuntimeAction(decision.reason) == StablePathRuntimeAction::kRunAStar &&
+      decision.reason != StablePathDecisionReason::kProhibitedConfirmed) {
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 3000,
         "Stable path reuse rejected; running A*: reason=%s "

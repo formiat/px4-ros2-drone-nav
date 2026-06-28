@@ -38,7 +38,6 @@ add_library(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/lidar_debug_renderer.cpp
-  src/lidar_debug_node_config.cpp
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_projection.cpp
   src/lidar_snapshot_writer.cpp
@@ -54,7 +53,6 @@ add_library(
   src/planner_diagnostics_format.cpp
   src/planner_path_publication.cpp
   src/planner_runtime_state.cpp
-  src/px4_offboard_node_config.cpp
   src/static_city_map.cpp
   src/racing_line.cpp
   src/trajectory.cpp
@@ -75,9 +73,11 @@ enable_project_warnings(drone_city_nav_core)
 
 add_library(
   drone_city_nav_ros_adapters
+  src/lidar_debug_node_config.cpp
   src/offboard_debug_markers.cpp
   src/offboard_trajectory_state.cpp
   src/planner_node_config.cpp
+  src/px4_offboard_node_config.cpp
   src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
   src/ros_conversions.cpp
@@ -224,7 +224,8 @@ if(BUILD_TESTING)
   ament_add_gtest(lidar_debug_node_config_test
                   tests/lidar_debug_node_config_test.cpp)
   target_compile_features(lidar_debug_node_config_test PRIVATE cxx_std_20)
-  target_link_libraries(lidar_debug_node_config_test drone_city_nav_core)
+  target_link_libraries(lidar_debug_node_config_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(lidar_debug_node_config_test rclcpp)
   enable_project_warnings(lidar_debug_node_config_test)
 
   ament_add_gtest(final_trajectory_debug_io_test
@@ -394,7 +395,8 @@ if(BUILD_TESTING)
   ament_add_gtest(px4_offboard_node_config_test
                   tests/px4_offboard_node_config_test.cpp)
   target_compile_features(px4_offboard_node_config_test PRIVATE cxx_std_20)
-  target_link_libraries(px4_offboard_node_config_test drone_city_nav_core)
+  target_link_libraries(px4_offboard_node_config_test drone_city_nav_ros_adapters)
+  ament_target_dependencies(px4_offboard_node_config_test rclcpp)
   enable_project_warnings(px4_offboard_node_config_test)
 
   ament_add_gtest(offboard_blackbox_test tests/offboard_blackbox_test.cpp)

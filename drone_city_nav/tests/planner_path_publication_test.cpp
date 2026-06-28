@@ -7,6 +7,26 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] bool pathAlwaysTraversable(const std::span<const Point2> points,
+                                         const void* context) {
+  (void)points;
+  (void)context;
+  return true;
+}
+
+[[nodiscard]] bool pathTraversable(const std::span<const Point2> points,
+                                   const void* context) {
+  (void)context;
+  return points.size() != 2U || points.front().x != 0.0 || points.back().x != 10.0;
+}
+
+[[nodiscard]] bool pathNeverTraversable(const std::span<const Point2> points,
+                                        const void* context) {
+  (void)points;
+  (void)context;
+  return false;
+}
+
 [[nodiscard]] bool segmentTraversable(Point2 start, Point2 end,
                                       const void* unused_context) {
   (void)unused_context;
@@ -56,6 +76,44 @@ TEST(PlannerPathPublication, SummarizesTraversabilityAndEscapeSegments) {
   EXPECT_EQ(summary.first_non_traversable_segment, 1U);
   EXPECT_DOUBLE_EQ(summary.first_non_traversable_start.x, 1.0);
   EXPECT_DOUBLE_EQ(summary.first_non_traversable_end.x, 2.0);
+}
+
+TEST(PlannerPathPublication, SelectsCollapsedRouteWhenTraversable) {
+  const std::vector<Point2> points{Point2{0.0, 0.0}, Point2{5.0, 0.0},
+                                   Point2{10.0, 0.0}};
+
+  const RouteCandidateDecision decision =
+      selectRouteCandidate(points, 0.01, pathAlwaysTraversable, nullptr);
+
+  EXPECT_EQ(decision.status, RouteCandidateStatus::kAccepted);
+  EXPECT_FALSE(decision.collapse_reverted);
+  EXPECT_EQ(decision.pre_collapse_points, 3U);
+  EXPECT_EQ(decision.collapsed_points, 2U);
+  EXPECT_EQ(decision.points.size(), 2U);
+}
+
+TEST(PlannerPathPublication, RestoresPreCollapseRouteWhenCollapseIsBlocked) {
+  const std::vector<Point2> points{Point2{0.0, 0.0}, Point2{5.0, 0.0},
+                                   Point2{10.0, 0.0}};
+
+  const RouteCandidateDecision decision =
+      selectRouteCandidate(points, 0.01, pathTraversable, nullptr);
+
+  EXPECT_EQ(decision.status, RouteCandidateStatus::kAccepted);
+  EXPECT_TRUE(decision.collapse_reverted);
+  EXPECT_EQ(decision.pre_collapse_points, 3U);
+  EXPECT_EQ(decision.collapsed_points, 2U);
+  EXPECT_EQ(decision.points.size(), 3U);
+}
+
+TEST(PlannerPathPublication, RejectsNonTraversablePreCollapseRoute) {
+  const std::vector<Point2> points{Point2{0.0, 0.0}, Point2{5.0, 0.0},
+                                   Point2{10.0, 0.0}};
+
+  const RouteCandidateDecision decision =
+      selectRouteCandidate(points, 0.01, pathNeverTraversable, nullptr);
+
+  EXPECT_EQ(decision.status, RouteCandidateStatus::kRejectedNonTraversable);
 }
 
 } // namespace drone_city_nav

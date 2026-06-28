@@ -1,6 +1,40 @@
 #include "drone_city_nav/planner_path_publication.hpp"
 
+#include "drone_city_nav/path_smoothing.hpp"
+
 namespace drone_city_nav {
+
+[[nodiscard]] RouteCandidateDecision
+selectRouteCandidate(const std::span<const Point2> pre_collapse_points,
+                     const double collinearity_tolerance_m,
+                     bool (*path_traversable)(std::span<const Point2>, const void*),
+                     const void* context) {
+  RouteCandidateDecision decision{};
+  decision.pre_collapse_points = pre_collapse_points.size();
+  if (pre_collapse_points.empty()) {
+    return decision;
+  }
+
+  decision.points =
+      collapseCollinearPath(pre_collapse_points, collinearity_tolerance_m);
+  decision.collapsed_points = decision.points.size();
+  if (path_traversable(
+          std::span<const Point2>{decision.points.data(), decision.points.size()},
+          context)) {
+    decision.status = RouteCandidateStatus::kAccepted;
+    return decision;
+  }
+
+  if (path_traversable(pre_collapse_points, context)) {
+    decision.points.assign(pre_collapse_points.begin(), pre_collapse_points.end());
+    decision.collapse_reverted = true;
+    decision.status = RouteCandidateStatus::kAccepted;
+    return decision;
+  }
+
+  decision.status = RouteCandidateStatus::kRejectedNonTraversable;
+  return decision;
+}
 
 [[nodiscard]] const char*
 pathPublicationReasonName(const PathPublicationReason reason) noexcept {

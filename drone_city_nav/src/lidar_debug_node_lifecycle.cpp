@@ -2,102 +2,53 @@
 
 namespace drone_city_nav {
 
-LidarDebugNode::LidarDebugNode()
-    : Node{"lidar_debug_node"} {
-  LidarDebugNodeConfig config;
-  config.output_dir = declare_parameter<std::string>("output_dir", config.output_dir);
-  config.snapshot_period_s =
-      declare_parameter<double>("snapshot_period_s", config.snapshot_period_s);
-  image_size_px_ = static_cast<int>(std::clamp<std::int64_t>(
-      declare_parameter<std::int64_t>("image_size_px", 900), 200, 4000));
-  config.view_radius_m =
-      declare_parameter<double>("view_radius_m", config.view_radius_m);
-  config.max_lidar_range_m =
-      declare_parameter<double>("max_lidar_range_m", config.max_lidar_range_m);
-  config.range_hit_epsilon_m =
-      declare_parameter<double>("range_hit_epsilon_m", config.range_hit_epsilon_m);
-  initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
-  current_pose_.yaw_rad = initial_heading_rad_;
-  px4_local_origin_ = Point2{declare_parameter<double>("px4_local_origin_x_m", 0.0),
-                             declare_parameter<double>("px4_local_origin_y_m", 0.0)};
-  scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
-  motion_compensate_lidar_pose_ =
-      declare_parameter<bool>("motion_compensate_lidar_pose", true);
-  lidar_pose_latency_s_ =
-      std::clamp(declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
-  lidar_scan_deskew_ = declare_parameter<bool>("lidar_scan_deskew", false);
-  lidar_scan_duration_override_s_ = std::clamp(
-      declare_parameter<double>("lidar_scan_duration_override_s", 0.0), 0.0, 1.0);
-  compensate_lidar_attitude_ =
-      declare_parameter<bool>("compensate_lidar_attitude", false);
-  lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
-  min_projected_lidar_altitude_m_ =
-      declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
-  max_projected_lidar_altitude_m_ =
-      declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-  use_px4_heading_for_scan_ =
-      declare_parameter<bool>("use_px4_heading_for_scan", false);
-  lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
-  lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
-  lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
-  config.beam_csv_stride = static_cast<std::size_t>(
-      std::max<std::int64_t>(declare_parameter<std::int64_t>("beam_csv_stride", 1), 0));
-  config.max_logged_hit_points = static_cast<std::size_t>(std::max<std::int64_t>(
-      declare_parameter<std::int64_t>("max_logged_hit_points", 256), 0));
-  config.max_snapshots = static_cast<std::uint64_t>(
-      std::clamp<std::int64_t>(declare_parameter<std::int64_t>("max_snapshots", 0), 0,
-                               std::numeric_limits<std::int32_t>::max()));
-
-  const std::string lidar_topic =
-      declare_parameter<std::string>("lidar_topic", "/scan");
-  const std::string prohibited_grid_topic = declare_parameter<std::string>(
-      "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
-  const std::string memory_grid_topic = declare_parameter<std::string>(
-      "memory_grid_topic", "/drone_city_nav/obstacle_memory_grid");
-  const std::string path_topic = declare_parameter<std::string>(
-      "path_topic", "/drone_city_nav/final_trajectory_path");
-  pointcloud_topic_ = declare_parameter<std::string>(
-      "pointcloud_topic", "/drone_city_nav/lidar_debug_points");
-  remembered_pointcloud_topic_ = declare_parameter<std::string>(
-      "remembered_pointcloud_topic", "/drone_city_nav/remembered_lidar_points");
-  prohibited_pointcloud_topic_ = declare_parameter<std::string>(
-      "prohibited_pointcloud_topic", "/drone_city_nav/prohibited_obstacle_points");
-  raw_memory_pointcloud_topic_ = declare_parameter<std::string>(
-      "raw_memory_pointcloud_topic", "/drone_city_nav/raw_memory_obstacle_points");
-  marker_topic_ = declare_parameter<std::string>("marker_topic",
-                                                 "/drone_city_nav/lidar_radar_markers");
-  publish_lidar_radar_markers_ =
-      declare_parameter<bool>("publish_lidar_radar_markers", false);
-  config.hit_memory_resolution_m = declare_parameter<double>(
-      "hit_memory_resolution_m", config.hit_memory_resolution_m);
-  min_remember_altitude_m_ =
-      std::max(0.0, declare_parameter<double>("min_remember_altitude_m", 0.0));
-  config.max_remembered_hit_points = static_cast<std::size_t>(std::max<std::int64_t>(
-      declare_parameter<std::int64_t>("max_remembered_hit_points", 50000), 0));
-  sanitizeLidarDebugNodeConfig(config);
+void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   output_dir_ = config.output_dir;
   snapshot_period_s_ = config.snapshot_period_s;
+  image_size_px_ = config.image_size_px;
   view_radius_m_ = config.view_radius_m;
   max_lidar_range_m_ = config.max_lidar_range_m;
   range_hit_epsilon_m_ = config.range_hit_epsilon_m;
+  initial_heading_rad_ = config.initial_heading_rad;
+  current_pose_.yaw_rad = initial_heading_rad_;
+  px4_local_origin_ = config.px4_local_origin;
+  scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
+  motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
+  lidar_pose_latency_s_ = config.lidar_pose_latency_s;
+  lidar_scan_deskew_ = config.lidar_scan_deskew;
+  lidar_scan_duration_override_s_ = config.lidar_scan_duration_override_s;
+  compensate_lidar_attitude_ = config.compensate_lidar_attitude;
+  lidar_z_offset_m_ = config.lidar_z_offset_m;
+  min_projected_lidar_altitude_m_ = config.min_projected_lidar_altitude_m;
+  max_projected_lidar_altitude_m_ = config.max_projected_lidar_altitude_m;
+  use_px4_heading_for_scan_ = config.use_px4_heading_for_scan;
+  lidar_mount_roll_rad_ = config.lidar_mount_roll_rad;
+  lidar_mount_pitch_rad_ = config.lidar_mount_pitch_rad;
+  lidar_mount_yaw_rad_ = config.lidar_mount_yaw_rad;
   beam_csv_stride_ = config.beam_csv_stride;
   max_logged_hit_points_ = config.max_logged_hit_points;
   max_snapshots_ = config.max_snapshots;
+  pointcloud_topic_ = config.topics.pointcloud;
+  remembered_pointcloud_topic_ = config.topics.remembered_pointcloud;
+  prohibited_pointcloud_topic_ = config.topics.prohibited_pointcloud;
+  raw_memory_pointcloud_topic_ = config.topics.raw_memory_pointcloud;
+  marker_topic_ = config.topics.marker;
+  publish_lidar_radar_markers_ = config.publish_lidar_radar_markers;
   hit_memory_resolution_m_ = config.hit_memory_resolution_m;
+  min_remember_altitude_m_ = config.min_remember_altitude_m;
   max_remembered_hit_points_ = config.max_remembered_hit_points;
-  current_pointcloud_z_m_ =
-      declare_parameter<double>("current_lidar_pointcloud_z_m", kGroundDebugZ);
-  remembered_pointcloud_z_m_ =
-      declare_parameter<double>("remembered_lidar_pointcloud_z_m", kGroundDebugZ);
-  prohibited_pointcloud_z_m_ =
-      declare_parameter<double>("prohibited_pointcloud_z_m", kGroundDebugZ);
-  raw_memory_pointcloud_z_m_ =
-      declare_parameter<double>("raw_memory_pointcloud_z_m", kGroundDebugZ);
-  marker_z_m_ = declare_parameter<double>("lidar_radar_marker_z_m", kGroundDebugZ);
-  const std::string local_position_topic = declare_parameter<std::string>(
-      "px4_local_position_topic", "/fmu/out/vehicle_local_position_v1");
-  const std::string attitude_topic = declare_parameter<std::string>(
-      "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
+  current_pointcloud_z_m_ = config.current_pointcloud_z_m;
+  remembered_pointcloud_z_m_ = config.remembered_pointcloud_z_m;
+  prohibited_pointcloud_z_m_ = config.prohibited_pointcloud_z_m;
+  raw_memory_pointcloud_z_m_ = config.raw_memory_pointcloud_z_m;
+  marker_z_m_ = config.marker_z_m;
+}
+
+LidarDebugNode::LidarDebugNode()
+    : Node{"lidar_debug_node"} {
+  const LidarDebugNodeConfig config = loadLidarDebugNodeConfig(*this);
+  applyConfig(config);
+  const LidarDebugNodeTopics& topics = config.topics;
 
   std::filesystem::create_directories(output_dir_);
   summary_path_ = std::filesystem::path{output_dir_} / "snapshots.jsonl";
@@ -108,33 +59,33 @@ LidarDebugNode::LidarDebugNode()
 
   const auto sensor_qos = rclcpp::SensorDataQoS{};
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-      lidar_topic, sensor_qos,
+      topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
-      local_position_topic, sensor_qos,
+      topics.px4_local_position, sensor_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
         onLocalPosition(*msg);
       });
   attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
-      attitude_topic, sensor_qos,
+      topics.px4_vehicle_attitude, sensor_qos,
       [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
         onAttitude(*msg);
       });
   prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      prohibited_grid_topic, rclcpp::QoS{1}.transient_local(),
+      topics.prohibited_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         last_grid_ = *msg;
         grid_seen_ = true;
         publishProhibitedPointCloud();
       });
   memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      memory_grid_topic, rclcpp::QoS{1}.transient_local(),
+      topics.memory_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         publishPointCloud(collectOccupiedGridPoints(*msg), raw_memory_pointcloud_z_m_,
                           raw_memory_pointcloud_pub_);
       });
   path_sub_ = create_subscription<nav_msgs::msg::Path>(
-      path_topic, rclcpp::QoS{1}.reliable(),
+      topics.path, rclcpp::QoS{1}.reliable(),
       [this](const nav_msgs::msg::Path::SharedPtr msg) {
         last_path_ = *msg;
         path_seen_ = true;
@@ -173,12 +124,13 @@ LidarDebugNode::LidarDebugNode()
       "marker_z=%.2f "
       "yaw_source=%s initial_heading=%.3f",
       output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-      lidar_topic.c_str(), prohibited_grid_topic.c_str(), memory_grid_topic.c_str(),
-      path_topic.c_str(), local_position_topic.c_str(), attitude_topic.c_str(),
-      pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
-      prohibited_pointcloud_topic_.c_str(), raw_memory_pointcloud_topic_.c_str(),
-      marker_topic_.c_str(), publish_lidar_radar_markers_ ? "true" : "false",
-      hit_memory_resolution_m_, min_remember_altitude_m_, max_remembered_hit_points_,
+      topics.lidar.c_str(), topics.prohibited_grid.c_str(), topics.memory_grid.c_str(),
+      topics.path.c_str(), topics.px4_local_position.c_str(),
+      topics.px4_vehicle_attitude.c_str(), pointcloud_topic_.c_str(),
+      remembered_pointcloud_topic_.c_str(), prohibited_pointcloud_topic_.c_str(),
+      raw_memory_pointcloud_topic_.c_str(), marker_topic_.c_str(),
+      publish_lidar_radar_markers_ ? "true" : "false", hit_memory_resolution_m_,
+      min_remember_altitude_m_, max_remembered_hit_points_,
       compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
       min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
       lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,

@@ -5,8 +5,37 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <vector>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] LidarBeamProjection
+acceptedHitProjection(std::size_t beam_index, float raw_range, const void* context) {
+  (void)context;
+  LidarBeamProjection projection;
+  projection.status = LidarBeamProjectionStatus::kAccepted;
+  projection.hit = true;
+  projection.used_range_m = raw_range;
+  projection.endpoint = Point2{static_cast<double>(beam_index), raw_range};
+  projection.endpoint_altitude_m = 2.0;
+  return projection;
+}
+
+[[nodiscard]] LidarBeamProjection altitudeRejectedProjection(std::size_t beam_index,
+                                                             float raw_range,
+                                                             const void* context) {
+  (void)beam_index;
+  (void)context;
+  LidarBeamProjection projection;
+  projection.status = LidarBeamProjectionStatus::kAltitudeRejected;
+  projection.used_range_m = raw_range;
+  projection.endpoint = Point2{1.0, 2.0};
+  projection.endpoint_altitude_m = -1.0;
+  return projection;
+}
+
+} // namespace
 
 TEST(LidarDebugSnapshotPipeline, BuildsStableSnapshotPrefix) {
   EXPECT_EQ(lidarSnapshotPrefix(1U), "snapshot_000001");
@@ -31,6 +60,56 @@ TEST(LidarDebugSnapshotPipeline, ComputesScanTiming) {
   EXPECT_DOUBLE_EQ(lidarScanTimeIncrementSeconds(0.1, 0.02, 6U), 0.02);
   EXPECT_DOUBLE_EQ(lidarScanTimeIncrementSeconds(0.1, 0.0, 6U), 0.02);
   EXPECT_DOUBLE_EQ(lidarScanTimeIncrementSeconds(0.0, 0.0, 6U), 0.0);
+}
+
+TEST(LidarDebugSnapshotPipeline, ReportsNoScanOrPoseReadiness) {
+  const LidarDebugSnapshotOutput no_scan = buildLidarDebugSnapshotOutput(
+      LidarDebugSnapshotInput{}, acceptedHitProjection, nullptr);
+  EXPECT_FALSE(no_scan.ready);
+  EXPECT_EQ(no_scan.readiness, LidarDebugSnapshotReadiness::kNoScan);
+
+  const std::vector<float> ranges{1.0F};
+  LidarDebugSnapshotInput input;
+  input.scan_seen = true;
+  input.ranges = ranges;
+  const LidarDebugSnapshotOutput no_pose =
+      buildLidarDebugSnapshotOutput(input, acceptedHitProjection, nullptr);
+  EXPECT_FALSE(no_pose.ready);
+  EXPECT_EQ(no_pose.readiness, LidarDebugSnapshotReadiness::kNoPose);
+}
+
+TEST(LidarDebugSnapshotPipeline, CountsAcceptedHitRowsAndRememberedHits) {
+  const std::vector<float> ranges{3.0F, 4.0F};
+  const LidarDebugSnapshotOutput output = buildLidarDebugSnapshotOutput(
+      LidarDebugSnapshotInput{true, true, true, ranges, 0.1, 10.0, 0.0, 0.5, 1U, 17U},
+      acceptedHitProjection, nullptr);
+
+  ASSERT_TRUE(output.ready);
+  EXPECT_EQ(output.readiness, LidarDebugSnapshotReadiness::kReady);
+  EXPECT_EQ(output.rows.size(), 2U);
+  EXPECT_EQ(output.stats.processed_beams, 2U);
+  EXPECT_EQ(output.stats.accepted_beams, 2U);
+  EXPECT_EQ(output.stats.hit_beams, 2U);
+  EXPECT_EQ(output.stats.hit_points.size(), 2U);
+  EXPECT_EQ(output.hit_points.size(), 2U);
+  EXPECT_EQ(output.remembered_hits_count, 17U);
+  EXPECT_DOUBLE_EQ(output.rows[1U].angle_rad, 0.5);
+}
+
+TEST(LidarDebugSnapshotPipeline, CountsAltitudeRejectedBeams) {
+  const std::vector<float> ranges{3.0F};
+  const LidarDebugSnapshotOutput output = buildLidarDebugSnapshotOutput(
+      LidarDebugSnapshotInput{true, true, true, ranges, 0.1, 10.0, 0.0, 0.5, 1U, 0U},
+      altitudeRejectedProjection, nullptr);
+
+  ASSERT_TRUE(output.ready);
+  ASSERT_EQ(output.rows.size(), 1U);
+  EXPECT_EQ(output.stats.processed_beams, 1U);
+  EXPECT_EQ(output.stats.accepted_beams, 0U);
+  EXPECT_EQ(output.stats.altitude_rejected_beams, 1U);
+  EXPECT_EQ(output.stats.hit_beams, 0U);
+  EXPECT_EQ(output.rows.front().status, LidarBeamProjectionStatus::kAltitudeRejected);
+  EXPECT_DOUBLE_EQ(output.rows.front().end_x_m, 1.0);
 }
 
 } // namespace drone_city_nav

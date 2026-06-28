@@ -60,6 +60,8 @@ public:
   LidarDebugNode();
 
 private:
+  void applyConfig(const LidarDebugNodeConfig& config);
+
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg);

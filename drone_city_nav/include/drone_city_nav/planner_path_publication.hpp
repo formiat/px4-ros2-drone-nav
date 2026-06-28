@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -32,6 +33,26 @@ struct PublishedPathSafetySummary {
   Point2 first_non_traversable_end{};
   bool has_non_traversable_segment{false};
 };
+
+enum class RouteCandidateStatus : std::uint8_t {
+  kAccepted,
+  kEmptyInput,
+  kRejectedNonTraversable,
+};
+
+struct RouteCandidateDecision {
+  RouteCandidateStatus status{RouteCandidateStatus::kEmptyInput};
+  std::vector<Point2> points;
+  std::size_t pre_collapse_points{0U};
+  std::size_t collapsed_points{0U};
+  bool collapse_reverted{false};
+};
+
+[[nodiscard]] RouteCandidateDecision
+selectRouteCandidate(std::span<const Point2> pre_collapse_points,
+                     double collinearity_tolerance_m,
+                     bool (*path_traversable)(std::span<const Point2>, const void*),
+                     const void* context);
 
 [[nodiscard]] const char*
 pathPublicationReasonName(PathPublicationReason reason) noexcept;
