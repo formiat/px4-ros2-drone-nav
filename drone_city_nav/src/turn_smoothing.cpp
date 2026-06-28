@@ -84,16 +84,9 @@ distanceFallbackCandidates(const double max_distance_m) {
   }
   constexpr double kFallbackStepM = 5.0;
   constexpr double kMinFallbackDistanceM = 5.0;
-  constexpr double kExtendedFallbackMaxDistanceM = 60.0;
-  candidates.push_back(max_distance_m);
-  double candidate =
-      std::floor((max_distance_m - kTinyDistanceM) / kFallbackStepM) * kFallbackStepM;
+  constexpr double kMaxFallbackDistanceM = 60.0;
+  double candidate = kMaxFallbackDistanceM;
   while (candidate >= kMinFallbackDistanceM - kTinyDistanceM) {
-    candidates.push_back(candidate);
-    candidate -= kFallbackStepM;
-  }
-  candidate = kExtendedFallbackMaxDistanceM;
-  while (candidate > max_distance_m + kTinyDistanceM) {
     candidates.push_back(candidate);
     candidate -= kFallbackStepM;
   }

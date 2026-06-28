@@ -140,7 +140,7 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
             before.max_heading_delta_rad);
 }
 
-TEST(TurnSmoothing, TriesLongerFallbackWindowsAfterShorterOnesFail) {
+TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
   OccupancyGrid2D grid = openGrid();
   const std::vector<CorridorSample> corridor = wideCornerCorridor(grid);
   const std::vector<TrajectoryPointSample> samples = samplesFromCorridor(corridor);
