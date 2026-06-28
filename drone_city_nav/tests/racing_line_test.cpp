@@ -128,6 +128,47 @@ TEST(RacingLine, ResultIsDeterministic) {
     EXPECT_DOUBLE_EQ(first.samples[i].point.x, second.samples[i].point.x);
     EXPECT_DOUBLE_EQ(first.samples[i].point.y, second.samples[i].point.y);
   }
+  EXPECT_EQ(first.stats.candidate_evaluations, second.stats.candidate_evaluations);
+  EXPECT_EQ(first.stats.collision_rejections, second.stats.collision_rejections);
+  EXPECT_EQ(first.stats.skipped_noop_candidates, second.stats.skipped_noop_candidates);
+  EXPECT_DOUBLE_EQ(first.stats.final_cost, second.stats.final_cost);
+  EXPECT_DOUBLE_EQ(first.stats.final_length_m, second.stats.final_length_m);
+  EXPECT_DOUBLE_EQ(first.stats.estimated_time_s, second.stats.estimated_time_s);
+  EXPECT_EQ(first.stats.scratch_reused_candidates, first.stats.candidate_evaluations);
+  EXPECT_FALSE(first.stats.parallel_candidate_evaluation_used);
+}
+
+TEST(RacingLine, ParallelCandidateEvaluationMatchesSequentialResult) {
+  const OccupancyGrid2D grid = openGrid();
+  const auto corridor = wideLeftTurnCorridor();
+  RacingLineConfig sequential_config = testConfig();
+  RacingLineConfig parallel_config = sequential_config;
+  parallel_config.parallel_candidate_evaluation = true;
+  parallel_config.parallel_workers = 2U;
+
+  const RacingLineResult sequential =
+      optimizeRacingLine(corridor, grid, sequential_config, speedConfig());
+  const RacingLineResult parallel =
+      optimizeRacingLine(corridor, grid, parallel_config, speedConfig());
+
+  ASSERT_TRUE(sequential.valid);
+  ASSERT_TRUE(parallel.valid);
+  ASSERT_EQ(sequential.samples.size(), parallel.samples.size());
+  for (std::size_t i = 0U; i < sequential.samples.size(); ++i) {
+    EXPECT_DOUBLE_EQ(sequential.samples[i].point.x, parallel.samples[i].point.x);
+    EXPECT_DOUBLE_EQ(sequential.samples[i].point.y, parallel.samples[i].point.y);
+    EXPECT_DOUBLE_EQ(sequential.samples[i].racing_offset_m,
+                     parallel.samples[i].racing_offset_m);
+  }
+  EXPECT_TRUE(parallel.stats.parallel_candidate_evaluation_used);
+  EXPECT_EQ(sequential.stats.candidate_evaluations,
+            parallel.stats.candidate_evaluations);
+  EXPECT_EQ(sequential.stats.collision_rejections, parallel.stats.collision_rejections);
+  EXPECT_EQ(sequential.stats.skipped_noop_candidates,
+            parallel.stats.skipped_noop_candidates);
+  EXPECT_DOUBLE_EQ(sequential.stats.final_cost, parallel.stats.final_cost);
+  EXPECT_DOUBLE_EQ(sequential.stats.final_length_m, parallel.stats.final_length_m);
+  EXPECT_DOUBLE_EQ(sequential.stats.estimated_time_s, parallel.stats.estimated_time_s);
 }
 
 TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
@@ -206,6 +247,9 @@ TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {
   EXPECT_TRUE(std::isfinite(result.stats.time_gain_s));
   EXPECT_TRUE(std::isfinite(result.stats.pre_regularization_max_curvature_jump_1pm));
   EXPECT_TRUE(std::isfinite(result.stats.post_regularization_max_curvature_jump_1pm));
+  EXPECT_GE(result.stats.candidate_point_build_duration_ms, 0.0);
+  EXPECT_GE(result.stats.candidate_sample_build_duration_ms, 0.0);
+  EXPECT_GE(result.stats.regularization_duration_ms, 0.0);
 }
 
 TEST(RacingLine, ReportsTimeFirstCostBreakdownAndEdgeMargins) {

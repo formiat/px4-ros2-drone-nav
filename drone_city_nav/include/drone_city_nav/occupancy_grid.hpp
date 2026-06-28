@@ -16,6 +16,12 @@ enum class CellState : std::int8_t {
   kOccupied = 100,
 };
 
+struct OccupancyGridFingerprint {
+  GridBounds bounds{};
+  std::uint64_t cells_hash{0U};
+  std::uint64_t inflated_hash{0U};
+};
+
 class OccupancyGrid2D {
 public:
   explicit OccupancyGrid2D(const GridBounds& bounds);
@@ -38,6 +44,8 @@ public:
   [[nodiscard]] bool isInflated(GridIndex cell) const;
   [[nodiscard]] bool isProhibited(GridIndex cell) const;
   [[nodiscard]] std::span<const CellState> cells() const noexcept;
+  [[nodiscard]] std::span<const std::uint8_t> inflatedCells() const noexcept;
+  [[nodiscard]] OccupancyGridFingerprint prohibitedFingerprint() const noexcept;
 
   void reset(CellState value = CellState::kUnknown);
   void setUnknown(GridIndex cell);

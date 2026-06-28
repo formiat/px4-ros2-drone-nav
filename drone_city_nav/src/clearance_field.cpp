@@ -62,6 +62,12 @@ struct CompareClearanceNode {
          static_cast<std::size_t>(cell.x);
 }
 
+[[nodiscard]] bool sameBounds(const GridBounds& lhs, const GridBounds& rhs) noexcept {
+  return lhs.origin_x == rhs.origin_x && lhs.origin_y == rhs.origin_y &&
+         lhs.resolution_m == rhs.resolution_m && lhs.width_cells == rhs.width_cells &&
+         lhs.height_cells == rhs.height_cells;
+}
+
 } // namespace
 
 ClearanceField2D ClearanceField2D::build(const OccupancyGrid2D& grid,
@@ -143,6 +149,60 @@ double ClearanceField2D::distanceAt(const GridIndex cell) const {
 
 std::span<const double> ClearanceField2D::distancesM() const noexcept {
   return distance_m_;
+}
+
+ClearanceFieldCacheLookup
+ClearanceFieldCache::getOrBuild(const OccupancyGrid2D& grid,
+                                const double max_distance_m,
+                                const ClearanceSource source) {
+  if (matches(grid, max_distance_m, source) && field_.has_value()) {
+    return ClearanceFieldCacheLookup{&*field_, true};
+  }
+
+  const OccupancyGridFingerprint fingerprint = grid.prohibitedFingerprint();
+  bounds_ = fingerprint.bounds;
+  max_distance_m_ = std::max(0.0, max_distance_m);
+  source_ = source;
+  cells_hash_ = fingerprint.cells_hash;
+  inflated_hash_ = fingerprint.inflated_hash;
+  const std::span<const CellState> cells = grid.cells();
+  cells_snapshot_.assign(cells.begin(), cells.end());
+  const std::span<const std::uint8_t> inflated_cells = grid.inflatedCells();
+  inflated_snapshot_.assign(inflated_cells.begin(), inflated_cells.end());
+  field_ = ClearanceField2D::build(grid, max_distance_m_, source);
+  return ClearanceFieldCacheLookup{&*field_, false};
+}
+
+void ClearanceFieldCache::clear() noexcept {
+  bounds_ = GridBounds{};
+  max_distance_m_ = 0.0;
+  source_ = ClearanceSource::kOccupied;
+  cells_hash_ = 0U;
+  inflated_hash_ = 0U;
+  cells_snapshot_.clear();
+  inflated_snapshot_.clear();
+  field_.reset();
+}
+
+bool ClearanceFieldCache::matches(const OccupancyGrid2D& grid,
+                                  const double max_distance_m,
+                                  const ClearanceSource source) const noexcept {
+  if (!field_.has_value() || source_ != source ||
+      max_distance_m_ != std::max(0.0, max_distance_m) ||
+      !sameBounds(bounds_, grid.bounds())) {
+    return false;
+  }
+
+  const OccupancyGridFingerprint fingerprint = grid.prohibitedFingerprint();
+  if (cells_hash_ != fingerprint.cells_hash ||
+      inflated_hash_ != fingerprint.inflated_hash) {
+    return false;
+  }
+
+  const std::span<const CellState> cells = grid.cells();
+  const std::span<const std::uint8_t> inflated_cells = grid.inflatedCells();
+  return std::ranges::equal(cells_snapshot_, cells) &&
+         std::ranges::equal(inflated_snapshot_, inflated_cells);
 }
 
 } // namespace drone_city_nav

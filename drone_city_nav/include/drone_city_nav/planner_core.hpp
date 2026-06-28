@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/astar_planner.hpp"
+#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 
@@ -61,8 +62,10 @@ struct PathComputationResult {
   double grid_stats_duration_ms{0.0};
   double raw_path_metrics_duration_ms{0.0};
   double smoothed_path_metrics_duration_ms{0.0};
+  double prohibited_clearance_field_duration_ms{0.0};
   double raw_path_clearance_duration_ms{0.0};
   double smoothed_path_clearance_duration_ms{0.0};
+  bool prohibited_clearance_field_cache_hit{false};
 };
 
 struct PathProjection2D {
@@ -142,6 +145,7 @@ public:
 private:
   PlannerCoreConfig config_{};
   AStarPlanner planner_{};
+  mutable ClearanceFieldCache prohibited_clearance_cache_{};
 };
 
 } // namespace drone_city_nav

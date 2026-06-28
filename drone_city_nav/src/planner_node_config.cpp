@@ -231,6 +231,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "racing_line_regularization_max_time_regression_s", 0.5),
                  0.0, 3600.0);
+  config.trajectory_planner.racing_line.parallel_candidate_evaluation =
+      node.declare_parameter<bool>("racing_line_parallel_candidate_evaluation", false);
+  config.trajectory_planner.racing_line.parallel_workers =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("racing_line_parallel_workers", 0), 0,
+          1024));
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,

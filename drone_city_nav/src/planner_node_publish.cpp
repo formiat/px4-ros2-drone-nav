@@ -204,7 +204,9 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
               "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
               "lateral_limited=%zu] "
               "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
-              "eval_time=%.1fms score_time=%.1fms cost_initial=%.3f cost_final=%.3f "
+              "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
+              "sample_build=%.1fms regularization=%.1fms scratch_reused=%zu "
+              "parallel=%s cost_initial=%.3f cost_final=%.3f "
               "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
               "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
               "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
@@ -237,6 +239,13 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
               trajectory_result.stats.racing_line.skipped_noop_candidates,
               trajectory_result.stats.racing_line.candidate_path_evaluation_duration_ms,
               trajectory_result.stats.racing_line.candidate_score_duration_ms,
+              trajectory_result.stats.racing_line.candidate_point_build_duration_ms,
+              trajectory_result.stats.racing_line.candidate_sample_build_duration_ms,
+              trajectory_result.stats.racing_line.regularization_duration_ms,
+              trajectory_result.stats.racing_line.scratch_reused_candidates,
+              trajectory_result.stats.racing_line.parallel_candidate_evaluation_used
+                  ? "true"
+                  : "false",
               trajectory_result.stats.racing_line.initial_cost,
               trajectory_result.stats.racing_line.final_cost,
               trajectory_result.stats.racing_line.centerline_length_m,

@@ -87,6 +87,9 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.iterations = 4U;
   record.trajectory_planner_stats.racing_line.optimizer_samples = 8U;
   record.trajectory_planner_stats.racing_line.final_cost = 1.5;
+  record.trajectory_planner_stats.racing_line.candidate_point_build_duration_ms = 1.25;
+  record.trajectory_planner_stats.racing_line.scratch_reused_candidates = 7U;
+  record.trajectory_planner_stats.racing_line.parallel_candidate_evaluation_used = true;
   record.trajectory_shape_diagnostics.segment_count = 24U;
   record.trajectory_shape_diagnostics.max_heading_delta_rad = 0.3;
   record.path_valid = true;
@@ -130,6 +133,9 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"trajectory_planner_status\":\"none\"");
   expectJsonField(json, "\"corridor_samples\":12");
   expectJsonField(json, "\"racing_line_iterations\":4");
+  expectJsonField(json, "\"racing_candidate_point_build_duration_ms\":1.25");
+  expectJsonField(json, "\"racing_scratch_reused_candidates\":7");
+  expectJsonField(json, "\"racing_parallel_candidate_evaluation_used\":true");
   expectJsonField(json, "\"trajectory_shape_segment_count\":24");
   expectJsonField(json, "\"path\":{\"valid\":true");
   expectJsonField(json, "\"final_trajectory_debug_segment_type\":\"turn\"");

@@ -182,12 +182,20 @@ PathMetrics pointPathMetrics(const std::span<const Point2> path_points) {
   return metrics;
 }
 
+[[nodiscard]] double pathMinimumClearanceM(const ClearanceField2D& clearance_field,
+                                           std::span<const GridIndex> path);
+
 double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
                                        const std::span<const GridIndex> path,
                                        const double max_distance_m) {
   const ClearanceField2D clearance_field = ClearanceField2D::build(
       grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
       ClearanceSource::kProhibited);
+  return pathMinimumClearanceM(clearance_field, path);
+}
+
+double pathMinimumClearanceM(const ClearanceField2D& clearance_field,
+                             const std::span<const GridIndex> path) {
   double minimum_clearance_m = std::numeric_limits<double>::infinity();
   for (const GridIndex cell : path) {
     if (!clearance_field.contains(cell)) {
@@ -469,16 +477,27 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   result.smoothed_path_metrics_duration_ms =
       elapsedMilliseconds(smoothed_metrics_started_at);
 
+  const double clearance_radius_m =
+      normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m);
+  const auto clearance_field_started_at = std::chrono::steady_clock::now();
+  const ClearanceFieldCacheLookup clearance_field =
+      prohibited_clearance_cache_.getOrBuild(grid, clearance_radius_m,
+                                             ClearanceSource::kProhibited);
+  result.prohibited_clearance_field_duration_ms =
+      elapsedMilliseconds(clearance_field_started_at);
+  result.prohibited_clearance_field_cache_hit = clearance_field.cache_hit;
+  if (clearance_field.field == nullptr) {
+    return std::nullopt;
+  }
+
   const auto raw_clearance_started_at = std::chrono::steady_clock::now();
-  result.raw_path_clearance_m = pathMinimumProhibitedClearanceM(
-      grid, result.astar.path,
-      normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
+  result.raw_path_clearance_m =
+      pathMinimumClearanceM(*clearance_field.field, result.astar.path);
   result.raw_path_clearance_duration_ms = elapsedMilliseconds(raw_clearance_started_at);
 
   const auto smoothed_clearance_started_at = std::chrono::steady_clock::now();
-  result.smoothed_path_clearance_m = pathMinimumProhibitedClearanceM(
-      grid, result.smoothed_cells,
-      normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m));
+  result.smoothed_path_clearance_m =
+      pathMinimumClearanceM(*clearance_field.field, result.smoothed_cells);
   result.smoothed_path_clearance_duration_ms =
       elapsedMilliseconds(smoothed_clearance_started_at);
   result.total_duration_ms = elapsedMilliseconds(total_started_at);

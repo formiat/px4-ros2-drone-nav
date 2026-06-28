@@ -531,6 +531,39 @@ TEST(PlannerCore, ComputePathRejectsOutOfGridGoal) {
   EXPECT_FALSE(result.has_value());
 }
 
+TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{10, 6});
+  grid.rebuildInflation(1.1);
+  PlannerCoreConfig config{};
+  config.clearance_diagnostic_radius_m = 5.0;
+  PlannerCore core{config};
+
+  const auto first = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 1.5});
+  const auto second = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 1.5});
+
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(second.has_value());
+  const PathComputationResult& first_result =
+      first.value(); // NOLINT(bugprone-unchecked-optional-access)
+  const PathComputationResult& second_result =
+      second.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_FALSE(first_result.prohibited_clearance_field_cache_hit);
+  EXPECT_TRUE(second_result.prohibited_clearance_field_cache_hit);
+  EXPECT_DOUBLE_EQ(
+      first_result.raw_path_clearance_m,
+      pathMinimumProhibitedClearanceM(grid, first_result.astar.path,
+                                      config.clearance_diagnostic_radius_m));
+  EXPECT_DOUBLE_EQ(
+      first_result.smoothed_path_clearance_m,
+      pathMinimumProhibitedClearanceM(grid, first_result.smoothed_cells,
+                                      config.clearance_diagnostic_radius_m));
+  EXPECT_DOUBLE_EQ(first_result.raw_path_clearance_m,
+                   second_result.raw_path_clearance_m);
+  EXPECT_DOUBLE_EQ(first_result.smoothed_path_clearance_m,
+                   second_result.smoothed_path_clearance_m);
+}
+
 TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   OccupancyGrid2D grid = makeGrid();
   PlannerCoreConfig config{};

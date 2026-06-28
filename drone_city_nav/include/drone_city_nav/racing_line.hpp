@@ -31,6 +31,8 @@ struct RacingLineConfig {
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
   double regularization_max_time_regression_s{0.5};
+  bool parallel_candidate_evaluation{false};
+  std::size_t parallel_workers{0U};
 };
 
 struct RacingLineStats {
@@ -43,6 +45,11 @@ struct RacingLineStats {
   std::size_t collision_rejections{0U};
   double candidate_path_evaluation_duration_ms{0.0};
   double candidate_score_duration_ms{0.0};
+  double candidate_point_build_duration_ms{0.0};
+  double candidate_sample_build_duration_ms{0.0};
+  double regularization_duration_ms{0.0};
+  std::size_t scratch_reused_candidates{0U};
+  bool parallel_candidate_evaluation_used{false};
   double initial_cost{0.0};
   double final_cost{0.0};
   double centerline_length_m{0.0};

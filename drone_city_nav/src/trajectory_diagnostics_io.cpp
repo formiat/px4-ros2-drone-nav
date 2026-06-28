@@ -39,6 +39,11 @@ void appendJsonSize(std::ostream& stream, const std::string_view key,
   stream << ",\"" << key << "\":" << value;
 }
 
+void appendJsonBool(std::ostream& stream, const std::string_view key,
+                    const bool value) {
+  stream << ",\"" << key << "\":" << (value ? "true" : "false");
+}
+
 void appendJsonUint64(std::ostream& stream, const std::string_view key,
                       const std::uint64_t value) {
   stream << ",\"" << key << "\":" << value;
@@ -301,6 +306,16 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.candidate_path_evaluation_duration_ms);
   appendJsonNumber(stream, "racing_candidate_score_duration_ms",
                    stats.racing_line.candidate_score_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_point_build_duration_ms",
+                   stats.racing_line.candidate_point_build_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_sample_build_duration_ms",
+                   stats.racing_line.candidate_sample_build_duration_ms);
+  appendJsonNumber(stream, "racing_regularization_duration_ms",
+                   stats.racing_line.regularization_duration_ms);
+  appendJsonSize(stream, "racing_scratch_reused_candidates",
+                 stats.racing_line.scratch_reused_candidates);
+  appendJsonBool(stream, "racing_parallel_candidate_evaluation_used",
+                 stats.racing_line.parallel_candidate_evaluation_used);
   return stream.str();
 }
 
@@ -573,6 +588,16 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.candidate_path_evaluation_duration_ms);
   parseJsonDouble(json, "racing_candidate_score_duration_ms",
                   racing.candidate_score_duration_ms);
+  parseJsonDouble(json, "racing_candidate_point_build_duration_ms",
+                  racing.candidate_point_build_duration_ms);
+  parseJsonDouble(json, "racing_candidate_sample_build_duration_ms",
+                  racing.candidate_sample_build_duration_ms);
+  parseJsonDouble(json, "racing_regularization_duration_ms",
+                  racing.regularization_duration_ms);
+  parseJsonSize(json, "racing_scratch_reused_candidates",
+                racing.scratch_reused_candidates);
+  parseJsonBool(json, "racing_parallel_candidate_evaluation_used",
+                racing.parallel_candidate_evaluation_used);
   parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
   parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);

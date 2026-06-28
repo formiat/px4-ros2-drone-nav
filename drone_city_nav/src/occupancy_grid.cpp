@@ -3,7 +3,9 @@
 #include "drone_city_nav/grid_config.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <optional>
@@ -12,6 +14,9 @@
 
 namespace drone_city_nav {
 namespace {
+
+constexpr std::uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
 [[nodiscard]] std::optional<int> finiteFloorToInt(const double value) noexcept {
   if (!std::isfinite(value)) {
@@ -26,6 +31,36 @@ namespace {
   }
 
   return static_cast<int>(floored);
+}
+
+void hashByte(std::uint64_t& hash, const std::uint8_t value) noexcept {
+  hash ^= static_cast<std::uint64_t>(value);
+  hash *= kFnvPrime;
+}
+
+void hashUint64(std::uint64_t& hash, std::uint64_t value) noexcept {
+  for (int byte = 0; byte < 8; ++byte) {
+    hashByte(hash, static_cast<std::uint8_t>(value & 0xffU));
+    value >>= 8U;
+  }
+}
+
+void hashInt(std::uint64_t& hash, const int value) noexcept {
+  hashUint64(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
+}
+
+void hashDouble(std::uint64_t& hash, const double value) noexcept {
+  hashUint64(hash, std::bit_cast<std::uint64_t>(value));
+}
+
+[[nodiscard]] std::uint64_t hashBounds(const GridBounds& bounds) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  hashDouble(hash, bounds.origin_x);
+  hashDouble(hash, bounds.origin_y);
+  hashDouble(hash, bounds.resolution_m);
+  hashInt(hash, bounds.width_cells);
+  hashInt(hash, bounds.height_cells);
+  return hash;
 }
 
 } // namespace
@@ -123,6 +158,25 @@ bool OccupancyGrid2D::isProhibited(const GridIndex cell) const {
 
 std::span<const CellState> OccupancyGrid2D::cells() const noexcept {
   return cells_;
+}
+
+std::span<const std::uint8_t> OccupancyGrid2D::inflatedCells() const noexcept {
+  return inflated_;
+}
+
+OccupancyGridFingerprint OccupancyGrid2D::prohibitedFingerprint() const noexcept {
+  OccupancyGridFingerprint fingerprint{};
+  fingerprint.bounds = bounds_;
+  fingerprint.cells_hash = hashBounds(bounds_);
+  for (const CellState cell : cells_) {
+    hashByte(fingerprint.cells_hash,
+             static_cast<std::uint8_t>(static_cast<std::int8_t>(cell)));
+  }
+  fingerprint.inflated_hash = hashBounds(bounds_);
+  for (const std::uint8_t inflated : inflated_) {
+    hashByte(fingerprint.inflated_hash, inflated);
+  }
+  return fingerprint;
 }
 
 void OccupancyGrid2D::reset(const CellState value) {

@@ -67,4 +67,74 @@ TEST(ClearanceField2D, LeavesCellsOutsideSearchRadiusAtInfinity) {
   EXPECT_TRUE(std::isinf(field.distanceAt(GridIndex{4, 4})));
 }
 
+TEST(ClearanceFieldCache, ReusesIdenticalGridRadiusAndSource) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{2, 2});
+  grid.rebuildInflation(1.1);
+  ClearanceFieldCache cache;
+
+  const ClearanceFieldCacheLookup first =
+      cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited);
+  const ClearanceFieldCacheLookup second =
+      cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited);
+
+  ASSERT_NE(first.field, nullptr);
+  ASSERT_NE(second.field, nullptr);
+  EXPECT_FALSE(first.cache_hit);
+  EXPECT_TRUE(second.cache_hit);
+  EXPECT_DOUBLE_EQ(first.field->distanceAt(GridIndex{4, 2}),
+                   second.field->distanceAt(GridIndex{4, 2}));
+}
+
+TEST(ClearanceFieldCache, InvalidatesWhenOccupiedCellsChange) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{2, 2});
+  grid.rebuildInflation(0.0);
+  ClearanceFieldCache cache;
+  ASSERT_FALSE(cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited).cache_hit);
+  ASSERT_TRUE(cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited).cache_hit);
+
+  grid.setOccupied(GridIndex{5, 5});
+
+  const ClearanceFieldCacheLookup changed =
+      cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited);
+
+  ASSERT_NE(changed.field, nullptr);
+  EXPECT_FALSE(changed.cache_hit);
+  EXPECT_DOUBLE_EQ(changed.field->distanceAt(GridIndex{5, 5}), 0.0);
+}
+
+TEST(ClearanceFieldCache, InvalidatesWhenInflationMaskChanges) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{2, 2});
+  grid.rebuildInflation(0.0);
+  ClearanceFieldCache cache;
+  ASSERT_FALSE(cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited).cache_hit);
+  ASSERT_TRUE(cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited).cache_hit);
+  ASSERT_FALSE(grid.isInflated(GridIndex{3, 2}));
+
+  grid.rebuildInflation(1.1);
+
+  const ClearanceFieldCacheLookup changed =
+      cache.getOrBuild(grid, 4.0, ClearanceSource::kProhibited);
+
+  ASSERT_NE(changed.field, nullptr);
+  EXPECT_FALSE(changed.cache_hit);
+  ASSERT_TRUE(grid.isInflated(GridIndex{3, 2}));
+  EXPECT_DOUBLE_EQ(changed.field->distanceAt(GridIndex{3, 2}), 0.0);
+}
+
+TEST(ClearanceFieldCache, InvalidatesWhenRadiusOrSourceChanges) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{2, 2});
+  grid.rebuildInflation(1.1);
+  ClearanceFieldCache cache;
+  ASSERT_FALSE(cache.getOrBuild(grid, 2.0, ClearanceSource::kProhibited).cache_hit);
+  ASSERT_TRUE(cache.getOrBuild(grid, 2.0, ClearanceSource::kProhibited).cache_hit);
+
+  EXPECT_FALSE(cache.getOrBuild(grid, 3.0, ClearanceSource::kProhibited).cache_hit);
+  ASSERT_TRUE(cache.getOrBuild(grid, 3.0, ClearanceSource::kProhibited).cache_hit);
+  EXPECT_FALSE(cache.getOrBuild(grid, 3.0, ClearanceSource::kOccupied).cache_hit);
+}
+
 } // namespace drone_city_nav

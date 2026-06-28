@@ -46,6 +46,13 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.min_edge_margin_m = 2.5;
   stats.racing_line.mean_edge_margin_m = 4.5;
   stats.racing_line.edge_margin_limited_samples = 6U;
+  stats.racing_line.candidate_path_evaluation_duration_ms = 7.25;
+  stats.racing_line.candidate_score_duration_ms = 8.5;
+  stats.racing_line.candidate_point_build_duration_ms = 1.25;
+  stats.racing_line.candidate_sample_build_duration_ms = 2.5;
+  stats.racing_line.regularization_duration_ms = 3.75;
+  stats.racing_line.scratch_reused_candidates = 13U;
+  stats.racing_line.parallel_candidate_evaluation_used = true;
   stats.racing_line.cost_length = 2.0;
   stats.racing_line.cost_time = 625.0;
   stats.racing_line.cost_curvature = 12.0;
@@ -163,6 +170,14 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_final_length_ratio\":1.08"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_time\":625"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_edge_margin\":7"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_point_build_duration_ms\":1.25"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_sample_build_duration_ms\":2.5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_regularization_duration_ms\":3.75"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_scratch_reused_candidates\":13"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_parallel_candidate_evaluation_used\":true"),
+            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_total_duration_ms\":123.4"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_racing_line_duration_ms\":99.9"),
             std::string::npos);
@@ -218,6 +233,13 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_regularization_applied\"",
                         "\"racing_pre_regularization_max_curvature_jump_1pm\"",
                         "\"racing_post_regularization_max_curvature_jump_1pm\"",
+                        "\"racing_candidate_path_evaluation_duration_ms\"",
+                        "\"racing_candidate_score_duration_ms\"",
+                        "\"racing_candidate_point_build_duration_ms\"",
+                        "\"racing_candidate_sample_build_duration_ms\"",
+                        "\"racing_regularization_duration_ms\"",
+                        "\"racing_scratch_reused_candidates\"",
+                        "\"racing_parallel_candidate_evaluation_used\"",
                     });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
@@ -300,6 +322,16 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.final_length_ratio, 1.08);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.time_gain_s, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.min_edge_margin_m, 2.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_path_evaluation_duration_ms,
+                   7.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_score_duration_ms, 8.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_point_build_duration_ms,
+                   1.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_sample_build_duration_ms,
+                   2.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.regularization_duration_ms, 3.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.scratch_reused_candidates, 13U);
+  EXPECT_TRUE(parsed_value.stats.racing_line.parallel_candidate_evaluation_used);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.candidate_attempts, 11U);

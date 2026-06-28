@@ -360,7 +360,8 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "path_clearance[raw=%.2f smoothed=%.2f] "
       "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f "
       "core_breakdown[grid_stats=%.1f raw_metrics=%.1f smoothed_metrics=%.1f "
-      "raw_clearance=%.1f smoothed_clearance=%.1f]]",
+      "clearance_field=%.1f clearance_cache_hit=%s raw_clearance=%.1f "
+      "smoothed_clearance=%.1f]]",
       current_pose_.position.x, current_pose_.position.y,
       distance(current_pose_.position, start_), distance(current_pose_.position, goal_),
       planning_result->static_source.occupied_cells,
@@ -416,6 +417,8 @@ void PlannerNode::checkCurrentPathAndPublish() {
       path_result->smoothing_duration_ms, path_result->grid_stats_duration_ms,
       path_result->raw_path_metrics_duration_ms,
       path_result->smoothed_path_metrics_duration_ms,
+      path_result->prohibited_clearance_field_duration_ms,
+      path_result->prohibited_clearance_field_cache_hit ? "true" : "false",
       path_result->raw_path_clearance_duration_ms,
       path_result->smoothed_path_clearance_duration_ms);
   RCLCPP_INFO_THROTTLE(
