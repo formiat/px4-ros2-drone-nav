@@ -41,6 +41,7 @@ struct Px4OffboardNodeConfig {
   double command_resend_period_s{2.0};
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   double final_trajectory_debug_sample_step_m{1.0};
+  double trajectory_update_max_start_cross_track_m{8.0};
   double altitude_hold_kp{0.5};
   double max_vertical_speed_mps{2.0};
   std::int64_t telemetry_log_period_ns{500'000'000};

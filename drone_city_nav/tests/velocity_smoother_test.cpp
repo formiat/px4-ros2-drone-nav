@@ -13,9 +13,9 @@ namespace {
   config.max_accel_mps2 = 3.0;
   config.max_decel_mps2 = 20.0;
   config.max_lateral_accel_mps2 = 3.0;
-  config.velocity_lateral_response_accel_mps2 = 9.0;
+  config.velocity_lateral_response_accel_mps2 = 7.0;
   config.max_velocity_jerk_mps3 = 12.0;
-  config.max_lateral_velocity_jerk_mps3 = 24.0;
+  config.max_lateral_velocity_jerk_mps3 = 18.0;
   return config;
 }
 
@@ -145,6 +145,31 @@ TEST(VelocitySmoother, LateralJerkCanBeHigherThanLongitudinalJerk) {
   EXPECT_NEAR(plan.velocity_xy.x, 12.0, 1.0e-9);
   EXPECT_NEAR(plan.velocity_xy.y, 0.1, 1.0e-9);
   EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.y, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_setpoint_jerk_mps3, 10.0, 1.0e-9);
+}
+
+TEST(VelocitySmoother, AdaptiveResponseDoesNotRaiseLateralJerkLimit) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  config.max_decel_mps2 = 100.0;
+  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.max_velocity_jerk_mps3 = 1.0;
+  config.max_lateral_velocity_jerk_mps3 = 10.0;
+
+  const VelocitySmootherPlan plan = smoothVelocityCommand(
+      VelocitySmootherInput{.desired_velocity_xy = Point2{12.0, 12.0},
+                            .previous_velocity_setpoint = Point2{12.0, 0.0},
+                            .previous_velocity_acceleration_setpoint = Point2{},
+                            .previous_velocity_setpoint_valid = true,
+                            .previous_velocity_acceleration_setpoint_valid = true,
+                            .dt_s = 0.1,
+                            .lateral_response_factor = 2.5},
+      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.velocity_xy.x, 12.0, 1.0e-9);
+  EXPECT_NEAR(plan.velocity_xy.y, 0.1, 1.0e-9);
   EXPECT_NEAR(plan.velocity_setpoint_acceleration_xy.y, 1.0, 1.0e-9);
   EXPECT_NEAR(plan.velocity_setpoint_jerk_mps3, 10.0, 1.0e-9);
 }

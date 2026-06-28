@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "px4_offboard_node.hpp"
 
 namespace drone_city_nav {
@@ -87,9 +89,58 @@ void Px4OffboardNode::resetVelocitySmootherState(const std::string_view reason,
   }
 }
 
-void Px4OffboardNode::applyReceivedFinalTrajectoryPath(const char* source_label) {
-  const OffboardTrajectoryState state =
-      buildOffboardTrajectoryState(path_points_, velocity_follower_config_);
+bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
+    const OffboardTrajectoryState& state, const std::uint64_t candidate_update_id,
+    const std::uint64_t candidate_path_stamp_ns,
+    const std::size_t candidate_path_points) const {
+  if (!state.valid || state.samples.empty() || !localPositionFresh()) {
+    return true;
+  }
+
+  const double threshold_m = trajectory_update_max_start_cross_track_m_;
+  if (!std::isfinite(threshold_m) || threshold_m <= 0.0) {
+    return true;
+  }
+
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectorySamples(state.samples, current_position_);
+  if (!projection.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "stale_trajectory_rejected: reason=projection_unavailable "
+                "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+                " path_stamp_ns=%" PRIu64 " points=%zu current=(%.2f, %.2f) "
+                "threshold=%.2f keeping_previous_trajectory=%s",
+                candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+                candidate_path_points, current_position_.x, current_position_.y,
+                threshold_m, trajectory_valid_ ? "true" : "false");
+    return false;
+  }
+
+  const double cross_track_m = std::sqrt(projection->distance_sq);
+  if (cross_track_m <= threshold_m) {
+    return true;
+  }
+
+  const Point2 first = state.samples.front().point;
+  const Point2 last = state.samples.back().point;
+  const double start_distance_m = distance(current_position_, first);
+  RCLCPP_WARN(get_logger(),
+              "stale_trajectory_rejected: reason=start_cross_track_exceeded "
+              "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+              " path_stamp_ns=%" PRIu64 " points=%zu cross_track=%.2f "
+              "start_distance=%.2f threshold=%.2f current=(%.2f, %.2f) "
+              "projection=(%.2f, %.2f) projection_s=%.2f first=(%.2f, %.2f) "
+              "last=(%.2f, %.2f) keeping_previous_trajectory=%s",
+              candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+              candidate_path_points, cross_track_m, start_distance_m, threshold_m,
+              current_position_.x, current_position_.y, projection->point.x,
+              projection->point.y, projection->s_m, first.x, first.y, last.x, last.y,
+              trajectory_valid_ ? "true" : "false");
+  return false;
+}
+
+void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
+    const char* source_label, const OffboardTrajectoryState& state) {
   final_trajectory_samples_ = state.samples;
   trajectory_ = state.trajectory;
   trajectory_speed_profile_ = state.speed_profile;
@@ -135,13 +186,17 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(const char* source_label)
 }
 
 void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
-  ++received_path_update_id_;
-  last_received_path_stamp_ns_ = messageStampNanoseconds(path.header.stamp);
+  const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
+  const std::uint64_t candidate_path_stamp_ns =
+      messageStampNanoseconds(path.header.stamp);
+  std::vector<Point2> candidate_path_points =
+      drone_city_nav::pathPointsFromMessage(path);
 
-  path_points_ = drone_city_nav::pathPointsFromMessage(path);
-  path_valid_ = !path_points_.empty();
-
-  if (!path_valid_) {
+  if (candidate_path_points.empty()) {
+    received_path_update_id_ = candidate_update_id;
+    last_received_path_stamp_ns_ = candidate_path_stamp_ns;
+    path_points_ = std::move(candidate_path_points);
+    path_valid_ = false;
     clearFinalTrajectory();
     if (last_logged_path_size_ != 0U) {
       if (local_position_valid_) {
@@ -174,14 +229,26 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     return;
   }
 
+  const OffboardTrajectoryState candidate_state =
+      buildOffboardTrajectoryState(candidate_path_points, velocity_follower_config_);
+  if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
+                                            candidate_path_stamp_ns,
+                                            candidate_path_points.size())) {
+    return;
+  }
+
   no_path_hold_target_valid_ = false;
   const std::size_t candidate_index =
-      localPositionFresh()
-          ? drone_city_nav::advanceWaypointIndex(path_points_, current_position_, 0U,
-                                                 pathFollowerConfig())
-          : 0U;
+      localPositionFresh() ? drone_city_nav::advanceWaypointIndex(candidate_path_points,
+                                                                  current_position_, 0U,
+                                                                  pathFollowerConfig())
+                           : 0U;
+  received_path_update_id_ = candidate_update_id;
+  last_received_path_stamp_ns_ = candidate_path_stamp_ns;
+  path_points_ = std::move(candidate_path_points);
+  path_valid_ = true;
   waypoint_index_ = candidate_index;
-  applyReceivedFinalTrajectoryPath("path_update");
+  applyReceivedFinalTrajectoryPath("path_update", candidate_state);
   const Point2 first = path_points_.front();
   const Point2 last = path_points_.back();
   const bool path_changed = path_points_.size() != last_logged_path_size_ ||

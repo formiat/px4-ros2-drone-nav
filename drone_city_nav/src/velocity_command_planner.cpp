@@ -120,12 +120,13 @@ adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
     return 1.0;
   }
 
+  const double cross_track_growth_m =
+      query.predicted_cross_track_error_m - query.current_cross_track_error_m;
   const double scale_m =
       sanitizedPositive(config.adaptive_lateral_response_scale_m, 3.0, 1.0e-6, 1000.0);
   const double max_factor =
-      sanitizedPositive(config.adaptive_lateral_response_max_factor, 2.5, 1.0, 100.0);
-  return std::clamp(1.0 + query.predicted_cross_track_error_m / scale_m, 1.0,
-                    max_factor);
+      sanitizedPositive(config.adaptive_lateral_response_max_factor, 1.4, 1.0, 100.0);
+  return std::clamp(1.0 + cross_track_growth_m / scale_m, 1.0, max_factor);
 }
 
 } // namespace
@@ -167,8 +168,7 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   const double adaptive_lateral_response_factor =
       adaptiveLateralResponseFactor(query, config);
   const Point2 raw_lateral_control =
-      (cross_track_feedback + cross_track_derivative_damping + curvature_feedforward) *
-      adaptive_lateral_response_factor;
+      cross_track_feedback + cross_track_derivative_damping + curvature_feedforward;
 
   const Point2 bounded_lateral_control =
       boundedCorrectionByAngle(raw_lateral_control, query.scalar_speed_mps,

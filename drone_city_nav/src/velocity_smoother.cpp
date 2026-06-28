@@ -256,9 +256,7 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       input.previous_velocity_setpoint_valid,
       input.previous_velocity_acceleration_setpoint,
       input.previous_velocity_acceleration_setpoint_valid, input.dt_s,
-      config.max_velocity_jerk_mps3,
-      config.max_lateral_velocity_jerk_mps3 *
-          sanitizedPositive(input.lateral_response_factor, 1.0, 1.0, 100.0));
+      config.max_velocity_jerk_mps3, config.max_lateral_velocity_jerk_mps3);
 
   plan.valid = true;
   plan.velocity_xy = jerk_limited_velocity.velocity;

@@ -138,7 +138,12 @@ private:
   void resetVelocitySmootherState(const std::string_view reason,
                                   const bool count_path_update_reset);
 
-  void applyReceivedFinalTrajectoryPath(const char* source_label);
+  [[nodiscard]] bool receivedFinalTrajectoryIsFreshEnough(
+      const OffboardTrajectoryState& state, std::uint64_t candidate_update_id,
+      std::uint64_t candidate_path_stamp_ns, std::size_t candidate_path_points) const;
+
+  void applyReceivedFinalTrajectoryPath(const char* source_label,
+                                        const OffboardTrajectoryState& state);
 
   void onPath(const nav_msgs::msg::Path& path);
 
@@ -312,6 +317,7 @@ private:
   double last_vertical_velocity_setpoint_mps_{0.0};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
+  double trajectory_update_max_start_cross_track_m_{8.0};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};

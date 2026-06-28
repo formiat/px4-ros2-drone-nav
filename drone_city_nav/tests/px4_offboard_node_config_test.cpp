@@ -60,6 +60,8 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.acceptance_radius_m = std::numeric_limits<double>::infinity();
   config.turn_preview_distance_m = 600.0;
   config.command_resend_period_s = 0.0;
+  config.trajectory_update_max_start_cross_track_m =
+      std::numeric_limits<double>::infinity();
   config.velocity_follower.cruise_speed_mps = 10.0;
   config.velocity_follower.min_turn_speed_mps = 20.0;
   config.velocity_follower.speed_profile_lookahead_min_m = 8.0;
@@ -72,6 +74,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.acceptance_radius_m, 1.5);
   EXPECT_DOUBLE_EQ(config.turn_preview_distance_m, 500.0);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
+  EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 10.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_profile_lookahead_max_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.final_acceptance_radius_m, 1.5);
@@ -90,6 +93,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
                    55.0 * std::numbers::pi / 180.0);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
+  EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
@@ -151,6 +155,7 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
                 rclcpp::Parameter{"max_lateral_control_angle_deg", 500.0},
                 rclcpp::Parameter{"max_curvature_feedforward_angle_deg", 500.0},
                 rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
+                rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
                 rclcpp::Parameter{"telemetry_log_period_s", 0.01},
                 rclcpp::Parameter{"command_resend_period_s", 0.0},
                 rclcpp::Parameter{"target_system", 999},
@@ -171,6 +176,7 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    std::numbers::pi / 2.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_EQ(config.target_system, 255U);

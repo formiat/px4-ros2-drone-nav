@@ -14,6 +14,8 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   velocity_follower_config_ = config.velocity_follower;
   final_trajectory_debug_topic_ = config.topics.final_trajectory_debug;
   final_trajectory_debug_sample_step_m_ = config.final_trajectory_debug_sample_step_m;
+  trajectory_update_max_start_cross_track_m_ =
+      config.trajectory_update_max_start_cross_track_m;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
   altitude_hold_kp_ = config.altitude_hold_kp;
   max_vertical_speed_mps_ = config.max_vertical_speed_mps;
@@ -112,6 +114,7 @@ Px4OffboardNode::Px4OffboardNode()
       "curvature_feedforward[time=%.2fs max_angle=%.1fdeg] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
       "adaptive_lateral_response[scale=%.2fm max_factor=%.2f] "
+      "trajectory_update_max_start_cross_track=%.2fm "
       "altitude_hold_kp=%.2f "
       "max_vertical_speed=%.2fmps "
       "executable_trajectory[source=planner_final_path final_topic='%s' "
@@ -145,7 +148,8 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.max_velocity_jerk_mps3,
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
       velocity_follower_config_.adaptive_lateral_response_scale_m,
-      velocity_follower_config_.adaptive_lateral_response_max_factor, altitude_hold_kp_,
+      velocity_follower_config_.adaptive_lateral_response_max_factor,
+      trajectory_update_max_start_cross_track_m_, altitude_hold_kp_,
       max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
       final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),
       mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,

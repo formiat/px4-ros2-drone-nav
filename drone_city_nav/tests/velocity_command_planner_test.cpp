@@ -127,7 +127,7 @@ TEST(VelocityCommandPlanner, AdaptiveResponseBoostsGrowingCrossTrackError) {
   config.cross_track_derivative_gain = 0.0;
   config.max_lateral_control_angle_rad = 1.0;
   config.adaptive_lateral_response_scale_m = 3.0;
-  config.adaptive_lateral_response_max_factor = 2.5;
+  config.adaptive_lateral_response_max_factor = 1.4;
 
   const VelocityCommandPlan plan =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
@@ -141,9 +141,32 @@ TEST(VelocityCommandPlanner, AdaptiveResponseBoostsGrowingCrossTrackError) {
                           config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.adaptive_lateral_response_factor, 2.5, 1.0e-9);
-  EXPECT_NEAR(plan.raw_lateral_control_mps, 12.5, 1.0e-9);
-  EXPECT_NEAR(plan.lateral_control_mps, 12.5, 1.0e-9);
+  EXPECT_NEAR(plan.adaptive_lateral_response_factor, 1.4, 1.0e-9);
+  EXPECT_NEAR(plan.raw_lateral_control_mps, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_mps, 5.0, 1.0e-9);
+}
+
+TEST(VelocityCommandPlanner, AdaptiveResponseDoesNotBoostStableCrossTrackError) {
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_gain = 1.0;
+  config.cross_track_derivative_gain = 0.0;
+  config.adaptive_lateral_response_scale_m = 3.0;
+  config.adaptive_lateral_response_max_factor = 1.4;
+
+  const VelocityCommandPlan plan =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
+                                               .current_position = Point2{0.0, 5.0},
+                                               .current_velocity = Point2{10.0, 0.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 10.0,
+                                               .dt_s = 0.1,
+                                               .current_cross_track_error_m = 5.0,
+                                               .predicted_cross_track_error_m = 5.0},
+                          config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.adaptive_lateral_response_factor, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_lateral_control_mps, 5.0, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, AdaptiveResponseBoostsLateralRateLimit) {
@@ -152,7 +175,7 @@ TEST(VelocityCommandPlanner, AdaptiveResponseBoostsLateralRateLimit) {
   config.cross_track_derivative_gain = 0.0;
   config.max_lateral_control_rate_mps2 = 1.0;
   config.adaptive_lateral_response_scale_m = 3.0;
-  config.adaptive_lateral_response_max_factor = 2.5;
+  config.adaptive_lateral_response_max_factor = 1.4;
 
   const VelocityCommandPlan plan = planVelocityCommand(
       VelocityCommandQuery{.projection = projectionOnXAxis(100.0),
@@ -168,9 +191,9 @@ TEST(VelocityCommandPlanner, AdaptiveResponseBoostsLateralRateLimit) {
       config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_NEAR(plan.adaptive_lateral_response_factor, 2.5, 1.0e-9);
-  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.25, 1.0e-9);
-  EXPECT_NEAR(plan.lateral_control_mps, 0.25, 1.0e-9);
+  EXPECT_NEAR(plan.adaptive_lateral_response_factor, 1.4, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_delta_mps, 0.14, 1.0e-9);
+  EXPECT_NEAR(plan.lateral_control_mps, 0.14, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, CurvatureFeedforwardBendsVelocityDirection) {
