@@ -139,7 +139,7 @@ planner_node:
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
-    racing_line_parallel_candidate_evaluation: false
+    racing_line_parallel_candidate_evaluation: true
     racing_line_parallel_workers: 0
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0
