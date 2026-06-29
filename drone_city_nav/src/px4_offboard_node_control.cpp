@@ -106,9 +106,8 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
   last_published_target_valid_ = true;
 
   const Point2 px4_local_target = mapToPx4Local(target);
-  const double yaw_rad = face_target_yaw_ ? targetYaw(target) : current_heading_rad_;
   const px4_msgs::msg::TrajectorySetpoint msg = buildPositionTrajectorySetpoint(
-      nowMicros(), px4_local_target, cruise_altitude_m_, yaw_rad);
+      nowMicros(), px4_local_target, cruise_altitude_m_, current_heading_rad_);
   updateCommandDiagnostics(target, previous_target, had_previous_target,
                            static_cast<double>(msg.yaw));
   resetVelocityDiagnostics();
@@ -217,13 +216,6 @@ void Px4OffboardNode::updateFinalGoalHold() {
                      -max_vertical_speed_mps_, max_vertical_speed_mps_);
 }
 
-[[nodiscard]] double Px4OffboardNode::velocityYaw(const Point2 velocity_xy) const {
-  if (!face_target_yaw_ || std::hypot(velocity_xy.x, velocity_xy.y) < 0.2) {
-    return current_heading_rad_;
-  }
-  return std::atan2(velocity_xy.y, velocity_xy.x);
-}
-
 bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
   const bool had_previous_target = last_published_target_valid_;
   const Point2 previous_target = last_published_target_;
@@ -242,7 +234,7 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
 
   const double vz_ned = verticalVelocitySetpointNed();
   const px4_msgs::msg::TrajectorySetpoint msg = buildVelocityTrajectorySetpoint(
-      nowMicros(), plan.velocity_xy, vz_ned, velocityYaw(plan.velocity_xy));
+      nowMicros(), plan.velocity_xy, vz_ned, current_heading_rad_);
 
   velocity_follower_state_.previous_velocity_setpoint = plan.velocity_xy;
   velocity_follower_state_.previous_velocity_setpoint_valid = true;
@@ -647,20 +639,6 @@ void Px4OffboardNode::updateCommandDiagnostics(const Point2 target,
                                        ? distance(previous_target, target)
                                        : std::numeric_limits<double>::quiet_NaN();
   last_commanded_yaw_rad_ = commanded_yaw_rad;
-}
-
-[[nodiscard]] double Px4OffboardNode::targetYaw(const Point2 target) const {
-  if (!localPositionFresh()) {
-    return current_heading_rad_;
-  }
-
-  const double dx = target.x - current_position_.x;
-  const double dy = target.y - current_position_.y;
-  if (std::hypot(dx, dy) < 0.2) {
-    return current_heading_rad_;
-  }
-
-  return std::atan2(dy, dx);
 }
 
 [[nodiscard]] Point2 Px4OffboardNode::mapToPx4Local(const Point2 point) const noexcept {

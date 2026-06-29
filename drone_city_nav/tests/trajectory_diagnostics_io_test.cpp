@@ -60,7 +60,6 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_heading_jump = 5.5;
   stats.racing_line.cost_offset_change = 1.0;
   stats.racing_line.cost_offset_second_change = 4.0;
-  stats.racing_line.cost_center_bias = 0.0;
   stats.racing_line.cost_edge_margin = 7.0;
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
@@ -218,7 +217,6 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_cost_heading_jump\"",
                         "\"racing_cost_offset_change\"",
                         "\"racing_cost_offset_second_change\"",
-                        "\"racing_cost_center_bias\"",
                         "\"racing_cost_edge_margin\"",
                         "\"racing_cost_collision\"",
                         "\"racing_cost_outside_grid\"",

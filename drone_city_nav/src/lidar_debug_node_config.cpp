@@ -49,8 +49,6 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "motion_compensate_lidar_pose", config.motion_compensate_lidar_pose);
   config.lidar_pose_latency_s = node.declare_parameter<double>(
       "lidar_pose_latency_s", config.lidar_pose_latency_s);
-  config.lidar_scan_deskew =
-      node.declare_parameter<bool>("lidar_scan_deskew", config.lidar_scan_deskew);
   config.lidar_scan_duration_override_s = node.declare_parameter<double>(
       "lidar_scan_duration_override_s", config.lidar_scan_duration_override_s);
   config.compensate_lidar_attitude = node.declare_parameter<bool>(
@@ -98,10 +96,6 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "prohibited_pointcloud_topic", config.topics.prohibited_pointcloud);
   config.topics.raw_memory_pointcloud = node.declare_parameter<std::string>(
       "raw_memory_pointcloud_topic", config.topics.raw_memory_pointcloud);
-  config.topics.marker =
-      node.declare_parameter<std::string>("marker_topic", config.topics.marker);
-  config.publish_lidar_radar_markers = node.declare_parameter<bool>(
-      "publish_lidar_radar_markers", config.publish_lidar_radar_markers);
   config.hit_memory_resolution_m = node.declare_parameter<double>(
       "hit_memory_resolution_m", config.hit_memory_resolution_m);
   config.min_remember_altitude_m = node.declare_parameter<double>(
@@ -119,8 +113,6 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "prohibited_pointcloud_z_m", config.prohibited_pointcloud_z_m);
   config.raw_memory_pointcloud_z_m = node.declare_parameter<double>(
       "raw_memory_pointcloud_z_m", config.raw_memory_pointcloud_z_m);
-  config.marker_z_m =
-      node.declare_parameter<double>("lidar_radar_marker_z_m", config.marker_z_m);
   config.topics.px4_local_position = node.declare_parameter<std::string>(
       "px4_local_position_topic", config.topics.px4_local_position);
   config.topics.px4_vehicle_attitude = node.declare_parameter<std::string>(

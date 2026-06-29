@@ -82,8 +82,6 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   full-map/fallback-view lidar snapshot renderer.
 - `drone_city_nav/include/drone_city_nav/lidar_snapshot_writer.hpp` - ROS-free
   lidar snapshot CSV and JSONL formatting.
-- `drone_city_nav/include/drone_city_nav/lidar_radar_markers.hpp` - RViz radar
-  marker builder used by `lidar_debug_node`.
 - `drone_city_nav/src/mission_monitor_node.cpp` - simulation-only mission
   verification node for headless runs.
 - `drone_city_nav/config/urban_mvp.yaml` - default MVP parameters.
@@ -106,8 +104,6 @@ RC override, failsafe behavior, and staged tethered/low-risk tests.
   coordinate mapping and color-layer tests.
 - `drone_city_nav/tests/lidar_snapshot_writer_test.cpp` - deterministic lidar
   CSV/JSONL schema tests.
-- `drone_city_nav/tests/lidar_radar_markers_test.cpp` - deterministic RViz marker
-  construction tests.
 
 ## Architecture Notes
 
@@ -124,8 +120,7 @@ kept in `drone_city_nav_core` and covered with deterministic unit tests:
   `TrajectorySetpoint` publication.
 - Lidar snapshot low-level drawing lives in `debug_image`; full snapshot
   rendering lives in `lidar_debug_renderer`; CSV/JSONL formatting lives in
-  `lidar_snapshot_writer`; RViz helper markers are built by
-  `lidar_radar_markers`. The lidar debug node still owns subscriptions,
+  `lidar_snapshot_writer`. The lidar debug node still owns subscriptions,
   snapshot scheduling, point cloud publication, and log emission.
 
 Headless debugging depends on stable log markers such as `Planning summary:`,
@@ -347,8 +342,6 @@ The main obstacle-memory topics are:
   `hit_memory_resolution_m=0.25` for this visual debug memory. Hits are remembered
   on first observation in each debug-memory cell. These points use the same
   attitude-compensated projected-altitude filter as obstacle memory.
-- `/drone_city_nav/lidar_radar_markers` - optional lidar helper markers
-  controlled by `publish_lidar_radar_markers`; disabled by default.
 - `/drone_city_nav/static_map_grid` - static city map layer only. It is
   published with transient-local QoS after the map2d file is loaded.
 - `/drone_city_nav/static_map_points` - occupied static city map cells as a

@@ -264,8 +264,6 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.cost_offset_change);
   appendJsonNumber(stream, "racing_cost_offset_second_change",
                    stats.racing_line.cost_offset_second_change);
-  appendJsonNumber(stream, "racing_cost_center_bias",
-                   stats.racing_line.cost_center_bias);
   appendJsonNumber(stream, "racing_cost_edge_margin",
                    stats.racing_line.cost_edge_margin);
   appendJsonNumber(stream, "racing_cost_collision", stats.racing_line.cost_collision);
@@ -553,7 +551,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "racing_cost_offset_change", racing.cost_offset_change);
   parseJsonDouble(json, "racing_cost_offset_second_change",
                   racing.cost_offset_second_change);
-  parseJsonDouble(json, "racing_cost_center_bias", racing.cost_center_bias);
   parseJsonDouble(json, "racing_cost_edge_margin", racing.cost_edge_margin);
   parseJsonDouble(json, "racing_cost_collision", racing.cost_collision);
   parseJsonDouble(json, "racing_cost_outside_grid", racing.cost_outside_grid);

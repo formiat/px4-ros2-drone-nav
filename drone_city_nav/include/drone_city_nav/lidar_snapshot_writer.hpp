@@ -68,7 +68,6 @@ struct LidarSnapshotRecord {
   double heading_receive_age_s{std::numeric_limits<double>::quiet_NaN()};
   double attitude_receive_age_s{std::numeric_limits<double>::quiet_NaN()};
   bool motion_compensation_enabled{false};
-  bool scan_deskew_enabled{false};
   double pose_lag_s{0.0};
   double pose_latency_s{0.0};
   double motion_time_offset_s{0.0};

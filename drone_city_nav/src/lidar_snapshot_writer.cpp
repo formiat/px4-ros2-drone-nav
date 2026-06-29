@@ -141,9 +141,7 @@ void writeLidarSnapshotSummary(std::ostream& stream,
   writeJsonNumberOrNull(stream, record.attitude_receive_age_s);
   stream << "},";
   stream << "\"motion_compensation\":{\"enabled\":"
-         << (record.motion_compensation_enabled ? "true" : "false")
-         << ",\"scan_deskew_enabled\":"
-         << (record.scan_deskew_enabled ? "true" : "false") << ',';
+         << (record.motion_compensation_enabled ? "true" : "false") << ',';
   writeJsonNumberField(stream, "pose_lag_s", record.pose_lag_s);
   stream << ',';
   writeJsonNumberField(stream, "pose_latency_s", record.pose_latency_s);

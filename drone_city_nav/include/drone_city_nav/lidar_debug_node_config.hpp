@@ -22,7 +22,6 @@ struct LidarDebugNodeTopics {
   std::string remembered_pointcloud{"/drone_city_nav/remembered_lidar_points"};
   std::string prohibited_pointcloud{"/drone_city_nav/prohibited_obstacle_points"};
   std::string raw_memory_pointcloud{"/drone_city_nav/raw_memory_obstacle_points"};
-  std::string marker{"/drone_city_nav/lidar_radar_markers"};
   std::string px4_local_position{"/fmu/out/vehicle_local_position_v1"};
   std::string px4_vehicle_attitude{"/fmu/out/vehicle_attitude"};
 };
@@ -39,7 +38,6 @@ struct LidarDebugNodeConfig {
   double scan_yaw_offset_rad{0.0};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
-  bool lidar_scan_deskew{false};
   double lidar_scan_duration_override_s{0.0};
   bool compensate_lidar_attitude{false};
   double lidar_z_offset_m{0.0};
@@ -55,12 +53,10 @@ struct LidarDebugNodeConfig {
   double remembered_pointcloud_z_m{0.05};
   double prohibited_pointcloud_z_m{0.05};
   double raw_memory_pointcloud_z_m{0.05};
-  double marker_z_m{0.05};
   std::size_t beam_csv_stride{1U};
   std::size_t max_logged_hit_points{256U};
   std::size_t max_remembered_hit_points{50000U};
   std::uint64_t max_snapshots{0U};
-  bool publish_lidar_radar_markers{false};
   LidarDebugNodeTopics topics{};
 };
 

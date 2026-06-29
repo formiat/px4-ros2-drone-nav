@@ -6,7 +6,6 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   cruise_altitude_m_ = config.cruise_altitude_m;
   min_navigation_altitude_m_ = config.min_navigation_altitude_m;
   takeoff_hover_s_ = config.takeoff_hover_s;
-  face_target_yaw_ = config.face_target_yaw;
   acceptance_radius_m_ = config.acceptance_radius_m;
   turn_preview_distance_m_ = config.turn_preview_distance_m;
   max_clearance_grid_staleness_ns_ = config.max_clearance_grid_staleness_ns;
@@ -98,7 +97,7 @@ Px4OffboardNode::Px4OffboardNode()
   RCLCPP_INFO(
       get_logger(),
       "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
-      "auto_offboard=%s min_navigation_altitude=%.1fm face_target_yaw=%s "
+      "auto_offboard=%s min_navigation_altitude=%.1fm "
       "takeoff_hover=%.1fs "
       "turn_preview_distance=%.1fm "
       "velocity_cruise=final_trajectory_only cruise_speed=%.2fmps "
@@ -125,9 +124,8 @@ Px4OffboardNode::Px4OffboardNode()
       "flight_blackbox=%s flight_blackbox_path='%s' "
       "max_pose_staleness=%.2fs command_resend_period=%.2fs",
       cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
-      auto_offboard_ ? "true" : "false", min_navigation_altitude_m_,
-      face_target_yaw_ ? "true" : "false", takeoff_hover_s_, turn_preview_distance_m_,
-      velocity_follower_config_.cruise_speed_mps,
+      auto_offboard_ ? "true" : "false", min_navigation_altitude_m_, takeoff_hover_s_,
+      turn_preview_distance_m_, velocity_follower_config_.cruise_speed_mps,
       velocity_follower_config_.min_turn_speed_mps,
       velocity_follower_config_.max_accel_mps2,
       velocity_follower_config_.max_decel_mps2,

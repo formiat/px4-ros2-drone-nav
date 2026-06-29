@@ -198,8 +198,6 @@ private:
 
   [[nodiscard]] double verticalVelocitySetpointNed();
 
-  [[nodiscard]] double velocityYaw(const Point2 velocity_xy) const;
-
   bool publishVelocityTrajectorySetpoint();
 
   void resetVelocityDiagnostics();
@@ -253,8 +251,6 @@ private:
   void updateCommandDiagnostics(const Point2 target, const Point2 previous_target,
                                 const bool had_previous_target,
                                 const double commanded_yaw_rad);
-
-  [[nodiscard]] double targetYaw(const Point2 target) const;
 
   [[nodiscard]] Point2 mapToPx4Local(const Point2 point) const noexcept;
 
@@ -349,7 +345,6 @@ private:
   bool takeoff_hold_target_valid_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
-  bool face_target_yaw_{false};
   bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
   bool latest_planner_path_id_seen_{false};

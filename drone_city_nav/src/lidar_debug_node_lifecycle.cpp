@@ -15,7 +15,6 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   scan_yaw_offset_rad_ = config.scan_yaw_offset_rad;
   motion_compensate_lidar_pose_ = config.motion_compensate_lidar_pose;
   lidar_pose_latency_s_ = config.lidar_pose_latency_s;
-  lidar_scan_deskew_ = config.lidar_scan_deskew;
   lidar_scan_duration_override_s_ = config.lidar_scan_duration_override_s;
   compensate_lidar_attitude_ = config.compensate_lidar_attitude;
   lidar_z_offset_m_ = config.lidar_z_offset_m;
@@ -32,8 +31,6 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   remembered_pointcloud_topic_ = config.topics.remembered_pointcloud;
   prohibited_pointcloud_topic_ = config.topics.prohibited_pointcloud;
   raw_memory_pointcloud_topic_ = config.topics.raw_memory_pointcloud;
-  marker_topic_ = config.topics.marker;
-  publish_lidar_radar_markers_ = config.publish_lidar_radar_markers;
   hit_memory_resolution_m_ = config.hit_memory_resolution_m;
   min_remember_altitude_m_ = config.min_remember_altitude_m;
   max_remembered_hit_points_ = config.max_remembered_hit_points;
@@ -41,7 +38,6 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   remembered_pointcloud_z_m_ = config.remembered_pointcloud_z_m;
   prohibited_pointcloud_z_m_ = config.prohibited_pointcloud_z_m;
   raw_memory_pointcloud_z_m_ = config.raw_memory_pointcloud_z_m;
-  marker_z_m_ = config.marker_z_m;
 }
 
 LidarDebugNode::LidarDebugNode()
@@ -98,46 +94,42 @@ LidarDebugNode::LidarDebugNode()
       prohibited_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
   raw_memory_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
       raw_memory_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
-  marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-      marker_topic_, rclcpp::QoS{1}.reliable());
 
   timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                              [this]() { writeSnapshot(); });
 
-  RCLCPP_INFO(
-      get_logger(),
-      "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-      "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
-      "memory_grid='%s' path='%s' "
-      "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
-      "prohibited_points='%s' raw_memory_points='%s' "
-      "markers='%s' lidar_radar_markers=%s hit_memory_resolution=%.2fm "
-      "min_remember_altitude=%.2fm "
-      "max_remembered_hits=%zu "
-      "compensate_attitude=%s lidar_z_offset=%.2f "
-      "projected_altitude_range=[%.2f, %.2f] "
-      "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
-      "motion_compensation=%s pose_latency=%.3fs scan_deskew=%s "
-      "scan_duration_override=%.3fs "
-      "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f, "
-      "raw_memory=%.2f] "
-      "marker_z=%.2f "
-      "yaw_source=%s initial_heading=%.3f",
-      output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-      topics.lidar.c_str(), topics.prohibited_grid.c_str(), topics.memory_grid.c_str(),
-      topics.path.c_str(), topics.px4_local_position.c_str(),
-      topics.px4_vehicle_attitude.c_str(), pointcloud_topic_.c_str(),
-      remembered_pointcloud_topic_.c_str(), prohibited_pointcloud_topic_.c_str(),
-      raw_memory_pointcloud_topic_.c_str(), marker_topic_.c_str(),
-      publish_lidar_radar_markers_ ? "true" : "false", hit_memory_resolution_m_,
-      min_remember_altitude_m_, max_remembered_hit_points_,
-      compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-      min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-      lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-      motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
-      lidar_scan_deskew_ ? "true" : "false", lidar_scan_duration_override_s_,
-      current_pointcloud_z_m_, remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
-      raw_memory_pointcloud_z_m_, marker_z_m_, yawSourceName(), initial_heading_rad_);
+  RCLCPP_INFO(get_logger(),
+              "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
+              "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
+              "memory_grid='%s' path='%s' "
+              "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
+              "prohibited_points='%s' raw_memory_points='%s' "
+              "hit_memory_resolution=%.2fm "
+              "min_remember_altitude=%.2fm "
+              "max_remembered_hits=%zu "
+              "compensate_attitude=%s lidar_z_offset=%.2f "
+              "projected_altitude_range=[%.2f, %.2f] "
+              "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
+              "motion_compensation=%s pose_latency=%.3fs "
+              "scan_duration_override=%.3fs "
+              "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f, "
+              "raw_memory=%.2f] "
+              "yaw_source=%s initial_heading=%.3f",
+              output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
+              topics.lidar.c_str(), topics.prohibited_grid.c_str(),
+              topics.memory_grid.c_str(), topics.path.c_str(),
+              topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
+              pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
+              prohibited_pointcloud_topic_.c_str(),
+              raw_memory_pointcloud_topic_.c_str(), hit_memory_resolution_m_,
+              min_remember_altitude_m_, max_remembered_hit_points_,
+              compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+              min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+              lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+              motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+              lidar_scan_duration_override_s_, current_pointcloud_z_m_,
+              remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
+              raw_memory_pointcloud_z_m_, yawSourceName(), initial_heading_rad_);
 }
 
 } // namespace drone_city_nav

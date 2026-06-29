@@ -203,9 +203,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.racing_line.weight_offset_second_change = std::clamp(
       node.declare_parameter<double>("racing_line_weight_offset_second_change", 5.0),
       0.0, 1.0e9);
-  config.trajectory_planner.racing_line.weight_center_bias =
-      std::clamp(node.declare_parameter<double>("racing_line_weight_center_bias", 0.0),
-                 0.0, 1.0e6);
   config.trajectory_planner.racing_line.weight_time = std::clamp(
       node.declare_parameter<double>("racing_line_weight_time", 50.0), 0.0, 1.0e9);
   config.trajectory_planner.racing_line.weight_edge_margin =

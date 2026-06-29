@@ -24,7 +24,6 @@ struct RacingLineConfig {
   double weight_curvature_change{100.0};
   double weight_offset_change{0.5};
   double weight_offset_second_change{5.0};
-  double weight_center_bias{0.0};
   double weight_time{50.0};
   double weight_edge_margin{80.0};
   double desired_edge_margin_m{4.0};
@@ -61,7 +60,6 @@ struct RacingLineStats {
   double cost_heading_jump{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_second_change{std::numeric_limits<double>::quiet_NaN()};
-  double cost_center_bias{std::numeric_limits<double>::quiet_NaN()};
   double cost_edge_margin{std::numeric_limits<double>::quiet_NaN()};
   double cost_collision{std::numeric_limits<double>::quiet_NaN()};
   double cost_outside_grid{std::numeric_limits<double>::quiet_NaN()};

@@ -107,7 +107,6 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
        rclcpp::Parameter{"remembered_pointcloud_topic", "/custom/remembered"},
        rclcpp::Parameter{"prohibited_pointcloud_topic", "/custom/prohibited_points"},
        rclcpp::Parameter{"raw_memory_pointcloud_topic", "/custom/raw_memory"},
-       rclcpp::Parameter{"marker_topic", "/custom/markers"},
        rclcpp::Parameter{"px4_local_position_topic", "/custom/local_position"},
        rclcpp::Parameter{"px4_vehicle_attitude_topic", "/custom/attitude"},
        rclcpp::Parameter{"scan_yaw_offset_rad", 0.25},
@@ -128,7 +127,6 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
   EXPECT_EQ(config.topics.remembered_pointcloud, "/custom/remembered");
   EXPECT_EQ(config.topics.prohibited_pointcloud, "/custom/prohibited_points");
   EXPECT_EQ(config.topics.raw_memory_pointcloud, "/custom/raw_memory");
-  EXPECT_EQ(config.topics.marker, "/custom/markers");
   EXPECT_EQ(config.topics.px4_local_position, "/custom/local_position");
   EXPECT_EQ(config.topics.px4_vehicle_attitude, "/custom/attitude");
   EXPECT_DOUBLE_EQ(config.scan_yaw_offset_rad, 0.25);

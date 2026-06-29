@@ -129,16 +129,6 @@ Visualization Manager:
       Style: Flat Squares
       Topic:
         Value: /drone_city_nav/prohibited_obstacle_points
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Name: Optional Lidar Radar
-      Namespaces:
-        lidar_radar_drone: true
-        lidar_radar_free_rays: true
-        lidar_radar_hit_rays: true
-        lidar_radar_range: true
-      Topic:
-        Value: /drone_city_nav/lidar_radar_markers
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 3

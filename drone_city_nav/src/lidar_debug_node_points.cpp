@@ -152,7 +152,6 @@ void LidarDebugNode::writeSummary(const std::string& prefix,
   record.attitude_receive_age_s =
       ageSecondsOrNan(last_projected_attitude_receive_ns_, now_ns);
   record.motion_compensation_enabled = motion_compensate_lidar_pose_;
-  record.scan_deskew_enabled = lidar_scan_deskew_;
   record.pose_lag_s = last_projected_pose_lag_s_;
   record.pose_latency_s = last_projected_pose_latency_s_;
   record.motion_time_offset_s = last_projected_motion_time_offset_s_;
@@ -195,40 +194,6 @@ void LidarDebugNode::publishPointCloud(
   sensor_msgs::msg::PointCloud2 cloud =
       buildLidarDebugPointCloud(points, z_m, now(), "map");
   publisher->publish(cloud);
-}
-
-[[nodiscard]] std::vector<LidarBeamProjection>
-LidarDebugNode::collectRadarScanProjections() const {
-  std::vector<LidarBeamProjection> projections;
-  const double scan_range_max = scanRangeMax();
-  if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
-    return projections;
-  }
-  projections.reserve(last_scan_.ranges.size());
-  for (std::size_t i = 0U; i < last_scan_.ranges.size(); ++i) {
-    const float raw_range = last_scan_.ranges[i];
-    const LidarBeamProjection projection = projectScanBeam(i, raw_range);
-    projections.push_back(projection);
-  }
-  return projections;
-}
-
-void LidarDebugNode::publishRadarMarkers() {
-  if (!publish_lidar_radar_markers_) {
-    return;
-  }
-
-  const std::vector<LidarBeamProjection> projections = collectRadarScanProjections();
-  LidarRadarMarkerConfig config;
-  config.stamp = now();
-  config.frame_id = "map";
-  config.drone_position = last_projected_pose_.position;
-  config.heading_direction = headingDirection(last_projected_projection_yaw_rad_);
-  config.scan_range_max_m = scanRangeMax();
-  config.marker_z_m = marker_z_m_;
-  visualization_msgs::msg::MarkerArray markers =
-      buildLidarRadarMarkers(config, projections);
-  marker_pub_->publish(markers);
 }
 
 } // namespace drone_city_nav

@@ -123,36 +123,12 @@ void LidarDebugNode::writeSnapshot() {
          static_cast<double>(kNanosecondsPerSecond);
 }
 
-[[nodiscard]] double
-LidarDebugNode::beamAgeSeconds(const std::size_t beam_index) const noexcept {
-  if (!motion_compensate_lidar_pose_ || !lidar_scan_deskew_ ||
-      !last_projected_horizontal_speed_valid_ ||
-      !(last_projected_scan_time_increment_s_ > 0.0) || last_scan_.ranges.empty()) {
-    return 0.0;
-  }
-  const std::size_t last_beam_index = last_scan_.ranges.size() - 1U;
-  if (beam_index >= last_beam_index) {
-    return 0.0;
-  }
-  return static_cast<double>(last_beam_index - beam_index) *
-         last_projected_scan_time_increment_s_;
-}
-
-[[nodiscard]] LidarProjectionPose
-LidarDebugNode::lidarProjectionPoseForBeam(const std::size_t beam_index) const {
-  Point2 position = last_projected_pose_.position;
-  const double beam_age_s = beamAgeSeconds(beam_index);
-  if (beam_age_s > 0.0) {
-    position.x -= last_projected_velocity_.x * beam_age_s;
-    position.y -= last_projected_velocity_.y * beam_age_s;
-  }
-  return LidarProjectionPose{position,
-                             last_projected_altitude_m_,
-                             last_projected_projection_yaw_rad_,
-                             last_projected_attitude_.roll_rad,
-                             last_projected_attitude_.pitch_rad,
-                             last_projected_altitude_valid_,
-                             last_projected_attitude_valid_};
+[[nodiscard]] LidarProjectionPose LidarDebugNode::lidarProjectionPose() const {
+  return LidarProjectionPose{
+      last_projected_pose_.position,      last_projected_altitude_m_,
+      last_projected_projection_yaw_rad_, last_projected_attitude_.roll_rad,
+      last_projected_attitude_.pitch_rad, last_projected_altitude_valid_,
+      last_projected_attitude_valid_};
 }
 
 [[nodiscard]] LidarProjectionConfig LidarDebugNode::lidarProjectionConfig() const {
@@ -171,11 +147,11 @@ LidarDebugNode::lidarProjectionPoseForBeam(const std::size_t beam_index) const {
 [[nodiscard]] LidarBeamProjection
 LidarDebugNode::projectScanBeam(const std::size_t beam_index,
                                 const float raw_range) const {
-  return projectLidarBeam(
-      lidarProjectionPoseForBeam(beam_index), lidarProjectionConfig(),
-      static_cast<double>(last_scan_.range_min), scanRangeMax(),
-      static_cast<double>(last_scan_.angle_min),
-      static_cast<double>(last_scan_.angle_increment), beam_index, raw_range);
+  return projectLidarBeam(lidarProjectionPose(), lidarProjectionConfig(),
+                          static_cast<double>(last_scan_.range_min), scanRangeMax(),
+                          static_cast<double>(last_scan_.angle_min),
+                          static_cast<double>(last_scan_.angle_increment), beam_index,
+                          raw_range);
 }
 
 [[nodiscard]] Point2

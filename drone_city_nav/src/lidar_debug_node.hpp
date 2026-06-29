@@ -7,7 +7,6 @@
 #include "drone_city_nav/lidar_debug_snapshot_pipeline.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
-#include "drone_city_nav/lidar_radar_markers.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -18,7 +17,6 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
 #include <array>
@@ -84,10 +82,7 @@ private:
 
   [[nodiscard]] double poseReceiveLagSeconds() const noexcept;
 
-  [[nodiscard]] double beamAgeSeconds(const std::size_t beam_index) const noexcept;
-
-  [[nodiscard]] LidarProjectionPose
-  lidarProjectionPoseForBeam(const std::size_t beam_index) const;
+  [[nodiscard]] LidarProjectionPose lidarProjectionPose() const;
 
   [[nodiscard]] LidarProjectionConfig lidarProjectionConfig() const;
 
@@ -130,16 +125,11 @@ private:
       const std::vector<Point2>& points, const double z_m,
       const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
 
-  [[nodiscard]] std::vector<LidarBeamProjection> collectRadarScanProjections() const;
-
-  void publishRadarMarkers();
-
   std::string output_dir_;
   std::string pointcloud_topic_;
   std::string remembered_pointcloud_topic_;
   std::string prohibited_pointcloud_topic_;
   std::string raw_memory_pointcloud_topic_;
-  std::string marker_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
   sensor_msgs::msg::LaserScan last_scan_;
@@ -172,7 +162,6 @@ private:
   double remembered_pointcloud_z_m_{kGroundDebugZ};
   double prohibited_pointcloud_z_m_{kGroundDebugZ};
   double raw_memory_pointcloud_z_m_{kGroundDebugZ};
-  double marker_z_m_{kGroundDebugZ};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
   std::size_t max_logged_hit_points_{256U};
@@ -221,9 +210,7 @@ private:
   bool last_projected_px4_heading_seen_{false};
   bool use_px4_heading_for_scan_{false};
   bool motion_compensate_lidar_pose_{true};
-  bool lidar_scan_deskew_{false};
   bool compensate_lidar_attitude_{false};
-  bool publish_lidar_radar_markers_{false};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
@@ -239,7 +226,6 @@ private:
       prohibited_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_memory_pointcloud_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

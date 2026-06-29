@@ -93,7 +93,6 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);
   publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
                     remembered_pointcloud_pub_);
-  publishRadarMarkers();
 }
 
 } // namespace drone_city_nav

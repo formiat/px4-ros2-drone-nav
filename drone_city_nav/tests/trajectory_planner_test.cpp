@@ -28,7 +28,6 @@ namespace {
   config.racing_line.initial_offset_step_m = 1.0;
   config.racing_line.min_offset_step_m = 0.1;
   config.racing_line.weight_curvature = 30.0;
-  config.racing_line.weight_center_bias = 0.0;
   config.debug_sample_step_m = 1.0;
   config.speed_profile.cruise_speed_mps = 12.0;
   config.speed_profile.max_lateral_accel_mps2 = 3.0;

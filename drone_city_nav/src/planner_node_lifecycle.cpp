@@ -87,7 +87,7 @@ PlannerNode::PlannerNode()
       "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
-      "offset_second=%.2f center=%.3f edge=%.2f edge_margin=%.2fm "
+      "offset_second=%.2f edge=%.2f edge_margin=%.2fm "
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
@@ -117,7 +117,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.weight_curvature_change,
       trajectory_planner_config_.racing_line.weight_offset_change,
       trajectory_planner_config_.racing_line.weight_offset_second_change,
-      trajectory_planner_config_.racing_line.weight_center_bias,
       trajectory_planner_config_.racing_line.weight_edge_margin,
       trajectory_planner_config_.racing_line.desired_edge_margin_m,
       trajectory_planner_config_.racing_line.max_length_ratio,

@@ -42,7 +42,6 @@ struct CostBreakdown {
   double heading_jump_cost{0.0};
   double offset_change_cost{0.0};
   double offset_second_change_cost{0.0};
-  double center_bias_cost{0.0};
   double edge_margin_cost{0.0};
   double collision_cost{0.0};
   double outside_grid_cost{0.0};
@@ -51,8 +50,7 @@ struct CostBreakdown {
   [[nodiscard]] double total() const noexcept {
     return length_cost + time_cost + curvature_cost + curvature_change_cost +
            heading_jump_cost + offset_change_cost + offset_second_change_cost +
-           center_bias_cost + edge_margin_cost + collision_cost + outside_grid_cost +
-           length_overrun_cost;
+           edge_margin_cost + collision_cost + outside_grid_cost + length_overrun_cost;
   }
 };
 
@@ -376,8 +374,6 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
       sanitizedPositive(config.weight_offset_second_change, 5.0, 0.0, 1.0e9);
-  const double weight_center_bias =
-      sanitizedPositive(config.weight_center_bias, 0.0, 0.0, 1.0e6);
   const double weight_edge_margin =
       sanitizedPositive(config.weight_edge_margin, 80.0, 0.0, 1.0e9);
 
@@ -385,12 +381,8 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
   double curvature_change_cost = 0.0;
   double offset_change_cost = 0.0;
   double offset_second_change_cost = 0.0;
-  double center_bias_cost = 0.0;
   double previous_curvature = 0.0;
   bool previous_curvature_valid = false;
-  for (const double offset : offsets) {
-    center_bias_cost += offset * offset;
-  }
   for (std::size_t i = 1U; i < offsets.size(); ++i) {
     const double change = offsets[i] - offsets[i - 1U];
     offset_change_cost += change * change;
@@ -427,7 +419,6 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
   breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
   breakdown.offset_second_change_cost =
       weight_offset_second_change * offset_second_change_cost;
-  breakdown.center_bias_cost = weight_center_bias * center_bias_cost;
   return breakdown;
 }
 
@@ -543,7 +534,6 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& s
   stats.cost_heading_jump = breakdown.heading_jump_cost;
   stats.cost_offset_change = breakdown.offset_change_cost;
   stats.cost_offset_second_change = breakdown.offset_second_change_cost;
-  stats.cost_center_bias = breakdown.center_bias_cost;
   stats.cost_edge_margin = breakdown.edge_margin_cost;
   stats.cost_collision = breakdown.collision_cost;
   stats.cost_outside_grid = breakdown.outside_grid_cost;

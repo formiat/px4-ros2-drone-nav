@@ -164,8 +164,7 @@ add_executable(
   src/lidar_debug_node_callbacks.cpp
   src/lidar_debug_node_lifecycle.cpp
   src/lidar_debug_node_points.cpp
-  src/lidar_debug_node_snapshot.cpp
-  src/lidar_radar_markers.cpp)
+  src/lidar_debug_node_snapshot.cpp)
 target_compile_features(lidar_debug_node PRIVATE cxx_std_20)
 target_link_libraries(lidar_debug_node drone_city_nav_core
                       drone_city_nav_ros_adapters)
@@ -174,8 +173,7 @@ ament_target_dependencies(
   nav_msgs
   px4_msgs
   rclcpp
-  sensor_msgs
-  visualization_msgs)
+  sensor_msgs)
 enable_project_warnings(lidar_debug_node)
 
 install(
@@ -238,13 +236,6 @@ if(BUILD_TESTING)
   target_compile_features(clearance_field_test PRIVATE cxx_std_20)
   target_link_libraries(clearance_field_test drone_city_nav_core)
   enable_project_warnings(clearance_field_test)
-
-  ament_add_gtest(lidar_radar_markers_test tests/lidar_radar_markers_test.cpp
-                  src/lidar_radar_markers.cpp)
-  target_compile_features(lidar_radar_markers_test PRIVATE cxx_std_20)
-  target_link_libraries(lidar_radar_markers_test drone_city_nav_core)
-  ament_target_dependencies(lidar_radar_markers_test visualization_msgs)
-  enable_project_warnings(lidar_radar_markers_test)
 
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)

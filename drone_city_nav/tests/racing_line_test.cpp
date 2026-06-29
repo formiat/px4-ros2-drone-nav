@@ -67,7 +67,6 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   config.weight_curvature_change = 5.0;
   config.weight_offset_change = 1.0;
   config.weight_offset_second_change = 10.0;
-  config.weight_center_bias = 0.0;
   return config;
 }
 

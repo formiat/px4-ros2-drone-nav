@@ -63,8 +63,6 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       "min_navigation_altitude_m", config.min_navigation_altitude_m);
   config.takeoff_hover_s =
       node.declare_parameter<double>("takeoff_hover_s", config.takeoff_hover_s);
-  config.face_target_yaw =
-      node.declare_parameter<bool>("face_target_yaw", config.face_target_yaw);
   config.acceptance_radius_m =
       node.declare_parameter<double>("acceptance_radius_m", config.acceptance_radius_m);
   config.turn_preview_distance_m = node.declare_parameter<double>(
