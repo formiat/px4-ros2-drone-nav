@@ -88,7 +88,7 @@ PlannerNode::PlannerNode()
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
       "offset_second=%.2f center=%.3f edge=%.2f edge_margin=%.2fm "
-      "max_length_ratio=%.2f parallel=%s parallel_workers=%zu)] "
+      "max_length_ratio=%.2f parallel=always parallel_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
       "outer_shift=[%.2f, %.2f] corridor_margin=%.2fm max_length_ratio=%.2f "
@@ -121,8 +121,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.weight_edge_margin,
       trajectory_planner_config_.racing_line.desired_edge_margin_m,
       trajectory_planner_config_.racing_line.max_length_ratio,
-      trajectory_planner_config_.racing_line.parallel_candidate_evaluation ? "true"
-                                                                           : "false",
       trajectory_planner_config_.racing_line.parallel_workers,
       radiansToDegrees(
           trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
@@ -136,23 +134,21 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.turn_smoothing.min_corridor_margin_m,
       trajectory_planner_config_.turn_smoothing.max_length_ratio,
       trajectory_planner_config_.turn_smoothing.max_passes);
-  RCLCPP_INFO(
-      get_logger(),
-      "Planner obstacle sources: static=%s memory=%s current_lidar=%s "
-      "static_path='%s' fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
-      use_static_map_ ? "true" : "false", use_obstacle_memory_ ? "true" : "false",
-      use_current_lidar_obstacles_ ? "true" : "false",
-      static_map_resolved_path_.string().c_str(), fallback_grid_bounds_.width_cells,
-      fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
-      fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
   RCLCPP_INFO(get_logger(),
-              "Planner lidar overlay: enabled=%s topic='%s' max_range=%.2f "
+              "Planner obstacle sources: static=%s memory=always current_lidar=always "
+              "static_path='%s' fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
+              use_static_map_ ? "true" : "false",
+              static_map_resolved_path_.string().c_str(),
+              fallback_grid_bounds_.width_cells, fallback_grid_bounds_.height_cells,
+              fallback_grid_bounds_.resolution_m, fallback_grid_bounds_.origin_x,
+              fallback_grid_bounds_.origin_y);
+  RCLCPP_INFO(get_logger(),
+              "Planner lidar overlay: enabled=always topic='%s' max_range=%.2f "
               "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
               "motion_compensation=%s pose_latency=%.3fs "
               "lidar_z_offset=%.2f "
               "projected_altitude_range=[%.2f, %.2f] "
               "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
-              use_current_lidar_obstacles_ ? "true" : "false",
               config.topics.lidar.c_str(), max_lidar_range_m_,
               static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
               use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
@@ -162,9 +158,8 @@ PlannerNode::PlannerNode()
               max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
               lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
   RCLCPP_INFO(get_logger(),
-              "Planner path policy: stable_path_reuse=%s "
+              "Planner path policy: stable_path_reuse=always "
               "stable_goal_tolerance=%.2fm",
-              stable_path_reuse_enabled_ ? "true" : "false",
               stable_path_goal_tolerance_m_);
   RCLCPP_INFO(get_logger(),
               "Planner path preference: astar_heuristic_weight=%.2f "
@@ -186,17 +181,13 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   goal_ = config.goal;
   inflation_radius_m_ = config.inflation_radius_m;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
-  stable_path_reuse_enabled_ = config.fallback.stable_path_reuse_enabled;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
   memory_occupied_value_ = config.memory_grid.occupied_value;
   memory_free_value_ = config.memory_grid.free_value;
   use_static_map_ = config.static_map.enabled;
-  use_obstacle_memory_ = config.planning_grid_builder.use_obstacle_memory;
   static_map_path_param_ = config.static_map.configured_path.string();
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
-  use_current_lidar_obstacles_ =
-      config.planning_grid_builder.use_current_lidar_obstacles;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
   max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
   range_hit_epsilon_m_ = config.lidar_projection.range_hit_epsilon_m;

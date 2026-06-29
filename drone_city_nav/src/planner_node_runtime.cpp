@@ -20,7 +20,7 @@ void PlannerNode::invalidateCurrentPose() {
 }
 
 bool PlannerNode::keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
-  if (!stable_path_reuse_enabled_ || last_valid_path_points_.size() < 2U) {
+  if (last_valid_path_points_.size() < 2U) {
     return false;
   }
 

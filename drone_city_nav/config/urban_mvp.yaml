@@ -68,20 +68,17 @@ planner_node:
     goal_y_m: 378.0
     cruise_altitude_m: 18.0
     inflation_radius_m: 5.0
-    stable_path_reuse_enabled: true
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100
     memory_free_value: 0
     use_static_map: true
     static_map_path: worlds/generated_city.map2d
     static_map_min_blocking_height_m: 0.0
-    use_obstacle_memory: true
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 345.0
     planning_grid_height_m: 525.0
     planning_grid_origin_x: -30.0
     planning_grid_origin_y: -30.0
-    use_current_lidar_obstacles: true
     max_current_lidar_staleness_s: 0.75
     max_lidar_range_m: 35.0
     range_hit_epsilon_m: 0.05
@@ -139,7 +136,6 @@ planner_node:
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
-    racing_line_parallel_candidate_evaluation: true
     racing_line_parallel_workers: 0
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0

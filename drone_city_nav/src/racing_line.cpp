@@ -708,9 +708,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   scratch.candidate_points.reserve(sample_count);
   scratch.accepted_points.reserve(sample_count);
   scratch.candidate_samples.reserve(sample_count);
-  const bool use_parallel_candidates = config.parallel_candidate_evaluation &&
-                                       config.parallel_workers != 1U &&
-                                       sample_count > 2U;
+  const bool use_parallel_candidates =
+      config.parallel_workers != 1U && sample_count > 2U;
   result.stats.parallel_candidate_evaluation_used = use_parallel_candidates;
 
   std::vector<double> offsets;

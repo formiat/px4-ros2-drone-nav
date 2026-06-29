@@ -35,9 +35,6 @@ evaluatePlannerGridReadiness(const PlanningGridBuildResult& result) noexcept {
                             : PlannerGridReadinessReason::kMissingGrid;
       decision.ready = result.grid.has_value();
       return decision;
-    case PlanningGridStatus::kNoEnabledSources:
-      decision.reason = PlannerGridReadinessReason::kNoEnabledSources;
-      return decision;
     case PlanningGridStatus::kStaticMapEnabledButMissing:
       decision.reason = PlannerGridReadinessReason::kStaticMapMissing;
       return decision;

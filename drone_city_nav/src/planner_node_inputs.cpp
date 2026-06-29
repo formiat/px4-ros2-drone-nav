@@ -203,8 +203,6 @@ void PlannerNode::loadConfiguredStaticMap() {
 [[nodiscard]] PlanningGridBuilderConfig PlannerNode::planningGridBuilderConfig() const {
   PlanningGridBuilderConfig config{};
   config.use_static_map = use_static_map_;
-  config.use_obstacle_memory = use_obstacle_memory_;
-  config.use_current_lidar_obstacles = use_current_lidar_obstacles_;
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
   return config;
@@ -262,12 +260,6 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
 
   const PlannerGridReadinessDecision grid_readiness =
       evaluatePlannerGridReadiness(result);
-  if (grid_readiness.reason == PlannerGridReadinessReason::kNoEnabledSources) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Planner has no enabled obstacle sources; skipping path check");
-    return std::nullopt;
-  }
   if (grid_readiness.reason == PlannerGridReadinessReason::kStaticMapMissing) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Planner static map source is enabled but not loaded; "

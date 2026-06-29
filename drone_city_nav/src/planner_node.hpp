@@ -222,10 +222,7 @@ private:
   bool memory_grid_seen_{false};
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
-  bool stable_path_reuse_enabled_{true};
   bool use_static_map_{true};
-  bool use_obstacle_memory_{true};
-  bool use_current_lidar_obstacles_{true};
   bool use_px4_heading_for_scan_{false};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{false};

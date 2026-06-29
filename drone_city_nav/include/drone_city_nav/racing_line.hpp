@@ -31,7 +31,6 @@ struct RacingLineConfig {
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
   double regularization_max_time_regression_s{0.5};
-  bool parallel_candidate_evaluation{false};
   std::size_t parallel_workers{0U};
 };
 

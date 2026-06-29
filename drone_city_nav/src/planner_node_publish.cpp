@@ -431,10 +431,7 @@ CurrentLidarOverlayStats
 PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
                                      const std::int64_t now_ns) const {
   CurrentLidarOverlayStats stats{};
-  stats.enabled = use_current_lidar_obstacles_;
-  if (!use_current_lidar_obstacles_) {
-    return stats;
-  }
+  stats.enabled = true;
 
   stats.fresh =
       timestampIsFresh(last_scan_update_ns_, now_ns, max_current_lidar_staleness_ns_);

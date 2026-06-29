@@ -34,10 +34,6 @@ struct PlannerTimingConfig {
   double path_prohibited_intersection_check_period_s{0.5};
 };
 
-struct PlannerFallbackConfig {
-  bool stable_path_reuse_enabled{true};
-};
-
 struct PlannerInitialPoseConfig {
   bool use_until_px4{true};
   Point2 position{};
@@ -70,7 +66,6 @@ struct PlannerNodeConfig {
   StaticMapSourceConfig static_map{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
-  PlannerFallbackConfig fallback{};
   PlannerInitialPoseConfig initial_pose{};
   PlannerMemoryGridConfig memory_grid{};
   PlannerCurrentLidarConfig current_lidar{};

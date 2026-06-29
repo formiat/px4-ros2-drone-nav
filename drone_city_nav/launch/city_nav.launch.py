@@ -54,8 +54,6 @@ def generate_launch_description():
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     enable_rviz = LaunchConfiguration("enable_rviz")
     use_static_map = LaunchConfiguration("use_static_map")
-    use_obstacle_memory = LaunchConfiguration("use_obstacle_memory")
-    use_current_lidar_obstacles = LaunchConfiguration("use_current_lidar_obstacles")
     static_map_path = LaunchConfiguration("static_map_path")
     evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
     evasive_maneuvering_straight_cost_weight = LaunchConfiguration(
@@ -84,18 +82,6 @@ def generate_launch_description():
         )
         if static_map_override is not None:
             planner_overrides["use_static_map"] = static_map_override
-
-        obstacle_memory_override = optional_bool_override(
-            context, use_obstacle_memory, "use_obstacle_memory"
-        )
-        if obstacle_memory_override is not None:
-            planner_overrides["use_obstacle_memory"] = obstacle_memory_override
-
-        current_lidar_override = optional_bool_override(
-            context, use_current_lidar_obstacles, "use_current_lidar_obstacles"
-        )
-        if current_lidar_override is not None:
-            planner_overrides["use_current_lidar_obstacles"] = current_lidar_override
 
         static_map_path_override = static_map_path.perform(context).strip()
         if static_map_path_override:
@@ -259,22 +245,6 @@ def generate_launch_description():
                 description=(
                     "Optional override for the static city obstacle map source. "
                     "Leave empty to use params_file."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "use_obstacle_memory",
-                default_value="",
-                description=(
-                    "Optional override for the accumulated obstacle memory source. "
-                    "Leave empty to use params_file."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "use_current_lidar_obstacles",
-                default_value="",
-                description=(
-                    "Optional override for the current LaserScan obstacle overlay "
-                    "source. Leave empty to use params_file."
                 ),
             ),
             DeclareLaunchArgument(

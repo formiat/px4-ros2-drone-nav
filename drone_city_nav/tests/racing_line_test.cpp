@@ -134,20 +134,19 @@ TEST(RacingLine, ResultIsDeterministic) {
   EXPECT_DOUBLE_EQ(first.stats.final_cost, second.stats.final_cost);
   EXPECT_DOUBLE_EQ(first.stats.final_length_m, second.stats.final_length_m);
   EXPECT_DOUBLE_EQ(first.stats.estimated_time_s, second.stats.estimated_time_s);
-  EXPECT_EQ(first.stats.scratch_reused_candidates, first.stats.candidate_evaluations);
-  EXPECT_FALSE(first.stats.parallel_candidate_evaluation_used);
+  EXPECT_TRUE(first.stats.parallel_candidate_evaluation_used);
 }
 
-TEST(RacingLine, ParallelCandidateEvaluationMatchesSequentialResult) {
+TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   const OccupancyGrid2D grid = openGrid();
   const auto corridor = wideLeftTurnCorridor();
-  RacingLineConfig sequential_config = testConfig();
-  RacingLineConfig parallel_config = sequential_config;
-  parallel_config.parallel_candidate_evaluation = true;
+  RacingLineConfig single_worker_config = testConfig();
+  single_worker_config.parallel_workers = 1U;
+  RacingLineConfig parallel_config = testConfig();
   parallel_config.parallel_workers = 2U;
 
   const RacingLineResult sequential =
-      optimizeRacingLine(corridor, grid, sequential_config, speedConfig());
+      optimizeRacingLine(corridor, grid, single_worker_config, speedConfig());
   const RacingLineResult parallel =
       optimizeRacingLine(corridor, grid, parallel_config, speedConfig());
 

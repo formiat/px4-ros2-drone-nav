@@ -42,10 +42,6 @@ TEST(PlannerRuntimeState, ClassifiesPlanningGridReadinessAndMemoryMismatch) {
   EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kNoReadySourceData);
   EXPECT_TRUE(decision.memory_geometry_mismatch);
 
-  result.status = PlanningGridStatus::kNoEnabledSources;
-  decision = evaluatePlannerGridReadiness(result);
-  EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kNoEnabledSources);
-
   result.status = PlanningGridStatus::kReady;
   decision = evaluatePlannerGridReadiness(result);
   EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kMissingGrid);

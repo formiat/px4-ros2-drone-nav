@@ -27,8 +27,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
-  config.fallback.stable_path_reuse_enabled =
-      node.declare_parameter<bool>("stable_path_reuse_enabled", true);
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
       node.declare_parameter<double>("stable_path_goal_tolerance_m", 3.0), 0.0, 1000.0);
   config.memory_grid.occupied_value = static_cast<int>(std::clamp<std::int64_t>(
@@ -38,8 +36,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.static_map.enabled = node.declare_parameter<bool>("use_static_map", true);
   config.planning_grid_builder.use_static_map = config.static_map.enabled;
-  config.planning_grid_builder.use_obstacle_memory =
-      node.declare_parameter<bool>("use_obstacle_memory", true);
   config.static_map.configured_path = node.declare_parameter<std::string>(
       "static_map_path", "worlds/generated_city.map2d");
   config.static_map.expected_frame_id = config.frame_id;
@@ -83,8 +79,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                 fallback_bounds.origin_y, fallback_bounds.resolution_m,
                 fallback_bounds.width_cells, fallback_bounds.height_cells);
   }
-  config.planning_grid_builder.use_current_lidar_obstacles =
-      node.declare_parameter<bool>("use_current_lidar_obstacles", true);
   config.timing.max_current_lidar_staleness_ns =
       secondsToNanoseconds(std::clamp<double>(
           node.declare_parameter<double>("max_current_lidar_staleness_s", 0.75), 0.0,
@@ -231,8 +225,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "racing_line_regularization_max_time_regression_s", 0.5),
                  0.0, 3600.0);
-  config.trajectory_planner.racing_line.parallel_candidate_evaluation =
-      node.declare_parameter<bool>("racing_line_parallel_candidate_evaluation", false);
   config.trajectory_planner.racing_line.parallel_workers =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("racing_line_parallel_workers", 0), 0,

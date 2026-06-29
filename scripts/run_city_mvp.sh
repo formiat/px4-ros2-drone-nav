@@ -73,18 +73,10 @@ enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
 enable_static_map_override=""
-enable_obstacle_memory_override=""
-enable_current_lidar_override=""
 evasive_maneuvering_override=""
 evasive_maneuvering_straight_cost_weight_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
-fi
-if [[ -n "${ENABLE_OBSTACLE_MEMORY+x}" ]]; then
-  enable_obstacle_memory_override="$(normalize_bool "${ENABLE_OBSTACLE_MEMORY}")"
-fi
-if [[ -n "${ENABLE_CURRENT_LIDAR+x}" ]]; then
-  enable_current_lidar_override="$(normalize_bool "${ENABLE_CURRENT_LIDAR}")"
 fi
 if [[ -n "${ENABLE_EVASIVE_MANEUVERING+x}" ]]; then
   evasive_maneuvering_override="$(normalize_bool "${ENABLE_EVASIVE_MANEUVERING}")"
@@ -171,13 +163,11 @@ if [[ "${canonical_city_nav_params_file}" == "${canonical_default_city_nav_param
 fi
 
 expected_static_map="${enable_static_map_override}"
-expected_obstacle_memory="${enable_obstacle_memory_override}"
-expected_current_lidar="${enable_current_lidar_override}"
 if [[ "${params_are_default}" == "true" ]]; then
   expected_static_map="${expected_static_map:-true}"
-  expected_obstacle_memory="${expected_obstacle_memory:-true}"
-  expected_current_lidar="${expected_current_lidar:-true}"
 fi
+expected_obstacle_memory="true"
+expected_current_lidar="true"
 
 bool_is_true() {
   [[ "$1" == "true" || "$1" == "1" ]]
@@ -376,7 +366,7 @@ echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} targe
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
-echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=$(format_override_value "${enable_obstacle_memory_override}") current_lidar=$(format_override_value "${enable_current_lidar_override}")"
+echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always current_lidar=always"
 echo "A* evasive maneuvering overrides: enabled=${formatted_evasive_maneuvering_override} straight_cost_weight=${formatted_evasive_maneuvering_weight_override}"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
@@ -506,12 +496,6 @@ ros_launch_args=(
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
-fi
-if [[ -n "${enable_obstacle_memory_override}" ]]; then
-  ros_launch_args+=(use_obstacle_memory:="${enable_obstacle_memory_override}")
-fi
-if [[ -n "${enable_current_lidar_override}" ]]; then
-  ros_launch_args+=(use_current_lidar_obstacles:="${enable_current_lidar_override}")
 fi
 if [[ "${static_city_map_path_override}" == "true" ]]; then
   ros_launch_args+=(static_map_path:="${static_city_map_path}")

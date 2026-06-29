@@ -28,7 +28,6 @@ struct PlannerRuntimeReadinessDecision {
 
 enum class PlannerGridReadinessReason {
   kReady,
-  kNoEnabledSources,
   kStaticMapMissing,
   kNoReadySourceData,
   kMissingGrid,

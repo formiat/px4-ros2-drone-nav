@@ -12,7 +12,6 @@ namespace drone_city_nav {
 
 enum class PlanningGridStatus {
   kReady,
-  kNoEnabledSources,
   kStaticMapEnabledButMissing,
   kNoReadySourceData,
 };
@@ -37,8 +36,6 @@ struct MemorySourceStats {
 
 struct PlanningGridBuilderConfig {
   bool use_static_map{true};
-  bool use_obstacle_memory{true};
-  bool use_current_lidar_obstacles{true};
   GridBounds fallback_bounds{};
   double inflation_radius_m{0.0};
 };

@@ -54,8 +54,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 2.5);
   EXPECT_TRUE(config.static_map.enabled);
   EXPECT_TRUE(config.planning_grid_builder.use_static_map);
-  EXPECT_TRUE(config.planning_grid_builder.use_obstacle_memory);
-  EXPECT_TRUE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
@@ -71,7 +69,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
-  EXPECT_FALSE(config.trajectory_planner.racing_line.parallel_candidate_evaluation);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
@@ -145,11 +142,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
                 rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
                 rclcpp::Parameter{"use_static_map", false},
-                rclcpp::Parameter{"use_obstacle_memory", false},
-                rclcpp::Parameter{"use_current_lidar_obstacles", false},
                 rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
                 rclcpp::Parameter{"racing_line_weight_curvature", 125.0},
-                rclcpp::Parameter{"racing_line_parallel_candidate_evaluation", true},
                 rclcpp::Parameter{"racing_line_parallel_workers", 2},
                 rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
                 rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
@@ -172,10 +166,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
-  EXPECT_FALSE(config.planning_grid_builder.use_obstacle_memory);
-  EXPECT_FALSE(config.planning_grid_builder.use_current_lidar_obstacles);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 125.0);
-  EXPECT_TRUE(config.trajectory_planner.racing_line.parallel_candidate_evaluation);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 2U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);

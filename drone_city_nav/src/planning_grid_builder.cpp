@@ -8,8 +8,6 @@ const char* planningGridStatusName(const PlanningGridStatus status) noexcept {
   switch (status) {
     case PlanningGridStatus::kReady:
       return "ready";
-    case PlanningGridStatus::kNoEnabledSources:
-      return "no_enabled_sources";
     case PlanningGridStatus::kStaticMapEnabledButMissing:
       return "static_map_enabled_but_missing";
     case PlanningGridStatus::kNoReadySourceData:
@@ -24,11 +22,10 @@ selectPlanningGridBounds(const PlanningGridBuilderConfig& config,
   if (config.use_static_map && sources.static_grid != nullptr) {
     return sources.static_grid->bounds();
   }
-  if (config.use_obstacle_memory && sources.memory_grid != nullptr) {
+  if (sources.memory_grid != nullptr) {
     return sources.memory_grid->bounds();
   }
-  if (config.use_current_lidar_obstacles && sources.current_lidar_grid != nullptr &&
-      sources.current_lidar.enabled && sources.current_lidar.used &&
+  if (sources.current_lidar_grid != nullptr && sources.current_lidar.used &&
       sources.current_lidar.fresh) {
     return sources.current_lidar_grid->bounds();
   }
@@ -44,17 +41,12 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
   result.static_source.occupied_cells = sources.static_occupied_cells;
   result.static_source.path = sources.static_map_path;
 
-  result.memory.enabled = config.use_obstacle_memory;
+  result.memory.enabled = true;
   result.memory.seen = sources.memory_grid != nullptr;
 
   result.current_lidar = sources.current_lidar;
-  result.current_lidar.enabled = config.use_current_lidar_obstacles;
+  result.current_lidar.enabled = true;
 
-  if (!config.use_static_map && !config.use_obstacle_memory &&
-      !config.use_current_lidar_obstacles) {
-    result.status = PlanningGridStatus::kNoEnabledSources;
-    return result;
-  }
   if (config.use_static_map && sources.static_grid == nullptr) {
     result.status = PlanningGridStatus::kStaticMapEnabledButMissing;
     return result;
@@ -74,7 +66,7 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
     result.static_source.used = true;
   }
 
-  if (config.use_obstacle_memory && sources.memory_grid != nullptr) {
+  if (sources.memory_grid != nullptr) {
     result.memory.source_counts = collectGridStats(*sources.memory_grid);
     result.memory.geometry_matches =
         haveSameGridGeometry(planning_grid, *sources.memory_grid);
@@ -86,8 +78,7 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
   }
 
   bool current_lidar_applied = false;
-  if (config.use_current_lidar_obstacles && sources.current_lidar_grid != nullptr &&
-      result.current_lidar.enabled && result.current_lidar.fresh &&
+  if (sources.current_lidar_grid != nullptr && result.current_lidar.fresh &&
       result.current_lidar.used &&
       haveSameGridGeometry(planning_grid, *sources.current_lidar_grid)) {
     const GridOverlayStats current_overlay =
@@ -101,9 +92,8 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
     current_lidar_applied = true;
   }
 
-  const bool current_lidar_ready = result.current_lidar.enabled &&
-                                   result.current_lidar.used &&
-                                   result.current_lidar.fresh && current_lidar_applied;
+  const bool current_lidar_ready =
+      result.current_lidar.used && result.current_lidar.fresh && current_lidar_applied;
   const bool any_source_ready =
       result.static_source.used || result.memory.used || current_lidar_ready;
   if (!any_source_ready) {
