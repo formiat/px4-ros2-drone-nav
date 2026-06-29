@@ -661,7 +661,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
                    const VelocityFollowerConfig& speed_config) {
   RacingLineResult result{};
   result.stats.input_samples = corridor_samples.size();
-  if (!config.enabled || corridor_samples.size() < 2U) {
+  if (corridor_samples.size() < 2U) {
     return result;
   }
 

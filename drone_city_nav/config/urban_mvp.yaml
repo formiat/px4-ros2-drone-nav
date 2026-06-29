@@ -2,7 +2,6 @@ obstacle_memory_node:
   ros__parameters:
     frame_id: map
     lidar_topic: /scan
-    mapping_enabled: true
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid

@@ -580,13 +580,12 @@ make quality
   targets between waypoints.
 - The simulation offboard follower still uses position setpoints for takeoff,
   no-path hold, and final goal hold.
-- When obstacle-memory mapping is enabled, the simulation obstacle-memory node
-  ignores persistent lidar map updates below `min_mapping_altitude_m`. The
-  planner still overlays fresh lidar hits onto its temporary A* grid when
-  `use_current_lidar_obstacles=true`.
-- `use_static_map`, `use_obstacle_memory`, and `use_current_lidar_obstacles`
-  can be toggled before launch. If every obstacle source is disabled or no
-  enabled source has usable data, the planner publishes an empty hold path.
+- The simulation obstacle-memory node ignores persistent lidar map updates below
+  `min_mapping_altitude_m`. The planner always overlays obstacle memory and fresh
+  lidar hits when usable data is available.
+- `use_static_map` can be toggled before launch. Obstacle memory and current
+  lidar remain always-on sources; if no usable obstacle data is available, the
+  planner publishes an empty hold path.
 - `obstacle_memory_node` and `planner_node` both fail closed when PX4 local
   position becomes invalid or stale for longer than `max_pose_staleness_s`.
   Obstacle memory skips lidar integration, and the planner publishes an empty

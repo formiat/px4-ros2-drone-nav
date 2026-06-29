@@ -109,19 +109,13 @@ def generate_launch_description():
         if planner_overrides:
             planner_parameters.append(planner_overrides)
 
-        obstacle_memory_parameters = [params_file.perform(context)]
-        if obstacle_memory_override is not None:
-            obstacle_memory_parameters.append(
-                {"mapping_enabled": obstacle_memory_override}
-            )
-
         return [
             Node(
                 package="drone_city_nav",
                 executable="obstacle_memory_node",
                 name="obstacle_memory_node",
                 output="screen",
-                parameters=obstacle_memory_parameters,
+                parameters=[params_file.perform(context)],
             ),
             Node(
                 package="drone_city_nav",

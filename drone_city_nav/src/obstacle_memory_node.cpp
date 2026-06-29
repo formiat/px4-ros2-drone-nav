@@ -50,7 +50,6 @@ public:
     memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
 
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
-    mapping_enabled_ = declare_parameter<bool>("mapping_enabled", true);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     motion_compensate_lidar_pose_ =
@@ -143,13 +142,12 @@ public:
         });
 
     RCLCPP_INFO(get_logger(),
-                "Obstacle memory ready: enabled=%s pose=px4_local_position "
-                "grid=%dx%d "
+                "Obstacle memory ready: pose=px4_local_position grid=%dx%d "
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
-                mapping_enabled_ ? "true" : "false", memory_->rawGrid().width(),
-                memory_->rawGrid().height(), memory_->rawGrid().resolution(),
-                memory_->rawGrid().originX(), memory_->rawGrid().originY(),
-                lidar_topic.c_str(), attitude_topic.c_str());
+                memory_->rawGrid().width(), memory_->rawGrid().height(),
+                memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
+                memory_->rawGrid().originY(), lidar_topic.c_str(),
+                attitude_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f stride=%d "
                 "raw_memory_only=true "
@@ -231,12 +229,6 @@ private:
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
-    if (!mapping_enabled_) {
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Obstacle memory mapping is disabled; ignoring lidar scan");
-      return;
-    }
-
     const std::int64_t now_ns = get_clock()->now().nanoseconds();
     const bool pose_fresh =
         timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
@@ -423,7 +415,6 @@ private:
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{false};
-  bool mapping_enabled_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
   bool attitude_valid_{false};

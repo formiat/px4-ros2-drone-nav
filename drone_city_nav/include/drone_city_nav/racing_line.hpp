@@ -13,7 +13,6 @@
 namespace drone_city_nav {
 
 struct RacingLineConfig {
-  bool enabled{true};
   double optimizer_sample_step_m{0.0};
   std::size_t max_iterations{80U};
   double initial_offset_step_m{2.0};
