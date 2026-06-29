@@ -61,8 +61,10 @@ PlannerNode::PlannerNode()
 
   RCLCPP_INFO(get_logger(),
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
-              "inflation=%.2fm",
-              start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_);
+              "runtime_inflation=%.2fm planning_clearance=%.2fm "
+              "planning_effective_inflation=%.2fm",
+              start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_,
+              planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_);
   RCLCPP_INFO(get_logger(),
               "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s' "
               "attitude='%s'",
@@ -72,7 +74,10 @@ PlannerNode::PlannerNode()
               config.topics.path.c_str(), config.topics.path_id.c_str());
   RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "
-              "inflation_owner=planner prohibited_output='%s'",
+              "runtime_inflation=%.2fm planning_clearance=%.2fm "
+              "planning_effective_inflation=%.2fm prohibited_output='%s'",
+              inflation_radius_m_, planning_clearance_m_,
+              inflation_radius_m_ + planning_clearance_m_,
               config.topics.prohibited_grid.c_str());
   RCLCPP_INFO(
       get_logger(),
@@ -87,7 +92,7 @@ PlannerNode::PlannerNode()
       "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
-      "offset_second=%.2f edge=%.2f edge_margin=%.2fm "
+      "offset_second=%.2f "
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
@@ -117,8 +122,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.weight_curvature_change,
       trajectory_planner_config_.racing_line.weight_offset_change,
       trajectory_planner_config_.racing_line.weight_offset_second_change,
-      trajectory_planner_config_.racing_line.weight_edge_margin,
-      trajectory_planner_config_.racing_line.desired_edge_margin_m,
       trajectory_planner_config_.racing_line.max_length_ratio,
       trajectory_planner_config_.racing_line.parallel_workers,
       radiansToDegrees(
@@ -179,6 +182,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   start_ = config.start;
   goal_ = config.goal;
   inflation_radius_m_ = config.inflation_radius_m;
+  planning_clearance_m_ = config.planning_clearance_m;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
   memory_occupied_value_ = config.memory_grid.occupied_value;

@@ -46,6 +46,16 @@ TEST(PlannerRuntimeState, ClassifiesPlanningGridReadinessAndMemoryMismatch) {
   decision = evaluatePlannerGridReadiness(result);
   EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kMissingGrid);
   EXPECT_FALSE(decision.ready);
+
+  result.grid.emplace(GridBounds{0.0, 0.0, 1.0, 2, 2});
+  decision = evaluatePlannerGridReadiness(result);
+  EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kMissingGrid);
+  EXPECT_FALSE(decision.ready);
+
+  result.planning_grid.emplace(GridBounds{0.0, 0.0, 1.0, 2, 2});
+  decision = evaluatePlannerGridReadiness(result);
+  EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kReady);
+  EXPECT_TRUE(decision.ready);
 }
 
 TEST(PlannerRuntimeState, MapsStablePathReasonsToRuntimeActions) {

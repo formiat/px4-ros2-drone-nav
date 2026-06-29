@@ -13,6 +13,7 @@ namespace {
   PlanningGridBuilderConfig config{};
   config.fallback_bounds = testBounds();
   config.inflation_radius_m = 1.1;
+  config.planning_clearance_m = 1.0;
   return config;
 }
 
@@ -29,11 +30,16 @@ TEST(PlanningGridBuilder, StaticOnlyBuildsInflatedGrid) {
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   ASSERT_TRUE(result.grid.has_value());
+  ASSERT_TRUE(result.planning_grid.has_value());
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const OccupancyGrid2D& grid = result.grid.value();
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
+  const OccupancyGrid2D& planning_grid = result.planning_grid.value();
   EXPECT_TRUE(result.static_source.used);
   EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
   EXPECT_TRUE(grid.isInflated(GridIndex{4, 3}));
+  EXPECT_TRUE(planning_grid.isInflated(GridIndex{5, 3}));
+  EXPECT_FALSE(grid.isInflated(GridIndex{5, 3}));
 }
 
 TEST(PlanningGridBuilder, MemoryGeometryMismatchIsReportedAndSkipped) {
@@ -69,6 +75,7 @@ TEST(PlanningGridBuilder, NoReadySourceDataReturnsHoldStatus) {
 
   EXPECT_EQ(result.status, PlanningGridStatus::kNoReadySourceData);
   EXPECT_FALSE(result.grid.has_value());
+  EXPECT_FALSE(result.planning_grid.has_value());
 }
 
 TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {

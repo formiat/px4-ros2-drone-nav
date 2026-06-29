@@ -14,7 +14,7 @@ struct CorridorConfig {
   double max_radius_m{40.0};
   double sample_step_m{1.0};
   double ray_step_m{0.0};
-  double safety_margin_m{0.5};
+  double safety_margin_m{0.0};
   double center_recovery_max_m{3.0};
   double lateral_limit_window_m{20.0};
   double lateral_limit_ratio{1.25};

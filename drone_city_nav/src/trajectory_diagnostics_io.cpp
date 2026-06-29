@@ -251,8 +251,6 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.min_edge_margin_m);
   appendJsonNumber(stream, "racing_mean_edge_margin_m",
                    stats.racing_line.mean_edge_margin_m);
-  appendJsonSize(stream, "racing_edge_margin_limited_samples",
-                 stats.racing_line.edge_margin_limited_samples);
   appendJsonNumber(stream, "racing_cost_length", stats.racing_line.cost_length);
   appendJsonNumber(stream, "racing_cost_time", stats.racing_line.cost_time);
   appendJsonNumber(stream, "racing_cost_curvature", stats.racing_line.cost_curvature);
@@ -264,8 +262,6 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.cost_offset_change);
   appendJsonNumber(stream, "racing_cost_offset_second_change",
                    stats.racing_line.cost_offset_second_change);
-  appendJsonNumber(stream, "racing_cost_edge_margin",
-                   stats.racing_line.cost_edge_margin);
   appendJsonNumber(stream, "racing_cost_collision", stats.racing_line.cost_collision);
   appendJsonNumber(stream, "racing_cost_outside_grid",
                    stats.racing_line.cost_outside_grid);
@@ -551,7 +547,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "racing_cost_offset_change", racing.cost_offset_change);
   parseJsonDouble(json, "racing_cost_offset_second_change",
                   racing.cost_offset_second_change);
-  parseJsonDouble(json, "racing_cost_edge_margin", racing.cost_edge_margin);
   parseJsonDouble(json, "racing_cost_collision", racing.cost_collision);
   parseJsonDouble(json, "racing_cost_outside_grid", racing.cost_outside_grid);
   parseJsonDouble(json, "racing_cost_length_overrun", racing.cost_length_overrun);
@@ -605,8 +600,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
   parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);
-  parseJsonSize(json, "racing_edge_margin_limited_samples",
-                racing.edge_margin_limited_samples);
 
   TurnSmoothingStats& turn_smoothing = envelope.stats.turn_smoothing;
   parseJsonSize(json, "turn_smoothing_input_samples", turn_smoothing.input_samples);

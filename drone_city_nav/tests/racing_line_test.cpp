@@ -250,13 +250,11 @@ TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {
   EXPECT_GE(result.stats.regularization_duration_ms, 0.0);
 }
 
-TEST(RacingLine, ReportsTimeFirstCostBreakdownAndEdgeMargins) {
+TEST(RacingLine, ReportsTimeFirstCostBreakdownAndEdgeMarginDiagnostics) {
   const OccupancyGrid2D grid = openGrid();
   RacingLineConfig config = testConfig();
   config.weight_length = 0.02;
   config.weight_time = 50.0;
-  config.weight_edge_margin = 80.0;
-  config.desired_edge_margin_m = 2.0;
 
   const RacingLineResult result =
       optimizeRacingLine(wideLeftTurnCorridor(), grid, config, speedConfig());
@@ -267,7 +265,6 @@ TEST(RacingLine, ReportsTimeFirstCostBreakdownAndEdgeMargins) {
   EXPECT_TRUE(std::isfinite(result.stats.cost_time));
   EXPECT_TRUE(std::isfinite(result.stats.cost_curvature));
   EXPECT_TRUE(std::isfinite(result.stats.cost_heading_jump));
-  EXPECT_TRUE(std::isfinite(result.stats.cost_edge_margin));
   EXPECT_TRUE(std::isfinite(result.stats.min_edge_margin_m));
   EXPECT_TRUE(std::isfinite(result.stats.mean_edge_margin_m));
   EXPECT_GT(result.stats.cost_time, result.stats.cost_length);

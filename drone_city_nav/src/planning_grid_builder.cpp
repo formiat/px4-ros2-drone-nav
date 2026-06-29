@@ -1,8 +1,16 @@
 #include "drone_city_nav/planning_grid_builder.hpp"
 
+#include <cmath>
 #include <utility>
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] double sanitizedNonNegative(const double value) noexcept {
+  return std::isfinite(value) && value > 0.0 ? value : 0.0;
+}
+
+} // namespace
 
 const char* planningGridStatusName(const PlanningGridStatus status) noexcept {
   switch (status) {
@@ -58,10 +66,10 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
     return result;
   }
 
-  OccupancyGrid2D planning_grid{*bounds};
+  OccupancyGrid2D raw_grid{*bounds};
   if (config.use_static_map && sources.static_grid != nullptr) {
     const GridOverlayStats static_overlay =
-        overlayOccupiedCells(planning_grid, *sources.static_grid);
+        overlayOccupiedCells(raw_grid, *sources.static_grid);
     result.static_source.occupied_cells = static_overlay.source_occupied_cells;
     result.static_source.used = true;
   }
@@ -69,10 +77,9 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
   if (sources.memory_grid != nullptr) {
     result.memory.source_counts = collectGridStats(*sources.memory_grid);
     result.memory.geometry_matches =
-        haveSameGridGeometry(planning_grid, *sources.memory_grid);
+        haveSameGridGeometry(raw_grid, *sources.memory_grid);
     if (result.memory.geometry_matches) {
-      result.memory.overlay =
-          overlayKnownMemoryCells(planning_grid, *sources.memory_grid);
+      result.memory.overlay = overlayKnownMemoryCells(raw_grid, *sources.memory_grid);
       result.memory.used = true;
     }
   }
@@ -80,9 +87,9 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
   bool current_lidar_applied = false;
   if (sources.current_lidar_grid != nullptr && result.current_lidar.fresh &&
       result.current_lidar.used &&
-      haveSameGridGeometry(planning_grid, *sources.current_lidar_grid)) {
+      haveSameGridGeometry(raw_grid, *sources.current_lidar_grid)) {
     const GridOverlayStats current_overlay =
-        overlayCurrentLidarCells(planning_grid, *sources.current_lidar_grid);
+        overlayCurrentLidarCells(raw_grid, *sources.current_lidar_grid);
     result.current_lidar.occupied_cells = current_overlay.occupied_cells_applied +
                                           current_overlay.occupied_cells_preserved;
     result.current_lidar.overlay_occupied_cells_applied =
@@ -101,9 +108,18 @@ PlanningGridBuildResult buildPlanningGrid(const PlanningGridBuilderConfig& confi
     return result;
   }
 
-  planning_grid.rebuildInflation(config.inflation_radius_m);
+  const double inflation_radius_m = sanitizedNonNegative(config.inflation_radius_m);
+  const double planning_clearance_m = sanitizedNonNegative(config.planning_clearance_m);
+
+  OccupancyGrid2D prohibited_grid = raw_grid;
+  prohibited_grid.rebuildInflation(inflation_radius_m);
+
+  OccupancyGrid2D planning_grid = raw_grid;
+  planning_grid.rebuildInflation(inflation_radius_m + planning_clearance_m);
+
   result.status = PlanningGridStatus::kReady;
-  result.grid = std::move(planning_grid);
+  result.grid = std::move(prohibited_grid);
+  result.planning_grid = std::move(planning_grid);
   return result;
 }
 

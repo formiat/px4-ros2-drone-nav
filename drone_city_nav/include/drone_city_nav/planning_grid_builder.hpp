@@ -37,7 +37,8 @@ struct MemorySourceStats {
 struct PlanningGridBuilderConfig {
   bool use_static_map{true};
   GridBounds fallback_bounds{};
-  double inflation_radius_m{0.0};
+  double inflation_radius_m{2.0};
+  double planning_clearance_m{1.0};
 };
 
 struct PlanningGridSources {
@@ -53,6 +54,7 @@ struct PlanningGridSources {
 struct PlanningGridBuildResult {
   PlanningGridStatus status{PlanningGridStatus::kNoReadySourceData};
   std::optional<OccupancyGrid2D> grid;
+  std::optional<OccupancyGrid2D> planning_grid;
   std::optional<OccupancyGrid2D> current_lidar_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};

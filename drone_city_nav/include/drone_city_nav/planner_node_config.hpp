@@ -57,7 +57,8 @@ struct PlannerNodeConfig {
   Point2 start{};
   Point2 goal{85.0, 0.0};
   double cruise_altitude_m{12.0};
-  double inflation_radius_m{2.5};
+  double inflation_radius_m{2.0};
+  double planning_clearance_m{1.0};
 
   PlannerCoreConfig planner_core{};
   TrajectoryPlannerConfig trajectory_planner{};

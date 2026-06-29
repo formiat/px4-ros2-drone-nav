@@ -42,7 +42,6 @@ struct CostBreakdown {
   double heading_jump_cost{0.0};
   double offset_change_cost{0.0};
   double offset_second_change_cost{0.0};
-  double edge_margin_cost{0.0};
   double collision_cost{0.0};
   double outside_grid_cost{0.0};
   double length_overrun_cost{0.0};
@@ -50,7 +49,7 @@ struct CostBreakdown {
   [[nodiscard]] double total() const noexcept {
     return length_cost + time_cost + curvature_cost + curvature_change_cost +
            heading_jump_cost + offset_change_cost + offset_second_change_cost +
-           edge_margin_cost + collision_cost + outside_grid_cost + length_overrun_cost;
+           collision_cost + outside_grid_cost + length_overrun_cost;
   }
 };
 
@@ -303,26 +302,6 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
   return std::min(sample.left_bound_m - offset_m, sample.right_bound_m + offset_m);
 }
 
-[[nodiscard]] double turnSeverity(const double curvature_1pm) noexcept {
-  constexpr double kCurvatureScale = 0.05;
-  const double abs_curvature = std::abs(curvature_1pm);
-  if (!(abs_curvature > 0.0) || !std::isfinite(abs_curvature)) {
-    return 0.0;
-  }
-  return abs_curvature / (abs_curvature + kCurvatureScale);
-}
-
-[[nodiscard]] double effectiveDesiredEdgeMarginM(const CorridorSample& sample,
-                                                 const RacingLineConfig& config) {
-  const double desired_margin =
-      sanitizedPositive(config.desired_edge_margin_m, 0.0, 0.0, 1000.0);
-  const double corridor_width = sample.left_bound_m + sample.right_bound_m;
-  if (!(desired_margin > 0.0) || !(corridor_width > 0.0)) {
-    return 0.0;
-  }
-  return std::min(desired_margin, 0.45 * corridor_width);
-}
-
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
 
 [[nodiscard]] PathEvaluation evaluatePath(const OccupancyGrid2D& grid,
@@ -354,8 +333,7 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
 }
 
 [[nodiscard]] CostBreakdown
-costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
-                       const std::span<const Point2> points,
+costBreakdownForPoints(const std::span<const Point2> points,
                        const std::span<const double> offsets,
                        const RacingLineConfig& config) {
   CostBreakdown breakdown{};
@@ -374,8 +352,6 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
       sanitizedPositive(config.weight_offset_second_change, 5.0, 0.0, 1.0e9);
-  const double weight_edge_margin =
-      sanitizedPositive(config.weight_edge_margin, 80.0, 0.0, 1.0e9);
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
@@ -395,16 +371,6 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
     const double curvature =
         discreteCurvature(points[i - 1U], points[i], points[i + 1U]);
     curvature_cost += curvature * curvature;
-    if (i < corridor_samples.size() && i < offsets.size()) {
-      const double desired_margin =
-          effectiveDesiredEdgeMarginM(corridor_samples[i], config);
-      const double margin = edgeMarginM(corridor_samples[i], offsets[i]);
-      const double deficit = desired_margin - margin;
-      if (deficit > 0.0) {
-        breakdown.edge_margin_cost +=
-            turnSeverity(curvature) * deficit * deficit * weight_edge_margin;
-      }
-    }
     if (previous_curvature_valid) {
       const double change = curvature - previous_curvature;
       curvature_change_cost += change * change;
@@ -429,7 +395,7 @@ costBreakdownForPoints(const std::span<const CorridorSample> corridor_samples,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats) {
   CandidateScore result{};
-  result.breakdown = costBreakdownForPoints(corridor_samples, points, offsets, config);
+  result.breakdown = costBreakdownForPoints(points, offsets, config);
   result.breakdown.collision_cost =
       static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
   result.breakdown.outside_grid_cost =
@@ -534,14 +500,13 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& s
   stats.cost_heading_jump = breakdown.heading_jump_cost;
   stats.cost_offset_change = breakdown.offset_change_cost;
   stats.cost_offset_second_change = breakdown.offset_second_change_cost;
-  stats.cost_edge_margin = breakdown.edge_margin_cost;
   stats.cost_collision = breakdown.collision_cost;
   stats.cost_outside_grid = breakdown.outside_grid_cost;
   stats.cost_length_overrun = breakdown.length_overrun_cost;
 }
 
 void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
-                           const RacingLineConfig& config, RacingLineStats& stats) {
+                           RacingLineStats& stats) {
   double margin_sum = 0.0;
   std::size_t margin_count = 0U;
   for (const TrajectoryPointSample& sample : samples) {
@@ -559,11 +524,6 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     }
     margin_sum += margin;
     ++margin_count;
-
-    const double desired_margin = effectiveDesiredEdgeMarginM(bounds, config);
-    if (turnSeverity(sample.curvature_1pm) > 1.0e-3 && desired_margin - margin > 0.0) {
-      ++stats.edge_margin_limited_samples;
-    }
   }
   if (margin_count > 0U) {
     stats.mean_edge_margin_m = margin_sum / static_cast<double>(margin_count);
@@ -910,7 +870,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         result.stats.estimated_time_s - result.stats.best_candidate_estimated_time_s;
   }
   updateCurvatureStats(result.samples, result.stats);
-  updateEdgeMarginStats(result.samples, config, result.stats);
+  updateEdgeMarginStats(result.samples, result.stats);
   result.valid = trajectorySamplesAreUsable(result.samples);
   return result;
 }

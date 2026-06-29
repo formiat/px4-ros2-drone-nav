@@ -97,7 +97,7 @@ recoverCorridorCenter(const OccupancyGrid2D& grid, const Point2 center,
                                   CorridorStats& stats) {
   const double max_radius = sanitizedPositive(config.max_radius_m, 40.0, 0.1, 5000.0);
   const double safety_margin =
-      sanitizedPositive(config.safety_margin_m, 0.5, 0.0, max_radius);
+      sanitizedPositive(config.safety_margin_m, 0.0, 0.0, max_radius);
   const double ray_step = corridorRayStep(grid, config, max_radius);
 
   double last_clear_distance = 0.0;

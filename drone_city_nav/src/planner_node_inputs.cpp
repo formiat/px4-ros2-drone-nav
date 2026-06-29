@@ -205,6 +205,7 @@ void PlannerNode::loadConfiguredStaticMap() {
   config.use_static_map = use_static_map_;
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
+  config.planning_clearance_m = planning_clearance_m_;
   return config;
 }
 
@@ -319,25 +320,38 @@ void PlannerNode::checkCurrentPathAndPublish() {
                          "result; keeping the last published path");
     return;
   }
-  OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
-  publishProhibitedGrid(planning_grid);
-  if (keepCurrentPathIfStillClear(planning_grid, *planning_result)) {
+  if (!planning_result->planning_grid.has_value()) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Planner grid builder returned no planning-clearance grid despite a ready "
+        "result; keeping the last published path");
+    return;
+  }
+  OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
+  OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
+  publishProhibitedGrid(prohibited_grid);
+  if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
     return;
   }
 
   const AStarConfig planning_astar_config = astarConfigForCurrentVelocity();
   auto path_result =
-      computePathOnGrid(planning_grid, "combined", planning_astar_config);
+      computePathOnGrid(planning_grid, "planning_clearance", planning_astar_config);
   if (!path_result.has_value()) {
     publishPlanningFailureHold();
     return;
   }
+  const GridStats prohibited_grid_stats = collectGridStats(prohibited_grid);
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
       "distance_to_goal=%.2f raw_static=%zu raw_memory=%zu "
-      "raw_current_lidar=%zu prohibited=%zu occupied=%zu inflated=%zu free=%zu "
-      "unknown=%zu inflation_owner=planner inflation_radius_m=%.2f "
+      "raw_current_lidar=%zu "
+      "runtime_prohibited[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
+      "unknown=%zu inflation_radius_m=%.2f] "
+      "planning_grid[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
+      "unknown=%zu planning_clearance_m=%.2f effective_inflation_m=%.2f] "
+      "inflation_owner=planner "
       "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
       "path='%s'] "
       "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
@@ -345,14 +359,14 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
       "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
       "overlay_preserved=%zu outside=%zu] "
-      "source=combined astar_status=%s heuristic_weight=%.2f expanded=%zu "
+      "source=planning_clearance astar_status=%s heuristic_weight=%.2f expanded=%zu "
       "cost=%.2f raw_path=%zu smoothed_path=%zu "
       "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
       "weight=%.2f velocity=(%.2f, %.2f)] "
       "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
       "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
       "smoothed_turns=%zu smoothed_length=%.2f] "
-      "path_clearance[raw=%.2f smoothed=%.2f] "
+      "planning_path_clearance[raw=%.2f smoothed=%.2f] "
       "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f "
       "core_breakdown[grid_stats=%.1f raw_metrics=%.1f smoothed_metrics=%.1f "
       "clearance_field=%.1f clearance_cache_hit=%s raw_clearance=%.1f "
@@ -362,10 +376,15 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->static_source.occupied_cells,
       planning_result->memory.source_counts.occupied_cells,
       planning_result->current_lidar.occupied_cells,
+      prohibited_grid_stats.occupied_cells + prohibited_grid_stats.inflated_cells,
+      prohibited_grid_stats.occupied_cells, prohibited_grid_stats.inflated_cells,
+      prohibited_grid_stats.free_cells, prohibited_grid_stats.unknown_cells,
+      inflation_radius_m_,
       path_result->grid_stats.occupied_cells + path_result->grid_stats.inflated_cells,
       path_result->grid_stats.occupied_cells, path_result->grid_stats.inflated_cells,
       path_result->grid_stats.free_cells, path_result->grid_stats.unknown_cells,
-      inflation_radius_m_, planning_result->static_source.enabled ? "true" : "false",
+      planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
+      planning_result->static_source.enabled ? "true" : "false",
       planning_result->static_source.loaded ? "true" : "false",
       planning_result->static_source.used ? "true" : "false",
       planning_result->static_source.rectangles,
@@ -455,7 +474,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
                 path_result->astar.path.size());
   }
   publishPathFromPathCells(planning_grid, path_result->astar.path,
-                           path_result->smoothed_cells, "combined");
+                           path_result->smoothed_cells, "planning_clearance");
 }
 
 [[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity() const {

@@ -30,10 +30,10 @@ evaluatePlannerGridReadiness(const PlanningGridBuildResult& result) noexcept {
       result.memory.seen && !result.memory.geometry_matches;
   switch (result.status) {
     case PlanningGridStatus::kReady:
-      decision.reason = result.grid.has_value()
+      decision.reason = result.grid.has_value() && result.planning_grid.has_value()
                             ? PlannerGridReadinessReason::kReady
                             : PlannerGridReadinessReason::kMissingGrid;
-      decision.ready = result.grid.has_value();
+      decision.ready = result.grid.has_value() && result.planning_grid.has_value();
       return decision;
     case PlanningGridStatus::kStaticMapEnabledButMissing:
       decision.reason = PlannerGridReadinessReason::kStaticMapMissing;

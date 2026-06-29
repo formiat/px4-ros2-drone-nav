@@ -23,7 +23,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.goal = Point2{node.declare_parameter<double>("goal_x_m", 85.0),
                        node.declare_parameter<double>("goal_y_m", 0.0)};
   config.cruise_altitude_m = node.declare_parameter<double>("cruise_altitude_m", 12.0);
-  config.inflation_radius_m = node.declare_parameter<double>("inflation_radius_m", 2.5);
+  config.inflation_radius_m = std::clamp(
+      node.declare_parameter<double>("inflation_radius_m", 2.0), 0.0, 1000.0);
+  config.planning_clearance_m = std::clamp(
+      node.declare_parameter<double>("planning_clearance_m", 1.0), 0.0, 1000.0);
 
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
@@ -162,7 +165,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.corridor.ray_step_m =
       std::clamp(node.declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
   config.trajectory_planner.corridor.safety_margin_m = std::clamp(
-      node.declare_parameter<double>("corridor_safety_margin_m", 0.5), 0.0, 100.0);
+      node.declare_parameter<double>("corridor_safety_margin_m", 0.0), 0.0, 100.0);
   config.trajectory_planner.corridor.center_recovery_max_m =
       std::clamp(node.declare_parameter<double>("corridor_center_recovery_max_m", 3.0),
                  0.0, 5000.0);
@@ -205,12 +208,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       0.0, 1.0e9);
   config.trajectory_planner.racing_line.weight_time = std::clamp(
       node.declare_parameter<double>("racing_line_weight_time", 50.0), 0.0, 1.0e9);
-  config.trajectory_planner.racing_line.weight_edge_margin =
-      std::clamp(node.declare_parameter<double>("racing_line_weight_edge_margin", 80.0),
-                 0.0, 1.0e9);
-  config.trajectory_planner.racing_line.desired_edge_margin_m = std::clamp(
-      node.declare_parameter<double>("racing_line_desired_edge_margin_m", 6.0), 0.0,
-      1000.0);
   config.trajectory_planner.racing_line.max_length_ratio = std::clamp(
       node.declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
   config.trajectory_planner.racing_line.regularization_iterations =
@@ -253,7 +250,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                               "turn_smoothing_max_outer_shift_m", 12.0),
                           0.0, 5000.0));
   config.trajectory_planner.turn_smoothing.min_corridor_margin_m = std::clamp(
-      node.declare_parameter<double>("turn_smoothing_min_corridor_margin_m", 0.5), 0.0,
+      node.declare_parameter<double>("turn_smoothing_min_corridor_margin_m", 0.0), 0.0,
       1000.0);
   config.trajectory_planner.turn_smoothing.max_length_ratio = std::clamp(
       node.declare_parameter<double>("turn_smoothing_max_length_ratio", 1.25), 1.0,
@@ -310,6 +307,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);
   config.planning_grid_builder.inflation_radius_m = config.inflation_radius_m;
+  config.planning_grid_builder.planning_clearance_m = config.planning_clearance_m;
 
   return config;
 }

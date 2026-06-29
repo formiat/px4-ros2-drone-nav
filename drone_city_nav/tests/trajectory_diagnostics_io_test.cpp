@@ -45,7 +45,6 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.max_abs_offset_m = 3.0;
   stats.racing_line.min_edge_margin_m = 2.5;
   stats.racing_line.mean_edge_margin_m = 4.5;
-  stats.racing_line.edge_margin_limited_samples = 6U;
   stats.racing_line.candidate_path_evaluation_duration_ms = 7.25;
   stats.racing_line.candidate_score_duration_ms = 8.5;
   stats.racing_line.candidate_point_build_duration_ms = 1.25;
@@ -60,7 +59,6 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.cost_heading_jump = 5.5;
   stats.racing_line.cost_offset_change = 1.0;
   stats.racing_line.cost_offset_second_change = 4.0;
-  stats.racing_line.cost_edge_margin = 7.0;
   stats.racing_line.cost_collision = 0.0;
   stats.racing_line.cost_outside_grid = 0.0;
   stats.racing_line.cost_length_overrun = 0.0;
@@ -171,7 +169,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_centerline_length_m\":100"), std::string::npos);
   EXPECT_NE(json.find("\"racing_final_length_ratio\":1.08"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_time\":625"), std::string::npos);
-  EXPECT_NE(json.find("\"racing_cost_edge_margin\":7"), std::string::npos);
   EXPECT_NE(json.find("\"racing_cost_heading_jump\":5.5"), std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_point_build_duration_ms\":1.25"),
             std::string::npos);
@@ -209,7 +206,6 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_max_abs_offset_m\"",
                         "\"racing_min_edge_margin_m\"",
                         "\"racing_mean_edge_margin_m\"",
-                        "\"racing_edge_margin_limited_samples\"",
                         "\"racing_cost_length\"",
                         "\"racing_cost_time\"",
                         "\"racing_cost_curvature\"",
@@ -217,7 +213,6 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_cost_heading_jump\"",
                         "\"racing_cost_offset_change\"",
                         "\"racing_cost_offset_second_change\"",
-                        "\"racing_cost_edge_margin\"",
                         "\"racing_cost_collision\"",
                         "\"racing_cost_outside_grid\"",
                         "\"racing_cost_length_overrun\"",
