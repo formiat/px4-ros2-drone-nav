@@ -1,6 +1,97 @@
+#include <array>
+
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+struct RawSourceProbe {
+  const char* name{""};
+  const OccupancyGrid2D* grid{nullptr};
+};
+
+struct NearestRawSource {
+  const char* name{""};
+  GridIndex cell{};
+  Point2 center{};
+  double distance_m{std::numeric_limits<double>::infinity()};
+};
+
+[[nodiscard]] bool sourceGridMatches(const OccupancyGrid2D& planning_grid,
+                                     const OccupancyGrid2D* const source_grid) {
+  return source_grid != nullptr && haveSameGridGeometry(planning_grid, *source_grid);
+}
+
+[[nodiscard]] std::string joinSourceNames(const std::vector<const char*>& names) {
+  if (names.empty()) {
+    return "none";
+  }
+
+  std::ostringstream stream;
+  for (std::size_t index = 0U; index < names.size(); ++index) {
+    if (index > 0U) {
+      stream << ",";
+    }
+    stream << names[index];
+  }
+  return stream.str();
+}
+
+[[nodiscard]] std::vector<const char*>
+exactRawSources(const std::array<RawSourceProbe, 3U>& sources,
+                const OccupancyGrid2D& planning_grid, const GridIndex cell) {
+  std::vector<const char*> exact_sources;
+  for (const RawSourceProbe& source : sources) {
+    if (!sourceGridMatches(planning_grid, source.grid) ||
+        !source.grid->isOccupied(cell)) {
+      continue;
+    }
+    exact_sources.push_back(source.name);
+  }
+  return exact_sources;
+}
+
+[[nodiscard]] std::optional<NearestRawSource>
+nearestRawSource(const std::array<RawSourceProbe, 3U>& sources,
+                 const OccupancyGrid2D& planning_grid, const GridIndex query_cell,
+                 const double search_radius_m) {
+  if (!(planning_grid.resolution() > 0.0) || !(search_radius_m >= 0.0)) {
+    return std::nullopt;
+  }
+
+  const Point2 query_center = planning_grid.cellCenter(query_cell);
+  const int radius_cells =
+      static_cast<int>(std::ceil(search_radius_m / planning_grid.resolution()));
+  const double search_radius_sq = search_radius_m * search_radius_m;
+  std::optional<NearestRawSource> nearest;
+  for (const RawSourceProbe& source : sources) {
+    if (!sourceGridMatches(planning_grid, source.grid)) {
+      continue;
+    }
+    for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+      for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+        const GridIndex candidate{query_cell.x + dx, query_cell.y + dy};
+        if (!planning_grid.contains(candidate) || !source.grid->isOccupied(candidate)) {
+          continue;
+        }
+        const Point2 candidate_center = planning_grid.cellCenter(candidate);
+        const double distance_sq = squaredDistance(query_center, candidate_center);
+        if (distance_sq > search_radius_sq) {
+          continue;
+        }
+        const double distance_m = std::sqrt(distance_sq);
+        if (!nearest.has_value() || distance_m < nearest->distance_m) {
+          nearest =
+              NearestRawSource{source.name, candidate, candidate_center, distance_m};
+        }
+      }
+    }
+  }
+
+  return nearest;
+}
+
+} // namespace
 
 void PlannerNode::invalidateCurrentPose() {
   current_pose_ = Pose2{};
@@ -19,7 +110,46 @@ void PlannerNode::invalidateCurrentPose() {
   return ageSecondsFromStamp(last_scan_update_ns_, now_ns);
 }
 
-bool PlannerNode::keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
+std::string PlannerNode::describeProhibitedIntersectionSource(
+    const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
+    const PlanningGridBuildResult& planning_result) const {
+  const std::array<RawSourceProbe, 3U> sources{
+      RawSourceProbe{"static", static_grid_ ? &*static_grid_ : nullptr},
+      RawSourceProbe{"memory", memory_grid_ ? &*memory_grid_ : nullptr},
+      RawSourceProbe{"current_lidar", planning_result.current_lidar_grid
+                                          ? &*planning_result.current_lidar_grid
+                                          : nullptr}};
+
+  const std::vector<const char*> exact_sources =
+      exactRawSources(sources, grid, intersection.cell);
+  const double search_radius_m = inflation_radius_m_ + std::max(0.0, grid.resolution());
+  const std::optional<NearestRawSource> nearest_source =
+      nearestRawSource(sources, grid, intersection.cell, search_radius_m);
+
+  std::ostringstream stream;
+  stream << "raw_sources[exact=" << joinSourceNames(exact_sources);
+  if (nearest_source.has_value()) {
+    stream << " nearest=" << nearest_source->name
+           << " nearest_distance=" << nearest_source->distance_m << "m"
+           << " nearest_cell=(" << nearest_source->cell.x << ", "
+           << nearest_source->cell.y << ")" << " nearest_center=("
+           << nearest_source->center.x << ", " << nearest_source->center.y << ")";
+  } else {
+    stream << " nearest=none nearest_distance=nanm nearest_cell=(-1, -1)"
+           << " nearest_center=(nan, nan)";
+  }
+  stream << " search_radius=" << search_radius_m << "m"
+         << " static_used=" << (planning_result.static_source.used ? "true" : "false")
+         << " memory_used=" << (planning_result.memory.used ? "true" : "false")
+         << " current_lidar_used="
+         << (planning_result.current_lidar.used ? "true" : "false")
+         << " current_lidar_fresh="
+         << (planning_result.current_lidar.fresh ? "true" : "false") << "]";
+  return stream.str();
+}
+
+bool PlannerNode::keepCurrentPathIfStillClear(
+    const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result) {
   if (last_valid_path_points_.size() < 2U) {
     return false;
   }
@@ -51,15 +181,35 @@ bool PlannerNode::keepCurrentPathIfStillClear(const OccupancyGrid2D& grid) {
         decision.prohibited_segment_index + 1U < decision.remaining_path.size()
             ? decision.remaining_path[decision.prohibited_segment_index + 1U]
             : Point2{};
+    const PathProhibitedIntersection intersection =
+        decision.prohibited_intersection.value_or(PathProhibitedIntersection{});
+    const std::string source_diagnostic =
+        decision.prohibited_intersection.has_value()
+            ? describeProhibitedIntersectionSource(grid, intersection, planning_result)
+            : std::string{"raw_sources[exact=unknown nearest=unknown "
+                          "nearest_distance=nanm nearest_cell=(-1, -1) "
+                          "nearest_center=(nan, nan) search_radius=nanm]"};
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
         "Current path intersects newly available prohibited obstacle data; "
         "running A* from current pose: reason=%s "
         "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-        "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f)",
+        "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
+        "blocker[cell=(%d, %d) center=(%.2f, %.2f) occupied=%s inflated=%s "
+        "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
+        "path_distance=%.2fm segment_start_prohibited=%s "
+        "segment_end_prohibited=%s] %s",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
         decision.deviation_m, decision.prohibited_segment_index, prohibited_start.x,
-        prohibited_start.y, prohibited_end.x, prohibited_end.y);
+        prohibited_start.y, prohibited_end.x, prohibited_end.y, intersection.cell.x,
+        intersection.cell.y, intersection.cell_center.x, intersection.cell_center.y,
+        intersection.occupied ? "true" : "false",
+        intersection.inflated ? "true" : "false", intersection.line_cell_index,
+        intersection.line_cell_count, intersection.segment_t,
+        intersection.segment_distance_m, intersection.path_distance_m,
+        intersection.segment_start_prohibited ? "true" : "false",
+        intersection.segment_end_prohibited ? "true" : "false",
+        source_diagnostic.c_str());
     return false;
   }
 

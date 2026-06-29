@@ -256,6 +256,99 @@ bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
   return escaped_prohibited_prefix;
 }
 
+[[nodiscard]] double segmentProjectionT(const Point2 start, const Point2 end,
+                                        const Point2 point) noexcept {
+  const double segment_x = end.x - start.x;
+  const double segment_y = end.y - start.y;
+  const double segment_length_sq = segment_x * segment_x + segment_y * segment_y;
+  if (!(segment_length_sq > kTinyDistanceSqM)) {
+    return 0.0;
+  }
+  const double offset_x = point.x - start.x;
+  const double offset_y = point.y - start.y;
+  const double projection =
+      (offset_x * segment_x + offset_y * segment_y) / segment_length_sq;
+  return std::clamp(projection, 0.0, 1.0);
+}
+
+[[nodiscard]] PathProhibitedIntersection makePathProhibitedIntersection(
+    const OccupancyGrid2D& grid, const std::size_t segment_index,
+    const Point2 segment_start, const Point2 segment_end,
+    const double path_distance_before_segment_m,
+    const std::vector<GridIndex>& line_cells, const std::size_t line_cell_index) {
+  const GridIndex cell = line_cells[line_cell_index];
+  const Point2 cell_center = grid.cellCenter(cell);
+  const double segment_t = segmentProjectionT(segment_start, segment_end, cell_center);
+  const double segment_length_m = distance(segment_start, segment_end);
+
+  PathProhibitedIntersection intersection{};
+  intersection.segment_index = segment_index;
+  intersection.line_cell_index = line_cell_index;
+  intersection.line_cell_count = line_cells.size();
+  intersection.cell = cell;
+  intersection.cell_center = cell_center;
+  intersection.segment_t = segment_t;
+  intersection.segment_distance_m = segment_t * segment_length_m;
+  intersection.path_distance_m =
+      path_distance_before_segment_m + intersection.segment_distance_m;
+  intersection.occupied = grid.isOccupied(cell);
+  intersection.inflated = grid.isInflated(cell);
+  intersection.segment_start_prohibited = grid.isProhibited(line_cells.front());
+  intersection.segment_end_prohibited = grid.isProhibited(line_cells.back());
+  return intersection;
+}
+
+[[nodiscard]] std::optional<PathProhibitedIntersection>
+pathSegmentProhibitedIntersection(const OccupancyGrid2D& grid,
+                                  const Point2 segment_start, const Point2 segment_end,
+                                  const std::size_t segment_index,
+                                  const double path_distance_before_segment_m) {
+  const auto start_cell = grid.worldToCell(segment_start);
+  const auto end_cell = grid.worldToCell(segment_end);
+  if (!start_cell.has_value() || !end_cell.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::vector<GridIndex> line_cells = grid.cellsOnLine(*start_cell, *end_cell);
+  if (line_cells.empty()) {
+    return std::nullopt;
+  }
+
+  const bool starts_prohibited = grid.isProhibited(line_cells.front());
+  if (!starts_prohibited) {
+    for (std::size_t index = 0U; index < line_cells.size(); ++index) {
+      if (grid.isProhibited(line_cells[index])) {
+        return makePathProhibitedIntersection(
+            grid, segment_index, segment_start, segment_end,
+            path_distance_before_segment_m, line_cells, index);
+      }
+    }
+    return std::nullopt;
+  }
+
+  if (grid.isProhibited(line_cells.back())) {
+    return makePathProhibitedIntersection(grid, segment_index, segment_start,
+                                          segment_end, path_distance_before_segment_m,
+                                          line_cells, line_cells.size() - 1U);
+  }
+
+  bool escaped_prohibited_prefix = false;
+  for (std::size_t index = 0U; index < line_cells.size(); ++index) {
+    const bool prohibited = grid.isProhibited(line_cells[index]);
+    if (!prohibited) {
+      escaped_prohibited_prefix = true;
+      continue;
+    }
+    if (escaped_prohibited_prefix) {
+      return makePathProhibitedIntersection(grid, segment_index, segment_start,
+                                            segment_end, path_distance_before_segment_m,
+                                            line_cells, index);
+    }
+  }
+
+  return std::nullopt;
+}
+
 std::optional<GridIndex> nearestAllowedEscapeStartCell(
     const OccupancyGrid2D& grid, const GridIndex prohibited_start_cell,
     const Point2 current_position, const double max_search_radius_m) {
@@ -401,6 +494,28 @@ bool pathIsTraversable(const OccupancyGrid2D& grid,
   return true;
 }
 
+std::optional<PathProhibitedIntersection>
+firstPathProhibitedIntersection(const OccupancyGrid2D& grid,
+                                const std::span<const Point2> path_points) {
+  if (path_points.size() < 2U) {
+    return std::nullopt;
+  }
+
+  double path_distance_m = 0.0;
+  for (std::size_t index = 1U; index < path_points.size(); ++index) {
+    const Point2 segment_start = path_points[index - 1U];
+    const Point2 segment_end = path_points[index];
+    const auto intersection = pathSegmentProhibitedIntersection(
+        grid, segment_start, segment_end, index - 1U, path_distance_m);
+    if (intersection.has_value()) {
+      return intersection;
+    }
+    path_distance_m += distance(segment_start, segment_end);
+  }
+
+  return std::nullopt;
+}
+
 PlannerCore::PlannerCore(const PlannerCoreConfig& config)
     : config_{config} {
 }
@@ -534,6 +649,11 @@ StablePathDecision PlannerCore::evaluateStablePath(
     return decision;
   }
 
+  decision.prohibited_intersection =
+      firstPathProhibitedIntersection(grid, decision.remaining_path);
+  if (decision.prohibited_intersection.has_value()) {
+    decision.prohibited_segment_index = decision.prohibited_intersection->segment_index;
+  }
   decision.reason = StablePathDecisionReason::kProhibitedConfirmed;
   return decision;
 }

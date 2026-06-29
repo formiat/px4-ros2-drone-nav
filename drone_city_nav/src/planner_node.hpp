@@ -192,7 +192,12 @@ private:
 
   [[nodiscard]] double scanAgeSeconds(const std::int64_t now_ns) const;
 
-  bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid);
+  [[nodiscard]] std::string describeProhibitedIntersectionSource(
+      const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
+      const PlanningGridBuildResult& planning_result) const;
+
+  bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid,
+                                   const PlanningGridBuildResult& planning_result);
 
   void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics,
                      const PathPublicationReason reason, const std::uint64_t path_id);

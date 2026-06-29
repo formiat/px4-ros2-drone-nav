@@ -75,6 +75,21 @@ struct PathProjection2D {
   Point2 point{};
 };
 
+struct PathProhibitedIntersection {
+  std::size_t segment_index{0U};
+  std::size_t line_cell_index{0U};
+  std::size_t line_cell_count{0U};
+  GridIndex cell{};
+  Point2 cell_center{};
+  double segment_t{0.0};
+  double segment_distance_m{0.0};
+  double path_distance_m{0.0};
+  bool occupied{false};
+  bool inflated{false};
+  bool segment_start_prohibited{false};
+  bool segment_end_prohibited{false};
+};
+
 enum class StablePathDecisionReason {
   kDisabled,
   kNoPreviousPath,
@@ -91,6 +106,7 @@ struct StablePathDecision {
   double deviation_m{std::numeric_limits<double>::quiet_NaN()};
   double endpoint_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
   std::size_t prohibited_segment_index{0U};
+  std::optional<PathProhibitedIntersection> prohibited_intersection;
 };
 
 [[nodiscard]] const char*
@@ -124,6 +140,10 @@ remainingPathFromCurrentPose(std::span<const Point2> path_points,
 [[nodiscard]] bool
 pathIsTraversable(const OccupancyGrid2D& grid, std::span<const Point2> path_points,
                   std::size_t* non_traversable_segment_index = nullptr);
+
+[[nodiscard]] std::optional<PathProhibitedIntersection>
+firstPathProhibitedIntersection(const OccupancyGrid2D& grid,
+                                std::span<const Point2> path_points);
 
 class PlannerCore {
 public:

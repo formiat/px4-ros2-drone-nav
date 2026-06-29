@@ -594,6 +594,18 @@ TEST(PlannerCore, StablePathRejectsProhibitedIntersectionImmediately) {
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
   EXPECT_EQ(decision.prohibited_segment_index, 0U);
+  ASSERT_TRUE(decision.prohibited_intersection.has_value());
+  const PathProhibitedIntersection intersection =
+      decision.prohibited_intersection.value_or(PathProhibitedIntersection{});
+  EXPECT_EQ(intersection.segment_index, 0U);
+  const GridIndex expected_occupied_blocker{5, 1};
+  EXPECT_EQ(intersection.cell, expected_occupied_blocker);
+  EXPECT_TRUE(intersection.occupied);
+  EXPECT_FALSE(intersection.inflated);
+  EXPECT_NEAR(intersection.cell_center.x, 5.5, 1.0e-9);
+  EXPECT_NEAR(intersection.cell_center.y, 1.5, 1.0e-9);
+  EXPECT_NEAR(intersection.segment_t, 0.5, 1.0e-9);
+  EXPECT_NEAR(intersection.path_distance_m, 3.0, 1.0e-9);
 }
 
 TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
@@ -614,6 +626,15 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   EXPECT_FALSE(decision.keep_path);
   EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
   EXPECT_EQ(decision.prohibited_segment_index, 0U);
+  ASSERT_TRUE(decision.prohibited_intersection.has_value());
+  const PathProhibitedIntersection intersection =
+      decision.prohibited_intersection.value_or(PathProhibitedIntersection{});
+  const GridIndex expected_inflated_blocker{4, 3};
+  EXPECT_EQ(intersection.cell, expected_inflated_blocker);
+  EXPECT_FALSE(intersection.occupied);
+  EXPECT_TRUE(intersection.inflated);
+  EXPECT_NEAR(intersection.cell_center.x, 4.5, 1.0e-9);
+  EXPECT_NEAR(intersection.cell_center.y, 3.5, 1.0e-9);
 }
 
 TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {

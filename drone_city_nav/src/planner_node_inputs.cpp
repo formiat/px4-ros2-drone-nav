@@ -228,6 +228,9 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
   }
 
   PlanningGridBuildResult result = drone_city_nav::buildPlanningGrid(config, sources);
+  if (current_lidar_grid.has_value()) {
+    result.current_lidar_grid = std::move(current_lidar_grid);
+  }
   if (result.memory.enabled && !result.memory.seen) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Obstacle memory source is enabled but no grid has been "
@@ -318,7 +321,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
   }
   OccupancyGrid2D planning_grid = std::move(*planning_result->grid);
   publishProhibitedGrid(planning_grid);
-  if (keepCurrentPathIfStillClear(planning_grid)) {
+  if (keepCurrentPathIfStillClear(planning_grid, *planning_result)) {
     return;
   }
 

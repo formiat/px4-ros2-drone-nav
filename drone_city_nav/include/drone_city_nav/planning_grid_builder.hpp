@@ -53,6 +53,7 @@ struct PlanningGridSources {
 struct PlanningGridBuildResult {
   PlanningGridStatus status{PlanningGridStatus::kNoReadySourceData};
   std::optional<OccupancyGrid2D> grid;
+  std::optional<OccupancyGrid2D> current_lidar_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};
   CurrentLidarOverlayStats current_lidar{};
