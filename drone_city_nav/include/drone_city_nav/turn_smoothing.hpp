@@ -21,7 +21,6 @@ struct TurnSmoothingConfig {
   double outer_bias_ratio{0.45};
   double min_outer_shift_m{2.0};
   double max_outer_shift_m{12.0};
-  double min_corridor_margin_m{0.5};
   double max_length_ratio{1.25};
   double min_heading_improvement_rad{0.05};
   std::size_t max_passes{8U};

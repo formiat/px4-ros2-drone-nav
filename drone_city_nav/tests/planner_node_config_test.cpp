@@ -71,14 +71,12 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.safety_margin_m, 0.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 45.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.exit_distance_m, 45.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.min_corridor_margin_m, 0.0);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {

@@ -350,9 +350,7 @@ findExitIndex(const std::span<const TrajectoryPointSample> samples,
   const Point2 normal = leftNormal(sample.tangent);
   const double side = dot(outward, normal);
   const double bound = side >= 0.0 ? sample.left_bound_m : sample.right_bound_m;
-  const double margin =
-      sanitizedPositive(config.min_corridor_margin_m, 0.5, 0.0, 1000.0);
-  if (!std::isfinite(bound) || bound <= margin) {
+  if (!std::isfinite(bound) || !(bound > 0.0)) {
     return 0.0;
   }
   const double ratio = sanitizedPositive(config.outer_bias_ratio, 0.45, 0.0, 1.0);
@@ -360,7 +358,7 @@ findExitIndex(const std::span<const TrajectoryPointSample> samples,
       sanitizedPositive(config.max_outer_shift_m, 12.0, 0.0, 1000.0);
   const double min_shift =
       sanitizedPositive(config.min_outer_shift_m, 2.0, 0.0, max_shift);
-  const double available_shift = std::max(0.0, bound - margin);
+  const double available_shift = bound;
   return std::min(max_shift, std::min(available_shift,
                                       std::max(min_shift, available_shift * ratio)));
 }

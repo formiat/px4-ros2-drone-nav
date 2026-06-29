@@ -23,7 +23,6 @@ namespace {
   TrajectoryPlannerConfig config{};
   config.corridor.max_radius_m = 10.0;
   config.corridor.sample_step_m = 2.5;
-  config.corridor.safety_margin_m = 0.0;
   config.racing_line.max_iterations = 20U;
   config.racing_line.initial_offset_step_m = 1.0;
   config.racing_line.min_offset_step_m = 0.1;

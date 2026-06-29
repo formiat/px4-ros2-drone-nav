@@ -22,7 +22,6 @@ namespace {
   CorridorConfig config{};
   config.max_radius_m = 10.0;
   config.sample_step_m = 2.0;
-  config.safety_margin_m = 0.0;
   return config;
 }
 

@@ -164,8 +164,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("corridor_sample_step_m", 1.0), 0.1, 20.0);
   config.trajectory_planner.corridor.ray_step_m =
       std::clamp(node.declare_parameter<double>("corridor_ray_step_m", 0.0), 0.0, 20.0);
-  config.trajectory_planner.corridor.safety_margin_m = std::clamp(
-      node.declare_parameter<double>("corridor_safety_margin_m", 0.0), 0.0, 100.0);
   config.trajectory_planner.corridor.center_recovery_max_m =
       std::clamp(node.declare_parameter<double>("corridor_center_recovery_max_m", 3.0),
                  0.0, 5000.0);
@@ -249,9 +247,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                std::clamp(node.declare_parameter<double>(
                               "turn_smoothing_max_outer_shift_m", 12.0),
                           0.0, 5000.0));
-  config.trajectory_planner.turn_smoothing.min_corridor_margin_m = std::clamp(
-      node.declare_parameter<double>("turn_smoothing_min_corridor_margin_m", 0.0), 0.0,
-      1000.0);
   config.trajectory_planner.turn_smoothing.max_length_ratio = std::clamp(
       node.declare_parameter<double>("turn_smoothing_max_length_ratio", 1.25), 1.0,
       100.0);

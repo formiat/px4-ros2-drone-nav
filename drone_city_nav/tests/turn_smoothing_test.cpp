@@ -46,7 +46,6 @@ wideCornerCorridor(const OccupancyGrid2D& grid) {
   CorridorConfig config{};
   config.max_radius_m = 28.0;
   config.sample_step_m = 5.0;
-  config.safety_margin_m = 0.0;
   config.center_recovery_max_m = 0.0;
   config.lateral_limit_window_m = 0.0;
   const CorridorResult result =
@@ -65,7 +64,6 @@ wideCornerCorridor(const OccupancyGrid2D& grid) {
   config.outer_bias_ratio = 0.35;
   config.min_outer_shift_m = 2.0;
   config.max_outer_shift_m = 8.0;
-  config.min_corridor_margin_m = 0.5;
   config.max_length_ratio = 1.5;
   config.min_heading_improvement_rad = 0.05;
   config.max_passes = 4U;

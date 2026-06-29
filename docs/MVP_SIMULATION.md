@@ -485,9 +485,9 @@ The main simulation parameters are:
 - `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
   samples. Segment boundaries and arc interior samples are added separately so
   short arcs cannot be skipped by a large regular step.
-- `corridor_max_radius_m`, `corridor_sample_step_m`, and
-  `corridor_safety_margin_m` - corridor sampling and lateral free-space bounds
-  around the rough route.
+- `corridor_max_radius_m` and `corridor_sample_step_m` - corridor sampling and
+  lateral free-space bounds around the rough route. Clearance from prohibited
+  cells is owned by the planner `planning_clearance_m` grid.
 - `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
   `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.

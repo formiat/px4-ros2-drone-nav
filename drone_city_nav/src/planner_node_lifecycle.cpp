@@ -86,8 +86,7 @@ PlannerNode::PlannerNode()
       "speed[cruise=%.2fmps min_turn=%.2fmps max_accel=%.2fmps2 "
       "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
       "sample_step=%.2fm] "
-      "corridor[max_radius=%.2fm sample_step=%.2fm safety_margin=%.2fm "
-      "center_recovery_max=%.2fm "
+      "corridor[max_radius=%.2fm sample_step=%.2fm center_recovery_max=%.2fm "
       "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm] "
       "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
@@ -96,8 +95,7 @@ PlannerNode::PlannerNode()
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
-      "outer_shift=[%.2f, %.2f] corridor_margin=%.2fm max_length_ratio=%.2f "
-      "max_passes=%zu]",
+      "outer_shift=[%.2f, %.2f] max_length_ratio=%.2f max_passes=%zu]",
       trajectory_planner_config_.speed_profile.cruise_speed_mps,
       trajectory_planner_config_.speed_profile.min_turn_speed_mps,
       trajectory_planner_config_.speed_profile.max_accel_mps2,
@@ -107,7 +105,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.speed_profile.speed_profile_sample_step_m,
       trajectory_planner_config_.corridor.max_radius_m,
       trajectory_planner_config_.corridor.sample_step_m,
-      trajectory_planner_config_.corridor.safety_margin_m,
       trajectory_planner_config_.corridor.center_recovery_max_m,
       trajectory_planner_config_.corridor.lateral_limit_window_m,
       trajectory_planner_config_.corridor.lateral_limit_ratio,
@@ -133,7 +130,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.turn_smoothing.outer_bias_ratio,
       trajectory_planner_config_.turn_smoothing.min_outer_shift_m,
       trajectory_planner_config_.turn_smoothing.max_outer_shift_m,
-      trajectory_planner_config_.turn_smoothing.min_corridor_margin_m,
       trajectory_planner_config_.turn_smoothing.max_length_ratio,
       trajectory_planner_config_.turn_smoothing.max_passes);
   RCLCPP_INFO(get_logger(),

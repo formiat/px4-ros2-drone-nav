@@ -96,8 +96,6 @@ recoverCorridorCenter(const OccupancyGrid2D& grid, const Point2 center,
                                   const Point2 direction, const CorridorConfig& config,
                                   CorridorStats& stats) {
   const double max_radius = sanitizedPositive(config.max_radius_m, 40.0, 0.1, 5000.0);
-  const double safety_margin =
-      sanitizedPositive(config.safety_margin_m, 0.0, 0.0, max_radius);
   const double ray_step = corridorRayStep(grid, config, max_radius);
 
   double last_clear_distance = 0.0;
@@ -110,14 +108,14 @@ recoverCorridorCenter(const OccupancyGrid2D& grid, const Point2 center,
     const std::optional<GridIndex> cell = grid.worldToCell(point);
     if (!cell.has_value()) {
       ++stats.outside_grid_samples;
-      return std::max(0.0, last_clear_distance - safety_margin);
+      return last_clear_distance;
     }
     if (grid.isProhibited(*cell)) {
-      return std::max(0.0, last_clear_distance - safety_margin);
+      return last_clear_distance;
     }
     last_clear_distance = distance_m;
   }
-  return std::max(0.0, max_radius - safety_margin);
+  return max_radius;
 }
 
 void updateRange(double& min_value, double& max_value, const double value,
