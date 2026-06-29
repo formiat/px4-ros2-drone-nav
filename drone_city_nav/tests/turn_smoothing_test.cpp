@@ -99,6 +99,7 @@ TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
   EXPECT_TRUE(std::isfinite(result.stats.accepted_entry_distance_m));
   EXPECT_TRUE(std::isfinite(result.stats.accepted_exit_distance_m));
   EXPECT_TRUE(std::isfinite(result.stats.accepted_shift_scale));
+  EXPECT_DOUBLE_EQ(result.stats.accepted_relaxed_angle_deg, 0.0);
   EXPECT_GT(result.samples.size(), samples.size());
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);
@@ -130,6 +131,7 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
   EXPECT_GT(result.stats.candidate_attempts, 0U);
   EXPECT_GT(result.stats.smoothed_corners, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.accepted_entry_distance_m));
+  EXPECT_GE(result.stats.accepted_relaxed_angle_deg, 0.0);
   EXPECT_EQ(result.stats.rejected_prohibited, 0U);
   EXPECT_LT(result.stats.max_heading_delta_after_rad,
             result.stats.max_heading_delta_before_rad);
@@ -160,7 +162,8 @@ TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
 
   EXPECT_FALSE(result.changed);
   EXPECT_EQ(result.stats.attempted_corners, 1U);
-  EXPECT_EQ(result.stats.candidate_attempts, 48U);
+  EXPECT_EQ(result.stats.candidate_attempts, 336U);
+  EXPECT_EQ(result.stats.relaxed_candidate_attempts, 288U);
   EXPECT_EQ(result.stats.rejected_prohibited, 1U);
 }
 

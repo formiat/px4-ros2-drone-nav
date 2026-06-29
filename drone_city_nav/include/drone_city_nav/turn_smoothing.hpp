@@ -33,6 +33,7 @@ struct TurnSmoothingStats {
   std::size_t detected_corners{0U};
   std::size_t attempted_corners{0U};
   std::size_t candidate_attempts{0U};
+  std::size_t relaxed_candidate_attempts{0U};
   std::size_t smoothed_corners{0U};
   std::size_t rejected_prohibited{0U};
   std::size_t rejected_corridor{0U};
@@ -47,6 +48,7 @@ struct TurnSmoothingStats {
   double accepted_entry_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double accepted_exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double accepted_shift_scale{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_relaxed_angle_deg{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct TurnSmoothingResult {

@@ -67,6 +67,10 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return normalizeAngle(headingOf(next) - headingOf(previous));
 }
 
+[[nodiscard]] double radiansToDegrees(const double radians) noexcept {
+  return radians * 180.0 / std::numbers::pi;
+}
+
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
                                        const double min_value,
                                        const double max_value) noexcept {
@@ -91,6 +95,13 @@ distanceFallbackCandidates(const double max_distance_m) {
     candidate -= kFallbackStepM;
   }
   return candidates;
+}
+
+[[nodiscard]] std::array<double, 6U> relaxedTangentAngleCandidatesRad() noexcept {
+  return std::array<double, 6U>{
+      5.0 * std::numbers::pi / 180.0,  10.0 * std::numbers::pi / 180.0,
+      15.0 * std::numbers::pi / 180.0, 20.0 * std::numbers::pi / 180.0,
+      25.0 * std::numbers::pi / 180.0, 30.0 * std::numbers::pi / 180.0};
 }
 
 [[nodiscard]] double discreteCurvature(const Point2 previous, const Point2 current,
@@ -145,27 +156,6 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
     return 0.0;
   }
   return pathLength(samples, 0U, samples.size() - 1U);
-}
-
-[[nodiscard]] std::optional<CorridorSample>
-nearestCorridorSample(const std::span<const CorridorSample> corridor_samples,
-                      const Point2 point) {
-  if (corridor_samples.empty()) {
-    return std::nullopt;
-  }
-  const CorridorSample* best = nullptr;
-  double best_distance_sq = std::numeric_limits<double>::infinity();
-  for (const CorridorSample& sample : corridor_samples) {
-    const double distance_sq = squaredDistance(sample.center, point);
-    if (distance_sq < best_distance_sq) {
-      best_distance_sq = distance_sq;
-      best = &sample;
-    }
-  }
-  if (best == nullptr) {
-    return std::nullopt;
-  }
-  return *best;
 }
 
 [[nodiscard]] std::optional<CorridorSample>
@@ -237,26 +227,6 @@ pathIsTraversable(const OccupancyGrid2D& grid,
   return true;
 }
 
-[[nodiscard]] bool pointInsideCorridor(const CorridorSample& corridor,
-                                       const Point2 point,
-                                       const double margin_m) noexcept {
-  const double offset_m = dot(point - corridor.center, corridor.normal);
-  return offset_m <= corridor.left_bound_m - margin_m + kTinyDistanceM &&
-         -offset_m <= corridor.right_bound_m - margin_m + kTinyDistanceM;
-}
-
-[[nodiscard]] bool
-pathInsideCorridor(const std::span<const TrajectoryPointSample> samples,
-                   const std::span<const CorridorSample> corridor_samples,
-                   const double margin_m) {
-  return std::ranges::all_of(samples, [&](const TrajectoryPointSample& sample) {
-    const std::optional<CorridorSample> corridor =
-        nearestCorridorSample(corridor_samples, sample.point);
-    return corridor.has_value() &&
-           pointInsideCorridor(*corridor, sample.point, margin_m);
-  });
-}
-
 [[nodiscard]] double innerMarginM(const TrajectoryPointSample& sample,
                                   const double turn_sign) noexcept {
   if (turn_sign > 0.0) {
@@ -291,7 +261,6 @@ struct CornerCandidate {
 enum class SmoothingRejectReason : std::uint8_t {
   kNone,
   kProhibited,
-  kCorridor,
   kLength,
   kNotImproved,
 };
@@ -303,6 +272,7 @@ struct SmoothingAttempt {
   double entry_distance_m{0.0};
   double exit_distance_m{0.0};
   double shift_scale{0.0};
+  double relaxed_angle_rad{0.0};
   bool accepted{false};
 };
 
@@ -402,6 +372,17 @@ findExitIndex(const std::span<const TrajectoryPointSample> samples,
          p3 * (t * t * t);
 }
 
+[[nodiscard]] Point2 tangentRelaxedOutward(const Point2 tangent, const Point2 outward,
+                                           const double angle_rad) noexcept {
+  const double angle = std::clamp(angle_rad, 0.0, std::numbers::pi / 2.0);
+  const Point2 relaxed = tangent * std::cos(angle) + outward * std::sin(angle);
+  const Point2 result = normalized(relaxed);
+  if (!(norm(result) > kTinyDistanceM)) {
+    return tangent;
+  }
+  return result;
+}
+
 [[nodiscard]] TrajectoryPointSample
 sampleForPoint(const Point2 point, const double station_hint_m,
                const std::span<const CorridorSample> corridor_samples) {
@@ -424,7 +405,7 @@ buildBezierSamples(const std::span<const TrajectoryPointSample> samples,
                    const std::size_t entry_index, const std::size_t corner_index,
                    const std::size_t exit_index, const CornerCandidate& corner,
                    const TurnSmoothingConfig& config, const double outward_shift_scale,
-                   double& applied_shift_m) {
+                   const double relaxed_angle_rad, double& applied_shift_m) {
   const Point2 p0 = samples[entry_index].point;
   const Point2 p3 = samples[exit_index].point;
   const Point2 incoming =
@@ -447,8 +428,12 @@ buildBezierSamples(const std::span<const TrajectoryPointSample> samples,
   const double local_length = pathLength(samples, entry_index, exit_index);
   const double control_distance =
       std::clamp(local_length * 0.35, 2.0, std::max(2.0, local_length * 0.6));
-  const Point2 p1 = p0 + incoming * control_distance + entry_outward * entry_shift;
-  const Point2 p2 = p3 - outgoing * control_distance + exit_outward * exit_shift;
+  const Point2 entry_tangent =
+      tangentRelaxedOutward(incoming, entry_outward, relaxed_angle_rad);
+  const Point2 exit_tangent =
+      tangentRelaxedOutward(outgoing, exit_outward, relaxed_angle_rad);
+  const Point2 p1 = p0 + entry_tangent * control_distance + entry_outward * entry_shift;
+  const Point2 p2 = p3 - exit_tangent * control_distance + exit_outward * exit_shift;
   const double sample_step =
       sanitizedPositive(config.sample_step_m, 1.0, 0.1, std::max(0.1, local_length));
   const std::size_t steps = std::max<std::size_t>(
@@ -533,11 +518,13 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
                 const std::span<const CorridorSample> corridor_samples,
                 const OccupancyGrid2D& prohibited_grid, const CornerCandidate& corner,
                 const TurnSmoothingConfig& config, const double entry_distance_m,
-                const double exit_distance_m, const double outward_shift_scale) {
+                const double exit_distance_m, const double outward_shift_scale,
+                const double relaxed_angle_rad) {
   SmoothingAttempt attempt{};
   attempt.entry_distance_m = entry_distance_m;
   attempt.exit_distance_m = exit_distance_m;
   attempt.shift_scale = outward_shift_scale;
+  attempt.relaxed_angle_rad = relaxed_angle_rad;
   const std::size_t entry_index =
       findEntryIndex(samples, corner.index, entry_distance_m);
   const std::size_t exit_index = findExitIndex(samples, corner.index, exit_distance_m);
@@ -548,7 +535,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
 
   std::vector<TrajectoryPointSample> replacement = buildBezierSamples(
       samples, corridor_samples, entry_index, corner.index, exit_index, corner, config,
-      outward_shift_scale, attempt.applied_shift_m);
+      outward_shift_scale, relaxed_angle_rad, attempt.applied_shift_m);
   if (replacement.size() < 3U) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     return attempt;
@@ -558,12 +545,6 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
       replaceRange(samples, entry_index, exit_index, replacement);
   if (!pathIsTraversable(prohibited_grid, candidate)) {
     attempt.reject_reason = SmoothingRejectReason::kProhibited;
-    return attempt;
-  }
-  const double corridor_margin =
-      sanitizedPositive(config.min_corridor_margin_m, 0.5, 0.0, 1000.0);
-  if (!pathInsideCorridor(candidate, corridor_samples, corridor_margin)) {
-    attempt.reject_reason = SmoothingRejectReason::kCorridor;
     return attempt;
   }
 
@@ -593,13 +574,10 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
 }
 
 [[nodiscard]] SmoothingRejectReason
-dominantRejectReason(const bool rejected_prohibited, const bool rejected_corridor,
+dominantRejectReason(const bool rejected_prohibited,
                      const bool rejected_length) noexcept {
   if (rejected_prohibited) {
     return SmoothingRejectReason::kProhibited;
-  }
-  if (rejected_corridor) {
-    return SmoothingRejectReason::kCorridor;
   }
   if (rejected_length) {
     return SmoothingRejectReason::kLength;
@@ -612,9 +590,6 @@ void incrementRejectStat(TurnSmoothingStats& stats,
   switch (reason) {
     case SmoothingRejectReason::kProhibited:
       ++stats.rejected_prohibited;
-      break;
-    case SmoothingRejectReason::kCorridor:
-      ++stats.rejected_corridor;
       break;
     case SmoothingRejectReason::kLength:
       ++stats.rejected_length;
@@ -677,7 +652,6 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         distanceFallbackCandidates(entry_distance);
     constexpr std::array<double, 4U> kShiftScales = {1.0, 0.5, 0.25, 0.0};
     bool rejected_prohibited = false;
-    bool rejected_corridor = false;
     bool rejected_length = false;
     std::optional<SmoothingAttempt> accepted_attempt;
     for (const double entry_candidate : entry_candidates) {
@@ -688,7 +662,7 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         SmoothingAttempt attempt =
             trySmoothCorner(result.samples, corridor_samples, prohibited_grid, *corner,
                             config, entry_distance * distance_scale,
-                            exit_distance * distance_scale, shift_scale);
+                            exit_distance * distance_scale, shift_scale, 0.0);
         if (attempt.accepted) {
           accepted_attempt = std::move(attempt);
           break;
@@ -696,8 +670,6 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         rejected_prohibited =
             rejected_prohibited ||
             attempt.reject_reason == SmoothingRejectReason::kProhibited;
-        rejected_corridor = rejected_corridor ||
-                            attempt.reject_reason == SmoothingRejectReason::kCorridor;
         rejected_length =
             rejected_length || attempt.reject_reason == SmoothingRejectReason::kLength;
       }
@@ -706,9 +678,39 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       }
     }
     if (!accepted_attempt.has_value()) {
+      for (const double entry_candidate : entry_candidates) {
+        const double distance_scale =
+            entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
+        for (const double relaxed_angle : relaxedTangentAngleCandidatesRad()) {
+          for (const double shift_scale : kShiftScales) {
+            ++result.stats.candidate_attempts;
+            ++result.stats.relaxed_candidate_attempts;
+            SmoothingAttempt attempt = trySmoothCorner(
+                result.samples, corridor_samples, prohibited_grid, *corner, config,
+                entry_distance * distance_scale, exit_distance * distance_scale,
+                shift_scale, relaxed_angle);
+            if (attempt.accepted) {
+              accepted_attempt = std::move(attempt);
+              break;
+            }
+            rejected_prohibited =
+                rejected_prohibited ||
+                attempt.reject_reason == SmoothingRejectReason::kProhibited;
+            rejected_length = rejected_length ||
+                              attempt.reject_reason == SmoothingRejectReason::kLength;
+          }
+          if (accepted_attempt.has_value()) {
+            break;
+          }
+        }
+        if (accepted_attempt.has_value()) {
+          break;
+        }
+      }
+    }
+    if (!accepted_attempt.has_value()) {
       incrementRejectStat(result.stats,
-                          dominantRejectReason(rejected_prohibited, rejected_corridor,
-                                               rejected_length));
+                          dominantRejectReason(rejected_prohibited, rejected_length));
       break;
     }
 
@@ -720,6 +722,8 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
     result.stats.accepted_entry_distance_m = accepted_attempt->entry_distance_m;
     result.stats.accepted_exit_distance_m = accepted_attempt->exit_distance_m;
     result.stats.accepted_shift_scale = accepted_attempt->shift_scale;
+    result.stats.accepted_relaxed_angle_deg =
+        radiansToDegrees(accepted_attempt->relaxed_angle_rad);
   }
 
   populateSampleGeometry(result.samples);

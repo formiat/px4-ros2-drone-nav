@@ -212,12 +212,14 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
               "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
               "speed_limit_max=%.2f curvature_limited=%zu] "
               "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
+              "relaxed_attempts=%zu "
               "smoothed=%zu "
               "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
               "heading_before=%.1fdeg heading_after=%.1fdeg "
               "curvature_jump_before=%.3f curvature_jump_after=%.3f "
               "min_inner_margin=%.2f max_outer_shift=%.2f "
-              "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f)] "
+              "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
+              "relaxed_angle=%.1fdeg)] "
               "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
               source_label, route_points.size(), trajectory_points.size(), duration_ms,
               static_cast<int>(
@@ -262,6 +264,7 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
               trajectory_result.stats.turn_smoothing.detected_corners,
               trajectory_result.stats.turn_smoothing.attempted_corners,
               trajectory_result.stats.turn_smoothing.candidate_attempts,
+              trajectory_result.stats.turn_smoothing.relaxed_candidate_attempts,
               trajectory_result.stats.turn_smoothing.smoothed_corners,
               trajectory_result.stats.turn_smoothing.rejected_prohibited,
               trajectory_result.stats.turn_smoothing.rejected_corridor,
@@ -278,6 +281,7 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
               trajectory_result.stats.turn_smoothing.accepted_entry_distance_m,
               trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
               trajectory_result.stats.turn_smoothing.accepted_shift_scale,
+              trajectory_result.stats.turn_smoothing.accepted_relaxed_angle_deg,
               trajectory_result.stats.speed_profile_min_mps,
               trajectory_result.stats.speed_profile_mean_mps,
               trajectory_result.stats.speed_profile_max_mps,

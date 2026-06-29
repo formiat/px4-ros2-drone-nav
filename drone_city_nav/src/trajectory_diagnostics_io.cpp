@@ -333,6 +333,8 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.attempted_corners);
   appendJsonSize(stream, "turn_smoothing_candidate_attempts",
                  stats.turn_smoothing.candidate_attempts);
+  appendJsonSize(stream, "turn_smoothing_relaxed_candidate_attempts",
+                 stats.turn_smoothing.relaxed_candidate_attempts);
   appendJsonSize(stream, "turn_smoothing_smoothed_corners",
                  stats.turn_smoothing.smoothed_corners);
   appendJsonSize(stream, "turn_smoothing_rejected_prohibited",
@@ -361,6 +363,8 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                    stats.turn_smoothing.accepted_exit_distance_m);
   appendJsonNumber(stream, "turn_smoothing_accepted_shift_scale",
                    stats.turn_smoothing.accepted_shift_scale);
+  appendJsonNumber(stream, "turn_smoothing_accepted_relaxed_angle_deg",
+                   stats.turn_smoothing.accepted_relaxed_angle_deg);
   return stream.str();
 }
 
@@ -616,6 +620,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 turn_smoothing.attempted_corners);
   parseJsonSize(json, "turn_smoothing_candidate_attempts",
                 turn_smoothing.candidate_attempts);
+  parseJsonSize(json, "turn_smoothing_relaxed_candidate_attempts",
+                turn_smoothing.relaxed_candidate_attempts);
   parseJsonSize(json, "turn_smoothing_smoothed_corners",
                 turn_smoothing.smoothed_corners);
   parseJsonSize(json, "turn_smoothing_rejected_prohibited",
@@ -643,6 +649,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   turn_smoothing.accepted_exit_distance_m);
   parseJsonDouble(json, "turn_smoothing_accepted_shift_scale",
                   turn_smoothing.accepted_shift_scale);
+  parseJsonDouble(json, "turn_smoothing_accepted_relaxed_angle_deg",
+                  turn_smoothing.accepted_relaxed_angle_deg);
 
   return envelope;
 }

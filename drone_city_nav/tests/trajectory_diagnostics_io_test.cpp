@@ -70,6 +70,7 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.detected_corners = 3U;
   stats.turn_smoothing.attempted_corners = 2U;
   stats.turn_smoothing.candidate_attempts = 11U;
+  stats.turn_smoothing.relaxed_candidate_attempts = 6U;
   stats.turn_smoothing.smoothed_corners = 1U;
   stats.turn_smoothing.rejected_prohibited = 0U;
   stats.turn_smoothing.rejected_corridor = 1U;
@@ -84,6 +85,7 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.accepted_entry_distance_m = 30.0;
   stats.turn_smoothing.accepted_exit_distance_m = 30.0;
   stats.turn_smoothing.accepted_shift_scale = 0.5;
+  stats.turn_smoothing.accepted_relaxed_angle_deg = 15.0;
   stats.corridor.samples = 42U;
   stats.corridor.min_width_m = 17.5;
   stats.corridor.mean_width_m = 24.25;
@@ -256,6 +258,7 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_detected_corners\"",
                                   "\"turn_smoothing_attempted_corners\"",
                                   "\"turn_smoothing_candidate_attempts\"",
+                                  "\"turn_smoothing_relaxed_candidate_attempts\"",
                                   "\"turn_smoothing_smoothed_corners\"",
                                   "\"turn_smoothing_rejected_prohibited\"",
                                   "\"turn_smoothing_rejected_corridor\"",
@@ -270,6 +273,7 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_accepted_entry_distance_m\"",
                                   "\"turn_smoothing_accepted_exit_distance_m\"",
                                   "\"turn_smoothing_accepted_shift_scale\"",
+                                  "\"turn_smoothing_accepted_relaxed_angle_deg\"",
                               });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
@@ -339,6 +343,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.candidate_attempts, 11U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.relaxed_candidate_attempts, 6U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_before_rad, 1.2);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_after_rad, 0.4);
@@ -347,6 +352,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_entry_distance_m, 30.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_exit_distance_m, 30.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_shift_scale, 0.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_relaxed_angle_deg, 15.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.total_duration_ms, 123.4);

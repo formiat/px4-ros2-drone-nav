@@ -266,6 +266,10 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn(
             "turn_smoothing_max_outer_shift_m", self.trajectory_diagnostics_io_text
         )
+        self.assertIn(
+            "turn_smoothing_accepted_relaxed_angle_deg",
+            self.trajectory_diagnostics_io_text,
+        )
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
         self.assertNotIn("baseline_rounded_corners", self.offboard_text)
