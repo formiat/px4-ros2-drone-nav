@@ -72,34 +72,43 @@
    - `drone_city_nav/tests/racing_line_test.cpp:139`
 
    Материализуемый результат:
-   - заменить per-candidate `std::async` на chunked worker execution;
+   - заменить per-candidate `std::async` на worker-local evaluation без изменения текущего порядка алгоритма;
    - создать worker-local scratch buffers, чтобы не пересоздавать `offsets`, `points`, `candidate_samples` на каждый candidate;
-   - сохранить deterministic best-candidate selection в прежнем порядке: сначала `-step`, потом `+step`, затем следующий индекс;
+   - parallel evaluation разрешена только для двух независимых кандидатов текущего индекса `i`: `-step` и `+step`, построенных от текущего `offsets` snapshot;
+   - accepted result текущего `i` должен быть применён сразу до перехода к `i + 1`, как сейчас делает `offsets = scratch.iteration_best_offsets` в `drone_city_nav/src/racing_line.cpp:760`;
+   - не делать batching/chunking сразу по нескольким индексам `i`: это поменяет алгоритм, потому что кандидаты `i + 1` начнут считаться от устаревшего `offsets`;
+   - сохранить deterministic best-candidate selection в прежнем порядке: сначала `-step`, потом `+step`, затем применить best offsets, затем следующий индекс;
    - расширить `RacingLineStats`: `parallel_workers_used`, `candidate_chunks`, `worker_scratch_reuses`, `candidate_snapshot_allocations_avoided` или эквивалентные поля;
    - не менять scoring formula, weights, regularization и `TrajectoryPointSample` output contract.
 
    Псевдокод:
 
    ```cpp
-   std::vector<CandidateJob> jobs = buildJobs(offsets, step, optimizer_samples);
-   std::vector<EvaluatedCandidate> results(jobs.size());
-   parallelForChunks(jobs, workers, [&](std::span<const CandidateJob> chunk,
-                                        WorkerScratch& scratch) {
-     for (const CandidateJob& job : chunk) {
-       results[job.order_index] =
-           evaluateCandidateIntoScratch(job, optimizer_samples, prohibited_grid,
-                                        config, speed_config, max_length_m, scratch);
-     }
-   });
+   for (std::size_t i = 1U; i + 1U < sample_count; ++i) {
+     CandidateJob jobs[2] = {
+         CandidateJob{.base_offsets = offsets, .center_index = i, .delta_m = -step},
+         CandidateJob{.base_offsets = offsets, .center_index = i, .delta_m = step},
+     };
+     EvaluatedCandidate results[2];
 
-   for (const EvaluatedCandidate& candidate : results_in_original_order) {
-     maybeAccept(candidate);
+     parallelEvaluateTwoCandidates(jobs, results, worker_scratch);
+
+     scratch.iteration_best_offsets = offsets;
+     for (const EvaluatedCandidate& candidate : results /* -step, then +step */) {
+       maybeAcceptCandidate(candidate, best_cost, scratch.iteration_best_offsets,
+                            best_points, changed);
+     }
+
+     offsets = scratch.iteration_best_offsets; // must happen before i + 1
    }
    ```
+
+   Multi-index batching от одного `offsets` snapshot можно рассматривать только как отдельный behavioral experiment, не как безопасную оптимизацию этого пакета.
 
    Автотесты:
    - расширить `RacingLine.DefaultParallelCandidateEvaluationMatchesSingleWorkerResult`: сравнивать samples, offsets, `final_cost`, `estimated_time_s`, `candidate_evaluations`, `collision_rejections`, новые worker/chunk stats;
    - добавить `RacingLine.ChunkedParallelIsDeterministicAcrossRuns`: 3 последовательных запуска с `parallel_workers=2/4`, одинаковый output bit-for-bit там, где сейчас используется `EXPECT_DOUBLE_EQ`;
+   - добавить regression fixture `RacingLine.ParallelPreservesPerIndexOffsetDependency`: synthetic corridor, где accepted candidate на раннем `i` меняет лучший кандидат на `i + 1`; parallel результат должен совпадать с single-worker текущим алгоритмом;
    - negative/edge: маленький corridor на 2 samples должен не включать parallel и должен сохранять валидность/invalid status как раньше.
 
 2. Добавить общий `ClearanceField` context для одного planning pipeline.
@@ -301,8 +310,7 @@
 1. Отформатировать изменённые C++ файлы:
 
    ```bash
-   ./scripts/dev_shell.sh
-   make format
+   ./scripts/dev_shell.sh make format
    ```
 
 2. Запустить scoped tests внутри контейнера после build:
@@ -320,8 +328,7 @@
 4. Запустить quality gate:
 
    ```bash
-   ./scripts/dev_shell.sh
-   make quality
+   ./scripts/dev_shell.sh make quality
    ```
 
 5. Headless verification только после явной команды на симуляционный прогон:
