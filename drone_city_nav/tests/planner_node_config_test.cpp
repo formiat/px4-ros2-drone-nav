@@ -52,9 +52,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.goal.y, 0.0);
   EXPECT_DOUBLE_EQ(config.cruise_altitude_m, 12.0);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 2.0);
-  EXPECT_DOUBLE_EQ(config.planning_clearance_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.planning_clearance_m, 2.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 2.0);
-  EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 2.0);
   EXPECT_TRUE(config.static_map.enabled);
   EXPECT_TRUE(config.planning_grid_builder.use_static_map);
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");

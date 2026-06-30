@@ -38,7 +38,7 @@ struct PlanningGridBuilderConfig {
   bool use_static_map{true};
   GridBounds fallback_bounds{};
   double inflation_radius_m{2.0};
-  double planning_clearance_m{1.0};
+  double planning_clearance_m{2.0};
 };
 
 struct PlanningGridSources {

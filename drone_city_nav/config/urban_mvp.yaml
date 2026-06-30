@@ -67,7 +67,7 @@ planner_node:
     goal_y_m: 378.0
     cruise_altitude_m: 18.0
     inflation_radius_m: 2.0
-    planning_clearance_m: 1.0
+    planning_clearance_m: 2.0
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100
     memory_free_value: 0
