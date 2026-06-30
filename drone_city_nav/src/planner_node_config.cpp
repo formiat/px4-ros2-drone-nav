@@ -93,13 +93,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.lidar_projection.scan_yaw_offset_rad =
       node.declare_parameter<double>("scan_yaw_offset_rad", 0.0);
   config.current_lidar.use_px4_heading_for_scan =
-      node.declare_parameter<bool>("use_px4_heading_for_scan", false);
+      node.declare_parameter<bool>("use_px4_heading_for_scan", true);
   config.current_lidar.motion_compensate_lidar_pose =
       node.declare_parameter<bool>("motion_compensate_lidar_pose", true);
   config.current_lidar.lidar_pose_latency_s = std::clamp(
       node.declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
   config.lidar_projection.compensate_attitude =
-      node.declare_parameter<bool>("compensate_lidar_attitude", false);
+      node.declare_parameter<bool>("compensate_lidar_attitude", true);
   config.lidar_projection.lidar_mount_roll_rad =
       node.declare_parameter<double>("lidar_mount_roll_rad", 0.0);
   config.lidar_projection.lidar_mount_pitch_rad =
@@ -118,13 +118,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.planner_core.astar.heuristic_weight = std::clamp(
       node.declare_parameter<double>("astar_heuristic_weight", 1.0), 1.0, 10.0);
   config.planner_core.astar.evasive_maneuvering_enabled =
-      node.declare_parameter<bool>("astar_evasive_maneuvering_enabled", false);
+      node.declare_parameter<bool>("astar_evasive_maneuvering_enabled", true);
   config.planner_core.astar.evasive_maneuvering_straight_cost_weight =
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),
                  0.0, 1000.0);
   config.planner_core.astar.initial_heading_bias_enabled =
-      node.declare_parameter<bool>("astar_initial_heading_bias_enabled", false);
+      node.declare_parameter<bool>("astar_initial_heading_bias_enabled", true);
   config.planner_core.astar.initial_heading_bias_min_speed_mps = std::clamp(
       node.declare_parameter<double>("astar_initial_heading_bias_min_speed_mps", 0.5),
       0.0, 100.0);

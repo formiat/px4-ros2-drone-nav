@@ -39,11 +39,11 @@ struct LidarDebugNodeConfig {
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
   double lidar_scan_duration_override_s{0.0};
-  bool compensate_lidar_attitude{false};
+  bool compensate_lidar_attitude{true};
   double lidar_z_offset_m{0.0};
   double min_projected_lidar_altitude_m{0.0};
   double max_projected_lidar_altitude_m{100000.0};
-  bool use_px4_heading_for_scan{false};
+  bool use_px4_heading_for_scan{true};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};

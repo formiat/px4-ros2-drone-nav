@@ -25,7 +25,7 @@ struct LaserScan2DView {
   double max_projected_altitude_m{100000.0};
   bool altitude_valid{false};
   bool attitude_valid{false};
-  bool compensate_attitude{false};
+  bool compensate_attitude{true};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};

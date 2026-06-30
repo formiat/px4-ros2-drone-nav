@@ -10,9 +10,9 @@ namespace drone_city_nav {
 struct AStarConfig {
   double heuristic_weight{1.0};
   double turn_cost_weight{0.0};
-  bool evasive_maneuvering_enabled{false};
+  bool evasive_maneuvering_enabled{true};
   double evasive_maneuvering_straight_cost_weight{1.0};
-  bool initial_heading_bias_enabled{false};
+  bool initial_heading_bias_enabled{true};
   double initial_heading_bias_min_speed_mps{0.5};
   double initial_heading_bias_weight{50.0};
   double initial_heading_bias_velocity_x_mps{0.0};

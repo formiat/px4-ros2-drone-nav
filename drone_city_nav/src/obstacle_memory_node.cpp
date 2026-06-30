@@ -87,7 +87,7 @@ public:
                    memory_config_.occupied_score - 1);
     scan_yaw_offset_rad_ = declare_parameter<double>("scan_yaw_offset_rad", 0.0);
     compensate_lidar_attitude_ =
-        declare_parameter<bool>("compensate_lidar_attitude", false);
+        declare_parameter<bool>("compensate_lidar_attitude", true);
     lidar_mount_roll_rad_ = declare_parameter<double>("lidar_mount_roll_rad", 0.0);
     lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
     lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
@@ -414,7 +414,7 @@ private:
   double lidar_pose_latency_s_{0.05};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
-  bool compensate_lidar_attitude_{false};
+  bool compensate_lidar_attitude_{true};
   bool pose_seen_{false};
   bool scan_seen_{false};
   bool attitude_valid_{false};

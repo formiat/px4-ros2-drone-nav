@@ -590,13 +590,9 @@ make quality
   position becomes invalid or stale for longer than `max_pose_staleness_s`.
   Obstacle memory skips lidar integration, and the planner publishes an empty
   hold path instead of using cached pose data.
-- The simulation parameter file keeps `use_px4_heading_for_scan=false` in
-  `obstacle_memory_node` because the bridged Gazebo lidar scan used by this MVP
-  is already aligned with the local horizontal map frame. Enabling PX4 heading
-  rotation misplaces obstacle hits in the occupancy grid. In this map-aligned
-  mode, `initial_heading_rad` is treated as the valid scan yaw. When
-  `use_px4_heading_for_scan=true`, obstacle memory requires a finite PX4 heading
-  with `heading_good_for_control=true`; otherwise scans are skipped instead of
-  being integrated with a stale or default yaw.
+- The simulation parameter file keeps `use_px4_heading_for_scan=true` in lidar
+  consumers so scan projection follows the PX4 local heading. Obstacle memory
+  requires a finite PX4 heading with `heading_good_for_control=true`; otherwise
+  scans are skipped instead of being integrated with a stale or default yaw.
 - The launch file bridges `/scan`; if the PX4 lidar model publishes a different
   Gazebo topic, update `city_nav.launch.py` or add a remap.

@@ -32,7 +32,7 @@ struct LidarProjectionConfig {
   double lidar_z_offset_m{0.0};
   double min_projected_altitude_m{0.0};
   double max_projected_altitude_m{100000.0};
-  bool compensate_attitude{false};
+  bool compensate_attitude{true};
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};

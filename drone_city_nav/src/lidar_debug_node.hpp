@@ -208,9 +208,9 @@ private:
   bool last_projected_attitude_valid_{false};
   bool px4_heading_seen_{false};
   bool last_projected_px4_heading_seen_{false};
-  bool use_px4_heading_for_scan_{false};
+  bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
-  bool compensate_lidar_attitude_{false};
+  bool compensate_lidar_attitude_{true};
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;

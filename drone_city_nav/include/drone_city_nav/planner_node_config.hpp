@@ -47,7 +47,7 @@ struct PlannerMemoryGridConfig {
 };
 
 struct PlannerCurrentLidarConfig {
-  bool use_px4_heading_for_scan{false};
+  bool use_px4_heading_for_scan{true};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
 };

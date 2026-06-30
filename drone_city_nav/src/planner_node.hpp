@@ -231,9 +231,9 @@ private:
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
   bool use_static_map_{true};
-  bool use_px4_heading_for_scan_{false};
+  bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
-  bool compensate_lidar_attitude_{false};
+  bool compensate_lidar_attitude_{true};
   bool altitude_valid_{false};
   bool attitude_valid_{false};
   bool current_velocity_valid_{false};

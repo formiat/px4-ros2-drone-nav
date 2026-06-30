@@ -40,6 +40,13 @@ void expectPointNear(const Point2 actual, const Point2 expected) {
   EXPECT_NEAR(actual.y, expected.y, 1.0e-9);
 }
 
+[[nodiscard]] AStarConfig plainAStarConfig() {
+  AStarConfig config{};
+  config.evasive_maneuvering_enabled = false;
+  config.initial_heading_bias_enabled = false;
+  return config;
+}
+
 } // namespace
 
 TEST(OccupancyGrid2D, RayMarksFreeCellsAndOccupiedEndpoint) {
@@ -139,13 +146,14 @@ TEST(AStarPlanner, UsesPhysicalDistanceForBasePathCost) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 2.0, 8, 8}};
   grid.rebuildInflation(0.0);
 
+  const AStarConfig config = plainAStarConfig();
   const AStarResult straight_result =
-      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 1});
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 1}, config);
   ASSERT_TRUE(straight_result.success);
   EXPECT_NEAR(straight_result.total_cost, 6.0, 1.0e-9);
 
   const AStarResult diagonal_result =
-      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4});
+      AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4}, config);
   ASSERT_TRUE(diagonal_result.success);
   EXPECT_NEAR(diagonal_result.total_cost, 3.0 * std::numbers::sqrt2 * 2.0, 1.0e-9);
 }
@@ -273,9 +281,11 @@ TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
 
   const GridIndex start{1, 3};
   const GridIndex goal{10, 3};
-  const AStarResult unpenalized_result = AStarPlanner{}.plan(grid, start, goal);
+  const AStarConfig unpenalized_config = plainAStarConfig();
+  const AStarResult unpenalized_result =
+      AStarPlanner{}.plan(grid, start, goal, unpenalized_config);
 
-  AStarConfig turn_config{};
+  AStarConfig turn_config = plainAStarConfig();
   turn_config.turn_cost_weight = 3.0;
   const AStarResult turn_penalized_result =
       AStarPlanner{}.plan(grid, start, goal, turn_config);
@@ -292,7 +302,9 @@ TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {
 
   const GridIndex start{1, 3};
   const GridIndex goal{8, 3};
-  const AStarResult normal_result = AStarPlanner{}.plan(grid, start, goal);
+  const AStarConfig normal_config = plainAStarConfig();
+  const AStarResult normal_result =
+      AStarPlanner{}.plan(grid, start, goal, normal_config);
 
   AStarConfig evasive_config{};
   evasive_config.evasive_maneuvering_enabled = true;
