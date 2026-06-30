@@ -1,5 +1,6 @@
 #include "drone_city_nav/planning_grid_builder.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -8,6 +9,14 @@ namespace {
 
 [[nodiscard]] double sanitizedNonNegative(const double value) noexcept {
   return std::isfinite(value) && value > 0.0 ? value : 0.0;
+}
+
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point started_at) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - started_at)
+                                 .count()) /
+         1000.0;
 }
 
 void populateSourceStats(PlanningGridBuildResult& result,
@@ -81,6 +90,18 @@ void overlayDynamicSources(OccupancyGrid2D& dynamic_grid,
          lhs.cells_hash == rhs.cells_hash && lhs.inflated_hash == rhs.inflated_hash;
 }
 
+[[nodiscard]] std::size_t countOccupiedCells(const OccupancyGrid2D& grid) {
+  std::size_t occupied_cells = 0U;
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      if (grid.isOccupied(GridIndex{x, y})) {
+        ++occupied_cells;
+      }
+    }
+  }
+  return occupied_cells;
+}
+
 [[nodiscard]] PlanningGridBuildResult
 buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
                           const PlanningGridSources& sources) {
@@ -122,11 +143,18 @@ buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
   const double inflation_radius_m = sanitizedNonNegative(config.inflation_radius_m);
   const double planning_clearance_m = sanitizedNonNegative(config.planning_clearance_m);
 
+  const DistanceField2D occupied_distance_field = DistanceField2D::build(
+      raw_grid,
+      inflation_radius_m + planning_clearance_m + (0.5 * raw_grid.resolution()),
+      DistanceFieldSource::kOccupied);
+
   OccupancyGrid2D prohibited_grid = raw_grid;
-  prohibited_grid.rebuildInflation(inflation_radius_m);
+  prohibited_grid.applyInflationFromDistanceField(occupied_distance_field,
+                                                  inflation_radius_m);
 
   OccupancyGrid2D planning_grid = raw_grid;
-  planning_grid.rebuildInflation(inflation_radius_m + planning_clearance_m);
+  planning_grid.applyInflationFromDistanceField(
+      occupied_distance_field, inflation_radius_m + planning_clearance_m);
 
   result.status = PlanningGridStatus::kReady;
   result.grid = std::move(prohibited_grid);
@@ -211,11 +239,29 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
     static_cache_->planning_clearance_m = planning_clearance_m;
     static_cache_->overlay =
         overlayOccupiedCells(static_cache_->raw_grid, *sources.static_grid);
+    const auto static_distance_started_at = std::chrono::steady_clock::now();
+    static_cache_->occupied_distance_field =
+        DistanceField2D::build(static_cache_->raw_grid,
+                               inflation_radius_m + planning_clearance_m +
+                                   (0.5 * static_cache_->raw_grid.resolution()),
+                               DistanceFieldSource::kOccupied);
+    result.cache.static_distance_field_duration_ms =
+        elapsedMilliseconds(static_distance_started_at);
+    result.cache.static_distance_source_cells =
+        static_cache_->occupied_distance_field.stats().source_cells;
+    const auto static_inflation_started_at = std::chrono::steady_clock::now();
     static_cache_->prohibited_grid = static_cache_->raw_grid;
-    static_cache_->prohibited_grid.rebuildInflation(inflation_radius_m);
+    static_cache_->prohibited_grid.applyInflationFromDistanceField(
+        static_cache_->occupied_distance_field, inflation_radius_m);
     static_cache_->planning_grid = static_cache_->raw_grid;
-    static_cache_->planning_grid.rebuildInflation(inflation_radius_m +
-                                                  planning_clearance_m);
+    static_cache_->planning_grid.applyInflationFromDistanceField(
+        static_cache_->occupied_distance_field,
+        inflation_radius_m + planning_clearance_m);
+    result.cache.static_inflation_mask_duration_ms =
+        elapsedMilliseconds(static_inflation_started_at);
+  } else {
+    result.cache.static_distance_source_cells =
+        static_cache_->occupied_distance_field.stats().source_cells;
   }
 
   OccupancyGrid2D raw_grid = static_cache_->raw_grid;
@@ -236,18 +282,37 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
 
   OccupancyGrid2D dynamic_raw{*bounds};
   overlayDynamicSources(dynamic_raw, result, sources);
+  result.cache.dynamic_distance_source_cells = countOccupiedCells(dynamic_raw);
 
   OccupancyGrid2D prohibited_grid = raw_grid;
   prohibited_grid.mergeInflationFrom(static_cache_->prohibited_grid);
-  OccupancyGrid2D dynamic_prohibited_grid = dynamic_raw;
-  dynamic_prohibited_grid.rebuildInflation(inflation_radius_m);
-  prohibited_grid.mergeInflationFrom(dynamic_prohibited_grid);
-
   OccupancyGrid2D planning_grid = raw_grid;
   planning_grid.mergeInflationFrom(static_cache_->planning_grid);
-  OccupancyGrid2D dynamic_planning_grid = dynamic_raw;
-  dynamic_planning_grid.rebuildInflation(inflation_radius_m + planning_clearance_m);
-  planning_grid.mergeInflationFrom(dynamic_planning_grid);
+
+  if (result.cache.dynamic_distance_source_cells > 0U) {
+    const auto dynamic_distance_started_at = std::chrono::steady_clock::now();
+    const DistanceField2D dynamic_distance_field = DistanceField2D::build(
+        dynamic_raw,
+        inflation_radius_m + planning_clearance_m + (0.5 * dynamic_raw.resolution()),
+        DistanceFieldSource::kOccupied);
+    result.cache.dynamic_distance_field_duration_ms =
+        elapsedMilliseconds(dynamic_distance_started_at);
+    result.cache.dynamic_distance_source_cells =
+        dynamic_distance_field.stats().source_cells;
+
+    const auto dynamic_inflation_started_at = std::chrono::steady_clock::now();
+    OccupancyGrid2D dynamic_prohibited_grid = dynamic_raw;
+    dynamic_prohibited_grid.applyInflationFromDistanceField(dynamic_distance_field,
+                                                            inflation_radius_m);
+    prohibited_grid.mergeInflationFrom(dynamic_prohibited_grid);
+
+    OccupancyGrid2D dynamic_planning_grid = dynamic_raw;
+    dynamic_planning_grid.applyInflationFromDistanceField(
+        dynamic_distance_field, inflation_radius_m + planning_clearance_m);
+    planning_grid.mergeInflationFrom(dynamic_planning_grid);
+    result.cache.dynamic_inflation_mask_duration_ms =
+        elapsedMilliseconds(dynamic_inflation_started_at);
+  }
 
   result.status = PlanningGridStatus::kReady;
   result.grid = std::move(prohibited_grid);

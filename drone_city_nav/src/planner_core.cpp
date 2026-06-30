@@ -26,6 +26,12 @@ struct UnitDirection2D {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
+[[nodiscard]] bool sameBounds(const GridBounds& lhs, const GridBounds& rhs) noexcept {
+  return lhs.origin_x == rhs.origin_x && lhs.origin_y == rhs.origin_y &&
+         lhs.resolution_m == rhs.resolution_m && lhs.width_cells == rhs.width_cells &&
+         lhs.height_cells == rhs.height_cells;
+}
+
 [[nodiscard]] double
 normalizedClearanceDiagnosticRadiusM(const double configured_radius_m) noexcept {
   if (std::isfinite(configured_radius_m) && configured_radius_m > 0.0) {
@@ -205,6 +211,14 @@ double pathMinimumClearanceM(const ClearanceField2D& clearance_field,
         std::min(minimum_clearance_m, clearance_field.distanceAt(cell));
   }
   return minimum_clearance_m;
+}
+
+[[nodiscard]] bool clearanceFieldCanCover(const ClearanceField2D& clearance_field,
+                                          const OccupancyGrid2D& grid,
+                                          const double max_distance_m) noexcept {
+  return sameBounds(clearance_field.bounds(), grid.bounds()) &&
+         clearance_field.source() == ClearanceSource::kProhibited &&
+         clearance_field.maxDistanceM() + kTinyDistanceSqM >= max_distance_m;
 }
 
 bool pathSegmentIsAllowed(const OccupancyGrid2D& grid, const Point2 start,
@@ -537,11 +551,21 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal, const AStarConfig& astar_config) const {
+  return computePath(PathComputationInput{&grid, current_position, goal, astar_config,
+                                          nullptr, false});
+}
+
+std::optional<PathComputationResult>
+PlannerCore::computePath(const PathComputationInput& input) const {
+  if (input.grid == nullptr) {
+    return std::nullopt;
+  }
+  const OccupancyGrid2D& grid = *input.grid;
   const auto total_started_at = std::chrono::steady_clock::now();
   PathComputationResult result{};
-  result.requested_start_cell = grid.worldToCell(current_position);
+  result.requested_start_cell = grid.worldToCell(input.current_position);
   result.start_cell = result.requested_start_cell;
-  result.goal_cell = grid.worldToCell(goal);
+  result.goal_cell = grid.worldToCell(input.goal);
   if (!result.start_cell.has_value() || !result.goal_cell.has_value()) {
     return std::nullopt;
   }
@@ -551,7 +575,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 
   if (grid.isProhibited(*result.start_cell)) {
     const std::optional<GridIndex> escape_start_cell =
-        nearestAllowedEscapeStartCell(grid, *result.start_cell, current_position,
+        nearestAllowedEscapeStartCell(grid, *result.start_cell, input.current_position,
                                       config_.start_prohibited_escape_search_radius_m);
     if (!escape_start_cell.has_value()) {
       return std::nullopt;
@@ -559,13 +583,13 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 
     result.start_escape_used = true;
     result.start_escape_distance_m =
-        distance(current_position, grid.cellCenter(*escape_start_cell));
+        distance(input.current_position, grid.cellCenter(*escape_start_cell));
     result.start_cell = *escape_start_cell;
   }
 
   const auto astar_started_at = std::chrono::steady_clock::now();
   result.astar =
-      planner_.plan(grid, *result.start_cell, *result.goal_cell, astar_config);
+      planner_.plan(grid, *result.start_cell, *result.goal_cell, input.astar);
   result.astar_duration_ms = elapsedMilliseconds(astar_started_at);
   if (!result.astar.success) {
     return std::nullopt;
@@ -595,9 +619,16 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   const double clearance_radius_m =
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m);
   const auto clearance_field_started_at = std::chrono::steady_clock::now();
-  const ClearanceFieldCacheLookup clearance_field =
-      prohibited_clearance_cache_.getOrBuild(grid, clearance_radius_m,
-                                             ClearanceSource::kProhibited);
+  ClearanceFieldCacheLookup clearance_field{};
+  if (input.prohibited_clearance_field != nullptr &&
+      clearanceFieldCanCover(*input.prohibited_clearance_field, grid,
+                             clearance_radius_m)) {
+    clearance_field.field = input.prohibited_clearance_field;
+    clearance_field.cache_hit = input.prohibited_clearance_field_cache_hit;
+  } else {
+    clearance_field = prohibited_clearance_cache_.getOrBuild(
+        grid, clearance_radius_m, ClearanceSource::kProhibited);
+  }
   result.prohibited_clearance_field_duration_ms =
       elapsedMilliseconds(clearance_field_started_at);
   result.prohibited_clearance_field_cache_hit = clearance_field.cache_hit;

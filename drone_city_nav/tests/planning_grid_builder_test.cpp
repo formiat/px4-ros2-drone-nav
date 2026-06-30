@@ -246,9 +246,13 @@ TEST(PlanningGridBuilder, CachedStaticOnlyMatchesFullBuild) {
   EXPECT_TRUE(first.cache.static_cache_eligible);
   EXPECT_FALSE(first.cache.static_cache_hit);
   EXPECT_TRUE(first.cache.static_cache_rebuilt);
+  EXPECT_EQ(first.cache.static_distance_source_cells, 1U);
   EXPECT_TRUE(cached.cache.static_cache_eligible);
   EXPECT_TRUE(cached.cache.static_cache_hit);
   EXPECT_FALSE(cached.cache.static_cache_rebuilt);
+  EXPECT_EQ(cached.cache.static_distance_source_cells, 1U);
+  EXPECT_EQ(cached.cache.dynamic_distance_source_cells, 0U);
+  EXPECT_DOUBLE_EQ(cached.cache.dynamic_distance_field_duration_ms, 0.0);
   expectEquivalentReadyResult(full, cached);
 }
 
@@ -270,6 +274,7 @@ TEST(PlanningGridBuilder, CachedStaticPlusMemoryMatchesFullBuild) {
   const PlanningGridBuildResult full = buildPlanningGrid(config, sources);
 
   EXPECT_TRUE(cached.cache.static_cache_hit);
+  EXPECT_EQ(cached.cache.dynamic_distance_source_cells, 1U);
   expectEquivalentReadyResult(full, cached);
 }
 
@@ -294,6 +299,7 @@ TEST(PlanningGridBuilder, CachedStaticPlusCurrentLidarMatchesFullBuild) {
   const PlanningGridBuildResult full = buildPlanningGrid(config, sources);
 
   EXPECT_TRUE(cached.cache.static_cache_hit);
+  EXPECT_EQ(cached.cache.dynamic_distance_source_cells, 1U);
   expectEquivalentReadyResult(full, cached);
 }
 

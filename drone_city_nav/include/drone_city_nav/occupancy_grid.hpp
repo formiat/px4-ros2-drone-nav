@@ -10,6 +10,8 @@
 
 namespace drone_city_nav {
 
+class DistanceField2D;
+
 enum class CellState : std::int8_t {
   kUnknown = -1,
   kFree = 0,
@@ -53,6 +55,7 @@ public:
   void setOccupied(GridIndex cell);
   void markRay(Point2 start, Point2 end, bool endpoint_occupied);
   void rebuildInflation(double radius_m);
+  void applyInflationFromDistanceField(const DistanceField2D& field, double radius_m);
   void mergeInflationFrom(const OccupancyGrid2D& source);
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,

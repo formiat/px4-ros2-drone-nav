@@ -34,6 +34,7 @@ add_library(
   src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
+  src/distance_field.cpp
   src/final_trajectory_debug_io.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
@@ -236,6 +237,11 @@ if(BUILD_TESTING)
   target_compile_features(clearance_field_test PRIVATE cxx_std_20)
   target_link_libraries(clearance_field_test drone_city_nav_core)
   enable_project_warnings(clearance_field_test)
+
+  ament_add_gtest(distance_field_test tests/distance_field_test.cpp)
+  target_compile_features(distance_field_test PRIVATE cxx_std_20)
+  target_link_libraries(distance_field_test drone_city_nav_core)
+  enable_project_warnings(distance_field_test)
 
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)

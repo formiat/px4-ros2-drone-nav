@@ -576,6 +576,36 @@ TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
                    second_result.smoothed_path_clearance_m);
 }
 
+TEST(PlannerCore, ComputePathAcceptsPrebuiltProhibitedClearanceField) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{10, 6});
+  grid.rebuildInflation(1.1);
+  PlannerCoreConfig config{};
+  config.clearance_diagnostic_radius_m = 5.0;
+  const ClearanceField2D clearance = ClearanceField2D::build(
+      grid, config.clearance_diagnostic_radius_m, ClearanceSource::kProhibited);
+  PlannerCore core{config};
+
+  const auto result = core.computePath(PathComputationInput{
+      .grid = &grid,
+      .current_position = Point2{1.5, 1.5},
+      .goal = Point2{18.5, 1.5},
+      .astar = config.astar,
+      .prohibited_clearance_field = &clearance,
+      .prohibited_clearance_field_cache_hit = true,
+  });
+
+  ASSERT_TRUE(result.has_value());
+  const PathComputationResult& path_result =
+      result.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_EQ(path_result.prohibited_clearance_field, &clearance);
+  EXPECT_TRUE(path_result.prohibited_clearance_field_cache_hit);
+  EXPECT_DOUBLE_EQ(
+      path_result.raw_path_clearance_m,
+      pathMinimumProhibitedClearanceM(grid, path_result.astar.path,
+                                      config.clearance_diagnostic_radius_m));
+}
+
 TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
   OccupancyGrid2D grid = makeGrid();
   PlannerCoreConfig config{};

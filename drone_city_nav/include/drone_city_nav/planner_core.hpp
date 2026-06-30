@@ -69,6 +69,15 @@ struct PathComputationResult {
   const ClearanceField2D* prohibited_clearance_field{nullptr};
 };
 
+struct PathComputationInput {
+  const OccupancyGrid2D* grid{nullptr};
+  Point2 current_position{};
+  Point2 goal{};
+  AStarConfig astar{};
+  const ClearanceField2D* prohibited_clearance_field{nullptr};
+  bool prohibited_clearance_field_cache_hit{false};
+};
+
 struct PathProjection2D {
   std::size_t segment_start_index{0U};
   double segment_t{0.0};
@@ -158,6 +167,8 @@ public:
   [[nodiscard]] std::optional<PathComputationResult>
   computePath(const OccupancyGrid2D& grid, Point2 current_position, Point2 goal,
               const AStarConfig& astar_config) const;
+  [[nodiscard]] std::optional<PathComputationResult>
+  computePath(const PathComputationInput& input) const;
 
   [[nodiscard]] StablePathDecision
   evaluateStablePath(const OccupancyGrid2D& grid, std::span<const Point2> previous_path,

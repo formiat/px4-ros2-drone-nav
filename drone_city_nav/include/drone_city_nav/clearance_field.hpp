@@ -56,8 +56,6 @@ private:
   ClearanceSource source_{ClearanceSource::kOccupied};
   std::uint64_t cells_hash_{0U};
   std::uint64_t inflated_hash_{0U};
-  std::vector<CellState> cells_snapshot_;
-  std::vector<std::uint8_t> inflated_snapshot_;
   std::optional<ClearanceField2D> field_;
 };
 

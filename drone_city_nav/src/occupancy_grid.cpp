@@ -1,5 +1,6 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 
+#include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_config.hpp"
 
 #include <algorithm>
@@ -236,30 +237,35 @@ void OccupancyGrid2D::rebuildInflation(const double radius_m) {
     return;
   }
 
-  const int radius_cells = static_cast<int>(std::ceil(radius_m / bounds_.resolution_m));
+  const DistanceField2D field = DistanceField2D::build(
+      *this, radius_m + (0.5 * bounds_.resolution_m), DistanceFieldSource::kOccupied);
+  applyInflationFromDistanceField(field, radius_m);
+}
+
+void OccupancyGrid2D::applyInflationFromDistanceField(const DistanceField2D& field,
+                                                      const double radius_m) {
+  std::fill(inflated_.begin(), inflated_.end(), 0U);
+  if (radius_m <= 0.0) {
+    return;
+  }
+  if (bounds_.origin_x != field.bounds().origin_x ||
+      bounds_.origin_y != field.bounds().origin_y ||
+      bounds_.resolution_m != field.bounds().resolution_m ||
+      bounds_.width_cells != field.bounds().width_cells ||
+      bounds_.height_cells != field.bounds().height_cells ||
+      field.source() != DistanceFieldSource::kOccupied) {
+    throw std::invalid_argument{
+        "Inflation from distance field requires matching occupied-source grid bounds"};
+  }
+
   // The margin maps a continuous safety radius to cell centers without
   // under-inflating cells whose edges touch the requested radius.
   const double radius_with_margin = radius_m + (0.5 * bounds_.resolution_m);
-  const double radius_sq = radius_with_margin * radius_with_margin;
-
   for (int y = 0; y < bounds_.height_cells; ++y) {
     for (int x = 0; x < bounds_.width_cells; ++x) {
-      const GridIndex obstacle{x, y};
-      if (!isOccupied(obstacle)) {
-        continue;
-      }
-
-      const Point2 obstacle_center = cellCenter(obstacle);
-      for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
-        for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-          const GridIndex candidate{x + dx, y + dy};
-          if (!contains(candidate)) {
-            continue;
-          }
-          if (squaredDistance(obstacle_center, cellCenter(candidate)) <= radius_sq) {
-            inflated_[linearIndex(candidate)] = 1U;
-          }
-        }
+      const GridIndex cell{x, y};
+      if (field.distanceAt(cell) <= radius_with_margin) {
+        inflated_[linearIndex(cell)] = 1U;
       }
     }
   }

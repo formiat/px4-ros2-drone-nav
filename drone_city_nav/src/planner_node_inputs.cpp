@@ -352,7 +352,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "planning_grid[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
       "unknown=%zu planning_clearance_m=%.2f effective_inflation_m=%.2f] "
       "inflation_owner=planner "
-      "static_grid_cache[eligible=%s hit=%s rebuilt=%s] "
+      "static_grid_cache[eligible=%s hit=%s rebuilt=%s "
+      "static_distance=%.1fms static_masks=%.1fms dynamic_distance=%.1fms "
+      "dynamic_masks=%.1fms static_sources=%zu dynamic_sources=%zu] "
       "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
       "path='%s'] "
       "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
@@ -388,6 +390,12 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->cache.static_cache_eligible ? "true" : "false",
       planning_result->cache.static_cache_hit ? "true" : "false",
       planning_result->cache.static_cache_rebuilt ? "true" : "false",
+      planning_result->cache.static_distance_field_duration_ms,
+      planning_result->cache.static_inflation_mask_duration_ms,
+      planning_result->cache.dynamic_distance_field_duration_ms,
+      planning_result->cache.dynamic_inflation_mask_duration_ms,
+      planning_result->cache.static_distance_source_cells,
+      planning_result->cache.dynamic_distance_source_cells,
       planning_result->static_source.enabled ? "true" : "false",
       planning_result->static_source.loaded ? "true" : "false",
       planning_result->static_source.used ? "true" : "false",

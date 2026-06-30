@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/current_lidar_overlay.hpp"
+#include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/planner_core.hpp"
 
@@ -45,6 +46,12 @@ struct PlanningGridCacheStats {
   bool static_cache_eligible{false};
   bool static_cache_hit{false};
   bool static_cache_rebuilt{false};
+  double static_distance_field_duration_ms{0.0};
+  double static_inflation_mask_duration_ms{0.0};
+  double dynamic_distance_field_duration_ms{0.0};
+  double dynamic_inflation_mask_duration_ms{0.0};
+  std::size_t static_distance_source_cells{0U};
+  std::size_t dynamic_distance_source_cells{0U};
 };
 
 struct PlanningGridSources {
@@ -82,6 +89,7 @@ private:
     double planning_clearance_m{0.0};
     GridOverlayStats overlay{};
     OccupancyGrid2D raw_grid;
+    DistanceField2D occupied_distance_field;
     OccupancyGrid2D prohibited_grid;
     OccupancyGrid2D planning_grid;
 
