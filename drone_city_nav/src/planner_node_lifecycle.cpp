@@ -87,7 +87,8 @@ PlannerNode::PlannerNode()
       "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
       "sample_step=%.2fm] "
       "corridor[max_radius=%.2fm sample_step=%.2fm center_recovery_max=%.2fm "
-      "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm] "
+      "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm "
+      "parallel_workers=%zu] "
       "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
@@ -109,6 +110,7 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.corridor.lateral_limit_window_m,
       trajectory_planner_config_.corridor.lateral_limit_ratio,
       trajectory_planner_config_.corridor.lateral_limit_margin_m,
+      trajectory_planner_config_.corridor.parallel_workers,
       trajectory_planner_config_.racing_line.max_iterations,
       trajectory_planner_config_.racing_line.optimizer_sample_step_m,
       trajectory_planner_config_.racing_line.initial_offset_step_m,

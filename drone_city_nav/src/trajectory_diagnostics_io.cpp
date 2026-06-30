@@ -312,6 +312,13 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.scratch_reused_candidates);
   appendJsonBool(stream, "racing_parallel_candidate_evaluation_used",
                  stats.racing_line.parallel_candidate_evaluation_used);
+  appendJsonSize(stream, "racing_parallel_workers_used",
+                 stats.racing_line.parallel_workers_used);
+  appendJsonSize(stream, "racing_candidate_chunks", stats.racing_line.candidate_chunks);
+  appendJsonSize(stream, "racing_worker_scratch_reuses",
+                 stats.racing_line.worker_scratch_reuses);
+  appendJsonSize(stream, "racing_candidate_snapshot_allocations_avoided",
+                 stats.racing_line.candidate_snapshot_allocations_avoided);
   return stream.str();
 }
 
@@ -384,6 +391,20 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   std::ostringstream stream;
   stream << std::setprecision(9);
   stream << "{" << trajectoryTimingDiagnosticsJsonFields(stats);
+  appendJsonSize(stream, "corridor_parallel_workers_used",
+                 stats.corridor.parallel_workers_used);
+  appendJsonNumber(stream, "corridor_sample_build_duration_ms",
+                   stats.corridor.sample_build_duration_ms);
+  appendJsonNumber(stream, "corridor_raycast_duration_ms",
+                   stats.corridor.raycast_duration_ms);
+  appendJsonNumber(stream, "corridor_lateral_limit_duration_ms",
+                   stats.corridor.lateral_limit_duration_ms);
+  appendJsonNumber(stream, "corridor_clearance_field_build_ms",
+                   stats.corridor.clearance_field_build_duration_ms);
+  appendJsonBool(stream, "clearance_field_reused_by_corridor",
+                 stats.corridor.clearance_field_reused);
+  appendJsonBool(stream, "corridor_clearance_field_cache_hit",
+                 stats.corridor.clearance_field_cache_hit);
   stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
@@ -444,6 +465,20 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                    stats.corridor.max_center_recovery_m);
   appendJsonNumber(stream, "corridor_lateral_reduction_max_m",
                    stats.corridor.max_lateral_bound_reduction_m);
+  appendJsonSize(stream, "corridor_parallel_workers_used",
+                 stats.corridor.parallel_workers_used);
+  appendJsonNumber(stream, "corridor_sample_build_duration_ms",
+                   stats.corridor.sample_build_duration_ms);
+  appendJsonNumber(stream, "corridor_raycast_duration_ms",
+                   stats.corridor.raycast_duration_ms);
+  appendJsonNumber(stream, "corridor_lateral_limit_duration_ms",
+                   stats.corridor.lateral_limit_duration_ms);
+  appendJsonNumber(stream, "corridor_clearance_field_build_ms",
+                   stats.corridor.clearance_field_build_duration_ms);
+  appendJsonBool(stream, "clearance_field_reused_by_corridor",
+                 stats.corridor.clearance_field_reused);
+  appendJsonBool(stream, "corridor_clearance_field_cache_hit",
+                 stats.corridor.clearance_field_cache_hit);
   appendJsonSize(stream, "racing_line_input_samples", stats.racing_line.input_samples);
   appendJsonSize(stream, "racing_line_optimizer_samples",
                  stats.racing_line.optimizer_samples);
@@ -525,6 +560,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   corridor.max_center_recovery_m);
   parseJsonDouble(json, "corridor_lateral_reduction_max_m",
                   corridor.max_lateral_bound_reduction_m);
+  parseJsonSize(json, "corridor_parallel_workers_used", corridor.parallel_workers_used);
+  parseJsonDouble(json, "corridor_sample_build_duration_ms",
+                  corridor.sample_build_duration_ms);
+  parseJsonDouble(json, "corridor_raycast_duration_ms", corridor.raycast_duration_ms);
+  parseJsonDouble(json, "corridor_lateral_limit_duration_ms",
+                  corridor.lateral_limit_duration_ms);
+  parseJsonDouble(json, "corridor_clearance_field_build_ms",
+                  corridor.clearance_field_build_duration_ms);
+  parseJsonBool(json, "clearance_field_reused_by_corridor",
+                corridor.clearance_field_reused);
+  parseJsonBool(json, "corridor_clearance_field_cache_hit",
+                corridor.clearance_field_cache_hit);
 
   RacingLineStats& racing = envelope.stats.racing_line;
   parseJsonSize(json, "racing_line_input_samples", racing.input_samples);
@@ -597,6 +644,11 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.scratch_reused_candidates);
   parseJsonBool(json, "racing_parallel_candidate_evaluation_used",
                 racing.parallel_candidate_evaluation_used);
+  parseJsonSize(json, "racing_parallel_workers_used", racing.parallel_workers_used);
+  parseJsonSize(json, "racing_candidate_chunks", racing.candidate_chunks);
+  parseJsonSize(json, "racing_worker_scratch_reuses", racing.worker_scratch_reuses);
+  parseJsonSize(json, "racing_candidate_snapshot_allocations_avoided",
+                racing.candidate_snapshot_allocations_avoided);
   parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
   parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);

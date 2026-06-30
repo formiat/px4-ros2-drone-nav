@@ -126,7 +126,9 @@ private:
   bool publishPathFromPathCells(const OccupancyGrid2D& grid,
                                 const std::vector<GridIndex>& raw_cells,
                                 const std::vector<GridIndex>& smoothed_cells,
-                                const char* source_label);
+                                const char* source_label,
+                                const ClearanceField2D* prohibited_clearance_field,
+                                bool prohibited_clearance_field_cache_hit);
 
   [[nodiscard]] PublishedPathSafetySummary
   summarizePublishedPathSafety(const OccupancyGrid2D& grid,

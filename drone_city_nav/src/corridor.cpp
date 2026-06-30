@@ -3,9 +3,12 @@
 #include "drone_city_nav/clearance_field.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <optional>
+#include <thread>
 #include <vector>
 
 namespace drone_city_nav {
@@ -15,6 +18,14 @@ constexpr double kTinyDistanceM = 1.0e-6;
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
+}
+
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point started_at) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - started_at)
+                                 .count()) /
+         1000.0;
 }
 
 [[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
@@ -56,6 +67,19 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return config.ray_step_m > 0.0 && std::isfinite(config.ray_step_m)
              ? std::clamp(config.ray_step_m, 0.02, max_radius)
              : std::max(0.02, grid.resolution() * 0.5);
+}
+
+[[nodiscard]] bool sameBounds(const GridBounds& lhs, const GridBounds& rhs) noexcept {
+  return lhs.origin_x == rhs.origin_x && lhs.origin_y == rhs.origin_y &&
+         lhs.resolution_m == rhs.resolution_m && lhs.width_cells == rhs.width_cells &&
+         lhs.height_cells == rhs.height_cells;
+}
+
+[[nodiscard]] bool clearanceFieldCanCover(const ClearanceField2D& clearance_field,
+                                          const OccupancyGrid2D& grid,
+                                          const double max_radius_m) noexcept {
+  return sameBounds(clearance_field.bounds(), grid.bounds()) &&
+         clearance_field.maxDistanceM() + kTinyDistanceM >= max_radius_m;
 }
 
 [[nodiscard]] bool pointIsProhibited(const OccupancyGrid2D& grid, const Point2 point) {
@@ -194,18 +218,99 @@ void applyLocalLateralLimit(std::vector<CorridorSample>& samples,
   }
 }
 
+void mergeSampleStats(CorridorStats& output, const CorridorStats& input) {
+  output.route_prohibited_samples += input.route_prohibited_samples;
+  output.center_recovered_samples += input.center_recovered_samples;
+  output.center_unrecoverable_samples += input.center_unrecoverable_samples;
+  output.outside_grid_samples += input.outside_grid_samples;
+  output.max_center_recovery_m =
+      std::max(output.max_center_recovery_m, input.max_center_recovery_m);
+  output.raycast_duration_ms += input.raycast_duration_ms;
+}
+
+[[nodiscard]] std::size_t desiredWorkerCount(const std::size_t requested_workers,
+                                             const std::size_t work_items) noexcept {
+  if (work_items < 2U) {
+    return 1U;
+  }
+  std::size_t worker_count = requested_workers;
+  if (worker_count == 0U) {
+    worker_count = static_cast<std::size_t>(std::thread::hardware_concurrency());
+  }
+  if (worker_count == 0U) {
+    worker_count = 2U;
+  }
+  return std::clamp<std::size_t>(worker_count, 1U, work_items);
+}
+
+[[nodiscard]] std::optional<CorridorSample> buildCorridorSample(
+    const std::vector<TrajectorySegment>& route, const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D& clearance_field, const CorridorConfig& config,
+    const double s_m, const double ray_step, const double center_recovery_max_m,
+    CorridorStats& stats) {
+  const Point2 route_center = trajectoryPointAtS(route, s_m);
+  const Point2 tangent = normalized(trajectoryTangentAtS(route, s_m));
+  if (!finite2D(route_center) || !(norm(tangent) > kTinyDistanceM)) {
+    return std::nullopt;
+  }
+
+  const Point2 normal = leftNormal(tangent);
+  Point2 center = route_center;
+  double center_recovery_m = 0.0;
+  if (pointIsProhibited(prohibited_grid, route_center)) {
+    if (const std::optional<Point2> recovered_center =
+            recoverCorridorCenter(prohibited_grid, route_center, normal,
+                                  center_recovery_max_m, ray_step, center_recovery_m);
+        recovered_center.has_value()) {
+      center = *recovered_center;
+      ++stats.center_recovered_samples;
+      stats.max_center_recovery_m =
+          std::max(stats.max_center_recovery_m, center_recovery_m);
+    } else {
+      ++stats.route_prohibited_samples;
+      ++stats.center_unrecoverable_samples;
+    }
+  }
+
+  CorridorSample sample{};
+  sample.s_m = s_m;
+  sample.route_center = route_center;
+  sample.center = center;
+  sample.tangent = tangent;
+  sample.normal = normal;
+  sample.center_recovery_m = center_recovery_m;
+  const auto raycast_started_at = std::chrono::steady_clock::now();
+  sample.left_bound_m = raycastBound(prohibited_grid, center, normal, config, stats);
+  sample.right_bound_m =
+      raycastBound(prohibited_grid, center, normal * -1.0, config, stats);
+  stats.raycast_duration_ms += elapsedMilliseconds(raycast_started_at);
+
+  const std::optional<GridIndex> cell = prohibited_grid.worldToCell(center);
+  if (cell.has_value() && clearance_field.contains(*cell)) {
+    sample.clearance_m = clearance_field.distanceAt(*cell);
+  }
+  return sample;
+}
+
 } // namespace
 
 CorridorResult buildCorridor(const std::span<const Point2> route_points,
                              const OccupancyGrid2D& prohibited_grid,
                              const CorridorConfig& config) {
+  return buildCorridor(CorridorInput{route_points, &prohibited_grid, nullptr, false},
+                       config);
+}
+
+CorridorResult buildCorridor(const CorridorInput& input, const CorridorConfig& config) {
   CorridorResult result{};
-  result.stats.input_points = route_points.size();
-  if (route_points.size() < 2U) {
+  result.stats.input_points = input.route_points.size();
+  if (input.route_points.size() < 2U || input.prohibited_grid == nullptr) {
     return result;
   }
+  const OccupancyGrid2D& prohibited_grid = *input.prohibited_grid;
 
-  const std::vector<TrajectorySegment> route = lineTrajectoryFromPoints(route_points);
+  const std::vector<TrajectorySegment> route =
+      lineTrajectoryFromPoints(input.route_points);
   if (!trajectoryIsUsable(route)) {
     return result;
   }
@@ -216,64 +321,80 @@ CorridorResult buildCorridor(const std::span<const Point2> route_points,
   const double ray_step = corridorRayStep(prohibited_grid, config, max_radius);
   const double center_recovery_max_m =
       sanitizedPositive(config.center_recovery_max_m, 3.0, 0.0, max_radius);
-  const ClearanceField2D clearance_field = ClearanceField2D::build(
-      prohibited_grid, max_radius, ClearanceSource::kProhibited);
+  std::optional<ClearanceField2D> owned_clearance_field;
+  const ClearanceField2D* clearance_field = input.prohibited_clearance_field;
+  if (clearance_field != nullptr &&
+      clearanceFieldCanCover(*clearance_field, prohibited_grid, max_radius)) {
+    result.stats.clearance_field_reused = true;
+    result.stats.clearance_field_cache_hit = input.prohibited_clearance_field_cache_hit;
+  } else {
+    const auto clearance_started_at = std::chrono::steady_clock::now();
+    owned_clearance_field = ClearanceField2D::build(prohibited_grid, max_radius,
+                                                    ClearanceSource::kProhibited);
+    result.stats.clearance_field_build_duration_ms =
+        elapsedMilliseconds(clearance_started_at);
+    clearance_field = &*owned_clearance_field;
+  }
 
   const double length = trajectoryLengthM(route);
   const std::size_t sample_count =
       static_cast<std::size_t>(std::ceil(length / sample_step)) + 1U;
-  result.samples.reserve(sample_count + 1U);
-
-  for (std::size_t i = 0U; i <= sample_count; ++i) {
-    const double s_m = std::min(length, static_cast<double>(i) * sample_step);
-    const Point2 route_center = trajectoryPointAtS(route, s_m);
-    const Point2 tangent = normalized(trajectoryTangentAtS(route, s_m));
-    if (!finite2D(route_center) || !(norm(tangent) > kTinyDistanceM)) {
-      continue;
+  std::vector<std::optional<CorridorSample>> sample_slots(sample_count);
+  const std::size_t worker_count =
+      desiredWorkerCount(config.parallel_workers, sample_slots.size());
+  result.stats.parallel_workers_used = worker_count;
+  const auto sample_build_started_at = std::chrono::steady_clock::now();
+  if (worker_count <= 1U) {
+    CorridorStats sample_stats{};
+    for (std::size_t i = 0U; i < sample_slots.size(); ++i) {
+      const double s_m = std::min(length, static_cast<double>(i) * sample_step);
+      sample_slots[i] =
+          buildCorridorSample(route, prohibited_grid, *clearance_field, config, s_m,
+                              ray_step, center_recovery_max_m, sample_stats);
     }
-
-    const Point2 normal = leftNormal(tangent);
-    Point2 center = route_center;
-    double center_recovery_m = 0.0;
-    if (pointIsProhibited(prohibited_grid, route_center)) {
-      if (const std::optional<Point2> recovered_center =
-              recoverCorridorCenter(prohibited_grid, route_center, normal,
-                                    center_recovery_max_m, ray_step, center_recovery_m);
-          recovered_center.has_value()) {
-        center = *recovered_center;
-        ++result.stats.center_recovered_samples;
-        result.stats.max_center_recovery_m =
-            std::max(result.stats.max_center_recovery_m, center_recovery_m);
-      } else {
-        ++result.stats.route_prohibited_samples;
-        ++result.stats.center_unrecoverable_samples;
+    mergeSampleStats(result.stats, sample_stats);
+  } else {
+    std::vector<CorridorStats> worker_stats(worker_count);
+    std::vector<std::future<void>> futures;
+    futures.reserve(worker_count);
+    const std::size_t chunk_size =
+        (sample_slots.size() + worker_count - 1U) / worker_count;
+    for (std::size_t worker_index = 0U; worker_index < worker_count; ++worker_index) {
+      const std::size_t begin = worker_index * chunk_size;
+      const std::size_t end = std::min(sample_slots.size(), begin + chunk_size);
+      if (begin >= end) {
+        continue;
       }
+      futures.push_back(std::async(std::launch::async, [&, begin, end, worker_index] {
+        CorridorStats local_stats{};
+        for (std::size_t i = begin; i < end; ++i) {
+          const double s_m = std::min(length, static_cast<double>(i) * sample_step);
+          sample_slots[i] =
+              buildCorridorSample(route, prohibited_grid, *clearance_field, config, s_m,
+                                  ray_step, center_recovery_max_m, local_stats);
+        }
+        worker_stats[worker_index] = local_stats;
+      }));
     }
-
-    CorridorSample sample{};
-    sample.s_m = s_m;
-    sample.route_center = route_center;
-    sample.center = center;
-    sample.tangent = tangent;
-    sample.normal = normal;
-    sample.center_recovery_m = center_recovery_m;
-    sample.left_bound_m =
-        raycastBound(prohibited_grid, center, normal, config, result.stats);
-    sample.right_bound_m =
-        raycastBound(prohibited_grid, center, normal * -1.0, config, result.stats);
-
-    const std::optional<GridIndex> cell = prohibited_grid.worldToCell(center);
-    if (cell.has_value()) {
-      sample.clearance_m = clearance_field.distanceAt(*cell);
+    for (std::future<void>& future : futures) {
+      future.get();
     }
-    result.samples.push_back(sample);
-
-    if (s_m >= length) {
-      break;
+    for (const CorridorStats& stats : worker_stats) {
+      mergeSampleStats(result.stats, stats);
+    }
+  }
+  result.stats.sample_build_duration_ms = elapsedMilliseconds(sample_build_started_at);
+  result.samples.reserve(sample_slots.size());
+  for (const std::optional<CorridorSample>& sample : sample_slots) {
+    if (sample.has_value()) {
+      result.samples.push_back(*sample);
     }
   }
 
+  const auto lateral_limit_started_at = std::chrono::steady_clock::now();
   applyLocalLateralLimit(result.samples, config, result.stats);
+  result.stats.lateral_limit_duration_ms =
+      elapsedMilliseconds(lateral_limit_started_at);
 
   result.stats.samples = result.samples.size();
   double width_sum = 0.0;

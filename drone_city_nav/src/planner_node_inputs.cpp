@@ -474,7 +474,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
                 path_result->astar.path.size());
   }
   publishPathFromPathCells(planning_grid, path_result->astar.path,
-                           path_result->smoothed_cells, "planning_clearance");
+                           path_result->smoothed_cells, "planning_clearance",
+                           path_result->prohibited_clearance_field,
+                           path_result->prohibited_clearance_field_cache_hit);
 }
 
 [[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity() const {

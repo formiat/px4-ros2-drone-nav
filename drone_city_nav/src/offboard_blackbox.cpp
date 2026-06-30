@@ -332,6 +332,23 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"corridor_lateral_reduction_max_m\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 planner_stats.corridor.max_lateral_bound_reduction_m);
+  stream << ",\"corridor_parallel_workers_used\":"
+         << planner_stats.corridor.parallel_workers_used;
+  stream << ",\"corridor_sample_build_duration_ms\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                planner_stats.corridor.sample_build_duration_ms);
+  stream << ",\"corridor_raycast_duration_ms\":";
+  writeBlackboxJsonNumberOrNull(stream, planner_stats.corridor.raycast_duration_ms);
+  stream << ",\"corridor_lateral_limit_duration_ms\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                planner_stats.corridor.lateral_limit_duration_ms);
+  stream << ",\"corridor_clearance_field_build_ms\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, planner_stats.corridor.clearance_field_build_duration_ms);
+  stream << ",\"clearance_field_reused_by_corridor\":"
+         << (planner_stats.corridor.clearance_field_reused ? "true" : "false");
+  stream << ",\"corridor_clearance_field_cache_hit\":"
+         << (planner_stats.corridor.clearance_field_cache_hit ? "true" : "false");
   stream << ",\"racing_line_iterations\":" << planner_stats.racing_line.iterations;
   stream << ",\"racing_line_optimizer_samples\":"
          << planner_stats.racing_line.optimizer_samples;

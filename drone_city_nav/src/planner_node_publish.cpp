@@ -23,10 +23,11 @@ namespace {
 
 } // namespace
 
-bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
-                                           const std::vector<GridIndex>& raw_cells,
-                                           const std::vector<GridIndex>& smoothed_cells,
-                                           const char* source_label) {
+bool PlannerNode::publishPathFromPathCells(
+    const OccupancyGrid2D& grid, const std::vector<GridIndex>& raw_cells,
+    const std::vector<GridIndex>& smoothed_cells, const char* source_label,
+    const ClearanceField2D* prohibited_clearance_field,
+    const bool prohibited_clearance_field_cache_hit) {
   struct CandidatePath {
     std::vector<Point2> points;
     const char* source_kind{""};
@@ -136,7 +137,8 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
   const auto started_at = std::chrono::steady_clock::now();
   TrajectoryPlannerResult trajectory_result = planRacingTrajectory(
       TrajectoryPlannerInput{
-          std::span<const Point2>{route_points.data(), route_points.size()}, &grid},
+          std::span<const Point2>{route_points.data(), route_points.size()}, &grid,
+          prohibited_clearance_field, prohibited_clearance_field_cache_hit},
       trajectory_planner_config_);
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -195,97 +197,111 @@ bool PlannerNode::publishPathFromPathCells(const OccupancyGrid2D& grid,
     return false;
   }
 
-  RCLCPP_INFO(get_logger(),
-              "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
-              "duration_ms=%.1f status=%.*s "
-              "timing[total=%.1f corridor=%.1f racing_line=%.1f "
-              "turn_smoothing=%.1f speed_profile=%.1f] "
-              "length=%.2f samples=%zu "
-              "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
-              "lateral_limited=%zu] "
-              "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
-              "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
-              "sample_build=%.1fms regularization=%.1fms scratch_reused=%zu "
-              "parallel=%s cost_initial=%.3f cost_final=%.3f "
-              "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
-              "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
-              "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
-              "speed_limit_max=%.2f curvature_limited=%zu] "
-              "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
-              "relaxed_attempts=%zu "
-              "smoothed=%zu "
-              "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
-              "heading_before=%.1fdeg heading_after=%.1fdeg "
-              "curvature_jump_before=%.3f curvature_jump_after=%.3f "
-              "min_inner_margin=%.2f max_outer_shift=%.2f "
-              "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
-              "relaxed_angle=%.1fdeg)] "
-              "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
-              source_label, route_points.size(), trajectory_points.size(), duration_ms,
-              static_cast<int>(
-                  trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
-              trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-              trajectory_result.stats.total_duration_ms,
-              trajectory_result.stats.corridor_duration_ms,
-              trajectory_result.stats.racing_line_duration_ms,
-              trajectory_result.stats.turn_smoothing_duration_ms,
-              trajectory_result.stats.speed_profile_duration_ms,
-              trajectory_result.stats.length_m, trajectory_result.stats.samples,
-              trajectory_result.stats.corridor.samples,
-              trajectory_result.stats.corridor.min_width_m,
-              trajectory_result.stats.corridor.mean_width_m,
-              trajectory_result.stats.corridor.max_width_m,
-              trajectory_result.stats.corridor.lateral_limited_samples,
-              trajectory_result.stats.racing_line.iterations,
-              trajectory_result.stats.racing_line.candidate_evaluations,
-              trajectory_result.stats.racing_line.skipped_noop_candidates,
-              trajectory_result.stats.racing_line.candidate_path_evaluation_duration_ms,
-              trajectory_result.stats.racing_line.candidate_score_duration_ms,
-              trajectory_result.stats.racing_line.candidate_point_build_duration_ms,
-              trajectory_result.stats.racing_line.candidate_sample_build_duration_ms,
-              trajectory_result.stats.racing_line.regularization_duration_ms,
-              trajectory_result.stats.racing_line.scratch_reused_candidates,
-              trajectory_result.stats.racing_line.parallel_candidate_evaluation_used
-                  ? "true"
-                  : "false",
-              trajectory_result.stats.racing_line.initial_cost,
-              trajectory_result.stats.racing_line.final_cost,
-              trajectory_result.stats.racing_line.centerline_length_m,
-              trajectory_result.stats.racing_line.final_length_m,
-              trajectory_result.stats.racing_line.final_length_ratio,
-              trajectory_result.stats.racing_line.max_abs_offset_m,
-              trajectory_result.stats.racing_line.min_edge_margin_m,
-              trajectory_result.stats.racing_line.estimated_time_s,
-              trajectory_result.stats.racing_line.centerline_estimated_time_s,
-              trajectory_result.stats.racing_line.time_gain_s,
-              trajectory_result.stats.racing_line.min_speed_limit_mps,
-              trajectory_result.stats.racing_line.max_speed_limit_mps,
-              trajectory_result.stats.racing_line.curvature_limited_samples,
-              trajectory_result.stats.turn_smoothing.detected_corners,
-              trajectory_result.stats.turn_smoothing.attempted_corners,
-              trajectory_result.stats.turn_smoothing.candidate_attempts,
-              trajectory_result.stats.turn_smoothing.relaxed_candidate_attempts,
-              trajectory_result.stats.turn_smoothing.smoothed_corners,
-              trajectory_result.stats.turn_smoothing.rejected_prohibited,
-              trajectory_result.stats.turn_smoothing.rejected_corridor,
-              trajectory_result.stats.turn_smoothing.rejected_length,
-              trajectory_result.stats.turn_smoothing.rejected_not_improved,
-              radiansToDegrees(
-                  trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
-              radiansToDegrees(
-                  trajectory_result.stats.turn_smoothing.max_heading_delta_after_rad),
-              trajectory_result.stats.turn_smoothing.max_curvature_jump_before_1pm,
-              trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
-              trajectory_result.stats.turn_smoothing.min_inner_margin_m,
-              trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
-              trajectory_result.stats.turn_smoothing.accepted_entry_distance_m,
-              trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
-              trajectory_result.stats.turn_smoothing.accepted_shift_scale,
-              trajectory_result.stats.turn_smoothing.accepted_relaxed_angle_deg,
-              trajectory_result.stats.speed_profile_min_mps,
-              trajectory_result.stats.speed_profile_mean_mps,
-              trajectory_result.stats.speed_profile_max_mps,
-              trajectory_result.stats.speed_profile_curvature_limited_samples);
+  RCLCPP_INFO(
+      get_logger(),
+      "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
+      "duration_ms=%.1f status=%.*s "
+      "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+      "turn_smoothing=%.1f speed_profile=%.1f] "
+      "length=%.2f samples=%zu "
+      "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
+      "lateral_limited=%zu workers=%zu sample_build=%.1fms "
+      "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
+      "clearance_reused=%s clearance_cache_hit=%s] "
+      "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
+      "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
+      "sample_build=%.1fms regularization=%.1fms scratch_reused=%zu "
+      "parallel=%s workers=%zu chunks=%zu worker_reuses=%zu "
+      "allocations_avoided=%zu cost_initial=%.3f cost_final=%.3f "
+      "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
+      "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
+      "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
+      "speed_limit_max=%.2f curvature_limited=%zu] "
+      "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
+      "relaxed_attempts=%zu "
+      "smoothed=%zu "
+      "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
+      "heading_before=%.1fdeg heading_after=%.1fdeg "
+      "curvature_jump_before=%.3f curvature_jump_after=%.3f "
+      "min_inner_margin=%.2f max_outer_shift=%.2f "
+      "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
+      "relaxed_angle=%.1fdeg)] "
+      "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
+      source_label, route_points.size(), trajectory_points.size(), duration_ms,
+      static_cast<int>(
+          trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
+      trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+      trajectory_result.stats.total_duration_ms,
+      trajectory_result.stats.corridor_duration_ms,
+      trajectory_result.stats.racing_line_duration_ms,
+      trajectory_result.stats.turn_smoothing_duration_ms,
+      trajectory_result.stats.speed_profile_duration_ms,
+      trajectory_result.stats.length_m, trajectory_result.stats.samples,
+      trajectory_result.stats.corridor.samples,
+      trajectory_result.stats.corridor.min_width_m,
+      trajectory_result.stats.corridor.mean_width_m,
+      trajectory_result.stats.corridor.max_width_m,
+      trajectory_result.stats.corridor.lateral_limited_samples,
+      trajectory_result.stats.corridor.parallel_workers_used,
+      trajectory_result.stats.corridor.sample_build_duration_ms,
+      trajectory_result.stats.corridor.raycast_duration_ms,
+      trajectory_result.stats.corridor.lateral_limit_duration_ms,
+      trajectory_result.stats.corridor.clearance_field_build_duration_ms,
+      trajectory_result.stats.corridor.clearance_field_reused ? "true" : "false",
+      trajectory_result.stats.corridor.clearance_field_cache_hit ? "true" : "false",
+      trajectory_result.stats.racing_line.iterations,
+      trajectory_result.stats.racing_line.candidate_evaluations,
+      trajectory_result.stats.racing_line.skipped_noop_candidates,
+      trajectory_result.stats.racing_line.candidate_path_evaluation_duration_ms,
+      trajectory_result.stats.racing_line.candidate_score_duration_ms,
+      trajectory_result.stats.racing_line.candidate_point_build_duration_ms,
+      trajectory_result.stats.racing_line.candidate_sample_build_duration_ms,
+      trajectory_result.stats.racing_line.regularization_duration_ms,
+      trajectory_result.stats.racing_line.scratch_reused_candidates,
+      trajectory_result.stats.racing_line.parallel_candidate_evaluation_used ? "true"
+                                                                             : "false",
+      trajectory_result.stats.racing_line.parallel_workers_used,
+      trajectory_result.stats.racing_line.candidate_chunks,
+      trajectory_result.stats.racing_line.worker_scratch_reuses,
+      trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
+      trajectory_result.stats.racing_line.initial_cost,
+      trajectory_result.stats.racing_line.final_cost,
+      trajectory_result.stats.racing_line.centerline_length_m,
+      trajectory_result.stats.racing_line.final_length_m,
+      trajectory_result.stats.racing_line.final_length_ratio,
+      trajectory_result.stats.racing_line.max_abs_offset_m,
+      trajectory_result.stats.racing_line.min_edge_margin_m,
+      trajectory_result.stats.racing_line.estimated_time_s,
+      trajectory_result.stats.racing_line.centerline_estimated_time_s,
+      trajectory_result.stats.racing_line.time_gain_s,
+      trajectory_result.stats.racing_line.min_speed_limit_mps,
+      trajectory_result.stats.racing_line.max_speed_limit_mps,
+      trajectory_result.stats.racing_line.curvature_limited_samples,
+      trajectory_result.stats.turn_smoothing.detected_corners,
+      trajectory_result.stats.turn_smoothing.attempted_corners,
+      trajectory_result.stats.turn_smoothing.candidate_attempts,
+      trajectory_result.stats.turn_smoothing.relaxed_candidate_attempts,
+      trajectory_result.stats.turn_smoothing.smoothed_corners,
+      trajectory_result.stats.turn_smoothing.rejected_prohibited,
+      trajectory_result.stats.turn_smoothing.rejected_corridor,
+      trajectory_result.stats.turn_smoothing.rejected_length,
+      trajectory_result.stats.turn_smoothing.rejected_not_improved,
+      radiansToDegrees(
+          trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
+      radiansToDegrees(
+          trajectory_result.stats.turn_smoothing.max_heading_delta_after_rad),
+      trajectory_result.stats.turn_smoothing.max_curvature_jump_before_1pm,
+      trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
+      trajectory_result.stats.turn_smoothing.min_inner_margin_m,
+      trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
+      trajectory_result.stats.turn_smoothing.accepted_entry_distance_m,
+      trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
+      trajectory_result.stats.turn_smoothing.accepted_shift_scale,
+      trajectory_result.stats.turn_smoothing.accepted_relaxed_angle_deg,
+      trajectory_result.stats.speed_profile_min_mps,
+      trajectory_result.stats.speed_profile_mean_mps,
+      trajectory_result.stats.speed_profile_max_mps,
+      trajectory_result.stats.speed_profile_curvature_limited_samples);
 
   last_valid_path_points_ = trajectory_points;
   logPublishedPathSafety(grid, trajectory_points, "final_trajectory");

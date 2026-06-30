@@ -66,6 +66,7 @@ struct PathComputationResult {
   double raw_path_clearance_duration_ms{0.0};
   double smoothed_path_clearance_duration_ms{0.0};
   bool prohibited_clearance_field_cache_hit{false};
+  const ClearanceField2D* prohibited_clearance_field{nullptr};
 };
 
 struct PathProjection2D {

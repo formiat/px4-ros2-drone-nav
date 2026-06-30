@@ -1,3 +1,4 @@
+#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 
 #include <gtest/gtest.h>
@@ -93,6 +94,23 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.centerline_estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.time_gain_s));
+}
+
+TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const TrajectoryPlannerConfig config = testConfig();
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      grid, config.corridor.max_radius_m, ClearanceSource::kProhibited);
+
+  const TrajectoryPlannerResult result = planTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             &clearance_field, true},
+      config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.corridor.clearance_field_reused);
+  EXPECT_TRUE(result.stats.corridor.clearance_field_cache_hit);
 }
 
 } // namespace drone_city_nav

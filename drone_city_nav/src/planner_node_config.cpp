@@ -175,6 +175,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.corridor.lateral_limit_margin_m =
       std::clamp(node.declare_parameter<double>("corridor_lateral_limit_margin_m", 1.0),
                  0.0, 5000.0);
+  config.trajectory_planner.corridor.parallel_workers =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("corridor_parallel_workers", 0), 0,
+          1024));
+  config.planner_core.clearance_diagnostic_radius_m =
+      std::max(config.planner_core.clearance_diagnostic_radius_m,
+               config.trajectory_planner.corridor.max_radius_m);
   config.trajectory_planner.racing_line.max_iterations =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,

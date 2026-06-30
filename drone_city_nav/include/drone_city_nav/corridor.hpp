@@ -10,6 +10,8 @@
 
 namespace drone_city_nav {
 
+class ClearanceField2D;
+
 struct CorridorConfig {
   double max_radius_m{40.0};
   double sample_step_m{1.0};
@@ -18,6 +20,7 @@ struct CorridorConfig {
   double lateral_limit_window_m{20.0};
   double lateral_limit_ratio{1.25};
   double lateral_limit_margin_m{1.0};
+  std::size_t parallel_workers{0U};
 };
 
 struct CorridorSample {
@@ -48,6 +51,13 @@ struct CorridorStats {
   double max_clearance_m{0.0};
   double max_center_recovery_m{0.0};
   double max_lateral_bound_reduction_m{0.0};
+  std::size_t parallel_workers_used{0U};
+  double sample_build_duration_ms{0.0};
+  double raycast_duration_ms{0.0};
+  double lateral_limit_duration_ms{0.0};
+  double clearance_field_build_duration_ms{0.0};
+  bool clearance_field_reused{false};
+  bool clearance_field_cache_hit{false};
 };
 
 struct CorridorResult {
@@ -56,8 +66,18 @@ struct CorridorResult {
   bool valid{false};
 };
 
+struct CorridorInput {
+  std::span<const Point2> route_points;
+  const OccupancyGrid2D* prohibited_grid{nullptr};
+  const ClearanceField2D* prohibited_clearance_field{nullptr};
+  bool prohibited_clearance_field_cache_hit{false};
+};
+
 [[nodiscard]] CorridorResult buildCorridor(std::span<const Point2> route_points,
                                            const OccupancyGrid2D& prohibited_grid,
+                                           const CorridorConfig& config);
+
+[[nodiscard]] CorridorResult buildCorridor(const CorridorInput& input,
                                            const CorridorConfig& config);
 
 } // namespace drone_city_nav

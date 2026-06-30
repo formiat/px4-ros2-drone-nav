@@ -116,7 +116,10 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
   const CorridorResult corridor =
-      buildCorridor(input.route_points, *input.prohibited_grid, config.corridor);
+      buildCorridor(CorridorInput{input.route_points, input.prohibited_grid,
+                                  input.prohibited_clearance_field,
+                                  input.prohibited_clearance_field_cache_hit},
+                    config.corridor);
   result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
   result.corridor_samples = corridor.samples;
   if (!corridor.valid) {

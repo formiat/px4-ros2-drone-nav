@@ -159,6 +159,10 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
                      parallel.samples[i].racing_offset_m);
   }
   EXPECT_TRUE(parallel.stats.parallel_candidate_evaluation_used);
+  EXPECT_EQ(parallel.stats.parallel_workers_used, 2U);
+  EXPECT_GT(parallel.stats.candidate_chunks, 0U);
+  EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
+  EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);
   EXPECT_EQ(sequential.stats.candidate_evaluations,
             parallel.stats.candidate_evaluations);
   EXPECT_EQ(sequential.stats.collision_rejections, parallel.stats.collision_rejections);

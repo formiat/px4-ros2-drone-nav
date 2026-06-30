@@ -12,6 +12,8 @@
 
 namespace drone_city_nav {
 
+class ClearanceField2D;
+
 enum class TrajectoryPlannerStatus {
   kOk,
   kInvalidRoute,
@@ -57,6 +59,8 @@ struct TrajectoryPlannerStats {
 struct TrajectoryPlannerInput {
   std::span<const Point2> route_points;
   const OccupancyGrid2D* prohibited_grid{nullptr};
+  const ClearanceField2D* prohibited_clearance_field{nullptr};
+  bool prohibited_clearance_field_cache_hit{false};
 };
 
 struct TrajectoryPlannerResult {

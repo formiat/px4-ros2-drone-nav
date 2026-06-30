@@ -1,3 +1,4 @@
+#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/corridor.hpp"
 
 #include <gtest/gtest.h>
@@ -23,6 +24,18 @@ namespace {
   config.max_radius_m = 10.0;
   config.sample_step_m = 2.0;
   return config;
+}
+
+void expectSameSamples(const CorridorResult& lhs, const CorridorResult& rhs) {
+  ASSERT_EQ(lhs.samples.size(), rhs.samples.size());
+  for (std::size_t i = 0U; i < lhs.samples.size(); ++i) {
+    EXPECT_DOUBLE_EQ(lhs.samples[i].s_m, rhs.samples[i].s_m);
+    EXPECT_DOUBLE_EQ(lhs.samples[i].center.x, rhs.samples[i].center.x);
+    EXPECT_DOUBLE_EQ(lhs.samples[i].center.y, rhs.samples[i].center.y);
+    EXPECT_DOUBLE_EQ(lhs.samples[i].left_bound_m, rhs.samples[i].left_bound_m);
+    EXPECT_DOUBLE_EQ(lhs.samples[i].right_bound_m, rhs.samples[i].right_bound_m);
+    EXPECT_DOUBLE_EQ(lhs.samples[i].clearance_m, rhs.samples[i].clearance_m);
+  }
 }
 
 } // namespace
@@ -109,6 +122,62 @@ TEST(Corridor, LocalLateralLimitClipsSideOpening) {
       });
   ASSERT_NE(opening_sample, result.samples.end());
   EXPECT_LE(opening_sample->left_bound_m, 3.5);
+}
+
+TEST(Corridor, ParallelSampleBuildMatchesSerialResult) {
+  const OccupancyGrid2D grid = corridorGrid();
+  const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
+  CorridorConfig serial_config = testConfig();
+  serial_config.parallel_workers = 1U;
+  CorridorConfig parallel_config = testConfig();
+  parallel_config.parallel_workers = 3U;
+
+  const CorridorResult serial_result = buildCorridor(route, grid, serial_config);
+  const CorridorResult parallel_result = buildCorridor(route, grid, parallel_config);
+
+  ASSERT_TRUE(serial_result.valid);
+  ASSERT_TRUE(parallel_result.valid);
+  EXPECT_EQ(parallel_result.stats.parallel_workers_used, 3U);
+  expectSameSamples(serial_result, parallel_result);
+  EXPECT_EQ(serial_result.stats.outside_grid_samples,
+            parallel_result.stats.outside_grid_samples);
+  EXPECT_EQ(serial_result.stats.lateral_limited_samples,
+            parallel_result.stats.lateral_limited_samples);
+}
+
+TEST(Corridor, ReusesProvidedClearanceFieldWhenItCoversCorridorRadius) {
+  const OccupancyGrid2D grid = corridorGrid();
+  const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
+  const CorridorConfig config = testConfig();
+  const ClearanceField2D clearance_field =
+      ClearanceField2D::build(grid, config.max_radius_m, ClearanceSource::kProhibited);
+
+  const CorridorResult result =
+      buildCorridor(CorridorInput{std::span<const Point2>{route.data(), route.size()},
+                                  &grid, &clearance_field, true},
+                    config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.clearance_field_reused);
+  EXPECT_TRUE(result.stats.clearance_field_cache_hit);
+  EXPECT_DOUBLE_EQ(result.stats.clearance_field_build_duration_ms, 0.0);
+}
+
+TEST(Corridor, RebuildsProvidedClearanceFieldWhenItDoesNotCoverCorridorRadius) {
+  const OccupancyGrid2D grid = corridorGrid();
+  const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
+  const CorridorConfig config = testConfig();
+  const ClearanceField2D clearance_field =
+      ClearanceField2D::build(grid, 1.0, ClearanceSource::kProhibited);
+
+  const CorridorResult result =
+      buildCorridor(CorridorInput{std::span<const Point2>{route.data(), route.size()},
+                                  &grid, &clearance_field, true},
+                    config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.stats.clearance_field_reused);
+  EXPECT_FALSE(result.stats.clearance_field_cache_hit);
 }
 
 } // namespace drone_city_nav

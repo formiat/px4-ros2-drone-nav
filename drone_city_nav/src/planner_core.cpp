@@ -601,6 +601,7 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
   result.prohibited_clearance_field_duration_ms =
       elapsedMilliseconds(clearance_field_started_at);
   result.prohibited_clearance_field_cache_hit = clearance_field.cache_hit;
+  result.prohibited_clearance_field = clearance_field.field;
   if (clearance_field.field == nullptr) {
     return std::nullopt;
   }

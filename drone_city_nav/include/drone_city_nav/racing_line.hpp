@@ -45,6 +45,10 @@ struct RacingLineStats {
   double regularization_duration_ms{0.0};
   std::size_t scratch_reused_candidates{0U};
   bool parallel_candidate_evaluation_used{false};
+  std::size_t parallel_workers_used{0U};
+  std::size_t candidate_chunks{0U};
+  std::size_t worker_scratch_reuses{0U};
+  std::size_t candidate_snapshot_allocations_avoided{0U};
   double initial_cost{0.0};
   double final_cost{0.0};
   double centerline_length_m{0.0};

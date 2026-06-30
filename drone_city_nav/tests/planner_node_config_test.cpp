@@ -71,6 +71,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
+  EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
@@ -99,6 +100,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"cruise_speed_mps", 5000.0},
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
        rclcpp::Parameter{"corridor_max_radius_m", -10.0},
+       rclcpp::Parameter{"corridor_parallel_workers", 5000},
        rclcpp::Parameter{"racing_line_weight_time", -2.0},
        rclcpp::Parameter{"racing_line_parallel_workers", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
@@ -126,6 +128,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
+  EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 1024U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 1024U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
@@ -151,6 +154,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
                 rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
                 rclcpp::Parameter{"corridor_sample_step_m", 2.0},
+                rclcpp::Parameter{"corridor_parallel_workers", 3},
                 rclcpp::Parameter{"max_lidar_range_m", 22.0},
                 rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
                 rclcpp::Parameter{"motion_compensate_lidar_pose", false},
@@ -165,7 +169,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_TRUE(config.planner_core.astar.initial_heading_bias_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 1.25);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 75.0);
-  EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 10.0);
+  EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 40.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
@@ -174,6 +178,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
+  EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 3U);
   EXPECT_DOUBLE_EQ(config.lidar_projection.max_lidar_range_m, 22.0);
   EXPECT_DOUBLE_EQ(config.lidar_projection.scan_yaw_offset_rad, 0.3);
   EXPECT_FALSE(config.current_lidar.motion_compensate_lidar_pose);
