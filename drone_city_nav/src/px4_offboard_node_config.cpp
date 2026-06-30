@@ -83,6 +83,16 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       config.velocity_follower.lateral_smoothing_max_factor, 1.6, 1.0, 100.0);
   config.velocity_follower.max_velocity_heading_rate_rad_s = boundedFiniteDouble(
       config.velocity_follower.max_velocity_heading_rate_rad_s, 1.0, 0.0, 100.0);
+  config.velocity_follower.min_velocity_heading_rate_rad_s = std::min(
+      config.velocity_follower.max_velocity_heading_rate_rad_s,
+      boundedFiniteDouble(config.velocity_follower.min_velocity_heading_rate_rad_s, 0.8,
+                          0.0, 100.0));
+  config.velocity_follower.lateral_zero_crossing_max_cross_track_m =
+      boundedFiniteDouble(
+          config.velocity_follower.lateral_zero_crossing_max_cross_track_m, 1.0, 0.0,
+          1000.0);
+  config.velocity_follower.lateral_zero_crossing_max_growth_m = boundedFiniteDouble(
+      config.velocity_follower.lateral_zero_crossing_max_growth_m, 0.1, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_back_m = boundedFiniteDouble(
       config.velocity_follower.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_forward_m = boundedFiniteDouble(
@@ -189,6 +199,16 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_velocity_heading_rate_rad_s =
       std::clamp(node.declare_parameter<double>("max_velocity_heading_rate_rad_s", 1.0),
                  0.0, 100.0);
+  config.velocity_follower.min_velocity_heading_rate_rad_s = std::min(
+      config.velocity_follower.max_velocity_heading_rate_rad_s,
+      std::clamp(node.declare_parameter<double>("min_velocity_heading_rate_rad_s", 0.8),
+                 0.0, 100.0));
+  config.velocity_follower.lateral_zero_crossing_max_cross_track_m = std::clamp(
+      node.declare_parameter<double>("lateral_zero_crossing_max_cross_track_m", 1.0),
+      0.0, 1000.0);
+  config.velocity_follower.lateral_zero_crossing_max_growth_m = std::clamp(
+      node.declare_parameter<double>("lateral_zero_crossing_max_growth_m", 0.1), 0.0,
+      1000.0);
   config.velocity_follower.speed_aware_derivative_damping_min_speed_mps =
       std::clamp(node.declare_parameter<double>(
                      "speed_aware_derivative_damping_min_speed_mps", 8.0),

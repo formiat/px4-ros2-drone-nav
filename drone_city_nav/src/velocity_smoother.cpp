@@ -134,11 +134,31 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
   return 1.0 + (max_factor - 1.0) * smoothStep(min_speed, full_speed, speed_mps);
 }
 
+[[nodiscard]] bool
+lateralZeroCrossingLimitAllowed(const VelocityFollowerConfig& config,
+                                const double current_cross_track_error_m,
+                                const double predicted_cross_track_error_m) noexcept {
+  if (!std::isfinite(current_cross_track_error_m) ||
+      !std::isfinite(predicted_cross_track_error_m)) {
+    return true;
+  }
+
+  const double max_cross_track = sanitizedPositive(
+      config.lateral_zero_crossing_max_cross_track_m, 1.0, 0.0, 1000.0);
+  const double max_growth =
+      sanitizedPositive(config.lateral_zero_crossing_max_growth_m, 0.1, 0.0, 1000.0);
+  const double current_error = std::abs(current_cross_track_error_m);
+  const double predicted_error = std::abs(predicted_cross_track_error_m);
+  return current_error <= max_cross_track && predicted_error <= max_cross_track &&
+         predicted_error - current_error <= max_growth;
+}
+
 [[nodiscard]] PathFrameVelocityLimitResult limitVelocityPathFrame(
     const Point2 desired_velocity, const Point2 previous_velocity,
     const bool previous_velocity_valid, const Point2 path_tangent, const double dt_s,
     const double max_accel_mps2, const double max_decel_mps2,
-    const double lateral_response_accel_mps2, const VelocityFollowerConfig& config) {
+    const double lateral_response_accel_mps2, const double current_cross_track_error_m,
+    const double predicted_cross_track_error_m, const VelocityFollowerConfig& config) {
   PathFrameVelocityLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -174,9 +194,13 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
                                     -max_forward_decel_delta, max_forward_accel_delta);
 
   double limited_lateral{};
-  if ((previous_lateral * desired_lateral) < 0.0 &&
-      std::abs(previous_lateral) > kTinyDistanceM &&
-      std::abs(desired_lateral) > kTinyDistanceM) {
+  const bool lateral_sign_changes = (previous_lateral * desired_lateral) < 0.0;
+  const bool zero_crossing_candidate = lateral_sign_changes &&
+                                       std::abs(previous_lateral) > kTinyDistanceM &&
+                                       std::abs(desired_lateral) > kTinyDistanceM;
+  if (zero_crossing_candidate &&
+      lateralZeroCrossingLimitAllowed(config, current_cross_track_error_m,
+                                      predicted_cross_track_error_m)) {
     result.lateral_zero_crossing_limited = true;
     if (std::abs(previous_lateral) <= max_lateral_delta) {
       limited_lateral = 0.0;
@@ -195,11 +219,15 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
       sanitizedPositive(config.max_velocity_heading_rate_rad_s, 1.0, 0.0, 100.0);
   if (result.heading_rate_limit_rad_s > 0.0 && previous_speed > kTinyDistanceM &&
       norm(limited_velocity) > kTinyDistanceM) {
+    const double min_heading_rate = std::min(
+        result.heading_rate_limit_rad_s,
+        sanitizedPositive(config.min_velocity_heading_rate_rad_s, 0.8, 0.0, 100.0));
     const double lateral_heading_rate =
         result.lateral_response_accel_mps2 / std::max(previous_speed, 1.0);
     const double effective_heading_rate =
         lateral_heading_rate > 0.0
-            ? std::min(result.heading_rate_limit_rad_s, lateral_heading_rate)
+            ? std::min(result.heading_rate_limit_rad_s,
+                       std::max(min_heading_rate, lateral_heading_rate))
             : result.heading_rate_limit_rad_s;
     const double max_heading_delta = effective_heading_rate * dt;
     const double previous_heading =
@@ -400,7 +428,9 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       limitVelocityPathFrame(
           input.desired_velocity_xy, input.previous_velocity_setpoint,
           input.previous_velocity_setpoint_valid, input.path_tangent, input.dt_s,
-          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2, config);
+          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2,
+          input.current_cross_track_error_m, input.predicted_cross_track_error_m,
+          config);
   const VelocityVectorLimitResult fallback_limited_velocity =
       path_frame_limited_velocity.applied
           ? VelocityVectorLimitResult{.velocity = path_frame_limited_velocity.velocity,

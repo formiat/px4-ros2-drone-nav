@@ -383,7 +383,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .previous_velocity_acceleration_setpoint_valid =
               previous_state.previous_velocity_acceleration_setpoint_valid,
           .dt_s = dt,
-          .lateral_response_factor = command.adaptive_lateral_response_factor},
+          .lateral_response_factor = command.adaptive_lateral_response_factor,
+          .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
+          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
       config);
   if (!smoothed.valid) {
     return plan;
