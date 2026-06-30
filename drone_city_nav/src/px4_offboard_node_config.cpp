@@ -258,7 +258,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.terminal_capture_gain_1ps = std::clamp(
       node.declare_parameter<double>("terminal_capture_gain_1ps", 1.0), 0.0, 100.0);
   config.velocity_follower.terminal_capture_max_speed_mps =
-      std::clamp(node.declare_parameter<double>("terminal_capture_max_speed_mps", 4.0),
+      std::clamp(node.declare_parameter<double>("terminal_capture_max_speed_mps", 8.0),
                  0.0, 100.0);
   config.velocity_follower.terminal_capture_decel_mps2 =
       std::clamp(node.declare_parameter<double>("terminal_capture_decel_mps2", 4.0),

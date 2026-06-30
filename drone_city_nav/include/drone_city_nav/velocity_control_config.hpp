@@ -46,7 +46,7 @@ struct VelocityFollowerConfig {
   double final_hold_max_speed_mps{0.8};
   double terminal_capture_radius_m{8.0};
   double terminal_capture_gain_1ps{1.0};
-  double terminal_capture_max_speed_mps{4.0};
+  double terminal_capture_max_speed_mps{8.0};
   double terminal_capture_decel_mps2{4.0};
   double terminal_capture_braking_margin_m{2.0};
 };

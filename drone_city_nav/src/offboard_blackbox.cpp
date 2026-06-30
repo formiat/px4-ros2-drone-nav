@@ -208,6 +208,9 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonBool(stream, velocity_plan.terminal_capture_active);
   stream << ",\"terminal_goal_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_goal_distance_m);
+  stream << ",\"terminal_signed_along_track_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_signed_along_track_distance_m);
   stream << ",\"terminal_remaining_trajectory_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.terminal_remaining_trajectory_distance_m);

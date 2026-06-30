@@ -168,7 +168,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.adaptive_lateral_response_max_factor, 1.2);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_radius_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_gain_1ps, 1.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 4.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_decel_mps2, 4.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_braking_margin_m, 2.0);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");

@@ -249,6 +249,13 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
       plan.accel_limited_speed_mps;
   velocity_follower_state_.previous_scalar_speed_command_valid =
       std::isfinite(plan.accel_limited_speed_mps);
+  velocity_follower_state_.previous_terminal_capture_active =
+      plan.terminal_capture_active;
+  velocity_follower_state_.previous_terminal_capture_speed_limit_mps =
+      plan.terminal_capture_speed_limit_mps;
+  velocity_follower_state_.previous_terminal_capture_speed_limit_valid =
+      plan.terminal_capture_active &&
+      std::isfinite(plan.terminal_capture_speed_limit_mps);
   last_velocity_setpoint_ = plan.velocity_xy;
   last_vertical_velocity_setpoint_mps_ = vz_ned;
   last_velocity_setpoint_speed_mps_ = plan.speed_mps;
@@ -744,7 +751,8 @@ void Px4OffboardNode::logControlSummary() {
       "raw=%.2f final=%.2f delta=%.2f adaptive_response=%.2f "
       "curvature_angle=%.1fdeg feedback_scale=%.2f closing_target=%.2f] "
       "speed_limit_reason=%s "
-      "terminal_capture[active=%s goal_distance=%.2f remaining_s=%.2f "
+      "terminal_capture[active=%s goal_distance=%.2f signed_along=%.2f "
+      "remaining_s=%.2f "
       "speed_limit=%.2f gain_limit=%.2f max_speed=%.2f "
       "brake_limit=%.2f activation=%.2f decel=%.2f margin=%.2f "
       "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
@@ -816,6 +824,7 @@ void Px4OffboardNode::logControlSummary() {
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
+      last_velocity_plan_.terminal_signed_along_track_distance_m,
       last_velocity_plan_.terminal_remaining_trajectory_distance_m,
       last_velocity_plan_.terminal_capture_speed_limit_mps,
       last_velocity_plan_.terminal_capture_gain_speed_limit_mps,

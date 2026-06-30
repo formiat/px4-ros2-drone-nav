@@ -96,7 +96,8 @@ void Px4OffboardNode::logTelemetry() {
       "final_norm=%.2f delta=%.2f adaptive_response=%.2f "
       "curvature_angle=%.1fdeg feedback_scale=%.2f closing_target=%.2f] "
       "speed_limit_reason=%s "
-      "terminal_capture[active=%s goal_distance=%.2f remaining_s=%.2f "
+      "terminal_capture[active=%s goal_distance=%.2f signed_along=%.2f "
+      "remaining_s=%.2f "
       "speed_limit=%.2f gain_limit=%.2f max_speed=%.2f "
       "brake_limit=%.2f activation=%.2f decel=%.2f margin=%.2f "
       "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
@@ -158,6 +159,7 @@ void Px4OffboardNode::logTelemetry() {
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
+      last_velocity_plan_.terminal_signed_along_track_distance_m,
       last_velocity_plan_.terminal_remaining_trajectory_distance_m,
       last_velocity_plan_.terminal_capture_speed_limit_mps,
       last_velocity_plan_.terminal_capture_gain_speed_limit_mps,

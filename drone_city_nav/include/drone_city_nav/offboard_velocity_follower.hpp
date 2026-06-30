@@ -30,6 +30,10 @@ struct VelocityFollowerState {
   bool previous_lateral_control_velocity_valid{false};
   double previous_scalar_speed_command_mps{std::numeric_limits<double>::quiet_NaN()};
   bool previous_scalar_speed_command_valid{false};
+  double previous_terminal_capture_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  bool previous_terminal_capture_speed_limit_valid{false};
+  bool previous_terminal_capture_active{false};
 };
 
 struct StopSpeedPlan {
@@ -119,6 +123,8 @@ struct VelocitySetpointPlan {
   double adaptive_lateral_response_factor{1.0};
   bool terminal_capture_active{false};
   double terminal_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_signed_along_track_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
   double terminal_remaining_trajectory_distance_m{
       std::numeric_limits<double>::quiet_NaN()};
   double terminal_acceptance_radius_m{std::numeric_limits<double>::quiet_NaN()};

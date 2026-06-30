@@ -123,7 +123,7 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
 }
 
 [[nodiscard]] double terminalCaptureMaxSpeedMps(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.terminal_capture_max_speed_mps, 4.0, 0.0, 100.0);
+  return sanitizedPositive(config.terminal_capture_max_speed_mps, 8.0, 0.0, 100.0);
 }
 
 [[nodiscard]] double terminalCaptureDecelMps2(const VelocityFollowerConfig& config) {
@@ -139,6 +139,18 @@ terminalCaptureBrakingMarginM(const VelocityFollowerConfig& config) {
                                           const double acceptance_radius_m,
                                           const double decel_mps2) noexcept {
   return std::sqrt(2.0 * decel_mps2 * std::max(0.0, distance_m - acceptance_radius_m));
+}
+
+[[nodiscard]] double
+monotonicTerminalCaptureSpeedLimitMps(const double raw_speed_limit_mps,
+                                      const VelocityFollowerState& previous_state) {
+  if (!previous_state.previous_terminal_capture_active ||
+      !previous_state.previous_terminal_capture_speed_limit_valid ||
+      !std::isfinite(previous_state.previous_terminal_capture_speed_limit_mps)) {
+    return raw_speed_limit_mps;
+  }
+  return std::min(raw_speed_limit_mps,
+                  previous_state.previous_terminal_capture_speed_limit_mps);
 }
 
 [[nodiscard]] double
@@ -401,7 +413,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     const TrajectoryProjection& control_projection,
     const TrajectoryProjection& current_projection, const Point2 predicted_position,
     const double prediction_horizon_s, const Point2 final_point,
-    const double trajectory_length_m, const TrajectorySegmentKind segment_kind,
+    const Point2 final_tangent, const double trajectory_length_m,
+    const TrajectorySegmentKind segment_kind,
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
@@ -411,8 +424,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       !finite2D(final_point) || !control_projection.valid ||
       !current_projection.valid ||
       !(norm(control_projection.tangent) > kTinyDistanceM) ||
-      !std::isfinite(trajectory_length_m) || !speed_profile.valid ||
-      speed_profile.samples.empty()) {
+      !(norm(final_tangent) > kTinyDistanceM) || !std::isfinite(trajectory_length_m) ||
+      !speed_profile.valid || speed_profile.samples.empty()) {
     return plan;
   }
 
@@ -425,6 +438,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double prediction_distance = distance(current_position, predicted_position);
   const double response_delay_distance = current_speed * bounded_prediction_horizon;
   const double terminal_goal_distance = distance(current_position, final_point);
+  const double terminal_signed_along_track_distance =
+      dot(final_point - current_position, final_tangent);
+  const double terminal_stop_distance =
+      std::max(0.0, terminal_signed_along_track_distance);
   const double remaining_trajectory_distance =
       std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
   const double terminal_capture_radius = terminalCaptureRadiusM(config);
@@ -439,7 +456,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const bool terminal_hold_distance_met = terminal_goal_distance <= final_acceptance;
   const bool terminal_hold_speed_met = current_speed <= terminal_hold_max_speed;
   const bool terminal_capture_goal_distance_triggered =
-      terminal_goal_distance <= terminal_capture_activation_distance;
+      terminal_stop_distance <= terminal_capture_activation_distance;
   const bool terminal_capture_remaining_distance_triggered =
       remaining_trajectory_distance <= terminal_capture_activation_distance;
   if (terminal_hold_distance_met && terminal_hold_speed_met) {
@@ -454,6 +471,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.prediction_distance_m = prediction_distance;
     plan.response_delay_distance_m = response_delay_distance;
     plan.terminal_goal_distance_m = terminal_goal_distance;
+    plan.terminal_signed_along_track_distance_m = terminal_signed_along_track_distance;
     plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
     plan.terminal_acceptance_radius_m = final_acceptance;
     plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
@@ -489,18 +507,21 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
 
   if (terminal_capture_goal_distance_triggered ||
       terminal_capture_remaining_distance_triggered) {
+    Point2 terminal_tangent = final_tangent;
     const Point2 goal_delta = final_point - current_position;
-    Point2 terminal_tangent = normalized(goal_delta);
-    if (!(norm(terminal_tangent) > kTinyDistanceM)) {
-      terminal_tangent = control_projection.tangent;
+    if (terminal_signed_along_track_distance > 0.0 &&
+        norm(goal_delta) > kTinyDistanceM) {
+      terminal_tangent = normalized(goal_delta);
     }
     const double capture_gain_speed_limit =
-        terminalCaptureGain1ps(config) * terminal_goal_distance;
+        terminalCaptureGain1ps(config) * terminal_stop_distance;
     const double capture_max_speed = terminalCaptureMaxSpeedMps(config);
     const double capture_braking_speed_limit = brakingSpeedLimitMps(
-        terminal_goal_distance, final_acceptance, terminal_capture_decel);
-    const double capture_speed_limit = std::min(
+        terminal_stop_distance, final_acceptance, terminal_capture_decel);
+    const double raw_capture_speed_limit = std::min(
         {capture_max_speed, capture_gain_speed_limit, capture_braking_speed_limit});
+    const double capture_speed_limit =
+        monotonicTerminalCaptureSpeedLimitMps(raw_capture_speed_limit, previous_state);
     const Point2 desired_velocity = terminal_tangent * capture_speed_limit;
     const VelocitySmootherPlan smoothed = smoothVelocityCommand(
         VelocitySmootherInput{
@@ -525,6 +546,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.reason = VelocitySetpointReason::kTerminalCapture;
     plan.terminal_capture_active = true;
     plan.terminal_goal_distance_m = terminal_goal_distance;
+    plan.terminal_signed_along_track_distance_m = terminal_signed_along_track_distance;
     plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
     plan.terminal_acceptance_radius_m = final_acceptance;
     plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
@@ -601,7 +623,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.prediction_distance_m = prediction_distance;
     plan.response_delay_distance_m = response_delay_distance;
     plan.limiting_constraint_type = SpeedConstraintType::kGoal;
-    plan.limiting_constraint_distance_m = terminal_goal_distance;
+    plan.limiting_constraint_distance_m = terminal_stop_distance;
     plan.limiting_constraint_speed_mps = 0.0;
     plan.limiting_allowed_speed_now_mps = capture_speed_limit;
     plan.trajectory_s_m = control_projection.s_m;
@@ -614,7 +636,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
             : std::numeric_limits<double>::quiet_NaN();
     plan.trajectory_projection = control_projection;
     plan.final_stop.valid = true;
-    plan.final_stop.distance_to_stop_m = terminal_goal_distance;
+    plan.final_stop.distance_to_stop_m = terminal_stop_distance;
     plan.final_stop.braking_distance_m =
         response_delay_distance + terminal_capture_braking_distance;
     plan.final_stop.raw_speed_limit_mps = capture_speed_limit;
@@ -765,6 +787,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
   plan.adaptive_lateral_response_factor = command.adaptive_lateral_response_factor;
   plan.terminal_goal_distance_m = terminal_goal_distance;
+  plan.terminal_signed_along_track_distance_m = terminal_signed_along_track_distance;
   plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
   plan.terminal_acceptance_radius_m = final_acceptance;
   plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
@@ -839,11 +862,13 @@ VelocitySetpointPlan planVelocitySetpoint(
       trajectory[std::min(control_projection->segment_index, trajectory.size() - 1U)];
   ControlTangentSmoothingDiagnostics tangent_smoothing{};
   tangent_smoothing.raw_tangent = control_projection->tangent;
+  const double trajectory_length_m = trajectoryLengthM(trajectory);
+  const Point2 final_tangent = trajectoryTangentAtS(trajectory, trajectory_length_m);
   return planVelocitySetpointFromProjection(
       *control_projection, *current_projection, predicted_position, prediction_horizon,
-      trajectory.back().end, trajectoryLengthM(trajectory), segment.kind, speed_profile,
-      current_position, current_velocity, current_velocity_valid, dt_s, previous_state,
-      config, tangent_smoothing);
+      trajectory.back().end, final_tangent, trajectory_length_m, segment.kind,
+      speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
+      previous_state, config, tangent_smoothing);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -874,11 +899,17 @@ VelocitySetpointPlan planVelocitySetpoint(
       std::abs(control_projection->curvature_1pm) > kTinyDistanceM
           ? TrajectorySegmentKind::kArc
           : TrajectorySegmentKind::kLine;
+  Point2 final_tangent = normalized(trajectory_samples.back().tangent);
+  if (!(norm(final_tangent) > kTinyDistanceM) && trajectory_samples.size() >= 2U) {
+    final_tangent =
+        normalized(trajectory_samples.back().point -
+                   trajectory_samples[trajectory_samples.size() - 2U].point);
+  }
   return planVelocitySetpointFromProjection(
       command_projection, *current_projection, predicted_position, prediction_horizon,
-      trajectory_samples.back().point, trajectory_samples.back().s_m, segment_kind,
-      speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
-      previous_state, config, tangent_smoothing);
+      trajectory_samples.back().point, final_tangent, trajectory_samples.back().s_m,
+      segment_kind, speed_profile, current_position, current_velocity,
+      current_velocity_valid, dt_s, previous_state, config, tangent_smoothing);
 }
 
 } // namespace drone_city_nav

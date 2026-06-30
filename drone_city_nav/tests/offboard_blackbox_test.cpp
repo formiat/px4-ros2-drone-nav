@@ -87,6 +87,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.cross_track_closing_speed_target_mps = 5.0;
   record.velocity_plan.terminal_capture_active = true;
   record.velocity_plan.terminal_goal_distance_m = 3.5;
+  record.velocity_plan.terminal_signed_along_track_distance_m = 3.25;
   record.velocity_plan.terminal_remaining_trajectory_distance_m = 6.5;
   record.velocity_plan.terminal_acceptance_radius_m = 1.0;
   record.velocity_plan.terminal_hold_max_speed_mps = 0.8;
@@ -95,7 +96,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.terminal_capture_goal_distance_triggered = true;
   record.velocity_plan.terminal_capture_remaining_distance_triggered = false;
   record.velocity_plan.terminal_capture_gain_speed_limit_mps = 3.5;
-  record.velocity_plan.terminal_capture_max_speed_mps = 4.0;
+  record.velocity_plan.terminal_capture_max_speed_mps = 8.0;
   record.velocity_plan.terminal_capture_decel_mps2 = 4.0;
   record.velocity_plan.terminal_capture_braking_margin_m = 2.0;
   record.velocity_plan.terminal_capture_braking_distance_m = 8.0;
@@ -191,6 +192,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"speed_limit_reason\":\"trajectory_profile\"");
   expectJsonField(json, "\"terminal_capture_active\":true");
   expectJsonField(json, "\"terminal_goal_distance_m\":3.5");
+  expectJsonField(json, "\"terminal_signed_along_track_distance_m\":3.25");
   expectJsonField(json, "\"terminal_remaining_trajectory_distance_m\":6.5");
   expectJsonField(json, "\"terminal_acceptance_radius_m\":1");
   expectJsonField(json, "\"terminal_hold_max_speed_mps\":0.8");
@@ -199,7 +201,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"terminal_capture_goal_distance_triggered\":true");
   expectJsonField(json, "\"terminal_capture_remaining_distance_triggered\":false");
   expectJsonField(json, "\"terminal_capture_gain_speed_limit_mps\":3.5");
-  expectJsonField(json, "\"terminal_capture_max_speed_mps\":4");
+  expectJsonField(json, "\"terminal_capture_max_speed_mps\":8");
   expectJsonField(json, "\"terminal_capture_decel_mps2\":4");
   expectJsonField(json, "\"terminal_capture_braking_margin_m\":2");
   expectJsonField(json, "\"terminal_capture_braking_distance_m\":8");
