@@ -73,6 +73,18 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(
           config.velocity_follower.speed_aware_derivative_damping_max_factor, 1.5, 1.0,
           100.0);
+  config.velocity_follower.control_tangent_smoothing_back_m = boundedFiniteDouble(
+      config.velocity_follower.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
+  config.velocity_follower.control_tangent_smoothing_forward_m = boundedFiniteDouble(
+      config.velocity_follower.control_tangent_smoothing_forward_m, 18.0, 0.0, 1000.0);
+  config.velocity_follower.control_tangent_smoothing_max_heading_span_rad =
+      boundedFiniteDouble(
+          config.velocity_follower.control_tangent_smoothing_max_heading_span_rad,
+          12.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
+  config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm =
+      boundedFiniteDouble(
+          config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm,
+          0.015, 0.0, 1000.0);
   config.velocity_follower.final_acceptance_radius_m = config.acceptance_radius_m;
 }
 
@@ -166,6 +178,20 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.speed_aware_derivative_damping_max_factor = std::clamp(
       node.declare_parameter<double>("speed_aware_derivative_damping_max_factor", 1.5),
       1.0, 100.0);
+  config.velocity_follower.control_tangent_smoothing_back_m = std::clamp(
+      node.declare_parameter<double>("control_tangent_smoothing_back_m", 8.0), 0.0,
+      1000.0);
+  config.velocity_follower.control_tangent_smoothing_forward_m = std::clamp(
+      node.declare_parameter<double>("control_tangent_smoothing_forward_m", 18.0), 0.0,
+      1000.0);
+  config.velocity_follower.control_tangent_smoothing_max_heading_span_rad =
+      std::clamp(radiansFromDegrees(node.declare_parameter<double>(
+                     "control_tangent_smoothing_max_heading_span_deg", 12.0)),
+                 0.0, std::numbers::pi);
+  config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm =
+      std::clamp(node.declare_parameter<double>(
+                     "control_tangent_smoothing_max_abs_curvature_1pm", 0.015),
+                 0.0, 1000.0);
   config.velocity_follower.adaptive_lateral_response_scale_m = std::clamp(
       node.declare_parameter<double>("adaptive_lateral_response_scale_m", 3.0), 0.1,
       1000.0);

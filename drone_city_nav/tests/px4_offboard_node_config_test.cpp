@@ -66,6 +66,14 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.velocity_follower.min_turn_speed_mps = 20.0;
   config.velocity_follower.speed_profile_lookahead_min_m = 8.0;
   config.velocity_follower.speed_profile_lookahead_max_m = 3.0;
+  config.velocity_follower.control_tangent_smoothing_back_m =
+      std::numeric_limits<double>::infinity();
+  config.velocity_follower.control_tangent_smoothing_forward_m =
+      std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.control_tangent_smoothing_max_heading_span_rad =
+      std::numeric_limits<double>::infinity();
+  config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm =
+      std::numeric_limits<double>::quiet_NaN();
 
   sanitizePx4OffboardNodeConfig(config);
 
@@ -77,6 +85,13 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 10.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_profile_lookahead_max_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m, 18.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_heading_span_rad,
+      12.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm, 0.015);
   EXPECT_DOUBLE_EQ(config.velocity_follower.final_acceptance_radius_m, 1.5);
 }
 
@@ -108,6 +123,13 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
       config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 20.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
                    1.5);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m, 18.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_heading_span_rad,
+      12.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm, 0.015);
   EXPECT_DOUBLE_EQ(config.velocity_follower.adaptive_lateral_response_max_factor, 1.2);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
@@ -177,6 +199,10 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
        rclcpp::Parameter{"speed_aware_derivative_damping_min_speed_mps", 30.0},
        rclcpp::Parameter{"speed_aware_derivative_damping_full_speed_mps", 10.0},
        rclcpp::Parameter{"speed_aware_derivative_damping_max_factor", 0.5},
+       rclcpp::Parameter{"control_tangent_smoothing_back_m", -1.0},
+       rclcpp::Parameter{"control_tangent_smoothing_forward_m", 2000.0},
+       rclcpp::Parameter{"control_tangent_smoothing_max_heading_span_deg", 500.0},
+       rclcpp::Parameter{"control_tangent_smoothing_max_abs_curvature_1pm", -1.0},
        rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
        rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
        rclcpp::Parameter{"telemetry_log_period_s", 0.01},
@@ -208,6 +234,14 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
       config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 30.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
                    1.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m,
+                   1000.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_heading_span_rad,
+      std::numbers::pi);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm, 0.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);

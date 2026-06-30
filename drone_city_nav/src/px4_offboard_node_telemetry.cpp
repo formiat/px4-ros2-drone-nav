@@ -106,6 +106,8 @@ void Px4OffboardNode::logTelemetry() {
       "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
       "velocity_delta=%.2f trajectory_cross_track=%.2f "
       "cross_track_lateral_velocity=%.2f "
+      "control_tangent[smoothed=%s raw=(%.2f, %.2f) heading_span=%.1fdeg "
+      "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "velocity_basis[current_tangent=%.2f current_normal=%.2f "
       "desired_tangent=%.2f desired_normal=%.2f "
       "setpoint_tangent=%.2f setpoint_normal=%.2f] "
@@ -165,6 +167,13 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.velocity_delta_mps,
       last_velocity_plan_.trajectory_cross_track_error_m,
       last_velocity_plan_.cross_track_lateral_velocity_mps,
+      last_velocity_plan_.control_tangent_smoothed ? "true" : "false",
+      last_velocity_plan_.control_tangent_raw.x,
+      last_velocity_plan_.control_tangent_raw.y,
+      radiansToDegrees(last_velocity_plan_.control_tangent_smoothing_heading_span_rad),
+      last_velocity_plan_.control_tangent_smoothing_max_abs_curvature_1pm,
+      last_velocity_plan_.control_tangent_smoothing_window_start_s_m,
+      last_velocity_plan_.control_tangent_smoothing_window_end_s_m,
       last_velocity_plan_.current_velocity_tangent_mps,
       last_velocity_plan_.current_velocity_normal_mps,
       last_velocity_plan_.desired_velocity_tangent_mps,

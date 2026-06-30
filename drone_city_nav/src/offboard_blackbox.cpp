@@ -126,6 +126,24 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"cross_track_derivative_damping_mps\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.cross_track_derivative_damping_mps);
+  stream << ",\"control_tangent_smoothed\":";
+  writeBlackboxJsonBool(stream, velocity_plan.control_tangent_smoothed);
+  stream << ",\"control_tangent_raw_x\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.control_tangent_raw.x);
+  stream << ",\"control_tangent_raw_y\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.control_tangent_raw.y);
+  stream << ",\"control_tangent_smoothing_heading_span_rad\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, velocity_plan.control_tangent_smoothing_heading_span_rad);
+  stream << ",\"control_tangent_smoothing_max_abs_curvature_1pm\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, velocity_plan.control_tangent_smoothing_max_abs_curvature_1pm);
+  stream << ",\"control_tangent_smoothing_window_start_s_m\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, velocity_plan.control_tangent_smoothing_window_start_s_m);
+  stream << ",\"control_tangent_smoothing_window_end_s_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.control_tangent_smoothing_window_end_s_m);
   stream << ",\"cross_track_derivative_damping_factor\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.cross_track_derivative_damping_factor);

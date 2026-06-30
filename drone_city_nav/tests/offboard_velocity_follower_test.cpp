@@ -40,6 +40,11 @@ namespace {
   return trajectory;
 }
 
+[[nodiscard]] Point2 normalizedTestVector(const double x, const double y) {
+  const double length = std::hypot(x, y);
+  return Point2{x / length, y / length};
+}
+
 } // namespace
 
 TEST(OffboardVelocityFollower, StraightTrajectoryReturnsCruiseVelocityAlongTangent) {
@@ -291,6 +296,76 @@ TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsVelocityAnticipati
   EXPECT_GT(plan.curvature_feedforward_mps, 0.0);
   EXPECT_GT(plan.lateral_control_mps, 0.0);
   EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
+}
+
+TEST(OffboardVelocityFollower, SmoothsControlTangentOnStraightishSampledTrajectory) {
+  VelocityFollowerConfig config = testConfig();
+  config.control_tangent_smoothing_back_m = 5.0;
+  config.control_tangent_smoothing_forward_m = 10.0;
+  config.control_tangent_smoothing_max_heading_span_rad =
+      25.0 * std::numbers::pi / 180.0;
+  config.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 5U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = (i % 2U == 0U) ? normalizedTestVector(1.0, -0.2)
+                                    : normalizedTestVector(1.0, 0.2);
+    samples.push_back(sample);
+  }
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      samples, profile, Point2{10.0, 0.0}, Point2{12.0, 0.0}, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_TRUE(plan.control_tangent_smoothed);
+  EXPECT_NEAR(plan.control_tangent_raw.x, normalizedTestVector(1.0, -0.2).x, 1.0e-9);
+  EXPECT_NEAR(plan.control_tangent_raw.y, normalizedTestVector(1.0, -0.2).y, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_normal_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.control_tangent_smoothing_window_start_s_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.control_tangent_smoothing_window_end_s_m, 20.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, DoesNotSmoothControlTangentAcrossRealCurvature) {
+  VelocityFollowerConfig config = testConfig();
+  config.control_tangent_smoothing_back_m = 5.0;
+  config.control_tangent_smoothing_forward_m = 10.0;
+  config.control_tangent_smoothing_max_heading_span_rad =
+      25.0 * std::numbers::pi / 180.0;
+  config.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 5U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = (i % 2U == 0U) ? normalizedTestVector(1.0, -0.2)
+                                    : normalizedTestVector(1.0, 0.2);
+    sample.curvature_1pm = i == 2U ? 0.05 : 0.0;
+    samples.push_back(sample);
+  }
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      samples, profile, Point2{10.0, 0.0}, Point2{12.0, 0.0}, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_FALSE(plan.control_tangent_smoothed);
+  EXPECT_GT(plan.control_tangent_smoothing_max_abs_curvature_1pm,
+            config.control_tangent_smoothing_max_abs_curvature_1pm);
+  EXPECT_NEAR(plan.path_tangent.x, normalizedTestVector(1.0, -0.2).x, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, normalizedTestVector(1.0, -0.2).y, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, EstimatesTraversalTimeFromSampledTrajectory) {

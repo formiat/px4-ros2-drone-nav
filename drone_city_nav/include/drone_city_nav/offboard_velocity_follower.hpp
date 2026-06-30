@@ -46,6 +46,7 @@ struct VelocitySetpointPlan {
   Point2 desired_velocity_xy{};
   Point2 velocity_setpoint_acceleration_xy{};
   Point2 path_tangent{};
+  Point2 control_tangent_raw{};
   Point2 projection{};
   Point2 current_projection{};
   Point2 predicted_position{};
@@ -86,6 +87,15 @@ struct VelocitySetpointPlan {
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};
   double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool control_tangent_smoothed{false};
+  double control_tangent_smoothing_heading_span_rad{
+      std::numeric_limits<double>::quiet_NaN()};
+  double control_tangent_smoothing_max_abs_curvature_1pm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double control_tangent_smoothing_window_start_s_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double control_tangent_smoothing_window_end_s_m{
+      std::numeric_limits<double>::quiet_NaN()};
   double curvature_feedforward_mps{0.0};
   double curvature_feedforward_angle_rad{0.0};
   double curvature_feedforward_raw_angle_rad{0.0};

@@ -72,6 +72,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.trajectory_segment_kind = TrajectorySegmentKind::kArc;
   record.velocity_plan.trajectory_curvature_1pm = 0.1;
   record.velocity_plan.trajectory_arc_radius_m = 10.0;
+  record.velocity_plan.control_tangent_smoothed = true;
+  record.velocity_plan.control_tangent_raw = Point2{0.9, 0.1};
+  record.velocity_plan.control_tangent_smoothing_heading_span_rad = 0.2;
+  record.velocity_plan.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
+  record.velocity_plan.control_tangent_smoothing_window_start_s_m = 12.0;
+  record.velocity_plan.control_tangent_smoothing_window_end_s_m = 30.0;
   record.velocity_plan.cross_track_derivative_damping_factor = 1.25;
   record.velocity_plan.cross_track_derivative_gain_effective = 0.75;
   record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
@@ -133,6 +139,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"velocity\":{\"valid\":true");
   expectJsonField(json, "\"target\":{\"x\":10");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");
+  expectJsonField(json, "\"control_tangent_smoothed\":true");
+  expectJsonField(json, "\"control_tangent_raw_x\":0.9");
+  expectJsonField(json, "\"control_tangent_smoothing_heading_span_rad\":0.2");
+  expectJsonField(json, "\"control_tangent_smoothing_max_abs_curvature_1pm\":0.01");
+  expectJsonField(json, "\"control_tangent_smoothing_window_start_s_m\":12");
+  expectJsonField(json, "\"control_tangent_smoothing_window_end_s_m\":30");
   expectJsonField(json, "\"cross_track_derivative_damping_factor\":1.25");
   expectJsonField(json, "\"cross_track_derivative_gain_effective\":0.75");
   expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");

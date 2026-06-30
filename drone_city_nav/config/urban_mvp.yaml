@@ -190,6 +190,10 @@ px4_offboard_node:
     speed_aware_derivative_damping_min_speed_mps: 8.0
     speed_aware_derivative_damping_full_speed_mps: 20.0
     speed_aware_derivative_damping_max_factor: 1.5
+    control_tangent_smoothing_back_m: 8.0
+    control_tangent_smoothing_forward_m: 18.0
+    control_tangent_smoothing_max_heading_span_deg: 12.0
+    control_tangent_smoothing_max_abs_curvature_1pm: 0.015
     adaptive_lateral_response_scale_m: 3.0
     adaptive_lateral_response_max_factor: 1.2
     trajectory_update_max_start_cross_track_m: 8.0

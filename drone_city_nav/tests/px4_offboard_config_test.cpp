@@ -57,6 +57,12 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
             std::string::npos);
   EXPECT_NE(yaml.find("speed_aware_derivative_damping_max_factor: 1.5"),
             std::string::npos);
+  EXPECT_NE(yaml.find("control_tangent_smoothing_back_m: 8.0"), std::string::npos);
+  EXPECT_NE(yaml.find("control_tangent_smoothing_forward_m: 18.0"), std::string::npos);
+  EXPECT_NE(yaml.find("control_tangent_smoothing_max_heading_span_deg: 12.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("control_tangent_smoothing_max_abs_curvature_1pm: 0.015"),
+            std::string::npos);
   EXPECT_NE(yaml.find("adaptive_lateral_response_scale_m: 3.0"), std::string::npos);
   EXPECT_NE(yaml.find("adaptive_lateral_response_max_factor: 1.2"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_update_max_start_cross_track_m: 8.0"),
