@@ -77,6 +77,14 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 50.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 25.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 25.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
+                   10.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.racing_line.window_width_change_threshold_m, 2.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 1.0);
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 45.0);
@@ -106,6 +114,12 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"corridor_parallel_workers", 5000},
        rclcpp::Parameter{"racing_line_weight_time", -2.0},
        rclcpp::Parameter{"racing_line_parallel_workers", 5000},
+       rclcpp::Parameter{"racing_line_window_pre_margin_m", -1.0},
+       rclcpp::Parameter{"racing_line_window_post_margin_m", 9999.0},
+       rclcpp::Parameter{"racing_line_window_heading_threshold_deg", 500.0},
+       rclcpp::Parameter{"racing_line_window_width_change_threshold_m", -1.0},
+       rclcpp::Parameter{"racing_line_dp_offset_step_m", -1.0},
+       rclcpp::Parameter{"racing_line_async_refinement_workers", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_entry_distance_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_max_length_ratio", -2.0},
@@ -134,6 +148,14 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 1024U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 1024U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 5000.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
+                   std::numbers::pi);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.racing_line.window_width_change_threshold_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.05);
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1024U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 0.1);
@@ -154,6 +176,12 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
                 rclcpp::Parameter{"racing_line_weight_curvature", 125.0},
                 rclcpp::Parameter{"racing_line_parallel_workers", 2},
+                rclcpp::Parameter{"racing_line_window_pre_margin_m", 30.0},
+                rclcpp::Parameter{"racing_line_window_post_margin_m", 35.0},
+                rclcpp::Parameter{"racing_line_window_heading_threshold_deg", 12.5},
+                rclcpp::Parameter{"racing_line_window_width_change_threshold_m", 3.5},
+                rclcpp::Parameter{"racing_line_dp_offset_step_m", 0.75},
+                rclcpp::Parameter{"racing_line_async_refinement_workers", 2},
                 rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
                 rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
                 rclcpp::Parameter{"corridor_sample_step_m", 2.0},
@@ -178,6 +206,14 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 125.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 2U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 30.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 35.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
+                   12.5 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.racing_line.window_width_change_threshold_m, 3.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.75);
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 2U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);

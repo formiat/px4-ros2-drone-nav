@@ -24,6 +24,10 @@ TEST(CorridorSamplesIoTest, WritesExpectedCsvColumnsAndValues) {
       .clearance_m = 2.0,
       .center_recovery_m = 0.25,
   });
+  TrajectoryPointSample sample{};
+  sample.curvature_1pm = 0.1;
+  sample.racing_offset_m = 0.5;
+  result.samples.push_back(sample);
 
   std::ostringstream stream;
   ASSERT_TRUE(writeCorridorSamplesCsv(stream, result, "unit", 9U));
@@ -32,7 +36,11 @@ TEST(CorridorSamplesIoTest, WritesExpectedCsvColumnsAndValues) {
             std::string::npos);
   EXPECT_NE(csv.find("sample_index,s_m,route_x,route_y,center_x,center_y"),
             std::string::npos);
-  EXPECT_NE(csv.find("0,3,1,2,1.5,2.5,1,0,0,1,4,5,9,2,0.25"), std::string::npos);
+  EXPECT_NE(csv.find("window_id,active_window,selected_offset_m,"
+                     "distance_to_prohibited_m"),
+            std::string::npos);
+  EXPECT_NE(csv.find("0,3,1,2,1.5,2.5,1,0,0,1,4,5,9,2,0.25,1,true,0.5,2"),
+            std::string::npos);
 }
 
 TEST(CorridorSamplesIoTest, WritesEmptyCellForNonFiniteNumber) {

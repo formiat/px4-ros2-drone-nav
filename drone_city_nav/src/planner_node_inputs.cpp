@@ -1,3 +1,5 @@
+#include <memory>
+
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
@@ -549,8 +551,17 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
   }
 
   const auto path_compute_started_at = std::chrono::steady_clock::now();
-  auto result =
-      planner_core_.computePath(grid, current_pose_.position, goal_, astar_config);
+  ClearanceField2D prebuilt_clearance_field = ClearanceField2D::build(
+      grid, planner_core_.config().clearance_diagnostic_radius_m,
+      ClearanceSource::kProhibited);
+  auto result = planner_core_.computePath(PathComputationInput{
+      .grid = &grid,
+      .current_position = current_pose_.position,
+      .goal = goal_,
+      .astar = astar_config,
+      .prohibited_clearance_field = &prebuilt_clearance_field,
+      .prohibited_clearance_field_cache_hit = false,
+  });
   const double path_compute_duration_ms = elapsedMilliseconds(path_compute_started_at);
   ++astar_runs_;
   if (!result.has_value()) {
@@ -564,6 +575,9 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
     return std::nullopt;
   }
 
+  result->owned_prohibited_clearance_field =
+      std::make_shared<ClearanceField2D>(std::move(prebuilt_clearance_field));
+  result->prohibited_clearance_field = result->owned_prohibited_clearance_field.get();
   ++astar_successes_;
   if (result->start_escape_used && result->requested_start_cell.has_value() &&
       result->start_cell.has_value()) {

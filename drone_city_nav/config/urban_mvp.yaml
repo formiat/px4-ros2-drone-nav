@@ -134,6 +134,12 @@ planner_node:
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
     racing_line_parallel_workers: 0
+    racing_line_window_pre_margin_m: 25.0
+    racing_line_window_post_margin_m: 25.0
+    racing_line_window_heading_threshold_deg: 10.0
+    racing_line_window_width_change_threshold_m: 2.0
+    racing_line_dp_offset_step_m: 1.0
+    racing_line_async_refinement_workers: 1
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0
     turn_smoothing_entry_distance_m: 45.0

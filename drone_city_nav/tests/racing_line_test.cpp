@@ -101,6 +101,9 @@ TEST(RacingLine, WideCornerProducesTraversableSmoothLine) {
   EXPECT_LE(result.stats.final_length_m,
             result.stats.centerline_length_m * testConfig().max_length_ratio);
   EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
+  EXPECT_GT(result.stats.active_window_count, 0U);
+  EXPECT_GT(result.stats.dp_states, 0U);
+  EXPECT_GT(result.stats.dp_transitions, 0U);
 }
 
 TEST(RacingLine, PenalizesOffsetSpikes) {
@@ -134,6 +137,9 @@ TEST(RacingLine, ResultIsDeterministic) {
   EXPECT_DOUBLE_EQ(first.stats.final_length_m, second.stats.final_length_m);
   EXPECT_DOUBLE_EQ(first.stats.estimated_time_s, second.stats.estimated_time_s);
   EXPECT_TRUE(first.stats.parallel_candidate_evaluation_used);
+  EXPECT_EQ(first.stats.active_window_count, second.stats.active_window_count);
+  EXPECT_EQ(first.stats.dp_states, second.stats.dp_states);
+  EXPECT_EQ(first.stats.dp_transitions, second.stats.dp_transitions);
 }
 
 TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
@@ -187,6 +193,8 @@ TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   ASSERT_TRUE(result.valid);
   EXPECT_GT(result.stats.collision_rejections, 0U);
   EXPECT_GT(result.stats.max_abs_offset_m, 0.05);
+  EXPECT_EQ(result.stats.active_window_count, 1U);
+  EXPECT_GT(result.stats.dp_states, 0U);
 }
 
 TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
@@ -230,6 +238,22 @@ TEST(RacingLine, OptimizerSampleStepUsesCoarseCorridor) {
   EXPECT_EQ(result.samples.size(), result.stats.optimizer_samples);
   EXPECT_EQ(result.samples.front().point.x, corridor.front().center.x);
   EXPECT_EQ(result.samples.back().point.x, corridor.back().center.x);
+}
+
+TEST(RacingLine, StraightOpenCorridorSkipsWindowOptimization) {
+  const OccupancyGrid2D grid = openGrid();
+  const std::vector<CorridorSample> corridor =
+      straightCorridorWithBlockedCenterline(4.0, 4.0);
+
+  const RacingLineResult result =
+      optimizeRacingLine(corridor, grid, testConfig(), speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.window_count, 0U);
+  EXPECT_EQ(result.stats.active_window_count, 0U);
+  EXPECT_EQ(result.stats.active_window_samples, 0U);
+  EXPECT_EQ(result.stats.dp_states, 0U);
+  EXPECT_EQ(result.stats.dp_transitions, 0U);
 }
 
 TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {

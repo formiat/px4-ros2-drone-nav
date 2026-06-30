@@ -52,6 +52,8 @@ TEST(FinalTrajectoryDebugIoTest, WritesSummaryJsonWithShapeFields) {
   TrajectoryPlannerStats stats;
   stats.total_duration_ms = 4.5;
   stats.racing_line.final_length_m = 42.0;
+  stats.racing_line.window_count = 2U;
+  stats.racing_line.dp_states = 10U;
   TrajectoryShapeDiagnostics shape;
   shape.max_heading_delta_rad = 0.25;
 
@@ -60,6 +62,8 @@ TEST(FinalTrajectoryDebugIoTest, WritesSummaryJsonWithShapeFields) {
   const std::string json = stream.str();
   EXPECT_NE(json.find("\"trajectory_total_duration_ms\":4.5"), std::string::npos);
   EXPECT_NE(json.find("\"racing_final_length_m\":42"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_line_window_count\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_line_dp_states\":10"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_shape_max_heading_delta_rad\":0.25"),
             std::string::npos);
 }

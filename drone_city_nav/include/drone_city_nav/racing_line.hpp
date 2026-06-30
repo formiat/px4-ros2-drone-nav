@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <numbers>
 #include <span>
 #include <vector>
 
@@ -28,6 +29,12 @@ struct RacingLineConfig {
   std::size_t regularization_iterations{2U};
   double regularization_max_time_regression_s{0.5};
   std::size_t parallel_workers{0U};
+  double window_pre_margin_m{25.0};
+  double window_post_margin_m{25.0};
+  double window_heading_threshold_rad{10.0 * std::numbers::pi / 180.0};
+  double window_width_change_threshold_m{2.0};
+  double dp_offset_step_m{1.0};
+  std::size_t async_refinement_workers{1U};
 };
 
 struct RacingLineStats {
@@ -49,6 +56,16 @@ struct RacingLineStats {
   std::size_t candidate_chunks{0U};
   std::size_t worker_scratch_reuses{0U};
   std::size_t candidate_snapshot_allocations_avoided{0U};
+  std::size_t window_count{0U};
+  std::size_t active_window_count{0U};
+  std::size_t active_window_samples{0U};
+  std::size_t dp_states{0U};
+  std::size_t dp_transitions{0U};
+  double window_detection_duration_ms{0.0};
+  double window_eval_duration_ms{0.0};
+  double dp_duration_ms{0.0};
+  double full_final_score_duration_ms{0.0};
+  bool async_refined{false};
   double initial_cost{0.0};
   double final_cost{0.0};
   double centerline_length_m{0.0};

@@ -319,6 +319,23 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.worker_scratch_reuses);
   appendJsonSize(stream, "racing_candidate_snapshot_allocations_avoided",
                  stats.racing_line.candidate_snapshot_allocations_avoided);
+  appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
+  appendJsonSize(stream, "racing_line_active_window_count",
+                 stats.racing_line.active_window_count);
+  appendJsonSize(stream, "racing_line_active_window_samples",
+                 stats.racing_line.active_window_samples);
+  appendJsonSize(stream, "racing_line_dp_states", stats.racing_line.dp_states);
+  appendJsonSize(stream, "racing_line_dp_transitions",
+                 stats.racing_line.dp_transitions);
+  appendJsonNumber(stream, "racing_line_window_detection_duration_ms",
+                   stats.racing_line.window_detection_duration_ms);
+  appendJsonNumber(stream, "racing_line_window_eval_duration_ms",
+                   stats.racing_line.window_eval_duration_ms);
+  appendJsonNumber(stream, "racing_line_dp_duration_ms",
+                   stats.racing_line.dp_duration_ms);
+  appendJsonNumber(stream, "racing_line_full_final_score_duration_ms",
+                   stats.racing_line.full_final_score_duration_ms);
+  appendJsonBool(stream, "racing_line_async_refined", stats.racing_line.async_refined);
   return stream.str();
 }
 
@@ -649,6 +666,20 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "racing_worker_scratch_reuses", racing.worker_scratch_reuses);
   parseJsonSize(json, "racing_candidate_snapshot_allocations_avoided",
                 racing.candidate_snapshot_allocations_avoided);
+  parseJsonSize(json, "racing_line_window_count", racing.window_count);
+  parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
+  parseJsonSize(json, "racing_line_active_window_samples",
+                racing.active_window_samples);
+  parseJsonSize(json, "racing_line_dp_states", racing.dp_states);
+  parseJsonSize(json, "racing_line_dp_transitions", racing.dp_transitions);
+  parseJsonDouble(json, "racing_line_window_detection_duration_ms",
+                  racing.window_detection_duration_ms);
+  parseJsonDouble(json, "racing_line_window_eval_duration_ms",
+                  racing.window_eval_duration_ms);
+  parseJsonDouble(json, "racing_line_dp_duration_ms", racing.dp_duration_ms);
+  parseJsonDouble(json, "racing_line_full_final_score_duration_ms",
+                  racing.full_final_score_duration_ms);
+  parseJsonBool(json, "racing_line_async_refined", racing.async_refined);
   parseJsonDouble(json, "racing_max_abs_offset_m", racing.max_abs_offset_m);
   parseJsonDouble(json, "racing_min_edge_margin_m", racing.min_edge_margin_m);
   parseJsonDouble(json, "racing_mean_edge_margin_m", racing.mean_edge_margin_m);

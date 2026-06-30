@@ -228,6 +228,27 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("racing_line_parallel_workers", 0), 0,
           1024));
+  config.trajectory_planner.racing_line.window_pre_margin_m = std::clamp(
+      node.declare_parameter<double>("racing_line_window_pre_margin_m", 25.0), 0.0,
+      5000.0);
+  config.trajectory_planner.racing_line.window_post_margin_m = std::clamp(
+      node.declare_parameter<double>("racing_line_window_post_margin_m", 25.0), 0.0,
+      5000.0);
+  config.trajectory_planner.racing_line.window_heading_threshold_rad = std::clamp(
+      node.declare_parameter<double>("racing_line_window_heading_threshold_deg", 10.0) *
+          std::numbers::pi / 180.0,
+      0.0, std::numbers::pi);
+  config.trajectory_planner.racing_line.window_width_change_threshold_m =
+      std::clamp(node.declare_parameter<double>(
+                     "racing_line_window_width_change_threshold_m", 2.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.racing_line.dp_offset_step_m = std::clamp(
+      node.declare_parameter<double>("racing_line_dp_offset_step_m", 1.0), 0.05, 100.0);
+  config.trajectory_planner.racing_line.async_refinement_workers =
+      static_cast<std::size_t>(
+          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                       "racing_line_async_refinement_workers", 1),
+                                   0, 1024));
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,

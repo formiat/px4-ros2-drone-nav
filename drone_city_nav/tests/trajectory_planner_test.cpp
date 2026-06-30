@@ -91,6 +91,8 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_TRUE(result.speed_profile.valid);
   EXPECT_GT(result.stats.corridor.samples, 0U);
   EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
+  EXPECT_GT(result.stats.racing_line.active_window_count, 0U);
+  EXPECT_GT(result.stats.racing_line.dp_states, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.centerline_estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.time_gain_s));

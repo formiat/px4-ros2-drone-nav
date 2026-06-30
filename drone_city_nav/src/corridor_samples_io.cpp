@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 
 namespace drone_city_nav {
 
@@ -26,9 +27,18 @@ bool writeCorridorSamplesCsv(std::ostream& stream,
          << " valid=" << (result.valid ? "true" : "false") << "\n";
   stream << "sample_index,s_m,route_x,route_y,center_x,center_y,tangent_x,"
             "tangent_y,normal_x,normal_y,left_bound_m,right_bound_m,width_m,"
-            "clearance_m,center_recovery_m\n";
+            "clearance_m,center_recovery_m,window_id,active_window,"
+            "selected_offset_m,distance_to_prohibited_m\n";
   for (std::size_t i = 0U; i < result.corridor_samples.size(); ++i) {
     const CorridorSample& sample = result.corridor_samples[i];
+    const bool has_aligned_trajectory_sample =
+        result.samples.size() == result.corridor_samples.size();
+    const double selected_offset_m = has_aligned_trajectory_sample
+                                         ? result.samples[i].racing_offset_m
+                                         : std::numeric_limits<double>::quiet_NaN();
+    const bool active_window = has_aligned_trajectory_sample &&
+                               (std::abs(selected_offset_m) > 1.0e-6 ||
+                                std::abs(result.samples[i].curvature_1pm) > 1.0e-6);
     stream << i << ",";
     writeCsvNumberOrEmpty(stream, sample.s_m);
     stream << ",";
@@ -57,6 +67,11 @@ bool writeCorridorSamplesCsv(std::ostream& stream,
     writeCsvNumberOrEmpty(stream, sample.clearance_m);
     stream << ",";
     writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
+    stream << "," << (active_window ? 1 : 0) << ","
+           << (active_window ? "true" : "false") << ",";
+    writeCsvNumberOrEmpty(stream, selected_offset_m);
+    stream << ",";
+    writeCsvNumberOrEmpty(stream, sample.clearance_m);
     stream << "\n";
   }
   return stream.good();

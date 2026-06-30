@@ -216,7 +216,10 @@ bool PlannerNode::publishPathFromPathCells(
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
       "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
-      "speed_limit_max=%.2f curvature_limited=%zu] "
+      "speed_limit_max=%.2f curvature_limited=%zu "
+      "windows=%zu active_windows=%zu active_samples=%zu "
+      "dp_states=%zu dp_transitions=%zu window_detect=%.1fms "
+      "window_eval=%.1fms dp=%.1fms final_score=%.1fms async_refined=%s] "
       "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
       "relaxed_attempts=%zu "
       "smoothed=%zu "
@@ -277,6 +280,16 @@ bool PlannerNode::publishPathFromPathCells(
       trajectory_result.stats.racing_line.min_speed_limit_mps,
       trajectory_result.stats.racing_line.max_speed_limit_mps,
       trajectory_result.stats.racing_line.curvature_limited_samples,
+      trajectory_result.stats.racing_line.window_count,
+      trajectory_result.stats.racing_line.active_window_count,
+      trajectory_result.stats.racing_line.active_window_samples,
+      trajectory_result.stats.racing_line.dp_states,
+      trajectory_result.stats.racing_line.dp_transitions,
+      trajectory_result.stats.racing_line.window_detection_duration_ms,
+      trajectory_result.stats.racing_line.window_eval_duration_ms,
+      trajectory_result.stats.racing_line.dp_duration_ms,
+      trajectory_result.stats.racing_line.full_final_score_duration_ms,
+      trajectory_result.stats.racing_line.async_refined ? "true" : "false",
       trajectory_result.stats.turn_smoothing.detected_corners,
       trajectory_result.stats.turn_smoothing.attempted_corners,
       trajectory_result.stats.turn_smoothing.candidate_attempts,

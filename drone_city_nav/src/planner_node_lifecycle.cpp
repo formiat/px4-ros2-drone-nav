@@ -93,7 +93,9 @@ PlannerNode::PlannerNode()
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
       "offset_second=%.2f "
-      "max_length_ratio=%.2f parallel=always parallel_workers=%zu)] "
+      "max_length_ratio=%.2f parallel=always parallel_workers=%zu "
+      "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
+      "dp_offset_step=%.2fm async_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
       "outer_shift=[%.2f, %.2f] max_length_ratio=%.2f max_passes=%zu]",
@@ -123,6 +125,13 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.weight_offset_second_change,
       trajectory_planner_config_.racing_line.max_length_ratio,
       trajectory_planner_config_.racing_line.parallel_workers,
+      trajectory_planner_config_.racing_line.window_pre_margin_m,
+      trajectory_planner_config_.racing_line.window_post_margin_m,
+      radiansToDegrees(
+          trajectory_planner_config_.racing_line.window_heading_threshold_rad),
+      trajectory_planner_config_.racing_line.window_width_change_threshold_m,
+      trajectory_planner_config_.racing_line.dp_offset_step_m,
+      trajectory_planner_config_.racing_line.async_refinement_workers,
       radiansToDegrees(
           trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
       trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,

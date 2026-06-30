@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -66,6 +67,7 @@ struct PathComputationResult {
   double raw_path_clearance_duration_ms{0.0};
   double smoothed_path_clearance_duration_ms{0.0};
   bool prohibited_clearance_field_cache_hit{false};
+  std::shared_ptr<const ClearanceField2D> owned_prohibited_clearance_field;
   const ClearanceField2D* prohibited_clearance_field{nullptr};
 };
 
