@@ -203,6 +203,27 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonBool(stream, velocity_plan.terminal_capture_active);
   stream << ",\"terminal_goal_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_goal_distance_m);
+  stream << ",\"terminal_remaining_trajectory_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_remaining_trajectory_distance_m);
+  stream << ",\"terminal_acceptance_radius_m\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_acceptance_radius_m);
+  stream << ",\"terminal_hold_max_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_hold_max_speed_mps);
+  stream << ",\"terminal_hold_distance_met\":";
+  writeBlackboxJsonBool(stream, velocity_plan.terminal_hold_distance_met);
+  stream << ",\"terminal_hold_speed_met\":";
+  writeBlackboxJsonBool(stream, velocity_plan.terminal_hold_speed_met);
+  stream << ",\"terminal_capture_goal_distance_triggered\":";
+  writeBlackboxJsonBool(stream, velocity_plan.terminal_capture_goal_distance_triggered);
+  stream << ",\"terminal_capture_remaining_distance_triggered\":";
+  writeBlackboxJsonBool(stream,
+                        velocity_plan.terminal_capture_remaining_distance_triggered);
+  stream << ",\"terminal_capture_gain_speed_limit_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_capture_gain_speed_limit_mps);
+  stream << ",\"terminal_capture_max_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_max_speed_mps);
   stream << ",\"terminal_capture_speed_limit_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_speed_limit_mps);
   stream << ",\"raw_speed_limit_mps\":";
@@ -264,6 +285,24 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.setpoint_velocity_tangent_mps);
   stream << ",\"setpoint_velocity_normal_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.setpoint_velocity_normal_mps);
+  stream << ",\"desired_to_setpoint_tangent_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.desired_to_setpoint_tangent_error_mps);
+  stream << ",\"desired_to_setpoint_normal_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.desired_to_setpoint_normal_error_mps);
+  stream << ",\"setpoint_to_actual_tangent_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.setpoint_to_actual_tangent_error_mps);
+  stream << ",\"setpoint_to_actual_normal_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.setpoint_to_actual_normal_error_mps);
+  stream << ",\"desired_to_actual_tangent_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.desired_to_actual_tangent_error_mps);
+  stream << ",\"desired_to_actual_normal_error_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.desired_to_actual_normal_error_mps);
   stream << ",\"trajectory_cross_track_error_m\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.trajectory_cross_track_error_m);
   stream << ",\"altitude_error_m\":";

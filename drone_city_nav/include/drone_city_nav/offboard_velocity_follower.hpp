@@ -86,6 +86,13 @@ struct VelocitySetpointPlan {
   double desired_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
   double setpoint_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};
   double setpoint_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_to_setpoint_tangent_error_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double desired_to_setpoint_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
+  double setpoint_to_actual_tangent_error_mps{std::numeric_limits<double>::quiet_NaN()};
+  double setpoint_to_actual_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_to_actual_tangent_error_mps{std::numeric_limits<double>::quiet_NaN()};
+  double desired_to_actual_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_feedback_mps{0.0};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
@@ -110,6 +117,17 @@ struct VelocitySetpointPlan {
   double adaptive_lateral_response_factor{1.0};
   bool terminal_capture_active{false};
   double terminal_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_remaining_trajectory_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_acceptance_radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_hold_max_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool terminal_hold_distance_met{false};
+  bool terminal_hold_speed_met{false};
+  bool terminal_capture_goal_distance_triggered{false};
+  bool terminal_capture_remaining_distance_triggered{false};
+  double terminal_capture_gain_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_max_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double terminal_capture_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};

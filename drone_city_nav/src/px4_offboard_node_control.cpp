@@ -744,7 +744,10 @@ void Px4OffboardNode::logControlSummary() {
       "raw=%.2f final=%.2f delta=%.2f adaptive_response=%.2f "
       "curvature_angle=%.1fdeg] "
       "speed_limit_reason=%s "
-      "terminal_capture[active=%s goal_distance=%.2f speed_limit=%.2f] "
+      "terminal_capture[active=%s goal_distance=%.2f remaining_s=%.2f "
+      "speed_limit=%.2f gain_limit=%.2f max_speed=%.2f "
+      "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
+      "trigger_remaining=%s] "
       "raw_speed_limit=%.2f profile_speed_limit=%.2f "
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -810,7 +813,15 @@ void Px4OffboardNode::logControlSummary() {
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
+      last_velocity_plan_.terminal_remaining_trajectory_distance_m,
       last_velocity_plan_.terminal_capture_speed_limit_mps,
+      last_velocity_plan_.terminal_capture_gain_speed_limit_mps,
+      last_velocity_plan_.terminal_capture_max_speed_mps,
+      last_velocity_plan_.terminal_hold_distance_met ? "true" : "false",
+      last_velocity_plan_.terminal_hold_speed_met ? "true" : "false",
+      last_velocity_plan_.terminal_capture_goal_distance_triggered ? "true" : "false",
+      last_velocity_plan_.terminal_capture_remaining_distance_triggered ? "true"
+                                                                        : "false",
       last_velocity_plan_.raw_speed_limit_mps,
       last_velocity_plan_.profile_speed_limit_mps,
       last_velocity_plan_.speed_lookahead_distance_m,

@@ -96,7 +96,10 @@ void Px4OffboardNode::logTelemetry() {
       "final_norm=%.2f delta=%.2f adaptive_response=%.2f "
       "curvature_angle=%.1fdeg] "
       "speed_limit_reason=%s "
-      "terminal_capture[active=%s goal_distance=%.2f speed_limit=%.2f] "
+      "terminal_capture[active=%s goal_distance=%.2f remaining_s=%.2f "
+      "speed_limit=%.2f gain_limit=%.2f max_speed=%.2f "
+      "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
+      "trigger_remaining=%s] "
       "raw_speed_limit=%.2f profile_speed_limit=%.2f "
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -112,7 +115,10 @@ void Px4OffboardNode::logTelemetry() {
       "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "velocity_basis[current_tangent=%.2f current_normal=%.2f "
       "desired_tangent=%.2f desired_normal=%.2f "
-      "setpoint_tangent=%.2f setpoint_normal=%.2f] "
+      "setpoint_tangent=%.2f setpoint_normal=%.2f "
+      "desired_to_setpoint_tangent=%.2f desired_to_setpoint_normal=%.2f "
+      "setpoint_to_actual_tangent=%.2f setpoint_to_actual_normal=%.2f "
+      "desired_to_actual_tangent=%.2f desired_to_actual_normal=%.2f] "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_factor=%.2f lateral_accel=%.2f] "
       "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
@@ -149,7 +155,15 @@ void Px4OffboardNode::logTelemetry() {
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
+      last_velocity_plan_.terminal_remaining_trajectory_distance_m,
       last_velocity_plan_.terminal_capture_speed_limit_mps,
+      last_velocity_plan_.terminal_capture_gain_speed_limit_mps,
+      last_velocity_plan_.terminal_capture_max_speed_mps,
+      last_velocity_plan_.terminal_hold_distance_met ? "true" : "false",
+      last_velocity_plan_.terminal_hold_speed_met ? "true" : "false",
+      last_velocity_plan_.terminal_capture_goal_distance_triggered ? "true" : "false",
+      last_velocity_plan_.terminal_capture_remaining_distance_triggered ? "true"
+                                                                        : "false",
       last_velocity_plan_.raw_speed_limit_mps,
       last_velocity_plan_.profile_speed_limit_mps,
       last_velocity_plan_.speed_lookahead_distance_m,
@@ -186,6 +200,12 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.desired_velocity_normal_mps,
       last_velocity_plan_.setpoint_velocity_tangent_mps,
       last_velocity_plan_.setpoint_velocity_normal_mps,
+      last_velocity_plan_.desired_to_setpoint_tangent_error_mps,
+      last_velocity_plan_.desired_to_setpoint_normal_error_mps,
+      last_velocity_plan_.setpoint_to_actual_tangent_error_mps,
+      last_velocity_plan_.setpoint_to_actual_normal_error_mps,
+      last_velocity_plan_.desired_to_actual_tangent_error_mps,
+      last_velocity_plan_.desired_to_actual_normal_error_mps,
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",

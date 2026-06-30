@@ -789,6 +789,15 @@ TEST(OffboardVelocityFollower, FastGoalFlyThroughUsesTerminalCaptureUntilSlow) {
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
   EXPECT_TRUE(plan.terminal_capture_active);
   EXPECT_NEAR(plan.terminal_goal_distance_m, 0.8, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_remaining_trajectory_distance_m, 0.8, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_acceptance_radius_m, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_hold_max_speed_mps, 0.8, 1.0e-9);
+  EXPECT_TRUE(plan.terminal_hold_distance_met);
+  EXPECT_FALSE(plan.terminal_hold_speed_met);
+  EXPECT_TRUE(plan.terminal_capture_goal_distance_triggered);
+  EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
+  EXPECT_NEAR(plan.terminal_capture_gain_speed_limit_mps, 0.8, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_max_speed_mps, 4.0, 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 0.0, 1.0e-9);
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
   EXPECT_NEAR(plan.desired_speed_mps, 0.0, 1.0e-9);
@@ -808,6 +817,11 @@ TEST(OffboardVelocityFollower, TerminalCaptureCommandsDirectlyTowardFinalGoal) {
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
   EXPECT_TRUE(plan.terminal_capture_active);
   EXPECT_NEAR(plan.terminal_goal_distance_m, std::sqrt(32.0), 1.0e-9);
+  EXPECT_NEAR(plan.terminal_remaining_trajectory_distance_m, 0.0, 1.0e-9);
+  EXPECT_FALSE(plan.terminal_hold_distance_met);
+  EXPECT_TRUE(plan.terminal_hold_speed_met);
+  EXPECT_TRUE(plan.terminal_capture_goal_distance_triggered);
+  EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
   EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 4.0, 1.0e-9);
   const Point2 expected_direction = normalizedTestVector(-4.0, -4.0);
   EXPECT_NEAR(plan.desired_velocity_xy.x, expected_direction.x * 4.0, 1.0e-9);

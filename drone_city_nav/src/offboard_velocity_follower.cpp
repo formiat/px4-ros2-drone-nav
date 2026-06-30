@@ -295,6 +295,39 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
 
 namespace {
 
+void populateVelocityBasisErrors(VelocitySetpointPlan& plan) {
+  if (std::isfinite(plan.desired_velocity_tangent_mps) &&
+      std::isfinite(plan.setpoint_velocity_tangent_mps)) {
+    plan.desired_to_setpoint_tangent_error_mps =
+        plan.desired_velocity_tangent_mps - plan.setpoint_velocity_tangent_mps;
+  }
+  if (std::isfinite(plan.desired_velocity_normal_mps) &&
+      std::isfinite(plan.setpoint_velocity_normal_mps)) {
+    plan.desired_to_setpoint_normal_error_mps =
+        plan.desired_velocity_normal_mps - plan.setpoint_velocity_normal_mps;
+  }
+  if (std::isfinite(plan.setpoint_velocity_tangent_mps) &&
+      std::isfinite(plan.current_velocity_tangent_mps)) {
+    plan.setpoint_to_actual_tangent_error_mps =
+        plan.setpoint_velocity_tangent_mps - plan.current_velocity_tangent_mps;
+  }
+  if (std::isfinite(plan.setpoint_velocity_normal_mps) &&
+      std::isfinite(plan.current_velocity_normal_mps)) {
+    plan.setpoint_to_actual_normal_error_mps =
+        plan.setpoint_velocity_normal_mps - plan.current_velocity_normal_mps;
+  }
+  if (std::isfinite(plan.desired_velocity_tangent_mps) &&
+      std::isfinite(plan.current_velocity_tangent_mps)) {
+    plan.desired_to_actual_tangent_error_mps =
+        plan.desired_velocity_tangent_mps - plan.current_velocity_tangent_mps;
+  }
+  if (std::isfinite(plan.desired_velocity_normal_mps) &&
+      std::isfinite(plan.current_velocity_normal_mps)) {
+    plan.desired_to_actual_normal_error_mps =
+        plan.desired_velocity_normal_mps - plan.current_velocity_normal_mps;
+  }
+}
+
 VelocitySetpointPlan planVelocitySetpointFromProjection(
     const TrajectoryProjection& control_projection,
     const TrajectoryProjection& current_projection, const Point2 predicted_position,
@@ -322,8 +355,18 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double bounded_prediction_horizon = std::max(0.0, prediction_horizon_s);
   const double prediction_distance = distance(current_position, predicted_position);
   const double response_delay_distance = current_speed * bounded_prediction_horizon;
-  if (distance(current_position, final_point) <= final_acceptance &&
-      current_speed <= finalHoldMaxSpeedMps(config)) {
+  const double terminal_goal_distance = distance(current_position, final_point);
+  const double remaining_trajectory_distance =
+      std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
+  const double terminal_capture_radius = terminalCaptureRadiusM(config);
+  const double terminal_hold_max_speed = finalHoldMaxSpeedMps(config);
+  const bool terminal_hold_distance_met = terminal_goal_distance <= final_acceptance;
+  const bool terminal_hold_speed_met = current_speed <= terminal_hold_max_speed;
+  const bool terminal_capture_goal_distance_triggered =
+      terminal_goal_distance <= terminal_capture_radius;
+  const bool terminal_capture_remaining_distance_triggered =
+      remaining_trajectory_distance <= terminal_capture_radius;
+  if (terminal_hold_distance_met && terminal_hold_speed_met) {
     plan.valid = true;
     plan.final_goal_reached = true;
     plan.reason = VelocitySetpointReason::kHold;
@@ -334,6 +377,16 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.prediction_horizon_s = bounded_prediction_horizon;
     plan.prediction_distance_m = prediction_distance;
     plan.response_delay_distance_m = response_delay_distance;
+    plan.terminal_goal_distance_m = terminal_goal_distance;
+    plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
+    plan.terminal_acceptance_radius_m = final_acceptance;
+    plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
+    plan.terminal_hold_distance_met = terminal_hold_distance_met;
+    plan.terminal_hold_speed_met = terminal_hold_speed_met;
+    plan.terminal_capture_goal_distance_triggered =
+        terminal_capture_goal_distance_triggered;
+    plan.terminal_capture_remaining_distance_triggered =
+        terminal_capture_remaining_distance_triggered;
     plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
     plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
     plan.trajectory_cross_track_error_m = plan.predicted_cross_track_error_m;
@@ -354,22 +407,20 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     return plan;
   }
 
-  const double terminal_goal_distance = distance(current_position, final_point);
-  const double remaining_trajectory_distance =
-      std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
-  const double terminal_capture_radius = terminalCaptureRadiusM(config);
-  if (terminal_goal_distance <= terminal_capture_radius ||
-      remaining_trajectory_distance <= terminal_capture_radius) {
+  if (terminal_capture_goal_distance_triggered ||
+      terminal_capture_remaining_distance_triggered) {
     const Point2 goal_delta = final_point - current_position;
     Point2 terminal_tangent = normalized(goal_delta);
     if (!(norm(terminal_tangent) > kTinyDistanceM)) {
       terminal_tangent = control_projection.tangent;
     }
+    const double capture_gain_speed_limit =
+        terminalCaptureGain1ps(config) * terminal_goal_distance;
+    const double capture_max_speed = terminalCaptureMaxSpeedMps(config);
     const double capture_speed_limit =
         terminal_goal_distance <= final_acceptance
             ? 0.0
-            : std::min(terminalCaptureMaxSpeedMps(config),
-                       terminalCaptureGain1ps(config) * terminal_goal_distance);
+            : std::min(capture_max_speed, capture_gain_speed_limit);
     const Point2 desired_velocity = terminal_tangent * capture_speed_limit;
     const VelocitySmootherPlan smoothed = smoothVelocityCommand(
         VelocitySmootherInput{
@@ -394,6 +445,17 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.reason = VelocitySetpointReason::kTerminalCapture;
     plan.terminal_capture_active = true;
     plan.terminal_goal_distance_m = terminal_goal_distance;
+    plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
+    plan.terminal_acceptance_radius_m = final_acceptance;
+    plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
+    plan.terminal_hold_distance_met = terminal_hold_distance_met;
+    plan.terminal_hold_speed_met = terminal_hold_speed_met;
+    plan.terminal_capture_goal_distance_triggered =
+        terminal_capture_goal_distance_triggered;
+    plan.terminal_capture_remaining_distance_triggered =
+        terminal_capture_remaining_distance_triggered;
+    plan.terminal_capture_gain_speed_limit_mps = capture_gain_speed_limit;
+    plan.terminal_capture_max_speed_mps = capture_max_speed;
     plan.terminal_capture_speed_limit_mps = capture_speed_limit;
     plan.velocity_xy = smoothed.velocity_xy;
     plan.desired_velocity_xy = desired_velocity;
@@ -446,6 +508,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.desired_velocity_normal_mps = dot(plan.desired_velocity_xy, left_normal);
     plan.setpoint_velocity_tangent_mps = dot(plan.velocity_xy, terminal_tangent);
     plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
+    populateVelocityBasisErrors(plan);
     plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
     plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
     plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
@@ -614,6 +677,17 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.lateral_control_mps = command.lateral_control_mps;
   plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
   plan.adaptive_lateral_response_factor = command.adaptive_lateral_response_factor;
+  plan.terminal_goal_distance_m = terminal_goal_distance;
+  plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;
+  plan.terminal_acceptance_radius_m = final_acceptance;
+  plan.terminal_hold_max_speed_mps = terminal_hold_max_speed;
+  plan.terminal_hold_distance_met = terminal_hold_distance_met;
+  plan.terminal_hold_speed_met = terminal_hold_speed_met;
+  plan.terminal_capture_goal_distance_triggered =
+      terminal_capture_goal_distance_triggered;
+  plan.terminal_capture_remaining_distance_triggered =
+      terminal_capture_remaining_distance_triggered;
+  populateVelocityBasisErrors(plan);
   plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
   plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
   plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
