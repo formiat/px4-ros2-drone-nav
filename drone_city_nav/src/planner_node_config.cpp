@@ -118,7 +118,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.planner_core.astar.heuristic_weight = std::clamp(
       node.declare_parameter<double>("astar_heuristic_weight", 1.0), 1.0, 10.0);
   config.planner_core.astar.evasive_maneuvering_enabled =
-      node.declare_parameter<bool>("astar_evasive_maneuvering_enabled", true);
+      node.declare_parameter<bool>("astar_evasive_maneuvering_enabled", false);
   config.planner_core.astar.evasive_maneuvering_straight_cost_weight =
       std::clamp(node.declare_parameter<double>(
                      "astar_evasive_maneuvering_straight_cost_weight", 1.0),

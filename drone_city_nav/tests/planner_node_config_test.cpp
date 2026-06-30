@@ -64,7 +64,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);
-  EXPECT_TRUE(config.planner_core.astar.evasive_maneuvering_enabled);
+  EXPECT_FALSE(config.planner_core.astar.evasive_maneuvering_enabled);
   EXPECT_TRUE(config.planner_core.astar.initial_heading_bias_enabled);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_min_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.initial_heading_bias_weight, 50.0);
