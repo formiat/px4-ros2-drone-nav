@@ -61,11 +61,8 @@ struct VelocitySetpointPlan {
   double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
   bool path_frame_lateral_smoothing_applied{false};
-  bool lateral_zero_crossing_limited{false};
-  bool velocity_heading_rate_limited{false};
   double lateral_smoothing_factor{1.0};
   double smoother_lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
-  double velocity_heading_rate_limit_rad_s{std::numeric_limits<double>::quiet_NaN()};
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double profile_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double speed_lookahead_distance_m{std::numeric_limits<double>::quiet_NaN()};

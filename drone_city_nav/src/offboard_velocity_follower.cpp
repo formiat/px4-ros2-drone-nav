@@ -383,9 +383,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .previous_velocity_acceleration_setpoint_valid =
               previous_state.previous_velocity_acceleration_setpoint_valid,
           .dt_s = dt,
-          .lateral_response_factor = command.adaptive_lateral_response_factor,
-          .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
-          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
+          .lateral_response_factor = command.adaptive_lateral_response_factor},
       config);
   if (!smoothed.valid) {
     return plan;
@@ -413,12 +411,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
   plan.path_frame_lateral_smoothing_applied =
       smoothed.path_frame_lateral_smoothing_applied;
-  plan.lateral_zero_crossing_limited = smoothed.lateral_zero_crossing_limited;
-  plan.velocity_heading_rate_limited = smoothed.velocity_heading_rate_limited;
   plan.lateral_smoothing_factor = smoothed.lateral_smoothing_factor;
   plan.smoother_lateral_response_accel_mps2 =
       smoothed.smoother_lateral_response_accel_mps2;
-  plan.velocity_heading_rate_limit_rad_s = smoothed.velocity_heading_rate_limit_rad_s;
   plan.path_tangent = control_projection.tangent;
   plan.control_tangent_raw = tangent_smoothing.raw_tangent;
   plan.control_tangent_smoothed = tangent_smoothing.applied;

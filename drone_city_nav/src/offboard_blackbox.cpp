@@ -192,18 +192,11 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.velocity_setpoint_jerk_mps3);
   stream << ",\"path_frame_lateral_smoothing_applied\":";
   writeBlackboxJsonBool(stream, velocity_plan.path_frame_lateral_smoothing_applied);
-  stream << ",\"lateral_zero_crossing_limited\":";
-  writeBlackboxJsonBool(stream, velocity_plan.lateral_zero_crossing_limited);
-  stream << ",\"velocity_heading_rate_limited\":";
-  writeBlackboxJsonBool(stream, velocity_plan.velocity_heading_rate_limited);
   stream << ",\"lateral_smoothing_factor\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_smoothing_factor);
   stream << ",\"smoother_lateral_response_accel_mps2\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.smoother_lateral_response_accel_mps2);
-  stream << ",\"velocity_heading_rate_limit_rad_s\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.velocity_heading_rate_limit_rad_s);
   stream << ",\"speed_limit_reason\":\""
          << velocitySetpointReasonName(velocity_plan.reason)
          << "\",\"raw_speed_limit_mps\":";

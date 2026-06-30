@@ -21,8 +21,6 @@ struct VelocitySmootherInput {
   bool previous_velocity_acceleration_setpoint_valid{false};
   double dt_s{std::numeric_limits<double>::quiet_NaN()};
   double lateral_response_factor{1.0};
-  double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
-  double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct VelocitySmootherPlan {
@@ -34,11 +32,8 @@ struct VelocitySmootherPlan {
   double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
   bool path_frame_lateral_smoothing_applied{false};
-  bool lateral_zero_crossing_limited{false};
-  bool velocity_heading_rate_limited{false};
   double lateral_smoothing_factor{1.0};
   double smoother_lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
-  double velocity_heading_rate_limit_rad_s{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] VelocityVectorLimitResult

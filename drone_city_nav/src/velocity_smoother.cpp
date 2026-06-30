@@ -3,14 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numbers>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
-constexpr double kPi = std::numbers::pi;
-constexpr double kTwoPi = 2.0 * kPi;
 
 struct VectorRateLimitResult {
   Point2 value{};
@@ -28,11 +25,8 @@ struct PathFrameVelocityLimitResult {
   Point2 velocity{};
   double delta_mps{std::numeric_limits<double>::quiet_NaN()};
   bool applied{false};
-  bool lateral_zero_crossing_limited{false};
-  bool velocity_heading_rate_limited{false};
   double lateral_smoothing_factor{1.0};
   double lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
-  double heading_rate_limit_rad_s{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
@@ -76,23 +70,6 @@ struct PathFrameVelocityLimitResult {
   return t * t * (3.0 - 2.0 * t);
 }
 
-[[nodiscard]] double shortestAngleDeltaRad(const double from_rad,
-                                           const double to_rad) noexcept {
-  double delta = std::fmod(to_rad - from_rad + kPi, kTwoPi);
-  if (delta < 0.0) {
-    delta += kTwoPi;
-  }
-  return delta - kPi;
-}
-
-[[nodiscard]] Point2 rotateUnitVector(const Point2 unit_vector,
-                                      const double angle_delta_rad) noexcept {
-  const double c = std::cos(angle_delta_rad);
-  const double s = std::sin(angle_delta_rad);
-  return Point2{unit_vector.x * c - unit_vector.y * s,
-                unit_vector.x * s + unit_vector.y * c};
-}
-
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
                                        const double min_value,
                                        const double max_value) noexcept {
@@ -134,34 +111,11 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
   return 1.0 + (max_factor - 1.0) * smoothStep(min_speed, full_speed, speed_mps);
 }
 
-[[nodiscard]] bool
-lateralZeroCrossingLimitAllowed(const VelocityFollowerConfig& config,
-                                const double current_cross_track_error_m,
-                                const double predicted_cross_track_error_m) noexcept {
-  if (!std::isfinite(current_cross_track_error_m) ||
-      !std::isfinite(predicted_cross_track_error_m)) {
-    return true;
-  }
-
-  const double max_cross_track = sanitizedPositive(
-      config.lateral_zero_crossing_max_cross_track_m, 0.0, 0.0, 1000.0);
-  if (!(max_cross_track > 0.0)) {
-    return false;
-  }
-  const double max_growth =
-      sanitizedPositive(config.lateral_zero_crossing_max_growth_m, 0.0, 0.0, 1000.0);
-  const double current_error = std::abs(current_cross_track_error_m);
-  const double predicted_error = std::abs(predicted_cross_track_error_m);
-  return current_error <= max_cross_track && predicted_error <= max_cross_track &&
-         predicted_error - current_error <= max_growth;
-}
-
 [[nodiscard]] PathFrameVelocityLimitResult limitVelocityPathFrame(
     const Point2 desired_velocity, const Point2 previous_velocity,
     const bool previous_velocity_valid, const Point2 path_tangent, const double dt_s,
     const double max_accel_mps2, const double max_decel_mps2,
-    const double lateral_response_accel_mps2, const double current_cross_track_error_m,
-    const double predicted_cross_track_error_m, const VelocityFollowerConfig& config) {
+    const double lateral_response_accel_mps2, const VelocityFollowerConfig& config) {
   PathFrameVelocityLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -196,59 +150,11 @@ lateralZeroCrossingLimitAllowed(const VelocityFollowerConfig& config,
       previous_forward + std::clamp(desired_forward - previous_forward,
                                     -max_forward_decel_delta, max_forward_accel_delta);
 
-  double limited_lateral{};
-  const bool lateral_sign_changes = (previous_lateral * desired_lateral) < 0.0;
-  const bool zero_crossing_candidate = lateral_sign_changes &&
-                                       std::abs(previous_lateral) > kTinyDistanceM &&
-                                       std::abs(desired_lateral) > kTinyDistanceM;
-  if (zero_crossing_candidate &&
-      lateralZeroCrossingLimitAllowed(config, current_cross_track_error_m,
-                                      predicted_cross_track_error_m)) {
-    result.lateral_zero_crossing_limited = true;
-    if (std::abs(previous_lateral) <= max_lateral_delta) {
-      limited_lateral = 0.0;
-    } else {
-      limited_lateral =
-          previous_lateral - std::copysign(max_lateral_delta, previous_lateral);
-    }
-  } else {
-    limited_lateral =
-        previous_lateral + std::clamp(desired_lateral - previous_lateral,
-                                      -max_lateral_delta, max_lateral_delta);
-  }
+  const double limited_lateral =
+      previous_lateral + std::clamp(desired_lateral - previous_lateral,
+                                    -max_lateral_delta, max_lateral_delta);
 
-  Point2 limited_velocity = tangent * limited_forward + normal * limited_lateral;
-  result.heading_rate_limit_rad_s =
-      sanitizedPositive(config.max_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0);
-  if (result.heading_rate_limit_rad_s > 0.0 && previous_speed > kTinyDistanceM &&
-      norm(limited_velocity) > kTinyDistanceM) {
-    const double min_heading_rate = std::min(
-        result.heading_rate_limit_rad_s,
-        sanitizedPositive(config.min_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0));
-    const double lateral_heading_rate =
-        result.lateral_response_accel_mps2 / std::max(previous_speed, 1.0);
-    const double effective_heading_rate =
-        lateral_heading_rate > 0.0
-            ? std::min(result.heading_rate_limit_rad_s,
-                       std::max(min_heading_rate, lateral_heading_rate))
-            : result.heading_rate_limit_rad_s;
-    const double max_heading_delta = effective_heading_rate * dt;
-    const double previous_heading =
-        std::atan2(previous_velocity.y, previous_velocity.x);
-    const double requested_heading = std::atan2(limited_velocity.y, limited_velocity.x);
-    const double heading_delta =
-        shortestAngleDeltaRad(previous_heading, requested_heading);
-    if (std::abs(heading_delta) > max_heading_delta) {
-      const Point2 previous_direction = previous_velocity * (1.0 / previous_speed);
-      const Point2 limited_direction = rotateUnitVector(
-          previous_direction, std::copysign(max_heading_delta, heading_delta));
-      limited_velocity = limited_direction * norm(limited_velocity);
-      result.velocity_heading_rate_limited = true;
-      result.heading_rate_limit_rad_s = effective_heading_rate;
-    }
-  }
-
-  result.velocity = limited_velocity;
+  result.velocity = tangent * limited_forward + normal * limited_lateral;
   result.delta_mps = norm(result.velocity - previous_velocity);
   return result;
 }
@@ -431,9 +337,7 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       limitVelocityPathFrame(
           input.desired_velocity_xy, input.previous_velocity_setpoint,
           input.previous_velocity_setpoint_valid, input.path_tangent, input.dt_s,
-          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2,
-          input.current_cross_track_error_m, input.predicted_cross_track_error_m,
-          config);
+          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2, config);
   const VelocityVectorLimitResult fallback_limited_velocity =
       path_frame_limited_velocity.applied
           ? VelocityVectorLimitResult{.velocity = path_frame_limited_velocity.velocity,
@@ -463,10 +367,6 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       jerk_limited_velocity.acceleration_norm_mps2;
   plan.velocity_setpoint_jerk_mps3 = jerk_limited_velocity.jerk_mps3;
   plan.path_frame_lateral_smoothing_applied = path_frame_limited_velocity.applied;
-  plan.lateral_zero_crossing_limited =
-      path_frame_limited_velocity.lateral_zero_crossing_limited;
-  plan.velocity_heading_rate_limited =
-      path_frame_limited_velocity.velocity_heading_rate_limited;
   plan.lateral_smoothing_factor =
       path_frame_limited_velocity.applied
           ? path_frame_limited_velocity.lateral_smoothing_factor
@@ -475,10 +375,6 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       path_frame_limited_velocity.applied
           ? path_frame_limited_velocity.lateral_response_accel_mps2
           : lateral_response_accel_mps2;
-  plan.velocity_heading_rate_limit_rad_s =
-      path_frame_limited_velocity.applied
-          ? path_frame_limited_velocity.heading_rate_limit_rad_s
-          : sanitizedPositive(config.max_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0);
   return plan;
 }
 

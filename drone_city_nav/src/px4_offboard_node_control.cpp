@@ -758,8 +758,7 @@ void Px4OffboardNode::logControlSummary() {
       "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "cross_track_lateral_velocity=%.2f "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
-      " path_frame=%s zero_cross=%s heading_rate_limited=%s "
-      "lateral_factor=%.2f lateral_accel=%.2f heading_rate=%.2f] "
+      " path_frame=%s lateral_factor=%.2f lateral_accel=%.2f] "
       "altitude_error=%.2f "
       "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
@@ -844,11 +843,8 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.lateral_zero_crossing_limited ? "true" : "false",
-      last_velocity_plan_.velocity_heading_rate_limited ? "true" : "false",
       last_velocity_plan_.lateral_smoothing_factor,
-      last_velocity_plan_.smoother_lateral_response_accel_mps2,
-      last_velocity_plan_.velocity_heading_rate_limit_rad_s, last_altitude_error_m_,
+      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_altitude_error_m_,
       upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,

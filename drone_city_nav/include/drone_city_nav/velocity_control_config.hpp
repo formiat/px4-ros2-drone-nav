@@ -28,10 +28,6 @@ struct VelocityFollowerConfig {
   double lateral_smoothing_min_speed_mps{8.0};
   double lateral_smoothing_full_speed_mps{20.0};
   double lateral_smoothing_max_factor{1.0};
-  double max_velocity_heading_rate_rad_s{0.0};
-  double min_velocity_heading_rate_rad_s{0.0};
-  double lateral_zero_crossing_max_cross_track_m{0.0};
-  double lateral_zero_crossing_max_growth_m{0.0};
   double speed_aware_derivative_damping_min_speed_mps{8.0};
   double speed_aware_derivative_damping_full_speed_mps{20.0};
   double speed_aware_derivative_damping_max_factor{1.5};
