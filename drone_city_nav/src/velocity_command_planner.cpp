@@ -166,6 +166,28 @@ adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
   return std::clamp(1.0 + cross_track_growth_m / scale_m, 1.0, max_factor);
 }
 
+[[nodiscard]] double crossTrackFeedbackScale(
+    const double cross_track_error_m, const double cross_track_lateral_velocity_mps,
+    const VelocityFollowerConfig& config, double& closing_speed_target_mps) noexcept {
+  closing_speed_target_mps = std::numeric_limits<double>::quiet_NaN();
+  if (!(cross_track_error_m > kTinyDistanceM) ||
+      !(cross_track_lateral_velocity_mps > kTinyDistanceM)) {
+    return 1.0;
+  }
+
+  const double target_time_s =
+      sanitizedPositive(config.cross_track_anti_overshoot_time_s, 1.0, 1.0e-6, 1000.0);
+  closing_speed_target_mps = cross_track_error_m / target_time_s;
+  if (!(cross_track_lateral_velocity_mps > closing_speed_target_mps)) {
+    return 1.0;
+  }
+
+  const double min_scale = sanitizedPositive(
+      config.cross_track_anti_overshoot_min_feedback_scale, 0.25, 0.0, 1.0);
+  return std::clamp(closing_speed_target_mps / cross_track_lateral_velocity_mps,
+                    min_scale, 1.0);
+}
+
 } // namespace
 
 VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
@@ -199,8 +221,12 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
         derivative_speed, plan.cross_track_lateral_velocity_mps, config);
     plan.cross_track_derivative_gain_effective =
         cross_track_derivative_gain * plan.cross_track_derivative_damping_factor;
+    plan.cross_track_feedback_scale = crossTrackFeedbackScale(
+        cross_track_error, plan.cross_track_lateral_velocity_mps, config,
+        plan.cross_track_closing_speed_target_mps);
     cross_track_feedback =
-        cross_track_direction * (cross_track_gain * cross_track_error);
+        cross_track_direction *
+        (cross_track_gain * cross_track_error * plan.cross_track_feedback_scale);
     cross_track_derivative_damping =
         cross_track_direction * (-plan.cross_track_derivative_gain_effective *
                                  plan.cross_track_lateral_velocity_mps);

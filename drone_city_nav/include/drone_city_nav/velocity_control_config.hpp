@@ -15,6 +15,8 @@ struct VelocityFollowerConfig {
   double speed_profile_lookahead_max_m{35.0};
   double cross_track_gain{0.5};
   double cross_track_derivative_gain{0.5};
+  double cross_track_anti_overshoot_time_s{1.0};
+  double cross_track_anti_overshoot_min_feedback_scale{0.25};
   double tracking_prediction_horizon_s{0.45};
   double max_lateral_control_angle_rad{0.9599310885968813};
   double max_lateral_control_rate_mps2{5.0};
@@ -35,6 +37,9 @@ struct VelocityFollowerConfig {
   double control_tangent_smoothing_forward_m{18.0};
   double control_tangent_smoothing_max_heading_span_rad{0.20943951023931953};
   double control_tangent_smoothing_max_abs_curvature_1pm{0.015};
+  double control_curve_smoothing_back_m{2.0};
+  double control_curve_smoothing_forward_m{6.0};
+  double control_curve_smoothing_max_heading_span_rad{0.7853981633974483};
   double adaptive_lateral_response_scale_m{3.0};
   double adaptive_lateral_response_max_factor{1.2};
   double final_acceptance_radius_m{1.0};
@@ -42,6 +47,8 @@ struct VelocityFollowerConfig {
   double terminal_capture_radius_m{8.0};
   double terminal_capture_gain_1ps{1.0};
   double terminal_capture_max_speed_mps{4.0};
+  double terminal_capture_decel_mps2{4.0};
+  double terminal_capture_braking_margin_m{2.0};
 };
 
 } // namespace drone_city_nav

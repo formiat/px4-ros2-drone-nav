@@ -94,6 +94,8 @@ struct VelocitySetpointPlan {
   double desired_to_actual_tangent_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double desired_to_actual_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_feedback_mps{0.0};
+  double cross_track_feedback_scale{1.0};
+  double cross_track_closing_speed_target_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};
@@ -128,6 +130,13 @@ struct VelocitySetpointPlan {
   double terminal_capture_gain_speed_limit_mps{
       std::numeric_limits<double>::quiet_NaN()};
   double terminal_capture_max_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_decel_mps2{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_braking_margin_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_braking_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_activation_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_braking_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
   double terminal_capture_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};

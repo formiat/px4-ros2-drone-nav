@@ -23,6 +23,8 @@ namespace {
   config.terminal_capture_radius_m = 8.0;
   config.terminal_capture_gain_1ps = 1.0;
   config.terminal_capture_max_speed_mps = 4.0;
+  config.terminal_capture_decel_mps2 = 4.0;
+  config.terminal_capture_braking_margin_m = 2.0;
   config.tracking_prediction_horizon_s = 0.0;
   return config;
 }
@@ -224,7 +226,7 @@ TEST(OffboardVelocityFollower, FinalStopProfileLimitsSpeedNearGoal) {
   state.previous_velocity_setpoint_valid = true;
 
   const VelocitySetpointPlan plan =
-      planVelocitySetpoint(trajectory, profile, Point2{90.0, 0.0}, Point2{12.0, 0.0},
+      planVelocitySetpoint(trajectory, profile, Point2{90.0, 0.0}, Point2{0.0, 0.0},
                            true, 0.1, state, testConfig());
 
   ASSERT_TRUE(plan.valid);
@@ -234,6 +236,50 @@ TEST(OffboardVelocityFollower, FinalStopProfileLimitsSpeedNearGoal) {
   EXPECT_LT(plan.raw_speed_limit_mps, testConfig().cruise_speed_mps);
   EXPECT_GT(plan.raw_speed_limit_mps, 0.0);
   EXPECT_NEAR(plan.limiting_constraint_distance_m, 10.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, TerminalCaptureActivatesByBrakingDistance) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig config = testConfig();
+  config.terminal_capture_radius_m = 8.0;
+  config.terminal_capture_decel_mps2 = 4.0;
+  config.terminal_capture_braking_margin_m = 2.0;
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{85.0, 0.0}, Point2{12.0, 0.0},
+                           true, 0.1, VelocityFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_TRUE(plan.terminal_capture_active);
+  EXPECT_NEAR(plan.terminal_goal_distance_m, 15.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_braking_distance_m, 18.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_activation_distance_m, 20.0, 1.0e-9);
+  EXPECT_TRUE(plan.terminal_capture_goal_distance_triggered);
+  EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
+}
+
+TEST(OffboardVelocityFollower, TerminalCaptureSpeedUsesBrakingLimit) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig config = testConfig();
+  config.terminal_capture_max_speed_mps = 10.0;
+  config.terminal_capture_gain_1ps = 10.0;
+  config.terminal_capture_decel_mps2 = 1.0;
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{96.0, 0.0}, Point2{4.0, 0.0},
+                           true, 0.1, VelocityFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_NEAR(plan.terminal_goal_distance_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_braking_speed_limit_mps, std::sqrt(6.0), 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, std::sqrt(6.0), 1.0e-9);
+  EXPECT_NEAR(plan.desired_speed_mps, std::sqrt(6.0), 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, PreArcBrakingReportsDistanceToArcConstraint) {
@@ -338,13 +384,16 @@ TEST(OffboardVelocityFollower, SmoothsControlTangentOnStraightishSampledTrajecto
   EXPECT_NEAR(plan.control_tangent_smoothing_window_end_s_m, 20.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, DoesNotSmoothControlTangentAcrossRealCurvature) {
+TEST(OffboardVelocityFollower, UsesShortCurveSmoothingAcrossRealCurvature) {
   VelocityFollowerConfig config = testConfig();
   config.control_tangent_smoothing_back_m = 5.0;
   config.control_tangent_smoothing_forward_m = 10.0;
   config.control_tangent_smoothing_max_heading_span_rad =
       25.0 * std::numbers::pi / 180.0;
   config.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
+  config.control_curve_smoothing_back_m = 2.0;
+  config.control_curve_smoothing_forward_m = 6.0;
+  config.control_curve_smoothing_max_heading_span_rad = 45.0 * std::numbers::pi / 180.0;
 
   std::vector<TrajectoryPointSample> samples;
   for (std::size_t i = 0U; i < 5U; ++i) {
@@ -365,11 +414,14 @@ TEST(OffboardVelocityFollower, DoesNotSmoothControlTangentAcrossRealCurvature) {
       samples, profile, Point2{10.0, 0.0}, Point2{12.0, 0.0}, true, 0.1, state, config);
 
   ASSERT_TRUE(plan.valid);
-  EXPECT_FALSE(plan.control_tangent_smoothed);
+  EXPECT_TRUE(plan.control_tangent_smoothed);
   EXPECT_GT(plan.control_tangent_smoothing_max_abs_curvature_1pm,
             config.control_tangent_smoothing_max_abs_curvature_1pm);
-  EXPECT_NEAR(plan.path_tangent.x, normalizedTestVector(1.0, -0.2).x, 1.0e-9);
-  EXPECT_NEAR(plan.path_tangent.y, normalizedTestVector(1.0, -0.2).y, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.x, 1.0, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.02, 1.0e-9);
+  EXPECT_NEAR(plan.control_tangent_smoothing_window_start_s_m, 8.0, 1.0e-9);
+  EXPECT_NEAR(plan.control_tangent_smoothing_window_end_s_m, 16.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, EstimatesTraversalTimeFromSampledTrajectory) {
@@ -798,6 +850,11 @@ TEST(OffboardVelocityFollower, FastGoalFlyThroughUsesTerminalCaptureUntilSlow) {
   EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
   EXPECT_NEAR(plan.terminal_capture_gain_speed_limit_mps, 0.8, 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_max_speed_mps, 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_decel_mps2, 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_braking_margin_m, 2.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_braking_distance_m, 18.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_activation_distance_m, 20.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_braking_speed_limit_mps, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 0.0, 1.0e-9);
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
   EXPECT_NEAR(plan.desired_speed_mps, 0.0, 1.0e-9);

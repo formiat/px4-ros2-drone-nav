@@ -101,6 +101,29 @@ TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
   EXPECT_GT(moving_toward.cross_track_derivative_damping_mps, 0.0);
 }
 
+TEST(VelocityCommandPlanner, FeedbackIsReducedWhenAlreadyClosingCrossTrackFast) {
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_gain = 1.0;
+  config.cross_track_derivative_gain = 0.0;
+  config.cross_track_anti_overshoot_time_s = 1.0;
+  config.cross_track_anti_overshoot_min_feedback_scale = 0.25;
+
+  const VelocityCommandPlan plan =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
+                                               .current_position = Point2{0.0, 5.0},
+                                               .current_velocity = Point2{10.0, -8.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 10.0,
+                                               .dt_s = 0.1},
+                          config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.cross_track_lateral_velocity_mps, 8.0, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_closing_speed_target_mps, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_feedback_scale, 0.625, 1.0e-9);
+  EXPECT_NEAR(plan.cross_track_feedback_mps, 3.125, 1.0e-9);
+}
+
 TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningFast) {
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 1.0;

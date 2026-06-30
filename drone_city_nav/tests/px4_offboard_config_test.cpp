@@ -38,6 +38,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
             std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_anti_overshoot_time_s: 1.0"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_anti_overshoot_min_feedback_scale: 0.25"),
+            std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_angle_deg: 55.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_rate_mps2: 5.0"), std::string::npos);
   EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 8.0"), std::string::npos);
@@ -66,8 +69,14 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
             std::string::npos);
   EXPECT_NE(yaml.find("control_tangent_smoothing_max_abs_curvature_1pm: 0.015"),
             std::string::npos);
+  EXPECT_NE(yaml.find("control_curve_smoothing_back_m: 2.0"), std::string::npos);
+  EXPECT_NE(yaml.find("control_curve_smoothing_forward_m: 6.0"), std::string::npos);
+  EXPECT_NE(yaml.find("control_curve_smoothing_max_heading_span_deg: 45.0"),
+            std::string::npos);
   EXPECT_NE(yaml.find("adaptive_lateral_response_scale_m: 3.0"), std::string::npos);
   EXPECT_NE(yaml.find("adaptive_lateral_response_max_factor: 1.2"), std::string::npos);
+  EXPECT_NE(yaml.find("terminal_capture_decel_mps2: 4.0"), std::string::npos);
+  EXPECT_NE(yaml.find("terminal_capture_braking_margin_m: 2.0"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_update_max_start_cross_track_m: 8.0"),
             std::string::npos);
   EXPECT_EQ(yaml.find("max_cross_track_correction_angle_deg:"), std::string::npos);

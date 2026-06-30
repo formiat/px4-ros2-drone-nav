@@ -94,10 +94,11 @@ void Px4OffboardNode::logTelemetry() {
       "lateral_control[feedback=(%.2f, %.2f) derivative=(%.2f, %.2f) "
       "curvature_ff=(%.2f, %.2f) raw=(%.2f, %.2f) final=(%.2f, %.2f) "
       "final_norm=%.2f delta=%.2f adaptive_response=%.2f "
-      "curvature_angle=%.1fdeg] "
+      "curvature_angle=%.1fdeg feedback_scale=%.2f closing_target=%.2f] "
       "speed_limit_reason=%s "
       "terminal_capture[active=%s goal_distance=%.2f remaining_s=%.2f "
       "speed_limit=%.2f gain_limit=%.2f max_speed=%.2f "
+      "brake_limit=%.2f activation=%.2f decel=%.2f margin=%.2f "
       "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
       "trigger_remaining=%s] "
       "raw_speed_limit=%.2f profile_speed_limit=%.2f "
@@ -152,6 +153,8 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.lateral_control_delta_mps,
       last_velocity_plan_.adaptive_lateral_response_factor,
       radiansToDegrees(last_velocity_plan_.curvature_feedforward_angle_rad),
+      last_velocity_plan_.cross_track_feedback_scale,
+      last_velocity_plan_.cross_track_closing_speed_target_mps,
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
@@ -159,6 +162,10 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.terminal_capture_speed_limit_mps,
       last_velocity_plan_.terminal_capture_gain_speed_limit_mps,
       last_velocity_plan_.terminal_capture_max_speed_mps,
+      last_velocity_plan_.terminal_capture_braking_speed_limit_mps,
+      last_velocity_plan_.terminal_capture_activation_distance_m,
+      last_velocity_plan_.terminal_capture_decel_mps2,
+      last_velocity_plan_.terminal_capture_braking_margin_m,
       last_velocity_plan_.terminal_hold_distance_met ? "true" : "false",
       last_velocity_plan_.terminal_hold_speed_met ? "true" : "false",
       last_velocity_plan_.terminal_capture_goal_distance_triggered ? "true" : "false",

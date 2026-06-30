@@ -117,6 +117,11 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_velocity.y);
   stream << ",\"cross_track_feedback_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_mps);
+  stream << ",\"cross_track_feedback_scale\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_scale);
+  stream << ",\"cross_track_closing_speed_target_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.cross_track_closing_speed_target_mps);
   stream << ",\"cross_track_derivative_damping_x\":";
   writeBlackboxJsonNumberOrNull(
       stream, velocity_plan.cross_track_derivative_damping_velocity.x);
@@ -224,6 +229,20 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
                                 velocity_plan.terminal_capture_gain_speed_limit_mps);
   stream << ",\"terminal_capture_max_speed_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_max_speed_mps);
+  stream << ",\"terminal_capture_decel_mps2\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_decel_mps2);
+  stream << ",\"terminal_capture_braking_margin_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_capture_braking_margin_m);
+  stream << ",\"terminal_capture_braking_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_capture_braking_distance_m);
+  stream << ",\"terminal_capture_activation_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_capture_activation_distance_m);
+  stream << ",\"terminal_capture_braking_speed_limit_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.terminal_capture_braking_speed_limit_mps);
   stream << ",\"terminal_capture_speed_limit_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_speed_limit_mps);
   stream << ",\"raw_speed_limit_mps\":";

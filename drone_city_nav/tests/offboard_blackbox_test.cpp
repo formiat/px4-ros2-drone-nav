@@ -83,6 +83,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
   record.velocity_plan.curvature_feedforward_scale = 0.5;
   record.velocity_plan.adaptive_lateral_response_factor = 2.5;
+  record.velocity_plan.cross_track_feedback_scale = 0.625;
+  record.velocity_plan.cross_track_closing_speed_target_mps = 5.0;
   record.velocity_plan.terminal_capture_active = true;
   record.velocity_plan.terminal_goal_distance_m = 3.5;
   record.velocity_plan.terminal_remaining_trajectory_distance_m = 6.5;
@@ -94,6 +96,11 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.terminal_capture_remaining_distance_triggered = false;
   record.velocity_plan.terminal_capture_gain_speed_limit_mps = 3.5;
   record.velocity_plan.terminal_capture_max_speed_mps = 4.0;
+  record.velocity_plan.terminal_capture_decel_mps2 = 4.0;
+  record.velocity_plan.terminal_capture_braking_margin_m = 2.0;
+  record.velocity_plan.terminal_capture_braking_distance_m = 8.0;
+  record.velocity_plan.terminal_capture_activation_distance_m = 10.0;
+  record.velocity_plan.terminal_capture_braking_speed_limit_mps = 4.5;
   record.velocity_plan.terminal_capture_speed_limit_mps = 2.75;
   record.velocity_plan.desired_to_setpoint_tangent_error_mps = 0.4;
   record.velocity_plan.desired_to_setpoint_normal_error_mps = -0.3;
@@ -176,6 +183,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");
   expectJsonField(json, "\"curvature_feedforward_scale\":0.5");
   expectJsonField(json, "\"adaptive_lateral_response_factor\":2.5");
+  expectJsonField(json, "\"cross_track_feedback_scale\":0.625");
+  expectJsonField(json, "\"cross_track_closing_speed_target_mps\":5");
   expectJsonField(json, "\"path_frame_lateral_smoothing_applied\":true");
   expectJsonField(json, "\"lateral_smoothing_factor\":1.6");
   expectJsonField(json, "\"smoother_lateral_response_accel_mps2\":3.125");
@@ -191,6 +200,11 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"terminal_capture_remaining_distance_triggered\":false");
   expectJsonField(json, "\"terminal_capture_gain_speed_limit_mps\":3.5");
   expectJsonField(json, "\"terminal_capture_max_speed_mps\":4");
+  expectJsonField(json, "\"terminal_capture_decel_mps2\":4");
+  expectJsonField(json, "\"terminal_capture_braking_margin_m\":2");
+  expectJsonField(json, "\"terminal_capture_braking_distance_m\":8");
+  expectJsonField(json, "\"terminal_capture_activation_distance_m\":10");
+  expectJsonField(json, "\"terminal_capture_braking_speed_limit_mps\":4.5");
   expectJsonField(json, "\"terminal_capture_speed_limit_mps\":2.75");
   expectJsonField(json, "\"desired_to_setpoint_tangent_error_mps\":0.4");
   expectJsonField(json, "\"desired_to_setpoint_normal_error_mps\":-0.3");

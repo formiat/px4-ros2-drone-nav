@@ -25,6 +25,15 @@ struct ControlTangentSmoothingDiagnostics {
   double window_end_s_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
+struct ControlTangentSmoothingWindow {
+  Point2 tangent{};
+  double mean_curvature_1pm{0.0};
+  double heading_span_rad{std::numeric_limits<double>::quiet_NaN()};
+  double max_abs_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double window_start_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double window_end_s_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
@@ -117,6 +126,21 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.terminal_capture_max_speed_mps, 4.0, 0.0, 100.0);
 }
 
+[[nodiscard]] double terminalCaptureDecelMps2(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.terminal_capture_decel_mps2, 4.0, 1.0e-6, 100.0);
+}
+
+[[nodiscard]] double
+terminalCaptureBrakingMarginM(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.terminal_capture_braking_margin_m, 2.0, 0.0, 1000.0);
+}
+
+[[nodiscard]] double brakingSpeedLimitMps(const double distance_m,
+                                          const double acceptance_radius_m,
+                                          const double decel_mps2) noexcept {
+  return std::sqrt(2.0 * decel_mps2 * std::max(0.0, distance_m - acceptance_radius_m));
+}
+
 [[nodiscard]] double
 trackingPredictionHorizonS(const VelocityFollowerConfig& config) noexcept {
   return sanitizedPositive(config.tracking_prediction_horizon_s, 0.45, 0.0, 2.0);
@@ -194,10 +218,68 @@ sampleAtS(const std::span<const TrajectoryPointSample> samples, const double s_m
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<ControlTangentSmoothingWindow>
+buildControlTangentSmoothingWindow(const std::span<const TrajectoryPointSample> samples,
+                                   const double station_s_m, const double back_m,
+                                   const double forward_m) {
+  if (!(back_m + forward_m > kTinyDistanceM) || !trajectorySamplesAreUsable(samples)) {
+    return std::nullopt;
+  }
+
+  ControlTangentSmoothingWindow window{};
+  window.window_start_s_m = std::max(samples.front().s_m, station_s_m - back_m);
+  window.window_end_s_m = std::min(samples.back().s_m, station_s_m + forward_m);
+  if (!(window.window_end_s_m - window.window_start_s_m > kTinyDistanceM)) {
+    return std::nullopt;
+  }
+
+  const std::optional<TrajectoryPointSample> start_sample =
+      sampleAtS(samples, window.window_start_s_m);
+  const std::optional<TrajectoryPointSample> end_sample =
+      sampleAtS(samples, window.window_end_s_m);
+  if (!start_sample.has_value() || !end_sample.has_value()) {
+    return std::nullopt;
+  }
+
+  window.tangent = normalized(end_sample->point - start_sample->point);
+  if (!(norm(window.tangent) > kTinyDistanceM)) {
+    return std::nullopt;
+  }
+
+  std::vector<double> headings_rad;
+  headings_rad.reserve(samples.size() + 2U);
+  double curvature_sum = 0.0;
+  std::size_t curvature_count = 0U;
+  auto add_sample = [&](const TrajectoryPointSample& sample) {
+    if (norm(sample.tangent) > kTinyDistanceM && std::isfinite(sample.curvature_1pm)) {
+      headings_rad.push_back(std::atan2(sample.tangent.y, sample.tangent.x));
+      window.max_abs_curvature_1pm = std::max(
+          std::isfinite(window.max_abs_curvature_1pm) ? window.max_abs_curvature_1pm
+                                                      : 0.0,
+          std::abs(sample.curvature_1pm));
+      curvature_sum += sample.curvature_1pm;
+      ++curvature_count;
+    }
+  };
+
+  add_sample(*start_sample);
+  for (const TrajectoryPointSample& sample : samples) {
+    if (sample.s_m > window.window_start_s_m && sample.s_m < window.window_end_s_m) {
+      add_sample(sample);
+    }
+  }
+  add_sample(*end_sample);
+  window.heading_span_rad = headingSpanRad(std::move(headings_rad));
+  if (curvature_count > 0U) {
+    window.mean_curvature_1pm = curvature_sum / static_cast<double>(curvature_count);
+  }
+  return window;
+}
+
 [[nodiscard]] ControlTangentSmoothingDiagnostics
-smoothControlTangentIfStraightish(const std::span<const TrajectoryPointSample> samples,
-                                  TrajectoryProjection& control_projection,
-                                  const VelocityFollowerConfig& config) {
+smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samples,
+                               TrajectoryProjection& control_projection,
+                               const VelocityFollowerConfig& config) {
   ControlTangentSmoothingDiagnostics diagnostics{};
   diagnostics.raw_tangent = control_projection.tangent;
   if (!control_projection.valid ||
@@ -206,69 +288,56 @@ smoothControlTangentIfStraightish(const std::span<const TrajectoryPointSample> s
     return diagnostics;
   }
 
-  const double back_m =
+  const double straight_back_m =
       sanitizedPositive(config.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
-  const double forward_m =
+  const double straight_forward_m =
       sanitizedPositive(config.control_tangent_smoothing_forward_m, 18.0, 0.0, 1000.0);
-  if (!(back_m + forward_m > kTinyDistanceM)) {
-    return diagnostics;
-  }
-
-  diagnostics.window_start_s_m =
-      std::max(samples.front().s_m, control_projection.s_m - back_m);
-  diagnostics.window_end_s_m =
-      std::min(samples.back().s_m, control_projection.s_m + forward_m);
-  if (!(diagnostics.window_end_s_m - diagnostics.window_start_s_m > kTinyDistanceM)) {
-    return diagnostics;
-  }
-
-  const std::optional<TrajectoryPointSample> start_sample =
-      sampleAtS(samples, diagnostics.window_start_s_m);
-  const std::optional<TrajectoryPointSample> end_sample =
-      sampleAtS(samples, diagnostics.window_end_s_m);
-  if (!start_sample.has_value() || !end_sample.has_value()) {
-    return diagnostics;
-  }
-
-  std::vector<double> headings_rad;
-  headings_rad.reserve(samples.size() + 2U);
-  auto add_sample = [&](const TrajectoryPointSample& sample) {
-    if (norm(sample.tangent) > kTinyDistanceM && std::isfinite(sample.curvature_1pm)) {
-      headings_rad.push_back(std::atan2(sample.tangent.y, sample.tangent.x));
-      diagnostics.max_abs_curvature_1pm =
-          std::max(std::isfinite(diagnostics.max_abs_curvature_1pm)
-                       ? diagnostics.max_abs_curvature_1pm
-                       : 0.0,
-                   std::abs(sample.curvature_1pm));
-    }
-  };
-  add_sample(*start_sample);
-  for (const TrajectoryPointSample& sample : samples) {
-    if (sample.s_m > diagnostics.window_start_s_m &&
-        sample.s_m < diagnostics.window_end_s_m) {
-      add_sample(sample);
-    }
-  }
-  add_sample(*end_sample);
-  diagnostics.heading_span_rad = headingSpanRad(std::move(headings_rad));
-
-  const double max_heading_span_rad =
+  const std::optional<ControlTangentSmoothingWindow> straight_window =
+      buildControlTangentSmoothingWindow(samples, control_projection.s_m,
+                                         straight_back_m, straight_forward_m);
+  const double straight_max_heading_span_rad =
       sanitizedPositive(config.control_tangent_smoothing_max_heading_span_rad,
                         12.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
-  const double max_abs_curvature = sanitizedPositive(
+  const double straight_max_abs_curvature = sanitizedPositive(
       config.control_tangent_smoothing_max_abs_curvature_1pm, 0.015, 0.0, 1000.0);
-  if (!(diagnostics.heading_span_rad <= max_heading_span_rad) ||
-      !(diagnostics.max_abs_curvature_1pm <= max_abs_curvature)) {
+  if (straight_window.has_value()) {
+    diagnostics.heading_span_rad = straight_window->heading_span_rad;
+    diagnostics.max_abs_curvature_1pm = straight_window->max_abs_curvature_1pm;
+    diagnostics.window_start_s_m = straight_window->window_start_s_m;
+    diagnostics.window_end_s_m = straight_window->window_end_s_m;
+    if (straight_window->heading_span_rad <= straight_max_heading_span_rad &&
+        straight_window->max_abs_curvature_1pm <= straight_max_abs_curvature &&
+        dot(straight_window->tangent, control_projection.tangent) > 0.0) {
+      control_projection.tangent = straight_window->tangent;
+      diagnostics.applied = true;
+      return diagnostics;
+    }
+  }
+
+  const double curve_back_m =
+      sanitizedPositive(config.control_curve_smoothing_back_m, 2.0, 0.0, 1000.0);
+  const double curve_forward_m =
+      sanitizedPositive(config.control_curve_smoothing_forward_m, 6.0, 0.0, 1000.0);
+  const std::optional<ControlTangentSmoothingWindow> curve_window =
+      buildControlTangentSmoothingWindow(samples, control_projection.s_m, curve_back_m,
+                                         curve_forward_m);
+  if (!curve_window.has_value()) {
+    return diagnostics;
+  }
+  diagnostics.heading_span_rad = curve_window->heading_span_rad;
+  diagnostics.max_abs_curvature_1pm = curve_window->max_abs_curvature_1pm;
+  diagnostics.window_start_s_m = curve_window->window_start_s_m;
+  diagnostics.window_end_s_m = curve_window->window_end_s_m;
+  const double curve_max_heading_span_rad =
+      sanitizedPositive(config.control_curve_smoothing_max_heading_span_rad,
+                        45.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
+  if (!(curve_window->heading_span_rad <= curve_max_heading_span_rad) ||
+      dot(curve_window->tangent, control_projection.tangent) <= 0.0) {
     return diagnostics;
   }
 
-  const Point2 smoothed_tangent = normalized(end_sample->point - start_sample->point);
-  if (!(norm(smoothed_tangent) > kTinyDistanceM) ||
-      dot(smoothed_tangent, control_projection.tangent) <= 0.0) {
-    return diagnostics;
-  }
-
-  control_projection.tangent = smoothed_tangent;
+  control_projection.tangent = curve_window->tangent;
+  control_projection.curvature_1pm = curve_window->mean_curvature_1pm;
   diagnostics.applied = true;
   return diagnostics;
 }
@@ -359,13 +428,20 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double remaining_trajectory_distance =
       std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
   const double terminal_capture_radius = terminalCaptureRadiusM(config);
+  const double terminal_capture_decel = terminalCaptureDecelMps2(config);
+  const double terminal_capture_braking_margin = terminalCaptureBrakingMarginM(config);
+  const double terminal_capture_braking_distance =
+      current_speed * current_speed / (2.0 * terminal_capture_decel);
+  const double terminal_capture_activation_distance =
+      std::max(terminal_capture_radius,
+               terminal_capture_braking_distance + terminal_capture_braking_margin);
   const double terminal_hold_max_speed = finalHoldMaxSpeedMps(config);
   const bool terminal_hold_distance_met = terminal_goal_distance <= final_acceptance;
   const bool terminal_hold_speed_met = current_speed <= terminal_hold_max_speed;
   const bool terminal_capture_goal_distance_triggered =
-      terminal_goal_distance <= terminal_capture_radius;
+      terminal_goal_distance <= terminal_capture_activation_distance;
   const bool terminal_capture_remaining_distance_triggered =
-      remaining_trajectory_distance <= terminal_capture_radius;
+      remaining_trajectory_distance <= terminal_capture_activation_distance;
   if (terminal_hold_distance_met && terminal_hold_speed_met) {
     plan.valid = true;
     plan.final_goal_reached = true;
@@ -387,6 +463,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
         terminal_capture_goal_distance_triggered;
     plan.terminal_capture_remaining_distance_triggered =
         terminal_capture_remaining_distance_triggered;
+    plan.terminal_capture_decel_mps2 = terminal_capture_decel;
+    plan.terminal_capture_braking_margin_m = terminal_capture_braking_margin;
+    plan.terminal_capture_braking_distance_m = terminal_capture_braking_distance;
+    plan.terminal_capture_activation_distance_m = terminal_capture_activation_distance;
     plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
     plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
     plan.trajectory_cross_track_error_m = plan.predicted_cross_track_error_m;
@@ -417,10 +497,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     const double capture_gain_speed_limit =
         terminalCaptureGain1ps(config) * terminal_goal_distance;
     const double capture_max_speed = terminalCaptureMaxSpeedMps(config);
-    const double capture_speed_limit =
-        terminal_goal_distance <= final_acceptance
-            ? 0.0
-            : std::min(capture_max_speed, capture_gain_speed_limit);
+    const double capture_braking_speed_limit = brakingSpeedLimitMps(
+        terminal_goal_distance, final_acceptance, terminal_capture_decel);
+    const double capture_speed_limit = std::min(
+        {capture_max_speed, capture_gain_speed_limit, capture_braking_speed_limit});
     const Point2 desired_velocity = terminal_tangent * capture_speed_limit;
     const VelocitySmootherPlan smoothed = smoothVelocityCommand(
         VelocitySmootherInput{
@@ -456,6 +536,11 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
         terminal_capture_remaining_distance_triggered;
     plan.terminal_capture_gain_speed_limit_mps = capture_gain_speed_limit;
     plan.terminal_capture_max_speed_mps = capture_max_speed;
+    plan.terminal_capture_decel_mps2 = terminal_capture_decel;
+    plan.terminal_capture_braking_margin_m = terminal_capture_braking_margin;
+    plan.terminal_capture_braking_distance_m = terminal_capture_braking_distance;
+    plan.terminal_capture_activation_distance_m = terminal_capture_activation_distance;
+    plan.terminal_capture_braking_speed_limit_mps = capture_braking_speed_limit;
     plan.terminal_capture_speed_limit_mps = capture_speed_limit;
     plan.velocity_xy = smoothed.velocity_xy;
     plan.desired_velocity_xy = desired_velocity;
@@ -531,8 +616,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.final_stop.valid = true;
     plan.final_stop.distance_to_stop_m = terminal_goal_distance;
     plan.final_stop.braking_distance_m =
-        response_delay_distance +
-        current_speed * current_speed / (2.0 * effectiveSpeedProfileDecelMps2(config));
+        response_delay_distance + terminal_capture_braking_distance;
     plan.final_stop.raw_speed_limit_mps = capture_speed_limit;
     return plan;
   }
@@ -662,6 +746,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       dot(plan.velocity_xy, control_projection.tangent);
   plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
+  plan.cross_track_feedback_scale = command.cross_track_feedback_scale;
+  plan.cross_track_closing_speed_target_mps =
+      command.cross_track_closing_speed_target_mps;
   plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
   plan.cross_track_derivative_damping_factor =
       command.cross_track_derivative_damping_factor;
@@ -687,6 +774,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       terminal_capture_goal_distance_triggered;
   plan.terminal_capture_remaining_distance_triggered =
       terminal_capture_remaining_distance_triggered;
+  plan.terminal_capture_decel_mps2 = terminal_capture_decel;
+  plan.terminal_capture_braking_margin_m = terminal_capture_braking_margin;
+  plan.terminal_capture_braking_distance_m = terminal_capture_braking_distance;
+  plan.terminal_capture_activation_distance_m = terminal_capture_activation_distance;
   populateVelocityBasisErrors(plan);
   plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
   plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
@@ -778,7 +869,7 @@ VelocitySetpointPlan planVelocitySetpoint(
   }
   TrajectoryProjection command_projection = *control_projection;
   const ControlTangentSmoothingDiagnostics tangent_smoothing =
-      smoothControlTangentIfStraightish(trajectory_samples, command_projection, config);
+      smoothControlTangentForCommand(trajectory_samples, command_projection, config);
   const TrajectorySegmentKind segment_kind =
       std::abs(control_projection->curvature_1pm) > kTinyDistanceM
           ? TrajectorySegmentKind::kArc
