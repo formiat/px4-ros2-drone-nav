@@ -212,6 +212,7 @@ private:
 
   std::optional<OccupancyGrid2D> memory_grid_;
   std::optional<OccupancyGrid2D> static_grid_;
+  PlanningGridBuilder planning_grid_builder_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
   TrajectoryPlannerConfig trajectory_planner_config_{};

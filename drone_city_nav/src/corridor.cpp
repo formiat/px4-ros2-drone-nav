@@ -79,6 +79,7 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started_at) {
                                           const OccupancyGrid2D& grid,
                                           const double max_radius_m) noexcept {
   return sameBounds(clearance_field.bounds(), grid.bounds()) &&
+         clearance_field.source() == ClearanceSource::kProhibited &&
          clearance_field.maxDistanceM() + kTinyDistanceM >= max_radius_m;
 }
 

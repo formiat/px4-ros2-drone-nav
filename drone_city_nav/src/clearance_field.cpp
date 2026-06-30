@@ -76,6 +76,7 @@ ClearanceField2D ClearanceField2D::build(const OccupancyGrid2D& grid,
   ClearanceField2D field{};
   field.bounds_ = grid.bounds();
   field.max_distance_m_ = std::max(0.0, max_distance_m);
+  field.source_ = source;
   field.distance_m_.assign(grid.cellCount(), std::numeric_limits<double>::infinity());
   if (field.max_distance_m_ <= 0.0) {
     return field;
@@ -136,6 +137,10 @@ const GridBounds& ClearanceField2D::bounds() const noexcept {
 
 double ClearanceField2D::maxDistanceM() const noexcept {
   return max_distance_m_;
+}
+
+ClearanceSource ClearanceField2D::source() const noexcept {
+  return source_;
 }
 
 bool ClearanceField2D::contains(const GridIndex cell) const noexcept {

@@ -22,6 +22,7 @@ public:
 
   [[nodiscard]] const GridBounds& bounds() const noexcept;
   [[nodiscard]] double maxDistanceM() const noexcept;
+  [[nodiscard]] ClearanceSource source() const noexcept;
   [[nodiscard]] bool contains(GridIndex cell) const noexcept;
   [[nodiscard]] double distanceAt(GridIndex cell) const;
   [[nodiscard]] std::span<const double> distancesM() const noexcept;
@@ -29,6 +30,7 @@ public:
 private:
   GridBounds bounds_{};
   double max_distance_m_{0.0};
+  ClearanceSource source_{ClearanceSource::kOccupied};
   std::vector<double> distance_m_;
 };
 

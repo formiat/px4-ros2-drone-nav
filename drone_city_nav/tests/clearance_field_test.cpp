@@ -22,6 +22,7 @@ TEST(ClearanceField2D, MeasuresMetricDistanceFromOccupiedCells) {
   const ClearanceField2D field =
       ClearanceField2D::build(grid, 4.0, ClearanceSource::kOccupied);
 
+  EXPECT_EQ(field.source(), ClearanceSource::kOccupied);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{2, 2}), 0.0);
   EXPECT_DOUBLE_EQ(field.distanceAt(GridIndex{3, 2}), 1.0);
   EXPECT_NEAR(field.distanceAt(GridIndex{3, 3}), std::numbers::sqrt2, 1.0e-9);
@@ -39,6 +40,7 @@ TEST(ClearanceField2D, CanUseInflatedCellsAsProhibitedSources) {
   const ClearanceField2D prohibited_field =
       ClearanceField2D::build(grid, 4.0, ClearanceSource::kProhibited);
 
+  EXPECT_EQ(prohibited_field.source(), ClearanceSource::kProhibited);
   EXPECT_DOUBLE_EQ(occupied_field.distanceAt(GridIndex{3, 2}), 1.0);
   EXPECT_DOUBLE_EQ(prohibited_field.distanceAt(GridIndex{3, 2}), 0.0);
   EXPECT_DOUBLE_EQ(prohibited_field.distanceAt(GridIndex{4, 2}), 1.0);

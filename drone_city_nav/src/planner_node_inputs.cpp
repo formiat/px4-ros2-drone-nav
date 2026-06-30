@@ -228,7 +228,7 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
     sources.current_lidar_grid = &*current_lidar_grid;
   }
 
-  PlanningGridBuildResult result = drone_city_nav::buildPlanningGrid(config, sources);
+  PlanningGridBuildResult result = planning_grid_builder_.build(config, sources);
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
   }
@@ -352,6 +352,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "planning_grid[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
       "unknown=%zu planning_clearance_m=%.2f effective_inflation_m=%.2f] "
       "inflation_owner=planner "
+      "static_grid_cache[eligible=%s hit=%s rebuilt=%s] "
       "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
       "path='%s'] "
       "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
@@ -384,6 +385,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
       path_result->grid_stats.occupied_cells, path_result->grid_stats.inflated_cells,
       path_result->grid_stats.free_cells, path_result->grid_stats.unknown_cells,
       planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
+      planning_result->cache.static_cache_eligible ? "true" : "false",
+      planning_result->cache.static_cache_hit ? "true" : "false",
+      planning_result->cache.static_cache_rebuilt ? "true" : "false",
       planning_result->static_source.enabled ? "true" : "false",
       planning_result->static_source.loaded ? "true" : "false",
       planning_result->static_source.used ? "true" : "false",

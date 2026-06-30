@@ -53,6 +53,7 @@ public:
   void setOccupied(GridIndex cell);
   void markRay(Point2 start, Point2 end, bool endpoint_occupied);
   void rebuildInflation(double radius_m);
+  void mergeInflationFrom(const OccupancyGrid2D& source);
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;

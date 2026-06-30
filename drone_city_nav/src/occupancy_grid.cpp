@@ -265,6 +265,19 @@ void OccupancyGrid2D::rebuildInflation(const double radius_m) {
   }
 }
 
+void OccupancyGrid2D::mergeInflationFrom(const OccupancyGrid2D& source) {
+  if (bounds_.origin_x != source.bounds_.origin_x ||
+      bounds_.origin_y != source.bounds_.origin_y ||
+      bounds_.resolution_m != source.bounds_.resolution_m ||
+      bounds_.width_cells != source.bounds_.width_cells ||
+      bounds_.height_cells != source.bounds_.height_cells) {
+    throw std::invalid_argument{"Inflation merge requires matching grid bounds"};
+  }
+  for (std::size_t i = 0U; i < inflated_.size(); ++i) {
+    inflated_[i] = inflated_[i] != 0U || source.inflated_[i] != 0U ? 1U : 0U;
+  }
+}
+
 std::vector<GridIndex> OccupancyGrid2D::cellsOnLine(const GridIndex start,
                                                     const GridIndex end) const {
   std::vector<GridIndex> cells;

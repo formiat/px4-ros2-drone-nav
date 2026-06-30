@@ -41,6 +41,12 @@ struct PlanningGridBuilderConfig {
   double planning_clearance_m{2.0};
 };
 
+struct PlanningGridCacheStats {
+  bool static_cache_eligible{false};
+  bool static_cache_hit{false};
+  bool static_cache_rebuilt{false};
+};
+
 struct PlanningGridSources {
   const OccupancyGrid2D* static_grid{nullptr};
   std::size_t static_rectangles{0U};
@@ -59,6 +65,30 @@ struct PlanningGridBuildResult {
   StaticSourceStats static_source{};
   MemorySourceStats memory{};
   CurrentLidarOverlayStats current_lidar{};
+  PlanningGridCacheStats cache{};
+};
+
+class PlanningGridBuilder {
+public:
+  [[nodiscard]] PlanningGridBuildResult build(const PlanningGridBuilderConfig& config,
+                                              const PlanningGridSources& sources);
+
+  void clearCache() noexcept;
+
+private:
+  struct StaticGridCache {
+    OccupancyGridFingerprint fingerprint{};
+    double inflation_radius_m{0.0};
+    double planning_clearance_m{0.0};
+    GridOverlayStats overlay{};
+    OccupancyGrid2D raw_grid;
+    OccupancyGrid2D prohibited_grid;
+    OccupancyGrid2D planning_grid;
+
+    explicit StaticGridCache(const GridBounds& bounds);
+  };
+
+  std::optional<StaticGridCache> static_cache_;
 };
 
 [[nodiscard]] const char* planningGridStatusName(PlanningGridStatus status) noexcept;
