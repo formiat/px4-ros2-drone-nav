@@ -1,3 +1,5 @@
+#include <exception>
+
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
@@ -134,8 +136,9 @@ bool PlannerNode::publishPathFromPathCells(
                 kPublishedPathCollinearityToleranceM);
   }
 
+  const std::uint64_t generation = ++trajectory_generation_;
   const auto started_at = std::chrono::steady_clock::now();
-  TrajectoryPlannerResult trajectory_result = planRacingTrajectory(
+  TrajectoryPlannerResult trajectory_result = planBaselineTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route_points.data(), route_points.size()}, &grid,
           prohibited_clearance_field, prohibited_clearance_field_cache_hit},
@@ -145,12 +148,29 @@ bool PlannerNode::publishPathFromPathCells(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
+  std::uint64_t baseline_path_id = 0U;
+  if (!publishTrajectoryResult(grid, trajectory_result, route_points, source_label,
+                               duration_ms, &baseline_path_id)) {
+    return false;
+  }
+  startAsyncTrajectoryRefinement(
+      grid, route_points, generation, baseline_path_id, trajectory_result, source_label,
+      prohibited_clearance_field, prohibited_clearance_field_cache_hit);
+  return true;
+}
+
+bool PlannerNode::publishTrajectoryResult(
+    const OccupancyGrid2D& validation_grid,
+    const TrajectoryPlannerResult& trajectory_result,
+    const std::span<const Point2> route_points, const char* source_label,
+    const double duration_ms, std::uint64_t* published_path_id) {
   writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
   if (!trajectory_result.valid) {
     RCLCPP_WARN(
         get_logger(),
-        "%s racing trajectory build failed; rough A* route will not be published as "
+        "%s trajectory build failed; rough A* route will not be published as "
         "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
+        "trajectory_quality=%.*s "
         "timing[total=%.1f corridor=%.1f racing_line=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f] "
         "corridor[samples=%zu width_min=%.2f width_mean=%.2f] "
@@ -159,7 +179,10 @@ bool PlannerNode::publishPathFromPathCells(
         static_cast<int>(
             trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
         trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-        route_points.size(), duration_ms, trajectory_result.stats.total_duration_ms,
+        route_points.size(), duration_ms,
+        static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
+        trajectoryQualityName(trajectory_result.stats.quality).data(),
+        trajectory_result.stats.total_duration_ms,
         trajectory_result.stats.corridor_duration_ms,
         trajectory_result.stats.racing_line_duration_ms,
         trajectory_result.stats.turn_smoothing_duration_ms,
@@ -176,18 +199,22 @@ bool PlannerNode::publishPathFromPathCells(
 
   std::vector<Point2> trajectory_points =
       trajectorySamplePoints(trajectory_result.samples);
-  if (trajectory_points.size() < 2U || !pathIsTraversable(grid, trajectory_points)) {
+  if (trajectory_points.size() < 2U ||
+      !pathIsTraversable(validation_grid, trajectory_points)) {
     RCLCPP_WARN(
         get_logger(),
-        "%s racing trajectory build produced a non-traversable runtime trajectory; "
+        "%s trajectory build produced a non-traversable runtime trajectory; "
         "holding instead of publishing rough A* route: route_points=%zu "
         "trajectory_points=%zu duration_ms=%.1f status=%.*s "
+        "trajectory_quality=%.*s "
         "timing[total=%.1f corridor=%.1f racing_line=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f]",
         source_label, route_points.size(), trajectory_points.size(), duration_ms,
         static_cast<int>(
             trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
         trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+        static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
+        trajectoryQualityName(trajectory_result.stats.quality).data(),
         trajectory_result.stats.total_duration_ms,
         trajectory_result.stats.corridor_duration_ms,
         trajectory_result.stats.racing_line_duration_ms,
@@ -199,8 +226,9 @@ bool PlannerNode::publishPathFromPathCells(
 
   RCLCPP_INFO(
       get_logger(),
-      "%s final racing trajectory: route_points=%zu trajectory_points=%zu "
+      "%s final trajectory: route_points=%zu trajectory_points=%zu "
       "duration_ms=%.1f status=%.*s "
+      "trajectory_quality=%.*s "
       "timing[total=%.1f corridor=%.1f racing_line=%.1f "
       "turn_smoothing=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
@@ -234,6 +262,8 @@ bool PlannerNode::publishPathFromPathCells(
       static_cast<int>(
           trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
       trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
+      static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
+      trajectoryQualityName(trajectory_result.stats.quality).data(),
       trajectory_result.stats.total_duration_ms,
       trajectory_result.stats.corridor_duration_ms,
       trajectory_result.stats.racing_line_duration_ms,
@@ -317,10 +347,161 @@ bool PlannerNode::publishPathFromPathCells(
       trajectory_result.stats.speed_profile_curvature_limited_samples);
 
   last_valid_path_points_ = trajectory_points;
-  logPublishedPathSafety(grid, trajectory_points, "final_trajectory");
-  publishPath(trajectory_points, PathPublicationReason::kComputedPath,
-              &trajectory_result.stats);
+  logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");
+  const std::uint64_t path_id =
+      publishPath(trajectory_points, PathPublicationReason::kComputedPath,
+                  &trajectory_result.stats);
+  if (published_path_id != nullptr) {
+    *published_path_id = path_id;
+  }
   return true;
+}
+
+void PlannerNode::startAsyncTrajectoryRefinement(
+    const OccupancyGrid2D& grid, const std::span<const Point2> route_points,
+    const std::uint64_t generation, const std::uint64_t baseline_path_id,
+    const TrajectoryPlannerResult& baseline, const char* source_label,
+    const ClearanceField2D* prohibited_clearance_field,
+    const bool prohibited_clearance_field_cache_hit) {
+  (void)prohibited_clearance_field;
+  (void)prohibited_clearance_field_cache_hit;
+  if (route_points.size() < 2U || !baseline.valid) {
+    return;
+  }
+  if (pending_refinement_.has_value() && pending_refinement_->future.valid() &&
+      pending_refinement_->future.wait_for(std::chrono::seconds{0}) !=
+          std::future_status::ready) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "%s refined trajectory async build skipped because a previous refinement "
+        "is still running: pending_generation=%" PRIu64 " current_generation=%" PRIu64
+        " baseline_path_id=%" PRIu64,
+        source_label, pending_refinement_->generation, generation, baseline_path_id);
+    return;
+  }
+  if (pending_refinement_.has_value()) {
+    pending_refinement_.reset();
+  }
+
+  OccupancyGrid2D grid_snapshot = grid;
+  std::vector<Point2> route_snapshot{route_points.begin(), route_points.end()};
+  TrajectoryPlannerConfig config_snapshot = trajectory_planner_config_;
+  std::future<TrajectoryPlannerResult> future = std::async(
+      std::launch::async, [grid = std::move(grid_snapshot), route = route_snapshot,
+                           config = config_snapshot]() mutable {
+        TrajectoryPlannerResult refined = planRacingTrajectory(
+            TrajectoryPlannerInput{
+                std::span<const Point2>{route.data(), route.size()},
+                &grid,
+                nullptr,
+                false,
+            },
+            config);
+        refined.stats.quality = TrajectoryQuality::kRefined;
+        refined.stats.racing_line.async_refined = true;
+        return refined;
+      });
+
+  PendingTrajectoryRefinement pending{};
+  pending.generation = generation;
+  pending.baseline_path_id = baseline_path_id;
+  pending.route_start = route_points.front();
+  pending.goal = route_points.back();
+  pending.baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s;
+  pending.baseline_length_m = baseline.stats.length_m;
+  pending.route_points = std::move(route_snapshot);
+  pending.source_label = source_label;
+  pending.future = std::move(future);
+  pending_refinement_ = std::move(pending);
+  RCLCPP_INFO(get_logger(),
+              "%s refined trajectory async build started: generation=%" PRIu64
+              " baseline_path_id=%" PRIu64
+              " route_points=%zu baseline_time=%.2fs baseline_length=%.2fm",
+              source_label, generation, baseline_path_id, route_points.size(),
+              baseline.stats.racing_line.estimated_time_s, baseline.stats.length_m);
+}
+
+bool PlannerNode::pollPendingTrajectoryRefinement(
+    const OccupancyGrid2D& validation_grid) {
+  if (!pending_refinement_.has_value() || !pending_refinement_->future.valid()) {
+    return false;
+  }
+  if (pending_refinement_->future.wait_for(std::chrono::seconds{0}) !=
+      std::future_status::ready) {
+    return false;
+  }
+
+  PendingTrajectoryRefinement pending = std::move(*pending_refinement_);
+  pending_refinement_.reset();
+  TrajectoryPlannerResult refined{};
+  try {
+    refined = pending.future.get();
+  } catch (const std::exception& error) {
+    RCLCPP_WARN(get_logger(),
+                "%s refined trajectory async build failed with exception: "
+                "generation=%" PRIu64 " baseline_path_id=%" PRIu64 " error='%s'",
+                pending.source_label.c_str(), pending.generation,
+                pending.baseline_path_id, error.what());
+    return false;
+  }
+
+  if (last_published_path_id_ != pending.baseline_path_id) {
+    RCLCPP_WARN(
+        get_logger(),
+        "%s refined trajectory rejected: reason=path_id_mismatch generation=%" PRIu64
+        " baseline_path_id=%" PRIu64 " last_published_path_id=%" PRIu64,
+        pending.source_label.c_str(), pending.generation, pending.baseline_path_id,
+        last_published_path_id_);
+    return false;
+  }
+
+  const std::vector<Point2> refined_points = trajectorySamplePoints(refined.samples);
+  const TrajectoryRefinementDecision decision =
+      evaluateTrajectoryRefinement(TrajectoryRefinementDecisionInput{
+          .current_generation = trajectory_generation_,
+          .snapshot_generation = pending.generation,
+          .expected_start = pending.route_start,
+          .expected_goal = pending.goal,
+          .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
+          .max_time_regression_s = trajectory_planner_config_.racing_line
+                                       .regularization_max_time_regression_s,
+          .max_length_regression_ratio = 1.10,
+          .baseline_estimated_time_s = pending.baseline_estimated_time_s,
+          .baseline_length_m = pending.baseline_length_m,
+          .refined = &refined,
+          .refined_points =
+              std::span<const Point2>{refined_points.data(), refined_points.size()},
+          .validation_grid = &validation_grid,
+      });
+  if (!decision.accepted) {
+    RCLCPP_WARN(
+        get_logger(),
+        "%s refined trajectory rejected: reason=%.*s generation=%" PRIu64
+        " current_generation=%" PRIu64 " baseline_path_id=%" PRIu64
+        " route_points=%zu refined_points=%zu baseline_time=%.2fs refined_time=%.2fs "
+        "baseline_length=%.2fm refined_length=%.2fm",
+        pending.source_label.c_str(),
+        static_cast<int>(refinementDecisionReasonName(decision.reason).size()),
+        refinementDecisionReasonName(decision.reason).data(), pending.generation,
+        trajectory_generation_, pending.baseline_path_id, pending.route_points.size(),
+        refined_points.size(), pending.baseline_estimated_time_s,
+        refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
+        refined.stats.length_m);
+    return false;
+  }
+
+  RCLCPP_INFO(
+      get_logger(),
+      "%s refined trajectory accepted: generation=%" PRIu64 " baseline_path_id=%" PRIu64
+      " refined_points=%zu baseline_time=%.2fs refined_time=%.2fs "
+      "baseline_length=%.2fm refined_length=%.2fm",
+      pending.source_label.c_str(), pending.generation, pending.baseline_path_id,
+      refined_points.size(), pending.baseline_estimated_time_s,
+      refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
+      refined.stats.length_m);
+  return publishTrajectoryResult(validation_grid, refined, pending.route_points,
+                                 pending.source_label.c_str(),
+                                 refined.stats.total_duration_ms);
 }
 
 [[nodiscard]] PublishedPathSafetySummary PlannerNode::summarizePublishedPathSafety(
@@ -539,11 +720,12 @@ void PlannerNode::publishProhibitedGrid(const OccupancyGrid2D& grid) {
       prohibitedGridToRos(grid, ProhibitedGridToRosConfig{makePlannerHeader()}));
 }
 
-void PlannerNode::publishPath(const std::vector<Point2>& points,
-                              const PathPublicationReason reason,
-                              const TrajectoryPlannerStats* trajectory_stats) {
+std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
+                                       const PathPublicationReason reason,
+                                       const TrajectoryPlannerStats* trajectory_stats) {
   recordPathPublication(reason, points.empty());
   const std::uint64_t path_id = next_path_id_++;
+  last_published_path_id_ = path_id;
 
   if (points.empty()) {
     last_valid_path_points_.clear();
@@ -568,6 +750,7 @@ void PlannerNode::publishPath(const std::vector<Point2>& points,
 
   logPathUpdate(path, metrics, reason, path_id);
   logPlannerCountersThrottled();
+  return path_id;
 }
 
 void PlannerNode::publishTrajectoryDiagnostics(

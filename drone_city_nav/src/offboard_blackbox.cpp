@@ -387,6 +387,8 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"final_trajectory_samples\":" << record.final_trajectory_samples;
   stream << ",\"trajectory_planner_status\":\""
          << trajectoryPlannerStatusName(planner_stats.status) << "\"";
+  stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(planner_stats.quality)
+         << "\"";
   stream << "," << trajectoryTimingDiagnosticsJsonFields(planner_stats);
   stream << ",\"corridor_samples\":" << planner_stats.corridor.samples;
   stream << ",\"corridor_width_min_m\":";

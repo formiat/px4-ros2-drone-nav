@@ -122,6 +122,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.final_trajectory_samples = 25U;
   record.trajectory_planner_stats.samples = 25U;
   record.trajectory_planner_stats.status = TrajectoryPlannerStatus::kOk;
+  record.trajectory_planner_stats.quality = TrajectoryQuality::kRefined;
   record.trajectory_planner_stats.corridor.samples = 12U;
   record.trajectory_planner_stats.corridor.min_width_m = 5.0;
   record.trajectory_planner_stats.corridor.parallel_workers_used = 3U;
@@ -139,7 +140,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.active_window_count = 1U;
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
   record.trajectory_planner_stats.racing_line.dp_transitions = 96U;
-  record.trajectory_planner_stats.racing_line.async_refined = false;
+  record.trajectory_planner_stats.racing_line.async_refined = true;
   record.trajectory_shape_diagnostics.segment_count = 24U;
   record.trajectory_shape_diagnostics.max_heading_delta_rad = 0.3;
   record.path_valid = true;
@@ -221,6 +222,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"desired_to_actual_normal_error_mps\":-0.4");
   expectJsonField(json, "\"trajectory_segment_type\":\"arc\"");
   expectJsonField(json, "\"trajectory_planner_status\":\"none\"");
+  expectJsonField(json, "\"trajectory_quality\":\"refined\"");
   expectJsonField(json, "\"corridor_samples\":12");
   expectJsonField(json, "\"corridor_parallel_workers_used\":3");
   expectJsonField(json, "\"corridor_sample_build_duration_ms\":4.5");
@@ -235,7 +237,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_line_active_window_count\":1");
   expectJsonField(json, "\"racing_line_dp_states\":24");
   expectJsonField(json, "\"racing_line_dp_transitions\":96");
-  expectJsonField(json, "\"racing_line_async_refined\":false");
+  expectJsonField(json, "\"racing_line_async_refined\":true");
   expectJsonField(json, "\"trajectory_shape_segment_count\":24");
   expectJsonField(json, "\"path\":{\"valid\":true");
   expectJsonField(json, "\"final_trajectory_debug_segment_type\":\"turn\"");

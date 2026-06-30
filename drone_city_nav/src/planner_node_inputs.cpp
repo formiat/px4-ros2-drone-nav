@@ -332,6 +332,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
   OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
   OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
   publishProhibitedGrid(prohibited_grid);
+  if (pollPendingTrajectoryRefinement(prohibited_grid)) {
+    return;
+  }
   if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
     return;
   }

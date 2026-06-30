@@ -20,6 +20,7 @@ void expectContainsAll(const std::string& text,
 
 [[nodiscard]] TrajectoryPlannerStats populatedStats() {
   TrajectoryPlannerStats stats{};
+  stats.quality = TrajectoryQuality::kRefined;
   stats.racing_line.estimated_time_s = 12.5;
   stats.racing_line.min_speed_limit_mps = 1.0;
   stats.racing_line.max_speed_limit_mps = 10.0;
@@ -65,7 +66,7 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.window_eval_duration_ms = 6.5;
   stats.racing_line.dp_duration_ms = 4.25;
   stats.racing_line.full_final_score_duration_ms = 2.75;
-  stats.racing_line.async_refined = false;
+  stats.racing_line.async_refined = true;
   stats.racing_line.cost_length = 2.0;
   stats.racing_line.cost_time = 625.0;
   stats.racing_line.cost_curvature = 12.0;
@@ -211,7 +212,8 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_line_window_count\":4"), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_active_window_count\":3"), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_states\":144"), std::string::npos);
-  EXPECT_NE(json.find("\"racing_line_async_refined\":false"), std::string::npos);
+  EXPECT_NE(json.find("\"trajectory_quality\":\"refined\""), std::string::npos);
+  EXPECT_NE(json.find("\"racing_line_async_refined\":true"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_total_duration_ms\":123.4"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_racing_line_duration_ms\":99.9"),
             std::string::npos);
@@ -351,6 +353,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   const std::uint64_t path_stamp_ns = 1'782'477'871'305'471'587ULL;
   const std::string json = trajectoryPlannerDiagnosticsJson(
       planner_path_id, path_stamp_ns, populatedStats());
+  EXPECT_NE(json.find("\"trajectory_quality\":\"refined\""), std::string::npos);
 
   const std::optional<TrajectoryPlannerDiagnosticsEnvelope> parsed =
       parseTrajectoryPlannerDiagnosticsJson(json);
@@ -360,6 +363,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       parsed.value_or(TrajectoryPlannerDiagnosticsEnvelope{});
   EXPECT_EQ(parsed_value.planner_path_id, planner_path_id);
   EXPECT_EQ(parsed_value.path_stamp_ns, path_stamp_ns);
+  EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kRefined);
   EXPECT_EQ(parsed_value.stats.samples, 78U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.length_m, 412.25);
   EXPECT_EQ(parsed_value.stats.corridor.samples, 42U);
@@ -401,7 +405,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.window_eval_duration_ms, 6.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.dp_duration_ms, 4.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.full_final_score_duration_ms, 2.75);
-  EXPECT_FALSE(parsed_value.stats.racing_line.async_refined);
+  EXPECT_TRUE(parsed_value.stats.racing_line.async_refined);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.input_samples, 48U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.candidate_attempts, 11U);
@@ -422,6 +426,21 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line_duration_ms, 99.9);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing_duration_ms, 8.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_duration_ms, 1.5);
+}
+
+TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonExposesBaselineQuality) {
+  TrajectoryPlannerStats stats{};
+  stats.quality = TrajectoryQuality::kBaseline;
+
+  const std::string json = trajectoryPlannerDiagnosticsJson(1U, 2U, stats);
+  const std::optional<TrajectoryPlannerDiagnosticsEnvelope> parsed =
+      parseTrajectoryPlannerDiagnosticsJson(json);
+
+  EXPECT_NE(json.find("\"trajectory_quality\":\"baseline\""), std::string::npos);
+  ASSERT_TRUE(parsed.has_value());
+  const TrajectoryPlannerDiagnosticsEnvelope parsed_value =
+      parsed.value_or(TrajectoryPlannerDiagnosticsEnvelope{});
+  EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kBaseline);
 }
 
 } // namespace drone_city_nav

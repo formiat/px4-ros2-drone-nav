@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -34,6 +35,16 @@ namespace {
   config.speed_profile.speed_profile_decel_mps2 = 4.0;
   config.speed_profile.speed_profile_sample_step_m = 1.0;
   return config;
+}
+
+[[nodiscard]] std::vector<Point2>
+samplePoints(const std::span<const TrajectoryPointSample> samples) {
+  std::vector<Point2> points;
+  points.reserve(samples.size());
+  for (const TrajectoryPointSample& sample : samples) {
+    points.push_back(sample.point);
+  }
+  return points;
 }
 
 } // namespace
@@ -86,6 +97,7 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_EQ(result.stats.quality, TrajectoryQuality::kRefined);
   EXPECT_GE(result.samples.size(), 3U);
   EXPECT_EQ(result.corridor_samples.size(), result.stats.corridor.samples);
   EXPECT_TRUE(result.speed_profile.valid);
@@ -96,6 +108,26 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.centerline_estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.racing_line.time_gain_s));
+}
+
+TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+
+  const TrajectoryPlannerResult result = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             &grid},
+      testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_EQ(result.stats.quality, TrajectoryQuality::kBaseline);
+  EXPECT_GE(result.samples.size(), 3U);
+  EXPECT_TRUE(result.speed_profile.valid);
+  EXPECT_EQ(result.stats.racing_line.candidate_evaluations, 0U);
+  EXPECT_FALSE(result.stats.racing_line.async_refined);
+  ASSERT_FALSE(result.samples.empty());
+  EXPECT_NEAR(distance(result.samples.back().point, route.back()), 0.0, 1.0e-6);
 }
 
 TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
@@ -113,6 +145,101 @@ TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.corridor.clearance_field_reused);
   EXPECT_TRUE(result.stats.corridor.clearance_field_cache_hit);
+}
+
+TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  TrajectoryPlannerResult refined = planRacingTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             &grid},
+      testConfig());
+  ASSERT_TRUE(refined.valid);
+  const std::vector<Point2> refined_points = samplePoints(refined.samples);
+
+  const TrajectoryRefinementDecision decision =
+      evaluateTrajectoryRefinement(TrajectoryRefinementDecisionInput{
+          .current_generation = 2U,
+          .snapshot_generation = 1U,
+          .expected_start = refined_points.front(),
+          .expected_goal = refined_points.back(),
+          .endpoint_tolerance_m = 0.5,
+          .baseline_estimated_time_s = std::numeric_limits<double>::quiet_NaN(),
+          .baseline_length_m = std::numeric_limits<double>::quiet_NaN(),
+          .refined = &refined,
+          .refined_points =
+              std::span<const Point2>{refined_points.data(), refined_points.size()},
+          .validation_grid = &grid,
+      });
+
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.reason, TrajectoryRefinementDecisionReason::kStaleGeneration);
+}
+
+TEST(TrajectoryPlanner, RejectsInvalidRefinedTrajectory) {
+  const OccupancyGrid2D grid = testGrid();
+  TrajectoryPlannerResult refined;
+  refined.valid = false;
+  const std::vector<Point2> refined_points{{0.0, 0.0}, {10.0, 0.0}};
+
+  const TrajectoryRefinementDecision decision =
+      evaluateTrajectoryRefinement(TrajectoryRefinementDecisionInput{
+          .current_generation = 1U,
+          .snapshot_generation = 1U,
+          .expected_start = refined_points.front(),
+          .expected_goal = refined_points.back(),
+          .endpoint_tolerance_m = 0.5,
+          .baseline_estimated_time_s = std::numeric_limits<double>::quiet_NaN(),
+          .baseline_length_m = std::numeric_limits<double>::quiet_NaN(),
+          .refined = &refined,
+          .refined_points =
+              std::span<const Point2>{refined_points.data(), refined_points.size()},
+          .validation_grid = &grid,
+      });
+
+  EXPECT_FALSE(decision.accepted);
+  EXPECT_EQ(decision.reason, TrajectoryRefinementDecisionReason::kInvalidRefined);
+}
+
+TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const TrajectoryPlannerConfig config = testConfig();
+  const TrajectoryPlannerResult baseline = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             &grid},
+      config);
+  TrajectoryPlannerResult refined = planRacingTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             &grid},
+      config);
+  refined.stats.racing_line.async_refined = true;
+  ASSERT_TRUE(baseline.valid);
+  ASSERT_TRUE(refined.valid);
+  const std::vector<Point2> refined_points = samplePoints(refined.samples);
+
+  const TrajectoryRefinementDecision decision =
+      evaluateTrajectoryRefinement(TrajectoryRefinementDecisionInput{
+          .current_generation = 1U,
+          .snapshot_generation = 1U,
+          .expected_start = route.front(),
+          .expected_goal = route.back(),
+          .endpoint_tolerance_m = 0.5,
+          .max_time_regression_s = 3600.0,
+          .max_length_regression_ratio = 10.0,
+          .baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s,
+          .baseline_length_m = baseline.stats.length_m,
+          .refined = &refined,
+          .refined_points =
+              std::span<const Point2>{refined_points.data(), refined_points.size()},
+          .validation_grid = &grid,
+      });
+
+  EXPECT_TRUE(decision.accepted);
+  EXPECT_EQ(decision.reason, TrajectoryRefinementDecisionReason::kAccepted);
+  ASSERT_FALSE(refined_points.empty());
+  EXPECT_NEAR(distance(refined_points.back(), route.back()), 0.0, 0.5);
+  EXPECT_TRUE(refined.stats.racing_line.async_refined);
 }
 
 } // namespace drone_city_nav

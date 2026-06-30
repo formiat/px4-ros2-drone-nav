@@ -109,8 +109,15 @@ struct RacingLineStats {
   double mean_abs_curvature_1pm{0.0};
 };
 
+struct RacingLineWindowMetadata {
+  std::size_t id{0U};
+  double begin_s_m{0.0};
+  double end_s_m{0.0};
+};
+
 struct RacingLineResult {
   std::vector<TrajectoryPointSample> samples;
+  std::vector<RacingLineWindowMetadata> active_windows;
   RacingLineStats stats{};
   bool valid{false};
 };

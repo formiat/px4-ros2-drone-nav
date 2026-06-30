@@ -1,9 +1,11 @@
 #include "drone_city_nav/corridor_samples_io.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <optional>
 
 namespace drone_city_nav {
 
@@ -11,6 +13,52 @@ void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
   if (std::isfinite(value)) {
     stream << value;
   }
+}
+
+[[nodiscard]] std::optional<std::size_t>
+windowIdForS(const std::span<const RacingLineWindowMetadata> windows,
+             const double s_m) {
+  if (!std::isfinite(s_m)) {
+    return std::nullopt;
+  }
+  constexpr double kWindowEpsilonM = 1.0e-6;
+  for (const RacingLineWindowMetadata& window : windows) {
+    if (s_m + kWindowEpsilonM >= window.begin_s_m &&
+        s_m <= window.end_s_m + kWindowEpsilonM) {
+      return window.id;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] double
+selectedOffsetAtS(const std::span<const TrajectoryPointSample> samples,
+                  const double s_m) {
+  if (samples.empty() || !std::isfinite(s_m)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  if (samples.size() == 1U || s_m <= samples.front().s_m) {
+    return samples.front().racing_offset_m;
+  }
+  for (std::size_t i = 1U; i < samples.size(); ++i) {
+    if (s_m > samples[i].s_m) {
+      continue;
+    }
+    const TrajectoryPointSample& previous = samples[i - 1U];
+    const TrajectoryPointSample& next = samples[i];
+    if (!std::isfinite(previous.racing_offset_m) ||
+        !std::isfinite(next.racing_offset_m)) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double span_m = next.s_m - previous.s_m;
+    if (!(span_m > 1.0e-6)) {
+      return next.racing_offset_m;
+    }
+    const double t = std::clamp((s_m - previous.s_m) / span_m, 0.0, 1.0);
+    return previous.racing_offset_m +
+           (next.racing_offset_m - previous.racing_offset_m) * t;
+  }
+  return samples.back().racing_offset_m;
 }
 
 bool writeCorridorSamplesCsv(std::ostream& stream,
@@ -31,14 +79,10 @@ bool writeCorridorSamplesCsv(std::ostream& stream,
             "selected_offset_m,distance_to_prohibited_m\n";
   for (std::size_t i = 0U; i < result.corridor_samples.size(); ++i) {
     const CorridorSample& sample = result.corridor_samples[i];
-    const bool has_aligned_trajectory_sample =
-        result.samples.size() == result.corridor_samples.size();
-    const double selected_offset_m = has_aligned_trajectory_sample
-                                         ? result.samples[i].racing_offset_m
-                                         : std::numeric_limits<double>::quiet_NaN();
-    const bool active_window = has_aligned_trajectory_sample &&
-                               (std::abs(selected_offset_m) > 1.0e-6 ||
-                                std::abs(result.samples[i].curvature_1pm) > 1.0e-6);
+    const std::optional<std::size_t> window_id =
+        windowIdForS(result.racing_windows, sample.s_m);
+    const bool active_window = window_id.has_value();
+    const double selected_offset_m = selectedOffsetAtS(result.samples, sample.s_m);
     stream << i << ",";
     writeCsvNumberOrEmpty(stream, sample.s_m);
     stream << ",";
@@ -67,8 +111,11 @@ bool writeCorridorSamplesCsv(std::ostream& stream,
     writeCsvNumberOrEmpty(stream, sample.clearance_m);
     stream << ",";
     writeCsvNumberOrEmpty(stream, sample.center_recovery_m);
-    stream << "," << (active_window ? 1 : 0) << ","
-           << (active_window ? "true" : "false") << ",";
+    stream << ",";
+    if (window_id.has_value()) {
+      stream << *window_id;
+    }
+    stream << "," << (active_window ? "true" : "false") << ",";
     writeCsvNumberOrEmpty(stream, selected_offset_m);
     stream << ",";
     writeCsvNumberOrEmpty(stream, sample.clearance_m);

@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <limits>
 #include <numbers>
@@ -93,6 +94,18 @@ public:
   PlannerNode();
 
 private:
+  struct PendingTrajectoryRefinement {
+    std::uint64_t generation{0U};
+    std::uint64_t baseline_path_id{0U};
+    Point2 route_start{};
+    Point2 goal{};
+    double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
+    double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
+    std::vector<Point2> route_points;
+    std::string source_label;
+    std::future<TrajectoryPlannerResult> future;
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
@@ -129,6 +142,22 @@ private:
                                 const char* source_label,
                                 const ClearanceField2D* prohibited_clearance_field,
                                 bool prohibited_clearance_field_cache_hit);
+
+  bool publishTrajectoryResult(const OccupancyGrid2D& validation_grid,
+                               const TrajectoryPlannerResult& trajectory_result,
+                               std::span<const Point2> route_points,
+                               const char* source_label, double duration_ms,
+                               std::uint64_t* published_path_id = nullptr);
+
+  void startAsyncTrajectoryRefinement(
+      const OccupancyGrid2D& grid, std::span<const Point2> route_points,
+      std::uint64_t generation, std::uint64_t baseline_path_id,
+      const TrajectoryPlannerResult& baseline, const char* source_label,
+      const ClearanceField2D* prohibited_clearance_field,
+      bool prohibited_clearance_field_cache_hit);
+
+  [[nodiscard]] bool
+  pollPendingTrajectoryRefinement(const OccupancyGrid2D& validation_grid);
 
   [[nodiscard]] PublishedPathSafetySummary
   summarizePublishedPathSafety(const OccupancyGrid2D& grid,
@@ -167,9 +196,9 @@ private:
 
   void publishProhibitedGrid(const OccupancyGrid2D& grid);
 
-  void publishPath(const std::vector<Point2>& points,
-                   const PathPublicationReason reason,
-                   const TrajectoryPlannerStats* trajectory_stats = nullptr);
+  std::uint64_t publishPath(const std::vector<Point2>& points,
+                            PathPublicationReason reason,
+                            const TrajectoryPlannerStats* trajectory_stats = nullptr);
 
   void publishTrajectoryDiagnostics(const std::uint64_t path_id,
                                     const std::uint64_t path_stamp_ns,
@@ -282,9 +311,12 @@ private:
   std::uint64_t hold_path_publications_{0U};
   std::uint64_t computed_path_publications_{0U};
   std::uint64_t next_path_id_{1U};
+  std::uint64_t last_published_path_id_{0U};
+  std::uint64_t trajectory_generation_{0U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
+  std::optional<PendingTrajectoryRefinement> pending_refinement_;
 
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;

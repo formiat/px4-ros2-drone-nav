@@ -475,6 +475,25 @@ activeControlIndices(const std::span<const ActiveWindow> windows,
   return indices;
 }
 
+[[nodiscard]] std::vector<RacingLineWindowMetadata>
+windowMetadata(const std::span<const ActiveWindow> windows,
+               const std::span<const CorridorSample> samples) {
+  std::vector<RacingLineWindowMetadata> metadata;
+  metadata.reserve(windows.size());
+  for (std::size_t i = 0U; i < windows.size(); ++i) {
+    const ActiveWindow& window = windows[i];
+    if (window.begin_index >= samples.size() || window.end_index >= samples.size()) {
+      continue;
+    }
+    metadata.push_back(RacingLineWindowMetadata{
+        .id = i + 1U,
+        .begin_s_m = samples[window.begin_index].s_m,
+        .end_s_m = samples[window.end_index].s_m,
+    });
+  }
+  return metadata;
+}
+
 [[nodiscard]] CostBreakdown
 costBreakdownForPoints(const std::span<const Point2> points,
                        const std::span<const double> offsets,
@@ -959,6 +978,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       estimateTraversalTime(centerline_samples, speed_config, true), result.stats);
   const std::vector<ActiveWindow> active_windows = detectActiveWindows(
       optimizer_samples, centerline, prohibited_grid, config, result.stats);
+  result.active_windows = windowMetadata(active_windows, optimizer_samples);
   std::vector<std::uint8_t> mutable_indices;
   const std::vector<std::size_t> control_indices =
       activeControlIndices(active_windows, sample_count, mutable_indices);

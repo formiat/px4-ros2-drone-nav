@@ -174,6 +174,17 @@ parseTrajectoryPlannerStatusName(const std::string_view value) {
   return TrajectoryPlannerStatus::kOk;
 }
 
+[[nodiscard]] TrajectoryQuality
+parseTrajectoryQualityName(const std::string_view value) {
+  if (value == trajectoryQualityName(TrajectoryQuality::kBaseline)) {
+    return TrajectoryQuality::kBaseline;
+  }
+  if (value == trajectoryQualityName(TrajectoryQuality::kRefined)) {
+    return TrajectoryQuality::kRefined;
+  }
+  return TrajectoryQuality::kUnknown;
+}
+
 } // namespace
 
 std::string finalTrajectorySamplesCsvHeader() {
@@ -408,6 +419,8 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   std::ostringstream stream;
   stream << std::setprecision(9);
   stream << "{" << trajectoryTimingDiagnosticsJsonFields(stats);
+  stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(stats.quality)
+         << "\"";
   appendJsonSize(stream, "corridor_parallel_workers_used",
                  stats.corridor.parallel_workers_used);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
@@ -443,6 +456,8 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   stream << "{\"planner_path_id\":" << planner_path_id;
   appendJsonUint64(stream, "path_stamp_ns", path_stamp_ns);
   stream << ",\"trajectory_status\":\"" << trajectoryPlannerStatusName(stats.status)
+         << "\"";
+  stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(stats.quality)
          << "\"";
   appendJsonSize(stream, "trajectory_input_points", stats.input_points);
   appendJsonSize(stream, "trajectory_compact_segments", stats.compact_segments);
@@ -526,6 +541,11 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
           jsonValueForKey(json, "trajectory_status");
       status.has_value()) {
     envelope.stats.status = parseTrajectoryPlannerStatusName(*status);
+  }
+  if (const std::optional<std::string_view> quality =
+          jsonValueForKey(json, "trajectory_quality");
+      quality.has_value()) {
+    envelope.stats.quality = parseTrajectoryQualityName(*quality);
   }
 
   parseJsonSize(json, "trajectory_input_points", envelope.stats.input_points);

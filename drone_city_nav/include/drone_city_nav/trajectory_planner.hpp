@@ -6,6 +6,8 @@
 #include "drone_city_nav/turn_smoothing.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -21,6 +23,12 @@ enum class TrajectoryPlannerStatus {
   kCorridorInvalid,
   kRacingLineInvalid,
   kInvalidTrajectory,
+};
+
+enum class TrajectoryQuality {
+  kUnknown,
+  kBaseline,
+  kRefined,
 };
 
 struct TrajectoryPlannerConfig {
@@ -51,6 +59,7 @@ struct TrajectoryPlannerStats {
   double turn_smoothing_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
+  TrajectoryQuality quality{TrajectoryQuality::kUnknown};
   CorridorStats corridor{};
   RacingLineStats racing_line{};
   TurnSmoothingStats turn_smoothing{};
@@ -66,21 +75,65 @@ struct TrajectoryPlannerInput {
 struct TrajectoryPlannerResult {
   std::vector<TrajectorySegment> compact_segments;
   std::vector<CorridorSample> corridor_samples;
+  std::vector<RacingLineWindowMetadata> racing_windows;
   std::vector<TrajectoryPointSample> samples;
   TrajectorySpeedProfile speed_profile;
   TrajectoryPlannerStats stats{};
   bool valid{false};
 };
 
+enum class TrajectoryRefinementDecisionReason {
+  kAccepted,
+  kStaleGeneration,
+  kInvalidRefined,
+  kEndpointMismatch,
+  kNonTraversable,
+  kQualityRegression,
+};
+
+struct TrajectoryRefinementDecisionInput {
+  std::uint64_t current_generation{0U};
+  std::uint64_t snapshot_generation{0U};
+  Point2 expected_start{};
+  Point2 expected_goal{};
+  double endpoint_tolerance_m{0.0};
+  double max_time_regression_s{0.0};
+  double max_length_regression_ratio{1.10};
+  double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
+  double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
+  const TrajectoryPlannerResult* refined{nullptr};
+  std::span<const Point2> refined_points;
+  const OccupancyGrid2D* validation_grid{nullptr};
+};
+
+struct TrajectoryRefinementDecision {
+  bool accepted{false};
+  TrajectoryRefinementDecisionReason reason{
+      TrajectoryRefinementDecisionReason::kInvalidRefined};
+};
+
 [[nodiscard]] std::string_view
 trajectoryPlannerStatusName(TrajectoryPlannerStatus status) noexcept;
+
+[[nodiscard]] std::string_view
+trajectoryQualityName(TrajectoryQuality quality) noexcept;
+
+[[nodiscard]] std::string_view
+refinementDecisionReasonName(TrajectoryRefinementDecisionReason reason) noexcept;
 
 [[nodiscard]] TrajectoryPlannerResult
 planTrajectory(const TrajectoryPlannerInput& input,
                const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryPlannerResult
+planBaselineTrajectory(const TrajectoryPlannerInput& input,
+                       const TrajectoryPlannerConfig& config);
+
+[[nodiscard]] TrajectoryPlannerResult
 planRacingTrajectory(const TrajectoryPlannerInput& input,
                      const TrajectoryPlannerConfig& config);
+
+[[nodiscard]] TrajectoryRefinementDecision
+evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input);
 
 } // namespace drone_city_nav

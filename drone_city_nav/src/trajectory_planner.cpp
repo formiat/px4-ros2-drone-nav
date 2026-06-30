@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <optional>
 
 namespace drone_city_nav {
 namespace {
+
+constexpr double kTinyDistanceM = 1.0e-6;
 
 void computeCurvatureStats(const std::span<const TrajectoryPointSample> samples,
                            TrajectoryPlannerStats& stats) {
@@ -77,6 +80,99 @@ void finalizeResult(TrajectoryPlannerResult& result,
   (void)config;
 }
 
+[[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
+  return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
+}
+
+[[nodiscard]] Point2 normalized(const Point2 point) noexcept {
+  const double length = std::hypot(point.x, point.y);
+  if (!(length > kTinyDistanceM)) {
+    return Point2{1.0, 0.0};
+  }
+  return Point2{point.x / length, point.y / length};
+}
+
+[[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
+  return lhs.x * rhs.y - lhs.y * rhs.x;
+}
+
+[[nodiscard]] double signedCurvatureFromTriplet(const Point2 previous,
+                                                const Point2 current,
+                                                const Point2 next) noexcept {
+  const Point2 a = current - previous;
+  const Point2 b = next - current;
+  const double ab = distance(previous, current);
+  const double bc = distance(current, next);
+  const double ac = distance(previous, next);
+  const double denominator = ab * bc * ac;
+  if (!(denominator > kTinyDistanceM)) {
+    return 0.0;
+  }
+  return 2.0 * cross(a, b) / denominator;
+}
+
+void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
+  double s_m = 0.0;
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    if (i > 0U) {
+      s_m += distance(samples[i - 1U].point, samples[i].point);
+    }
+    samples[i].s_m = s_m;
+    if (samples.size() == 1U) {
+      samples[i].tangent = Point2{1.0, 0.0};
+    } else if (i == 0U) {
+      samples[i].tangent = normalized(samples[i + 1U].point - samples[i].point);
+    } else if (i + 1U == samples.size()) {
+      samples[i].tangent = normalized(samples[i].point - samples[i - 1U].point);
+    } else {
+      samples[i].tangent = normalized(samples[i + 1U].point - samples[i - 1U].point);
+      samples[i].curvature_1pm = signedCurvatureFromTriplet(
+          samples[i - 1U].point, samples[i].point, samples[i + 1U].point);
+    }
+  }
+}
+
+[[nodiscard]] std::vector<TrajectoryPointSample>
+baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_samples) {
+  std::vector<TrajectoryPointSample> samples;
+  samples.reserve(corridor_samples.size());
+  for (const CorridorSample& corridor_sample : corridor_samples) {
+    TrajectoryPointSample sample{};
+    sample.point = corridor_sample.center;
+    sample.left_bound_m = corridor_sample.left_bound_m;
+    sample.right_bound_m = corridor_sample.right_bound_m;
+    sample.racing_offset_m = 0.0;
+    samples.push_back(sample);
+  }
+  populateSampleGeometry(samples);
+  return samples;
+}
+
+[[nodiscard]] bool segmentTraversable(const OccupancyGrid2D& grid, const Point2 start,
+                                      const Point2 end) {
+  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+  const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+  if (!start_cell.has_value() || !end_cell.has_value()) {
+    return false;
+  }
+  return std::ranges::all_of(
+      grid.cellsOnLine(*start_cell, *end_cell),
+      [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
+}
+
+[[nodiscard]] bool pathTraversable(const OccupancyGrid2D& grid,
+                                   const std::span<const Point2> points) {
+  if (points.size() < 2U) {
+    return false;
+  }
+  for (std::size_t i = 1U; i < points.size(); ++i) {
+    if (!segmentTraversable(grid, points[i - 1U], points[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 std::string_view
@@ -98,11 +194,114 @@ trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
   return "unknown";
 }
 
+std::string_view trajectoryQualityName(const TrajectoryQuality quality) noexcept {
+  switch (quality) {
+    case TrajectoryQuality::kUnknown:
+      return "unknown";
+    case TrajectoryQuality::kBaseline:
+      return "baseline";
+    case TrajectoryQuality::kRefined:
+      return "refined";
+  }
+  return "unknown";
+}
+
+std::string_view
+refinementDecisionReasonName(const TrajectoryRefinementDecisionReason reason) noexcept {
+  switch (reason) {
+    case TrajectoryRefinementDecisionReason::kAccepted:
+      return "accepted";
+    case TrajectoryRefinementDecisionReason::kStaleGeneration:
+      return "stale_generation";
+    case TrajectoryRefinementDecisionReason::kInvalidRefined:
+      return "invalid_refined";
+    case TrajectoryRefinementDecisionReason::kEndpointMismatch:
+      return "endpoint_mismatch";
+    case TrajectoryRefinementDecisionReason::kNonTraversable:
+      return "non_traversable";
+    case TrajectoryRefinementDecisionReason::kQualityRegression:
+      return "quality_regression";
+  }
+  return "unknown";
+}
+
+TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& input,
+                                               const TrajectoryPlannerConfig& config) {
+  const auto total_started_at = std::chrono::steady_clock::now();
+  TrajectoryPlannerResult result{};
+  result.stats.input_points = input.route_points.size();
+  result.stats.quality = TrajectoryQuality::kBaseline;
+  if (input.route_points.size() < 2U) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+  if (input.prohibited_grid == nullptr) {
+    result.stats.status = TrajectoryPlannerStatus::kMissingGrid;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+
+  const auto corridor_started_at = std::chrono::steady_clock::now();
+  const CorridorResult corridor =
+      buildCorridor(CorridorInput{input.route_points, input.prohibited_grid,
+                                  input.prohibited_clearance_field,
+                                  input.prohibited_clearance_field_cache_hit},
+                    config.corridor);
+  result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
+  result.corridor_samples = corridor.samples;
+  result.stats.corridor = corridor.stats;
+  if (!corridor.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kCorridorInvalid;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+
+  result.stats.status = TrajectoryPlannerStatus::kOk;
+  result.samples = baselineSamplesFromCorridor(corridor.samples);
+  result.compact_segments = lineTrajectoryFromSamples(result.samples);
+  const auto speed_profile_started_at = std::chrono::steady_clock::now();
+  result.speed_profile =
+      buildTrajectorySpeedProfile(result.samples, config.speed_profile);
+  result.stats.speed_profile_duration_ms =
+      elapsedMilliseconds(speed_profile_started_at);
+
+  const TraversalTimeEstimate traversal_estimate =
+      estimateTraversalTime(result.samples, config.speed_profile, true);
+  result.stats.racing_line.input_samples = corridor.samples.size();
+  result.stats.racing_line.optimizer_samples = corridor.samples.size();
+  result.stats.racing_line.output_samples = result.samples.size();
+  result.stats.racing_line.centerline_length_m =
+      trajectoryLengthM(result.compact_segments);
+  result.stats.racing_line.final_length_m =
+      result.stats.racing_line.centerline_length_m;
+  result.stats.racing_line.final_length_ratio = 1.0;
+  result.stats.racing_line.estimated_time_s = traversal_estimate.estimated_time_s;
+  result.stats.racing_line.centerline_estimated_time_s =
+      traversal_estimate.estimated_time_s;
+  result.stats.racing_line.min_speed_limit_mps = traversal_estimate.min_speed_limit_mps;
+  result.stats.racing_line.max_speed_limit_mps = traversal_estimate.max_speed_limit_mps;
+  result.stats.racing_line.curvature_limited_samples =
+      traversal_estimate.curvature_limited_samples;
+  result.stats.racing_line.centerline_min_speed_limit_mps =
+      traversal_estimate.min_speed_limit_mps;
+  result.stats.racing_line.centerline_max_speed_limit_mps =
+      traversal_estimate.max_speed_limit_mps;
+  result.stats.racing_line.centerline_curvature_limited_samples =
+      traversal_estimate.curvature_limited_samples;
+  result.stats.racing_line.time_gain_s = 0.0;
+
+  finalizeResult(result, config);
+  result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+  return result;
+}
+
 TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input,
                                              const TrajectoryPlannerConfig& config) {
   const auto total_started_at = std::chrono::steady_clock::now();
   TrajectoryPlannerResult result{};
   result.stats.input_points = input.route_points.size();
+  result.stats.quality = TrajectoryQuality::kRefined;
   if (input.route_points.size() < 2U) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
@@ -146,6 +345,7 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   result.stats.status = TrajectoryPlannerStatus::kOk;
   result.stats.corridor = corridor.stats;
   result.stats.racing_line = racing.stats;
+  result.racing_windows = racing.active_windows;
   const auto turn_smoothing_started_at = std::chrono::steady_clock::now();
   const TurnSmoothingResult turn_smoothing = smoothTrajectoryTurns(
       racing.samples, corridor.samples, *input.prohibited_grid, config.turn_smoothing);
@@ -172,6 +372,68 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
                                        const TrajectoryPlannerConfig& config) {
   return planRacingTrajectory(input, config);
+}
+
+TrajectoryRefinementDecision
+evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input) {
+  if (input.current_generation != input.snapshot_generation) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kStaleGeneration,
+    };
+  }
+  if (input.refined == nullptr || !input.refined->valid ||
+      input.refined_points.size() < 2U) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kInvalidRefined,
+    };
+  }
+
+  const double endpoint_tolerance_m = std::max(0.0, input.endpoint_tolerance_m);
+  if (distance(input.refined_points.front(), input.expected_start) >
+          endpoint_tolerance_m ||
+      distance(input.refined_points.back(), input.expected_goal) >
+          endpoint_tolerance_m) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kEndpointMismatch,
+    };
+  }
+
+  if (input.validation_grid != nullptr &&
+      !pathTraversable(*input.validation_grid, input.refined_points)) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kNonTraversable,
+    };
+  }
+
+  const double refined_time = input.refined->stats.racing_line.estimated_time_s;
+  if (std::isfinite(input.baseline_estimated_time_s) && std::isfinite(refined_time) &&
+      refined_time > input.baseline_estimated_time_s +
+                         std::max(0.0, input.max_time_regression_s)) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kQualityRegression,
+    };
+  }
+
+  const double refined_length = input.refined->stats.length_m;
+  const double max_length_regression_ratio =
+      std::max(1.0, input.max_length_regression_ratio);
+  if (std::isfinite(input.baseline_length_m) && std::isfinite(refined_length) &&
+      refined_length > input.baseline_length_m * max_length_regression_ratio) {
+    return TrajectoryRefinementDecision{
+        .accepted = false,
+        .reason = TrajectoryRefinementDecisionReason::kQualityRegression,
+    };
+  }
+
+  return TrajectoryRefinementDecision{
+      .accepted = true,
+      .reason = TrajectoryRefinementDecisionReason::kAccepted,
+  };
 }
 
 } // namespace drone_city_nav
