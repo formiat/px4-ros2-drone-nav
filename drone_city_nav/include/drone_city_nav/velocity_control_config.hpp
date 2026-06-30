@@ -39,6 +39,9 @@ struct VelocityFollowerConfig {
   double adaptive_lateral_response_max_factor{1.2};
   double final_acceptance_radius_m{1.0};
   double final_hold_max_speed_mps{0.8};
+  double terminal_capture_radius_m{8.0};
+  double terminal_capture_gain_1ps{1.0};
+  double terminal_capture_max_speed_mps{4.0};
 };
 
 } // namespace drone_city_nav

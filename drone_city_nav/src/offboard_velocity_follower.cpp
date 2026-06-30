@@ -105,6 +105,18 @@ effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.final_hold_max_speed_mps, 0.8, 0.0, 100.0);
 }
 
+[[nodiscard]] double terminalCaptureRadiusM(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.terminal_capture_radius_m, 8.0, 0.0, 1000.0);
+}
+
+[[nodiscard]] double terminalCaptureGain1ps(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.terminal_capture_gain_1ps, 1.0, 0.0, 100.0);
+}
+
+[[nodiscard]] double terminalCaptureMaxSpeedMps(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.terminal_capture_max_speed_mps, 4.0, 0.0, 100.0);
+}
+
 [[nodiscard]] double
 trackingPredictionHorizonS(const VelocityFollowerConfig& config) noexcept {
   return sanitizedPositive(config.tracking_prediction_horizon_s, 0.45, 0.0, 2.0);
@@ -275,6 +287,8 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
       return "trajectory_profile";
     case VelocitySetpointReason::kFinalApproach:
       return "final_approach";
+    case VelocitySetpointReason::kTerminalCapture:
+      return "terminal_capture";
   }
   return "unknown";
 }
@@ -337,6 +351,126 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.control_tangent_smoothing_window_start_s_m =
         tangent_smoothing.window_start_s_m;
     plan.control_tangent_smoothing_window_end_s_m = tangent_smoothing.window_end_s_m;
+    return plan;
+  }
+
+  const double terminal_goal_distance = distance(current_position, final_point);
+  const double remaining_trajectory_distance =
+      std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
+  const double terminal_capture_radius = terminalCaptureRadiusM(config);
+  if (terminal_goal_distance <= terminal_capture_radius ||
+      remaining_trajectory_distance <= terminal_capture_radius) {
+    const Point2 goal_delta = final_point - current_position;
+    Point2 terminal_tangent = normalized(goal_delta);
+    if (!(norm(terminal_tangent) > kTinyDistanceM)) {
+      terminal_tangent = control_projection.tangent;
+    }
+    const double capture_speed_limit =
+        terminal_goal_distance <= final_acceptance
+            ? 0.0
+            : std::min(terminalCaptureMaxSpeedMps(config),
+                       terminalCaptureGain1ps(config) * terminal_goal_distance);
+    const Point2 desired_velocity = terminal_tangent * capture_speed_limit;
+    const VelocitySmootherPlan smoothed = smoothVelocityCommand(
+        VelocitySmootherInput{
+            .desired_velocity_xy = desired_velocity,
+            .path_tangent = terminal_tangent,
+            .previous_velocity_setpoint = previous_state.previous_velocity_setpoint,
+            .previous_velocity_acceleration_setpoint =
+                previous_state.previous_velocity_acceleration_setpoint,
+            .previous_velocity_setpoint_valid =
+                previous_state.previous_velocity_setpoint_valid,
+            .previous_velocity_acceleration_setpoint_valid =
+                previous_state.previous_velocity_acceleration_setpoint_valid,
+            .dt_s = dt,
+            .lateral_response_factor = 1.0},
+        config);
+    if (!smoothed.valid) {
+      return plan;
+    }
+
+    const Point2 left_normal{-terminal_tangent.y, terminal_tangent.x};
+    plan.valid = true;
+    plan.reason = VelocitySetpointReason::kTerminalCapture;
+    plan.terminal_capture_active = true;
+    plan.terminal_goal_distance_m = terminal_goal_distance;
+    plan.terminal_capture_speed_limit_mps = capture_speed_limit;
+    plan.velocity_xy = smoothed.velocity_xy;
+    plan.desired_velocity_xy = desired_velocity;
+    plan.speed_mps = norm(plan.velocity_xy);
+    plan.desired_speed_mps = norm(plan.desired_velocity_xy);
+    plan.final_command_speed_mps = plan.speed_mps;
+    plan.velocity_setpoint_acceleration_xy = smoothed.velocity_setpoint_acceleration_xy;
+    plan.velocity_setpoint_acceleration_mps2 =
+        smoothed.velocity_setpoint_acceleration_mps2;
+    plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
+    plan.path_frame_lateral_smoothing_applied =
+        smoothed.path_frame_lateral_smoothing_applied;
+    plan.lateral_smoothing_factor = smoothed.lateral_smoothing_factor;
+    plan.smoother_lateral_response_accel_mps2 =
+        smoothed.smoother_lateral_response_accel_mps2;
+    plan.path_tangent = terminal_tangent;
+    plan.control_tangent_raw = tangent_smoothing.raw_tangent;
+    plan.control_tangent_smoothed = tangent_smoothing.applied;
+    plan.control_tangent_smoothing_heading_span_rad =
+        tangent_smoothing.heading_span_rad;
+    plan.control_tangent_smoothing_max_abs_curvature_1pm =
+        tangent_smoothing.max_abs_curvature_1pm;
+    plan.control_tangent_smoothing_window_start_s_m =
+        tangent_smoothing.window_start_s_m;
+    plan.control_tangent_smoothing_window_end_s_m = tangent_smoothing.window_end_s_m;
+    plan.projection = final_point;
+    plan.current_projection = current_projection.point;
+    plan.predicted_position = predicted_position;
+    plan.predicted_projection = control_projection.point;
+    plan.raw_speed_limit_mps = capture_speed_limit;
+    plan.profile_speed_limit_mps = capture_speed_limit;
+    plan.speed_after_lookahead_mps = capture_speed_limit;
+    plan.cross_track_limited_speed_mps = capture_speed_limit;
+    plan.accel_limited_speed_mps = plan.speed_mps;
+    plan.velocity_delta_mps = smoothed.velocity_delta_mps;
+    plan.desired_velocity_delta_mps = smoothed.desired_velocity_delta_mps;
+    plan.velocity_tracking_error_mps =
+        current_velocity_valid && finite2D(current_velocity)
+            ? norm(plan.velocity_xy - current_velocity)
+            : std::numeric_limits<double>::quiet_NaN();
+    plan.current_velocity_tangent_mps =
+        current_velocity_valid && finite2D(current_velocity)
+            ? dot(current_velocity, terminal_tangent)
+            : std::numeric_limits<double>::quiet_NaN();
+    plan.current_velocity_normal_mps =
+        current_velocity_valid && finite2D(current_velocity)
+            ? dot(current_velocity, left_normal)
+            : std::numeric_limits<double>::quiet_NaN();
+    plan.desired_velocity_tangent_mps = dot(plan.desired_velocity_xy, terminal_tangent);
+    plan.desired_velocity_normal_mps = dot(plan.desired_velocity_xy, left_normal);
+    plan.setpoint_velocity_tangent_mps = dot(plan.velocity_xy, terminal_tangent);
+    plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
+    plan.trajectory_cross_track_error_m = std::sqrt(control_projection.distance_sq);
+    plan.current_cross_track_error_m = std::sqrt(current_projection.distance_sq);
+    plan.predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq);
+    plan.prediction_horizon_s = bounded_prediction_horizon;
+    plan.prediction_distance_m = prediction_distance;
+    plan.response_delay_distance_m = response_delay_distance;
+    plan.limiting_constraint_type = SpeedConstraintType::kGoal;
+    plan.limiting_constraint_distance_m = terminal_goal_distance;
+    plan.limiting_constraint_speed_mps = 0.0;
+    plan.limiting_allowed_speed_now_mps = capture_speed_limit;
+    plan.trajectory_s_m = control_projection.s_m;
+    plan.trajectory_segment_index = control_projection.segment_index;
+    plan.trajectory_segment_kind = segment_kind;
+    plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
+    plan.trajectory_arc_radius_m =
+        std::abs(plan.trajectory_curvature_1pm) > kTinyDistanceM
+            ? 1.0 / std::abs(plan.trajectory_curvature_1pm)
+            : std::numeric_limits<double>::quiet_NaN();
+    plan.trajectory_projection = control_projection;
+    plan.final_stop.valid = true;
+    plan.final_stop.distance_to_stop_m = terminal_goal_distance;
+    plan.final_stop.braking_distance_m =
+        response_delay_distance +
+        current_speed * current_speed / (2.0 * effectiveSpeedProfileDecelMps2(config));
+    plan.final_stop.raw_speed_limit_mps = capture_speed_limit;
     return plan;
   }
 

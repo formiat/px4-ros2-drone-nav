@@ -20,6 +20,9 @@ namespace {
   config.speed_profile_sample_step_m = 1.0;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;
+  config.terminal_capture_radius_m = 8.0;
+  config.terminal_capture_gain_1ps = 1.0;
+  config.terminal_capture_max_speed_mps = 4.0;
   config.tracking_prediction_horizon_s = 0.0;
   return config;
 }
@@ -221,15 +224,16 @@ TEST(OffboardVelocityFollower, FinalStopProfileLimitsSpeedNearGoal) {
   state.previous_velocity_setpoint_valid = true;
 
   const VelocitySetpointPlan plan =
-      planVelocitySetpoint(trajectory, profile, Point2{95.0, 0.0}, Point2{12.0, 0.0},
+      planVelocitySetpoint(trajectory, profile, Point2{90.0, 0.0}, Point2{12.0, 0.0},
                            true, 0.1, state, testConfig());
 
   ASSERT_TRUE(plan.valid);
   EXPECT_EQ(plan.reason, VelocitySetpointReason::kFinalApproach);
+  EXPECT_FALSE(plan.terminal_capture_active);
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
   EXPECT_LT(plan.raw_speed_limit_mps, testConfig().cruise_speed_mps);
   EXPECT_GT(plan.raw_speed_limit_mps, 0.0);
-  EXPECT_NEAR(plan.limiting_constraint_distance_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.limiting_constraint_distance_m, 10.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, PreArcBrakingReportsDistanceToArcConstraint) {
@@ -273,7 +277,7 @@ TEST(OffboardVelocityFollower, SampledCurvatureBuildsTrajectorySpeedProfile) {
 TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsVelocityAnticipation) {
   VelocityFollowerConfig config = testConfig();
   std::vector<TrajectoryPointSample> samples;
-  for (std::size_t i = 0U; i < 6U; ++i) {
+  for (std::size_t i = 0U; i < 8U; ++i) {
     TrajectoryPointSample sample{};
     sample.s_m = static_cast<double>(i) * 2.0;
     sample.point = Point2{sample.s_m, 0.0};
@@ -768,7 +772,7 @@ TEST(OffboardVelocityFollower, FinalGoalReachedRequestsHold) {
   EXPECT_NEAR(plan.speed_mps, 0.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, FastGoalFlyThroughKeepsVelocityBrakingActive) {
+TEST(OffboardVelocityFollower, FastGoalFlyThroughUsesTerminalCaptureUntilSlow) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
@@ -782,9 +786,34 @@ TEST(OffboardVelocityFollower, FastGoalFlyThroughKeepsVelocityBrakingActive) {
 
   ASSERT_TRUE(plan.valid);
   EXPECT_FALSE(plan.final_goal_reached);
-  EXPECT_EQ(plan.reason, VelocitySetpointReason::kFinalApproach);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_TRUE(plan.terminal_capture_active);
+  EXPECT_NEAR(plan.terminal_goal_distance_m, 0.8, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 0.0, 1.0e-9);
   EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kGoal);
-  EXPECT_LT(plan.raw_speed_limit_mps, testConfig().cruise_speed_mps);
+  EXPECT_NEAR(plan.desired_speed_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.raw_speed_limit_mps, 0.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, TerminalCaptureCommandsDirectlyTowardFinalGoal) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{104.0, 4.0}, Point2{}, false,
+                           0.1, VelocityFollowerState{}, testConfig());
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_TRUE(plan.terminal_capture_active);
+  EXPECT_NEAR(plan.terminal_goal_distance_m, std::sqrt(32.0), 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 4.0, 1.0e-9);
+  const Point2 expected_direction = normalizedTestVector(-4.0, -4.0);
+  EXPECT_NEAR(plan.desired_velocity_xy.x, expected_direction.x * 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_xy.y, expected_direction.y * 4.0, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.x, expected_direction.x, 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, expected_direction.y, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, NonFinitePositionReturnsInvalidPlan) {

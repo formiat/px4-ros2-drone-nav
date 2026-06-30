@@ -105,7 +105,9 @@ Px4OffboardNode::Px4OffboardNode()
       "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
       "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
       "speed_profile_lookahead[time=%.2fs min=%.2fm max=%.2fm] "
-      "final_hold_max_speed=%.2fmps cross_track_gain=%.2f "
+      "final_hold_max_speed=%.2fmps "
+      "terminal_capture[radius=%.2fm gain=%.2f max_speed=%.2fmps] "
+      "cross_track_gain=%.2f "
       "tracking_prediction_horizon=%.2fs "
       "max_lateral_control_angle=%.1fdeg "
       "max_lateral_control_rate=%.2fmps2 "
@@ -143,6 +145,9 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.speed_profile_lookahead_min_m,
       velocity_follower_config_.speed_profile_lookahead_max_m,
       velocity_follower_config_.final_hold_max_speed_mps,
+      velocity_follower_config_.terminal_capture_radius_m,
+      velocity_follower_config_.terminal_capture_gain_1ps,
+      velocity_follower_config_.terminal_capture_max_speed_mps,
       velocity_follower_config_.cross_track_gain,
       velocity_follower_config_.tracking_prediction_horizon_s,
       radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),

@@ -18,6 +18,7 @@ enum class VelocitySetpointReason {
   kStraight,
   kTrajectorySpeedProfile,
   kFinalApproach,
+  kTerminalCapture,
 };
 
 struct VelocityFollowerState {
@@ -107,6 +108,9 @@ struct VelocitySetpointPlan {
   double lateral_control_mps{0.0};
   double lateral_control_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double adaptive_lateral_response_factor{1.0};
+  bool terminal_capture_active{false};
+  double terminal_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_capture_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double trajectory_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};

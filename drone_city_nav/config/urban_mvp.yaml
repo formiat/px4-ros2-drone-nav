@@ -176,6 +176,9 @@ px4_offboard_node:
     speed_profile_lookahead_min_m: 5.0
     speed_profile_lookahead_max_m: 35.0
     final_hold_max_speed_mps: 0.8
+    terminal_capture_radius_m: 8.0
+    terminal_capture_gain_1ps: 1.0
+    terminal_capture_max_speed_mps: 4.0
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.5
     tracking_prediction_horizon_s: 0.35

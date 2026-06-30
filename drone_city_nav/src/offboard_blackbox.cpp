@@ -199,7 +199,13 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
                                 velocity_plan.smoother_lateral_response_accel_mps2);
   stream << ",\"speed_limit_reason\":\""
          << velocitySetpointReasonName(velocity_plan.reason)
-         << "\",\"raw_speed_limit_mps\":";
+         << "\",\"terminal_capture_active\":";
+  writeBlackboxJsonBool(stream, velocity_plan.terminal_capture_active);
+  stream << ",\"terminal_goal_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_goal_distance_m);
+  stream << ",\"terminal_capture_speed_limit_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.terminal_capture_speed_limit_mps);
+  stream << ",\"raw_speed_limit_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.raw_speed_limit_mps);
   stream << ",\"profile_speed_limit_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.profile_speed_limit_mps);

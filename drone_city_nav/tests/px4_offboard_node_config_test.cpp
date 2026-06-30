@@ -134,6 +134,9 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm, 0.015);
   EXPECT_DOUBLE_EQ(config.velocity_follower.adaptive_lateral_response_max_factor, 1.2);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_radius_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_gain_1ps, 1.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 4.0);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
@@ -206,6 +209,9 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
        rclcpp::Parameter{"control_tangent_smoothing_forward_m", 2000.0},
        rclcpp::Parameter{"control_tangent_smoothing_max_heading_span_deg", 500.0},
        rclcpp::Parameter{"control_tangent_smoothing_max_abs_curvature_1pm", -1.0},
+       rclcpp::Parameter{"terminal_capture_radius_m", 2000.0},
+       rclcpp::Parameter{"terminal_capture_gain_1ps", -1.0},
+       rclcpp::Parameter{"terminal_capture_max_speed_mps", 200.0},
        rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
        rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
        rclcpp::Parameter{"telemetry_log_period_s", 0.01},
@@ -245,6 +251,9 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
       std::numbers::pi);
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.control_tangent_smoothing_max_abs_curvature_1pm, 0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_radius_m, 1000.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_gain_1ps, 0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);
