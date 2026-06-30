@@ -130,7 +130,7 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
       std::max(min_speed, sanitizedPositive(config.lateral_smoothing_full_speed_mps,
                                             20.0, 0.0, 1000.0));
   const double max_factor =
-      sanitizedPositive(config.lateral_smoothing_max_factor, 1.6, 1.0, 100.0);
+      sanitizedPositive(config.lateral_smoothing_max_factor, 1.0, 1.0, 100.0);
   return 1.0 + (max_factor - 1.0) * smoothStep(min_speed, full_speed, speed_mps);
 }
 
@@ -144,9 +144,12 @@ lateralZeroCrossingLimitAllowed(const VelocityFollowerConfig& config,
   }
 
   const double max_cross_track = sanitizedPositive(
-      config.lateral_zero_crossing_max_cross_track_m, 1.0, 0.0, 1000.0);
+      config.lateral_zero_crossing_max_cross_track_m, 0.0, 0.0, 1000.0);
+  if (!(max_cross_track > 0.0)) {
+    return false;
+  }
   const double max_growth =
-      sanitizedPositive(config.lateral_zero_crossing_max_growth_m, 0.1, 0.0, 1000.0);
+      sanitizedPositive(config.lateral_zero_crossing_max_growth_m, 0.0, 0.0, 1000.0);
   const double current_error = std::abs(current_cross_track_error_m);
   const double predicted_error = std::abs(predicted_cross_track_error_m);
   return current_error <= max_cross_track && predicted_error <= max_cross_track &&
@@ -216,12 +219,12 @@ lateralZeroCrossingLimitAllowed(const VelocityFollowerConfig& config,
 
   Point2 limited_velocity = tangent * limited_forward + normal * limited_lateral;
   result.heading_rate_limit_rad_s =
-      sanitizedPositive(config.max_velocity_heading_rate_rad_s, 1.0, 0.0, 100.0);
+      sanitizedPositive(config.max_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0);
   if (result.heading_rate_limit_rad_s > 0.0 && previous_speed > kTinyDistanceM &&
       norm(limited_velocity) > kTinyDistanceM) {
     const double min_heading_rate = std::min(
         result.heading_rate_limit_rad_s,
-        sanitizedPositive(config.min_velocity_heading_rate_rad_s, 0.8, 0.0, 100.0));
+        sanitizedPositive(config.min_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0));
     const double lateral_heading_rate =
         result.lateral_response_accel_mps2 / std::max(previous_speed, 1.0);
     const double effective_heading_rate =
@@ -475,7 +478,7 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
   plan.velocity_heading_rate_limit_rad_s =
       path_frame_limited_velocity.applied
           ? path_frame_limited_velocity.heading_rate_limit_rad_s
-          : sanitizedPositive(config.max_velocity_heading_rate_rad_s, 1.0, 0.0, 100.0);
+          : sanitizedPositive(config.max_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0);
   return plan;
 }
 

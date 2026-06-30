@@ -108,7 +108,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_angle_rad,
                    55.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_rate_mps2, 5.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.velocity_lateral_response_accel_mps2, 5.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.velocity_lateral_response_accel_mps2, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_time_s, 0.25);
   EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_deadband_angle_rad,
                    2.0 * std::numbers::pi / 180.0);
@@ -116,15 +116,15 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
                    8.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    30.0 * std::numbers::pi / 180.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 14.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 22.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_min_speed_mps, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_full_speed_mps, 20.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_max_factor, 1.6);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.max_velocity_heading_rate_rad_s, 1.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.min_velocity_heading_rate_rad_s, 0.8);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_max_factor, 1.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_velocity_heading_rate_rad_s, 0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.min_velocity_heading_rate_rad_s, 0.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_zero_crossing_max_cross_track_m,
-                   1.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_zero_crossing_max_growth_m, 0.1);
+                   0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_zero_crossing_max_growth_m, 0.0);
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 8.0);
   EXPECT_DOUBLE_EQ(

@@ -157,6 +157,8 @@ TEST(VelocitySmoother, LateralZeroCrossingReachesZeroBeforeChangingSign) {
   config.lateral_smoothing_min_speed_mps = 100.0;
   config.lateral_smoothing_full_speed_mps = 100.0;
   config.max_velocity_heading_rate_rad_s = 100.0;
+  config.lateral_zero_crossing_max_cross_track_m = 1.0;
+  config.lateral_zero_crossing_max_growth_m = 0.1;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{12.0, -5.0},

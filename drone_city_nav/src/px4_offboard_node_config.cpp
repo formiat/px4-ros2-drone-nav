@@ -80,19 +80,19 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(config.velocity_follower.lateral_smoothing_full_speed_mps,
                           20.0, 0.0, 1000.0));
   config.velocity_follower.lateral_smoothing_max_factor = boundedFiniteDouble(
-      config.velocity_follower.lateral_smoothing_max_factor, 1.6, 1.0, 100.0);
+      config.velocity_follower.lateral_smoothing_max_factor, 1.0, 1.0, 100.0);
   config.velocity_follower.max_velocity_heading_rate_rad_s = boundedFiniteDouble(
-      config.velocity_follower.max_velocity_heading_rate_rad_s, 1.0, 0.0, 100.0);
+      config.velocity_follower.max_velocity_heading_rate_rad_s, 0.0, 0.0, 100.0);
   config.velocity_follower.min_velocity_heading_rate_rad_s = std::min(
       config.velocity_follower.max_velocity_heading_rate_rad_s,
-      boundedFiniteDouble(config.velocity_follower.min_velocity_heading_rate_rad_s, 0.8,
+      boundedFiniteDouble(config.velocity_follower.min_velocity_heading_rate_rad_s, 0.0,
                           0.0, 100.0));
   config.velocity_follower.lateral_zero_crossing_max_cross_track_m =
       boundedFiniteDouble(
-          config.velocity_follower.lateral_zero_crossing_max_cross_track_m, 1.0, 0.0,
+          config.velocity_follower.lateral_zero_crossing_max_cross_track_m, 0.0, 0.0,
           1000.0);
   config.velocity_follower.lateral_zero_crossing_max_growth_m = boundedFiniteDouble(
-      config.velocity_follower.lateral_zero_crossing_max_growth_m, 0.1, 0.0, 1000.0);
+      config.velocity_follower.lateral_zero_crossing_max_growth_m, 0.0, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_back_m = boundedFiniteDouble(
       config.velocity_follower.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_forward_m = boundedFiniteDouble(
@@ -164,7 +164,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_lateral_control_rate_mps2 = std::clamp(
       node.declare_parameter<double>("max_lateral_control_rate_mps2", 5.0), 0.0, 100.0);
   config.velocity_follower.velocity_lateral_response_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("velocity_lateral_response_accel_mps2", 5.0), 0.0,
+      node.declare_parameter<double>("velocity_lateral_response_accel_mps2", 8.0), 0.0,
       100.0);
   config.velocity_follower.curvature_feedforward_time_s = std::clamp(
       node.declare_parameter<double>("curvature_feedforward_time_s", 0.25), 0.0, 10.0);
@@ -184,7 +184,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_velocity_jerk_mps3 = std::clamp(
       node.declare_parameter<double>("max_velocity_jerk_mps3", 12.0), 0.0, 1000.0);
   config.velocity_follower.max_lateral_velocity_jerk_mps3 =
-      std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 14.0),
+      std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 22.0),
                  0.0, 1000.0);
   config.velocity_follower.lateral_smoothing_min_speed_mps =
       std::clamp(node.declare_parameter<double>("lateral_smoothing_min_speed_mps", 8.0),
@@ -195,19 +195,19 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                               "lateral_smoothing_full_speed_mps", 20.0),
                           0.0, 1000.0));
   config.velocity_follower.lateral_smoothing_max_factor = std::clamp(
-      node.declare_parameter<double>("lateral_smoothing_max_factor", 1.6), 1.0, 100.0);
+      node.declare_parameter<double>("lateral_smoothing_max_factor", 1.0), 1.0, 100.0);
   config.velocity_follower.max_velocity_heading_rate_rad_s =
-      std::clamp(node.declare_parameter<double>("max_velocity_heading_rate_rad_s", 1.0),
+      std::clamp(node.declare_parameter<double>("max_velocity_heading_rate_rad_s", 0.0),
                  0.0, 100.0);
   config.velocity_follower.min_velocity_heading_rate_rad_s = std::min(
       config.velocity_follower.max_velocity_heading_rate_rad_s,
-      std::clamp(node.declare_parameter<double>("min_velocity_heading_rate_rad_s", 0.8),
+      std::clamp(node.declare_parameter<double>("min_velocity_heading_rate_rad_s", 0.0),
                  0.0, 100.0));
   config.velocity_follower.lateral_zero_crossing_max_cross_track_m = std::clamp(
-      node.declare_parameter<double>("lateral_zero_crossing_max_cross_track_m", 1.0),
+      node.declare_parameter<double>("lateral_zero_crossing_max_cross_track_m", 0.0),
       0.0, 1000.0);
   config.velocity_follower.lateral_zero_crossing_max_growth_m = std::clamp(
-      node.declare_parameter<double>("lateral_zero_crossing_max_growth_m", 0.1), 0.0,
+      node.declare_parameter<double>("lateral_zero_crossing_max_growth_m", 0.0), 0.0,
       1000.0);
   config.velocity_follower.speed_aware_derivative_damping_min_speed_mps =
       std::clamp(node.declare_parameter<double>(

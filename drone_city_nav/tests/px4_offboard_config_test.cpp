@@ -40,7 +40,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_angle_deg: 55.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_rate_mps2: 5.0"), std::string::npos);
-  EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 5.0"), std::string::npos);
+  EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 8.0"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_start_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_full_m:"), std::string::npos);
   EXPECT_EQ(yaml.find("cross_track_speed_guard_min_factor:"), std::string::npos);
@@ -50,15 +50,15 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   EXPECT_NE(yaml.find("curvature_feedforward_full_angle_deg: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 30.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_velocity_jerk_mps3: 12.0"), std::string::npos);
-  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 14.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 22.0"), std::string::npos);
   EXPECT_NE(yaml.find("lateral_smoothing_min_speed_mps: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("lateral_smoothing_full_speed_mps: 20.0"), std::string::npos);
-  EXPECT_NE(yaml.find("lateral_smoothing_max_factor: 1.6"), std::string::npos);
-  EXPECT_NE(yaml.find("max_velocity_heading_rate_rad_s: 1.0"), std::string::npos);
-  EXPECT_NE(yaml.find("min_velocity_heading_rate_rad_s: 0.8"), std::string::npos);
-  EXPECT_NE(yaml.find("lateral_zero_crossing_max_cross_track_m: 1.0"),
+  EXPECT_NE(yaml.find("lateral_smoothing_max_factor: 1.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_velocity_heading_rate_rad_s: 0.0"), std::string::npos);
+  EXPECT_NE(yaml.find("min_velocity_heading_rate_rad_s: 0.0"), std::string::npos);
+  EXPECT_NE(yaml.find("lateral_zero_crossing_max_cross_track_m: 0.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("lateral_zero_crossing_max_growth_m: 0.1"), std::string::npos);
+  EXPECT_NE(yaml.find("lateral_zero_crossing_max_growth_m: 0.0"), std::string::npos);
   EXPECT_NE(yaml.find("speed_aware_derivative_damping_min_speed_mps: 8.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("speed_aware_derivative_damping_full_speed_mps: 20.0"),
