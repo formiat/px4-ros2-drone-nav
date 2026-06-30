@@ -18,6 +18,7 @@
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
+#include "drone_city_nav/trajectory_refinement_scheduler.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -106,6 +107,19 @@ private:
     std::future<TrajectoryPlannerResult> future;
   };
 
+  struct TrajectoryRefinementRequest {
+    std::uint64_t generation{0U};
+    std::uint64_t baseline_path_id{0U};
+    Point2 route_start{};
+    Point2 goal{};
+    double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
+    double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
+    std::vector<Point2> route_points;
+    std::string source_label;
+    OccupancyGrid2D grid;
+    TrajectoryPlannerConfig config;
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
@@ -155,6 +169,11 @@ private:
       const TrajectoryPlannerResult& baseline, const char* source_label,
       const ClearanceField2D* prohibited_clearance_field,
       bool prohibited_clearance_field_cache_hit);
+
+  void launchScheduledTrajectoryRefinement(TrajectoryRefinementRequest request);
+
+  void
+  launchQueuedTrajectoryRefinement(std::optional<TrajectoryRefinementJob> expected_job);
 
   [[nodiscard]] bool
   pollPendingTrajectoryRefinement(const OccupancyGrid2D& validation_grid);
@@ -317,6 +336,8 @@ private:
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
   std::optional<PendingTrajectoryRefinement> pending_refinement_;
+  std::optional<TrajectoryRefinementRequest> queued_refinement_;
+  TrajectoryRefinementScheduler refinement_scheduler_;
 
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;

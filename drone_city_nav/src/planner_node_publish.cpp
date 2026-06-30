@@ -368,57 +368,123 @@ void PlannerNode::startAsyncTrajectoryRefinement(
   if (route_points.size() < 2U || !baseline.valid) {
     return;
   }
-  if (pending_refinement_.has_value() && pending_refinement_->future.valid() &&
-      pending_refinement_->future.wait_for(std::chrono::seconds{0}) !=
-          std::future_status::ready) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "%s refined trajectory async build skipped because a previous refinement "
-        "is still running: pending_generation=%" PRIu64 " current_generation=%" PRIu64
-        " baseline_path_id=%" PRIu64,
-        source_label, pending_refinement_->generation, generation, baseline_path_id);
+
+  const TrajectoryRefinementJob job{generation, baseline_path_id};
+  const TrajectoryRefinementScheduleDecision schedule =
+      refinement_scheduler_.submit(job);
+  if (schedule.action == TrajectoryRefinementScheduleAction::kDisabled) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "%s refined trajectory async build disabled: generation=%" PRIu64
+        " baseline_path_id=%" PRIu64 " async_workers=%zu",
+        source_label, generation, baseline_path_id,
+        refinement_scheduler_.workerCount());
     return;
   }
-  if (pending_refinement_.has_value()) {
-    pending_refinement_.reset();
+
+  TrajectoryRefinementRequest request{
+      .generation = generation,
+      .baseline_path_id = baseline_path_id,
+      .route_start = route_points.front(),
+      .goal = route_points.back(),
+      .baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s,
+      .baseline_length_m = baseline.stats.length_m,
+      .route_points = std::vector<Point2>{route_points.begin(), route_points.end()},
+      .source_label = source_label,
+      .grid = grid,
+      .config = trajectory_planner_config_};
+  if (schedule.action == TrajectoryRefinementScheduleAction::kQueuedLatest ||
+      schedule.action == TrajectoryRefinementScheduleAction::kReplacedQueuedLatest) {
+    queued_refinement_ = std::move(request);
+    const std::uint64_t active_generation =
+        schedule.active_job.has_value() ? schedule.active_job->generation : 0U;
+    RCLCPP_INFO(get_logger(),
+                "%s refined trajectory async build queued: action=%s "
+                "active_generation=%" PRIu64 " queued_generation=%" PRIu64
+                " baseline_path_id=%" PRIu64,
+                source_label,
+                schedule.action ==
+                        TrajectoryRefinementScheduleAction::kReplacedQueuedLatest
+                    ? "replaced_latest"
+                    : "queued_latest",
+                active_generation, generation, baseline_path_id);
+    return;
   }
 
-  OccupancyGrid2D grid_snapshot = grid;
-  std::vector<Point2> route_snapshot{route_points.begin(), route_points.end()};
-  TrajectoryPlannerConfig config_snapshot = trajectory_planner_config_;
-  std::future<TrajectoryPlannerResult> future = std::async(
-      std::launch::async, [grid = std::move(grid_snapshot), route = route_snapshot,
-                           config = config_snapshot]() mutable {
-        TrajectoryPlannerResult refined = planRacingTrajectory(
-            TrajectoryPlannerInput{
-                std::span<const Point2>{route.data(), route.size()},
-                &grid,
-                nullptr,
-                false,
-            },
-            config);
-        refined.stats.quality = TrajectoryQuality::kRefined;
-        refined.stats.racing_line.async_refined = true;
-        return refined;
-      });
+  launchScheduledTrajectoryRefinement(std::move(request));
+}
+
+void PlannerNode::launchScheduledTrajectoryRefinement(
+    TrajectoryRefinementRequest request) {
+  std::vector<Point2> route_for_build = request.route_points;
+  std::future<TrajectoryPlannerResult> future =
+      std::async(std::launch::async,
+                 [grid = std::move(request.grid), route = std::move(route_for_build),
+                  config = request.config]() mutable {
+                   TrajectoryPlannerResult refined = planRacingTrajectory(
+                       TrajectoryPlannerInput{
+                           std::span<const Point2>{route.data(), route.size()},
+                           &grid,
+                           nullptr,
+                           false,
+                       },
+                       config);
+                   refined.stats.quality = TrajectoryQuality::kRefined;
+                   refined.stats.racing_line.async_refined = true;
+                   return refined;
+                 });
 
   PendingTrajectoryRefinement pending{};
-  pending.generation = generation;
-  pending.baseline_path_id = baseline_path_id;
-  pending.route_start = route_points.front();
-  pending.goal = route_points.back();
-  pending.baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s;
-  pending.baseline_length_m = baseline.stats.length_m;
-  pending.route_points = std::move(route_snapshot);
-  pending.source_label = source_label;
+  pending.generation = request.generation;
+  pending.baseline_path_id = request.baseline_path_id;
+  pending.route_start = request.route_start;
+  pending.goal = request.goal;
+  pending.baseline_estimated_time_s = request.baseline_estimated_time_s;
+  pending.baseline_length_m = request.baseline_length_m;
+  pending.route_points = std::move(request.route_points);
+  pending.source_label = std::move(request.source_label);
   pending.future = std::move(future);
   pending_refinement_ = std::move(pending);
   RCLCPP_INFO(get_logger(),
               "%s refined trajectory async build started: generation=%" PRIu64
               " baseline_path_id=%" PRIu64
               " route_points=%zu baseline_time=%.2fs baseline_length=%.2fm",
-              source_label, generation, baseline_path_id, route_points.size(),
-              baseline.stats.racing_line.estimated_time_s, baseline.stats.length_m);
+              pending_refinement_->source_label.c_str(),
+              pending_refinement_->generation, pending_refinement_->baseline_path_id,
+              pending_refinement_->route_points.size(),
+              pending_refinement_->baseline_estimated_time_s,
+              pending_refinement_->baseline_length_m);
+}
+
+void PlannerNode::launchQueuedTrajectoryRefinement(
+    const std::optional<TrajectoryRefinementJob> expected_job) {
+  if (!expected_job.has_value()) {
+    return;
+  }
+  if (!queued_refinement_.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "Refined trajectory scheduler expected queued job but no queued "
+                "request snapshot is available: generation=%" PRIu64
+                " baseline_path_id=%" PRIu64,
+                expected_job->generation, expected_job->baseline_path_id);
+    return;
+  }
+  if (queued_refinement_->generation != expected_job->generation ||
+      queued_refinement_->baseline_path_id != expected_job->baseline_path_id) {
+    RCLCPP_WARN(
+        get_logger(),
+        "Refined trajectory queued request mismatch: expected_generation=%" PRIu64
+        " queued_generation=%" PRIu64 " expected_baseline_path_id=%" PRIu64
+        " queued_baseline_path_id=%" PRIu64,
+        expected_job->generation, queued_refinement_->generation,
+        expected_job->baseline_path_id, queued_refinement_->baseline_path_id);
+    queued_refinement_.reset();
+    return;
+  }
+
+  TrajectoryRefinementRequest request = std::move(*queued_refinement_);
+  queued_refinement_.reset();
+  launchScheduledTrajectoryRefinement(std::move(request));
 }
 
 bool PlannerNode::pollPendingTrajectoryRefinement(
@@ -433,6 +499,9 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
 
   PendingTrajectoryRefinement pending = std::move(*pending_refinement_);
   pending_refinement_.reset();
+  const std::optional<TrajectoryRefinementJob> queued_job =
+      refinement_scheduler_.completeActive(
+          TrajectoryRefinementJob{pending.generation, pending.baseline_path_id});
   TrajectoryPlannerResult refined{};
   try {
     refined = pending.future.get();
@@ -442,6 +511,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
                 "generation=%" PRIu64 " baseline_path_id=%" PRIu64 " error='%s'",
                 pending.source_label.c_str(), pending.generation,
                 pending.baseline_path_id, error.what());
+    launchQueuedTrajectoryRefinement(queued_job);
     return false;
   }
 
@@ -452,6 +522,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
         " baseline_path_id=%" PRIu64 " last_published_path_id=%" PRIu64,
         pending.source_label.c_str(), pending.generation, pending.baseline_path_id,
         last_published_path_id_);
+    launchQueuedTrajectoryRefinement(queued_job);
     return false;
   }
 
@@ -487,6 +558,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
         refined_points.size(), pending.baseline_estimated_time_s,
         refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
         refined.stats.length_m);
+    launchQueuedTrajectoryRefinement(queued_job);
     return false;
   }
 
@@ -499,9 +571,11 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
       refined_points.size(), pending.baseline_estimated_time_s,
       refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
       refined.stats.length_m);
-  return publishTrajectoryResult(validation_grid, refined, pending.route_points,
-                                 pending.source_label.c_str(),
-                                 refined.stats.total_duration_ms);
+  const bool published = publishTrajectoryResult(
+      validation_grid, refined, pending.route_points, pending.source_label.c_str(),
+      refined.stats.total_duration_ms);
+  launchQueuedTrajectoryRefinement(queued_job);
+  return published;
 }
 
 [[nodiscard]] PublishedPathSafetySummary PlannerNode::summarizePublishedPathSafety(

@@ -60,6 +60,7 @@ add_library(
   src/trajectory_diagnostics.cpp
   src/trajectory_diagnostics_io.cpp
   src/trajectory_planner.cpp
+  src/trajectory_refinement_scheduler.cpp
   src/trajectory_speed_planner.cpp
   src/turn_smoothing.cpp
   src/velocity_command_planner.cpp
@@ -352,6 +353,13 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_planner_test drone_city_nav_core)
   enable_project_warnings(trajectory_planner_test)
+
+  ament_add_gtest(trajectory_refinement_scheduler_test
+                  tests/trajectory_refinement_scheduler_test.cpp)
+  target_compile_features(trajectory_refinement_scheduler_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_refinement_scheduler_test
+                        drone_city_nav_core)
+  enable_project_warnings(trajectory_refinement_scheduler_test)
 
   ament_add_gtest(offboard_path_follower_test
                   tests/offboard_path_follower_test.cpp)

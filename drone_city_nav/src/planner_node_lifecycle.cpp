@@ -214,6 +214,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
   astar_config_ = config.planner_core.astar;
   trajectory_planner_config_ = config.trajectory_planner;
+  refinement_scheduler_.configure(
+      trajectory_planner_config_.racing_line.async_refinement_workers);
   initial_heading_rad_ = config.initial_pose.heading_rad;
   px4_local_origin_ = config.initial_pose.px4_local_origin;
   static_map_debug_publish_period_s_ = config.timing.static_map_debug_publish_period_s;

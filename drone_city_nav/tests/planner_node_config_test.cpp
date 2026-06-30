@@ -155,7 +155,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.racing_line.window_width_change_threshold_m, 0.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.05);
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1024U);
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 0.1);
@@ -213,7 +213,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.racing_line.window_width_change_threshold_m, 3.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.75);
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 2U);
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
@@ -223,6 +223,16 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.current_lidar.motion_compensate_lidar_pose);
   EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.25);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
+}
+
+TEST_F(PlannerNodeConfigTest, AllowsAsyncRefinementDisableContract) {
+  const auto node =
+      makeNode("planner_node_config_async_refinement_disabled",
+               {rclcpp::Parameter{"racing_line_async_refinement_workers", 0}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 0U);
 }
 
 TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
