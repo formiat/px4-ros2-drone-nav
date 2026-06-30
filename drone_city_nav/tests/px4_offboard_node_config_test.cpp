@@ -117,6 +117,10 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    30.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 14.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_min_speed_mps, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_full_speed_mps, 20.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.lateral_smoothing_max_factor, 1.6);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.max_velocity_heading_rate_rad_s, 1.0);
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 8.0);
   EXPECT_DOUBLE_EQ(

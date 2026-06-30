@@ -117,6 +117,8 @@ Px4OffboardNode::Px4OffboardNode()
       "control_tangent_smoothing[back=%.2fm forward=%.2fm "
       "max_heading_span=%.1fdeg max_abs_curvature=%.4f] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
+      "path_frame_lateral_smoothing[min_speed=%.2fmps full_speed=%.2fmps "
+      "max_factor=%.2f heading_rate=%.2fradps] "
       "adaptive_lateral_response[scale=%.2fm max_factor=%.2f] "
       "trajectory_update_max_start_cross_track=%.2fm "
       "altitude_hold_kp=%.2f "
@@ -161,6 +163,10 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.control_tangent_smoothing_max_abs_curvature_1pm,
       velocity_follower_config_.max_velocity_jerk_mps3,
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
+      velocity_follower_config_.lateral_smoothing_min_speed_mps,
+      velocity_follower_config_.lateral_smoothing_full_speed_mps,
+      velocity_follower_config_.lateral_smoothing_max_factor,
+      velocity_follower_config_.max_velocity_heading_rate_rad_s,
       velocity_follower_config_.adaptive_lateral_response_scale_m,
       velocity_follower_config_.adaptive_lateral_response_max_factor,
       trajectory_update_max_start_cross_track_m_, altitude_hold_kp_,

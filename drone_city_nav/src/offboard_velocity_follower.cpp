@@ -374,6 +374,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const VelocitySmootherPlan smoothed = smoothVelocityCommand(
       VelocitySmootherInput{
           .desired_velocity_xy = command.desired_velocity_xy,
+          .path_tangent = control_projection.tangent,
           .previous_velocity_setpoint = previous_state.previous_velocity_setpoint,
           .previous_velocity_acceleration_setpoint =
               previous_state.previous_velocity_acceleration_setpoint,
@@ -408,6 +409,14 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.velocity_setpoint_acceleration_mps2 =
       smoothed.velocity_setpoint_acceleration_mps2;
   plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
+  plan.path_frame_lateral_smoothing_applied =
+      smoothed.path_frame_lateral_smoothing_applied;
+  plan.lateral_zero_crossing_limited = smoothed.lateral_zero_crossing_limited;
+  plan.velocity_heading_rate_limited = smoothed.velocity_heading_rate_limited;
+  plan.lateral_smoothing_factor = smoothed.lateral_smoothing_factor;
+  plan.smoother_lateral_response_accel_mps2 =
+      smoothed.smoother_lateral_response_accel_mps2;
+  plan.velocity_heading_rate_limit_rad_s = smoothed.velocity_heading_rate_limit_rad_s;
   plan.path_tangent = control_projection.tangent;
   plan.control_tangent_raw = tangent_smoothing.raw_tangent;
   plan.control_tangent_smoothed = tangent_smoothing.applied;

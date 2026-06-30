@@ -14,6 +14,7 @@ struct VelocityVectorLimitResult {
 
 struct VelocitySmootherInput {
   Point2 desired_velocity_xy{};
+  Point2 path_tangent{};
   Point2 previous_velocity_setpoint{};
   Point2 previous_velocity_acceleration_setpoint{};
   bool previous_velocity_setpoint_valid{false};
@@ -30,6 +31,12 @@ struct VelocitySmootherPlan {
   double desired_velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
+  bool path_frame_lateral_smoothing_applied{false};
+  bool lateral_zero_crossing_limited{false};
+  bool velocity_heading_rate_limited{false};
+  double lateral_smoothing_factor{1.0};
+  double smoother_lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
+  double velocity_heading_rate_limit_rad_s{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] VelocityVectorLimitResult

@@ -25,6 +25,10 @@ struct VelocityFollowerConfig {
   double max_curvature_feedforward_angle_rad{0.5235987755982988};
   double max_velocity_jerk_mps3{12.0};
   double max_lateral_velocity_jerk_mps3{14.0};
+  double lateral_smoothing_min_speed_mps{8.0};
+  double lateral_smoothing_full_speed_mps{20.0};
+  double lateral_smoothing_max_factor{1.6};
+  double max_velocity_heading_rate_rad_s{1.0};
   double speed_aware_derivative_damping_min_speed_mps{8.0};
   double speed_aware_derivative_damping_full_speed_mps{20.0};
   double speed_aware_derivative_damping_max_factor{1.5};
