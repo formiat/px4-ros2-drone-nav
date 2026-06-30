@@ -126,6 +126,12 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"cross_track_derivative_damping_mps\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.cross_track_derivative_damping_mps);
+  stream << ",\"cross_track_derivative_damping_factor\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.cross_track_derivative_damping_factor);
+  stream << ",\"cross_track_derivative_gain_effective\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.cross_track_derivative_gain_effective);
   stream << ",\"curvature_feedforward_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_velocity.x);
   stream << ",\"curvature_feedforward_y\":";
@@ -134,6 +140,11 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_mps);
   stream << ",\"curvature_feedforward_angle_rad\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_angle_rad);
+  stream << ",\"curvature_feedforward_raw_angle_rad\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.curvature_feedforward_raw_angle_rad);
+  stream << ",\"curvature_feedforward_scale\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_scale);
   stream << ",\"raw_lateral_control_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.raw_lateral_control_velocity.x);
   stream << ",\"raw_lateral_control_y\":";

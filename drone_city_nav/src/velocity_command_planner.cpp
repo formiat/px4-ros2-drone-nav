@@ -38,6 +38,15 @@ struct VectorRateLimitResult {
   return lhs.x * rhs.x + lhs.y * rhs.y;
 }
 
+[[nodiscard]] double smoothstep(const double edge0, const double edge1,
+                                const double value) noexcept {
+  if (!(edge1 > edge0)) {
+    return value >= edge1 ? 1.0 : 0.0;
+  }
+  const double t = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+
 [[nodiscard]] Point2 normalized(const Point2 point) noexcept {
   const double length = norm(point);
   if (!(length > kTinyDistanceM)) {
@@ -95,20 +104,48 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
 [[nodiscard]] Point2
 curvatureFeedforwardVelocity(const TrajectoryProjection& projection,
                              const double scalar_speed_mps,
-                             const VelocityFollowerConfig& config, double& angle_rad) {
+                             const VelocityFollowerConfig& config,
+                             double& raw_angle_rad, double& angle_rad, double& scale) {
+  raw_angle_rad = 0.0;
   angle_rad = 0.0;
+  scale = 0.0;
   const double speed = std::max(0.0, scalar_speed_mps);
   const double anticipation_time_s =
       sanitizedPositive(config.curvature_feedforward_time_s, 0.5, 0.0, 10.0);
   const double max_angle =
       sanitizedPositive(config.max_curvature_feedforward_angle_rad, 0.7, 0.0, 1.4);
-  angle_rad = std::clamp(projection.curvature_1pm * speed * anticipation_time_s,
-                         -max_angle, max_angle);
+  const double deadband_angle = sanitizedPositive(
+      config.curvature_feedforward_deadband_angle_rad, 0.0, 0.0, max_angle);
+  const double full_angle = std::max(
+      deadband_angle, sanitizedPositive(config.curvature_feedforward_full_angle_rad,
+                                        deadband_angle, 0.0, max_angle));
+  raw_angle_rad = projection.curvature_1pm * speed * anticipation_time_s;
+  scale = smoothstep(deadband_angle, full_angle, std::abs(raw_angle_rad));
+  angle_rad = std::clamp(raw_angle_rad * scale, -max_angle, max_angle);
   if (!(std::abs(angle_rad) > kTinyDistanceM)) {
     return Point2{};
   }
   const Point2 left_normal{-projection.tangent.y, projection.tangent.x};
   return left_normal * (std::max(speed, 1.0) * std::tan(angle_rad));
+}
+
+[[nodiscard]] double
+speedAwareDerivativeDampingFactor(const double speed_mps,
+                                  const double cross_track_lateral_velocity_mps,
+                                  const VelocityFollowerConfig& config) noexcept {
+  if (!(cross_track_lateral_velocity_mps > kTinyDistanceM)) {
+    return 1.0;
+  }
+  const double min_speed = sanitizedPositive(
+      config.speed_aware_derivative_damping_min_speed_mps, 8.0, 0.0, 1000.0);
+  const double full_speed = std::max(
+      min_speed, sanitizedPositive(config.speed_aware_derivative_damping_full_speed_mps,
+                                   20.0, 0.0, 1000.0));
+  const double max_factor = sanitizedPositive(
+      config.speed_aware_derivative_damping_max_factor, 1.5, 1.0, 100.0);
+  const double speed_factor =
+      smoothstep(min_speed, full_speed, std::max(0.0, speed_mps));
+  return 1.0 + (max_factor - 1.0) * speed_factor;
 }
 
 [[nodiscard]] double
@@ -154,17 +191,28 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
         query.current_velocity_valid && finite2D(query.current_velocity)
             ? dot(query.current_velocity, cross_track_direction)
             : 0.0;
+    const double derivative_speed =
+        query.current_velocity_valid && finite2D(query.current_velocity)
+            ? norm(query.current_velocity)
+            : query.scalar_speed_mps;
+    plan.cross_track_derivative_damping_factor = speedAwareDerivativeDampingFactor(
+        derivative_speed, plan.cross_track_lateral_velocity_mps, config);
+    plan.cross_track_derivative_gain_effective =
+        cross_track_derivative_gain * plan.cross_track_derivative_damping_factor;
     cross_track_feedback =
         cross_track_direction * (cross_track_gain * cross_track_error);
     cross_track_derivative_damping =
-        cross_track_direction *
-        (-cross_track_derivative_gain * plan.cross_track_lateral_velocity_mps);
+        cross_track_direction * (-plan.cross_track_derivative_gain_effective *
+                                 plan.cross_track_lateral_velocity_mps);
   }
 
   double curvature_feedforward_angle_rad = 0.0;
-  const Point2 curvature_feedforward =
-      curvatureFeedforwardVelocity(query.projection, query.scalar_speed_mps, config,
-                                   curvature_feedforward_angle_rad);
+  double curvature_feedforward_raw_angle_rad = 0.0;
+  double curvature_feedforward_scale = 0.0;
+  const Point2 curvature_feedforward = curvatureFeedforwardVelocity(
+      query.projection, query.scalar_speed_mps, config,
+      curvature_feedforward_raw_angle_rad, curvature_feedforward_angle_rad,
+      curvature_feedforward_scale);
   const double adaptive_lateral_response_factor =
       adaptiveLateralResponseFactor(query, config);
   const Point2 raw_lateral_control =
@@ -199,6 +247,8 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.cross_track_derivative_damping_mps = norm(cross_track_derivative_damping);
   plan.curvature_feedforward_mps = norm(curvature_feedforward);
   plan.curvature_feedforward_angle_rad = curvature_feedforward_angle_rad;
+  plan.curvature_feedforward_raw_angle_rad = curvature_feedforward_raw_angle_rad;
+  plan.curvature_feedforward_scale = curvature_feedforward_scale;
   plan.raw_lateral_control_mps = norm(raw_lateral_control);
   plan.lateral_control_mps = norm(lateral_control);
   plan.lateral_control_delta_mps = limited_lateral_control.delta;

@@ -95,9 +95,19 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_rate_mps2, 5.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.velocity_lateral_response_accel_mps2, 5.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_time_s, 0.25);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_deadband_angle_rad,
+                   2.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_full_angle_rad,
+                   8.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    30.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 14.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 8.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 20.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
+                   1.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.adaptive_lateral_response_max_factor, 1.2);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
@@ -148,26 +158,31 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsCustomTopicsAndBlackboxPath) {
 }
 
 TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
-  const auto node =
-      makeNode("px4_offboard_node_config_clamps",
-               {rclcpp::Parameter{"min_navigation_altitude_m", 100.0},
-                rclcpp::Parameter{"takeoff_hover_s", -10.0},
-                rclcpp::Parameter{"acceptance_radius_m", 500.0},
-                rclcpp::Parameter{"turn_preview_distance_m", 999.0},
-                rclcpp::Parameter{"max_clearance_grid_staleness_s", 9999.0},
-                rclcpp::Parameter{"max_pose_staleness_s", -1.0},
-                rclcpp::Parameter{"cruise_speed_mps", 6.0},
-                rclcpp::Parameter{"min_turn_speed_mps", 10.0},
-                rclcpp::Parameter{"speed_profile_lookahead_min_m", 20.0},
-                rclcpp::Parameter{"speed_profile_lookahead_max_m", 5.0},
-                rclcpp::Parameter{"max_lateral_control_angle_deg", 500.0},
-                rclcpp::Parameter{"max_curvature_feedforward_angle_deg", 500.0},
-                rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
-                rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
-                rclcpp::Parameter{"telemetry_log_period_s", 0.01},
-                rclcpp::Parameter{"command_resend_period_s", 0.0},
-                rclcpp::Parameter{"target_system", 999},
-                rclcpp::Parameter{"source_component", 999999}});
+  const auto node = makeNode(
+      "px4_offboard_node_config_clamps",
+      {rclcpp::Parameter{"min_navigation_altitude_m", 100.0},
+       rclcpp::Parameter{"takeoff_hover_s", -10.0},
+       rclcpp::Parameter{"acceptance_radius_m", 500.0},
+       rclcpp::Parameter{"turn_preview_distance_m", 999.0},
+       rclcpp::Parameter{"max_clearance_grid_staleness_s", 9999.0},
+       rclcpp::Parameter{"max_pose_staleness_s", -1.0},
+       rclcpp::Parameter{"cruise_speed_mps", 6.0},
+       rclcpp::Parameter{"min_turn_speed_mps", 10.0},
+       rclcpp::Parameter{"speed_profile_lookahead_min_m", 20.0},
+       rclcpp::Parameter{"speed_profile_lookahead_max_m", 5.0},
+       rclcpp::Parameter{"max_lateral_control_angle_deg", 500.0},
+       rclcpp::Parameter{"curvature_feedforward_deadband_angle_deg", 20.0},
+       rclcpp::Parameter{"curvature_feedforward_full_angle_deg", 10.0},
+       rclcpp::Parameter{"max_curvature_feedforward_angle_deg", 500.0},
+       rclcpp::Parameter{"speed_aware_derivative_damping_min_speed_mps", 30.0},
+       rclcpp::Parameter{"speed_aware_derivative_damping_full_speed_mps", 10.0},
+       rclcpp::Parameter{"speed_aware_derivative_damping_max_factor", 0.5},
+       rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
+       rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
+       rclcpp::Parameter{"telemetry_log_period_s", 0.01},
+       rclcpp::Parameter{"command_resend_period_s", 0.0},
+       rclcpp::Parameter{"target_system", 999},
+       rclcpp::Parameter{"source_component", 999999}});
 
   const Px4OffboardNodeConfig config = loadPx4OffboardNodeConfig(*node);
 
@@ -181,8 +196,18 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_profile_lookahead_max_m, 20.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_angle_rad,
                    std::numbers::pi / 2.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_deadband_angle_rad,
+                   20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_full_angle_rad,
+                   20.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    std::numbers::pi / 2.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 30.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 30.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
+                   1.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);

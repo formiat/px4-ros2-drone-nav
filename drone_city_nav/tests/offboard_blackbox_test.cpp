@@ -72,6 +72,10 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.trajectory_segment_kind = TrajectorySegmentKind::kArc;
   record.velocity_plan.trajectory_curvature_1pm = 0.1;
   record.velocity_plan.trajectory_arc_radius_m = 10.0;
+  record.velocity_plan.cross_track_derivative_damping_factor = 1.25;
+  record.velocity_plan.cross_track_derivative_gain_effective = 0.75;
+  record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
+  record.velocity_plan.curvature_feedforward_scale = 0.5;
   record.velocity_plan.adaptive_lateral_response_factor = 2.5;
   record.velocity_smoother_reset_reason = "path_update";
   record.path_update_velocity_smoother_reset_count = 3U;
@@ -129,6 +133,10 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"velocity\":{\"valid\":true");
   expectJsonField(json, "\"target\":{\"x\":10");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");
+  expectJsonField(json, "\"cross_track_derivative_damping_factor\":1.25");
+  expectJsonField(json, "\"cross_track_derivative_gain_effective\":0.75");
+  expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");
+  expectJsonField(json, "\"curvature_feedforward_scale\":0.5");
   expectJsonField(json, "\"adaptive_lateral_response_factor\":2.5");
   expectJsonField(json, "\"speed_limit_reason\":\"trajectory_profile\"");
   expectJsonField(json, "\"trajectory_segment_type\":\"arc\"");

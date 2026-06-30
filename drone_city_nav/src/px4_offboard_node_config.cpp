@@ -52,6 +52,27 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.speed_profile_lookahead_max_m =
       std::max(config.velocity_follower.speed_profile_lookahead_max_m,
                config.velocity_follower.speed_profile_lookahead_min_m);
+  config.velocity_follower.curvature_feedforward_deadband_angle_rad =
+      boundedFiniteDouble(
+          config.velocity_follower.curvature_feedforward_deadband_angle_rad,
+          2.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi / 2.0);
+  config.velocity_follower.curvature_feedforward_full_angle_rad = std::max(
+      config.velocity_follower.curvature_feedforward_deadband_angle_rad,
+      boundedFiniteDouble(config.velocity_follower.curvature_feedforward_full_angle_rad,
+                          8.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi / 2.0));
+  config.velocity_follower.speed_aware_derivative_damping_min_speed_mps =
+      boundedFiniteDouble(
+          config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 8.0,
+          0.0, 1000.0);
+  config.velocity_follower.speed_aware_derivative_damping_full_speed_mps = std::max(
+      config.velocity_follower.speed_aware_derivative_damping_min_speed_mps,
+      boundedFiniteDouble(
+          config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 20.0,
+          0.0, 1000.0));
+  config.velocity_follower.speed_aware_derivative_damping_max_factor =
+      boundedFiniteDouble(
+          config.velocity_follower.speed_aware_derivative_damping_max_factor, 1.5, 1.0,
+          100.0);
   config.velocity_follower.final_acceptance_radius_m = config.acceptance_radius_m;
 }
 
@@ -115,6 +136,15 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       100.0);
   config.velocity_follower.curvature_feedforward_time_s = std::clamp(
       node.declare_parameter<double>("curvature_feedforward_time_s", 0.25), 0.0, 10.0);
+  config.velocity_follower.curvature_feedforward_deadband_angle_rad =
+      std::clamp(radiansFromDegrees(node.declare_parameter<double>(
+                     "curvature_feedforward_deadband_angle_deg", 2.0)),
+                 0.0, std::numbers::pi / 2.0);
+  config.velocity_follower.curvature_feedforward_full_angle_rad =
+      std::max(config.velocity_follower.curvature_feedforward_deadband_angle_rad,
+               std::clamp(radiansFromDegrees(node.declare_parameter<double>(
+                              "curvature_feedforward_full_angle_deg", 8.0)),
+                          0.0, std::numbers::pi / 2.0));
   config.velocity_follower.max_curvature_feedforward_angle_rad =
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
                      "max_curvature_feedforward_angle_deg", 30.0)),
@@ -124,6 +154,18 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_lateral_velocity_jerk_mps3 =
       std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 14.0),
                  0.0, 1000.0);
+  config.velocity_follower.speed_aware_derivative_damping_min_speed_mps =
+      std::clamp(node.declare_parameter<double>(
+                     "speed_aware_derivative_damping_min_speed_mps", 8.0),
+                 0.0, 1000.0);
+  config.velocity_follower.speed_aware_derivative_damping_full_speed_mps =
+      std::max(config.velocity_follower.speed_aware_derivative_damping_min_speed_mps,
+               std::clamp(node.declare_parameter<double>(
+                              "speed_aware_derivative_damping_full_speed_mps", 20.0),
+                          0.0, 1000.0));
+  config.velocity_follower.speed_aware_derivative_damping_max_factor = std::clamp(
+      node.declare_parameter<double>("speed_aware_derivative_damping_max_factor", 1.5),
+      1.0, 100.0);
   config.velocity_follower.adaptive_lateral_response_scale_m = std::clamp(
       node.declare_parameter<double>("adaptive_lateral_response_scale_m", 3.0), 0.1,
       1000.0);

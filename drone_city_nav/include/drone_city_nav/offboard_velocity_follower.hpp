@@ -83,9 +83,13 @@ struct VelocitySetpointPlan {
   double setpoint_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_feedback_mps{0.0};
   double cross_track_derivative_damping_mps{0.0};
+  double cross_track_derivative_damping_factor{1.0};
+  double cross_track_derivative_gain_effective{0.0};
   double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
   double curvature_feedforward_mps{0.0};
   double curvature_feedforward_angle_rad{0.0};
+  double curvature_feedforward_raw_angle_rad{0.0};
+  double curvature_feedforward_scale{1.0};
   double raw_lateral_control_mps{0.0};
   double lateral_control_mps{0.0};
   double lateral_control_delta_mps{std::numeric_limits<double>::quiet_NaN()};

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <numbers>
 
 namespace drone_city_nav {
 namespace {
@@ -98,6 +99,42 @@ TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
   EXPECT_LT(moving_away.cross_track_lateral_velocity_mps, 0.0);
   EXPECT_LT(moving_toward.lateral_control_mps, moving_away.lateral_control_mps);
   EXPECT_GT(moving_toward.cross_track_derivative_damping_mps, 0.0);
+}
+
+TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningFast) {
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_gain = 1.0;
+  config.cross_track_derivative_gain = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
+  config.speed_aware_derivative_damping_min_speed_mps = 8.0;
+  config.speed_aware_derivative_damping_full_speed_mps = 20.0;
+  config.speed_aware_derivative_damping_max_factor = 1.5;
+
+  const VelocityCommandPlan moving_toward =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
+                                               .current_position = Point2{0.0, 5.0},
+                                               .current_velocity = Point2{20.0, -2.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 20.0,
+                                               .dt_s = 0.1},
+                          config);
+  const VelocityCommandPlan moving_away =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
+                                               .current_position = Point2{0.0, 5.0},
+                                               .current_velocity = Point2{20.0, 2.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 20.0,
+                                               .dt_s = 0.1},
+                          config);
+
+  ASSERT_TRUE(moving_toward.valid);
+  ASSERT_TRUE(moving_away.valid);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_factor, 1.5, 1.0e-9);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_gain_effective, 1.5, 1.0e-9);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_mps, 3.0, 1.0e-9);
+  EXPECT_NEAR(moving_away.cross_track_derivative_damping_factor, 1.0, 1.0e-9);
+  EXPECT_NEAR(moving_away.cross_track_derivative_gain_effective, 1.0, 1.0e-9);
+  EXPECT_NEAR(moving_away.cross_track_derivative_damping_mps, 2.0, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, LateralControlRateLimitSmoothsVelocity) {
@@ -216,6 +253,32 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardBendsVelocityDirection) {
   EXPECT_NEAR(plan.curvature_feedforward_angle_rad, 0.5, 1.0e-9);
   EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
   EXPECT_LT(plan.desired_velocity_tangent_mps, 10.0);
+}
+
+TEST(VelocityCommandPlanner, CurvatureFeedforwardAttenuatesTinyCurvature) {
+  VelocityFollowerConfig config = testConfig();
+  config.curvature_feedforward_time_s = 1.0;
+  config.curvature_feedforward_deadband_angle_rad = 2.0 * std::numbers::pi / 180.0;
+  config.curvature_feedforward_full_angle_rad = 8.0 * std::numbers::pi / 180.0;
+  config.max_curvature_feedforward_angle_rad = 1.0;
+
+  const VelocityCommandPlan plan = planVelocityCommand(
+      VelocityCommandQuery{.projection = curvedProjectionOnXAxis(
+                               (1.0 * std::numbers::pi / 180.0) / 10.0),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1},
+      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.curvature_feedforward_raw_angle_rad, 1.0 * std::numbers::pi / 180.0,
+              1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_scale, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_angle_rad, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_normal_mps, 0.0, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, LateralControlRateLimitSmoothsCurvatureFeedforward) {

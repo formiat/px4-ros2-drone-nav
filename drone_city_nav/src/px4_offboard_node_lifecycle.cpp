@@ -110,7 +110,10 @@ Px4OffboardNode::Px4OffboardNode()
       "max_lateral_control_angle=%.1fdeg "
       "max_lateral_control_rate=%.2fmps2 "
       "velocity_lateral_response_accel=%.2fmps2 "
-      "curvature_feedforward[time=%.2fs max_angle=%.1fdeg] "
+      "curvature_feedforward[time=%.2fs deadband=%.1fdeg full=%.1fdeg "
+      "max_angle=%.1fdeg] "
+      "speed_aware_derivative_damping[min_speed=%.2fmps full_speed=%.2fmps "
+      "max_factor=%.2f] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
       "adaptive_lateral_response[scale=%.2fm max_factor=%.2f] "
       "trajectory_update_max_start_cross_track=%.2fm "
@@ -142,7 +145,13 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.max_lateral_control_rate_mps2,
       velocity_follower_config_.velocity_lateral_response_accel_mps2,
       velocity_follower_config_.curvature_feedforward_time_s,
+      radiansToDegrees(
+          velocity_follower_config_.curvature_feedforward_deadband_angle_rad),
+      radiansToDegrees(velocity_follower_config_.curvature_feedforward_full_angle_rad),
       radiansToDegrees(velocity_follower_config_.max_curvature_feedforward_angle_rad),
+      velocity_follower_config_.speed_aware_derivative_damping_min_speed_mps,
+      velocity_follower_config_.speed_aware_derivative_damping_full_speed_mps,
+      velocity_follower_config_.speed_aware_derivative_damping_max_factor,
       velocity_follower_config_.max_velocity_jerk_mps3,
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
       velocity_follower_config_.adaptive_lateral_response_scale_m,
