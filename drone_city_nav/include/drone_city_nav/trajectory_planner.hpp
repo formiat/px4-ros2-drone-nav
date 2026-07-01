@@ -135,6 +135,14 @@ planBaselineTrajectory(const TrajectoryPlannerInput& input,
 planRacingTrajectory(const TrajectoryPlannerInput& input,
                      const TrajectoryPlannerConfig& config);
 
+[[nodiscard]] TrajectoryPlannerResult planRacingTrajectoryFromSnapshots(
+    std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D* prohibited_clearance_field,
+    bool prohibited_clearance_field_cache_hit,
+    std::span<const CorridorSample> precomputed_corridor_samples,
+    const CorridorStats* precomputed_corridor_stats,
+    const TrajectoryPlannerConfig& config);
+
 [[nodiscard]] TrajectoryRefinementDecision
 evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input);
 

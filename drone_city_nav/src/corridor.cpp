@@ -326,6 +326,18 @@ corridorRouteFingerprint(const std::span<const Point2> route_points) noexcept {
   return hash;
 }
 
+std::uint64_t corridorConfigFingerprint(const CorridorConfig& config) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  hashDouble(hash, config.max_radius_m);
+  hashDouble(hash, config.sample_step_m);
+  hashDouble(hash, config.ray_step_m);
+  hashDouble(hash, config.center_recovery_max_m);
+  hashDouble(hash, config.lateral_limit_window_m);
+  hashDouble(hash, config.lateral_limit_ratio);
+  hashDouble(hash, config.lateral_limit_margin_m);
+  return hash;
+}
+
 bool occupancyGridFingerprintsEqual(const OccupancyGridFingerprint& lhs,
                                     const OccupancyGridFingerprint& rhs) noexcept {
   return lhs.bounds.origin_x == rhs.bounds.origin_x &&
@@ -351,6 +363,7 @@ CorridorResult buildCorridor(const CorridorInput& input, const CorridorConfig& c
   }
   const OccupancyGrid2D& prohibited_grid = *input.prohibited_grid;
   result.stats.route_fingerprint = corridorRouteFingerprint(input.route_points);
+  result.stats.config_fingerprint = corridorConfigFingerprint(config);
   result.stats.prohibited_grid_fingerprint = prohibited_grid.prohibitedFingerprint();
 
   const std::vector<TrajectorySegment> route =

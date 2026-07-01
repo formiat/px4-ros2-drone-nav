@@ -491,6 +491,15 @@ The main simulation parameters are:
 - `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
   `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.
+- `racing_line_parallel_workers` - bounded deterministic worker count for
+  racing-line candidate evaluation. `0` means auto with an internal cap.
+- `racing_line_window_*` - active-window detection controls. The optimizer only
+  mutates samples around turns, width changes, curvature, or corridor
+  asymmetry; straight open corridor sections remain fixed.
+- `racing_line_dp_offset_step_m`, `racing_line_dp_coarse_offset_step_m`,
+  `racing_line_dp_fine_offset_step_m`, and `racing_line_dp_fine_radius_m` -
+  dynamic-programming seed controls. The planner first finds a coarse lateral
+  offset seed, then refines around that seed with a narrower fine window.
 - `turn_smoothing_*` - post-processing for residual sharp kinks after racing
   line optimization. It can widen a single-corner line inside the corridor while
   rejecting candidates that leave the corridor, cross prohibited cells, or

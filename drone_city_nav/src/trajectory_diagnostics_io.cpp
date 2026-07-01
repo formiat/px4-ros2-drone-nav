@@ -330,6 +330,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.worker_scratch_reuses);
   appendJsonSize(stream, "racing_candidate_snapshot_allocations_avoided",
                  stats.racing_line.candidate_snapshot_allocations_avoided);
+  appendJsonSize(stream, "racing_local_candidate_evaluations",
+                 stats.racing_line.local_candidate_evaluations);
+  appendJsonSize(stream, "racing_local_candidate_full_score_fallbacks",
+                 stats.racing_line.local_candidate_full_score_fallbacks);
+  appendJsonSize(stream, "racing_local_candidate_acceptance_full_scores",
+                 stats.racing_line.local_candidate_acceptance_full_scores);
+  appendJsonSize(stream, "racing_local_score_false_positives",
+                 stats.racing_line.local_score_false_positives);
+  appendJsonNumber(stream, "racing_local_candidate_score_duration_ms",
+                   stats.racing_line.local_candidate_score_duration_ms);
+  appendJsonNumber(stream, "racing_full_candidate_score_duration_ms",
+                   stats.racing_line.full_candidate_score_duration_ms);
   appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
   appendJsonSize(stream, "racing_line_active_window_count",
                  stats.racing_line.active_window_count);
@@ -338,6 +350,24 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   appendJsonSize(stream, "racing_line_dp_states", stats.racing_line.dp_states);
   appendJsonSize(stream, "racing_line_dp_transitions",
                  stats.racing_line.dp_transitions);
+  appendJsonSize(stream, "racing_line_dp_segment_cache_hits",
+                 stats.racing_line.dp_segment_cache_hits);
+  appendJsonSize(stream, "racing_line_dp_segment_cache_misses",
+                 stats.racing_line.dp_segment_cache_misses);
+  appendJsonSize(stream, "racing_line_candidate_segment_cache_hits",
+                 stats.racing_line.candidate_segment_cache_hits);
+  appendJsonSize(stream, "racing_line_candidate_segment_cache_misses",
+                 stats.racing_line.candidate_segment_cache_misses);
+  appendJsonSize(stream, "racing_line_dp_coarse_states",
+                 stats.racing_line.dp_coarse_states);
+  appendJsonSize(stream, "racing_line_dp_coarse_transitions",
+                 stats.racing_line.dp_coarse_transitions);
+  appendJsonSize(stream, "racing_line_dp_fine_states",
+                 stats.racing_line.dp_fine_states);
+  appendJsonSize(stream, "racing_line_dp_fine_transitions",
+                 stats.racing_line.dp_fine_transitions);
+  appendJsonBool(stream, "racing_line_dp_coarse_to_fine_used",
+                 stats.racing_line.dp_coarse_to_fine_used);
   appendJsonNumber(stream, "racing_line_window_detection_duration_ms",
                    stats.racing_line.window_detection_duration_ms);
   appendJsonNumber(stream, "racing_line_window_eval_duration_ms",
@@ -427,6 +457,8 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
   appendJsonUint64(stream, "corridor_route_fingerprint",
                    stats.corridor.route_fingerprint);
+  appendJsonUint64(stream, "corridor_config_fingerprint",
+                   stats.corridor.config_fingerprint);
   appendJsonUint64(stream, "corridor_grid_cells_hash",
                    stats.corridor.prohibited_grid_fingerprint.cells_hash);
   appendJsonUint64(stream, "corridor_grid_inflated_hash",
@@ -511,6 +543,8 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
   appendJsonUint64(stream, "corridor_route_fingerprint",
                    stats.corridor.route_fingerprint);
+  appendJsonUint64(stream, "corridor_config_fingerprint",
+                   stats.corridor.config_fingerprint);
   appendJsonUint64(stream, "corridor_grid_cells_hash",
                    stats.corridor.prohibited_grid_fingerprint.cells_hash);
   appendJsonUint64(stream, "corridor_grid_inflated_hash",
@@ -617,6 +651,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonBool(json, "corridor_samples_reused", corridor.samples_reused);
   parseJsonSize(json, "corridor_reused_samples", corridor.reused_samples);
   (void)parseJsonUint64(json, "corridor_route_fingerprint", corridor.route_fingerprint);
+  (void)parseJsonUint64(json, "corridor_config_fingerprint",
+                        corridor.config_fingerprint);
   (void)parseJsonUint64(json, "corridor_grid_cells_hash",
                         corridor.prohibited_grid_fingerprint.cells_hash);
   (void)parseJsonUint64(json, "corridor_grid_inflated_hash",
@@ -709,12 +745,39 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "racing_worker_scratch_reuses", racing.worker_scratch_reuses);
   parseJsonSize(json, "racing_candidate_snapshot_allocations_avoided",
                 racing.candidate_snapshot_allocations_avoided);
+  parseJsonSize(json, "racing_local_candidate_evaluations",
+                racing.local_candidate_evaluations);
+  parseJsonSize(json, "racing_local_candidate_full_score_fallbacks",
+                racing.local_candidate_full_score_fallbacks);
+  parseJsonSize(json, "racing_local_candidate_acceptance_full_scores",
+                racing.local_candidate_acceptance_full_scores);
+  parseJsonSize(json, "racing_local_score_false_positives",
+                racing.local_score_false_positives);
+  parseJsonDouble(json, "racing_local_candidate_score_duration_ms",
+                  racing.local_candidate_score_duration_ms);
+  parseJsonDouble(json, "racing_full_candidate_score_duration_ms",
+                  racing.full_candidate_score_duration_ms);
   parseJsonSize(json, "racing_line_window_count", racing.window_count);
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",
                 racing.active_window_samples);
   parseJsonSize(json, "racing_line_dp_states", racing.dp_states);
   parseJsonSize(json, "racing_line_dp_transitions", racing.dp_transitions);
+  parseJsonSize(json, "racing_line_dp_segment_cache_hits",
+                racing.dp_segment_cache_hits);
+  parseJsonSize(json, "racing_line_dp_segment_cache_misses",
+                racing.dp_segment_cache_misses);
+  parseJsonSize(json, "racing_line_candidate_segment_cache_hits",
+                racing.candidate_segment_cache_hits);
+  parseJsonSize(json, "racing_line_candidate_segment_cache_misses",
+                racing.candidate_segment_cache_misses);
+  parseJsonSize(json, "racing_line_dp_coarse_states", racing.dp_coarse_states);
+  parseJsonSize(json, "racing_line_dp_coarse_transitions",
+                racing.dp_coarse_transitions);
+  parseJsonSize(json, "racing_line_dp_fine_states", racing.dp_fine_states);
+  parseJsonSize(json, "racing_line_dp_fine_transitions", racing.dp_fine_transitions);
+  parseJsonBool(json, "racing_line_dp_coarse_to_fine_used",
+                racing.dp_coarse_to_fine_used);
   parseJsonDouble(json, "racing_line_window_detection_duration_ms",
                   racing.window_detection_duration_ms);
   parseJsonDouble(json, "racing_line_window_eval_duration_ms",

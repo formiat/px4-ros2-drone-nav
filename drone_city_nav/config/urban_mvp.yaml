@@ -138,7 +138,13 @@ planner_node:
     racing_line_window_post_margin_m: 25.0
     racing_line_window_heading_threshold_deg: 10.0
     racing_line_window_width_change_threshold_m: 2.0
-    racing_line_dp_offset_step_m: 1.0
+    racing_line_window_min_heading_span_deg: 10.0
+    racing_line_window_min_curvature_1pm: 0.01
+    racing_line_window_min_width_asymmetry_m: 1.0
+    racing_line_dp_offset_step_m: 1.5
+    racing_line_dp_coarse_offset_step_m: 2.0
+    racing_line_dp_fine_offset_step_m: 0.75
+    racing_line_dp_fine_radius_m: 1.5
     racing_line_async_refinement_workers: 1
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0

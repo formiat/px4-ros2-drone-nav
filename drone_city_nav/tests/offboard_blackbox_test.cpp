@@ -136,10 +136,22 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.parallel_candidate_evaluation_used = true;
   record.trajectory_planner_stats.racing_line.parallel_workers_used = 2U;
   record.trajectory_planner_stats.racing_line.candidate_chunks = 9U;
+  record.trajectory_planner_stats.racing_line.local_candidate_evaluations = 18U;
+  record.trajectory_planner_stats.racing_line.local_candidate_full_score_fallbacks =
+      15U;
+  record.trajectory_planner_stats.racing_line.local_candidate_acceptance_full_scores =
+      3U;
+  record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
+  record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
   record.trajectory_planner_stats.racing_line.window_count = 2U;
   record.trajectory_planner_stats.racing_line.active_window_count = 1U;
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
   record.trajectory_planner_stats.racing_line.dp_transitions = 96U;
+  record.trajectory_planner_stats.racing_line.dp_coarse_states = 8U;
+  record.trajectory_planner_stats.racing_line.dp_coarse_transitions = 20U;
+  record.trajectory_planner_stats.racing_line.dp_fine_states = 16U;
+  record.trajectory_planner_stats.racing_line.dp_fine_transitions = 76U;
+  record.trajectory_planner_stats.racing_line.dp_coarse_to_fine_used = true;
   record.trajectory_planner_stats.racing_line.async_refined = true;
   record.trajectory_shape_diagnostics.segment_count = 24U;
   record.trajectory_shape_diagnostics.max_heading_delta_rad = 0.3;
@@ -241,10 +253,18 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_parallel_candidate_evaluation_used\":true");
   expectJsonField(json, "\"racing_parallel_workers_used\":2");
   expectJsonField(json, "\"racing_candidate_chunks\":9");
+  expectJsonField(json, "\"racing_local_candidate_evaluations\":18");
+  expectJsonField(json, "\"racing_local_candidate_full_score_fallbacks\":15");
+  expectJsonField(json, "\"racing_local_candidate_acceptance_full_scores\":3");
+  expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
+  expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"racing_line_window_count\":2");
   expectJsonField(json, "\"racing_line_active_window_count\":1");
   expectJsonField(json, "\"racing_line_dp_states\":24");
   expectJsonField(json, "\"racing_line_dp_transitions\":96");
+  expectJsonField(json, "\"racing_line_dp_coarse_states\":8");
+  expectJsonField(json, "\"racing_line_dp_fine_transitions\":76");
+  expectJsonField(json, "\"racing_line_dp_coarse_to_fine_used\":true");
   expectJsonField(json, "\"racing_line_async_refined\":true");
   expectJsonField(json, "\"trajectory_shape_segment_count\":24");
   expectJsonField(json, "\"path\":{\"valid\":true");

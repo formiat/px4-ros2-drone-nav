@@ -104,6 +104,9 @@ TEST(RacingLine, WideCornerProducesTraversableSmoothLine) {
   EXPECT_GT(result.stats.active_window_count, 0U);
   EXPECT_GT(result.stats.dp_states, 0U);
   EXPECT_GT(result.stats.dp_transitions, 0U);
+  EXPECT_GT(result.stats.dp_coarse_states, 0U);
+  EXPECT_GT(result.stats.dp_fine_states, 0U);
+  EXPECT_TRUE(result.stats.dp_coarse_to_fine_used);
 }
 
 TEST(RacingLine, PenalizesOffsetSpikes) {
@@ -148,7 +151,7 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   RacingLineConfig single_worker_config = testConfig();
   single_worker_config.parallel_workers = 1U;
   RacingLineConfig parallel_config = testConfig();
-  parallel_config.parallel_workers = 2U;
+  parallel_config.parallel_workers = 4U;
 
   const RacingLineResult sequential =
       optimizeRacingLine(corridor, grid, single_worker_config, speedConfig());
@@ -164,11 +167,24 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
     EXPECT_DOUBLE_EQ(sequential.samples[i].racing_offset_m,
                      parallel.samples[i].racing_offset_m);
   }
+  EXPECT_FALSE(sequential.stats.parallel_candidate_evaluation_used);
+  EXPECT_EQ(sequential.stats.parallel_workers_used, 1U);
   EXPECT_TRUE(parallel.stats.parallel_candidate_evaluation_used);
-  EXPECT_EQ(parallel.stats.parallel_workers_used, 2U);
+  EXPECT_GT(parallel.stats.parallel_workers_used, 2U);
   EXPECT_GT(parallel.stats.candidate_chunks, 0U);
   EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
   EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);
+  EXPECT_GT(parallel.stats.local_candidate_evaluations, 0U);
+  EXPECT_GT(parallel.stats.local_candidate_full_score_fallbacks, 0U);
+  EXPECT_GT(parallel.stats.local_candidate_acceptance_full_scores, 0U);
+  EXPECT_GE(parallel.stats.local_candidate_evaluations,
+            parallel.stats.local_candidate_full_score_fallbacks);
+  EXPECT_GT(parallel.stats.full_candidate_score_duration_ms, 0.0);
+  EXPECT_GT(parallel.stats.candidate_segment_cache_misses, 0U);
+  EXPECT_GT(parallel.stats.dp_segment_cache_misses, 0U);
+  EXPECT_GT(parallel.stats.dp_coarse_states, 0U);
+  EXPECT_GT(parallel.stats.dp_fine_states, 0U);
+  EXPECT_TRUE(parallel.stats.dp_coarse_to_fine_used);
   EXPECT_EQ(sequential.stats.candidate_evaluations,
             parallel.stats.candidate_evaluations);
   EXPECT_EQ(sequential.stats.collision_rejections, parallel.stats.collision_rejections);
@@ -195,6 +211,7 @@ TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   EXPECT_GT(result.stats.max_abs_offset_m, 0.05);
   EXPECT_EQ(result.stats.active_window_count, 1U);
   EXPECT_GT(result.stats.dp_states, 0U);
+  EXPECT_GT(result.stats.dp_segment_cache_misses, 0U);
 }
 
 TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {
@@ -254,6 +271,7 @@ TEST(RacingLine, StraightOpenCorridorSkipsWindowOptimization) {
   EXPECT_EQ(result.stats.active_window_samples, 0U);
   EXPECT_EQ(result.stats.dp_states, 0U);
   EXPECT_EQ(result.stats.dp_transitions, 0U);
+  EXPECT_EQ(result.stats.local_candidate_evaluations, 0U);
 }
 
 TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {

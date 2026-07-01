@@ -327,6 +327,72 @@ TEST(TrajectoryPlanner, GridMismatchPrecomputedCorridorFallsBackToBuild) {
       baseline.stats.corridor.prohibited_grid_fingerprint));
 }
 
+TEST(TrajectoryPlanner, CorridorConfigMismatchPrecomputedCorridorFallsBackToBuild) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const TrajectoryPlannerConfig baseline_config = testConfig();
+  TrajectoryPlannerConfig changed_config = testConfig();
+  changed_config.corridor.max_radius_m = baseline_config.corridor.max_radius_m + 1.0;
+  const TrajectoryPlannerInput input{
+      std::span<const Point2>{route.data(), route.size()},
+      &grid,
+      nullptr,
+      false,
+      std::span<const CorridorSample>{},
+      nullptr};
+  const TrajectoryPlannerResult baseline =
+      planBaselineTrajectory(input, baseline_config);
+  ASSERT_TRUE(baseline.valid);
+  ASSERT_GE(baseline.corridor_samples.size(), 2U);
+
+  const TrajectoryPlannerResult result = planRacingTrajectory(
+      TrajectoryPlannerInput{
+          std::span<const Point2>{route.data(), route.size()},
+          &grid,
+          nullptr,
+          false,
+          std::span<const CorridorSample>{baseline.corridor_samples.data(),
+                                          baseline.corridor_samples.size()},
+          &baseline.stats.corridor,
+      },
+      changed_config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.stats.corridor.samples_reused);
+  EXPECT_EQ(result.stats.corridor.reused_samples, 0U);
+  EXPECT_NE(result.stats.corridor.config_fingerprint,
+            baseline.stats.corridor.config_fingerprint);
+}
+
+TEST(TrajectoryPlanner, SnapshotHelperWiresClearanceAndCorridorReuse) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const TrajectoryPlannerConfig config = testConfig();
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      grid, config.corridor.max_radius_m, ClearanceSource::kProhibited);
+  const TrajectoryPlannerResult baseline = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             &clearance_field, true, std::span<const CorridorSample>{},
+                             nullptr},
+      config);
+  ASSERT_TRUE(baseline.valid);
+  ASSERT_GE(baseline.corridor_samples.size(), 2U);
+
+  const TrajectoryPlannerResult refined = planRacingTrajectoryFromSnapshots(
+      std::span<const Point2>{route.data(), route.size()}, grid, &clearance_field, true,
+      std::span<const CorridorSample>{baseline.corridor_samples.data(),
+                                      baseline.corridor_samples.size()},
+      &baseline.stats.corridor, config);
+
+  ASSERT_TRUE(refined.valid);
+  EXPECT_TRUE(refined.stats.corridor.samples_reused);
+  EXPECT_EQ(refined.stats.corridor.reused_samples, baseline.corridor_samples.size());
+  EXPECT_TRUE(refined.stats.corridor.clearance_field_reused);
+  EXPECT_TRUE(refined.stats.corridor.clearance_field_cache_hit);
+  EXPECT_EQ(refined.stats.corridor.sample_build_duration_ms, 0.0);
+  EXPECT_EQ(refined.stats.corridor.clearance_field_build_duration_ms, 0.0);
+}
+
 TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};

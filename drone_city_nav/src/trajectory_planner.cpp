@@ -136,16 +136,16 @@ corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
   return result;
 }
 
-[[nodiscard]] bool
-precomputedCorridorMatchesRoute(const std::span<const CorridorSample> samples,
-                                const CorridorStats* source_stats,
-                                const std::span<const Point2> route_points,
-                                const OccupancyGrid2D& prohibited_grid) {
+[[nodiscard]] bool precomputedCorridorMatchesRoute(
+    const std::span<const CorridorSample> samples, const CorridorStats* source_stats,
+    const std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
+    const CorridorConfig& config) {
   if (samples.size() < 2U || route_points.size() < 2U || source_stats == nullptr ||
       source_stats->samples != samples.size()) {
     return false;
   }
   if (source_stats->route_fingerprint != corridorRouteFingerprint(route_points) ||
+      source_stats->config_fingerprint != corridorConfigFingerprint(config) ||
       !occupancyGridFingerprintsEqual(source_stats->prohibited_grid_fingerprint,
                                       prohibited_grid.prohibitedFingerprint())) {
     return false;
@@ -392,9 +392,9 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
   const CorridorResult corridor =
-      precomputedCorridorMatchesRoute(input.precomputed_corridor_samples,
-                                      input.precomputed_corridor_stats,
-                                      input.route_points, *input.prohibited_grid)
+      precomputedCorridorMatchesRoute(
+          input.precomputed_corridor_samples, input.precomputed_corridor_stats,
+          input.route_points, *input.prohibited_grid, config.corridor)
           ? corridorFromPrecomputedSamples(input.precomputed_corridor_samples,
                                            input.precomputed_corridor_stats,
                                            input.route_points.size())
@@ -450,6 +450,25 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
+}
+
+TrajectoryPlannerResult planRacingTrajectoryFromSnapshots(
+    const std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D* prohibited_clearance_field,
+    const bool prohibited_clearance_field_cache_hit,
+    const std::span<const CorridorSample> precomputed_corridor_samples,
+    const CorridorStats* precomputed_corridor_stats,
+    const TrajectoryPlannerConfig& config) {
+  return planRacingTrajectory(
+      TrajectoryPlannerInput{
+          route_points,
+          &prohibited_grid,
+          prohibited_clearance_field,
+          prohibited_clearance_field_cache_hit,
+          precomputed_corridor_samples,
+          precomputed_corridor_stats,
+      },
+      config);
 }
 
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,

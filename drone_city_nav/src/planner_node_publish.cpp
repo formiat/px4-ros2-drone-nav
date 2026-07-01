@@ -245,18 +245,25 @@ bool PlannerNode::publishTrajectoryResult(
       " width_min=%.2f width_mean=%.2f width_max=%.2f "
       "lateral_limited=%zu workers=%zu sample_build=%.1fms "
       "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
-      "clearance_reused=%s clearance_cache_hit=%s] "
+      "clearance_reused=%s clearance_cache_hit=%s config_fp=%" PRIu64 "] "
       "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
       "sample_build=%.1fms regularization=%.1fms scratch_reused=%zu "
       "parallel=%s workers=%zu chunks=%zu worker_reuses=%zu "
-      "allocations_avoided=%zu cost_initial=%.3f cost_final=%.3f "
+      "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
+      "local_accept_full_scores=%zu local_false_positives=%zu "
+      "local_time=%.1fms full_candidate_score=%.1fms "
+      "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
       "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
       "speed_limit_max=%.2f curvature_limited=%zu "
       "windows=%zu active_windows=%zu active_samples=%zu "
-      "dp_states=%zu dp_transitions=%zu window_detect=%.1fms "
+      "dp_states=%zu dp_transitions=%zu dp_cache_hits=%zu dp_cache_misses=%zu "
+      "candidate_cache_hits=%zu candidate_cache_misses=%zu "
+      "dp_coarse_states=%zu dp_coarse_transitions=%zu "
+      "dp_fine_states=%zu dp_fine_transitions=%zu coarse_to_fine=%s "
+      "window_detect=%.1fms "
       "window_eval=%.1fms dp=%.1fms final_score=%.1fms async_refined=%s] "
       "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
       "relaxed_attempts=%zu "
@@ -297,6 +304,7 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.corridor.clearance_field_build_duration_ms,
       trajectory_result.stats.corridor.clearance_field_reused ? "true" : "false",
       trajectory_result.stats.corridor.clearance_field_cache_hit ? "true" : "false",
+      trajectory_result.stats.corridor.config_fingerprint,
       trajectory_result.stats.racing_line.iterations,
       trajectory_result.stats.racing_line.candidate_evaluations,
       trajectory_result.stats.racing_line.skipped_noop_candidates,
@@ -312,6 +320,12 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.candidate_chunks,
       trajectory_result.stats.racing_line.worker_scratch_reuses,
       trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
+      trajectory_result.stats.racing_line.local_candidate_evaluations,
+      trajectory_result.stats.racing_line.local_candidate_full_score_fallbacks,
+      trajectory_result.stats.racing_line.local_candidate_acceptance_full_scores,
+      trajectory_result.stats.racing_line.local_score_false_positives,
+      trajectory_result.stats.racing_line.local_candidate_score_duration_ms,
+      trajectory_result.stats.racing_line.full_candidate_score_duration_ms,
       trajectory_result.stats.racing_line.initial_cost,
       trajectory_result.stats.racing_line.final_cost,
       trajectory_result.stats.racing_line.centerline_length_m,
@@ -330,6 +344,15 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.active_window_samples,
       trajectory_result.stats.racing_line.dp_states,
       trajectory_result.stats.racing_line.dp_transitions,
+      trajectory_result.stats.racing_line.dp_segment_cache_hits,
+      trajectory_result.stats.racing_line.dp_segment_cache_misses,
+      trajectory_result.stats.racing_line.candidate_segment_cache_hits,
+      trajectory_result.stats.racing_line.candidate_segment_cache_misses,
+      trajectory_result.stats.racing_line.dp_coarse_states,
+      trajectory_result.stats.racing_line.dp_coarse_transitions,
+      trajectory_result.stats.racing_line.dp_fine_states,
+      trajectory_result.stats.racing_line.dp_fine_transitions,
+      trajectory_result.stats.racing_line.dp_coarse_to_fine_used ? "true" : "false",
       trajectory_result.stats.racing_line.window_detection_duration_ms,
       trajectory_result.stats.racing_line.window_eval_duration_ms,
       trajectory_result.stats.racing_line.dp_duration_ms,
@@ -451,17 +474,12 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
             clearance_field.has_value() ? &*clearance_field : nullptr;
         const CorridorStats* corridor_stats_ptr =
             corridor_samples.size() >= 2U ? &corridor_stats : nullptr;
-        TrajectoryPlannerResult refined = planRacingTrajectory(
-            TrajectoryPlannerInput{
-                std::span<const Point2>{route.data(), route.size()},
-                &grid,
-                clearance_field_ptr,
-                clearance_cache_hit,
-                std::span<const CorridorSample>{corridor_samples.data(),
-                                                corridor_samples.size()},
-                corridor_stats_ptr,
-            },
-            config);
+        TrajectoryPlannerResult refined = planRacingTrajectoryFromSnapshots(
+            std::span<const Point2>{route.data(), route.size()}, grid,
+            clearance_field_ptr, clearance_cache_hit,
+            std::span<const CorridorSample>{corridor_samples.data(),
+                                            corridor_samples.size()},
+            corridor_stats_ptr, config);
         refined.stats.quality = TrajectoryQuality::kRefined;
         refined.stats.racing_line.async_refined = true;
         return refined;

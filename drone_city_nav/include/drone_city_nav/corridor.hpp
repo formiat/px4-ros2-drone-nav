@@ -62,6 +62,7 @@ struct CorridorStats {
   bool samples_reused{false};
   std::size_t reused_samples{0U};
   std::uint64_t route_fingerprint{0U};
+  std::uint64_t config_fingerprint{0U};
   OccupancyGridFingerprint prohibited_grid_fingerprint{};
 };
 
@@ -87,6 +88,9 @@ struct CorridorInput {
 
 [[nodiscard]] std::uint64_t
 corridorRouteFingerprint(std::span<const Point2> route_points) noexcept;
+
+[[nodiscard]] std::uint64_t
+corridorConfigFingerprint(const CorridorConfig& config) noexcept;
 
 [[nodiscard]] bool
 occupancyGridFingerprintsEqual(const OccupancyGridFingerprint& lhs,

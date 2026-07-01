@@ -242,8 +242,27 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "racing_line_window_width_change_threshold_m", 2.0),
                  0.0, 5000.0);
+  config.trajectory_planner.racing_line.window_min_heading_span_rad = std::clamp(
+      node.declare_parameter<double>("racing_line_window_min_heading_span_deg", 10.0) *
+          std::numbers::pi / 180.0,
+      0.0, std::numbers::pi);
+  config.trajectory_planner.racing_line.window_min_curvature_1pm = std::clamp(
+      node.declare_parameter<double>("racing_line_window_min_curvature_1pm", 0.01), 0.0,
+      1000.0);
+  config.trajectory_planner.racing_line.window_min_width_asymmetry_m = std::clamp(
+      node.declare_parameter<double>("racing_line_window_min_width_asymmetry_m", 1.0),
+      0.0, 5000.0);
   config.trajectory_planner.racing_line.dp_offset_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_dp_offset_step_m", 1.0), 0.05, 100.0);
+      node.declare_parameter<double>("racing_line_dp_offset_step_m", 1.5), 0.05, 100.0);
+  config.trajectory_planner.racing_line.dp_coarse_offset_step_m = std::clamp(
+      node.declare_parameter<double>("racing_line_dp_coarse_offset_step_m", 2.0), 0.05,
+      100.0);
+  config.trajectory_planner.racing_line.dp_fine_offset_step_m = std::clamp(
+      node.declare_parameter<double>("racing_line_dp_fine_offset_step_m", 0.75), 0.05,
+      100.0);
+  config.trajectory_planner.racing_line.dp_fine_radius_m =
+      std::clamp(node.declare_parameter<double>("racing_line_dp_fine_radius_m", 1.5),
+                 0.05, 5000.0);
   config.trajectory_planner.racing_line.async_refinement_workers =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
