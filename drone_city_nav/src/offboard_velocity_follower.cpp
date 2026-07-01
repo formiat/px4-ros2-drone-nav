@@ -153,6 +153,14 @@ monotonicTerminalCaptureSpeedLimitMps(const double raw_speed_limit_mps,
                   previous_state.previous_terminal_capture_speed_limit_mps);
 }
 
+[[nodiscard]] double terminalPostPlaneRecaptureMaxSpeedMps(
+    const double terminal_hold_max_speed_mps,
+    const double terminal_capture_max_speed_mps) noexcept {
+  const double recapture_speed_mps =
+      std::max(1.5, 2.0 * std::max(0.0, terminal_hold_max_speed_mps));
+  return std::min(terminal_capture_max_speed_mps, recapture_speed_mps);
+}
+
 [[nodiscard]] double
 trackingPredictionHorizonS(const VelocityFollowerConfig& config) noexcept {
   return sanitizedPositive(config.tracking_prediction_horizon_s, 0.45, 0.0, 2.0);
@@ -440,8 +448,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double terminal_goal_distance = distance(current_position, final_point);
   const double terminal_signed_along_track_distance =
       dot(final_point - current_position, final_tangent);
-  const double terminal_stop_distance =
-      std::max(0.0, terminal_signed_along_track_distance);
   const double remaining_trajectory_distance =
       std::max(0.0, trajectory_length_m - std::max(0.0, control_projection.s_m));
   const double terminal_capture_radius = terminalCaptureRadiusM(config);
@@ -455,10 +461,17 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double terminal_hold_max_speed = finalHoldMaxSpeedMps(config);
   const bool terminal_hold_distance_met = terminal_goal_distance <= final_acceptance;
   const bool terminal_hold_speed_met = current_speed <= terminal_hold_max_speed;
+  const bool past_final_plane = terminal_signed_along_track_distance <= 0.0;
   const bool terminal_capture_goal_distance_triggered =
-      terminal_stop_distance <= terminal_capture_activation_distance;
+      terminal_goal_distance <= terminal_capture_activation_distance;
   const bool terminal_capture_remaining_distance_triggered =
       remaining_trajectory_distance <= terminal_capture_activation_distance;
+  const bool terminal_capture_after_final_plane =
+      past_final_plane &&
+      terminal_goal_distance <= terminal_capture_activation_distance;
+  const bool terminal_capture_triggered =
+      terminal_capture_remaining_distance_triggered ||
+      terminal_capture_after_final_plane;
   if (terminal_hold_distance_met && terminal_hold_speed_met) {
     plan.valid = true;
     plan.final_goal_reached = true;
@@ -505,14 +518,12 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     return plan;
   }
 
-  if (terminal_capture_goal_distance_triggered ||
-      terminal_capture_remaining_distance_triggered) {
+  if (terminal_capture_triggered) {
     const Point2 goal_delta = final_point - current_position;
-    const bool past_final_plane = terminal_signed_along_track_distance <= 0.0;
     const bool brake_after_final_plane =
         past_final_plane && current_speed > terminal_hold_max_speed;
     const double terminal_capture_distance =
-        past_final_plane ? terminal_goal_distance : terminal_stop_distance;
+        past_final_plane ? terminal_goal_distance : remaining_trajectory_distance;
     Point2 terminal_tangent = final_tangent;
     if ((!past_final_plane ||
          (!brake_after_final_plane && terminal_goal_distance > final_acceptance)) &&
@@ -524,10 +535,16 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     const double capture_max_speed = terminalCaptureMaxSpeedMps(config);
     const double capture_braking_speed_limit = brakingSpeedLimitMps(
         terminal_capture_distance, final_acceptance, terminal_capture_decel);
+    const double post_plane_recapture_speed_limit =
+        past_final_plane && !brake_after_final_plane
+            ? terminalPostPlaneRecaptureMaxSpeedMps(terminal_hold_max_speed,
+                                                    capture_max_speed)
+            : capture_max_speed;
     const double raw_capture_speed_limit =
-        brake_after_final_plane ? 0.0
-                                : std::min({capture_max_speed, capture_gain_speed_limit,
-                                            capture_braking_speed_limit});
+        brake_after_final_plane
+            ? 0.0
+            : std::min({post_plane_recapture_speed_limit, capture_gain_speed_limit,
+                        capture_braking_speed_limit});
     const double capture_speed_limit =
         past_final_plane ? raw_capture_speed_limit
                          : monotonicTerminalCaptureSpeedLimitMps(

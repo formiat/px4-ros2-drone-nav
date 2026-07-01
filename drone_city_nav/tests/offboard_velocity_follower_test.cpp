@@ -261,6 +261,27 @@ TEST(OffboardVelocityFollower, TerminalCaptureActivatesByBrakingDistance) {
   EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
 }
 
+TEST(OffboardVelocityFollower,
+     TerminalCaptureIgnoresFinalPlaneProjectionWhenRemainingPathFar) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(
+      std::vector<Point2>{{0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}});
+  VelocityFollowerConfig config = testConfig();
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{50.0, 0.0}, Point2{20.0, 0.0},
+                           true, 0.1, VelocityFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NE(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_FALSE(plan.terminal_capture_active);
+  EXPECT_NEAR(plan.terminal_signed_along_track_distance_m, 50.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_remaining_trajectory_distance_m, 250.0, 1.0e-9);
+  EXPECT_FALSE(plan.terminal_capture_goal_distance_triggered);
+  EXPECT_FALSE(plan.terminal_capture_remaining_distance_triggered);
+}
+
 TEST(OffboardVelocityFollower, TerminalCaptureSpeedUsesBrakingLimit) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   VelocityFollowerConfig config = testConfig();
@@ -934,9 +955,9 @@ TEST(OffboardVelocityFollower, TerminalCaptureReturnsToGoalAfterFinalPlaneWhenSl
   EXPECT_NEAR(plan.terminal_capture_gain_speed_limit_mps, std::sqrt(32.0), 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_braking_speed_limit_mps,
               std::sqrt(8.0 * (std::sqrt(32.0) - 1.0)), 1.0e-9);
-  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, std::sqrt(32.0), 1.0e-9);
-  EXPECT_NEAR(plan.desired_velocity_xy.x, -4.0, 1.0e-9);
-  EXPECT_NEAR(plan.desired_velocity_xy.y, -4.0, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 1.6, 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_xy.x, -1.6 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_xy.y, -1.6 / std::sqrt(2.0), 1.0e-9);
   EXPECT_NEAR(plan.path_tangent.x, -1.0 / std::sqrt(2.0), 1.0e-9);
   EXPECT_NEAR(plan.path_tangent.y, -1.0 / std::sqrt(2.0), 1.0e-9);
   EXPECT_NEAR(plan.limiting_constraint_distance_m, std::sqrt(32.0), 1.0e-9);
