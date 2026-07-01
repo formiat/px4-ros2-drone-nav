@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace drone_city_nav {
@@ -34,6 +35,55 @@ namespace {
     sample.left_bound_m = 5.0;
     sample.right_bound_m = 1.0;
     sample.clearance_m = 5.0;
+    samples.push_back(sample);
+  }
+  return samples;
+}
+
+[[nodiscard]] std::vector<CorridorSample> longLeftTurnCorridor() {
+  std::vector<CorridorSample> samples;
+  double s_m = 0.0;
+  auto push_sample = [&](const Point2 center, const Point2 tangent) {
+    CorridorSample sample{};
+    sample.s_m = s_m;
+    sample.center = center;
+    sample.tangent = tangent;
+    sample.normal = Point2{-tangent.y, tangent.x};
+    sample.left_bound_m = 5.0;
+    sample.right_bound_m = 5.0;
+    sample.clearance_m = 5.0;
+    samples.push_back(sample);
+    s_m += 2.0;
+  };
+  for (int i = 0; i <= 10; ++i) {
+    push_sample(Point2{static_cast<double>(i) * 2.0, 0.0}, Point2{1.0, 0.0});
+  }
+  for (int i = 1; i <= 10; ++i) {
+    push_sample(Point2{20.0, static_cast<double>(i) * 2.0}, Point2{0.0, 1.0});
+  }
+  return samples;
+}
+
+[[nodiscard]] std::vector<CorridorSample> gradualBendCorridor() {
+  std::vector<CorridorSample> samples;
+  Point2 center{0.0, 0.0};
+  double s_m = 0.0;
+  for (int i = 0; i <= 12; ++i) {
+    const double angle_rad =
+        static_cast<double>(i) * (30.0 * std::numbers::pi / 180.0) / 12.0;
+    const Point2 tangent{std::cos(angle_rad), std::sin(angle_rad)};
+    if (i > 0) {
+      center = Point2{center.x + tangent.x * 2.0, center.y + tangent.y * 2.0};
+      s_m += 2.0;
+    }
+    CorridorSample sample{};
+    sample.s_m = s_m;
+    sample.center = center;
+    sample.tangent = tangent;
+    sample.normal = Point2{-tangent.y, tangent.x};
+    sample.left_bound_m = 4.0;
+    sample.right_bound_m = 4.0;
+    sample.clearance_m = 4.0;
     samples.push_back(sample);
   }
   return samples;
@@ -147,7 +197,7 @@ TEST(RacingLine, ResultIsDeterministic) {
 
 TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   const OccupancyGrid2D grid = openGrid();
-  const auto corridor = wideLeftTurnCorridor();
+  const auto corridor = longLeftTurnCorridor();
   RacingLineConfig single_worker_config = testConfig();
   single_worker_config.parallel_workers = 1U;
   RacingLineConfig parallel_config = testConfig();
@@ -175,11 +225,12 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
   EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);
   EXPECT_GT(parallel.stats.local_candidate_evaluations, 0U);
-  EXPECT_GT(parallel.stats.local_candidate_full_score_fallbacks, 0U);
-  EXPECT_GT(parallel.stats.local_candidate_acceptance_full_scores, 0U);
-  EXPECT_GE(parallel.stats.local_candidate_evaluations,
-            parallel.stats.local_candidate_full_score_fallbacks);
+  const std::size_t full_candidate_work =
+      parallel.stats.local_candidate_full_score_fallbacks +
+      parallel.stats.local_candidate_acceptance_full_scores;
+  EXPECT_LT(full_candidate_work, parallel.stats.local_candidate_evaluations);
   EXPECT_GT(parallel.stats.full_candidate_score_duration_ms, 0.0);
+  EXPECT_GT(parallel.stats.candidate_segment_cache_hits, 0U);
   EXPECT_GT(parallel.stats.candidate_segment_cache_misses, 0U);
   EXPECT_GT(parallel.stats.dp_segment_cache_misses, 0U);
   EXPECT_GT(parallel.stats.dp_coarse_states, 0U);
@@ -193,6 +244,25 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_DOUBLE_EQ(sequential.stats.final_cost, parallel.stats.final_cost);
   EXPECT_DOUBLE_EQ(sequential.stats.final_length_m, parallel.stats.final_length_m);
   EXPECT_DOUBLE_EQ(sequential.stats.estimated_time_s, parallel.stats.estimated_time_s);
+}
+
+TEST(RacingLine, LocalCandidateScoringReducesFullCandidateWork) {
+  const OccupancyGrid2D grid = openGrid();
+  RacingLineConfig config = testConfig();
+  config.parallel_workers = 1U;
+  config.max_iterations = 8U;
+
+  const RacingLineResult result =
+      optimizeRacingLine(longLeftTurnCorridor(), grid, config, speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_GT(result.stats.local_candidate_evaluations, 0U);
+  const std::size_t full_candidate_work =
+      result.stats.local_candidate_full_score_fallbacks +
+      result.stats.local_candidate_acceptance_full_scores;
+  EXPECT_LT(full_candidate_work, result.stats.local_candidate_evaluations);
+  EXPECT_GT(result.stats.candidate_segment_cache_hits, 0U);
+  EXPECT_GT(result.stats.candidate_segment_cache_misses, 0U);
 }
 
 TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
@@ -272,6 +342,24 @@ TEST(RacingLine, StraightOpenCorridorSkipsWindowOptimization) {
   EXPECT_EQ(result.stats.dp_states, 0U);
   EXPECT_EQ(result.stats.dp_transitions, 0U);
   EXPECT_EQ(result.stats.local_candidate_evaluations, 0U);
+}
+
+TEST(RacingLine, HeadingSpanActivatesGradualBendWindow) {
+  const OccupancyGrid2D grid = openGrid();
+  RacingLineConfig config = testConfig();
+  config.window_heading_threshold_rad = 45.0 * std::numbers::pi / 180.0;
+  config.window_min_heading_span_rad = 20.0 * std::numbers::pi / 180.0;
+  config.window_min_curvature_1pm = 100.0;
+  config.window_width_change_threshold_m = 100.0;
+  config.window_min_width_asymmetry_m = 100.0;
+  config.max_iterations = 1U;
+
+  const RacingLineResult result =
+      optimizeRacingLine(gradualBendCorridor(), grid, config, speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_GT(result.stats.active_window_count, 0U);
+  EXPECT_GT(result.stats.active_window_samples, 0U);
 }
 
 TEST(RacingLine, ReportsTraversalTimeAndRegularizationStats) {
