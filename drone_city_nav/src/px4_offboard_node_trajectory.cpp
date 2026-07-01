@@ -1,3 +1,4 @@
+#include <limits>
 #include <utility>
 
 #include "px4_offboard_node.hpp"
@@ -160,12 +161,33 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
   const std::string samples_csv_path = writeFinalTrajectorySamplesCsv(source_label);
+  const SpeedProfileConstraintDiagnostic* top_speed_constraint =
+      last_trajectory_planner_stats_.top_speed_constraints.empty()
+          ? nullptr
+          : &last_trajectory_planner_stats_.top_speed_constraints.front();
+  const double top_speed_constraint_s = top_speed_constraint != nullptr
+                                            ? top_speed_constraint->s_m
+                                            : std::numeric_limits<double>::quiet_NaN();
+  const double top_speed_constraint_radius =
+      top_speed_constraint != nullptr ? top_speed_constraint->radius_m
+                                      : std::numeric_limits<double>::quiet_NaN();
+  const double top_speed_constraint_limit =
+      top_speed_constraint != nullptr ? top_speed_constraint->speed_limit_mps
+                                      : std::numeric_limits<double>::quiet_NaN();
+  const char* top_speed_constraint_source =
+      top_speed_constraint != nullptr
+          ? speedConstraintTypeName(top_speed_constraint->source)
+          : speedConstraintTypeName(SpeedConstraintType::kNone);
+
   RCLCPP_INFO(
       get_logger(),
       "Received executable final trajectory: source=%s local_path_update_id=%" PRIu64
       " planner_path_id=%" PRIu64
       " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
+      "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
+      "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
+      "speed_profile_smoothed=%zu max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
       "max_heading_delta=%.1fdeg max_curvature_jump=%.4f] samples_csv='%s'",
       source_label, received_path_update_id_, latest_planner_path_id_,
@@ -176,6 +198,13 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       last_trajectory_planner_stats_.speed_profile_mean_mps,
       last_trajectory_planner_stats_.speed_profile_max_mps,
       last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
+      top_speed_constraint_s, top_speed_constraint_radius, top_speed_constraint_limit,
+      top_speed_constraint_source,
+      last_trajectory_planner_stats_.isolated_curvature_spike_candidates,
+      last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_geometry,
+      last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_speed_profile,
+      last_trajectory_planner_stats_.isolated_curvature_spike_max_before_1pm,
+      last_trajectory_planner_stats_.isolated_curvature_spike_max_after_1pm,
       last_trajectory_shape_diagnostics_.segment_count,
       last_trajectory_shape_diagnostics_.min_segment_length_m,
       last_trajectory_shape_diagnostics_.mean_segment_length_m,

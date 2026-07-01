@@ -1,4 +1,5 @@
 #include <exception>
+#include <limits>
 
 #include "planner_node.hpp"
 
@@ -259,6 +260,29 @@ bool PlannerNode::publishTrajectoryResult(
     return false;
   }
 
+  const SpeedProfileConstraintDiagnostic* top_speed_constraint =
+      trajectory_result.stats.top_speed_constraints.empty()
+          ? nullptr
+          : &trajectory_result.stats.top_speed_constraints.front();
+  const double top_speed_constraint_s = top_speed_constraint != nullptr
+                                            ? top_speed_constraint->s_m
+                                            : std::numeric_limits<double>::quiet_NaN();
+  const double top_speed_constraint_radius =
+      top_speed_constraint != nullptr ? top_speed_constraint->radius_m
+                                      : std::numeric_limits<double>::quiet_NaN();
+  const double top_speed_constraint_curvature =
+      top_speed_constraint != nullptr ? top_speed_constraint->curvature_1pm
+                                      : std::numeric_limits<double>::quiet_NaN();
+  const double top_speed_constraint_limit =
+      top_speed_constraint != nullptr ? top_speed_constraint->speed_limit_mps
+                                      : std::numeric_limits<double>::quiet_NaN();
+  const char* top_speed_constraint_source =
+      top_speed_constraint != nullptr
+          ? speedConstraintTypeName(top_speed_constraint->source)
+          : speedConstraintTypeName(SpeedConstraintType::kNone);
+  const bool top_speed_constraint_isolated =
+      top_speed_constraint != nullptr && top_speed_constraint->isolated_curvature_spike;
+
   RCLCPP_INFO(
       get_logger(),
       "%s final trajectory: route_points=%zu trajectory_points=%zu "
@@ -301,7 +325,11 @@ bool PlannerNode::publishTrajectoryResult(
       "min_inner_margin=%.2f max_outer_shift=%.2f "
       "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
       "relaxed_angle=%.1fdeg)] "
-      "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu]",
+      "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu "
+      "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
+      "limit=%.2f source=%s isolated=%s) "
+      "isolated_spikes(candidates=%zu geometry_smoothed=%zu "
+      "speed_profile_smoothed=%zu max_before=%.4f max_after=%.4f)]",
       source_label, route_points.size(), trajectory_points.size(), duration_ms,
       static_cast<int>(
           trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
@@ -409,7 +437,16 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.speed_profile_min_mps,
       trajectory_result.stats.speed_profile_mean_mps,
       trajectory_result.stats.speed_profile_max_mps,
-      trajectory_result.stats.speed_profile_curvature_limited_samples);
+      trajectory_result.stats.speed_profile_curvature_limited_samples,
+      trajectory_result.stats.top_speed_constraints.size(), top_speed_constraint_s,
+      top_speed_constraint_radius, top_speed_constraint_curvature,
+      top_speed_constraint_limit, top_speed_constraint_source,
+      top_speed_constraint_isolated ? "true" : "false",
+      trajectory_result.stats.isolated_curvature_spike_candidates,
+      trajectory_result.stats.isolated_curvature_spikes_smoothed_geometry,
+      trajectory_result.stats.isolated_curvature_spikes_smoothed_speed_profile,
+      trajectory_result.stats.isolated_curvature_spike_max_before_1pm,
+      trajectory_result.stats.isolated_curvature_spike_max_after_1pm);
 
   last_valid_path_points_ = trajectory_points;
   logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");

@@ -46,6 +46,17 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   output_stats.turn_smoothing_duration_ms =
       diagnostics.stats.turn_smoothing_duration_ms;
   output_stats.speed_profile_duration_ms = diagnostics.stats.speed_profile_duration_ms;
+  output_stats.isolated_curvature_spike_candidates =
+      diagnostics.stats.isolated_curvature_spike_candidates;
+  output_stats.isolated_curvature_spikes_smoothed_geometry =
+      diagnostics.stats.isolated_curvature_spikes_smoothed_geometry;
+  output_stats.isolated_curvature_spikes_smoothed_speed_profile =
+      diagnostics.stats.isolated_curvature_spikes_smoothed_speed_profile;
+  output_stats.isolated_curvature_spike_max_before_1pm =
+      diagnostics.stats.isolated_curvature_spike_max_before_1pm;
+  output_stats.isolated_curvature_spike_max_after_1pm =
+      diagnostics.stats.isolated_curvature_spike_max_after_1pm;
+  output_stats.top_speed_constraints = diagnostics.stats.top_speed_constraints;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
@@ -101,6 +112,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
     stats.speed_profile_mean_mps =
         speed_sum / static_cast<double>(speed_profile.samples.size());
   }
+  stats.top_speed_constraints = topSpeedProfileConstraints(speed_profile, 5U);
   return stats;
 }
 

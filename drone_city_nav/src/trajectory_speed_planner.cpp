@@ -295,6 +295,35 @@ minProfileSampleInRange(const TrajectorySpeedProfile& profile, const double star
   return limiting_sample;
 }
 
+[[nodiscard]] bool sameConstraint(const SpeedProfileConstraintDiagnostic& lhs,
+                                  const TrajectorySpeedSample& rhs) noexcept {
+  constexpr double kConstraintMergeToleranceM = 0.25;
+  if (lhs.source != rhs.reason) {
+    return false;
+  }
+  if (!std::isfinite(lhs.s_m) || !std::isfinite(rhs.constraint_s_m)) {
+    return lhs.sample_index == rhs.segment_index;
+  }
+  return std::abs(lhs.s_m - rhs.constraint_s_m) <= kConstraintMergeToleranceM;
+}
+
+[[nodiscard]] bool
+isIsolatedCurvatureSpike(const std::span<const TrajectorySpeedSample> samples,
+                         const std::size_t index) noexcept {
+  if (index == 0U || index + 1U >= samples.size()) {
+    return false;
+  }
+  constexpr double kMinimumSpikeCurvature = 0.05;
+  constexpr double kNeighborRatio = 0.45;
+  const double current = std::abs(samples[index].curvature_1pm);
+  if (!(current >= kMinimumSpikeCurvature)) {
+    return false;
+  }
+  const double previous = std::abs(samples[index - 1U].curvature_1pm);
+  const double next = std::abs(samples[index + 1U].curvature_1pm);
+  return previous <= current * kNeighborRatio && next <= current * kNeighborRatio;
+}
+
 } // namespace
 
 const char*
@@ -394,6 +423,76 @@ TrajectorySpeedSample speedProfileSampleAtS(const TrajectorySpeedProfile& profil
   }
   const TrajectorySpeedSample& start = profile.samples[end_index - 1U];
   return interpolateProfileSample(start, end, s_m);
+}
+
+std::vector<SpeedProfileConstraintDiagnostic>
+topSpeedProfileConstraints(const TrajectorySpeedProfile& profile,
+                           const std::size_t max_constraints) {
+  std::vector<SpeedProfileConstraintDiagnostic> constraints;
+  if (!profile.valid || profile.samples.empty() || max_constraints == 0U) {
+    return constraints;
+  }
+
+  for (const TrajectorySpeedSample& sample : profile.samples) {
+    if (sample.reason != SpeedConstraintType::kArc ||
+        !std::isfinite(sample.constraint_limit_mps)) {
+      continue;
+    }
+
+    auto existing = std::ranges::find_if(
+        constraints, [&sample](const SpeedProfileConstraintDiagnostic& diagnostic) {
+          return sameConstraint(diagnostic, sample);
+        });
+    if (existing == constraints.end()) {
+      SpeedProfileConstraintDiagnostic diagnostic{};
+      diagnostic.sample_index = sample.segment_index;
+      diagnostic.s_m = sample.constraint_s_m;
+      diagnostic.radius_m = sample.radius_m;
+      diagnostic.curvature_1pm = sample.curvature_1pm;
+      diagnostic.speed_limit_mps = sample.constraint_limit_mps;
+      diagnostic.profiled_limit_mps = sample.profiled_limit_mps;
+      diagnostic.source = sample.reason;
+      if (sample.segment_index < profile.samples.size()) {
+        diagnostic.isolated_curvature_spike =
+            isIsolatedCurvatureSpike(profile.samples, sample.segment_index);
+      }
+      constraints.push_back(diagnostic);
+      continue;
+    }
+
+    const bool lower_limit = sample.constraint_limit_mps < existing->speed_limit_mps;
+    const bool stronger_curvature =
+        sample.constraint_limit_mps == existing->speed_limit_mps &&
+        std::abs(sample.curvature_1pm) > std::abs(existing->curvature_1pm);
+    if (lower_limit || stronger_curvature) {
+      existing->sample_index = sample.segment_index;
+      existing->s_m = sample.constraint_s_m;
+      existing->radius_m = sample.radius_m;
+      existing->curvature_1pm = sample.curvature_1pm;
+      existing->speed_limit_mps = sample.constraint_limit_mps;
+      existing->profiled_limit_mps = sample.profiled_limit_mps;
+      existing->source = sample.reason;
+      existing->isolated_curvature_spike =
+          sample.segment_index < profile.samples.size()
+              ? isIsolatedCurvatureSpike(profile.samples, sample.segment_index)
+              : false;
+    } else {
+      existing->profiled_limit_mps =
+          std::min(existing->profiled_limit_mps, sample.profiled_limit_mps);
+    }
+  }
+
+  std::ranges::sort(constraints, [](const SpeedProfileConstraintDiagnostic& lhs,
+                                    const SpeedProfileConstraintDiagnostic& rhs) {
+    if (lhs.speed_limit_mps != rhs.speed_limit_mps) {
+      return lhs.speed_limit_mps < rhs.speed_limit_mps;
+    }
+    return lhs.s_m < rhs.s_m;
+  });
+  if (constraints.size() > max_constraints) {
+    constraints.resize(max_constraints);
+  }
+  return constraints;
 }
 
 ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,

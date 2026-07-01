@@ -481,6 +481,7 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, planner_stats.speed_profile_mean_mps);
   stream << ",\"speed_profile_limited_by_curvature_count\":"
          << planner_stats.speed_profile_curvature_limited_samples;
+  stream << "," << speedProfileConstraintDiagnosticsJsonFields(planner_stats);
   stream << ",\"trajectory_shape_segment_count\":" << shape.segment_count;
   stream << ",\"trajectory_shape_segment_len_min_m\":";
   writeBlackboxJsonNumberOrNull(stream, shape.min_segment_length_m);

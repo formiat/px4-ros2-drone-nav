@@ -34,6 +34,17 @@ struct TrajectorySpeedProfile {
   bool valid{false};
 };
 
+struct SpeedProfileConstraintDiagnostic {
+  std::size_t sample_index{0U};
+  double s_m{std::numeric_limits<double>::quiet_NaN()};
+  double radius_m{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_1pm{0.0};
+  double speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double profiled_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  SpeedConstraintType source{SpeedConstraintType::kNone};
+  bool isolated_curvature_spike{false};
+};
+
 struct TraversalTimeEstimate {
   bool valid{false};
   double estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
@@ -87,6 +98,10 @@ buildTrajectorySpeedProfile(std::span<const TrajectoryPointSample> trajectory_sa
 
 [[nodiscard]] TrajectorySpeedSample
 speedProfileSampleAtS(const TrajectorySpeedProfile& profile, double s_m);
+
+[[nodiscard]] std::vector<SpeedProfileConstraintDiagnostic>
+topSpeedProfileConstraints(const TrajectorySpeedProfile& profile,
+                           std::size_t max_constraints);
 
 [[nodiscard]] ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
                                               const ScalarSpeedQuery& query,

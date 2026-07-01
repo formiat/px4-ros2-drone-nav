@@ -134,6 +134,68 @@ TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
   EXPECT_NEAR(plan.lookahead_constraint_distance_m, 8.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, TopConstraintsAreUniqueAndFlagIsolatedSpikes) {
+  TrajectorySpeedProfile profile{};
+  profile.valid = true;
+  profile.samples = {
+      TrajectorySpeedSample{.s_m = 0.0,
+                            .geometric_limit_mps = 12.0,
+                            .profiled_limit_mps = 9.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 2U,
+                            .curvature_1pm = 0.01,
+                            .radius_m = 100.0,
+                            .constraint_s_m = 2.0,
+                            .constraint_limit_mps = 6.0},
+      TrajectorySpeedSample{.s_m = 1.0,
+                            .geometric_limit_mps = 12.0,
+                            .profiled_limit_mps = 8.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 2U,
+                            .curvature_1pm = 0.01,
+                            .radius_m = 100.0,
+                            .constraint_s_m = 2.0,
+                            .constraint_limit_mps = 6.0},
+      TrajectorySpeedSample{.s_m = 2.0,
+                            .geometric_limit_mps = 6.0,
+                            .profiled_limit_mps = 6.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 2U,
+                            .curvature_1pm = 0.12,
+                            .radius_m = 8.333333333,
+                            .constraint_s_m = 2.0,
+                            .constraint_limit_mps = 6.0},
+      TrajectorySpeedSample{.s_m = 3.0,
+                            .geometric_limit_mps = 12.0,
+                            .profiled_limit_mps = 10.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 4U,
+                            .curvature_1pm = 0.02,
+                            .radius_m = 50.0,
+                            .constraint_s_m = 4.0,
+                            .constraint_limit_mps = 8.0},
+      TrajectorySpeedSample{.s_m = 4.0,
+                            .geometric_limit_mps = 8.0,
+                            .profiled_limit_mps = 8.0,
+                            .reason = SpeedConstraintType::kArc,
+                            .segment_index = 4U,
+                            .curvature_1pm = 0.02,
+                            .radius_m = 50.0,
+                            .constraint_s_m = 4.0,
+                            .constraint_limit_mps = 8.0},
+  };
+
+  const std::vector<SpeedProfileConstraintDiagnostic> constraints =
+      topSpeedProfileConstraints(profile, 5U);
+
+  ASSERT_EQ(constraints.size(), 2U);
+  EXPECT_NEAR(constraints[0].s_m, 2.0, 1.0e-9);
+  EXPECT_NEAR(constraints[0].speed_limit_mps, 6.0, 1.0e-9);
+  EXPECT_TRUE(constraints[0].isolated_curvature_spike);
+  EXPECT_NEAR(constraints[1].s_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(constraints[1].speed_limit_mps, 8.0, 1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, SpeedProfileSampleInterpolatesBetweenSamples) {
   const TrajectorySpeedSample sample = speedProfileSampleAtS(simpleProfile(), 4.0);
 

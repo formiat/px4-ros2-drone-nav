@@ -143,6 +143,21 @@ void expectContainsAll(const std::string& text,
   stats.speed_profile_mean_mps = 13.4;
   stats.speed_profile_max_mps = 19.1;
   stats.speed_profile_curvature_limited_samples = 69U;
+  stats.isolated_curvature_spike_candidates = 2U;
+  stats.isolated_curvature_spikes_smoothed_geometry = 1U;
+  stats.isolated_curvature_spikes_smoothed_speed_profile = 1U;
+  stats.isolated_curvature_spike_max_before_1pm = 0.12;
+  stats.isolated_curvature_spike_max_after_1pm = 0.04;
+  stats.top_speed_constraints.push_back(SpeedProfileConstraintDiagnostic{
+      .sample_index = 17U,
+      .s_m = 42.5,
+      .radius_m = 9.25,
+      .curvature_1pm = 0.108,
+      .speed_limit_mps = 6.8,
+      .profiled_limit_mps = 6.8,
+      .source = SpeedConstraintType::kArc,
+      .isolated_curvature_spike = true,
+  });
   stats.total_duration_ms = 123.4;
   stats.corridor_duration_ms = 5.5;
   stats.racing_line_duration_ms = 99.9;
@@ -372,6 +387,31 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
+TEST(TrajectoryDiagnosticsIo,
+     SpeedProfileConstraintJsonFragmentContainsBlackboxRequiredKeys) {
+  const std::string fragment =
+      speedProfileConstraintDiagnosticsJsonFields(populatedStats());
+
+  expectContainsAll(fragment,
+                    std::array{
+                        "\"speed_profile_top_constraint_count\"",
+                        "\"speed_profile_top1_sample_index\"",
+                        "\"speed_profile_top1_s_m\"",
+                        "\"speed_profile_top1_radius_m\"",
+                        "\"speed_profile_top1_curvature_1pm\"",
+                        "\"speed_profile_top1_speed_limit_mps\"",
+                        "\"speed_profile_top1_profiled_limit_mps\"",
+                        "\"speed_profile_top1_source\"",
+                        "\"speed_profile_top1_isolated_curvature_spike\"",
+                        "\"isolated_curvature_spike_candidates\"",
+                        "\"isolated_curvature_spikes_smoothed_geometry\"",
+                        "\"isolated_curvature_spikes_smoothed_speed_profile\"",
+                        "\"isolated_curvature_spike_max_before_1pm\"",
+                        "\"isolated_curvature_spike_max_after_1pm\"",
+                    });
+  EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
 TEST(TrajectoryDiagnosticsIo, TimingJsonFragmentContainsBlackboxRequiredKeys) {
   const std::string fragment = trajectoryTimingDiagnosticsJsonFields(populatedStats());
 
@@ -497,6 +537,23 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_relaxed_angle_deg, 15.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
+  EXPECT_EQ(parsed_value.stats.isolated_curvature_spike_candidates, 2U);
+  EXPECT_EQ(parsed_value.stats.isolated_curvature_spikes_smoothed_geometry, 1U);
+  EXPECT_EQ(parsed_value.stats.isolated_curvature_spikes_smoothed_speed_profile, 1U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.isolated_curvature_spike_max_before_1pm, 0.12);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.isolated_curvature_spike_max_after_1pm, 0.04);
+  ASSERT_EQ(parsed_value.stats.top_speed_constraints.size(), 1U);
+  EXPECT_EQ(parsed_value.stats.top_speed_constraints.front().sample_index, 17U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.top_speed_constraints.front().s_m, 42.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.top_speed_constraints.front().radius_m, 9.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.top_speed_constraints.front().curvature_1pm,
+                   0.108);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.top_speed_constraints.front().speed_limit_mps,
+                   6.8);
+  EXPECT_EQ(parsed_value.stats.top_speed_constraints.front().source,
+            SpeedConstraintType::kArc);
+  EXPECT_TRUE(
+      parsed_value.stats.top_speed_constraints.front().isolated_curvature_spike);
   EXPECT_DOUBLE_EQ(parsed_value.stats.total_duration_ms, 123.4);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor_duration_ms, 5.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line_duration_ms, 99.9);

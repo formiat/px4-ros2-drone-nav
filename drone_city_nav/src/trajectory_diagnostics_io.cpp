@@ -1,5 +1,6 @@
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iomanip>
@@ -42,6 +43,11 @@ void appendJsonSize(std::ostream& stream, const std::string_view key,
 void appendJsonBool(std::ostream& stream, const std::string_view key,
                     const bool value) {
   stream << ",\"" << key << "\":" << (value ? "true" : "false");
+}
+
+void appendJsonString(std::ostream& stream, const std::string_view key,
+                      const std::string_view value) {
+  stream << ",\"" << key << "\":\"" << value << "\"";
 }
 
 void appendJsonUint64(std::ostream& stream, const std::string_view key,
@@ -185,7 +191,61 @@ parseTrajectoryQualityName(const std::string_view value) {
   return TrajectoryQuality::kUnknown;
 }
 
+[[nodiscard]] SpeedConstraintType
+parseSpeedConstraintTypeName(const std::string_view value) {
+  if (value == speedConstraintTypeName(SpeedConstraintType::kArc)) {
+    return SpeedConstraintType::kArc;
+  }
+  if (value == speedConstraintTypeName(SpeedConstraintType::kGoal)) {
+    return SpeedConstraintType::kGoal;
+  }
+  return SpeedConstraintType::kNone;
+}
+
+[[nodiscard]] std::string speedProfileTopConstraintPrefix(const std::size_t index) {
+  return "speed_profile_top" + std::to_string(index + 1U) + "_";
+}
+
+std::string
+speedProfileConstraintDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"speed_profile_top_constraint_count\":"
+         << stats.top_speed_constraints.size();
+  for (std::size_t i = 0U; i < stats.top_speed_constraints.size(); ++i) {
+    const SpeedProfileConstraintDiagnostic& constraint = stats.top_speed_constraints[i];
+    const std::string prefix = speedProfileTopConstraintPrefix(i);
+    appendJsonSize(stream, prefix + "sample_index", constraint.sample_index);
+    appendJsonNumber(stream, prefix + "s_m", constraint.s_m);
+    appendJsonNumber(stream, prefix + "radius_m", constraint.radius_m);
+    appendJsonNumber(stream, prefix + "curvature_1pm", constraint.curvature_1pm);
+    appendJsonNumber(stream, prefix + "speed_limit_mps", constraint.speed_limit_mps);
+    appendJsonNumber(stream, prefix + "profiled_limit_mps",
+                     constraint.profiled_limit_mps);
+    appendJsonString(stream, prefix + "source",
+                     speedConstraintTypeName(constraint.source));
+    appendJsonBool(stream, prefix + "isolated_curvature_spike",
+                   constraint.isolated_curvature_spike);
+  }
+  appendJsonSize(stream, "isolated_curvature_spike_candidates",
+                 stats.isolated_curvature_spike_candidates);
+  appendJsonSize(stream, "isolated_curvature_spikes_smoothed_geometry",
+                 stats.isolated_curvature_spikes_smoothed_geometry);
+  appendJsonSize(stream, "isolated_curvature_spikes_smoothed_speed_profile",
+                 stats.isolated_curvature_spikes_smoothed_speed_profile);
+  appendJsonNumber(stream, "isolated_curvature_spike_max_before_1pm",
+                   stats.isolated_curvature_spike_max_before_1pm);
+  appendJsonNumber(stream, "isolated_curvature_spike_max_after_1pm",
+                   stats.isolated_curvature_spike_max_after_1pm);
+  return stream.str();
+}
+
 } // namespace
+
+std::string
+speedProfileConstraintDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
+  return speedProfileConstraintDiagnosticsJsonFieldsImpl(stats);
+}
 
 std::string finalTrajectorySamplesCsvHeader() {
   return "sample_index,s_m,x,y,tangent_x,tangent_y,curvature_1pm,"
@@ -477,6 +537,7 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                  stats.corridor.clearance_field_cache_hit);
   stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
+  stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "trajectory_shape_segment_count", shape.segment_count);
   appendJsonNumber(stream, "trajectory_shape_max_curvature_jump_1pm",
                    shape.max_curvature_jump_1pm);
@@ -513,6 +574,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonNumber(stream, "speed_profile_mean_mps", stats.speed_profile_mean_mps);
   appendJsonSize(stream, "speed_profile_curvature_limited_samples",
                  stats.speed_profile_curvature_limited_samples);
+  stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
   stream << "," << trajectoryTimingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "corridor_input_points", stats.corridor.input_points);
   appendJsonSize(stream, "corridor_samples", stats.corridor.samples);
@@ -575,6 +637,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonNumber(stream, "racing_line_cost_final", stats.racing_line.final_cost);
   stream << "," << racingLineDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
+  stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
   stream << "}";
   return stream.str();
 }
@@ -614,6 +677,39 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   envelope.stats.speed_profile_mean_mps);
   parseJsonSize(json, "speed_profile_curvature_limited_samples",
                 envelope.stats.speed_profile_curvature_limited_samples);
+  std::size_t top_constraint_count = 0U;
+  parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
+  top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);
+  envelope.stats.top_speed_constraints.clear();
+  envelope.stats.top_speed_constraints.reserve(top_constraint_count);
+  for (std::size_t i = 0U; i < top_constraint_count; ++i) {
+    const std::string prefix = speedProfileTopConstraintPrefix(i);
+    SpeedProfileConstraintDiagnostic diagnostic{};
+    parseJsonSize(json, prefix + "sample_index", diagnostic.sample_index);
+    parseJsonDouble(json, prefix + "s_m", diagnostic.s_m);
+    parseJsonDouble(json, prefix + "radius_m", diagnostic.radius_m);
+    parseJsonDouble(json, prefix + "curvature_1pm", diagnostic.curvature_1pm);
+    parseJsonDouble(json, prefix + "speed_limit_mps", diagnostic.speed_limit_mps);
+    parseJsonDouble(json, prefix + "profiled_limit_mps", diagnostic.profiled_limit_mps);
+    if (const std::optional<std::string_view> source =
+            jsonValueForKey(json, prefix + "source");
+        source.has_value()) {
+      diagnostic.source = parseSpeedConstraintTypeName(*source);
+    }
+    parseJsonBool(json, prefix + "isolated_curvature_spike",
+                  diagnostic.isolated_curvature_spike);
+    envelope.stats.top_speed_constraints.push_back(diagnostic);
+  }
+  parseJsonSize(json, "isolated_curvature_spike_candidates",
+                envelope.stats.isolated_curvature_spike_candidates);
+  parseJsonSize(json, "isolated_curvature_spikes_smoothed_geometry",
+                envelope.stats.isolated_curvature_spikes_smoothed_geometry);
+  parseJsonSize(json, "isolated_curvature_spikes_smoothed_speed_profile",
+                envelope.stats.isolated_curvature_spikes_smoothed_speed_profile);
+  parseJsonDouble(json, "isolated_curvature_spike_max_before_1pm",
+                  envelope.stats.isolated_curvature_spike_max_before_1pm);
+  parseJsonDouble(json, "isolated_curvature_spike_max_after_1pm",
+                  envelope.stats.isolated_curvature_spike_max_after_1pm);
   parseJsonDouble(json, "trajectory_total_duration_ms",
                   envelope.stats.total_duration_ms);
   parseJsonDouble(json, "trajectory_corridor_duration_ms",
