@@ -24,9 +24,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                        node.declare_parameter<double>("goal_y_m", 0.0)};
   config.cruise_altitude_m = node.declare_parameter<double>("cruise_altitude_m", 12.0);
   config.inflation_radius_m = std::clamp(
-      node.declare_parameter<double>("inflation_radius_m", 2.0), 0.0, 1000.0);
+      node.declare_parameter<double>("inflation_radius_m", 1.0), 0.0, 1000.0);
   config.planning_clearance_m = std::clamp(
-      node.declare_parameter<double>("planning_clearance_m", 2.0), 0.0, 1000.0);
+      node.declare_parameter<double>("planning_clearance_m", 3.0), 0.0, 1000.0);
 
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
