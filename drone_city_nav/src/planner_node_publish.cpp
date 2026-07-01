@@ -29,8 +29,8 @@ bool PlannerNode::publishPathFromPathCells(
     const OccupancyGrid2D& route_grid, const OccupancyGrid2D& runtime_grid,
     const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
-    const ClearanceField2D* runtime_clearance_field,
-    const bool runtime_clearance_field_cache_hit) {
+    const ClearanceField2D* route_clearance_field,
+    const bool route_clearance_field_cache_hit) {
   struct CandidatePath {
     std::vector<Point2> points;
     const char* source_kind{""};
@@ -145,7 +145,7 @@ bool PlannerNode::publishPathFromPathCells(
   TrajectoryPlannerResult trajectory_result = planBaselineTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route_points.data(), route_points.size()},
-          &runtime_grid, runtime_clearance_field, runtime_clearance_field_cache_hit,
+          &route_grid, route_clearance_field, route_clearance_field_cache_hit,
           std::span<const CorridorSample>{}, nullptr},
       trajectory_planner_config_);
   const double duration_ms =
@@ -158,9 +158,9 @@ bool PlannerNode::publishPathFromPathCells(
                                source_label, duration_ms, &baseline_path_id)) {
     return false;
   }
-  startAsyncTrajectoryRefinement(
-      runtime_grid, route_points, generation, baseline_path_id, trajectory_result,
-      source_label, runtime_clearance_field, runtime_clearance_field_cache_hit);
+  startAsyncTrajectoryRefinement(route_grid, route_points, generation, baseline_path_id,
+                                 trajectory_result, source_label, route_clearance_field,
+                                 route_clearance_field_cache_hit);
   return true;
 }
 

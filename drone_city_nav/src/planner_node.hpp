@@ -159,8 +159,8 @@ private:
                                 const std::vector<GridIndex>& raw_cells,
                                 const std::vector<GridIndex>& smoothed_cells,
                                 const char* source_label,
-                                const ClearanceField2D* runtime_clearance_field,
-                                bool runtime_clearance_field_cache_hit);
+                                const ClearanceField2D* route_clearance_field,
+                                bool route_clearance_field_cache_hit);
 
   bool publishTrajectoryResult(const OccupancyGrid2D& validation_grid,
                                const TrajectoryPlannerResult& trajectory_result,
