@@ -125,13 +125,13 @@ planner_node:
     racing_line_min_offset_step_m: 0.1
     racing_line_cooling_ratio: 0.5
     racing_line_weight_length: 0.02
-    racing_line_weight_curvature: 250.0
-    racing_line_weight_curvature_change: 100.0
+    racing_line_weight_curvature: 300.0
+    racing_line_weight_curvature_change: 130.0
     racing_line_weight_offset_change: 0.5
-    racing_line_weight_offset_second_change: 5.0
-    racing_line_weight_offset_slope: 80.0
-    racing_line_max_offset_slope_per_m: 0.35
-    racing_line_weight_time: 50.0
+    racing_line_weight_offset_second_change: 6.5
+    racing_line_weight_offset_slope: 100.0
+    racing_line_max_offset_slope_per_m: 0.32
+    racing_line_weight_time: 40.0
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5

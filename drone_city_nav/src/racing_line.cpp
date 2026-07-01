@@ -797,17 +797,17 @@ costBreakdownForPoints(const std::span<const Point2> points,
   const double weight_length =
       sanitizedPositive(config.weight_length, 0.02, 0.0, 1.0e6);
   const double weight_curvature =
-      sanitizedPositive(config.weight_curvature, 250.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
   const double weight_curvature_change =
-      sanitizedPositive(config.weight_curvature_change, 100.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
   const double weight_offset_change =
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
-      sanitizedPositive(config.weight_offset_second_change, 5.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_offset_second_change, 6.5, 0.0, 1.0e9);
   const double weight_offset_slope =
-      sanitizedPositive(config.weight_offset_slope, 80.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_offset_slope, 100.0, 0.0, 1.0e9);
   const double max_offset_slope =
-      sanitizedPositive(config.max_offset_slope_per_m, 0.35, 0.0, 100.0);
+      sanitizedPositive(config.max_offset_slope_per_m, 0.32, 0.0, 100.0);
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
@@ -869,7 +869,7 @@ costBreakdownForPoints(const std::span<const Point2> points,
     result.breakdown.length_overrun_cost =
         overrun_m * overrun_m * kLengthOverrunPenalty;
   }
-  const double weight_time = sanitizedPositive(config.weight_time, 50.0, 0.0, 1.0e9);
+  const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     const auto sample_started_at = std::chrono::steady_clock::now();
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);
