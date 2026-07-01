@@ -70,6 +70,8 @@ struct TrajectoryPlannerInput {
   const OccupancyGrid2D* prohibited_grid{nullptr};
   const ClearanceField2D* prohibited_clearance_field{nullptr};
   bool prohibited_clearance_field_cache_hit{false};
+  std::span<const CorridorSample> precomputed_corridor_samples;
+  const CorridorStats* precomputed_corridor_stats{nullptr};
 };
 
 struct TrajectoryPlannerResult {

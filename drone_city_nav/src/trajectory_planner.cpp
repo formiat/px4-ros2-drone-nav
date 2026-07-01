@@ -80,6 +80,62 @@ void finalizeResult(TrajectoryPlannerResult& result,
   (void)config;
 }
 
+void populateCorridorReuseStats(const std::span<const CorridorSample> samples,
+                                CorridorStats& stats) {
+  stats.samples = samples.size();
+  stats.samples_reused = true;
+  stats.reused_samples = samples.size();
+  stats.parallel_workers_used = 0U;
+  stats.sample_build_duration_ms = 0.0;
+  stats.raycast_duration_ms = 0.0;
+  stats.lateral_limit_duration_ms = 0.0;
+  stats.clearance_field_build_duration_ms = 0.0;
+  if (samples.empty()) {
+    return;
+  }
+
+  double width_sum = 0.0;
+  double clearance_sum = 0.0;
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    const CorridorSample& sample = samples[i];
+    const double width = sample.left_bound_m + sample.right_bound_m;
+    if (i == 0U) {
+      stats.min_width_m = width;
+      stats.max_width_m = width;
+      stats.min_clearance_m = sample.clearance_m;
+      stats.max_clearance_m = sample.clearance_m;
+    } else {
+      stats.min_width_m = std::min(stats.min_width_m, width);
+      stats.max_width_m = std::max(stats.max_width_m, width);
+      stats.min_clearance_m = std::min(stats.min_clearance_m, sample.clearance_m);
+      stats.max_clearance_m = std::max(stats.max_clearance_m, sample.clearance_m);
+    }
+    width_sum += width;
+    clearance_sum += sample.clearance_m;
+    stats.max_center_recovery_m =
+        std::max(stats.max_center_recovery_m, sample.center_recovery_m);
+  }
+  stats.mean_width_m = width_sum / static_cast<double>(samples.size());
+  stats.mean_clearance_m = clearance_sum / static_cast<double>(samples.size());
+}
+
+[[nodiscard]] CorridorResult
+corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
+                               const CorridorStats* source_stats,
+                               const std::size_t input_points) {
+  CorridorResult result{};
+  result.samples.assign(samples.begin(), samples.end());
+  if (source_stats != nullptr) {
+    result.stats = *source_stats;
+  }
+  result.stats.input_points = input_points;
+  populateCorridorReuseStats(result.samples, result.stats);
+  result.valid = result.samples.size() >= 2U &&
+                 result.stats.route_prohibited_samples == 0U &&
+                 result.stats.center_unrecoverable_samples == 0U;
+  return result;
+}
+
 [[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
   return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
 }
@@ -315,10 +371,14 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
   const CorridorResult corridor =
-      buildCorridor(CorridorInput{input.route_points, input.prohibited_grid,
-                                  input.prohibited_clearance_field,
-                                  input.prohibited_clearance_field_cache_hit},
-                    config.corridor);
+      input.precomputed_corridor_samples.size() >= 2U
+          ? corridorFromPrecomputedSamples(input.precomputed_corridor_samples,
+                                           input.precomputed_corridor_stats,
+                                           input.route_points.size())
+          : buildCorridor(CorridorInput{input.route_points, input.prohibited_grid,
+                                        input.prohibited_clearance_field,
+                                        input.prohibited_clearance_field_cache_hit},
+                          config.corridor);
   result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
   result.corridor_samples = corridor.samples;
   if (!corridor.valid) {

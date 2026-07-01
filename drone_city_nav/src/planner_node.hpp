@@ -117,6 +117,10 @@ private:
     std::vector<Point2> route_points;
     std::string source_label;
     OccupancyGrid2D grid;
+    std::optional<ClearanceField2D> prohibited_clearance_field;
+    bool prohibited_clearance_field_cache_hit{false};
+    std::vector<CorridorSample> corridor_samples;
+    CorridorStats corridor_stats{};
     TrajectoryPlannerConfig config;
   };
 

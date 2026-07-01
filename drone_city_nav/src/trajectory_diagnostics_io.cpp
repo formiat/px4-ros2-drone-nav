@@ -423,6 +423,8 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
          << "\"";
   appendJsonSize(stream, "corridor_parallel_workers_used",
                  stats.corridor.parallel_workers_used);
+  appendJsonBool(stream, "corridor_samples_reused", stats.corridor.samples_reused);
+  appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",
@@ -499,6 +501,8 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                    stats.corridor.max_lateral_bound_reduction_m);
   appendJsonSize(stream, "corridor_parallel_workers_used",
                  stats.corridor.parallel_workers_used);
+  appendJsonBool(stream, "corridor_samples_reused", stats.corridor.samples_reused);
+  appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",
@@ -598,6 +602,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "corridor_lateral_reduction_max_m",
                   corridor.max_lateral_bound_reduction_m);
   parseJsonSize(json, "corridor_parallel_workers_used", corridor.parallel_workers_used);
+  parseJsonBool(json, "corridor_samples_reused", corridor.samples_reused);
+  parseJsonSize(json, "corridor_reused_samples", corridor.reused_samples);
   parseJsonDouble(json, "corridor_sample_build_duration_ms",
                   corridor.sample_build_duration_ms);
   parseJsonDouble(json, "corridor_raycast_duration_ms", corridor.raycast_duration_ms);

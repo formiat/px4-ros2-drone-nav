@@ -58,6 +58,8 @@ struct CorridorStats {
   double clearance_field_build_duration_ms{0.0};
   bool clearance_field_reused{false};
   bool clearance_field_cache_hit{false};
+  bool samples_reused{false};
+  std::size_t reused_samples{0U};
 };
 
 struct CorridorResult {

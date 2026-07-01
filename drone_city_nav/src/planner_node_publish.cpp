@@ -141,7 +141,8 @@ bool PlannerNode::publishPathFromPathCells(
   TrajectoryPlannerResult trajectory_result = planBaselineTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route_points.data(), route_points.size()}, &grid,
-          prohibited_clearance_field, prohibited_clearance_field_cache_hit},
+          prohibited_clearance_field, prohibited_clearance_field_cache_hit,
+          std::span<const CorridorSample>{}, nullptr},
       trajectory_planner_config_);
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -173,7 +174,8 @@ bool PlannerNode::publishTrajectoryResult(
         "trajectory_quality=%.*s "
         "timing[total=%.1f corridor=%.1f racing_line=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f] "
-        "corridor[samples=%zu width_min=%.2f width_mean=%.2f] "
+        "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
+        "width_min=%.2f width_mean=%.2f] "
         "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
         source_label,
         static_cast<int>(
@@ -188,6 +190,8 @@ bool PlannerNode::publishTrajectoryResult(
         trajectory_result.stats.turn_smoothing_duration_ms,
         trajectory_result.stats.speed_profile_duration_ms,
         trajectory_result.stats.corridor.samples,
+        trajectory_result.stats.corridor.samples_reused ? "true" : "false",
+        trajectory_result.stats.corridor.reused_samples,
         trajectory_result.stats.corridor.min_width_m,
         trajectory_result.stats.corridor.mean_width_m,
         trajectory_result.stats.racing_line.iterations,
@@ -232,7 +236,8 @@ bool PlannerNode::publishTrajectoryResult(
       "timing[total=%.1f corridor=%.1f racing_line=%.1f "
       "turn_smoothing=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
-      "corridor[samples=%zu width_min=%.2f width_mean=%.2f width_max=%.2f "
+      "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
+      "width_min=%.2f width_mean=%.2f width_max=%.2f "
       "lateral_limited=%zu workers=%zu sample_build=%.1fms "
       "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
       "clearance_reused=%s clearance_cache_hit=%s] "
@@ -271,6 +276,8 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.speed_profile_duration_ms,
       trajectory_result.stats.length_m, trajectory_result.stats.samples,
       trajectory_result.stats.corridor.samples,
+      trajectory_result.stats.corridor.samples_reused ? "true" : "false",
+      trajectory_result.stats.corridor.reused_samples,
       trajectory_result.stats.corridor.min_width_m,
       trajectory_result.stats.corridor.mean_width_m,
       trajectory_result.stats.corridor.max_width_m,
@@ -363,8 +370,6 @@ void PlannerNode::startAsyncTrajectoryRefinement(
     const TrajectoryPlannerResult& baseline, const char* source_label,
     const ClearanceField2D* prohibited_clearance_field,
     const bool prohibited_clearance_field_cache_hit) {
-  (void)prohibited_clearance_field;
-  (void)prohibited_clearance_field_cache_hit;
   if (route_points.size() < 2U || !baseline.valid) {
     return;
   }
@@ -392,6 +397,13 @@ void PlannerNode::startAsyncTrajectoryRefinement(
       .route_points = std::vector<Point2>{route_points.begin(), route_points.end()},
       .source_label = source_label,
       .grid = grid,
+      .prohibited_clearance_field =
+          prohibited_clearance_field != nullptr
+              ? std::optional<ClearanceField2D>{*prohibited_clearance_field}
+              : std::nullopt,
+      .prohibited_clearance_field_cache_hit = prohibited_clearance_field_cache_hit,
+      .corridor_samples = baseline.corridor_samples,
+      .corridor_stats = baseline.stats.corridor,
       .config = trajectory_planner_config_};
   if (schedule.action == TrajectoryRefinementScheduleAction::kQueuedLatest ||
       schedule.action == TrajectoryRefinementScheduleAction::kReplacedQueuedLatest) {
@@ -417,22 +429,35 @@ void PlannerNode::startAsyncTrajectoryRefinement(
 void PlannerNode::launchScheduledTrajectoryRefinement(
     TrajectoryRefinementRequest request) {
   std::vector<Point2> route_for_build = request.route_points;
-  std::future<TrajectoryPlannerResult> future =
-      std::async(std::launch::async,
-                 [grid = std::move(request.grid), route = std::move(route_for_build),
-                  config = request.config]() mutable {
-                   TrajectoryPlannerResult refined = planRacingTrajectory(
-                       TrajectoryPlannerInput{
-                           std::span<const Point2>{route.data(), route.size()},
-                           &grid,
-                           nullptr,
-                           false,
-                       },
-                       config);
-                   refined.stats.quality = TrajectoryQuality::kRefined;
-                   refined.stats.racing_line.async_refined = true;
-                   return refined;
-                 });
+  const bool clearance_snapshot_available =
+      request.prohibited_clearance_field.has_value();
+  const std::size_t corridor_sample_count = request.corridor_samples.size();
+  std::future<TrajectoryPlannerResult> future = std::async(
+      std::launch::async,
+      [grid = std::move(request.grid), route = std::move(route_for_build),
+       clearance_field = std::move(request.prohibited_clearance_field),
+       clearance_cache_hit = request.prohibited_clearance_field_cache_hit,
+       corridor_samples = std::move(request.corridor_samples),
+       corridor_stats = request.corridor_stats, config = request.config]() mutable {
+        const ClearanceField2D* clearance_field_ptr =
+            clearance_field.has_value() ? &*clearance_field : nullptr;
+        const CorridorStats* corridor_stats_ptr =
+            corridor_samples.size() >= 2U ? &corridor_stats : nullptr;
+        TrajectoryPlannerResult refined = planRacingTrajectory(
+            TrajectoryPlannerInput{
+                std::span<const Point2>{route.data(), route.size()},
+                &grid,
+                clearance_field_ptr,
+                clearance_cache_hit,
+                std::span<const CorridorSample>{corridor_samples.data(),
+                                                corridor_samples.size()},
+                corridor_stats_ptr,
+            },
+            config);
+        refined.stats.quality = TrajectoryQuality::kRefined;
+        refined.stats.racing_line.async_refined = true;
+        return refined;
+      });
 
   PendingTrajectoryRefinement pending{};
   pending.generation = request.generation;
@@ -448,12 +473,14 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
   RCLCPP_INFO(get_logger(),
               "%s refined trajectory async build started: generation=%" PRIu64
               " baseline_path_id=%" PRIu64
-              " route_points=%zu baseline_time=%.2fs baseline_length=%.2fm",
+              " route_points=%zu baseline_time=%.2fs baseline_length=%.2fm "
+              "clearance_snapshot=%s corridor_samples=%zu",
               pending_refinement_->source_label.c_str(),
               pending_refinement_->generation, pending_refinement_->baseline_path_id,
               pending_refinement_->route_points.size(),
               pending_refinement_->baseline_estimated_time_s,
-              pending_refinement_->baseline_length_m);
+              pending_refinement_->baseline_length_m,
+              clearance_snapshot_available ? "true" : "false", corridor_sample_count);
 }
 
 void PlannerNode::launchQueuedTrajectoryRefinement(

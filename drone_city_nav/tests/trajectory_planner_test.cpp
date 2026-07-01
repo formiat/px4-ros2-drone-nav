@@ -62,6 +62,7 @@ TEST(TrajectoryPlanner, MissingGridIsInvalid) {
 
   const TrajectoryPlannerResult result = planTrajectory(
       TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             nullptr, nullptr, false, std::span<const CorridorSample>{},
                              nullptr},
       testConfig());
 
@@ -77,6 +78,7 @@ TEST(TrajectoryPlanner, MissingGridDoesNotBuildUnknownCorners) {
 
   const TrajectoryPlannerResult result = planTrajectory(
       TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
+                             nullptr, nullptr, false, std::span<const CorridorSample>{},
                              nullptr},
       testConfig());
 
@@ -91,8 +93,9 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
 
   const TrajectoryPlannerResult result = planTrajectory(
-      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
-                             &grid},
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{},
+                             nullptr},
       testConfig());
 
   ASSERT_TRUE(result.valid);
@@ -115,8 +118,9 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
 
   const TrajectoryPlannerResult result = planBaselineTrajectory(
-      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
-                             &grid},
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{},
+                             nullptr},
       testConfig());
 
   ASSERT_TRUE(result.valid);
@@ -139,20 +143,91 @@ TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
 
   const TrajectoryPlannerResult result = planTrajectory(
       TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
-                             &clearance_field, true},
+                             &clearance_field, true, std::span<const CorridorSample>{},
+                             nullptr},
       config);
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.corridor.clearance_field_reused);
   EXPECT_TRUE(result.stats.corridor.clearance_field_cache_hit);
+  EXPECT_FALSE(result.stats.corridor.samples_reused);
+  EXPECT_EQ(result.stats.corridor.reused_samples, 0U);
+}
+
+TEST(TrajectoryPlanner, ReusesPrecomputedCorridorForRacingTrajectory) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const TrajectoryPlannerConfig config = testConfig();
+  const TrajectoryPlannerInput input{
+      std::span<const Point2>{route.data(), route.size()},
+      &grid,
+      nullptr,
+      false,
+      std::span<const CorridorSample>{},
+      nullptr};
+  const TrajectoryPlannerResult baseline = planBaselineTrajectory(input, config);
+  ASSERT_TRUE(baseline.valid);
+  ASSERT_GE(baseline.corridor_samples.size(), 2U);
+
+  const TrajectoryPlannerResult normal = planRacingTrajectory(input, config);
+  const TrajectoryPlannerResult reused = planRacingTrajectory(
+      TrajectoryPlannerInput{
+          std::span<const Point2>{route.data(), route.size()},
+          &grid,
+          nullptr,
+          false,
+          std::span<const CorridorSample>{baseline.corridor_samples.data(),
+                                          baseline.corridor_samples.size()},
+          &baseline.stats.corridor,
+      },
+      config);
+
+  ASSERT_TRUE(normal.valid);
+  ASSERT_TRUE(reused.valid);
+  EXPECT_TRUE(reused.stats.corridor.samples_reused);
+  EXPECT_EQ(reused.stats.corridor.reused_samples, baseline.corridor_samples.size());
+  EXPECT_EQ(reused.stats.corridor.sample_build_duration_ms, 0.0);
+  EXPECT_EQ(reused.stats.corridor.raycast_duration_ms, 0.0);
+  EXPECT_EQ(reused.stats.corridor.lateral_limit_duration_ms, 0.0);
+  EXPECT_EQ(reused.stats.corridor.clearance_field_build_duration_ms, 0.0);
+  EXPECT_EQ(reused.corridor_samples.size(), baseline.corridor_samples.size());
+  ASSERT_EQ(normal.samples.size(), reused.samples.size());
+  for (std::size_t i = 0U; i < normal.samples.size(); ++i) {
+    EXPECT_DOUBLE_EQ(normal.samples[i].point.x, reused.samples[i].point.x);
+    EXPECT_DOUBLE_EQ(normal.samples[i].point.y, reused.samples[i].point.y);
+    EXPECT_DOUBLE_EQ(normal.samples[i].racing_offset_m,
+                     reused.samples[i].racing_offset_m);
+  }
+}
+
+TEST(TrajectoryPlanner, EmptyPrecomputedCorridorFallsBackToBuild) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+
+  const TrajectoryPlannerResult result = planRacingTrajectory(
+      TrajectoryPlannerInput{
+          std::span<const Point2>{route.data(), route.size()},
+          &grid,
+          nullptr,
+          false,
+          std::span<const CorridorSample>{},
+          nullptr,
+      },
+      testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.stats.corridor.samples_reused);
+  EXPECT_EQ(result.stats.corridor.reused_samples, 0U);
+  EXPECT_GT(result.stats.corridor.samples, 0U);
 }
 
 TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
   TrajectoryPlannerResult refined = planRacingTrajectory(
-      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
-                             &grid},
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{},
+                             nullptr},
       testConfig());
   ASSERT_TRUE(refined.valid);
   const std::vector<Point2> refined_points = samplePoints(refined.samples);
@@ -206,12 +281,14 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
   const TrajectoryPlannerConfig config = testConfig();
   const TrajectoryPlannerResult baseline = planBaselineTrajectory(
-      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
-                             &grid},
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{},
+                             nullptr},
       config);
   TrajectoryPlannerResult refined = planRacingTrajectory(
-      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()},
-                             &grid},
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{},
+                             nullptr},
       config);
   refined.stats.racing_line.async_refined = true;
   ASSERT_TRUE(baseline.valid);
