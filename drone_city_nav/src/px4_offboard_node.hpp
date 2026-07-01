@@ -188,6 +188,19 @@ private:
 
   [[nodiscard]] bool velocityCruiseReady() const;
 
+  struct TerminalPositionCaptureDecision {
+    bool active{false};
+    const char* reason{"none"};
+    double goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
+    double remaining_trajectory_distance_m{std::numeric_limits<double>::quiet_NaN()};
+    double current_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+    double activation_radius_m{std::numeric_limits<double>::quiet_NaN()};
+    double max_entry_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+    double stuck_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  };
+
+  [[nodiscard]] TerminalPositionCaptureDecision terminalPositionCaptureDecision() const;
+
   [[nodiscard]] bool finalPathGoalReached() const;
 
   [[nodiscard]] bool finalPathGoalPassed() const;
@@ -347,6 +360,7 @@ private:
   bool last_published_target_valid_{false};
   bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
+  bool last_terminal_position_capture_active_{false};
   bool latest_planner_path_id_seen_{false};
   bool flight_blackbox_enabled_{true};
   std::uint8_t target_system_{1U};
@@ -377,6 +391,7 @@ private:
   std::string final_trajectory_debug_topic_{"/drone_city_nav/final_trajectory_path"};
   std::string offboard_debug_marker_topic_{"/drone_city_nav/offboard_debug_markers"};
   std::string last_velocity_smoother_reset_reason_{"none"};
+  std::string last_terminal_position_capture_reason_{"none"};
   std::ofstream flight_blackbox_stream_;
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;
@@ -402,6 +417,18 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       offboard_debug_marker_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  double last_terminal_position_capture_goal_distance_m_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_terminal_position_capture_remaining_s_m_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_terminal_position_capture_speed_mps_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_terminal_position_capture_activation_radius_m_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_terminal_position_capture_max_entry_speed_mps_{
+      std::numeric_limits<double>::quiet_NaN()};
+  double last_terminal_position_capture_stuck_speed_mps_{
+      std::numeric_limits<double>::quiet_NaN()};
 };
 
 } // namespace drone_city_nav

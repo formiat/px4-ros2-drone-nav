@@ -12,6 +12,7 @@ namespace drone_city_nav {
 
 enum class OffboardSetpointMode : std::uint8_t {
   kPositionHold,
+  kTerminalPositionCapture,
   kVelocityCruise,
 };
 

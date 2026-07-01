@@ -11,6 +11,8 @@ offboardSetpointModeName(const OffboardSetpointMode mode) noexcept {
   switch (mode) {
     case OffboardSetpointMode::kPositionHold:
       return "position_hold";
+    case OffboardSetpointMode::kTerminalPositionCapture:
+      return "terminal_position_capture";
     case OffboardSetpointMode::kVelocityCruise:
       return "velocity_cruise";
   }
@@ -33,7 +35,8 @@ buildOffboardControlMode(const std::uint64_t timestamp_us,
                          const OffboardSetpointMode mode) {
   px4_msgs::msg::OffboardControlMode msg;
   msg.timestamp = timestamp_us;
-  msg.position = mode == OffboardSetpointMode::kPositionHold;
+  msg.position = mode == OffboardSetpointMode::kPositionHold ||
+                 mode == OffboardSetpointMode::kTerminalPositionCapture;
   msg.velocity = mode == OffboardSetpointMode::kVelocityCruise;
   msg.acceleration = false;
   msg.attitude = false;

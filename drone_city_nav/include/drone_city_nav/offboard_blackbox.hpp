@@ -84,6 +84,19 @@ struct OffboardBlackboxRecord {
   OffboardBlackboxPathTracking path_tracking{};
   std::string motion_phase;
   bool final_goal_hold_active{false};
+  bool terminal_position_capture_active{false};
+  std::string terminal_position_capture_reason;
+  double terminal_position_capture_goal_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_remaining_s_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_activation_radius_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_max_entry_speed_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_stuck_speed_mps{
+      std::numeric_limits<double>::quiet_NaN()};
   double prohibited_grid_clearance_m{0.0};
   OffboardBlackboxNearestProhibitedCell nearest_prohibited_cell{};
 };

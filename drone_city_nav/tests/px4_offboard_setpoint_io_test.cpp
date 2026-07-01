@@ -14,6 +14,13 @@ TEST(Px4OffboardSetpointIo, BuildsPositionAndVelocityControlModes) {
   EXPECT_FALSE(position.velocity);
   EXPECT_FALSE(position.acceleration);
 
+  const auto terminal =
+      buildOffboardControlMode(13U, OffboardSetpointMode::kTerminalPositionCapture);
+  EXPECT_EQ(terminal.timestamp, 13U);
+  EXPECT_TRUE(terminal.position);
+  EXPECT_FALSE(terminal.velocity);
+  EXPECT_FALSE(terminal.acceleration);
+
   const auto velocity =
       buildOffboardControlMode(12U, OffboardSetpointMode::kVelocityCruise);
   EXPECT_EQ(velocity.timestamp, 12U);
@@ -67,6 +74,10 @@ TEST(Px4OffboardSetpointIo, BuildsVehicleCommandEndpoint) {
   EXPECT_EQ(msg.source_component, 5U);
   EXPECT_TRUE(msg.from_external);
   EXPECT_STREQ(commandName(msg.command), "VEHICLE_CMD_COMPONENT_ARM_DISARM");
+  EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kPositionHold),
+               "position_hold");
+  EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kTerminalPositionCapture),
+               "terminal_position_capture");
   EXPECT_STREQ(offboardSetpointModeName(OffboardSetpointMode::kVelocityCruise),
                "velocity_cruise");
 }

@@ -520,8 +520,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
 
   if (terminal_capture_triggered) {
     const Point2 goal_delta = final_point - current_position;
-    const bool brake_after_final_plane =
-        past_final_plane && current_speed > terminal_hold_max_speed;
+    const bool brake_after_final_plane = past_final_plane &&
+                                         terminal_hold_distance_met &&
+                                         current_speed > terminal_hold_max_speed;
     const double terminal_capture_distance =
         past_final_plane ? terminal_goal_distance : remaining_trajectory_distance;
     Point2 terminal_tangent = final_tangent;

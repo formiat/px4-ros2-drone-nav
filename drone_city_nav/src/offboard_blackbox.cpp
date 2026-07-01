@@ -564,6 +564,26 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"control\":{\"motion_phase\":\"" << record.motion_phase
          << "\",\"final_goal_hold_active\":";
   writeBlackboxJsonBool(stream, record.final_goal_hold_active);
+  stream << ",\"terminal_position_capture_active\":";
+  writeBlackboxJsonBool(stream, record.terminal_position_capture_active);
+  stream << ",\"terminal_position_capture_reason\":\""
+         << record.terminal_position_capture_reason << "\"";
+  stream << ",\"terminal_position_capture_goal_distance_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                record.terminal_position_capture_goal_distance_m);
+  stream << ",\"terminal_position_capture_remaining_s_m\":";
+  writeBlackboxJsonNumberOrNull(stream, record.terminal_position_capture_remaining_s_m);
+  stream << ",\"terminal_position_capture_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, record.terminal_position_capture_speed_mps);
+  stream << ",\"terminal_position_capture_activation_radius_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                record.terminal_position_capture_activation_radius_m);
+  stream << ",\"terminal_position_capture_max_entry_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                record.terminal_position_capture_max_entry_speed_mps);
+  stream << ",\"terminal_position_capture_stuck_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                record.terminal_position_capture_stuck_speed_mps);
   stream << "}";
   stream << ",\"obstacle\":{\"prohibited_grid_clearance_m\":";
   writeBlackboxJsonNumberOrNull(stream, record.prohibited_grid_clearance_m);

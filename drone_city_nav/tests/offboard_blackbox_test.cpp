@@ -159,6 +159,14 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.path_tracking.projection = Point2{3.0, 4.0};
   record.motion_phase = "cruise";
   record.final_goal_hold_active = false;
+  record.terminal_position_capture_active = true;
+  record.terminal_position_capture_reason = "terminal_stuck";
+  record.terminal_position_capture_goal_distance_m = 7.0;
+  record.terminal_position_capture_remaining_s_m = 2.0;
+  record.terminal_position_capture_speed_mps = 0.4;
+  record.terminal_position_capture_activation_radius_m = 8.0;
+  record.terminal_position_capture_max_entry_speed_mps = 3.0;
+  record.terminal_position_capture_stuck_speed_mps = 0.5;
   record.prohibited_grid_clearance_m = 9.0;
   record.nearest_prohibited_cell.valid = true;
   record.nearest_prohibited_cell.clearance_m = 4.0;
@@ -243,6 +251,14 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"final_trajectory_debug_segment_type\":\"turn\"");
   expectJsonField(json, "\"tracking\":{\"valid\":true");
   expectJsonField(json, "\"control\":{\"motion_phase\":\"cruise\"");
+  expectJsonField(json, "\"terminal_position_capture_active\":true");
+  expectJsonField(json, "\"terminal_position_capture_reason\":\"terminal_stuck\"");
+  expectJsonField(json, "\"terminal_position_capture_goal_distance_m\":7");
+  expectJsonField(json, "\"terminal_position_capture_remaining_s_m\":2");
+  expectJsonField(json, "\"terminal_position_capture_speed_mps\":0.4");
+  expectJsonField(json, "\"terminal_position_capture_activation_radius_m\":8");
+  expectJsonField(json, "\"terminal_position_capture_max_entry_speed_mps\":3");
+  expectJsonField(json, "\"terminal_position_capture_stuck_speed_mps\":0.5");
   expectJsonField(json, "\"obstacle\":{\"prohibited_grid_clearance_m\":9");
   expectJsonField(json, "\"nearest_prohibited_cell_valid\":true");
 }

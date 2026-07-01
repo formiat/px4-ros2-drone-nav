@@ -102,6 +102,9 @@ void Px4OffboardNode::logTelemetry() {
       "brake_limit=%.2f activation=%.2f decel=%.2f margin=%.2f "
       "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
       "trigger_remaining=%s] "
+      "terminal_position_capture[active=%s reason=%s goal_distance=%.2f "
+      "remaining_s=%.2f speed=%.2f radius=%.2f max_entry_speed=%.2f "
+      "stuck_speed=%.2f] "
       "raw_speed_limit=%.2f profile_speed_limit=%.2f "
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
@@ -173,6 +176,14 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.terminal_capture_goal_distance_triggered ? "true" : "false",
       last_velocity_plan_.terminal_capture_remaining_distance_triggered ? "true"
                                                                         : "false",
+      last_terminal_position_capture_active_ ? "true" : "false",
+      last_terminal_position_capture_reason_.c_str(),
+      last_terminal_position_capture_goal_distance_m_,
+      last_terminal_position_capture_remaining_s_m_,
+      last_terminal_position_capture_speed_mps_,
+      last_terminal_position_capture_activation_radius_m_,
+      last_terminal_position_capture_max_entry_speed_mps_,
+      last_terminal_position_capture_stuck_speed_mps_,
       last_velocity_plan_.raw_speed_limit_mps,
       last_velocity_plan_.profile_speed_limit_mps,
       last_velocity_plan_.speed_lookahead_distance_m,
@@ -321,6 +332,14 @@ void Px4OffboardNode::writeFlightBlackbox(
           path_tracking.heading_error_rad, path_tracking.projection},
       motionPhaseName(hold_position),
       final_goal_hold_active_,
+      last_terminal_position_capture_active_,
+      last_terminal_position_capture_reason_,
+      last_terminal_position_capture_goal_distance_m_,
+      last_terminal_position_capture_remaining_s_m_,
+      last_terminal_position_capture_speed_mps_,
+      last_terminal_position_capture_activation_radius_m_,
+      last_terminal_position_capture_max_entry_speed_mps_,
+      last_terminal_position_capture_stuck_speed_mps_,
       prohibited_grid_clearance_m,
       OffboardBlackboxNearestProhibitedCell{
           nearest_prohibited_cell.valid, nearest_prohibited_cell.clearance_m,

@@ -906,7 +906,8 @@ TEST(OffboardVelocityFollower, FastGoalFlyThroughUsesTerminalCaptureUntilSlow) {
   EXPECT_NEAR(plan.raw_speed_limit_mps, 0.0, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, TerminalCaptureBrakesAfterFinalPlaneWhenFast) {
+TEST(OffboardVelocityFollower,
+     TerminalCaptureReturnsToGoalAfterFinalPlaneWhenFastButFar) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
@@ -928,11 +929,35 @@ TEST(OffboardVelocityFollower, TerminalCaptureBrakesAfterFinalPlaneWhenFast) {
   EXPECT_NEAR(plan.terminal_capture_gain_speed_limit_mps, std::sqrt(32.0), 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_braking_speed_limit_mps,
               std::sqrt(8.0 * (std::sqrt(32.0) - 1.0)), 1.0e-9);
+  EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 1.6, 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_xy.x, -1.6 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(plan.desired_velocity_xy.y, -1.6 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.x, -1.0 / std::sqrt(2.0), 1.0e-9);
+  EXPECT_NEAR(plan.path_tangent.y, -1.0 / std::sqrt(2.0), 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, TerminalCaptureBrakesAfterFinalPlaneWhenFastAndNear) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, testConfig());
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{100.4, 0.0}, Point2{6.0, 0.0},
+                           true, 0.1, VelocityFollowerState{}, testConfig());
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTerminalCapture);
+  EXPECT_TRUE(plan.terminal_capture_active);
+  EXPECT_NEAR(plan.terminal_goal_distance_m, 0.4, 1.0e-9);
+  EXPECT_NEAR(plan.terminal_remaining_trajectory_distance_m, 0.0, 1.0e-9);
+  EXPECT_TRUE(plan.terminal_hold_distance_met);
+  EXPECT_FALSE(plan.terminal_hold_speed_met);
+  EXPECT_TRUE(plan.terminal_capture_goal_distance_triggered);
+  EXPECT_TRUE(plan.terminal_capture_remaining_distance_triggered);
+  EXPECT_NEAR(plan.terminal_signed_along_track_distance_m, -0.4, 1.0e-9);
   EXPECT_NEAR(plan.terminal_capture_speed_limit_mps, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.desired_velocity_xy.x, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.desired_velocity_xy.y, 0.0, 1.0e-9);
-  EXPECT_NEAR(plan.path_tangent.x, 1.0, 1.0e-9);
-  EXPECT_NEAR(plan.path_tangent.y, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, TerminalCaptureReturnsToGoalAfterFinalPlaneWhenSlow) {
