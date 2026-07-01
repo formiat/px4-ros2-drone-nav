@@ -147,7 +147,6 @@ struct LocalCandidateScore {
   bool valid{false};
   bool requires_full_score{false};
   PathEvaluation path{};
-  CandidateScore score{};
   double point_build_duration_ms{0.0};
   double path_evaluation_duration_ms{0.0};
   double score_duration_ms{0.0};
@@ -546,24 +545,14 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   return evaluation;
 }
 
-[[nodiscard]] double lengthOverrunCost(const double length_m,
-                                       const double max_length_m) noexcept {
-  if (!std::isfinite(max_length_m) || !(length_m > max_length_m)) {
-    return 0.0;
-  }
-  const double overrun_m = length_m - max_length_m;
-  return overrun_m * overrun_m * kLengthOverrunPenalty;
-}
-
 [[nodiscard]] LocalCandidateScore
-scoreLocalOffsetDelta(const std::span<const CorridorSample> corridor_samples,
-                      const std::span<const Point2> base_points,
-                      const std::span<const double> base_offsets,
-                      const std::span<const double> candidate_offsets,
-                      const OccupancyGrid2D& prohibited_grid,
-                      const RacingLineConfig& config, const double max_length_m,
-                      const CandidateScore& base_score, const double base_length_m,
-                      const std::size_t center_index, CandidateWorkBuffer& buffer) {
+evaluateLocalOffsetPath(const std::span<const CorridorSample> corridor_samples,
+                        const std::span<const Point2> base_points,
+                        const std::span<const double> base_offsets,
+                        const std::span<const double> candidate_offsets,
+                        const OccupancyGrid2D& prohibited_grid,
+                        const CandidateScore& base_score, const double base_length_m,
+                        const std::size_t center_index, CandidateWorkBuffer& buffer) {
   LocalCandidateScore result{};
   result.valid = false;
   constexpr std::size_t kLocalScoreRadiusSamples = 6U;
@@ -578,6 +567,11 @@ scoreLocalOffsetDelta(const std::span<const CorridorSample> corridor_samples,
   const auto [begin_index, end_index] = localScoreWindowForCenter(
       center_index, base_points.size(), kLocalScoreRadiusSamples);
   if (begin_index == 0U || end_index + 1U >= base_points.size()) {
+    result.requires_full_score = true;
+    return result;
+  }
+  if (base_score.breakdown.collision_cost > 0.0 ||
+      base_score.breakdown.outside_grid_cost > 0.0) {
     result.requires_full_score = true;
     return result;
   }
@@ -602,32 +596,9 @@ scoreLocalOffsetDelta(const std::span<const CorridorSample> corridor_samples,
       result.segment_cache_hits, result.segment_cache_misses);
   result.path_evaluation_duration_ms = elapsedMilliseconds(evaluation_started_at);
 
-  const auto score_started_at = std::chrono::steady_clock::now();
-  const CostBreakdown base_local_breakdown = costBreakdownForPoints(
-      buffer.local_base_points, buffer.local_base_offsets, config);
-  CostBreakdown candidate_local_breakdown = costBreakdownForPoints(
-      buffer.local_candidate_points, buffer.local_candidate_offsets, config);
-  candidate_local_breakdown.collision_cost =
-      static_cast<double>(result.path.prohibited_cells) * kCollisionPenalty;
-  candidate_local_breakdown.outside_grid_cost =
-      static_cast<double>(result.path.outside_grid_segments) * kOutsideGridPenalty;
-
   const double candidate_length_m =
       base_length_m - base_local_length_m + result.path.length_m;
-  const double base_overrun_cost = lengthOverrunCost(base_length_m, max_length_m);
-  const double candidate_overrun_cost =
-      lengthOverrunCost(candidate_length_m, max_length_m);
-  const double local_delta = candidate_local_breakdown.total() -
-                             base_local_breakdown.total() + candidate_overrun_cost -
-                             base_overrun_cost;
-  result.score.breakdown = base_score.breakdown;
-  result.score.breakdown.length_overrun_cost =
-      base_score.breakdown.length_overrun_cost + candidate_overrun_cost -
-      base_overrun_cost;
-  result.score.traversal_time = base_score.traversal_time;
-  result.score.score = base_score.score + local_delta;
   result.path.length_m = candidate_length_m;
-  result.score_duration_ms = elapsedMilliseconds(score_started_at);
   result.valid = true;
   return result;
 }
@@ -1071,9 +1042,9 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   }
 
   result.local_evaluated = true;
-  LocalCandidateScore local_score = scoreLocalOffsetDelta(
+  LocalCandidateScore local_score = evaluateLocalOffsetPath(
       corridor_samples, base_points, base_offsets, buffer.offsets, prohibited_grid,
-      config, max_length_m, base_score, base_length_m, center_index, buffer);
+      base_score, base_length_m, center_index, buffer);
   result.point_build_duration_ms = local_score.point_build_duration_ms;
   result.path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.score_duration_ms = local_score.score_duration_ms;
@@ -1083,8 +1054,21 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.local_segment_cache_misses = local_score.segment_cache_misses;
   if (local_score.valid && !local_score.requires_full_score) {
     result.path = local_score.path;
-    result.score = local_score.score;
     result.offsets.assign(buffer.offsets.begin(), buffer.offsets.end());
+    if (!result.path.traversable()) {
+      return result;
+    }
+    RacingLineStats local_stats{};
+    const auto points_started_at = std::chrono::steady_clock::now();
+    pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
+    result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
+    const auto score_started_at = std::chrono::steady_clock::now();
+    result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
+                                     result.path, config, speed_config, max_length_m,
+                                     buffer.samples, local_stats);
+    result.score_duration_ms += elapsedMilliseconds(score_started_at);
+    result.sample_build_duration_ms = local_stats.candidate_sample_build_duration_ms;
+    result.full_score_used = true;
     return result;
   }
 

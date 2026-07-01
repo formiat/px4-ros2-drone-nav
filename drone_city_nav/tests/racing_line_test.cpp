@@ -225,10 +225,7 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
   EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);
   EXPECT_GT(parallel.stats.local_candidate_evaluations, 0U);
-  const std::size_t full_candidate_work =
-      parallel.stats.local_candidate_full_score_fallbacks +
-      parallel.stats.local_candidate_acceptance_full_scores;
-  EXPECT_LT(full_candidate_work, parallel.stats.local_candidate_evaluations);
+  EXPECT_GT(parallel.stats.local_candidate_full_score_fallbacks, 0U);
   EXPECT_GT(parallel.stats.full_candidate_score_duration_ms, 0.0);
   EXPECT_GT(parallel.stats.candidate_segment_cache_hits, 0U);
   EXPECT_GT(parallel.stats.candidate_segment_cache_misses, 0U);
@@ -246,7 +243,7 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_DOUBLE_EQ(sequential.stats.estimated_time_s, parallel.stats.estimated_time_s);
 }
 
-TEST(RacingLine, LocalCandidateScoringReducesFullCandidateWork) {
+TEST(RacingLine, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   const OccupancyGrid2D grid = openGrid();
   RacingLineConfig config = testConfig();
   config.parallel_workers = 1U;
@@ -257,12 +254,14 @@ TEST(RacingLine, LocalCandidateScoringReducesFullCandidateWork) {
 
   ASSERT_TRUE(result.valid);
   ASSERT_GT(result.stats.local_candidate_evaluations, 0U);
-  const std::size_t full_candidate_work =
-      result.stats.local_candidate_full_score_fallbacks +
-      result.stats.local_candidate_acceptance_full_scores;
-  EXPECT_LT(full_candidate_work, result.stats.local_candidate_evaluations);
+  EXPECT_GT(result.stats.local_candidate_full_score_fallbacks, 0U);
+  EXPECT_GT(result.stats.full_candidate_score_duration_ms, 0.0);
   EXPECT_GT(result.stats.candidate_segment_cache_hits, 0U);
   EXPECT_GT(result.stats.candidate_segment_cache_misses, 0U);
+  EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
+  EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
+  EXPECT_LT(result.stats.estimated_time_s, result.stats.centerline_estimated_time_s);
+  EXPECT_GT(result.stats.max_abs_offset_m, 1.0);
 }
 
 TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
