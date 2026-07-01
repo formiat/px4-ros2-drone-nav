@@ -221,6 +221,40 @@ TEST(TrajectoryPlanner, EmptyPrecomputedCorridorFallsBackToBuild) {
   EXPECT_GT(result.stats.corridor.samples, 0U);
 }
 
+TEST(TrajectoryPlanner, MismatchedPrecomputedCorridorFallsBackToBuild) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
+  const std::vector<Point2> shifted_route{{1.0, 0.0}, {11.0, 0.0}, {11.0, 10.0}};
+  const TrajectoryPlannerConfig config = testConfig();
+  const TrajectoryPlannerInput input{
+      std::span<const Point2>{route.data(), route.size()},
+      &grid,
+      nullptr,
+      false,
+      std::span<const CorridorSample>{},
+      nullptr};
+  const TrajectoryPlannerResult baseline = planBaselineTrajectory(input, config);
+  ASSERT_TRUE(baseline.valid);
+  ASSERT_GE(baseline.corridor_samples.size(), 2U);
+
+  const TrajectoryPlannerResult result = planRacingTrajectory(
+      TrajectoryPlannerInput{
+          std::span<const Point2>{shifted_route.data(), shifted_route.size()},
+          &grid,
+          nullptr,
+          false,
+          std::span<const CorridorSample>{baseline.corridor_samples.data(),
+                                          baseline.corridor_samples.size()},
+          &baseline.stats.corridor,
+      },
+      config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_FALSE(result.stats.corridor.samples_reused);
+  EXPECT_EQ(result.stats.corridor.reused_samples, 0U);
+  EXPECT_GT(result.stats.corridor.sample_build_duration_ms, 0.0);
+}
+
 TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};

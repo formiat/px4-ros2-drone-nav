@@ -136,6 +136,19 @@ corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
   return result;
 }
 
+[[nodiscard]] bool
+precomputedCorridorMatchesRoute(const std::span<const CorridorSample> samples,
+                                const std::span<const Point2> route_points) {
+  if (samples.size() < 2U || route_points.size() < 2U) {
+    return false;
+  }
+  constexpr double kEndpointToleranceM = 1.0e-6;
+  return distance(samples.front().route_center, route_points.front()) <=
+             kEndpointToleranceM &&
+         distance(samples.back().route_center, route_points.back()) <=
+             kEndpointToleranceM;
+}
+
 [[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
   return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
 }
@@ -371,7 +384,8 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
   const CorridorResult corridor =
-      input.precomputed_corridor_samples.size() >= 2U
+      precomputedCorridorMatchesRoute(input.precomputed_corridor_samples,
+                                      input.route_points)
           ? corridorFromPrecomputedSamples(input.precomputed_corridor_samples,
                                            input.precomputed_corridor_stats,
                                            input.route_points.size())
