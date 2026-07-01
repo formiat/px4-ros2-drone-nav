@@ -25,6 +25,7 @@ constexpr double kHeadingJumpPenalty = 1.0e6;
 constexpr double kHeadingJumpHardPenalty = 1.0e9;
 constexpr double kHeadingJumpSoftLimitRad = std::numbers::pi / 2.0;
 constexpr double kHeadingJumpHardLimitRad = 2.0 * std::numbers::pi / 3.0;
+constexpr double kLocalPrefilterScoreMargin = 25.0;
 
 struct PathEvaluation {
   double length_m{0.0};
@@ -123,8 +124,11 @@ struct CandidateWorkBuffer {
   std::vector<Point2> points;
   std::vector<Point2> local_base_points;
   std::vector<Point2> local_candidate_points;
+  std::vector<CorridorSample> local_corridor_samples;
   std::vector<double> local_base_offsets;
   std::vector<double> local_candidate_offsets;
+  std::vector<TrajectoryPointSample> local_base_samples;
+  std::vector<TrajectoryPointSample> local_candidate_samples;
   std::vector<TrajectoryPointSample> samples;
   SegmentTraversabilityCache candidate_segment_cache;
 };
@@ -148,6 +152,7 @@ struct LocalCandidateScore {
   bool valid{false};
   bool requires_full_score{false};
   PathEvaluation path{};
+  TraversalTimeEstimate estimated_traversal_time{};
   double point_build_duration_ms{0.0};
   double path_evaluation_duration_ms{0.0};
   double score_duration_ms{0.0};
@@ -525,6 +530,19 @@ void copyRange(const std::span<const double> source, const std::size_t begin_ind
   }
 }
 
+void copyRange(const std::span<const CorridorSample> source,
+               const std::size_t begin_index, const std::size_t end_index,
+               std::vector<CorridorSample>& destination) {
+  destination.clear();
+  if (begin_index > end_index || end_index >= source.size()) {
+    return;
+  }
+  destination.reserve(end_index - begin_index + 1U);
+  for (std::size_t i = begin_index; i <= end_index; ++i) {
+    destination.push_back(source[i]);
+  }
+}
+
 [[nodiscard]] PathEvaluation
 evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
                               const std::span<const Point2> local_points,
@@ -546,14 +564,14 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   return evaluation;
 }
 
-[[nodiscard]] LocalCandidateScore
-evaluateLocalOffsetPath(const std::span<const CorridorSample> corridor_samples,
-                        const std::span<const Point2> base_points,
-                        const std::span<const double> base_offsets,
-                        const std::span<const double> candidate_offsets,
-                        const OccupancyGrid2D& prohibited_grid,
-                        const CandidateScore& base_score, const double base_length_m,
-                        const std::size_t center_index, CandidateWorkBuffer& buffer) {
+[[nodiscard]] LocalCandidateScore evaluateLocalOffsetPath(
+    const std::span<const CorridorSample> corridor_samples,
+    const std::span<const Point2> base_points,
+    const std::span<const double> base_offsets,
+    const std::span<const double> candidate_offsets,
+    const OccupancyGrid2D& prohibited_grid, const CandidateScore& base_score,
+    const double base_length_m, const std::size_t center_index,
+    const VelocityFollowerConfig& speed_config, CandidateWorkBuffer& buffer) {
   LocalCandidateScore result{};
   result.valid = false;
   constexpr std::size_t kLocalScoreRadiusSamples = 6U;
@@ -579,6 +597,7 @@ evaluateLocalOffsetPath(const std::span<const CorridorSample> corridor_samples,
 
   const auto points_started_at = std::chrono::steady_clock::now();
   copyRange(base_points, begin_index, end_index, buffer.local_base_points);
+  copyRange(corridor_samples, begin_index, end_index, buffer.local_corridor_samples);
   copyRange(base_offsets, begin_index, end_index, buffer.local_base_offsets);
   copyRange(candidate_offsets, begin_index, end_index, buffer.local_candidate_offsets);
   pointsFromOffsetsRange(corridor_samples, candidate_offsets, begin_index, end_index,
@@ -600,6 +619,30 @@ evaluateLocalOffsetPath(const std::span<const CorridorSample> corridor_samples,
   const double candidate_length_m =
       base_length_m - base_local_length_m + result.path.length_m;
   result.path.length_m = candidate_length_m;
+  const auto score_started_at = std::chrono::steady_clock::now();
+  samplesFromPointsAndOffsets(buffer.local_corridor_samples, buffer.local_base_points,
+                              buffer.local_base_offsets, buffer.local_base_samples);
+  samplesFromPointsAndOffsets(
+      buffer.local_corridor_samples, buffer.local_candidate_points,
+      buffer.local_candidate_offsets, buffer.local_candidate_samples);
+  populateSampleGeometry(buffer.local_base_samples);
+  populateSampleGeometry(buffer.local_candidate_samples);
+  const TraversalTimeEstimate base_local_time =
+      estimateTraversalTime(buffer.local_base_samples, speed_config, false);
+  const TraversalTimeEstimate candidate_local_time =
+      estimateTraversalTime(buffer.local_candidate_samples, speed_config, false);
+  if (base_score.traversal_time.valid && base_local_time.valid &&
+      candidate_local_time.valid &&
+      std::isfinite(base_score.traversal_time.estimated_time_s) &&
+      std::isfinite(base_local_time.estimated_time_s) &&
+      std::isfinite(candidate_local_time.estimated_time_s)) {
+    result.estimated_traversal_time = candidate_local_time;
+    result.estimated_traversal_time.estimated_time_s =
+        std::max(0.0, base_score.traversal_time.estimated_time_s -
+                          base_local_time.estimated_time_s +
+                          candidate_local_time.estimated_time_s);
+  }
+  result.score_duration_ms = elapsedMilliseconds(score_started_at);
   result.valid = true;
   return result;
 }
@@ -1058,7 +1101,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.local_evaluated = true;
   LocalCandidateScore local_score = evaluateLocalOffsetPath(
       corridor_samples, base_points, base_offsets, buffer.offsets, prohibited_grid,
-      base_score, base_length_m, center_index, buffer);
+      base_score, base_length_m, center_index, speed_config, buffer);
   result.point_build_duration_ms = local_score.point_build_duration_ms;
   result.path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.score_duration_ms = local_score.score_duration_ms;
@@ -1076,6 +1119,30 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
     result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
+    const auto prefilter_started_at = std::chrono::steady_clock::now();
+    result.score.breakdown =
+        costBreakdownForPoints(buffer.points, buffer.offsets, config);
+    result.score.breakdown.collision_cost =
+        static_cast<double>(result.path.prohibited_cells) * kCollisionPenalty;
+    result.score.breakdown.outside_grid_cost =
+        static_cast<double>(result.path.outside_grid_segments) * kOutsideGridPenalty;
+    if (std::isfinite(max_length_m) && result.path.length_m > max_length_m) {
+      const double overrun_m = result.path.length_m - max_length_m;
+      result.score.breakdown.length_overrun_cost =
+          overrun_m * overrun_m * kLengthOverrunPenalty;
+    }
+    const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
+    if (weight_time > 0.0 && local_score.estimated_traversal_time.valid &&
+        std::isfinite(local_score.estimated_traversal_time.estimated_time_s)) {
+      result.score.traversal_time = local_score.estimated_traversal_time;
+      result.score.breakdown.time_cost =
+          weight_time * local_score.estimated_traversal_time.estimated_time_s;
+    }
+    result.score.score = result.score.breakdown.total();
+    result.score_duration_ms += elapsedMilliseconds(prefilter_started_at);
+    if (result.score.score + 1.0e-9 >= base_score.score + kLocalPrefilterScoreMargin) {
+      return result;
+    }
     const auto score_started_at = std::chrono::steady_clock::now();
     result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
                                      result.path, config, speed_config, max_length_m,
