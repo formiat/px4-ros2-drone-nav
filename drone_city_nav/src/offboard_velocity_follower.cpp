@@ -507,21 +507,31 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
 
   if (terminal_capture_goal_distance_triggered ||
       terminal_capture_remaining_distance_triggered) {
-    Point2 terminal_tangent = final_tangent;
     const Point2 goal_delta = final_point - current_position;
-    if (terminal_signed_along_track_distance > 0.0 &&
+    const bool past_final_plane = terminal_signed_along_track_distance <= 0.0;
+    const bool brake_after_final_plane =
+        past_final_plane && current_speed > terminal_hold_max_speed;
+    const double terminal_capture_distance =
+        past_final_plane ? terminal_goal_distance : terminal_stop_distance;
+    Point2 terminal_tangent = final_tangent;
+    if ((!past_final_plane ||
+         (!brake_after_final_plane && terminal_goal_distance > final_acceptance)) &&
         norm(goal_delta) > kTinyDistanceM) {
       terminal_tangent = normalized(goal_delta);
     }
     const double capture_gain_speed_limit =
-        terminalCaptureGain1ps(config) * terminal_stop_distance;
+        terminalCaptureGain1ps(config) * terminal_capture_distance;
     const double capture_max_speed = terminalCaptureMaxSpeedMps(config);
     const double capture_braking_speed_limit = brakingSpeedLimitMps(
-        terminal_stop_distance, final_acceptance, terminal_capture_decel);
-    const double raw_capture_speed_limit = std::min(
-        {capture_max_speed, capture_gain_speed_limit, capture_braking_speed_limit});
+        terminal_capture_distance, final_acceptance, terminal_capture_decel);
+    const double raw_capture_speed_limit =
+        brake_after_final_plane ? 0.0
+                                : std::min({capture_max_speed, capture_gain_speed_limit,
+                                            capture_braking_speed_limit});
     const double capture_speed_limit =
-        monotonicTerminalCaptureSpeedLimitMps(raw_capture_speed_limit, previous_state);
+        past_final_plane ? raw_capture_speed_limit
+                         : monotonicTerminalCaptureSpeedLimitMps(
+                               raw_capture_speed_limit, previous_state);
     const Point2 desired_velocity = terminal_tangent * capture_speed_limit;
     const VelocitySmootherPlan smoothed = smoothVelocityCommand(
         VelocitySmootherInput{
@@ -623,7 +633,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.prediction_distance_m = prediction_distance;
     plan.response_delay_distance_m = response_delay_distance;
     plan.limiting_constraint_type = SpeedConstraintType::kGoal;
-    plan.limiting_constraint_distance_m = terminal_stop_distance;
+    plan.limiting_constraint_distance_m = terminal_capture_distance;
     plan.limiting_constraint_speed_mps = 0.0;
     plan.limiting_allowed_speed_now_mps = capture_speed_limit;
     plan.trajectory_s_m = control_projection.s_m;
@@ -636,7 +646,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
             : std::numeric_limits<double>::quiet_NaN();
     plan.trajectory_projection = control_projection;
     plan.final_stop.valid = true;
-    plan.final_stop.distance_to_stop_m = terminal_stop_distance;
+    plan.final_stop.distance_to_stop_m = terminal_capture_distance;
     plan.final_stop.braking_distance_m =
         response_delay_distance + terminal_capture_braking_distance;
     plan.final_stop.raw_speed_limit_mps = capture_speed_limit;

@@ -134,8 +134,7 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
     return false;
   }
   const bool geometrically_reached =
-      distance(current_position_, path_points_.back()) <= acceptance_radius_m_ ||
-      finalPathGoalPassed();
+      distance(current_position_, path_points_.back()) <= acceptance_radius_m_;
   if (!geometrically_reached) {
     return false;
   }
