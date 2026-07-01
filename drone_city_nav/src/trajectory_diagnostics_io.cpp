@@ -425,6 +425,12 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                  stats.corridor.parallel_workers_used);
   appendJsonBool(stream, "corridor_samples_reused", stats.corridor.samples_reused);
   appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
+  appendJsonUint64(stream, "corridor_route_fingerprint",
+                   stats.corridor.route_fingerprint);
+  appendJsonUint64(stream, "corridor_grid_cells_hash",
+                   stats.corridor.prohibited_grid_fingerprint.cells_hash);
+  appendJsonUint64(stream, "corridor_grid_inflated_hash",
+                   stats.corridor.prohibited_grid_fingerprint.inflated_hash);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",
@@ -503,6 +509,12 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                  stats.corridor.parallel_workers_used);
   appendJsonBool(stream, "corridor_samples_reused", stats.corridor.samples_reused);
   appendJsonSize(stream, "corridor_reused_samples", stats.corridor.reused_samples);
+  appendJsonUint64(stream, "corridor_route_fingerprint",
+                   stats.corridor.route_fingerprint);
+  appendJsonUint64(stream, "corridor_grid_cells_hash",
+                   stats.corridor.prohibited_grid_fingerprint.cells_hash);
+  appendJsonUint64(stream, "corridor_grid_inflated_hash",
+                   stats.corridor.prohibited_grid_fingerprint.inflated_hash);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",
@@ -604,6 +616,11 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "corridor_parallel_workers_used", corridor.parallel_workers_used);
   parseJsonBool(json, "corridor_samples_reused", corridor.samples_reused);
   parseJsonSize(json, "corridor_reused_samples", corridor.reused_samples);
+  (void)parseJsonUint64(json, "corridor_route_fingerprint", corridor.route_fingerprint);
+  (void)parseJsonUint64(json, "corridor_grid_cells_hash",
+                        corridor.prohibited_grid_fingerprint.cells_hash);
+  (void)parseJsonUint64(json, "corridor_grid_inflated_hash",
+                        corridor.prohibited_grid_fingerprint.inflated_hash);
   parseJsonDouble(json, "corridor_sample_build_duration_ms",
                   corridor.sample_build_duration_ms);
   parseJsonDouble(json, "corridor_raycast_duration_ms", corridor.raycast_duration_ms);

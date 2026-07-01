@@ -3,8 +3,10 @@
 #include "drone_city_nav/clearance_field.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <future>
 #include <limits>
 #include <optional>
@@ -15,6 +17,24 @@ namespace drone_city_nav {
 namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
+constexpr std::uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+void hashByte(std::uint64_t& hash, const std::uint8_t value) noexcept {
+  hash ^= static_cast<std::uint64_t>(value);
+  hash *= kFnvPrime;
+}
+
+void hashUint64(std::uint64_t& hash, std::uint64_t value) noexcept {
+  for (int byte = 0; byte < 8; ++byte) {
+    hashByte(hash, static_cast<std::uint8_t>(value & 0xffU));
+    value >>= 8U;
+  }
+}
+
+void hashDouble(std::uint64_t& hash, const double value) noexcept {
+  hashUint64(hash, std::bit_cast<std::uint64_t>(value));
+}
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
@@ -295,6 +315,27 @@ void mergeSampleStats(CorridorStats& output, const CorridorStats& input) {
 
 } // namespace
 
+std::uint64_t
+corridorRouteFingerprint(const std::span<const Point2> route_points) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  hashUint64(hash, route_points.size());
+  for (const Point2 point : route_points) {
+    hashDouble(hash, point.x);
+    hashDouble(hash, point.y);
+  }
+  return hash;
+}
+
+bool occupancyGridFingerprintsEqual(const OccupancyGridFingerprint& lhs,
+                                    const OccupancyGridFingerprint& rhs) noexcept {
+  return lhs.bounds.origin_x == rhs.bounds.origin_x &&
+         lhs.bounds.origin_y == rhs.bounds.origin_y &&
+         lhs.bounds.resolution_m == rhs.bounds.resolution_m &&
+         lhs.bounds.width_cells == rhs.bounds.width_cells &&
+         lhs.bounds.height_cells == rhs.bounds.height_cells &&
+         lhs.cells_hash == rhs.cells_hash && lhs.inflated_hash == rhs.inflated_hash;
+}
+
 CorridorResult buildCorridor(const std::span<const Point2> route_points,
                              const OccupancyGrid2D& prohibited_grid,
                              const CorridorConfig& config) {
@@ -309,6 +350,8 @@ CorridorResult buildCorridor(const CorridorInput& input, const CorridorConfig& c
     return result;
   }
   const OccupancyGrid2D& prohibited_grid = *input.prohibited_grid;
+  result.stats.route_fingerprint = corridorRouteFingerprint(input.route_points);
+  result.stats.prohibited_grid_fingerprint = prohibited_grid.prohibitedFingerprint();
 
   const std::vector<TrajectorySegment> route =
       lineTrajectoryFromPoints(input.route_points);

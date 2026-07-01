@@ -5,6 +5,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -60,6 +61,8 @@ struct CorridorStats {
   bool clearance_field_cache_hit{false};
   bool samples_reused{false};
   std::size_t reused_samples{0U};
+  std::uint64_t route_fingerprint{0U};
+  OccupancyGridFingerprint prohibited_grid_fingerprint{};
 };
 
 struct CorridorResult {
@@ -81,5 +84,12 @@ struct CorridorInput {
 
 [[nodiscard]] CorridorResult buildCorridor(const CorridorInput& input,
                                            const CorridorConfig& config);
+
+[[nodiscard]] std::uint64_t
+corridorRouteFingerprint(std::span<const Point2> route_points) noexcept;
+
+[[nodiscard]] bool
+occupancyGridFingerprintsEqual(const OccupancyGridFingerprint& lhs,
+                               const OccupancyGridFingerprint& rhs) noexcept;
 
 } // namespace drone_city_nav

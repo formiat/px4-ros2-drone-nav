@@ -108,6 +108,9 @@ void expectContainsAll(const std::string& text,
   stats.corridor.parallel_workers_used = 4U;
   stats.corridor.samples_reused = true;
   stats.corridor.reused_samples = 42U;
+  stats.corridor.route_fingerprint = 0x1234U;
+  stats.corridor.prohibited_grid_fingerprint.cells_hash = 0x5678U;
+  stats.corridor.prohibited_grid_fingerprint.inflated_hash = 0x9abcU;
   stats.corridor.sample_build_duration_ms = 6.25;
   stats.corridor.raycast_duration_ms = 5.75;
   stats.corridor.lateral_limit_duration_ms = 1.5;
@@ -205,6 +208,9 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"corridor_parallel_workers_used\":4"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_samples_reused\":true"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_reused_samples\":42"), std::string::npos);
+  EXPECT_NE(json.find("\"corridor_route_fingerprint\":4660"), std::string::npos);
+  EXPECT_NE(json.find("\"corridor_grid_cells_hash\":22136"), std::string::npos);
+  EXPECT_NE(json.find("\"corridor_grid_inflated_hash\":39612"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_sample_build_duration_ms\":6.25"), std::string::npos);
   EXPECT_NE(json.find("\"clearance_field_reused_by_corridor\":true"),
             std::string::npos);
@@ -378,6 +384,11 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.corridor.parallel_workers_used, 4U);
   EXPECT_TRUE(parsed_value.stats.corridor.samples_reused);
   EXPECT_EQ(parsed_value.stats.corridor.reused_samples, 42U);
+  EXPECT_EQ(parsed_value.stats.corridor.route_fingerprint, 0x1234U);
+  EXPECT_EQ(parsed_value.stats.corridor.prohibited_grid_fingerprint.cells_hash,
+            0x5678U);
+  EXPECT_EQ(parsed_value.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
+            0x9abcU);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.sample_build_duration_ms, 6.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.raycast_duration_ms, 5.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.lateral_limit_duration_ms, 1.5);

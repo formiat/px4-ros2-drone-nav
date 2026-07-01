@@ -175,7 +175,8 @@ bool PlannerNode::publishTrajectoryResult(
         "timing[total=%.1f corridor=%.1f racing_line=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f] "
         "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
-        "width_min=%.2f width_mean=%.2f] "
+        "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
+        " width_min=%.2f width_mean=%.2f] "
         "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
         source_label,
         static_cast<int>(
@@ -192,6 +193,9 @@ bool PlannerNode::publishTrajectoryResult(
         trajectory_result.stats.corridor.samples,
         trajectory_result.stats.corridor.samples_reused ? "true" : "false",
         trajectory_result.stats.corridor.reused_samples,
+        trajectory_result.stats.corridor.route_fingerprint,
+        trajectory_result.stats.corridor.prohibited_grid_fingerprint.cells_hash,
+        trajectory_result.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
         trajectory_result.stats.corridor.min_width_m,
         trajectory_result.stats.corridor.mean_width_m,
         trajectory_result.stats.racing_line.iterations,
@@ -237,7 +241,8 @@ bool PlannerNode::publishTrajectoryResult(
       "turn_smoothing=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
       "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
-      "width_min=%.2f width_mean=%.2f width_max=%.2f "
+      "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
+      " width_min=%.2f width_mean=%.2f width_max=%.2f "
       "lateral_limited=%zu workers=%zu sample_build=%.1fms "
       "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
       "clearance_reused=%s clearance_cache_hit=%s] "
@@ -278,6 +283,9 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.corridor.samples,
       trajectory_result.stats.corridor.samples_reused ? "true" : "false",
       trajectory_result.stats.corridor.reused_samples,
+      trajectory_result.stats.corridor.route_fingerprint,
+      trajectory_result.stats.corridor.prohibited_grid_fingerprint.cells_hash,
+      trajectory_result.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
       trajectory_result.stats.corridor.min_width_m,
       trajectory_result.stats.corridor.mean_width_m,
       trajectory_result.stats.corridor.max_width_m,
