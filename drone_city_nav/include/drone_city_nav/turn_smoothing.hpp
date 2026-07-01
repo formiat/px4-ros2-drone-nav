@@ -4,10 +4,12 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
+#include "drone_city_nav/velocity_control_config.hpp"
 
 #include <cstddef>
 #include <limits>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -26,6 +28,27 @@ struct TurnSmoothingConfig {
   std::size_t max_passes{8U};
 };
 
+struct TurnSmoothingCornerDiagnostic {
+  bool accepted{false};
+  std::string reject_reason{"none"};
+  double corner_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double entry_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double shift_scale{std::numeric_limits<double>::quiet_NaN()};
+  double relaxed_angle_deg{std::numeric_limits<double>::quiet_NaN()};
+  double score{std::numeric_limits<double>::quiet_NaN()};
+  double min_radius_before_m{std::numeric_limits<double>::quiet_NaN()};
+  double min_radius_after_m{std::numeric_limits<double>::quiet_NaN()};
+  double min_speed_before_mps{std::numeric_limits<double>::quiet_NaN()};
+  double min_speed_after_mps{std::numeric_limits<double>::quiet_NaN()};
+  double local_time_before_s{std::numeric_limits<double>::quiet_NaN()};
+  double local_time_after_s{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_jump_before_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_jump_after_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double heading_delta_before_rad{std::numeric_limits<double>::quiet_NaN()};
+  double heading_delta_after_rad{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct TurnSmoothingStats {
   std::size_t input_samples{0U};
   std::size_t output_samples{0U};
@@ -38,6 +61,10 @@ struct TurnSmoothingStats {
   std::size_t rejected_corridor{0U};
   std::size_t rejected_length{0U};
   std::size_t rejected_not_improved{0U};
+  std::size_t rejected_curvature_regression{0U};
+  std::size_t rejected_radius_regression{0U};
+  std::size_t rejected_speed_regression{0U};
+  std::size_t rejected_time_regression{0U};
   double max_heading_delta_before_rad{0.0};
   double max_heading_delta_after_rad{0.0};
   double max_curvature_jump_before_1pm{0.0};
@@ -48,6 +75,14 @@ struct TurnSmoothingStats {
   double accepted_exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double accepted_shift_scale{std::numeric_limits<double>::quiet_NaN()};
   double accepted_relaxed_angle_deg{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_score{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_min_radius_before_m{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_min_radius_after_m{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_min_speed_before_mps{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_min_speed_after_mps{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_local_time_before_s{std::numeric_limits<double>::quiet_NaN()};
+  double accepted_local_time_after_s{std::numeric_limits<double>::quiet_NaN()};
+  std::vector<TurnSmoothingCornerDiagnostic> corner_diagnostics;
 };
 
 struct TurnSmoothingResult {
@@ -61,6 +96,7 @@ struct TurnSmoothingResult {
 smoothTrajectoryTurns(std::span<const TrajectoryPointSample> samples,
                       std::span<const CorridorSample> corridor_samples,
                       const OccupancyGrid2D& prohibited_grid,
-                      const TurnSmoothingConfig& config);
+                      const TurnSmoothingConfig& config,
+                      const VelocityFollowerConfig& speed_config);
 
 } // namespace drone_city_nav

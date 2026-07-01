@@ -333,6 +333,8 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.cost_offset_change);
   appendJsonNumber(stream, "racing_cost_offset_second_change",
                    stats.racing_line.cost_offset_second_change);
+  appendJsonNumber(stream, "racing_cost_offset_slope",
+                   stats.racing_line.cost_offset_slope);
   appendJsonNumber(stream, "racing_cost_collision", stats.racing_line.cost_collision);
   appendJsonNumber(stream, "racing_cost_outside_grid",
                    stats.racing_line.cost_outside_grid);
@@ -464,6 +466,14 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.rejected_length);
   appendJsonSize(stream, "turn_smoothing_rejected_not_improved",
                  stats.turn_smoothing.rejected_not_improved);
+  appendJsonSize(stream, "turn_smoothing_rejected_curvature_regression",
+                 stats.turn_smoothing.rejected_curvature_regression);
+  appendJsonSize(stream, "turn_smoothing_rejected_radius_regression",
+                 stats.turn_smoothing.rejected_radius_regression);
+  appendJsonSize(stream, "turn_smoothing_rejected_speed_regression",
+                 stats.turn_smoothing.rejected_speed_regression);
+  appendJsonSize(stream, "turn_smoothing_rejected_time_regression",
+                 stats.turn_smoothing.rejected_time_regression);
   appendJsonNumber(stream, "turn_smoothing_heading_delta_before_rad",
                    stats.turn_smoothing.max_heading_delta_before_rad);
   appendJsonNumber(stream, "turn_smoothing_heading_delta_after_rad",
@@ -484,6 +494,52 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                    stats.turn_smoothing.accepted_shift_scale);
   appendJsonNumber(stream, "turn_smoothing_accepted_relaxed_angle_deg",
                    stats.turn_smoothing.accepted_relaxed_angle_deg);
+  appendJsonNumber(stream, "turn_smoothing_accepted_score",
+                   stats.turn_smoothing.accepted_score);
+  appendJsonNumber(stream, "turn_smoothing_accepted_min_radius_before_m",
+                   stats.turn_smoothing.accepted_min_radius_before_m);
+  appendJsonNumber(stream, "turn_smoothing_accepted_min_radius_after_m",
+                   stats.turn_smoothing.accepted_min_radius_after_m);
+  appendJsonNumber(stream, "turn_smoothing_accepted_min_speed_before_mps",
+                   stats.turn_smoothing.accepted_min_speed_before_mps);
+  appendJsonNumber(stream, "turn_smoothing_accepted_min_speed_after_mps",
+                   stats.turn_smoothing.accepted_min_speed_after_mps);
+  appendJsonNumber(stream, "turn_smoothing_accepted_local_time_before_s",
+                   stats.turn_smoothing.accepted_local_time_before_s);
+  appendJsonNumber(stream, "turn_smoothing_accepted_local_time_after_s",
+                   stats.turn_smoothing.accepted_local_time_after_s);
+  stream << ",\"turn_smoothing_corner_diagnostics\":[";
+  for (std::size_t i = 0U; i < stats.turn_smoothing.corner_diagnostics.size(); ++i) {
+    const TurnSmoothingCornerDiagnostic& diagnostic =
+        stats.turn_smoothing.corner_diagnostics[i];
+    if (i > 0U) {
+      stream << ",";
+    }
+    stream << "{\"accepted\":" << (diagnostic.accepted ? "true" : "false");
+    appendJsonString(stream, "reject_reason", diagnostic.reject_reason);
+    appendJsonNumber(stream, "corner_s_m", diagnostic.corner_s_m);
+    appendJsonNumber(stream, "entry_distance_m", diagnostic.entry_distance_m);
+    appendJsonNumber(stream, "exit_distance_m", diagnostic.exit_distance_m);
+    appendJsonNumber(stream, "shift_scale", diagnostic.shift_scale);
+    appendJsonNumber(stream, "relaxed_angle_deg", diagnostic.relaxed_angle_deg);
+    appendJsonNumber(stream, "score", diagnostic.score);
+    appendJsonNumber(stream, "min_radius_before_m", diagnostic.min_radius_before_m);
+    appendJsonNumber(stream, "min_radius_after_m", diagnostic.min_radius_after_m);
+    appendJsonNumber(stream, "min_speed_before_mps", diagnostic.min_speed_before_mps);
+    appendJsonNumber(stream, "min_speed_after_mps", diagnostic.min_speed_after_mps);
+    appendJsonNumber(stream, "local_time_before_s", diagnostic.local_time_before_s);
+    appendJsonNumber(stream, "local_time_after_s", diagnostic.local_time_after_s);
+    appendJsonNumber(stream, "curvature_jump_before_1pm",
+                     diagnostic.curvature_jump_before_1pm);
+    appendJsonNumber(stream, "curvature_jump_after_1pm",
+                     diagnostic.curvature_jump_after_1pm);
+    appendJsonNumber(stream, "heading_delta_before_rad",
+                     diagnostic.heading_delta_before_rad);
+    appendJsonNumber(stream, "heading_delta_after_rad",
+                     diagnostic.heading_delta_after_rad);
+    stream << "}";
+  }
+  stream << "]";
   return stream.str();
 }
 
@@ -786,6 +842,7 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "racing_cost_offset_change", racing.cost_offset_change);
   parseJsonDouble(json, "racing_cost_offset_second_change",
                   racing.cost_offset_second_change);
+  parseJsonDouble(json, "racing_cost_offset_slope", racing.cost_offset_slope);
   parseJsonDouble(json, "racing_cost_collision", racing.cost_collision);
   parseJsonDouble(json, "racing_cost_outside_grid", racing.cost_outside_grid);
   parseJsonDouble(json, "racing_cost_length_overrun", racing.cost_length_overrun);
@@ -906,6 +963,14 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "turn_smoothing_rejected_length", turn_smoothing.rejected_length);
   parseJsonSize(json, "turn_smoothing_rejected_not_improved",
                 turn_smoothing.rejected_not_improved);
+  parseJsonSize(json, "turn_smoothing_rejected_curvature_regression",
+                turn_smoothing.rejected_curvature_regression);
+  parseJsonSize(json, "turn_smoothing_rejected_radius_regression",
+                turn_smoothing.rejected_radius_regression);
+  parseJsonSize(json, "turn_smoothing_rejected_speed_regression",
+                turn_smoothing.rejected_speed_regression);
+  parseJsonSize(json, "turn_smoothing_rejected_time_regression",
+                turn_smoothing.rejected_time_regression);
   parseJsonDouble(json, "turn_smoothing_heading_delta_before_rad",
                   turn_smoothing.max_heading_delta_before_rad);
   parseJsonDouble(json, "turn_smoothing_heading_delta_after_rad",
@@ -926,6 +991,19 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   turn_smoothing.accepted_shift_scale);
   parseJsonDouble(json, "turn_smoothing_accepted_relaxed_angle_deg",
                   turn_smoothing.accepted_relaxed_angle_deg);
+  parseJsonDouble(json, "turn_smoothing_accepted_score", turn_smoothing.accepted_score);
+  parseJsonDouble(json, "turn_smoothing_accepted_min_radius_before_m",
+                  turn_smoothing.accepted_min_radius_before_m);
+  parseJsonDouble(json, "turn_smoothing_accepted_min_radius_after_m",
+                  turn_smoothing.accepted_min_radius_after_m);
+  parseJsonDouble(json, "turn_smoothing_accepted_min_speed_before_mps",
+                  turn_smoothing.accepted_min_speed_before_mps);
+  parseJsonDouble(json, "turn_smoothing_accepted_min_speed_after_mps",
+                  turn_smoothing.accepted_min_speed_after_mps);
+  parseJsonDouble(json, "turn_smoothing_accepted_local_time_before_s",
+                  turn_smoothing.accepted_local_time_before_s);
+  parseJsonDouble(json, "turn_smoothing_accepted_local_time_after_s",
+                  turn_smoothing.accepted_local_time_after_s);
 
   return envelope;
 }

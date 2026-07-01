@@ -92,7 +92,7 @@ PlannerNode::PlannerNode()
       "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
-      "offset_second=%.2f "
+      "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu "
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
       "dp_offset_step=%.2fm async_workers=%zu)] "
@@ -123,6 +123,8 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.weight_curvature_change,
       trajectory_planner_config_.racing_line.weight_offset_change,
       trajectory_planner_config_.racing_line.weight_offset_second_change,
+      trajectory_planner_config_.racing_line.weight_offset_slope,
+      trajectory_planner_config_.racing_line.max_offset_slope_per_m,
       trajectory_planner_config_.racing_line.max_length_ratio,
       trajectory_planner_config_.racing_line.parallel_workers,
       trajectory_planner_config_.racing_line.window_pre_margin_m,

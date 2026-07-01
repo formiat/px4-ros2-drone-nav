@@ -24,6 +24,8 @@ struct RacingLineConfig {
   double weight_curvature_change{100.0};
   double weight_offset_change{0.5};
   double weight_offset_second_change{5.0};
+  double weight_offset_slope{80.0};
+  double max_offset_slope_per_m{0.35};
   double weight_time{50.0};
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
@@ -99,6 +101,7 @@ struct RacingLineStats {
   double cost_heading_jump{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_second_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_offset_slope{std::numeric_limits<double>::quiet_NaN()};
   double cost_collision{std::numeric_limits<double>::quiet_NaN()};
   double cost_outside_grid{std::numeric_limits<double>::quiet_NaN()};
   double cost_length_overrun{std::numeric_limits<double>::quiet_NaN()};

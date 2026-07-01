@@ -306,7 +306,8 @@ bool PlannerNode::publishTrajectoryResult(
       "local_time=%.1fms full_candidate_score=%.1fms "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
-      "max_offset=%.2f edge_margin_min=%.2f time_final=%.2f "
+      "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
+      "time_final=%.2f "
       "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
       "speed_limit_max=%.2f curvature_limited=%zu "
       "windows=%zu active_windows=%zu active_samples=%zu "
@@ -319,12 +320,14 @@ bool PlannerNode::publishTrajectoryResult(
       "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
       "relaxed_attempts=%zu "
       "smoothed=%zu "
-      "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu) "
+      "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu "
+      "curvature=%zu radius=%zu speed=%zu time=%zu) "
       "heading_before=%.1fdeg heading_after=%.1fdeg "
       "curvature_jump_before=%.3f curvature_jump_after=%.3f "
       "min_inner_margin=%.2f max_outer_shift=%.2f "
       "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
-      "relaxed_angle=%.1fdeg)] "
+      "relaxed_angle=%.1fdeg score=%.3f radius=%.2f->%.2f "
+      "speed=%.2f->%.2f time=%.2f->%.2f)] "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu "
       "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
       "limit=%.2f source=%s isolated=%s) "
@@ -388,6 +391,7 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.final_length_ratio,
       trajectory_result.stats.racing_line.max_abs_offset_m,
       trajectory_result.stats.racing_line.min_edge_margin_m,
+      trajectory_result.stats.racing_line.cost_offset_slope,
       trajectory_result.stats.racing_line.estimated_time_s,
       trajectory_result.stats.racing_line.centerline_estimated_time_s,
       trajectory_result.stats.racing_line.time_gain_s,
@@ -422,6 +426,10 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.rejected_corridor,
       trajectory_result.stats.turn_smoothing.rejected_length,
       trajectory_result.stats.turn_smoothing.rejected_not_improved,
+      trajectory_result.stats.turn_smoothing.rejected_curvature_regression,
+      trajectory_result.stats.turn_smoothing.rejected_radius_regression,
+      trajectory_result.stats.turn_smoothing.rejected_speed_regression,
+      trajectory_result.stats.turn_smoothing.rejected_time_regression,
       radiansToDegrees(
           trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
       radiansToDegrees(
@@ -434,6 +442,13 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
       trajectory_result.stats.turn_smoothing.accepted_shift_scale,
       trajectory_result.stats.turn_smoothing.accepted_relaxed_angle_deg,
+      trajectory_result.stats.turn_smoothing.accepted_score,
+      trajectory_result.stats.turn_smoothing.accepted_min_radius_before_m,
+      trajectory_result.stats.turn_smoothing.accepted_min_radius_after_m,
+      trajectory_result.stats.turn_smoothing.accepted_min_speed_before_mps,
+      trajectory_result.stats.turn_smoothing.accepted_min_speed_after_mps,
+      trajectory_result.stats.turn_smoothing.accepted_local_time_before_s,
+      trajectory_result.stats.turn_smoothing.accepted_local_time_after_s,
       trajectory_result.stats.speed_profile_min_mps,
       trajectory_result.stats.speed_profile_mean_mps,
       trajectory_result.stats.speed_profile_max_mps,
@@ -447,6 +462,29 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.isolated_curvature_spikes_smoothed_speed_profile,
       trajectory_result.stats.isolated_curvature_spike_max_before_1pm,
       trajectory_result.stats.isolated_curvature_spike_max_after_1pm);
+
+  for (std::size_t i = 0U;
+       i < trajectory_result.stats.turn_smoothing.corner_diagnostics.size(); ++i) {
+    const TurnSmoothingCornerDiagnostic& diagnostic =
+        trajectory_result.stats.turn_smoothing.corner_diagnostics[i];
+    RCLCPP_INFO(get_logger(),
+                "%s turn_smoothing corner[%zu]: accepted=%s reason=%s corner_s=%.2f "
+                "entry=%.2fm exit=%.2fm shift_scale=%.2f relaxed_angle=%.1fdeg "
+                "score=%.3f radius=%.2f->%.2f speed=%.2f->%.2f "
+                "time=%.2f->%.2f curvature_jump=%.3f->%.3f "
+                "heading_delta=%.1fdeg->%.1fdeg",
+                source_label, i, diagnostic.accepted ? "true" : "false",
+                diagnostic.reject_reason.c_str(), diagnostic.corner_s_m,
+                diagnostic.entry_distance_m, diagnostic.exit_distance_m,
+                diagnostic.shift_scale, diagnostic.relaxed_angle_deg, diagnostic.score,
+                diagnostic.min_radius_before_m, diagnostic.min_radius_after_m,
+                diagnostic.min_speed_before_mps, diagnostic.min_speed_after_mps,
+                diagnostic.local_time_before_s, diagnostic.local_time_after_s,
+                diagnostic.curvature_jump_before_1pm,
+                diagnostic.curvature_jump_after_1pm,
+                radiansToDegrees(diagnostic.heading_delta_before_rad),
+                radiansToDegrees(diagnostic.heading_delta_after_rad));
+  }
 
   last_valid_path_points_ = trajectory_points;
   logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");

@@ -571,8 +571,9 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   result.stats.racing_line = racing.stats;
   result.racing_windows = racing.active_windows;
   const auto turn_smoothing_started_at = std::chrono::steady_clock::now();
-  const TurnSmoothingResult turn_smoothing = smoothTrajectoryTurns(
-      racing.samples, corridor.samples, *input.prohibited_grid, config.turn_smoothing);
+  const TurnSmoothingResult turn_smoothing =
+      smoothTrajectoryTurns(racing.samples, corridor.samples, *input.prohibited_grid,
+                            config.turn_smoothing, config.speed_profile);
   result.stats.turn_smoothing_duration_ms =
       elapsedMilliseconds(turn_smoothing_started_at);
   result.stats.turn_smoothing = turn_smoothing.stats;

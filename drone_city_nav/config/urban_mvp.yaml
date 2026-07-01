@@ -129,6 +129,8 @@ planner_node:
     racing_line_weight_curvature_change: 100.0
     racing_line_weight_offset_change: 0.5
     racing_line_weight_offset_second_change: 5.0
+    racing_line_weight_offset_slope: 80.0
+    racing_line_max_offset_slope_per_m: 0.35
     racing_line_weight_time: 50.0
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2

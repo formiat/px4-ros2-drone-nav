@@ -72,8 +72,16 @@ wideCornerCorridor(const OccupancyGrid2D& grid) {
 
 [[nodiscard]] double
 maxAcceptedCurvatureJumpAfter(const TrajectoryShapeDiagnostics& before) {
-  return std::max(before.max_curvature_jump_1pm + 0.25,
-                  before.max_curvature_jump_1pm * 2.0);
+  return std::max(before.max_curvature_jump_1pm + 0.05,
+                  before.max_curvature_jump_1pm * 1.5);
+}
+
+[[nodiscard]] VelocityFollowerConfig speedConfig() {
+  VelocityFollowerConfig config{};
+  config.cruise_speed_mps = 20.0;
+  config.min_turn_speed_mps = 1.5;
+  config.max_lateral_accel_mps2 = 5.0;
+  return config;
 }
 
 } // namespace
@@ -87,7 +95,7 @@ TEST(TurnSmoothing, SmoothsSingleSharpCornerInsideCorridor) {
   const TurnSmoothingResult result = smoothTrajectoryTurns(
       std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
       std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid,
-      smoothingConfig());
+      smoothingConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.changed);
@@ -122,7 +130,7 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
   const TurnSmoothingResult result = smoothTrajectoryTurns(
       std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
       std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid,
-      smoothingConfig());
+      smoothingConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.changed);
@@ -156,7 +164,8 @@ TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
 
   const TurnSmoothingResult result = smoothTrajectoryTurns(
       std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
-      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config);
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config,
+      speedConfig());
 
   EXPECT_FALSE(result.changed);
   EXPECT_EQ(result.stats.attempted_corners, 1U);

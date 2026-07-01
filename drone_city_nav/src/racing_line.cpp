@@ -44,6 +44,7 @@ struct CostBreakdown {
   double heading_jump_cost{0.0};
   double offset_change_cost{0.0};
   double offset_second_change_cost{0.0};
+  double offset_slope_cost{0.0};
   double collision_cost{0.0};
   double outside_grid_cost{0.0};
   double length_overrun_cost{0.0};
@@ -51,7 +52,7 @@ struct CostBreakdown {
   [[nodiscard]] double total() const noexcept {
     return length_cost + time_cost + curvature_cost + curvature_change_cost +
            heading_jump_cost + offset_change_cost + offset_second_change_cost +
-           collision_cost + outside_grid_cost + length_overrun_cost;
+           offset_slope_cost + collision_cost + outside_grid_cost + length_overrun_cost;
   }
 };
 
@@ -803,16 +804,27 @@ costBreakdownForPoints(const std::span<const Point2> points,
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
       sanitizedPositive(config.weight_offset_second_change, 5.0, 0.0, 1.0e9);
+  const double weight_offset_slope =
+      sanitizedPositive(config.weight_offset_slope, 80.0, 0.0, 1.0e9);
+  const double max_offset_slope =
+      sanitizedPositive(config.max_offset_slope_per_m, 0.35, 0.0, 100.0);
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
   double offset_change_cost = 0.0;
   double offset_second_change_cost = 0.0;
+  double offset_slope_cost = 0.0;
   double previous_curvature = 0.0;
   bool previous_curvature_valid = false;
   for (std::size_t i = 1U; i < offsets.size(); ++i) {
     const double change = offsets[i] - offsets[i - 1U];
     offset_change_cost += change * change;
+    const double ds = i < points.size() ? distance(points[i - 1U], points[i]) : 0.0;
+    if (ds > kTinyDistanceM) {
+      const double slope_violation =
+          std::max(0.0, std::abs(change) / ds - max_offset_slope);
+      offset_slope_cost += slope_violation * slope_violation * ds;
+    }
   }
   for (std::size_t i = 1U; i + 1U < offsets.size(); ++i) {
     const double second_change = offsets[i + 1U] - 2.0 * offsets[i] + offsets[i - 1U];
@@ -836,6 +848,7 @@ costBreakdownForPoints(const std::span<const Point2> points,
   breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
   breakdown.offset_second_change_cost =
       weight_offset_second_change * offset_second_change_cost;
+  breakdown.offset_slope_cost = weight_offset_slope * offset_slope_cost;
   return breakdown;
 }
 
@@ -951,6 +964,7 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& s
   stats.cost_heading_jump = breakdown.heading_jump_cost;
   stats.cost_offset_change = breakdown.offset_change_cost;
   stats.cost_offset_second_change = breakdown.offset_second_change_cost;
+  stats.cost_offset_slope = breakdown.offset_slope_cost;
   stats.cost_collision = breakdown.collision_cost;
   stats.cost_outside_grid = breakdown.outside_grid_cost;
   stats.cost_length_overrun = breakdown.length_overrun_cost;
