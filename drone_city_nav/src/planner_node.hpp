@@ -154,18 +154,23 @@ private:
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
                     const AStarConfig& astar_config);
 
-  bool publishPathFromPathCells(const OccupancyGrid2D& grid,
+  bool publishPathFromPathCells(const OccupancyGrid2D& route_grid,
+                                const OccupancyGrid2D& runtime_grid,
                                 const std::vector<GridIndex>& raw_cells,
                                 const std::vector<GridIndex>& smoothed_cells,
                                 const char* source_label,
-                                const ClearanceField2D* prohibited_clearance_field,
-                                bool prohibited_clearance_field_cache_hit);
+                                const ClearanceField2D* runtime_clearance_field,
+                                bool runtime_clearance_field_cache_hit);
 
   bool publishTrajectoryResult(const OccupancyGrid2D& validation_grid,
                                const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
                                const char* source_label, double duration_ms,
                                std::uint64_t* published_path_id = nullptr);
+
+  [[nodiscard]] bool
+  keepCurrentPathAfterInvalidReplacement(const char* source_label,
+                                         const char* invalid_reason) const;
 
   void startAsyncTrajectoryRefinement(
       const OccupancyGrid2D& grid, std::span<const Point2> route_points,

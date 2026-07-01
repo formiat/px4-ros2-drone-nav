@@ -26,10 +26,11 @@ namespace {
 } // namespace
 
 bool PlannerNode::publishPathFromPathCells(
-    const OccupancyGrid2D& grid, const std::vector<GridIndex>& raw_cells,
+    const OccupancyGrid2D& route_grid, const OccupancyGrid2D& runtime_grid,
+    const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
-    const ClearanceField2D* prohibited_clearance_field,
-    const bool prohibited_clearance_field_cache_hit) {
+    const ClearanceField2D* runtime_clearance_field,
+    const bool runtime_clearance_field_cache_hit) {
   struct CandidatePath {
     std::vector<Point2> points;
     const char* source_kind{""};
@@ -46,16 +47,16 @@ bool PlannerNode::publishPathFromPathCells(
       return std::nullopt;
     }
 
-    std::vector<Point2> path_points = cellsToPoints(grid, cells);
-    if (!connectRouteToCurrentPose(grid, path_points, source_label)) {
+    std::vector<Point2> path_points = cellsToPoints(route_grid, cells);
+    if (!connectRouteToCurrentPose(route_grid, path_points, source_label)) {
       return std::nullopt;
     }
 
     const RouteCandidateDecision route_decision =
         selectRouteCandidate(path_points, kPublishedPathCollinearityToleranceM,
-                             pathTraversableForGrid, &grid);
+                             pathTraversableForGrid, &route_grid);
     if (route_decision.status == RouteCandidateStatus::kRejectedNonTraversable) {
-      logRejectedUnsafeRoute(grid, path_points, source_label,
+      logRejectedUnsafeRoute(route_grid, path_points, source_label,
                              "pre-collapse path contains a non-traversable segment");
       return std::nullopt;
     }
@@ -111,6 +112,9 @@ bool PlannerNode::publishPathFromPathCells(
                 "%s path postprocess could not build a traversable route seed: "
                 "smoothed_cells=%zu raw_cells=%zu",
                 source_label, smoothed_cells.size(), raw_cells.size());
+    if (keepCurrentPathAfterInvalidReplacement(source_label, "route_seed_invalid")) {
+      return false;
+    }
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
     return false;
   }
@@ -140,8 +144,8 @@ bool PlannerNode::publishPathFromPathCells(
   const auto started_at = std::chrono::steady_clock::now();
   TrajectoryPlannerResult trajectory_result = planBaselineTrajectory(
       TrajectoryPlannerInput{
-          std::span<const Point2>{route_points.data(), route_points.size()}, &grid,
-          prohibited_clearance_field, prohibited_clearance_field_cache_hit,
+          std::span<const Point2>{route_points.data(), route_points.size()},
+          &runtime_grid, runtime_clearance_field, runtime_clearance_field_cache_hit,
           std::span<const CorridorSample>{}, nullptr},
       trajectory_planner_config_);
   const double duration_ms =
@@ -150,13 +154,28 @@ bool PlannerNode::publishPathFromPathCells(
                               .count()) /
       1000.0;
   std::uint64_t baseline_path_id = 0U;
-  if (!publishTrajectoryResult(grid, trajectory_result, route_points, source_label,
-                               duration_ms, &baseline_path_id)) {
+  if (!publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
+                               source_label, duration_ms, &baseline_path_id)) {
     return false;
   }
   startAsyncTrajectoryRefinement(
-      grid, route_points, generation, baseline_path_id, trajectory_result, source_label,
-      prohibited_clearance_field, prohibited_clearance_field_cache_hit);
+      runtime_grid, route_points, generation, baseline_path_id, trajectory_result,
+      source_label, runtime_clearance_field, runtime_clearance_field_cache_hit);
+  return true;
+}
+
+bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
+    const char* source_label, const char* invalid_reason) const {
+  if (last_valid_path_points_.size() < 2U) {
+    return false;
+  }
+
+  RCLCPP_WARN(get_logger(),
+              "%s replacement path rejected; keeping current valid path instead of "
+              "publishing an empty hold path: reason=%s last_published_path_id=%" PRIu64
+              " last_waypoints=%zu",
+              source_label, invalid_reason, last_published_path_id_,
+              last_valid_path_points_.size());
   return true;
 }
 
@@ -201,6 +220,10 @@ bool PlannerNode::publishTrajectoryResult(
         trajectory_result.stats.racing_line.iterations,
         trajectory_result.stats.racing_line.candidate_evaluations,
         trajectory_result.stats.racing_line.collision_rejections);
+    if (keepCurrentPathAfterInvalidReplacement(source_label,
+                                               "trajectory_build_failed")) {
+      return false;
+    }
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
     return false;
   }
@@ -228,6 +251,10 @@ bool PlannerNode::publishTrajectoryResult(
         trajectory_result.stats.racing_line_duration_ms,
         trajectory_result.stats.turn_smoothing_duration_ms,
         trajectory_result.stats.speed_profile_duration_ms);
+    if (keepCurrentPathAfterInvalidReplacement(source_label,
+                                               "trajectory_non_traversable")) {
+      return false;
+    }
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
     return false;
   }
