@@ -66,6 +66,14 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.local_score_false_positives = 1U;
   stats.racing_line.local_candidate_score_duration_ms = 4.5;
   stats.racing_line.full_candidate_score_duration_ms = 6.75;
+  stats.racing_line.top_n_full_score_candidates = 128U;
+  stats.racing_line.top_n_full_score_selected = 96U;
+  stats.racing_line.top_n_full_score_skipped = 384U;
+  stats.racing_line.top_n_full_score_forced = 3U;
+  stats.racing_line.top_n_best_full_score_local_rank = 42U;
+  stats.racing_line.top_n_full_score_reduction_ratio = 0.8;
+  stats.racing_line.top_n_preview_sort_duration_ms = 1.25;
+  stats.racing_line.top_n_full_score_selection_duration_ms = 2.75;
   stats.racing_line.window_count = 4U;
   stats.racing_line.active_window_count = 3U;
   stats.racing_line.active_window_samples = 18U;
@@ -310,6 +318,14 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"racing_local_candidate_acceptance_full_scores\":7"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_full_score_candidates\":128"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_full_score_selected\":96"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_full_score_skipped\":384"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_full_score_forced\":3"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_best_full_score_local_rank\":42"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_top_n_full_score_reduction_ratio\":0.8"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_to_fine_used\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_window_count\":4"), std::string::npos);
@@ -402,6 +418,14 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_local_score_false_positives\"",
                         "\"racing_local_candidate_score_duration_ms\"",
                         "\"racing_full_candidate_score_duration_ms\"",
+                        "\"racing_top_n_full_score_candidates\"",
+                        "\"racing_top_n_full_score_selected\"",
+                        "\"racing_top_n_full_score_skipped\"",
+                        "\"racing_top_n_full_score_forced\"",
+                        "\"racing_top_n_best_full_score_local_rank\"",
+                        "\"racing_top_n_full_score_reduction_ratio\"",
+                        "\"racing_top_n_preview_sort_duration_ms\"",
+                        "\"racing_top_n_full_score_selection_duration_ms\"",
                         "\"racing_line_window_count\"",
                         "\"racing_line_active_window_count\"",
                         "\"racing_line_active_window_samples\"",
@@ -603,6 +627,16 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
                    4.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.full_candidate_score_duration_ms,
                    6.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.top_n_full_score_candidates, 128U);
+  EXPECT_EQ(parsed_value.stats.racing_line.top_n_full_score_selected, 96U);
+  EXPECT_EQ(parsed_value.stats.racing_line.top_n_full_score_skipped, 384U);
+  EXPECT_EQ(parsed_value.stats.racing_line.top_n_full_score_forced, 3U);
+  EXPECT_EQ(parsed_value.stats.racing_line.top_n_best_full_score_local_rank, 42U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.top_n_full_score_reduction_ratio,
+                   0.8);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.top_n_preview_sort_duration_ms, 1.25);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.top_n_full_score_selection_duration_ms, 2.75);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_hits, 14U);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_misses, 88U);
   EXPECT_EQ(parsed_value.stats.racing_line.window_count, 4U);

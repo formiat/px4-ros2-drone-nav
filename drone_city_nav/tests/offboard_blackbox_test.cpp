@@ -147,6 +147,15 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       15U;
   record.trajectory_planner_stats.racing_line.local_candidate_acceptance_full_scores =
       3U;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_candidates = 128U;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_selected = 96U;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_skipped = 384U;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_forced = 3U;
+  record.trajectory_planner_stats.racing_line.top_n_best_full_score_local_rank = 42U;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_reduction_ratio = 0.8;
+  record.trajectory_planner_stats.racing_line.top_n_preview_sort_duration_ms = 1.25;
+  record.trajectory_planner_stats.racing_line.top_n_full_score_selection_duration_ms =
+      2.75;
   record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
   record.trajectory_planner_stats.racing_line.full_path_segment_cache_hits = 11U;
@@ -267,6 +276,14 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_local_candidate_evaluations\":18");
   expectJsonField(json, "\"racing_local_candidate_full_score_fallbacks\":15");
   expectJsonField(json, "\"racing_local_candidate_acceptance_full_scores\":3");
+  expectJsonField(json, "\"racing_top_n_full_score_candidates\":128");
+  expectJsonField(json, "\"racing_top_n_full_score_selected\":96");
+  expectJsonField(json, "\"racing_top_n_full_score_skipped\":384");
+  expectJsonField(json, "\"racing_top_n_full_score_forced\":3");
+  expectJsonField(json, "\"racing_top_n_best_full_score_local_rank\":42");
+  expectJsonField(json, "\"racing_top_n_full_score_reduction_ratio\":0.8");
+  expectJsonField(json, "\"racing_top_n_preview_sort_duration_ms\":1.25");
+  expectJsonField(json, "\"racing_top_n_full_score_selection_duration_ms\":2.75");
   expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"racing_line_full_path_segment_cache_hits\":11");

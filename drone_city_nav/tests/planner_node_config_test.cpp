@@ -100,6 +100,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 2.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.75);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 1.5);
+  EXPECT_EQ(config.trajectory_planner.racing_line.top_n_full_score_candidates, 128U);
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
@@ -141,6 +142,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"racing_line_dp_coarse_offset_step_m", -1.0},
        rclcpp::Parameter{"racing_line_dp_fine_offset_step_m", -1.0},
        rclcpp::Parameter{"racing_line_dp_fine_radius_m", -1.0},
+       rclcpp::Parameter{"racing_line_top_n_full_score_candidates", 500000},
        rclcpp::Parameter{"racing_line_async_refinement_workers", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_entry_distance_m", -5.0},
@@ -185,6 +187,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 0.05);
+  EXPECT_EQ(config.trajectory_planner.racing_line.top_n_full_score_candidates, 100000U);
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
@@ -217,6 +220,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                 rclcpp::Parameter{"racing_line_dp_coarse_offset_step_m", 2.5},
                 rclcpp::Parameter{"racing_line_dp_fine_offset_step_m", 0.5},
                 rclcpp::Parameter{"racing_line_dp_fine_radius_m", 2.25},
+                rclcpp::Parameter{"racing_line_top_n_full_score_candidates", 64},
                 rclcpp::Parameter{"racing_line_async_refinement_workers", 2},
                 rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
                 rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
@@ -258,6 +262,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 2.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 2.25);
+  EXPECT_EQ(config.trajectory_planner.racing_line.top_n_full_score_candidates, 64U);
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);

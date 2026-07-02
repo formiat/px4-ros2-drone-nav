@@ -147,6 +147,7 @@ planner_node:
     racing_line_dp_coarse_offset_step_m: 2.0
     racing_line_dp_fine_offset_step_m: 0.75
     racing_line_dp_fine_radius_m: 1.5
+    racing_line_top_n_full_score_candidates: 128
     racing_line_async_refinement_workers: 1
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 12.0
