@@ -410,6 +410,26 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.local_candidate_score_duration_ms);
   appendJsonNumber(stream, "racing_full_candidate_score_duration_ms",
                    stats.racing_line.full_candidate_score_duration_ms);
+  appendJsonSize(stream, "racing_shadow_lower_bound_evaluations",
+                 stats.racing_line.shadow_lower_bound_evaluations);
+  appendJsonSize(stream, "racing_shadow_lower_bound_unavailable",
+                 stats.racing_line.shadow_lower_bound_unavailable);
+  appendJsonSize(stream, "racing_shadow_lower_bound_prunable",
+                 stats.racing_line.shadow_lower_bound_prunable);
+  appendJsonSize(stream, "racing_shadow_lower_bound_false_prunes",
+                 stats.racing_line.shadow_lower_bound_false_prunes);
+  appendJsonSize(stream, "racing_shadow_lower_bound_winner_prunes",
+                 stats.racing_line.shadow_lower_bound_winner_prunes);
+  appendJsonNumber(
+      stream, "racing_shadow_lower_bound_prunable_full_score_duration_ms",
+      stats.racing_line.shadow_lower_bound_prunable_full_score_duration_ms);
+  appendJsonNumber(stream, "racing_shadow_lower_bound_max_overestimate_score",
+                   stats.racing_line.shadow_lower_bound_max_overestimate_score);
+  appendJsonNumber(stream, "racing_shadow_lower_bound_max_underestimate_score",
+                   stats.racing_line.shadow_lower_bound_max_underestimate_score);
+  appendJsonNumber(
+      stream, "racing_shadow_lower_bound_max_false_prune_improvement_score",
+      stats.racing_line.shadow_lower_bound_max_false_prune_improvement_score);
   appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
   appendJsonSize(stream, "racing_line_active_window_count",
                  stats.racing_line.active_window_count);
@@ -950,6 +970,24 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.local_candidate_score_duration_ms);
   parseJsonDouble(json, "racing_full_candidate_score_duration_ms",
                   racing.full_candidate_score_duration_ms);
+  parseJsonSize(json, "racing_shadow_lower_bound_evaluations",
+                racing.shadow_lower_bound_evaluations);
+  parseJsonSize(json, "racing_shadow_lower_bound_unavailable",
+                racing.shadow_lower_bound_unavailable);
+  parseJsonSize(json, "racing_shadow_lower_bound_prunable",
+                racing.shadow_lower_bound_prunable);
+  parseJsonSize(json, "racing_shadow_lower_bound_false_prunes",
+                racing.shadow_lower_bound_false_prunes);
+  parseJsonSize(json, "racing_shadow_lower_bound_winner_prunes",
+                racing.shadow_lower_bound_winner_prunes);
+  parseJsonDouble(json, "racing_shadow_lower_bound_prunable_full_score_duration_ms",
+                  racing.shadow_lower_bound_prunable_full_score_duration_ms);
+  parseJsonDouble(json, "racing_shadow_lower_bound_max_overestimate_score",
+                  racing.shadow_lower_bound_max_overestimate_score);
+  parseJsonDouble(json, "racing_shadow_lower_bound_max_underestimate_score",
+                  racing.shadow_lower_bound_max_underestimate_score);
+  parseJsonDouble(json, "racing_shadow_lower_bound_max_false_prune_improvement_score",
+                  racing.shadow_lower_bound_max_false_prune_improvement_score);
   parseJsonSize(json, "racing_line_window_count", racing.window_count);
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",

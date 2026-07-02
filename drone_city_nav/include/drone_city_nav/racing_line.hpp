@@ -73,6 +73,15 @@ struct RacingLineStats {
   std::size_t local_score_false_positives{0U};
   double local_candidate_score_duration_ms{0.0};
   double full_candidate_score_duration_ms{0.0};
+  std::size_t shadow_lower_bound_evaluations{0U};
+  std::size_t shadow_lower_bound_unavailable{0U};
+  std::size_t shadow_lower_bound_prunable{0U};
+  std::size_t shadow_lower_bound_false_prunes{0U};
+  std::size_t shadow_lower_bound_winner_prunes{0U};
+  double shadow_lower_bound_prunable_full_score_duration_ms{0.0};
+  double shadow_lower_bound_max_overestimate_score{0.0};
+  double shadow_lower_bound_max_underestimate_score{0.0};
+  double shadow_lower_bound_max_false_prune_improvement_score{0.0};
   std::size_t window_count{0U};
   std::size_t active_window_count{0U};
   std::size_t active_window_samples{0U};

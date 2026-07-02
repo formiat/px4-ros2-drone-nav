@@ -66,6 +66,15 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.local_score_false_positives = 1U;
   stats.racing_line.local_candidate_score_duration_ms = 4.5;
   stats.racing_line.full_candidate_score_duration_ms = 6.75;
+  stats.racing_line.shadow_lower_bound_evaluations = 51U;
+  stats.racing_line.shadow_lower_bound_unavailable = 10U;
+  stats.racing_line.shadow_lower_bound_prunable = 17U;
+  stats.racing_line.shadow_lower_bound_false_prunes = 2U;
+  stats.racing_line.shadow_lower_bound_winner_prunes = 1U;
+  stats.racing_line.shadow_lower_bound_prunable_full_score_duration_ms = 3.5;
+  stats.racing_line.shadow_lower_bound_max_overestimate_score = 0.25;
+  stats.racing_line.shadow_lower_bound_max_underestimate_score = 12.5;
+  stats.racing_line.shadow_lower_bound_max_false_prune_improvement_score = 1.75;
   stats.racing_line.window_count = 4U;
   stats.racing_line.active_window_count = 3U;
   stats.racing_line.active_window_samples = 18U;
@@ -310,6 +319,16 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"racing_local_candidate_acceptance_full_scores\":7"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_lower_bound_evaluations\":51"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_lower_bound_prunable\":17"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_lower_bound_false_prunes\":2"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_lower_bound_winner_prunes\":1"),
+            std::string::npos);
+  EXPECT_NE(
+      json.find("\"racing_shadow_lower_bound_prunable_full_score_duration_ms\":3.5"),
+      std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_to_fine_used\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_window_count\":4"), std::string::npos);
@@ -344,86 +363,95 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
 TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys) {
   const std::string fragment = racingLineDiagnosticsJsonFields(populatedStats());
 
-  expectContainsAll(fragment,
-                    std::array{
-                        "\"racing_final_estimated_time_s\"",
-                        "\"racing_final_min_speed_limit_mps\"",
-                        "\"racing_final_max_speed_limit_mps\"",
-                        "\"racing_final_curvature_limited_samples\"",
-                        "\"racing_centerline_length_m\"",
-                        "\"racing_final_length_m\"",
-                        "\"racing_final_length_ratio\"",
-                        "\"racing_max_abs_offset_m\"",
-                        "\"racing_min_edge_margin_m\"",
-                        "\"racing_mean_edge_margin_m\"",
-                        "\"racing_cost_length\"",
-                        "\"racing_cost_time\"",
-                        "\"racing_cost_curvature\"",
-                        "\"racing_cost_curvature_change\"",
-                        "\"racing_cost_heading_jump\"",
-                        "\"racing_cost_offset_change\"",
-                        "\"racing_cost_offset_second_change\"",
-                        "\"racing_cost_offset_slope\"",
-                        "\"racing_cost_collision\"",
-                        "\"racing_cost_outside_grid\"",
-                        "\"racing_cost_length_overrun\"",
-                        "\"racing_centerline_estimated_time_s\"",
-                        "\"racing_centerline_min_speed_limit_mps\"",
-                        "\"racing_centerline_max_speed_limit_mps\"",
-                        "\"racing_centerline_curvature_limited_samples\"",
-                        "\"racing_best_candidate_estimated_time_s\"",
-                        "\"racing_best_candidate_score\"",
-                        "\"racing_best_candidate_min_speed_limit_mps\"",
-                        "\"racing_best_candidate_max_speed_limit_mps\"",
-                        "\"racing_best_candidate_curvature_limited_samples\"",
-                        "\"racing_time_gain_s\"",
-                        "\"racing_regularization_time_delta_s\"",
-                        "\"racing_regularization_iterations\"",
-                        "\"racing_regularization_applied\"",
-                        "\"racing_pre_regularization_max_curvature_jump_1pm\"",
-                        "\"racing_post_regularization_max_curvature_jump_1pm\"",
-                        "\"racing_candidate_path_evaluation_duration_ms\"",
-                        "\"racing_candidate_score_duration_ms\"",
-                        "\"racing_candidate_point_build_duration_ms\"",
-                        "\"racing_candidate_sample_build_duration_ms\"",
-                        "\"racing_candidate_cost_breakdown_duration_ms\"",
-                        "\"racing_candidate_shape_diagnostics_duration_ms\"",
-                        "\"racing_candidate_speed_profile_duration_ms\"",
-                        "\"racing_regularization_duration_ms\"",
-                        "\"racing_scratch_reused_candidates\"",
-                        "\"racing_parallel_candidate_evaluation_used\"",
-                        "\"racing_parallel_workers_used\"",
-                        "\"racing_candidate_chunks\"",
-                        "\"racing_worker_scratch_reuses\"",
-                        "\"racing_candidate_snapshot_allocations_avoided\"",
-                        "\"racing_local_candidate_evaluations\"",
-                        "\"racing_local_candidate_full_score_fallbacks\"",
-                        "\"racing_local_candidate_acceptance_full_scores\"",
-                        "\"racing_local_score_false_positives\"",
-                        "\"racing_local_candidate_score_duration_ms\"",
-                        "\"racing_full_candidate_score_duration_ms\"",
-                        "\"racing_line_window_count\"",
-                        "\"racing_line_active_window_count\"",
-                        "\"racing_line_active_window_samples\"",
-                        "\"racing_line_dp_states\"",
-                        "\"racing_line_dp_transitions\"",
-                        "\"racing_line_dp_segment_cache_hits\"",
-                        "\"racing_line_dp_segment_cache_misses\"",
-                        "\"racing_line_candidate_segment_cache_hits\"",
-                        "\"racing_line_candidate_segment_cache_misses\"",
-                        "\"racing_line_full_path_segment_cache_hits\"",
-                        "\"racing_line_full_path_segment_cache_misses\"",
-                        "\"racing_line_dp_coarse_states\"",
-                        "\"racing_line_dp_coarse_transitions\"",
-                        "\"racing_line_dp_fine_states\"",
-                        "\"racing_line_dp_fine_transitions\"",
-                        "\"racing_line_dp_coarse_to_fine_used\"",
-                        "\"racing_line_window_detection_duration_ms\"",
-                        "\"racing_line_window_eval_duration_ms\"",
-                        "\"racing_line_dp_duration_ms\"",
-                        "\"racing_line_full_final_score_duration_ms\"",
-                        "\"racing_line_async_refined\"",
-                    });
+  expectContainsAll(
+      fragment, std::array{
+                    "\"racing_final_estimated_time_s\"",
+                    "\"racing_final_min_speed_limit_mps\"",
+                    "\"racing_final_max_speed_limit_mps\"",
+                    "\"racing_final_curvature_limited_samples\"",
+                    "\"racing_centerline_length_m\"",
+                    "\"racing_final_length_m\"",
+                    "\"racing_final_length_ratio\"",
+                    "\"racing_max_abs_offset_m\"",
+                    "\"racing_min_edge_margin_m\"",
+                    "\"racing_mean_edge_margin_m\"",
+                    "\"racing_cost_length\"",
+                    "\"racing_cost_time\"",
+                    "\"racing_cost_curvature\"",
+                    "\"racing_cost_curvature_change\"",
+                    "\"racing_cost_heading_jump\"",
+                    "\"racing_cost_offset_change\"",
+                    "\"racing_cost_offset_second_change\"",
+                    "\"racing_cost_offset_slope\"",
+                    "\"racing_cost_collision\"",
+                    "\"racing_cost_outside_grid\"",
+                    "\"racing_cost_length_overrun\"",
+                    "\"racing_centerline_estimated_time_s\"",
+                    "\"racing_centerline_min_speed_limit_mps\"",
+                    "\"racing_centerline_max_speed_limit_mps\"",
+                    "\"racing_centerline_curvature_limited_samples\"",
+                    "\"racing_best_candidate_estimated_time_s\"",
+                    "\"racing_best_candidate_score\"",
+                    "\"racing_best_candidate_min_speed_limit_mps\"",
+                    "\"racing_best_candidate_max_speed_limit_mps\"",
+                    "\"racing_best_candidate_curvature_limited_samples\"",
+                    "\"racing_time_gain_s\"",
+                    "\"racing_regularization_time_delta_s\"",
+                    "\"racing_regularization_iterations\"",
+                    "\"racing_regularization_applied\"",
+                    "\"racing_pre_regularization_max_curvature_jump_1pm\"",
+                    "\"racing_post_regularization_max_curvature_jump_1pm\"",
+                    "\"racing_candidate_path_evaluation_duration_ms\"",
+                    "\"racing_candidate_score_duration_ms\"",
+                    "\"racing_candidate_point_build_duration_ms\"",
+                    "\"racing_candidate_sample_build_duration_ms\"",
+                    "\"racing_candidate_cost_breakdown_duration_ms\"",
+                    "\"racing_candidate_shape_diagnostics_duration_ms\"",
+                    "\"racing_candidate_speed_profile_duration_ms\"",
+                    "\"racing_regularization_duration_ms\"",
+                    "\"racing_scratch_reused_candidates\"",
+                    "\"racing_parallel_candidate_evaluation_used\"",
+                    "\"racing_parallel_workers_used\"",
+                    "\"racing_candidate_chunks\"",
+                    "\"racing_worker_scratch_reuses\"",
+                    "\"racing_candidate_snapshot_allocations_avoided\"",
+                    "\"racing_local_candidate_evaluations\"",
+                    "\"racing_local_candidate_full_score_fallbacks\"",
+                    "\"racing_local_candidate_acceptance_full_scores\"",
+                    "\"racing_local_score_false_positives\"",
+                    "\"racing_local_candidate_score_duration_ms\"",
+                    "\"racing_full_candidate_score_duration_ms\"",
+                    "\"racing_shadow_lower_bound_evaluations\"",
+                    "\"racing_shadow_lower_bound_unavailable\"",
+                    "\"racing_shadow_lower_bound_prunable\"",
+                    "\"racing_shadow_lower_bound_false_prunes\"",
+                    "\"racing_shadow_lower_bound_winner_prunes\"",
+                    "\"racing_shadow_lower_bound_prunable_full_score_duration_ms\"",
+                    "\"racing_shadow_lower_bound_max_overestimate_score\"",
+                    "\"racing_shadow_lower_bound_max_underestimate_score\"",
+                    "\"racing_shadow_lower_bound_max_false_prune_improvement_score\"",
+                    "\"racing_line_window_count\"",
+                    "\"racing_line_active_window_count\"",
+                    "\"racing_line_active_window_samples\"",
+                    "\"racing_line_dp_states\"",
+                    "\"racing_line_dp_transitions\"",
+                    "\"racing_line_dp_segment_cache_hits\"",
+                    "\"racing_line_dp_segment_cache_misses\"",
+                    "\"racing_line_candidate_segment_cache_hits\"",
+                    "\"racing_line_candidate_segment_cache_misses\"",
+                    "\"racing_line_full_path_segment_cache_hits\"",
+                    "\"racing_line_full_path_segment_cache_misses\"",
+                    "\"racing_line_dp_coarse_states\"",
+                    "\"racing_line_dp_coarse_transitions\"",
+                    "\"racing_line_dp_fine_states\"",
+                    "\"racing_line_dp_fine_transitions\"",
+                    "\"racing_line_dp_coarse_to_fine_used\"",
+                    "\"racing_line_window_detection_duration_ms\"",
+                    "\"racing_line_window_eval_duration_ms\"",
+                    "\"racing_line_dp_duration_ms\"",
+                    "\"racing_line_full_final_score_duration_ms\"",
+                    "\"racing_line_async_refined\"",
+                });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 
@@ -603,6 +631,21 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
                    4.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.full_candidate_score_duration_ms,
                    6.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_evaluations, 51U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_unavailable, 10U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_prunable, 17U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_false_prunes, 2U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_winner_prunes, 1U);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_lower_bound_prunable_full_score_duration_ms,
+      3.5);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_lower_bound_max_overestimate_score, 0.25);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_lower_bound_max_underestimate_score, 12.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
+                       .shadow_lower_bound_max_false_prune_improvement_score,
+                   1.75);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_hits, 14U);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_misses, 88U);
   EXPECT_EQ(parsed_value.stats.racing_line.window_count, 4U);

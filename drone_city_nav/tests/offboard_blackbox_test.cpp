@@ -147,6 +147,19 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       15U;
   record.trajectory_planner_stats.racing_line.local_candidate_acceptance_full_scores =
       3U;
+  record.trajectory_planner_stats.racing_line.shadow_lower_bound_evaluations = 12U;
+  record.trajectory_planner_stats.racing_line.shadow_lower_bound_unavailable = 6U;
+  record.trajectory_planner_stats.racing_line.shadow_lower_bound_prunable = 5U;
+  record.trajectory_planner_stats.racing_line.shadow_lower_bound_false_prunes = 1U;
+  record.trajectory_planner_stats.racing_line.shadow_lower_bound_winner_prunes = 1U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_lower_bound_prunable_full_score_duration_ms = 2.5;
+  record.trajectory_planner_stats.racing_line
+      .shadow_lower_bound_max_overestimate_score = 0.125;
+  record.trajectory_planner_stats.racing_line
+      .shadow_lower_bound_max_underestimate_score = 4.5;
+  record.trajectory_planner_stats.racing_line
+      .shadow_lower_bound_max_false_prune_improvement_score = 0.75;
   record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
   record.trajectory_planner_stats.racing_line.full_path_segment_cache_hits = 11U;
@@ -267,6 +280,17 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_local_candidate_evaluations\":18");
   expectJsonField(json, "\"racing_local_candidate_full_score_fallbacks\":15");
   expectJsonField(json, "\"racing_local_candidate_acceptance_full_scores\":3");
+  expectJsonField(json, "\"racing_shadow_lower_bound_evaluations\":12");
+  expectJsonField(json, "\"racing_shadow_lower_bound_unavailable\":6");
+  expectJsonField(json, "\"racing_shadow_lower_bound_prunable\":5");
+  expectJsonField(json, "\"racing_shadow_lower_bound_false_prunes\":1");
+  expectJsonField(json, "\"racing_shadow_lower_bound_winner_prunes\":1");
+  expectJsonField(json,
+                  "\"racing_shadow_lower_bound_prunable_full_score_duration_ms\":2.5");
+  expectJsonField(json, "\"racing_shadow_lower_bound_max_overestimate_score\":0.125");
+  expectJsonField(json, "\"racing_shadow_lower_bound_max_underestimate_score\":4.5");
+  expectJsonField(
+      json, "\"racing_shadow_lower_bound_max_false_prune_improvement_score\":0.75");
   expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"racing_line_full_path_segment_cache_hits\":11");

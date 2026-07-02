@@ -85,6 +85,10 @@ struct EvaluatedCandidate {
   bool full_score_used{false};
   bool scratch_reused{false};
   bool snapshot_allocation_avoided{false};
+  bool shadow_lower_bound_valid{false};
+  bool shadow_lower_bound_would_prune{false};
+  double shadow_lower_bound_score{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_lower_bound_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct CandidateTask {
@@ -1148,7 +1152,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const double base_length_m, const std::size_t center_index, const double delta_m,
     const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
-    const std::span<const std::uint8_t> mutable_indices, CandidateWorkBuffer& buffer) {
+    const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
+    CandidateWorkBuffer& buffer) {
   EvaluatedCandidate result{};
   result.scratch_reused = true;
   result.snapshot_allocation_avoided =
@@ -1204,6 +1209,13 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
           weight_time * local_score.estimated_traversal_time.estimated_time_s;
     }
     result.score.score = result.score.breakdown.total();
+    result.shadow_lower_bound_valid = std::isfinite(result.score.score);
+    result.shadow_lower_bound_score = result.score.score;
+    result.shadow_lower_bound_incumbent_score = incumbent_score;
+    result.shadow_lower_bound_would_prune =
+        std::isfinite(result.shadow_lower_bound_score) &&
+        std::isfinite(incumbent_score) &&
+        result.shadow_lower_bound_score + 1.0e-9 >= incumbent_score;
     result.score_duration_ms += elapsedMilliseconds(prefilter_started_at);
     const auto score_started_at = std::chrono::steady_clock::now();
     result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
@@ -1494,7 +1506,7 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const double base_length_m, const OccupancyGrid2D& prohibited_grid,
     const RacingLineConfig& config, const VelocityFollowerConfig& speed_config,
     const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
-    const std::size_t worker_count) {
+    const double incumbent_score, const std::size_t worker_count) {
   std::vector<CandidateBatchResult> results(tasks.size());
   if (tasks.empty()) {
     return results;
@@ -1530,7 +1542,7 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     results[task_index].candidate = evaluateCandidateSnapshot(
         corridor_samples, base_offsets, base_points, base_score, base_length_m,
         task.center_index, task.delta_m, prohibited_grid, config, speed_config,
-        max_length_m, mutable_indices, buffer);
+        max_length_m, mutable_indices, incumbent_score, buffer);
   };
 
   if (resolved_workers == 1U) {
@@ -1580,6 +1592,36 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   if (candidate.full_score_used) {
     ++stats.local_candidate_full_score_fallbacks;
     stats.full_candidate_score_duration_ms += candidate.full_score_duration_ms;
+  }
+  if (candidate.shadow_lower_bound_valid) {
+    ++stats.shadow_lower_bound_evaluations;
+    if (candidate.full_score_used && std::isfinite(candidate.score.score)) {
+      const double delta = candidate.shadow_lower_bound_score - candidate.score.score;
+      if (std::isfinite(delta)) {
+        stats.shadow_lower_bound_max_overestimate_score =
+            std::max(stats.shadow_lower_bound_max_overestimate_score, delta);
+        stats.shadow_lower_bound_max_underestimate_score =
+            std::max(stats.shadow_lower_bound_max_underestimate_score, -delta);
+      }
+    }
+    if (candidate.shadow_lower_bound_would_prune) {
+      ++stats.shadow_lower_bound_prunable;
+      if (candidate.full_score_used) {
+        stats.shadow_lower_bound_prunable_full_score_duration_ms +=
+            candidate.full_score_duration_ms;
+      }
+      if (candidate.full_score_used && std::isfinite(candidate.score.score) &&
+          std::isfinite(candidate.shadow_lower_bound_incumbent_score) &&
+          candidate.score.score + 1.0e-9 <
+              candidate.shadow_lower_bound_incumbent_score) {
+        ++stats.shadow_lower_bound_false_prunes;
+        stats.shadow_lower_bound_max_false_prune_improvement_score = std::max(
+            stats.shadow_lower_bound_max_false_prune_improvement_score,
+            candidate.shadow_lower_bound_incumbent_score - candidate.score.score);
+      }
+    }
+  } else if (candidate.local_evaluated) {
+    ++stats.shadow_lower_bound_unavailable;
   }
   ++stats.candidate_evaluations;
   stats.candidate_point_build_duration_ms += candidate.point_build_duration_ms;
@@ -1746,7 +1788,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     ++result.stats.candidate_chunks;
     std::vector<CandidateBatchResult> candidates = evaluateCandidateBatch(
         tasks, optimizer_samples, offsets, best_points, best_score, best_length_m,
-        prohibited_grid, config, speed_config, max_length_m, mutable_indices,
+        prohibited_grid, config, speed_config, max_length_m, mutable_indices, best_cost,
         candidate_worker_count);
 
     bool changed = false;
@@ -1769,6 +1811,9 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       }
     }
     if (iteration_winner != nullptr) {
+      if (iteration_winner->shadow_lower_bound_would_prune) {
+        ++result.stats.shadow_lower_bound_winner_prunes;
+      }
       best_cost = iteration_winner->score.score;
       offsets = iteration_winner->offsets;
       const auto accepted_points_started_at = std::chrono::steady_clock::now();
