@@ -968,6 +968,20 @@ costBreakdownForPoints(const std::span<const Point2> points,
   return breakdown;
 }
 
+[[nodiscard]] double
+conservativeShadowLowerBoundScore(const std::span<const Point2> points,
+                                  const std::span<const double> offsets,
+                                  const RacingLineConfig& config) {
+  if (points.size() < 2U || points.size() != offsets.size()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const CostBreakdown geometry = costBreakdownForPoints(points, offsets, config);
+  return geometry.length_cost + geometry.curvature_cost +
+         geometry.curvature_change_cost + geometry.offset_change_cost +
+         geometry.offset_second_change_cost + geometry.offset_slope_cost;
+}
+
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
@@ -1211,27 +1225,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
     result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
     const auto prefilter_started_at = std::chrono::steady_clock::now();
-    result.score.breakdown =
-        costBreakdownForPoints(buffer.points, buffer.offsets, config);
-    result.score.breakdown.collision_cost =
-        static_cast<double>(result.path.prohibited_cells) * kCollisionPenalty;
-    result.score.breakdown.outside_grid_cost =
-        static_cast<double>(result.path.outside_grid_segments) * kOutsideGridPenalty;
-    if (std::isfinite(max_length_m) && result.path.length_m > max_length_m) {
-      const double overrun_m = result.path.length_m - max_length_m;
-      result.score.breakdown.length_overrun_cost =
-          overrun_m * overrun_m * kLengthOverrunPenalty;
-    }
-    const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
-    if (weight_time > 0.0 && local_score.estimated_traversal_time.valid &&
-        std::isfinite(local_score.estimated_traversal_time.estimated_time_s)) {
-      result.score.traversal_time = local_score.estimated_traversal_time;
-      result.score.breakdown.time_cost =
-          weight_time * local_score.estimated_traversal_time.estimated_time_s;
-    }
-    result.score.score = result.score.breakdown.total();
-    result.shadow_lower_bound_valid = std::isfinite(result.score.score);
-    result.shadow_lower_bound_score = result.score.score;
+    result.shadow_lower_bound_score = conservativeShadowLowerBoundScore(
+        std::span<const Point2>{buffer.points.data(), buffer.points.size()},
+        std::span<const double>{buffer.offsets.data(), buffer.offsets.size()}, config);
+    result.shadow_lower_bound_valid = std::isfinite(result.shadow_lower_bound_score);
     result.shadow_lower_bound_incumbent_score = incumbent_score;
     result.shadow_lower_bound_would_prune =
         std::isfinite(result.shadow_lower_bound_score) &&
