@@ -272,7 +272,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.racing_line.top_n_full_score_candidates =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
-                                       "racing_line_top_n_full_score_candidates", 128),
+                                       "racing_line_top_n_full_score_candidates", 0),
                                    0, 100000));
   config.trajectory_planner.racing_line.async_refinement_workers =
       static_cast<std::size_t>(

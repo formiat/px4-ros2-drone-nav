@@ -100,7 +100,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 2.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.75);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 1.5);
-  EXPECT_EQ(config.trajectory_planner.racing_line.top_n_full_score_candidates, 128U);
+  EXPECT_EQ(config.trajectory_planner.racing_line.top_n_full_score_candidates, 0U);
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);

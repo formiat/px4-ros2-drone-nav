@@ -42,7 +42,7 @@ struct RacingLineConfig {
   double dp_coarse_offset_step_m{2.0};
   double dp_fine_offset_step_m{0.75};
   double dp_fine_radius_m{1.5};
-  std::size_t top_n_full_score_candidates{128U};
+  std::size_t top_n_full_score_candidates{0U};
   std::size_t async_refinement_workers{1U};
 };
 
