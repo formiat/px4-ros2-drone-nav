@@ -303,11 +303,16 @@ bool PlannerNode::publishTrajectoryResult(
       "regularization=%.1fms scratch_reused=%zu "
       "parallel=%s workers=%zu chunks=%zu worker_reuses=%zu "
       "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
+      "local_required=%zu "
+      "local_required_reasons(invalid=%zu boundary=%zu unsafe_base=%zu "
+      "window_invalid=%zu) "
       "local_accept_full_scores=%zu local_false_positives=%zu "
-      "local_time=%.1fms full_candidate_score=%.1fms "
+      "local_timing(point=%.1fms path=%.1fms estimate=%.1fms total=%.1fms) "
+      "full_candidate_score=%.1fms "
       "shadow_lb(evals=%zu unavailable=%zu prunable=%zu false_prunes=%zu "
-      "winner_prunes=%zu prunable_full_score=%.1fms max_over=%.3f "
-      "max_under=%.3f max_false_improve=%.3f) "
+      "winner_prunes=%zu validation_full_scores=%zu "
+      "validation_full_score=%.1fms prunable_full_score=%.1fms "
+      "max_over=%.3f max_under=%.3f max_false_improve=%.3f) "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
@@ -392,8 +397,20 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
       trajectory_result.stats.racing_line.local_candidate_evaluations,
       trajectory_result.stats.racing_line.local_candidate_full_score_fallbacks,
+      trajectory_result.stats.racing_line.local_candidate_full_score_required,
+      trajectory_result.stats.racing_line
+          .local_candidate_full_score_required_invalid_input,
+      trajectory_result.stats.racing_line.local_candidate_full_score_required_boundary,
+      trajectory_result.stats.racing_line
+          .local_candidate_full_score_required_unsafe_base,
+      trajectory_result.stats.racing_line
+          .local_candidate_full_score_required_window_invalid,
       trajectory_result.stats.racing_line.local_candidate_acceptance_full_scores,
       trajectory_result.stats.racing_line.local_score_false_positives,
+      trajectory_result.stats.racing_line.local_candidate_point_build_duration_ms,
+      trajectory_result.stats.racing_line.local_candidate_path_evaluation_duration_ms,
+      trajectory_result.stats.racing_line
+          .local_candidate_traversal_estimate_duration_ms,
       trajectory_result.stats.racing_line.local_candidate_score_duration_ms,
       trajectory_result.stats.racing_line.full_candidate_score_duration_ms,
       trajectory_result.stats.racing_line.shadow_lower_bound_evaluations,
@@ -401,6 +418,9 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.shadow_lower_bound_prunable,
       trajectory_result.stats.racing_line.shadow_lower_bound_false_prunes,
       trajectory_result.stats.racing_line.shadow_lower_bound_winner_prunes,
+      trajectory_result.stats.racing_line.shadow_lower_bound_validation_full_scores,
+      trajectory_result.stats.racing_line
+          .shadow_lower_bound_validation_full_score_duration_ms,
       trajectory_result.stats.racing_line
           .shadow_lower_bound_prunable_full_score_duration_ms,
       trajectory_result.stats.racing_line.shadow_lower_bound_max_overestimate_score,

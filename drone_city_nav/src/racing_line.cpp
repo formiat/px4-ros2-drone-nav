@@ -62,6 +62,14 @@ struct CandidateScore {
   CostBreakdown breakdown{};
 };
 
+enum class LocalFullScoreReason : std::uint8_t {
+  kNone,
+  kInvalidInput,
+  kBoundaryWindow,
+  kUnsafeBase,
+  kWindowInvalid,
+};
+
 struct EvaluatedCandidate {
   bool noop{false};
   std::vector<double> offsets;
@@ -74,7 +82,10 @@ struct EvaluatedCandidate {
   double cost_breakdown_duration_ms{0.0};
   double shape_diagnostics_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
+  double local_point_build_duration_ms{0.0};
+  double local_path_evaluation_duration_ms{0.0};
   double local_score_duration_ms{0.0};
+  double local_traversal_estimate_duration_ms{0.0};
   double full_score_duration_ms{0.0};
   std::size_t local_segment_cache_hits{0U};
   std::size_t local_segment_cache_misses{0U};
@@ -83,6 +94,7 @@ struct EvaluatedCandidate {
   bool local_evaluated{false};
   bool requires_full_score{false};
   bool full_score_used{false};
+  LocalFullScoreReason local_full_score_reason{LocalFullScoreReason::kNone};
   bool scratch_reused{false};
   bool snapshot_allocation_avoided{false};
   bool shadow_lower_bound_valid{false};
@@ -167,6 +179,7 @@ struct ActiveWindow {
 struct LocalCandidateScore {
   bool valid{false};
   bool requires_full_score{false};
+  LocalFullScoreReason full_score_reason{LocalFullScoreReason::kNone};
   PathEvaluation path{};
   TraversalTimeEstimate estimated_traversal_time{};
   double point_build_duration_ms{0.0};
@@ -636,6 +649,7 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
       base_offsets.size() != candidate_offsets.size() || base_points.size() < 3U ||
       center_index == 0U || center_index + 1U >= base_points.size()) {
     result.requires_full_score = true;
+    result.full_score_reason = LocalFullScoreReason::kInvalidInput;
     return result;
   }
 
@@ -643,11 +657,13 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
       center_index, base_points.size(), kLocalScoreRadiusSamples);
   if (begin_index == 0U || end_index + 1U >= base_points.size()) {
     result.requires_full_score = true;
+    result.full_score_reason = LocalFullScoreReason::kBoundaryWindow;
     return result;
   }
   if (base_score.breakdown.collision_cost > 0.0 ||
       base_score.breakdown.outside_grid_cost > 0.0) {
     result.requires_full_score = true;
+    result.full_score_reason = LocalFullScoreReason::kUnsafeBase;
     return result;
   }
 
@@ -662,6 +678,7 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   if (buffer.local_base_points.size() != buffer.local_candidate_points.size() ||
       buffer.local_base_points.size() < 2U) {
     result.requires_full_score = true;
+    result.full_score_reason = LocalFullScoreReason::kWindowInvalid;
     return result;
   }
 
@@ -1175,10 +1192,14 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.point_build_duration_ms = local_score.point_build_duration_ms;
   result.path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.score_duration_ms = local_score.score_duration_ms;
+  result.local_point_build_duration_ms = local_score.point_build_duration_ms;
+  result.local_path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.local_score_duration_ms =
       local_score.path_evaluation_duration_ms + local_score.score_duration_ms;
+  result.local_traversal_estimate_duration_ms = local_score.score_duration_ms;
   result.local_segment_cache_hits = local_score.segment_cache_hits;
   result.local_segment_cache_misses = local_score.segment_cache_misses;
+  result.local_full_score_reason = local_score.full_score_reason;
   if (local_score.valid && !local_score.requires_full_score) {
     result.path = local_score.path;
     result.offsets.assign(buffer.offsets.begin(), buffer.offsets.end());
@@ -1570,6 +1591,26 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
   return results;
 }
 
+void incrementLocalFullScoreReason(const LocalFullScoreReason reason,
+                                   RacingLineStats& stats) {
+  switch (reason) {
+    case LocalFullScoreReason::kNone:
+      return;
+    case LocalFullScoreReason::kInvalidInput:
+      ++stats.local_candidate_full_score_required_invalid_input;
+      return;
+    case LocalFullScoreReason::kBoundaryWindow:
+      ++stats.local_candidate_full_score_required_boundary;
+      return;
+    case LocalFullScoreReason::kUnsafeBase:
+      ++stats.local_candidate_full_score_required_unsafe_base;
+      return;
+    case LocalFullScoreReason::kWindowInvalid:
+      ++stats.local_candidate_full_score_required_window_invalid;
+      return;
+  }
+}
+
 void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& stats) {
   if (candidate.scratch_reused) {
     ++stats.worker_scratch_reuses;
@@ -1583,9 +1624,19 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   }
   if (candidate.local_evaluated) {
     ++stats.local_candidate_evaluations;
+    stats.local_candidate_point_build_duration_ms +=
+        candidate.local_point_build_duration_ms;
+    stats.local_candidate_path_evaluation_duration_ms +=
+        candidate.local_path_evaluation_duration_ms;
     stats.local_candidate_score_duration_ms += candidate.local_score_duration_ms;
+    stats.local_candidate_traversal_estimate_duration_ms +=
+        candidate.local_traversal_estimate_duration_ms;
     stats.candidate_segment_cache_hits += candidate.local_segment_cache_hits;
     stats.candidate_segment_cache_misses += candidate.local_segment_cache_misses;
+    if (candidate.requires_full_score) {
+      ++stats.local_candidate_full_score_required;
+      incrementLocalFullScoreReason(candidate.local_full_score_reason, stats);
+    }
   }
   stats.full_path_segment_cache_hits += candidate.full_path_segment_cache_hits;
   stats.full_path_segment_cache_misses += candidate.full_path_segment_cache_misses;
@@ -1595,6 +1646,11 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   }
   if (candidate.shadow_lower_bound_valid) {
     ++stats.shadow_lower_bound_evaluations;
+    if (candidate.full_score_used) {
+      ++stats.shadow_lower_bound_validation_full_scores;
+      stats.shadow_lower_bound_validation_full_score_duration_ms +=
+          candidate.full_score_duration_ms;
+    }
     if (candidate.full_score_used && std::isfinite(candidate.score.score)) {
       const double delta = candidate.shadow_lower_bound_score - candidate.score.score;
       if (std::isfinite(delta)) {

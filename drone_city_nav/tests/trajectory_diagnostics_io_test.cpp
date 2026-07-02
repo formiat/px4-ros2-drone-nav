@@ -62,10 +62,20 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.candidate_snapshot_allocations_avoided = 60U;
   stats.racing_line.local_candidate_evaluations = 61U;
   stats.racing_line.local_candidate_full_score_fallbacks = 55U;
+  stats.racing_line.local_candidate_full_score_required = 10U;
+  stats.racing_line.local_candidate_full_score_required_invalid_input = 1U;
+  stats.racing_line.local_candidate_full_score_required_boundary = 2U;
+  stats.racing_line.local_candidate_full_score_required_unsafe_base = 3U;
+  stats.racing_line.local_candidate_full_score_required_window_invalid = 4U;
   stats.racing_line.local_candidate_acceptance_full_scores = 7U;
   stats.racing_line.local_score_false_positives = 1U;
+  stats.racing_line.local_candidate_point_build_duration_ms = 1.1;
+  stats.racing_line.local_candidate_path_evaluation_duration_ms = 2.2;
   stats.racing_line.local_candidate_score_duration_ms = 4.5;
+  stats.racing_line.local_candidate_traversal_estimate_duration_ms = 3.3;
   stats.racing_line.full_candidate_score_duration_ms = 6.75;
+  stats.racing_line.shadow_lower_bound_validation_full_scores = 41U;
+  stats.racing_line.shadow_lower_bound_validation_full_score_duration_ms = 5.25;
   stats.racing_line.shadow_lower_bound_evaluations = 51U;
   stats.racing_line.shadow_lower_bound_unavailable = 10U;
   stats.racing_line.shadow_lower_bound_prunable = 17U;
@@ -317,10 +327,32 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_local_candidate_evaluations\":61"), std::string::npos);
   EXPECT_NE(json.find("\"racing_local_candidate_full_score_fallbacks\":55"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_full_score_required\":10"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_full_score_required_invalid_input\":1"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_full_score_required_boundary\":2"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_full_score_required_unsafe_base\":3"),
+            std::string::npos);
+  EXPECT_NE(
+      json.find("\"racing_local_candidate_full_score_required_window_invalid\":4"),
+      std::string::npos);
   EXPECT_NE(json.find("\"racing_local_candidate_acceptance_full_scores\":7"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_point_build_duration_ms\":1.1"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_path_evaluation_duration_ms\":2.2"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_local_candidate_traversal_estimate_duration_ms\":3.3"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_shadow_lower_bound_evaluations\":51"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_lower_bound_validation_full_scores\":41"),
+            std::string::npos);
+  EXPECT_NE(
+      json.find("\"racing_shadow_lower_bound_validation_full_score_duration_ms\":5.25"),
+      std::string::npos);
   EXPECT_NE(json.find("\"racing_shadow_lower_bound_prunable\":17"), std::string::npos);
   EXPECT_NE(json.find("\"racing_shadow_lower_bound_false_prunes\":2"),
             std::string::npos);
@@ -417,10 +449,20 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_candidate_snapshot_allocations_avoided\"",
                     "\"racing_local_candidate_evaluations\"",
                     "\"racing_local_candidate_full_score_fallbacks\"",
+                    "\"racing_local_candidate_full_score_required\"",
+                    "\"racing_local_candidate_full_score_required_invalid_input\"",
+                    "\"racing_local_candidate_full_score_required_boundary\"",
+                    "\"racing_local_candidate_full_score_required_unsafe_base\"",
+                    "\"racing_local_candidate_full_score_required_window_invalid\"",
                     "\"racing_local_candidate_acceptance_full_scores\"",
                     "\"racing_local_score_false_positives\"",
+                    "\"racing_local_candidate_point_build_duration_ms\"",
+                    "\"racing_local_candidate_path_evaluation_duration_ms\"",
                     "\"racing_local_candidate_score_duration_ms\"",
+                    "\"racing_local_candidate_traversal_estimate_duration_ms\"",
                     "\"racing_full_candidate_score_duration_ms\"",
+                    "\"racing_shadow_lower_bound_validation_full_scores\"",
+                    "\"racing_shadow_lower_bound_validation_full_score_duration_ms\"",
                     "\"racing_shadow_lower_bound_evaluations\"",
                     "\"racing_shadow_lower_bound_unavailable\"",
                     "\"racing_shadow_lower_bound_prunable\"",
@@ -625,12 +667,36 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.racing_line.candidate_snapshot_allocations_avoided, 60U);
   EXPECT_EQ(parsed_value.stats.racing_line.local_candidate_evaluations, 61U);
   EXPECT_EQ(parsed_value.stats.racing_line.local_candidate_full_score_fallbacks, 55U);
+  EXPECT_EQ(parsed_value.stats.racing_line.local_candidate_full_score_required, 10U);
+  EXPECT_EQ(
+      parsed_value.stats.racing_line.local_candidate_full_score_required_invalid_input,
+      1U);
+  EXPECT_EQ(parsed_value.stats.racing_line.local_candidate_full_score_required_boundary,
+            2U);
+  EXPECT_EQ(
+      parsed_value.stats.racing_line.local_candidate_full_score_required_unsafe_base,
+      3U);
+  EXPECT_EQ(
+      parsed_value.stats.racing_line.local_candidate_full_score_required_window_invalid,
+      4U);
   EXPECT_EQ(parsed_value.stats.racing_line.local_candidate_acceptance_full_scores, 7U);
   EXPECT_EQ(parsed_value.stats.racing_line.local_score_false_positives, 1U);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.local_candidate_point_build_duration_ms, 1.1);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.local_candidate_path_evaluation_duration_ms, 2.2);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.local_candidate_score_duration_ms,
                    4.5);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.local_candidate_traversal_estimate_duration_ms,
+      3.3);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.full_candidate_score_duration_ms,
                    6.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_validation_full_scores,
+            41U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
+                       .shadow_lower_bound_validation_full_score_duration_ms,
+                   5.25);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_evaluations, 51U);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_unavailable, 10U);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_lower_bound_prunable, 17U);

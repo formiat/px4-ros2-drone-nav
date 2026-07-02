@@ -402,14 +402,35 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.local_candidate_evaluations);
   appendJsonSize(stream, "racing_local_candidate_full_score_fallbacks",
                  stats.racing_line.local_candidate_full_score_fallbacks);
+  appendJsonSize(stream, "racing_local_candidate_full_score_required",
+                 stats.racing_line.local_candidate_full_score_required);
+  appendJsonSize(stream, "racing_local_candidate_full_score_required_invalid_input",
+                 stats.racing_line.local_candidate_full_score_required_invalid_input);
+  appendJsonSize(stream, "racing_local_candidate_full_score_required_boundary",
+                 stats.racing_line.local_candidate_full_score_required_boundary);
+  appendJsonSize(stream, "racing_local_candidate_full_score_required_unsafe_base",
+                 stats.racing_line.local_candidate_full_score_required_unsafe_base);
+  appendJsonSize(stream, "racing_local_candidate_full_score_required_window_invalid",
+                 stats.racing_line.local_candidate_full_score_required_window_invalid);
   appendJsonSize(stream, "racing_local_candidate_acceptance_full_scores",
                  stats.racing_line.local_candidate_acceptance_full_scores);
   appendJsonSize(stream, "racing_local_score_false_positives",
                  stats.racing_line.local_score_false_positives);
+  appendJsonNumber(stream, "racing_local_candidate_point_build_duration_ms",
+                   stats.racing_line.local_candidate_point_build_duration_ms);
+  appendJsonNumber(stream, "racing_local_candidate_path_evaluation_duration_ms",
+                   stats.racing_line.local_candidate_path_evaluation_duration_ms);
   appendJsonNumber(stream, "racing_local_candidate_score_duration_ms",
                    stats.racing_line.local_candidate_score_duration_ms);
+  appendJsonNumber(stream, "racing_local_candidate_traversal_estimate_duration_ms",
+                   stats.racing_line.local_candidate_traversal_estimate_duration_ms);
   appendJsonNumber(stream, "racing_full_candidate_score_duration_ms",
                    stats.racing_line.full_candidate_score_duration_ms);
+  appendJsonSize(stream, "racing_shadow_lower_bound_validation_full_scores",
+                 stats.racing_line.shadow_lower_bound_validation_full_scores);
+  appendJsonNumber(
+      stream, "racing_shadow_lower_bound_validation_full_score_duration_ms",
+      stats.racing_line.shadow_lower_bound_validation_full_score_duration_ms);
   appendJsonSize(stream, "racing_shadow_lower_bound_evaluations",
                  stats.racing_line.shadow_lower_bound_evaluations);
   appendJsonSize(stream, "racing_shadow_lower_bound_unavailable",
@@ -962,14 +983,34 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.local_candidate_evaluations);
   parseJsonSize(json, "racing_local_candidate_full_score_fallbacks",
                 racing.local_candidate_full_score_fallbacks);
+  parseJsonSize(json, "racing_local_candidate_full_score_required",
+                racing.local_candidate_full_score_required);
+  parseJsonSize(json, "racing_local_candidate_full_score_required_invalid_input",
+                racing.local_candidate_full_score_required_invalid_input);
+  parseJsonSize(json, "racing_local_candidate_full_score_required_boundary",
+                racing.local_candidate_full_score_required_boundary);
+  parseJsonSize(json, "racing_local_candidate_full_score_required_unsafe_base",
+                racing.local_candidate_full_score_required_unsafe_base);
+  parseJsonSize(json, "racing_local_candidate_full_score_required_window_invalid",
+                racing.local_candidate_full_score_required_window_invalid);
   parseJsonSize(json, "racing_local_candidate_acceptance_full_scores",
                 racing.local_candidate_acceptance_full_scores);
   parseJsonSize(json, "racing_local_score_false_positives",
                 racing.local_score_false_positives);
+  parseJsonDouble(json, "racing_local_candidate_point_build_duration_ms",
+                  racing.local_candidate_point_build_duration_ms);
+  parseJsonDouble(json, "racing_local_candidate_path_evaluation_duration_ms",
+                  racing.local_candidate_path_evaluation_duration_ms);
   parseJsonDouble(json, "racing_local_candidate_score_duration_ms",
                   racing.local_candidate_score_duration_ms);
+  parseJsonDouble(json, "racing_local_candidate_traversal_estimate_duration_ms",
+                  racing.local_candidate_traversal_estimate_duration_ms);
   parseJsonDouble(json, "racing_full_candidate_score_duration_ms",
                   racing.full_candidate_score_duration_ms);
+  parseJsonSize(json, "racing_shadow_lower_bound_validation_full_scores",
+                racing.shadow_lower_bound_validation_full_scores);
+  parseJsonDouble(json, "racing_shadow_lower_bound_validation_full_score_duration_ms",
+                  racing.shadow_lower_bound_validation_full_score_duration_ms);
   parseJsonSize(json, "racing_shadow_lower_bound_evaluations",
                 racing.shadow_lower_bound_evaluations);
   parseJsonSize(json, "racing_shadow_lower_bound_unavailable",
