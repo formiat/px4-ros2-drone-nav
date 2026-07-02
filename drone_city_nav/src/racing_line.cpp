@@ -72,9 +72,14 @@ struct EvaluatedCandidate {
   double path_evaluation_duration_ms{0.0};
   double score_duration_ms{0.0};
   double sample_build_duration_ms{0.0};
+  double cost_breakdown_duration_ms{0.0};
+  double shape_diagnostics_duration_ms{0.0};
+  double speed_profile_duration_ms{0.0};
   double local_score_duration_ms{0.0};
   std::size_t local_segment_cache_hits{0U};
   std::size_t local_segment_cache_misses{0U};
+  std::size_t full_path_segment_cache_hits{0U};
+  std::size_t full_path_segment_cache_misses{0U};
   bool local_evaluated{false};
   bool full_score_used{false};
   bool scratch_reused{false};
@@ -119,6 +124,10 @@ struct SegmentTraversabilityCache {
   std::unordered_map<SegmentCellKey, bool, SegmentCellKeyHash> values;
 };
 
+struct SegmentProhibitedCountCache {
+  std::unordered_map<SegmentCellKey, std::size_t, SegmentCellKeyHash> values;
+};
+
 struct CandidateWorkBuffer {
   std::vector<double> offsets;
   std::vector<Point2> points;
@@ -131,6 +140,7 @@ struct CandidateWorkBuffer {
   std::vector<TrajectoryPointSample> local_candidate_samples;
   std::vector<TrajectoryPointSample> samples;
   SegmentTraversabilityCache candidate_segment_cache;
+  SegmentProhibitedCountCache full_path_segment_cache;
 };
 
 struct RacingLineScratch {
@@ -141,6 +151,7 @@ struct RacingLineScratch {
   std::vector<Point2> candidate_points;
   std::vector<Point2> accepted_points;
   std::vector<TrajectoryPointSample> candidate_samples;
+  SegmentProhibitedCountCache full_path_segment_cache;
 };
 
 struct ActiveWindow {
@@ -564,6 +575,46 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   return evaluation;
 }
 
+[[nodiscard]] PathEvaluation evaluatePathCached(const OccupancyGrid2D& grid,
+                                                const std::span<const Point2> points,
+                                                SegmentProhibitedCountCache& cache,
+                                                std::size_t& cache_hits,
+                                                std::size_t& cache_misses) {
+  PathEvaluation evaluation{};
+  if (points.size() < 2U) {
+    ++evaluation.outside_grid_segments;
+    return evaluation;
+  }
+  for (std::size_t i = 1U; i < points.size(); ++i) {
+    const Point2 start = points[i - 1U];
+    const Point2 end = points[i];
+    evaluation.length_m += distance(start, end);
+    const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+    const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      ++cache_misses;
+      ++evaluation.outside_grid_segments;
+      continue;
+    }
+    const SegmentCellKey key = orderedSegmentKey(*start_cell, *end_cell);
+    const auto cached = cache.values.find(key);
+    const std::size_t prohibited_cells =
+        cached != cache.values.end() ? (++cache_hits, cached->second) : [&] {
+          ++cache_misses;
+          std::size_t computed = 0U;
+          for (const GridIndex cell : grid.cellsOnLine(*start_cell, *end_cell)) {
+            if (grid.isProhibited(cell)) {
+              ++computed;
+            }
+          }
+          cache.values.emplace(key, computed);
+          return computed;
+        }();
+    evaluation.prohibited_cells += prohibited_cells;
+  }
+  return evaluation;
+}
+
 [[nodiscard]] LocalCandidateScore evaluateLocalOffsetPath(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> base_points,
@@ -902,6 +953,7 @@ costBreakdownForPoints(const std::span<const Point2> points,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats) {
   CandidateScore result{};
+  const auto cost_started_at = std::chrono::steady_clock::now();
   result.breakdown = costBreakdownForPoints(points, offsets, config);
   result.breakdown.collision_cost =
       static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
@@ -912,14 +964,18 @@ costBreakdownForPoints(const std::span<const Point2> points,
     result.breakdown.length_overrun_cost =
         overrun_m * overrun_m * kLengthOverrunPenalty;
   }
+  stats.candidate_cost_breakdown_duration_ms += elapsedMilliseconds(cost_started_at);
   const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     const auto sample_started_at = std::chrono::steady_clock::now();
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);
     populateSampleGeometry(scratch_samples);
     stats.candidate_sample_build_duration_ms += elapsedMilliseconds(sample_started_at);
+    const auto shape_started_at = std::chrono::steady_clock::now();
     const TrajectoryShapeDiagnostics shape =
         computeTrajectoryShapeDiagnostics(scratch_samples);
+    stats.candidate_shape_diagnostics_duration_ms +=
+        elapsedMilliseconds(shape_started_at);
     const double heading_jump_overrun =
         std::max(0.0, shape.max_heading_delta_rad - kHeadingJumpSoftLimitRad);
     result.breakdown.heading_jump_cost =
@@ -927,7 +983,9 @@ costBreakdownForPoints(const std::span<const Point2> points,
     if (shape.max_heading_delta_rad > kHeadingJumpHardLimitRad) {
       result.breakdown.heading_jump_cost += kHeadingJumpHardPenalty;
     }
+    const auto speed_started_at = std::chrono::steady_clock::now();
     result.traversal_time = estimateTraversalTime(scratch_samples, speed_config, true);
+    stats.candidate_speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
     if (weight_time > 0.0 && result.traversal_time.valid &&
         std::isfinite(result.traversal_time.estimated_time_s)) {
       result.breakdown.time_cost = weight_time * result.traversal_time.estimated_time_s;
@@ -1046,11 +1104,17 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
     double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
     CandidateScore& best_score, double& best_length_m,
-    std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats) {
+    std::vector<TrajectoryPointSample>& scratch_samples,
+    SegmentProhibitedCountCache& segment_cache, RacingLineStats& stats) {
   ++stats.candidate_evaluations;
   ++stats.scratch_reused_candidates;
   const auto evaluation_started_at = std::chrono::steady_clock::now();
-  const PathEvaluation evaluation = evaluatePath(prohibited_grid, candidate_points);
+  std::size_t cache_hits = 0U;
+  std::size_t cache_misses = 0U;
+  const PathEvaluation evaluation = evaluatePathCached(
+      prohibited_grid, candidate_points, segment_cache, cache_hits, cache_misses);
+  stats.full_path_segment_cache_hits += cache_hits;
+  stats.full_path_segment_cache_misses += cache_misses;
   stats.candidate_path_evaluation_duration_ms +=
       elapsedMilliseconds(evaluation_started_at);
   if (!evaluation.traversable()) {
@@ -1149,6 +1213,11 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
                                      buffer.samples, local_stats);
     result.score_duration_ms += elapsedMilliseconds(score_started_at);
     result.sample_build_duration_ms = local_stats.candidate_sample_build_duration_ms;
+    result.cost_breakdown_duration_ms =
+        local_stats.candidate_cost_breakdown_duration_ms;
+    result.shape_diagnostics_duration_ms =
+        local_stats.candidate_shape_diagnostics_duration_ms;
+    result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
     result.full_score_used = true;
     return result;
   }
@@ -1158,7 +1227,9 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
   result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
   const auto full_evaluation_started_at = std::chrono::steady_clock::now();
-  result.path = evaluatePath(prohibited_grid, buffer.points);
+  result.path = evaluatePathCached(
+      prohibited_grid, buffer.points, buffer.full_path_segment_cache,
+      result.full_path_segment_cache_hits, result.full_path_segment_cache_misses);
   result.path_evaluation_duration_ms += elapsedMilliseconds(full_evaluation_started_at);
   const auto score_started_at = std::chrono::steady_clock::now();
   result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
@@ -1166,6 +1237,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
                                    buffer.samples, local_stats);
   result.score_duration_ms = elapsedMilliseconds(score_started_at);
   result.sample_build_duration_ms = local_stats.candidate_sample_build_duration_ms;
+  result.cost_breakdown_duration_ms = local_stats.candidate_cost_breakdown_duration_ms;
+  result.shape_diagnostics_duration_ms =
+      local_stats.candidate_shape_diagnostics_duration_ms;
+  result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
   result.full_score_used = true;
   result.offsets.assign(buffer.offsets.begin(), buffer.offsets.end());
   return result;
@@ -1431,9 +1506,15 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
         std::min<std::size_t>(corridor_samples.size(), 16U));
     buffer.local_candidate_points.reserve(
         std::min<std::size_t>(corridor_samples.size(), 16U));
+    buffer.local_corridor_samples.reserve(
+        std::min<std::size_t>(corridor_samples.size(), 16U));
     buffer.local_base_offsets.reserve(
         std::min<std::size_t>(corridor_samples.size(), 16U));
     buffer.local_candidate_offsets.reserve(
+        std::min<std::size_t>(corridor_samples.size(), 16U));
+    buffer.local_base_samples.reserve(
+        std::min<std::size_t>(corridor_samples.size(), 16U));
+    buffer.local_candidate_samples.reserve(
         std::min<std::size_t>(corridor_samples.size(), 16U));
     buffer.samples.reserve(corridor_samples.size());
   }
@@ -1490,6 +1571,8 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
     stats.candidate_segment_cache_hits += candidate.local_segment_cache_hits;
     stats.candidate_segment_cache_misses += candidate.local_segment_cache_misses;
   }
+  stats.full_path_segment_cache_hits += candidate.full_path_segment_cache_hits;
+  stats.full_path_segment_cache_misses += candidate.full_path_segment_cache_misses;
   if (candidate.full_score_used) {
     ++stats.local_candidate_full_score_fallbacks;
     stats.full_candidate_score_duration_ms += candidate.score_duration_ms;
@@ -1499,6 +1582,10 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   stats.candidate_path_evaluation_duration_ms += candidate.path_evaluation_duration_ms;
   stats.candidate_score_duration_ms += candidate.score_duration_ms;
   stats.candidate_sample_build_duration_ms += candidate.sample_build_duration_ms;
+  stats.candidate_cost_breakdown_duration_ms += candidate.cost_breakdown_duration_ms;
+  stats.candidate_shape_diagnostics_duration_ms +=
+      candidate.shape_diagnostics_duration_ms;
+  stats.candidate_speed_profile_duration_ms += candidate.speed_profile_duration_ms;
   if (!candidate.path.traversable()) {
     ++stats.collision_rejections;
   }
@@ -1576,11 +1663,11 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
                       scratch.candidate_points);
     result.stats.candidate_point_build_duration_ms +=
         elapsedMilliseconds(points_started_at);
-    (void)updateBestCandidate(optimizer_samples, scratch.candidate_offsets,
-                              scratch.candidate_points, prohibited_grid, config,
-                              speed_config, max_length_m, best_cost, offsets,
-                              best_points, best_score, best_length_m,
-                              scratch.candidate_samples, result.stats);
+    (void)updateBestCandidate(
+        optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
+        prohibited_grid, config, speed_config, max_length_m, best_cost, offsets,
+        best_points, best_score, best_length_m, scratch.candidate_samples,
+        scratch.full_path_segment_cache, result.stats);
   }
   if (offsets.empty()) {
     return result;
@@ -1633,7 +1720,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
         prohibited_grid, config, speed_config, max_length_m, best_cost, offsets,
         best_points, best_score, best_length_m, scratch.candidate_samples,
-        result.stats);
+        scratch.full_path_segment_cache, result.stats);
     if (accepted) {
       result.stats.initial_cost = best_cost;
     }
@@ -1701,7 +1788,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
             optimizer_samples, iteration_winner->offsets, scratch.accepted_points,
             prohibited_grid, config, speed_config, max_length_m, best_cost, offsets,
             best_points, best_score, best_length_m, scratch.candidate_samples,
-            result.stats);
+            scratch.full_path_segment_cache, result.stats);
         if (accepted) {
           changed = true;
         } else {
@@ -1740,8 +1827,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
                       scratch.candidate_points);
     result.stats.candidate_point_build_duration_ms +=
         elapsedMilliseconds(points_started_at);
+    std::size_t cache_hits = 0U;
+    std::size_t cache_misses = 0U;
     const PathEvaluation candidate_evaluation =
-        evaluatePath(prohibited_grid, scratch.candidate_points);
+        evaluatePathCached(prohibited_grid, scratch.candidate_points,
+                           scratch.full_path_segment_cache, cache_hits, cache_misses);
+    result.stats.full_path_segment_cache_hits += cache_hits;
+    result.stats.full_path_segment_cache_misses += cache_misses;
     if (!candidate_evaluation.traversable()) {
       ++result.stats.collision_rejections;
       break;
@@ -1773,7 +1865,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   }
   result.stats.regularization_duration_ms =
       elapsedMilliseconds(regularization_started_at);
-  const PathEvaluation final_evaluation = evaluatePath(prohibited_grid, final_points);
+  std::size_t final_cache_hits = 0U;
+  std::size_t final_cache_misses = 0U;
+  const PathEvaluation final_evaluation =
+      evaluatePathCached(prohibited_grid, final_points, scratch.full_path_segment_cache,
+                         final_cache_hits, final_cache_misses);
+  result.stats.full_path_segment_cache_hits += final_cache_hits;
+  result.stats.full_path_segment_cache_misses += final_cache_misses;
   if (!final_evaluation.traversable()) {
     ++result.stats.collision_rejections;
     return result;

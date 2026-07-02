@@ -299,7 +299,8 @@ bool PlannerNode::publishTrajectoryResult(
       "clearance_reused=%s clearance_cache_hit=%s config_fp=%" PRIu64 "] "
       "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
-      "sample_build=%.1fms regularization=%.1fms scratch_reused=%zu "
+      "sample_build=%.1fms cost=%.1fms shape=%.1fms speed=%.1fms "
+      "regularization=%.1fms scratch_reused=%zu "
       "parallel=%s workers=%zu chunks=%zu worker_reuses=%zu "
       "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
       "local_accept_full_scores=%zu local_false_positives=%zu "
@@ -313,12 +314,17 @@ bool PlannerNode::publishTrajectoryResult(
       "windows=%zu active_windows=%zu active_samples=%zu "
       "dp_states=%zu dp_transitions=%zu dp_cache_hits=%zu dp_cache_misses=%zu "
       "candidate_cache_hits=%zu candidate_cache_misses=%zu "
+      "full_path_cache_hits=%zu full_path_cache_misses=%zu "
       "dp_coarse_states=%zu dp_coarse_transitions=%zu "
       "dp_fine_states=%zu dp_fine_transitions=%zu coarse_to_fine=%s "
       "window_detect=%.1fms "
       "window_eval=%.1fms dp=%.1fms final_score=%.1fms async_refined=%s] "
       "turn_smoothing[detected=%zu attempted=%zu candidate_attempts=%zu "
       "relaxed_attempts=%zu "
+      "bezier_cache=%zu/%zu before_metrics_cache=%zu/%zu "
+      "traversability_cache=%zu/%zu "
+      "timing(build=%.1fms replace=%.1fms collision=%.1fms "
+      "metrics=%.1fms shape=%.1fms speed=%.1fms) "
       "smoothed=%zu "
       "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu "
       "curvature=%zu radius=%zu speed=%zu time=%zu) "
@@ -370,6 +376,9 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.candidate_score_duration_ms,
       trajectory_result.stats.racing_line.candidate_point_build_duration_ms,
       trajectory_result.stats.racing_line.candidate_sample_build_duration_ms,
+      trajectory_result.stats.racing_line.candidate_cost_breakdown_duration_ms,
+      trajectory_result.stats.racing_line.candidate_shape_diagnostics_duration_ms,
+      trajectory_result.stats.racing_line.candidate_speed_profile_duration_ms,
       trajectory_result.stats.racing_line.regularization_duration_ms,
       trajectory_result.stats.racing_line.scratch_reused_candidates,
       trajectory_result.stats.racing_line.parallel_candidate_evaluation_used ? "true"
@@ -407,6 +416,8 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.dp_segment_cache_misses,
       trajectory_result.stats.racing_line.candidate_segment_cache_hits,
       trajectory_result.stats.racing_line.candidate_segment_cache_misses,
+      trajectory_result.stats.racing_line.full_path_segment_cache_hits,
+      trajectory_result.stats.racing_line.full_path_segment_cache_misses,
       trajectory_result.stats.racing_line.dp_coarse_states,
       trajectory_result.stats.racing_line.dp_coarse_transitions,
       trajectory_result.stats.racing_line.dp_fine_states,
@@ -421,6 +432,18 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.attempted_corners,
       trajectory_result.stats.turn_smoothing.candidate_attempts,
       trajectory_result.stats.turn_smoothing.relaxed_candidate_attempts,
+      trajectory_result.stats.turn_smoothing.bezier_cache_hits,
+      trajectory_result.stats.turn_smoothing.bezier_cache_misses,
+      trajectory_result.stats.turn_smoothing.before_metrics_cache_hits,
+      trajectory_result.stats.turn_smoothing.before_metrics_cache_misses,
+      trajectory_result.stats.turn_smoothing.traversability_cache_hits,
+      trajectory_result.stats.turn_smoothing.traversability_cache_misses,
+      trajectory_result.stats.turn_smoothing.candidate_build_duration_ms,
+      trajectory_result.stats.turn_smoothing.candidate_replace_duration_ms,
+      trajectory_result.stats.turn_smoothing.collision_check_duration_ms,
+      trajectory_result.stats.turn_smoothing.metrics_duration_ms,
+      trajectory_result.stats.turn_smoothing.shape_diagnostics_duration_ms,
+      trajectory_result.stats.turn_smoothing.speed_profile_duration_ms,
       trajectory_result.stats.turn_smoothing.smoothed_corners,
       trajectory_result.stats.turn_smoothing.rejected_prohibited,
       trajectory_result.stats.turn_smoothing.rejected_corridor,

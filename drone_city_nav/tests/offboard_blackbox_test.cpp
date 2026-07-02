@@ -132,6 +132,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.optimizer_samples = 8U;
   record.trajectory_planner_stats.racing_line.final_cost = 1.5;
   record.trajectory_planner_stats.racing_line.candidate_point_build_duration_ms = 1.25;
+  record.trajectory_planner_stats.racing_line.candidate_cost_breakdown_duration_ms =
+      2.25;
+  record.trajectory_planner_stats.racing_line.candidate_shape_diagnostics_duration_ms =
+      3.25;
+  record.trajectory_planner_stats.racing_line.candidate_speed_profile_duration_ms =
+      4.25;
   record.trajectory_planner_stats.racing_line.scratch_reused_candidates = 7U;
   record.trajectory_planner_stats.racing_line.parallel_candidate_evaluation_used = true;
   record.trajectory_planner_stats.racing_line.parallel_workers_used = 2U;
@@ -143,6 +149,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       3U;
   record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
+  record.trajectory_planner_stats.racing_line.full_path_segment_cache_hits = 11U;
+  record.trajectory_planner_stats.racing_line.full_path_segment_cache_misses = 12U;
   record.trajectory_planner_stats.racing_line.window_count = 2U;
   record.trajectory_planner_stats.racing_line.active_window_count = 1U;
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
@@ -249,6 +257,9 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"clearance_field_reused_by_corridor\":true");
   expectJsonField(json, "\"racing_line_iterations\":4");
   expectJsonField(json, "\"racing_candidate_point_build_duration_ms\":1.25");
+  expectJsonField(json, "\"racing_candidate_cost_breakdown_duration_ms\":2.25");
+  expectJsonField(json, "\"racing_candidate_shape_diagnostics_duration_ms\":3.25");
+  expectJsonField(json, "\"racing_candidate_speed_profile_duration_ms\":4.25");
   expectJsonField(json, "\"racing_scratch_reused_candidates\":7");
   expectJsonField(json, "\"racing_parallel_candidate_evaluation_used\":true");
   expectJsonField(json, "\"racing_parallel_workers_used\":2");
@@ -258,6 +269,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_local_candidate_acceptance_full_scores\":3");
   expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
+  expectJsonField(json, "\"racing_line_full_path_segment_cache_hits\":11");
+  expectJsonField(json, "\"racing_line_full_path_segment_cache_misses\":12");
   expectJsonField(json, "\"racing_line_window_count\":2");
   expectJsonField(json, "\"racing_line_active_window_count\":1");
   expectJsonField(json, "\"racing_line_dp_states\":24");

@@ -379,6 +379,12 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.candidate_point_build_duration_ms);
   appendJsonNumber(stream, "racing_candidate_sample_build_duration_ms",
                    stats.racing_line.candidate_sample_build_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_cost_breakdown_duration_ms",
+                   stats.racing_line.candidate_cost_breakdown_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_shape_diagnostics_duration_ms",
+                   stats.racing_line.candidate_shape_diagnostics_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_speed_profile_duration_ms",
+                   stats.racing_line.candidate_speed_profile_duration_ms);
   appendJsonNumber(stream, "racing_regularization_duration_ms",
                    stats.racing_line.regularization_duration_ms);
   appendJsonSize(stream, "racing_scratch_reused_candidates",
@@ -420,6 +426,10 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.candidate_segment_cache_hits);
   appendJsonSize(stream, "racing_line_candidate_segment_cache_misses",
                  stats.racing_line.candidate_segment_cache_misses);
+  appendJsonSize(stream, "racing_line_full_path_segment_cache_hits",
+                 stats.racing_line.full_path_segment_cache_hits);
+  appendJsonSize(stream, "racing_line_full_path_segment_cache_misses",
+                 stats.racing_line.full_path_segment_cache_misses);
   appendJsonSize(stream, "racing_line_dp_coarse_states",
                  stats.racing_line.dp_coarse_states);
   appendJsonSize(stream, "racing_line_dp_coarse_transitions",
@@ -456,6 +466,18 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.candidate_attempts);
   appendJsonSize(stream, "turn_smoothing_relaxed_candidate_attempts",
                  stats.turn_smoothing.relaxed_candidate_attempts);
+  appendJsonSize(stream, "turn_smoothing_bezier_cache_hits",
+                 stats.turn_smoothing.bezier_cache_hits);
+  appendJsonSize(stream, "turn_smoothing_bezier_cache_misses",
+                 stats.turn_smoothing.bezier_cache_misses);
+  appendJsonSize(stream, "turn_smoothing_before_metrics_cache_hits",
+                 stats.turn_smoothing.before_metrics_cache_hits);
+  appendJsonSize(stream, "turn_smoothing_before_metrics_cache_misses",
+                 stats.turn_smoothing.before_metrics_cache_misses);
+  appendJsonSize(stream, "turn_smoothing_traversability_cache_hits",
+                 stats.turn_smoothing.traversability_cache_hits);
+  appendJsonSize(stream, "turn_smoothing_traversability_cache_misses",
+                 stats.turn_smoothing.traversability_cache_misses);
   appendJsonSize(stream, "turn_smoothing_smoothed_corners",
                  stats.turn_smoothing.smoothed_corners);
   appendJsonSize(stream, "turn_smoothing_rejected_prohibited",
@@ -508,6 +530,18 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                    stats.turn_smoothing.accepted_local_time_before_s);
   appendJsonNumber(stream, "turn_smoothing_accepted_local_time_after_s",
                    stats.turn_smoothing.accepted_local_time_after_s);
+  appendJsonNumber(stream, "turn_smoothing_candidate_build_duration_ms",
+                   stats.turn_smoothing.candidate_build_duration_ms);
+  appendJsonNumber(stream, "turn_smoothing_candidate_replace_duration_ms",
+                   stats.turn_smoothing.candidate_replace_duration_ms);
+  appendJsonNumber(stream, "turn_smoothing_collision_check_duration_ms",
+                   stats.turn_smoothing.collision_check_duration_ms);
+  appendJsonNumber(stream, "turn_smoothing_metrics_duration_ms",
+                   stats.turn_smoothing.metrics_duration_ms);
+  appendJsonNumber(stream, "turn_smoothing_shape_diagnostics_duration_ms",
+                   stats.turn_smoothing.shape_diagnostics_duration_ms);
+  appendJsonNumber(stream, "turn_smoothing_speed_profile_duration_ms",
+                   stats.turn_smoothing.speed_profile_duration_ms);
   stream << ",\"turn_smoothing_corner_diagnostics\":[";
   for (std::size_t i = 0U; i < stats.turn_smoothing.corner_diagnostics.size(); ++i) {
     const TurnSmoothingCornerDiagnostic& diagnostic =
@@ -887,6 +921,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.candidate_point_build_duration_ms);
   parseJsonDouble(json, "racing_candidate_sample_build_duration_ms",
                   racing.candidate_sample_build_duration_ms);
+  parseJsonDouble(json, "racing_candidate_cost_breakdown_duration_ms",
+                  racing.candidate_cost_breakdown_duration_ms);
+  parseJsonDouble(json, "racing_candidate_shape_diagnostics_duration_ms",
+                  racing.candidate_shape_diagnostics_duration_ms);
+  parseJsonDouble(json, "racing_candidate_speed_profile_duration_ms",
+                  racing.candidate_speed_profile_duration_ms);
   parseJsonDouble(json, "racing_regularization_duration_ms",
                   racing.regularization_duration_ms);
   parseJsonSize(json, "racing_scratch_reused_candidates",
@@ -924,6 +964,10 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.candidate_segment_cache_hits);
   parseJsonSize(json, "racing_line_candidate_segment_cache_misses",
                 racing.candidate_segment_cache_misses);
+  parseJsonSize(json, "racing_line_full_path_segment_cache_hits",
+                racing.full_path_segment_cache_hits);
+  parseJsonSize(json, "racing_line_full_path_segment_cache_misses",
+                racing.full_path_segment_cache_misses);
   parseJsonSize(json, "racing_line_dp_coarse_states", racing.dp_coarse_states);
   parseJsonSize(json, "racing_line_dp_coarse_transitions",
                 racing.dp_coarse_transitions);
@@ -954,6 +998,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 turn_smoothing.candidate_attempts);
   parseJsonSize(json, "turn_smoothing_relaxed_candidate_attempts",
                 turn_smoothing.relaxed_candidate_attempts);
+  parseJsonSize(json, "turn_smoothing_bezier_cache_hits",
+                turn_smoothing.bezier_cache_hits);
+  parseJsonSize(json, "turn_smoothing_bezier_cache_misses",
+                turn_smoothing.bezier_cache_misses);
+  parseJsonSize(json, "turn_smoothing_before_metrics_cache_hits",
+                turn_smoothing.before_metrics_cache_hits);
+  parseJsonSize(json, "turn_smoothing_before_metrics_cache_misses",
+                turn_smoothing.before_metrics_cache_misses);
+  parseJsonSize(json, "turn_smoothing_traversability_cache_hits",
+                turn_smoothing.traversability_cache_hits);
+  parseJsonSize(json, "turn_smoothing_traversability_cache_misses",
+                turn_smoothing.traversability_cache_misses);
   parseJsonSize(json, "turn_smoothing_smoothed_corners",
                 turn_smoothing.smoothed_corners);
   parseJsonSize(json, "turn_smoothing_rejected_prohibited",
@@ -1004,6 +1060,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   turn_smoothing.accepted_local_time_before_s);
   parseJsonDouble(json, "turn_smoothing_accepted_local_time_after_s",
                   turn_smoothing.accepted_local_time_after_s);
+  parseJsonDouble(json, "turn_smoothing_candidate_build_duration_ms",
+                  turn_smoothing.candidate_build_duration_ms);
+  parseJsonDouble(json, "turn_smoothing_candidate_replace_duration_ms",
+                  turn_smoothing.candidate_replace_duration_ms);
+  parseJsonDouble(json, "turn_smoothing_collision_check_duration_ms",
+                  turn_smoothing.collision_check_duration_ms);
+  parseJsonDouble(json, "turn_smoothing_metrics_duration_ms",
+                  turn_smoothing.metrics_duration_ms);
+  parseJsonDouble(json, "turn_smoothing_shape_diagnostics_duration_ms",
+                  turn_smoothing.shape_diagnostics_duration_ms);
+  parseJsonDouble(json, "turn_smoothing_speed_profile_duration_ms",
+                  turn_smoothing.speed_profile_duration_ms);
 
   return envelope;
 }

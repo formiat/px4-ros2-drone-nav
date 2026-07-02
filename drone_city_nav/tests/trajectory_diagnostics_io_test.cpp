@@ -50,6 +50,9 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.candidate_score_duration_ms = 8.5;
   stats.racing_line.candidate_point_build_duration_ms = 1.25;
   stats.racing_line.candidate_sample_build_duration_ms = 2.5;
+  stats.racing_line.candidate_cost_breakdown_duration_ms = 3.25;
+  stats.racing_line.candidate_shape_diagnostics_duration_ms = 1.75;
+  stats.racing_line.candidate_speed_profile_duration_ms = 4.75;
   stats.racing_line.regularization_duration_ms = 3.75;
   stats.racing_line.scratch_reused_candidates = 13U;
   stats.racing_line.parallel_candidate_evaluation_used = true;
@@ -72,6 +75,8 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.dp_segment_cache_misses = 502U;
   stats.racing_line.candidate_segment_cache_hits = 3U;
   stats.racing_line.candidate_segment_cache_misses = 244U;
+  stats.racing_line.full_path_segment_cache_hits = 14U;
+  stats.racing_line.full_path_segment_cache_misses = 88U;
   stats.racing_line.dp_coarse_states = 44U;
   stats.racing_line.dp_coarse_transitions = 112U;
   stats.racing_line.dp_fine_states = 100U;
@@ -99,6 +104,12 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.attempted_corners = 2U;
   stats.turn_smoothing.candidate_attempts = 11U;
   stats.turn_smoothing.relaxed_candidate_attempts = 6U;
+  stats.turn_smoothing.bezier_cache_hits = 21U;
+  stats.turn_smoothing.bezier_cache_misses = 22U;
+  stats.turn_smoothing.before_metrics_cache_hits = 23U;
+  stats.turn_smoothing.before_metrics_cache_misses = 24U;
+  stats.turn_smoothing.traversability_cache_hits = 25U;
+  stats.turn_smoothing.traversability_cache_misses = 26U;
   stats.turn_smoothing.smoothed_corners = 1U;
   stats.turn_smoothing.rejected_prohibited = 0U;
   stats.turn_smoothing.rejected_corridor = 1U;
@@ -125,6 +136,12 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.accepted_min_speed_after_mps = 7.0;
   stats.turn_smoothing.accepted_local_time_before_s = 4.2;
   stats.turn_smoothing.accepted_local_time_after_s = 3.7;
+  stats.turn_smoothing.candidate_build_duration_ms = 1.1;
+  stats.turn_smoothing.candidate_replace_duration_ms = 1.2;
+  stats.turn_smoothing.collision_check_duration_ms = 1.3;
+  stats.turn_smoothing.metrics_duration_ms = 1.4;
+  stats.turn_smoothing.shape_diagnostics_duration_ms = 1.5;
+  stats.turn_smoothing.speed_profile_duration_ms = 1.6;
   stats.turn_smoothing.corner_diagnostics.push_back(
       TurnSmoothingCornerDiagnostic{.accepted = true,
                                     .reject_reason = "none",
@@ -263,6 +280,12 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_sample_build_duration_ms\":2.5"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_cost_breakdown_duration_ms\":3.25"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_shape_diagnostics_duration_ms\":1.75"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_speed_profile_duration_ms\":4.75"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_regularization_duration_ms\":3.75"), std::string::npos);
   EXPECT_NE(json.find("\"racing_scratch_reused_candidates\":13"), std::string::npos);
   EXPECT_NE(json.find("\"racing_parallel_candidate_evaluation_used\":true"),
@@ -294,6 +317,10 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_line_dp_states\":144"), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_states\":44"), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_fine_transitions\":400"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_line_full_path_segment_cache_hits\":14"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_line_full_path_segment_cache_misses\":88"),
+            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_quality\":\"refined\""), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_async_refined\":true"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_total_duration_ms\":123.4"), std::string::npos);
@@ -304,6 +331,9 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_regularization_applied\":true"), std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_heading_delta_after_rad\":0.4"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"turn_smoothing_bezier_cache_hits\":21"), std::string::npos);
+  EXPECT_NE(json.find("\"turn_smoothing_collision_check_duration_ms\":1.3"),
             std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_corner_diagnostics\""), std::string::npos);
   EXPECT_NE(json.find("\"corner_s_m\":42"), std::string::npos);
@@ -356,6 +386,9 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_candidate_score_duration_ms\"",
                         "\"racing_candidate_point_build_duration_ms\"",
                         "\"racing_candidate_sample_build_duration_ms\"",
+                        "\"racing_candidate_cost_breakdown_duration_ms\"",
+                        "\"racing_candidate_shape_diagnostics_duration_ms\"",
+                        "\"racing_candidate_speed_profile_duration_ms\"",
                         "\"racing_regularization_duration_ms\"",
                         "\"racing_scratch_reused_candidates\"",
                         "\"racing_parallel_candidate_evaluation_used\"",
@@ -378,6 +411,8 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                         "\"racing_line_dp_segment_cache_misses\"",
                         "\"racing_line_candidate_segment_cache_hits\"",
                         "\"racing_line_candidate_segment_cache_misses\"",
+                        "\"racing_line_full_path_segment_cache_hits\"",
+                        "\"racing_line_full_path_segment_cache_misses\"",
                         "\"racing_line_dp_coarse_states\"",
                         "\"racing_line_dp_coarse_transitions\"",
                         "\"racing_line_dp_fine_states\"",
@@ -402,6 +437,12 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_attempted_corners\"",
                                   "\"turn_smoothing_candidate_attempts\"",
                                   "\"turn_smoothing_relaxed_candidate_attempts\"",
+                                  "\"turn_smoothing_bezier_cache_hits\"",
+                                  "\"turn_smoothing_bezier_cache_misses\"",
+                                  "\"turn_smoothing_before_metrics_cache_hits\"",
+                                  "\"turn_smoothing_before_metrics_cache_misses\"",
+                                  "\"turn_smoothing_traversability_cache_hits\"",
+                                  "\"turn_smoothing_traversability_cache_misses\"",
                                   "\"turn_smoothing_smoothed_corners\"",
                                   "\"turn_smoothing_rejected_prohibited\"",
                                   "\"turn_smoothing_rejected_corridor\"",
@@ -428,6 +469,12 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_accepted_min_speed_after_mps\"",
                                   "\"turn_smoothing_accepted_local_time_before_s\"",
                                   "\"turn_smoothing_accepted_local_time_after_s\"",
+                                  "\"turn_smoothing_candidate_build_duration_ms\"",
+                                  "\"turn_smoothing_candidate_replace_duration_ms\"",
+                                  "\"turn_smoothing_collision_check_duration_ms\"",
+                                  "\"turn_smoothing_metrics_duration_ms\"",
+                                  "\"turn_smoothing_shape_diagnostics_duration_ms\"",
+                                  "\"turn_smoothing_speed_profile_duration_ms\"",
                                   "\"turn_smoothing_corner_diagnostics\"",
                               });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
@@ -535,6 +582,12 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
                    1.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_sample_build_duration_ms,
                    2.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_cost_breakdown_duration_ms,
+                   3.25);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.candidate_shape_diagnostics_duration_ms, 1.75);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_speed_profile_duration_ms,
+                   4.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.regularization_duration_ms, 3.75);
   EXPECT_EQ(parsed_value.stats.racing_line.scratch_reused_candidates, 13U);
   EXPECT_TRUE(parsed_value.stats.racing_line.parallel_candidate_evaluation_used);
@@ -550,6 +603,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
                    4.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.full_candidate_score_duration_ms,
                    6.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_hits, 14U);
+  EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_misses, 88U);
   EXPECT_EQ(parsed_value.stats.racing_line.window_count, 4U);
   EXPECT_EQ(parsed_value.stats.racing_line.active_window_count, 3U);
   EXPECT_EQ(parsed_value.stats.racing_line.active_window_samples, 18U);
@@ -573,6 +628,12 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.turn_smoothing.output_samples, 72U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.candidate_attempts, 11U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.relaxed_candidate_attempts, 6U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.bezier_cache_hits, 21U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.bezier_cache_misses, 22U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.before_metrics_cache_hits, 23U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.before_metrics_cache_misses, 24U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.traversability_cache_hits, 25U);
+  EXPECT_EQ(parsed_value.stats.turn_smoothing.traversability_cache_misses, 26U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.rejected_curvature_regression, 2U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.rejected_radius_regression, 3U);
@@ -594,6 +655,14 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_min_speed_after_mps, 7.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_local_time_before_s, 4.2);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.accepted_local_time_after_s, 3.7);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.candidate_build_duration_ms, 1.1);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.candidate_replace_duration_ms,
+                   1.2);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.collision_check_duration_ms, 1.3);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.metrics_duration_ms, 1.4);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.shape_diagnostics_duration_ms,
+                   1.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.speed_profile_duration_ms, 1.6);
   EXPECT_DOUBLE_EQ(parsed_value.stats.speed_profile_mean_mps, 13.4);
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
   EXPECT_EQ(parsed_value.stats.isolated_curvature_spike_candidates, 2U);

@@ -57,6 +57,9 @@ struct RacingLineStats {
   double candidate_score_duration_ms{0.0};
   double candidate_point_build_duration_ms{0.0};
   double candidate_sample_build_duration_ms{0.0};
+  double candidate_cost_breakdown_duration_ms{0.0};
+  double candidate_shape_diagnostics_duration_ms{0.0};
+  double candidate_speed_profile_duration_ms{0.0};
   double regularization_duration_ms{0.0};
   std::size_t scratch_reused_candidates{0U};
   bool parallel_candidate_evaluation_used{false};
@@ -79,6 +82,8 @@ struct RacingLineStats {
   std::size_t dp_segment_cache_misses{0U};
   std::size_t candidate_segment_cache_hits{0U};
   std::size_t candidate_segment_cache_misses{0U};
+  std::size_t full_path_segment_cache_hits{0U};
+  std::size_t full_path_segment_cache_misses{0U};
   std::size_t dp_coarse_states{0U};
   std::size_t dp_coarse_transitions{0U};
   std::size_t dp_fine_states{0U};

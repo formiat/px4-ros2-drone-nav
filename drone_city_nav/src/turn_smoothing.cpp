@@ -4,12 +4,15 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace drone_city_nav {
@@ -81,6 +84,21 @@ constexpr double kTinyDistanceM = 1.0e-6;
     return fallback;
   }
   return std::clamp(value, min_value, max_value);
+}
+
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - start)
+                                 .count()) /
+         1000.0;
+}
+
+[[nodiscard]] std::int64_t quantizedCacheValue(const double value) noexcept {
+  if (!std::isfinite(value)) {
+    return 0;
+  }
+  return static_cast<std::int64_t>(std::llround(value * 1.0e6));
 }
 
 [[nodiscard]] std::vector<double>
@@ -204,6 +222,33 @@ corridorSampleAtS(const std::span<const CorridorSample> corridor_samples,
   return corridor_samples.back();
 }
 
+struct SegmentCellKey {
+  GridIndex start{};
+  GridIndex end{};
+
+  [[nodiscard]] bool operator==(const SegmentCellKey& other) const noexcept {
+    return start.x == other.start.x && start.y == other.start.y &&
+           end.x == other.end.x && end.y == other.end.y;
+  }
+};
+
+struct SegmentCellKeyHash {
+  [[nodiscard]] std::size_t operator()(const SegmentCellKey& key) const noexcept {
+    const auto mix = [](const std::size_t lhs, const std::size_t rhs) {
+      return lhs ^ (rhs + 0x9e3779b97f4a7c15ULL + (lhs << 6U) + (lhs >> 2U));
+    };
+    std::size_t hash = std::hash<int>{}(key.start.x);
+    hash = mix(hash, std::hash<int>{}(key.start.y));
+    hash = mix(hash, std::hash<int>{}(key.end.x));
+    hash = mix(hash, std::hash<int>{}(key.end.y));
+    return hash;
+  }
+};
+
+struct SegmentTraversabilityCache {
+  std::unordered_map<SegmentCellKey, bool, SegmentCellKeyHash> values;
+};
+
 [[nodiscard]] bool segmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
                                         const Point2 end) {
   const std::optional<GridIndex> start_cell = grid.worldToCell(start);
@@ -216,6 +261,35 @@ corridorSampleAtS(const std::span<const CorridorSample> corridor_samples,
       cells, [&grid](const GridIndex cell) { return grid.isProhibited(cell); });
 }
 
+[[nodiscard]] SegmentCellKey orderedSegmentKey(GridIndex start,
+                                               GridIndex end) noexcept {
+  if (end.x < start.x || (end.x == start.x && end.y < start.y)) {
+    std::swap(start, end);
+  }
+  return SegmentCellKey{.start = start, .end = end};
+}
+
+[[nodiscard]] bool cachedSegmentIsTraversable(const OccupancyGrid2D& grid,
+                                              const Point2 start, const Point2 end,
+                                              SegmentTraversabilityCache& cache,
+                                              TurnSmoothingStats& stats) {
+  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+  const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+  if (!start_cell.has_value() || !end_cell.has_value()) {
+    ++stats.traversability_cache_misses;
+    return false;
+  }
+  const SegmentCellKey key = orderedSegmentKey(*start_cell, *end_cell);
+  if (const auto iter = cache.values.find(key); iter != cache.values.end()) {
+    ++stats.traversability_cache_hits;
+    return iter->second;
+  }
+  ++stats.traversability_cache_misses;
+  const bool traversable = segmentIsTraversable(grid, start, end);
+  cache.values.emplace(key, traversable);
+  return traversable;
+}
+
 [[nodiscard]] bool
 pathIsTraversable(const OccupancyGrid2D& grid,
                   const std::span<const TrajectoryPointSample> samples) {
@@ -224,6 +298,22 @@ pathIsTraversable(const OccupancyGrid2D& grid,
   }
   for (std::size_t i = 1U; i < samples.size(); ++i) {
     if (!segmentIsTraversable(grid, samples[i - 1U].point, samples[i].point)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+pathIsTraversableCached(const OccupancyGrid2D& grid,
+                        const std::span<const TrajectoryPointSample> samples,
+                        SegmentTraversabilityCache& cache, TurnSmoothingStats& stats) {
+  if (samples.size() < 2U) {
+    return false;
+  }
+  for (std::size_t i = 1U; i < samples.size(); ++i) {
+    if (!cachedSegmentIsTraversable(grid, samples[i - 1U].point, samples[i].point,
+                                    cache, stats)) {
       return false;
     }
   }
@@ -294,6 +384,66 @@ struct SmoothingAttempt {
   double relaxed_angle_rad{0.0};
   double score{std::numeric_limits<double>::infinity()};
   bool accepted{false};
+};
+
+struct BezierCacheKey {
+  std::size_t corner_index{0U};
+  std::size_t entry_index{0U};
+  std::size_t exit_index{0U};
+  std::int64_t shift_scale{0};
+  std::int64_t relaxed_angle_rad{0};
+  std::int64_t sample_step_m{0};
+
+  [[nodiscard]] bool operator==(const BezierCacheKey& other) const noexcept {
+    return corner_index == other.corner_index && entry_index == other.entry_index &&
+           exit_index == other.exit_index && shift_scale == other.shift_scale &&
+           relaxed_angle_rad == other.relaxed_angle_rad &&
+           sample_step_m == other.sample_step_m;
+  }
+};
+
+struct BezierCacheKeyHash {
+  [[nodiscard]] std::size_t operator()(const BezierCacheKey& key) const noexcept {
+    const auto mix = [](const std::size_t lhs, const std::size_t rhs) {
+      return lhs ^ (rhs + 0x9e3779b97f4a7c15ULL + (lhs << 6U) + (lhs >> 2U));
+    };
+    std::size_t hash = std::hash<std::size_t>{}(key.corner_index);
+    hash = mix(hash, std::hash<std::size_t>{}(key.entry_index));
+    hash = mix(hash, std::hash<std::size_t>{}(key.exit_index));
+    hash = mix(hash, std::hash<std::int64_t>{}(key.shift_scale));
+    hash = mix(hash, std::hash<std::int64_t>{}(key.relaxed_angle_rad));
+    hash = mix(hash, std::hash<std::int64_t>{}(key.sample_step_m));
+    return hash;
+  }
+};
+
+struct IndexRangeKey {
+  std::size_t begin_index{0U};
+  std::size_t end_index{0U};
+
+  [[nodiscard]] bool operator==(const IndexRangeKey& other) const noexcept {
+    return begin_index == other.begin_index && end_index == other.end_index;
+  }
+};
+
+struct IndexRangeKeyHash {
+  [[nodiscard]] std::size_t operator()(const IndexRangeKey& key) const noexcept {
+    return std::hash<std::size_t>{}(key.begin_index) ^
+           (std::hash<std::size_t>{}(key.end_index) + 0x9e3779b97f4a7c15ULL);
+  }
+};
+
+struct TurnSmoothingWorkBuffer {
+  std::vector<TrajectoryPointSample> before_local;
+  std::vector<TrajectoryPointSample> replacement;
+  std::vector<TrajectoryPointSample> candidate;
+  std::vector<TrajectoryPointSample> after_local;
+  SegmentTraversabilityCache traversability_cache;
+  std::unordered_map<BezierCacheKey, std::vector<TrajectoryPointSample>,
+                     BezierCacheKeyHash>
+      bezier_cache;
+  std::unordered_map<IndexRangeKey, LocalTrajectoryMetrics, IndexRangeKeyHash>
+      before_metrics_cache;
 };
 
 [[nodiscard]] CornerCandidate
@@ -474,11 +624,26 @@ buildBezierSamples(const std::span<const TrajectoryPointSample> samples,
   return bezier_samples;
 }
 
-[[nodiscard]] std::vector<TrajectoryPointSample>
-replaceRange(const std::span<const TrajectoryPointSample> samples,
-             const std::size_t entry_index, const std::size_t exit_index,
-             const std::span<const TrajectoryPointSample> replacement) {
-  std::vector<TrajectoryPointSample> result;
+void sampleRangeInto(const std::span<const TrajectoryPointSample> samples,
+                     const std::size_t start_index, const std::size_t end_index,
+                     std::vector<TrajectoryPointSample>& result) {
+  result.clear();
+  if (samples.empty() || start_index >= samples.size() || end_index >= samples.size() ||
+      start_index >= end_index) {
+    return;
+  }
+  result.reserve(end_index - start_index + 1U);
+  result.insert(result.end(),
+                samples.begin() + static_cast<std::ptrdiff_t>(start_index),
+                samples.begin() + static_cast<std::ptrdiff_t>(end_index + 1U));
+  populateSampleGeometry(result);
+}
+
+void replaceRangeInto(const std::span<const TrajectoryPointSample> samples,
+                      const std::size_t entry_index, const std::size_t exit_index,
+                      const std::span<const TrajectoryPointSample> replacement,
+                      std::vector<TrajectoryPointSample>& result) {
+  result.clear();
   result.reserve(samples.size() + replacement.size());
   result.insert(result.end(), samples.begin(),
                 samples.begin() + static_cast<std::ptrdiff_t>(entry_index));
@@ -487,34 +652,28 @@ replaceRange(const std::span<const TrajectoryPointSample> samples,
                 samples.begin() + static_cast<std::ptrdiff_t>(exit_index + 1U),
                 samples.end());
   populateSampleGeometry(result);
-  return result;
-}
-
-[[nodiscard]] std::vector<TrajectoryPointSample>
-sampleRange(const std::span<const TrajectoryPointSample> samples,
-            const std::size_t start_index, const std::size_t end_index) {
-  if (samples.empty() || start_index >= samples.size() || end_index >= samples.size() ||
-      start_index >= end_index) {
-    return {};
-  }
-  std::vector<TrajectoryPointSample> result{
-      samples.begin() + static_cast<std::ptrdiff_t>(start_index),
-      samples.begin() + static_cast<std::ptrdiff_t>(end_index + 1U)};
-  populateSampleGeometry(result);
-  return result;
 }
 
 [[nodiscard]] LocalTrajectoryMetrics
 localTrajectoryMetrics(const std::span<const TrajectoryPointSample> samples,
-                       const VelocityFollowerConfig& speed_config) {
+                       const VelocityFollowerConfig& speed_config,
+                       TurnSmoothingStats* stats = nullptr) {
+  const auto metrics_started_at = std::chrono::steady_clock::now();
   LocalTrajectoryMetrics metrics{};
   if (samples.size() < 2U) {
+    if (stats != nullptr) {
+      stats->metrics_duration_ms += elapsedMilliseconds(metrics_started_at);
+    }
     return metrics;
   }
 
   metrics.valid = trajectorySamplesAreUsable(samples);
   metrics.length_m = pathLength(samples);
+  const auto shape_started_at = std::chrono::steady_clock::now();
   metrics.shape = computeTrajectoryShapeDiagnostics(samples);
+  if (stats != nullptr) {
+    stats->shape_diagnostics_duration_ms += elapsedMilliseconds(shape_started_at);
+  }
   for (const TrajectoryPointSample& sample : samples) {
     const double abs_curvature = std::abs(sample.curvature_1pm);
     metrics.max_abs_curvature_1pm =
@@ -527,11 +686,86 @@ localTrajectoryMetrics(const std::span<const TrajectoryPointSample> samples,
     metrics.min_radius_m = std::numeric_limits<double>::infinity();
   }
 
+  const auto speed_started_at = std::chrono::steady_clock::now();
   const TraversalTimeEstimate time =
       estimateTraversalTime(samples, speed_config, false);
+  if (stats != nullptr) {
+    stats->speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
+  }
   metrics.min_speed_limit_mps = time.min_speed_limit_mps;
   metrics.estimated_time_s = time.estimated_time_s;
+  if (stats != nullptr) {
+    stats->metrics_duration_ms += elapsedMilliseconds(metrics_started_at);
+  }
   return metrics;
+}
+
+[[nodiscard]] LocalTrajectoryMetrics
+cachedBeforeMetrics(const std::span<const TrajectoryPointSample> samples,
+                    const std::size_t entry_index, const std::size_t exit_index,
+                    const VelocityFollowerConfig& speed_config,
+                    TurnSmoothingWorkBuffer& buffer, TurnSmoothingStats& stats) {
+  const IndexRangeKey key{.begin_index = entry_index, .end_index = exit_index};
+  if (const auto iter = buffer.before_metrics_cache.find(key);
+      iter != buffer.before_metrics_cache.end()) {
+    ++stats.before_metrics_cache_hits;
+    return iter->second;
+  }
+  ++stats.before_metrics_cache_misses;
+  sampleRangeInto(samples, entry_index, exit_index, buffer.before_local);
+  const LocalTrajectoryMetrics metrics =
+      localTrajectoryMetrics(buffer.before_local, speed_config, &stats);
+  buffer.before_metrics_cache.emplace(key, metrics);
+  return metrics;
+}
+
+void cachedBezierSamples(const std::span<const TrajectoryPointSample> samples,
+                         const std::span<const CorridorSample> corridor_samples,
+                         const std::size_t entry_index, const std::size_t corner_index,
+                         const std::size_t exit_index, const CornerCandidate& corner,
+                         const TurnSmoothingConfig& config,
+                         const double outward_shift_scale,
+                         const double relaxed_angle_rad, double& applied_shift_m,
+                         TurnSmoothingWorkBuffer& buffer, TurnSmoothingStats& stats) {
+  const BezierCacheKey key{
+      .corner_index = corner_index,
+      .entry_index = entry_index,
+      .exit_index = exit_index,
+      .shift_scale = quantizedCacheValue(outward_shift_scale),
+      .relaxed_angle_rad = quantizedCacheValue(relaxed_angle_rad),
+      .sample_step_m = quantizedCacheValue(
+          sanitizedPositive(config.sample_step_m, 1.0, 0.1, 10000.0)),
+  };
+  if (const auto iter = buffer.bezier_cache.find(key);
+      iter != buffer.bezier_cache.end()) {
+    ++stats.bezier_cache_hits;
+    buffer.replacement = iter->second;
+    applied_shift_m = 0.0;
+    if (!buffer.replacement.empty()) {
+      const Point2 entry_outward =
+          leftNormal(normalized(samples[corner_index].point -
+                                samples[corner_index - 1U].point)) *
+          -corner.turn_sign;
+      const Point2 exit_outward =
+          leftNormal(normalized(samples[corner_index + 1U].point -
+                                samples[corner_index].point)) *
+          -corner.turn_sign;
+      const double shift_scale = std::clamp(outward_shift_scale, 0.0, 1.0);
+      applied_shift_m =
+          std::max(outwardShiftFor(samples[entry_index], entry_outward, config),
+                   outwardShiftFor(samples[exit_index], exit_outward, config)) *
+          shift_scale;
+    }
+    return;
+  }
+
+  ++stats.bezier_cache_misses;
+  const auto build_started_at = std::chrono::steady_clock::now();
+  buffer.replacement = buildBezierSamples(
+      samples, corridor_samples, entry_index, corner_index, exit_index, corner, config,
+      outward_shift_scale, relaxed_angle_rad, applied_shift_m);
+  stats.candidate_build_duration_ms += elapsedMilliseconds(build_started_at);
+  buffer.bezier_cache.emplace(key, buffer.replacement);
 }
 
 [[nodiscard]] double smoothingAttemptScore(const LocalTrajectoryMetrics& metrics) {
@@ -628,7 +862,8 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
                 const TurnSmoothingConfig& config, const double entry_distance_m,
                 const double exit_distance_m, const double outward_shift_scale,
                 const double relaxed_angle_rad,
-                const VelocityFollowerConfig& speed_config) {
+                const VelocityFollowerConfig& speed_config,
+                TurnSmoothingWorkBuffer& buffer, TurnSmoothingStats& stats) {
   SmoothingAttempt attempt{};
   attempt.entry_distance_m = entry_distance_m;
   attempt.exit_distance_m = exit_distance_m;
@@ -641,31 +876,37 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     return attempt;
   }
-  const std::vector<TrajectoryPointSample> before_local =
-      sampleRange(samples, entry_index, exit_index);
-  attempt.before_metrics = localTrajectoryMetrics(before_local, speed_config);
+  attempt.before_metrics = cachedBeforeMetrics(samples, entry_index, exit_index,
+                                               speed_config, buffer, stats);
 
-  std::vector<TrajectoryPointSample> replacement = buildBezierSamples(
-      samples, corridor_samples, entry_index, corner.index, exit_index, corner, config,
-      outward_shift_scale, relaxed_angle_rad, attempt.applied_shift_m);
-  if (replacement.size() < 3U) {
+  cachedBezierSamples(samples, corridor_samples, entry_index, corner.index, exit_index,
+                      corner, config, outward_shift_scale, relaxed_angle_rad,
+                      attempt.applied_shift_m, buffer, stats);
+  if (buffer.replacement.size() < 3U) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     return attempt;
   }
 
-  std::vector<TrajectoryPointSample> candidate =
-      replaceRange(samples, entry_index, exit_index, replacement);
-  const std::vector<TrajectoryPointSample> after_local =
-      sampleRange(candidate, entry_index, entry_index + replacement.size() - 1U);
-  attempt.after_metrics = localTrajectoryMetrics(after_local, speed_config);
+  const auto replace_started_at = std::chrono::steady_clock::now();
+  replaceRangeInto(samples, entry_index, exit_index, buffer.replacement,
+                   buffer.candidate);
+  stats.candidate_replace_duration_ms += elapsedMilliseconds(replace_started_at);
+  sampleRangeInto(buffer.candidate, entry_index,
+                  entry_index + buffer.replacement.size() - 1U, buffer.after_local);
+  attempt.after_metrics =
+      localTrajectoryMetrics(buffer.after_local, speed_config, &stats);
   attempt.score = smoothingAttemptScore(attempt.after_metrics);
-  if (!pathIsTraversable(prohibited_grid, candidate)) {
+  const auto collision_started_at = std::chrono::steady_clock::now();
+  const bool traversable = pathIsTraversableCached(prohibited_grid, buffer.candidate,
+                                                   buffer.traversability_cache, stats);
+  stats.collision_check_duration_ms += elapsedMilliseconds(collision_started_at);
+  if (!traversable) {
     attempt.reject_reason = SmoothingRejectReason::kProhibited;
     return attempt;
   }
 
   const double previous_length = pathLength(samples);
-  const double candidate_length = pathLength(candidate);
+  const double candidate_length = pathLength(buffer.candidate);
   const double max_length_ratio =
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
   if (previous_length > kTinyDistanceM &&
@@ -674,10 +915,12 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
     return attempt;
   }
 
+  const auto shape_started_at = std::chrono::steady_clock::now();
   const TrajectoryShapeDiagnostics before_shape =
       computeTrajectoryShapeDiagnostics(samples);
   const TrajectoryShapeDiagnostics after_shape =
-      computeTrajectoryShapeDiagnostics(candidate);
+      computeTrajectoryShapeDiagnostics(buffer.candidate);
+  stats.shape_diagnostics_duration_ms += elapsedMilliseconds(shape_started_at);
   if (!improvedShape(before_shape, after_shape, config)) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     return attempt;
@@ -689,7 +932,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
     return attempt;
   }
 
-  attempt.samples = std::move(candidate);
+  attempt.samples = buffer.candidate;
   attempt.reject_reason = SmoothingRejectReason::kNone;
   attempt.accepted = true;
   return attempt;
@@ -844,6 +1087,11 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       break;
     }
 
+    TurnSmoothingWorkBuffer work_buffer{};
+    work_buffer.before_local.reserve(result.samples.size());
+    work_buffer.replacement.reserve(result.samples.size());
+    work_buffer.candidate.reserve(result.samples.size() * 2U);
+    work_buffer.after_local.reserve(result.samples.size());
     ++result.stats.attempted_corners;
     const double entry_distance =
         sanitizedPositive(config.entry_distance_m, 45.0, 0.1, 5000.0);
@@ -881,7 +1129,7 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
         SmoothingAttempt attempt = trySmoothCorner(
             result.samples, corridor_samples, prohibited_grid, *corner, config,
             entry_distance * distance_scale, exit_distance * distance_scale,
-            shift_scale, 0.0, speed_config);
+            shift_scale, 0.0, speed_config, work_buffer, result.stats);
         consider_attempt(std::move(attempt));
       }
     }
@@ -895,7 +1143,7 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
           SmoothingAttempt attempt = trySmoothCorner(
               result.samples, corridor_samples, prohibited_grid, *corner, config,
               entry_distance * distance_scale, exit_distance * distance_scale,
-              shift_scale, relaxed_angle, speed_config);
+              shift_scale, relaxed_angle, speed_config, work_buffer, result.stats);
           consider_attempt(std::move(attempt));
         }
       }

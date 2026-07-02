@@ -56,6 +56,12 @@ struct TurnSmoothingStats {
   std::size_t attempted_corners{0U};
   std::size_t candidate_attempts{0U};
   std::size_t relaxed_candidate_attempts{0U};
+  std::size_t bezier_cache_hits{0U};
+  std::size_t bezier_cache_misses{0U};
+  std::size_t before_metrics_cache_hits{0U};
+  std::size_t before_metrics_cache_misses{0U};
+  std::size_t traversability_cache_hits{0U};
+  std::size_t traversability_cache_misses{0U};
   std::size_t smoothed_corners{0U};
   std::size_t rejected_prohibited{0U};
   std::size_t rejected_corridor{0U};
@@ -82,6 +88,12 @@ struct TurnSmoothingStats {
   double accepted_min_speed_after_mps{std::numeric_limits<double>::quiet_NaN()};
   double accepted_local_time_before_s{std::numeric_limits<double>::quiet_NaN()};
   double accepted_local_time_after_s{std::numeric_limits<double>::quiet_NaN()};
+  double candidate_build_duration_ms{0.0};
+  double candidate_replace_duration_ms{0.0};
+  double collision_check_duration_ms{0.0};
+  double metrics_duration_ms{0.0};
+  double shape_diagnostics_duration_ms{0.0};
+  double speed_profile_duration_ms{0.0};
   std::vector<TurnSmoothingCornerDiagnostic> corner_diagnostics;
 };
 
