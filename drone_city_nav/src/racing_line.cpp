@@ -1208,7 +1208,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     }
     result.score.score = result.score.breakdown.total();
     result.score_duration_ms += elapsedMilliseconds(prefilter_started_at);
-    if (result.score.score + 1.0e-9 >= base_score.score + kLocalPrefilterScoreMargin) {
+    if (!allow_full_score_in_snapshot &&
+        result.score.score + 1.0e-9 >= base_score.score + kLocalPrefilterScoreMargin) {
       return result;
     }
     if (!allow_full_score_in_snapshot) {
@@ -1995,8 +1996,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
             iteration_winner->score.traversal_time, iteration_winner->score.score,
             result.stats);
         result.stats.top_n_best_full_score_local_rank =
-            std::max(result.stats.top_n_best_full_score_local_rank,
-                     iteration_winner->top_n_local_rank);
+            iteration_winner->top_n_local_rank;
         changed = true;
       } else {
         const auto accepted_points_started_at = std::chrono::steady_clock::now();

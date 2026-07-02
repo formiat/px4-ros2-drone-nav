@@ -330,8 +330,8 @@ TEST(RacingLine, TopNFullScoringCanBeDisabledOrSizedAboveCandidates) {
   EXPECT_GT(oversized.stats.top_n_full_score_selected, 0U);
   EXPECT_EQ(oversized.stats.top_n_full_score_skipped, 0U);
   EXPECT_EQ(oversized.stats.top_n_full_score_reduction_ratio, 0.0);
-  EXPECT_GE(oversized.stats.local_candidate_full_score_fallbacks,
-            disabled.stats.local_candidate_full_score_fallbacks);
+  EXPECT_EQ(disabled.stats.local_candidate_full_score_fallbacks,
+            oversized.stats.local_candidate_full_score_fallbacks);
 }
 
 TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
