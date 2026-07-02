@@ -269,11 +269,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.racing_line.dp_fine_radius_m =
       std::clamp(node.declare_parameter<double>("racing_line_dp_fine_radius_m", 1.5),
                  0.05, 5000.0);
-  config.trajectory_planner.racing_line.top_n_full_score_candidates =
-      static_cast<std::size_t>(
-          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
-                                       "racing_line_top_n_full_score_candidates", 0),
-                                   0, 100000));
   config.trajectory_planner.racing_line.async_refinement_workers =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(

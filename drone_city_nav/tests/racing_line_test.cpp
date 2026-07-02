@@ -193,12 +193,6 @@ TEST(RacingLine, ResultIsDeterministic) {
   EXPECT_EQ(first.stats.active_window_count, second.stats.active_window_count);
   EXPECT_EQ(first.stats.dp_states, second.stats.dp_states);
   EXPECT_EQ(first.stats.dp_transitions, second.stats.dp_transitions);
-  EXPECT_EQ(first.stats.top_n_full_score_selected,
-            second.stats.top_n_full_score_selected);
-  EXPECT_EQ(first.stats.top_n_full_score_skipped,
-            second.stats.top_n_full_score_skipped);
-  EXPECT_EQ(first.stats.top_n_best_full_score_local_rank,
-            second.stats.top_n_best_full_score_local_rank);
 }
 
 TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
@@ -241,12 +235,6 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_TRUE(parallel.stats.dp_coarse_to_fine_used);
   EXPECT_EQ(sequential.stats.candidate_evaluations,
             parallel.stats.candidate_evaluations);
-  EXPECT_EQ(sequential.stats.top_n_full_score_selected,
-            parallel.stats.top_n_full_score_selected);
-  EXPECT_EQ(sequential.stats.top_n_full_score_skipped,
-            parallel.stats.top_n_full_score_skipped);
-  EXPECT_EQ(sequential.stats.top_n_best_full_score_local_rank,
-            parallel.stats.top_n_best_full_score_local_rank);
   EXPECT_EQ(sequential.stats.collision_rejections, parallel.stats.collision_rejections);
   EXPECT_EQ(sequential.stats.skipped_noop_candidates,
             parallel.stats.skipped_noop_candidates);
@@ -274,64 +262,6 @@ TEST(RacingLine, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
   EXPECT_LT(result.stats.estimated_time_s, result.stats.centerline_estimated_time_s);
   EXPECT_GT(result.stats.max_abs_offset_m, 1.0);
-}
-
-TEST(RacingLine, TopNFullScoringReducesFullScoreFallbacks) {
-  const OccupancyGrid2D grid = openGrid();
-  RacingLineConfig baseline_config = testConfig();
-  baseline_config.parallel_workers = 1U;
-  baseline_config.max_iterations = 6U;
-  baseline_config.top_n_full_score_candidates = 0U;
-  RacingLineConfig top_n_config = baseline_config;
-  top_n_config.top_n_full_score_candidates = 2U;
-
-  const RacingLineResult baseline =
-      optimizeRacingLine(longLeftTurnCorridor(), grid, baseline_config, speedConfig());
-  const RacingLineResult top_n =
-      optimizeRacingLine(longLeftTurnCorridor(), grid, top_n_config, speedConfig());
-
-  ASSERT_TRUE(baseline.valid);
-  ASSERT_TRUE(top_n.valid);
-  ASSERT_GT(baseline.stats.local_candidate_full_score_fallbacks, 0U);
-  EXPECT_EQ(baseline.stats.top_n_full_score_candidates, 0U);
-  EXPECT_EQ(baseline.stats.top_n_full_score_selected, 0U);
-  EXPECT_EQ(baseline.stats.top_n_full_score_skipped, 0U);
-  EXPECT_EQ(top_n.stats.top_n_full_score_candidates, 2U);
-  EXPECT_GT(top_n.stats.top_n_full_score_selected, 0U);
-  EXPECT_GT(top_n.stats.top_n_full_score_skipped, 0U);
-  EXPECT_GT(top_n.stats.top_n_full_score_reduction_ratio, 0.0);
-  EXPECT_LT(top_n.stats.local_candidate_full_score_fallbacks,
-            baseline.stats.local_candidate_full_score_fallbacks);
-  EXPECT_LE(top_n.stats.local_candidate_full_score_fallbacks,
-            top_n.stats.top_n_full_score_selected);
-  EXPECT_GE(top_n.stats.top_n_preview_sort_duration_ms, 0.0);
-  EXPECT_GE(top_n.stats.top_n_full_score_selection_duration_ms, 0.0);
-}
-
-TEST(RacingLine, TopNFullScoringCanBeDisabledOrSizedAboveCandidates) {
-  const OccupancyGrid2D grid = openGrid();
-  RacingLineConfig disabled_config = testConfig();
-  disabled_config.parallel_workers = 1U;
-  disabled_config.max_iterations = 2U;
-  disabled_config.top_n_full_score_candidates = 0U;
-  RacingLineConfig oversized_config = disabled_config;
-  oversized_config.top_n_full_score_candidates = 100000U;
-
-  const RacingLineResult disabled =
-      optimizeRacingLine(longLeftTurnCorridor(), grid, disabled_config, speedConfig());
-  const RacingLineResult oversized =
-      optimizeRacingLine(longLeftTurnCorridor(), grid, oversized_config, speedConfig());
-
-  ASSERT_TRUE(disabled.valid);
-  ASSERT_TRUE(oversized.valid);
-  EXPECT_EQ(disabled.stats.top_n_full_score_selected, 0U);
-  EXPECT_EQ(disabled.stats.top_n_full_score_skipped, 0U);
-  EXPECT_EQ(disabled.stats.top_n_full_score_reduction_ratio, 0.0);
-  EXPECT_GT(oversized.stats.top_n_full_score_selected, 0U);
-  EXPECT_EQ(oversized.stats.top_n_full_score_skipped, 0U);
-  EXPECT_EQ(oversized.stats.top_n_full_score_reduction_ratio, 0.0);
-  EXPECT_EQ(disabled.stats.local_candidate_full_score_fallbacks,
-            oversized.stats.local_candidate_full_score_fallbacks);
 }
 
 TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {

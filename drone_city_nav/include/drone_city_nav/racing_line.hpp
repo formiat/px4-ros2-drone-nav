@@ -42,7 +42,6 @@ struct RacingLineConfig {
   double dp_coarse_offset_step_m{2.0};
   double dp_fine_offset_step_m{0.75};
   double dp_fine_radius_m{1.5};
-  std::size_t top_n_full_score_candidates{0U};
   std::size_t async_refinement_workers{1U};
 };
 
@@ -74,14 +73,6 @@ struct RacingLineStats {
   std::size_t local_score_false_positives{0U};
   double local_candidate_score_duration_ms{0.0};
   double full_candidate_score_duration_ms{0.0};
-  std::size_t top_n_full_score_candidates{0U};
-  std::size_t top_n_full_score_selected{0U};
-  std::size_t top_n_full_score_skipped{0U};
-  std::size_t top_n_full_score_forced{0U};
-  std::size_t top_n_best_full_score_local_rank{0U};
-  double top_n_full_score_reduction_ratio{0.0};
-  double top_n_preview_sort_duration_ms{0.0};
-  double top_n_full_score_selection_duration_ms{0.0};
   std::size_t window_count{0U};
   std::size_t active_window_count{0U};
   std::size_t active_window_samples{0U};

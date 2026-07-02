@@ -410,22 +410,6 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.local_candidate_score_duration_ms);
   appendJsonNumber(stream, "racing_full_candidate_score_duration_ms",
                    stats.racing_line.full_candidate_score_duration_ms);
-  appendJsonSize(stream, "racing_top_n_full_score_candidates",
-                 stats.racing_line.top_n_full_score_candidates);
-  appendJsonSize(stream, "racing_top_n_full_score_selected",
-                 stats.racing_line.top_n_full_score_selected);
-  appendJsonSize(stream, "racing_top_n_full_score_skipped",
-                 stats.racing_line.top_n_full_score_skipped);
-  appendJsonSize(stream, "racing_top_n_full_score_forced",
-                 stats.racing_line.top_n_full_score_forced);
-  appendJsonSize(stream, "racing_top_n_best_full_score_local_rank",
-                 stats.racing_line.top_n_best_full_score_local_rank);
-  appendJsonNumber(stream, "racing_top_n_full_score_reduction_ratio",
-                   stats.racing_line.top_n_full_score_reduction_ratio);
-  appendJsonNumber(stream, "racing_top_n_preview_sort_duration_ms",
-                   stats.racing_line.top_n_preview_sort_duration_ms);
-  appendJsonNumber(stream, "racing_top_n_full_score_selection_duration_ms",
-                   stats.racing_line.top_n_full_score_selection_duration_ms);
   appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
   appendJsonSize(stream, "racing_line_active_window_count",
                  stats.racing_line.active_window_count);
@@ -966,21 +950,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.local_candidate_score_duration_ms);
   parseJsonDouble(json, "racing_full_candidate_score_duration_ms",
                   racing.full_candidate_score_duration_ms);
-  parseJsonSize(json, "racing_top_n_full_score_candidates",
-                racing.top_n_full_score_candidates);
-  parseJsonSize(json, "racing_top_n_full_score_selected",
-                racing.top_n_full_score_selected);
-  parseJsonSize(json, "racing_top_n_full_score_skipped",
-                racing.top_n_full_score_skipped);
-  parseJsonSize(json, "racing_top_n_full_score_forced", racing.top_n_full_score_forced);
-  parseJsonSize(json, "racing_top_n_best_full_score_local_rank",
-                racing.top_n_best_full_score_local_rank);
-  parseJsonDouble(json, "racing_top_n_full_score_reduction_ratio",
-                  racing.top_n_full_score_reduction_ratio);
-  parseJsonDouble(json, "racing_top_n_preview_sort_duration_ms",
-                  racing.top_n_preview_sort_duration_ms);
-  parseJsonDouble(json, "racing_top_n_full_score_selection_duration_ms",
-                  racing.top_n_full_score_selection_duration_ms);
   parseJsonSize(json, "racing_line_window_count", racing.window_count);
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",

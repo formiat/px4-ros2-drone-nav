@@ -305,8 +305,6 @@ bool PlannerNode::publishTrajectoryResult(
       "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
       "local_accept_full_scores=%zu local_false_positives=%zu "
       "local_time=%.1fms full_candidate_score=%.1fms "
-      "top_n(limit=%zu selected=%zu skipped=%zu forced=%zu best_rank=%zu "
-      "reduction=%.3f sort=%.1fms selection=%.1fms) "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
@@ -395,14 +393,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.local_score_false_positives,
       trajectory_result.stats.racing_line.local_candidate_score_duration_ms,
       trajectory_result.stats.racing_line.full_candidate_score_duration_ms,
-      trajectory_result.stats.racing_line.top_n_full_score_candidates,
-      trajectory_result.stats.racing_line.top_n_full_score_selected,
-      trajectory_result.stats.racing_line.top_n_full_score_skipped,
-      trajectory_result.stats.racing_line.top_n_full_score_forced,
-      trajectory_result.stats.racing_line.top_n_best_full_score_local_rank,
-      trajectory_result.stats.racing_line.top_n_full_score_reduction_ratio,
-      trajectory_result.stats.racing_line.top_n_preview_sort_duration_ms,
-      trajectory_result.stats.racing_line.top_n_full_score_selection_duration_ms,
       trajectory_result.stats.racing_line.initial_cost,
       trajectory_result.stats.racing_line.final_cost,
       trajectory_result.stats.racing_line.centerline_length_m,

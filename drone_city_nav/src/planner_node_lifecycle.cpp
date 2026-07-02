@@ -94,7 +94,6 @@ PlannerNode::PlannerNode()
       "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
       "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu "
-      "top_n_full_score=%zu "
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
       "dp_offset_step=%.2fm async_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
@@ -128,7 +127,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.racing_line.max_offset_slope_per_m,
       trajectory_planner_config_.racing_line.max_length_ratio,
       trajectory_planner_config_.racing_line.parallel_workers,
-      trajectory_planner_config_.racing_line.top_n_full_score_candidates,
       trajectory_planner_config_.racing_line.window_pre_margin_m,
       trajectory_planner_config_.racing_line.window_post_margin_m,
       radiansToDegrees(
