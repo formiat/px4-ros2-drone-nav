@@ -104,6 +104,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 16.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_speed_limit_mps,
+                   12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 45.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.exit_distance_m, 45.0);
 }
@@ -145,6 +148,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"racing_line_top_n_full_score_candidates", 500000},
        rclcpp::Parameter{"racing_line_async_refinement_workers", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
+       rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
+       rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
        rclcpp::Parameter{"turn_smoothing_entry_distance_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_max_length_ratio", -2.0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
@@ -191,6 +196,9 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_speed_limit_mps,
+                   0.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 0.1);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_length_ratio, 1.0);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);

@@ -16,7 +16,8 @@ namespace drone_city_nav {
 
 struct TurnSmoothingConfig {
   double trigger_heading_delta_rad{0.65};
-  double trigger_min_radius_m{12.0};
+  double trigger_min_radius_m{16.0};
+  double trigger_speed_limit_mps{12.0};
   double entry_distance_m{45.0};
   double exit_distance_m{45.0};
   double sample_step_m{1.0};

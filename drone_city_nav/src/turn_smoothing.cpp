@@ -87,6 +87,22 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] double
+curvatureSpeedLimitMps(const double radius_m,
+                       const VelocityFollowerConfig& config) noexcept {
+  if (!(radius_m > kTinyDistanceM) || !std::isfinite(radius_m)) {
+    return sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
+  }
+  const double cruise_speed =
+      sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
+  const double min_turn_speed = std::min(
+      sanitizedPositive(config.min_turn_speed_mps, 2.0, 0.0, 100.0), cruise_speed);
+  const double max_lateral_accel =
+      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+  return std::clamp(std::sqrt(max_lateral_accel * radius_m), min_turn_speed,
+                    cruise_speed);
+}
+
+[[nodiscard]] double
 elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
   return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                                  std::chrono::steady_clock::now() - start)
@@ -448,7 +464,8 @@ struct TurnSmoothingWorkBuffer {
 
 [[nodiscard]] CornerCandidate
 cornerCandidateAt(const std::span<const TrajectoryPointSample> samples,
-                  const std::size_t index, const TurnSmoothingConfig& config) {
+                  const std::size_t index, const TurnSmoothingConfig& config,
+                  const VelocityFollowerConfig& speed_config) {
   CornerCandidate candidate{};
   if (index == 0U || index + 1U >= samples.size()) {
     return candidate;
@@ -473,11 +490,17 @@ cornerCandidateAt(const std::span<const TrajectoryPointSample> samples,
   const double trigger_heading_delta =
       sanitizedPositive(config.trigger_heading_delta_rad, 0.65, 0.0, std::numbers::pi);
   const double trigger_min_radius =
-      sanitizedPositive(config.trigger_min_radius_m, 12.0, 0.0, 10000.0);
+      sanitizedPositive(config.trigger_min_radius_m, 16.0, 0.0, 10000.0);
+  const double trigger_speed_limit =
+      sanitizedPositive(config.trigger_speed_limit_mps, 12.0, 0.0, 1000.0);
+  const double geometric_speed_limit = curvatureSpeedLimitMps(radius, speed_config);
   const bool triggered_by_heading = abs_delta >= trigger_heading_delta;
   const bool triggered_by_radius =
       radius < trigger_min_radius && abs_delta > trigger_heading_delta * 0.35;
-  if (!triggered_by_heading && !triggered_by_radius) {
+  const bool triggered_by_speed = trigger_speed_limit > kTinyDistanceM &&
+                                  geometric_speed_limit <= trigger_speed_limit &&
+                                  abs_delta > trigger_heading_delta * 0.30;
+  if (!triggered_by_heading && !triggered_by_radius && !triggered_by_speed) {
     return candidate;
   }
 
@@ -782,10 +805,12 @@ void cachedBezierSamples(const std::span<const TrajectoryPointSample> samples,
 
 [[nodiscard]] std::optional<CornerCandidate>
 worstCorner(const std::span<const TrajectoryPointSample> samples,
-            const TurnSmoothingConfig& config, TurnSmoothingStats& stats) {
+            const TurnSmoothingConfig& config,
+            const VelocityFollowerConfig& speed_config, TurnSmoothingStats& stats) {
   std::optional<CornerCandidate> best;
   for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-    const CornerCandidate candidate = cornerCandidateAt(samples, i, config);
+    const CornerCandidate candidate =
+        cornerCandidateAt(samples, i, config, speed_config);
     if (!candidate.valid) {
       continue;
     }
@@ -1073,7 +1098,7 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
   for (std::size_t pass = 0U; pass < max_passes; ++pass) {
     TurnSmoothingStats detection_stats{};
     const std::optional<CornerCandidate> corner =
-        worstCorner(result.samples, config, detection_stats);
+        worstCorner(result.samples, config, speed_config, detection_stats);
     result.stats.detected_corners += detection_stats.detected_corners;
     if (std::isfinite(detection_stats.min_inner_margin_m)) {
       if (!std::isfinite(result.stats.min_inner_margin_m)) {

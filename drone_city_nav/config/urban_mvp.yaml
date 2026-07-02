@@ -150,7 +150,8 @@ planner_node:
     racing_line_top_n_full_score_candidates: 0
     racing_line_async_refinement_workers: 1
     turn_smoothing_trigger_heading_delta_deg: 37.0
-    turn_smoothing_trigger_min_radius_m: 12.0
+    turn_smoothing_trigger_min_radius_m: 16.0
+    turn_smoothing_trigger_speed_limit_mps: 12.0
     turn_smoothing_entry_distance_m: 45.0
     turn_smoothing_exit_distance_m: 45.0
     turn_smoothing_sample_step_m: 1.0

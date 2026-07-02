@@ -284,8 +284,11 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
           std::numbers::pi / 180.0,
       0.0, std::numbers::pi);
   config.trajectory_planner.turn_smoothing.trigger_min_radius_m = std::clamp(
-      node.declare_parameter<double>("turn_smoothing_trigger_min_radius_m", 12.0), 0.0,
+      node.declare_parameter<double>("turn_smoothing_trigger_min_radius_m", 16.0), 0.0,
       10000.0);
+  config.trajectory_planner.turn_smoothing.trigger_speed_limit_mps = std::clamp(
+      node.declare_parameter<double>("turn_smoothing_trigger_speed_limit_mps", 12.0),
+      0.0, 1000.0);
   config.trajectory_planner.turn_smoothing.entry_distance_m = std::clamp(
       node.declare_parameter<double>("turn_smoothing_entry_distance_m", 45.0), 0.1,
       5000.0);

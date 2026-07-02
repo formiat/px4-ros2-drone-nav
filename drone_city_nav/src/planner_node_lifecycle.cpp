@@ -98,7 +98,7 @@ PlannerNode::PlannerNode()
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
       "dp_offset_step=%.2fm async_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
-      "entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
+      "trigger_speed=%.2fmps entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
       "outer_shift=[%.2f, %.2f] max_length_ratio=%.2f max_passes=%zu]",
       trajectory_planner_config_.speed_profile.cruise_speed_mps,
       trajectory_planner_config_.speed_profile.min_turn_speed_mps,
@@ -139,6 +139,7 @@ PlannerNode::PlannerNode()
       radiansToDegrees(
           trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
       trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
+      trajectory_planner_config_.turn_smoothing.trigger_speed_limit_mps,
       trajectory_planner_config_.turn_smoothing.entry_distance_m,
       trajectory_planner_config_.turn_smoothing.exit_distance_m,
       trajectory_planner_config_.turn_smoothing.sample_step_m,

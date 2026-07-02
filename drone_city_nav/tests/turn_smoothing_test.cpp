@@ -54,6 +54,47 @@ wideCornerCorridor(const OccupancyGrid2D& grid) {
   return result.samples;
 }
 
+[[nodiscard]] Point2 unitDirection(const Point2 start, const Point2 end) {
+  const double length = distance(start, end);
+  if (!(length > 1.0e-9)) {
+    return Point2{1.0, 0.0};
+  }
+  return Point2{(end.x - start.x) / length, (end.y - start.y) / length};
+}
+
+[[nodiscard]] std::vector<CorridorSample>
+manualWideCorridor(const std::vector<Point2>& points) {
+  std::vector<CorridorSample> corridor;
+  corridor.reserve(points.size());
+  double station_m = 0.0;
+  for (std::size_t i = 0U; i < points.size(); ++i) {
+    if (i > 0U) {
+      station_m += distance(points[i - 1U], points[i]);
+    }
+    Point2 tangent{};
+    if (points.size() == 1U) {
+      tangent = Point2{1.0, 0.0};
+    } else if (i == 0U) {
+      tangent = unitDirection(points[i], points[i + 1U]);
+    } else if (i + 1U == points.size()) {
+      tangent = unitDirection(points[i - 1U], points[i]);
+    } else {
+      tangent = unitDirection(points[i - 1U], points[i + 1U]);
+    }
+    CorridorSample sample{};
+    sample.s_m = station_m;
+    sample.route_center = points[i];
+    sample.center = points[i];
+    sample.tangent = tangent;
+    sample.normal = Point2{-tangent.y, tangent.x};
+    sample.left_bound_m = 20.0;
+    sample.right_bound_m = 20.0;
+    sample.clearance_m = 20.0;
+    corridor.push_back(sample);
+  }
+  return corridor;
+}
+
 [[nodiscard]] TurnSmoothingConfig smoothingConfig() {
   TurnSmoothingConfig config{};
   config.trigger_heading_delta_rad = 0.6;
@@ -146,6 +187,36 @@ TEST(TurnSmoothing, FallsBackWhenWideCandidateTouchesProhibited) {
             maxAcceptedCurvatureJumpAfter(before));
   EXPECT_LT(computeTrajectoryShapeDiagnostics(result.samples).max_heading_delta_rad,
             before.max_heading_delta_rad);
+}
+
+TEST(TurnSmoothing, SmoothsModerateSpeedBottleneckCorner) {
+  const OccupancyGrid2D grid = openGrid();
+  const double angle_rad = 25.0 * std::numbers::pi / 180.0;
+  const std::vector<Point2> points{
+      {0.0, 0.0},
+      {5.0, 0.0},
+      {5.0 + 5.0 * std::cos(angle_rad), 5.0 * std::sin(angle_rad)}};
+  const std::vector<CorridorSample> corridor = manualWideCorridor(points);
+  const std::vector<TrajectoryPointSample> samples = samplesFromCorridor(corridor);
+  TurnSmoothingConfig config = smoothingConfig();
+  config.trigger_heading_delta_rad = 37.0 * std::numbers::pi / 180.0;
+  config.trigger_min_radius_m = 4.0;
+  config.trigger_speed_limit_mps = 12.0;
+  config.entry_distance_m = 5.0;
+  config.exit_distance_m = 5.0;
+  config.max_length_ratio = 2.0;
+  config.max_passes = 1U;
+
+  const TurnSmoothingResult result = smoothTrajectoryTurns(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config,
+      speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.changed);
+  EXPECT_GT(result.stats.detected_corners, 0U);
+  EXPECT_GT(result.stats.attempted_corners, 0U);
+  EXPECT_GT(result.stats.smoothed_corners, 0U);
 }
 
 TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
