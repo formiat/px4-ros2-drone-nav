@@ -1120,11 +1120,81 @@ void addActiveWindow(std::vector<ActiveWindow>& windows,
   if (begin >= end) {
     return;
   }
-  if (!windows.empty() && begin <= windows.back().end_index + 1U) {
+  if (!windows.empty() && begin >= windows.back().begin_index &&
+      begin <= windows.back().end_index + 1U) {
     windows.back().end_index = std::max(windows.back().end_index, end);
     return;
   }
   windows.push_back(ActiveWindow{begin, end});
+}
+
+[[nodiscard]] bool addActiveWindowRange(std::vector<ActiveWindow>& windows,
+                                        const std::span<const CorridorSample> samples,
+                                        const double begin_s_m, const double end_s_m) {
+  if (samples.empty() || !std::isfinite(begin_s_m) || !std::isfinite(end_s_m) ||
+      begin_s_m >= end_s_m) {
+    return false;
+  }
+
+  std::size_t begin = 0U;
+  while (begin + 1U < samples.size() && samples[begin + 1U].s_m <= begin_s_m) {
+    ++begin;
+  }
+  std::size_t end = begin;
+  while (end + 1U < samples.size() && samples[end].s_m < end_s_m) {
+    ++end;
+  }
+  if (begin >= end) {
+    return false;
+  }
+  if (!windows.empty() && begin >= windows.back().begin_index &&
+      begin <= windows.back().end_index + 1U) {
+    windows.back().end_index = std::max(windows.back().end_index, end);
+    return true;
+  }
+  windows.push_back(ActiveWindow{begin, end});
+  return true;
+}
+
+void mergeActiveWindows(std::vector<ActiveWindow>& windows) {
+  if (windows.size() < 2U) {
+    return;
+  }
+  std::sort(windows.begin(), windows.end(),
+            [](const ActiveWindow& lhs, const ActiveWindow& rhs) {
+              if (lhs.begin_index == rhs.begin_index) {
+                return lhs.end_index < rhs.end_index;
+              }
+              return lhs.begin_index < rhs.begin_index;
+            });
+  std::vector<ActiveWindow> merged;
+  merged.reserve(windows.size());
+  for (const ActiveWindow& window : windows) {
+    if (window.begin_index >= window.end_index) {
+      continue;
+    }
+    if (!merged.empty() && window.begin_index <= merged.back().end_index + 1U) {
+      merged.back().end_index = std::max(merged.back().end_index, window.end_index);
+      continue;
+    }
+    merged.push_back(window);
+  }
+  windows = std::move(merged);
+}
+
+[[nodiscard]] std::size_t
+activeWindowControlSampleCount(const std::span<const ActiveWindow> windows) {
+  std::size_t count = 0U;
+  for (const ActiveWindow& window : windows) {
+    if (window.end_index > window.begin_index + 1U) {
+      count += window.end_index - window.begin_index - 1U;
+    }
+  }
+  return count;
+}
+
+[[nodiscard]] std::size_t fullPathActiveSampleCount(const std::size_t sample_count) {
+  return sample_count > 2U ? sample_count - 2U : 0U;
 }
 
 [[nodiscard]] double headingSpanAround(const std::span<const CorridorSample> samples,
@@ -1186,10 +1256,6 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
   const double post_margin_m =
       sanitizedPositive(config.window_post_margin_m, 25.0, 0.0, 5000.0);
   if (!centerline_evaluation.traversable()) {
-    windows.push_back(ActiveWindow{0U, samples.size() - 1U});
-    stats.window_count = 1U;
-    stats.active_window_count = 1U;
-    stats.active_window_samples = samples.size() > 2U ? samples.size() - 2U : 0U;
     stats.active_window_centerline_blocked = 1U;
     stats.centerline_blocked_prohibited_cells = centerline_evaluation.prohibited_cells;
     stats.centerline_blocked_outside_grid_segments =
@@ -1224,8 +1290,52 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
       stats.centerline_blocked_span_length_m =
           stats.centerline_blocked_last_s_m - stats.centerline_blocked_first_s_m;
     }
-    stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
-    return windows;
+
+    bool use_full_path_fallback = centerline_evaluation.outside_grid_segments > 0U ||
+                                  centerline_evaluation.blocked_span_count == 0U ||
+                                  centerline_evaluation.blocked_span_count >
+                                      kMaxCenterlineBlockedSpanDiagnostics ||
+                                  centerline_evaluation.blocked_span_diagnostic_count !=
+                                      centerline_evaluation.blocked_span_count;
+    if (!use_full_path_fallback) {
+      for (std::size_t i = 0U; i < centerline_evaluation.blocked_span_diagnostic_count;
+           ++i) {
+        const RacingLineBlockedSpanDiagnostic& span =
+            centerline_evaluation.blocked_span_diagnostics.at(i);
+        if (span.outside_grid_segments > 0U || !std::isfinite(span.begin_s_m) ||
+            !std::isfinite(span.end_s_m) || span.begin_s_m >= span.end_s_m) {
+          use_full_path_fallback = true;
+          break;
+        }
+        if (!addActiveWindowRange(windows, samples, span.begin_s_m - pre_margin_m,
+                                  span.end_s_m + post_margin_m)) {
+          use_full_path_fallback = true;
+          break;
+        }
+        ++stats.centerline_blocked_windows;
+      }
+    }
+
+    if (!use_full_path_fallback) {
+      mergeActiveWindows(windows);
+      stats.centerline_blocked_window_merged_count = windows.size();
+      stats.centerline_blocked_window_samples = activeWindowControlSampleCount(windows);
+      const std::size_t full_path_samples = fullPathActiveSampleCount(samples.size());
+      if (windows.empty() || full_path_samples == 0U ||
+          stats.centerline_blocked_window_samples * 10U >= full_path_samples * 9U) {
+        use_full_path_fallback = true;
+      }
+    }
+
+    if (use_full_path_fallback) {
+      windows.clear();
+      windows.push_back(ActiveWindow{0U, samples.size() - 1U});
+      stats.window_count = 1U;
+      stats.active_window_count = 1U;
+      stats.active_window_samples = fullPathActiveSampleCount(samples.size());
+      stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
+      return windows;
+    }
   }
 
   const double heading_threshold_rad =
@@ -1282,13 +1392,10 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     }
   }
 
+  mergeActiveWindows(windows);
   stats.window_count = windows.size();
   stats.active_window_count = windows.size();
-  for (const ActiveWindow& window : windows) {
-    if (window.end_index > window.begin_index + 1U) {
-      stats.active_window_samples += window.end_index - window.begin_index - 1U;
-    }
-  }
+  stats.active_window_samples = activeWindowControlSampleCount(windows);
   stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
   return windows;
 }

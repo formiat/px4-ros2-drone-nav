@@ -160,6 +160,9 @@ struct RacingLineStats {
   std::size_t active_window_curvature_samples{0U};
   std::size_t active_window_width_change_samples{0U};
   std::size_t active_window_width_asymmetry_samples{0U};
+  std::size_t centerline_blocked_windows{0U};
+  std::size_t centerline_blocked_window_samples{0U};
+  std::size_t centerline_blocked_window_merged_count{0U};
   std::size_t centerline_blocked_prohibited_cells{0U};
   std::size_t centerline_blocked_outside_grid_segments{0U};
   std::size_t centerline_blocked_segment_count{0U};

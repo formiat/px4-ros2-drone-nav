@@ -257,6 +257,10 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.active_window_width_change_samples = 5U;
   record.trajectory_planner_stats.racing_line.active_window_width_asymmetry_samples =
       6U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_windows = 3U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_window_samples = 17U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_window_merged_count =
+      2U;
   record.trajectory_planner_stats.racing_line.centerline_blocked_prohibited_cells = 7U;
   record.trajectory_planner_stats.racing_line.centerline_blocked_outside_grid_segments =
       8U;
@@ -486,6 +490,9 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_line_active_window_curvature_samples\":4");
   expectJsonField(json, "\"racing_line_active_window_width_change_samples\":5");
   expectJsonField(json, "\"racing_line_active_window_width_asymmetry_samples\":6");
+  expectJsonField(json, "\"racing_centerline_blocked_windows\":3");
+  expectJsonField(json, "\"racing_centerline_blocked_window_samples\":17");
+  expectJsonField(json, "\"racing_centerline_blocked_window_merged_count\":2");
   expectJsonField(json, "\"racing_centerline_blocked_prohibited_cells\":7");
   expectJsonField(json, "\"racing_centerline_blocked_outside_grid_segments\":8");
   expectJsonField(json, "\"racing_centerline_blocked_segment_count\":2");

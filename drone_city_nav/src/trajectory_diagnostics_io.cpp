@@ -554,6 +554,12 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.active_window_width_change_samples);
   appendJsonSize(stream, "racing_line_active_window_width_asymmetry_samples",
                  stats.racing_line.active_window_width_asymmetry_samples);
+  appendJsonSize(stream, "racing_centerline_blocked_windows",
+                 stats.racing_line.centerline_blocked_windows);
+  appendJsonSize(stream, "racing_centerline_blocked_window_samples",
+                 stats.racing_line.centerline_blocked_window_samples);
+  appendJsonSize(stream, "racing_centerline_blocked_window_merged_count",
+                 stats.racing_line.centerline_blocked_window_merged_count);
   appendJsonSize(stream, "racing_centerline_blocked_prohibited_cells",
                  stats.racing_line.centerline_blocked_prohibited_cells);
   appendJsonSize(stream, "racing_centerline_blocked_outside_grid_segments",
@@ -1276,6 +1282,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.active_window_width_change_samples);
   parseJsonSize(json, "racing_line_active_window_width_asymmetry_samples",
                 racing.active_window_width_asymmetry_samples);
+  parseJsonSize(json, "racing_centerline_blocked_windows",
+                racing.centerline_blocked_windows);
+  parseJsonSize(json, "racing_centerline_blocked_window_samples",
+                racing.centerline_blocked_window_samples);
+  parseJsonSize(json, "racing_centerline_blocked_window_merged_count",
+                racing.centerline_blocked_window_merged_count);
   parseJsonSize(json, "racing_centerline_blocked_prohibited_cells",
                 racing.centerline_blocked_prohibited_cells);
   parseJsonSize(json, "racing_centerline_blocked_outside_grid_segments",

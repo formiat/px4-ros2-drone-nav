@@ -20,6 +20,16 @@ namespace {
   return grid;
 }
 
+[[nodiscard]] OccupancyGrid2D wideOpenGrid() {
+  OccupancyGrid2D grid{GridBounds{-10.0, -10.0, 1.0, 140, 30}};
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      grid.setFree(GridIndex{x, y});
+    }
+  }
+  return grid;
+}
+
 [[nodiscard]] std::vector<CorridorSample> wideLeftTurnCorridor() {
   std::vector<CorridorSample> samples;
   const std::vector<Point2> centers{
@@ -102,6 +112,22 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
     sample.left_bound_m = left_bound_m;
     sample.right_bound_m = right_bound_m;
     sample.clearance_m = std::max(left_bound_m, right_bound_m);
+    samples.push_back(sample);
+  }
+  return samples;
+}
+
+[[nodiscard]] std::vector<CorridorSample> longStraightCorridor() {
+  std::vector<CorridorSample> samples;
+  for (int i = 0; i <= 20; ++i) {
+    CorridorSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.center = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.normal = Point2{0.0, 1.0};
+    sample.left_bound_m = 4.0;
+    sample.right_bound_m = 4.0;
+    sample.clearance_m = 4.0;
     samples.push_back(sample);
   }
   return samples;
@@ -312,6 +338,41 @@ TEST(RacingLine, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   EXPECT_EQ(result.stats.active_window_count, 1U);
   EXPECT_GT(result.stats.dp_states, 0U);
   EXPECT_GT(result.stats.dp_segment_cache_misses, 0U);
+}
+
+TEST(RacingLine, ProhibitedCenterlineUsesLocalBlockedSpanWindows) {
+  OccupancyGrid2D grid = wideOpenGrid();
+  grid.setOccupied(GridIndex{32, 10});
+  grid.setOccupied(GridIndex{72, 10});
+  const std::vector<CorridorSample> corridor = longStraightCorridor();
+  RacingLineConfig config = testConfig();
+  config.max_iterations = 1U;
+  config.parallel_workers = 1U;
+  config.window_pre_margin_m = 5.0;
+  config.window_post_margin_m = 5.0;
+  config.window_heading_threshold_rad = std::numbers::pi;
+  config.window_min_heading_span_rad = std::numbers::pi;
+  config.window_min_curvature_1pm = 100.0;
+  config.window_width_change_threshold_m = 100.0;
+  config.window_min_width_asymmetry_m = 100.0;
+
+  const RacingLineResult result =
+      optimizeRacingLine(corridor, grid, config, speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.active_window_centerline_blocked, 1U);
+  EXPECT_EQ(result.stats.centerline_blocked_outside_grid_segments, 0U);
+  EXPECT_EQ(result.stats.centerline_blocked_span_count, 2U);
+  EXPECT_EQ(result.stats.centerline_blocked_span_diagnostic_count, 2U);
+  EXPECT_EQ(result.stats.centerline_blocked_windows, 2U);
+  EXPECT_EQ(result.stats.centerline_blocked_window_merged_count, 2U);
+  EXPECT_EQ(result.stats.active_window_count, 2U);
+  EXPECT_EQ(result.stats.window_count, 2U);
+  EXPECT_GT(result.stats.centerline_blocked_window_samples, 0U);
+  EXPECT_EQ(result.stats.active_window_samples,
+            result.stats.centerline_blocked_window_samples);
+  EXPECT_LT(result.stats.active_window_samples, corridor.size() - 2U);
+  EXPECT_GT(result.stats.dp_states, 0U);
 }
 
 TEST(RacingLine, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidResult) {

@@ -369,6 +369,7 @@ bool PlannerNode::publishTrajectoryResult(
       "windows=%zu active_windows=%zu active_samples=%zu "
       "window_triggers(centerline_blocked=%zu heading_change=%zu "
       "heading_span=%zu curvature=%zu width_change=%zu width_asymmetry=%zu) "
+      "centerline_blocked_windows(raw=%zu merged=%zu samples=%zu) "
       "centerline_blocked_detail(prohibited=%zu outside=%zu segments=%zu spans=%zu "
       "first_segment=%zu last_segment=%zu s=[%.2f,%.2f] span_len=%.2f "
       "first_point=(%.2f,%.2f) last_point=(%.2f,%.2f) "
@@ -548,6 +549,9 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.active_window_curvature_samples,
       trajectory_result.stats.racing_line.active_window_width_change_samples,
       trajectory_result.stats.racing_line.active_window_width_asymmetry_samples,
+      trajectory_result.stats.racing_line.centerline_blocked_windows,
+      trajectory_result.stats.racing_line.centerline_blocked_window_merged_count,
+      trajectory_result.stats.racing_line.centerline_blocked_window_samples,
       trajectory_result.stats.racing_line.centerline_blocked_prohibited_cells,
       trajectory_result.stats.racing_line.centerline_blocked_outside_grid_segments,
       trajectory_result.stats.racing_line.centerline_blocked_segment_count,

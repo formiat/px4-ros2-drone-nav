@@ -136,6 +136,9 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.active_window_curvature_samples = 7U;
   stats.racing_line.active_window_width_change_samples = 8U;
   stats.racing_line.active_window_width_asymmetry_samples = 9U;
+  stats.racing_line.centerline_blocked_windows = 5U;
+  stats.racing_line.centerline_blocked_window_samples = 19U;
+  stats.racing_line.centerline_blocked_window_merged_count = 3U;
   stats.racing_line.centerline_blocked_prohibited_cells = 10U;
   stats.racing_line.centerline_blocked_outside_grid_segments = 11U;
   stats.racing_line.centerline_blocked_segment_count = 3U;
@@ -548,6 +551,11 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_active_window_width_asymmetry_samples\":9"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_windows\":5"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_window_samples\":19"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_window_merged_count\":3"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_prohibited_cells\":10"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_outside_grid_segments\":11"),
@@ -773,6 +781,9 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_line_active_window_curvature_samples\"",
                     "\"racing_line_active_window_width_change_samples\"",
                     "\"racing_line_active_window_width_asymmetry_samples\"",
+                    "\"racing_centerline_blocked_windows\"",
+                    "\"racing_centerline_blocked_window_samples\"",
+                    "\"racing_centerline_blocked_window_merged_count\"",
                     "\"racing_centerline_blocked_prohibited_cells\"",
                     "\"racing_centerline_blocked_outside_grid_segments\"",
                     "\"racing_centerline_blocked_segment_count\"",
@@ -1118,6 +1129,9 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.racing_line.active_window_curvature_samples, 7U);
   EXPECT_EQ(parsed_value.stats.racing_line.active_window_width_change_samples, 8U);
   EXPECT_EQ(parsed_value.stats.racing_line.active_window_width_asymmetry_samples, 9U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_windows, 5U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_window_samples, 19U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_window_merged_count, 3U);
   EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_prohibited_cells, 10U);
   EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_outside_grid_segments,
             11U);
