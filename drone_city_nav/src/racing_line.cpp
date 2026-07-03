@@ -1064,6 +1064,7 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     stats.window_count = 1U;
     stats.active_window_count = 1U;
     stats.active_window_samples = samples.size() > 2U ? samples.size() - 2U : 0U;
+    stats.active_window_centerline_blocked = 1U;
     stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
     return windows;
   }
@@ -1093,12 +1094,30 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
         samples[i + 1U].left_bound_m + samples[i + 1U].right_bound_m;
     const double width_asymmetry =
         std::abs(samples[i].left_bound_m - samples[i].right_bound_m);
-    const bool turn_zone = heading_change >= heading_threshold_rad ||
-                           heading_span >= heading_span_threshold_rad ||
-                           curvature >= curvature_threshold;
-    const bool width_zone =
-        std::abs(next_width - previous_width) >= width_threshold_m ||
-        width_asymmetry >= width_asymmetry_threshold_m;
+    const bool heading_change_trigger = heading_change >= heading_threshold_rad;
+    const bool heading_span_trigger = heading_span >= heading_span_threshold_rad;
+    const bool curvature_trigger = curvature >= curvature_threshold;
+    const bool width_change_trigger =
+        std::abs(next_width - previous_width) >= width_threshold_m;
+    const bool width_asymmetry_trigger = width_asymmetry >= width_asymmetry_threshold_m;
+    if (heading_change_trigger) {
+      ++stats.active_window_heading_change_samples;
+    }
+    if (heading_span_trigger) {
+      ++stats.active_window_heading_span_samples;
+    }
+    if (curvature_trigger) {
+      ++stats.active_window_curvature_samples;
+    }
+    if (width_change_trigger) {
+      ++stats.active_window_width_change_samples;
+    }
+    if (width_asymmetry_trigger) {
+      ++stats.active_window_width_asymmetry_samples;
+    }
+    const bool turn_zone =
+        heading_change_trigger || heading_span_trigger || curvature_trigger;
+    const bool width_zone = width_change_trigger || width_asymmetry_trigger;
     if (turn_zone || width_zone) {
       addActiveWindow(windows, samples, i, pre_margin_m, post_margin_m);
     }

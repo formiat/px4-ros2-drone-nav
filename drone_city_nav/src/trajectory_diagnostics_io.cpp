@@ -542,6 +542,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.active_window_count);
   appendJsonSize(stream, "racing_line_active_window_samples",
                  stats.racing_line.active_window_samples);
+  appendJsonSize(stream, "racing_line_active_window_centerline_blocked",
+                 stats.racing_line.active_window_centerline_blocked);
+  appendJsonSize(stream, "racing_line_active_window_heading_change_samples",
+                 stats.racing_line.active_window_heading_change_samples);
+  appendJsonSize(stream, "racing_line_active_window_heading_span_samples",
+                 stats.racing_line.active_window_heading_span_samples);
+  appendJsonSize(stream, "racing_line_active_window_curvature_samples",
+                 stats.racing_line.active_window_curvature_samples);
+  appendJsonSize(stream, "racing_line_active_window_width_change_samples",
+                 stats.racing_line.active_window_width_change_samples);
+  appendJsonSize(stream, "racing_line_active_window_width_asymmetry_samples",
+                 stats.racing_line.active_window_width_asymmetry_samples);
   appendJsonSize(stream, "racing_line_dp_states", stats.racing_line.dp_states);
   appendJsonSize(stream, "racing_line_dp_transitions",
                  stats.racing_line.dp_transitions);
@@ -1203,6 +1215,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",
                 racing.active_window_samples);
+  parseJsonSize(json, "racing_line_active_window_centerline_blocked",
+                racing.active_window_centerline_blocked);
+  parseJsonSize(json, "racing_line_active_window_heading_change_samples",
+                racing.active_window_heading_change_samples);
+  parseJsonSize(json, "racing_line_active_window_heading_span_samples",
+                racing.active_window_heading_span_samples);
+  parseJsonSize(json, "racing_line_active_window_curvature_samples",
+                racing.active_window_curvature_samples);
+  parseJsonSize(json, "racing_line_active_window_width_change_samples",
+                racing.active_window_width_change_samples);
+  parseJsonSize(json, "racing_line_active_window_width_asymmetry_samples",
+                racing.active_window_width_asymmetry_samples);
   parseJsonSize(json, "racing_line_dp_states", racing.dp_states);
   parseJsonSize(json, "racing_line_dp_transitions", racing.dp_transitions);
   parseJsonSize(json, "racing_line_dp_segment_cache_hits",

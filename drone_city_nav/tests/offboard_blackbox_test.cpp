@@ -250,6 +250,13 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.full_path_segment_cache_misses = 12U;
   record.trajectory_planner_stats.racing_line.window_count = 2U;
   record.trajectory_planner_stats.racing_line.active_window_count = 1U;
+  record.trajectory_planner_stats.racing_line.active_window_centerline_blocked = 1U;
+  record.trajectory_planner_stats.racing_line.active_window_heading_change_samples = 2U;
+  record.trajectory_planner_stats.racing_line.active_window_heading_span_samples = 3U;
+  record.trajectory_planner_stats.racing_line.active_window_curvature_samples = 4U;
+  record.trajectory_planner_stats.racing_line.active_window_width_change_samples = 5U;
+  record.trajectory_planner_stats.racing_line.active_window_width_asymmetry_samples =
+      6U;
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
   record.trajectory_planner_stats.racing_line.dp_transitions = 96U;
   record.trajectory_planner_stats.racing_line.dp_coarse_states = 8U;
@@ -439,6 +446,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_line_full_path_segment_cache_misses\":12");
   expectJsonField(json, "\"racing_line_window_count\":2");
   expectJsonField(json, "\"racing_line_active_window_count\":1");
+  expectJsonField(json, "\"racing_line_active_window_centerline_blocked\":1");
+  expectJsonField(json, "\"racing_line_active_window_heading_change_samples\":2");
+  expectJsonField(json, "\"racing_line_active_window_heading_span_samples\":3");
+  expectJsonField(json, "\"racing_line_active_window_curvature_samples\":4");
+  expectJsonField(json, "\"racing_line_active_window_width_change_samples\":5");
+  expectJsonField(json, "\"racing_line_active_window_width_asymmetry_samples\":6");
   expectJsonField(json, "\"racing_line_dp_states\":24");
   expectJsonField(json, "\"racing_line_dp_transitions\":96");
   expectJsonField(json, "\"racing_line_dp_coarse_states\":8");

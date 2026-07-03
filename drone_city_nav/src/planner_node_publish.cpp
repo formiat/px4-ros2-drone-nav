@@ -334,6 +334,8 @@ bool PlannerNode::publishTrajectoryResult(
       "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
       "speed_limit_max=%.2f curvature_limited=%zu "
       "windows=%zu active_windows=%zu active_samples=%zu "
+      "window_triggers(centerline_blocked=%zu heading_change=%zu "
+      "heading_span=%zu curvature=%zu width_change=%zu width_asymmetry=%zu) "
       "dp_states=%zu dp_transitions=%zu dp_cache_hits=%zu dp_cache_misses=%zu "
       "candidate_cache_hits=%zu candidate_cache_misses=%zu "
       "full_path_cache_hits=%zu full_path_cache_misses=%zu "
@@ -502,6 +504,12 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.window_count,
       trajectory_result.stats.racing_line.active_window_count,
       trajectory_result.stats.racing_line.active_window_samples,
+      trajectory_result.stats.racing_line.active_window_centerline_blocked,
+      trajectory_result.stats.racing_line.active_window_heading_change_samples,
+      trajectory_result.stats.racing_line.active_window_heading_span_samples,
+      trajectory_result.stats.racing_line.active_window_curvature_samples,
+      trajectory_result.stats.racing_line.active_window_width_change_samples,
+      trajectory_result.stats.racing_line.active_window_width_asymmetry_samples,
       trajectory_result.stats.racing_line.dp_states,
       trajectory_result.stats.racing_line.dp_transitions,
       trajectory_result.stats.racing_line.dp_segment_cache_hits,
