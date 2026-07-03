@@ -91,16 +91,16 @@ PlannerNode::PlannerNode()
       "parallel_workers=%zu] "
       "trajectory_optimizer[iterations=%zu optimizer_sample_step=%.2fm "
       "offset_step=%.2fm "
-      "min_step=%.2fm weights(length=%.3f "
-      "curvature=%.2f curvature_change=%.2f preferred_radius=%.2fm "
+      "min_step=%.2fm weights(curvature=%.2f curvature_change=%.2f "
+      "preferred_radius=%.2fm "
       "radius_shortfall=%.2f offset_change=%.2f "
       "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
-      "max_length_ratio=%.2f parallel=always parallel_workers=%zu "
+      "parallel=always parallel_workers=%zu "
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
       "dp_offset_step=%.2fm async_workers=%zu)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "trigger_speed=%.2fmps entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
-      "outer_shift=[%.2f, %.2f] max_length_ratio=%.2f max_passes=%zu]",
+      "outer_shift=[%.2f, %.2f] max_passes=%zu]",
       trajectory_planner_config_.speed_profile.cruise_speed_mps,
       trajectory_planner_config_.speed_profile.min_turn_speed_mps,
       trajectory_planner_config_.speed_profile.max_accel_mps2,
@@ -119,7 +119,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.trajectory_optimizer.optimizer_sample_step_m,
       trajectory_planner_config_.trajectory_optimizer.initial_offset_step_m,
       trajectory_planner_config_.trajectory_optimizer.min_offset_step_m,
-      trajectory_planner_config_.trajectory_optimizer.weight_length,
       trajectory_planner_config_.trajectory_optimizer.weight_curvature,
       trajectory_planner_config_.trajectory_optimizer.weight_curvature_change,
       trajectory_planner_config_.trajectory_optimizer.preferred_min_radius_m,
@@ -128,7 +127,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.trajectory_optimizer.weight_offset_second_change,
       trajectory_planner_config_.trajectory_optimizer.weight_offset_slope,
       trajectory_planner_config_.trajectory_optimizer.max_offset_slope_per_m,
-      trajectory_planner_config_.trajectory_optimizer.max_length_ratio,
       trajectory_planner_config_.trajectory_optimizer.parallel_workers,
       trajectory_planner_config_.trajectory_optimizer.window_pre_margin_m,
       trajectory_planner_config_.trajectory_optimizer.window_post_margin_m,
@@ -147,7 +145,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.turn_smoothing.outer_bias_ratio,
       trajectory_planner_config_.turn_smoothing.min_outer_shift_m,
       trajectory_planner_config_.turn_smoothing.max_outer_shift_m,
-      trajectory_planner_config_.turn_smoothing.max_length_ratio,
       trajectory_planner_config_.turn_smoothing.max_passes);
   RCLCPP_INFO(get_logger(),
               "Planner obstacle sources: static=%s memory=always current_lidar=always "

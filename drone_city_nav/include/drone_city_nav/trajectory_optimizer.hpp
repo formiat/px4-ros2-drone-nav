@@ -37,7 +37,6 @@ struct TrajectoryOptimizerConfig {
   double initial_offset_step_m{2.0};
   double min_offset_step_m{0.1};
   double cooling_ratio{0.5};
-  double weight_length{0.002};
   double weight_curvature{300.0};
   double weight_curvature_change{180.0};
   double preferred_min_radius_m{24.0};
@@ -46,7 +45,6 @@ struct TrajectoryOptimizerConfig {
   double weight_offset_second_change{6.5};
   double weight_offset_slope{100.0};
   double max_offset_slope_per_m{0.32};
-  double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
   std::size_t parallel_workers{0U};
   double window_pre_margin_m{25.0};
@@ -85,7 +83,6 @@ struct TrajectoryOptimizerCandidateDiagnostic {
   std::size_t outside_grid_segments{0U};
   std::size_t changed_samples{0U};
   std::size_t changed_span_samples{0U};
-  double cost_length{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_radius_shortfall{std::numeric_limits<double>::quiet_NaN()};
@@ -95,7 +92,6 @@ struct TrajectoryOptimizerCandidateDiagnostic {
   double cost_offset_slope{std::numeric_limits<double>::quiet_NaN()};
   double cost_collision{std::numeric_limits<double>::quiet_NaN()};
   double cost_outside_grid{std::numeric_limits<double>::quiet_NaN()};
-  double cost_length_overrun{std::numeric_limits<double>::quiet_NaN()};
   double point_build_duration_ms{0.0};
   double path_evaluation_duration_ms{0.0};
   double score_duration_ms{0.0};
@@ -235,7 +231,6 @@ struct TrajectoryOptimizerStats {
   double centerline_length_m{0.0};
   double final_length_m{0.0};
   double final_length_ratio{std::numeric_limits<double>::quiet_NaN()};
-  double cost_length{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_radius_shortfall{std::numeric_limits<double>::quiet_NaN()};
@@ -245,7 +240,6 @@ struct TrajectoryOptimizerStats {
   double cost_offset_slope{std::numeric_limits<double>::quiet_NaN()};
   double cost_collision{std::numeric_limits<double>::quiet_NaN()};
   double cost_outside_grid{std::numeric_limits<double>::quiet_NaN()};
-  double cost_length_overrun{std::numeric_limits<double>::quiet_NaN()};
   double estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
   double min_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double max_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};

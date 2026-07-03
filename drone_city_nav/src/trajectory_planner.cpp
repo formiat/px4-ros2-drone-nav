@@ -671,17 +671,6 @@ evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input) {
     };
   }
 
-  const double refined_length = input.refined->stats.length_m;
-  const double max_length_regression_ratio =
-      std::max(1.0, input.max_length_regression_ratio);
-  if (std::isfinite(input.baseline_length_m) && std::isfinite(refined_length) &&
-      refined_length > input.baseline_length_m * max_length_regression_ratio) {
-    return TrajectoryRefinementDecision{
-        .accepted = false,
-        .reason = TrajectoryRefinementDecisionReason::kQualityRegression,
-    };
-  }
-
   return TrajectoryRefinementDecision{
       .accepted = true,
       .reason = TrajectoryRefinementDecisionReason::kAccepted,

@@ -138,7 +138,6 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   config.max_iterations = 30U;
   config.initial_offset_step_m = 1.0;
   config.min_offset_step_m = 0.1;
-  config.weight_length = 1.0;
   config.weight_curvature = 50.0;
   config.weight_curvature_change = 5.0;
   config.weight_offset_change = 1.0;
@@ -174,8 +173,7 @@ TEST(TrajectoryOptimizer, WideCornerProducesTraversableSmoothLine) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.samples.size(), wideLeftTurnCorridor().size());
-  EXPECT_LE(result.stats.final_length_m,
-            result.stats.centerline_length_m * testConfig().max_length_ratio);
+  EXPECT_TRUE(std::isfinite(result.stats.final_length_m));
   EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
   EXPECT_GT(result.stats.active_window_count, 0U);
   EXPECT_GT(result.stats.dp_states, 0U);
@@ -472,14 +470,12 @@ TEST(TrajectoryOptimizer, ReportsFinalTraversalTimeAndRegularizationStats) {
 TEST(TrajectoryOptimizer, ReportsGeometryCostBreakdownAndEdgeMarginDiagnostics) {
   const OccupancyGrid2D grid = openGrid();
   TrajectoryOptimizerConfig config = testConfig();
-  config.weight_length = 0.02;
 
   const TrajectoryOptimizerResult result =
       optimizeTrajectory(wideLeftTurnCorridor(), grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(std::isfinite(result.stats.final_length_ratio));
-  EXPECT_TRUE(std::isfinite(result.stats.cost_length));
   EXPECT_TRUE(std::isfinite(result.stats.cost_curvature));
   EXPECT_TRUE(std::isfinite(result.stats.cost_heading_jump));
   EXPECT_TRUE(std::isfinite(result.stats.min_edge_margin_m));

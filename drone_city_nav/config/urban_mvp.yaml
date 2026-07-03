@@ -124,7 +124,6 @@ planner_node:
     trajectory_optimizer_initial_offset_step_m: 2.0
     trajectory_optimizer_min_offset_step_m: 0.1
     trajectory_optimizer_cooling_ratio: 0.5
-    trajectory_optimizer_weight_length: 0.002
     trajectory_optimizer_weight_curvature: 300.0
     trajectory_optimizer_weight_curvature_change: 180.0
     trajectory_optimizer_preferred_min_radius_m: 24.0
@@ -133,7 +132,6 @@ planner_node:
     trajectory_optimizer_weight_offset_second_change: 6.5
     trajectory_optimizer_weight_offset_slope: 100.0
     trajectory_optimizer_max_offset_slope_per_m: 0.32
-    trajectory_optimizer_max_length_ratio: 1.6
     trajectory_optimizer_regularization_iterations: 2
     trajectory_optimizer_parallel_workers: 0
     trajectory_optimizer_window_pre_margin_m: 25.0
@@ -157,7 +155,6 @@ planner_node:
     turn_smoothing_outer_bias_ratio: 0.45
     turn_smoothing_min_outer_shift_m: 2.0
     turn_smoothing_max_outer_shift_m: 12.0
-    turn_smoothing_max_length_ratio: 1.25
     turn_smoothing_min_heading_improvement_deg: 3.0
     turn_smoothing_max_passes: 8
     final_trajectory_debug_sample_step_m: 1.0

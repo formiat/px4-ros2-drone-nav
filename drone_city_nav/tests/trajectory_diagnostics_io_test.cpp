@@ -180,7 +180,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.dp_duration_ms = 4.25;
   stats.trajectory_optimizer.full_final_score_duration_ms = 2.75;
   stats.trajectory_optimizer.async_refined = true;
-  stats.trajectory_optimizer.cost_length = 2.0;
   stats.trajectory_optimizer.cost_curvature = 12.0;
   stats.trajectory_optimizer.cost_curvature_change = 3.0;
   stats.trajectory_optimizer.cost_radius_shortfall = 7.5;
@@ -190,7 +189,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.cost_offset_slope = 2.5;
   stats.trajectory_optimizer.cost_collision = 0.0;
   stats.trajectory_optimizer.cost_outside_grid = 0.0;
-  stats.trajectory_optimizer.cost_length_overrun = 0.0;
   stats.turn_smoothing.input_samples = 48U;
   stats.turn_smoothing.output_samples = 72U;
   stats.turn_smoothing.detected_corners = 3U;
@@ -206,7 +204,6 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.smoothed_corners = 1U;
   stats.turn_smoothing.rejected_prohibited = 0U;
   stats.turn_smoothing.rejected_corridor = 1U;
-  stats.turn_smoothing.rejected_length = 0U;
   stats.turn_smoothing.rejected_not_improved = 0U;
   stats.turn_smoothing.rejected_curvature_regression = 2U;
   stats.turn_smoothing.rejected_radius_regression = 3U;
@@ -738,7 +735,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_max_abs_offset_m\"",
           "\"trajectory_optimizer_min_edge_margin_m\"",
           "\"trajectory_optimizer_mean_edge_margin_m\"",
-          "\"trajectory_optimizer_cost_length\"",
           "\"trajectory_optimizer_cost_curvature\"",
           "\"trajectory_optimizer_cost_curvature_change\"",
           "\"trajectory_optimizer_cost_radius_shortfall\"",
@@ -748,7 +744,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_cost_offset_slope\"",
           "\"trajectory_optimizer_cost_collision\"",
           "\"trajectory_optimizer_cost_outside_grid\"",
-          "\"trajectory_optimizer_cost_length_overrun\"",
           "\"trajectory_optimizer_best_candidate_score\"",
           "\"trajectory_optimizer_regularization_iterations\"",
           "\"trajectory_optimizer_regularization_applied\"",
@@ -908,7 +903,6 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_smoothed_corners\"",
                                   "\"turn_smoothing_rejected_prohibited\"",
                                   "\"turn_smoothing_rejected_corridor\"",
-                                  "\"turn_smoothing_rejected_length\"",
                                   "\"turn_smoothing_rejected_not_improved\"",
                                   "\"turn_smoothing_rejected_curvature_regression\"",
                                   "\"turn_smoothing_rejected_radius_regression\"",

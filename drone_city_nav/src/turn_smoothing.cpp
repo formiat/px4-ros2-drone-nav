@@ -370,7 +370,6 @@ struct CornerCandidate {
 enum class SmoothingRejectReason : std::uint8_t {
   kNone,
   kProhibited,
-  kLength,
   kNotImproved,
   kCurvatureRegression,
   kRadiusRegression,
@@ -794,11 +793,9 @@ void cachedBezierSamples(const std::span<const TrajectoryPointSample> samples,
   if (!metrics.valid || !std::isfinite(metrics.estimated_time_s)) {
     return std::numeric_limits<double>::infinity();
   }
-  constexpr double kLengthWeight = 0.02;
   constexpr double kCurvatureWeight = 5.0;
   constexpr double kCurvatureJumpWeight = 2.0;
-  return metrics.estimated_time_s + kLengthWeight * metrics.length_m +
-         kCurvatureWeight * metrics.max_abs_curvature_1pm +
+  return metrics.estimated_time_s + kCurvatureWeight * metrics.max_abs_curvature_1pm +
          kCurvatureJumpWeight * metrics.shape.max_curvature_jump_1pm;
 }
 
@@ -924,16 +921,6 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
     return attempt;
   }
 
-  const double previous_length = pathLength(samples);
-  const double candidate_length = pathLength(buffer.candidate);
-  const double max_length_ratio =
-      sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
-  if (previous_length > kTinyDistanceM &&
-      candidate_length > previous_length * max_length_ratio) {
-    attempt.reject_reason = SmoothingRejectReason::kLength;
-    return attempt;
-  }
-
   const auto shape_started_at = std::chrono::steady_clock::now();
   const TrajectoryShapeDiagnostics before_shape =
       computeTrajectoryShapeDiagnostics(samples);
@@ -963,8 +950,6 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
     switch (reason) {
       case SmoothingRejectReason::kProhibited:
         return 7;
-      case SmoothingRejectReason::kLength:
-        return 6;
       case SmoothingRejectReason::kCurvatureRegression:
         return 5;
       case SmoothingRejectReason::kRadiusRegression:
@@ -988,8 +973,6 @@ rejectReasonName(const SmoothingRejectReason reason) noexcept {
       return "none";
     case SmoothingRejectReason::kProhibited:
       return "prohibited";
-    case SmoothingRejectReason::kLength:
-      return "length";
     case SmoothingRejectReason::kNotImproved:
       return "not_improved";
     case SmoothingRejectReason::kCurvatureRegression:
@@ -1069,9 +1052,6 @@ void incrementRejectStat(TurnSmoothingStats& stats,
   switch (reason) {
     case SmoothingRejectReason::kProhibited:
       ++stats.rejected_prohibited;
-      break;
-    case SmoothingRejectReason::kLength:
-      ++stats.rejected_length;
       break;
     case SmoothingRejectReason::kNotImproved:
       ++stats.rejected_not_improved;

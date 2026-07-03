@@ -324,8 +324,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
                    stats.trajectory_optimizer.min_edge_margin_m);
   appendJsonNumber(stream, "trajectory_optimizer_mean_edge_margin_m",
                    stats.trajectory_optimizer.mean_edge_margin_m);
-  appendJsonNumber(stream, "trajectory_optimizer_cost_length",
-                   stats.trajectory_optimizer.cost_length);
   appendJsonNumber(stream, "trajectory_optimizer_cost_curvature",
                    stats.trajectory_optimizer.cost_curvature);
   appendJsonNumber(stream, "trajectory_optimizer_cost_curvature_change",
@@ -344,8 +342,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
                    stats.trajectory_optimizer.cost_collision);
   appendJsonNumber(stream, "trajectory_optimizer_cost_outside_grid",
                    stats.trajectory_optimizer.cost_outside_grid);
-  appendJsonNumber(stream, "trajectory_optimizer_cost_length_overrun",
-                   stats.trajectory_optimizer.cost_length_overrun);
   appendJsonNumber(stream, "trajectory_optimizer_best_candidate_score",
                    stats.trajectory_optimizer.best_candidate_score);
   appendJsonSize(stream, "trajectory_optimizer_regularization_iterations",
@@ -684,8 +680,6 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.rejected_prohibited);
   appendJsonSize(stream, "turn_smoothing_rejected_corridor",
                  stats.turn_smoothing.rejected_corridor);
-  appendJsonSize(stream, "turn_smoothing_rejected_length",
-                 stats.turn_smoothing.rejected_length);
   appendJsonSize(stream, "turn_smoothing_rejected_not_improved",
                  stats.turn_smoothing.rejected_not_improved);
   appendJsonSize(stream, "turn_smoothing_rejected_curvature_regression",
@@ -1075,7 +1069,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   optimizer.final_length_m);
   parseJsonDouble(json, "trajectory_optimizer_final_length_ratio",
                   optimizer.final_length_ratio);
-  parseJsonDouble(json, "trajectory_optimizer_cost_length", optimizer.cost_length);
   parseJsonDouble(json, "trajectory_optimizer_cost_curvature",
                   optimizer.cost_curvature);
   parseJsonDouble(json, "trajectory_optimizer_cost_curvature_change",
@@ -1094,8 +1087,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   optimizer.cost_collision);
   parseJsonDouble(json, "trajectory_optimizer_cost_outside_grid",
                   optimizer.cost_outside_grid);
-  parseJsonDouble(json, "trajectory_optimizer_cost_length_overrun",
-                  optimizer.cost_length_overrun);
   parseJsonDouble(json, "trajectory_optimizer_final_estimated_time_s",
                   optimizer.estimated_time_s);
   parseJsonDouble(json, "trajectory_optimizer_final_min_speed_limit_mps",
@@ -1420,7 +1411,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 turn_smoothing.rejected_prohibited);
   parseJsonSize(json, "turn_smoothing_rejected_corridor",
                 turn_smoothing.rejected_corridor);
-  parseJsonSize(json, "turn_smoothing_rejected_length", turn_smoothing.rejected_length);
   parseJsonSize(json, "turn_smoothing_rejected_not_improved",
                 turn_smoothing.rejected_not_improved);
   parseJsonSize(json, "turn_smoothing_rejected_curvature_regression",

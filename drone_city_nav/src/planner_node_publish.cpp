@@ -388,7 +388,7 @@ bool PlannerNode::publishTrajectoryResult(
       "timing(build=%.1fms replace=%.1fms collision=%.1fms "
       "metrics=%.1fms shape=%.1fms speed=%.1fms) "
       "smoothed=%zu "
-      "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu "
+      "rejected(prohibited=%zu corridor=%zu not_improved=%zu "
       "curvature=%zu radius=%zu speed=%zu) "
       "heading_before=%.1fdeg heading_after=%.1fdeg "
       "curvature_jump_before=%.3f curvature_jump_after=%.3f "
@@ -632,7 +632,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.smoothed_corners,
       trajectory_result.stats.turn_smoothing.rejected_prohibited,
       trajectory_result.stats.turn_smoothing.rejected_corridor,
-      trajectory_result.stats.turn_smoothing.rejected_length,
       trajectory_result.stats.turn_smoothing.rejected_not_improved,
       trajectory_result.stats.turn_smoothing.rejected_curvature_regression,
       trajectory_result.stats.turn_smoothing.rejected_radius_regression,
@@ -897,9 +896,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
           .expected_goal = pending.goal,
           .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
           .max_time_regression_s = 0.5,
-          .max_length_regression_ratio = 1.10,
           .baseline_estimated_time_s = pending.baseline_estimated_time_s,
-          .baseline_length_m = pending.baseline_length_m,
           .refined = &refined,
           .refined_points =
               std::span<const Point2>{refined_points.data(), refined_points.size()},
@@ -1263,11 +1260,11 @@ bool PlannerNode::writeTrajectoryOptimizerCandidatesCsvFile(
             "center_s_m,step_m,delta_m,score,incumbent_score,length_m,noop,"
             "traversable,local_evaluated,requires_full_score,full_score_used,"
             "prohibited_cells,outside_grid_segments,changed_samples,"
-            "changed_span_samples,cost_length,cost_curvature,"
-            "cost_curvature_change,cost_radius_shortfall,cost_heading_jump,"
+            "changed_span_samples,cost_curvature,cost_curvature_change,"
+            "cost_radius_shortfall,cost_heading_jump,"
             "cost_offset_change,cost_offset_second_change,cost_offset_slope,"
-            "cost_collision,cost_outside_grid,cost_length_overrun,"
-            "point_build_ms,path_eval_ms,score_ms,full_score_ms\n";
+            "cost_collision,cost_outside_grid,point_build_ms,path_eval_ms,score_ms,"
+            "full_score_ms\n";
   for (const TrajectoryOptimizerCandidateDiagnostic& diagnostic :
        result.stats.trajectory_optimizer.candidate_diagnostics) {
     stream << diagnostic.phase << "," << diagnostic.decision << ","
@@ -1292,8 +1289,6 @@ bool PlannerNode::writeTrajectoryOptimizerCandidatesCsvFile(
            << diagnostic.prohibited_cells << "," << diagnostic.outside_grid_segments
            << "," << diagnostic.changed_samples << ","
            << diagnostic.changed_span_samples << ",";
-    writeCsvNumberOrEmpty(stream, diagnostic.cost_length);
-    stream << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.cost_curvature);
     stream << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.cost_curvature_change);
@@ -1311,8 +1306,6 @@ bool PlannerNode::writeTrajectoryOptimizerCandidatesCsvFile(
     writeCsvNumberOrEmpty(stream, diagnostic.cost_collision);
     stream << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.cost_outside_grid);
-    stream << ",";
-    writeCsvNumberOrEmpty(stream, diagnostic.cost_length_overrun);
     stream << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.point_build_duration_ms);
     stream << ",";

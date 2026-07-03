@@ -106,9 +106,7 @@ struct TrajectoryRefinementDecisionInput {
   Point2 expected_goal{};
   double endpoint_tolerance_m{0.0};
   double max_time_regression_s{0.0};
-  double max_length_regression_ratio{1.10};
   double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
-  double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
   const TrajectoryPlannerResult* refined{nullptr};
   std::span<const Point2> refined_points;
   const OccupancyGrid2D* validation_grid{nullptr};

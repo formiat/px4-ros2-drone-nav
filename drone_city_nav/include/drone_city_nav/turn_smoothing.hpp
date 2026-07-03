@@ -24,7 +24,6 @@ struct TurnSmoothingConfig {
   double outer_bias_ratio{0.45};
   double min_outer_shift_m{2.0};
   double max_outer_shift_m{12.0};
-  double max_length_ratio{1.25};
   double min_heading_improvement_rad{0.05};
   std::size_t max_passes{8U};
 };
@@ -91,7 +90,6 @@ struct TurnSmoothingStats {
   std::size_t smoothed_corners{0U};
   std::size_t rejected_prohibited{0U};
   std::size_t rejected_corridor{0U};
-  std::size_t rejected_length{0U};
   std::size_t rejected_not_improved{0U};
   std::size_t rejected_curvature_regression{0U};
   std::size_t rejected_radius_regression{0U};

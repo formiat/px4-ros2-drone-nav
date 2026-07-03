@@ -105,7 +105,6 @@ manualWideCorridor(const std::vector<Point2>& points) {
   config.outer_bias_ratio = 0.35;
   config.min_outer_shift_m = 2.0;
   config.max_outer_shift_m = 8.0;
-  config.max_length_ratio = 1.5;
   config.min_heading_improvement_rad = 0.05;
   config.max_passes = 4U;
   return config;
@@ -204,7 +203,6 @@ TEST(TurnSmoothing, SmoothsModerateSpeedBottleneckCorner) {
   config.trigger_speed_limit_mps = 12.0;
   config.entry_distance_m = 5.0;
   config.exit_distance_m = 5.0;
-  config.max_length_ratio = 2.0;
   config.max_passes = 1U;
 
   const TurnSmoothingResult result = smoothTrajectoryTurns(

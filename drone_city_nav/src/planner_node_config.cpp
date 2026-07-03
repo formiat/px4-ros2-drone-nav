@@ -200,9 +200,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.trajectory_optimizer.cooling_ratio = std::clamp(
       node.declare_parameter<double>("trajectory_optimizer_cooling_ratio", 0.5), 0.05,
       0.95);
-  config.trajectory_planner.trajectory_optimizer.weight_length = std::clamp(
-      node.declare_parameter<double>("trajectory_optimizer_weight_length", 0.002), 0.0,
-      1.0e6);
   config.trajectory_planner.trajectory_optimizer.weight_curvature = std::clamp(
       node.declare_parameter<double>("trajectory_optimizer_weight_curvature", 300.0),
       0.0, 1.0e9);
@@ -232,9 +229,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "trajectory_optimizer_max_offset_slope_per_m", 0.32),
                  0.0, 100.0);
-  config.trajectory_planner.trajectory_optimizer.max_length_ratio = std::clamp(
-      node.declare_parameter<double>("trajectory_optimizer_max_length_ratio", 1.6), 1.0,
-      100.0);
   config.trajectory_planner.trajectory_optimizer.regularization_iterations =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>(
@@ -321,9 +315,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                std::clamp(node.declare_parameter<double>(
                               "turn_smoothing_max_outer_shift_m", 12.0),
                           0.0, 5000.0));
-  config.trajectory_planner.turn_smoothing.max_length_ratio = std::clamp(
-      node.declare_parameter<double>("turn_smoothing_max_length_ratio", 1.25), 1.0,
-      100.0);
   config.trajectory_planner.turn_smoothing.min_heading_improvement_rad =
       std::clamp(node.declare_parameter<double>(
                      "turn_smoothing_min_heading_improvement_deg", 3.0) *
