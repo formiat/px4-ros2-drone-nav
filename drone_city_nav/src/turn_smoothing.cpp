@@ -12,6 +12,7 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -389,6 +390,7 @@ struct LocalTrajectoryMetrics {
 struct SmoothingAttempt {
   std::vector<TrajectoryPointSample> samples;
   SmoothingRejectReason reject_reason{SmoothingRejectReason::kNone};
+  const char* reject_detail{"none"};
   LocalTrajectoryMetrics before_metrics{};
   LocalTrajectoryMetrics after_metrics{};
   double applied_shift_m{0.0};
@@ -820,9 +822,10 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
   return best;
 }
 
-[[nodiscard]] bool improvedShape(const TrajectoryShapeDiagnostics& before,
-                                 const TrajectoryShapeDiagnostics& after,
-                                 const TurnSmoothingConfig& config) {
+[[nodiscard]] const char*
+shapeImprovementRejectDetail(const TrajectoryShapeDiagnostics& before,
+                             const TrajectoryShapeDiagnostics& after,
+                             const TurnSmoothingConfig& config) {
   const double min_improvement = sanitizedPositive(config.min_heading_improvement_rad,
                                                    0.05, 0.0, std::numbers::pi);
   constexpr double kMaxAcceptedHeadingDeltaRad = std::numbers::pi / 3.0;
@@ -831,15 +834,20 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
   const double max_allowed_curvature_jump =
       std::max(before.max_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
                before.max_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
-  if (after.max_heading_delta_rad > kMaxAcceptedHeadingDeltaRad ||
-      after.max_curvature_jump_1pm > max_allowed_curvature_jump) {
-    return false;
+  if (after.max_heading_delta_rad > kMaxAcceptedHeadingDeltaRad) {
+    return "heading_delta_too_high";
+  }
+  if (after.max_curvature_jump_1pm > max_allowed_curvature_jump) {
+    return "curvature_jump_too_high";
   }
   if (after.max_heading_delta_rad + min_improvement < before.max_heading_delta_rad) {
-    return true;
+    return "none";
   }
-  return after.max_heading_delta_rad <= before.max_heading_delta_rad + 1.0e-9 &&
-         after.max_curvature_jump_1pm + 1.0e-9 < before.max_curvature_jump_1pm;
+  if (after.max_heading_delta_rad <= before.max_heading_delta_rad + 1.0e-9 &&
+      after.max_curvature_jump_1pm + 1.0e-9 < before.max_curvature_jump_1pm) {
+    return "none";
+  }
+  return "shape_not_improved";
 }
 
 [[nodiscard]] SmoothingRejectReason
@@ -871,6 +879,24 @@ candidateRegressionReason(const LocalTrajectoryMetrics& before,
   return SmoothingRejectReason::kNone;
 }
 
+[[nodiscard]] const char*
+regressionRejectDetail(const SmoothingRejectReason reason) noexcept {
+  switch (reason) {
+    case SmoothingRejectReason::kCurvatureRegression:
+      return "curvature_jump_regression";
+    case SmoothingRejectReason::kRadiusRegression:
+      return "radius_regression";
+    case SmoothingRejectReason::kSpeedRegression:
+      return "speed_limit_regression";
+    case SmoothingRejectReason::kNotImproved:
+      return "local_metrics_invalid";
+    case SmoothingRejectReason::kNone:
+    case SmoothingRejectReason::kProhibited:
+      return "none";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] SmoothingAttempt
 trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
                 const std::span<const CorridorSample> corridor_samples,
@@ -890,6 +916,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   const std::size_t exit_index = findExitIndex(samples, corner.index, exit_distance_m);
   if (entry_index >= corner.index || exit_index <= corner.index) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    attempt.reject_detail = "invalid_window";
     return attempt;
   }
   attempt.before_metrics = cachedBeforeMetrics(samples, entry_index, exit_index,
@@ -900,6 +927,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
                       attempt.applied_shift_m, buffer, stats);
   if (buffer.replacement.size() < 3U) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    attempt.reject_detail = "replacement_too_short";
     return attempt;
   }
 
@@ -918,6 +946,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   stats.collision_check_duration_ms += elapsedMilliseconds(collision_started_at);
   if (!traversable) {
     attempt.reject_reason = SmoothingRejectReason::kProhibited;
+    attempt.reject_detail = "prohibited_intersection";
     return attempt;
   }
 
@@ -927,19 +956,24 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   const TrajectoryShapeDiagnostics after_shape =
       computeTrajectoryShapeDiagnostics(buffer.candidate);
   stats.shape_diagnostics_duration_ms += elapsedMilliseconds(shape_started_at);
-  if (!improvedShape(before_shape, after_shape, config)) {
+  const char* const shape_reject_detail =
+      shapeImprovementRejectDetail(before_shape, after_shape, config);
+  if (std::string_view{shape_reject_detail} != "none") {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    attempt.reject_detail = shape_reject_detail;
     return attempt;
   }
   const SmoothingRejectReason regression_reason =
       candidateRegressionReason(attempt.before_metrics, attempt.after_metrics);
   if (regression_reason != SmoothingRejectReason::kNone) {
     attempt.reject_reason = regression_reason;
+    attempt.reject_detail = regressionRejectDetail(regression_reason);
     return attempt;
   }
 
   attempt.samples = buffer.candidate;
   attempt.reject_reason = SmoothingRejectReason::kNone;
+  attempt.reject_detail = "none";
   attempt.accepted = true;
   return attempt;
 }
@@ -991,6 +1025,7 @@ cornerDiagnosticFromAttempt(const SmoothingAttempt& attempt,
   TurnSmoothingCornerDiagnostic diagnostic{};
   diagnostic.accepted = attempt.accepted;
   diagnostic.reject_reason = rejectReasonName(attempt.reject_reason);
+  diagnostic.reject_detail = attempt.reject_detail;
   diagnostic.corner_s_m = corner_s_m;
   diagnostic.entry_distance_m = attempt.entry_distance_m;
   diagnostic.exit_distance_m = attempt.exit_distance_m;
@@ -1020,6 +1055,7 @@ cornerDiagnosticFromAttempt(const SmoothingAttempt& attempt,
   TurnSmoothingCandidateDiagnostic diagnostic{};
   diagnostic.decision = attempt.accepted ? "valid_not_best" : "rejected";
   diagnostic.reject_reason = rejectReasonName(attempt.reject_reason);
+  diagnostic.reject_detail = attempt.reject_detail;
   diagnostic.pass = pass;
   diagnostic.attempt_index = attempt_index;
   diagnostic.corner_index = corner.index;

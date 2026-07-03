@@ -31,6 +31,7 @@ struct TurnSmoothingConfig {
 struct TurnSmoothingCornerDiagnostic {
   bool accepted{false};
   std::string reject_reason{"none"};
+  std::string reject_detail{"none"};
   double corner_s_m{std::numeric_limits<double>::quiet_NaN()};
   double entry_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
@@ -52,6 +53,7 @@ struct TurnSmoothingCornerDiagnostic {
 struct TurnSmoothingCandidateDiagnostic {
   std::string decision{"rejected"};
   std::string reject_reason{"none"};
+  std::string reject_detail{"none"};
   std::size_t pass{0U};
   std::size_t attempt_index{0U};
   std::size_t corner_index{0U};

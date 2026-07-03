@@ -743,6 +743,7 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
     }
     stream << "{\"accepted\":" << (diagnostic.accepted ? "true" : "false");
     appendJsonString(stream, "reject_reason", diagnostic.reject_reason);
+    appendJsonString(stream, "reject_detail", diagnostic.reject_detail);
     appendJsonNumber(stream, "corner_s_m", diagnostic.corner_s_m);
     appendJsonNumber(stream, "entry_distance_m", diagnostic.entry_distance_m);
     appendJsonNumber(stream, "exit_distance_m", diagnostic.exit_distance_m);

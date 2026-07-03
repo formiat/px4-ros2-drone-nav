@@ -1331,7 +1331,8 @@ bool PlannerNode::writeTurnSmoothingCandidatesCsvFile(
   stream << "# source=" << source_label << " candidate_path_id=" << candidate_path_id
          << " status=" << trajectoryPlannerStatusName(result.stats.status)
          << " valid=" << (result.valid ? "true" : "false") << "\n";
-  stream << "decision,reject_reason,pass,attempt_index,corner_index,corner_s_m,"
+  stream << "decision,reject_reason,reject_detail,pass,attempt_index,corner_index,"
+            "corner_s_m,"
             "entry_distance_m,exit_distance_m,shift_scale,applied_shift_m,"
             "relaxed_angle_deg,score,min_radius_before_m,min_radius_after_m,"
             "min_speed_before_mps,min_speed_after_mps,local_time_before_s,"
@@ -1341,8 +1342,8 @@ bool PlannerNode::writeTurnSmoothingCandidatesCsvFile(
   for (const TurnSmoothingCandidateDiagnostic& diagnostic :
        result.stats.turn_smoothing.candidate_diagnostics) {
     stream << diagnostic.decision << "," << diagnostic.reject_reason << ","
-           << diagnostic.pass << "," << diagnostic.attempt_index << ","
-           << diagnostic.corner_index << ",";
+           << diagnostic.reject_detail << "," << diagnostic.pass << ","
+           << diagnostic.attempt_index << "," << diagnostic.corner_index << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.corner_s_m);
     stream << ",";
     writeCsvNumberOrEmpty(stream, diagnostic.entry_distance_m);
