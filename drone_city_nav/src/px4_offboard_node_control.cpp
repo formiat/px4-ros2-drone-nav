@@ -826,7 +826,7 @@ void Px4OffboardNode::logControlSummary() {
       "trajectory[valid=%s line_segments=%zu arc_segments=%zu length=%.2f "
       "s=%.2f segment=%zu type=%s curvature=%.4f arc_radius=%.2f "
       "samples=%zu debug_samples=%zu status=%.*s "
-      "corridor_width[min=%.2f mean=%.2f] racing_offset_max=%.2f] "
+      "corridor_width[min=%.2f mean=%.2f] lateral_offset_max=%.2f] "
       "tracking_prediction[horizon=%.2fs distance=%.2f "
       "predicted=(%.2f, %.2f) current_cross=%.2f predicted_cross=%.2f "
       "response_delay_distance=%.2f] "
@@ -888,7 +888,7 @@ void Px4OffboardNode::logControlSummary() {
       trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
       last_trajectory_planner_stats_.corridor.min_width_m,
       last_trajectory_planner_stats_.corridor.mean_width_m,
-      last_trajectory_planner_stats_.racing_line.max_abs_offset_m,
+      last_trajectory_planner_stats_.trajectory_optimizer.max_abs_offset_m,
       last_velocity_plan_.prediction_horizon_s,
       last_velocity_plan_.prediction_distance_m,
       last_velocity_plan_.predicted_position.x,

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/corridor.hpp"
-#include "drone_city_nav/racing_line.hpp"
+#include "drone_city_nav/trajectory_optimizer.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
 #include "drone_city_nav/turn_smoothing.hpp"
 
@@ -21,7 +21,7 @@ enum class TrajectoryPlannerStatus {
   kInvalidRoute,
   kMissingGrid,
   kCorridorInvalid,
-  kRacingLineInvalid,
+  kTrajectoryOptimizerInvalid,
   kInvalidTrajectory,
 };
 
@@ -33,7 +33,7 @@ enum class TrajectoryQuality {
 
 struct TrajectoryPlannerConfig {
   CorridorConfig corridor{};
-  RacingLineConfig racing_line{};
+  TrajectoryOptimizerConfig trajectory_optimizer{};
   TurnSmoothingConfig turn_smoothing{};
   VelocityFollowerConfig speed_profile{};
   double debug_sample_step_m{1.0};
@@ -61,13 +61,13 @@ struct TrajectoryPlannerStats {
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
-  double racing_line_duration_ms{0.0};
+  double trajectory_optimizer_duration_ms{0.0};
   double turn_smoothing_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   TrajectoryQuality quality{TrajectoryQuality::kUnknown};
   CorridorStats corridor{};
-  RacingLineStats racing_line{};
+  TrajectoryOptimizerStats trajectory_optimizer{};
   TurnSmoothingStats turn_smoothing{};
 };
 
@@ -83,7 +83,7 @@ struct TrajectoryPlannerInput {
 struct TrajectoryPlannerResult {
   std::vector<TrajectorySegment> compact_segments;
   std::vector<CorridorSample> corridor_samples;
-  std::vector<RacingLineWindowMetadata> racing_windows;
+  std::vector<TrajectoryOptimizerWindowMetadata> trajectory_optimizer_windows;
   std::vector<TrajectoryPointSample> samples;
   TrajectorySpeedProfile speed_profile;
   TrajectoryPlannerStats stats{};
@@ -138,10 +138,10 @@ planBaselineTrajectory(const TrajectoryPlannerInput& input,
                        const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryPlannerResult
-planRacingTrajectory(const TrajectoryPlannerInput& input,
-                     const TrajectoryPlannerConfig& config);
+planOptimizedTrajectory(const TrajectoryPlannerInput& input,
+                        const TrajectoryPlannerConfig& config);
 
-[[nodiscard]] TrajectoryPlannerResult planRacingTrajectoryFromSnapshots(
+[[nodiscard]] TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
     std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
     const ClearanceField2D* prohibited_clearance_field,
     bool prohibited_clearance_field_cache_hit,

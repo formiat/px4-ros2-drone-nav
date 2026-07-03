@@ -457,9 +457,9 @@ commanded along the current final trajectory tangent, and vertical velocity
 keeps the configured cruise altitude.
 
 The follower does not synthesize intermediate path waypoints. The planner keeps
-the rough A* route internal, builds a corridor around it, optimizes a racing
-line, applies turn smoothing when the optimized line still has sharp kinks, and
-publishes only the final racing trajectory as the runtime path.
+the rough A* route internal, builds a corridor around it, optimizes a smooth
+trajectory, applies turn smoothing when the optimized line still has sharp kinks, and
+publishes only the final optimized trajectory as the runtime path.
 Final-trajectory samples are published on
 `/drone_city_nav/final_trajectory_path`; they are not fed back as position
 targets. Smoothness comes from the velocity profile over the final trajectory,
@@ -488,19 +488,19 @@ The main simulation parameters are:
 - `corridor_max_radius_m` and `corridor_sample_step_m` - corridor sampling and
   lateral free-space bounds around the rough route. Clearance from prohibited
   cells is owned by the planner `planning_clearance_m` grid.
-- `racing_line_max_iterations`, `racing_line_initial_offset_step_m`,
-  `racing_line_min_offset_step_m`, and `racing_line_weight_*` - deterministic
+- `trajectory_optimizer_max_iterations`, `trajectory_optimizer_initial_offset_step_m`,
+  `trajectory_optimizer_min_offset_step_m`, and `trajectory_optimizer_weight_*` - deterministic
   local optimizer controls for lateral offsets inside the corridor.
-- `racing_line_parallel_workers` - bounded deterministic worker count for
-  racing-line candidate evaluation. `0` means auto with an internal cap.
-- `racing_line_window_*` - active-window detection controls. The optimizer only
+- `trajectory_optimizer_parallel_workers` - bounded deterministic worker count for
+  trajectory optimizer candidate evaluation. `0` means auto with an internal cap.
+- `trajectory_optimizer_window_*` - active-window detection controls. The optimizer only
   mutates samples around turns, width changes, curvature, or corridor
   asymmetry; straight open corridor sections remain fixed.
-- `racing_line_dp_offset_step_m`, `racing_line_dp_coarse_offset_step_m`,
-  `racing_line_dp_fine_offset_step_m`, and `racing_line_dp_fine_radius_m` -
+- `trajectory_optimizer_dp_offset_step_m`, `trajectory_optimizer_dp_coarse_offset_step_m`,
+  `trajectory_optimizer_dp_fine_offset_step_m`, and `trajectory_optimizer_dp_fine_radius_m` -
   dynamic-programming seed controls. The planner first finds a coarse lateral
   offset seed, then refines around that seed with a narrower fine window.
-- `turn_smoothing_*` - post-processing for residual sharp kinks after racing
+- `turn_smoothing_*` - post-processing for residual sharp kinks after optimizer
   line optimization. It can widen a single-corner line inside the corridor while
   rejecting candidates that leave the corridor, cross prohibited cells, or
   increase length too much.
@@ -523,7 +523,7 @@ Runtime logs from `px4_offboard_node` include `actual_speed`, current control
 mode, velocity setpoint, speed-limit reason, raw and acceleration-limited speed
 targets, limiting speed constraint type, limiting constraint distance, final
 stop braking distance, trajectory station, segment type, curvature, curve
-radius, final trajectory sample count, corridor width, racing-line cost and
+radius, final trajectory sample count, corridor width, trajectory optimizer cost and
 offset metrics, turn-smoothing attempt/rejection metrics,
 `prohibited_grid_clearance`, attitude, path id correlation, cross-track error,
 heading error, commanded target delta, and nearest

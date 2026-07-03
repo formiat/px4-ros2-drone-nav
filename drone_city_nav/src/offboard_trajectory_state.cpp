@@ -38,11 +38,12 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
     TrajectoryPlannerStats& output_stats,
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) {
   output_stats.corridor = diagnostics.stats.corridor;
-  output_stats.racing_line = diagnostics.stats.racing_line;
+  output_stats.trajectory_optimizer = diagnostics.stats.trajectory_optimizer;
   output_stats.turn_smoothing = diagnostics.stats.turn_smoothing;
   output_stats.total_duration_ms = diagnostics.stats.total_duration_ms;
   output_stats.corridor_duration_ms = diagnostics.stats.corridor_duration_ms;
-  output_stats.racing_line_duration_ms = diagnostics.stats.racing_line_duration_ms;
+  output_stats.trajectory_optimizer_duration_ms =
+      diagnostics.stats.trajectory_optimizer_duration_ms;
   output_stats.turn_smoothing_duration_ms =
       diagnostics.stats.turn_smoothing_duration_ms;
   output_stats.speed_profile_duration_ms = diagnostics.stats.speed_profile_duration_ms;

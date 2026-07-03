@@ -182,98 +182,124 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.planner_core.clearance_diagnostic_radius_m =
       std::max(config.planner_core.clearance_diagnostic_radius_m,
                config.trajectory_planner.corridor.max_radius_m);
-  config.trajectory_planner.racing_line.max_iterations =
-      static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>("racing_line_max_iterations", 80), 1,
-          10000));
-  config.trajectory_planner.racing_line.initial_offset_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_initial_offset_step_m", 2.0), 0.001,
-      500.0);
-  config.trajectory_planner.racing_line.min_offset_step_m =
-      std::clamp(node.declare_parameter<double>("racing_line_min_offset_step_m", 0.1),
-                 0.001, config.trajectory_planner.racing_line.initial_offset_step_m);
-  config.trajectory_planner.racing_line.optimizer_sample_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_optimizer_sample_step_m", 5.0), 0.0,
-      100.0);
-  config.trajectory_planner.racing_line.cooling_ratio = std::clamp(
-      node.declare_parameter<double>("racing_line_cooling_ratio", 0.5), 0.05, 0.95);
-  config.trajectory_planner.racing_line.weight_length = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_length", 0.02), 0.0, 1.0e6);
-  config.trajectory_planner.racing_line.weight_curvature =
-      std::clamp(node.declare_parameter<double>("racing_line_weight_curvature", 300.0),
-                 0.0, 1.0e9);
-  config.trajectory_planner.racing_line.weight_curvature_change = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_curvature_change", 130.0), 0.0,
-      1.0e9);
-  config.trajectory_planner.racing_line.weight_offset_change = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_offset_change", 0.5), 0.0,
-      1.0e9);
-  config.trajectory_planner.racing_line.weight_offset_second_change = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_offset_second_change", 6.5),
+  config.trajectory_planner.trajectory_optimizer.max_iterations =
+      static_cast<std::size_t>(
+          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                       "trajectory_optimizer_max_iterations", 80),
+                                   1, 10000));
+  config.trajectory_planner.trajectory_optimizer.initial_offset_step_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_initial_offset_step_m", 2.0),
+      0.001, 500.0);
+  config.trajectory_planner.trajectory_optimizer.min_offset_step_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_min_offset_step_m", 0.1),
+      0.001, config.trajectory_planner.trajectory_optimizer.initial_offset_step_m);
+  config.trajectory_planner.trajectory_optimizer.optimizer_sample_step_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_optimizer_sample_step_m", 5.0),
+                 0.0, 100.0);
+  config.trajectory_planner.trajectory_optimizer.cooling_ratio = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_cooling_ratio", 0.5), 0.05,
+      0.95);
+  config.trajectory_planner.trajectory_optimizer.weight_length = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_weight_length", 0.01), 0.0,
+      1.0e6);
+  config.trajectory_planner.trajectory_optimizer.weight_curvature = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_weight_curvature", 300.0),
       0.0, 1.0e9);
-  config.trajectory_planner.racing_line.weight_offset_slope = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_offset_slope", 100.0), 0.0,
-      1.0e9);
-  config.trajectory_planner.racing_line.max_offset_slope_per_m = std::clamp(
-      node.declare_parameter<double>("racing_line_max_offset_slope_per_m", 0.32), 0.0,
-      100.0);
-  config.trajectory_planner.racing_line.weight_time = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_time", 0.0), 0.0, 1.0e9);
-  config.trajectory_planner.racing_line.max_length_ratio = std::clamp(
-      node.declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
-  config.trajectory_planner.racing_line.regularization_iterations =
-      static_cast<std::size_t>(
-          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
-                                       "racing_line_regularization_iterations", 2),
-                                   0, 100));
-  config.trajectory_planner.racing_line.regularization_max_time_regression_s =
+  config.trajectory_planner.trajectory_optimizer.weight_curvature_change =
       std::clamp(node.declare_parameter<double>(
-                     "racing_line_regularization_max_time_regression_s", 0.5),
-                 0.0, 3600.0);
-  config.trajectory_planner.racing_line.parallel_workers =
+                     "trajectory_optimizer_weight_curvature_change", 130.0),
+                 0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.preferred_min_radius_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_preferred_min_radius_m", 16.0),
+                 0.0, 100000.0);
+  config.trajectory_planner.trajectory_optimizer.weight_radius_shortfall =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_weight_radius_shortfall", 8.0),
+                 0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.weight_offset_change = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_weight_offset_change", 0.5),
+      0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.weight_offset_second_change =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_weight_offset_second_change", 6.5),
+                 0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.weight_offset_slope = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_weight_offset_slope", 100.0),
+      0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.max_offset_slope_per_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_max_offset_slope_per_m", 0.32),
+                 0.0, 100.0);
+  config.trajectory_planner.trajectory_optimizer.weight_traversal_time = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_weight_traversal_time", 0.0),
+      0.0, 1.0e9);
+  config.trajectory_planner.trajectory_optimizer.max_length_ratio = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_max_length_ratio", 1.6), 1.0,
+      100.0);
+  config.trajectory_planner.trajectory_optimizer.regularization_iterations =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>("racing_line_parallel_workers", 0), 0,
-          1024));
-  config.trajectory_planner.racing_line.window_pre_margin_m = std::clamp(
-      node.declare_parameter<double>("racing_line_window_pre_margin_m", 25.0), 0.0,
-      5000.0);
-  config.trajectory_planner.racing_line.window_post_margin_m = std::clamp(
-      node.declare_parameter<double>("racing_line_window_post_margin_m", 25.0), 0.0,
-      5000.0);
-  config.trajectory_planner.racing_line.window_heading_threshold_rad = std::clamp(
-      node.declare_parameter<double>("racing_line_window_heading_threshold_deg", 10.0) *
-          std::numbers::pi / 180.0,
-      0.0, std::numbers::pi);
-  config.trajectory_planner.racing_line.window_width_change_threshold_m =
-      std::clamp(node.declare_parameter<double>(
-                     "racing_line_window_width_change_threshold_m", 2.0),
-                 0.0, 5000.0);
-  config.trajectory_planner.racing_line.window_min_heading_span_rad = std::clamp(
-      node.declare_parameter<double>("racing_line_window_min_heading_span_deg", 10.0) *
-          std::numbers::pi / 180.0,
-      0.0, std::numbers::pi);
-  config.trajectory_planner.racing_line.window_min_curvature_1pm = std::clamp(
-      node.declare_parameter<double>("racing_line_window_min_curvature_1pm", 0.01), 0.0,
-      1000.0);
-  config.trajectory_planner.racing_line.window_min_width_asymmetry_m = std::clamp(
-      node.declare_parameter<double>("racing_line_window_min_width_asymmetry_m", 1.0),
-      0.0, 5000.0);
-  config.trajectory_planner.racing_line.dp_offset_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_dp_offset_step_m", 1.5), 0.05, 100.0);
-  config.trajectory_planner.racing_line.dp_coarse_offset_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_dp_coarse_offset_step_m", 2.0), 0.05,
-      100.0);
-  config.trajectory_planner.racing_line.dp_fine_offset_step_m = std::clamp(
-      node.declare_parameter<double>("racing_line_dp_fine_offset_step_m", 0.75), 0.05,
-      100.0);
-  config.trajectory_planner.racing_line.dp_fine_radius_m =
-      std::clamp(node.declare_parameter<double>("racing_line_dp_fine_radius_m", 1.5),
-                 0.05, 5000.0);
-  config.trajectory_planner.racing_line.async_refinement_workers =
+          node.declare_parameter<std::int64_t>(
+              "trajectory_optimizer_regularization_iterations", 2),
+          0, 100));
+  config.trajectory_planner.trajectory_optimizer
+      .regularization_max_traversal_time_regression_s = std::clamp(
+      node.declare_parameter<double>(
+          "trajectory_optimizer_regularization_max_traversal_time_regression_s", 0.5),
+      0.0, 3600.0);
+  config.trajectory_planner.trajectory_optimizer.parallel_workers =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
-                                       "racing_line_async_refinement_workers", 1),
-                                   0, 1));
+                                       "trajectory_optimizer_parallel_workers", 0),
+                                   0, 1024));
+  config.trajectory_planner.trajectory_optimizer.window_pre_margin_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_window_pre_margin_m", 25.0),
+      0.0, 5000.0);
+  config.trajectory_planner.trajectory_optimizer.window_post_margin_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_window_post_margin_m", 25.0),
+      0.0, 5000.0);
+  config.trajectory_planner.trajectory_optimizer.window_heading_threshold_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_window_heading_threshold_deg", 10.0) *
+                     std::numbers::pi / 180.0,
+                 0.0, std::numbers::pi);
+  config.trajectory_planner.trajectory_optimizer.window_width_change_threshold_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_window_width_change_threshold_m", 2.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.trajectory_optimizer.window_min_heading_span_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_window_min_heading_span_deg", 10.0) *
+                     std::numbers::pi / 180.0,
+                 0.0, std::numbers::pi);
+  config.trajectory_planner.trajectory_optimizer.window_min_curvature_1pm =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_window_min_curvature_1pm", 0.01),
+                 0.0, 1000.0);
+  config.trajectory_planner.trajectory_optimizer.window_min_width_asymmetry_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_window_min_width_asymmetry_m", 1.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.trajectory_optimizer.dp_offset_step_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_dp_offset_step_m", 1.5),
+      0.05, 100.0);
+  config.trajectory_planner.trajectory_optimizer.dp_coarse_offset_step_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_dp_coarse_offset_step_m", 2.0),
+                 0.05, 100.0);
+  config.trajectory_planner.trajectory_optimizer.dp_fine_offset_step_m =
+      std::clamp(node.declare_parameter<double>(
+                     "trajectory_optimizer_dp_fine_offset_step_m", 0.75),
+                 0.05, 100.0);
+  config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m = std::clamp(
+      node.declare_parameter<double>("trajectory_optimizer_dp_fine_radius_m", 1.5),
+      0.05, 5000.0);
+  config.trajectory_planner.trajectory_optimizer.async_refinement_workers =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "trajectory_optimizer_async_refinement_workers", 1),
+          0, 1));
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,

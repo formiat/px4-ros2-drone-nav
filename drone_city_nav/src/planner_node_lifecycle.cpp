@@ -81,7 +81,7 @@ PlannerNode::PlannerNode()
               config.topics.prohibited_grid.c_str());
   RCLCPP_INFO(
       get_logger(),
-      "Planner trajectory pipeline: output_path=final_racing_trajectory "
+      "Planner trajectory pipeline: output_path=final_optimized_trajectory "
       "rough_astar_scope=internal_seed "
       "speed[cruise=%.2fmps min_turn=%.2fmps max_accel=%.2fmps2 "
       "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
@@ -89,9 +89,11 @@ PlannerNode::PlannerNode()
       "corridor[max_radius=%.2fm sample_step=%.2fm center_recovery_max=%.2fm "
       "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm "
       "parallel_workers=%zu] "
-      "racing_line[iterations=%zu optimizer_sample_step=%.2fm offset_step=%.2fm "
+      "trajectory_optimizer[iterations=%zu optimizer_sample_step=%.2fm "
+      "offset_step=%.2fm "
       "min_step=%.2fm weights(length=%.3f time=%.2f "
-      "curvature=%.2f curvature_change=%.2f offset_change=%.2f "
+      "curvature=%.2f curvature_change=%.2f preferred_radius=%.2fm "
+      "radius_shortfall=%.2f offset_change=%.2f "
       "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
       "max_length_ratio=%.2f parallel=always parallel_workers=%zu "
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
@@ -113,27 +115,29 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.corridor.lateral_limit_ratio,
       trajectory_planner_config_.corridor.lateral_limit_margin_m,
       trajectory_planner_config_.corridor.parallel_workers,
-      trajectory_planner_config_.racing_line.max_iterations,
-      trajectory_planner_config_.racing_line.optimizer_sample_step_m,
-      trajectory_planner_config_.racing_line.initial_offset_step_m,
-      trajectory_planner_config_.racing_line.min_offset_step_m,
-      trajectory_planner_config_.racing_line.weight_length,
-      trajectory_planner_config_.racing_line.weight_time,
-      trajectory_planner_config_.racing_line.weight_curvature,
-      trajectory_planner_config_.racing_line.weight_curvature_change,
-      trajectory_planner_config_.racing_line.weight_offset_change,
-      trajectory_planner_config_.racing_line.weight_offset_second_change,
-      trajectory_planner_config_.racing_line.weight_offset_slope,
-      trajectory_planner_config_.racing_line.max_offset_slope_per_m,
-      trajectory_planner_config_.racing_line.max_length_ratio,
-      trajectory_planner_config_.racing_line.parallel_workers,
-      trajectory_planner_config_.racing_line.window_pre_margin_m,
-      trajectory_planner_config_.racing_line.window_post_margin_m,
+      trajectory_planner_config_.trajectory_optimizer.max_iterations,
+      trajectory_planner_config_.trajectory_optimizer.optimizer_sample_step_m,
+      trajectory_planner_config_.trajectory_optimizer.initial_offset_step_m,
+      trajectory_planner_config_.trajectory_optimizer.min_offset_step_m,
+      trajectory_planner_config_.trajectory_optimizer.weight_length,
+      trajectory_planner_config_.trajectory_optimizer.weight_traversal_time,
+      trajectory_planner_config_.trajectory_optimizer.weight_curvature,
+      trajectory_planner_config_.trajectory_optimizer.weight_curvature_change,
+      trajectory_planner_config_.trajectory_optimizer.preferred_min_radius_m,
+      trajectory_planner_config_.trajectory_optimizer.weight_radius_shortfall,
+      trajectory_planner_config_.trajectory_optimizer.weight_offset_change,
+      trajectory_planner_config_.trajectory_optimizer.weight_offset_second_change,
+      trajectory_planner_config_.trajectory_optimizer.weight_offset_slope,
+      trajectory_planner_config_.trajectory_optimizer.max_offset_slope_per_m,
+      trajectory_planner_config_.trajectory_optimizer.max_length_ratio,
+      trajectory_planner_config_.trajectory_optimizer.parallel_workers,
+      trajectory_planner_config_.trajectory_optimizer.window_pre_margin_m,
+      trajectory_planner_config_.trajectory_optimizer.window_post_margin_m,
       radiansToDegrees(
-          trajectory_planner_config_.racing_line.window_heading_threshold_rad),
-      trajectory_planner_config_.racing_line.window_width_change_threshold_m,
-      trajectory_planner_config_.racing_line.dp_offset_step_m,
-      trajectory_planner_config_.racing_line.async_refinement_workers,
+          trajectory_planner_config_.trajectory_optimizer.window_heading_threshold_rad),
+      trajectory_planner_config_.trajectory_optimizer.window_width_change_threshold_m,
+      trajectory_planner_config_.trajectory_optimizer.dp_offset_step_m,
+      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers,
       radiansToDegrees(
           trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
       trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
@@ -218,7 +222,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   astar_config_ = config.planner_core.astar;
   trajectory_planner_config_ = config.trajectory_planner;
   refinement_scheduler_.configure(
-      trajectory_planner_config_.racing_line.async_refinement_workers);
+      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers);
   initial_heading_rad_ = config.initial_pose.heading_rad;
   px4_local_origin_ = config.initial_pose.px4_local_origin;
   static_map_debug_publish_period_s_ = config.timing.static_map_debug_publish_period_s;

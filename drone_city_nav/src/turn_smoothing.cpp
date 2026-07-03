@@ -339,9 +339,9 @@ pathIsTraversableCached(const OccupancyGrid2D& grid,
 [[nodiscard]] double innerMarginM(const TrajectoryPointSample& sample,
                                   const double turn_sign) noexcept {
   if (turn_sign > 0.0) {
-    return sample.left_bound_m - sample.racing_offset_m;
+    return sample.left_bound_m - sample.lateral_offset_m;
   }
-  return sample.right_bound_m + sample.racing_offset_m;
+  return sample.right_bound_m + sample.lateral_offset_m;
 }
 
 void updateMinInnerMargin(TurnSmoothingStats& stats,
@@ -375,7 +375,6 @@ enum class SmoothingRejectReason : std::uint8_t {
   kCurvatureRegression,
   kRadiusRegression,
   kSpeedRegression,
-  kTimeRegression,
 };
 
 struct LocalTrajectoryMetrics {
@@ -585,7 +584,7 @@ sampleForPoint(const Point2 point, const double station_hint_m,
     sample.tangent = corridor->tangent;
     sample.left_bound_m = corridor->left_bound_m;
     sample.right_bound_m = corridor->right_bound_m;
-    sample.racing_offset_m = dot(point - corridor->center, corridor->normal);
+    sample.lateral_offset_m = dot(point - corridor->center, corridor->normal);
   }
   return sample;
 }
@@ -853,7 +852,6 @@ candidateRegressionReason(const LocalTrajectoryMetrics& before,
   constexpr double kCurvatureRegressionFactor = 1.5;
   constexpr double kRadiusToleranceM = 0.25;
   constexpr double kSpeedToleranceMps = 0.1;
-  constexpr double kTimeRegressionToleranceS = 0.25;
   if (!before.valid || !after.valid) {
     return SmoothingRejectReason::kNotImproved;
   }
@@ -872,10 +870,6 @@ candidateRegressionReason(const LocalTrajectoryMetrics& before,
       std::isfinite(after.min_speed_limit_mps) &&
       after.min_speed_limit_mps + kSpeedToleranceMps < before.min_speed_limit_mps) {
     return SmoothingRejectReason::kSpeedRegression;
-  }
-  if (std::isfinite(before.estimated_time_s) && std::isfinite(after.estimated_time_s) &&
-      after.estimated_time_s > before.estimated_time_s + kTimeRegressionToleranceS) {
-    return SmoothingRejectReason::kTimeRegression;
   }
   return SmoothingRejectReason::kNone;
 }
@@ -977,8 +971,6 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
         return 4;
       case SmoothingRejectReason::kSpeedRegression:
         return 3;
-      case SmoothingRejectReason::kTimeRegression:
-        return 2;
       case SmoothingRejectReason::kNotImproved:
         return 1;
       case SmoothingRejectReason::kNone:
@@ -1006,8 +998,6 @@ rejectReasonName(const SmoothingRejectReason reason) noexcept {
       return "radius_regression";
     case SmoothingRejectReason::kSpeedRegression:
       return "speed_regression";
-    case SmoothingRejectReason::kTimeRegression:
-      return "time_regression";
   }
   return "unknown";
 }
@@ -1061,9 +1051,6 @@ void incrementRejectStat(TurnSmoothingStats& stats,
       break;
     case SmoothingRejectReason::kSpeedRegression:
       ++stats.rejected_speed_regression;
-      break;
-    case SmoothingRejectReason::kTimeRegression:
-      ++stats.rejected_time_regression;
       break;
     case SmoothingRejectReason::kNone:
       break;

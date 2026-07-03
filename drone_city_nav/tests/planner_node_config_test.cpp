@@ -75,32 +75,50 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 40.0);
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 0U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 300.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature_change,
-                   130.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_offset_second_change,
-                   6.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_offset_slope, 100.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.max_offset_slope_per_m, 0.32);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
-  EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 25.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 25.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
-                   10.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_curvature,
+                   300.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.racing_line.window_width_change_threshold_m, 2.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_heading_span_rad,
-                   10.0 * std::numbers::pi / 180.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_curvature_1pm,
-                   0.01);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_width_asymmetry_m,
-                   1.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 1.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 2.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.75);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 1.5);
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
+      config.trajectory_planner.trajectory_optimizer.weight_curvature_change, 130.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.preferred_min_radius_m, 16.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.weight_radius_shortfall, 8.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.weight_offset_second_change, 6.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_offset_slope,
+                   100.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.max_offset_slope_per_m, 0.32);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_traversal_time,
+                   0.0);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 0U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_pre_margin_m,
+                   25.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_post_margin_m,
+                   25.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_heading_threshold_rad,
+      10.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_width_change_threshold_m,
+      2.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_heading_span_rad,
+      10.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_curvature_1pm, 0.01);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_width_asymmetry_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_offset_step_m,
+                   1.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.dp_coarse_offset_step_m, 2.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_offset_step_m,
+                   0.75);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
+                   1.5);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
+            1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 16.0);
@@ -131,20 +149,20 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
        rclcpp::Parameter{"corridor_max_radius_m", -10.0},
        rclcpp::Parameter{"corridor_parallel_workers", 5000},
-       rclcpp::Parameter{"racing_line_weight_time", -2.0},
-       rclcpp::Parameter{"racing_line_parallel_workers", 5000},
-       rclcpp::Parameter{"racing_line_window_pre_margin_m", -1.0},
-       rclcpp::Parameter{"racing_line_window_post_margin_m", 9999.0},
-       rclcpp::Parameter{"racing_line_window_heading_threshold_deg", 500.0},
-       rclcpp::Parameter{"racing_line_window_width_change_threshold_m", -1.0},
-       rclcpp::Parameter{"racing_line_window_min_heading_span_deg", 500.0},
-       rclcpp::Parameter{"racing_line_window_min_curvature_1pm", -1.0},
-       rclcpp::Parameter{"racing_line_window_min_width_asymmetry_m", -1.0},
-       rclcpp::Parameter{"racing_line_dp_offset_step_m", -1.0},
-       rclcpp::Parameter{"racing_line_dp_coarse_offset_step_m", -1.0},
-       rclcpp::Parameter{"racing_line_dp_fine_offset_step_m", -1.0},
-       rclcpp::Parameter{"racing_line_dp_fine_radius_m", -1.0},
-       rclcpp::Parameter{"racing_line_async_refinement_workers", 5000},
+       rclcpp::Parameter{"trajectory_optimizer_weight_traversal_time", -2.0},
+       rclcpp::Parameter{"trajectory_optimizer_parallel_workers", 5000},
+       rclcpp::Parameter{"trajectory_optimizer_window_pre_margin_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_post_margin_m", 9999.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_heading_threshold_deg", 500.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_width_change_threshold_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_heading_span_deg", 500.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_curvature_1pm", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_width_asymmetry_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_dp_offset_step_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_dp_coarse_offset_step_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_dp_fine_offset_step_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", -1.0},
+       rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
@@ -173,24 +191,36 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 1024U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
-  EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 1024U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 0.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 5000.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
-                   std::numbers::pi);
-  EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.racing_line.window_width_change_threshold_m, 0.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_heading_span_rad,
-                   std::numbers::pi);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_curvature_1pm, 0.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_width_asymmetry_m,
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_traversal_time,
                    0.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.05);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 0.05);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.05);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 0.05);
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 1024U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_pre_margin_m,
+                   0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_post_margin_m,
+                   5000.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_heading_threshold_rad,
+      std::numbers::pi);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_width_change_threshold_m,
+      0.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_heading_span_rad,
+      std::numbers::pi);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_curvature_1pm, 0.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_width_asymmetry_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_offset_step_m,
+                   0.05);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.dp_coarse_offset_step_m, 0.05);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_offset_step_m,
+                   0.05);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
+                   0.05);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
+            1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 0.0);
@@ -202,39 +232,39 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
 }
 
 TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
-  const auto node =
-      makeNode("planner_node_config_nested",
-               {rclcpp::Parameter{"astar_heuristic_weight", 1.2},
-                rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
-                rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
-                rclcpp::Parameter{"astar_initial_heading_bias_enabled", true},
-                rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
-                rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
-                rclcpp::Parameter{"use_static_map", false},
-                rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
-                rclcpp::Parameter{"racing_line_weight_curvature", 125.0},
-                rclcpp::Parameter{"racing_line_parallel_workers", 2},
-                rclcpp::Parameter{"racing_line_window_pre_margin_m", 30.0},
-                rclcpp::Parameter{"racing_line_window_post_margin_m", 35.0},
-                rclcpp::Parameter{"racing_line_window_heading_threshold_deg", 12.5},
-                rclcpp::Parameter{"racing_line_window_width_change_threshold_m", 3.5},
-                rclcpp::Parameter{"racing_line_window_min_heading_span_deg", 15.0},
-                rclcpp::Parameter{"racing_line_window_min_curvature_1pm", 0.02},
-                rclcpp::Parameter{"racing_line_window_min_width_asymmetry_m", 2.5},
-                rclcpp::Parameter{"racing_line_dp_offset_step_m", 0.75},
-                rclcpp::Parameter{"racing_line_dp_coarse_offset_step_m", 2.5},
-                rclcpp::Parameter{"racing_line_dp_fine_offset_step_m", 0.5},
-                rclcpp::Parameter{"racing_line_dp_fine_radius_m", 2.25},
-                rclcpp::Parameter{"racing_line_async_refinement_workers", 2},
-                rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
-                rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
-                rclcpp::Parameter{"corridor_sample_step_m", 2.0},
-                rclcpp::Parameter{"corridor_parallel_workers", 3},
-                rclcpp::Parameter{"max_lidar_range_m", 22.0},
-                rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
-                rclcpp::Parameter{"motion_compensate_lidar_pose", false},
-                rclcpp::Parameter{"lidar_pose_latency_s", 0.25},
-                rclcpp::Parameter{"compensate_lidar_attitude", true}});
+  const auto node = makeNode(
+      "planner_node_config_nested",
+      {rclcpp::Parameter{"astar_heuristic_weight", 1.2},
+       rclcpp::Parameter{"astar_turn_cost_weight", 2.0},
+       rclcpp::Parameter{"astar_evasive_maneuvering_enabled", true},
+       rclcpp::Parameter{"astar_initial_heading_bias_enabled", true},
+       rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
+       rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
+       rclcpp::Parameter{"use_static_map", false},
+       rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
+       rclcpp::Parameter{"trajectory_optimizer_weight_curvature", 125.0},
+       rclcpp::Parameter{"trajectory_optimizer_parallel_workers", 2},
+       rclcpp::Parameter{"trajectory_optimizer_window_pre_margin_m", 30.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_post_margin_m", 35.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_heading_threshold_deg", 12.5},
+       rclcpp::Parameter{"trajectory_optimizer_window_width_change_threshold_m", 3.5},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_heading_span_deg", 15.0},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_curvature_1pm", 0.02},
+       rclcpp::Parameter{"trajectory_optimizer_window_min_width_asymmetry_m", 2.5},
+       rclcpp::Parameter{"trajectory_optimizer_dp_offset_step_m", 0.75},
+       rclcpp::Parameter{"trajectory_optimizer_dp_coarse_offset_step_m", 2.5},
+       rclcpp::Parameter{"trajectory_optimizer_dp_fine_offset_step_m", 0.5},
+       rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", 2.25},
+       rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 2},
+       rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
+       rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
+       rclcpp::Parameter{"corridor_sample_step_m", 2.0},
+       rclcpp::Parameter{"corridor_parallel_workers", 3},
+       rclcpp::Parameter{"max_lidar_range_m", 22.0},
+       rclcpp::Parameter{"scan_yaw_offset_rad", 0.3},
+       rclcpp::Parameter{"motion_compensate_lidar_pose", false},
+       rclcpp::Parameter{"lidar_pose_latency_s", 0.25},
+       rclcpp::Parameter{"compensate_lidar_attitude", true}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
@@ -248,25 +278,36 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_curvature, 125.0);
-  EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 2U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 30.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 35.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_heading_threshold_rad,
-                   12.5 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_curvature,
+                   125.0);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 2U);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_pre_margin_m,
+                   30.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_post_margin_m,
+                   35.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.racing_line.window_width_change_threshold_m, 3.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_heading_span_rad,
-                   15.0 * std::numbers::pi / 180.0);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_curvature_1pm,
-                   0.02);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_min_width_asymmetry_m,
-                   2.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_offset_step_m, 0.75);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_coarse_offset_step_m, 2.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_offset_step_m, 0.5);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.dp_fine_radius_m, 2.25);
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 1U);
+      config.trajectory_planner.trajectory_optimizer.window_heading_threshold_rad,
+      12.5 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_width_change_threshold_m,
+      3.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_heading_span_rad,
+      15.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_curvature_1pm, 0.02);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.window_min_width_asymmetry_m, 2.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_offset_step_m,
+                   0.75);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.trajectory_optimizer.dp_coarse_offset_step_m, 2.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_offset_step_m,
+                   0.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
+                   2.25);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
+            1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
@@ -281,11 +322,12 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
 TEST_F(PlannerNodeConfigTest, AllowsAsyncRefinementDisableContract) {
   const auto node =
       makeNode("planner_node_config_async_refinement_disabled",
-               {rclcpp::Parameter{"racing_line_async_refinement_workers", 0}});
+               {rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
-  EXPECT_EQ(config.trajectory_planner.racing_line.async_refinement_workers, 0U);
+  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
+            0U);
 }
 
 TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {

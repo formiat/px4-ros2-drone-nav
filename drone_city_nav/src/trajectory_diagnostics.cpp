@@ -70,10 +70,10 @@ TrajectoryShapeDiagnostics computeTrajectoryShapeDiagnostics(
       diagnostics.max_curvature_jump_point = samples[i].point;
     }
 
-    if (std::isfinite(samples[i].racing_offset_m) &&
-        std::isfinite(samples[i - 1U].racing_offset_m)) {
+    if (std::isfinite(samples[i].lateral_offset_m) &&
+        std::isfinite(samples[i - 1U].lateral_offset_m)) {
       const double offset_delta =
-          std::abs(samples[i].racing_offset_m - samples[i - 1U].racing_offset_m);
+          std::abs(samples[i].lateral_offset_m - samples[i - 1U].lateral_offset_m);
       if (offset_delta > diagnostics.max_offset_delta_m) {
         diagnostics.max_offset_delta_m = offset_delta;
         diagnostics.max_offset_delta_index = i;
@@ -83,14 +83,14 @@ TrajectoryShapeDiagnostics computeTrajectoryShapeDiagnostics(
   }
 
   for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-    if (!std::isfinite(samples[i - 1U].racing_offset_m) ||
-        !std::isfinite(samples[i].racing_offset_m) ||
-        !std::isfinite(samples[i + 1U].racing_offset_m)) {
+    if (!std::isfinite(samples[i - 1U].lateral_offset_m) ||
+        !std::isfinite(samples[i].lateral_offset_m) ||
+        !std::isfinite(samples[i + 1U].lateral_offset_m)) {
       continue;
     }
     const double offset_second_delta =
-        std::abs(samples[i + 1U].racing_offset_m - 2.0 * samples[i].racing_offset_m +
-                 samples[i - 1U].racing_offset_m);
+        std::abs(samples[i + 1U].lateral_offset_m - 2.0 * samples[i].lateral_offset_m +
+                 samples[i - 1U].lateral_offset_m);
     if (offset_second_delta > diagnostics.max_offset_second_delta_m) {
       diagnostics.max_offset_second_delta_m = offset_second_delta;
       diagnostics.max_offset_second_delta_index = i;

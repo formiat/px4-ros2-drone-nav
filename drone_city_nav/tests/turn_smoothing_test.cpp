@@ -34,7 +34,7 @@ samplesFromCorridor(const std::vector<CorridorSample>& corridor_samples) {
     sample.tangent = corridor.tangent;
     sample.left_bound_m = corridor.left_bound_m;
     sample.right_bound_m = corridor.right_bound_m;
-    sample.racing_offset_m = 0.0;
+    sample.lateral_offset_m = 0.0;
     samples.push_back(sample);
   }
   return samples;

@@ -119,35 +119,37 @@ planner_node:
     corridor_lateral_limit_ratio: 1.25
     corridor_lateral_limit_margin_m: 1.0
     corridor_parallel_workers: 0
-    racing_line_max_iterations: 80
-    racing_line_optimizer_sample_step_m: 5.0
-    racing_line_initial_offset_step_m: 2.0
-    racing_line_min_offset_step_m: 0.1
-    racing_line_cooling_ratio: 0.5
-    racing_line_weight_length: 0.02
-    racing_line_weight_curvature: 300.0
-    racing_line_weight_curvature_change: 130.0
-    racing_line_weight_offset_change: 0.5
-    racing_line_weight_offset_second_change: 6.5
-    racing_line_weight_offset_slope: 100.0
-    racing_line_max_offset_slope_per_m: 0.32
-    racing_line_weight_time: 0.0
-    racing_line_max_length_ratio: 1.6
-    racing_line_regularization_iterations: 2
-    racing_line_regularization_max_time_regression_s: 0.5
-    racing_line_parallel_workers: 0
-    racing_line_window_pre_margin_m: 25.0
-    racing_line_window_post_margin_m: 25.0
-    racing_line_window_heading_threshold_deg: 10.0
-    racing_line_window_width_change_threshold_m: 2.0
-    racing_line_window_min_heading_span_deg: 10.0
-    racing_line_window_min_curvature_1pm: 0.01
-    racing_line_window_min_width_asymmetry_m: 1.0
-    racing_line_dp_offset_step_m: 1.5
-    racing_line_dp_coarse_offset_step_m: 2.0
-    racing_line_dp_fine_offset_step_m: 0.75
-    racing_line_dp_fine_radius_m: 1.5
-    racing_line_async_refinement_workers: 1
+    trajectory_optimizer_max_iterations: 80
+    trajectory_optimizer_optimizer_sample_step_m: 5.0
+    trajectory_optimizer_initial_offset_step_m: 2.0
+    trajectory_optimizer_min_offset_step_m: 0.1
+    trajectory_optimizer_cooling_ratio: 0.5
+    trajectory_optimizer_weight_length: 0.01
+    trajectory_optimizer_weight_curvature: 300.0
+    trajectory_optimizer_weight_curvature_change: 130.0
+    trajectory_optimizer_preferred_min_radius_m: 16.0
+    trajectory_optimizer_weight_radius_shortfall: 8.0
+    trajectory_optimizer_weight_offset_change: 0.5
+    trajectory_optimizer_weight_offset_second_change: 6.5
+    trajectory_optimizer_weight_offset_slope: 100.0
+    trajectory_optimizer_max_offset_slope_per_m: 0.32
+    trajectory_optimizer_weight_traversal_time: 0.0
+    trajectory_optimizer_max_length_ratio: 1.6
+    trajectory_optimizer_regularization_iterations: 2
+    trajectory_optimizer_regularization_max_traversal_time_regression_s: 0.5
+    trajectory_optimizer_parallel_workers: 0
+    trajectory_optimizer_window_pre_margin_m: 25.0
+    trajectory_optimizer_window_post_margin_m: 25.0
+    trajectory_optimizer_window_heading_threshold_deg: 10.0
+    trajectory_optimizer_window_width_change_threshold_m: 2.0
+    trajectory_optimizer_window_min_heading_span_deg: 10.0
+    trajectory_optimizer_window_min_curvature_1pm: 0.01
+    trajectory_optimizer_window_min_width_asymmetry_m: 1.0
+    trajectory_optimizer_dp_offset_step_m: 1.5
+    trajectory_optimizer_dp_coarse_offset_step_m: 2.0
+    trajectory_optimizer_dp_fine_offset_step_m: 0.75
+    trajectory_optimizer_dp_fine_radius_m: 1.5
+    trajectory_optimizer_async_refinement_workers: 1
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 16.0
     turn_smoothing_trigger_speed_limit_mps: 12.0

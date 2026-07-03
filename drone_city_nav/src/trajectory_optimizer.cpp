@@ -1,4 +1,4 @@
-#include "drone_city_nav/racing_line.hpp"
+#include "drone_city_nav/trajectory_optimizer.hpp"
 
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 
@@ -48,7 +48,8 @@ struct PathEvaluation {
   bool first_blocked_outside_grid{false};
   bool last_blocked_outside_grid{false};
   std::size_t blocked_span_diagnostic_count{0U};
-  std::array<RacingLineBlockedSpanDiagnostic, kMaxCenterlineBlockedSpanDiagnostics>
+  std::array<TrajectoryOptimizerBlockedSpanDiagnostic,
+             kMaxCenterlineBlockedSpanDiagnostics>
       blocked_span_diagnostics{};
 
   [[nodiscard]] bool traversable() const noexcept {
@@ -58,9 +59,10 @@ struct PathEvaluation {
 
 struct CostBreakdown {
   double length_cost{0.0};
-  double time_cost{0.0};
+  double traversal_time_cost{0.0};
   double curvature_cost{0.0};
   double curvature_change_cost{0.0};
+  double radius_shortfall_cost{0.0};
   double heading_jump_cost{0.0};
   double offset_change_cost{0.0};
   double offset_second_change_cost{0.0};
@@ -70,9 +72,10 @@ struct CostBreakdown {
   double length_overrun_cost{0.0};
 
   [[nodiscard]] double total() const noexcept {
-    return length_cost + time_cost + curvature_cost + curvature_change_cost +
-           heading_jump_cost + offset_change_cost + offset_second_change_cost +
-           offset_slope_cost + collision_cost + outside_grid_cost + length_overrun_cost;
+    return length_cost + traversal_time_cost + curvature_cost + curvature_change_cost +
+           radius_shortfall_cost + heading_jump_cost + offset_change_cost +
+           offset_second_change_cost + offset_slope_cost + collision_cost +
+           outside_grid_cost + length_overrun_cost;
   }
 };
 
@@ -210,7 +213,7 @@ struct CandidateWorkBuffer {
   SegmentProhibitedCountCache full_path_segment_cache;
 };
 
-struct RacingLineScratch {
+struct TrajectoryOptimizerScratch {
   std::vector<double> candidate_offsets;
   std::vector<double> accepted_offsets;
   std::vector<double> iteration_best_offsets;
@@ -247,7 +250,8 @@ void reserveCandidateWorkBuffer(CandidateWorkBuffer& buffer,
 void prepareCandidateWorkspace(CandidateBatchWorkspace& workspace,
                                const std::size_t min_worker_count,
                                const std::size_t offset_count,
-                               const std::size_t sample_count, RacingLineStats& stats) {
+                               const std::size_t sample_count,
+                               TrajectoryOptimizerStats& stats) {
   const auto started_at = std::chrono::steady_clock::now();
   if (workspace.worker_buffers.size() < min_worker_count) {
     workspace.worker_buffers.resize(min_worker_count);
@@ -258,9 +262,10 @@ void prepareCandidateWorkspace(CandidateBatchWorkspace& workspace,
   stats.candidate_worker_buffer_prepare_duration_ms += elapsedMilliseconds(started_at);
 }
 
-class RacingCandidateWorkerPool {
+class TrajectoryOptimizerCandidateWorkerPool {
 public:
-  RacingCandidateWorkerPool(const std::size_t worker_count, RacingLineStats& stats)
+  TrajectoryOptimizerCandidateWorkerPool(const std::size_t worker_count,
+                                         TrajectoryOptimizerStats& stats)
       : stats_(stats) {
     const auto started_at = std::chrono::steady_clock::now();
     workers_.reserve(worker_count);
@@ -271,12 +276,16 @@ public:
     stats_.candidate_thread_launch_duration_ms += elapsedMilliseconds(started_at);
   }
 
-  RacingCandidateWorkerPool(const RacingCandidateWorkerPool&) = delete;
-  RacingCandidateWorkerPool& operator=(const RacingCandidateWorkerPool&) = delete;
-  RacingCandidateWorkerPool(RacingCandidateWorkerPool&&) = delete;
-  RacingCandidateWorkerPool& operator=(RacingCandidateWorkerPool&&) = delete;
+  TrajectoryOptimizerCandidateWorkerPool(
+      const TrajectoryOptimizerCandidateWorkerPool&) = delete;
+  TrajectoryOptimizerCandidateWorkerPool&
+  operator=(const TrajectoryOptimizerCandidateWorkerPool&) = delete;
+  TrajectoryOptimizerCandidateWorkerPool(TrajectoryOptimizerCandidateWorkerPool&&) =
+      delete;
+  TrajectoryOptimizerCandidateWorkerPool&
+  operator=(TrajectoryOptimizerCandidateWorkerPool&&) = delete;
 
-  ~RacingCandidateWorkerPool() {
+  ~TrajectoryOptimizerCandidateWorkerPool() {
     const auto started_at = std::chrono::steady_clock::now();
     {
       std::lock_guard lock(mutex_);
@@ -369,7 +378,7 @@ private:
     }
   }
 
-  RacingLineStats& stats_;
+  TrajectoryOptimizerStats& stats_;
   std::vector<std::thread> workers_;
   std::mutex mutex_;
   std::condition_variable job_available_;
@@ -441,7 +450,7 @@ void startBlockedSpanDiagnostic(PathEvaluation& evaluation,
       kMaxCenterlineBlockedSpanDiagnostics) {
     return;
   }
-  RacingLineBlockedSpanDiagnostic& span =
+  TrajectoryOptimizerBlockedSpanDiagnostic& span =
       evaluation.blocked_span_diagnostics.at(evaluation.blocked_span_diagnostic_count);
   span.begin_segment_index = segment_index;
   span.end_segment_index = segment_index;
@@ -464,7 +473,7 @@ void updateBlockedSpanDiagnostic(PathEvaluation& evaluation,
   if (diagnostic_index >= evaluation.blocked_span_diagnostic_count) {
     return;
   }
-  RacingLineBlockedSpanDiagnostic& span =
+  TrajectoryOptimizerBlockedSpanDiagnostic& span =
       evaluation.blocked_span_diagnostics.at(diagnostic_index);
   span.end_segment_index = segment_index;
   span.end_s_m = segment_end_s_m;
@@ -660,7 +669,7 @@ void samplesFromPointsAndOffsets(const std::span<const CorridorSample> corridor_
     sample.point = points[i];
     sample.left_bound_m = corridor_samples[i].left_bound_m;
     sample.right_bound_m = corridor_samples[i].right_bound_m;
-    sample.racing_offset_m = offsets[i];
+    sample.lateral_offset_m = offsets[i];
     samples.push_back(sample);
   }
 }
@@ -740,7 +749,7 @@ void offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
 
 [[nodiscard]] std::vector<CorridorSample>
 optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
-                         const RacingLineConfig& config) {
+                         const TrajectoryOptimizerConfig& config) {
   const double sample_step_m =
       sanitizedPositive(config.optimizer_sample_step_m, 0.0, 0.0, 5000.0);
   if (!(sample_step_m > kTinyDistanceM) || corridor_samples.size() <= 2U) {
@@ -804,9 +813,9 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
 
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
 
-[[nodiscard]] CostBreakdown costBreakdownForPoints(std::span<const Point2> points,
-                                                   std::span<const double> offsets,
-                                                   const RacingLineConfig& config);
+[[nodiscard]] CostBreakdown
+costBreakdownForPoints(std::span<const Point2> points, std::span<const double> offsets,
+                       const TrajectoryOptimizerConfig& config);
 
 [[nodiscard]] PathEvaluation evaluatePath(const OccupancyGrid2D& grid,
                                           const std::span<const Point2> points) {
@@ -1254,11 +1263,10 @@ activeWindowControlSampleCount(const std::span<const ActiveWindow> windows) {
   return max_heading - min_heading;
 }
 
-[[nodiscard]] std::vector<ActiveWindow>
-detectActiveWindows(const std::span<const CorridorSample> samples,
-                    const std::span<const Point2> centerline,
-                    const OccupancyGrid2D& prohibited_grid,
-                    const RacingLineConfig& config, RacingLineStats& stats) {
+[[nodiscard]] std::vector<ActiveWindow> detectActiveWindows(
+    const std::span<const CorridorSample> samples,
+    const std::span<const Point2> centerline, const OccupancyGrid2D& prohibited_grid,
+    const TrajectoryOptimizerConfig& config, TrajectoryOptimizerStats& stats) {
   const auto started_at = std::chrono::steady_clock::now();
   std::vector<ActiveWindow> windows;
   std::vector<ActiveWindow> shadow_no_width_asymmetry_windows;
@@ -1320,7 +1328,7 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     if (!use_full_path_fallback) {
       for (std::size_t i = 0U; i < centerline_evaluation.blocked_span_diagnostic_count;
            ++i) {
-        const RacingLineBlockedSpanDiagnostic& span =
+        const TrajectoryOptimizerBlockedSpanDiagnostic& span =
             centerline_evaluation.blocked_span_diagnostics.at(i);
         if (span.outside_grid_segments > 0U || !std::isfinite(span.begin_s_m) ||
             !std::isfinite(span.end_s_m) || span.begin_s_m >= span.end_s_m) {
@@ -1478,17 +1486,17 @@ activeControlIndices(const std::span<const ActiveWindow> windows,
   return indices;
 }
 
-[[nodiscard]] std::vector<RacingLineWindowMetadata>
+[[nodiscard]] std::vector<TrajectoryOptimizerWindowMetadata>
 windowMetadata(const std::span<const ActiveWindow> windows,
                const std::span<const CorridorSample> samples) {
-  std::vector<RacingLineWindowMetadata> metadata;
+  std::vector<TrajectoryOptimizerWindowMetadata> metadata;
   metadata.reserve(windows.size());
   for (std::size_t i = 0U; i < windows.size(); ++i) {
     const ActiveWindow& window = windows[i];
     if (window.begin_index >= samples.size() || window.end_index >= samples.size()) {
       continue;
     }
-    metadata.push_back(RacingLineWindowMetadata{
+    metadata.push_back(TrajectoryOptimizerWindowMetadata{
         .id = i + 1U,
         .begin_s_m = samples[window.begin_index].s_m,
         .end_s_m = samples[window.end_index].s_m,
@@ -1500,7 +1508,7 @@ windowMetadata(const std::span<const ActiveWindow> windows,
 [[nodiscard]] CostBreakdown
 costBreakdownForPoints(const std::span<const Point2> points,
                        const std::span<const double> offsets,
-                       const RacingLineConfig& config) {
+                       const TrajectoryOptimizerConfig& config) {
   CostBreakdown breakdown{};
   if (points.size() < 2U) {
     breakdown.outside_grid_cost = kOutsideGridPenalty;
@@ -1508,11 +1516,15 @@ costBreakdownForPoints(const std::span<const Point2> points,
   }
 
   const double weight_length =
-      sanitizedPositive(config.weight_length, 0.02, 0.0, 1.0e6);
+      sanitizedPositive(config.weight_length, 0.01, 0.0, 1.0e6);
   const double weight_curvature =
       sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
   const double weight_curvature_change =
       sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
+  const double preferred_min_radius =
+      sanitizedPositive(config.preferred_min_radius_m, 16.0, 0.0, 100000.0);
+  const double weight_radius_shortfall =
+      sanitizedPositive(config.weight_radius_shortfall, 8.0, 0.0, 1.0e9);
   const double weight_offset_change =
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
@@ -1524,6 +1536,7 @@ costBreakdownForPoints(const std::span<const Point2> points,
 
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
+  double radius_shortfall_cost = 0.0;
   double offset_change_cost = 0.0;
   double offset_second_change_cost = 0.0;
   double offset_slope_cost = 0.0;
@@ -1547,6 +1560,12 @@ costBreakdownForPoints(const std::span<const Point2> points,
     const double curvature =
         discreteCurvature(points[i - 1U], points[i], points[i + 1U]);
     curvature_cost += curvature * curvature;
+    if (preferred_min_radius > kTinyDistanceM) {
+      const double target_curvature = 1.0 / preferred_min_radius;
+      const double shortfall_ratio =
+          std::max(0.0, std::abs(curvature) - target_curvature) / target_curvature;
+      radius_shortfall_cost += shortfall_ratio * shortfall_ratio;
+    }
     if (previous_curvature_valid) {
       const double change = curvature - previous_curvature;
       curvature_change_cost += change * change;
@@ -1558,6 +1577,7 @@ costBreakdownForPoints(const std::span<const Point2> points,
   breakdown.length_cost = weight_length * pathLength(points);
   breakdown.curvature_cost = weight_curvature * curvature_cost;
   breakdown.curvature_change_cost = weight_curvature_change * curvature_change_cost;
+  breakdown.radius_shortfall_cost = weight_radius_shortfall * radius_shortfall_cost;
   breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
   breakdown.offset_second_change_cost =
       weight_offset_second_change * offset_second_change_cost;
@@ -1567,14 +1587,16 @@ costBreakdownForPoints(const std::span<const Point2> points,
 
 [[nodiscard]] double geometrySubtotal(const CostBreakdown& breakdown) noexcept {
   return breakdown.length_cost + breakdown.curvature_cost +
-         breakdown.curvature_change_cost + breakdown.offset_change_cost +
-         breakdown.offset_second_change_cost + breakdown.offset_slope_cost;
+         breakdown.curvature_change_cost + breakdown.radius_shortfall_cost +
+         breakdown.offset_change_cost + breakdown.offset_second_change_cost +
+         breakdown.offset_slope_cost;
 }
 
 [[nodiscard]] bool geometryCostsAreFinite(const CostBreakdown& breakdown) noexcept {
   return std::isfinite(breakdown.length_cost) &&
          std::isfinite(breakdown.curvature_cost) &&
          std::isfinite(breakdown.curvature_change_cost) &&
+         std::isfinite(breakdown.radius_shortfall_cost) &&
          std::isfinite(breakdown.offset_change_cost) &&
          std::isfinite(breakdown.offset_second_change_cost) &&
          std::isfinite(breakdown.offset_slope_cost);
@@ -1601,7 +1623,7 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
 
 [[nodiscard]] CostBreakdown localGeometryCostForChangedSpan(
     const std::span<const Point2> points, const std::span<const double> offsets,
-    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config) {
+    const OffsetChangeDiagnostics& changed, const TrajectoryOptimizerConfig& config) {
   CostBreakdown breakdown{};
   if (points.size() < 2U || points.size() != offsets.size() ||
       changed.changed_samples == 0U || changed.last_changed_index >= points.size()) {
@@ -1610,11 +1632,15 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
   }
 
   const double weight_length =
-      sanitizedPositive(config.weight_length, 0.02, 0.0, 1.0e6);
+      sanitizedPositive(config.weight_length, 0.01, 0.0, 1.0e6);
   const double weight_curvature =
       sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
   const double weight_curvature_change =
       sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
+  const double preferred_min_radius =
+      sanitizedPositive(config.preferred_min_radius_m, 16.0, 0.0, 100000.0);
+  const double weight_radius_shortfall =
+      sanitizedPositive(config.weight_radius_shortfall, 8.0, 0.0, 1.0e9);
   const double weight_offset_change =
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
@@ -1627,6 +1653,7 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
   double length_cost = 0.0;
   double curvature_cost = 0.0;
   double curvature_change_cost = 0.0;
+  double radius_shortfall_cost = 0.0;
   double offset_change_cost = 0.0;
   double offset_second_change_cost = 0.0;
   double offset_slope_cost = 0.0;
@@ -1660,6 +1687,12 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
       offset_second_change_cost += second_change * second_change;
       const double curvature = curvatureAtIndex(points, i);
       curvature_cost += curvature * curvature;
+      if (preferred_min_radius > kTinyDistanceM) {
+        const double target_curvature = 1.0 / preferred_min_radius;
+        const double shortfall_ratio =
+            std::max(0.0, std::abs(curvature) - target_curvature) / target_curvature;
+        radius_shortfall_cost += shortfall_ratio * shortfall_ratio;
+      }
     }
 
     const std::optional<IndexRange> curvature_change_range =
@@ -1680,6 +1713,7 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
   breakdown.length_cost = weight_length * length_cost;
   breakdown.curvature_cost = weight_curvature * curvature_cost;
   breakdown.curvature_change_cost = weight_curvature_change * curvature_change_cost;
+  breakdown.radius_shortfall_cost = weight_radius_shortfall * radius_shortfall_cost;
   breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
   breakdown.offset_second_change_cost =
       weight_offset_second_change * offset_second_change_cost;
@@ -1705,7 +1739,7 @@ shadowSegmentWindowSamples(const OffsetChangeDiagnostics& changed,
     const std::span<const double> base_offsets,
     const std::span<const Point2> candidate_points,
     const std::span<const double> candidate_offsets,
-    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config) {
+    const OffsetChangeDiagnostics& changed, const TrajectoryOptimizerConfig& config) {
   if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
       base_offsets.size() != candidate_offsets.size() ||
       base_points.size() != base_offsets.size() || !std::isfinite(base_score.score)) {
@@ -1730,6 +1764,9 @@ shadowSegmentWindowSamples(const OffsetChangeDiagnostics& changed,
   breakdown.curvature_change_cost = base_score.breakdown.curvature_change_cost -
                                     base_local.curvature_change_cost +
                                     candidate_local.curvature_change_cost;
+  breakdown.radius_shortfall_cost = base_score.breakdown.radius_shortfall_cost -
+                                    base_local.radius_shortfall_cost +
+                                    candidate_local.radius_shortfall_cost;
   breakdown.offset_change_cost = base_score.breakdown.offset_change_cost -
                                  base_local.offset_change_cost +
                                  candidate_local.offset_change_cost;
@@ -1751,7 +1788,7 @@ void populateShadowSegmentScoreDiagnostics(
     const std::span<const double> base_offsets,
     const std::span<const Point2> candidate_points,
     const std::span<const double> candidate_offsets,
-    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config,
+    const OffsetChangeDiagnostics& changed, const TrajectoryOptimizerConfig& config,
     const double incumbent_score,
     const std::optional<CostBreakdown>& incremental_geometry_breakdown) {
   if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
@@ -1795,7 +1832,7 @@ void populateShadowSegmentScoreDiagnostics(
 [[nodiscard]] double
 conservativeShadowLowerBoundScore(const std::span<const Point2> points,
                                   const std::span<const double> offsets,
-                                  const RacingLineConfig& config) {
+                                  const TrajectoryOptimizerConfig& config) {
   if (points.size() < 2U || points.size() != offsets.size()) {
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -1808,7 +1845,7 @@ conservativeShadowLowerBoundScore(const std::span<const Point2> points,
 
 void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
                                          const LocalCandidateScore& local_score,
-                                         const RacingLineConfig& config,
+                                         const TrajectoryOptimizerConfig& config,
                                          const double incumbent_score) {
   if (!local_score.valid || !local_score.estimated_traversal_time.valid ||
       !result.score.traversal_time.valid) {
@@ -1818,14 +1855,16 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
   const double full_time_s = result.score.traversal_time.estimated_time_s;
   if (!std::isfinite(local_time_s) || !std::isfinite(full_time_s) ||
       !std::isfinite(result.score.score) ||
-      !std::isfinite(result.score.breakdown.time_cost)) {
+      !std::isfinite(result.score.breakdown.traversal_time_cost)) {
     return;
   }
 
-  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
+  const double weight_traversal_time =
+      sanitizedPositive(config.weight_traversal_time, 0.0, 0.0, 1.0e9);
   const double exact_non_time_score =
-      result.score.score - result.score.breakdown.time_cost;
-  const double estimated_score = exact_non_time_score + weight_time * local_time_s;
+      result.score.score - result.score.breakdown.traversal_time_cost;
+  const double estimated_score =
+      exact_non_time_score + weight_traversal_time * local_time_s;
   if (!std::isfinite(estimated_score)) {
     return;
   }
@@ -1842,10 +1881,10 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
-    const PathEvaluation& evaluation, const RacingLineConfig& config,
+    const PathEvaluation& evaluation, const TrajectoryOptimizerConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
-    std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats,
-    const CostBreakdown* geometry_breakdown_override) {
+    std::vector<TrajectoryPointSample>& scratch_samples,
+    TrajectoryOptimizerStats& stats, const CostBreakdown* geometry_breakdown_override) {
   CandidateScore result{};
   const auto cost_started_at = std::chrono::steady_clock::now();
   if (geometry_breakdown_override != nullptr) {
@@ -1863,7 +1902,8 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
         overrun_m * overrun_m * kLengthOverrunPenalty;
   }
   stats.candidate_cost_breakdown_duration_ms += elapsedMilliseconds(cost_started_at);
-  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
+  const double weight_traversal_time =
+      sanitizedPositive(config.weight_traversal_time, 0.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     const auto sample_started_at = std::chrono::steady_clock::now();
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);
@@ -1888,9 +1928,10 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
     stats.candidate_speed_profile_samples_total += scratch_samples.size();
     stats.candidate_speed_profile_samples_max =
         std::max(stats.candidate_speed_profile_samples_max, scratch_samples.size());
-    if (weight_time > 0.0 && result.traversal_time.valid &&
+    if (weight_traversal_time > 0.0 && result.traversal_time.valid &&
         std::isfinite(result.traversal_time.estimated_time_s)) {
-      result.breakdown.time_cost = weight_time * result.traversal_time.estimated_time_s;
+      result.breakdown.traversal_time_cost =
+          weight_traversal_time * result.traversal_time.estimated_time_s;
     }
   }
   result.score = result.breakdown.total();
@@ -1919,7 +1960,7 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
 }
 
 void updateCurvatureStats(const std::span<const TrajectoryPointSample> samples,
-                          RacingLineStats& stats) {
+                          TrajectoryOptimizerStats& stats) {
   double curvature_sum = 0.0;
   std::size_t curvature_count = 0U;
   for (const TrajectoryPointSample& sample : samples) {
@@ -1934,7 +1975,7 @@ void updateCurvatureStats(const std::span<const TrajectoryPointSample> samples,
 }
 
 void copyTraversalEstimateToFinalStats(const TraversalTimeEstimate& estimate,
-                                       RacingLineStats& stats) {
+                                       TrajectoryOptimizerStats& stats) {
   stats.estimated_time_s = estimate.estimated_time_s;
   stats.min_speed_limit_mps = estimate.min_speed_limit_mps;
   stats.max_speed_limit_mps = estimate.max_speed_limit_mps;
@@ -1942,7 +1983,7 @@ void copyTraversalEstimateToFinalStats(const TraversalTimeEstimate& estimate,
 }
 
 void copyTraversalEstimateToCenterlineStats(const TraversalTimeEstimate& estimate,
-                                            RacingLineStats& stats) {
+                                            TrajectoryOptimizerStats& stats) {
   stats.centerline_estimated_time_s = estimate.estimated_time_s;
   stats.centerline_min_speed_limit_mps = estimate.min_speed_limit_mps;
   stats.centerline_max_speed_limit_mps = estimate.max_speed_limit_mps;
@@ -1951,7 +1992,7 @@ void copyTraversalEstimateToCenterlineStats(const TraversalTimeEstimate& estimat
 
 void copyTraversalEstimateToBestCandidateStats(const TraversalTimeEstimate& estimate,
                                                const double score,
-                                               RacingLineStats& stats) {
+                                               TrajectoryOptimizerStats& stats) {
   stats.best_candidate_estimated_time_s = estimate.estimated_time_s;
   stats.best_candidate_score = score;
   stats.best_candidate_min_speed_limit_mps = estimate.min_speed_limit_mps;
@@ -1959,11 +2000,13 @@ void copyTraversalEstimateToBestCandidateStats(const TraversalTimeEstimate& esti
   stats.best_candidate_curvature_limited_samples = estimate.curvature_limited_samples;
 }
 
-void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& stats) {
+void copyCostBreakdownToStats(const CostBreakdown& breakdown,
+                              TrajectoryOptimizerStats& stats) {
   stats.cost_length = breakdown.length_cost;
-  stats.cost_time = breakdown.time_cost;
+  stats.cost_traversal_time = breakdown.traversal_time_cost;
   stats.cost_curvature = breakdown.curvature_cost;
   stats.cost_curvature_change = breakdown.curvature_change_cost;
+  stats.cost_radius_shortfall = breakdown.radius_shortfall_cost;
   stats.cost_heading_jump = breakdown.heading_jump_cost;
   stats.cost_offset_change = breakdown.offset_change_cost;
   stats.cost_offset_second_change = breakdown.offset_second_change_cost;
@@ -1974,14 +2017,14 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown, RacingLineStats& s
 }
 
 void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
-                           RacingLineStats& stats) {
+                           TrajectoryOptimizerStats& stats) {
   double margin_sum = 0.0;
   std::size_t margin_count = 0U;
   for (const TrajectoryPointSample& sample : samples) {
     CorridorSample bounds{};
     bounds.left_bound_m = sample.left_bound_m;
     bounds.right_bound_m = sample.right_bound_m;
-    const double margin = edgeMarginM(bounds, sample.racing_offset_m);
+    const double margin = edgeMarginM(bounds, sample.lateral_offset_m);
     if (!std::isfinite(margin)) {
       continue;
     }
@@ -2002,12 +2045,12 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> candidate_offsets,
     const std::span<const Point2> candidate_points,
-    const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
+    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
     double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
     CandidateScore& best_score, double& best_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples,
-    SegmentProhibitedCountCache& segment_cache, RacingLineStats& stats) {
+    SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats) {
   ++stats.candidate_evaluations;
   ++stats.scratch_reused_candidates;
   const auto evaluation_started_at = std::chrono::steady_clock::now();
@@ -2047,7 +2090,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const std::size_t center_index, const double delta_m,
-    const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
+    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
     const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
     CandidateWorkBuffer& buffer) {
@@ -2095,7 +2138,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     if (!result.path.traversable()) {
       return result;
     }
-    RacingLineStats local_stats{};
+    TrajectoryOptimizerStats local_stats{};
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
     result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
@@ -2146,7 +2189,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.requires_full_score = true;
   result.offsets.assign(buffer.offsets.begin(), buffer.offsets.end());
 
-  RacingLineStats local_stats{};
+  TrajectoryOptimizerStats local_stats{};
   const auto points_started_at = std::chrono::steady_clock::now();
   pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
   result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
@@ -2243,10 +2286,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
 
 [[nodiscard]] bool buildDpSeedForWindow(
     const std::span<const CorridorSample> corridor_samples, const ActiveWindow& window,
-    const OccupancyGrid2D& prohibited_grid, const RacingLineConfig& config,
+    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
     const double requested_step_m, const std::span<const double> base_offsets,
     const std::span<const double> guide_offsets, const double guide_radius_m,
-    std::vector<double>& output_offsets, RacingLineStats& stats) {
+    std::vector<double>& output_offsets, TrajectoryOptimizerStats& stats) {
   if (window.end_index <= window.begin_index + 1U ||
       base_offsets.size() != corridor_samples.size()) {
     return false;
@@ -2429,10 +2472,10 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const OccupancyGrid2D& prohibited_grid,
-    const RacingLineConfig& config, const VelocityFollowerConfig& speed_config,
+    const TrajectoryOptimizerConfig& config, const VelocityFollowerConfig& speed_config,
     const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
     const double incumbent_score, CandidateBatchWorkspace& workspace,
-    RacingCandidateWorkerPool* pool, RacingLineStats& stats,
+    TrajectoryOptimizerCandidateWorkerPool* pool, TrajectoryOptimizerStats& stats,
     const std::size_t worker_count) {
   const auto batch_started_at = std::chrono::steady_clock::now();
   workspace.results.resize(tasks.size());
@@ -2474,7 +2517,7 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
 }
 
 void incrementLocalFullScoreReason(const LocalFullScoreReason reason,
-                                   RacingLineStats& stats) {
+                                   TrajectoryOptimizerStats& stats) {
   switch (reason) {
     case LocalFullScoreReason::kNone:
       return;
@@ -2493,7 +2536,8 @@ void incrementLocalFullScoreReason(const LocalFullScoreReason reason,
   }
 }
 
-void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& stats) {
+void mergeCandidateStats(const EvaluatedCandidate& candidate,
+                         TrajectoryOptimizerStats& stats) {
   if (candidate.scratch_reused) {
     ++stats.worker_scratch_reuses;
   }
@@ -2668,12 +2712,12 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
 
 } // namespace
 
-RacingLineResult
-optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
+TrajectoryOptimizerResult
+optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
                    const OccupancyGrid2D& prohibited_grid,
-                   const RacingLineConfig& config,
+                   const TrajectoryOptimizerConfig& config,
                    const VelocityFollowerConfig& speed_config) {
-  RacingLineResult result{};
+  TrajectoryOptimizerResult result{};
   result.stats.input_samples = corridor_samples.size();
   if (corridor_samples.size() < 2U) {
     return result;
@@ -2711,7 +2755,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
   const double max_length_m = result.stats.centerline_length_m * max_length_ratio;
 
-  RacingLineScratch scratch{};
+  TrajectoryOptimizerScratch scratch{};
   scratch.candidate_offsets.reserve(sample_count);
   scratch.accepted_offsets.reserve(sample_count);
   scratch.iteration_best_offsets.reserve(sample_count);
@@ -2805,7 +2849,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
 
   const std::size_t max_candidate_worker_count =
       desiredWorkerCount(config.parallel_workers, control_indices.size() * 2U);
-  std::optional<RacingCandidateWorkerPool> candidate_worker_pool;
+  std::optional<TrajectoryOptimizerCandidateWorkerPool> candidate_worker_pool;
   if (max_candidate_worker_count > 1U) {
     candidate_worker_pool.emplace(max_candidate_worker_count, result.stats);
   }
@@ -2989,7 +3033,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     const TraversalTimeEstimate candidate_time =
         estimateTraversalTime(scratch.candidate_samples, speed_config, true);
     const double max_regression = sanitizedPositive(
-        config.regularization_max_time_regression_s, 0.5, 0.0, 3600.0);
+        config.regularization_max_traversal_time_regression_s, 0.5, 0.0, 3600.0);
     const bool time_acceptable =
         !best_time.valid || !candidate_time.valid ||
         candidate_time.estimated_time_s <= best_time.estimated_time_s + max_regression;
@@ -3029,7 +3073,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     sample.point = final_points[i];
     sample.left_bound_m = optimizer_samples[i].left_bound_m;
     sample.right_bound_m = optimizer_samples[i].right_bound_m;
-    sample.racing_offset_m = final_offsets[i];
+    sample.lateral_offset_m = final_offsets[i];
     result.stats.max_abs_offset_m =
         std::max(result.stats.max_abs_offset_m, std::abs(final_offsets[i]));
     result.samples.push_back(sample);

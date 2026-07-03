@@ -25,10 +25,10 @@ namespace {
   TrajectoryPlannerConfig config{};
   config.corridor.max_radius_m = 10.0;
   config.corridor.sample_step_m = 2.5;
-  config.racing_line.max_iterations = 20U;
-  config.racing_line.initial_offset_step_m = 1.0;
-  config.racing_line.min_offset_step_m = 0.1;
-  config.racing_line.weight_curvature = 30.0;
+  config.trajectory_optimizer.max_iterations = 20U;
+  config.trajectory_optimizer.initial_offset_step_m = 1.0;
+  config.trajectory_optimizer.min_offset_step_m = 0.1;
+  config.trajectory_optimizer.weight_curvature = 30.0;
   config.debug_sample_step_m = 1.0;
   config.speed_profile.cruise_speed_mps = 12.0;
   config.speed_profile.max_lateral_accel_mps2 = 3.0;
@@ -88,7 +88,7 @@ TEST(TrajectoryPlanner, MissingGridDoesNotBuildUnknownCorners) {
   EXPECT_TRUE(result.compact_segments.empty());
 }
 
-TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
+TEST(TrajectoryPlanner, TrajectoryOptimizerTrajectoryProducesSamplesAndSpeedProfile) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
 
@@ -105,12 +105,13 @@ TEST(TrajectoryPlanner, RacingTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_EQ(result.corridor_samples.size(), result.stats.corridor.samples);
   EXPECT_TRUE(result.speed_profile.valid);
   EXPECT_GT(result.stats.corridor.samples, 0U);
-  EXPECT_GT(result.stats.racing_line.candidate_evaluations, 0U);
-  EXPECT_GT(result.stats.racing_line.active_window_count, 0U);
-  EXPECT_GT(result.stats.racing_line.dp_states, 0U);
-  EXPECT_TRUE(std::isfinite(result.stats.racing_line.estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.racing_line.centerline_estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.racing_line.time_gain_s));
+  EXPECT_GT(result.stats.trajectory_optimizer.candidate_evaluations, 0U);
+  EXPECT_GT(result.stats.trajectory_optimizer.active_window_count, 0U);
+  EXPECT_GT(result.stats.trajectory_optimizer.dp_states, 0U);
+  EXPECT_TRUE(std::isfinite(result.stats.trajectory_optimizer.estimated_time_s));
+  EXPECT_TRUE(
+      std::isfinite(result.stats.trajectory_optimizer.centerline_estimated_time_s));
+  EXPECT_TRUE(std::isfinite(result.stats.trajectory_optimizer.time_gain_s));
 }
 
 TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
@@ -128,8 +129,8 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_EQ(result.stats.quality, TrajectoryQuality::kBaseline);
   EXPECT_GE(result.samples.size(), 3U);
   EXPECT_TRUE(result.speed_profile.valid);
-  EXPECT_EQ(result.stats.racing_line.candidate_evaluations, 0U);
-  EXPECT_FALSE(result.stats.racing_line.async_refined);
+  EXPECT_EQ(result.stats.trajectory_optimizer.candidate_evaluations, 0U);
+  EXPECT_FALSE(result.stats.trajectory_optimizer.async_refined);
   ASSERT_FALSE(result.samples.empty());
   EXPECT_NEAR(distance(result.samples.back().point, route.back()), 0.0, 1.0e-6);
 }
@@ -154,7 +155,7 @@ TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
   EXPECT_EQ(result.stats.corridor.reused_samples, 0U);
 }
 
-TEST(TrajectoryPlanner, ReusesPrecomputedCorridorForRacingTrajectory) {
+TEST(TrajectoryPlanner, ReusesPrecomputedCorridorForTrajectoryOptimizerTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
   const TrajectoryPlannerConfig config = testConfig();
@@ -169,8 +170,8 @@ TEST(TrajectoryPlanner, ReusesPrecomputedCorridorForRacingTrajectory) {
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult normal = planRacingTrajectory(input, config);
-  const TrajectoryPlannerResult reused = planRacingTrajectory(
+  const TrajectoryPlannerResult normal = planOptimizedTrajectory(input, config);
+  const TrajectoryPlannerResult reused = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route.data(), route.size()},
           &grid,
@@ -195,8 +196,8 @@ TEST(TrajectoryPlanner, ReusesPrecomputedCorridorForRacingTrajectory) {
   for (std::size_t i = 0U; i < normal.samples.size(); ++i) {
     EXPECT_DOUBLE_EQ(normal.samples[i].point.x, reused.samples[i].point.x);
     EXPECT_DOUBLE_EQ(normal.samples[i].point.y, reused.samples[i].point.y);
-    EXPECT_DOUBLE_EQ(normal.samples[i].racing_offset_m,
-                     reused.samples[i].racing_offset_m);
+    EXPECT_DOUBLE_EQ(normal.samples[i].lateral_offset_m,
+                     reused.samples[i].lateral_offset_m);
   }
 }
 
@@ -204,7 +205,7 @@ TEST(TrajectoryPlanner, EmptyPrecomputedCorridorFallsBackToBuild) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
 
-  const TrajectoryPlannerResult result = planRacingTrajectory(
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route.data(), route.size()},
           &grid,
@@ -237,7 +238,7 @@ TEST(TrajectoryPlanner, MismatchedPrecomputedCorridorFallsBackToBuild) {
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult result = planRacingTrajectory(
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{shifted_route.data(), shifted_route.size()},
           &grid,
@@ -271,7 +272,7 @@ TEST(TrajectoryPlanner, SameEndpointDifferentRouteCorridorFallsBackToBuild) {
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult result = planRacingTrajectory(
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{other_route.data(), other_route.size()},
           &grid,
@@ -307,7 +308,7 @@ TEST(TrajectoryPlanner, GridMismatchPrecomputedCorridorFallsBackToBuild) {
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult result = planRacingTrajectory(
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route.data(), route.size()},
           &changed_grid,
@@ -345,7 +346,7 @@ TEST(TrajectoryPlanner, CorridorConfigMismatchPrecomputedCorridorFallsBackToBuil
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult result = planRacingTrajectory(
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(
       TrajectoryPlannerInput{
           std::span<const Point2>{route.data(), route.size()},
           &grid,
@@ -378,7 +379,7 @@ TEST(TrajectoryPlanner, SnapshotHelperWiresClearanceAndCorridorReuse) {
   ASSERT_TRUE(baseline.valid);
   ASSERT_GE(baseline.corridor_samples.size(), 2U);
 
-  const TrajectoryPlannerResult refined = planRacingTrajectoryFromSnapshots(
+  const TrajectoryPlannerResult refined = planOptimizedTrajectoryFromSnapshots(
       std::span<const Point2>{route.data(), route.size()}, grid, &clearance_field, true,
       std::span<const CorridorSample>{baseline.corridor_samples.data(),
                                       baseline.corridor_samples.size()},
@@ -396,7 +397,7 @@ TEST(TrajectoryPlanner, SnapshotHelperWiresClearanceAndCorridorReuse) {
 TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};
-  TrajectoryPlannerResult refined = planRacingTrajectory(
+  TrajectoryPlannerResult refined = planOptimizedTrajectory(
       TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
                              nullptr, false, std::span<const CorridorSample>{},
                              nullptr},
@@ -457,12 +458,12 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
                              nullptr, false, std::span<const CorridorSample>{},
                              nullptr},
       config);
-  TrajectoryPlannerResult refined = planRacingTrajectory(
+  TrajectoryPlannerResult refined = planOptimizedTrajectory(
       TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
                              nullptr, false, std::span<const CorridorSample>{},
                              nullptr},
       config);
-  refined.stats.racing_line.async_refined = true;
+  refined.stats.trajectory_optimizer.async_refined = true;
   ASSERT_TRUE(baseline.valid);
   ASSERT_TRUE(refined.valid);
   const std::vector<Point2> refined_points = samplePoints(refined.samples);
@@ -476,7 +477,8 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
           .endpoint_tolerance_m = 0.5,
           .max_time_regression_s = 3600.0,
           .max_length_regression_ratio = 10.0,
-          .baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s,
+          .baseline_estimated_time_s =
+              baseline.stats.trajectory_optimizer.estimated_time_s,
           .baseline_length_m = baseline.stats.length_m,
           .refined = &refined,
           .refined_points =
@@ -488,7 +490,7 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
   EXPECT_EQ(decision.reason, TrajectoryRefinementDecisionReason::kAccepted);
   ASSERT_FALSE(refined_points.empty());
   EXPECT_NEAR(distance(refined_points.back(), route.back()), 0.0, 0.5);
-  EXPECT_TRUE(refined.stats.racing_line.async_refined);
+  EXPECT_TRUE(refined.stats.trajectory_optimizer.async_refined);
 }
 
 } // namespace drone_city_nav

@@ -16,7 +16,7 @@ namespace drone_city_nav {
 
 inline constexpr std::size_t kMaxCenterlineBlockedSpanDiagnostics{8U};
 
-struct RacingLineBlockedSpanDiagnostic {
+struct TrajectoryOptimizerBlockedSpanDiagnostic {
   std::size_t begin_segment_index{0U};
   std::size_t end_segment_index{0U};
   double begin_s_m{std::numeric_limits<double>::quiet_NaN()};
@@ -30,23 +30,25 @@ struct RacingLineBlockedSpanDiagnostic {
   std::size_t outside_grid_segments{0U};
 };
 
-struct RacingLineConfig {
+struct TrajectoryOptimizerConfig {
   double optimizer_sample_step_m{0.0};
   std::size_t max_iterations{80U};
   double initial_offset_step_m{2.0};
   double min_offset_step_m{0.1};
   double cooling_ratio{0.5};
-  double weight_length{0.02};
+  double weight_length{0.01};
   double weight_curvature{300.0};
   double weight_curvature_change{130.0};
+  double preferred_min_radius_m{16.0};
+  double weight_radius_shortfall{8.0};
   double weight_offset_change{0.5};
   double weight_offset_second_change{6.5};
   double weight_offset_slope{100.0};
   double max_offset_slope_per_m{0.32};
-  double weight_time{0.0};
+  double weight_traversal_time{0.0};
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
-  double regularization_max_time_regression_s{0.5};
+  double regularization_max_traversal_time_regression_s{0.5};
   std::size_t parallel_workers{0U};
   double window_pre_margin_m{25.0};
   double window_post_margin_m{25.0};
@@ -62,7 +64,7 @@ struct RacingLineConfig {
   std::size_t async_refinement_workers{1U};
 };
 
-struct RacingLineStats {
+struct TrajectoryOptimizerStats {
   std::size_t input_samples{0U};
   std::size_t optimizer_samples{0U};
   std::size_t output_samples{0U};
@@ -191,7 +193,8 @@ struct RacingLineStats {
   bool centerline_blocked_first_outside_grid{false};
   bool centerline_blocked_last_outside_grid{false};
   std::size_t centerline_blocked_span_diagnostic_count{0U};
-  std::array<RacingLineBlockedSpanDiagnostic, kMaxCenterlineBlockedSpanDiagnostics>
+  std::array<TrajectoryOptimizerBlockedSpanDiagnostic,
+             kMaxCenterlineBlockedSpanDiagnostics>
       centerline_blocked_span_diagnostics{};
   std::size_t dp_states{0U};
   std::size_t dp_transitions{0U};
@@ -217,9 +220,10 @@ struct RacingLineStats {
   double final_length_m{0.0};
   double final_length_ratio{std::numeric_limits<double>::quiet_NaN()};
   double cost_length{std::numeric_limits<double>::quiet_NaN()};
-  double cost_time{std::numeric_limits<double>::quiet_NaN()};
+  double cost_traversal_time{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_radius_shortfall{std::numeric_limits<double>::quiet_NaN()};
   double cost_heading_jump{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_offset_second_change{std::numeric_limits<double>::quiet_NaN()};
@@ -255,23 +259,23 @@ struct RacingLineStats {
   double mean_abs_curvature_1pm{0.0};
 };
 
-struct RacingLineWindowMetadata {
+struct TrajectoryOptimizerWindowMetadata {
   std::size_t id{0U};
   double begin_s_m{0.0};
   double end_s_m{0.0};
 };
 
-struct RacingLineResult {
+struct TrajectoryOptimizerResult {
   std::vector<TrajectoryPointSample> samples;
-  std::vector<RacingLineWindowMetadata> active_windows;
-  RacingLineStats stats{};
+  std::vector<TrajectoryOptimizerWindowMetadata> active_windows;
+  TrajectoryOptimizerStats stats{};
   bool valid{false};
 };
 
-[[nodiscard]] RacingLineResult
-optimizeRacingLine(std::span<const CorridorSample> corridor_samples,
+[[nodiscard]] TrajectoryOptimizerResult
+optimizeTrajectory(std::span<const CorridorSample> corridor_samples,
                    const OccupancyGrid2D& prohibited_grid,
-                   const RacingLineConfig& config,
+                   const TrajectoryOptimizerConfig& config,
                    const VelocityFollowerConfig& speed_config);
 
 } // namespace drone_city_nav

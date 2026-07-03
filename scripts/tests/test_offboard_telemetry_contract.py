@@ -114,8 +114,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
     def test_velocity_mode_consumes_planner_final_trajectory(self) -> None:
         self.assertNotIn("rebuildFinalTrajectory(", self.offboard_text)
         self.assertNotIn("planBaselineTrajectory(", self.offboard_text)
-        self.assertNotIn("planRacingTrajectory(", self.offboard_text)
-        self.assertIn("planRacingTrajectory(", self.planner_text)
+        self.assertNotIn("planOptimizedTrajectory(", self.offboard_text)
+        self.assertIn("planOptimizedTrajectory(", self.planner_text)
         self.assertIn("rough A* route will not be published", self.planner_text)
         self.assertIn("applyReceivedFinalTrajectoryPath(", self.offboard_text)
         self.assertIn("trajectoryPointSamplesFromPoints(", self.offboard_text)
@@ -254,7 +254,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("corridor_center_unrecoverable_samples", self.offboard_text)
         self.assertIn("corridor_center_recovery_max_m", self.offboard_text)
         self.assertIn("corridor_lateral_reduction_max_m", self.offboard_text)
-        self.assertIn("racing_line_cost_final", self.offboard_text)
+        self.assertIn("trajectory_optimizer_cost_final", self.offboard_text)
         self.assertIn("turnSmoothingDiagnosticsJsonFields", self.offboard_text)
         self.assertIn(
             "turn_smoothing_smoothed_corners", self.trajectory_diagnostics_io_text
@@ -294,7 +294,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
             "sample_index,s_m,x,y",
             self.trajectory_diagnostics_io_text,
         )
-        self.assertIn("racing_offset_m", self.trajectory_diagnostics_io_text)
+        self.assertIn("lateral_offset_m", self.trajectory_diagnostics_io_text)
         self.assertIn(
             "speed_profiled_limit_mps",
             self.trajectory_diagnostics_io_text,
@@ -306,7 +306,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertNotIn("corridor_debug_samples_", self.offboard_text)
         self.assertNotIn("writeCorridorSamplesCsv", self.offboard_text)
         self.assertNotIn('diagnosticDumpDirectory("corridor_samples")', self.offboard_text)
-        self.assertNotIn("racing_corridor_", self.offboard_text)
+        self.assertNotIn("trajectory_optimizer_corridor_", self.offboard_text)
 
     def test_offboard_node_subscribes_to_px4_attitude(self) -> None:
         self.assertIn("#include <px4_msgs/msg/vehicle_attitude.hpp>", self.offboard_text)
@@ -361,17 +361,17 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertNotIn("max_feedforward_accel_mps2:", text)
                 self.assertNotIn("max_feedforward_jerk_mps3:", text)
                 self.assertNotIn("acceleration_feedforward_scale:", text)
-                self.assertNotIn("racing_trajectory_enabled", text)
+                self.assertNotIn("trajectory_optimizer_trajectory_enabled", text)
                 self.assertNotIn("trajectory_baseline_rounding_", text)
                 self.assertIn("corridor_max_radius_m: 40.0", text)
                 self.assertIn("corridor_sample_step_m: 1.0", text)
                 self.assertIn("corridor_safety_margin_m: 0.5", text)
                 self.assertIn("corridor_center_recovery_max_m: 3.0", text)
                 self.assertNotIn("corridor_rebuild_width_threshold_m", text)
-                self.assertIn("racing_line_max_iterations: 80", text)
-                self.assertIn("racing_line_weight_curvature: 250.0", text)
-                self.assertIn("racing_line_weight_offset_change: 0.5", text)
-                self.assertIn("racing_line_weight_offset_second_change: 5.0", text)
+                self.assertIn("trajectory_optimizer_max_iterations: 80", text)
+                self.assertIn("trajectory_optimizer_weight_curvature: 250.0", text)
+                self.assertIn("trajectory_optimizer_weight_offset_change: 0.5", text)
+                self.assertIn("trajectory_optimizer_weight_offset_second_change: 5.0", text)
                 self.assertIn("turn_smoothing_trigger_heading_delta_deg: 37.0", text)
                 self.assertIn("turn_smoothing_trigger_min_radius_m: 12.0", text)
                 self.assertIn("turn_smoothing_entry_distance_m: 45.0", text)

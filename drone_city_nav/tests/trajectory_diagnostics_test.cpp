@@ -13,25 +13,25 @@ TEST(TrajectoryDiagnostics, ReportsSegmentAndShapeOutliers) {
   samples.push_back(TrajectoryPointSample{
       .s_m = 0.0,
       .point = Point2{0.0, 0.0},
-      .racing_offset_m = 0.0,
+      .lateral_offset_m = 0.0,
   });
   samples.push_back(TrajectoryPointSample{
       .s_m = 0.25,
       .point = Point2{0.25, 0.0},
       .curvature_1pm = 0.0,
-      .racing_offset_m = 0.2,
+      .lateral_offset_m = 0.2,
   });
   samples.push_back(TrajectoryPointSample{
       .s_m = 1.25,
       .point = Point2{1.25, 0.0},
       .curvature_1pm = 0.3,
-      .racing_offset_m = 1.0,
+      .lateral_offset_m = 1.0,
   });
   samples.push_back(TrajectoryPointSample{
       .s_m = 2.25,
       .point = Point2{1.25, 1.0},
       .curvature_1pm = -0.1,
-      .racing_offset_m = 0.1,
+      .lateral_offset_m = 0.1,
   });
 
   const TrajectoryShapeDiagnostics diagnostics =

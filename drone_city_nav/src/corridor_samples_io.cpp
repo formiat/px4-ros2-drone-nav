@@ -16,13 +16,13 @@ void writeCsvNumberOrEmpty(std::ostream& stream, const double value) {
 }
 
 [[nodiscard]] std::optional<std::size_t>
-windowIdForS(const std::span<const RacingLineWindowMetadata> windows,
+windowIdForS(const std::span<const TrajectoryOptimizerWindowMetadata> windows,
              const double s_m) {
   if (!std::isfinite(s_m)) {
     return std::nullopt;
   }
   constexpr double kWindowEpsilonM = 1.0e-6;
-  for (const RacingLineWindowMetadata& window : windows) {
+  for (const TrajectoryOptimizerWindowMetadata& window : windows) {
     if (s_m + kWindowEpsilonM >= window.begin_s_m &&
         s_m <= window.end_s_m + kWindowEpsilonM) {
       return window.id;
@@ -38,7 +38,7 @@ selectedOffsetAtS(const std::span<const TrajectoryPointSample> samples,
     return std::numeric_limits<double>::quiet_NaN();
   }
   if (samples.size() == 1U || s_m <= samples.front().s_m) {
-    return samples.front().racing_offset_m;
+    return samples.front().lateral_offset_m;
   }
   for (std::size_t i = 1U; i < samples.size(); ++i) {
     if (s_m > samples[i].s_m) {
@@ -46,19 +46,19 @@ selectedOffsetAtS(const std::span<const TrajectoryPointSample> samples,
     }
     const TrajectoryPointSample& previous = samples[i - 1U];
     const TrajectoryPointSample& next = samples[i];
-    if (!std::isfinite(previous.racing_offset_m) ||
-        !std::isfinite(next.racing_offset_m)) {
+    if (!std::isfinite(previous.lateral_offset_m) ||
+        !std::isfinite(next.lateral_offset_m)) {
       return std::numeric_limits<double>::quiet_NaN();
     }
     const double span_m = next.s_m - previous.s_m;
     if (!(span_m > 1.0e-6)) {
-      return next.racing_offset_m;
+      return next.lateral_offset_m;
     }
     const double t = std::clamp((s_m - previous.s_m) / span_m, 0.0, 1.0);
-    return previous.racing_offset_m +
-           (next.racing_offset_m - previous.racing_offset_m) * t;
+    return previous.lateral_offset_m +
+           (next.lateral_offset_m - previous.lateral_offset_m) * t;
   }
-  return samples.back().racing_offset_m;
+  return samples.back().lateral_offset_m;
 }
 
 bool writeCorridorSamplesCsv(std::ostream& stream,
@@ -80,7 +80,7 @@ bool writeCorridorSamplesCsv(std::ostream& stream,
   for (std::size_t i = 0U; i < result.corridor_samples.size(); ++i) {
     const CorridorSample& sample = result.corridor_samples[i];
     const std::optional<std::size_t> window_id =
-        windowIdForS(result.racing_windows, sample.s_m);
+        windowIdForS(result.trajectory_optimizer_windows, sample.s_m);
     const bool active_window = window_id.has_value();
     const double selected_offset_m = selectedOffsetAtS(result.samples, sample.s_m);
     stream << i << ",";

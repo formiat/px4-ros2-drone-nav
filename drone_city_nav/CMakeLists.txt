@@ -55,7 +55,7 @@ add_library(
   src/planner_path_publication.cpp
   src/planner_runtime_state.cpp
   src/static_city_map.cpp
-  src/racing_line.cpp
+  src/trajectory_optimizer.cpp
   src/trajectory.cpp
   src/trajectory_diagnostics.cpp
   src/trajectory_diagnostics_io.cpp
@@ -339,10 +339,10 @@ if(BUILD_TESTING)
   target_link_libraries(planner_runtime_state_test drone_city_nav_core)
   enable_project_warnings(planner_runtime_state_test)
 
-  ament_add_gtest(racing_line_test tests/racing_line_test.cpp)
-  target_compile_features(racing_line_test PRIVATE cxx_std_20)
-  target_link_libraries(racing_line_test drone_city_nav_core)
-  enable_project_warnings(racing_line_test)
+  ament_add_gtest(trajectory_optimizer_test tests/trajectory_optimizer_test.cpp)
+  target_compile_features(trajectory_optimizer_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_optimizer_test drone_city_nav_core)
+  enable_project_warnings(trajectory_optimizer_test)
 
   ament_add_gtest(turn_smoothing_test tests/turn_smoothing_test.cpp)
   target_compile_features(turn_smoothing_test PRIVATE cxx_std_20)

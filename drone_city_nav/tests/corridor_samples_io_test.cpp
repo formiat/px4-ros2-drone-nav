@@ -26,9 +26,9 @@ TEST(CorridorSamplesIoTest, WritesExpectedCsvColumnsAndValues) {
   });
   TrajectoryPointSample sample{};
   sample.curvature_1pm = 0.1;
-  sample.racing_offset_m = 0.5;
+  sample.lateral_offset_m = 0.5;
   result.samples.push_back(sample);
-  result.racing_windows.push_back(RacingLineWindowMetadata{
+  result.trajectory_optimizer_windows.push_back(TrajectoryOptimizerWindowMetadata{
       .id = 1U,
       .begin_s_m = 2.0,
       .end_s_m = 4.0,
@@ -52,12 +52,12 @@ TEST(CorridorSamplesIoTest, WritesDistinctWindowIdsFromMetadata) {
   TrajectoryPlannerResult result;
   result.valid = true;
   result.stats.status = TrajectoryPlannerStatus::kOk;
-  result.racing_windows.push_back(RacingLineWindowMetadata{
+  result.trajectory_optimizer_windows.push_back(TrajectoryOptimizerWindowMetadata{
       .id = 7U,
       .begin_s_m = 0.0,
       .end_s_m = 2.0,
   });
-  result.racing_windows.push_back(RacingLineWindowMetadata{
+  result.trajectory_optimizer_windows.push_back(TrajectoryOptimizerWindowMetadata{
       .id = 9U,
       .begin_s_m = 8.0,
       .end_s_m = 12.0,
@@ -76,7 +76,7 @@ TEST(CorridorSamplesIoTest, WritesDistinctWindowIdsFromMetadata) {
     });
     TrajectoryPointSample sample{};
     sample.s_m = s_m;
-    sample.racing_offset_m = s_m * 0.1;
+    sample.lateral_offset_m = s_m * 0.1;
     result.samples.push_back(sample);
   }
 

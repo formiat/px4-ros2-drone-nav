@@ -60,7 +60,7 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   diagnostics.path_stamp_ns = 100U;
   diagnostics.planner_path_id = 9U;
   diagnostics.stats.corridor.mean_width_m = 12.0;
-  diagnostics.stats.racing_line.final_length_m = 34.0;
+  diagnostics.stats.trajectory_optimizer.final_length_m = 34.0;
   diagnostics.stats.turn_smoothing.smoothed_corners = 2U;
   diagnostics.stats.total_duration_ms = 56.0;
 
@@ -73,7 +73,7 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   mergePlannerDiagnosticsIntoTrajectoryStats(stats, diagnostics);
 
   EXPECT_DOUBLE_EQ(stats.corridor.mean_width_m, 12.0);
-  EXPECT_DOUBLE_EQ(stats.racing_line.final_length_m, 34.0);
+  EXPECT_DOUBLE_EQ(stats.trajectory_optimizer.final_length_m, 34.0);
   EXPECT_EQ(stats.turn_smoothing.smoothed_corners, 2U);
   EXPECT_DOUBLE_EQ(stats.total_duration_ms, 56.0);
 }

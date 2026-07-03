@@ -264,7 +264,7 @@ baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_sampl
     sample.point = corridor_sample.center;
     sample.left_bound_m = corridor_sample.left_bound_m;
     sample.right_bound_m = corridor_sample.right_bound_m;
-    sample.racing_offset_m = 0.0;
+    sample.lateral_offset_m = 0.0;
     samples.push_back(sample);
   }
   populateSampleGeometry(samples);
@@ -404,8 +404,8 @@ trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
       return "missing_grid";
     case TrajectoryPlannerStatus::kCorridorInvalid:
       return "corridor_invalid";
-    case TrajectoryPlannerStatus::kRacingLineInvalid:
-      return "racing_line_invalid";
+    case TrajectoryPlannerStatus::kTrajectoryOptimizerInvalid:
+      return "trajectory_optimizer_invalid";
     case TrajectoryPlannerStatus::kInvalidTrajectory:
       return "invalid_trajectory";
   }
@@ -486,36 +486,39 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
 
   const TraversalTimeEstimate traversal_estimate =
       estimateTraversalTime(result.samples, config.speed_profile, true);
-  result.stats.racing_line.input_samples = corridor.samples.size();
-  result.stats.racing_line.optimizer_samples = corridor.samples.size();
-  result.stats.racing_line.output_samples = result.samples.size();
-  result.stats.racing_line.centerline_length_m =
+  result.stats.trajectory_optimizer.input_samples = corridor.samples.size();
+  result.stats.trajectory_optimizer.optimizer_samples = corridor.samples.size();
+  result.stats.trajectory_optimizer.output_samples = result.samples.size();
+  result.stats.trajectory_optimizer.centerline_length_m =
       trajectoryLengthM(result.compact_segments);
-  result.stats.racing_line.final_length_m =
-      result.stats.racing_line.centerline_length_m;
-  result.stats.racing_line.final_length_ratio = 1.0;
-  result.stats.racing_line.estimated_time_s = traversal_estimate.estimated_time_s;
-  result.stats.racing_line.centerline_estimated_time_s =
+  result.stats.trajectory_optimizer.final_length_m =
+      result.stats.trajectory_optimizer.centerline_length_m;
+  result.stats.trajectory_optimizer.final_length_ratio = 1.0;
+  result.stats.trajectory_optimizer.estimated_time_s =
       traversal_estimate.estimated_time_s;
-  result.stats.racing_line.min_speed_limit_mps = traversal_estimate.min_speed_limit_mps;
-  result.stats.racing_line.max_speed_limit_mps = traversal_estimate.max_speed_limit_mps;
-  result.stats.racing_line.curvature_limited_samples =
-      traversal_estimate.curvature_limited_samples;
-  result.stats.racing_line.centerline_min_speed_limit_mps =
+  result.stats.trajectory_optimizer.centerline_estimated_time_s =
+      traversal_estimate.estimated_time_s;
+  result.stats.trajectory_optimizer.min_speed_limit_mps =
       traversal_estimate.min_speed_limit_mps;
-  result.stats.racing_line.centerline_max_speed_limit_mps =
+  result.stats.trajectory_optimizer.max_speed_limit_mps =
       traversal_estimate.max_speed_limit_mps;
-  result.stats.racing_line.centerline_curvature_limited_samples =
+  result.stats.trajectory_optimizer.curvature_limited_samples =
       traversal_estimate.curvature_limited_samples;
-  result.stats.racing_line.time_gain_s = 0.0;
+  result.stats.trajectory_optimizer.centerline_min_speed_limit_mps =
+      traversal_estimate.min_speed_limit_mps;
+  result.stats.trajectory_optimizer.centerline_max_speed_limit_mps =
+      traversal_estimate.max_speed_limit_mps;
+  result.stats.trajectory_optimizer.centerline_curvature_limited_samples =
+      traversal_estimate.curvature_limited_samples;
+  result.stats.trajectory_optimizer.time_gain_s = 0.0;
 
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
 }
 
-TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input,
-                                             const TrajectoryPlannerConfig& config) {
+TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& input,
+                                                const TrajectoryPlannerConfig& config) {
   const auto total_started_at = std::chrono::steady_clock::now();
   TrajectoryPlannerResult result{};
   result.stats.input_points = input.route_points.size();
@@ -552,15 +555,16 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
     return result;
   }
 
-  const auto racing_line_started_at = std::chrono::steady_clock::now();
-  const RacingLineResult racing =
-      optimizeRacingLine(corridor.samples, *input.prohibited_grid, config.racing_line,
-                         config.speed_profile);
-  result.stats.racing_line_duration_ms = elapsedMilliseconds(racing_line_started_at);
-  if (!racing.valid) {
-    result.stats.status = TrajectoryPlannerStatus::kRacingLineInvalid;
+  const auto trajectory_optimizer_started_at = std::chrono::steady_clock::now();
+  const TrajectoryOptimizerResult optimized_trajectory =
+      optimizeTrajectory(corridor.samples, *input.prohibited_grid,
+                         config.trajectory_optimizer, config.speed_profile);
+  result.stats.trajectory_optimizer_duration_ms =
+      elapsedMilliseconds(trajectory_optimizer_started_at);
+  if (!optimized_trajectory.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kTrajectoryOptimizerInvalid;
     result.stats.corridor = corridor.stats;
-    result.stats.racing_line = racing.stats;
+    result.stats.trajectory_optimizer = optimized_trajectory.stats;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
@@ -568,12 +572,12 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   result.stats.input_points = input.route_points.size();
   result.stats.status = TrajectoryPlannerStatus::kOk;
   result.stats.corridor = corridor.stats;
-  result.stats.racing_line = racing.stats;
-  result.racing_windows = racing.active_windows;
+  result.stats.trajectory_optimizer = optimized_trajectory.stats;
+  result.trajectory_optimizer_windows = optimized_trajectory.active_windows;
   const auto turn_smoothing_started_at = std::chrono::steady_clock::now();
-  const TurnSmoothingResult turn_smoothing =
-      smoothTrajectoryTurns(racing.samples, corridor.samples, *input.prohibited_grid,
-                            config.turn_smoothing, config.speed_profile);
+  const TurnSmoothingResult turn_smoothing = smoothTrajectoryTurns(
+      optimized_trajectory.samples, corridor.samples, *input.prohibited_grid,
+      config.turn_smoothing, config.speed_profile);
   result.stats.turn_smoothing_duration_ms =
       elapsedMilliseconds(turn_smoothing_started_at);
   result.stats.turn_smoothing = turn_smoothing.stats;
@@ -606,14 +610,14 @@ TrajectoryPlannerResult planRacingTrajectory(const TrajectoryPlannerInput& input
   return result;
 }
 
-TrajectoryPlannerResult planRacingTrajectoryFromSnapshots(
+TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
     const std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
     const ClearanceField2D* prohibited_clearance_field,
     const bool prohibited_clearance_field_cache_hit,
     const std::span<const CorridorSample> precomputed_corridor_samples,
     const CorridorStats* precomputed_corridor_stats,
     const TrajectoryPlannerConfig& config) {
-  return planRacingTrajectory(
+  return planOptimizedTrajectory(
       TrajectoryPlannerInput{
           route_points,
           &prohibited_grid,
@@ -627,7 +631,7 @@ TrajectoryPlannerResult planRacingTrajectoryFromSnapshots(
 
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,
                                        const TrajectoryPlannerConfig& config) {
-  return planRacingTrajectory(input, config);
+  return planOptimizedTrajectory(input, config);
 }
 
 TrajectoryRefinementDecision
@@ -665,7 +669,8 @@ evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input) {
     };
   }
 
-  const double refined_time = input.refined->stats.racing_line.estimated_time_s;
+  const double refined_time =
+      input.refined->stats.trajectory_optimizer.estimated_time_s;
   if (std::isfinite(input.baseline_estimated_time_s) && std::isfinite(refined_time) &&
       refined_time > input.baseline_estimated_time_s +
                          std::max(0.0, input.max_time_regression_s)) {

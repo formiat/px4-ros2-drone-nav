@@ -425,48 +425,58 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
          << (planner_stats.corridor.clearance_field_reused ? "true" : "false");
   stream << ",\"corridor_clearance_field_cache_hit\":"
          << (planner_stats.corridor.clearance_field_cache_hit ? "true" : "false");
-  stream << ",\"racing_line_iterations\":" << planner_stats.racing_line.iterations;
-  stream << ",\"racing_line_optimizer_samples\":"
-         << planner_stats.racing_line.optimizer_samples;
-  stream << ",\"racing_line_cost_initial\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.initial_cost);
-  stream << ",\"racing_line_cost_final\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.final_cost);
-  stream << ",\"racing_line_max_offset_m\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.max_abs_offset_m);
-  stream << "," << racingLineDiagnosticsJsonFields(planner_stats);
+  stream << ",\"trajectory_optimizer_iterations\":"
+         << planner_stats.trajectory_optimizer.iterations;
+  stream << ",\"trajectory_optimizer_optimizer_samples\":"
+         << planner_stats.trajectory_optimizer.optimizer_samples;
+  stream << ",\"trajectory_optimizer_cost_initial\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                planner_stats.trajectory_optimizer.initial_cost);
+  stream << ",\"trajectory_optimizer_cost_final\":";
+  writeBlackboxJsonNumberOrNull(stream, planner_stats.trajectory_optimizer.final_cost);
+  stream << ",\"trajectory_optimizer_max_offset_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                planner_stats.trajectory_optimizer.max_abs_offset_m);
+  stream << "," << trajectoryOptimizerDiagnosticsJsonFields(planner_stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(planner_stats);
-  stream << ",\"racing_line_time_final_s\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.estimated_time_s);
-  stream << ",\"racing_line_time_centerline_s\":";
+  stream << ",\"trajectory_optimizer_time_final_s\":";
   writeBlackboxJsonNumberOrNull(stream,
-                                planner_stats.racing_line.centerline_estimated_time_s);
-  stream << ",\"racing_line_time_gain_s\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.time_gain_s);
-  stream << ",\"racing_line_time_best_candidate_s\":";
+                                planner_stats.trajectory_optimizer.estimated_time_s);
+  stream << ",\"trajectory_optimizer_time_centerline_s\":";
   writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.racing_line.best_candidate_estimated_time_s);
-  stream << ",\"racing_line_best_candidate_score\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.best_candidate_score);
-  stream << ",\"racing_line_speed_limit_min_mps\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.min_speed_limit_mps);
-  stream << ",\"racing_line_speed_limit_max_mps\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.racing_line.max_speed_limit_mps);
-  stream << ",\"racing_line_curvature_limited_samples\":"
-         << planner_stats.racing_line.curvature_limited_samples;
-  stream << ",\"racing_line_regularization_applied\":";
-  writeBlackboxJsonBool(stream, planner_stats.racing_line.regularization_applied);
-  stream << ",\"racing_line_regularization_iterations\":"
-         << planner_stats.racing_line.regularization_iterations;
-  stream << ",\"racing_line_regularization_time_delta_s\":";
+      stream, planner_stats.trajectory_optimizer.centerline_estimated_time_s);
+  stream << ",\"trajectory_optimizer_time_gain_s\":";
+  writeBlackboxJsonNumberOrNull(stream, planner_stats.trajectory_optimizer.time_gain_s);
+  stream << ",\"trajectory_optimizer_time_best_candidate_s\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, planner_stats.trajectory_optimizer.best_candidate_estimated_time_s);
+  stream << ",\"trajectory_optimizer_best_candidate_score\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, planner_stats.trajectory_optimizer.best_candidate_score);
+  stream << ",\"trajectory_optimizer_speed_limit_min_mps\":";
   writeBlackboxJsonNumberOrNull(stream,
-                                planner_stats.racing_line.regularization_time_delta_s);
-  stream << ",\"racing_line_pre_regularization_curvature_jump_1pm\":";
+                                planner_stats.trajectory_optimizer.min_speed_limit_mps);
+  stream << ",\"trajectory_optimizer_speed_limit_max_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                planner_stats.trajectory_optimizer.max_speed_limit_mps);
+  stream << ",\"trajectory_optimizer_curvature_limited_samples\":"
+         << planner_stats.trajectory_optimizer.curvature_limited_samples;
+  stream << ",\"trajectory_optimizer_regularization_applied\":";
+  writeBlackboxJsonBool(stream,
+                        planner_stats.trajectory_optimizer.regularization_applied);
+  stream << ",\"trajectory_optimizer_regularization_iterations\":"
+         << planner_stats.trajectory_optimizer.regularization_iterations;
+  stream << ",\"trajectory_optimizer_regularization_time_delta_s\":";
   writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.racing_line.pre_regularization_max_curvature_jump_1pm);
-  stream << ",\"racing_line_post_regularization_curvature_jump_1pm\":";
+      stream, planner_stats.trajectory_optimizer.regularization_time_delta_s);
+  stream << ",\"trajectory_optimizer_pre_regularization_curvature_jump_1pm\":";
   writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.racing_line.post_regularization_max_curvature_jump_1pm);
+      stream,
+      planner_stats.trajectory_optimizer.pre_regularization_max_curvature_jump_1pm);
+  stream << ",\"trajectory_optimizer_post_regularization_curvature_jump_1pm\":";
+  writeBlackboxJsonNumberOrNull(
+      stream,
+      planner_stats.trajectory_optimizer.post_regularization_max_curvature_jump_1pm);
   stream << ",\"curvature_min_1pm\":";
   writeBlackboxJsonNumberOrNull(stream, planner_stats.curvature_min_1pm);
   stream << ",\"curvature_max_1pm\":";

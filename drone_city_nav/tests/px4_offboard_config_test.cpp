@@ -6,7 +6,7 @@
 
 namespace drone_city_nav {
 
-TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
+TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameters) {
   const std::string config_path =
       std::string{DRONE_CITY_NAV_SOURCE_DIR} + "/config/urban_mvp.yaml";
   std::ifstream stream{config_path};
@@ -16,29 +16,43 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedRacingLineParameters) {
   buffer << stream.rdbuf();
   const std::string yaml = buffer.str();
 
-  EXPECT_NE(yaml.find("racing_line_weight_time:"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_weight_length: 0.02"), std::string::npos);
-  EXPECT_EQ(yaml.find("racing_line_weight_edge_margin:"), std::string::npos);
-  EXPECT_EQ(yaml.find("racing_line_desired_edge_margin_m:"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_regularization_iterations:"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_regularization_max_time_regression_s:"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_weight_traversal_time:"),
             std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_pre_margin_m: 25.0"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_post_margin_m: 25.0"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_heading_threshold_deg: 10.0"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_weight_length: 0.01"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_preferred_min_radius_m: 16.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_width_change_threshold_m: 2.0"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_weight_radius_shortfall: 8.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_min_heading_span_deg: 10.0"),
+  EXPECT_EQ(yaml.find("trajectory_optimizer_weight_edge_margin:"), std::string::npos);
+  EXPECT_EQ(yaml.find("trajectory_optimizer_desired_edge_margin_m:"),
             std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_min_curvature_1pm: 0.01"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_window_min_width_asymmetry_m: 1.0"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_regularization_iterations:"),
             std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_dp_offset_step_m: 1.5"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_dp_coarse_offset_step_m: 2.0"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_dp_fine_offset_step_m: 0.75"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_dp_fine_radius_m: 1.5"), std::string::npos);
-  EXPECT_NE(yaml.find("racing_line_async_refinement_workers: 1"), std::string::npos);
+  EXPECT_NE(
+      yaml.find("trajectory_optimizer_regularization_max_traversal_time_regression_s:"),
+      std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_pre_margin_m: 25.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_post_margin_m: 25.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_heading_threshold_deg: 10.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_width_change_threshold_m: 2.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_min_heading_span_deg: 10.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_min_curvature_1pm: 0.01"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_window_min_width_asymmetry_m: 1.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_dp_offset_step_m: 1.5"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_dp_coarse_offset_step_m: 2.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_dp_fine_offset_step_m: 0.75"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_dp_fine_radius_m: 1.5"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_async_refinement_workers: 1"),
+            std::string::npos);
   EXPECT_NE(yaml.find("turn_smoothing_trigger_heading_delta_deg: 37.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("turn_smoothing_trigger_min_radius_m: 16.0"), std::string::npos);

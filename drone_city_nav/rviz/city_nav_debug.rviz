@@ -59,9 +59,9 @@ Visualization Manager:
       Namespaces:
         drone_heading: true
         drone_position: true
-        racing_corridor_fill: true
-        racing_corridor_left: true
-        racing_corridor_right: true
+        trajectory_optimizer_corridor_fill: true
+        trajectory_optimizer_corridor_left: true
+        trajectory_optimizer_corridor_right: true
       Topic:
         Value: /drone_city_nav/offboard_debug_markers
     - Alpha: 1

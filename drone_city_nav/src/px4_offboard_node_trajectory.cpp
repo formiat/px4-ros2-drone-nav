@@ -329,15 +329,15 @@ void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) 
   RCLCPP_INFO(get_logger(),
               "Applied planner trajectory diagnostics: planner_path_id=%" PRIu64
               " path_stamp_ns=%" PRIu64 " corridor_width[min=%.2f mean=%.2f max=%.2f] "
-              "racing[length=%.2f time=%.2f gain=%.2f max_offset=%.2f]",
+              "optimizer[length=%.2f time=%.2f gain=%.2f max_offset=%.2f]",
               diagnostics->planner_path_id, diagnostics->path_stamp_ns,
               diagnostics->stats.corridor.min_width_m,
               diagnostics->stats.corridor.mean_width_m,
               diagnostics->stats.corridor.max_width_m,
-              diagnostics->stats.racing_line.final_length_m,
-              diagnostics->stats.racing_line.estimated_time_s,
-              diagnostics->stats.racing_line.time_gain_s,
-              diagnostics->stats.racing_line.max_abs_offset_m);
+              diagnostics->stats.trajectory_optimizer.final_length_m,
+              diagnostics->stats.trajectory_optimizer.estimated_time_s,
+              diagnostics->stats.trajectory_optimizer.time_gain_s,
+              diagnostics->stats.trajectory_optimizer.max_abs_offset_m);
 }
 
 void Px4OffboardNode::openFlightBlackbox() {

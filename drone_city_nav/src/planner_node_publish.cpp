@@ -28,7 +28,8 @@ namespace {
   return pathIsTraversable(grid, points);
 }
 
-[[nodiscard]] std::string centerlineBlockedSpansSummary(const RacingLineStats& stats) {
+[[nodiscard]] std::string
+centerlineBlockedSpansSummary(const TrajectoryOptimizerStats& stats) {
   if (stats.centerline_blocked_span_diagnostic_count == 0U) {
     return "none";
   }
@@ -40,7 +41,7 @@ namespace {
     if (i > 0U) {
       stream << "; ";
     }
-    const RacingLineBlockedSpanDiagnostic& span =
+    const TrajectoryOptimizerBlockedSpanDiagnostic& span =
         stats.centerline_blocked_span_diagnostics.at(i);
     stream << "#" << i << " seg=[" << span.begin_segment_index << ".."
            << span.end_segment_index << "] s=[" << span.begin_s_m << ".."
@@ -223,12 +224,12 @@ bool PlannerNode::publishTrajectoryResult(
         "%s trajectory build failed; rough A* route will not be published as "
         "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
         "trajectory_quality=%.*s "
-        "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+        "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f] "
         "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
         "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
         " width_min=%.2f width_mean=%.2f] "
-        "racing_line[iterations=%zu evals=%zu collision_rejections=%zu]",
+        "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu]",
         source_label,
         static_cast<int>(
             trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
@@ -238,7 +239,7 @@ bool PlannerNode::publishTrajectoryResult(
         trajectoryQualityName(trajectory_result.stats.quality).data(),
         trajectory_result.stats.total_duration_ms,
         trajectory_result.stats.corridor_duration_ms,
-        trajectory_result.stats.racing_line_duration_ms,
+        trajectory_result.stats.trajectory_optimizer_duration_ms,
         trajectory_result.stats.turn_smoothing_duration_ms,
         trajectory_result.stats.speed_profile_duration_ms,
         trajectory_result.stats.corridor.samples,
@@ -249,9 +250,9 @@ bool PlannerNode::publishTrajectoryResult(
         trajectory_result.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
         trajectory_result.stats.corridor.min_width_m,
         trajectory_result.stats.corridor.mean_width_m,
-        trajectory_result.stats.racing_line.iterations,
-        trajectory_result.stats.racing_line.candidate_evaluations,
-        trajectory_result.stats.racing_line.collision_rejections);
+        trajectory_result.stats.trajectory_optimizer.iterations,
+        trajectory_result.stats.trajectory_optimizer.candidate_evaluations,
+        trajectory_result.stats.trajectory_optimizer.collision_rejections);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_build_failed")) {
       return false;
@@ -270,7 +271,7 @@ bool PlannerNode::publishTrajectoryResult(
         "holding instead of publishing rough A* route: route_points=%zu "
         "trajectory_points=%zu duration_ms=%.1f status=%.*s "
         "trajectory_quality=%.*s "
-        "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+        "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
         "turn_smoothing=%.1f speed_profile=%.1f]",
         source_label, route_points.size(), trajectory_points.size(), duration_ms,
         static_cast<int>(
@@ -280,7 +281,7 @@ bool PlannerNode::publishTrajectoryResult(
         trajectoryQualityName(trajectory_result.stats.quality).data(),
         trajectory_result.stats.total_duration_ms,
         trajectory_result.stats.corridor_duration_ms,
-        trajectory_result.stats.racing_line_duration_ms,
+        trajectory_result.stats.trajectory_optimizer_duration_ms,
         trajectory_result.stats.turn_smoothing_duration_ms,
         trajectory_result.stats.speed_profile_duration_ms);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
@@ -314,14 +315,14 @@ bool PlannerNode::publishTrajectoryResult(
   const bool top_speed_constraint_isolated =
       top_speed_constraint != nullptr && top_speed_constraint->isolated_curvature_spike;
   const std::string centerline_blocked_spans =
-      centerlineBlockedSpansSummary(trajectory_result.stats.racing_line);
+      centerlineBlockedSpansSummary(trajectory_result.stats.trajectory_optimizer);
 
   RCLCPP_INFO(
       get_logger(),
       "%s final trajectory: route_points=%zu trajectory_points=%zu "
       "duration_ms=%.1f status=%.*s "
       "trajectory_quality=%.*s "
-      "timing[total=%.1f corridor=%.1f racing_line=%.1f "
+      "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
       "turn_smoothing=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
       "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
@@ -330,7 +331,7 @@ bool PlannerNode::publishTrajectoryResult(
       "lateral_limited=%zu workers=%zu sample_build=%.1fms "
       "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
       "clearance_reused=%s clearance_cache_hit=%s config_fp=%" PRIu64 "] "
-      "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
+      "trajectory_optimizer[iterations=%zu evals=%zu skipped_noop=%zu "
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
       "sample_build=%.1fms cost=%.1fms shape=%.1fms speed=%.1fms "
       "speed_calls=%zu speed_samples(total=%zu max=%zu) "
@@ -394,7 +395,7 @@ bool PlannerNode::publishTrajectoryResult(
       "metrics=%.1fms shape=%.1fms speed=%.1fms) "
       "smoothed=%zu "
       "rejected(prohibited=%zu corridor=%zu length=%zu not_improved=%zu "
-      "curvature=%zu radius=%zu speed=%zu time=%zu) "
+      "curvature=%zu radius=%zu speed=%zu) "
       "heading_before=%.1fdeg heading_after=%.1fdeg "
       "curvature_jump_before=%.3f curvature_jump_after=%.3f "
       "min_inner_margin=%.2f max_outer_shift=%.2f "
@@ -414,7 +415,7 @@ bool PlannerNode::publishTrajectoryResult(
       trajectoryQualityName(trajectory_result.stats.quality).data(),
       trajectory_result.stats.total_duration_ms,
       trajectory_result.stats.corridor_duration_ms,
-      trajectory_result.stats.racing_line_duration_ms,
+      trajectory_result.stats.trajectory_optimizer_duration_ms,
       trajectory_result.stats.turn_smoothing_duration_ms,
       trajectory_result.stats.speed_profile_duration_ms,
       trajectory_result.stats.length_m, trajectory_result.stats.samples,
@@ -436,177 +437,223 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.corridor.clearance_field_reused ? "true" : "false",
       trajectory_result.stats.corridor.clearance_field_cache_hit ? "true" : "false",
       trajectory_result.stats.corridor.config_fingerprint,
-      trajectory_result.stats.racing_line.iterations,
-      trajectory_result.stats.racing_line.candidate_evaluations,
-      trajectory_result.stats.racing_line.skipped_noop_candidates,
-      trajectory_result.stats.racing_line.candidate_path_evaluation_duration_ms,
-      trajectory_result.stats.racing_line.candidate_score_duration_ms,
-      trajectory_result.stats.racing_line.candidate_point_build_duration_ms,
-      trajectory_result.stats.racing_line.candidate_sample_build_duration_ms,
-      trajectory_result.stats.racing_line.candidate_cost_breakdown_duration_ms,
-      trajectory_result.stats.racing_line.candidate_shape_diagnostics_duration_ms,
-      trajectory_result.stats.racing_line.candidate_speed_profile_duration_ms,
-      trajectory_result.stats.racing_line.candidate_speed_profile_calls,
-      trajectory_result.stats.racing_line.candidate_speed_profile_samples_total,
-      trajectory_result.stats.racing_line.candidate_speed_profile_samples_max,
-      trajectory_result.stats.racing_line.regularization_duration_ms,
-      trajectory_result.stats.racing_line.scratch_reused_candidates,
-      trajectory_result.stats.racing_line.parallel_candidate_evaluation_used ? "true"
-                                                                             : "false",
-      trajectory_result.stats.racing_line.parallel_workers_used,
-      trajectory_result.stats.racing_line.candidate_chunks,
-      trajectory_result.stats.racing_line.candidate_parallel_batches,
-      trajectory_result.stats.racing_line.candidate_threads_launched,
-      trajectory_result.stats.racing_line.worker_scratch_reuses,
-      trajectory_result.stats.racing_line.candidate_batch_wall_duration_ms,
-      trajectory_result.stats.racing_line.candidate_batch_wait_duration_ms,
-      trajectory_result.stats.racing_line.candidate_worker_buffer_prepare_duration_ms,
-      trajectory_result.stats.racing_line.candidate_thread_launch_duration_ms,
-      trajectory_result.stats.racing_line.candidate_thread_join_wait_duration_ms,
-      trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
-      trajectory_result.stats.racing_line.local_candidate_evaluations,
-      trajectory_result.stats.racing_line.local_candidate_full_score_fallbacks,
-      trajectory_result.stats.racing_line.candidate_offset_changed_samples_total,
-      trajectory_result.stats.racing_line.candidate_offset_changed_samples_max,
-      trajectory_result.stats.racing_line.candidate_offset_changed_span_samples_total,
-      trajectory_result.stats.racing_line.candidate_offset_changed_span_samples_max,
-      trajectory_result.stats.racing_line.candidate_local_speed_window_samples_total,
-      trajectory_result.stats.racing_line.candidate_local_speed_window_samples_max,
-      trajectory_result.stats.racing_line.local_candidate_full_score_required,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer.iterations,
+      trajectory_result.stats.trajectory_optimizer.candidate_evaluations,
+      trajectory_result.stats.trajectory_optimizer.skipped_noop_candidates,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_path_evaluation_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_score_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_point_build_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_sample_build_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_cost_breakdown_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_shape_diagnostics_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_calls,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_speed_profile_samples_total,
+      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_samples_max,
+      trajectory_result.stats.trajectory_optimizer.regularization_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.scratch_reused_candidates,
+      trajectory_result.stats.trajectory_optimizer.parallel_candidate_evaluation_used
+          ? "true"
+          : "false",
+      trajectory_result.stats.trajectory_optimizer.parallel_workers_used,
+      trajectory_result.stats.trajectory_optimizer.candidate_chunks,
+      trajectory_result.stats.trajectory_optimizer.candidate_parallel_batches,
+      trajectory_result.stats.trajectory_optimizer.candidate_threads_launched,
+      trajectory_result.stats.trajectory_optimizer.worker_scratch_reuses,
+      trajectory_result.stats.trajectory_optimizer.candidate_batch_wall_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_batch_wait_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_worker_buffer_prepare_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.candidate_thread_launch_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_thread_join_wait_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_snapshot_allocations_avoided,
+      trajectory_result.stats.trajectory_optimizer.local_candidate_evaluations,
+      trajectory_result.stats.trajectory_optimizer.local_candidate_full_score_fallbacks,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_offset_changed_samples_total,
+      trajectory_result.stats.trajectory_optimizer.candidate_offset_changed_samples_max,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_offset_changed_span_samples_total,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_offset_changed_span_samples_max,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_local_speed_window_samples_total,
+      trajectory_result.stats.trajectory_optimizer
+          .candidate_local_speed_window_samples_max,
+      trajectory_result.stats.trajectory_optimizer.local_candidate_full_score_required,
+      trajectory_result.stats.trajectory_optimizer
           .local_candidate_full_score_required_invalid_input,
-      trajectory_result.stats.racing_line.local_candidate_full_score_required_boundary,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
+          .local_candidate_full_score_required_boundary,
+      trajectory_result.stats.trajectory_optimizer
           .local_candidate_full_score_required_unsafe_base,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
           .local_candidate_full_score_required_window_invalid,
-      trajectory_result.stats.racing_line.local_candidate_acceptance_full_scores,
-      trajectory_result.stats.racing_line.local_score_false_positives,
-      trajectory_result.stats.racing_line.local_candidate_point_build_duration_ms,
-      trajectory_result.stats.racing_line.local_candidate_path_evaluation_duration_ms,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
+          .local_candidate_acceptance_full_scores,
+      trajectory_result.stats.trajectory_optimizer.local_score_false_positives,
+      trajectory_result.stats.trajectory_optimizer
+          .local_candidate_point_build_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
+          .local_candidate_path_evaluation_duration_ms,
+      trajectory_result.stats.trajectory_optimizer
           .local_candidate_traversal_estimate_duration_ms,
-      trajectory_result.stats.racing_line.local_candidate_score_duration_ms,
-      trajectory_result.stats.racing_line.full_candidate_score_duration_ms,
-      trajectory_result.stats.racing_line.shadow_lower_bound_evaluations,
-      trajectory_result.stats.racing_line.shadow_lower_bound_unavailable,
-      trajectory_result.stats.racing_line.shadow_lower_bound_prunable,
-      trajectory_result.stats.racing_line.shadow_lower_bound_false_prunes,
-      trajectory_result.stats.racing_line.shadow_lower_bound_winner_prunes,
-      trajectory_result.stats.racing_line.shadow_lower_bound_validation_full_scores,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer.local_candidate_score_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.full_candidate_score_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_evaluations,
+      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_unavailable,
+      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_prunable,
+      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_false_prunes,
+      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_winner_prunes,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_lower_bound_validation_full_scores,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_lower_bound_validation_full_score_duration_ms,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
           .shadow_lower_bound_prunable_full_score_duration_ms,
-      trajectory_result.stats.racing_line.shadow_lower_bound_max_overestimate_score,
-      trajectory_result.stats.racing_line.shadow_lower_bound_max_underestimate_score,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_lower_bound_max_overestimate_score,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_lower_bound_max_underestimate_score,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_lower_bound_max_false_prune_improvement_score,
-      trajectory_result.stats.racing_line.shadow_local_speed_evaluations,
-      trajectory_result.stats.racing_line.shadow_local_speed_unavailable,
-      trajectory_result.stats.racing_line.shadow_local_speed_prunable,
-      trajectory_result.stats.racing_line.shadow_local_speed_false_prunes,
-      trajectory_result.stats.racing_line.shadow_local_speed_winner_mismatches,
-      trajectory_result.stats.racing_line.shadow_local_speed_abs_time_error_sum_s,
-      trajectory_result.stats.racing_line.shadow_local_speed_abs_time_error_p95_s,
-      trajectory_result.stats.racing_line.shadow_local_speed_max_time_overestimate_s,
-      trajectory_result.stats.racing_line.shadow_local_speed_max_time_underestimate_s,
-      trajectory_result.stats.racing_line.shadow_local_speed_abs_score_error_sum,
-      trajectory_result.stats.racing_line.shadow_local_speed_abs_score_error_p95,
-      trajectory_result.stats.racing_line.shadow_local_speed_max_score_overestimate,
-      trajectory_result.stats.racing_line.shadow_local_speed_max_score_underestimate,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_evaluations,
+      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_unavailable,
+      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_prunable,
+      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_false_prunes,
+      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_winner_mismatches,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_abs_time_error_sum_s,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_abs_time_error_p95_s,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_max_time_overestimate_s,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_max_time_underestimate_s,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_abs_score_error_sum,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_abs_score_error_p95,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_max_score_overestimate,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_local_speed_max_score_underestimate,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_local_speed_max_false_prune_improvement_score,
-      trajectory_result.stats.racing_line.shadow_segment_score_evaluations,
-      trajectory_result.stats.racing_line.shadow_segment_score_unavailable,
-      trajectory_result.stats.racing_line.shadow_segment_score_prunable,
-      trajectory_result.stats.racing_line.shadow_segment_score_false_prunes,
-      trajectory_result.stats.racing_line.shadow_segment_score_winner_mismatches,
-      trajectory_result.stats.racing_line.shadow_segment_score_window_samples_total,
-      trajectory_result.stats.racing_line.shadow_segment_score_window_samples_max,
-      trajectory_result.stats.racing_line.shadow_segment_score_abs_error_sum,
-      trajectory_result.stats.racing_line.shadow_segment_score_abs_error_p95,
-      trajectory_result.stats.racing_line.shadow_segment_score_max_overestimate,
-      trajectory_result.stats.racing_line.shadow_segment_score_max_underestimate,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_evaluations,
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_unavailable,
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_prunable,
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_false_prunes,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_segment_score_winner_mismatches,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_segment_score_window_samples_total,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_segment_score_window_samples_max,
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_abs_error_sum,
+      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_abs_error_p95,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_segment_score_max_overestimate,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_segment_score_max_underestimate,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_segment_score_max_false_prune_improvement_score,
-      trajectory_result.stats.racing_line.shadow_boundary_clamped_local_candidates,
-      trajectory_result.stats.racing_line.shadow_boundary_clamped_window_samples_total,
-      trajectory_result.stats.racing_line.shadow_boundary_clamped_window_samples_max,
-      trajectory_result.stats.racing_line.shadow_speed_profile_cache_queries,
-      trajectory_result.stats.racing_line.shadow_speed_profile_cache_hits,
-      trajectory_result.stats.racing_line.shadow_speed_profile_cache_unique,
-      trajectory_result.stats.racing_line.initial_cost,
-      trajectory_result.stats.racing_line.final_cost,
-      trajectory_result.stats.racing_line.centerline_length_m,
-      trajectory_result.stats.racing_line.final_length_m,
-      trajectory_result.stats.racing_line.final_length_ratio,
-      trajectory_result.stats.racing_line.max_abs_offset_m,
-      trajectory_result.stats.racing_line.min_edge_margin_m,
-      trajectory_result.stats.racing_line.cost_offset_slope,
-      trajectory_result.stats.racing_line.estimated_time_s,
-      trajectory_result.stats.racing_line.centerline_estimated_time_s,
-      trajectory_result.stats.racing_line.time_gain_s,
-      trajectory_result.stats.racing_line.min_speed_limit_mps,
-      trajectory_result.stats.racing_line.max_speed_limit_mps,
-      trajectory_result.stats.racing_line.curvature_limited_samples,
-      trajectory_result.stats.racing_line.window_count,
-      trajectory_result.stats.racing_line.active_window_count,
-      trajectory_result.stats.racing_line.active_window_samples,
-      trajectory_result.stats.racing_line.active_window_centerline_blocked,
-      trajectory_result.stats.racing_line.active_window_heading_change_samples,
-      trajectory_result.stats.racing_line.active_window_heading_span_samples,
-      trajectory_result.stats.racing_line.active_window_curvature_samples,
-      trajectory_result.stats.racing_line.active_window_width_change_samples,
-      trajectory_result.stats.racing_line.active_window_width_asymmetry_samples,
-      trajectory_result.stats.racing_line.shadow_active_window_no_width_asymmetry_count,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_boundary_clamped_local_candidates,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_boundary_clamped_window_samples_total,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_boundary_clamped_window_samples_max,
+      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_queries,
+      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_hits,
+      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_unique,
+      trajectory_result.stats.trajectory_optimizer.initial_cost,
+      trajectory_result.stats.trajectory_optimizer.final_cost,
+      trajectory_result.stats.trajectory_optimizer.centerline_length_m,
+      trajectory_result.stats.trajectory_optimizer.final_length_m,
+      trajectory_result.stats.trajectory_optimizer.final_length_ratio,
+      trajectory_result.stats.trajectory_optimizer.max_abs_offset_m,
+      trajectory_result.stats.trajectory_optimizer.min_edge_margin_m,
+      trajectory_result.stats.trajectory_optimizer.cost_offset_slope,
+      trajectory_result.stats.trajectory_optimizer.estimated_time_s,
+      trajectory_result.stats.trajectory_optimizer.centerline_estimated_time_s,
+      trajectory_result.stats.trajectory_optimizer.time_gain_s,
+      trajectory_result.stats.trajectory_optimizer.min_speed_limit_mps,
+      trajectory_result.stats.trajectory_optimizer.max_speed_limit_mps,
+      trajectory_result.stats.trajectory_optimizer.curvature_limited_samples,
+      trajectory_result.stats.trajectory_optimizer.window_count,
+      trajectory_result.stats.trajectory_optimizer.active_window_count,
+      trajectory_result.stats.trajectory_optimizer.active_window_samples,
+      trajectory_result.stats.trajectory_optimizer.active_window_centerline_blocked,
+      trajectory_result.stats.trajectory_optimizer.active_window_heading_change_samples,
+      trajectory_result.stats.trajectory_optimizer.active_window_heading_span_samples,
+      trajectory_result.stats.trajectory_optimizer.active_window_curvature_samples,
+      trajectory_result.stats.trajectory_optimizer.active_window_width_change_samples,
+      trajectory_result.stats.trajectory_optimizer
+          .active_window_width_asymmetry_samples,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_active_window_no_width_asymmetry_count,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_active_window_no_width_asymmetry_samples,
-      trajectory_result.stats.racing_line.shadow_active_window_no_width_triggers_count,
-      trajectory_result.stats.racing_line
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_active_window_no_width_triggers_count,
+      trajectory_result.stats.trajectory_optimizer
           .shadow_active_window_no_width_triggers_samples,
-      trajectory_result.stats.racing_line.shadow_active_window_no_heading_span_count,
-      trajectory_result.stats.racing_line.shadow_active_window_no_heading_span_samples,
-      trajectory_result.stats.racing_line.centerline_blocked_windows,
-      trajectory_result.stats.racing_line.centerline_blocked_window_merged_count,
-      trajectory_result.stats.racing_line.centerline_blocked_window_samples,
-      trajectory_result.stats.racing_line.centerline_blocked_prohibited_cells,
-      trajectory_result.stats.racing_line.centerline_blocked_outside_grid_segments,
-      trajectory_result.stats.racing_line.centerline_blocked_segment_count,
-      trajectory_result.stats.racing_line.centerline_blocked_span_count,
-      trajectory_result.stats.racing_line.centerline_blocked_first_segment_index,
-      trajectory_result.stats.racing_line.centerline_blocked_last_segment_index,
-      trajectory_result.stats.racing_line.centerline_blocked_first_s_m,
-      trajectory_result.stats.racing_line.centerline_blocked_last_s_m,
-      trajectory_result.stats.racing_line.centerline_blocked_span_length_m,
-      trajectory_result.stats.racing_line.centerline_blocked_first_x_m,
-      trajectory_result.stats.racing_line.centerline_blocked_first_y_m,
-      trajectory_result.stats.racing_line.centerline_blocked_last_x_m,
-      trajectory_result.stats.racing_line.centerline_blocked_last_y_m,
-      trajectory_result.stats.racing_line.centerline_blocked_first_outside_grid
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_active_window_no_heading_span_count,
+      trajectory_result.stats.trajectory_optimizer
+          .shadow_active_window_no_heading_span_samples,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_windows,
+      trajectory_result.stats.trajectory_optimizer
+          .centerline_blocked_window_merged_count,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_window_samples,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_prohibited_cells,
+      trajectory_result.stats.trajectory_optimizer
+          .centerline_blocked_outside_grid_segments,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_segment_count,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_span_count,
+      trajectory_result.stats.trajectory_optimizer
+          .centerline_blocked_first_segment_index,
+      trajectory_result.stats.trajectory_optimizer
+          .centerline_blocked_last_segment_index,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_s_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_s_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_span_length_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_x_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_y_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_x_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_y_m,
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_outside_grid
           ? "true"
           : "false",
-      trajectory_result.stats.racing_line.centerline_blocked_last_outside_grid
+      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_outside_grid
           ? "true"
           : "false",
-      centerline_blocked_spans.c_str(), trajectory_result.stats.racing_line.dp_states,
-      trajectory_result.stats.racing_line.dp_transitions,
-      trajectory_result.stats.racing_line.dp_segment_cache_hits,
-      trajectory_result.stats.racing_line.dp_segment_cache_misses,
-      trajectory_result.stats.racing_line.candidate_segment_cache_hits,
-      trajectory_result.stats.racing_line.candidate_segment_cache_misses,
-      trajectory_result.stats.racing_line.full_path_segment_cache_hits,
-      trajectory_result.stats.racing_line.full_path_segment_cache_misses,
-      trajectory_result.stats.racing_line.dp_coarse_states,
-      trajectory_result.stats.racing_line.dp_coarse_transitions,
-      trajectory_result.stats.racing_line.dp_fine_states,
-      trajectory_result.stats.racing_line.dp_fine_transitions,
-      trajectory_result.stats.racing_line.dp_coarse_to_fine_used ? "true" : "false",
-      trajectory_result.stats.racing_line.window_detection_duration_ms,
-      trajectory_result.stats.racing_line.window_eval_duration_ms,
-      trajectory_result.stats.racing_line.dp_duration_ms,
-      trajectory_result.stats.racing_line.full_final_score_duration_ms,
-      trajectory_result.stats.racing_line.async_refined ? "true" : "false",
+      centerline_blocked_spans.c_str(),
+      trajectory_result.stats.trajectory_optimizer.dp_states,
+      trajectory_result.stats.trajectory_optimizer.dp_transitions,
+      trajectory_result.stats.trajectory_optimizer.dp_segment_cache_hits,
+      trajectory_result.stats.trajectory_optimizer.dp_segment_cache_misses,
+      trajectory_result.stats.trajectory_optimizer.candidate_segment_cache_hits,
+      trajectory_result.stats.trajectory_optimizer.candidate_segment_cache_misses,
+      trajectory_result.stats.trajectory_optimizer.full_path_segment_cache_hits,
+      trajectory_result.stats.trajectory_optimizer.full_path_segment_cache_misses,
+      trajectory_result.stats.trajectory_optimizer.dp_coarse_states,
+      trajectory_result.stats.trajectory_optimizer.dp_coarse_transitions,
+      trajectory_result.stats.trajectory_optimizer.dp_fine_states,
+      trajectory_result.stats.trajectory_optimizer.dp_fine_transitions,
+      trajectory_result.stats.trajectory_optimizer.dp_coarse_to_fine_used ? "true"
+                                                                          : "false",
+      trajectory_result.stats.trajectory_optimizer.window_detection_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.window_eval_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.dp_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.full_final_score_duration_ms,
+      trajectory_result.stats.trajectory_optimizer.async_refined ? "true" : "false",
       trajectory_result.stats.turn_smoothing.detected_corners,
       trajectory_result.stats.turn_smoothing.attempted_corners,
       trajectory_result.stats.turn_smoothing.candidate_attempts,
@@ -631,7 +678,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.rejected_curvature_regression,
       trajectory_result.stats.turn_smoothing.rejected_radius_regression,
       trajectory_result.stats.turn_smoothing.rejected_speed_regression,
-      trajectory_result.stats.turn_smoothing.rejected_time_regression,
       radiansToDegrees(
           trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
       radiansToDegrees(
@@ -727,7 +773,7 @@ void PlannerNode::startAsyncTrajectoryRefinement(
       .baseline_path_id = baseline_path_id,
       .route_start = route_points.front(),
       .goal = route_points.back(),
-      .baseline_estimated_time_s = baseline.stats.racing_line.estimated_time_s,
+      .baseline_estimated_time_s = baseline.stats.trajectory_optimizer.estimated_time_s,
       .baseline_length_m = baseline.stats.length_m,
       .route_points = std::vector<Point2>{route_points.begin(), route_points.end()},
       .source_label = source_label,
@@ -778,14 +824,14 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
             clearance_field.has_value() ? &*clearance_field : nullptr;
         const CorridorStats* corridor_stats_ptr =
             corridor_samples.size() >= 2U ? &corridor_stats : nullptr;
-        TrajectoryPlannerResult refined = planRacingTrajectoryFromSnapshots(
+        TrajectoryPlannerResult refined = planOptimizedTrajectoryFromSnapshots(
             std::span<const Point2>{route.data(), route.size()}, grid,
             clearance_field_ptr, clearance_cache_hit,
             std::span<const CorridorSample>{corridor_samples.data(),
                                             corridor_samples.size()},
             corridor_stats_ptr, config);
         refined.stats.quality = TrajectoryQuality::kRefined;
-        refined.stats.racing_line.async_refined = true;
+        refined.stats.trajectory_optimizer.async_refined = true;
         return refined;
       });
 
@@ -891,8 +937,8 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
           .expected_start = pending.route_start,
           .expected_goal = pending.goal,
           .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
-          .max_time_regression_s = trajectory_planner_config_.racing_line
-                                       .regularization_max_time_regression_s,
+          .max_time_regression_s = trajectory_planner_config_.trajectory_optimizer
+                                       .regularization_max_traversal_time_regression_s,
           .max_length_regression_ratio = 1.10,
           .baseline_estimated_time_s = pending.baseline_estimated_time_s,
           .baseline_length_m = pending.baseline_length_m,
@@ -913,7 +959,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
         refinementDecisionReasonName(decision.reason).data(), pending.generation,
         trajectory_generation_, pending.baseline_path_id, pending.route_points.size(),
         refined_points.size(), pending.baseline_estimated_time_s,
-        refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
+        refined.stats.trajectory_optimizer.estimated_time_s, pending.baseline_length_m,
         refined.stats.length_m);
     launchQueuedTrajectoryRefinement(queued_job);
     return false;
@@ -926,7 +972,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
       "baseline_length=%.2fm refined_length=%.2fm",
       pending.source_label.c_str(), pending.generation, pending.baseline_path_id,
       refined_points.size(), pending.baseline_estimated_time_s,
-      refined.stats.racing_line.estimated_time_s, pending.baseline_length_m,
+      refined.stats.trajectory_optimizer.estimated_time_s, pending.baseline_length_m,
       refined.stats.length_m);
   const bool published = publishTrajectoryResult(
       validation_grid, refined, pending.route_points, pending.source_label.c_str(),
@@ -1021,7 +1067,7 @@ void PlannerNode::logRejectedUnsafeRoute(const OccupancyGrid2D& grid,
       summarizePublishedPathSafety(grid, path_points);
   RCLCPP_WARN(
       get_logger(),
-      "%s route rejected before racing trajectory build: reason='%s' segments=%zu "
+      "%s route rejected before optimized trajectory build: reason='%s' segments=%zu "
       "non_traversable_segments=%zu escape_segments=%zu "
       "first_non_traversable_segment=%zu "
       "segment_start=(%.2f, %.2f) "
