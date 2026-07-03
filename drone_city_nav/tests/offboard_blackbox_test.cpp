@@ -226,35 +226,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       .shadow_local_speed_max_score_underestimate = 30.0;
   record.trajectory_planner_stats.racing_line
       .shadow_local_speed_max_false_prune_improvement_score = 6.5;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_evaluations = 15U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_unavailable = 3U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_prunable = 4U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_false_prunes = 1U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_winner_mismatches =
-      1U;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_window_samples_total = 210U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_window_samples_max =
-      48U;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_duration_ms = 1.75;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_abs_time_error_sum_s = 0.95;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_abs_time_error_p95_s = 0.35;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_max_time_overestimate_s = 0.25;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_max_time_underestimate_s = 0.45;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_abs_score_error_sum =
-      25.0;
-  record.trajectory_planner_stats.racing_line.shadow_bounded_speed_abs_score_error_p95 =
-      11.0;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_max_score_overestimate = 8.0;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_max_score_underestimate = 18.0;
-  record.trajectory_planner_stats.racing_line
-      .shadow_bounded_speed_max_false_prune_improvement_score = 2.5;
   record.trajectory_planner_stats.racing_line.shadow_segment_score_evaluations = 13U;
   record.trajectory_planner_stats.racing_line.shadow_segment_score_unavailable = 5U;
   record.trajectory_planner_stats.racing_line.shadow_segment_score_prunable = 4U;
@@ -449,25 +420,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_shadow_local_speed_max_score_underestimate\":30");
   expectJsonField(
       json, "\"racing_shadow_local_speed_max_false_prune_improvement_score\":6.5");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_evaluations\":15");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_unavailable\":3");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_prunable\":4");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_false_prunes\":1");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_winner_mismatches\":1");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_window_samples_total\":210");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_window_samples_max\":48");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_duration_ms\":1.75");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_abs_time_error_sum_s\":0.95");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_abs_time_error_p95_s\":0.35");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_max_time_overestimate_s\":0.25");
-  expectJsonField(json,
-                  "\"racing_shadow_bounded_speed_max_time_underestimate_s\":0.45");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_abs_score_error_sum\":25");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_abs_score_error_p95\":11");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_max_score_overestimate\":8");
-  expectJsonField(json, "\"racing_shadow_bounded_speed_max_score_underestimate\":18");
-  expectJsonField(
-      json, "\"racing_shadow_bounded_speed_max_false_prune_improvement_score\":2.5");
   expectJsonField(json, "\"racing_shadow_segment_score_evaluations\":13");
   expectJsonField(json, "\"racing_shadow_segment_score_unavailable\":5");
   expectJsonField(json, "\"racing_shadow_segment_score_prunable\":4");

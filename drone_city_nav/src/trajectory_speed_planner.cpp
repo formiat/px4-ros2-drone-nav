@@ -225,18 +225,15 @@ interpolateProfileSample(const TrajectorySpeedSample& start,
 }
 
 void finalizeSpeedProfile(TrajectorySpeedProfile& profile,
-                          const VelocityFollowerConfig& config,
-                          const bool apply_goal_stop) {
+                          const VelocityFollowerConfig& config) {
   if (profile.samples.empty()) {
     return;
   }
-  if (apply_goal_stop) {
-    profile.samples.back().profiled_limit_mps = 0.0;
-    profile.samples.back().geometric_limit_mps = 0.0;
-    profile.samples.back().reason = SpeedConstraintType::kGoal;
-    profile.samples.back().constraint_s_m = profile.samples.back().s_m;
-    profile.samples.back().constraint_limit_mps = 0.0;
-  }
+  profile.samples.back().profiled_limit_mps = 0.0;
+  profile.samples.back().geometric_limit_mps = 0.0;
+  profile.samples.back().reason = SpeedConstraintType::kGoal;
+  profile.samples.back().constraint_s_m = profile.samples.back().s_m;
+  profile.samples.back().constraint_limit_mps = 0.0;
 
   const double max_decel = effectiveSpeedProfileDecelMps2(config);
   for (std::size_t i = profile.samples.size() - 1U; i > 0U; --i) {
@@ -387,13 +384,13 @@ buildTrajectorySpeedProfile(const std::span<const TrajectorySegment> trajectory,
   if (profile.samples.empty()) {
     return profile;
   }
-  finalizeSpeedProfile(profile, config, true);
+  finalizeSpeedProfile(profile, config);
   return profile;
 }
 
-[[nodiscard]] TrajectorySpeedProfile buildTrajectorySpeedProfileForPointSamples(
+TrajectorySpeedProfile buildTrajectorySpeedProfile(
     const std::span<const TrajectoryPointSample> trajectory_samples,
-    const VelocityFollowerConfig& config, const bool apply_goal_stop) {
+    const VelocityFollowerConfig& config) {
   TrajectorySpeedProfile profile{};
   if (!trajectorySamplesAreUsable(trajectory_samples)) {
     return profile;
@@ -404,14 +401,8 @@ buildTrajectorySpeedProfile(const std::span<const TrajectorySegment> trajectory,
     mergeSpeedSample(profile.samples, geometricSpeedSampleFromPointSample(
                                           trajectory_samples[i], i, config));
   }
-  finalizeSpeedProfile(profile, config, apply_goal_stop);
+  finalizeSpeedProfile(profile, config);
   return profile;
-}
-
-TrajectorySpeedProfile buildTrajectorySpeedProfile(
-    const std::span<const TrajectoryPointSample> trajectory_samples,
-    const VelocityFollowerConfig& config) {
-  return buildTrajectorySpeedProfileForPointSamples(trajectory_samples, config, true);
 }
 
 TrajectorySpeedSample speedProfileSampleAtS(const TrajectorySpeedProfile& profile,
@@ -652,62 +643,6 @@ estimateTraversalTime(const std::span<const TrajectoryPointSample> trajectory_sa
         use_forward_backward_profile ? end.profiled_limit_mps : end.geometric_limit_mps;
     const double average_speed =
         std::max(kMinimumIntegrationSpeedMps, 0.5 * (start_speed + end_speed));
-    if (std::isfinite(average_speed)) {
-      estimate.estimated_time_s += ds / average_speed;
-    }
-  }
-  return estimate;
-}
-
-TraversalTimeEstimate estimateTraversalTimeWithoutGoalStop(
-    const std::span<const TrajectoryPointSample> trajectory_samples,
-    const VelocityFollowerConfig& config) {
-  TraversalTimeEstimate estimate{};
-  if (!trajectorySamplesAreUsable(trajectory_samples)) {
-    return estimate;
-  }
-
-  const TrajectorySpeedProfile profile =
-      buildTrajectorySpeedProfileForPointSamples(trajectory_samples, config, false);
-  if (!profile.valid || profile.samples.empty()) {
-    return estimate;
-  }
-
-  constexpr double kMinimumIntegrationSpeedMps = 0.1;
-  estimate.valid = true;
-  estimate.estimated_time_s = 0.0;
-  for (const TrajectorySpeedSample& sample : profile.samples) {
-    if (std::isfinite(sample.profiled_limit_mps)) {
-      if (!std::isfinite(estimate.min_speed_limit_mps)) {
-        estimate.min_speed_limit_mps = sample.profiled_limit_mps;
-        estimate.max_speed_limit_mps = sample.profiled_limit_mps;
-      } else {
-        estimate.min_speed_limit_mps =
-            std::min(estimate.min_speed_limit_mps, sample.profiled_limit_mps);
-        estimate.max_speed_limit_mps =
-            std::max(estimate.max_speed_limit_mps, sample.profiled_limit_mps);
-      }
-    }
-    if (sample.reason == SpeedConstraintType::kArc) {
-      ++estimate.curvature_limited_samples;
-    }
-  }
-
-  for (std::size_t i = 1U; i < trajectory_samples.size(); ++i) {
-    double ds = trajectory_samples[i].s_m - trajectory_samples[i - 1U].s_m;
-    if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
-      ds = distance(trajectory_samples[i - 1U].point, trajectory_samples[i].point);
-    }
-    if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
-      continue;
-    }
-    const TrajectorySpeedSample start =
-        speedProfileSampleAtS(profile, trajectory_samples[i - 1U].s_m);
-    const TrajectorySpeedSample end =
-        speedProfileSampleAtS(profile, trajectory_samples[i].s_m);
-    const double average_speed =
-        std::max(kMinimumIntegrationSpeedMps,
-                 0.5 * (start.profiled_limit_mps + end.profiled_limit_mps));
     if (std::isfinite(average_speed)) {
       estimate.estimated_time_s += ds / average_speed;
     }

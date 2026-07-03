@@ -115,23 +115,6 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.shadow_local_speed_max_score_overestimate = 24.0;
   stats.racing_line.shadow_local_speed_max_score_underestimate = 36.0;
   stats.racing_line.shadow_local_speed_max_false_prune_improvement_score = 7.25;
-  stats.racing_line.shadow_bounded_speed_evaluations = 54U;
-  stats.racing_line.shadow_bounded_speed_unavailable = 7U;
-  stats.racing_line.shadow_bounded_speed_prunable = 22U;
-  stats.racing_line.shadow_bounded_speed_false_prunes = 2U;
-  stats.racing_line.shadow_bounded_speed_winner_mismatches = 1U;
-  stats.racing_line.shadow_bounded_speed_window_samples_total = 1430U;
-  stats.racing_line.shadow_bounded_speed_window_samples_max = 55U;
-  stats.racing_line.shadow_bounded_speed_duration_ms = 4.75;
-  stats.racing_line.shadow_bounded_speed_abs_time_error_sum_s = 1.75;
-  stats.racing_line.shadow_bounded_speed_abs_time_error_p95_s = 0.35;
-  stats.racing_line.shadow_bounded_speed_max_time_overestimate_s = 0.25;
-  stats.racing_line.shadow_bounded_speed_max_time_underestimate_s = 0.55;
-  stats.racing_line.shadow_bounded_speed_abs_score_error_sum = 70.0;
-  stats.racing_line.shadow_bounded_speed_abs_score_error_p95 = 14.0;
-  stats.racing_line.shadow_bounded_speed_max_score_overestimate = 10.0;
-  stats.racing_line.shadow_bounded_speed_max_score_underestimate = 22.0;
-  stats.racing_line.shadow_bounded_speed_max_false_prune_improvement_score = 3.25;
   stats.racing_line.shadow_segment_score_evaluations = 52U;
   stats.racing_line.shadow_segment_score_unavailable = 9U;
   stats.racing_line.shadow_segment_score_prunable = 19U;
@@ -477,42 +460,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(
       json.find("\"racing_shadow_local_speed_max_false_prune_improvement_score\":7.25"),
       std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_evaluations\":54"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_unavailable\":7"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_prunable\":22"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_false_prunes\":2"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_winner_mismatches\":1"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_window_samples_total\":1430"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_window_samples_max\":55"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_duration_ms\":4.75"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_abs_time_error_sum_s\":1.75"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_abs_time_error_p95_s\":0.35"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_max_time_overestimate_s\":0.25"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_max_time_underestimate_s\":0.55"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_abs_score_error_sum\":70"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_abs_score_error_p95\":14"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_max_score_overestimate\":10"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"racing_shadow_bounded_speed_max_score_underestimate\":22"),
-            std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"racing_shadow_bounded_speed_max_false_prune_improvement_score\":3.25"),
-      std::string::npos);
   EXPECT_NE(json.find("\"racing_shadow_segment_score_evaluations\":52"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_shadow_segment_score_unavailable\":9"),
@@ -680,23 +627,6 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_shadow_local_speed_max_score_overestimate\"",
                     "\"racing_shadow_local_speed_max_score_underestimate\"",
                     "\"racing_shadow_local_speed_max_false_prune_improvement_score\"",
-                    "\"racing_shadow_bounded_speed_evaluations\"",
-                    "\"racing_shadow_bounded_speed_unavailable\"",
-                    "\"racing_shadow_bounded_speed_prunable\"",
-                    "\"racing_shadow_bounded_speed_false_prunes\"",
-                    "\"racing_shadow_bounded_speed_winner_mismatches\"",
-                    "\"racing_shadow_bounded_speed_window_samples_total\"",
-                    "\"racing_shadow_bounded_speed_window_samples_max\"",
-                    "\"racing_shadow_bounded_speed_duration_ms\"",
-                    "\"racing_shadow_bounded_speed_abs_time_error_sum_s\"",
-                    "\"racing_shadow_bounded_speed_abs_time_error_p95_s\"",
-                    "\"racing_shadow_bounded_speed_max_time_overestimate_s\"",
-                    "\"racing_shadow_bounded_speed_max_time_underestimate_s\"",
-                    "\"racing_shadow_bounded_speed_abs_score_error_sum\"",
-                    "\"racing_shadow_bounded_speed_abs_score_error_p95\"",
-                    "\"racing_shadow_bounded_speed_max_score_overestimate\"",
-                    "\"racing_shadow_bounded_speed_max_score_underestimate\"",
-                    "\"racing_shadow_bounded_speed_max_false_prune_improvement_score\"",
                     "\"racing_shadow_segment_score_evaluations\"",
                     "\"racing_shadow_segment_score_unavailable\"",
                     "\"racing_shadow_segment_score_prunable\"",
@@ -999,39 +929,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
                        .shadow_local_speed_max_false_prune_improvement_score,
                    7.25);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_evaluations, 54U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_unavailable, 7U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_prunable, 22U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_false_prunes, 2U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_winner_mismatches, 1U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_window_samples_total,
-            1430U);
-  EXPECT_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_window_samples_max,
-            55U);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.shadow_bounded_speed_duration_ms,
-                   4.75);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_abs_time_error_sum_s, 1.75);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_abs_time_error_p95_s, 0.35);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_max_time_overestimate_s,
-      0.25);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_max_time_underestimate_s,
-      0.55);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_abs_score_error_sum, 70.0);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_abs_score_error_p95, 14.0);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_max_score_overestimate, 10.0);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.racing_line.shadow_bounded_speed_max_score_underestimate,
-      22.0);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
-                       .shadow_bounded_speed_max_false_prune_improvement_score,
-                   3.25);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_evaluations, 52U);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_unavailable, 9U);
   EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_prunable, 19U);

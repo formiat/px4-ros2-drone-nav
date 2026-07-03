@@ -512,41 +512,6 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   appendJsonNumber(
       stream, "racing_shadow_local_speed_max_false_prune_improvement_score",
       stats.racing_line.shadow_local_speed_max_false_prune_improvement_score);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_evaluations",
-                 stats.racing_line.shadow_bounded_speed_evaluations);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_unavailable",
-                 stats.racing_line.shadow_bounded_speed_unavailable);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_prunable",
-                 stats.racing_line.shadow_bounded_speed_prunable);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_false_prunes",
-                 stats.racing_line.shadow_bounded_speed_false_prunes);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_winner_mismatches",
-                 stats.racing_line.shadow_bounded_speed_winner_mismatches);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_window_samples_total",
-                 stats.racing_line.shadow_bounded_speed_window_samples_total);
-  appendJsonSize(stream, "racing_shadow_bounded_speed_window_samples_max",
-                 stats.racing_line.shadow_bounded_speed_window_samples_max);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_duration_ms",
-                   stats.racing_line.shadow_bounded_speed_duration_ms);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_abs_time_error_sum_s",
-                   stats.racing_line.shadow_bounded_speed_abs_time_error_sum_s);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_abs_time_error_p95_s",
-                   stats.racing_line.shadow_bounded_speed_abs_time_error_p95_s);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_max_time_overestimate_s",
-                   stats.racing_line.shadow_bounded_speed_max_time_overestimate_s);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_max_time_underestimate_s",
-                   stats.racing_line.shadow_bounded_speed_max_time_underestimate_s);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_abs_score_error_sum",
-                   stats.racing_line.shadow_bounded_speed_abs_score_error_sum);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_abs_score_error_p95",
-                   stats.racing_line.shadow_bounded_speed_abs_score_error_p95);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_max_score_overestimate",
-                   stats.racing_line.shadow_bounded_speed_max_score_overestimate);
-  appendJsonNumber(stream, "racing_shadow_bounded_speed_max_score_underestimate",
-                   stats.racing_line.shadow_bounded_speed_max_score_underestimate);
-  appendJsonNumber(
-      stream, "racing_shadow_bounded_speed_max_false_prune_improvement_score",
-      stats.racing_line.shadow_bounded_speed_max_false_prune_improvement_score);
   appendJsonSize(stream, "racing_shadow_segment_score_evaluations",
                  stats.racing_line.shadow_segment_score_evaluations);
   appendJsonSize(stream, "racing_shadow_segment_score_unavailable",
@@ -1210,40 +1175,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.shadow_local_speed_max_score_underestimate);
   parseJsonDouble(json, "racing_shadow_local_speed_max_false_prune_improvement_score",
                   racing.shadow_local_speed_max_false_prune_improvement_score);
-  parseJsonSize(json, "racing_shadow_bounded_speed_evaluations",
-                racing.shadow_bounded_speed_evaluations);
-  parseJsonSize(json, "racing_shadow_bounded_speed_unavailable",
-                racing.shadow_bounded_speed_unavailable);
-  parseJsonSize(json, "racing_shadow_bounded_speed_prunable",
-                racing.shadow_bounded_speed_prunable);
-  parseJsonSize(json, "racing_shadow_bounded_speed_false_prunes",
-                racing.shadow_bounded_speed_false_prunes);
-  parseJsonSize(json, "racing_shadow_bounded_speed_winner_mismatches",
-                racing.shadow_bounded_speed_winner_mismatches);
-  parseJsonSize(json, "racing_shadow_bounded_speed_window_samples_total",
-                racing.shadow_bounded_speed_window_samples_total);
-  parseJsonSize(json, "racing_shadow_bounded_speed_window_samples_max",
-                racing.shadow_bounded_speed_window_samples_max);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_duration_ms",
-                  racing.shadow_bounded_speed_duration_ms);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_abs_time_error_sum_s",
-                  racing.shadow_bounded_speed_abs_time_error_sum_s);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_abs_time_error_p95_s",
-                  racing.shadow_bounded_speed_abs_time_error_p95_s);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_max_time_overestimate_s",
-                  racing.shadow_bounded_speed_max_time_overestimate_s);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_max_time_underestimate_s",
-                  racing.shadow_bounded_speed_max_time_underestimate_s);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_abs_score_error_sum",
-                  racing.shadow_bounded_speed_abs_score_error_sum);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_abs_score_error_p95",
-                  racing.shadow_bounded_speed_abs_score_error_p95);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_max_score_overestimate",
-                  racing.shadow_bounded_speed_max_score_overestimate);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_max_score_underestimate",
-                  racing.shadow_bounded_speed_max_score_underestimate);
-  parseJsonDouble(json, "racing_shadow_bounded_speed_max_false_prune_improvement_score",
-                  racing.shadow_bounded_speed_max_false_prune_improvement_score);
   parseJsonSize(json, "racing_shadow_segment_score_evaluations",
                 racing.shadow_segment_score_evaluations);
   parseJsonSize(json, "racing_shadow_segment_score_unavailable",

@@ -323,12 +323,6 @@ bool PlannerNode::publishTrajectoryResult(
       "abs_time_err_p95=%.3fs max_time_over=%.3fs max_time_under=%.3fs "
       "abs_score_err_sum=%.3f abs_score_err_p95=%.3f "
       "max_score_over=%.3f max_score_under=%.3f max_false_improve=%.3f) "
-      "shadow_bounded_speed(evals=%zu unavailable=%zu prunable=%zu "
-      "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
-      "duration=%.1fms abs_time_err_sum=%.3fs abs_time_err_p95=%.3fs "
-      "max_time_over=%.3fs max_time_under=%.3fs abs_score_err_sum=%.3f "
-      "abs_score_err_p95=%.3f max_score_over=%.3f max_score_under=%.3f "
-      "max_false_improve=%.3f) "
       "shadow_segment_score(evals=%zu unavailable=%zu prunable=%zu "
       "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
       "abs_err_sum=%.6f abs_err_p95=%.6f max_over=%.6f max_under=%.6f "
@@ -478,24 +472,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.shadow_local_speed_max_score_underestimate,
       trajectory_result.stats.racing_line
           .shadow_local_speed_max_false_prune_improvement_score,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_evaluations,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_unavailable,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_prunable,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_false_prunes,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_winner_mismatches,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_window_samples_total,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_window_samples_max,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_duration_ms,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_abs_time_error_sum_s,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_abs_time_error_p95_s,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_max_time_overestimate_s,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_max_time_underestimate_s,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_abs_score_error_sum,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_abs_score_error_p95,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_max_score_overestimate,
-      trajectory_result.stats.racing_line.shadow_bounded_speed_max_score_underestimate,
-      trajectory_result.stats.racing_line
-          .shadow_bounded_speed_max_false_prune_improvement_score,
       trajectory_result.stats.racing_line.shadow_segment_score_evaluations,
       trajectory_result.stats.racing_line.shadow_segment_score_unavailable,
       trajectory_result.stats.racing_line.shadow_segment_score_prunable,
