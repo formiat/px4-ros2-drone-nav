@@ -317,7 +317,7 @@ TEST(RacingLine, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   EXPECT_GT(result.stats.candidate_segment_cache_misses, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
-  EXPECT_LT(result.stats.estimated_time_s, result.stats.centerline_estimated_time_s);
+  EXPECT_DOUBLE_EQ(result.stats.cost_time, 0.0);
   EXPECT_GT(result.stats.max_abs_offset_m, 1.0);
 }
 

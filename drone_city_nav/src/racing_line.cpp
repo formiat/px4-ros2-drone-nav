@@ -1822,7 +1822,7 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
     return;
   }
 
-  const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
+  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
   const double exact_non_time_score =
       result.score.score - result.score.breakdown.time_cost;
   const double estimated_score = exact_non_time_score + weight_time * local_time_s;
@@ -1863,7 +1863,7 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
         overrun_m * overrun_m * kLengthOverrunPenalty;
   }
   stats.candidate_cost_breakdown_duration_ms += elapsedMilliseconds(cost_started_at);
-  const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
+  const double weight_time = sanitizedPositive(config.weight_time, 0.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     const auto sample_started_at = std::chrono::steady_clock::now();
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);

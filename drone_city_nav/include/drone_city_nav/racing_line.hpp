@@ -43,7 +43,7 @@ struct RacingLineConfig {
   double weight_offset_second_change{6.5};
   double weight_offset_slope{100.0};
   double max_offset_slope_per_m{0.32};
-  double weight_time{40.0};
+  double weight_time{0.0};
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
   double regularization_max_time_regression_s{0.5};

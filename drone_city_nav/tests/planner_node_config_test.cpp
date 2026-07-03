@@ -82,7 +82,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    6.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_offset_slope, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.max_offset_slope_per_m, 0.32);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 40.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.weight_time, 0.0);
   EXPECT_EQ(config.trajectory_planner.racing_line.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_pre_margin_m, 25.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.racing_line.window_post_margin_m, 25.0);

@@ -218,7 +218,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("racing_line_max_offset_slope_per_m", 0.32), 0.0,
       100.0);
   config.trajectory_planner.racing_line.weight_time = std::clamp(
-      node.declare_parameter<double>("racing_line_weight_time", 40.0), 0.0, 1.0e9);
+      node.declare_parameter<double>("racing_line_weight_time", 0.0), 0.0, 1.0e9);
   config.trajectory_planner.racing_line.max_length_ratio = std::clamp(
       node.declare_parameter<double>("racing_line_max_length_ratio", 1.6), 1.0, 100.0);
   config.trajectory_planner.racing_line.regularization_iterations =

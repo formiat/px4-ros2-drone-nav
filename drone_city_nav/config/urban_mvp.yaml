@@ -131,7 +131,7 @@ planner_node:
     racing_line_weight_offset_second_change: 6.5
     racing_line_weight_offset_slope: 100.0
     racing_line_max_offset_slope_per_m: 0.32
-    racing_line_weight_time: 40.0
+    racing_line_weight_time: 0.0
     racing_line_max_length_ratio: 1.6
     racing_line_regularization_iterations: 2
     racing_line_regularization_max_time_regression_s: 0.5
