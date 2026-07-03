@@ -91,7 +91,7 @@ PlannerNode::PlannerNode()
       "parallel_workers=%zu] "
       "trajectory_optimizer[iterations=%zu optimizer_sample_step=%.2fm "
       "offset_step=%.2fm "
-      "min_step=%.2fm weights(length=%.3f time=%.2f "
+      "min_step=%.2fm weights(length=%.3f "
       "curvature=%.2f curvature_change=%.2f preferred_radius=%.2fm "
       "radius_shortfall=%.2f offset_change=%.2f "
       "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
@@ -120,7 +120,6 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.trajectory_optimizer.initial_offset_step_m,
       trajectory_planner_config_.trajectory_optimizer.min_offset_step_m,
       trajectory_planner_config_.trajectory_optimizer.weight_length,
-      trajectory_planner_config_.trajectory_optimizer.weight_traversal_time,
       trajectory_planner_config_.trajectory_optimizer.weight_curvature,
       trajectory_planner_config_.trajectory_optimizer.weight_curvature_change,
       trajectory_planner_config_.trajectory_optimizer.preferred_min_radius_m,

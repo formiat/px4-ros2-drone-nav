@@ -316,8 +316,6 @@ TEST(TrajectoryOptimizer, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   EXPECT_GT(result.stats.candidate_segment_cache_hits, 0U);
   EXPECT_GT(result.stats.candidate_segment_cache_misses, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
-  EXPECT_DOUBLE_EQ(result.stats.cost_traversal_time, 0.0);
   EXPECT_GT(result.stats.max_abs_offset_m, 1.0);
 }
 
@@ -453,10 +451,9 @@ TEST(TrajectoryOptimizer, HeadingSpanActivatesGradualBendWindow) {
   EXPECT_GT(result.stats.active_window_samples, 0U);
 }
 
-TEST(TrajectoryOptimizer, ReportsTraversalTimeAndRegularizationStats) {
+TEST(TrajectoryOptimizer, ReportsFinalTraversalTimeAndRegularizationStats) {
   const OccupancyGrid2D grid = openGrid();
   TrajectoryOptimizerConfig config = testConfig();
-  config.weight_traversal_time = 0.1;
   config.regularization_iterations = 2U;
 
   const TrajectoryOptimizerResult result =
@@ -464,10 +461,7 @@ TEST(TrajectoryOptimizer, ReportsTraversalTimeAndRegularizationStats) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.centerline_estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.best_candidate_estimated_time_s));
   EXPECT_TRUE(std::isfinite(result.stats.best_candidate_score));
-  EXPECT_TRUE(std::isfinite(result.stats.time_gain_s));
   EXPECT_TRUE(std::isfinite(result.stats.pre_regularization_max_curvature_jump_1pm));
   EXPECT_TRUE(std::isfinite(result.stats.post_regularization_max_curvature_jump_1pm));
   EXPECT_GE(result.stats.candidate_point_build_duration_ms, 0.0);
@@ -475,11 +469,10 @@ TEST(TrajectoryOptimizer, ReportsTraversalTimeAndRegularizationStats) {
   EXPECT_GE(result.stats.regularization_duration_ms, 0.0);
 }
 
-TEST(TrajectoryOptimizer, ReportsTimeFirstCostBreakdownAndEdgeMarginDiagnostics) {
+TEST(TrajectoryOptimizer, ReportsGeometryCostBreakdownAndEdgeMarginDiagnostics) {
   const OccupancyGrid2D grid = openGrid();
   TrajectoryOptimizerConfig config = testConfig();
   config.weight_length = 0.02;
-  config.weight_traversal_time = 50.0;
 
   const TrajectoryOptimizerResult result =
       optimizeTrajectory(wideLeftTurnCorridor(), grid, config, speedConfig());
@@ -487,12 +480,10 @@ TEST(TrajectoryOptimizer, ReportsTimeFirstCostBreakdownAndEdgeMarginDiagnostics)
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(std::isfinite(result.stats.final_length_ratio));
   EXPECT_TRUE(std::isfinite(result.stats.cost_length));
-  EXPECT_TRUE(std::isfinite(result.stats.cost_traversal_time));
   EXPECT_TRUE(std::isfinite(result.stats.cost_curvature));
   EXPECT_TRUE(std::isfinite(result.stats.cost_heading_jump));
   EXPECT_TRUE(std::isfinite(result.stats.min_edge_margin_m));
   EXPECT_TRUE(std::isfinite(result.stats.mean_edge_margin_m));
-  EXPECT_GT(result.stats.cost_traversal_time, result.stats.cost_length);
 }
 
 } // namespace drone_city_nav

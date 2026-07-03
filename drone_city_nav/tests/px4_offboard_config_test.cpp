@@ -16,7 +16,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   buffer << stream.rdbuf();
   const std::string yaml = buffer.str();
 
-  EXPECT_NE(yaml.find("trajectory_optimizer_weight_traversal_time:"),
+  EXPECT_EQ(yaml.find("trajectory_optimizer_weight_traversal_time:"),
             std::string::npos);
   EXPECT_NE(yaml.find("trajectory_optimizer_weight_length: 0.002"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_optimizer_preferred_min_radius_m: 24.0"),
@@ -28,7 +28,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("trajectory_optimizer_regularization_iterations:"),
             std::string::npos);
-  EXPECT_NE(
+  EXPECT_EQ(
       yaml.find("trajectory_optimizer_regularization_max_traversal_time_regression_s:"),
       std::string::npos);
   EXPECT_NE(yaml.find("trajectory_optimizer_window_pre_margin_m: 25.0"),

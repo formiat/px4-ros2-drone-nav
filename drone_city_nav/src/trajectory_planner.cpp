@@ -496,21 +496,12 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
   result.stats.trajectory_optimizer.final_length_ratio = 1.0;
   result.stats.trajectory_optimizer.estimated_time_s =
       traversal_estimate.estimated_time_s;
-  result.stats.trajectory_optimizer.centerline_estimated_time_s =
-      traversal_estimate.estimated_time_s;
   result.stats.trajectory_optimizer.min_speed_limit_mps =
       traversal_estimate.min_speed_limit_mps;
   result.stats.trajectory_optimizer.max_speed_limit_mps =
       traversal_estimate.max_speed_limit_mps;
   result.stats.trajectory_optimizer.curvature_limited_samples =
       traversal_estimate.curvature_limited_samples;
-  result.stats.trajectory_optimizer.centerline_min_speed_limit_mps =
-      traversal_estimate.min_speed_limit_mps;
-  result.stats.trajectory_optimizer.centerline_max_speed_limit_mps =
-      traversal_estimate.max_speed_limit_mps;
-  result.stats.trajectory_optimizer.centerline_curvature_limited_samples =
-      traversal_estimate.curvature_limited_samples;
-  result.stats.trajectory_optimizer.time_gain_s = 0.0;
 
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);

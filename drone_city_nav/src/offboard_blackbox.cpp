@@ -442,14 +442,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"trajectory_optimizer_time_final_s\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 planner_stats.trajectory_optimizer.estimated_time_s);
-  stream << ",\"trajectory_optimizer_time_centerline_s\":";
-  writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.trajectory_optimizer.centerline_estimated_time_s);
-  stream << ",\"trajectory_optimizer_time_gain_s\":";
-  writeBlackboxJsonNumberOrNull(stream, planner_stats.trajectory_optimizer.time_gain_s);
-  stream << ",\"trajectory_optimizer_time_best_candidate_s\":";
-  writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.trajectory_optimizer.best_candidate_estimated_time_s);
   stream << ",\"trajectory_optimizer_best_candidate_score\":";
   writeBlackboxJsonNumberOrNull(
       stream, planner_stats.trajectory_optimizer.best_candidate_score);
@@ -466,9 +458,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
                         planner_stats.trajectory_optimizer.regularization_applied);
   stream << ",\"trajectory_optimizer_regularization_iterations\":"
          << planner_stats.trajectory_optimizer.regularization_iterations;
-  stream << ",\"trajectory_optimizer_regularization_time_delta_s\":";
-  writeBlackboxJsonNumberOrNull(
-      stream, planner_stats.trajectory_optimizer.regularization_time_delta_s);
   stream << ",\"trajectory_optimizer_pre_regularization_curvature_jump_1pm\":";
   writeBlackboxJsonNumberOrNull(
       stream,

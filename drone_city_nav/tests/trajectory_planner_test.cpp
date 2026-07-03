@@ -109,9 +109,6 @@ TEST(TrajectoryPlanner, TrajectoryOptimizerTrajectoryProducesSamplesAndSpeedProf
   EXPECT_GT(result.stats.trajectory_optimizer.active_window_count, 0U);
   EXPECT_GT(result.stats.trajectory_optimizer.dp_states, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.trajectory_optimizer.estimated_time_s));
-  EXPECT_TRUE(
-      std::isfinite(result.stats.trajectory_optimizer.centerline_estimated_time_s));
-  EXPECT_TRUE(std::isfinite(result.stats.trajectory_optimizer.time_gain_s));
 }
 
 TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {

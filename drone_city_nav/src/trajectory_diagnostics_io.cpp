@@ -326,8 +326,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
                    stats.trajectory_optimizer.mean_edge_margin_m);
   appendJsonNumber(stream, "trajectory_optimizer_cost_length",
                    stats.trajectory_optimizer.cost_length);
-  appendJsonNumber(stream, "trajectory_optimizer_cost_traversal_time",
-                   stats.trajectory_optimizer.cost_traversal_time);
   appendJsonNumber(stream, "trajectory_optimizer_cost_curvature",
                    stats.trajectory_optimizer.cost_curvature);
   appendJsonNumber(stream, "trajectory_optimizer_cost_curvature_change",
@@ -348,29 +346,8 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
                    stats.trajectory_optimizer.cost_outside_grid);
   appendJsonNumber(stream, "trajectory_optimizer_cost_length_overrun",
                    stats.trajectory_optimizer.cost_length_overrun);
-  appendJsonNumber(stream, "trajectory_optimizer_centerline_estimated_time_s",
-                   stats.trajectory_optimizer.centerline_estimated_time_s);
-  appendJsonNumber(stream, "trajectory_optimizer_centerline_min_speed_limit_mps",
-                   stats.trajectory_optimizer.centerline_min_speed_limit_mps);
-  appendJsonNumber(stream, "trajectory_optimizer_centerline_max_speed_limit_mps",
-                   stats.trajectory_optimizer.centerline_max_speed_limit_mps);
-  appendJsonSize(stream, "trajectory_optimizer_centerline_curvature_limited_samples",
-                 stats.trajectory_optimizer.centerline_curvature_limited_samples);
-  appendJsonNumber(stream, "trajectory_optimizer_best_candidate_estimated_time_s",
-                   stats.trajectory_optimizer.best_candidate_estimated_time_s);
   appendJsonNumber(stream, "trajectory_optimizer_best_candidate_score",
                    stats.trajectory_optimizer.best_candidate_score);
-  appendJsonNumber(stream, "trajectory_optimizer_best_candidate_min_speed_limit_mps",
-                   stats.trajectory_optimizer.best_candidate_min_speed_limit_mps);
-  appendJsonNumber(stream, "trajectory_optimizer_best_candidate_max_speed_limit_mps",
-                   stats.trajectory_optimizer.best_candidate_max_speed_limit_mps);
-  appendJsonSize(stream,
-                 "trajectory_optimizer_best_candidate_curvature_limited_samples",
-                 stats.trajectory_optimizer.best_candidate_curvature_limited_samples);
-  appendJsonNumber(stream, "trajectory_optimizer_time_gain_s",
-                   stats.trajectory_optimizer.time_gain_s);
-  appendJsonNumber(stream, "trajectory_optimizer_regularization_time_delta_s",
-                   stats.trajectory_optimizer.regularization_time_delta_s);
   appendJsonSize(stream, "trajectory_optimizer_regularization_iterations",
                  stats.trajectory_optimizer.regularization_iterations);
   stream << ",\"trajectory_optimizer_regularization_applied\":"
@@ -396,14 +373,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
   appendJsonNumber(stream,
                    "trajectory_optimizer_candidate_shape_diagnostics_duration_ms",
                    stats.trajectory_optimizer.candidate_shape_diagnostics_duration_ms);
-  appendJsonNumber(stream, "trajectory_optimizer_candidate_speed_profile_duration_ms",
-                   stats.trajectory_optimizer.candidate_speed_profile_duration_ms);
-  appendJsonSize(stream, "trajectory_optimizer_candidate_speed_profile_calls",
-                 stats.trajectory_optimizer.candidate_speed_profile_calls);
-  appendJsonSize(stream, "trajectory_optimizer_candidate_speed_profile_samples_total",
-                 stats.trajectory_optimizer.candidate_speed_profile_samples_total);
-  appendJsonSize(stream, "trajectory_optimizer_candidate_speed_profile_samples_max",
-                 stats.trajectory_optimizer.candidate_speed_profile_samples_max);
   appendJsonNumber(stream, "trajectory_optimizer_regularization_duration_ms",
                    stats.trajectory_optimizer.regularization_duration_ms);
   appendJsonSize(stream, "trajectory_optimizer_scratch_reused_candidates",
@@ -480,9 +449,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
       stats.trajectory_optimizer.local_candidate_path_evaluation_duration_ms);
   appendJsonNumber(stream, "trajectory_optimizer_local_candidate_score_duration_ms",
                    stats.trajectory_optimizer.local_candidate_score_duration_ms);
-  appendJsonNumber(
-      stream, "trajectory_optimizer_local_candidate_traversal_estimate_duration_ms",
-      stats.trajectory_optimizer.local_candidate_traversal_estimate_duration_ms);
   appendJsonNumber(stream, "trajectory_optimizer_full_candidate_score_duration_ms",
                    stats.trajectory_optimizer.full_candidate_score_duration_ms);
   appendJsonSize(stream,
@@ -515,44 +481,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
       stream,
       "trajectory_optimizer_shadow_lower_bound_max_false_prune_improvement_score",
       stats.trajectory_optimizer.shadow_lower_bound_max_false_prune_improvement_score);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_local_speed_evaluations",
-                 stats.trajectory_optimizer.shadow_local_speed_evaluations);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_local_speed_unavailable",
-                 stats.trajectory_optimizer.shadow_local_speed_unavailable);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_local_speed_prunable",
-                 stats.trajectory_optimizer.shadow_local_speed_prunable);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_local_speed_false_prunes",
-                 stats.trajectory_optimizer.shadow_local_speed_false_prunes);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_local_speed_winner_mismatches",
-                 stats.trajectory_optimizer.shadow_local_speed_winner_mismatches);
-  appendJsonNumber(stream,
-                   "trajectory_optimizer_shadow_local_speed_abs_time_error_sum_s",
-                   stats.trajectory_optimizer.shadow_local_speed_abs_time_error_sum_s);
-  appendJsonNumber(stream,
-                   "trajectory_optimizer_shadow_local_speed_abs_time_error_p95_s",
-                   stats.trajectory_optimizer.shadow_local_speed_abs_time_error_p95_s);
-  appendJsonNumber(
-      stream, "trajectory_optimizer_shadow_local_speed_max_time_overestimate_s",
-      stats.trajectory_optimizer.shadow_local_speed_max_time_overestimate_s);
-  appendJsonNumber(
-      stream, "trajectory_optimizer_shadow_local_speed_max_time_underestimate_s",
-      stats.trajectory_optimizer.shadow_local_speed_max_time_underestimate_s);
-  appendJsonNumber(stream,
-                   "trajectory_optimizer_shadow_local_speed_abs_score_error_sum",
-                   stats.trajectory_optimizer.shadow_local_speed_abs_score_error_sum);
-  appendJsonNumber(stream,
-                   "trajectory_optimizer_shadow_local_speed_abs_score_error_p95",
-                   stats.trajectory_optimizer.shadow_local_speed_abs_score_error_p95);
-  appendJsonNumber(
-      stream, "trajectory_optimizer_shadow_local_speed_max_score_overestimate",
-      stats.trajectory_optimizer.shadow_local_speed_max_score_overestimate);
-  appendJsonNumber(
-      stream, "trajectory_optimizer_shadow_local_speed_max_score_underestimate",
-      stats.trajectory_optimizer.shadow_local_speed_max_score_underestimate);
-  appendJsonNumber(
-      stream,
-      "trajectory_optimizer_shadow_local_speed_max_false_prune_improvement_score",
-      stats.trajectory_optimizer.shadow_local_speed_max_false_prune_improvement_score);
   appendJsonSize(stream, "trajectory_optimizer_shadow_segment_score_evaluations",
                  stats.trajectory_optimizer.shadow_segment_score_evaluations);
   appendJsonSize(stream, "trajectory_optimizer_shadow_segment_score_unavailable",
@@ -591,12 +519,6 @@ trajectoryOptimizerDiagnosticsJsonFields(const TrajectoryPlannerStats& stats) {
   appendJsonSize(stream,
                  "trajectory_optimizer_shadow_boundary_clamped_window_samples_max",
                  stats.trajectory_optimizer.shadow_boundary_clamped_window_samples_max);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_speed_profile_cache_queries",
-                 stats.trajectory_optimizer.shadow_speed_profile_cache_queries);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_speed_profile_cache_hits",
-                 stats.trajectory_optimizer.shadow_speed_profile_cache_hits);
-  appendJsonSize(stream, "trajectory_optimizer_shadow_speed_profile_cache_unique",
-                 stats.trajectory_optimizer.shadow_speed_profile_cache_unique);
   appendJsonSize(stream, "trajectory_optimizer_window_count",
                  stats.trajectory_optimizer.window_count);
   appendJsonSize(stream, "trajectory_optimizer_active_window_count",
@@ -1154,8 +1076,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "trajectory_optimizer_final_length_ratio",
                   optimizer.final_length_ratio);
   parseJsonDouble(json, "trajectory_optimizer_cost_length", optimizer.cost_length);
-  parseJsonDouble(json, "trajectory_optimizer_cost_traversal_time",
-                  optimizer.cost_traversal_time);
   parseJsonDouble(json, "trajectory_optimizer_cost_curvature",
                   optimizer.cost_curvature);
   parseJsonDouble(json, "trajectory_optimizer_cost_curvature_change",
@@ -1184,27 +1104,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   optimizer.max_speed_limit_mps);
   parseJsonSize(json, "trajectory_optimizer_final_curvature_limited_samples",
                 optimizer.curvature_limited_samples);
-  parseJsonDouble(json, "trajectory_optimizer_centerline_estimated_time_s",
-                  optimizer.centerline_estimated_time_s);
-  parseJsonDouble(json, "trajectory_optimizer_centerline_min_speed_limit_mps",
-                  optimizer.centerline_min_speed_limit_mps);
-  parseJsonDouble(json, "trajectory_optimizer_centerline_max_speed_limit_mps",
-                  optimizer.centerline_max_speed_limit_mps);
-  parseJsonSize(json, "trajectory_optimizer_centerline_curvature_limited_samples",
-                optimizer.centerline_curvature_limited_samples);
-  parseJsonDouble(json, "trajectory_optimizer_best_candidate_estimated_time_s",
-                  optimizer.best_candidate_estimated_time_s);
   parseJsonDouble(json, "trajectory_optimizer_best_candidate_score",
                   optimizer.best_candidate_score);
-  parseJsonDouble(json, "trajectory_optimizer_best_candidate_min_speed_limit_mps",
-                  optimizer.best_candidate_min_speed_limit_mps);
-  parseJsonDouble(json, "trajectory_optimizer_best_candidate_max_speed_limit_mps",
-                  optimizer.best_candidate_max_speed_limit_mps);
-  parseJsonSize(json, "trajectory_optimizer_best_candidate_curvature_limited_samples",
-                optimizer.best_candidate_curvature_limited_samples);
-  parseJsonDouble(json, "trajectory_optimizer_time_gain_s", optimizer.time_gain_s);
-  parseJsonDouble(json, "trajectory_optimizer_regularization_time_delta_s",
-                  optimizer.regularization_time_delta_s);
   parseJsonSize(json, "trajectory_optimizer_regularization_iterations",
                 optimizer.regularization_iterations);
   parseJsonBool(json, "trajectory_optimizer_regularization_applied",
@@ -1229,14 +1130,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   optimizer.candidate_cost_breakdown_duration_ms);
   parseJsonDouble(json, "trajectory_optimizer_candidate_shape_diagnostics_duration_ms",
                   optimizer.candidate_shape_diagnostics_duration_ms);
-  parseJsonDouble(json, "trajectory_optimizer_candidate_speed_profile_duration_ms",
-                  optimizer.candidate_speed_profile_duration_ms);
-  parseJsonSize(json, "trajectory_optimizer_candidate_speed_profile_calls",
-                optimizer.candidate_speed_profile_calls);
-  parseJsonSize(json, "trajectory_optimizer_candidate_speed_profile_samples_total",
-                optimizer.candidate_speed_profile_samples_total);
-  parseJsonSize(json, "trajectory_optimizer_candidate_speed_profile_samples_max",
-                optimizer.candidate_speed_profile_samples_max);
   parseJsonDouble(json, "trajectory_optimizer_regularization_duration_ms",
                   optimizer.regularization_duration_ms);
   parseJsonSize(json, "trajectory_optimizer_scratch_reused_candidates",
@@ -1308,9 +1201,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   optimizer.local_candidate_path_evaluation_duration_ms);
   parseJsonDouble(json, "trajectory_optimizer_local_candidate_score_duration_ms",
                   optimizer.local_candidate_score_duration_ms);
-  parseJsonDouble(json,
-                  "trajectory_optimizer_local_candidate_traversal_estimate_duration_ms",
-                  optimizer.local_candidate_traversal_estimate_duration_ms);
   parseJsonDouble(json, "trajectory_optimizer_full_candidate_score_duration_ms",
                   optimizer.full_candidate_score_duration_ms);
   parseJsonSize(json, "trajectory_optimizer_shadow_lower_bound_validation_full_scores",
@@ -1340,39 +1230,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(
       json, "trajectory_optimizer_shadow_lower_bound_max_false_prune_improvement_score",
       optimizer.shadow_lower_bound_max_false_prune_improvement_score);
-  parseJsonSize(json, "trajectory_optimizer_shadow_local_speed_evaluations",
-                optimizer.shadow_local_speed_evaluations);
-  parseJsonSize(json, "trajectory_optimizer_shadow_local_speed_unavailable",
-                optimizer.shadow_local_speed_unavailable);
-  parseJsonSize(json, "trajectory_optimizer_shadow_local_speed_prunable",
-                optimizer.shadow_local_speed_prunable);
-  parseJsonSize(json, "trajectory_optimizer_shadow_local_speed_false_prunes",
-                optimizer.shadow_local_speed_false_prunes);
-  parseJsonSize(json, "trajectory_optimizer_shadow_local_speed_winner_mismatches",
-                optimizer.shadow_local_speed_winner_mismatches);
-  parseJsonDouble(json, "trajectory_optimizer_shadow_local_speed_abs_time_error_sum_s",
-                  optimizer.shadow_local_speed_abs_time_error_sum_s);
-  parseJsonDouble(json, "trajectory_optimizer_shadow_local_speed_abs_time_error_p95_s",
-                  optimizer.shadow_local_speed_abs_time_error_p95_s);
-  parseJsonDouble(json,
-                  "trajectory_optimizer_shadow_local_speed_max_time_overestimate_s",
-                  optimizer.shadow_local_speed_max_time_overestimate_s);
-  parseJsonDouble(json,
-                  "trajectory_optimizer_shadow_local_speed_max_time_underestimate_s",
-                  optimizer.shadow_local_speed_max_time_underestimate_s);
-  parseJsonDouble(json, "trajectory_optimizer_shadow_local_speed_abs_score_error_sum",
-                  optimizer.shadow_local_speed_abs_score_error_sum);
-  parseJsonDouble(json, "trajectory_optimizer_shadow_local_speed_abs_score_error_p95",
-                  optimizer.shadow_local_speed_abs_score_error_p95);
-  parseJsonDouble(json,
-                  "trajectory_optimizer_shadow_local_speed_max_score_overestimate",
-                  optimizer.shadow_local_speed_max_score_overestimate);
-  parseJsonDouble(json,
-                  "trajectory_optimizer_shadow_local_speed_max_score_underestimate",
-                  optimizer.shadow_local_speed_max_score_underestimate);
-  parseJsonDouble(
-      json, "trajectory_optimizer_shadow_local_speed_max_false_prune_improvement_score",
-      optimizer.shadow_local_speed_max_false_prune_improvement_score);
   parseJsonSize(json, "trajectory_optimizer_shadow_segment_score_evaluations",
                 optimizer.shadow_segment_score_evaluations);
   parseJsonSize(json, "trajectory_optimizer_shadow_segment_score_unavailable",
@@ -1406,12 +1263,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 optimizer.shadow_boundary_clamped_window_samples_total);
   parseJsonSize(json, "trajectory_optimizer_shadow_boundary_clamped_window_samples_max",
                 optimizer.shadow_boundary_clamped_window_samples_max);
-  parseJsonSize(json, "trajectory_optimizer_shadow_speed_profile_cache_queries",
-                optimizer.shadow_speed_profile_cache_queries);
-  parseJsonSize(json, "trajectory_optimizer_shadow_speed_profile_cache_hits",
-                optimizer.shadow_speed_profile_cache_hits);
-  parseJsonSize(json, "trajectory_optimizer_shadow_speed_profile_cache_unique",
-                optimizer.shadow_speed_profile_cache_unique);
   parseJsonSize(json, "trajectory_optimizer_window_count", optimizer.window_count);
   parseJsonSize(json, "trajectory_optimizer_active_window_count",
                 optimizer.active_window_count);

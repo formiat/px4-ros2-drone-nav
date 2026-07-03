@@ -89,8 +89,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    100.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.trajectory_optimizer.max_offset_slope_per_m, 0.32);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_traversal_time,
-                   0.0);
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_pre_margin_m,
                    25.0);
@@ -149,7 +147,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
        rclcpp::Parameter{"corridor_max_radius_m", -10.0},
        rclcpp::Parameter{"corridor_parallel_workers", 5000},
-       rclcpp::Parameter{"trajectory_optimizer_weight_traversal_time", -2.0},
        rclcpp::Parameter{"trajectory_optimizer_parallel_workers", 5000},
        rclcpp::Parameter{"trajectory_optimizer_window_pre_margin_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_window_post_margin_m", 9999.0},
@@ -191,8 +188,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 1024U);
-  EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_traversal_time,
-                   0.0);
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 1024U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.window_pre_margin_m,
                    0.0);

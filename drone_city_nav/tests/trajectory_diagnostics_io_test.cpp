@@ -25,19 +25,9 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.min_speed_limit_mps = 1.0;
   stats.trajectory_optimizer.max_speed_limit_mps = 10.0;
   stats.trajectory_optimizer.curvature_limited_samples = 3U;
-  stats.trajectory_optimizer.centerline_estimated_time_s = 14.0;
-  stats.trajectory_optimizer.centerline_min_speed_limit_mps = 2.0;
-  stats.trajectory_optimizer.centerline_max_speed_limit_mps = 11.0;
-  stats.trajectory_optimizer.centerline_curvature_limited_samples = 4U;
-  stats.trajectory_optimizer.best_candidate_estimated_time_s = 12.25;
   stats.trajectory_optimizer.best_candidate_score = 42.0;
-  stats.trajectory_optimizer.best_candidate_min_speed_limit_mps = 1.5;
-  stats.trajectory_optimizer.best_candidate_max_speed_limit_mps = 10.5;
-  stats.trajectory_optimizer.best_candidate_curvature_limited_samples = 5U;
-  stats.trajectory_optimizer.time_gain_s = 1.5;
   stats.trajectory_optimizer.regularization_applied = true;
   stats.trajectory_optimizer.regularization_iterations = 2U;
-  stats.trajectory_optimizer.regularization_time_delta_s = 0.1;
   stats.trajectory_optimizer.pre_regularization_max_curvature_jump_1pm = 0.4;
   stats.trajectory_optimizer.post_regularization_max_curvature_jump_1pm = 0.2;
   stats.trajectory_optimizer.centerline_length_m = 100.0;
@@ -52,10 +42,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.candidate_sample_build_duration_ms = 2.5;
   stats.trajectory_optimizer.candidate_cost_breakdown_duration_ms = 3.25;
   stats.trajectory_optimizer.candidate_shape_diagnostics_duration_ms = 1.75;
-  stats.trajectory_optimizer.candidate_speed_profile_duration_ms = 4.75;
-  stats.trajectory_optimizer.candidate_speed_profile_calls = 8U;
-  stats.trajectory_optimizer.candidate_speed_profile_samples_total = 400U;
-  stats.trajectory_optimizer.candidate_speed_profile_samples_max = 55U;
   stats.trajectory_optimizer.regularization_duration_ms = 3.75;
   stats.trajectory_optimizer.scratch_reused_candidates = 13U;
   stats.trajectory_optimizer.parallel_candidate_evaluation_used = true;
@@ -88,7 +74,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.local_candidate_point_build_duration_ms = 1.1;
   stats.trajectory_optimizer.local_candidate_path_evaluation_duration_ms = 2.2;
   stats.trajectory_optimizer.local_candidate_score_duration_ms = 4.5;
-  stats.trajectory_optimizer.local_candidate_traversal_estimate_duration_ms = 3.3;
   stats.trajectory_optimizer.full_candidate_score_duration_ms = 6.75;
   stats.trajectory_optimizer.shadow_lower_bound_validation_full_scores = 41U;
   stats.trajectory_optimizer.shadow_lower_bound_validation_full_score_duration_ms =
@@ -103,21 +88,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.shadow_lower_bound_max_underestimate_score = 12.5;
   stats.trajectory_optimizer.shadow_lower_bound_max_false_prune_improvement_score =
       1.75;
-  stats.trajectory_optimizer.shadow_local_speed_evaluations = 53U;
-  stats.trajectory_optimizer.shadow_local_speed_unavailable = 8U;
-  stats.trajectory_optimizer.shadow_local_speed_prunable = 21U;
-  stats.trajectory_optimizer.shadow_local_speed_false_prunes = 3U;
-  stats.trajectory_optimizer.shadow_local_speed_winner_mismatches = 2U;
-  stats.trajectory_optimizer.shadow_local_speed_abs_time_error_sum_s = 2.5;
-  stats.trajectory_optimizer.shadow_local_speed_abs_time_error_p95_s = 0.7;
-  stats.trajectory_optimizer.shadow_local_speed_max_time_overestimate_s = 0.6;
-  stats.trajectory_optimizer.shadow_local_speed_max_time_underestimate_s = 0.9;
-  stats.trajectory_optimizer.shadow_local_speed_abs_score_error_sum = 100.0;
-  stats.trajectory_optimizer.shadow_local_speed_abs_score_error_p95 = 28.0;
-  stats.trajectory_optimizer.shadow_local_speed_max_score_overestimate = 24.0;
-  stats.trajectory_optimizer.shadow_local_speed_max_score_underestimate = 36.0;
-  stats.trajectory_optimizer.shadow_local_speed_max_false_prune_improvement_score =
-      7.25;
   stats.trajectory_optimizer.shadow_segment_score_evaluations = 52U;
   stats.trajectory_optimizer.shadow_segment_score_unavailable = 9U;
   stats.trajectory_optimizer.shadow_segment_score_prunable = 19U;
@@ -134,9 +104,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.shadow_boundary_clamped_local_candidates = 11U;
   stats.trajectory_optimizer.shadow_boundary_clamped_window_samples_total = 121U;
   stats.trajectory_optimizer.shadow_boundary_clamped_window_samples_max = 13U;
-  stats.trajectory_optimizer.shadow_speed_profile_cache_queries = 52U;
-  stats.trajectory_optimizer.shadow_speed_profile_cache_hits = 4U;
-  stats.trajectory_optimizer.shadow_speed_profile_cache_unique = 48U;
   stats.trajectory_optimizer.window_count = 4U;
   stats.trajectory_optimizer.active_window_count = 3U;
   stats.trajectory_optimizer.active_window_samples = 18U;
@@ -214,7 +181,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.full_final_score_duration_ms = 2.75;
   stats.trajectory_optimizer.async_refined = true;
   stats.trajectory_optimizer.cost_length = 2.0;
-  stats.trajectory_optimizer.cost_traversal_time = 625.0;
   stats.trajectory_optimizer.cost_curvature = 12.0;
   stats.trajectory_optimizer.cost_curvature_change = 3.0;
   stats.trajectory_optimizer.cost_radius_shortfall = 7.5;
@@ -400,13 +366,9 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_final_max_speed_limit_mps\":10"),
             std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_centerline_estimated_time_s\":14"),
-            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_centerline_length_m\":100"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_final_length_ratio\":1.08"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_cost_traversal_time\":625"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_cost_radius_shortfall\":7.5"),
             std::string::npos);
@@ -424,17 +386,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(
       json.find(
           "\"trajectory_optimizer_candidate_shape_diagnostics_duration_ms\":1.75"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_candidate_speed_profile_duration_ms\":4.75"),
-      std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_candidate_speed_profile_calls\":8"),
-            std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_candidate_speed_profile_samples_total\":400"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_candidate_speed_profile_samples_max\":55"),
       std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_regularization_duration_ms\":3.75"),
             std::string::npos);
@@ -533,9 +484,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
       json.find(
           "\"trajectory_optimizer_local_candidate_path_evaluation_duration_ms\":2.2"),
       std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_local_candidate_traversal_estimate_"
-                      "duration_ms\":3.3"),
-            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_evaluations\":51"),
             std::string::npos);
   EXPECT_NE(
@@ -553,48 +501,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_prunable_full_score_"
                       "duration_ms\":3.5"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_local_speed_evaluations\":53"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_local_speed_unavailable\":8"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_local_speed_prunable\":21"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_local_speed_false_prunes\":3"),
-            std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_shadow_local_speed_winner_mismatches\":2"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_shadow_local_speed_abs_time_error_sum_s\":2.5"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_shadow_local_speed_abs_time_error_p95_s\":0.7"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"trajectory_optimizer_shadow_local_speed_max_time_overestimate_s\":0.6"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"trajectory_optimizer_shadow_local_speed_max_time_underestimate_s\":0.9"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_shadow_local_speed_abs_score_error_sum\":100"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find("\"trajectory_optimizer_shadow_local_speed_abs_score_error_p95\":28"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"trajectory_optimizer_shadow_local_speed_max_score_overestimate\":24"),
-      std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"trajectory_optimizer_shadow_local_speed_max_score_underestimate\":36"),
-      std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_local_speed_max_false_prune_"
-                      "improvement_score\":7.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_shadow_segment_score_evaluations\":52"),
             std::string::npos);
@@ -640,12 +546,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
       json.find(
           "\"trajectory_optimizer_shadow_boundary_clamped_window_samples_max\":13"),
       std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_speed_profile_cache_queries\":52"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_speed_profile_cache_hits\":4"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_speed_profile_cache_unique\":48"),
-            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_dp_coarse_to_fine_used\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_window_count\":4"), std::string::npos);
@@ -806,8 +706,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"trajectory_total_duration_ms\":123.4"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_trajectory_optimizer_duration_ms\":99.9"),
             std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_best_candidate_estimated_time_s\":12.25"),
-            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_regularization_applied\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"turn_smoothing_smoothed_corners\":1"), std::string::npos);
@@ -841,7 +739,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_min_edge_margin_m\"",
           "\"trajectory_optimizer_mean_edge_margin_m\"",
           "\"trajectory_optimizer_cost_length\"",
-          "\"trajectory_optimizer_cost_traversal_time\"",
           "\"trajectory_optimizer_cost_curvature\"",
           "\"trajectory_optimizer_cost_curvature_change\"",
           "\"trajectory_optimizer_cost_radius_shortfall\"",
@@ -852,17 +749,7 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_cost_collision\"",
           "\"trajectory_optimizer_cost_outside_grid\"",
           "\"trajectory_optimizer_cost_length_overrun\"",
-          "\"trajectory_optimizer_centerline_estimated_time_s\"",
-          "\"trajectory_optimizer_centerline_min_speed_limit_mps\"",
-          "\"trajectory_optimizer_centerline_max_speed_limit_mps\"",
-          "\"trajectory_optimizer_centerline_curvature_limited_samples\"",
-          "\"trajectory_optimizer_best_candidate_estimated_time_s\"",
           "\"trajectory_optimizer_best_candidate_score\"",
-          "\"trajectory_optimizer_best_candidate_min_speed_limit_mps\"",
-          "\"trajectory_optimizer_best_candidate_max_speed_limit_mps\"",
-          "\"trajectory_optimizer_best_candidate_curvature_limited_samples\"",
-          "\"trajectory_optimizer_time_gain_s\"",
-          "\"trajectory_optimizer_regularization_time_delta_s\"",
           "\"trajectory_optimizer_regularization_iterations\"",
           "\"trajectory_optimizer_regularization_applied\"",
           "\"trajectory_optimizer_pre_regularization_max_curvature_jump_1pm\"",
@@ -873,10 +760,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_candidate_sample_build_duration_ms\"",
           "\"trajectory_optimizer_candidate_cost_breakdown_duration_ms\"",
           "\"trajectory_optimizer_candidate_shape_diagnostics_duration_ms\"",
-          "\"trajectory_optimizer_candidate_speed_profile_duration_ms\"",
-          "\"trajectory_optimizer_candidate_speed_profile_calls\"",
-          "\"trajectory_optimizer_candidate_speed_profile_samples_total\"",
-          "\"trajectory_optimizer_candidate_speed_profile_samples_max\"",
           "\"trajectory_optimizer_regularization_duration_ms\"",
           "\"trajectory_optimizer_scratch_reused_candidates\"",
           "\"trajectory_optimizer_parallel_candidate_evaluation_used\"",
@@ -909,7 +792,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_local_candidate_point_build_duration_ms\"",
           "\"trajectory_optimizer_local_candidate_path_evaluation_duration_ms\"",
           "\"trajectory_optimizer_local_candidate_score_duration_ms\"",
-          "\"trajectory_optimizer_local_candidate_traversal_estimate_duration_ms\"",
           "\"trajectory_optimizer_full_candidate_score_duration_ms\"",
           "\"trajectory_optimizer_shadow_lower_bound_validation_full_scores\"",
           "\"trajectory_optimizer_shadow_lower_bound_validation_full_score_duration_"
@@ -923,21 +805,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_shadow_lower_bound_max_overestimate_score\"",
           "\"trajectory_optimizer_shadow_lower_bound_max_underestimate_score\"",
           "\"trajectory_optimizer_shadow_lower_bound_max_false_prune_improvement_"
-          "score\"",
-          "\"trajectory_optimizer_shadow_local_speed_evaluations\"",
-          "\"trajectory_optimizer_shadow_local_speed_unavailable\"",
-          "\"trajectory_optimizer_shadow_local_speed_prunable\"",
-          "\"trajectory_optimizer_shadow_local_speed_false_prunes\"",
-          "\"trajectory_optimizer_shadow_local_speed_winner_mismatches\"",
-          "\"trajectory_optimizer_shadow_local_speed_abs_time_error_sum_s\"",
-          "\"trajectory_optimizer_shadow_local_speed_abs_time_error_p95_s\"",
-          "\"trajectory_optimizer_shadow_local_speed_max_time_overestimate_s\"",
-          "\"trajectory_optimizer_shadow_local_speed_max_time_underestimate_s\"",
-          "\"trajectory_optimizer_shadow_local_speed_abs_score_error_sum\"",
-          "\"trajectory_optimizer_shadow_local_speed_abs_score_error_p95\"",
-          "\"trajectory_optimizer_shadow_local_speed_max_score_overestimate\"",
-          "\"trajectory_optimizer_shadow_local_speed_max_score_underestimate\"",
-          "\"trajectory_optimizer_shadow_local_speed_max_false_prune_improvement_"
           "score\"",
           "\"trajectory_optimizer_shadow_segment_score_evaluations\"",
           "\"trajectory_optimizer_shadow_segment_score_unavailable\"",
@@ -955,9 +822,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_shadow_boundary_clamped_local_candidates\"",
           "\"trajectory_optimizer_shadow_boundary_clamped_window_samples_total\"",
           "\"trajectory_optimizer_shadow_boundary_clamped_window_samples_max\"",
-          "\"trajectory_optimizer_shadow_speed_profile_cache_queries\"",
-          "\"trajectory_optimizer_shadow_speed_profile_cache_hits\"",
-          "\"trajectory_optimizer_shadow_speed_profile_cache_unique\"",
           "\"trajectory_optimizer_window_count\"",
           "\"trajectory_optimizer_active_window_count\"",
           "\"trajectory_optimizer_active_window_samples\"",
@@ -1122,13 +986,9 @@ TEST(TrajectoryDiagnosticsIo,
 
   EXPECT_NE(fragment.find("\"trajectory_optimizer_final_estimated_time_s\":null"),
             std::string::npos);
-  EXPECT_NE(fragment.find("\"trajectory_optimizer_centerline_estimated_time_s\":null"),
-            std::string::npos);
   EXPECT_NE(fragment.find("\"trajectory_optimizer_best_candidate_score\":null"),
             std::string::npos);
   EXPECT_NE(fragment.find("\"trajectory_optimizer_final_length_ratio\":null"),
-            std::string::npos);
-  EXPECT_NE(fragment.find("\"trajectory_optimizer_cost_traversal_time\":null"),
             std::string::npos);
   EXPECT_NE(fragment.find("\"trajectory_optimizer_cost_radius_shortfall\":null"),
             std::string::npos);
@@ -1177,7 +1037,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_FALSE(parsed_value.stats.corridor.clearance_field_cache_hit);
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.final_length_m, 108.0);
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.final_length_ratio, 1.08);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.time_gain_s, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.min_edge_margin_m, 2.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.cost_offset_slope, 2.5);
   EXPECT_DOUBLE_EQ(
@@ -1195,15 +1054,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(
       parsed_value.stats.trajectory_optimizer.candidate_shape_diagnostics_duration_ms,
       1.75);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.candidate_speed_profile_duration_ms,
-      4.75);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.candidate_speed_profile_calls, 8U);
-  EXPECT_EQ(
-      parsed_value.stats.trajectory_optimizer.candidate_speed_profile_samples_total,
-      400U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.candidate_speed_profile_samples_max,
-            55U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer.regularization_duration_ms,
                    3.75);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.scratch_reused_candidates, 13U);
@@ -1277,9 +1127,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
                    2.2);
   EXPECT_DOUBLE_EQ(
       parsed_value.stats.trajectory_optimizer.local_candidate_score_duration_ms, 4.5);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .local_candidate_traversal_estimate_duration_ms,
-                   3.3);
   EXPECT_DOUBLE_EQ(
       parsed_value.stats.trajectory_optimizer.full_candidate_score_duration_ms, 6.75);
   EXPECT_EQ(
@@ -1309,41 +1156,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
                        .shadow_lower_bound_max_false_prune_improvement_score,
                    1.75);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_local_speed_evaluations,
-            53U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_local_speed_unavailable, 8U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_local_speed_prunable, 21U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_local_speed_false_prunes,
-            3U);
-  EXPECT_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_winner_mismatches, 2U);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_abs_time_error_sum_s,
-      2.5);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_abs_time_error_p95_s,
-      0.7);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_local_speed_max_time_overestimate_s,
-                   0.6);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_local_speed_max_time_underestimate_s,
-                   0.9);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_abs_score_error_sum,
-      100.0);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_abs_score_error_p95,
-      28.0);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_local_speed_max_score_overestimate,
-      24.0);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_local_speed_max_score_underestimate,
-                   36.0);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_local_speed_max_false_prune_improvement_score,
-                   7.25);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_segment_score_evaluations,
             52U);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_segment_score_unavailable,
@@ -1382,12 +1194,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer
                 .shadow_boundary_clamped_window_samples_max,
             13U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_speed_profile_cache_queries,
-            52U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_speed_profile_cache_hits,
-            4U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_speed_profile_cache_unique,
-            48U);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.full_path_segment_cache_hits, 14U);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.full_path_segment_cache_misses,
             88U);

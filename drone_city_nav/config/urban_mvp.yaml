@@ -133,10 +133,8 @@ planner_node:
     trajectory_optimizer_weight_offset_second_change: 6.5
     trajectory_optimizer_weight_offset_slope: 100.0
     trajectory_optimizer_max_offset_slope_per_m: 0.32
-    trajectory_optimizer_weight_traversal_time: 0.0
     trajectory_optimizer_max_length_ratio: 1.6
     trajectory_optimizer_regularization_iterations: 2
-    trajectory_optimizer_regularization_max_traversal_time_regression_s: 0.5
     trajectory_optimizer_parallel_workers: 0
     trajectory_optimizer_window_pre_margin_m: 25.0
     trajectory_optimizer_window_post_margin_m: 25.0

@@ -137,14 +137,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       .candidate_cost_breakdown_duration_ms = 2.25;
   record.trajectory_planner_stats.trajectory_optimizer
       .candidate_shape_diagnostics_duration_ms = 3.25;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .candidate_speed_profile_duration_ms = 4.25;
-  record.trajectory_planner_stats.trajectory_optimizer.candidate_speed_profile_calls =
-      6U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .candidate_speed_profile_samples_total = 240U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .candidate_speed_profile_samples_max = 44U;
   record.trajectory_planner_stats.trajectory_optimizer.scratch_reused_candidates = 7U;
   record.trajectory_planner_stats.trajectory_optimizer
       .parallel_candidate_evaluation_used = true;
@@ -195,8 +187,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.trajectory_optimizer
       .local_candidate_path_evaluation_duration_ms = 0.85;
   record.trajectory_planner_stats.trajectory_optimizer
-      .local_candidate_traversal_estimate_duration_ms = 0.95;
-  record.trajectory_planner_stats.trajectory_optimizer
       .shadow_lower_bound_validation_full_scores = 10U;
   record.trajectory_planner_stats.trajectory_optimizer
       .shadow_lower_bound_validation_full_score_duration_ms = 1.5;
@@ -217,33 +207,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       .shadow_lower_bound_max_underestimate_score = 4.5;
   record.trajectory_planner_stats.trajectory_optimizer
       .shadow_lower_bound_max_false_prune_improvement_score = 0.75;
-  record.trajectory_planner_stats.trajectory_optimizer.shadow_local_speed_evaluations =
-      14U;
-  record.trajectory_planner_stats.trajectory_optimizer.shadow_local_speed_unavailable =
-      4U;
-  record.trajectory_planner_stats.trajectory_optimizer.shadow_local_speed_prunable = 3U;
-  record.trajectory_planner_stats.trajectory_optimizer.shadow_local_speed_false_prunes =
-      1U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_winner_mismatches = 2U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_abs_time_error_sum_s = 1.25;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_abs_time_error_p95_s = 0.45;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_max_time_overestimate_s = 0.5;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_max_time_underestimate_s = 0.75;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_abs_score_error_sum = 50.0;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_abs_score_error_p95 = 18.0;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_max_score_overestimate = 20.0;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_max_score_underestimate = 30.0;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_local_speed_max_false_prune_improvement_score = 6.5;
   record.trajectory_planner_stats.trajectory_optimizer
       .shadow_segment_score_evaluations = 13U;
   record.trajectory_planner_stats.trajectory_optimizer
@@ -274,12 +237,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       .shadow_boundary_clamped_window_samples_total = 64U;
   record.trajectory_planner_stats.trajectory_optimizer
       .shadow_boundary_clamped_window_samples_max = 9U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_speed_profile_cache_queries = 15U;
-  record.trajectory_planner_stats.trajectory_optimizer.shadow_speed_profile_cache_hits =
-      2U;
-  record.trajectory_planner_stats.trajectory_optimizer
-      .shadow_speed_profile_cache_unique = 13U;
   record.trajectory_planner_stats.trajectory_optimizer.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.trajectory_optimizer.candidate_segment_cache_misses =
       40U;
@@ -472,13 +429,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
                   "\"trajectory_optimizer_candidate_cost_breakdown_duration_ms\":2.25");
   expectJsonField(
       json, "\"trajectory_optimizer_candidate_shape_diagnostics_duration_ms\":3.25");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_candidate_speed_profile_duration_ms\":4.25");
-  expectJsonField(json, "\"trajectory_optimizer_candidate_speed_profile_calls\":6");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_candidate_speed_profile_samples_total\":240");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_candidate_speed_profile_samples_max\":44");
   expectJsonField(json, "\"trajectory_optimizer_scratch_reused_candidates\":7");
   expectJsonField(json,
                   "\"trajectory_optimizer_parallel_candidate_evaluation_used\":true");
@@ -531,9 +481,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       json,
       "\"trajectory_optimizer_local_candidate_path_evaluation_duration_ms\":0.85");
   expectJsonField(
-      json,
-      "\"trajectory_optimizer_local_candidate_traversal_estimate_duration_ms\":0.95");
-  expectJsonField(
       json, "\"trajectory_optimizer_shadow_lower_bound_validation_full_scores\":10");
   expectJsonField(json, "\"trajectory_optimizer_shadow_lower_bound_validation_full_"
                         "score_duration_ms\":1.5");
@@ -550,31 +497,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       json, "\"trajectory_optimizer_shadow_lower_bound_max_underestimate_score\":4.5");
   expectJsonField(json, "\"trajectory_optimizer_shadow_lower_bound_max_false_prune_"
                         "improvement_score\":0.75");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_local_speed_evaluations\":14");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_local_speed_unavailable\":4");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_local_speed_prunable\":3");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_local_speed_false_prunes\":1");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_shadow_local_speed_winner_mismatches\":2");
-  expectJsonField(
-      json, "\"trajectory_optimizer_shadow_local_speed_abs_time_error_sum_s\":1.25");
-  expectJsonField(
-      json, "\"trajectory_optimizer_shadow_local_speed_abs_time_error_p95_s\":0.45");
-  expectJsonField(
-      json, "\"trajectory_optimizer_shadow_local_speed_max_time_overestimate_s\":0.5");
-  expectJsonField(
-      json,
-      "\"trajectory_optimizer_shadow_local_speed_max_time_underestimate_s\":0.75");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_shadow_local_speed_abs_score_error_sum\":50");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_shadow_local_speed_abs_score_error_p95\":18");
-  expectJsonField(
-      json, "\"trajectory_optimizer_shadow_local_speed_max_score_overestimate\":20");
-  expectJsonField(
-      json, "\"trajectory_optimizer_shadow_local_speed_max_score_underestimate\":30");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_local_speed_max_false_prune_"
-                        "improvement_score\":6.5");
   expectJsonField(json, "\"trajectory_optimizer_shadow_segment_score_evaluations\":13");
   expectJsonField(json, "\"trajectory_optimizer_shadow_segment_score_unavailable\":5");
   expectJsonField(json, "\"trajectory_optimizer_shadow_segment_score_prunable\":4");
@@ -601,11 +523,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       json, "\"trajectory_optimizer_shadow_boundary_clamped_window_samples_total\":64");
   expectJsonField(
       json, "\"trajectory_optimizer_shadow_boundary_clamped_window_samples_max\":9");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_shadow_speed_profile_cache_queries\":15");
-  expectJsonField(json, "\"trajectory_optimizer_shadow_speed_profile_cache_hits\":2");
-  expectJsonField(json,
-                  "\"trajectory_optimizer_shadow_speed_profile_cache_unique\":13");
   expectJsonField(json, "\"trajectory_optimizer_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"trajectory_optimizer_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"trajectory_optimizer_full_path_segment_cache_hits\":11");

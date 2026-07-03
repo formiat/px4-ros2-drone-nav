@@ -16,7 +16,6 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace drone_city_nav {
@@ -59,7 +58,6 @@ struct PathEvaluation {
 
 struct CostBreakdown {
   double length_cost{0.0};
-  double traversal_time_cost{0.0};
   double curvature_cost{0.0};
   double curvature_change_cost{0.0};
   double radius_shortfall_cost{0.0};
@@ -72,7 +70,7 @@ struct CostBreakdown {
   double length_overrun_cost{0.0};
 
   [[nodiscard]] double total() const noexcept {
-    return length_cost + traversal_time_cost + curvature_cost + curvature_change_cost +
+    return length_cost + curvature_cost + curvature_change_cost +
            radius_shortfall_cost + heading_jump_cost + offset_change_cost +
            offset_second_change_cost + offset_slope_cost + collision_cost +
            outside_grid_cost + length_overrun_cost;
@@ -81,7 +79,6 @@ struct CostBreakdown {
 
 struct CandidateScore {
   double score{std::numeric_limits<double>::infinity()};
-  TraversalTimeEstimate traversal_time{};
   CostBreakdown breakdown{};
 };
 
@@ -104,14 +101,9 @@ struct EvaluatedCandidate {
   double sample_build_duration_ms{0.0};
   double cost_breakdown_duration_ms{0.0};
   double shape_diagnostics_duration_ms{0.0};
-  double speed_profile_duration_ms{0.0};
-  std::size_t speed_profile_calls{0U};
-  std::size_t speed_profile_samples_total{0U};
-  std::size_t speed_profile_samples_max{0U};
   double local_point_build_duration_ms{0.0};
   double local_path_evaluation_duration_ms{0.0};
   double local_score_duration_ms{0.0};
-  double local_traversal_estimate_duration_ms{0.0};
   double full_score_duration_ms{0.0};
   std::size_t local_segment_cache_hits{0U};
   std::size_t local_segment_cache_misses{0U};
@@ -131,12 +123,6 @@ struct EvaluatedCandidate {
   bool shadow_lower_bound_would_prune{false};
   double shadow_lower_bound_score{std::numeric_limits<double>::quiet_NaN()};
   double shadow_lower_bound_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
-  bool shadow_local_speed_valid{false};
-  bool shadow_local_speed_would_prune{false};
-  double shadow_local_speed_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
-  double shadow_local_speed_full_time_s{std::numeric_limits<double>::quiet_NaN()};
-  double shadow_local_speed_estimated_score{std::numeric_limits<double>::quiet_NaN()};
-  double shadow_local_speed_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
   bool shadow_segment_score_valid{false};
   bool shadow_segment_score_would_prune{false};
   double shadow_segment_score_estimated_score{std::numeric_limits<double>::quiet_NaN()};
@@ -206,8 +192,6 @@ struct CandidateWorkBuffer {
   std::vector<CorridorSample> local_corridor_samples;
   std::vector<double> local_base_offsets;
   std::vector<double> local_candidate_offsets;
-  std::vector<TrajectoryPointSample> local_base_samples;
-  std::vector<TrajectoryPointSample> local_candidate_samples;
   std::vector<TrajectoryPointSample> samples;
   SegmentTraversabilityCache candidate_segment_cache;
   SegmentProhibitedCountCache full_path_segment_cache;
@@ -242,8 +226,6 @@ void reserveCandidateWorkBuffer(CandidateWorkBuffer& buffer,
   buffer.local_corridor_samples.reserve(local_capacity);
   buffer.local_base_offsets.reserve(local_capacity);
   buffer.local_candidate_offsets.reserve(local_capacity);
-  buffer.local_base_samples.reserve(local_capacity);
-  buffer.local_candidate_samples.reserve(local_capacity);
   buffer.samples.reserve(sample_count);
 }
 
@@ -401,7 +383,6 @@ struct LocalCandidateScore {
   bool requires_full_score{false};
   LocalFullScoreReason full_score_reason{LocalFullScoreReason::kNone};
   PathEvaluation path{};
-  TraversalTimeEstimate estimated_traversal_time{};
   double point_build_duration_ms{0.0};
   double path_evaluation_duration_ms{0.0};
   double score_duration_ms{0.0};
@@ -600,18 +581,6 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
     }
   }
   return true;
-}
-
-[[nodiscard]] std::uint64_t
-hashDoubleSequence(const std::span<const double> values) noexcept {
-  std::uint64_t hash = 1469598103934665603ULL;
-  for (const double value : values) {
-    const auto value_hash = static_cast<std::uint64_t>(std::hash<double>{}(value));
-    hash ^= value_hash + 0x9e3779b97f4a7c15ULL + (hash << 6U) + (hash >> 2U);
-  }
-  hash ^= static_cast<std::uint64_t>(values.size()) + 0x9e3779b97f4a7c15ULL +
-          (hash << 6U) + (hash >> 2U);
-  return hash;
 }
 
 [[nodiscard]] OffsetChangeDiagnostics
@@ -1037,14 +1006,14 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   return evaluation;
 }
 
-[[nodiscard]] LocalCandidateScore evaluateLocalOffsetPath(
-    const std::span<const CorridorSample> corridor_samples,
-    const std::span<const Point2> base_points,
-    const std::span<const double> base_offsets,
-    const std::span<const double> candidate_offsets,
-    const OccupancyGrid2D& prohibited_grid, const CandidateScore& base_score,
-    const double base_length_m, const std::size_t center_index,
-    const VelocityFollowerConfig& speed_config, CandidateWorkBuffer& buffer) {
+[[nodiscard]] LocalCandidateScore
+evaluateLocalOffsetPath(const std::span<const CorridorSample> corridor_samples,
+                        const std::span<const Point2> base_points,
+                        const std::span<const double> base_offsets,
+                        const std::span<const double> candidate_offsets,
+                        const OccupancyGrid2D& prohibited_grid,
+                        const CandidateScore& base_score, const double base_length_m,
+                        const std::size_t center_index, CandidateWorkBuffer& buffer) {
   LocalCandidateScore result{};
   result.valid = false;
   constexpr std::size_t kLocalScoreRadiusSamples = 6U;
@@ -1098,30 +1067,6 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   const double candidate_length_m =
       base_length_m - base_local_length_m + result.path.length_m;
   result.path.length_m = candidate_length_m;
-  const auto score_started_at = std::chrono::steady_clock::now();
-  samplesFromPointsAndOffsets(buffer.local_corridor_samples, buffer.local_base_points,
-                              buffer.local_base_offsets, buffer.local_base_samples);
-  samplesFromPointsAndOffsets(
-      buffer.local_corridor_samples, buffer.local_candidate_points,
-      buffer.local_candidate_offsets, buffer.local_candidate_samples);
-  populateSampleGeometry(buffer.local_base_samples);
-  populateSampleGeometry(buffer.local_candidate_samples);
-  const TraversalTimeEstimate base_local_time =
-      estimateTraversalTime(buffer.local_base_samples, speed_config, false);
-  const TraversalTimeEstimate candidate_local_time =
-      estimateTraversalTime(buffer.local_candidate_samples, speed_config, false);
-  if (base_score.traversal_time.valid && base_local_time.valid &&
-      candidate_local_time.valid &&
-      std::isfinite(base_score.traversal_time.estimated_time_s) &&
-      std::isfinite(base_local_time.estimated_time_s) &&
-      std::isfinite(candidate_local_time.estimated_time_s)) {
-    result.estimated_traversal_time = candidate_local_time;
-    result.estimated_traversal_time.estimated_time_s =
-        std::max(0.0, base_score.traversal_time.estimated_time_s -
-                          base_local_time.estimated_time_s +
-                          candidate_local_time.estimated_time_s);
-  }
-  result.score_duration_ms = elapsedMilliseconds(score_started_at);
   result.valid = true;
   return result;
 }
@@ -1843,47 +1788,11 @@ conservativeShadowLowerBoundScore(const std::span<const Point2> points,
          geometry.offset_second_change_cost + geometry.offset_slope_cost;
 }
 
-void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
-                                         const LocalCandidateScore& local_score,
-                                         const TrajectoryOptimizerConfig& config,
-                                         const double incumbent_score) {
-  if (!local_score.valid || !local_score.estimated_traversal_time.valid ||
-      !result.score.traversal_time.valid) {
-    return;
-  }
-  const double local_time_s = local_score.estimated_traversal_time.estimated_time_s;
-  const double full_time_s = result.score.traversal_time.estimated_time_s;
-  if (!std::isfinite(local_time_s) || !std::isfinite(full_time_s) ||
-      !std::isfinite(result.score.score) ||
-      !std::isfinite(result.score.breakdown.traversal_time_cost)) {
-    return;
-  }
-
-  const double weight_traversal_time =
-      sanitizedPositive(config.weight_traversal_time, 0.0, 0.0, 1.0e9);
-  const double exact_non_time_score =
-      result.score.score - result.score.breakdown.traversal_time_cost;
-  const double estimated_score =
-      exact_non_time_score + weight_traversal_time * local_time_s;
-  if (!std::isfinite(estimated_score)) {
-    return;
-  }
-
-  result.shadow_local_speed_valid = true;
-  result.shadow_local_speed_estimated_time_s = local_time_s;
-  result.shadow_local_speed_full_time_s = full_time_s;
-  result.shadow_local_speed_estimated_score = estimated_score;
-  result.shadow_local_speed_incumbent_score = incumbent_score;
-  result.shadow_local_speed_would_prune =
-      std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
-}
-
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
     const PathEvaluation& evaluation, const TrajectoryOptimizerConfig& config,
-    const VelocityFollowerConfig& speed_config, const double max_length_m,
-    std::vector<TrajectoryPointSample>& scratch_samples,
+    const double max_length_m, std::vector<TrajectoryPointSample>& scratch_samples,
     TrajectoryOptimizerStats& stats, const CostBreakdown* geometry_breakdown_override) {
   CandidateScore result{};
   const auto cost_started_at = std::chrono::steady_clock::now();
@@ -1902,8 +1811,6 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
         overrun_m * overrun_m * kLengthOverrunPenalty;
   }
   stats.candidate_cost_breakdown_duration_ms += elapsedMilliseconds(cost_started_at);
-  const double weight_traversal_time =
-      sanitizedPositive(config.weight_traversal_time, 0.0, 0.0, 1.0e9);
   if (evaluation.traversable()) {
     const auto sample_started_at = std::chrono::steady_clock::now();
     samplesFromPointsAndOffsets(corridor_samples, points, offsets, scratch_samples);
@@ -1920,18 +1827,6 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
         heading_jump_overrun * heading_jump_overrun * kHeadingJumpPenalty;
     if (shape.max_heading_delta_rad > kHeadingJumpHardLimitRad) {
       result.breakdown.heading_jump_cost += kHeadingJumpHardPenalty;
-    }
-    const auto speed_started_at = std::chrono::steady_clock::now();
-    result.traversal_time = estimateTraversalTime(scratch_samples, speed_config, true);
-    stats.candidate_speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
-    ++stats.candidate_speed_profile_calls;
-    stats.candidate_speed_profile_samples_total += scratch_samples.size();
-    stats.candidate_speed_profile_samples_max =
-        std::max(stats.candidate_speed_profile_samples_max, scratch_samples.size());
-    if (weight_traversal_time > 0.0 && result.traversal_time.valid &&
-        std::isfinite(result.traversal_time.estimated_time_s)) {
-      result.breakdown.traversal_time_cost =
-          weight_traversal_time * result.traversal_time.estimated_time_s;
     }
   }
   result.score = result.breakdown.total();
@@ -1982,28 +1877,9 @@ void copyTraversalEstimateToFinalStats(const TraversalTimeEstimate& estimate,
   stats.curvature_limited_samples = estimate.curvature_limited_samples;
 }
 
-void copyTraversalEstimateToCenterlineStats(const TraversalTimeEstimate& estimate,
-                                            TrajectoryOptimizerStats& stats) {
-  stats.centerline_estimated_time_s = estimate.estimated_time_s;
-  stats.centerline_min_speed_limit_mps = estimate.min_speed_limit_mps;
-  stats.centerline_max_speed_limit_mps = estimate.max_speed_limit_mps;
-  stats.centerline_curvature_limited_samples = estimate.curvature_limited_samples;
-}
-
-void copyTraversalEstimateToBestCandidateStats(const TraversalTimeEstimate& estimate,
-                                               const double score,
-                                               TrajectoryOptimizerStats& stats) {
-  stats.best_candidate_estimated_time_s = estimate.estimated_time_s;
-  stats.best_candidate_score = score;
-  stats.best_candidate_min_speed_limit_mps = estimate.min_speed_limit_mps;
-  stats.best_candidate_max_speed_limit_mps = estimate.max_speed_limit_mps;
-  stats.best_candidate_curvature_limited_samples = estimate.curvature_limited_samples;
-}
-
 void copyCostBreakdownToStats(const CostBreakdown& breakdown,
                               TrajectoryOptimizerStats& stats) {
   stats.cost_length = breakdown.length_cost;
-  stats.cost_traversal_time = breakdown.traversal_time_cost;
   stats.cost_curvature = breakdown.curvature_cost;
   stats.cost_curvature_change = breakdown.curvature_change_cost;
   stats.cost_radius_shortfall = breakdown.radius_shortfall_cost;
@@ -2046,9 +1922,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const std::span<const double> candidate_offsets,
     const std::span<const Point2> candidate_points,
     const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    const VelocityFollowerConfig& speed_config, const double max_length_m,
-    double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
-    CandidateScore& best_score, double& best_length_m,
+    const double max_length_m, double& best_cost, std::vector<double>& offsets,
+    std::vector<Point2>& best_points, CandidateScore& best_score, double& best_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples,
     SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats) {
   ++stats.candidate_evaluations;
@@ -2068,7 +1943,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   const auto score_started_at = std::chrono::steady_clock::now();
   const CandidateScore candidate_score = scoreForCandidate(
       corridor_samples, candidate_points, candidate_offsets, evaluation, config,
-      speed_config, max_length_m, scratch_samples, stats, nullptr);
+      max_length_m, scratch_samples, stats, nullptr);
   const double score_duration_ms = elapsedMilliseconds(score_started_at);
   stats.candidate_score_duration_ms += score_duration_ms;
   stats.full_candidate_score_duration_ms += score_duration_ms;
@@ -2078,8 +1953,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     best_points.assign(candidate_points.begin(), candidate_points.end());
     best_score = candidate_score;
     best_length_m = evaluation.length_m;
-    copyTraversalEstimateToBestCandidateStats(candidate_score.traversal_time,
-                                              candidate_score.score, stats);
+    stats.best_candidate_score = candidate_score.score;
     return true;
   }
   return false;
@@ -2091,9 +1965,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const std::size_t center_index, const double delta_m,
     const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    const VelocityFollowerConfig& speed_config, const double max_length_m,
-    const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
-    CandidateWorkBuffer& buffer) {
+    const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
+    const double incumbent_score, CandidateWorkBuffer& buffer) {
   EvaluatedCandidate result{};
   result.scratch_reused = true;
   result.snapshot_allocation_avoided =
@@ -2118,7 +1991,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.local_evaluated = true;
   LocalCandidateScore local_score = evaluateLocalOffsetPath(
       corridor_samples, base_points, base_offsets, buffer.offsets, prohibited_grid,
-      base_score, base_length_m, center_index, speed_config, buffer);
+      base_score, base_length_m, center_index, buffer);
   result.point_build_duration_ms = local_score.point_build_duration_ms;
   result.path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.score_duration_ms = local_score.score_duration_ms;
@@ -2126,7 +1999,6 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.local_path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.local_score_duration_ms =
       local_score.path_evaluation_duration_ms + local_score.score_duration_ms;
-  result.local_traversal_estimate_duration_ms = local_score.score_duration_ms;
   result.local_segment_cache_hits = local_score.segment_cache_hits;
   result.local_segment_cache_misses = local_score.segment_cache_misses;
   result.local_full_score_reason = local_score.full_score_reason;
@@ -2161,14 +2033,13 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
             offset_diagnostics, config);
     local_stats.candidate_cost_breakdown_duration_ms +=
         elapsedMilliseconds(geometry_started_at);
-    result.score = scoreForCandidate(
-        corridor_samples, buffer.points, buffer.offsets, result.path, config,
-        speed_config, max_length_m, buffer.samples, local_stats,
-        incremental_geometry ? &*incremental_geometry : nullptr);
+    result.score =
+        scoreForCandidate(corridor_samples, buffer.points, buffer.offsets, result.path,
+                          config, max_length_m, buffer.samples, local_stats,
+                          incremental_geometry ? &*incremental_geometry : nullptr);
     populateShadowSegmentScoreDiagnostics(
         result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,
         offset_diagnostics, config, incumbent_score, incremental_geometry);
-    populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
     const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
     result.score_duration_ms += full_score_duration_ms;
     result.full_score_duration_ms += full_score_duration_ms;
@@ -2177,11 +2048,6 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
         local_stats.candidate_cost_breakdown_duration_ms;
     result.shape_diagnostics_duration_ms =
         local_stats.candidate_shape_diagnostics_duration_ms;
-    result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
-    result.speed_profile_calls = local_stats.candidate_speed_profile_calls;
-    result.speed_profile_samples_total =
-        local_stats.candidate_speed_profile_samples_total;
-    result.speed_profile_samples_max = local_stats.candidate_speed_profile_samples_max;
     result.full_score_used = true;
     return result;
   }
@@ -2208,12 +2074,11 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
       elapsedMilliseconds(geometry_started_at);
   result.score =
       scoreForCandidate(corridor_samples, buffer.points, buffer.offsets, result.path,
-                        config, speed_config, max_length_m, buffer.samples, local_stats,
+                        config, max_length_m, buffer.samples, local_stats,
                         incremental_geometry ? &*incremental_geometry : nullptr);
   populateShadowSegmentScoreDiagnostics(
       result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,
       offset_diagnostics, config, incumbent_score, incremental_geometry);
-  populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
   const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
   result.score_duration_ms += full_score_duration_ms;
   result.full_score_duration_ms += full_score_duration_ms;
@@ -2221,11 +2086,6 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.cost_breakdown_duration_ms = local_stats.candidate_cost_breakdown_duration_ms;
   result.shape_diagnostics_duration_ms =
       local_stats.candidate_shape_diagnostics_duration_ms;
-  result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
-  result.speed_profile_calls = local_stats.candidate_speed_profile_calls;
-  result.speed_profile_samples_total =
-      local_stats.candidate_speed_profile_samples_total;
-  result.speed_profile_samples_max = local_stats.candidate_speed_profile_samples_max;
   result.full_score_used = true;
   return result;
 }
@@ -2472,11 +2332,10 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const OccupancyGrid2D& prohibited_grid,
-    const TrajectoryOptimizerConfig& config, const VelocityFollowerConfig& speed_config,
-    const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
-    const double incumbent_score, CandidateBatchWorkspace& workspace,
-    TrajectoryOptimizerCandidateWorkerPool* pool, TrajectoryOptimizerStats& stats,
-    const std::size_t worker_count) {
+    const TrajectoryOptimizerConfig& config, const double max_length_m,
+    const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
+    CandidateBatchWorkspace& workspace, TrajectoryOptimizerCandidateWorkerPool* pool,
+    TrajectoryOptimizerStats& stats, const std::size_t worker_count) {
   const auto batch_started_at = std::chrono::steady_clock::now();
   workspace.results.resize(tasks.size());
   if (tasks.empty()) {
@@ -2495,8 +2354,8 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     workspace.results[task_index].order = task.order;
     workspace.results[task_index].candidate = evaluateCandidateSnapshot(
         corridor_samples, base_offsets, base_points, base_score, base_length_m,
-        task.center_index, task.delta_m, prohibited_grid, config, speed_config,
-        max_length_m, mutable_indices, incumbent_score, buffer);
+        task.center_index, task.delta_m, prohibited_grid, config, max_length_m,
+        mutable_indices, incumbent_score, buffer);
   };
 
   if (resolved_workers == 1U || pool == nullptr) {
@@ -2568,8 +2427,6 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate,
     stats.local_candidate_path_evaluation_duration_ms +=
         candidate.local_path_evaluation_duration_ms;
     stats.local_candidate_score_duration_ms += candidate.local_score_duration_ms;
-    stats.local_candidate_traversal_estimate_duration_ms +=
-        candidate.local_traversal_estimate_duration_ms;
     stats.candidate_segment_cache_hits += candidate.local_segment_cache_hits;
     stats.candidate_segment_cache_misses += candidate.local_segment_cache_misses;
     if (candidate.requires_full_score) {
@@ -2626,41 +2483,6 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate,
   } else if (candidate.local_evaluated) {
     ++stats.shadow_lower_bound_unavailable;
   }
-  if (candidate.shadow_local_speed_valid) {
-    ++stats.shadow_local_speed_evaluations;
-    const double time_delta_s = candidate.shadow_local_speed_estimated_time_s -
-                                candidate.shadow_local_speed_full_time_s;
-    if (std::isfinite(time_delta_s)) {
-      stats.shadow_local_speed_abs_time_error_sum_s += std::abs(time_delta_s);
-      stats.shadow_local_speed_max_time_overestimate_s =
-          std::max(stats.shadow_local_speed_max_time_overestimate_s, time_delta_s);
-      stats.shadow_local_speed_max_time_underestimate_s =
-          std::max(stats.shadow_local_speed_max_time_underestimate_s, -time_delta_s);
-    }
-    const double score_delta =
-        candidate.shadow_local_speed_estimated_score - candidate.score.score;
-    if (std::isfinite(score_delta)) {
-      stats.shadow_local_speed_abs_score_error_sum += std::abs(score_delta);
-      stats.shadow_local_speed_max_score_overestimate =
-          std::max(stats.shadow_local_speed_max_score_overestimate, score_delta);
-      stats.shadow_local_speed_max_score_underestimate =
-          std::max(stats.shadow_local_speed_max_score_underestimate, -score_delta);
-    }
-    if (candidate.shadow_local_speed_would_prune) {
-      ++stats.shadow_local_speed_prunable;
-      if (std::isfinite(candidate.score.score) &&
-          std::isfinite(candidate.shadow_local_speed_incumbent_score) &&
-          candidate.score.score + 1.0e-9 <
-              candidate.shadow_local_speed_incumbent_score) {
-        ++stats.shadow_local_speed_false_prunes;
-        stats.shadow_local_speed_max_false_prune_improvement_score = std::max(
-            stats.shadow_local_speed_max_false_prune_improvement_score,
-            candidate.shadow_local_speed_incumbent_score - candidate.score.score);
-      }
-    }
-  } else if (candidate.local_evaluated) {
-    ++stats.shadow_local_speed_unavailable;
-  }
   if (candidate.shadow_segment_score_valid) {
     ++stats.shadow_segment_score_evaluations;
     stats.shadow_segment_score_window_samples_total +=
@@ -2700,11 +2522,6 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate,
   stats.candidate_cost_breakdown_duration_ms += candidate.cost_breakdown_duration_ms;
   stats.candidate_shape_diagnostics_duration_ms +=
       candidate.shape_diagnostics_duration_ms;
-  stats.candidate_speed_profile_duration_ms += candidate.speed_profile_duration_ms;
-  stats.candidate_speed_profile_calls += candidate.speed_profile_calls;
-  stats.candidate_speed_profile_samples_total += candidate.speed_profile_samples_total;
-  stats.candidate_speed_profile_samples_max = std::max(
-      stats.candidate_speed_profile_samples_max, candidate.speed_profile_samples_max);
   if (!candidate.path.traversable()) {
     ++stats.collision_rejections;
   }
@@ -2731,11 +2548,6 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   const std::vector<Point2> centerline =
       pointsFromOffsets(optimizer_samples, zero_offsets);
   result.stats.centerline_length_m = pathLength(centerline);
-  std::vector<TrajectoryPointSample> centerline_samples =
-      samplesFromPointsAndOffsets(optimizer_samples, centerline, zero_offsets);
-  populateSampleGeometry(centerline_samples);
-  copyTraversalEstimateToCenterlineStats(
-      estimateTraversalTime(centerline_samples, speed_config, true), result.stats);
   const std::vector<ActiveWindow> active_windows = detectActiveWindows(
       optimizer_samples, centerline, prohibited_grid, config, result.stats);
   result.active_windows = windowMetadata(active_windows, optimizer_samples);
@@ -2783,11 +2595,11 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
                       scratch.candidate_points);
     result.stats.candidate_point_build_duration_ms +=
         elapsedMilliseconds(points_started_at);
-    (void)updateBestCandidate(
-        optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
-        prohibited_grid, config, speed_config, max_length_m, best_cost, offsets,
-        best_points, best_score, best_length_m, scratch.candidate_samples,
-        scratch.full_path_segment_cache, result.stats);
+    (void)updateBestCandidate(optimizer_samples, scratch.candidate_offsets,
+                              scratch.candidate_points, prohibited_grid, config,
+                              max_length_m, best_cost, offsets, best_points, best_score,
+                              best_length_m, scratch.candidate_samples,
+                              scratch.full_path_segment_cache, result.stats);
   }
   if (offsets.empty()) {
     return result;
@@ -2838,8 +2650,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
         elapsedMilliseconds(points_started_at);
     const bool accepted = updateBestCandidate(
         optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
-        prohibited_grid, config, speed_config, max_length_m, best_cost, offsets,
-        best_points, best_score, best_length_m, scratch.candidate_samples,
+        prohibited_grid, config, max_length_m, best_cost, offsets, best_points,
+        best_score, best_length_m, scratch.candidate_samples,
         scratch.full_path_segment_cache, result.stats);
     if (accepted) {
       result.stats.initial_cost = best_cost;
@@ -2853,14 +2665,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   if (max_candidate_worker_count > 1U) {
     candidate_worker_pool.emplace(max_candidate_worker_count, result.stats);
   }
-  std::vector<double> shadow_local_speed_abs_time_errors_s;
-  std::vector<double> shadow_local_speed_abs_score_errors;
   std::vector<double> shadow_segment_score_abs_errors;
-  shadow_local_speed_abs_time_errors_s.reserve(control_indices.size() * max_iterations);
-  shadow_local_speed_abs_score_errors.reserve(control_indices.size() * max_iterations);
   shadow_segment_score_abs_errors.reserve(control_indices.size() * max_iterations);
-  std::unordered_set<std::uint64_t> shadow_speed_profile_cache_keys;
-  shadow_speed_profile_cache_keys.reserve(control_indices.size() * max_iterations * 2U);
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
@@ -2877,7 +2683,7 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
     ++result.stats.candidate_chunks;
     const std::span<const CandidateBatchResult> candidates = evaluateCandidateBatch(
         tasks, optimizer_samples, offsets, best_points, best_score, best_length_m,
-        prohibited_grid, config, speed_config, max_length_m, mutable_indices, best_cost,
+        prohibited_grid, config, max_length_m, mutable_indices, best_cost,
         candidate_workspace,
         candidate_worker_pool.has_value() ? &candidate_worker_pool.value() : nullptr,
         result.stats, candidate_worker_count);
@@ -2885,10 +2691,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
     bool changed = false;
     const EvaluatedCandidate* iteration_winner = nullptr;
     std::optional<std::size_t> iteration_winner_order;
-    std::optional<std::size_t> shadow_local_speed_winner_order;
     std::optional<std::size_t> shadow_segment_score_winner_order;
     double best_estimated_score = best_cost;
-    double best_shadow_local_speed_score = best_cost;
     double best_shadow_segment_score = best_cost;
     for (const CandidateBatchResult& batch_result : candidates) {
       const EvaluatedCandidate& candidate = batch_result.candidate;
@@ -2896,38 +2700,12 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       if (candidate.noop || candidate.offsets.empty()) {
         continue;
       }
-      if (candidate.full_score_used) {
-        ++result.stats.shadow_speed_profile_cache_queries;
-        const std::uint64_t cache_key = hashDoubleSequence(candidate.offsets);
-        const auto insertion = shadow_speed_profile_cache_keys.insert(cache_key);
-        if (!insertion.second) {
-          ++result.stats.shadow_speed_profile_cache_hits;
-        }
-      }
-      if (candidate.shadow_local_speed_valid) {
-        const double time_delta_s = candidate.shadow_local_speed_estimated_time_s -
-                                    candidate.shadow_local_speed_full_time_s;
-        if (std::isfinite(time_delta_s)) {
-          shadow_local_speed_abs_time_errors_s.push_back(std::abs(time_delta_s));
-        }
-        const double score_delta =
-            candidate.shadow_local_speed_estimated_score - candidate.score.score;
-        if (std::isfinite(score_delta)) {
-          shadow_local_speed_abs_score_errors.push_back(std::abs(score_delta));
-        }
-      }
       if (candidate.shadow_segment_score_valid) {
         const double score_delta =
             candidate.shadow_segment_score_estimated_score - candidate.score.score;
         if (std::isfinite(score_delta)) {
           shadow_segment_score_abs_errors.push_back(std::abs(score_delta));
         }
-      }
-      if (candidate.shadow_local_speed_valid &&
-          candidate.shadow_local_speed_estimated_score + 1.0e-9 <
-              best_shadow_local_speed_score) {
-        best_shadow_local_speed_score = candidate.shadow_local_speed_estimated_score;
-        shadow_local_speed_winner_order = batch_result.order;
       }
       if (candidate.shadow_segment_score_valid &&
           candidate.shadow_segment_score_estimated_score + 1.0e-9 <
@@ -2945,10 +2723,6 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
           iteration_winner_order = batch_result.order;
         }
       }
-    }
-    if (shadow_local_speed_winner_order.has_value() &&
-        shadow_local_speed_winner_order != iteration_winner_order) {
-      ++result.stats.shadow_local_speed_winner_mismatches;
     }
     if (shadow_segment_score_winner_order.has_value() &&
         shadow_segment_score_winner_order != iteration_winner_order) {
@@ -2968,9 +2742,7 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       best_score = iteration_winner->score;
       best_length_m = iteration_winner->path.length_m;
       ++result.stats.local_candidate_acceptance_full_scores;
-      copyTraversalEstimateToBestCandidateStats(iteration_winner->score.traversal_time,
-                                                iteration_winner->score.score,
-                                                result.stats);
+      result.stats.best_candidate_score = iteration_winner->score.score;
       changed = true;
     }
     ++result.stats.iterations;
@@ -2978,14 +2750,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       step *= cooling;
     }
   }
-  result.stats.shadow_local_speed_abs_time_error_p95_s =
-      percentileValue(shadow_local_speed_abs_time_errors_s, 0.95);
-  result.stats.shadow_local_speed_abs_score_error_p95 =
-      percentileValue(shadow_local_speed_abs_score_errors, 0.95);
   result.stats.shadow_segment_score_abs_error_p95 =
       percentileValue(shadow_segment_score_abs_errors, 0.95);
-  result.stats.shadow_speed_profile_cache_unique =
-      shadow_speed_profile_cache_keys.size();
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
     final_points = pointsFromOffsets(optimizer_samples, offsets);
@@ -2997,8 +2763,6 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       computeTrajectoryShapeDiagnostics(pre_regularization_samples);
   result.stats.pre_regularization_max_curvature_jump_1pm =
       pre_diagnostics.max_curvature_jump_1pm;
-  const TraversalTimeEstimate best_time =
-      estimateTraversalTime(pre_regularization_samples, speed_config, true);
 
   std::vector<double> final_offsets = offsets;
   const std::size_t regularization_iterations = std::clamp<std::size_t>(
@@ -3030,16 +2794,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
         elapsedMilliseconds(sample_started_at);
     const TrajectoryShapeDiagnostics candidate_diagnostics =
         computeTrajectoryShapeDiagnostics(scratch.candidate_samples);
-    const TraversalTimeEstimate candidate_time =
-        estimateTraversalTime(scratch.candidate_samples, speed_config, true);
-    const double max_regression = sanitizedPositive(
-        config.regularization_max_traversal_time_regression_s, 0.5, 0.0, 3600.0);
-    const bool time_acceptable =
-        !best_time.valid || !candidate_time.valid ||
-        candidate_time.estimated_time_s <= best_time.estimated_time_s + max_regression;
     if (candidate_diagnostics.max_curvature_jump_1pm + 1.0e-9 >=
-            pre_diagnostics.max_curvature_jump_1pm ||
-        !time_acceptable) {
+        pre_diagnostics.max_curvature_jump_1pm) {
       break;
     }
     final_offsets = scratch.smoothed_offsets;
@@ -3063,7 +2819,7 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   const auto final_score_started_at = std::chrono::steady_clock::now();
   const CandidateScore final_score = scoreForCandidate(
       optimizer_samples, final_points, final_offsets, final_evaluation, config,
-      speed_config, max_length_m, scratch.candidate_samples, result.stats, nullptr);
+      max_length_m, scratch.candidate_samples, result.stats, nullptr);
   result.stats.full_final_score_duration_ms =
       elapsedMilliseconds(final_score_started_at);
 
@@ -3094,16 +2850,6 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   const TraversalTimeEstimate final_time =
       estimateTraversalTime(result.samples, speed_config, true);
   copyTraversalEstimateToFinalStats(final_time, result.stats);
-  if (std::isfinite(result.stats.centerline_estimated_time_s) &&
-      std::isfinite(result.stats.estimated_time_s)) {
-    result.stats.time_gain_s =
-        result.stats.centerline_estimated_time_s - result.stats.estimated_time_s;
-  }
-  if (std::isfinite(result.stats.best_candidate_estimated_time_s) &&
-      std::isfinite(result.stats.estimated_time_s)) {
-    result.stats.regularization_time_delta_s =
-        result.stats.estimated_time_s - result.stats.best_candidate_estimated_time_s;
-  }
   updateCurvatureStats(result.samples, result.stats);
   updateEdgeMarginStats(result.samples, result.stats);
   result.valid = trajectorySamplesAreUsable(result.samples);

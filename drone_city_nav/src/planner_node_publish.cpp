@@ -333,8 +333,7 @@ bool PlannerNode::publishTrajectoryResult(
       "clearance_reused=%s clearance_cache_hit=%s config_fp=%" PRIu64 "] "
       "trajectory_optimizer[iterations=%zu evals=%zu skipped_noop=%zu "
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
-      "sample_build=%.1fms cost=%.1fms shape=%.1fms speed=%.1fms "
-      "speed_calls=%zu speed_samples(total=%zu max=%zu) "
+      "sample_build=%.1fms cost=%.1fms shape=%.1fms "
       "regularization=%.1fms scratch_reused=%zu "
       "parallel=%s workers=%zu chunks=%zu parallel_batches=%zu threads=%zu "
       "worker_reuses=%zu batch_wall=%.1fms batch_wait=%.1fms "
@@ -346,28 +345,22 @@ bool PlannerNode::publishTrajectoryResult(
       "local_required_reasons(invalid=%zu boundary=%zu unsafe_base=%zu "
       "window_invalid=%zu) "
       "local_accept_full_scores=%zu local_false_positives=%zu "
-      "local_timing(point=%.1fms path=%.1fms estimate=%.1fms total=%.1fms) "
+      "local_timing(point=%.1fms path=%.1fms total=%.1fms) "
       "full_candidate_score=%.1fms "
       "shadow_lb(evals=%zu unavailable=%zu prunable=%zu false_prunes=%zu "
       "winner_prunes=%zu validation_full_scores=%zu "
       "validation_full_score=%.1fms prunable_full_score=%.1fms "
       "max_over=%.3f max_under=%.3f max_false_improve=%.3f) "
-      "shadow_local_speed(evals=%zu unavailable=%zu prunable=%zu "
-      "false_prunes=%zu winner_mismatches=%zu abs_time_err_sum=%.3fs "
-      "abs_time_err_p95=%.3fs max_time_over=%.3fs max_time_under=%.3fs "
-      "abs_score_err_sum=%.3f abs_score_err_p95=%.3f "
-      "max_score_over=%.3f max_score_under=%.3f max_false_improve=%.3f) "
       "shadow_segment_score(evals=%zu unavailable=%zu prunable=%zu "
       "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
       "abs_err_sum=%.6f abs_err_p95=%.6f max_over=%.6f max_under=%.6f "
       "max_false_improve=%.6f) "
       "shadow_boundary_clamped(candidates=%zu window_total=%zu window_max=%zu) "
-      "shadow_speed_cache(queries=%zu hits=%zu unique=%zu) "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
       "time_final=%.2f "
-      "time_centerline=%.2f time_gain=%.2f speed_limit_min=%.2f "
+      "speed_limit_min=%.2f "
       "speed_limit_max=%.2f curvature_limited=%zu "
       "windows=%zu active_windows=%zu active_samples=%zu "
       "window_triggers(centerline_blocked=%zu heading_change=%zu "
@@ -448,11 +441,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.trajectory_optimizer.candidate_cost_breakdown_duration_ms,
       trajectory_result.stats.trajectory_optimizer
           .candidate_shape_diagnostics_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_calls,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_speed_profile_samples_total,
-      trajectory_result.stats.trajectory_optimizer.candidate_speed_profile_samples_max,
       trajectory_result.stats.trajectory_optimizer.regularization_duration_ms,
       trajectory_result.stats.trajectory_optimizer.scratch_reused_candidates,
       trajectory_result.stats.trajectory_optimizer.parallel_candidate_evaluation_used
@@ -501,8 +489,6 @@ bool PlannerNode::publishTrajectoryResult(
           .local_candidate_point_build_duration_ms,
       trajectory_result.stats.trajectory_optimizer
           .local_candidate_path_evaluation_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_traversal_estimate_duration_ms,
       trajectory_result.stats.trajectory_optimizer.local_candidate_score_duration_ms,
       trajectory_result.stats.trajectory_optimizer.full_candidate_score_duration_ms,
       trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_evaluations,
@@ -522,29 +508,6 @@ bool PlannerNode::publishTrajectoryResult(
           .shadow_lower_bound_max_underestimate_score,
       trajectory_result.stats.trajectory_optimizer
           .shadow_lower_bound_max_false_prune_improvement_score,
-      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_evaluations,
-      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_unavailable,
-      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_prunable,
-      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_false_prunes,
-      trajectory_result.stats.trajectory_optimizer.shadow_local_speed_winner_mismatches,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_abs_time_error_sum_s,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_abs_time_error_p95_s,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_max_time_overestimate_s,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_max_time_underestimate_s,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_abs_score_error_sum,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_abs_score_error_p95,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_max_score_overestimate,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_max_score_underestimate,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_local_speed_max_false_prune_improvement_score,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_evaluations,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_unavailable,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_prunable,
@@ -569,9 +532,6 @@ bool PlannerNode::publishTrajectoryResult(
           .shadow_boundary_clamped_window_samples_total,
       trajectory_result.stats.trajectory_optimizer
           .shadow_boundary_clamped_window_samples_max,
-      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_queries,
-      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_hits,
-      trajectory_result.stats.trajectory_optimizer.shadow_speed_profile_cache_unique,
       trajectory_result.stats.trajectory_optimizer.initial_cost,
       trajectory_result.stats.trajectory_optimizer.final_cost,
       trajectory_result.stats.trajectory_optimizer.centerline_length_m,
@@ -581,8 +541,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.trajectory_optimizer.min_edge_margin_m,
       trajectory_result.stats.trajectory_optimizer.cost_offset_slope,
       trajectory_result.stats.trajectory_optimizer.estimated_time_s,
-      trajectory_result.stats.trajectory_optimizer.centerline_estimated_time_s,
-      trajectory_result.stats.trajectory_optimizer.time_gain_s,
       trajectory_result.stats.trajectory_optimizer.min_speed_limit_mps,
       trajectory_result.stats.trajectory_optimizer.max_speed_limit_mps,
       trajectory_result.stats.trajectory_optimizer.curvature_limited_samples,
@@ -937,8 +895,7 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
           .expected_start = pending.route_start,
           .expected_goal = pending.goal,
           .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
-          .max_time_regression_s = trajectory_planner_config_.trajectory_optimizer
-                                       .regularization_max_traversal_time_regression_s,
+          .max_time_regression_s = 0.5,
           .max_length_regression_ratio = 1.10,
           .baseline_estimated_time_s = pending.baseline_estimated_time_s,
           .baseline_length_m = pending.baseline_length_m,

@@ -45,10 +45,8 @@ struct TrajectoryOptimizerConfig {
   double weight_offset_second_change{6.5};
   double weight_offset_slope{100.0};
   double max_offset_slope_per_m{0.32};
-  double weight_traversal_time{0.0};
   double max_length_ratio{1.6};
   std::size_t regularization_iterations{2U};
-  double regularization_max_traversal_time_regression_s{0.5};
   std::size_t parallel_workers{0U};
   double window_pre_margin_m{25.0};
   double window_post_margin_m{25.0};
@@ -78,10 +76,6 @@ struct TrajectoryOptimizerStats {
   double candidate_sample_build_duration_ms{0.0};
   double candidate_cost_breakdown_duration_ms{0.0};
   double candidate_shape_diagnostics_duration_ms{0.0};
-  double candidate_speed_profile_duration_ms{0.0};
-  std::size_t candidate_speed_profile_calls{0U};
-  std::size_t candidate_speed_profile_samples_total{0U};
-  std::size_t candidate_speed_profile_samples_max{0U};
   double regularization_duration_ms{0.0};
   std::size_t scratch_reused_candidates{0U};
   bool parallel_candidate_evaluation_used{false};
@@ -114,7 +108,6 @@ struct TrajectoryOptimizerStats {
   double local_candidate_point_build_duration_ms{0.0};
   double local_candidate_path_evaluation_duration_ms{0.0};
   double local_candidate_score_duration_ms{0.0};
-  double local_candidate_traversal_estimate_duration_ms{0.0};
   double full_candidate_score_duration_ms{0.0};
   std::size_t shadow_lower_bound_validation_full_scores{0U};
   double shadow_lower_bound_validation_full_score_duration_ms{0.0};
@@ -127,20 +120,6 @@ struct TrajectoryOptimizerStats {
   double shadow_lower_bound_max_overestimate_score{0.0};
   double shadow_lower_bound_max_underestimate_score{0.0};
   double shadow_lower_bound_max_false_prune_improvement_score{0.0};
-  std::size_t shadow_local_speed_evaluations{0U};
-  std::size_t shadow_local_speed_unavailable{0U};
-  std::size_t shadow_local_speed_prunable{0U};
-  std::size_t shadow_local_speed_false_prunes{0U};
-  std::size_t shadow_local_speed_winner_mismatches{0U};
-  double shadow_local_speed_abs_time_error_sum_s{0.0};
-  double shadow_local_speed_abs_time_error_p95_s{0.0};
-  double shadow_local_speed_max_time_overestimate_s{0.0};
-  double shadow_local_speed_max_time_underestimate_s{0.0};
-  double shadow_local_speed_abs_score_error_sum{0.0};
-  double shadow_local_speed_abs_score_error_p95{0.0};
-  double shadow_local_speed_max_score_overestimate{0.0};
-  double shadow_local_speed_max_score_underestimate{0.0};
-  double shadow_local_speed_max_false_prune_improvement_score{0.0};
   std::size_t shadow_segment_score_evaluations{0U};
   std::size_t shadow_segment_score_unavailable{0U};
   std::size_t shadow_segment_score_prunable{0U};
@@ -156,9 +135,6 @@ struct TrajectoryOptimizerStats {
   std::size_t shadow_boundary_clamped_local_candidates{0U};
   std::size_t shadow_boundary_clamped_window_samples_total{0U};
   std::size_t shadow_boundary_clamped_window_samples_max{0U};
-  std::size_t shadow_speed_profile_cache_queries{0U};
-  std::size_t shadow_speed_profile_cache_hits{0U};
-  std::size_t shadow_speed_profile_cache_unique{0U};
   std::size_t window_count{0U};
   std::size_t active_window_count{0U};
   std::size_t active_window_samples{0U};
@@ -220,7 +196,6 @@ struct TrajectoryOptimizerStats {
   double final_length_m{0.0};
   double final_length_ratio{std::numeric_limits<double>::quiet_NaN()};
   double cost_length{std::numeric_limits<double>::quiet_NaN()};
-  double cost_traversal_time{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
   double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
   double cost_radius_shortfall{std::numeric_limits<double>::quiet_NaN()};
@@ -235,17 +210,7 @@ struct TrajectoryOptimizerStats {
   double min_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double max_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   std::size_t curvature_limited_samples{0U};
-  double centerline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
-  double centerline_min_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
-  double centerline_max_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
-  std::size_t centerline_curvature_limited_samples{0U};
-  double best_candidate_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
   double best_candidate_score{std::numeric_limits<double>::quiet_NaN()};
-  double best_candidate_min_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
-  double best_candidate_max_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
-  std::size_t best_candidate_curvature_limited_samples{0U};
-  double time_gain_s{std::numeric_limits<double>::quiet_NaN()};
-  double regularization_time_delta_s{std::numeric_limits<double>::quiet_NaN()};
   bool regularization_applied{false};
   std::size_t regularization_iterations{0U};
   double pre_regularization_max_curvature_jump_1pm{
