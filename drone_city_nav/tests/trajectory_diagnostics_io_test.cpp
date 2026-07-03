@@ -138,11 +138,19 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.active_window_width_asymmetry_samples = 9U;
   stats.racing_line.centerline_blocked_prohibited_cells = 10U;
   stats.racing_line.centerline_blocked_outside_grid_segments = 11U;
+  stats.racing_line.centerline_blocked_segment_count = 3U;
+  stats.racing_line.centerline_blocked_span_count = 2U;
   stats.racing_line.centerline_blocked_first_segment_index = 12U;
+  stats.racing_line.centerline_blocked_last_segment_index = 14U;
   stats.racing_line.centerline_blocked_first_s_m = 42.5;
+  stats.racing_line.centerline_blocked_last_s_m = 48.75;
+  stats.racing_line.centerline_blocked_span_length_m = 6.25;
   stats.racing_line.centerline_blocked_first_x_m = 13.25;
   stats.racing_line.centerline_blocked_first_y_m = -8.75;
+  stats.racing_line.centerline_blocked_last_x_m = 16.5;
+  stats.racing_line.centerline_blocked_last_y_m = -9.25;
   stats.racing_line.centerline_blocked_first_outside_grid = true;
+  stats.racing_line.centerline_blocked_last_outside_grid = true;
   stats.racing_line.dp_states = 144U;
   stats.racing_line.dp_transitions = 512U;
   stats.racing_line.dp_segment_cache_hits = 10U;
@@ -519,15 +527,30 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
             std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_outside_grid_segments\":11"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_segment_count\":3"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_span_count\":2"), std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_first_segment_index\":12"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_last_segment_index\":14"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_first_s_m\":42.5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_last_s_m\":48.75"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_span_length_m\":6.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_first_x_m\":13.25"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_first_y_m\":-8.75"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_last_x_m\":16.5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_last_y_m\":-9.25"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_centerline_blocked_first_outside_grid\":true"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_centerline_blocked_last_outside_grid\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_states\":144"), std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_states\":44"), std::string::npos);
@@ -689,11 +712,19 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_line_active_window_width_asymmetry_samples\"",
                     "\"racing_centerline_blocked_prohibited_cells\"",
                     "\"racing_centerline_blocked_outside_grid_segments\"",
+                    "\"racing_centerline_blocked_segment_count\"",
+                    "\"racing_centerline_blocked_span_count\"",
                     "\"racing_centerline_blocked_first_segment_index\"",
+                    "\"racing_centerline_blocked_last_segment_index\"",
                     "\"racing_centerline_blocked_first_s_m\"",
+                    "\"racing_centerline_blocked_last_s_m\"",
+                    "\"racing_centerline_blocked_span_length_m\"",
                     "\"racing_centerline_blocked_first_x_m\"",
                     "\"racing_centerline_blocked_first_y_m\"",
+                    "\"racing_centerline_blocked_last_x_m\"",
+                    "\"racing_centerline_blocked_last_y_m\"",
                     "\"racing_centerline_blocked_first_outside_grid\"",
+                    "\"racing_centerline_blocked_last_outside_grid\"",
                     "\"racing_line_dp_states\"",
                     "\"racing_line_dp_transitions\"",
                     "\"racing_line_dp_segment_cache_hits\"",
@@ -1015,11 +1046,20 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_prohibited_cells, 10U);
   EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_outside_grid_segments,
             11U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_segment_count, 3U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_span_count, 2U);
   EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_first_segment_index, 12U);
+  EXPECT_EQ(parsed_value.stats.racing_line.centerline_blocked_last_segment_index, 14U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_first_s_m, 42.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_last_s_m, 48.75);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_span_length_m,
+                   6.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_first_x_m, 13.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_first_y_m, -8.75);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_last_x_m, 16.5);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.centerline_blocked_last_y_m, -9.25);
   EXPECT_TRUE(parsed_value.stats.racing_line.centerline_blocked_first_outside_grid);
+  EXPECT_TRUE(parsed_value.stats.racing_line.centerline_blocked_last_outside_grid);
   EXPECT_EQ(parsed_value.stats.racing_line.dp_states, 144U);
   EXPECT_EQ(parsed_value.stats.racing_line.dp_transitions, 512U);
   EXPECT_EQ(parsed_value.stats.racing_line.dp_segment_cache_hits, 10U);

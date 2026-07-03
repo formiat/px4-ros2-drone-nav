@@ -34,11 +34,18 @@ struct PathEvaluation {
   double length_m{0.0};
   std::size_t prohibited_cells{0U};
   std::size_t outside_grid_segments{0U};
+  std::size_t blocked_segment_count{0U};
+  std::size_t blocked_span_count{0U};
   std::size_t first_blocked_segment_index{0U};
+  std::size_t last_blocked_segment_index{0U};
   double first_blocked_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double last_blocked_s_m{std::numeric_limits<double>::quiet_NaN()};
   Point2 first_blocked_point{};
+  Point2 last_blocked_point{};
   bool has_first_blocked_point{false};
+  bool has_last_blocked_point{false};
   bool first_blocked_outside_grid{false};
+  bool last_blocked_outside_grid{false};
 
   [[nodiscard]] bool traversable() const noexcept {
     return prohibited_cells == 0U && outside_grid_segments == 0U;
@@ -420,14 +427,10 @@ struct LocalCandidateScore {
   return lhs.x * rhs.x + lhs.y * rhs.y;
 }
 
-void recordFirstBlockedPoint(PathEvaluation& evaluation,
-                             const std::size_t segment_index,
-                             const double segment_start_s_m, const Point2 segment_start,
-                             const Point2 segment_end, const Point2 blocked_point,
-                             const bool outside_grid) {
-  if (evaluation.has_first_blocked_point) {
-    return;
-  }
+void recordBlockedPoint(PathEvaluation& evaluation, const std::size_t segment_index,
+                        const double segment_start_s_m, const Point2 segment_start,
+                        const Point2 segment_end, const Point2 blocked_point,
+                        const bool outside_grid) {
   const Point2 segment = segment_end - segment_start;
   const double segment_length_sq = squaredDistance(segment_start, segment_end);
   const double t =
@@ -435,12 +438,24 @@ void recordFirstBlockedPoint(PathEvaluation& evaluation,
           ? std::clamp(dot(blocked_point - segment_start, segment) / segment_length_sq,
                        0.0, 1.0)
           : 0.0;
-  evaluation.first_blocked_segment_index = segment_index;
-  evaluation.first_blocked_s_m =
+  const double blocked_s_m =
       segment_start_s_m + t * distance(segment_start, segment_end);
-  evaluation.first_blocked_point = blocked_point;
-  evaluation.has_first_blocked_point = true;
-  evaluation.first_blocked_outside_grid = outside_grid;
+  if (!evaluation.has_first_blocked_point ||
+      blocked_s_m < evaluation.first_blocked_s_m) {
+    evaluation.first_blocked_segment_index = segment_index;
+    evaluation.first_blocked_s_m = blocked_s_m;
+    evaluation.first_blocked_point = blocked_point;
+    evaluation.has_first_blocked_point = true;
+    evaluation.first_blocked_outside_grid = outside_grid;
+  }
+  if (!evaluation.has_last_blocked_point ||
+      blocked_s_m >= evaluation.last_blocked_s_m) {
+    evaluation.last_blocked_segment_index = segment_index;
+    evaluation.last_blocked_s_m = blocked_s_m;
+    evaluation.last_blocked_point = blocked_point;
+    evaluation.has_last_blocked_point = true;
+    evaluation.last_blocked_outside_grid = outside_grid;
+  }
 }
 
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
@@ -741,6 +756,7 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     return evaluation;
   }
 
+  bool previous_segment_blocked = false;
   for (std::size_t i = 1U; i < points.size(); ++i) {
     const Point2 start = points[i - 1U];
     const Point2 end = points[i];
@@ -748,20 +764,31 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     evaluation.length_m += distance(start, end);
     const std::optional<GridIndex> start_cell = grid.worldToCell(start);
     const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+    bool segment_blocked = false;
     if (!start_cell.has_value() || !end_cell.has_value()) {
       ++evaluation.outside_grid_segments;
-      recordFirstBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end, start,
-                              true);
-      continue;
-    }
-    const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
-    for (const GridIndex cell : cells) {
-      if (grid.isProhibited(cell)) {
-        ++evaluation.prohibited_cells;
-        recordFirstBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end,
-                                grid.cellCenter(cell), false);
+      segment_blocked = true;
+      recordBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end, start,
+                         true);
+      recordBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end, end, true);
+    } else {
+      const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
+      for (const GridIndex cell : cells) {
+        if (grid.isProhibited(cell)) {
+          ++evaluation.prohibited_cells;
+          segment_blocked = true;
+          recordBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end,
+                             grid.cellCenter(cell), false);
+        }
       }
     }
+    if (segment_blocked) {
+      ++evaluation.blocked_segment_count;
+      if (!previous_segment_blocked) {
+        ++evaluation.blocked_span_count;
+      }
+    }
+    previous_segment_blocked = segment_blocked;
   }
   return evaluation;
 }
@@ -1105,6 +1132,9 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     stats.centerline_blocked_prohibited_cells = centerline_evaluation.prohibited_cells;
     stats.centerline_blocked_outside_grid_segments =
         centerline_evaluation.outside_grid_segments;
+    stats.centerline_blocked_segment_count =
+        centerline_evaluation.blocked_segment_count;
+    stats.centerline_blocked_span_count = centerline_evaluation.blocked_span_count;
     if (centerline_evaluation.has_first_blocked_point) {
       stats.centerline_blocked_first_segment_index =
           centerline_evaluation.first_blocked_segment_index;
@@ -1113,6 +1143,20 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
       stats.centerline_blocked_first_y_m = centerline_evaluation.first_blocked_point.y;
       stats.centerline_blocked_first_outside_grid =
           centerline_evaluation.first_blocked_outside_grid;
+    }
+    if (centerline_evaluation.has_last_blocked_point) {
+      stats.centerline_blocked_last_segment_index =
+          centerline_evaluation.last_blocked_segment_index;
+      stats.centerline_blocked_last_s_m = centerline_evaluation.last_blocked_s_m;
+      stats.centerline_blocked_last_x_m = centerline_evaluation.last_blocked_point.x;
+      stats.centerline_blocked_last_y_m = centerline_evaluation.last_blocked_point.y;
+      stats.centerline_blocked_last_outside_grid =
+          centerline_evaluation.last_blocked_outside_grid;
+    }
+    if (std::isfinite(stats.centerline_blocked_first_s_m) &&
+        std::isfinite(stats.centerline_blocked_last_s_m)) {
+      stats.centerline_blocked_span_length_m =
+          stats.centerline_blocked_last_s_m - stats.centerline_blocked_first_s_m;
     }
     stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
     return windows;
