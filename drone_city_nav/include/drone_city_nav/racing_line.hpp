@@ -65,6 +65,12 @@ struct RacingLineStats {
   bool parallel_candidate_evaluation_used{false};
   std::size_t parallel_workers_used{0U};
   std::size_t candidate_chunks{0U};
+  std::size_t candidate_parallel_batches{0U};
+  std::size_t candidate_threads_launched{0U};
+  double candidate_batch_wall_duration_ms{0.0};
+  double candidate_worker_buffer_prepare_duration_ms{0.0};
+  double candidate_thread_launch_duration_ms{0.0};
+  double candidate_thread_join_wait_duration_ms{0.0};
   std::size_t worker_scratch_reuses{0U};
   std::size_t candidate_snapshot_allocations_avoided{0U};
   std::size_t local_candidate_evaluations{0U};

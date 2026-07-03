@@ -394,6 +394,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   appendJsonSize(stream, "racing_parallel_workers_used",
                  stats.racing_line.parallel_workers_used);
   appendJsonSize(stream, "racing_candidate_chunks", stats.racing_line.candidate_chunks);
+  appendJsonSize(stream, "racing_candidate_parallel_batches",
+                 stats.racing_line.candidate_parallel_batches);
+  appendJsonSize(stream, "racing_candidate_threads_launched",
+                 stats.racing_line.candidate_threads_launched);
+  appendJsonNumber(stream, "racing_candidate_batch_wall_duration_ms",
+                   stats.racing_line.candidate_batch_wall_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_worker_buffer_prepare_duration_ms",
+                   stats.racing_line.candidate_worker_buffer_prepare_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_thread_launch_duration_ms",
+                   stats.racing_line.candidate_thread_launch_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_thread_join_wait_duration_ms",
+                   stats.racing_line.candidate_thread_join_wait_duration_ms);
   appendJsonSize(stream, "racing_worker_scratch_reuses",
                  stats.racing_line.worker_scratch_reuses);
   appendJsonSize(stream, "racing_candidate_snapshot_allocations_avoided",
@@ -976,6 +988,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.parallel_candidate_evaluation_used);
   parseJsonSize(json, "racing_parallel_workers_used", racing.parallel_workers_used);
   parseJsonSize(json, "racing_candidate_chunks", racing.candidate_chunks);
+  parseJsonSize(json, "racing_candidate_parallel_batches",
+                racing.candidate_parallel_batches);
+  parseJsonSize(json, "racing_candidate_threads_launched",
+                racing.candidate_threads_launched);
+  parseJsonDouble(json, "racing_candidate_batch_wall_duration_ms",
+                  racing.candidate_batch_wall_duration_ms);
+  parseJsonDouble(json, "racing_candidate_worker_buffer_prepare_duration_ms",
+                  racing.candidate_worker_buffer_prepare_duration_ms);
+  parseJsonDouble(json, "racing_candidate_thread_launch_duration_ms",
+                  racing.candidate_thread_launch_duration_ms);
+  parseJsonDouble(json, "racing_candidate_thread_join_wait_duration_ms",
+                  racing.candidate_thread_join_wait_duration_ms);
   parseJsonSize(json, "racing_worker_scratch_reuses", racing.worker_scratch_reuses);
   parseJsonSize(json, "racing_candidate_snapshot_allocations_avoided",
                 racing.candidate_snapshot_allocations_avoided);

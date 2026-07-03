@@ -1524,14 +1524,18 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const double base_length_m, const OccupancyGrid2D& prohibited_grid,
     const RacingLineConfig& config, const VelocityFollowerConfig& speed_config,
     const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
-    const double incumbent_score, const std::size_t worker_count) {
+    const double incumbent_score, RacingLineStats& stats,
+    const std::size_t worker_count) {
+  const auto batch_started_at = std::chrono::steady_clock::now();
   std::vector<CandidateBatchResult> results(tasks.size());
   if (tasks.empty()) {
+    stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
     return results;
   }
 
   const std::size_t resolved_workers = std::clamp<std::size_t>(
       worker_count, 1U, std::max<std::size_t>(1U, tasks.size()));
+  const auto buffer_prepare_started_at = std::chrono::steady_clock::now();
   std::vector<CandidateWorkBuffer> worker_buffers(resolved_workers);
   for (CandidateWorkBuffer& buffer : worker_buffers) {
     buffer.offsets.reserve(base_offsets.size());
@@ -1552,6 +1556,8 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
         std::min<std::size_t>(corridor_samples.size(), 16U));
     buffer.samples.reserve(corridor_samples.size());
   }
+  stats.candidate_worker_buffer_prepare_duration_ms +=
+      elapsedMilliseconds(buffer_prepare_started_at);
 
   const auto evaluate_one = [&](const std::size_t task_index,
                                 CandidateWorkBuffer& buffer) {
@@ -1567,11 +1573,15 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     for (std::size_t task_index = 0U; task_index < tasks.size(); ++task_index) {
       evaluate_one(task_index, worker_buffers.front());
     }
+    stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
     return results;
   }
 
+  ++stats.candidate_parallel_batches;
+  stats.candidate_threads_launched += resolved_workers;
   std::vector<std::thread> workers;
   workers.reserve(resolved_workers);
+  const auto thread_launch_started_at = std::chrono::steady_clock::now();
   for (std::size_t worker_index = 0U; worker_index < resolved_workers; ++worker_index) {
     workers.emplace_back([&, worker_index] {
       CandidateWorkBuffer& buffer = worker_buffers[worker_index];
@@ -1582,9 +1592,15 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
       }
     });
   }
+  stats.candidate_thread_launch_duration_ms +=
+      elapsedMilliseconds(thread_launch_started_at);
+  const auto thread_join_started_at = std::chrono::steady_clock::now();
   for (std::thread& worker : workers) {
     worker.join();
   }
+  stats.candidate_thread_join_wait_duration_ms +=
+      elapsedMilliseconds(thread_join_started_at);
+  stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
   return results;
 }
 
@@ -1842,7 +1858,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     std::vector<CandidateBatchResult> candidates = evaluateCandidateBatch(
         tasks, optimizer_samples, offsets, best_points, best_score, best_length_m,
         prohibited_grid, config, speed_config, max_length_m, mutable_indices, best_cost,
-        candidate_worker_count);
+        result.stats, candidate_worker_count);
 
     bool changed = false;
     const EvaluatedCandidate* iteration_winner = nullptr;

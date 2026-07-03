@@ -222,6 +222,12 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   EXPECT_TRUE(parallel.stats.parallel_candidate_evaluation_used);
   EXPECT_GT(parallel.stats.parallel_workers_used, 2U);
   EXPECT_GT(parallel.stats.candidate_chunks, 0U);
+  EXPECT_GT(parallel.stats.candidate_parallel_batches, 0U);
+  EXPECT_GT(parallel.stats.candidate_threads_launched, 0U);
+  EXPECT_GT(parallel.stats.candidate_batch_wall_duration_ms, 0.0);
+  EXPECT_GE(parallel.stats.candidate_worker_buffer_prepare_duration_ms, 0.0);
+  EXPECT_GE(parallel.stats.candidate_thread_launch_duration_ms, 0.0);
+  EXPECT_GE(parallel.stats.candidate_thread_join_wait_duration_ms, 0.0);
   EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
   EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);
   EXPECT_GT(parallel.stats.local_candidate_evaluations, 0U);

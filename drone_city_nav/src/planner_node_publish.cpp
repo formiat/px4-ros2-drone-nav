@@ -301,7 +301,9 @@ bool PlannerNode::publishTrajectoryResult(
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
       "sample_build=%.1fms cost=%.1fms shape=%.1fms speed=%.1fms "
       "regularization=%.1fms scratch_reused=%zu "
-      "parallel=%s workers=%zu chunks=%zu worker_reuses=%zu "
+      "parallel=%s workers=%zu chunks=%zu parallel_batches=%zu threads=%zu "
+      "worker_reuses=%zu batch_wall=%.1fms buffer_prepare=%.1fms "
+      "thread_launch=%.1fms join_wait=%.1fms "
       "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
       "local_required=%zu "
       "local_required_reasons(invalid=%zu boundary=%zu unsafe_base=%zu "
@@ -393,7 +395,13 @@ bool PlannerNode::publishTrajectoryResult(
                                                                              : "false",
       trajectory_result.stats.racing_line.parallel_workers_used,
       trajectory_result.stats.racing_line.candidate_chunks,
+      trajectory_result.stats.racing_line.candidate_parallel_batches,
+      trajectory_result.stats.racing_line.candidate_threads_launched,
       trajectory_result.stats.racing_line.worker_scratch_reuses,
+      trajectory_result.stats.racing_line.candidate_batch_wall_duration_ms,
+      trajectory_result.stats.racing_line.candidate_worker_buffer_prepare_duration_ms,
+      trajectory_result.stats.racing_line.candidate_thread_launch_duration_ms,
+      trajectory_result.stats.racing_line.candidate_thread_join_wait_duration_ms,
       trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
       trajectory_result.stats.racing_line.local_candidate_evaluations,
       trajectory_result.stats.racing_line.local_candidate_full_score_fallbacks,
