@@ -1228,6 +1228,15 @@ costBreakdownForPoints(const std::span<const Point2> points,
          breakdown.offset_second_change_cost + breakdown.offset_slope_cost;
 }
 
+[[nodiscard]] bool geometryCostsAreFinite(const CostBreakdown& breakdown) noexcept {
+  return std::isfinite(breakdown.length_cost) &&
+         std::isfinite(breakdown.curvature_cost) &&
+         std::isfinite(breakdown.curvature_change_cost) &&
+         std::isfinite(breakdown.offset_change_cost) &&
+         std::isfinite(breakdown.offset_second_change_cost) &&
+         std::isfinite(breakdown.offset_slope_cost);
+}
+
 [[nodiscard]] std::optional<IndexRange>
 boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_index) {
   if (end > max_index) {
@@ -1348,6 +1357,51 @@ shadowSegmentWindowSamples(const OffsetChangeDiagnostics& changed,
   return end >= begin ? end - begin + 1U : 0U;
 }
 
+[[nodiscard]] std::optional<CostBreakdown> incrementalGeometryBreakdownForChangedSpan(
+    const CandidateScore& base_score, const std::span<const Point2> base_points,
+    const std::span<const double> base_offsets,
+    const std::span<const Point2> candidate_points,
+    const std::span<const double> candidate_offsets,
+    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config) {
+  if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
+      base_offsets.size() != candidate_offsets.size() ||
+      base_points.size() != base_offsets.size() || !std::isfinite(base_score.score)) {
+    return std::nullopt;
+  }
+
+  const CostBreakdown base_local =
+      localGeometryCostForChangedSpan(base_points, base_offsets, changed, config);
+  const CostBreakdown candidate_local = localGeometryCostForChangedSpan(
+      candidate_points, candidate_offsets, changed, config);
+  if (base_local.outside_grid_cost > 0.0 || candidate_local.outside_grid_cost > 0.0 ||
+      !geometryCostsAreFinite(base_score.breakdown) ||
+      !geometryCostsAreFinite(base_local) || !geometryCostsAreFinite(candidate_local)) {
+    return std::nullopt;
+  }
+
+  CostBreakdown breakdown{};
+  breakdown.length_cost = base_score.breakdown.length_cost - base_local.length_cost +
+                          candidate_local.length_cost;
+  breakdown.curvature_cost = base_score.breakdown.curvature_cost -
+                             base_local.curvature_cost + candidate_local.curvature_cost;
+  breakdown.curvature_change_cost = base_score.breakdown.curvature_change_cost -
+                                    base_local.curvature_change_cost +
+                                    candidate_local.curvature_change_cost;
+  breakdown.offset_change_cost = base_score.breakdown.offset_change_cost -
+                                 base_local.offset_change_cost +
+                                 candidate_local.offset_change_cost;
+  breakdown.offset_second_change_cost = base_score.breakdown.offset_second_change_cost -
+                                        base_local.offset_second_change_cost +
+                                        candidate_local.offset_second_change_cost;
+  breakdown.offset_slope_cost = base_score.breakdown.offset_slope_cost -
+                                base_local.offset_slope_cost +
+                                candidate_local.offset_slope_cost;
+  if (!geometryCostsAreFinite(breakdown)) {
+    return std::nullopt;
+  }
+  return breakdown;
+}
+
 void populateShadowSegmentScoreDiagnostics(
     EvaluatedCandidate& result, const CandidateScore& base_score,
     const std::span<const Point2> base_points,
@@ -1355,28 +1409,33 @@ void populateShadowSegmentScoreDiagnostics(
     const std::span<const Point2> candidate_points,
     const std::span<const double> candidate_offsets,
     const OffsetChangeDiagnostics& changed, const RacingLineConfig& config,
-    const double incumbent_score) {
+    const double incumbent_score,
+    const std::optional<CostBreakdown>& incremental_geometry_breakdown) {
   if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
       base_offsets.size() != candidate_offsets.size() ||
       base_points.size() != base_offsets.size() || !std::isfinite(base_score.score) ||
       !std::isfinite(result.score.score)) {
     return;
   }
-  const CostBreakdown base_local =
-      localGeometryCostForChangedSpan(base_points, base_offsets, changed, config);
-  const CostBreakdown candidate_local = localGeometryCostForChangedSpan(
-      candidate_points, candidate_offsets, changed, config);
-  if (base_local.outside_grid_cost > 0.0 || candidate_local.outside_grid_cost > 0.0) {
+  const std::optional<CostBreakdown> fallback_geometry =
+      incremental_geometry_breakdown.has_value()
+          ? std::nullopt
+          : incrementalGeometryBreakdownForChangedSpan(
+                base_score, base_points, base_offsets, candidate_points,
+                candidate_offsets, changed, config);
+  const CostBreakdown* estimated_geometry = nullptr;
+  if (incremental_geometry_breakdown.has_value()) {
+    estimated_geometry = &*incremental_geometry_breakdown;
+  } else if (fallback_geometry.has_value()) {
+    estimated_geometry = &*fallback_geometry;
+  }
+  if (estimated_geometry == nullptr) {
     return;
   }
 
-  const double base_geometry_score = geometrySubtotal(base_score.breakdown);
   const double full_candidate_geometry_score = geometrySubtotal(result.score.breakdown);
-  const double estimated_candidate_geometry_score = base_geometry_score -
-                                                    geometrySubtotal(base_local) +
-                                                    geometrySubtotal(candidate_local);
   const double estimated_score = result.score.score - full_candidate_geometry_score +
-                                 estimated_candidate_geometry_score;
+                                 geometrySubtotal(*estimated_geometry);
   if (!std::isfinite(estimated_score)) {
     return;
   }
@@ -1442,10 +1501,15 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
     const std::span<const Point2> points, const std::span<const double> offsets,
     const PathEvaluation& evaluation, const RacingLineConfig& config,
     const VelocityFollowerConfig& speed_config, const double max_length_m,
-    std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats) {
+    std::vector<TrajectoryPointSample>& scratch_samples, RacingLineStats& stats,
+    const CostBreakdown* geometry_breakdown_override) {
   CandidateScore result{};
   const auto cost_started_at = std::chrono::steady_clock::now();
-  result.breakdown = costBreakdownForPoints(points, offsets, config);
+  if (geometry_breakdown_override != nullptr) {
+    result.breakdown = *geometry_breakdown_override;
+  } else {
+    result.breakdown = costBreakdownForPoints(points, offsets, config);
+  }
   result.breakdown.collision_cost =
       static_cast<double>(evaluation.prohibited_cells) * kCollisionPenalty;
   result.breakdown.outside_grid_cost =
@@ -1618,7 +1682,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   const auto score_started_at = std::chrono::steady_clock::now();
   const CandidateScore candidate_score = scoreForCandidate(
       corridor_samples, candidate_points, candidate_offsets, evaluation, config,
-      speed_config, max_length_m, scratch_samples, stats);
+      speed_config, max_length_m, scratch_samples, stats, nullptr);
   const double score_duration_ms = elapsedMilliseconds(score_started_at);
   stats.candidate_score_duration_ms += score_duration_ms;
   stats.full_candidate_score_duration_ms += score_duration_ms;
@@ -1702,12 +1766,20 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
         result.shadow_lower_bound_score + 1.0e-9 >= incumbent_score;
     result.score_duration_ms += elapsedMilliseconds(prefilter_started_at);
     const auto score_started_at = std::chrono::steady_clock::now();
-    result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
-                                     result.path, config, speed_config, max_length_m,
-                                     buffer.samples, local_stats);
-    populateShadowSegmentScoreDiagnostics(result, base_score, base_points, base_offsets,
-                                          buffer.points, buffer.offsets,
-                                          offset_diagnostics, config, incumbent_score);
+    const auto geometry_started_at = std::chrono::steady_clock::now();
+    const std::optional<CostBreakdown> incremental_geometry =
+        incrementalGeometryBreakdownForChangedSpan(
+            base_score, base_points, base_offsets, buffer.points, buffer.offsets,
+            offset_diagnostics, config);
+    local_stats.candidate_cost_breakdown_duration_ms +=
+        elapsedMilliseconds(geometry_started_at);
+    result.score = scoreForCandidate(
+        corridor_samples, buffer.points, buffer.offsets, result.path, config,
+        speed_config, max_length_m, buffer.samples, local_stats,
+        incremental_geometry ? &*incremental_geometry : nullptr);
+    populateShadowSegmentScoreDiagnostics(
+        result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,
+        offset_diagnostics, config, incumbent_score, incremental_geometry);
     populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
     const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
     result.score_duration_ms += full_score_duration_ms;
@@ -1739,12 +1811,20 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
       result.full_path_segment_cache_hits, result.full_path_segment_cache_misses);
   result.path_evaluation_duration_ms += elapsedMilliseconds(full_evaluation_started_at);
   const auto score_started_at = std::chrono::steady_clock::now();
-  result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
-                                   result.path, config, speed_config, max_length_m,
-                                   buffer.samples, local_stats);
-  populateShadowSegmentScoreDiagnostics(result, base_score, base_points, base_offsets,
-                                        buffer.points, buffer.offsets,
-                                        offset_diagnostics, config, incumbent_score);
+  const auto geometry_started_at = std::chrono::steady_clock::now();
+  const std::optional<CostBreakdown> incremental_geometry =
+      incrementalGeometryBreakdownForChangedSpan(base_score, base_points, base_offsets,
+                                                 buffer.points, buffer.offsets,
+                                                 offset_diagnostics, config);
+  local_stats.candidate_cost_breakdown_duration_ms +=
+      elapsedMilliseconds(geometry_started_at);
+  result.score =
+      scoreForCandidate(corridor_samples, buffer.points, buffer.offsets, result.path,
+                        config, speed_config, max_length_m, buffer.samples, local_stats,
+                        incremental_geometry ? &*incremental_geometry : nullptr);
+  populateShadowSegmentScoreDiagnostics(
+      result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,
+      offset_diagnostics, config, incumbent_score, incremental_geometry);
   populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
   const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
   result.score_duration_ms += full_score_duration_ms;
@@ -2574,7 +2654,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   const auto final_score_started_at = std::chrono::steady_clock::now();
   const CandidateScore final_score = scoreForCandidate(
       optimizer_samples, final_points, final_offsets, final_evaluation, config,
-      speed_config, max_length_m, scratch.candidate_samples, result.stats);
+      speed_config, max_length_m, scratch.candidate_samples, result.stats, nullptr);
   result.stats.full_final_score_duration_ms =
       elapsedMilliseconds(final_score_started_at);
 
