@@ -122,6 +122,18 @@ struct RacingLineStats {
   double shadow_local_speed_max_score_overestimate{0.0};
   double shadow_local_speed_max_score_underestimate{0.0};
   double shadow_local_speed_max_false_prune_improvement_score{0.0};
+  std::size_t shadow_segment_score_evaluations{0U};
+  std::size_t shadow_segment_score_unavailable{0U};
+  std::size_t shadow_segment_score_prunable{0U};
+  std::size_t shadow_segment_score_false_prunes{0U};
+  std::size_t shadow_segment_score_winner_mismatches{0U};
+  std::size_t shadow_segment_score_window_samples_total{0U};
+  std::size_t shadow_segment_score_window_samples_max{0U};
+  double shadow_segment_score_abs_error_sum{0.0};
+  double shadow_segment_score_abs_error_p95{0.0};
+  double shadow_segment_score_max_overestimate{0.0};
+  double shadow_segment_score_max_underestimate{0.0};
+  double shadow_segment_score_max_false_prune_improvement_score{0.0};
   std::size_t window_count{0U};
   std::size_t active_window_count{0U};
   std::size_t active_window_samples{0U};

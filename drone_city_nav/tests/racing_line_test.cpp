@@ -276,6 +276,17 @@ TEST(RacingLine, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   EXPECT_GE(result.stats.shadow_lower_bound_prunable_full_score_duration_ms, 0.0);
   EXPECT_GE(result.stats.shadow_lower_bound_max_overestimate_score, 0.0);
   EXPECT_GE(result.stats.shadow_lower_bound_max_underestimate_score, 0.0);
+  EXPECT_GT(result.stats.shadow_segment_score_evaluations, 0U);
+  EXPECT_LE(result.stats.shadow_segment_score_evaluations +
+                result.stats.shadow_segment_score_unavailable,
+            result.stats.local_candidate_evaluations);
+  EXPECT_EQ(result.stats.shadow_segment_score_false_prunes, 0U);
+  EXPECT_EQ(result.stats.shadow_segment_score_winner_mismatches, 0U);
+  EXPECT_LT(result.stats.shadow_segment_score_abs_error_p95, 1.0e-6);
+  EXPECT_LT(result.stats.shadow_segment_score_max_overestimate, 1.0e-6);
+  EXPECT_LT(result.stats.shadow_segment_score_max_underestimate, 1.0e-6);
+  EXPECT_GT(result.stats.shadow_segment_score_window_samples_total, 0U);
+  EXPECT_GT(result.stats.shadow_segment_score_window_samples_max, 0U);
   EXPECT_GT(result.stats.candidate_segment_cache_hits, 0U);
   EXPECT_GT(result.stats.candidate_segment_cache_misses, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));

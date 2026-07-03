@@ -323,6 +323,10 @@ bool PlannerNode::publishTrajectoryResult(
       "abs_time_err_p95=%.3fs max_time_over=%.3fs max_time_under=%.3fs "
       "abs_score_err_sum=%.3f abs_score_err_p95=%.3f "
       "max_score_over=%.3f max_score_under=%.3f max_false_improve=%.3f) "
+      "shadow_segment_score(evals=%zu unavailable=%zu prunable=%zu "
+      "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
+      "abs_err_sum=%.6f abs_err_p95=%.6f max_over=%.6f max_under=%.6f "
+      "max_false_improve=%.6f) "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
@@ -468,6 +472,19 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.shadow_local_speed_max_score_underestimate,
       trajectory_result.stats.racing_line
           .shadow_local_speed_max_false_prune_improvement_score,
+      trajectory_result.stats.racing_line.shadow_segment_score_evaluations,
+      trajectory_result.stats.racing_line.shadow_segment_score_unavailable,
+      trajectory_result.stats.racing_line.shadow_segment_score_prunable,
+      trajectory_result.stats.racing_line.shadow_segment_score_false_prunes,
+      trajectory_result.stats.racing_line.shadow_segment_score_winner_mismatches,
+      trajectory_result.stats.racing_line.shadow_segment_score_window_samples_total,
+      trajectory_result.stats.racing_line.shadow_segment_score_window_samples_max,
+      trajectory_result.stats.racing_line.shadow_segment_score_abs_error_sum,
+      trajectory_result.stats.racing_line.shadow_segment_score_abs_error_p95,
+      trajectory_result.stats.racing_line.shadow_segment_score_max_overestimate,
+      trajectory_result.stats.racing_line.shadow_segment_score_max_underestimate,
+      trajectory_result.stats.racing_line
+          .shadow_segment_score_max_false_prune_improvement_score,
       trajectory_result.stats.racing_line.initial_cost,
       trajectory_result.stats.racing_line.final_cost,
       trajectory_result.stats.racing_line.centerline_length_m,

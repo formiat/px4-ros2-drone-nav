@@ -117,6 +117,11 @@ struct EvaluatedCandidate {
   double shadow_local_speed_full_time_s{std::numeric_limits<double>::quiet_NaN()};
   double shadow_local_speed_estimated_score{std::numeric_limits<double>::quiet_NaN()};
   double shadow_local_speed_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  bool shadow_segment_score_valid{false};
+  bool shadow_segment_score_would_prune{false};
+  double shadow_segment_score_estimated_score{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_segment_score_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  std::size_t shadow_segment_score_window_samples{0U};
 };
 
 struct CandidateTask {
@@ -135,6 +140,11 @@ struct OffsetChangeDiagnostics {
   std::size_t changed_span_samples{0U};
   std::size_t first_changed_index{0U};
   std::size_t last_changed_index{0U};
+};
+
+struct IndexRange {
+  std::size_t begin{0U};
+  std::size_t end{0U};
 };
 
 struct SegmentCellKey {
@@ -1212,6 +1222,174 @@ costBreakdownForPoints(const std::span<const Point2> points,
   return breakdown;
 }
 
+[[nodiscard]] double geometrySubtotal(const CostBreakdown& breakdown) noexcept {
+  return breakdown.length_cost + breakdown.curvature_cost +
+         breakdown.curvature_change_cost + breakdown.offset_change_cost +
+         breakdown.offset_second_change_cost + breakdown.offset_slope_cost;
+}
+
+[[nodiscard]] std::optional<IndexRange>
+boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_index) {
+  if (end > max_index) {
+    end = max_index;
+  }
+  if (begin > end) {
+    return std::nullopt;
+  }
+  return IndexRange{.begin = begin, .end = end};
+}
+
+[[nodiscard]] double curvatureAtIndex(const std::span<const Point2> points,
+                                      const std::size_t index) {
+  if (index == 0U || index + 1U >= points.size()) {
+    return 0.0;
+  }
+  return discreteCurvature(points[index - 1U], points[index], points[index + 1U]);
+}
+
+[[nodiscard]] CostBreakdown localGeometryCostForChangedSpan(
+    const std::span<const Point2> points, const std::span<const double> offsets,
+    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config) {
+  CostBreakdown breakdown{};
+  if (points.size() < 2U || points.size() != offsets.size() ||
+      changed.changed_samples == 0U || changed.last_changed_index >= points.size()) {
+    breakdown.outside_grid_cost = kOutsideGridPenalty;
+    return breakdown;
+  }
+
+  const double weight_length =
+      sanitizedPositive(config.weight_length, 0.02, 0.0, 1.0e6);
+  const double weight_curvature =
+      sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
+  const double weight_curvature_change =
+      sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
+  const double weight_offset_change =
+      sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
+  const double weight_offset_second_change =
+      sanitizedPositive(config.weight_offset_second_change, 6.5, 0.0, 1.0e9);
+  const double weight_offset_slope =
+      sanitizedPositive(config.weight_offset_slope, 100.0, 0.0, 1.0e9);
+  const double max_offset_slope =
+      sanitizedPositive(config.max_offset_slope_per_m, 0.32, 0.0, 100.0);
+
+  double length_cost = 0.0;
+  double curvature_cost = 0.0;
+  double curvature_change_cost = 0.0;
+  double offset_change_cost = 0.0;
+  double offset_second_change_cost = 0.0;
+  double offset_slope_cost = 0.0;
+
+  const std::size_t first = changed.first_changed_index;
+  const std::size_t last = changed.last_changed_index;
+  const std::optional<IndexRange> segment_range = boundedIndexRange(
+      std::max<std::size_t>(1U, first), last + 1U, points.size() - 1U);
+  if (segment_range.has_value()) {
+    for (std::size_t i = segment_range->begin; i <= segment_range->end; ++i) {
+      const double ds = distance(points[i - 1U], points[i]);
+      length_cost += ds;
+      const double change = offsets[i] - offsets[i - 1U];
+      offset_change_cost += change * change;
+      if (ds > kTinyDistanceM) {
+        const double slope_violation =
+            std::max(0.0, std::abs(change) / ds - max_offset_slope);
+        offset_slope_cost += slope_violation * slope_violation * ds;
+      }
+    }
+  }
+
+  const std::optional<IndexRange> triple_range =
+      points.size() >= 3U
+          ? boundedIndexRange(std::max<std::size_t>(1U, first > 0U ? first - 1U : 1U),
+                              last + 1U, points.size() - 2U)
+          : std::nullopt;
+  if (triple_range.has_value()) {
+    for (std::size_t i = triple_range->begin; i <= triple_range->end; ++i) {
+      const double second_change = offsets[i + 1U] - 2.0 * offsets[i] + offsets[i - 1U];
+      offset_second_change_cost += second_change * second_change;
+      const double curvature = curvatureAtIndex(points, i);
+      curvature_cost += curvature * curvature;
+    }
+
+    const std::optional<IndexRange> curvature_change_range =
+        points.size() >= 4U
+            ? boundedIndexRange(std::max<std::size_t>(2U, triple_range->begin),
+                                triple_range->end + 1U, points.size() - 2U)
+            : std::nullopt;
+    if (curvature_change_range.has_value()) {
+      for (std::size_t i = curvature_change_range->begin;
+           i <= curvature_change_range->end; ++i) {
+        const double change =
+            curvatureAtIndex(points, i) - curvatureAtIndex(points, i - 1U);
+        curvature_change_cost += change * change;
+      }
+    }
+  }
+
+  breakdown.length_cost = weight_length * length_cost;
+  breakdown.curvature_cost = weight_curvature * curvature_cost;
+  breakdown.curvature_change_cost = weight_curvature_change * curvature_change_cost;
+  breakdown.offset_change_cost = weight_offset_change * offset_change_cost;
+  breakdown.offset_second_change_cost =
+      weight_offset_second_change * offset_second_change_cost;
+  breakdown.offset_slope_cost = weight_offset_slope * offset_slope_cost;
+  return breakdown;
+}
+
+[[nodiscard]] std::size_t
+shadowSegmentWindowSamples(const OffsetChangeDiagnostics& changed,
+                           const std::size_t sample_count) {
+  if (sample_count == 0U || changed.changed_samples == 0U ||
+      changed.last_changed_index >= sample_count) {
+    return 0U;
+  }
+  const std::size_t begin =
+      changed.first_changed_index > 2U ? changed.first_changed_index - 2U : 0U;
+  const std::size_t end = std::min(sample_count - 1U, changed.last_changed_index + 2U);
+  return end >= begin ? end - begin + 1U : 0U;
+}
+
+void populateShadowSegmentScoreDiagnostics(
+    EvaluatedCandidate& result, const CandidateScore& base_score,
+    const std::span<const Point2> base_points,
+    const std::span<const double> base_offsets,
+    const std::span<const Point2> candidate_points,
+    const std::span<const double> candidate_offsets,
+    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config,
+    const double incumbent_score) {
+  if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
+      base_offsets.size() != candidate_offsets.size() ||
+      base_points.size() != base_offsets.size() || !std::isfinite(base_score.score) ||
+      !std::isfinite(result.score.score)) {
+    return;
+  }
+  const CostBreakdown base_local =
+      localGeometryCostForChangedSpan(base_points, base_offsets, changed, config);
+  const CostBreakdown candidate_local = localGeometryCostForChangedSpan(
+      candidate_points, candidate_offsets, changed, config);
+  if (base_local.outside_grid_cost > 0.0 || candidate_local.outside_grid_cost > 0.0) {
+    return;
+  }
+
+  const double base_geometry_score = geometrySubtotal(base_score.breakdown);
+  const double full_candidate_geometry_score = geometrySubtotal(result.score.breakdown);
+  const double estimated_candidate_geometry_score = base_geometry_score -
+                                                    geometrySubtotal(base_local) +
+                                                    geometrySubtotal(candidate_local);
+  const double estimated_score = result.score.score - full_candidate_geometry_score +
+                                 estimated_candidate_geometry_score;
+  if (!std::isfinite(estimated_score)) {
+    return;
+  }
+
+  result.shadow_segment_score_valid = true;
+  result.shadow_segment_score_estimated_score = estimated_score;
+  result.shadow_segment_score_incumbent_score = incumbent_score;
+  result.shadow_segment_score_window_samples =
+      shadowSegmentWindowSamples(changed, base_points.size());
+  result.shadow_segment_score_would_prune =
+      std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
+}
+
 [[nodiscard]] double
 conservativeShadowLowerBoundScore(const std::span<const Point2> points,
                                   const std::span<const double> offsets,
@@ -1527,6 +1705,9 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
                                      result.path, config, speed_config, max_length_m,
                                      buffer.samples, local_stats);
+    populateShadowSegmentScoreDiagnostics(result, base_score, base_points, base_offsets,
+                                          buffer.points, buffer.offsets,
+                                          offset_diagnostics, config, incumbent_score);
     populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
     const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
     result.score_duration_ms += full_score_duration_ms;
@@ -1561,6 +1742,9 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
                                    result.path, config, speed_config, max_length_m,
                                    buffer.samples, local_stats);
+  populateShadowSegmentScoreDiagnostics(result, base_score, base_points, base_offsets,
+                                        buffer.points, buffer.offsets,
+                                        offset_diagnostics, config, incumbent_score);
   populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
   const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
   result.score_duration_ms += full_score_duration_ms;
@@ -2000,6 +2184,37 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   } else if (candidate.local_evaluated) {
     ++stats.shadow_local_speed_unavailable;
   }
+  if (candidate.shadow_segment_score_valid) {
+    ++stats.shadow_segment_score_evaluations;
+    stats.shadow_segment_score_window_samples_total +=
+        candidate.shadow_segment_score_window_samples;
+    stats.shadow_segment_score_window_samples_max =
+        std::max(stats.shadow_segment_score_window_samples_max,
+                 candidate.shadow_segment_score_window_samples);
+    const double score_delta =
+        candidate.shadow_segment_score_estimated_score - candidate.score.score;
+    if (std::isfinite(score_delta)) {
+      stats.shadow_segment_score_abs_error_sum += std::abs(score_delta);
+      stats.shadow_segment_score_max_overestimate =
+          std::max(stats.shadow_segment_score_max_overestimate, score_delta);
+      stats.shadow_segment_score_max_underestimate =
+          std::max(stats.shadow_segment_score_max_underestimate, -score_delta);
+    }
+    if (candidate.shadow_segment_score_would_prune) {
+      ++stats.shadow_segment_score_prunable;
+      if (std::isfinite(candidate.score.score) &&
+          std::isfinite(candidate.shadow_segment_score_incumbent_score) &&
+          candidate.score.score + 1.0e-9 <
+              candidate.shadow_segment_score_incumbent_score) {
+        ++stats.shadow_segment_score_false_prunes;
+        stats.shadow_segment_score_max_false_prune_improvement_score = std::max(
+            stats.shadow_segment_score_max_false_prune_improvement_score,
+            candidate.shadow_segment_score_incumbent_score - candidate.score.score);
+      }
+    }
+  } else if (candidate.local_evaluated) {
+    ++stats.shadow_segment_score_unavailable;
+  }
   ++stats.candidate_evaluations;
   stats.candidate_point_build_duration_ms += candidate.point_build_duration_ms;
   stats.candidate_path_evaluation_duration_ms += candidate.path_evaluation_duration_ms;
@@ -2163,8 +2378,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   }
   std::vector<double> shadow_local_speed_abs_time_errors_s;
   std::vector<double> shadow_local_speed_abs_score_errors;
+  std::vector<double> shadow_segment_score_abs_errors;
   shadow_local_speed_abs_time_errors_s.reserve(control_indices.size() * max_iterations);
   shadow_local_speed_abs_score_errors.reserve(control_indices.size() * max_iterations);
+  shadow_segment_score_abs_errors.reserve(control_indices.size() * max_iterations);
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
@@ -2190,8 +2407,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     const EvaluatedCandidate* iteration_winner = nullptr;
     std::optional<std::size_t> iteration_winner_order;
     std::optional<std::size_t> shadow_local_speed_winner_order;
+    std::optional<std::size_t> shadow_segment_score_winner_order;
     double best_estimated_score = best_cost;
     double best_shadow_local_speed_score = best_cost;
+    double best_shadow_segment_score = best_cost;
     for (const CandidateBatchResult& batch_result : candidates) {
       const EvaluatedCandidate& candidate = batch_result.candidate;
       mergeCandidateStats(candidate, result.stats);
@@ -2210,11 +2429,24 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
           shadow_local_speed_abs_score_errors.push_back(std::abs(score_delta));
         }
       }
+      if (candidate.shadow_segment_score_valid) {
+        const double score_delta =
+            candidate.shadow_segment_score_estimated_score - candidate.score.score;
+        if (std::isfinite(score_delta)) {
+          shadow_segment_score_abs_errors.push_back(std::abs(score_delta));
+        }
+      }
       if (candidate.shadow_local_speed_valid &&
           candidate.shadow_local_speed_estimated_score + 1.0e-9 <
               best_shadow_local_speed_score) {
         best_shadow_local_speed_score = candidate.shadow_local_speed_estimated_score;
         shadow_local_speed_winner_order = batch_result.order;
+      }
+      if (candidate.shadow_segment_score_valid &&
+          candidate.shadow_segment_score_estimated_score + 1.0e-9 <
+              best_shadow_segment_score) {
+        best_shadow_segment_score = candidate.shadow_segment_score_estimated_score;
+        shadow_segment_score_winner_order = batch_result.order;
       }
       if (!candidate.full_score_used) {
         continue;
@@ -2230,6 +2462,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     if (shadow_local_speed_winner_order.has_value() &&
         shadow_local_speed_winner_order != iteration_winner_order) {
       ++result.stats.shadow_local_speed_winner_mismatches;
+    }
+    if (shadow_segment_score_winner_order.has_value() &&
+        shadow_segment_score_winner_order != iteration_winner_order) {
+      ++result.stats.shadow_segment_score_winner_mismatches;
     }
     if (iteration_winner != nullptr) {
       if (iteration_winner->shadow_lower_bound_would_prune) {
@@ -2259,6 +2495,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       percentileValue(shadow_local_speed_abs_time_errors_s, 0.95);
   result.stats.shadow_local_speed_abs_score_error_p95 =
       percentileValue(shadow_local_speed_abs_score_errors, 0.95);
+  result.stats.shadow_segment_score_abs_error_p95 =
+      percentileValue(shadow_segment_score_abs_errors, 0.95);
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
     final_points = pointsFromOffsets(optimizer_samples, offsets);

@@ -115,6 +115,18 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.shadow_local_speed_max_score_overestimate = 24.0;
   stats.racing_line.shadow_local_speed_max_score_underestimate = 36.0;
   stats.racing_line.shadow_local_speed_max_false_prune_improvement_score = 7.25;
+  stats.racing_line.shadow_segment_score_evaluations = 52U;
+  stats.racing_line.shadow_segment_score_unavailable = 9U;
+  stats.racing_line.shadow_segment_score_prunable = 19U;
+  stats.racing_line.shadow_segment_score_false_prunes = 1U;
+  stats.racing_line.shadow_segment_score_winner_mismatches = 3U;
+  stats.racing_line.shadow_segment_score_window_samples_total = 572U;
+  stats.racing_line.shadow_segment_score_window_samples_max = 11U;
+  stats.racing_line.shadow_segment_score_abs_error_sum = 0.35;
+  stats.racing_line.shadow_segment_score_abs_error_p95 = 0.05;
+  stats.racing_line.shadow_segment_score_max_overestimate = 0.2;
+  stats.racing_line.shadow_segment_score_max_underestimate = 0.15;
+  stats.racing_line.shadow_segment_score_max_false_prune_improvement_score = 0.75;
   stats.racing_line.window_count = 4U;
   stats.racing_line.active_window_count = 3U;
   stats.racing_line.active_window_samples = 18U;
@@ -448,6 +460,32 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(
       json.find("\"racing_shadow_local_speed_max_false_prune_improvement_score\":7.25"),
       std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_evaluations\":52"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_unavailable\":9"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_prunable\":19"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_false_prunes\":1"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_winner_mismatches\":3"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_window_samples_total\":572"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_window_samples_max\":11"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_abs_error_sum\":0.35"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_abs_error_p95\":0.05"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_max_overestimate\":0.2"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_segment_score_max_underestimate\":0.15"),
+            std::string::npos);
+  EXPECT_NE(
+      json.find(
+          "\"racing_shadow_segment_score_max_false_prune_improvement_score\":0.75"),
+      std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_to_fine_used\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_window_count\":4"), std::string::npos);
@@ -589,6 +627,18 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_shadow_local_speed_max_score_overestimate\"",
                     "\"racing_shadow_local_speed_max_score_underestimate\"",
                     "\"racing_shadow_local_speed_max_false_prune_improvement_score\"",
+                    "\"racing_shadow_segment_score_evaluations\"",
+                    "\"racing_shadow_segment_score_unavailable\"",
+                    "\"racing_shadow_segment_score_prunable\"",
+                    "\"racing_shadow_segment_score_false_prunes\"",
+                    "\"racing_shadow_segment_score_winner_mismatches\"",
+                    "\"racing_shadow_segment_score_window_samples_total\"",
+                    "\"racing_shadow_segment_score_window_samples_max\"",
+                    "\"racing_shadow_segment_score_abs_error_sum\"",
+                    "\"racing_shadow_segment_score_abs_error_p95\"",
+                    "\"racing_shadow_segment_score_max_overestimate\"",
+                    "\"racing_shadow_segment_score_max_underestimate\"",
+                    "\"racing_shadow_segment_score_max_false_prune_improvement_score\"",
                     "\"racing_line_window_count\"",
                     "\"racing_line_active_window_count\"",
                     "\"racing_line_active_window_samples\"",
@@ -879,6 +929,26 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
                        .shadow_local_speed_max_false_prune_improvement_score,
                    7.25);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_evaluations, 52U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_unavailable, 9U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_prunable, 19U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_false_prunes, 1U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_winner_mismatches, 3U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_window_samples_total,
+            572U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_segment_score_window_samples_max,
+            11U);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.shadow_segment_score_abs_error_sum,
+                   0.35);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.shadow_segment_score_abs_error_p95,
+                   0.05);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.shadow_segment_score_max_overestimate,
+                   0.2);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_segment_score_max_underestimate, 0.15);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
+                       .shadow_segment_score_max_false_prune_improvement_score,
+                   0.75);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_hits, 14U);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_misses, 88U);
   EXPECT_EQ(parsed_value.stats.racing_line.window_count, 4U);

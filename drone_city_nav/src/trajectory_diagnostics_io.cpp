@@ -512,6 +512,31 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   appendJsonNumber(
       stream, "racing_shadow_local_speed_max_false_prune_improvement_score",
       stats.racing_line.shadow_local_speed_max_false_prune_improvement_score);
+  appendJsonSize(stream, "racing_shadow_segment_score_evaluations",
+                 stats.racing_line.shadow_segment_score_evaluations);
+  appendJsonSize(stream, "racing_shadow_segment_score_unavailable",
+                 stats.racing_line.shadow_segment_score_unavailable);
+  appendJsonSize(stream, "racing_shadow_segment_score_prunable",
+                 stats.racing_line.shadow_segment_score_prunable);
+  appendJsonSize(stream, "racing_shadow_segment_score_false_prunes",
+                 stats.racing_line.shadow_segment_score_false_prunes);
+  appendJsonSize(stream, "racing_shadow_segment_score_winner_mismatches",
+                 stats.racing_line.shadow_segment_score_winner_mismatches);
+  appendJsonSize(stream, "racing_shadow_segment_score_window_samples_total",
+                 stats.racing_line.shadow_segment_score_window_samples_total);
+  appendJsonSize(stream, "racing_shadow_segment_score_window_samples_max",
+                 stats.racing_line.shadow_segment_score_window_samples_max);
+  appendJsonNumber(stream, "racing_shadow_segment_score_abs_error_sum",
+                   stats.racing_line.shadow_segment_score_abs_error_sum);
+  appendJsonNumber(stream, "racing_shadow_segment_score_abs_error_p95",
+                   stats.racing_line.shadow_segment_score_abs_error_p95);
+  appendJsonNumber(stream, "racing_shadow_segment_score_max_overestimate",
+                   stats.racing_line.shadow_segment_score_max_overestimate);
+  appendJsonNumber(stream, "racing_shadow_segment_score_max_underestimate",
+                   stats.racing_line.shadow_segment_score_max_underestimate);
+  appendJsonNumber(
+      stream, "racing_shadow_segment_score_max_false_prune_improvement_score",
+      stats.racing_line.shadow_segment_score_max_false_prune_improvement_score);
   appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
   appendJsonSize(stream, "racing_line_active_window_count",
                  stats.racing_line.active_window_count);
@@ -1150,6 +1175,30 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.shadow_local_speed_max_score_underestimate);
   parseJsonDouble(json, "racing_shadow_local_speed_max_false_prune_improvement_score",
                   racing.shadow_local_speed_max_false_prune_improvement_score);
+  parseJsonSize(json, "racing_shadow_segment_score_evaluations",
+                racing.shadow_segment_score_evaluations);
+  parseJsonSize(json, "racing_shadow_segment_score_unavailable",
+                racing.shadow_segment_score_unavailable);
+  parseJsonSize(json, "racing_shadow_segment_score_prunable",
+                racing.shadow_segment_score_prunable);
+  parseJsonSize(json, "racing_shadow_segment_score_false_prunes",
+                racing.shadow_segment_score_false_prunes);
+  parseJsonSize(json, "racing_shadow_segment_score_winner_mismatches",
+                racing.shadow_segment_score_winner_mismatches);
+  parseJsonSize(json, "racing_shadow_segment_score_window_samples_total",
+                racing.shadow_segment_score_window_samples_total);
+  parseJsonSize(json, "racing_shadow_segment_score_window_samples_max",
+                racing.shadow_segment_score_window_samples_max);
+  parseJsonDouble(json, "racing_shadow_segment_score_abs_error_sum",
+                  racing.shadow_segment_score_abs_error_sum);
+  parseJsonDouble(json, "racing_shadow_segment_score_abs_error_p95",
+                  racing.shadow_segment_score_abs_error_p95);
+  parseJsonDouble(json, "racing_shadow_segment_score_max_overestimate",
+                  racing.shadow_segment_score_max_overestimate);
+  parseJsonDouble(json, "racing_shadow_segment_score_max_underestimate",
+                  racing.shadow_segment_score_max_underestimate);
+  parseJsonDouble(json, "racing_shadow_segment_score_max_false_prune_improvement_score",
+                  racing.shadow_segment_score_max_false_prune_improvement_score);
   parseJsonSize(json, "racing_line_window_count", racing.window_count);
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",
