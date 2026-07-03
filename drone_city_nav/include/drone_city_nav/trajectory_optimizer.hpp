@@ -10,6 +10,7 @@
 #include <limits>
 #include <numbers>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -60,6 +61,45 @@ struct TrajectoryOptimizerConfig {
   double dp_fine_offset_step_m{0.75};
   double dp_fine_radius_m{1.5};
   std::size_t async_refinement_workers{1U};
+};
+
+struct TrajectoryOptimizerCandidateDiagnostic {
+  std::string phase;
+  std::string decision;
+  std::string local_full_score_reason;
+  std::size_t iteration{0U};
+  std::size_t order{0U};
+  std::size_t center_index{0U};
+  double center_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double step_m{std::numeric_limits<double>::quiet_NaN()};
+  double delta_m{std::numeric_limits<double>::quiet_NaN()};
+  double score{std::numeric_limits<double>::quiet_NaN()};
+  double incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  double length_m{std::numeric_limits<double>::quiet_NaN()};
+  bool noop{false};
+  bool traversable{false};
+  bool local_evaluated{false};
+  bool requires_full_score{false};
+  bool full_score_used{false};
+  std::size_t prohibited_cells{0U};
+  std::size_t outside_grid_segments{0U};
+  std::size_t changed_samples{0U};
+  std::size_t changed_span_samples{0U};
+  double cost_length{std::numeric_limits<double>::quiet_NaN()};
+  double cost_curvature{std::numeric_limits<double>::quiet_NaN()};
+  double cost_curvature_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_radius_shortfall{std::numeric_limits<double>::quiet_NaN()};
+  double cost_heading_jump{std::numeric_limits<double>::quiet_NaN()};
+  double cost_offset_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_offset_second_change{std::numeric_limits<double>::quiet_NaN()};
+  double cost_offset_slope{std::numeric_limits<double>::quiet_NaN()};
+  double cost_collision{std::numeric_limits<double>::quiet_NaN()};
+  double cost_outside_grid{std::numeric_limits<double>::quiet_NaN()};
+  double cost_length_overrun{std::numeric_limits<double>::quiet_NaN()};
+  double point_build_duration_ms{0.0};
+  double path_evaluation_duration_ms{0.0};
+  double score_duration_ms{0.0};
+  double full_score_duration_ms{0.0};
 };
 
 struct TrajectoryOptimizerStats {
@@ -222,6 +262,7 @@ struct TrajectoryOptimizerStats {
   double mean_edge_margin_m{std::numeric_limits<double>::quiet_NaN()};
   double max_abs_curvature_1pm{0.0};
   double mean_abs_curvature_1pm{0.0};
+  std::vector<TrajectoryOptimizerCandidateDiagnostic> candidate_diagnostics;
 };
 
 struct TrajectoryOptimizerWindowMetadata {

@@ -50,6 +50,31 @@ struct TurnSmoothingCornerDiagnostic {
   double heading_delta_after_rad{std::numeric_limits<double>::quiet_NaN()};
 };
 
+struct TurnSmoothingCandidateDiagnostic {
+  std::string decision{"rejected"};
+  std::string reject_reason{"none"};
+  std::size_t pass{0U};
+  std::size_t attempt_index{0U};
+  std::size_t corner_index{0U};
+  double corner_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double entry_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double exit_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double shift_scale{std::numeric_limits<double>::quiet_NaN()};
+  double applied_shift_m{std::numeric_limits<double>::quiet_NaN()};
+  double relaxed_angle_deg{std::numeric_limits<double>::quiet_NaN()};
+  double score{std::numeric_limits<double>::quiet_NaN()};
+  double min_radius_before_m{std::numeric_limits<double>::quiet_NaN()};
+  double min_radius_after_m{std::numeric_limits<double>::quiet_NaN()};
+  double min_speed_before_mps{std::numeric_limits<double>::quiet_NaN()};
+  double min_speed_after_mps{std::numeric_limits<double>::quiet_NaN()};
+  double local_time_before_s{std::numeric_limits<double>::quiet_NaN()};
+  double local_time_after_s{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_jump_before_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_jump_after_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double heading_delta_before_rad{std::numeric_limits<double>::quiet_NaN()};
+  double heading_delta_after_rad{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct TurnSmoothingStats {
   std::size_t input_samples{0U};
   std::size_t output_samples{0U};
@@ -95,6 +120,7 @@ struct TurnSmoothingStats {
   double shape_diagnostics_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
   std::vector<TurnSmoothingCornerDiagnostic> corner_diagnostics;
+  std::vector<TurnSmoothingCandidateDiagnostic> candidate_diagnostics;
 };
 
 struct TurnSmoothingResult {

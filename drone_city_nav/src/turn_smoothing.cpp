@@ -1031,6 +1031,39 @@ cornerDiagnosticFromAttempt(const SmoothingAttempt& attempt,
   return diagnostic;
 }
 
+[[nodiscard]] TurnSmoothingCandidateDiagnostic candidateDiagnosticFromAttempt(
+    const SmoothingAttempt& attempt, const CornerCandidate& corner,
+    const std::size_t pass, const std::size_t attempt_index, const double corner_s_m) {
+  TurnSmoothingCandidateDiagnostic diagnostic{};
+  diagnostic.decision = attempt.accepted ? "valid_not_best" : "rejected";
+  diagnostic.reject_reason = rejectReasonName(attempt.reject_reason);
+  diagnostic.pass = pass;
+  diagnostic.attempt_index = attempt_index;
+  diagnostic.corner_index = corner.index;
+  diagnostic.corner_s_m = corner_s_m;
+  diagnostic.entry_distance_m = attempt.entry_distance_m;
+  diagnostic.exit_distance_m = attempt.exit_distance_m;
+  diagnostic.shift_scale = attempt.shift_scale;
+  diagnostic.applied_shift_m = attempt.applied_shift_m;
+  diagnostic.relaxed_angle_deg = radiansToDegrees(attempt.relaxed_angle_rad);
+  diagnostic.score = attempt.score;
+  diagnostic.min_radius_before_m = attempt.before_metrics.min_radius_m;
+  diagnostic.min_radius_after_m = attempt.after_metrics.min_radius_m;
+  diagnostic.min_speed_before_mps = attempt.before_metrics.min_speed_limit_mps;
+  diagnostic.min_speed_after_mps = attempt.after_metrics.min_speed_limit_mps;
+  diagnostic.local_time_before_s = attempt.before_metrics.estimated_time_s;
+  diagnostic.local_time_after_s = attempt.after_metrics.estimated_time_s;
+  diagnostic.curvature_jump_before_1pm =
+      attempt.before_metrics.shape.max_curvature_jump_1pm;
+  diagnostic.curvature_jump_after_1pm =
+      attempt.after_metrics.shape.max_curvature_jump_1pm;
+  diagnostic.heading_delta_before_rad =
+      attempt.before_metrics.shape.max_heading_delta_rad;
+  diagnostic.heading_delta_after_rad =
+      attempt.after_metrics.shape.max_heading_delta_rad;
+  return diagnostic;
+}
+
 void incrementRejectStat(TurnSmoothingStats& stats,
                          const SmoothingRejectReason reason) noexcept {
   switch (reason) {
@@ -1115,13 +1148,22 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
     SmoothingRejectReason dominant_reject_reason = SmoothingRejectReason::kNone;
     std::optional<SmoothingAttempt> accepted_attempt;
     std::optional<SmoothingAttempt> rejected_attempt;
+    std::optional<std::size_t> selected_candidate_diagnostic_index;
     const double corner_s_m = corner->index < result.samples.size()
                                   ? result.samples[corner->index].s_m
                                   : std::numeric_limits<double>::quiet_NaN();
-    const auto consider_attempt = [&](SmoothingAttempt&& attempt) {
+    const auto record_attempt = [&](const SmoothingAttempt& attempt,
+                                    const std::size_t attempt_index) {
+      result.stats.candidate_diagnostics.push_back(candidateDiagnosticFromAttempt(
+          attempt, *corner, pass, attempt_index, corner_s_m));
+      return result.stats.candidate_diagnostics.size() - 1U;
+    };
+    const auto consider_attempt = [&](SmoothingAttempt&& attempt,
+                                      const std::size_t diagnostic_index) {
       if (attempt.accepted) {
         if (!accepted_attempt.has_value() || attempt.score < accepted_attempt->score) {
           accepted_attempt = std::move(attempt);
+          selected_candidate_diagnostic_index = diagnostic_index;
         }
         return;
       }
@@ -1137,12 +1179,13 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       const double distance_scale =
           entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
       for (const double shift_scale : kShiftScales) {
-        ++result.stats.candidate_attempts;
+        const std::size_t attempt_index = result.stats.candidate_attempts++;
         SmoothingAttempt attempt = trySmoothCorner(
             result.samples, corridor_samples, prohibited_grid, *corner, config,
             entry_distance * distance_scale, exit_distance * distance_scale,
             shift_scale, 0.0, speed_config, work_buffer, result.stats);
-        consider_attempt(std::move(attempt));
+        const std::size_t diagnostic_index = record_attempt(attempt, attempt_index);
+        consider_attempt(std::move(attempt), diagnostic_index);
       }
     }
     for (const double entry_candidate : entry_candidates) {
@@ -1150,13 +1193,14 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
           entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
       for (const double relaxed_angle : relaxedTangentAngleCandidatesRad()) {
         for (const double shift_scale : kShiftScales) {
-          ++result.stats.candidate_attempts;
+          const std::size_t attempt_index = result.stats.candidate_attempts++;
           ++result.stats.relaxed_candidate_attempts;
           SmoothingAttempt attempt = trySmoothCorner(
               result.samples, corridor_samples, prohibited_grid, *corner, config,
               entry_distance * distance_scale, exit_distance * distance_scale,
               shift_scale, relaxed_angle, speed_config, work_buffer, result.stats);
-          consider_attempt(std::move(attempt));
+          const std::size_t diagnostic_index = record_attempt(attempt, attempt_index);
+          consider_attempt(std::move(attempt), diagnostic_index);
         }
       }
     }
@@ -1172,6 +1216,12 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       break;
     }
 
+    if (selected_candidate_diagnostic_index.has_value() &&
+        *selected_candidate_diagnostic_index <
+            result.stats.candidate_diagnostics.size()) {
+      result.stats.candidate_diagnostics[*selected_candidate_diagnostic_index]
+          .decision = "selected";
+    }
     result.stats.corner_diagnostics.push_back(
         cornerDiagnosticFromAttempt(*accepted_attempt, corner_s_m));
     result.samples = std::move(accepted_attempt->samples);

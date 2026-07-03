@@ -243,6 +243,22 @@ private:
                                 const char* source_label,
                                 const std::uint64_t candidate_path_id) const;
 
+  [[nodiscard]] static std::filesystem::path trajectoryCandidatesDirectory();
+
+  bool writeTrajectoryOptimizerCandidatesCsvFile(const std::filesystem::path& path,
+                                                 const TrajectoryPlannerResult& result,
+                                                 const char* source_label,
+                                                 std::uint64_t candidate_path_id) const;
+
+  bool writeTurnSmoothingCandidatesCsvFile(const std::filesystem::path& path,
+                                           const TrajectoryPlannerResult& result,
+                                           const char* source_label,
+                                           std::uint64_t candidate_path_id) const;
+
+  void writeTrajectoryCandidateDumps(const TrajectoryPlannerResult& result,
+                                     const char* source_label,
+                                     std::uint64_t candidate_path_id) const;
+
   void publishPlanningFailureHold();
 
   void invalidateCurrentPose();

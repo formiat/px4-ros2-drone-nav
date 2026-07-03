@@ -14,6 +14,7 @@
 #include <mutex>
 #include <numbers>
 #include <optional>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -90,6 +91,23 @@ enum class LocalFullScoreReason : std::uint8_t {
   kWindowInvalid,
 };
 
+[[nodiscard]] const char*
+localFullScoreReasonName(const LocalFullScoreReason reason) noexcept {
+  switch (reason) {
+    case LocalFullScoreReason::kNone:
+      return "none";
+    case LocalFullScoreReason::kInvalidInput:
+      return "invalid_input";
+    case LocalFullScoreReason::kBoundaryWindow:
+      return "boundary_window";
+    case LocalFullScoreReason::kUnsafeBase:
+      return "unsafe_base";
+    case LocalFullScoreReason::kWindowInvalid:
+      return "window_invalid";
+  }
+  return "unknown";
+}
+
 struct EvaluatedCandidate {
   bool noop{false};
   std::vector<double> offsets;
@@ -138,6 +156,8 @@ struct CandidateTask {
 
 struct CandidateBatchResult {
   std::size_t order{0U};
+  std::size_t center_index{0U};
+  double delta_m{0.0};
   EvaluatedCandidate candidate{};
 };
 
@@ -688,6 +708,20 @@ enum class InitialOffsetSeed : std::uint8_t {
   kLeftBiased,
   kRightBiased,
 };
+
+[[nodiscard]] const char* initialOffsetSeedName(const InitialOffsetSeed seed) noexcept {
+  switch (seed) {
+    case InitialOffsetSeed::kCenterline:
+      return "seed_centerline";
+    case InitialOffsetSeed::kCorridorMidline:
+      return "seed_corridor_midline";
+    case InitialOffsetSeed::kLeftBiased:
+      return "seed_left_biased";
+    case InitialOffsetSeed::kRightBiased:
+      return "seed_right_biased";
+  }
+  return "seed_unknown";
+}
 
 [[nodiscard]] double offsetForSeed(const CorridorSample& sample,
                                    const InitialOffsetSeed seed) noexcept {
@@ -1892,6 +1926,50 @@ void copyCostBreakdownToStats(const CostBreakdown& breakdown,
   stats.cost_length_overrun = breakdown.length_overrun_cost;
 }
 
+void copyCostBreakdownToCandidateDiagnostic(
+    const CostBreakdown& breakdown,
+    TrajectoryOptimizerCandidateDiagnostic& diagnostic) {
+  diagnostic.cost_length = breakdown.length_cost;
+  diagnostic.cost_curvature = breakdown.curvature_cost;
+  diagnostic.cost_curvature_change = breakdown.curvature_change_cost;
+  diagnostic.cost_radius_shortfall = breakdown.radius_shortfall_cost;
+  diagnostic.cost_heading_jump = breakdown.heading_jump_cost;
+  diagnostic.cost_offset_change = breakdown.offset_change_cost;
+  diagnostic.cost_offset_second_change = breakdown.offset_second_change_cost;
+  diagnostic.cost_offset_slope = breakdown.offset_slope_cost;
+  diagnostic.cost_collision = breakdown.collision_cost;
+  diagnostic.cost_outside_grid = breakdown.outside_grid_cost;
+  diagnostic.cost_length_overrun = breakdown.length_overrun_cost;
+}
+
+void populateCandidateDiagnosticFromScore(
+    TrajectoryOptimizerCandidateDiagnostic& diagnostic, const CandidateScore& score,
+    const PathEvaluation& evaluation, const double incumbent_score, const bool accepted,
+    const double point_build_duration_ms, const double path_evaluation_duration_ms,
+    const double score_duration_ms, const double full_score_duration_ms) {
+  diagnostic.score = score.score;
+  diagnostic.incumbent_score = incumbent_score;
+  diagnostic.length_m = evaluation.length_m;
+  diagnostic.traversable = evaluation.traversable();
+  diagnostic.full_score_used = true;
+  diagnostic.prohibited_cells = evaluation.prohibited_cells;
+  diagnostic.outside_grid_segments = evaluation.outside_grid_segments;
+  diagnostic.point_build_duration_ms = point_build_duration_ms;
+  diagnostic.path_evaluation_duration_ms = path_evaluation_duration_ms;
+  diagnostic.score_duration_ms = score_duration_ms;
+  diagnostic.full_score_duration_ms = full_score_duration_ms;
+  copyCostBreakdownToCandidateDiagnostic(score.breakdown, diagnostic);
+  if (accepted) {
+    diagnostic.decision = "selected";
+  } else if (evaluation.outside_grid_segments > 0U) {
+    diagnostic.decision = "outside_grid";
+  } else if (evaluation.prohibited_cells > 0U) {
+    diagnostic.decision = "prohibited";
+  } else {
+    diagnostic.decision = "not_better_than_incumbent";
+  }
+}
+
 void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
                            TrajectoryOptimizerStats& stats) {
   double margin_sum = 0.0;
@@ -1925,18 +2003,20 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const double max_length_m, double& best_cost, std::vector<double>& offsets,
     std::vector<Point2>& best_points, CandidateScore& best_score, double& best_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples,
-    SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats) {
+    SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats,
+    TrajectoryOptimizerCandidateDiagnostic* diagnostic = nullptr) {
   ++stats.candidate_evaluations;
   ++stats.scratch_reused_candidates;
+  const double incumbent_score = best_cost;
   const auto evaluation_started_at = std::chrono::steady_clock::now();
   std::size_t cache_hits = 0U;
   std::size_t cache_misses = 0U;
   const PathEvaluation evaluation = evaluatePathCached(
       prohibited_grid, candidate_points, segment_cache, cache_hits, cache_misses);
+  const double path_evaluation_duration_ms = elapsedMilliseconds(evaluation_started_at);
   stats.full_path_segment_cache_hits += cache_hits;
   stats.full_path_segment_cache_misses += cache_misses;
-  stats.candidate_path_evaluation_duration_ms +=
-      elapsedMilliseconds(evaluation_started_at);
+  stats.candidate_path_evaluation_duration_ms += path_evaluation_duration_ms;
   if (!evaluation.traversable()) {
     ++stats.collision_rejections;
   }
@@ -1947,7 +2027,13 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   const double score_duration_ms = elapsedMilliseconds(score_started_at);
   stats.candidate_score_duration_ms += score_duration_ms;
   stats.full_candidate_score_duration_ms += score_duration_ms;
-  if (candidate_score.score + 1.0e-9 < best_cost) {
+  const bool accepted = candidate_score.score + 1.0e-9 < best_cost;
+  if (diagnostic != nullptr) {
+    populateCandidateDiagnosticFromScore(
+        *diagnostic, candidate_score, evaluation, incumbent_score, accepted, 0.0,
+        path_evaluation_duration_ms, score_duration_ms, score_duration_ms);
+  }
+  if (accepted) {
     best_cost = candidate_score.score;
     offsets.assign(candidate_offsets.begin(), candidate_offsets.end());
     best_points.assign(candidate_points.begin(), candidate_points.end());
@@ -2352,6 +2438,8 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
                                 CandidateWorkBuffer& buffer) {
     const CandidateTask& task = tasks[task_index];
     workspace.results[task_index].order = task.order;
+    workspace.results[task_index].center_index = task.center_index;
+    workspace.results[task_index].delta_m = task.delta_m;
     workspace.results[task_index].candidate = evaluateCandidateSnapshot(
         corridor_samples, base_offsets, base_points, base_score, base_length_m,
         task.center_index, task.delta_m, prohibited_grid, config, max_length_m,
@@ -2527,6 +2615,60 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate,
   }
 }
 
+[[nodiscard]] TrajectoryOptimizerCandidateDiagnostic candidateDiagnosticFromBatchResult(
+    const CandidateBatchResult& batch_result,
+    const std::span<const CorridorSample> corridor_samples, const std::size_t iteration,
+    const double step_m, const double incumbent_score, const bool selected) {
+  const EvaluatedCandidate& candidate = batch_result.candidate;
+  TrajectoryOptimizerCandidateDiagnostic diagnostic{};
+  diagnostic.phase = "iteration";
+  diagnostic.iteration = iteration;
+  diagnostic.order = batch_result.order;
+  diagnostic.center_index = batch_result.center_index;
+  diagnostic.step_m = step_m;
+  diagnostic.delta_m = batch_result.delta_m;
+  if (batch_result.center_index < corridor_samples.size()) {
+    diagnostic.center_s_m = corridor_samples[batch_result.center_index].s_m;
+  }
+  diagnostic.score = candidate.score.score;
+  diagnostic.incumbent_score = incumbent_score;
+  diagnostic.length_m = candidate.path.length_m;
+  diagnostic.noop = candidate.noop;
+  diagnostic.traversable = candidate.path.traversable();
+  diagnostic.local_evaluated = candidate.local_evaluated;
+  diagnostic.requires_full_score = candidate.requires_full_score;
+  diagnostic.full_score_used = candidate.full_score_used;
+  diagnostic.local_full_score_reason =
+      localFullScoreReasonName(candidate.local_full_score_reason);
+  diagnostic.prohibited_cells = candidate.path.prohibited_cells;
+  diagnostic.outside_grid_segments = candidate.path.outside_grid_segments;
+  diagnostic.changed_samples = candidate.offset_changed_samples;
+  diagnostic.changed_span_samples = candidate.offset_changed_span_samples;
+  diagnostic.point_build_duration_ms = candidate.point_build_duration_ms;
+  diagnostic.path_evaluation_duration_ms = candidate.path_evaluation_duration_ms;
+  diagnostic.score_duration_ms = candidate.score_duration_ms;
+  diagnostic.full_score_duration_ms = candidate.full_score_duration_ms;
+  copyCostBreakdownToCandidateDiagnostic(candidate.score.breakdown, diagnostic);
+
+  if (selected) {
+    diagnostic.decision = "selected";
+  } else if (candidate.noop) {
+    diagnostic.decision = "noop";
+  } else if (candidate.path.outside_grid_segments > 0U) {
+    diagnostic.decision = "outside_grid";
+  } else if (candidate.path.prohibited_cells > 0U) {
+    diagnostic.decision = "prohibited";
+  } else if (!candidate.full_score_used) {
+    diagnostic.decision = "not_scored";
+  } else if (std::isfinite(candidate.score.score) && std::isfinite(incumbent_score) &&
+             candidate.score.score + 1.0e-9 < incumbent_score) {
+    diagnostic.decision = "valid_not_iteration_best";
+  } else {
+    diagnostic.decision = "not_better_than_incumbent";
+  }
+  return diagnostic;
+}
+
 } // namespace
 
 TrajectoryOptimizerResult
@@ -2566,6 +2708,8 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   const double max_length_ratio =
       sanitizedPositive(config.max_length_ratio, 1.25, 1.0, 100.0);
   const double max_length_m = result.stats.centerline_length_m * max_length_ratio;
+  result.stats.candidate_diagnostics.reserve(
+      control_indices.size() * 2U * max_iterations + active_windows.size() + 8U);
 
   TrajectoryOptimizerScratch scratch{};
   scratch.candidate_offsets.reserve(sample_count);
@@ -2588,6 +2732,7 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   constexpr std::array kInitialSeeds{
       InitialOffsetSeed::kCenterline, InitialOffsetSeed::kCorridorMidline,
       InitialOffsetSeed::kLeftBiased, InitialOffsetSeed::kRightBiased};
+  std::size_t seed_order = 0U;
   for (const InitialOffsetSeed seed : kInitialSeeds) {
     offsetsFromSeed(optimizer_samples, seed, scratch.candidate_offsets);
     const auto points_started_at = std::chrono::steady_clock::now();
@@ -2595,11 +2740,16 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
                       scratch.candidate_points);
     result.stats.candidate_point_build_duration_ms +=
         elapsedMilliseconds(points_started_at);
-    (void)updateBestCandidate(optimizer_samples, scratch.candidate_offsets,
-                              scratch.candidate_points, prohibited_grid, config,
-                              max_length_m, best_cost, offsets, best_points, best_score,
-                              best_length_m, scratch.candidate_samples,
-                              scratch.full_path_segment_cache, result.stats);
+    TrajectoryOptimizerCandidateDiagnostic diagnostic{};
+    diagnostic.phase = initialOffsetSeedName(seed);
+    diagnostic.order = seed_order++;
+    diagnostic.local_full_score_reason = "none";
+    (void)updateBestCandidate(
+        optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
+        prohibited_grid, config, max_length_m, best_cost, offsets, best_points,
+        best_score, best_length_m, scratch.candidate_samples,
+        scratch.full_path_segment_cache, result.stats, &diagnostic);
+    result.stats.candidate_diagnostics.push_back(std::move(diagnostic));
   }
   if (offsets.empty()) {
     return result;
@@ -2643,16 +2793,27 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
                                         scratch.candidate_offsets, result.stats)) {
       continue;
     }
+    const bool used_fallback_dp = !dp_ok;
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(optimizer_samples, scratch.candidate_offsets,
                       scratch.candidate_points);
     result.stats.candidate_point_build_duration_ms +=
         elapsedMilliseconds(points_started_at);
+    TrajectoryOptimizerCandidateDiagnostic diagnostic{};
+    diagnostic.phase = used_fallback_dp ? "dp_seed_fallback" : "dp_seed_coarse_to_fine";
+    diagnostic.order = result.stats.candidate_diagnostics.size();
+    diagnostic.center_index =
+        window.begin_index + (window.end_index - window.begin_index) / 2U;
+    if (diagnostic.center_index < optimizer_samples.size()) {
+      diagnostic.center_s_m = optimizer_samples[diagnostic.center_index].s_m;
+    }
+    diagnostic.local_full_score_reason = "none";
     const bool accepted = updateBestCandidate(
         optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
         prohibited_grid, config, max_length_m, best_cost, offsets, best_points,
         best_score, best_length_m, scratch.candidate_samples,
-        scratch.full_path_segment_cache, result.stats);
+        scratch.full_path_segment_cache, result.stats, &diagnostic);
+    result.stats.candidate_diagnostics.push_back(std::move(diagnostic));
     if (accepted) {
       result.stats.initial_cost = best_cost;
     }
@@ -2673,6 +2834,7 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
     if (control_indices.empty()) {
       break;
     }
+    const double incumbent_before_iteration = best_cost;
     const std::vector<CandidateTask> tasks =
         candidateTasksForStep(control_indices, step);
     candidate_worker_count = desiredWorkerCount(config.parallel_workers, tasks.size());
@@ -2727,6 +2889,12 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
     if (shadow_segment_score_winner_order.has_value() &&
         shadow_segment_score_winner_order != iteration_winner_order) {
       ++result.stats.shadow_segment_score_winner_mismatches;
+    }
+    for (const CandidateBatchResult& batch_result : candidates) {
+      result.stats.candidate_diagnostics.push_back(candidateDiagnosticFromBatchResult(
+          batch_result, optimizer_samples, iteration, step, incumbent_before_iteration,
+          iteration_winner_order.has_value() &&
+              batch_result.order == *iteration_winner_order));
     }
     if (iteration_winner != nullptr) {
       if (iteration_winner->shadow_lower_bound_would_prune) {
