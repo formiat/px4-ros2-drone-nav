@@ -6,8 +6,12 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
+#include <exception>
+#include <functional>
 #include <limits>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <thread>
@@ -169,6 +173,167 @@ struct RacingLineScratch {
   std::vector<Point2> accepted_points;
   std::vector<TrajectoryPointSample> candidate_samples;
   SegmentProhibitedCountCache full_path_segment_cache;
+};
+
+struct CandidateBatchWorkspace {
+  std::vector<CandidateBatchResult> results;
+  std::vector<CandidateWorkBuffer> worker_buffers;
+};
+
+[[nodiscard]] double elapsedMilliseconds(std::chrono::steady_clock::time_point start);
+
+void reserveCandidateWorkBuffer(CandidateWorkBuffer& buffer,
+                                const std::size_t offset_count,
+                                const std::size_t sample_count) {
+  buffer.offsets.reserve(offset_count);
+  buffer.points.reserve(sample_count);
+  const std::size_t local_capacity = std::min<std::size_t>(sample_count, 16U);
+  buffer.local_base_points.reserve(local_capacity);
+  buffer.local_candidate_points.reserve(local_capacity);
+  buffer.local_corridor_samples.reserve(local_capacity);
+  buffer.local_base_offsets.reserve(local_capacity);
+  buffer.local_candidate_offsets.reserve(local_capacity);
+  buffer.local_base_samples.reserve(local_capacity);
+  buffer.local_candidate_samples.reserve(local_capacity);
+  buffer.samples.reserve(sample_count);
+}
+
+void prepareCandidateWorkspace(CandidateBatchWorkspace& workspace,
+                               const std::size_t min_worker_count,
+                               const std::size_t offset_count,
+                               const std::size_t sample_count, RacingLineStats& stats) {
+  const auto started_at = std::chrono::steady_clock::now();
+  if (workspace.worker_buffers.size() < min_worker_count) {
+    workspace.worker_buffers.resize(min_worker_count);
+  }
+  for (CandidateWorkBuffer& buffer : workspace.worker_buffers) {
+    reserveCandidateWorkBuffer(buffer, offset_count, sample_count);
+  }
+  stats.candidate_worker_buffer_prepare_duration_ms += elapsedMilliseconds(started_at);
+}
+
+class RacingCandidateWorkerPool {
+public:
+  RacingCandidateWorkerPool(const std::size_t worker_count, RacingLineStats& stats)
+      : stats_(stats) {
+    const auto started_at = std::chrono::steady_clock::now();
+    workers_.reserve(worker_count);
+    for (std::size_t worker_index = 0U; worker_index < worker_count; ++worker_index) {
+      workers_.emplace_back([this, worker_index] { workerLoop(worker_index); });
+    }
+    stats_.candidate_threads_launched += worker_count;
+    stats_.candidate_thread_launch_duration_ms += elapsedMilliseconds(started_at);
+  }
+
+  RacingCandidateWorkerPool(const RacingCandidateWorkerPool&) = delete;
+  RacingCandidateWorkerPool& operator=(const RacingCandidateWorkerPool&) = delete;
+  RacingCandidateWorkerPool(RacingCandidateWorkerPool&&) = delete;
+  RacingCandidateWorkerPool& operator=(RacingCandidateWorkerPool&&) = delete;
+
+  ~RacingCandidateWorkerPool() {
+    const auto started_at = std::chrono::steady_clock::now();
+    {
+      std::lock_guard lock(mutex_);
+      stop_requested_ = true;
+      ++generation_;
+    }
+    job_available_.notify_all();
+    for (std::thread& worker : workers_) {
+      if (worker.joinable()) {
+        worker.join();
+      }
+    }
+    stats_.candidate_thread_join_wait_duration_ms += elapsedMilliseconds(started_at);
+  }
+
+  template<typename EvaluateFn>
+  void run(const std::size_t active_workers, const std::size_t task_count,
+           const EvaluateFn& evaluate) {
+    if (active_workers == 0U || task_count == 0U) {
+      return;
+    }
+
+    const std::size_t bounded_workers =
+        std::min<std::size_t>({active_workers, workers_.size(), task_count});
+    const auto started_at = std::chrono::steady_clock::now();
+    {
+      std::lock_guard lock(mutex_);
+      active_workers_ = bounded_workers;
+      remaining_workers_ = bounded_workers;
+      worker_exception_ = nullptr;
+      job_ = [bounded_workers, task_count, &evaluate](const std::size_t worker_index) {
+        const std::size_t begin = task_count * worker_index / bounded_workers;
+        const std::size_t end = task_count * (worker_index + 1U) / bounded_workers;
+        for (std::size_t task_index = begin; task_index < end; ++task_index) {
+          evaluate(task_index, worker_index);
+        }
+      };
+      ++generation_;
+    }
+
+    job_available_.notify_all();
+    std::unique_lock lock(mutex_);
+    job_finished_.wait(lock, [this] { return remaining_workers_ == 0U; });
+    const std::exception_ptr exception = worker_exception_;
+    lock.unlock();
+    stats_.candidate_batch_wait_duration_ms += elapsedMilliseconds(started_at);
+    if (exception != nullptr) {
+      std::rethrow_exception(exception);
+    }
+  }
+
+private:
+  void workerLoop(const std::size_t worker_index) {
+    std::size_t observed_generation = 0U;
+    while (true) {
+      std::function<void(std::size_t)> job;
+      {
+        std::unique_lock lock(mutex_);
+        job_available_.wait(lock, [this, observed_generation] {
+          return stop_requested_ || generation_ != observed_generation;
+        });
+        if (stop_requested_) {
+          return;
+        }
+        observed_generation = generation_;
+        if (worker_index >= active_workers_) {
+          continue;
+        }
+        job = job_;
+      }
+
+      try {
+        job(worker_index);
+      } catch (...) {
+        std::lock_guard lock(mutex_);
+        if (worker_exception_ == nullptr) {
+          worker_exception_ = std::current_exception();
+        }
+      }
+
+      {
+        std::lock_guard lock(mutex_);
+        if (remaining_workers_ > 0U) {
+          --remaining_workers_;
+        }
+        if (remaining_workers_ == 0U) {
+          job_finished_.notify_one();
+        }
+      }
+    }
+  }
+
+  RacingLineStats& stats_;
+  std::vector<std::thread> workers_;
+  std::mutex mutex_;
+  std::condition_variable job_available_;
+  std::condition_variable job_finished_;
+  std::function<void(std::size_t)> job_;
+  std::exception_ptr worker_exception_{nullptr};
+  std::size_t active_workers_{0U};
+  std::size_t remaining_workers_{0U};
+  std::size_t generation_{0U};
+  bool stop_requested_{false};
 };
 
 struct ActiveWindow {
@@ -1516,7 +1681,7 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
   return tasks;
 }
 
-[[nodiscard]] std::vector<CandidateBatchResult> evaluateCandidateBatch(
+[[nodiscard]] std::span<const CandidateBatchResult> evaluateCandidateBatch(
     const std::span<const CandidateTask> tasks,
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> base_offsets,
@@ -1524,84 +1689,46 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const double base_length_m, const OccupancyGrid2D& prohibited_grid,
     const RacingLineConfig& config, const VelocityFollowerConfig& speed_config,
     const double max_length_m, const std::span<const std::uint8_t> mutable_indices,
-    const double incumbent_score, RacingLineStats& stats,
+    const double incumbent_score, CandidateBatchWorkspace& workspace,
+    RacingCandidateWorkerPool* pool, RacingLineStats& stats,
     const std::size_t worker_count) {
   const auto batch_started_at = std::chrono::steady_clock::now();
-  std::vector<CandidateBatchResult> results(tasks.size());
+  workspace.results.resize(tasks.size());
   if (tasks.empty()) {
     stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
-    return results;
+    return std::span<const CandidateBatchResult>{workspace.results};
   }
 
   const std::size_t resolved_workers = std::clamp<std::size_t>(
       worker_count, 1U, std::max<std::size_t>(1U, tasks.size()));
-  const auto buffer_prepare_started_at = std::chrono::steady_clock::now();
-  std::vector<CandidateWorkBuffer> worker_buffers(resolved_workers);
-  for (CandidateWorkBuffer& buffer : worker_buffers) {
-    buffer.offsets.reserve(base_offsets.size());
-    buffer.points.reserve(corridor_samples.size());
-    buffer.local_base_points.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_candidate_points.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_corridor_samples.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_base_offsets.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_candidate_offsets.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_base_samples.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.local_candidate_samples.reserve(
-        std::min<std::size_t>(corridor_samples.size(), 16U));
-    buffer.samples.reserve(corridor_samples.size());
-  }
-  stats.candidate_worker_buffer_prepare_duration_ms +=
-      elapsedMilliseconds(buffer_prepare_started_at);
+  prepareCandidateWorkspace(workspace, resolved_workers, base_offsets.size(),
+                            corridor_samples.size(), stats);
 
   const auto evaluate_one = [&](const std::size_t task_index,
                                 CandidateWorkBuffer& buffer) {
     const CandidateTask& task = tasks[task_index];
-    results[task_index].order = task.order;
-    results[task_index].candidate = evaluateCandidateSnapshot(
+    workspace.results[task_index].order = task.order;
+    workspace.results[task_index].candidate = evaluateCandidateSnapshot(
         corridor_samples, base_offsets, base_points, base_score, base_length_m,
         task.center_index, task.delta_m, prohibited_grid, config, speed_config,
         max_length_m, mutable_indices, incumbent_score, buffer);
   };
 
-  if (resolved_workers == 1U) {
+  if (resolved_workers == 1U || pool == nullptr) {
     for (std::size_t task_index = 0U; task_index < tasks.size(); ++task_index) {
-      evaluate_one(task_index, worker_buffers.front());
+      evaluate_one(task_index, workspace.worker_buffers.front());
     }
     stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
-    return results;
+    return std::span<const CandidateBatchResult>{workspace.results};
   }
 
   ++stats.candidate_parallel_batches;
-  stats.candidate_threads_launched += resolved_workers;
-  std::vector<std::thread> workers;
-  workers.reserve(resolved_workers);
-  const auto thread_launch_started_at = std::chrono::steady_clock::now();
-  for (std::size_t worker_index = 0U; worker_index < resolved_workers; ++worker_index) {
-    workers.emplace_back([&, worker_index] {
-      CandidateWorkBuffer& buffer = worker_buffers[worker_index];
-      const std::size_t begin = tasks.size() * worker_index / resolved_workers;
-      const std::size_t end = tasks.size() * (worker_index + 1U) / resolved_workers;
-      for (std::size_t task_index = begin; task_index < end; ++task_index) {
-        evaluate_one(task_index, buffer);
-      }
-    });
-  }
-  stats.candidate_thread_launch_duration_ms +=
-      elapsedMilliseconds(thread_launch_started_at);
-  const auto thread_join_started_at = std::chrono::steady_clock::now();
-  for (std::thread& worker : workers) {
-    worker.join();
-  }
-  stats.candidate_thread_join_wait_duration_ms +=
-      elapsedMilliseconds(thread_join_started_at);
+  pool->run(resolved_workers, tasks.size(),
+            [&](const std::size_t task_index, const std::size_t worker_index) {
+              evaluate_one(task_index, workspace.worker_buffers[worker_index]);
+            });
   stats.candidate_batch_wall_duration_ms += elapsedMilliseconds(batch_started_at);
-  return results;
+  return std::span<const CandidateBatchResult>{workspace.results};
 }
 
 void incrementLocalFullScoreReason(const LocalFullScoreReason reason,
@@ -1760,6 +1887,7 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   scratch.accepted_points.reserve(sample_count);
   scratch.candidate_samples.reserve(sample_count);
   std::size_t candidate_worker_count = 1U;
+  CandidateBatchWorkspace candidate_workspace{};
 
   std::vector<double> offsets;
   offsets.reserve(sample_count);
@@ -1842,6 +1970,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   }
   result.stats.window_eval_duration_ms += elapsedMilliseconds(window_eval_started_at);
 
+  const std::size_t max_candidate_worker_count =
+      desiredWorkerCount(config.parallel_workers, control_indices.size() * 2U);
+  std::optional<RacingCandidateWorkerPool> candidate_worker_pool;
+  if (max_candidate_worker_count > 1U) {
+    candidate_worker_pool.emplace(max_candidate_worker_count, result.stats);
+  }
+
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
     if (control_indices.empty()) {
@@ -1855,9 +1990,11 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     result.stats.parallel_workers_used =
         std::max(result.stats.parallel_workers_used, candidate_worker_count);
     ++result.stats.candidate_chunks;
-    std::vector<CandidateBatchResult> candidates = evaluateCandidateBatch(
+    const std::span<const CandidateBatchResult> candidates = evaluateCandidateBatch(
         tasks, optimizer_samples, offsets, best_points, best_score, best_length_m,
         prohibited_grid, config, speed_config, max_length_m, mutable_indices, best_cost,
+        candidate_workspace,
+        candidate_worker_pool.has_value() ? &candidate_worker_pool.value() : nullptr,
         result.stats, candidate_worker_count);
 
     bool changed = false;

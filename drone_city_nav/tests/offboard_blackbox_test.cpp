@@ -145,6 +145,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.candidate_parallel_batches = 8U;
   record.trajectory_planner_stats.racing_line.candidate_threads_launched = 16U;
   record.trajectory_planner_stats.racing_line.candidate_batch_wall_duration_ms = 3.5;
+  record.trajectory_planner_stats.racing_line.candidate_batch_wait_duration_ms = 3.0;
   record.trajectory_planner_stats.racing_line
       .candidate_worker_buffer_prepare_duration_ms = 0.4;
   record.trajectory_planner_stats.racing_line.candidate_thread_launch_duration_ms = 0.6;
@@ -307,6 +308,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_candidate_parallel_batches\":8");
   expectJsonField(json, "\"racing_candidate_threads_launched\":16");
   expectJsonField(json, "\"racing_candidate_batch_wall_duration_ms\":3.5");
+  expectJsonField(json, "\"racing_candidate_batch_wait_duration_ms\":3");
   expectJsonField(json, "\"racing_candidate_worker_buffer_prepare_duration_ms\":0.4");
   expectJsonField(json, "\"racing_candidate_thread_launch_duration_ms\":0.6");
   expectJsonField(json, "\"racing_candidate_thread_join_wait_duration_ms\":2.5");

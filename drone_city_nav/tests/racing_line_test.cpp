@@ -219,14 +219,19 @@ TEST(RacingLine, DefaultParallelCandidateEvaluationMatchesSingleWorkerResult) {
   }
   EXPECT_FALSE(sequential.stats.parallel_candidate_evaluation_used);
   EXPECT_EQ(sequential.stats.parallel_workers_used, 1U);
+  EXPECT_EQ(sequential.stats.candidate_parallel_batches, 0U);
+  EXPECT_EQ(sequential.stats.candidate_threads_launched, 0U);
   EXPECT_TRUE(parallel.stats.parallel_candidate_evaluation_used);
   EXPECT_GT(parallel.stats.parallel_workers_used, 2U);
-  EXPECT_GT(parallel.stats.candidate_chunks, 0U);
-  EXPECT_GT(parallel.stats.candidate_parallel_batches, 0U);
+  EXPECT_GT(parallel.stats.candidate_chunks, 1U);
+  EXPECT_EQ(parallel.stats.candidate_parallel_batches, parallel.stats.candidate_chunks);
   EXPECT_GT(parallel.stats.candidate_threads_launched, 0U);
+  EXPECT_LE(parallel.stats.candidate_threads_launched,
+            parallel.stats.parallel_workers_used);
   EXPECT_GT(parallel.stats.candidate_batch_wall_duration_ms, 0.0);
+  EXPECT_GT(parallel.stats.candidate_batch_wait_duration_ms, 0.0);
   EXPECT_GE(parallel.stats.candidate_worker_buffer_prepare_duration_ms, 0.0);
-  EXPECT_GE(parallel.stats.candidate_thread_launch_duration_ms, 0.0);
+  EXPECT_GT(parallel.stats.candidate_thread_launch_duration_ms, 0.0);
   EXPECT_GE(parallel.stats.candidate_thread_join_wait_duration_ms, 0.0);
   EXPECT_GT(parallel.stats.worker_scratch_reuses, 0U);
   EXPECT_GT(parallel.stats.candidate_snapshot_allocations_avoided, 0U);

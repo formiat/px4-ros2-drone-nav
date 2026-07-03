@@ -68,6 +68,7 @@ struct RacingLineStats {
   std::size_t candidate_parallel_batches{0U};
   std::size_t candidate_threads_launched{0U};
   double candidate_batch_wall_duration_ms{0.0};
+  double candidate_batch_wait_duration_ms{0.0};
   double candidate_worker_buffer_prepare_duration_ms{0.0};
   double candidate_thread_launch_duration_ms{0.0};
   double candidate_thread_join_wait_duration_ms{0.0};

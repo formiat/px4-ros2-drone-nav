@@ -400,6 +400,8 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.candidate_threads_launched);
   appendJsonNumber(stream, "racing_candidate_batch_wall_duration_ms",
                    stats.racing_line.candidate_batch_wall_duration_ms);
+  appendJsonNumber(stream, "racing_candidate_batch_wait_duration_ms",
+                   stats.racing_line.candidate_batch_wait_duration_ms);
   appendJsonNumber(stream, "racing_candidate_worker_buffer_prepare_duration_ms",
                    stats.racing_line.candidate_worker_buffer_prepare_duration_ms);
   appendJsonNumber(stream, "racing_candidate_thread_launch_duration_ms",
@@ -994,6 +996,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.candidate_threads_launched);
   parseJsonDouble(json, "racing_candidate_batch_wall_duration_ms",
                   racing.candidate_batch_wall_duration_ms);
+  parseJsonDouble(json, "racing_candidate_batch_wait_duration_ms",
+                  racing.candidate_batch_wait_duration_ms);
   parseJsonDouble(json, "racing_candidate_worker_buffer_prepare_duration_ms",
                   racing.candidate_worker_buffer_prepare_duration_ms);
   parseJsonDouble(json, "racing_candidate_thread_launch_duration_ms",

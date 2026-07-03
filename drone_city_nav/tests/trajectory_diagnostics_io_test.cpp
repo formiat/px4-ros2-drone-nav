@@ -61,6 +61,7 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.candidate_parallel_batches = 29U;
   stats.racing_line.candidate_threads_launched = 58U;
   stats.racing_line.candidate_batch_wall_duration_ms = 12.25;
+  stats.racing_line.candidate_batch_wait_duration_ms = 10.5;
   stats.racing_line.candidate_worker_buffer_prepare_duration_ms = 1.5;
   stats.racing_line.candidate_thread_launch_duration_ms = 2.75;
   stats.racing_line.candidate_thread_join_wait_duration_ms = 8.0;
@@ -331,6 +332,8 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"racing_candidate_threads_launched\":58"), std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_batch_wall_duration_ms\":12.25"),
             std::string::npos);
+  EXPECT_NE(json.find("\"racing_candidate_batch_wait_duration_ms\":10.5"),
+            std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_worker_buffer_prepare_duration_ms\":1.5"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_candidate_thread_launch_duration_ms\":2.75"),
@@ -464,6 +467,7 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_candidate_parallel_batches\"",
                     "\"racing_candidate_threads_launched\"",
                     "\"racing_candidate_batch_wall_duration_ms\"",
+                    "\"racing_candidate_batch_wait_duration_ms\"",
                     "\"racing_candidate_worker_buffer_prepare_duration_ms\"",
                     "\"racing_candidate_thread_launch_duration_ms\"",
                     "\"racing_candidate_thread_join_wait_duration_ms\"",
@@ -689,6 +693,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.racing_line.candidate_threads_launched, 58U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_batch_wall_duration_ms,
                    12.25);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_batch_wait_duration_ms,
+                   10.5);
   EXPECT_DOUBLE_EQ(
       parsed_value.stats.racing_line.candidate_worker_buffer_prepare_duration_ms, 1.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line.candidate_thread_launch_duration_ms,
