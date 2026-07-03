@@ -36,11 +36,11 @@ struct TrajectoryOptimizerConfig {
   double initial_offset_step_m{2.0};
   double min_offset_step_m{0.1};
   double cooling_ratio{0.5};
-  double weight_length{0.01};
+  double weight_length{0.002};
   double weight_curvature{300.0};
-  double weight_curvature_change{130.0};
-  double preferred_min_radius_m{16.0};
-  double weight_radius_shortfall{8.0};
+  double weight_curvature_change{180.0};
+  double preferred_min_radius_m{24.0};
+  double weight_radius_shortfall{40.0};
   double weight_offset_change{0.5};
   double weight_offset_second_change{6.5};
   double weight_offset_slope{100.0};

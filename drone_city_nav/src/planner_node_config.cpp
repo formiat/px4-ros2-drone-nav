@@ -201,22 +201,22 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("trajectory_optimizer_cooling_ratio", 0.5), 0.05,
       0.95);
   config.trajectory_planner.trajectory_optimizer.weight_length = std::clamp(
-      node.declare_parameter<double>("trajectory_optimizer_weight_length", 0.01), 0.0,
+      node.declare_parameter<double>("trajectory_optimizer_weight_length", 0.002), 0.0,
       1.0e6);
   config.trajectory_planner.trajectory_optimizer.weight_curvature = std::clamp(
       node.declare_parameter<double>("trajectory_optimizer_weight_curvature", 300.0),
       0.0, 1.0e9);
   config.trajectory_planner.trajectory_optimizer.weight_curvature_change =
       std::clamp(node.declare_parameter<double>(
-                     "trajectory_optimizer_weight_curvature_change", 130.0),
+                     "trajectory_optimizer_weight_curvature_change", 180.0),
                  0.0, 1.0e9);
   config.trajectory_planner.trajectory_optimizer.preferred_min_radius_m =
       std::clamp(node.declare_parameter<double>(
-                     "trajectory_optimizer_preferred_min_radius_m", 16.0),
+                     "trajectory_optimizer_preferred_min_radius_m", 24.0),
                  0.0, 100000.0);
   config.trajectory_planner.trajectory_optimizer.weight_radius_shortfall =
       std::clamp(node.declare_parameter<double>(
-                     "trajectory_optimizer_weight_radius_shortfall", 8.0),
+                     "trajectory_optimizer_weight_radius_shortfall", 40.0),
                  0.0, 1.0e9);
   config.trajectory_planner.trajectory_optimizer.weight_offset_change = std::clamp(
       node.declare_parameter<double>("trajectory_optimizer_weight_offset_change", 0.5),

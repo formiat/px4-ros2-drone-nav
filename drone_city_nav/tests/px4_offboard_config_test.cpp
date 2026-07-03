@@ -18,10 +18,10 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
 
   EXPECT_NE(yaml.find("trajectory_optimizer_weight_traversal_time:"),
             std::string::npos);
-  EXPECT_NE(yaml.find("trajectory_optimizer_weight_length: 0.01"), std::string::npos);
-  EXPECT_NE(yaml.find("trajectory_optimizer_preferred_min_radius_m: 16.0"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_weight_length: 0.002"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_optimizer_preferred_min_radius_m: 24.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("trajectory_optimizer_weight_radius_shortfall: 8.0"),
+  EXPECT_NE(yaml.find("trajectory_optimizer_weight_radius_shortfall: 40.0"),
             std::string::npos);
   EXPECT_EQ(yaml.find("trajectory_optimizer_weight_edge_margin:"), std::string::npos);
   EXPECT_EQ(yaml.find("trajectory_optimizer_desired_edge_margin_m:"),

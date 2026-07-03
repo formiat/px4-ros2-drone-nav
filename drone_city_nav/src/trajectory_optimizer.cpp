@@ -1516,15 +1516,15 @@ costBreakdownForPoints(const std::span<const Point2> points,
   }
 
   const double weight_length =
-      sanitizedPositive(config.weight_length, 0.01, 0.0, 1.0e6);
+      sanitizedPositive(config.weight_length, 0.002, 0.0, 1.0e6);
   const double weight_curvature =
       sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
   const double weight_curvature_change =
-      sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature_change, 180.0, 0.0, 1.0e9);
   const double preferred_min_radius =
-      sanitizedPositive(config.preferred_min_radius_m, 16.0, 0.0, 100000.0);
+      sanitizedPositive(config.preferred_min_radius_m, 24.0, 0.0, 100000.0);
   const double weight_radius_shortfall =
-      sanitizedPositive(config.weight_radius_shortfall, 8.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_radius_shortfall, 40.0, 0.0, 1.0e9);
   const double weight_offset_change =
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
@@ -1632,15 +1632,15 @@ boundedIndexRange(std::size_t begin, std::size_t end, const std::size_t max_inde
   }
 
   const double weight_length =
-      sanitizedPositive(config.weight_length, 0.01, 0.0, 1.0e6);
+      sanitizedPositive(config.weight_length, 0.002, 0.0, 1.0e6);
   const double weight_curvature =
       sanitizedPositive(config.weight_curvature, 300.0, 0.0, 1.0e9);
   const double weight_curvature_change =
-      sanitizedPositive(config.weight_curvature_change, 130.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_curvature_change, 180.0, 0.0, 1.0e9);
   const double preferred_min_radius =
-      sanitizedPositive(config.preferred_min_radius_m, 16.0, 0.0, 100000.0);
+      sanitizedPositive(config.preferred_min_radius_m, 24.0, 0.0, 100000.0);
   const double weight_radius_shortfall =
-      sanitizedPositive(config.weight_radius_shortfall, 8.0, 0.0, 1.0e9);
+      sanitizedPositive(config.weight_radius_shortfall, 40.0, 0.0, 1.0e9);
   const double weight_offset_change =
       sanitizedPositive(config.weight_offset_change, 0.5, 0.0, 1.0e9);
   const double weight_offset_second_change =
