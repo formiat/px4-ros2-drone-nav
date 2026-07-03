@@ -203,6 +203,29 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       .shadow_lower_bound_max_underestimate_score = 4.5;
   record.trajectory_planner_stats.racing_line
       .shadow_lower_bound_max_false_prune_improvement_score = 0.75;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_evaluations = 14U;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_unavailable = 4U;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_prunable = 3U;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_false_prunes = 1U;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_winner_mismatches = 2U;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_abs_time_error_sum_s =
+      1.25;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_abs_time_error_p95_s =
+      0.45;
+  record.trajectory_planner_stats.racing_line
+      .shadow_local_speed_max_time_overestimate_s = 0.5;
+  record.trajectory_planner_stats.racing_line
+      .shadow_local_speed_max_time_underestimate_s = 0.75;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_abs_score_error_sum =
+      50.0;
+  record.trajectory_planner_stats.racing_line.shadow_local_speed_abs_score_error_p95 =
+      18.0;
+  record.trajectory_planner_stats.racing_line
+      .shadow_local_speed_max_score_overestimate = 20.0;
+  record.trajectory_planner_stats.racing_line
+      .shadow_local_speed_max_score_underestimate = 30.0;
+  record.trajectory_planner_stats.racing_line
+      .shadow_local_speed_max_false_prune_improvement_score = 6.5;
   record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
   record.trajectory_planner_stats.racing_line.full_path_segment_cache_hits = 11U;
@@ -364,6 +387,21 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_shadow_lower_bound_max_underestimate_score\":4.5");
   expectJsonField(
       json, "\"racing_shadow_lower_bound_max_false_prune_improvement_score\":0.75");
+  expectJsonField(json, "\"racing_shadow_local_speed_evaluations\":14");
+  expectJsonField(json, "\"racing_shadow_local_speed_unavailable\":4");
+  expectJsonField(json, "\"racing_shadow_local_speed_prunable\":3");
+  expectJsonField(json, "\"racing_shadow_local_speed_false_prunes\":1");
+  expectJsonField(json, "\"racing_shadow_local_speed_winner_mismatches\":2");
+  expectJsonField(json, "\"racing_shadow_local_speed_abs_time_error_sum_s\":1.25");
+  expectJsonField(json, "\"racing_shadow_local_speed_abs_time_error_p95_s\":0.45");
+  expectJsonField(json, "\"racing_shadow_local_speed_max_time_overestimate_s\":0.5");
+  expectJsonField(json, "\"racing_shadow_local_speed_max_time_underestimate_s\":0.75");
+  expectJsonField(json, "\"racing_shadow_local_speed_abs_score_error_sum\":50");
+  expectJsonField(json, "\"racing_shadow_local_speed_abs_score_error_p95\":18");
+  expectJsonField(json, "\"racing_shadow_local_speed_max_score_overestimate\":20");
+  expectJsonField(json, "\"racing_shadow_local_speed_max_score_underestimate\":30");
+  expectJsonField(
+      json, "\"racing_shadow_local_speed_max_false_prune_improvement_score\":6.5");
   expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"racing_line_full_path_segment_cache_hits\":11");

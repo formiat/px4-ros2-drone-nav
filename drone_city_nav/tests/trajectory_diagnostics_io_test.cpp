@@ -101,6 +101,20 @@ void expectContainsAll(const std::string& text,
   stats.racing_line.shadow_lower_bound_max_overestimate_score = 0.25;
   stats.racing_line.shadow_lower_bound_max_underestimate_score = 12.5;
   stats.racing_line.shadow_lower_bound_max_false_prune_improvement_score = 1.75;
+  stats.racing_line.shadow_local_speed_evaluations = 53U;
+  stats.racing_line.shadow_local_speed_unavailable = 8U;
+  stats.racing_line.shadow_local_speed_prunable = 21U;
+  stats.racing_line.shadow_local_speed_false_prunes = 3U;
+  stats.racing_line.shadow_local_speed_winner_mismatches = 2U;
+  stats.racing_line.shadow_local_speed_abs_time_error_sum_s = 2.5;
+  stats.racing_line.shadow_local_speed_abs_time_error_p95_s = 0.7;
+  stats.racing_line.shadow_local_speed_max_time_overestimate_s = 0.6;
+  stats.racing_line.shadow_local_speed_max_time_underestimate_s = 0.9;
+  stats.racing_line.shadow_local_speed_abs_score_error_sum = 100.0;
+  stats.racing_line.shadow_local_speed_abs_score_error_p95 = 28.0;
+  stats.racing_line.shadow_local_speed_max_score_overestimate = 24.0;
+  stats.racing_line.shadow_local_speed_max_score_underestimate = 36.0;
+  stats.racing_line.shadow_local_speed_max_false_prune_improvement_score = 7.25;
   stats.racing_line.window_count = 4U;
   stats.racing_line.active_window_count = 3U;
   stats.racing_line.active_window_samples = 18U;
@@ -406,6 +420,34 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(
       json.find("\"racing_shadow_lower_bound_prunable_full_score_duration_ms\":3.5"),
       std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_evaluations\":53"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_unavailable\":8"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_prunable\":21"), std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_false_prunes\":3"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_winner_mismatches\":2"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_abs_time_error_sum_s\":2.5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_abs_time_error_p95_s\":0.7"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_max_time_overestimate_s\":0.6"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_max_time_underestimate_s\":0.9"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_abs_score_error_sum\":100"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_abs_score_error_p95\":28"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_max_score_overestimate\":24"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"racing_shadow_local_speed_max_score_underestimate\":36"),
+            std::string::npos);
+  EXPECT_NE(
+      json.find("\"racing_shadow_local_speed_max_false_prune_improvement_score\":7.25"),
+      std::string::npos);
   EXPECT_NE(json.find("\"racing_line_dp_coarse_to_fine_used\":true"),
             std::string::npos);
   EXPECT_NE(json.find("\"racing_line_window_count\":4"), std::string::npos);
@@ -533,6 +575,20 @@ TEST(TrajectoryDiagnosticsIo, RacingLineJsonFragmentContainsBlackboxRequiredKeys
                     "\"racing_shadow_lower_bound_max_overestimate_score\"",
                     "\"racing_shadow_lower_bound_max_underestimate_score\"",
                     "\"racing_shadow_lower_bound_max_false_prune_improvement_score\"",
+                    "\"racing_shadow_local_speed_evaluations\"",
+                    "\"racing_shadow_local_speed_unavailable\"",
+                    "\"racing_shadow_local_speed_prunable\"",
+                    "\"racing_shadow_local_speed_false_prunes\"",
+                    "\"racing_shadow_local_speed_winner_mismatches\"",
+                    "\"racing_shadow_local_speed_abs_time_error_sum_s\"",
+                    "\"racing_shadow_local_speed_abs_time_error_p95_s\"",
+                    "\"racing_shadow_local_speed_max_time_overestimate_s\"",
+                    "\"racing_shadow_local_speed_max_time_underestimate_s\"",
+                    "\"racing_shadow_local_speed_abs_score_error_sum\"",
+                    "\"racing_shadow_local_speed_abs_score_error_p95\"",
+                    "\"racing_shadow_local_speed_max_score_overestimate\"",
+                    "\"racing_shadow_local_speed_max_score_underestimate\"",
+                    "\"racing_shadow_local_speed_max_false_prune_improvement_score\"",
                     "\"racing_line_window_count\"",
                     "\"racing_line_active_window_count\"",
                     "\"racing_line_active_window_samples\"",
@@ -799,6 +855,30 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
                        .shadow_lower_bound_max_false_prune_improvement_score,
                    1.75);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_local_speed_evaluations, 53U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_local_speed_unavailable, 8U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_local_speed_prunable, 21U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_local_speed_false_prunes, 3U);
+  EXPECT_EQ(parsed_value.stats.racing_line.shadow_local_speed_winner_mismatches, 2U);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_abs_time_error_sum_s, 2.5);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_abs_time_error_p95_s, 0.7);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_max_time_overestimate_s, 0.6);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_max_time_underestimate_s, 0.9);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_abs_score_error_sum, 100.0);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_abs_score_error_p95, 28.0);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_max_score_overestimate, 24.0);
+  EXPECT_DOUBLE_EQ(
+      parsed_value.stats.racing_line.shadow_local_speed_max_score_underestimate, 36.0);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.racing_line
+                       .shadow_local_speed_max_false_prune_improvement_score,
+                   7.25);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_hits, 14U);
   EXPECT_EQ(parsed_value.stats.racing_line.full_path_segment_cache_misses, 88U);
   EXPECT_EQ(parsed_value.stats.racing_line.window_count, 4U);

@@ -111,6 +111,12 @@ struct EvaluatedCandidate {
   bool shadow_lower_bound_would_prune{false};
   double shadow_lower_bound_score{std::numeric_limits<double>::quiet_NaN()};
   double shadow_lower_bound_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  bool shadow_local_speed_valid{false};
+  bool shadow_local_speed_would_prune{false};
+  double shadow_local_speed_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_local_speed_full_time_s{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_local_speed_estimated_score{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_local_speed_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct CandidateTask {
@@ -426,6 +432,25 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
                                  std::chrono::steady_clock::now() - start)
                                  .count()) /
          1000.0;
+}
+
+[[nodiscard]] double percentileValue(std::vector<double>& values,
+                                     const double percentile) {
+  if (values.empty()) {
+    return 0.0;
+  }
+  std::ranges::sort(values);
+  const double bounded_percentile =
+      std::isfinite(percentile) ? std::clamp(percentile, 0.0, 1.0) : 1.0;
+  const std::size_t index =
+      bounded_percentile <= 0.0
+          ? 0U
+          : std::min<std::size_t>(
+                values.size() - 1U,
+                static_cast<std::size_t>(std::ceil(
+                    bounded_percentile * static_cast<double>(values.size()))) -
+                    1U);
+  return values[index];
 }
 
 void pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
@@ -1201,6 +1226,39 @@ conservativeShadowLowerBoundScore(const std::span<const Point2> points,
          geometry.offset_second_change_cost + geometry.offset_slope_cost;
 }
 
+void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
+                                         const LocalCandidateScore& local_score,
+                                         const RacingLineConfig& config,
+                                         const double incumbent_score) {
+  if (!local_score.valid || !local_score.estimated_traversal_time.valid ||
+      !result.score.traversal_time.valid) {
+    return;
+  }
+  const double local_time_s = local_score.estimated_traversal_time.estimated_time_s;
+  const double full_time_s = result.score.traversal_time.estimated_time_s;
+  if (!std::isfinite(local_time_s) || !std::isfinite(full_time_s) ||
+      !std::isfinite(result.score.score) ||
+      !std::isfinite(result.score.breakdown.time_cost)) {
+    return;
+  }
+
+  const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
+  const double exact_non_time_score =
+      result.score.score - result.score.breakdown.time_cost;
+  const double estimated_score = exact_non_time_score + weight_time * local_time_s;
+  if (!std::isfinite(estimated_score)) {
+    return;
+  }
+
+  result.shadow_local_speed_valid = true;
+  result.shadow_local_speed_estimated_time_s = local_time_s;
+  result.shadow_local_speed_full_time_s = full_time_s;
+  result.shadow_local_speed_estimated_score = estimated_score;
+  result.shadow_local_speed_incumbent_score = incumbent_score;
+  result.shadow_local_speed_would_prune =
+      std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
+}
+
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
@@ -1469,6 +1527,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
                                      result.path, config, speed_config, max_length_m,
                                      buffer.samples, local_stats);
+    populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
     const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
     result.score_duration_ms += full_score_duration_ms;
     result.full_score_duration_ms += full_score_duration_ms;
@@ -1502,6 +1561,7 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.score = scoreForCandidate(corridor_samples, buffer.points, buffer.offsets,
                                    result.path, config, speed_config, max_length_m,
                                    buffer.samples, local_stats);
+  populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
   const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
   result.score_duration_ms += full_score_duration_ms;
   result.full_score_duration_ms += full_score_duration_ms;
@@ -1905,6 +1965,41 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   } else if (candidate.local_evaluated) {
     ++stats.shadow_lower_bound_unavailable;
   }
+  if (candidate.shadow_local_speed_valid) {
+    ++stats.shadow_local_speed_evaluations;
+    const double time_delta_s = candidate.shadow_local_speed_estimated_time_s -
+                                candidate.shadow_local_speed_full_time_s;
+    if (std::isfinite(time_delta_s)) {
+      stats.shadow_local_speed_abs_time_error_sum_s += std::abs(time_delta_s);
+      stats.shadow_local_speed_max_time_overestimate_s =
+          std::max(stats.shadow_local_speed_max_time_overestimate_s, time_delta_s);
+      stats.shadow_local_speed_max_time_underestimate_s =
+          std::max(stats.shadow_local_speed_max_time_underestimate_s, -time_delta_s);
+    }
+    const double score_delta =
+        candidate.shadow_local_speed_estimated_score - candidate.score.score;
+    if (std::isfinite(score_delta)) {
+      stats.shadow_local_speed_abs_score_error_sum += std::abs(score_delta);
+      stats.shadow_local_speed_max_score_overestimate =
+          std::max(stats.shadow_local_speed_max_score_overestimate, score_delta);
+      stats.shadow_local_speed_max_score_underestimate =
+          std::max(stats.shadow_local_speed_max_score_underestimate, -score_delta);
+    }
+    if (candidate.shadow_local_speed_would_prune) {
+      ++stats.shadow_local_speed_prunable;
+      if (std::isfinite(candidate.score.score) &&
+          std::isfinite(candidate.shadow_local_speed_incumbent_score) &&
+          candidate.score.score + 1.0e-9 <
+              candidate.shadow_local_speed_incumbent_score) {
+        ++stats.shadow_local_speed_false_prunes;
+        stats.shadow_local_speed_max_false_prune_improvement_score = std::max(
+            stats.shadow_local_speed_max_false_prune_improvement_score,
+            candidate.shadow_local_speed_incumbent_score - candidate.score.score);
+      }
+    }
+  } else if (candidate.local_evaluated) {
+    ++stats.shadow_local_speed_unavailable;
+  }
   ++stats.candidate_evaluations;
   stats.candidate_point_build_duration_ms += candidate.point_build_duration_ms;
   stats.candidate_path_evaluation_duration_ms += candidate.path_evaluation_duration_ms;
@@ -2066,6 +2161,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   if (max_candidate_worker_count > 1U) {
     candidate_worker_pool.emplace(max_candidate_worker_count, result.stats);
   }
+  std::vector<double> shadow_local_speed_abs_time_errors_s;
+  std::vector<double> shadow_local_speed_abs_score_errors;
+  shadow_local_speed_abs_time_errors_s.reserve(control_indices.size() * max_iterations);
+  shadow_local_speed_abs_score_errors.reserve(control_indices.size() * max_iterations);
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
@@ -2089,12 +2188,33 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
 
     bool changed = false;
     const EvaluatedCandidate* iteration_winner = nullptr;
+    std::optional<std::size_t> iteration_winner_order;
+    std::optional<std::size_t> shadow_local_speed_winner_order;
     double best_estimated_score = best_cost;
+    double best_shadow_local_speed_score = best_cost;
     for (const CandidateBatchResult& batch_result : candidates) {
       const EvaluatedCandidate& candidate = batch_result.candidate;
       mergeCandidateStats(candidate, result.stats);
       if (candidate.noop || candidate.offsets.empty()) {
         continue;
+      }
+      if (candidate.shadow_local_speed_valid) {
+        const double time_delta_s = candidate.shadow_local_speed_estimated_time_s -
+                                    candidate.shadow_local_speed_full_time_s;
+        if (std::isfinite(time_delta_s)) {
+          shadow_local_speed_abs_time_errors_s.push_back(std::abs(time_delta_s));
+        }
+        const double score_delta =
+            candidate.shadow_local_speed_estimated_score - candidate.score.score;
+        if (std::isfinite(score_delta)) {
+          shadow_local_speed_abs_score_errors.push_back(std::abs(score_delta));
+        }
+      }
+      if (candidate.shadow_local_speed_valid &&
+          candidate.shadow_local_speed_estimated_score + 1.0e-9 <
+              best_shadow_local_speed_score) {
+        best_shadow_local_speed_score = candidate.shadow_local_speed_estimated_score;
+        shadow_local_speed_winner_order = batch_result.order;
       }
       if (!candidate.full_score_used) {
         continue;
@@ -2103,8 +2223,13 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
         if (candidate.score.score + 1.0e-9 < best_estimated_score) {
           best_estimated_score = candidate.score.score;
           iteration_winner = &candidate;
+          iteration_winner_order = batch_result.order;
         }
       }
+    }
+    if (shadow_local_speed_winner_order.has_value() &&
+        shadow_local_speed_winner_order != iteration_winner_order) {
+      ++result.stats.shadow_local_speed_winner_mismatches;
     }
     if (iteration_winner != nullptr) {
       if (iteration_winner->shadow_lower_bound_would_prune) {
@@ -2130,6 +2255,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       step *= cooling;
     }
   }
+  result.stats.shadow_local_speed_abs_time_error_p95_s =
+      percentileValue(shadow_local_speed_abs_time_errors_s, 0.95);
+  result.stats.shadow_local_speed_abs_score_error_p95 =
+      percentileValue(shadow_local_speed_abs_score_errors, 0.95);
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
     final_points = pointsFromOffsets(optimizer_samples, offsets);
