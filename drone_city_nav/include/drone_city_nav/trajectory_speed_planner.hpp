@@ -112,4 +112,8 @@ estimateTraversalTime(std::span<const TrajectoryPointSample> trajectory_samples,
                       const VelocityFollowerConfig& config,
                       bool use_forward_backward_profile);
 
+[[nodiscard]] TraversalTimeEstimate estimateTraversalTimeWithoutGoalStop(
+    std::span<const TrajectoryPointSample> trajectory_samples,
+    const VelocityFollowerConfig& config);
+
 } // namespace drone_city_nav

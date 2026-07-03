@@ -117,6 +117,15 @@ struct EvaluatedCandidate {
   double shadow_local_speed_full_time_s{std::numeric_limits<double>::quiet_NaN()};
   double shadow_local_speed_estimated_score{std::numeric_limits<double>::quiet_NaN()};
   double shadow_local_speed_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  bool shadow_bounded_speed_valid{false};
+  bool shadow_bounded_speed_would_prune{false};
+  double shadow_bounded_speed_estimated_time_s{
+      std::numeric_limits<double>::quiet_NaN()};
+  double shadow_bounded_speed_full_time_s{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_bounded_speed_estimated_score{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_bounded_speed_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
+  double shadow_bounded_speed_duration_ms{0.0};
+  std::size_t shadow_bounded_speed_window_samples{0U};
   bool shadow_segment_score_valid{false};
   bool shadow_segment_score_would_prune{false};
   double shadow_segment_score_estimated_score{std::numeric_limits<double>::quiet_NaN()};
@@ -188,6 +197,8 @@ struct CandidateWorkBuffer {
   std::vector<double> local_candidate_offsets;
   std::vector<TrajectoryPointSample> local_base_samples;
   std::vector<TrajectoryPointSample> local_candidate_samples;
+  std::vector<TrajectoryPointSample> shadow_bounded_base_samples;
+  std::vector<TrajectoryPointSample> shadow_bounded_candidate_samples;
   std::vector<TrajectoryPointSample> samples;
   SegmentTraversabilityCache candidate_segment_cache;
   SegmentProhibitedCountCache full_path_segment_cache;
@@ -224,6 +235,9 @@ void reserveCandidateWorkBuffer(CandidateWorkBuffer& buffer,
   buffer.local_candidate_offsets.reserve(local_capacity);
   buffer.local_base_samples.reserve(local_capacity);
   buffer.local_candidate_samples.reserve(local_capacity);
+  buffer.shadow_bounded_base_samples.reserve(std::min<std::size_t>(sample_count, 64U));
+  buffer.shadow_bounded_candidate_samples.reserve(
+      std::min<std::size_t>(sample_count, 64U));
   buffer.samples.reserve(sample_count);
 }
 
@@ -549,6 +563,27 @@ void samplesFromPointsAndOffsets(const std::span<const CorridorSample> corridor_
   }
   samples.reserve(points.size());
   for (std::size_t i = 0U; i < points.size(); ++i) {
+    TrajectoryPointSample sample{};
+    sample.point = points[i];
+    sample.left_bound_m = corridor_samples[i].left_bound_m;
+    sample.right_bound_m = corridor_samples[i].right_bound_m;
+    sample.racing_offset_m = offsets[i];
+    samples.push_back(sample);
+  }
+}
+
+void samplesFromPointsAndOffsetsRange(
+    const std::span<const CorridorSample> corridor_samples,
+    const std::span<const Point2> points, const std::span<const double> offsets,
+    const std::size_t begin_index, const std::size_t end_index,
+    std::vector<TrajectoryPointSample>& samples) {
+  samples.clear();
+  if (corridor_samples.size() != points.size() || points.size() != offsets.size() ||
+      begin_index > end_index || end_index >= points.size()) {
+    return;
+  }
+  samples.reserve(end_index - begin_index + 1U);
+  for (std::size_t i = begin_index; i <= end_index; ++i) {
     TrajectoryPointSample sample{};
     sample.point = points[i];
     sample.left_bound_m = corridor_samples[i].left_bound_m;
@@ -1348,6 +1383,25 @@ shadowSegmentWindowSamples(const OffsetChangeDiagnostics& changed,
   return end >= begin ? end - begin + 1U : 0U;
 }
 
+[[nodiscard]] std::optional<IndexRange>
+boundedSpeedWindowRange(const OffsetChangeDiagnostics& changed,
+                        const std::size_t sample_count) {
+  if (sample_count == 0U || changed.changed_samples == 0U ||
+      changed.last_changed_index >= sample_count) {
+    return std::nullopt;
+  }
+  constexpr std::size_t kProfileGuardSamples = 24U;
+  const std::size_t begin = changed.first_changed_index > kProfileGuardSamples
+                                ? changed.first_changed_index - kProfileGuardSamples
+                                : 0U;
+  const std::size_t end =
+      std::min(sample_count - 1U, changed.last_changed_index + kProfileGuardSamples);
+  if (begin > end || end == begin) {
+    return std::nullopt;
+  }
+  return IndexRange{.begin = begin, .end = end};
+}
+
 void populateShadowSegmentScoreDiagnostics(
     EvaluatedCandidate& result, const CandidateScore& base_score,
     const std::span<const Point2> base_points,
@@ -1434,6 +1488,77 @@ void populateShadowLocalSpeedDiagnostics(EvaluatedCandidate& result,
   result.shadow_local_speed_estimated_score = estimated_score;
   result.shadow_local_speed_incumbent_score = incumbent_score;
   result.shadow_local_speed_would_prune =
+      std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
+}
+
+void populateShadowBoundedSpeedDiagnostics(
+    EvaluatedCandidate& result, const CandidateScore& base_score,
+    const std::span<const CorridorSample> corridor_samples,
+    const std::span<const Point2> base_points,
+    const std::span<const double> base_offsets,
+    const std::span<const Point2> candidate_points,
+    const std::span<const double> candidate_offsets,
+    const OffsetChangeDiagnostics& changed, const RacingLineConfig& config,
+    const VelocityFollowerConfig& speed_config, const double incumbent_score,
+    CandidateWorkBuffer& buffer) {
+  if (changed.changed_samples == 0U || base_points.size() != candidate_points.size() ||
+      base_offsets.size() != candidate_offsets.size() ||
+      base_points.size() != base_offsets.size() ||
+      corridor_samples.size() != base_points.size() ||
+      !base_score.traversal_time.valid || !result.score.traversal_time.valid ||
+      !std::isfinite(base_score.traversal_time.estimated_time_s) ||
+      !std::isfinite(result.score.traversal_time.estimated_time_s) ||
+      !std::isfinite(result.score.score) ||
+      !std::isfinite(result.score.breakdown.time_cost)) {
+    return;
+  }
+  const std::optional<IndexRange> window =
+      boundedSpeedWindowRange(changed, base_points.size());
+  if (!window.has_value()) {
+    return;
+  }
+
+  const auto started_at = std::chrono::steady_clock::now();
+  samplesFromPointsAndOffsetsRange(corridor_samples, base_points, base_offsets,
+                                   window->begin, window->end,
+                                   buffer.shadow_bounded_base_samples);
+  samplesFromPointsAndOffsetsRange(corridor_samples, candidate_points,
+                                   candidate_offsets, window->begin, window->end,
+                                   buffer.shadow_bounded_candidate_samples);
+  populateSampleGeometry(buffer.shadow_bounded_base_samples);
+  populateSampleGeometry(buffer.shadow_bounded_candidate_samples);
+  const TraversalTimeEstimate base_window_time = estimateTraversalTimeWithoutGoalStop(
+      buffer.shadow_bounded_base_samples, speed_config);
+  const TraversalTimeEstimate candidate_window_time =
+      estimateTraversalTimeWithoutGoalStop(buffer.shadow_bounded_candidate_samples,
+                                           speed_config);
+  result.shadow_bounded_speed_duration_ms = elapsedMilliseconds(started_at);
+  if (!base_window_time.valid || !candidate_window_time.valid ||
+      !std::isfinite(base_window_time.estimated_time_s) ||
+      !std::isfinite(candidate_window_time.estimated_time_s)) {
+    return;
+  }
+
+  const double estimated_time_s =
+      std::max(0.0, base_score.traversal_time.estimated_time_s -
+                        base_window_time.estimated_time_s +
+                        candidate_window_time.estimated_time_s);
+  const double exact_non_time_score =
+      result.score.score - result.score.breakdown.time_cost;
+  const double weight_time = sanitizedPositive(config.weight_time, 40.0, 0.0, 1.0e9);
+  const double estimated_score = exact_non_time_score + weight_time * estimated_time_s;
+  if (!std::isfinite(estimated_time_s) || !std::isfinite(estimated_score)) {
+    return;
+  }
+
+  result.shadow_bounded_speed_valid = true;
+  result.shadow_bounded_speed_estimated_time_s = estimated_time_s;
+  result.shadow_bounded_speed_full_time_s =
+      result.score.traversal_time.estimated_time_s;
+  result.shadow_bounded_speed_estimated_score = estimated_score;
+  result.shadow_bounded_speed_incumbent_score = incumbent_score;
+  result.shadow_bounded_speed_window_samples = window->end - window->begin + 1U;
+  result.shadow_bounded_speed_would_prune =
       std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
 }
 
@@ -1709,6 +1834,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
                                           buffer.points, buffer.offsets,
                                           offset_diagnostics, config, incumbent_score);
     populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
+    populateShadowBoundedSpeedDiagnostics(result, base_score, corridor_samples,
+                                          base_points, base_offsets, buffer.points,
+                                          buffer.offsets, offset_diagnostics, config,
+                                          speed_config, incumbent_score, buffer);
     const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
     result.score_duration_ms += full_score_duration_ms;
     result.full_score_duration_ms += full_score_duration_ms;
@@ -1746,6 +1875,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
                                         buffer.points, buffer.offsets,
                                         offset_diagnostics, config, incumbent_score);
   populateShadowLocalSpeedDiagnostics(result, local_score, config, incumbent_score);
+  populateShadowBoundedSpeedDiagnostics(result, base_score, corridor_samples,
+                                        base_points, base_offsets, buffer.points,
+                                        buffer.offsets, offset_diagnostics, config,
+                                        speed_config, incumbent_score, buffer);
   const double full_score_duration_ms = elapsedMilliseconds(score_started_at);
   result.score_duration_ms += full_score_duration_ms;
   result.full_score_duration_ms += full_score_duration_ms;
@@ -2184,6 +2317,48 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   } else if (candidate.local_evaluated) {
     ++stats.shadow_local_speed_unavailable;
   }
+  if (candidate.shadow_bounded_speed_valid) {
+    ++stats.shadow_bounded_speed_evaluations;
+    stats.shadow_bounded_speed_window_samples_total +=
+        candidate.shadow_bounded_speed_window_samples;
+    stats.shadow_bounded_speed_window_samples_max =
+        std::max(stats.shadow_bounded_speed_window_samples_max,
+                 candidate.shadow_bounded_speed_window_samples);
+    stats.shadow_bounded_speed_duration_ms +=
+        candidate.shadow_bounded_speed_duration_ms;
+    const double time_delta_s = candidate.shadow_bounded_speed_estimated_time_s -
+                                candidate.shadow_bounded_speed_full_time_s;
+    if (std::isfinite(time_delta_s)) {
+      stats.shadow_bounded_speed_abs_time_error_sum_s += std::abs(time_delta_s);
+      stats.shadow_bounded_speed_max_time_overestimate_s =
+          std::max(stats.shadow_bounded_speed_max_time_overestimate_s, time_delta_s);
+      stats.shadow_bounded_speed_max_time_underestimate_s =
+          std::max(stats.shadow_bounded_speed_max_time_underestimate_s, -time_delta_s);
+    }
+    const double score_delta =
+        candidate.shadow_bounded_speed_estimated_score - candidate.score.score;
+    if (std::isfinite(score_delta)) {
+      stats.shadow_bounded_speed_abs_score_error_sum += std::abs(score_delta);
+      stats.shadow_bounded_speed_max_score_overestimate =
+          std::max(stats.shadow_bounded_speed_max_score_overestimate, score_delta);
+      stats.shadow_bounded_speed_max_score_underestimate =
+          std::max(stats.shadow_bounded_speed_max_score_underestimate, -score_delta);
+    }
+    if (candidate.shadow_bounded_speed_would_prune) {
+      ++stats.shadow_bounded_speed_prunable;
+      if (std::isfinite(candidate.score.score) &&
+          std::isfinite(candidate.shadow_bounded_speed_incumbent_score) &&
+          candidate.score.score + 1.0e-9 <
+              candidate.shadow_bounded_speed_incumbent_score) {
+        ++stats.shadow_bounded_speed_false_prunes;
+        stats.shadow_bounded_speed_max_false_prune_improvement_score = std::max(
+            stats.shadow_bounded_speed_max_false_prune_improvement_score,
+            candidate.shadow_bounded_speed_incumbent_score - candidate.score.score);
+      }
+    }
+  } else if (candidate.local_evaluated) {
+    ++stats.shadow_bounded_speed_unavailable;
+  }
   if (candidate.shadow_segment_score_valid) {
     ++stats.shadow_segment_score_evaluations;
     stats.shadow_segment_score_window_samples_total +=
@@ -2378,9 +2553,15 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   }
   std::vector<double> shadow_local_speed_abs_time_errors_s;
   std::vector<double> shadow_local_speed_abs_score_errors;
+  std::vector<double> shadow_bounded_speed_abs_time_errors_s;
+  std::vector<double> shadow_bounded_speed_abs_score_errors;
   std::vector<double> shadow_segment_score_abs_errors;
   shadow_local_speed_abs_time_errors_s.reserve(control_indices.size() * max_iterations);
   shadow_local_speed_abs_score_errors.reserve(control_indices.size() * max_iterations);
+  shadow_bounded_speed_abs_time_errors_s.reserve(control_indices.size() *
+                                                 max_iterations);
+  shadow_bounded_speed_abs_score_errors.reserve(control_indices.size() *
+                                                max_iterations);
   shadow_segment_score_abs_errors.reserve(control_indices.size() * max_iterations);
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
@@ -2407,9 +2588,11 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     const EvaluatedCandidate* iteration_winner = nullptr;
     std::optional<std::size_t> iteration_winner_order;
     std::optional<std::size_t> shadow_local_speed_winner_order;
+    std::optional<std::size_t> shadow_bounded_speed_winner_order;
     std::optional<std::size_t> shadow_segment_score_winner_order;
     double best_estimated_score = best_cost;
     double best_shadow_local_speed_score = best_cost;
+    double best_shadow_bounded_speed_score = best_cost;
     double best_shadow_segment_score = best_cost;
     for (const CandidateBatchResult& batch_result : candidates) {
       const EvaluatedCandidate& candidate = batch_result.candidate;
@@ -2436,11 +2619,30 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
           shadow_segment_score_abs_errors.push_back(std::abs(score_delta));
         }
       }
+      if (candidate.shadow_bounded_speed_valid) {
+        const double time_delta_s = candidate.shadow_bounded_speed_estimated_time_s -
+                                    candidate.shadow_bounded_speed_full_time_s;
+        if (std::isfinite(time_delta_s)) {
+          shadow_bounded_speed_abs_time_errors_s.push_back(std::abs(time_delta_s));
+        }
+        const double score_delta =
+            candidate.shadow_bounded_speed_estimated_score - candidate.score.score;
+        if (std::isfinite(score_delta)) {
+          shadow_bounded_speed_abs_score_errors.push_back(std::abs(score_delta));
+        }
+      }
       if (candidate.shadow_local_speed_valid &&
           candidate.shadow_local_speed_estimated_score + 1.0e-9 <
               best_shadow_local_speed_score) {
         best_shadow_local_speed_score = candidate.shadow_local_speed_estimated_score;
         shadow_local_speed_winner_order = batch_result.order;
+      }
+      if (candidate.shadow_bounded_speed_valid &&
+          candidate.shadow_bounded_speed_estimated_score + 1.0e-9 <
+              best_shadow_bounded_speed_score) {
+        best_shadow_bounded_speed_score =
+            candidate.shadow_bounded_speed_estimated_score;
+        shadow_bounded_speed_winner_order = batch_result.order;
       }
       if (candidate.shadow_segment_score_valid &&
           candidate.shadow_segment_score_estimated_score + 1.0e-9 <
@@ -2462,6 +2664,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
     if (shadow_local_speed_winner_order.has_value() &&
         shadow_local_speed_winner_order != iteration_winner_order) {
       ++result.stats.shadow_local_speed_winner_mismatches;
+    }
+    if (shadow_bounded_speed_winner_order.has_value() &&
+        shadow_bounded_speed_winner_order != iteration_winner_order) {
+      ++result.stats.shadow_bounded_speed_winner_mismatches;
     }
     if (shadow_segment_score_winner_order.has_value() &&
         shadow_segment_score_winner_order != iteration_winner_order) {
@@ -2495,6 +2701,10 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       percentileValue(shadow_local_speed_abs_time_errors_s, 0.95);
   result.stats.shadow_local_speed_abs_score_error_p95 =
       percentileValue(shadow_local_speed_abs_score_errors, 0.95);
+  result.stats.shadow_bounded_speed_abs_time_error_p95_s =
+      percentileValue(shadow_bounded_speed_abs_time_errors_s, 0.95);
+  result.stats.shadow_bounded_speed_abs_score_error_p95 =
+      percentileValue(shadow_bounded_speed_abs_score_errors, 0.95);
   result.stats.shadow_segment_score_abs_error_p95 =
       percentileValue(shadow_segment_score_abs_errors, 0.95);
   std::vector<Point2> final_points = std::move(best_points);
