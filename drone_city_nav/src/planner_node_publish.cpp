@@ -336,6 +336,8 @@ bool PlannerNode::publishTrajectoryResult(
       "windows=%zu active_windows=%zu active_samples=%zu "
       "window_triggers(centerline_blocked=%zu heading_change=%zu "
       "heading_span=%zu curvature=%zu width_change=%zu width_asymmetry=%zu) "
+      "centerline_blocked_detail(prohibited=%zu outside=%zu first_segment=%zu "
+      "s=%.2f point=(%.2f,%.2f) outside=%s) "
       "dp_states=%zu dp_transitions=%zu dp_cache_hits=%zu dp_cache_misses=%zu "
       "candidate_cache_hits=%zu candidate_cache_misses=%zu "
       "full_path_cache_hits=%zu full_path_cache_misses=%zu "
@@ -510,6 +512,15 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.active_window_curvature_samples,
       trajectory_result.stats.racing_line.active_window_width_change_samples,
       trajectory_result.stats.racing_line.active_window_width_asymmetry_samples,
+      trajectory_result.stats.racing_line.centerline_blocked_prohibited_cells,
+      trajectory_result.stats.racing_line.centerline_blocked_outside_grid_segments,
+      trajectory_result.stats.racing_line.centerline_blocked_first_segment_index,
+      trajectory_result.stats.racing_line.centerline_blocked_first_s_m,
+      trajectory_result.stats.racing_line.centerline_blocked_first_x_m,
+      trajectory_result.stats.racing_line.centerline_blocked_first_y_m,
+      trajectory_result.stats.racing_line.centerline_blocked_first_outside_grid
+          ? "true"
+          : "false",
       trajectory_result.stats.racing_line.dp_states,
       trajectory_result.stats.racing_line.dp_transitions,
       trajectory_result.stats.racing_line.dp_segment_cache_hits,

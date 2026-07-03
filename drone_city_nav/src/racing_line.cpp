@@ -34,6 +34,11 @@ struct PathEvaluation {
   double length_m{0.0};
   std::size_t prohibited_cells{0U};
   std::size_t outside_grid_segments{0U};
+  std::size_t first_blocked_segment_index{0U};
+  double first_blocked_s_m{std::numeric_limits<double>::quiet_NaN()};
+  Point2 first_blocked_point{};
+  bool has_first_blocked_point{false};
+  bool first_blocked_outside_grid{false};
 
   [[nodiscard]] bool traversable() const noexcept {
     return prohibited_cells == 0U && outside_grid_segments == 0U;
@@ -411,6 +416,33 @@ struct LocalCandidateScore {
   return lhs.x * rhs.y - lhs.y * rhs.x;
 }
 
+[[nodiscard]] double dot(const Point2 lhs, const Point2 rhs) noexcept {
+  return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+void recordFirstBlockedPoint(PathEvaluation& evaluation,
+                             const std::size_t segment_index,
+                             const double segment_start_s_m, const Point2 segment_start,
+                             const Point2 segment_end, const Point2 blocked_point,
+                             const bool outside_grid) {
+  if (evaluation.has_first_blocked_point) {
+    return;
+  }
+  const Point2 segment = segment_end - segment_start;
+  const double segment_length_sq = squaredDistance(segment_start, segment_end);
+  const double t =
+      segment_length_sq > kTinyDistanceM * kTinyDistanceM
+          ? std::clamp(dot(blocked_point - segment_start, segment) / segment_length_sq,
+                       0.0, 1.0)
+          : 0.0;
+  evaluation.first_blocked_segment_index = segment_index;
+  evaluation.first_blocked_s_m =
+      segment_start_s_m + t * distance(segment_start, segment_end);
+  evaluation.first_blocked_point = blocked_point;
+  evaluation.has_first_blocked_point = true;
+  evaluation.first_blocked_outside_grid = outside_grid;
+}
+
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
                                        const double min_value,
                                        const double max_value) noexcept {
@@ -710,19 +742,24 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
   }
 
   for (std::size_t i = 1U; i < points.size(); ++i) {
-    evaluation.length_m += distance(points[i - 1U], points[i]);
     const Point2 start = points[i - 1U];
     const Point2 end = points[i];
+    const double segment_start_s_m = evaluation.length_m;
+    evaluation.length_m += distance(start, end);
     const std::optional<GridIndex> start_cell = grid.worldToCell(start);
     const std::optional<GridIndex> end_cell = grid.worldToCell(end);
     if (!start_cell.has_value() || !end_cell.has_value()) {
       ++evaluation.outside_grid_segments;
+      recordFirstBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end, start,
+                              true);
       continue;
     }
     const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
     for (const GridIndex cell : cells) {
       if (grid.isProhibited(cell)) {
         ++evaluation.prohibited_cells;
+        recordFirstBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end,
+                                grid.cellCenter(cell), false);
       }
     }
   }
@@ -1065,6 +1102,18 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     stats.active_window_count = 1U;
     stats.active_window_samples = samples.size() > 2U ? samples.size() - 2U : 0U;
     stats.active_window_centerline_blocked = 1U;
+    stats.centerline_blocked_prohibited_cells = centerline_evaluation.prohibited_cells;
+    stats.centerline_blocked_outside_grid_segments =
+        centerline_evaluation.outside_grid_segments;
+    if (centerline_evaluation.has_first_blocked_point) {
+      stats.centerline_blocked_first_segment_index =
+          centerline_evaluation.first_blocked_segment_index;
+      stats.centerline_blocked_first_s_m = centerline_evaluation.first_blocked_s_m;
+      stats.centerline_blocked_first_x_m = centerline_evaluation.first_blocked_point.x;
+      stats.centerline_blocked_first_y_m = centerline_evaluation.first_blocked_point.y;
+      stats.centerline_blocked_first_outside_grid =
+          centerline_evaluation.first_blocked_outside_grid;
+    }
     stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
     return windows;
   }

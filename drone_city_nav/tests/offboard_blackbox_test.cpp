@@ -257,6 +257,16 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.active_window_width_change_samples = 5U;
   record.trajectory_planner_stats.racing_line.active_window_width_asymmetry_samples =
       6U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_prohibited_cells = 7U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_outside_grid_segments =
+      8U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_first_segment_index =
+      9U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_first_s_m = 12.5;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_first_x_m = 3.25;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_first_y_m = -4.5;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_first_outside_grid =
+      true;
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
   record.trajectory_planner_stats.racing_line.dp_transitions = 96U;
   record.trajectory_planner_stats.racing_line.dp_coarse_states = 8U;
@@ -452,6 +462,13 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_line_active_window_curvature_samples\":4");
   expectJsonField(json, "\"racing_line_active_window_width_change_samples\":5");
   expectJsonField(json, "\"racing_line_active_window_width_asymmetry_samples\":6");
+  expectJsonField(json, "\"racing_centerline_blocked_prohibited_cells\":7");
+  expectJsonField(json, "\"racing_centerline_blocked_outside_grid_segments\":8");
+  expectJsonField(json, "\"racing_centerline_blocked_first_segment_index\":9");
+  expectJsonField(json, "\"racing_centerline_blocked_first_s_m\":12.5");
+  expectJsonField(json, "\"racing_centerline_blocked_first_x_m\":3.25");
+  expectJsonField(json, "\"racing_centerline_blocked_first_y_m\":-4.5");
+  expectJsonField(json, "\"racing_centerline_blocked_first_outside_grid\":true");
   expectJsonField(json, "\"racing_line_dp_states\":24");
   expectJsonField(json, "\"racing_line_dp_transitions\":96");
   expectJsonField(json, "\"racing_line_dp_coarse_states\":8");
