@@ -86,6 +86,9 @@ struct EvaluatedCandidate {
   double cost_breakdown_duration_ms{0.0};
   double shape_diagnostics_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
+  std::size_t speed_profile_calls{0U};
+  std::size_t speed_profile_samples_total{0U};
+  std::size_t speed_profile_samples_max{0U};
   double local_point_build_duration_ms{0.0};
   double local_path_evaluation_duration_ms{0.0};
   double local_score_duration_ms{0.0};
@@ -95,6 +98,9 @@ struct EvaluatedCandidate {
   std::size_t local_segment_cache_misses{0U};
   std::size_t full_path_segment_cache_hits{0U};
   std::size_t full_path_segment_cache_misses{0U};
+  std::size_t offset_changed_samples{0U};
+  std::size_t offset_changed_span_samples{0U};
+  std::size_t local_speed_window_samples{0U};
   bool local_evaluated{false};
   bool requires_full_score{false};
   bool full_score_used{false};
@@ -116,6 +122,13 @@ struct CandidateTask {
 struct CandidateBatchResult {
   std::size_t order{0U};
   EvaluatedCandidate candidate{};
+};
+
+struct OffsetChangeDiagnostics {
+  std::size_t changed_samples{0U};
+  std::size_t changed_span_samples{0U};
+  std::size_t first_changed_index{0U};
+  std::size_t last_changed_index{0U};
 };
 
 struct SegmentCellKey {
@@ -448,6 +461,47 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
     }
   }
   return true;
+}
+
+[[nodiscard]] OffsetChangeDiagnostics
+offsetChangeDiagnostics(const std::span<const double> base_offsets,
+                        const std::span<const double> candidate_offsets) noexcept {
+  OffsetChangeDiagnostics diagnostics{};
+  if (base_offsets.size() != candidate_offsets.size() || base_offsets.empty()) {
+    return diagnostics;
+  }
+  for (std::size_t i = 0U; i < base_offsets.size(); ++i) {
+    if (std::abs(base_offsets[i] - candidate_offsets[i]) <= 1.0e-9) {
+      continue;
+    }
+    if (diagnostics.changed_samples == 0U) {
+      diagnostics.first_changed_index = i;
+    }
+    diagnostics.last_changed_index = i;
+    ++diagnostics.changed_samples;
+  }
+  if (diagnostics.changed_samples > 0U) {
+    diagnostics.changed_span_samples =
+        diagnostics.last_changed_index - diagnostics.first_changed_index + 1U;
+  }
+  return diagnostics;
+}
+
+[[nodiscard]] std::size_t
+estimatedLocalSpeedWindowSamples(const OffsetChangeDiagnostics& diagnostics,
+                                 const std::size_t sample_count) noexcept {
+  if (diagnostics.changed_samples == 0U || sample_count == 0U) {
+    return 0U;
+  }
+  constexpr std::size_t kGeometryNeighborSamples = 2U;
+  constexpr std::size_t kProfileContextSamples = 12U;
+  const std::size_t context = kGeometryNeighborSamples + kProfileContextSamples;
+  const std::size_t begin = diagnostics.first_changed_index > context
+                                ? diagnostics.first_changed_index - context
+                                : 0U;
+  const std::size_t end =
+      std::min(sample_count - 1U, diagnostics.last_changed_index + context);
+  return end >= begin ? end - begin + 1U : 0U;
 }
 
 void samplesFromPointsAndOffsets(const std::span<const CorridorSample> corridor_samples,
@@ -1187,6 +1241,10 @@ conservativeShadowLowerBoundScore(const std::span<const Point2> points,
     const auto speed_started_at = std::chrono::steady_clock::now();
     result.traversal_time = estimateTraversalTime(scratch_samples, speed_config, true);
     stats.candidate_speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
+    ++stats.candidate_speed_profile_calls;
+    stats.candidate_speed_profile_samples_total += scratch_samples.size();
+    stats.candidate_speed_profile_samples_max =
+        std::max(stats.candidate_speed_profile_samples_max, scratch_samples.size());
     if (weight_time > 0.0 && result.traversal_time.valid &&
         std::isfinite(result.traversal_time.estimated_time_s)) {
       result.breakdown.time_cost = weight_time * result.traversal_time.estimated_time_s;
@@ -1359,7 +1417,14 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   buffer.offsets.assign(base_offsets.begin(), base_offsets.end());
   applyOffsetDelta(buffer.offsets, corridor_samples, center_index, delta_m,
                    mutable_indices);
-  if (offsetsNearlyEqual(buffer.offsets, base_offsets)) {
+  const OffsetChangeDiagnostics offset_diagnostics =
+      offsetChangeDiagnostics(base_offsets, buffer.offsets);
+  result.offset_changed_samples = offset_diagnostics.changed_samples;
+  result.offset_changed_span_samples = offset_diagnostics.changed_span_samples;
+  result.local_speed_window_samples =
+      estimatedLocalSpeedWindowSamples(offset_diagnostics, base_offsets.size());
+  if (offset_diagnostics.changed_samples == 0U ||
+      offsetsNearlyEqual(buffer.offsets, base_offsets)) {
     result.noop = true;
     return result;
   }
@@ -1413,6 +1478,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     result.shape_diagnostics_duration_ms =
         local_stats.candidate_shape_diagnostics_duration_ms;
     result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
+    result.speed_profile_calls = local_stats.candidate_speed_profile_calls;
+    result.speed_profile_samples_total =
+        local_stats.candidate_speed_profile_samples_total;
+    result.speed_profile_samples_max = local_stats.candidate_speed_profile_samples_max;
     result.full_score_used = true;
     return result;
   }
@@ -1441,6 +1510,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.shape_diagnostics_duration_ms =
       local_stats.candidate_shape_diagnostics_duration_ms;
   result.speed_profile_duration_ms = local_stats.candidate_speed_profile_duration_ms;
+  result.speed_profile_calls = local_stats.candidate_speed_profile_calls;
+  result.speed_profile_samples_total =
+      local_stats.candidate_speed_profile_samples_total;
+  result.speed_profile_samples_max = local_stats.candidate_speed_profile_samples_max;
   result.full_score_used = true;
   return result;
 }
@@ -1758,6 +1831,19 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   if (candidate.snapshot_allocation_avoided) {
     ++stats.candidate_snapshot_allocations_avoided;
   }
+  stats.candidate_offset_changed_samples_total += candidate.offset_changed_samples;
+  stats.candidate_offset_changed_samples_max = std::max(
+      stats.candidate_offset_changed_samples_max, candidate.offset_changed_samples);
+  stats.candidate_offset_changed_span_samples_total +=
+      candidate.offset_changed_span_samples;
+  stats.candidate_offset_changed_span_samples_max =
+      std::max(stats.candidate_offset_changed_span_samples_max,
+               candidate.offset_changed_span_samples);
+  stats.candidate_local_speed_window_samples_total +=
+      candidate.local_speed_window_samples;
+  stats.candidate_local_speed_window_samples_max =
+      std::max(stats.candidate_local_speed_window_samples_max,
+               candidate.local_speed_window_samples);
   if (candidate.noop) {
     ++stats.skipped_noop_candidates;
     return;
@@ -1828,6 +1914,10 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
   stats.candidate_shape_diagnostics_duration_ms +=
       candidate.shape_diagnostics_duration_ms;
   stats.candidate_speed_profile_duration_ms += candidate.speed_profile_duration_ms;
+  stats.candidate_speed_profile_calls += candidate.speed_profile_calls;
+  stats.candidate_speed_profile_samples_total += candidate.speed_profile_samples_total;
+  stats.candidate_speed_profile_samples_max = std::max(
+      stats.candidate_speed_profile_samples_max, candidate.speed_profile_samples_max);
   if (!candidate.path.traversable()) {
     ++stats.collision_rejections;
   }

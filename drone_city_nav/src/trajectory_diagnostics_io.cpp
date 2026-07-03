@@ -385,6 +385,12 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                    stats.racing_line.candidate_shape_diagnostics_duration_ms);
   appendJsonNumber(stream, "racing_candidate_speed_profile_duration_ms",
                    stats.racing_line.candidate_speed_profile_duration_ms);
+  appendJsonSize(stream, "racing_candidate_speed_profile_calls",
+                 stats.racing_line.candidate_speed_profile_calls);
+  appendJsonSize(stream, "racing_candidate_speed_profile_samples_total",
+                 stats.racing_line.candidate_speed_profile_samples_total);
+  appendJsonSize(stream, "racing_candidate_speed_profile_samples_max",
+                 stats.racing_line.candidate_speed_profile_samples_max);
   appendJsonNumber(stream, "racing_regularization_duration_ms",
                    stats.racing_line.regularization_duration_ms);
   appendJsonSize(stream, "racing_scratch_reused_candidates",
@@ -412,6 +418,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.worker_scratch_reuses);
   appendJsonSize(stream, "racing_candidate_snapshot_allocations_avoided",
                  stats.racing_line.candidate_snapshot_allocations_avoided);
+  appendJsonSize(stream, "racing_candidate_offset_changed_samples_total",
+                 stats.racing_line.candidate_offset_changed_samples_total);
+  appendJsonSize(stream, "racing_candidate_offset_changed_samples_max",
+                 stats.racing_line.candidate_offset_changed_samples_max);
+  appendJsonSize(stream, "racing_candidate_offset_changed_span_samples_total",
+                 stats.racing_line.candidate_offset_changed_span_samples_total);
+  appendJsonSize(stream, "racing_candidate_offset_changed_span_samples_max",
+                 stats.racing_line.candidate_offset_changed_span_samples_max);
+  appendJsonSize(stream, "racing_candidate_local_speed_window_samples_total",
+                 stats.racing_line.candidate_local_speed_window_samples_total);
+  appendJsonSize(stream, "racing_candidate_local_speed_window_samples_max",
+                 stats.racing_line.candidate_local_speed_window_samples_max);
   appendJsonSize(stream, "racing_local_candidate_evaluations",
                  stats.racing_line.local_candidate_evaluations);
   appendJsonSize(stream, "racing_local_candidate_full_score_fallbacks",
@@ -982,6 +1000,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.candidate_shape_diagnostics_duration_ms);
   parseJsonDouble(json, "racing_candidate_speed_profile_duration_ms",
                   racing.candidate_speed_profile_duration_ms);
+  parseJsonSize(json, "racing_candidate_speed_profile_calls",
+                racing.candidate_speed_profile_calls);
+  parseJsonSize(json, "racing_candidate_speed_profile_samples_total",
+                racing.candidate_speed_profile_samples_total);
+  parseJsonSize(json, "racing_candidate_speed_profile_samples_max",
+                racing.candidate_speed_profile_samples_max);
   parseJsonDouble(json, "racing_regularization_duration_ms",
                   racing.regularization_duration_ms);
   parseJsonSize(json, "racing_scratch_reused_candidates",
@@ -1007,6 +1031,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonSize(json, "racing_worker_scratch_reuses", racing.worker_scratch_reuses);
   parseJsonSize(json, "racing_candidate_snapshot_allocations_avoided",
                 racing.candidate_snapshot_allocations_avoided);
+  parseJsonSize(json, "racing_candidate_offset_changed_samples_total",
+                racing.candidate_offset_changed_samples_total);
+  parseJsonSize(json, "racing_candidate_offset_changed_samples_max",
+                racing.candidate_offset_changed_samples_max);
+  parseJsonSize(json, "racing_candidate_offset_changed_span_samples_total",
+                racing.candidate_offset_changed_span_samples_total);
+  parseJsonSize(json, "racing_candidate_offset_changed_span_samples_max",
+                racing.candidate_offset_changed_span_samples_max);
+  parseJsonSize(json, "racing_candidate_local_speed_window_samples_total",
+                racing.candidate_local_speed_window_samples_total);
+  parseJsonSize(json, "racing_candidate_local_speed_window_samples_max",
+                racing.candidate_local_speed_window_samples_max);
   parseJsonSize(json, "racing_local_candidate_evaluations",
                 racing.local_candidate_evaluations);
   parseJsonSize(json, "racing_local_candidate_full_score_fallbacks",

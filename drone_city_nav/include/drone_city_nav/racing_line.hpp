@@ -60,6 +60,9 @@ struct RacingLineStats {
   double candidate_cost_breakdown_duration_ms{0.0};
   double candidate_shape_diagnostics_duration_ms{0.0};
   double candidate_speed_profile_duration_ms{0.0};
+  std::size_t candidate_speed_profile_calls{0U};
+  std::size_t candidate_speed_profile_samples_total{0U};
+  std::size_t candidate_speed_profile_samples_max{0U};
   double regularization_duration_ms{0.0};
   std::size_t scratch_reused_candidates{0U};
   bool parallel_candidate_evaluation_used{false};
@@ -74,6 +77,12 @@ struct RacingLineStats {
   double candidate_thread_join_wait_duration_ms{0.0};
   std::size_t worker_scratch_reuses{0U};
   std::size_t candidate_snapshot_allocations_avoided{0U};
+  std::size_t candidate_offset_changed_samples_total{0U};
+  std::size_t candidate_offset_changed_samples_max{0U};
+  std::size_t candidate_offset_changed_span_samples_total{0U};
+  std::size_t candidate_offset_changed_span_samples_max{0U};
+  std::size_t candidate_local_speed_window_samples_total{0U};
+  std::size_t candidate_local_speed_window_samples_max{0U};
   std::size_t local_candidate_evaluations{0U};
   std::size_t local_candidate_full_score_fallbacks{0U};
   std::size_t local_candidate_full_score_required{0U};

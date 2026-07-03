@@ -300,11 +300,14 @@ bool PlannerNode::publishTrajectoryResult(
       "racing_line[iterations=%zu evals=%zu skipped_noop=%zu "
       "eval_time=%.1fms score_time=%.1fms point_build=%.1fms "
       "sample_build=%.1fms cost=%.1fms shape=%.1fms speed=%.1fms "
+      "speed_calls=%zu speed_samples(total=%zu max=%zu) "
       "regularization=%.1fms scratch_reused=%zu "
       "parallel=%s workers=%zu chunks=%zu parallel_batches=%zu threads=%zu "
       "worker_reuses=%zu batch_wall=%.1fms batch_wait=%.1fms "
       "buffer_prepare=%.1fms thread_launch=%.1fms thread_shutdown=%.1fms "
       "allocations_avoided=%zu local_evals=%zu local_full_fallbacks=%zu "
+      "offset_changes(samples_total=%zu samples_max=%zu span_total=%zu "
+      "span_max=%zu local_speed_window_total=%zu local_speed_window_max=%zu) "
       "local_required=%zu "
       "local_required_reasons(invalid=%zu boundary=%zu unsafe_base=%zu "
       "window_invalid=%zu) "
@@ -389,6 +392,9 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.candidate_cost_breakdown_duration_ms,
       trajectory_result.stats.racing_line.candidate_shape_diagnostics_duration_ms,
       trajectory_result.stats.racing_line.candidate_speed_profile_duration_ms,
+      trajectory_result.stats.racing_line.candidate_speed_profile_calls,
+      trajectory_result.stats.racing_line.candidate_speed_profile_samples_total,
+      trajectory_result.stats.racing_line.candidate_speed_profile_samples_max,
       trajectory_result.stats.racing_line.regularization_duration_ms,
       trajectory_result.stats.racing_line.scratch_reused_candidates,
       trajectory_result.stats.racing_line.parallel_candidate_evaluation_used ? "true"
@@ -406,6 +412,12 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.candidate_snapshot_allocations_avoided,
       trajectory_result.stats.racing_line.local_candidate_evaluations,
       trajectory_result.stats.racing_line.local_candidate_full_score_fallbacks,
+      trajectory_result.stats.racing_line.candidate_offset_changed_samples_total,
+      trajectory_result.stats.racing_line.candidate_offset_changed_samples_max,
+      trajectory_result.stats.racing_line.candidate_offset_changed_span_samples_total,
+      trajectory_result.stats.racing_line.candidate_offset_changed_span_samples_max,
+      trajectory_result.stats.racing_line.candidate_local_speed_window_samples_total,
+      trajectory_result.stats.racing_line.candidate_local_speed_window_samples_max,
       trajectory_result.stats.racing_line.local_candidate_full_score_required,
       trajectory_result.stats.racing_line
           .local_candidate_full_score_required_invalid_input,
