@@ -244,6 +244,15 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       0.2;
   record.trajectory_planner_stats.racing_line
       .shadow_segment_score_max_false_prune_improvement_score = 0.0;
+  record.trajectory_planner_stats.racing_line.shadow_boundary_clamped_local_candidates =
+      8U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_boundary_clamped_window_samples_total = 64U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_boundary_clamped_window_samples_max = 9U;
+  record.trajectory_planner_stats.racing_line.shadow_speed_profile_cache_queries = 15U;
+  record.trajectory_planner_stats.racing_line.shadow_speed_profile_cache_hits = 2U;
+  record.trajectory_planner_stats.racing_line.shadow_speed_profile_cache_unique = 13U;
   record.trajectory_planner_stats.racing_line.dp_segment_cache_misses = 92U;
   record.trajectory_planner_stats.racing_line.candidate_segment_cache_misses = 40U;
   record.trajectory_planner_stats.racing_line.full_path_segment_cache_hits = 11U;
@@ -257,6 +266,18 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.trajectory_planner_stats.racing_line.active_window_width_change_samples = 5U;
   record.trajectory_planner_stats.racing_line.active_window_width_asymmetry_samples =
       6U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_width_asymmetry_count = 2U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_width_asymmetry_samples = 15U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_width_triggers_count = 3U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_width_triggers_samples = 12U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_heading_span_count = 4U;
+  record.trajectory_planner_stats.racing_line
+      .shadow_active_window_no_heading_span_samples = 14U;
   record.trajectory_planner_stats.racing_line.centerline_blocked_windows = 3U;
   record.trajectory_planner_stats.racing_line.centerline_blocked_window_samples = 17U;
   record.trajectory_planner_stats.racing_line.centerline_blocked_window_merged_count =
@@ -478,6 +499,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_shadow_segment_score_max_underestimate\":0.2");
   expectJsonField(
       json, "\"racing_shadow_segment_score_max_false_prune_improvement_score\":0");
+  expectJsonField(json, "\"racing_shadow_boundary_clamped_local_candidates\":8");
+  expectJsonField(json, "\"racing_shadow_boundary_clamped_window_samples_total\":64");
+  expectJsonField(json, "\"racing_shadow_boundary_clamped_window_samples_max\":9");
+  expectJsonField(json, "\"racing_shadow_speed_profile_cache_queries\":15");
+  expectJsonField(json, "\"racing_shadow_speed_profile_cache_hits\":2");
+  expectJsonField(json, "\"racing_shadow_speed_profile_cache_unique\":13");
   expectJsonField(json, "\"racing_line_dp_segment_cache_misses\":92");
   expectJsonField(json, "\"racing_line_candidate_segment_cache_misses\":40");
   expectJsonField(json, "\"racing_line_full_path_segment_cache_hits\":11");
@@ -490,6 +517,13 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_line_active_window_curvature_samples\":4");
   expectJsonField(json, "\"racing_line_active_window_width_change_samples\":5");
   expectJsonField(json, "\"racing_line_active_window_width_asymmetry_samples\":6");
+  expectJsonField(json, "\"racing_shadow_active_window_no_width_asymmetry_count\":2");
+  expectJsonField(json,
+                  "\"racing_shadow_active_window_no_width_asymmetry_samples\":15");
+  expectJsonField(json, "\"racing_shadow_active_window_no_width_triggers_count\":3");
+  expectJsonField(json, "\"racing_shadow_active_window_no_width_triggers_samples\":12");
+  expectJsonField(json, "\"racing_shadow_active_window_no_heading_span_count\":4");
+  expectJsonField(json, "\"racing_shadow_active_window_no_heading_span_samples\":14");
   expectJsonField(json, "\"racing_centerline_blocked_windows\":3");
   expectJsonField(json, "\"racing_centerline_blocked_window_samples\":17");
   expectJsonField(json, "\"racing_centerline_blocked_window_merged_count\":2");

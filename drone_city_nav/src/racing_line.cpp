@@ -16,6 +16,7 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace drone_city_nav {
@@ -116,6 +117,7 @@ struct EvaluatedCandidate {
   std::size_t offset_changed_samples{0U};
   std::size_t offset_changed_span_samples{0U};
   std::size_t local_speed_window_samples{0U};
+  std::size_t shadow_boundary_clamped_window_samples{0U};
   bool local_evaluated{false};
   bool requires_full_score{false};
   bool full_score_used{false};
@@ -396,6 +398,7 @@ struct LocalCandidateScore {
   double score_duration_ms{0.0};
   std::size_t segment_cache_hits{0U};
   std::size_t segment_cache_misses{0U};
+  std::size_t shadow_boundary_clamped_window_samples{0U};
 };
 
 [[nodiscard]] Point2 operator+(const Point2 lhs, const Point2 rhs) noexcept {
@@ -588,6 +591,18 @@ pointsFromOffsets(const std::span<const CorridorSample> corridor_samples,
     }
   }
   return true;
+}
+
+[[nodiscard]] std::uint64_t
+hashDoubleSequence(const std::span<const double> values) noexcept {
+  std::uint64_t hash = 1469598103934665603ULL;
+  for (const double value : values) {
+    const auto value_hash = static_cast<std::uint64_t>(std::hash<double>{}(value));
+    hash ^= value_hash + 0x9e3779b97f4a7c15ULL + (hash << 6U) + (hash >> 2U);
+  }
+  hash ^= static_cast<std::uint64_t>(values.size()) + 0x9e3779b97f4a7c15ULL +
+          (hash << 6U) + (hash >> 2U);
+  return hash;
 }
 
 [[nodiscard]] OffsetChangeDiagnostics
@@ -1036,6 +1051,8 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
   const auto [begin_index, end_index] = localScoreWindowForCenter(
       center_index, base_points.size(), kLocalScoreRadiusSamples);
   if (begin_index == 0U || end_index + 1U >= base_points.size()) {
+    result.shadow_boundary_clamped_window_samples =
+        end_index >= begin_index ? end_index - begin_index + 1U : 0U;
     result.requires_full_score = true;
     result.full_score_reason = LocalFullScoreReason::kBoundaryWindow;
     return result;
@@ -1244,6 +1261,9 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
                     const RacingLineConfig& config, RacingLineStats& stats) {
   const auto started_at = std::chrono::steady_clock::now();
   std::vector<ActiveWindow> windows;
+  std::vector<ActiveWindow> shadow_no_width_asymmetry_windows;
+  std::vector<ActiveWindow> shadow_no_width_triggers_windows;
+  std::vector<ActiveWindow> shadow_no_heading_span_windows;
   if (samples.size() < 3U) {
     stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
     return windows;
@@ -1333,10 +1353,21 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
       stats.window_count = 1U;
       stats.active_window_count = 1U;
       stats.active_window_samples = fullPathActiveSampleCount(samples.size());
+      stats.shadow_active_window_no_width_asymmetry_count = 1U;
+      stats.shadow_active_window_no_width_asymmetry_samples =
+          stats.active_window_samples;
+      stats.shadow_active_window_no_width_triggers_count = 1U;
+      stats.shadow_active_window_no_width_triggers_samples =
+          stats.active_window_samples;
+      stats.shadow_active_window_no_heading_span_count = 1U;
+      stats.shadow_active_window_no_heading_span_samples = stats.active_window_samples;
       stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
       return windows;
     }
   }
+  shadow_no_width_asymmetry_windows = windows;
+  shadow_no_width_triggers_windows = windows;
+  shadow_no_heading_span_windows = windows;
 
   const double heading_threshold_rad =
       sanitizedPositive(config.window_heading_threshold_rad,
@@ -1390,12 +1421,39 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     if (turn_zone || width_zone) {
       addActiveWindow(windows, samples, i, pre_margin_m, post_margin_m);
     }
+    if (turn_zone || width_change_trigger) {
+      addActiveWindow(shadow_no_width_asymmetry_windows, samples, i, pre_margin_m,
+                      post_margin_m);
+    }
+    if (turn_zone) {
+      addActiveWindow(shadow_no_width_triggers_windows, samples, i, pre_margin_m,
+                      post_margin_m);
+    }
+    if (heading_change_trigger || curvature_trigger || width_zone) {
+      addActiveWindow(shadow_no_heading_span_windows, samples, i, pre_margin_m,
+                      post_margin_m);
+    }
   }
 
   mergeActiveWindows(windows);
+  mergeActiveWindows(shadow_no_width_asymmetry_windows);
+  mergeActiveWindows(shadow_no_width_triggers_windows);
+  mergeActiveWindows(shadow_no_heading_span_windows);
   stats.window_count = windows.size();
   stats.active_window_count = windows.size();
   stats.active_window_samples = activeWindowControlSampleCount(windows);
+  stats.shadow_active_window_no_width_asymmetry_count =
+      shadow_no_width_asymmetry_windows.size();
+  stats.shadow_active_window_no_width_asymmetry_samples =
+      activeWindowControlSampleCount(shadow_no_width_asymmetry_windows);
+  stats.shadow_active_window_no_width_triggers_count =
+      shadow_no_width_triggers_windows.size();
+  stats.shadow_active_window_no_width_triggers_samples =
+      activeWindowControlSampleCount(shadow_no_width_triggers_windows);
+  stats.shadow_active_window_no_heading_span_count =
+      shadow_no_heading_span_windows.size();
+  stats.shadow_active_window_no_heading_span_samples =
+      activeWindowControlSampleCount(shadow_no_heading_span_windows);
   stats.window_detection_duration_ms = elapsedMilliseconds(started_at);
   return windows;
 }
@@ -2029,6 +2087,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
   result.local_segment_cache_hits = local_score.segment_cache_hits;
   result.local_segment_cache_misses = local_score.segment_cache_misses;
   result.local_full_score_reason = local_score.full_score_reason;
+  result.shadow_boundary_clamped_window_samples =
+      local_score.shadow_boundary_clamped_window_samples;
   if (local_score.valid && !local_score.requires_full_score) {
     result.path = local_score.path;
     result.offsets.assign(buffer.offsets.begin(), buffer.offsets.end());
@@ -2471,6 +2531,14 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate, RacingLineStats& s
     if (candidate.requires_full_score) {
       ++stats.local_candidate_full_score_required;
       incrementLocalFullScoreReason(candidate.local_full_score_reason, stats);
+      if (candidate.local_full_score_reason == LocalFullScoreReason::kBoundaryWindow) {
+        ++stats.shadow_boundary_clamped_local_candidates;
+        stats.shadow_boundary_clamped_window_samples_total +=
+            candidate.shadow_boundary_clamped_window_samples;
+        stats.shadow_boundary_clamped_window_samples_max =
+            std::max(stats.shadow_boundary_clamped_window_samples_max,
+                     candidate.shadow_boundary_clamped_window_samples);
+      }
     }
   }
   stats.full_path_segment_cache_hits += candidate.full_path_segment_cache_hits;
@@ -2747,6 +2815,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
   shadow_local_speed_abs_time_errors_s.reserve(control_indices.size() * max_iterations);
   shadow_local_speed_abs_score_errors.reserve(control_indices.size() * max_iterations);
   shadow_segment_score_abs_errors.reserve(control_indices.size() * max_iterations);
+  std::unordered_set<std::uint64_t> shadow_speed_profile_cache_keys;
+  shadow_speed_profile_cache_keys.reserve(control_indices.size() * max_iterations * 2U);
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
@@ -2781,6 +2851,14 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       mergeCandidateStats(candidate, result.stats);
       if (candidate.noop || candidate.offsets.empty()) {
         continue;
+      }
+      if (candidate.full_score_used) {
+        ++result.stats.shadow_speed_profile_cache_queries;
+        const std::uint64_t cache_key = hashDoubleSequence(candidate.offsets);
+        const auto insertion = shadow_speed_profile_cache_keys.insert(cache_key);
+        if (!insertion.second) {
+          ++result.stats.shadow_speed_profile_cache_hits;
+        }
       }
       if (candidate.shadow_local_speed_valid) {
         const double time_delta_s = candidate.shadow_local_speed_estimated_time_s -
@@ -2862,6 +2940,8 @@ optimizeRacingLine(const std::span<const CorridorSample> corridor_samples,
       percentileValue(shadow_local_speed_abs_score_errors, 0.95);
   result.stats.shadow_segment_score_abs_error_p95 =
       percentileValue(shadow_segment_score_abs_errors, 0.95);
+  result.stats.shadow_speed_profile_cache_unique =
+      shadow_speed_profile_cache_keys.size();
   std::vector<Point2> final_points = std::move(best_points);
   if (final_points.empty()) {
     final_points = pointsFromOffsets(optimizer_samples, offsets);

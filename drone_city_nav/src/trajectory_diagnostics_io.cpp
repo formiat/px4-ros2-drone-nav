@@ -537,6 +537,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
   appendJsonNumber(
       stream, "racing_shadow_segment_score_max_false_prune_improvement_score",
       stats.racing_line.shadow_segment_score_max_false_prune_improvement_score);
+  appendJsonSize(stream, "racing_shadow_boundary_clamped_local_candidates",
+                 stats.racing_line.shadow_boundary_clamped_local_candidates);
+  appendJsonSize(stream, "racing_shadow_boundary_clamped_window_samples_total",
+                 stats.racing_line.shadow_boundary_clamped_window_samples_total);
+  appendJsonSize(stream, "racing_shadow_boundary_clamped_window_samples_max",
+                 stats.racing_line.shadow_boundary_clamped_window_samples_max);
+  appendJsonSize(stream, "racing_shadow_speed_profile_cache_queries",
+                 stats.racing_line.shadow_speed_profile_cache_queries);
+  appendJsonSize(stream, "racing_shadow_speed_profile_cache_hits",
+                 stats.racing_line.shadow_speed_profile_cache_hits);
+  appendJsonSize(stream, "racing_shadow_speed_profile_cache_unique",
+                 stats.racing_line.shadow_speed_profile_cache_unique);
   appendJsonSize(stream, "racing_line_window_count", stats.racing_line.window_count);
   appendJsonSize(stream, "racing_line_active_window_count",
                  stats.racing_line.active_window_count);
@@ -554,6 +566,18 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.active_window_width_change_samples);
   appendJsonSize(stream, "racing_line_active_window_width_asymmetry_samples",
                  stats.racing_line.active_window_width_asymmetry_samples);
+  appendJsonSize(stream, "racing_shadow_active_window_no_width_asymmetry_count",
+                 stats.racing_line.shadow_active_window_no_width_asymmetry_count);
+  appendJsonSize(stream, "racing_shadow_active_window_no_width_asymmetry_samples",
+                 stats.racing_line.shadow_active_window_no_width_asymmetry_samples);
+  appendJsonSize(stream, "racing_shadow_active_window_no_width_triggers_count",
+                 stats.racing_line.shadow_active_window_no_width_triggers_count);
+  appendJsonSize(stream, "racing_shadow_active_window_no_width_triggers_samples",
+                 stats.racing_line.shadow_active_window_no_width_triggers_samples);
+  appendJsonSize(stream, "racing_shadow_active_window_no_heading_span_count",
+                 stats.racing_line.shadow_active_window_no_heading_span_count);
+  appendJsonSize(stream, "racing_shadow_active_window_no_heading_span_samples",
+                 stats.racing_line.shadow_active_window_no_heading_span_samples);
   appendJsonSize(stream, "racing_centerline_blocked_windows",
                  stats.racing_line.centerline_blocked_windows);
   appendJsonSize(stream, "racing_centerline_blocked_window_samples",
@@ -1266,6 +1290,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   racing.shadow_segment_score_max_underestimate);
   parseJsonDouble(json, "racing_shadow_segment_score_max_false_prune_improvement_score",
                   racing.shadow_segment_score_max_false_prune_improvement_score);
+  parseJsonSize(json, "racing_shadow_boundary_clamped_local_candidates",
+                racing.shadow_boundary_clamped_local_candidates);
+  parseJsonSize(json, "racing_shadow_boundary_clamped_window_samples_total",
+                racing.shadow_boundary_clamped_window_samples_total);
+  parseJsonSize(json, "racing_shadow_boundary_clamped_window_samples_max",
+                racing.shadow_boundary_clamped_window_samples_max);
+  parseJsonSize(json, "racing_shadow_speed_profile_cache_queries",
+                racing.shadow_speed_profile_cache_queries);
+  parseJsonSize(json, "racing_shadow_speed_profile_cache_hits",
+                racing.shadow_speed_profile_cache_hits);
+  parseJsonSize(json, "racing_shadow_speed_profile_cache_unique",
+                racing.shadow_speed_profile_cache_unique);
   parseJsonSize(json, "racing_line_window_count", racing.window_count);
   parseJsonSize(json, "racing_line_active_window_count", racing.active_window_count);
   parseJsonSize(json, "racing_line_active_window_samples",
@@ -1282,6 +1318,18 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.active_window_width_change_samples);
   parseJsonSize(json, "racing_line_active_window_width_asymmetry_samples",
                 racing.active_window_width_asymmetry_samples);
+  parseJsonSize(json, "racing_shadow_active_window_no_width_asymmetry_count",
+                racing.shadow_active_window_no_width_asymmetry_count);
+  parseJsonSize(json, "racing_shadow_active_window_no_width_asymmetry_samples",
+                racing.shadow_active_window_no_width_asymmetry_samples);
+  parseJsonSize(json, "racing_shadow_active_window_no_width_triggers_count",
+                racing.shadow_active_window_no_width_triggers_count);
+  parseJsonSize(json, "racing_shadow_active_window_no_width_triggers_samples",
+                racing.shadow_active_window_no_width_triggers_samples);
+  parseJsonSize(json, "racing_shadow_active_window_no_heading_span_count",
+                racing.shadow_active_window_no_heading_span_count);
+  parseJsonSize(json, "racing_shadow_active_window_no_heading_span_samples",
+                racing.shadow_active_window_no_heading_span_samples);
   parseJsonSize(json, "racing_centerline_blocked_windows",
                 racing.centerline_blocked_windows);
   parseJsonSize(json, "racing_centerline_blocked_window_samples",

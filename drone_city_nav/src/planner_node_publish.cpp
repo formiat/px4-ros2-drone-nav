@@ -360,6 +360,8 @@ bool PlannerNode::publishTrajectoryResult(
       "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
       "abs_err_sum=%.6f abs_err_p95=%.6f max_over=%.6f max_under=%.6f "
       "max_false_improve=%.6f) "
+      "shadow_boundary_clamped(candidates=%zu window_total=%zu window_max=%zu) "
+      "shadow_speed_cache(queries=%zu hits=%zu unique=%zu) "
       "cost_initial=%.3f cost_final=%.3f "
       "length_initial=%.2f length_final=%.2f length_ratio=%.3f "
       "max_offset=%.2f edge_margin_min=%.2f offset_slope_cost=%.3f "
@@ -369,6 +371,8 @@ bool PlannerNode::publishTrajectoryResult(
       "windows=%zu active_windows=%zu active_samples=%zu "
       "window_triggers(centerline_blocked=%zu heading_change=%zu "
       "heading_span=%zu curvature=%zu width_change=%zu width_asymmetry=%zu) "
+      "shadow_windows(no_width_asym=%zu/%zu no_width=%zu/%zu "
+      "no_heading_span=%zu/%zu) "
       "centerline_blocked_windows(raw=%zu merged=%zu samples=%zu) "
       "centerline_blocked_detail(prohibited=%zu outside=%zu segments=%zu spans=%zu "
       "first_segment=%zu last_segment=%zu s=[%.2f,%.2f] span_len=%.2f "
@@ -526,6 +530,12 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.shadow_segment_score_max_underestimate,
       trajectory_result.stats.racing_line
           .shadow_segment_score_max_false_prune_improvement_score,
+      trajectory_result.stats.racing_line.shadow_boundary_clamped_local_candidates,
+      trajectory_result.stats.racing_line.shadow_boundary_clamped_window_samples_total,
+      trajectory_result.stats.racing_line.shadow_boundary_clamped_window_samples_max,
+      trajectory_result.stats.racing_line.shadow_speed_profile_cache_queries,
+      trajectory_result.stats.racing_line.shadow_speed_profile_cache_hits,
+      trajectory_result.stats.racing_line.shadow_speed_profile_cache_unique,
       trajectory_result.stats.racing_line.initial_cost,
       trajectory_result.stats.racing_line.final_cost,
       trajectory_result.stats.racing_line.centerline_length_m,
@@ -549,6 +559,14 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.active_window_curvature_samples,
       trajectory_result.stats.racing_line.active_window_width_change_samples,
       trajectory_result.stats.racing_line.active_window_width_asymmetry_samples,
+      trajectory_result.stats.racing_line.shadow_active_window_no_width_asymmetry_count,
+      trajectory_result.stats.racing_line
+          .shadow_active_window_no_width_asymmetry_samples,
+      trajectory_result.stats.racing_line.shadow_active_window_no_width_triggers_count,
+      trajectory_result.stats.racing_line
+          .shadow_active_window_no_width_triggers_samples,
+      trajectory_result.stats.racing_line.shadow_active_window_no_heading_span_count,
+      trajectory_result.stats.racing_line.shadow_active_window_no_heading_span_samples,
       trajectory_result.stats.racing_line.centerline_blocked_windows,
       trajectory_result.stats.racing_line.centerline_blocked_window_merged_count,
       trajectory_result.stats.racing_line.centerline_blocked_window_samples,

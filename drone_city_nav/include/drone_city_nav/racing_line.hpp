@@ -151,6 +151,12 @@ struct RacingLineStats {
   double shadow_segment_score_max_overestimate{0.0};
   double shadow_segment_score_max_underestimate{0.0};
   double shadow_segment_score_max_false_prune_improvement_score{0.0};
+  std::size_t shadow_boundary_clamped_local_candidates{0U};
+  std::size_t shadow_boundary_clamped_window_samples_total{0U};
+  std::size_t shadow_boundary_clamped_window_samples_max{0U};
+  std::size_t shadow_speed_profile_cache_queries{0U};
+  std::size_t shadow_speed_profile_cache_hits{0U};
+  std::size_t shadow_speed_profile_cache_unique{0U};
   std::size_t window_count{0U};
   std::size_t active_window_count{0U};
   std::size_t active_window_samples{0U};
@@ -160,6 +166,12 @@ struct RacingLineStats {
   std::size_t active_window_curvature_samples{0U};
   std::size_t active_window_width_change_samples{0U};
   std::size_t active_window_width_asymmetry_samples{0U};
+  std::size_t shadow_active_window_no_width_asymmetry_count{0U};
+  std::size_t shadow_active_window_no_width_asymmetry_samples{0U};
+  std::size_t shadow_active_window_no_width_triggers_count{0U};
+  std::size_t shadow_active_window_no_width_triggers_samples{0U};
+  std::size_t shadow_active_window_no_heading_span_count{0U};
+  std::size_t shadow_active_window_no_heading_span_samples{0U};
   std::size_t centerline_blocked_windows{0U};
   std::size_t centerline_blocked_window_samples{0U};
   std::size_t centerline_blocked_window_merged_count{0U};
