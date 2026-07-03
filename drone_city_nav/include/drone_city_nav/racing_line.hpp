@@ -5,6 +5,7 @@
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
 
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <numbers>
@@ -12,6 +13,22 @@
 #include <vector>
 
 namespace drone_city_nav {
+
+inline constexpr std::size_t kMaxCenterlineBlockedSpanDiagnostics{8U};
+
+struct RacingLineBlockedSpanDiagnostic {
+  std::size_t begin_segment_index{0U};
+  std::size_t end_segment_index{0U};
+  double begin_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double end_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double length_m{std::numeric_limits<double>::quiet_NaN()};
+  double begin_x_m{std::numeric_limits<double>::quiet_NaN()};
+  double begin_y_m{std::numeric_limits<double>::quiet_NaN()};
+  double end_x_m{std::numeric_limits<double>::quiet_NaN()};
+  double end_y_m{std::numeric_limits<double>::quiet_NaN()};
+  std::size_t prohibited_cells{0U};
+  std::size_t outside_grid_segments{0U};
+};
 
 struct RacingLineConfig {
   double optimizer_sample_step_m{0.0};
@@ -158,6 +175,9 @@ struct RacingLineStats {
   double centerline_blocked_last_y_m{std::numeric_limits<double>::quiet_NaN()};
   bool centerline_blocked_first_outside_grid{false};
   bool centerline_blocked_last_outside_grid{false};
+  std::size_t centerline_blocked_span_diagnostic_count{0U};
+  std::array<RacingLineBlockedSpanDiagnostic, kMaxCenterlineBlockedSpanDiagnostics>
+      centerline_blocked_span_diagnostics{};
   std::size_t dp_states{0U};
   std::size_t dp_transitions{0U};
   std::size_t dp_segment_cache_hits{0U};

@@ -46,6 +46,9 @@ struct PathEvaluation {
   bool has_last_blocked_point{false};
   bool first_blocked_outside_grid{false};
   bool last_blocked_outside_grid{false};
+  std::size_t blocked_span_diagnostic_count{0U};
+  std::array<RacingLineBlockedSpanDiagnostic, kMaxCenterlineBlockedSpanDiagnostics>
+      blocked_span_diagnostics{};
 
   [[nodiscard]] bool traversable() const noexcept {
     return prohibited_cells == 0U && outside_grid_segments == 0U;
@@ -427,6 +430,48 @@ struct LocalCandidateScore {
   return lhs.x * rhs.x + lhs.y * rhs.y;
 }
 
+void startBlockedSpanDiagnostic(PathEvaluation& evaluation,
+                                const std::size_t segment_index,
+                                const double segment_start_s_m,
+                                const Point2 segment_start) {
+  if (evaluation.blocked_span_diagnostic_count >=
+      kMaxCenterlineBlockedSpanDiagnostics) {
+    return;
+  }
+  RacingLineBlockedSpanDiagnostic& span =
+      evaluation.blocked_span_diagnostics.at(evaluation.blocked_span_diagnostic_count);
+  span.begin_segment_index = segment_index;
+  span.end_segment_index = segment_index;
+  span.begin_s_m = segment_start_s_m;
+  span.end_s_m = segment_start_s_m;
+  span.length_m = 0.0;
+  span.begin_x_m = segment_start.x;
+  span.begin_y_m = segment_start.y;
+  span.end_x_m = segment_start.x;
+  span.end_y_m = segment_start.y;
+  ++evaluation.blocked_span_diagnostic_count;
+}
+
+void updateBlockedSpanDiagnostic(PathEvaluation& evaluation,
+                                 const std::size_t diagnostic_index,
+                                 const std::size_t segment_index,
+                                 const double segment_end_s_m, const Point2 segment_end,
+                                 const std::size_t prohibited_cells,
+                                 const std::size_t outside_grid_segments) {
+  if (diagnostic_index >= evaluation.blocked_span_diagnostic_count) {
+    return;
+  }
+  RacingLineBlockedSpanDiagnostic& span =
+      evaluation.blocked_span_diagnostics.at(diagnostic_index);
+  span.end_segment_index = segment_index;
+  span.end_s_m = segment_end_s_m;
+  span.length_m = span.end_s_m - span.begin_s_m;
+  span.end_x_m = segment_end.x;
+  span.end_y_m = segment_end.y;
+  span.prohibited_cells += prohibited_cells;
+  span.outside_grid_segments += outside_grid_segments;
+}
+
 void recordBlockedPoint(PathEvaluation& evaluation, const std::size_t segment_index,
                         const double segment_start_s_m, const Point2 segment_start,
                         const Point2 segment_end, const Point2 blocked_point,
@@ -757,6 +802,7 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
   }
 
   bool previous_segment_blocked = false;
+  std::size_t current_span_diagnostic_index = kMaxCenterlineBlockedSpanDiagnostics;
   for (std::size_t i = 1U; i < points.size(); ++i) {
     const Point2 start = points[i - 1U];
     const Point2 end = points[i];
@@ -765,8 +811,11 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
     const std::optional<GridIndex> start_cell = grid.worldToCell(start);
     const std::optional<GridIndex> end_cell = grid.worldToCell(end);
     bool segment_blocked = false;
+    std::size_t segment_prohibited_cells = 0U;
+    std::size_t segment_outside_grid_segments = 0U;
     if (!start_cell.has_value() || !end_cell.has_value()) {
       ++evaluation.outside_grid_segments;
+      segment_outside_grid_segments = 1U;
       segment_blocked = true;
       recordBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end, start,
                          true);
@@ -776,6 +825,7 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
       for (const GridIndex cell : cells) {
         if (grid.isProhibited(cell)) {
           ++evaluation.prohibited_cells;
+          ++segment_prohibited_cells;
           segment_blocked = true;
           recordBlockedPoint(evaluation, i - 1U, segment_start_s_m, start, end,
                              grid.cellCenter(cell), false);
@@ -786,7 +836,19 @@ void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
       ++evaluation.blocked_segment_count;
       if (!previous_segment_blocked) {
         ++evaluation.blocked_span_count;
+        const std::size_t previous_diagnostic_count =
+            evaluation.blocked_span_diagnostic_count;
+        startBlockedSpanDiagnostic(evaluation, i - 1U, segment_start_s_m, start);
+        current_span_diagnostic_index =
+            evaluation.blocked_span_diagnostic_count > previous_diagnostic_count
+                ? evaluation.blocked_span_diagnostic_count - 1U
+                : kMaxCenterlineBlockedSpanDiagnostics;
       }
+      updateBlockedSpanDiagnostic(evaluation, current_span_diagnostic_index, i - 1U,
+                                  evaluation.length_m, end, segment_prohibited_cells,
+                                  segment_outside_grid_segments);
+    } else {
+      current_span_diagnostic_index = kMaxCenterlineBlockedSpanDiagnostics;
     }
     previous_segment_blocked = segment_blocked;
   }
@@ -1135,6 +1197,10 @@ detectActiveWindows(const std::span<const CorridorSample> samples,
     stats.centerline_blocked_segment_count =
         centerline_evaluation.blocked_segment_count;
     stats.centerline_blocked_span_count = centerline_evaluation.blocked_span_count;
+    stats.centerline_blocked_span_diagnostic_count =
+        centerline_evaluation.blocked_span_diagnostic_count;
+    stats.centerline_blocked_span_diagnostics =
+        centerline_evaluation.blocked_span_diagnostics;
     if (centerline_evaluation.has_first_blocked_point) {
       stats.centerline_blocked_first_segment_index =
           centerline_evaluation.first_blocked_segment_index;

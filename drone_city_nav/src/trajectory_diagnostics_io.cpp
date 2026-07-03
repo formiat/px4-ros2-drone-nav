@@ -584,6 +584,25 @@ std::string racingLineDiagnosticsJsonFields(const TrajectoryPlannerStats& stats)
                  stats.racing_line.centerline_blocked_first_outside_grid);
   appendJsonBool(stream, "racing_centerline_blocked_last_outside_grid",
                  stats.racing_line.centerline_blocked_last_outside_grid);
+  appendJsonSize(stream, "racing_centerline_blocked_span_diagnostic_count",
+                 stats.racing_line.centerline_blocked_span_diagnostic_count);
+  for (std::size_t i = 0U; i < kMaxCenterlineBlockedSpanDiagnostics; ++i) {
+    const std::string prefix = "racing_centerline_blocked_span" + std::to_string(i);
+    const RacingLineBlockedSpanDiagnostic& span =
+        stats.racing_line.centerline_blocked_span_diagnostics.at(i);
+    appendJsonSize(stream, prefix + "_begin_segment_index", span.begin_segment_index);
+    appendJsonSize(stream, prefix + "_end_segment_index", span.end_segment_index);
+    appendJsonNumber(stream, prefix + "_begin_s_m", span.begin_s_m);
+    appendJsonNumber(stream, prefix + "_end_s_m", span.end_s_m);
+    appendJsonNumber(stream, prefix + "_length_m", span.length_m);
+    appendJsonNumber(stream, prefix + "_begin_x_m", span.begin_x_m);
+    appendJsonNumber(stream, prefix + "_begin_y_m", span.begin_y_m);
+    appendJsonNumber(stream, prefix + "_end_x_m", span.end_x_m);
+    appendJsonNumber(stream, prefix + "_end_y_m", span.end_y_m);
+    appendJsonSize(stream, prefix + "_prohibited_cells", span.prohibited_cells);
+    appendJsonSize(stream, prefix + "_outside_grid_segments",
+                   span.outside_grid_segments);
+  }
   appendJsonSize(stream, "racing_line_dp_states", stats.racing_line.dp_states);
   appendJsonSize(stream, "racing_line_dp_transitions",
                  stats.racing_line.dp_transitions);
@@ -1287,6 +1306,24 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 racing.centerline_blocked_first_outside_grid);
   parseJsonBool(json, "racing_centerline_blocked_last_outside_grid",
                 racing.centerline_blocked_last_outside_grid);
+  parseJsonSize(json, "racing_centerline_blocked_span_diagnostic_count",
+                racing.centerline_blocked_span_diagnostic_count);
+  for (std::size_t i = 0U; i < kMaxCenterlineBlockedSpanDiagnostics; ++i) {
+    const std::string prefix = "racing_centerline_blocked_span" + std::to_string(i);
+    RacingLineBlockedSpanDiagnostic& span =
+        racing.centerline_blocked_span_diagnostics.at(i);
+    parseJsonSize(json, prefix + "_begin_segment_index", span.begin_segment_index);
+    parseJsonSize(json, prefix + "_end_segment_index", span.end_segment_index);
+    parseJsonDouble(json, prefix + "_begin_s_m", span.begin_s_m);
+    parseJsonDouble(json, prefix + "_end_s_m", span.end_s_m);
+    parseJsonDouble(json, prefix + "_length_m", span.length_m);
+    parseJsonDouble(json, prefix + "_begin_x_m", span.begin_x_m);
+    parseJsonDouble(json, prefix + "_begin_y_m", span.begin_y_m);
+    parseJsonDouble(json, prefix + "_end_x_m", span.end_x_m);
+    parseJsonDouble(json, prefix + "_end_y_m", span.end_y_m);
+    parseJsonSize(json, prefix + "_prohibited_cells", span.prohibited_cells);
+    parseJsonSize(json, prefix + "_outside_grid_segments", span.outside_grid_segments);
+  }
   parseJsonSize(json, "racing_line_dp_states", racing.dp_states);
   parseJsonSize(json, "racing_line_dp_transitions", racing.dp_transitions);
   parseJsonSize(json, "racing_line_dp_segment_cache_hits",

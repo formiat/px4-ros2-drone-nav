@@ -277,6 +277,20 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
       true;
   record.trajectory_planner_stats.racing_line.centerline_blocked_last_outside_grid =
       true;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_span_diagnostic_count =
+      1U;
+  record.trajectory_planner_stats.racing_line.centerline_blocked_span_diagnostics[0] =
+      RacingLineBlockedSpanDiagnostic{.begin_segment_index = 9U,
+                                      .end_segment_index = 10U,
+                                      .begin_s_m = 12.5,
+                                      .end_s_m = 16.75,
+                                      .length_m = 4.25,
+                                      .begin_x_m = 3.25,
+                                      .begin_y_m = -4.5,
+                                      .end_x_m = 5.5,
+                                      .end_y_m = -6.75,
+                                      .prohibited_cells = 7U,
+                                      .outside_grid_segments = 8U};
   record.trajectory_planner_stats.racing_line.dp_states = 24U;
   record.trajectory_planner_stats.racing_line.dp_transitions = 96U;
   record.trajectory_planner_stats.racing_line.dp_coarse_states = 8U;
@@ -487,6 +501,18 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"racing_centerline_blocked_last_y_m\":-6.75");
   expectJsonField(json, "\"racing_centerline_blocked_first_outside_grid\":true");
   expectJsonField(json, "\"racing_centerline_blocked_last_outside_grid\":true");
+  expectJsonField(json, "\"racing_centerline_blocked_span_diagnostic_count\":1");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_begin_segment_index\":9");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_end_segment_index\":10");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_begin_s_m\":12.5");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_end_s_m\":16.75");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_length_m\":4.25");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_begin_x_m\":3.25");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_begin_y_m\":-4.5");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_end_x_m\":5.5");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_end_y_m\":-6.75");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_prohibited_cells\":7");
+  expectJsonField(json, "\"racing_centerline_blocked_span0_outside_grid_segments\":8");
   expectJsonField(json, "\"racing_line_dp_states\":24");
   expectJsonField(json, "\"racing_line_dp_transitions\":96");
   expectJsonField(json, "\"racing_line_dp_coarse_states\":8");

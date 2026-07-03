@@ -1,5 +1,9 @@
+#include <algorithm>
 #include <exception>
+#include <iomanip>
 #include <limits>
+#include <sstream>
+#include <string>
 
 #include "planner_node.hpp"
 
@@ -22,6 +26,33 @@ namespace {
                                           const void* context) {
   const auto& grid = *static_cast<const OccupancyGrid2D*>(context);
   return pathIsTraversable(grid, points);
+}
+
+[[nodiscard]] std::string centerlineBlockedSpansSummary(const RacingLineStats& stats) {
+  if (stats.centerline_blocked_span_diagnostic_count == 0U) {
+    return "none";
+  }
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  const std::size_t count = std::min(stats.centerline_blocked_span_diagnostic_count,
+                                     kMaxCenterlineBlockedSpanDiagnostics);
+  for (std::size_t i = 0U; i < count; ++i) {
+    if (i > 0U) {
+      stream << "; ";
+    }
+    const RacingLineBlockedSpanDiagnostic& span =
+        stats.centerline_blocked_span_diagnostics.at(i);
+    stream << "#" << i << " seg=[" << span.begin_segment_index << ".."
+           << span.end_segment_index << "] s=[" << span.begin_s_m << ".."
+           << span.end_s_m << "] len=" << span.length_m << " p=(" << span.begin_x_m
+           << "," << span.begin_y_m << ")->(" << span.end_x_m << "," << span.end_y_m
+           << ") cells=" << span.prohibited_cells
+           << " outside=" << span.outside_grid_segments;
+  }
+  if (stats.centerline_blocked_span_count > count) {
+    stream << "; ...";
+  }
+  return stream.str();
 }
 
 } // namespace
@@ -282,6 +313,8 @@ bool PlannerNode::publishTrajectoryResult(
           : speedConstraintTypeName(SpeedConstraintType::kNone);
   const bool top_speed_constraint_isolated =
       top_speed_constraint != nullptr && top_speed_constraint->isolated_curvature_spike;
+  const std::string centerline_blocked_spans =
+      centerlineBlockedSpansSummary(trajectory_result.stats.racing_line);
 
   RCLCPP_INFO(
       get_logger(),
@@ -340,6 +373,7 @@ bool PlannerNode::publishTrajectoryResult(
       "first_segment=%zu last_segment=%zu s=[%.2f,%.2f] span_len=%.2f "
       "first_point=(%.2f,%.2f) last_point=(%.2f,%.2f) "
       "first_outside=%s last_outside=%s) "
+      "centerline_blocked_spans{%s} "
       "dp_states=%zu dp_transitions=%zu dp_cache_hits=%zu dp_cache_misses=%zu "
       "candidate_cache_hits=%zu candidate_cache_misses=%zu "
       "full_path_cache_hits=%zu full_path_cache_misses=%zu "
@@ -533,7 +567,7 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.racing_line.centerline_blocked_last_outside_grid
           ? "true"
           : "false",
-      trajectory_result.stats.racing_line.dp_states,
+      centerline_blocked_spans.c_str(), trajectory_result.stats.racing_line.dp_states,
       trajectory_result.stats.racing_line.dp_transitions,
       trajectory_result.stats.racing_line.dp_segment_cache_hits,
       trajectory_result.stats.racing_line.dp_segment_cache_misses,
