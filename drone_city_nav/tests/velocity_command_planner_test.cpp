@@ -27,6 +27,8 @@ namespace {
   VelocityFollowerConfig config{};
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 1.0;
+  config.cross_track_progressive_feedback_min_factor = 1.0;
+  config.cross_track_progressive_feedback_max_factor = 1.0;
   config.max_lateral_control_angle_rad = 1.0;
   config.max_lateral_control_rate_mps2 = 100.0;
   return config;
@@ -122,6 +124,53 @@ TEST(VelocityCommandPlanner, FeedbackIsReducedWhenAlreadyClosingCrossTrackFast) 
   EXPECT_NEAR(plan.cross_track_closing_speed_target_mps, 5.0, 1.0e-9);
   EXPECT_NEAR(plan.cross_track_feedback_scale, 0.625, 1.0e-9);
   EXPECT_NEAR(plan.cross_track_feedback_mps, 3.125, 1.0e-9);
+}
+
+TEST(VelocityCommandPlanner, CrossTrackFeedbackProgressivelyIncreasesWithError) {
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_gain = 1.0;
+  config.cross_track_derivative_gain = 0.0;
+  config.cross_track_progressive_feedback_start_m = 0.3;
+  config.cross_track_progressive_feedback_full_m = 2.5;
+  config.cross_track_progressive_feedback_min_factor = 0.25;
+  config.cross_track_progressive_feedback_max_factor = 1.3;
+
+  const VelocityCommandPlan near_path =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(0.04),
+                                               .current_position = Point2{0.0, 0.2},
+                                               .current_velocity = Point2{10.0, 0.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 10.0,
+                                               .dt_s = 0.1},
+                          config);
+  const VelocityCommandPlan mid_error =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(1.96),
+                                               .current_position = Point2{0.0, 1.4},
+                                               .current_velocity = Point2{10.0, 0.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 10.0,
+                                               .dt_s = 0.1},
+                          config);
+  const VelocityCommandPlan far_from_path =
+      planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(9.0),
+                                               .current_position = Point2{0.0, 3.0},
+                                               .current_velocity = Point2{10.0, 0.0},
+                                               .current_velocity_valid = true,
+                                               .scalar_speed_mps = 10.0,
+                                               .dt_s = 0.1},
+                          config);
+
+  ASSERT_TRUE(near_path.valid);
+  ASSERT_TRUE(mid_error.valid);
+  ASSERT_TRUE(far_from_path.valid);
+  EXPECT_NEAR(near_path.cross_track_progressive_feedback_factor, 0.25, 1.0e-9);
+  EXPECT_GT(mid_error.cross_track_progressive_feedback_factor,
+            near_path.cross_track_progressive_feedback_factor);
+  EXPECT_LT(mid_error.cross_track_progressive_feedback_factor,
+            far_from_path.cross_track_progressive_feedback_factor);
+  EXPECT_NEAR(far_from_path.cross_track_progressive_feedback_factor, 1.3, 1.0e-9);
+  EXPECT_NEAR(near_path.cross_track_feedback_mps, 0.05, 1.0e-9);
+  EXPECT_NEAR(far_from_path.cross_track_feedback_mps, 3.9, 1.0e-9);
 }
 
 TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningFast) {

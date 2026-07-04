@@ -796,6 +796,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       dot(plan.velocity_xy, control_projection.tangent);
   plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
+  plan.cross_track_progressive_feedback_factor =
+      command.cross_track_progressive_feedback_factor;
   plan.cross_track_feedback_scale = command.cross_track_feedback_scale;
   plan.cross_track_closing_speed_target_mps =
       command.cross_track_closing_speed_target_mps;

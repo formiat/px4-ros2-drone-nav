@@ -94,7 +94,8 @@ void Px4OffboardNode::logTelemetry() {
       "lateral_control[feedback=(%.2f, %.2f) derivative=(%.2f, %.2f) "
       "curvature_ff=(%.2f, %.2f) raw=(%.2f, %.2f) final=(%.2f, %.2f) "
       "final_norm=%.2f delta=%.2f adaptive_response=%.2f "
-      "curvature_angle=%.1fdeg feedback_scale=%.2f closing_target=%.2f] "
+      "curvature_angle=%.1fdeg progressive_feedback=%.2f feedback_scale=%.2f "
+      "closing_target=%.2f] "
       "speed_limit_reason=%s "
       "terminal_capture[active=%s goal_distance=%.2f signed_along=%.2f "
       "remaining_s=%.2f "
@@ -157,6 +158,7 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.lateral_control_delta_mps,
       last_velocity_plan_.adaptive_lateral_response_factor,
       radiansToDegrees(last_velocity_plan_.curvature_feedforward_angle_rad),
+      last_velocity_plan_.cross_track_progressive_feedback_factor,
       last_velocity_plan_.cross_track_feedback_scale,
       last_velocity_plan_.cross_track_closing_speed_target_mps,
       velocitySetpointReasonName(last_velocity_plan_.reason),

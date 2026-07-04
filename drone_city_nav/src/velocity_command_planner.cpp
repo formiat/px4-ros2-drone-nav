@@ -149,6 +149,24 @@ speedAwareDerivativeDampingFactor(const double speed_mps,
 }
 
 [[nodiscard]] double
+progressiveCrossTrackFeedbackFactor(const double cross_track_error_m,
+                                    const VelocityFollowerConfig& config) noexcept {
+  const double start_m = sanitizedPositive(
+      config.cross_track_progressive_feedback_start_m, 0.3, 0.0, 1000.0);
+  const double full_m = std::max(
+      start_m, sanitizedPositive(config.cross_track_progressive_feedback_full_m, 2.5,
+                                 0.0, 1000.0));
+  const double min_factor = sanitizedPositive(
+      config.cross_track_progressive_feedback_min_factor, 0.25, 0.0, 100.0);
+  const double max_factor = std::max(
+      min_factor, sanitizedPositive(config.cross_track_progressive_feedback_max_factor,
+                                    1.3, 0.0, 100.0));
+  const double progress =
+      smoothstep(start_m, full_m, std::max(0.0, cross_track_error_m));
+  return min_factor + (max_factor - min_factor) * progress;
+}
+
+[[nodiscard]] double
 adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
                               const VelocityFollowerConfig& config) noexcept {
   if (!std::isfinite(query.current_cross_track_error_m) ||
@@ -224,9 +242,12 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
     plan.cross_track_feedback_scale = crossTrackFeedbackScale(
         cross_track_error, plan.cross_track_lateral_velocity_mps, config,
         plan.cross_track_closing_speed_target_mps);
+    plan.cross_track_progressive_feedback_factor =
+        progressiveCrossTrackFeedbackFactor(cross_track_error, config);
     cross_track_feedback =
-        cross_track_direction *
-        (cross_track_gain * cross_track_error * plan.cross_track_feedback_scale);
+        cross_track_direction * (cross_track_gain * cross_track_error *
+                                 plan.cross_track_progressive_feedback_factor *
+                                 plan.cross_track_feedback_scale);
     cross_track_derivative_damping =
         cross_track_direction * (-plan.cross_track_derivative_gain_effective *
                                  plan.cross_track_lateral_velocity_mps);

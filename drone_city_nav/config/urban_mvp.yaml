@@ -195,6 +195,10 @@ px4_offboard_node:
     terminal_capture_braking_margin_m: 2.0
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.5
+    cross_track_progressive_feedback_start_m: 0.3
+    cross_track_progressive_feedback_full_m: 2.5
+    cross_track_progressive_feedback_min_factor: 0.25
+    cross_track_progressive_feedback_max_factor: 1.3
     cross_track_anti_overshoot_time_s: 1.0
     cross_track_anti_overshoot_min_feedback_scale: 0.25
     tracking_prediction_horizon_s: 0.35

@@ -117,6 +117,9 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_velocity.y);
   stream << ",\"cross_track_feedback_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_mps);
+  stream << ",\"cross_track_progressive_feedback_factor\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.cross_track_progressive_feedback_factor);
   stream << ",\"cross_track_feedback_scale\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_scale);
   stream << ",\"cross_track_closing_speed_target_mps\":";

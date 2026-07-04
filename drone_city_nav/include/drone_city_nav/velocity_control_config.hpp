@@ -15,6 +15,10 @@ struct VelocityFollowerConfig {
   double speed_profile_lookahead_max_m{35.0};
   double cross_track_gain{0.5};
   double cross_track_derivative_gain{0.5};
+  double cross_track_progressive_feedback_start_m{0.3};
+  double cross_track_progressive_feedback_full_m{2.5};
+  double cross_track_progressive_feedback_min_factor{0.25};
+  double cross_track_progressive_feedback_max_factor{1.3};
   double cross_track_anti_overshoot_time_s{1.0};
   double cross_track_anti_overshoot_min_feedback_scale{0.25};
   double tracking_prediction_horizon_s{0.35};
