@@ -131,37 +131,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"cross_track_derivative_damping_mps\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.cross_track_derivative_damping_mps);
-  stream << ",\"cross_track_overshoot_damping_x\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_overshoot_damping_velocity.x);
-  stream << ",\"cross_track_overshoot_damping_y\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_overshoot_damping_velocity.y);
-  stream << ",\"cross_track_overshoot_damping_mps\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_overshoot_damping_mps);
-  stream << ",\"actual_signed_cross_track_error_m\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.actual_signed_cross_track_error_m);
-  stream << ",\"actual_cross_track_lateral_velocity_mps\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.actual_cross_track_lateral_velocity_mps);
-  stream << ",\"actual_cross_track_closing_speed_mps\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.actual_cross_track_closing_speed_mps);
-  stream << ",\"actual_cross_track_closing_speed_limit_mps\":";
-  writeBlackboxJsonNumberOrNull(
-      stream, velocity_plan.actual_cross_track_closing_speed_limit_mps);
-  stream << ",\"predicted_signed_cross_track_error_m\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.predicted_signed_cross_track_error_m);
-  stream << ",\"cross_track_normal_velocity_excess_mps\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_normal_velocity_excess_mps);
-  stream << ",\"cross_track_overshoot_predicted\":";
-  writeBlackboxJsonBool(stream, velocity_plan.cross_track_overshoot_predicted);
-  stream << ",\"cross_track_divergence_predicted\":";
-  writeBlackboxJsonBool(stream, velocity_plan.cross_track_divergence_predicted);
   stream << ",\"control_tangent_smoothed\":";
   writeBlackboxJsonBool(stream, velocity_plan.control_tangent_smoothed);
   stream << ",\"control_tangent_raw_x\":";

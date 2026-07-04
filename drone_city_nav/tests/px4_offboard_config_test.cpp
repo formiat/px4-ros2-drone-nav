@@ -76,10 +76,6 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("cross_track_anti_overshoot_time_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_anti_overshoot_min_feedback_scale: 0.25"),
             std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_anti_overshoot_prediction_horizon_s: 0.5"),
-            std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_anti_overshoot_max_damping_mps: 3.0"),
-            std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_angle_deg: 55.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_rate_mps2: 5.0"), std::string::npos);
   EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 8.0"), std::string::npos);

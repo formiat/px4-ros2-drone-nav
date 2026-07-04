@@ -58,7 +58,6 @@ struct VelocitySetpointPlan {
   Point2 predicted_projection{};
   Point2 cross_track_feedback_velocity{};
   Point2 cross_track_derivative_damping_velocity{};
-  Point2 cross_track_overshoot_damping_velocity{};
   Point2 curvature_feedforward_velocity{};
   Point2 raw_lateral_control_velocity{};
   Point2 lateral_control_velocity{};
@@ -105,18 +104,6 @@ struct VelocitySetpointPlan {
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};
   double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
-  double actual_signed_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
-  double actual_cross_track_lateral_velocity_mps{
-      std::numeric_limits<double>::quiet_NaN()};
-  double actual_cross_track_closing_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-  double actual_cross_track_closing_speed_limit_mps{
-      std::numeric_limits<double>::quiet_NaN()};
-  double predicted_signed_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
-  double cross_track_normal_velocity_excess_mps{
-      std::numeric_limits<double>::quiet_NaN()};
-  bool cross_track_overshoot_predicted{false};
-  bool cross_track_divergence_predicted{false};
-  double cross_track_overshoot_damping_mps{0.0};
   bool control_tangent_smoothed{false};
   double control_tangent_smoothing_heading_span_rad{
       std::numeric_limits<double>::quiet_NaN()};

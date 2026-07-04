@@ -197,8 +197,6 @@ px4_offboard_node:
     cross_track_derivative_gain: 0.5
     cross_track_anti_overshoot_time_s: 1.0
     cross_track_anti_overshoot_min_feedback_scale: 0.25
-    cross_track_anti_overshoot_prediction_horizon_s: 0.5
-    cross_track_anti_overshoot_max_damping_mps: 3.0
     tracking_prediction_horizon_s: 0.35
     max_lateral_control_angle_deg: 55.0
     max_lateral_control_rate_mps2: 5.0
