@@ -75,19 +75,6 @@ void expectContainsAll(const std::string& text,
   stats.trajectory_optimizer.local_candidate_path_evaluation_duration_ms = 2.2;
   stats.trajectory_optimizer.local_candidate_score_duration_ms = 4.5;
   stats.trajectory_optimizer.full_candidate_score_duration_ms = 6.75;
-  stats.trajectory_optimizer.shadow_lower_bound_validation_full_scores = 41U;
-  stats.trajectory_optimizer.shadow_lower_bound_validation_full_score_duration_ms =
-      5.25;
-  stats.trajectory_optimizer.shadow_lower_bound_evaluations = 51U;
-  stats.trajectory_optimizer.shadow_lower_bound_unavailable = 10U;
-  stats.trajectory_optimizer.shadow_lower_bound_prunable = 17U;
-  stats.trajectory_optimizer.shadow_lower_bound_false_prunes = 2U;
-  stats.trajectory_optimizer.shadow_lower_bound_winner_prunes = 1U;
-  stats.trajectory_optimizer.shadow_lower_bound_prunable_full_score_duration_ms = 3.5;
-  stats.trajectory_optimizer.shadow_lower_bound_max_overestimate_score = 0.25;
-  stats.trajectory_optimizer.shadow_lower_bound_max_underestimate_score = 12.5;
-  stats.trajectory_optimizer.shadow_lower_bound_max_false_prune_improvement_score =
-      1.75;
   stats.trajectory_optimizer.shadow_segment_score_evaluations = 52U;
   stats.trajectory_optimizer.shadow_segment_score_unavailable = 9U;
   stats.trajectory_optimizer.shadow_segment_score_prunable = 19U;
@@ -480,24 +467,6 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
       json.find(
           "\"trajectory_optimizer_local_candidate_path_evaluation_duration_ms\":2.2"),
       std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_evaluations\":51"),
-            std::string::npos);
-  EXPECT_NE(
-      json.find(
-          "\"trajectory_optimizer_shadow_lower_bound_validation_full_scores\":41"),
-      std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_validation_full_score_"
-                      "duration_ms\":5.25"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_prunable\":17"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_false_prunes\":2"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_winner_prunes\":1"),
-            std::string::npos);
-  EXPECT_NE(json.find("\"trajectory_optimizer_shadow_lower_bound_prunable_full_score_"
-                      "duration_ms\":3.5"),
-            std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_shadow_segment_score_evaluations\":52"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_shadow_segment_score_unavailable\":9"),
@@ -787,19 +756,6 @@ TEST(TrajectoryDiagnosticsIo,
           "\"trajectory_optimizer_local_candidate_path_evaluation_duration_ms\"",
           "\"trajectory_optimizer_local_candidate_score_duration_ms\"",
           "\"trajectory_optimizer_full_candidate_score_duration_ms\"",
-          "\"trajectory_optimizer_shadow_lower_bound_validation_full_scores\"",
-          "\"trajectory_optimizer_shadow_lower_bound_validation_full_score_duration_"
-          "ms\"",
-          "\"trajectory_optimizer_shadow_lower_bound_evaluations\"",
-          "\"trajectory_optimizer_shadow_lower_bound_unavailable\"",
-          "\"trajectory_optimizer_shadow_lower_bound_prunable\"",
-          "\"trajectory_optimizer_shadow_lower_bound_false_prunes\"",
-          "\"trajectory_optimizer_shadow_lower_bound_winner_prunes\"",
-          "\"trajectory_optimizer_shadow_lower_bound_prunable_full_score_duration_ms\"",
-          "\"trajectory_optimizer_shadow_lower_bound_max_overestimate_score\"",
-          "\"trajectory_optimizer_shadow_lower_bound_max_underestimate_score\"",
-          "\"trajectory_optimizer_shadow_lower_bound_max_false_prune_improvement_"
-          "score\"",
           "\"trajectory_optimizer_shadow_segment_score_evaluations\"",
           "\"trajectory_optimizer_shadow_segment_score_unavailable\"",
           "\"trajectory_optimizer_shadow_segment_score_prunable\"",
@@ -1121,33 +1077,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       parsed_value.stats.trajectory_optimizer.local_candidate_score_duration_ms, 4.5);
   EXPECT_DOUBLE_EQ(
       parsed_value.stats.trajectory_optimizer.full_candidate_score_duration_ms, 6.75);
-  EXPECT_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_lower_bound_validation_full_scores,
-      41U);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_lower_bound_validation_full_score_duration_ms,
-                   5.25);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_lower_bound_evaluations,
-            51U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_lower_bound_unavailable,
-            10U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_lower_bound_prunable, 17U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_lower_bound_false_prunes,
-            2U);
-  EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_lower_bound_winner_prunes,
-            1U);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_lower_bound_prunable_full_score_duration_ms,
-                   3.5);
-  EXPECT_DOUBLE_EQ(
-      parsed_value.stats.trajectory_optimizer.shadow_lower_bound_max_overestimate_score,
-      0.25);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_lower_bound_max_underestimate_score,
-                   12.5);
-  EXPECT_DOUBLE_EQ(parsed_value.stats.trajectory_optimizer
-                       .shadow_lower_bound_max_false_prune_improvement_score,
-                   1.75);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_segment_score_evaluations,
             52U);
   EXPECT_EQ(parsed_value.stats.trajectory_optimizer.shadow_segment_score_unavailable,

@@ -133,10 +133,6 @@ struct EvaluatedCandidate {
   LocalFullScoreReason local_full_score_reason{LocalFullScoreReason::kNone};
   bool scratch_reused{false};
   bool snapshot_allocation_avoided{false};
-  bool shadow_lower_bound_valid{false};
-  bool shadow_lower_bound_would_prune{false};
-  double shadow_lower_bound_score{std::numeric_limits<double>::quiet_NaN()};
-  double shadow_lower_bound_incumbent_score{std::numeric_limits<double>::quiet_NaN()};
   bool shadow_segment_score_valid{false};
   bool shadow_segment_score_would_prune{false};
   double shadow_segment_score_estimated_score{std::numeric_limits<double>::quiet_NaN()};
@@ -1792,20 +1788,6 @@ void populateShadowSegmentScoreDiagnostics(
       std::isfinite(incumbent_score) && estimated_score + 1.0e-9 >= incumbent_score;
 }
 
-[[nodiscard]] double
-conservativeShadowLowerBoundScore(const std::span<const Point2> points,
-                                  const std::span<const double> offsets,
-                                  const TrajectoryOptimizerConfig& config) {
-  if (points.size() < 2U || points.size() != offsets.size()) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-
-  const CostBreakdown geometry = costBreakdownForPoints(points, offsets, config);
-  return geometry.curvature_cost + geometry.curvature_change_cost +
-         geometry.offset_change_cost + geometry.offset_second_change_cost +
-         geometry.offset_slope_cost;
-}
-
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
@@ -2075,17 +2057,6 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(corridor_samples, buffer.offsets, buffer.points);
     result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
-    const auto prefilter_started_at = std::chrono::steady_clock::now();
-    result.shadow_lower_bound_score = conservativeShadowLowerBoundScore(
-        std::span<const Point2>{buffer.points.data(), buffer.points.size()},
-        std::span<const double>{buffer.offsets.data(), buffer.offsets.size()}, config);
-    result.shadow_lower_bound_valid = std::isfinite(result.shadow_lower_bound_score);
-    result.shadow_lower_bound_incumbent_score = incumbent_score;
-    result.shadow_lower_bound_would_prune =
-        std::isfinite(result.shadow_lower_bound_score) &&
-        std::isfinite(incumbent_score) &&
-        result.shadow_lower_bound_score + 1.0e-9 >= incumbent_score;
-    result.score_duration_ms += elapsedMilliseconds(prefilter_started_at);
     const auto score_started_at = std::chrono::steady_clock::now();
     const auto geometry_started_at = std::chrono::steady_clock::now();
     const std::optional<CostBreakdown> incremental_geometry =
@@ -2509,41 +2480,6 @@ void mergeCandidateStats(const EvaluatedCandidate& candidate,
     ++stats.local_candidate_full_score_fallbacks;
     stats.full_candidate_score_duration_ms += candidate.full_score_duration_ms;
   }
-  if (candidate.shadow_lower_bound_valid) {
-    ++stats.shadow_lower_bound_evaluations;
-    if (candidate.full_score_used) {
-      ++stats.shadow_lower_bound_validation_full_scores;
-      stats.shadow_lower_bound_validation_full_score_duration_ms +=
-          candidate.full_score_duration_ms;
-    }
-    if (candidate.full_score_used && std::isfinite(candidate.score.score)) {
-      const double delta = candidate.shadow_lower_bound_score - candidate.score.score;
-      if (std::isfinite(delta)) {
-        stats.shadow_lower_bound_max_overestimate_score =
-            std::max(stats.shadow_lower_bound_max_overestimate_score, delta);
-        stats.shadow_lower_bound_max_underestimate_score =
-            std::max(stats.shadow_lower_bound_max_underestimate_score, -delta);
-      }
-    }
-    if (candidate.shadow_lower_bound_would_prune) {
-      ++stats.shadow_lower_bound_prunable;
-      if (candidate.full_score_used) {
-        stats.shadow_lower_bound_prunable_full_score_duration_ms +=
-            candidate.full_score_duration_ms;
-      }
-      if (candidate.full_score_used && std::isfinite(candidate.score.score) &&
-          std::isfinite(candidate.shadow_lower_bound_incumbent_score) &&
-          candidate.score.score + 1.0e-9 <
-              candidate.shadow_lower_bound_incumbent_score) {
-        ++stats.shadow_lower_bound_false_prunes;
-        stats.shadow_lower_bound_max_false_prune_improvement_score = std::max(
-            stats.shadow_lower_bound_max_false_prune_improvement_score,
-            candidate.shadow_lower_bound_incumbent_score - candidate.score.score);
-      }
-    }
-  } else if (candidate.local_evaluated) {
-    ++stats.shadow_lower_bound_unavailable;
-  }
   if (candidate.shadow_segment_score_valid) {
     ++stats.shadow_segment_score_evaluations;
     stats.shadow_segment_score_window_samples_total +=
@@ -2866,9 +2802,6 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
               batch_result.order == *iteration_winner_order));
     }
     if (iteration_winner != nullptr) {
-      if (iteration_winner->shadow_lower_bound_would_prune) {
-        ++result.stats.shadow_lower_bound_winner_prunes;
-      }
       best_cost = iteration_winner->score.score;
       offsets = iteration_winner->offsets;
       const auto accepted_points_started_at = std::chrono::steady_clock::now();

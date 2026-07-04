@@ -278,7 +278,7 @@ TEST(TrajectoryOptimizer, DefaultParallelCandidateEvaluationMatchesSingleWorkerR
   EXPECT_DOUBLE_EQ(sequential.stats.estimated_time_s, parallel.stats.estimated_time_s);
 }
 
-TEST(TrajectoryOptimizer, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
+TEST(TrajectoryOptimizer, LocalCandidateScoringKeepsFullObjectiveScoring) {
   const OccupancyGrid2D grid = openGrid();
   TrajectoryOptimizerConfig config = testConfig();
   config.parallel_workers = 1U;
@@ -291,15 +291,6 @@ TEST(TrajectoryOptimizer, LocalCandidatePrefilterKeepsFullObjectiveScoring) {
   ASSERT_GT(result.stats.local_candidate_evaluations, 0U);
   EXPECT_GT(result.stats.local_candidate_full_score_fallbacks, 0U);
   EXPECT_GT(result.stats.full_candidate_score_duration_ms, 0.0);
-  EXPECT_GT(result.stats.shadow_lower_bound_evaluations, 0U);
-  EXPECT_LE(result.stats.shadow_lower_bound_evaluations +
-                result.stats.shadow_lower_bound_unavailable,
-            result.stats.local_candidate_evaluations);
-  EXPECT_LE(result.stats.shadow_lower_bound_false_prunes,
-            result.stats.shadow_lower_bound_prunable);
-  EXPECT_GE(result.stats.shadow_lower_bound_prunable_full_score_duration_ms, 0.0);
-  EXPECT_GE(result.stats.shadow_lower_bound_max_overestimate_score, 0.0);
-  EXPECT_GE(result.stats.shadow_lower_bound_max_underestimate_score, 0.0);
   EXPECT_GT(result.stats.shadow_segment_score_evaluations, 0U);
   EXPECT_LE(result.stats.shadow_segment_score_evaluations +
                 result.stats.shadow_segment_score_unavailable,

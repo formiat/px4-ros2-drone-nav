@@ -348,10 +348,6 @@ bool PlannerNode::publishTrajectoryResult(
       "local_accept_full_scores=%zu local_false_positives=%zu "
       "local_timing(point=%.1fms path=%.1fms total=%.1fms) "
       "full_candidate_score=%.1fms "
-      "shadow_lb(evals=%zu unavailable=%zu prunable=%zu false_prunes=%zu "
-      "winner_prunes=%zu validation_full_scores=%zu "
-      "validation_full_score=%.1fms prunable_full_score=%.1fms "
-      "max_over=%.3f max_under=%.3f max_false_improve=%.3f) "
       "shadow_segment_score(evals=%zu unavailable=%zu prunable=%zu "
       "false_prunes=%zu winner_mismatches=%zu window_total=%zu window_max=%zu "
       "abs_err_sum=%.6f abs_err_p95=%.6f max_over=%.6f max_under=%.6f "
@@ -492,23 +488,6 @@ bool PlannerNode::publishTrajectoryResult(
           .local_candidate_path_evaluation_duration_ms,
       trajectory_result.stats.trajectory_optimizer.local_candidate_score_duration_ms,
       trajectory_result.stats.trajectory_optimizer.full_candidate_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_evaluations,
-      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_unavailable,
-      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_prunable,
-      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_false_prunes,
-      trajectory_result.stats.trajectory_optimizer.shadow_lower_bound_winner_prunes,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_validation_full_scores,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_validation_full_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_prunable_full_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_max_overestimate_score,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_max_underestimate_score,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_lower_bound_max_false_prune_improvement_score,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_evaluations,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_unavailable,
       trajectory_result.stats.trajectory_optimizer.shadow_segment_score_prunable,
