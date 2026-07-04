@@ -56,6 +56,12 @@ add_library(
   src/planner_runtime_state.cpp
   src/static_city_map.cpp
   src/trajectory_optimizer.cpp
+  src/trajectory_optimizer_geometry.cpp
+  src/trajectory_optimizer_active_windows.cpp
+  src/trajectory_optimizer_scoring.cpp
+  src/trajectory_optimizer_candidates.cpp
+  src/trajectory_optimizer_dp.cpp
+  src/trajectory_optimizer_workers.cpp
   src/trajectory.cpp
   src/trajectory_diagnostics.cpp
   src/trajectory_diagnostics_io.cpp
@@ -67,6 +73,10 @@ add_library(
   src/trajectory_refinement_scheduler.cpp
   src/trajectory_speed_planner.cpp
   src/turn_smoothing.cpp
+  src/turn_smoothing_geometry.cpp
+  src/turn_smoothing_candidates.cpp
+  src/turn_smoothing_metrics.cpp
+  src/turn_smoothing_diagnostics.cpp
   src/velocity_command_planner.cpp
   src/velocity_smoother.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
