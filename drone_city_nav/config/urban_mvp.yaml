@@ -125,9 +125,9 @@ planner_node:
     trajectory_optimizer_min_offset_step_m: 0.1
     trajectory_optimizer_cooling_ratio: 0.5
     trajectory_optimizer_weight_curvature: 300.0
-    trajectory_optimizer_weight_curvature_change: 180.0
-    trajectory_optimizer_preferred_min_radius_m: 24.0
-    trajectory_optimizer_weight_radius_shortfall: 40.0
+    trajectory_optimizer_weight_curvature_change: 220.0
+    trajectory_optimizer_preferred_min_radius_m: 30.0
+    trajectory_optimizer_weight_radius_shortfall: 70.0
     trajectory_optimizer_weight_offset_change: 0.5
     trajectory_optimizer_weight_offset_second_change: 6.5
     trajectory_optimizer_weight_offset_slope: 100.0

@@ -78,11 +78,11 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_curvature,
                    300.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.trajectory_optimizer.weight_curvature_change, 180.0);
+      config.trajectory_planner.trajectory_optimizer.weight_curvature_change, 220.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.trajectory_optimizer.preferred_min_radius_m, 24.0);
+      config.trajectory_planner.trajectory_optimizer.preferred_min_radius_m, 30.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.trajectory_optimizer.weight_radius_shortfall, 40.0);
+      config.trajectory_planner.trajectory_optimizer.weight_radius_shortfall, 70.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.trajectory_optimizer.weight_offset_second_change, 6.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_offset_slope,
