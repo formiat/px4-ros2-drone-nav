@@ -197,7 +197,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_velocity_jerk_mps3 = std::clamp(
       node.declare_parameter<double>("max_velocity_jerk_mps3", 12.0), 0.0, 1000.0);
   config.velocity_follower.max_lateral_velocity_jerk_mps3 =
-      std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 22.0),
+      std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 18.0),
                  0.0, 1000.0);
   config.velocity_follower.lateral_smoothing_min_speed_mps =
       std::clamp(node.declare_parameter<double>("lateral_smoothing_min_speed_mps", 8.0),

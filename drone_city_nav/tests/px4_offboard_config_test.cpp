@@ -88,7 +88,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("curvature_feedforward_full_angle_deg: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_curvature_feedforward_angle_deg: 30.0"), std::string::npos);
   EXPECT_NE(yaml.find("max_velocity_jerk_mps3: 12.0"), std::string::npos);
-  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 22.0"), std::string::npos);
+  EXPECT_NE(yaml.find("max_lateral_velocity_jerk_mps3: 18.0"), std::string::npos);
   EXPECT_NE(yaml.find("lateral_smoothing_min_speed_mps: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("lateral_smoothing_full_speed_mps: 20.0"), std::string::npos);
   EXPECT_NE(yaml.find("lateral_smoothing_max_factor: 1.0"), std::string::npos);
