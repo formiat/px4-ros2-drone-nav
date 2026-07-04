@@ -59,6 +59,10 @@ add_library(
   src/trajectory.cpp
   src/trajectory_diagnostics.cpp
   src/trajectory_diagnostics_io.cpp
+  src/trajectory_diagnostics_io_csv.cpp
+  src/trajectory_diagnostics_io_json_fields.cpp
+  src/trajectory_diagnostics_io_json_summary.cpp
+  src/trajectory_diagnostics_io_parser.cpp
   src/trajectory_planner.cpp
   src/trajectory_refinement_scheduler.cpp
   src/trajectory_speed_planner.cpp
@@ -105,6 +109,12 @@ add_executable(
   src/planner_node_inputs.cpp
   src/planner_node_lifecycle.cpp
   src/planner_node_publish.cpp
+  src/planner_node_trajectory_publication.cpp
+  src/planner_node_refinement.cpp
+  src/planner_node_safety.cpp
+  src/planner_node_lidar_overlay.cpp
+  src/planner_node_debug_publication.cpp
+  src/planner_node_dumps.cpp
   src/planner_node_runtime.cpp)
 target_compile_features(planner_node PRIVATE cxx_std_20)
 target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters)
@@ -296,8 +306,11 @@ if(BUILD_TESTING)
   target_link_libraries(trajectory_diagnostics_test drone_city_nav_core)
   enable_project_warnings(trajectory_diagnostics_test)
 
-  ament_add_gtest(trajectory_diagnostics_io_test
-                  tests/trajectory_diagnostics_io_test.cpp)
+  ament_add_gtest(
+    trajectory_diagnostics_io_test
+    tests/trajectory_diagnostics_io_csv_test.cpp
+    tests/trajectory_diagnostics_io_json_fields_test.cpp
+    tests/trajectory_diagnostics_io_roundtrip_test.cpp)
   target_compile_features(trajectory_diagnostics_io_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_diagnostics_io_test drone_city_nav_core)
   enable_project_warnings(trajectory_diagnostics_io_test)
@@ -367,8 +380,12 @@ if(BUILD_TESTING)
   target_link_libraries(offboard_path_follower_test drone_city_nav_core)
   enable_project_warnings(offboard_path_follower_test)
 
-  ament_add_gtest(offboard_velocity_follower_test
-                  tests/offboard_velocity_follower_test.cpp)
+  ament_add_gtest(
+    offboard_velocity_follower_test
+    tests/offboard_velocity_follower_speed_profile_test.cpp
+    tests/offboard_velocity_follower_lateral_control_test.cpp
+    tests/offboard_velocity_follower_terminal_capture_test.cpp
+    tests/offboard_velocity_follower_invalid_input_test.cpp)
   target_compile_features(offboard_velocity_follower_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_velocity_follower_test drone_city_nav_core)
   enable_project_warnings(offboard_velocity_follower_test)
