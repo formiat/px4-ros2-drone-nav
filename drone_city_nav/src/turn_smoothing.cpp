@@ -392,6 +392,9 @@ struct SmoothingAttempt {
   const char* reject_detail{"none"};
   LocalTrajectoryMetrics before_metrics{};
   LocalTrajectoryMetrics after_metrics{};
+  std::size_t entry_index{0U};
+  std::size_t exit_index{0U};
+  std::size_t replacement_sample_count{0U};
   double applied_shift_m{0.0};
   double entry_distance_m{0.0};
   double exit_distance_m{0.0};
@@ -679,7 +682,8 @@ void replaceRangeInto(const std::span<const TrajectoryPointSample> samples,
 [[nodiscard]] LocalTrajectoryMetrics
 localTrajectoryMetrics(const std::span<const TrajectoryPointSample> samples,
                        const VelocityFollowerConfig& speed_config,
-                       TurnSmoothingStats* stats = nullptr) {
+                       TurnSmoothingStats* stats = nullptr,
+                       const bool include_speed_profile = false) {
   const auto metrics_started_at = std::chrono::steady_clock::now();
   LocalTrajectoryMetrics metrics{};
   if (samples.size() < 2U) {
@@ -708,14 +712,16 @@ localTrajectoryMetrics(const std::span<const TrajectoryPointSample> samples,
     metrics.min_radius_m = std::numeric_limits<double>::infinity();
   }
 
-  const auto speed_started_at = std::chrono::steady_clock::now();
-  const TraversalTimeEstimate time =
-      estimateTraversalTime(samples, speed_config, false);
-  if (stats != nullptr) {
-    stats->speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
+  if (include_speed_profile) {
+    const auto speed_started_at = std::chrono::steady_clock::now();
+    const TraversalTimeEstimate time =
+        estimateTraversalTime(samples, speed_config, false);
+    if (stats != nullptr) {
+      stats->speed_profile_duration_ms += elapsedMilliseconds(speed_started_at);
+    }
+    metrics.min_speed_limit_mps = time.min_speed_limit_mps;
+    metrics.estimated_time_s = time.estimated_time_s;
   }
-  metrics.min_speed_limit_mps = time.min_speed_limit_mps;
-  metrics.estimated_time_s = time.estimated_time_s;
   if (stats != nullptr) {
     stats->metrics_duration_ms += elapsedMilliseconds(metrics_started_at);
   }
@@ -905,6 +911,8 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   const std::size_t entry_index =
       findEntryIndex(samples, corner.index, entry_distance_m);
   const std::size_t exit_index = findExitIndex(samples, corner.index, exit_distance_m);
+  attempt.entry_index = entry_index;
+  attempt.exit_index = exit_index;
   if (entry_index >= corner.index || exit_index <= corner.index) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     attempt.reject_detail = "invalid_window";
@@ -916,6 +924,7 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   cachedBezierSamples(samples, corridor_samples, entry_index, corner.index, exit_index,
                       corner, config, outward_shift_scale, relaxed_angle_rad,
                       attempt.applied_shift_m, buffer, stats);
+  attempt.replacement_sample_count = buffer.replacement.size();
   if (buffer.replacement.size() < 3U) {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     attempt.reject_detail = "replacement_too_short";
@@ -967,6 +976,42 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   attempt.reject_detail = "none";
   attempt.accepted = true;
   return attempt;
+}
+
+void populateAttemptSpeedDiagnostics(
+    const std::span<const TrajectoryPointSample> before_samples,
+    SmoothingAttempt& attempt, const VelocityFollowerConfig& speed_config,
+    TurnSmoothingWorkBuffer& buffer, TurnSmoothingStats& stats) {
+  if (attempt.samples.empty() || before_samples.empty() ||
+      attempt.entry_index >= before_samples.size() ||
+      attempt.exit_index >= before_samples.size() ||
+      attempt.entry_index >= attempt.exit_index ||
+      attempt.replacement_sample_count < 2U) {
+    return;
+  }
+  sampleRangeInto(before_samples, attempt.entry_index, attempt.exit_index,
+                  buffer.before_local);
+  attempt.before_metrics =
+      localTrajectoryMetrics(buffer.before_local, speed_config, &stats, true);
+
+  const std::size_t after_end_index =
+      attempt.entry_index + attempt.replacement_sample_count - 1U;
+  if (after_end_index >= attempt.samples.size()) {
+    return;
+  }
+  sampleRangeInto(attempt.samples, attempt.entry_index, after_end_index,
+                  buffer.after_local);
+  attempt.after_metrics =
+      localTrajectoryMetrics(buffer.after_local, speed_config, &stats, true);
+  attempt.score = smoothingAttemptScore(attempt.after_metrics);
+}
+
+void updateCandidateSpeedDiagnostics(TurnSmoothingCandidateDiagnostic& diagnostic,
+                                     const SmoothingAttempt& attempt) noexcept {
+  diagnostic.min_speed_before_mps = attempt.before_metrics.min_speed_limit_mps;
+  diagnostic.min_speed_after_mps = attempt.after_metrics.min_speed_limit_mps;
+  diagnostic.local_time_before_s = attempt.before_metrics.estimated_time_s;
+  diagnostic.local_time_after_s = attempt.after_metrics.estimated_time_s;
 }
 
 [[nodiscard]] bool rejectReasonDominates(const SmoothingRejectReason candidate,
@@ -1216,11 +1261,16 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       break;
     }
 
+    populateAttemptSpeedDiagnostics(result.samples, *accepted_attempt, speed_config,
+                                    work_buffer, result.stats);
     if (selected_candidate_diagnostic_index.has_value() &&
         *selected_candidate_diagnostic_index <
             result.stats.candidate_diagnostics.size()) {
       result.stats.candidate_diagnostics[*selected_candidate_diagnostic_index]
           .decision = "selected";
+      updateCandidateSpeedDiagnostics(
+          result.stats.candidate_diagnostics[*selected_candidate_diagnostic_index],
+          *accepted_attempt);
     }
     result.stats.corner_diagnostics.push_back(
         cornerDiagnosticFromAttempt(*accepted_attempt, corner_s_m));
