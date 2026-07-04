@@ -265,10 +265,16 @@ cachedBeforeMetrics(std::span<const TrajectoryPointSample> samples,
 worstCorner(std::span<const TrajectoryPointSample> samples,
             const TurnSmoothingConfig& config,
             const VelocityFollowerConfig& speed_config, TurnSmoothingStats& stats);
+[[nodiscard]] std::vector<CornerCandidate> cornerCandidatesBySeverity(
+    std::span<const TrajectoryPointSample> samples, const TurnSmoothingConfig& config,
+    const VelocityFollowerConfig& speed_config, TurnSmoothingStats& stats);
 [[nodiscard]] const char*
 shapeImprovementRejectDetail(const TrajectoryShapeDiagnostics& before,
                              const TrajectoryShapeDiagnostics& after,
                              const TurnSmoothingConfig& config);
+[[nodiscard]] const char*
+globalShapeRegressionRejectDetail(const TrajectoryShapeDiagnostics& before,
+                                  const TrajectoryShapeDiagnostics& after);
 [[nodiscard]] SmoothingRejectReason
 candidateRegressionReason(const LocalTrajectoryMetrics& before,
                           const LocalTrajectoryMetrics& after) noexcept;

@@ -298,8 +298,15 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
   const TrajectoryShapeDiagnostics after_shape =
       computeTrajectoryShapeDiagnostics(buffer.candidate);
   stats.shape_diagnostics_duration_ms += elapsedMilliseconds(shape_started_at);
-  const char* const shape_reject_detail =
-      shapeImprovementRejectDetail(before_shape, after_shape, config);
+  const char* const global_regression_detail =
+      globalShapeRegressionRejectDetail(before_shape, after_shape);
+  if (std::string_view{global_regression_detail} != "none") {
+    attempt.reject_reason = SmoothingRejectReason::kNotImproved;
+    attempt.reject_detail = global_regression_detail;
+    return attempt;
+  }
+  const char* const shape_reject_detail = shapeImprovementRejectDetail(
+      attempt.before_metrics.shape, attempt.after_metrics.shape, config);
   if (std::string_view{shape_reject_detail} != "none") {
     attempt.reject_reason = SmoothingRejectReason::kNotImproved;
     attempt.reject_detail = shape_reject_detail;

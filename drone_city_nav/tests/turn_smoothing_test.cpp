@@ -217,6 +217,33 @@ TEST(TurnSmoothing, SmoothsModerateSpeedBottleneckCorner) {
   EXPECT_GT(result.stats.smoothed_corners, 0U);
 }
 
+TEST(TurnSmoothing, AcceptsLocalCornerImprovementWhenGlobalWorstRemains) {
+  const OccupancyGrid2D grid = openGrid();
+  const std::vector<Point2> points{
+      {0.0, 0.0}, {20.0, 0.0}, {20.0, 20.0}, {40.0, 20.0}, {40.0, 40.0}};
+  const std::vector<CorridorSample> corridor = manualWideCorridor(points);
+  const std::vector<TrajectoryPointSample> samples = samplesFromCorridor(corridor);
+  const TrajectoryShapeDiagnostics before = computeTrajectoryShapeDiagnostics(samples);
+  TurnSmoothingConfig config = smoothingConfig();
+  config.entry_distance_m = 15.0;
+  config.exit_distance_m = 15.0;
+  config.max_passes = 1U;
+
+  const TurnSmoothingResult result = smoothTrajectoryTurns(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      std::span<const CorridorSample>{corridor.data(), corridor.size()}, grid, config,
+      speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.changed);
+  EXPECT_EQ(result.stats.smoothed_corners, 1U);
+  EXPECT_GT(result.stats.detected_corners, 1U);
+  EXPECT_LE(result.stats.max_heading_delta_after_rad,
+            before.max_heading_delta_rad + 1.0e-9);
+  EXPECT_LT(result.stats.accepted_min_radius_before_m,
+            result.stats.accepted_min_radius_after_m);
+}
+
 TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
   OccupancyGrid2D grid = openGrid();
   const std::vector<CorridorSample> corridor = wideCornerCorridor(grid);

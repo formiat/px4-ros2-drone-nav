@@ -206,7 +206,24 @@ cachedBeforeMetrics(const std::span<const TrajectoryPointSample> samples,
 worstCorner(const std::span<const TrajectoryPointSample> samples,
             const TurnSmoothingConfig& config,
             const VelocityFollowerConfig& speed_config, TurnSmoothingStats& stats) {
-  std::optional<CornerCandidate> best;
+  const std::vector<CornerCandidate> candidates =
+      cornerCandidatesBySeverity(samples, config, speed_config, stats);
+  if (candidates.empty()) {
+    return std::nullopt;
+  }
+  return candidates.front();
+}
+
+[[nodiscard]] std::vector<CornerCandidate>
+cornerCandidatesBySeverity(const std::span<const TrajectoryPointSample> samples,
+                           const TurnSmoothingConfig& config,
+                           const VelocityFollowerConfig& speed_config,
+                           TurnSmoothingStats& stats) {
+  std::vector<CornerCandidate> candidates;
+  if (samples.size() < 3U) {
+    return candidates;
+  }
+  candidates.reserve(samples.size());
   for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
     const CornerCandidate candidate =
         cornerCandidateAt(samples, i, config, speed_config);
@@ -215,12 +232,16 @@ worstCorner(const std::span<const TrajectoryPointSample> samples,
     }
     ++stats.detected_corners;
     updateMinInnerMargin(stats, samples[i], candidate.turn_sign);
-    if (!best.has_value() ||
-        candidate.abs_heading_delta_rad > best->abs_heading_delta_rad) {
-      best = candidate;
-    }
+    candidates.push_back(candidate);
   }
-  return best;
+  std::ranges::sort(candidates,
+                    [](const CornerCandidate& lhs, const CornerCandidate& rhs) {
+                      if (lhs.abs_heading_delta_rad == rhs.abs_heading_delta_rad) {
+                        return lhs.index < rhs.index;
+                      }
+                      return lhs.abs_heading_delta_rad > rhs.abs_heading_delta_rad;
+                    });
+  return candidates;
 }
 
 [[nodiscard]] const char*
@@ -249,6 +270,25 @@ shapeImprovementRejectDetail(const TrajectoryShapeDiagnostics& before,
     return "none";
   }
   return "shape_not_improved";
+}
+
+[[nodiscard]] const char*
+globalShapeRegressionRejectDetail(const TrajectoryShapeDiagnostics& before,
+                                  const TrajectoryShapeDiagnostics& after) {
+  constexpr double kHeadingRegressionToleranceRad = std::numbers::pi / 180.0;
+  constexpr double kCurvatureJumpRegressionTolerance = 0.05;
+  constexpr double kCurvatureJumpRegressionFactor = 1.5;
+  if (after.max_heading_delta_rad >
+      before.max_heading_delta_rad + kHeadingRegressionToleranceRad) {
+    return "global_heading_delta_regression";
+  }
+  const double max_allowed_curvature_jump =
+      std::max(before.max_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
+               before.max_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
+  if (after.max_curvature_jump_1pm > max_allowed_curvature_jump) {
+    return "global_curvature_jump_regression";
+  }
+  return "none";
 }
 
 [[nodiscard]] SmoothingRejectReason
