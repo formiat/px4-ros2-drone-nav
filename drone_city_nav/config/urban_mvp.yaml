@@ -206,7 +206,7 @@ px4_offboard_node:
     curvature_feedforward_full_angle_deg: 8.0
     max_curvature_feedforward_angle_deg: 30.0
     max_velocity_jerk_mps3: 12.0
-    max_lateral_velocity_jerk_mps3: 18.0
+    max_lateral_velocity_jerk_mps3: 22.0
     lateral_smoothing_min_speed_mps: 8.0
     lateral_smoothing_full_speed_mps: 20.0
     lateral_smoothing_max_factor: 1.0
