@@ -79,6 +79,14 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(
           config.velocity_follower.cross_track_anti_overshoot_min_feedback_scale, 0.25,
           0.0, 1.0);
+  config.velocity_follower.cross_track_anti_overshoot_prediction_horizon_s =
+      boundedFiniteDouble(
+          config.velocity_follower.cross_track_anti_overshoot_prediction_horizon_s, 0.5,
+          0.0, 10.0);
+  config.velocity_follower.cross_track_anti_overshoot_max_damping_mps =
+      boundedFiniteDouble(
+          config.velocity_follower.cross_track_anti_overshoot_max_damping_mps, 3.0, 0.0,
+          100.0);
   config.velocity_follower.lateral_smoothing_min_speed_mps = boundedFiniteDouble(
       config.velocity_follower.lateral_smoothing_min_speed_mps, 8.0, 0.0, 1000.0);
   config.velocity_follower.lateral_smoothing_full_speed_mps = std::max(
@@ -168,6 +176,13 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       std::clamp(node.declare_parameter<double>(
                      "cross_track_anti_overshoot_min_feedback_scale", 0.25),
                  0.0, 1.0);
+  config.velocity_follower.cross_track_anti_overshoot_prediction_horizon_s =
+      std::clamp(node.declare_parameter<double>(
+                     "cross_track_anti_overshoot_prediction_horizon_s", 0.5),
+                 0.0, 10.0);
+  config.velocity_follower.cross_track_anti_overshoot_max_damping_mps = std::clamp(
+      node.declare_parameter<double>("cross_track_anti_overshoot_max_damping_mps", 3.0),
+      0.0, 100.0);
   config.velocity_follower.tracking_prediction_horizon_s = std::clamp(
       node.declare_parameter<double>("tracking_prediction_horizon_s", 0.45), 0.0, 2.0);
   config.velocity_follower.max_lateral_control_angle_rad =

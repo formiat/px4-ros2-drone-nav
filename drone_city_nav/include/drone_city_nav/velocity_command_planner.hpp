@@ -47,6 +47,11 @@ struct VelocityCommandPlan {
   double actual_cross_track_closing_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double actual_cross_track_closing_speed_limit_mps{
       std::numeric_limits<double>::quiet_NaN()};
+  double predicted_signed_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double cross_track_normal_velocity_excess_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  bool cross_track_overshoot_predicted{false};
+  bool cross_track_divergence_predicted{false};
   double cross_track_overshoot_damping_mps{0.0};
   double curvature_feedforward_mps{0.0};
   double curvature_feedforward_angle_rad{0.0};

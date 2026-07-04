@@ -862,6 +862,9 @@ void Px4OffboardNode::logControlSummary() {
       "control_tangent[smoothed=%s raw=(%.2f, %.2f) heading_span=%.1fdeg "
       "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "cross_track_lateral_velocity=%.2f "
+      "actual_cross_track[signed=%.2f normal=%.2f predicted=%.2f "
+      "excess=%.2f overshoot=%.2f overshoot_predicted=%s "
+      "divergence_predicted=%s] "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_factor=%.2f lateral_accel=%.2f] "
       "altitude_error=%.2f "
@@ -971,6 +974,13 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_plan_.control_tangent_smoothing_window_start_s_m,
       last_velocity_plan_.control_tangent_smoothing_window_end_s_m,
       last_velocity_plan_.cross_track_lateral_velocity_mps,
+      last_velocity_plan_.actual_signed_cross_track_error_m,
+      last_velocity_plan_.actual_cross_track_lateral_velocity_mps,
+      last_velocity_plan_.predicted_signed_cross_track_error_m,
+      last_velocity_plan_.cross_track_normal_velocity_excess_mps,
+      last_velocity_plan_.cross_track_overshoot_damping_mps,
+      last_velocity_plan_.cross_track_overshoot_predicted ? "true" : "false",
+      last_velocity_plan_.cross_track_divergence_predicted ? "true" : "false",
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",

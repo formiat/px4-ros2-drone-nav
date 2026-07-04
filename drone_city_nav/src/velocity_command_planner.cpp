@@ -14,6 +14,16 @@ struct VectorRateLimitResult {
   double delta{std::numeric_limits<double>::quiet_NaN()};
 };
 
+struct CrossTrackOvershootDampingResult {
+  Point2 velocity{};
+  double actual_closing_speed_mps{std::numeric_limits<double>::quiet_NaN()};
+  double closing_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double predicted_signed_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double normal_velocity_excess_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool overshoot_predicted{false};
+  bool divergence_predicted{false};
+};
+
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
@@ -188,48 +198,68 @@ adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
                     min_scale, 1.0);
 }
 
-[[nodiscard]] Point2 crossTrackOvershootDampingVelocity(
-    const VelocityCommandQuery& query, const VelocityFollowerConfig& config,
-    const double damping_gain, double& actual_closing_speed_mps,
-    double& closing_speed_limit_mps) noexcept {
-  actual_closing_speed_mps = std::numeric_limits<double>::quiet_NaN();
-  closing_speed_limit_mps = std::numeric_limits<double>::quiet_NaN();
+[[nodiscard]] CrossTrackOvershootDampingResult
+crossTrackOvershootDampingVelocity(const VelocityCommandQuery& query,
+                                   const VelocityFollowerConfig& config,
+                                   const double damping_gain) noexcept {
+  CrossTrackOvershootDampingResult result{};
   if (!std::isfinite(query.actual_signed_cross_track_error_m) ||
       !std::isfinite(query.actual_cross_track_lateral_velocity_mps) ||
       !(norm(query.actual_path_tangent) > kTinyDistanceM)) {
-    return Point2{};
+    return result;
   }
 
   const double signed_error_m = query.actual_signed_cross_track_error_m;
   if (!(std::abs(signed_error_m) > kTinyDistanceM)) {
-    return Point2{};
+    return result;
   }
 
   const double error_sign = signed_error_m > 0.0 ? 1.0 : -1.0;
-  actual_closing_speed_mps =
+  result.actual_closing_speed_mps =
       -error_sign * query.actual_cross_track_lateral_velocity_mps;
-  if (!(actual_closing_speed_mps > kTinyDistanceM)) {
-    return Point2{};
-  }
-
   const double target_time_s =
       sanitizedPositive(config.cross_track_anti_overshoot_time_s, 1.0, 1.0e-6, 1000.0);
-  closing_speed_limit_mps = std::abs(signed_error_m) / target_time_s;
-  if (!(actual_closing_speed_mps > closing_speed_limit_mps)) {
-    return Point2{};
+  result.closing_speed_limit_mps = std::abs(signed_error_m) / target_time_s;
+  const double prediction_horizon_s = sanitizedPositive(
+      config.cross_track_anti_overshoot_prediction_horizon_s, 0.5, 0.0, 10.0);
+  result.predicted_signed_error_m =
+      signed_error_m +
+      query.actual_cross_track_lateral_velocity_mps * prediction_horizon_s;
+  result.overshoot_predicted =
+      (signed_error_m > 0.0) != (result.predicted_signed_error_m > 0.0) &&
+      std::abs(result.predicted_signed_error_m) > kTinyDistanceM;
+  result.divergence_predicted = std::abs(result.predicted_signed_error_m) >
+                                std::abs(signed_error_m) + kTinyDistanceM;
+
+  const Point2 actual_left_normal =
+      normalized(Point2{-query.actual_path_tangent.y, query.actual_path_tangent.x});
+  if (!(norm(actual_left_normal) > kTinyDistanceM)) {
+    return result;
   }
 
-  const double excess_closing_speed_mps =
-      actual_closing_speed_mps - closing_speed_limit_mps;
-  const Point2 actual_left_normal{-query.actual_path_tangent.y,
-                                  query.actual_path_tangent.x};
-  const Point2 away_from_path = normalized(actual_left_normal * error_sign);
-  if (!(norm(away_from_path) > kTinyDistanceM)) {
-    return Point2{};
+  const double target_normal_velocity_mps = -signed_error_m / target_time_s;
+  result.normal_velocity_excess_mps =
+      query.actual_cross_track_lateral_velocity_mps - target_normal_velocity_mps;
+  const bool closing_too_fast =
+      result.actual_closing_speed_mps > result.closing_speed_limit_mps;
+  const bool excess_drives_across_path =
+      result.normal_velocity_excess_mps * error_sign < -kTinyDistanceM;
+  const bool should_damp =
+      (closing_too_fast || result.divergence_predicted ||
+       (result.overshoot_predicted && excess_drives_across_path)) &&
+      std::abs(result.normal_velocity_excess_mps) > kTinyDistanceM;
+  if (!should_damp) {
+    return result;
   }
 
   const double gain = sanitizedPositive(damping_gain, 0.0, 0.0, 100.0);
-  return away_from_path * (excess_closing_speed_mps * gain);
+  const double max_damping_mps = sanitizedPositive(
+      config.cross_track_anti_overshoot_max_damping_mps, 3.0, 0.0, 100.0);
+  const double damping_mps =
+      std::min(std::abs(result.normal_velocity_excess_mps) * gain, max_damping_mps);
+  const double damping_sign = result.normal_velocity_excess_mps > 0.0 ? -1.0 : 1.0;
+  result.velocity = actual_left_normal * (damping_sign * damping_mps);
+  return result;
 }
 
 } // namespace
@@ -283,20 +313,15 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
       query.projection, query.scalar_speed_mps, config,
       curvature_feedforward_raw_angle_rad, curvature_feedforward_angle_rad,
       curvature_feedforward_scale);
-  double actual_cross_track_closing_speed_mps =
-      std::numeric_limits<double>::quiet_NaN();
-  double actual_cross_track_closing_speed_limit_mps =
-      std::numeric_limits<double>::quiet_NaN();
   const double overshoot_damping_gain =
       std::max(plan.cross_track_derivative_gain_effective, cross_track_derivative_gain);
-  const Point2 cross_track_overshoot_damping = crossTrackOvershootDampingVelocity(
-      query, config, overshoot_damping_gain, actual_cross_track_closing_speed_mps,
-      actual_cross_track_closing_speed_limit_mps);
+  const CrossTrackOvershootDampingResult cross_track_overshoot_damping =
+      crossTrackOvershootDampingVelocity(query, config, overshoot_damping_gain);
   const double adaptive_lateral_response_factor =
       adaptiveLateralResponseFactor(query, config);
   const Point2 raw_lateral_control =
       cross_track_feedback + cross_track_derivative_damping +
-      cross_track_overshoot_damping + curvature_feedforward;
+      cross_track_overshoot_damping.velocity + curvature_feedforward;
 
   const Point2 bounded_lateral_control =
       boundedCorrectionByAngle(raw_lateral_control, query.scalar_speed_mps,
@@ -320,7 +345,7 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.desired_velocity_xy = desired_velocity;
   plan.cross_track_feedback_velocity = cross_track_feedback;
   plan.cross_track_derivative_damping_velocity = cross_track_derivative_damping;
-  plan.cross_track_overshoot_damping_velocity = cross_track_overshoot_damping;
+  plan.cross_track_overshoot_damping_velocity = cross_track_overshoot_damping.velocity;
   plan.curvature_feedforward_velocity = curvature_feedforward;
   plan.raw_lateral_control_velocity = raw_lateral_control;
   plan.lateral_control_velocity = lateral_control;
@@ -329,10 +354,19 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.actual_signed_cross_track_error_m = query.actual_signed_cross_track_error_m;
   plan.actual_cross_track_lateral_velocity_mps =
       query.actual_cross_track_lateral_velocity_mps;
-  plan.actual_cross_track_closing_speed_mps = actual_cross_track_closing_speed_mps;
+  plan.actual_cross_track_closing_speed_mps =
+      cross_track_overshoot_damping.actual_closing_speed_mps;
   plan.actual_cross_track_closing_speed_limit_mps =
-      actual_cross_track_closing_speed_limit_mps;
-  plan.cross_track_overshoot_damping_mps = norm(cross_track_overshoot_damping);
+      cross_track_overshoot_damping.closing_speed_limit_mps;
+  plan.predicted_signed_cross_track_error_m =
+      cross_track_overshoot_damping.predicted_signed_error_m;
+  plan.cross_track_normal_velocity_excess_mps =
+      cross_track_overshoot_damping.normal_velocity_excess_mps;
+  plan.cross_track_overshoot_predicted =
+      cross_track_overshoot_damping.overshoot_predicted;
+  plan.cross_track_divergence_predicted =
+      cross_track_overshoot_damping.divergence_predicted;
+  plan.cross_track_overshoot_damping_mps = norm(cross_track_overshoot_damping.velocity);
   plan.curvature_feedforward_mps = norm(curvature_feedforward);
   plan.curvature_feedforward_angle_rad = curvature_feedforward_angle_rad;
   plan.curvature_feedforward_raw_angle_rad = curvature_feedforward_raw_angle_rad;

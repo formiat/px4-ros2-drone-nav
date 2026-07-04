@@ -129,6 +129,8 @@ TEST(VelocityCommandPlanner, ActualCrossTrackOvershootAddsDamping) {
   config.cross_track_gain = 0.0;
   config.cross_track_derivative_gain = 1.0;
   config.cross_track_anti_overshoot_time_s = 1.0;
+  config.cross_track_anti_overshoot_prediction_horizon_s = 0.5;
+  config.cross_track_anti_overshoot_max_damping_mps = 3.0;
   config.max_lateral_control_angle_rad = 1.0;
 
   const VelocityCommandPlan closing_fast = planVelocityCommand(
@@ -159,8 +161,14 @@ TEST(VelocityCommandPlanner, ActualCrossTrackOvershootAddsDamping) {
   EXPECT_NEAR(closing_fast.actual_cross_track_closing_speed_mps, 4.0, 1.0e-9);
   EXPECT_NEAR(closing_fast.actual_cross_track_closing_speed_limit_mps, 2.0, 1.0e-9);
   EXPECT_NEAR(closing_fast.cross_track_overshoot_damping_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(closing_fast.predicted_signed_cross_track_error_m, 0.0, 1.0e-9);
+  EXPECT_NEAR(closing_fast.cross_track_normal_velocity_excess_mps, -2.0, 1.0e-9);
   EXPECT_GT(closing_fast.desired_velocity_normal_mps, 0.0);
-  EXPECT_NEAR(moving_away.cross_track_overshoot_damping_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(moving_away.predicted_signed_cross_track_error_m, 4.0, 1.0e-9);
+  EXPECT_NEAR(moving_away.cross_track_normal_velocity_excess_mps, 6.0, 1.0e-9);
+  EXPECT_TRUE(moving_away.cross_track_divergence_predicted);
+  EXPECT_NEAR(moving_away.cross_track_overshoot_damping_mps, 3.0, 1.0e-9);
+  EXPECT_LT(moving_away.desired_velocity_normal_mps, 0.0);
 }
 
 TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningFast) {

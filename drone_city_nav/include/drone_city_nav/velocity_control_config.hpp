@@ -17,6 +17,8 @@ struct VelocityFollowerConfig {
   double cross_track_derivative_gain{0.5};
   double cross_track_anti_overshoot_time_s{1.0};
   double cross_track_anti_overshoot_min_feedback_scale{0.25};
+  double cross_track_anti_overshoot_prediction_horizon_s{0.5};
+  double cross_track_anti_overshoot_max_damping_mps{3.0};
   double tracking_prediction_horizon_s{0.45};
   double max_lateral_control_angle_rad{0.9599310885968813};
   double max_lateral_control_rate_mps2{5.0};

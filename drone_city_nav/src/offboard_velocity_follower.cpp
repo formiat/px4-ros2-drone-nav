@@ -828,6 +828,12 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       command.actual_cross_track_closing_speed_mps;
   plan.actual_cross_track_closing_speed_limit_mps =
       command.actual_cross_track_closing_speed_limit_mps;
+  plan.predicted_signed_cross_track_error_m =
+      command.predicted_signed_cross_track_error_m;
+  plan.cross_track_normal_velocity_excess_mps =
+      command.cross_track_normal_velocity_excess_mps;
+  plan.cross_track_overshoot_predicted = command.cross_track_overshoot_predicted;
+  plan.cross_track_divergence_predicted = command.cross_track_divergence_predicted;
   plan.cross_track_overshoot_damping_mps = command.cross_track_overshoot_damping_mps;
   plan.curvature_feedforward_mps = command.curvature_feedforward_mps;
   plan.curvature_feedforward_angle_rad = command.curvature_feedforward_angle_rad;

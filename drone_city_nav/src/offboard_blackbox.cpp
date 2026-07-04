@@ -152,6 +152,16 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"actual_cross_track_closing_speed_limit_mps\":";
   writeBlackboxJsonNumberOrNull(
       stream, velocity_plan.actual_cross_track_closing_speed_limit_mps);
+  stream << ",\"predicted_signed_cross_track_error_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.predicted_signed_cross_track_error_m);
+  stream << ",\"cross_track_normal_velocity_excess_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.cross_track_normal_velocity_excess_mps);
+  stream << ",\"cross_track_overshoot_predicted\":";
+  writeBlackboxJsonBool(stream, velocity_plan.cross_track_overshoot_predicted);
+  stream << ",\"cross_track_divergence_predicted\":";
+  writeBlackboxJsonBool(stream, velocity_plan.cross_track_divergence_predicted);
   stream << ",\"control_tangent_smoothed\":";
   writeBlackboxJsonBool(stream, velocity_plan.control_tangent_smoothed);
   stream << ",\"control_tangent_raw_x\":";
