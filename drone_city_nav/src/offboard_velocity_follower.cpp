@@ -683,6 +683,16 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     return plan;
   }
 
+  const Point2 current_left_normal{-current_projection.tangent.y,
+                                   current_projection.tangent.x};
+  const Point2 current_relative = current_position - current_projection.point;
+  const double actual_signed_cross_track_error_m =
+      dot(current_relative, current_left_normal);
+  const double actual_cross_track_lateral_velocity_mps =
+      current_velocity_valid && finite2D(current_velocity)
+          ? dot(current_velocity, current_left_normal)
+          : std::numeric_limits<double>::quiet_NaN();
+
   const VelocityCommandPlan command = planVelocityCommand(
       VelocityCommandQuery{
           .projection = control_projection,
@@ -696,7 +706,11 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .previous_lateral_control_velocity_valid =
               previous_state.previous_lateral_control_velocity_valid,
           .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
-          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
+          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq),
+          .actual_signed_cross_track_error_m = actual_signed_cross_track_error_m,
+          .actual_cross_track_lateral_velocity_mps =
+              actual_cross_track_lateral_velocity_mps,
+          .actual_path_tangent = current_projection.tangent},
       config);
   if (!command.valid) {
     return plan;
@@ -760,6 +774,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.cross_track_feedback_velocity = command.cross_track_feedback_velocity;
   plan.cross_track_derivative_damping_velocity =
       command.cross_track_derivative_damping_velocity;
+  plan.cross_track_overshoot_damping_velocity =
+      command.cross_track_overshoot_damping_velocity;
   plan.curvature_feedforward_velocity = command.curvature_feedforward_velocity;
   plan.raw_lateral_control_velocity = command.raw_lateral_control_velocity;
   plan.lateral_control_velocity = command.lateral_control_velocity;
@@ -805,6 +821,14 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.cross_track_derivative_gain_effective =
       command.cross_track_derivative_gain_effective;
   plan.cross_track_lateral_velocity_mps = command.cross_track_lateral_velocity_mps;
+  plan.actual_signed_cross_track_error_m = command.actual_signed_cross_track_error_m;
+  plan.actual_cross_track_lateral_velocity_mps =
+      command.actual_cross_track_lateral_velocity_mps;
+  plan.actual_cross_track_closing_speed_mps =
+      command.actual_cross_track_closing_speed_mps;
+  plan.actual_cross_track_closing_speed_limit_mps =
+      command.actual_cross_track_closing_speed_limit_mps;
+  plan.cross_track_overshoot_damping_mps = command.cross_track_overshoot_damping_mps;
   plan.curvature_feedforward_mps = command.curvature_feedforward_mps;
   plan.curvature_feedforward_angle_rad = command.curvature_feedforward_angle_rad;
   plan.curvature_feedforward_raw_angle_rad =

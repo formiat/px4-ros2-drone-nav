@@ -116,6 +116,8 @@ void Px4OffboardNode::logTelemetry() {
       "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
       "velocity_delta=%.2f trajectory_cross_track=%.2f "
       "cross_track_lateral_velocity=%.2f "
+      "actual_cross_track[signed=%.2f normal=%.2f closing=%.2f limit=%.2f "
+      "overshoot=%.2f] "
       "control_tangent[smoothed=%s raw=(%.2f, %.2f) heading_span=%.1fdeg "
       "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "velocity_basis[current_tangent=%.2f current_normal=%.2f "
@@ -207,6 +209,11 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.velocity_delta_mps,
       last_velocity_plan_.trajectory_cross_track_error_m,
       last_velocity_plan_.cross_track_lateral_velocity_mps,
+      last_velocity_plan_.actual_signed_cross_track_error_m,
+      last_velocity_plan_.actual_cross_track_lateral_velocity_mps,
+      last_velocity_plan_.actual_cross_track_closing_speed_mps,
+      last_velocity_plan_.actual_cross_track_closing_speed_limit_mps,
+      last_velocity_plan_.cross_track_overshoot_damping_mps,
       last_velocity_plan_.control_tangent_smoothed ? "true" : "false",
       last_velocity_plan_.control_tangent_raw.x,
       last_velocity_plan_.control_tangent_raw.y,

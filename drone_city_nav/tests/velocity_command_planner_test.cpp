@@ -124,6 +124,45 @@ TEST(VelocityCommandPlanner, FeedbackIsReducedWhenAlreadyClosingCrossTrackFast) 
   EXPECT_NEAR(plan.cross_track_feedback_mps, 3.125, 1.0e-9);
 }
 
+TEST(VelocityCommandPlanner, ActualCrossTrackOvershootAddsDamping) {
+  VelocityFollowerConfig config = testConfig();
+  config.cross_track_gain = 0.0;
+  config.cross_track_derivative_gain = 1.0;
+  config.cross_track_anti_overshoot_time_s = 1.0;
+  config.max_lateral_control_angle_rad = 1.0;
+
+  const VelocityCommandPlan closing_fast = planVelocityCommand(
+      VelocityCommandQuery{.projection = projectionOnXAxis(),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1,
+                           .actual_signed_cross_track_error_m = 2.0,
+                           .actual_cross_track_lateral_velocity_mps = -4.0,
+                           .actual_path_tangent = Point2{1.0, 0.0}},
+      config);
+  const VelocityCommandPlan moving_away = planVelocityCommand(
+      VelocityCommandQuery{.projection = projectionOnXAxis(),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1,
+                           .actual_signed_cross_track_error_m = 2.0,
+                           .actual_cross_track_lateral_velocity_mps = 4.0,
+                           .actual_path_tangent = Point2{1.0, 0.0}},
+      config);
+
+  ASSERT_TRUE(closing_fast.valid);
+  ASSERT_TRUE(moving_away.valid);
+  EXPECT_NEAR(closing_fast.actual_cross_track_closing_speed_mps, 4.0, 1.0e-9);
+  EXPECT_NEAR(closing_fast.actual_cross_track_closing_speed_limit_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(closing_fast.cross_track_overshoot_damping_mps, 2.0, 1.0e-9);
+  EXPECT_GT(closing_fast.desired_velocity_normal_mps, 0.0);
+  EXPECT_NEAR(moving_away.cross_track_overshoot_damping_mps, 0.0, 1.0e-9);
+}
+
 TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningFast) {
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 1.0;

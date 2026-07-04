@@ -80,6 +80,12 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.control_tangent_smoothing_window_end_s_m = 30.0;
   record.velocity_plan.cross_track_derivative_damping_factor = 1.25;
   record.velocity_plan.cross_track_derivative_gain_effective = 0.75;
+  record.velocity_plan.cross_track_overshoot_damping_velocity = Point2{0.4, -0.2};
+  record.velocity_plan.cross_track_overshoot_damping_mps = 0.45;
+  record.velocity_plan.actual_signed_cross_track_error_m = 2.25;
+  record.velocity_plan.actual_cross_track_lateral_velocity_mps = -3.5;
+  record.velocity_plan.actual_cross_track_closing_speed_mps = 3.5;
+  record.velocity_plan.actual_cross_track_closing_speed_limit_mps = 2.25;
   record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
   record.velocity_plan.curvature_feedforward_scale = 0.5;
   record.velocity_plan.adaptive_lateral_response_factor = 2.5;
@@ -361,6 +367,13 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"control_tangent_smoothing_window_end_s_m\":30");
   expectJsonField(json, "\"cross_track_derivative_damping_factor\":1.25");
   expectJsonField(json, "\"cross_track_derivative_gain_effective\":0.75");
+  expectJsonField(json, "\"cross_track_overshoot_damping_x\":0.4");
+  expectJsonField(json, "\"cross_track_overshoot_damping_y\":-0.2");
+  expectJsonField(json, "\"cross_track_overshoot_damping_mps\":0.45");
+  expectJsonField(json, "\"actual_signed_cross_track_error_m\":2.25");
+  expectJsonField(json, "\"actual_cross_track_lateral_velocity_mps\":-3.5");
+  expectJsonField(json, "\"actual_cross_track_closing_speed_mps\":3.5");
+  expectJsonField(json, "\"actual_cross_track_closing_speed_limit_mps\":2.25");
   expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");
   expectJsonField(json, "\"curvature_feedforward_scale\":0.5");
   expectJsonField(json, "\"adaptive_lateral_response_factor\":2.5");
