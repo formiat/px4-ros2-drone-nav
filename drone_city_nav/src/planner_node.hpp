@@ -100,7 +100,6 @@ private:
     std::uint64_t baseline_path_id{0U};
     Point2 route_start{};
     Point2 goal{};
-    double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
     double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
     std::vector<Point2> route_points;
     std::string source_label;
@@ -112,7 +111,6 @@ private:
     std::uint64_t baseline_path_id{0U};
     Point2 route_start{};
     Point2 goal{};
-    double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
     double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
     std::vector<Point2> route_points;
     std::string source_label;

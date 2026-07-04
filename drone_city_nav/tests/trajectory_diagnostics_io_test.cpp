@@ -207,7 +207,6 @@ void expectContainsAll(const std::string& text,
   stats.turn_smoothing.rejected_not_improved = 0U;
   stats.turn_smoothing.rejected_curvature_regression = 2U;
   stats.turn_smoothing.rejected_radius_regression = 3U;
-  stats.turn_smoothing.rejected_speed_regression = 4U;
   stats.turn_smoothing.max_heading_delta_before_rad = 1.2;
   stats.turn_smoothing.max_heading_delta_after_rad = 0.4;
   stats.turn_smoothing.max_curvature_jump_before_1pm = 0.5;
@@ -906,7 +905,6 @@ TEST(TrajectoryDiagnosticsIo, TurnSmoothingJsonFragmentContainsBlackboxRequiredK
                                   "\"turn_smoothing_rejected_not_improved\"",
                                   "\"turn_smoothing_rejected_curvature_regression\"",
                                   "\"turn_smoothing_rejected_radius_regression\"",
-                                  "\"turn_smoothing_rejected_speed_regression\"",
                                   "\"turn_smoothing_heading_delta_before_rad\"",
                                   "\"turn_smoothing_heading_delta_after_rad\"",
                                   "\"turn_smoothing_curvature_jump_before_1pm\"",
@@ -1325,7 +1323,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.turn_smoothing.smoothed_corners, 1U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.rejected_curvature_regression, 2U);
   EXPECT_EQ(parsed_value.stats.turn_smoothing.rejected_radius_regression, 3U);
-  EXPECT_EQ(parsed_value.stats.turn_smoothing.rejected_speed_regression, 4U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_before_rad, 1.2);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.max_heading_delta_after_rad, 0.4);
   EXPECT_DOUBLE_EQ(parsed_value.stats.turn_smoothing.min_inner_margin_m, 2.25);

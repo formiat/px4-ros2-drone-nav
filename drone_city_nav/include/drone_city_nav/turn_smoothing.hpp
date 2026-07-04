@@ -95,7 +95,6 @@ struct TurnSmoothingStats {
   std::size_t rejected_not_improved{0U};
   std::size_t rejected_curvature_regression{0U};
   std::size_t rejected_radius_regression{0U};
-  std::size_t rejected_speed_regression{0U};
   double max_heading_delta_before_rad{0.0};
   double max_heading_delta_after_rad{0.0};
   double max_curvature_jump_before_1pm{0.0};

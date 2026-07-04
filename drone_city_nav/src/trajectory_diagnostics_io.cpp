@@ -686,8 +686,6 @@ std::string turnSmoothingDiagnosticsJsonFields(const TrajectoryPlannerStats& sta
                  stats.turn_smoothing.rejected_curvature_regression);
   appendJsonSize(stream, "turn_smoothing_rejected_radius_regression",
                  stats.turn_smoothing.rejected_radius_regression);
-  appendJsonSize(stream, "turn_smoothing_rejected_speed_regression",
-                 stats.turn_smoothing.rejected_speed_regression);
   appendJsonNumber(stream, "turn_smoothing_heading_delta_before_rad",
                    stats.turn_smoothing.max_heading_delta_before_rad);
   appendJsonNumber(stream, "turn_smoothing_heading_delta_after_rad",
@@ -1418,8 +1416,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 turn_smoothing.rejected_curvature_regression);
   parseJsonSize(json, "turn_smoothing_rejected_radius_regression",
                 turn_smoothing.rejected_radius_regression);
-  parseJsonSize(json, "turn_smoothing_rejected_speed_regression",
-                turn_smoothing.rejected_speed_regression);
   parseJsonDouble(json, "turn_smoothing_heading_delta_before_rad",
                   turn_smoothing.max_heading_delta_before_rad);
   parseJsonDouble(json, "turn_smoothing_heading_delta_after_rad",

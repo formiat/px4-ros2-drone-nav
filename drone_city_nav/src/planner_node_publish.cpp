@@ -389,7 +389,7 @@ bool PlannerNode::publishTrajectoryResult(
       "metrics=%.1fms shape=%.1fms speed=%.1fms) "
       "smoothed=%zu "
       "rejected(prohibited=%zu corridor=%zu not_improved=%zu "
-      "curvature=%zu radius=%zu speed=%zu) "
+      "curvature=%zu radius=%zu) "
       "heading_before=%.1fdeg heading_after=%.1fdeg "
       "curvature_jump_before=%.3f curvature_jump_after=%.3f "
       "min_inner_margin=%.2f max_outer_shift=%.2f "
@@ -635,7 +635,6 @@ bool PlannerNode::publishTrajectoryResult(
       trajectory_result.stats.turn_smoothing.rejected_not_improved,
       trajectory_result.stats.turn_smoothing.rejected_curvature_regression,
       trajectory_result.stats.turn_smoothing.rejected_radius_regression,
-      trajectory_result.stats.turn_smoothing.rejected_speed_regression,
       radiansToDegrees(
           trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
       radiansToDegrees(
@@ -731,7 +730,6 @@ void PlannerNode::startAsyncTrajectoryRefinement(
       .baseline_path_id = baseline_path_id,
       .route_start = route_points.front(),
       .goal = route_points.back(),
-      .baseline_estimated_time_s = baseline.stats.trajectory_optimizer.estimated_time_s,
       .baseline_length_m = baseline.stats.length_m,
       .route_points = std::vector<Point2>{route_points.begin(), route_points.end()},
       .source_label = source_label,
@@ -798,7 +796,6 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
   pending.baseline_path_id = request.baseline_path_id;
   pending.route_start = request.route_start;
   pending.goal = request.goal;
-  pending.baseline_estimated_time_s = request.baseline_estimated_time_s;
   pending.baseline_length_m = request.baseline_length_m;
   pending.route_points = std::move(request.route_points);
   pending.source_label = std::move(request.source_label);
@@ -806,13 +803,11 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
   pending_refinement_ = std::move(pending);
   RCLCPP_INFO(get_logger(),
               "%s refined trajectory async build started: generation=%" PRIu64
-              " baseline_path_id=%" PRIu64
-              " route_points=%zu baseline_time=%.2fs baseline_length=%.2fm "
+              " baseline_path_id=%" PRIu64 " route_points=%zu baseline_length=%.2fm "
               "clearance_snapshot=%s corridor_samples=%zu",
               pending_refinement_->source_label.c_str(),
               pending_refinement_->generation, pending_refinement_->baseline_path_id,
               pending_refinement_->route_points.size(),
-              pending_refinement_->baseline_estimated_time_s,
               pending_refinement_->baseline_length_m,
               clearance_snapshot_available ? "true" : "false", corridor_sample_count);
 }
@@ -895,40 +890,36 @@ bool PlannerNode::pollPendingTrajectoryRefinement(
           .expected_start = pending.route_start,
           .expected_goal = pending.goal,
           .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
-          .max_time_regression_s = 0.5,
-          .baseline_estimated_time_s = pending.baseline_estimated_time_s,
           .refined = &refined,
           .refined_points =
               std::span<const Point2>{refined_points.data(), refined_points.size()},
           .validation_grid = &validation_grid,
       });
   if (!decision.accepted) {
-    RCLCPP_WARN(
-        get_logger(),
-        "%s refined trajectory rejected: reason=%.*s generation=%" PRIu64
-        " current_generation=%" PRIu64 " baseline_path_id=%" PRIu64
-        " route_points=%zu refined_points=%zu baseline_time=%.2fs refined_time=%.2fs "
-        "baseline_length=%.2fm refined_length=%.2fm",
-        pending.source_label.c_str(),
-        static_cast<int>(refinementDecisionReasonName(decision.reason).size()),
-        refinementDecisionReasonName(decision.reason).data(), pending.generation,
-        trajectory_generation_, pending.baseline_path_id, pending.route_points.size(),
-        refined_points.size(), pending.baseline_estimated_time_s,
-        refined.stats.trajectory_optimizer.estimated_time_s, pending.baseline_length_m,
-        refined.stats.length_m);
+    RCLCPP_WARN(get_logger(),
+                "%s refined trajectory rejected: reason=%.*s generation=%" PRIu64
+                " current_generation=%" PRIu64 " baseline_path_id=%" PRIu64
+                " route_points=%zu refined_points=%zu refined_time=%.2fs "
+                "baseline_length=%.2fm refined_length=%.2fm",
+                pending.source_label.c_str(),
+                static_cast<int>(refinementDecisionReasonName(decision.reason).size()),
+                refinementDecisionReasonName(decision.reason).data(),
+                pending.generation, trajectory_generation_, pending.baseline_path_id,
+                pending.route_points.size(), refined_points.size(),
+                refined.stats.trajectory_optimizer.estimated_time_s,
+                pending.baseline_length_m, refined.stats.length_m);
     launchQueuedTrajectoryRefinement(queued_job);
     return false;
   }
 
-  RCLCPP_INFO(
-      get_logger(),
-      "%s refined trajectory accepted: generation=%" PRIu64 " baseline_path_id=%" PRIu64
-      " refined_points=%zu baseline_time=%.2fs refined_time=%.2fs "
-      "baseline_length=%.2fm refined_length=%.2fm",
-      pending.source_label.c_str(), pending.generation, pending.baseline_path_id,
-      refined_points.size(), pending.baseline_estimated_time_s,
-      refined.stats.trajectory_optimizer.estimated_time_s, pending.baseline_length_m,
-      refined.stats.length_m);
+  RCLCPP_INFO(get_logger(),
+              "%s refined trajectory accepted: generation=%" PRIu64
+              " baseline_path_id=%" PRIu64 " refined_points=%zu refined_time=%.2fs "
+              "baseline_length=%.2fm refined_length=%.2fm",
+              pending.source_label.c_str(), pending.generation,
+              pending.baseline_path_id, refined_points.size(),
+              refined.stats.trajectory_optimizer.estimated_time_s,
+              pending.baseline_length_m, refined.stats.length_m);
   const bool published = publishTrajectoryResult(
       validation_grid, refined, pending.route_points, pending.source_label.c_str(),
       refined.stats.total_duration_ms);

@@ -409,7 +409,6 @@ TEST(TrajectoryPlanner, RejectsStaleRefinedTrajectory) {
           .expected_start = refined_points.front(),
           .expected_goal = refined_points.back(),
           .endpoint_tolerance_m = 0.5,
-          .baseline_estimated_time_s = std::numeric_limits<double>::quiet_NaN(),
           .refined = &refined,
           .refined_points =
               std::span<const Point2>{refined_points.data(), refined_points.size()},
@@ -433,7 +432,6 @@ TEST(TrajectoryPlanner, RejectsInvalidRefinedTrajectory) {
           .expected_start = refined_points.front(),
           .expected_goal = refined_points.back(),
           .endpoint_tolerance_m = 0.5,
-          .baseline_estimated_time_s = std::numeric_limits<double>::quiet_NaN(),
           .refined = &refined,
           .refined_points =
               std::span<const Point2>{refined_points.data(), refined_points.size()},
@@ -470,9 +468,6 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
           .expected_start = route.front(),
           .expected_goal = route.back(),
           .endpoint_tolerance_m = 0.5,
-          .max_time_regression_s = 3600.0,
-          .baseline_estimated_time_s =
-              baseline.stats.trajectory_optimizer.estimated_time_s,
           .refined = &refined,
           .refined_points =
               std::span<const Point2>{refined_points.data(), refined_points.size()},

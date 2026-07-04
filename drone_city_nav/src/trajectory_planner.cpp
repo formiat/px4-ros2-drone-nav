@@ -437,8 +437,6 @@ refinementDecisionReasonName(const TrajectoryRefinementDecisionReason reason) no
       return "endpoint_mismatch";
     case TrajectoryRefinementDecisionReason::kNonTraversable:
       return "non_traversable";
-    case TrajectoryRefinementDecisionReason::kQualityRegression:
-      return "quality_regression";
   }
   return "unknown";
 }
@@ -657,17 +655,6 @@ evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input) {
     return TrajectoryRefinementDecision{
         .accepted = false,
         .reason = TrajectoryRefinementDecisionReason::kNonTraversable,
-    };
-  }
-
-  const double refined_time =
-      input.refined->stats.trajectory_optimizer.estimated_time_s;
-  if (std::isfinite(input.baseline_estimated_time_s) && std::isfinite(refined_time) &&
-      refined_time > input.baseline_estimated_time_s +
-                         std::max(0.0, input.max_time_regression_s)) {
-    return TrajectoryRefinementDecision{
-        .accepted = false,
-        .reason = TrajectoryRefinementDecisionReason::kQualityRegression,
     };
   }
 

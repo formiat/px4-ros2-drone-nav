@@ -374,7 +374,6 @@ enum class SmoothingRejectReason : std::uint8_t {
   kNotImproved,
   kCurvatureRegression,
   kRadiusRegression,
-  kSpeedRegression,
 };
 
 struct LocalTrajectoryMetrics {
@@ -792,12 +791,12 @@ void cachedBezierSamples(const std::span<const TrajectoryPointSample> samples,
 }
 
 [[nodiscard]] double smoothingAttemptScore(const LocalTrajectoryMetrics& metrics) {
-  if (!metrics.valid || !std::isfinite(metrics.estimated_time_s)) {
+  if (!metrics.valid) {
     return std::numeric_limits<double>::infinity();
   }
   constexpr double kCurvatureWeight = 5.0;
   constexpr double kCurvatureJumpWeight = 2.0;
-  return metrics.estimated_time_s + kCurvatureWeight * metrics.max_abs_curvature_1pm +
+  return kCurvatureWeight * metrics.max_abs_curvature_1pm +
          kCurvatureJumpWeight * metrics.shape.max_curvature_jump_1pm;
 }
 
@@ -856,7 +855,6 @@ candidateRegressionReason(const LocalTrajectoryMetrics& before,
   constexpr double kCurvatureRegressionTolerance = 0.05;
   constexpr double kCurvatureRegressionFactor = 1.5;
   constexpr double kRadiusToleranceM = 0.25;
-  constexpr double kSpeedToleranceMps = 0.1;
   if (!before.valid || !after.valid) {
     return SmoothingRejectReason::kNotImproved;
   }
@@ -871,11 +869,6 @@ candidateRegressionReason(const LocalTrajectoryMetrics& before,
       after.min_radius_m + kRadiusToleranceM < before.min_radius_m) {
     return SmoothingRejectReason::kRadiusRegression;
   }
-  if (std::isfinite(before.min_speed_limit_mps) &&
-      std::isfinite(after.min_speed_limit_mps) &&
-      after.min_speed_limit_mps + kSpeedToleranceMps < before.min_speed_limit_mps) {
-    return SmoothingRejectReason::kSpeedRegression;
-  }
   return SmoothingRejectReason::kNone;
 }
 
@@ -886,8 +879,6 @@ regressionRejectDetail(const SmoothingRejectReason reason) noexcept {
       return "curvature_jump_regression";
     case SmoothingRejectReason::kRadiusRegression:
       return "radius_regression";
-    case SmoothingRejectReason::kSpeedRegression:
-      return "speed_limit_regression";
     case SmoothingRejectReason::kNotImproved:
       return "local_metrics_invalid";
     case SmoothingRejectReason::kNone:
@@ -988,8 +979,6 @@ trySmoothCorner(const std::span<const TrajectoryPointSample> samples,
         return 5;
       case SmoothingRejectReason::kRadiusRegression:
         return 4;
-      case SmoothingRejectReason::kSpeedRegression:
-        return 3;
       case SmoothingRejectReason::kNotImproved:
         return 1;
       case SmoothingRejectReason::kNone:
@@ -1013,8 +1002,6 @@ rejectReasonName(const SmoothingRejectReason reason) noexcept {
       return "curvature_regression";
     case SmoothingRejectReason::kRadiusRegression:
       return "radius_regression";
-    case SmoothingRejectReason::kSpeedRegression:
-      return "speed_regression";
   }
   return "unknown";
 }
@@ -1097,9 +1084,6 @@ void incrementRejectStat(TurnSmoothingStats& stats,
       break;
     case SmoothingRejectReason::kRadiusRegression:
       ++stats.rejected_radius_regression;
-      break;
-    case SmoothingRejectReason::kSpeedRegression:
-      ++stats.rejected_speed_regression;
       break;
     case SmoothingRejectReason::kNone:
       break;

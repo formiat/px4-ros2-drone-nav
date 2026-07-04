@@ -96,7 +96,6 @@ enum class TrajectoryRefinementDecisionReason {
   kInvalidRefined,
   kEndpointMismatch,
   kNonTraversable,
-  kQualityRegression,
 };
 
 struct TrajectoryRefinementDecisionInput {
@@ -105,8 +104,6 @@ struct TrajectoryRefinementDecisionInput {
   Point2 expected_start{};
   Point2 expected_goal{};
   double endpoint_tolerance_m{0.0};
-  double max_time_regression_s{0.0};
-  double baseline_estimated_time_s{std::numeric_limits<double>::quiet_NaN()};
   const TrajectoryPlannerResult* refined{nullptr};
   std::span<const Point2> refined_points;
   const OccupancyGrid2D* validation_grid{nullptr};
