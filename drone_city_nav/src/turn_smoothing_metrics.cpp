@@ -2,6 +2,19 @@
 
 namespace drone_city_nav::turn_smoothing_detail {
 
+namespace {
+
+constexpr double kCurvatureJumpRegressionTolerance = 0.02;
+constexpr double kCurvatureJumpRegressionFactor = 1.3;
+
+[[nodiscard]] double
+maxAllowedCurvatureJumpAfter(const double before_curvature_jump_1pm) noexcept {
+  return std::max(before_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
+                  before_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
+}
+
+} // namespace
+
 [[nodiscard]] bool segmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
                                         const Point2 end) {
   const std::optional<GridIndex> start_cell = grid.worldToCell(start);
@@ -197,7 +210,7 @@ cachedBeforeMetrics(const std::span<const TrajectoryPointSample> samples,
     return std::numeric_limits<double>::infinity();
   }
   constexpr double kCurvatureWeight = 5.0;
-  constexpr double kCurvatureJumpWeight = 2.0;
+  constexpr double kCurvatureJumpWeight = 10.0;
   return kCurvatureWeight * metrics.max_abs_curvature_1pm +
          kCurvatureJumpWeight * metrics.shape.max_curvature_jump_1pm;
 }
@@ -251,11 +264,8 @@ shapeImprovementRejectDetail(const TrajectoryShapeDiagnostics& before,
   const double min_improvement = sanitizedPositive(config.min_heading_improvement_rad,
                                                    0.05, 0.0, std::numbers::pi);
   constexpr double kMaxAcceptedHeadingDeltaRad = std::numbers::pi / 3.0;
-  constexpr double kCurvatureJumpRegressionTolerance = 0.05;
-  constexpr double kCurvatureJumpRegressionFactor = 1.5;
   const double max_allowed_curvature_jump =
-      std::max(before.max_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
-               before.max_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
+      maxAllowedCurvatureJumpAfter(before.max_curvature_jump_1pm);
   if (after.max_heading_delta_rad > kMaxAcceptedHeadingDeltaRad) {
     return "heading_delta_too_high";
   }
@@ -276,15 +286,12 @@ shapeImprovementRejectDetail(const TrajectoryShapeDiagnostics& before,
 globalShapeRegressionRejectDetail(const TrajectoryShapeDiagnostics& before,
                                   const TrajectoryShapeDiagnostics& after) {
   constexpr double kHeadingRegressionToleranceRad = std::numbers::pi / 180.0;
-  constexpr double kCurvatureJumpRegressionTolerance = 0.05;
-  constexpr double kCurvatureJumpRegressionFactor = 1.5;
   if (after.max_heading_delta_rad >
       before.max_heading_delta_rad + kHeadingRegressionToleranceRad) {
     return "global_heading_delta_regression";
   }
   const double max_allowed_curvature_jump =
-      std::max(before.max_curvature_jump_1pm + kCurvatureJumpRegressionTolerance,
-               before.max_curvature_jump_1pm * kCurvatureJumpRegressionFactor);
+      maxAllowedCurvatureJumpAfter(before.max_curvature_jump_1pm);
   if (after.max_curvature_jump_1pm > max_allowed_curvature_jump) {
     return "global_curvature_jump_regression";
   }
@@ -294,16 +301,13 @@ globalShapeRegressionRejectDetail(const TrajectoryShapeDiagnostics& before,
 [[nodiscard]] SmoothingRejectReason
 candidateRegressionReason(const LocalTrajectoryMetrics& before,
                           const LocalTrajectoryMetrics& after) noexcept {
-  constexpr double kCurvatureRegressionTolerance = 0.05;
-  constexpr double kCurvatureRegressionFactor = 1.5;
   constexpr double kRadiusToleranceM = 0.25;
   if (!before.valid || !after.valid) {
     return SmoothingRejectReason::kNotImproved;
   }
 
   const double max_allowed_curvature_jump =
-      std::max(before.shape.max_curvature_jump_1pm + kCurvatureRegressionTolerance,
-               before.shape.max_curvature_jump_1pm * kCurvatureRegressionFactor);
+      maxAllowedCurvatureJumpAfter(before.shape.max_curvature_jump_1pm);
   if (after.shape.max_curvature_jump_1pm > max_allowed_curvature_jump) {
     return SmoothingRejectReason::kCurvatureRegression;
   }

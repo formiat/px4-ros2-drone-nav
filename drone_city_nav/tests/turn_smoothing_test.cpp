@@ -112,8 +112,8 @@ manualWideCorridor(const std::vector<Point2>& points) {
 
 [[nodiscard]] double
 maxAcceptedCurvatureJumpAfter(const TrajectoryShapeDiagnostics& before) {
-  return std::max(before.max_curvature_jump_1pm + 0.05,
-                  before.max_curvature_jump_1pm * 1.5);
+  return std::max(before.max_curvature_jump_1pm + 0.02,
+                  before.max_curvature_jump_1pm * 1.3);
 }
 
 [[nodiscard]] VelocityFollowerConfig speedConfig() {
