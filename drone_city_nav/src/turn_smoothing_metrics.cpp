@@ -4,8 +4,8 @@ namespace drone_city_nav::turn_smoothing_detail {
 
 namespace {
 
-constexpr double kCurvatureJumpRegressionTolerance = 0.02;
-constexpr double kCurvatureJumpRegressionFactor = 1.3;
+constexpr double kCurvatureJumpRegressionTolerance = 0.035;
+constexpr double kCurvatureJumpRegressionFactor = 1.4;
 
 [[nodiscard]] double
 maxAllowedCurvatureJumpAfter(const double before_curvature_jump_1pm) noexcept {

@@ -4,6 +4,36 @@ namespace drone_city_nav {
 
 using namespace turn_smoothing_detail;
 
+namespace {
+
+constexpr std::size_t kMaxCandidateAttemptsPerCorner = 192U;
+
+[[nodiscard]] bool
+smoothingAttemptIsGoodEnough(const SmoothingAttempt& attempt,
+                             const TurnSmoothingConfig& config) noexcept {
+  if (!attempt.accepted || !attempt.before_metrics.valid ||
+      !attempt.after_metrics.valid) {
+    return false;
+  }
+  const double min_improvement = sanitizedPositive(config.min_heading_improvement_rad,
+                                                   0.05, 0.0, std::numbers::pi);
+  const double before_heading = attempt.before_metrics.shape.max_heading_delta_rad;
+  const double after_heading = attempt.after_metrics.shape.max_heading_delta_rad;
+  const bool heading_substantially_better =
+      after_heading + min_improvement < before_heading &&
+      after_heading <= std::max(0.05, before_heading * 0.35);
+  const bool radius_not_worse =
+      !std::isfinite(attempt.before_metrics.min_radius_m) ||
+      !std::isfinite(attempt.after_metrics.min_radius_m) ||
+      attempt.after_metrics.min_radius_m + 0.25 >= attempt.before_metrics.min_radius_m;
+  const bool curvature_jump_not_worse =
+      attempt.after_metrics.shape.max_curvature_jump_1pm <=
+      attempt.before_metrics.shape.max_curvature_jump_1pm + 1.0e-9;
+  return heading_substantially_better && radius_not_worse && curvature_jump_not_worse;
+}
+
+} // namespace
+
 TurnSmoothingResult
 smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
                       const std::span<const CorridorSample> corridor_samples,
@@ -64,6 +94,7 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       const std::vector<double> entry_candidates =
           distanceFallbackCandidates(entry_distance);
       constexpr std::array<double, 4U> kShiftScales = {1.0, 0.5, 0.25, 0.0};
+      std::size_t corner_candidate_attempts = 0U;
       SmoothingRejectReason dominant_reject_reason = SmoothingRejectReason::kNone;
       std::optional<SmoothingAttempt> rejected_attempt;
       const double corner_s_m = corner.index < result.samples.size()
@@ -78,13 +109,14 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
       const auto consider_attempt = [&](SmoothingAttempt&& attempt,
                                         const std::size_t diagnostic_index) {
         if (attempt.accepted) {
+          const bool good_enough = smoothingAttemptIsGoodEnough(attempt, config);
           if (!has_accepted_attempt || attempt.score < accepted_attempt.score) {
             accepted_attempt = std::move(attempt);
             selected_candidate_diagnostic_index = diagnostic_index;
             has_selected_candidate_diagnostic_index = true;
             has_accepted_attempt = true;
           }
-          return;
+          return good_enough;
         }
         if (rejectReasonDominates(attempt.reject_reason, dominant_reject_reason)) {
           dominant_reject_reason = attempt.reject_reason;
@@ -93,33 +125,61 @@ smoothTrajectoryTurns(const std::span<const TrajectoryPointSample> samples,
             (std::isfinite(attempt.score) && attempt.score < rejected_attempt->score)) {
           rejected_attempt = std::move(attempt);
         }
+        return false;
       };
+      bool stop_candidate_search = false;
       for (const double entry_candidate : entry_candidates) {
+        if (stop_candidate_search ||
+            corner_candidate_attempts >= kMaxCandidateAttemptsPerCorner) {
+          break;
+        }
         const double distance_scale =
             entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
         for (const double shift_scale : kShiftScales) {
+          if (corner_candidate_attempts >= kMaxCandidateAttemptsPerCorner) {
+            break;
+          }
           const std::size_t attempt_index = result.stats.candidate_attempts++;
+          ++corner_candidate_attempts;
           SmoothingAttempt attempt = trySmoothCorner(
               result.samples, corridor_samples, prohibited_grid, corner, config,
               entry_distance * distance_scale, exit_distance * distance_scale,
               shift_scale, 0.0, speed_config, work_buffer, result.stats);
           const std::size_t diagnostic_index = record_attempt(attempt, attempt_index);
-          consider_attempt(std::move(attempt), diagnostic_index);
+          if (consider_attempt(std::move(attempt), diagnostic_index)) {
+            stop_candidate_search = true;
+            break;
+          }
         }
       }
       for (const double entry_candidate : entry_candidates) {
+        if (stop_candidate_search ||
+            corner_candidate_attempts >= kMaxCandidateAttemptsPerCorner) {
+          break;
+        }
         const double distance_scale =
             entry_distance > kTinyDistanceM ? entry_candidate / entry_distance : 1.0;
         for (const double relaxed_angle : relaxedTangentAngleCandidatesRad()) {
+          if (stop_candidate_search ||
+              corner_candidate_attempts >= kMaxCandidateAttemptsPerCorner) {
+            break;
+          }
           for (const double shift_scale : kShiftScales) {
+            if (corner_candidate_attempts >= kMaxCandidateAttemptsPerCorner) {
+              break;
+            }
             const std::size_t attempt_index = result.stats.candidate_attempts++;
+            ++corner_candidate_attempts;
             ++result.stats.relaxed_candidate_attempts;
             SmoothingAttempt attempt = trySmoothCorner(
                 result.samples, corridor_samples, prohibited_grid, corner, config,
                 entry_distance * distance_scale, exit_distance * distance_scale,
                 shift_scale, relaxed_angle, speed_config, work_buffer, result.stats);
             const std::size_t diagnostic_index = record_attempt(attempt, attempt_index);
-            consider_attempt(std::move(attempt), diagnostic_index);
+            if (consider_attempt(std::move(attempt), diagnostic_index)) {
+              stop_candidate_search = true;
+              break;
+            }
           }
         }
       }

@@ -112,8 +112,8 @@ manualWideCorridor(const std::vector<Point2>& points) {
 
 [[nodiscard]] double
 maxAcceptedCurvatureJumpAfter(const TrajectoryShapeDiagnostics& before) {
-  return std::max(before.max_curvature_jump_1pm + 0.02,
-                  before.max_curvature_jump_1pm * 1.3);
+  return std::max(before.max_curvature_jump_1pm + 0.035,
+                  before.max_curvature_jump_1pm * 1.4);
 }
 
 [[nodiscard]] VelocityFollowerConfig speedConfig() {
@@ -265,8 +265,8 @@ TEST(TurnSmoothing, TriesUnifiedFallbackWindowsFromSixtyToFiveMeters) {
 
   EXPECT_FALSE(result.changed);
   EXPECT_EQ(result.stats.attempted_corners, 1U);
-  EXPECT_EQ(result.stats.candidate_attempts, 336U);
-  EXPECT_EQ(result.stats.relaxed_candidate_attempts, 288U);
+  EXPECT_EQ(result.stats.candidate_attempts, 192U);
+  EXPECT_EQ(result.stats.relaxed_candidate_attempts, 144U);
   EXPECT_EQ(result.stats.rejected_prohibited, 1U);
 }
 
