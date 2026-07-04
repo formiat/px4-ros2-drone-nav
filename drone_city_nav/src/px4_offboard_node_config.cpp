@@ -169,7 +169,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                      "cross_track_anti_overshoot_min_feedback_scale", 0.25),
                  0.0, 1.0);
   config.velocity_follower.tracking_prediction_horizon_s = std::clamp(
-      node.declare_parameter<double>("tracking_prediction_horizon_s", 0.45), 0.0, 2.0);
+      node.declare_parameter<double>("tracking_prediction_horizon_s", 0.35), 0.0, 2.0);
   config.velocity_follower.max_lateral_control_angle_rad =
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
                      "max_lateral_control_angle_deg", 55.0)),

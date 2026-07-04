@@ -163,7 +163,7 @@ monotonicTerminalCaptureSpeedLimitMps(const double raw_speed_limit_mps,
 
 [[nodiscard]] double
 trackingPredictionHorizonS(const VelocityFollowerConfig& config) noexcept {
-  return sanitizedPositive(config.tracking_prediction_horizon_s, 0.45, 0.0, 2.0);
+  return sanitizedPositive(config.tracking_prediction_horizon_s, 0.35, 0.0, 2.0);
 }
 
 [[nodiscard]] Point2 predictedTrackingPosition(const Point2 current_position,
