@@ -56,6 +56,8 @@ void Px4OffboardNode::clearFinalTrajectory() {
   last_trajectory_shape_diagnostics_ = TrajectoryShapeDiagnostics{};
   last_final_trajectory_debug_samples_ = 0U;
   last_trajectory_route_points_ = 0U;
+  accepted_planner_path_id_ = 0U;
+  accepted_planner_path_id_seen_ = false;
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
 }
@@ -63,8 +65,8 @@ void Px4OffboardNode::clearFinalTrajectory() {
 [[nodiscard]] bool Px4OffboardNode::trajectoryDiagnosticsMatchesCurrentPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) const {
   return trajectoryDiagnosticsMatchesPath(diagnostics, last_received_path_stamp_ns_,
-                                          latest_planner_path_id_seen_,
-                                          latest_planner_path_id_);
+                                          accepted_planner_path_id_seen_,
+                                          accepted_planner_path_id_);
 }
 
 void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
@@ -72,19 +74,33 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
-  if (last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint !=
-          0U &&
-      diagnostics.stats.speed_profile_construction_config_fingerprint != 0U &&
-      last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint !=
-          diagnostics.stats.speed_profile_construction_config_fingerprint) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "speed_profile_construction_config_fingerprint_mismatch: runtime=%" PRIu64
-        " planning=%" PRIu64 " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
-        last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
-        diagnostics.stats.speed_profile_construction_config_fingerprint,
-        diagnostics.planner_path_id, diagnostics.path_stamp_ns);
-  }
+  const auto warn_on_fingerprint_mismatch =
+      [this, &diagnostics](const char* fingerprint_name,
+                           const std::uint64_t runtime_fingerprint,
+                           const std::uint64_t planning_fingerprint) {
+        if (runtime_fingerprint == 0U || planning_fingerprint == 0U ||
+            runtime_fingerprint == planning_fingerprint) {
+          return;
+        }
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                             "%s_mismatch: runtime=%" PRIu64 " planning=%" PRIu64
+                             " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
+                             fingerprint_name, runtime_fingerprint,
+                             planning_fingerprint, diagnostics.planner_path_id,
+                             diagnostics.path_stamp_ns);
+      };
+  warn_on_fingerprint_mismatch(
+      "speed_profile_construction_config_fingerprint",
+      last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
+      diagnostics.stats.speed_profile_construction_config_fingerprint);
+  warn_on_fingerprint_mismatch(
+      "runtime_speed_policy_config_fingerprint",
+      last_trajectory_planner_stats_.runtime_speed_policy_config_fingerprint,
+      diagnostics.stats.runtime_speed_policy_config_fingerprint);
+  warn_on_fingerprint_mismatch(
+      "runtime_velocity_control_config_fingerprint",
+      last_trajectory_planner_stats_.runtime_velocity_control_config_fingerprint,
+      diagnostics.stats.runtime_velocity_control_config_fingerprint);
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
 }
@@ -226,7 +242,7 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
       "max_heading_delta=%.1fdeg max_curvature_jump=%.4f] samples_csv='%s'",
-      source_label, received_path_update_id_, latest_planner_path_id_,
+      source_label, received_path_update_id_, accepted_planner_path_id_,
       path_points_.size(), trajectory_valid_ ? "true" : "false",
       last_trajectory_metrics_.line_segments, last_trajectory_metrics_.length_m,
       final_trajectory_samples_.size(),
@@ -335,6 +351,8 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                            : 0U;
   received_path_update_id_ = candidate_update_id;
   last_received_path_stamp_ns_ = candidate_path_stamp_ns;
+  accepted_planner_path_id_ = latest_planner_path_id_;
+  accepted_planner_path_id_seen_ = latest_planner_path_id_seen_;
   path_points_ = std::move(candidate_path_points);
   path_valid_ = true;
   trajectory_goal_ = path_points_.back();
@@ -355,7 +373,7 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                 "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
                 "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu lt10=%zu] "
                 "last=(%.2f, %.2f)",
-                received_path_update_id_, latest_planner_path_id_,
+                received_path_update_id_, accepted_planner_path_id_,
                 last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
                 metrics.straight_segments, metrics.turns, metrics.length_m,
                 waypoint_index_ + 1U, first.x, first.y, metrics.min_segment_length_m,
@@ -459,7 +477,7 @@ bool Px4OffboardNode::writeFinalTrajectorySamplesCsvFile(
   const FinalTrajectorySamplesCsvInput input{
       .source_label = source_label,
       .local_path_update_id = received_path_update_id_,
-      .planner_path_id = latest_planner_path_id_,
+      .planner_path_id = accepted_planner_path_id_,
       .trajectory_valid = trajectory_valid_,
       .trajectory_status = last_trajectory_planner_stats_.status,
       .samples = final_trajectory_samples_,
@@ -497,7 +515,7 @@ Px4OffboardNode::writeFinalTrajectorySamplesCsv(const char* source_label) const 
   const std::filesystem::path timestamped_path =
       directory / ("trajectory_" + std::to_string(get_clock()->now().nanoseconds()) +
                    "_local_" + std::to_string(received_path_update_id_) + "_planner_" +
-                   std::to_string(latest_planner_path_id_) + ".csv");
+                   std::to_string(accepted_planner_path_id_) + ".csv");
   const std::filesystem::path timestamped_summary_path =
       timestamped_path.parent_path() /
       (timestamped_path.stem().string() + "_summary.json");

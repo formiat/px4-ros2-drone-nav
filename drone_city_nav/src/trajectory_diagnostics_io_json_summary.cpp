@@ -156,7 +156,6 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                    stats.trajectory_optimizer.final_cost);
   stream << "," << trajectoryOptimizerDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
-  stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
   stream << "}";
   return stream.str();
 }

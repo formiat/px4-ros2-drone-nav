@@ -1,9 +1,48 @@
+#include <set>
+#include <string>
+
 #include "trajectory_diagnostics_io_test_helpers.hpp"
 
 namespace drone_city_nav {
 
 using trajectory_diagnostics_io_test_helpers::expectContainsAll;
 using trajectory_diagnostics_io_test_helpers::populatedStats;
+
+namespace {
+
+void expectUniqueJsonObjectKeys(const std::string& json) {
+  std::set<std::string> keys;
+  for (std::size_t index = 0U; index < json.size(); ++index) {
+    if (json[index] != '"') {
+      continue;
+    }
+    const std::size_t previous_token_index =
+        index == 0U ? std::string::npos : json.find_last_not_of(" \n\r\t", index - 1U);
+    const char previous_token =
+        previous_token_index == std::string::npos ? '\0' : json[previous_token_index];
+    if (previous_token != '{' && previous_token != ',') {
+      continue;
+    }
+    const std::size_t key_end = json.find('"', index + 1U);
+    if (key_end == std::string::npos) {
+      ADD_FAILURE() << "unterminated JSON key at " << index;
+      return;
+    }
+    const std::size_t separator = json.find_first_not_of(" \n\r\t", key_end + 1U);
+    if (separator == std::string::npos) {
+      ADD_FAILURE() << "missing JSON key separator after " << key_end;
+      return;
+    }
+    if (json[separator] != ':') {
+      continue;
+    }
+    const std::string key = json.substr(index + 1U, key_end - index - 1U);
+    EXPECT_TRUE(keys.insert(key).second) << key;
+    index = key_end;
+  }
+}
+
+} // namespace
 
 TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   TrajectoryShapeDiagnostics shape{};
@@ -582,6 +621,12 @@ TEST(TrajectoryDiagnosticsIo,
                                   "\"isolated_curvature_spike_max_after_1pm\"",
                               });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
+}
+
+TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonHasUniqueKeys) {
+  const std::string json = trajectoryPlannerDiagnosticsJson(1U, 2U, populatedStats());
+
+  expectUniqueJsonObjectKeys(json);
 }
 
 TEST(TrajectoryDiagnosticsIo, TimingJsonFragmentContainsBlackboxRequiredKeys) {

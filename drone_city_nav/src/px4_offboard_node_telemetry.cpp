@@ -72,8 +72,8 @@ void Px4OffboardNode::logTelemetry() {
       "] tracking[valid=%s cross_track=%.2f signed_cross_track=%.2f "
       "heading_error=%.3f path_heading=%.3f segment=%zu t=%.2f "
       "projection=(%.2f, %.2f)]",
-      received_path_update_id_, latest_planner_path_id_,
-      latest_planner_path_id_seen_ ? "true" : "false", last_received_path_stamp_ns_,
+      received_path_update_id_, accepted_planner_path_id_,
+      accepted_planner_path_id_seen_ ? "true" : "false", last_received_path_stamp_ns_,
       path_tracking.valid ? "true" : "false", path_tracking.cross_track_error_m,
       path_tracking.signed_cross_track_error_m, path_tracking.heading_error_rad,
       path_tracking.path_heading_rad, path_tracking.segment_start_index,
@@ -285,8 +285,8 @@ void Px4OffboardNode::writeFlightBlackbox(
 
   const OffboardBlackboxRecord record{
       now_ns,
-      OffboardBlackboxPathId{received_path_update_id_, latest_planner_path_id_,
-                             latest_planner_path_id_seen_,
+      OffboardBlackboxPathId{received_path_update_id_, accepted_planner_path_id_,
+                             accepted_planner_path_id_seen_,
                              last_received_path_stamp_ns_},
       pose_fresh,
       pose_age_s,

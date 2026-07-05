@@ -105,6 +105,9 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   diagnostics.stats.total_duration_ms = 56.0;
   diagnostics.stats.speed_profile_duration_ms = 99.0;
   diagnostics.stats.speed_profile_min_mps = 1.0;
+  diagnostics.stats.speed_profile_construction_config_fingerprint = 10U;
+  diagnostics.stats.runtime_speed_policy_config_fingerprint = 11U;
+  diagnostics.stats.runtime_velocity_control_config_fingerprint = 12U;
   diagnostics.stats.top_speed_constraints.push_back(SpeedProfileConstraintDiagnostic{
       .sample_index = 7U,
       .s_m = 11.0,
@@ -124,6 +127,9 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   TrajectoryPlannerStats stats;
   stats.speed_profile_duration_ms = 1.5;
   stats.speed_profile_min_mps = 4.0;
+  stats.speed_profile_construction_config_fingerprint = 20U;
+  stats.runtime_speed_policy_config_fingerprint = 21U;
+  stats.runtime_velocity_control_config_fingerprint = 22U;
   mergePlannerDiagnosticsIntoTrajectoryStats(stats, diagnostics);
 
   EXPECT_DOUBLE_EQ(stats.corridor.mean_width_m, 12.0);
@@ -132,6 +138,9 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   EXPECT_DOUBLE_EQ(stats.total_duration_ms, 56.0);
   EXPECT_DOUBLE_EQ(stats.speed_profile_duration_ms, 1.5);
   EXPECT_DOUBLE_EQ(stats.speed_profile_min_mps, 4.0);
+  EXPECT_EQ(stats.speed_profile_construction_config_fingerprint, 20U);
+  EXPECT_EQ(stats.runtime_speed_policy_config_fingerprint, 21U);
+  EXPECT_EQ(stats.runtime_velocity_control_config_fingerprint, 22U);
   EXPECT_TRUE(stats.top_speed_constraints.empty());
 }
 

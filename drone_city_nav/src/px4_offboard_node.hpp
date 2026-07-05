@@ -338,6 +338,7 @@ private:
   std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
   std::uint64_t latest_planner_path_id_{0U};
+  std::uint64_t accepted_planner_path_id_{0U};
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
   std::uint64_t path_update_velocity_smoother_reset_count_{0U};
@@ -367,6 +368,7 @@ private:
   bool navigation_started_{false};
   bool last_terminal_position_capture_active_{false};
   bool latest_planner_path_id_seen_{false};
+  bool accepted_planner_path_id_seen_{false};
   bool flight_blackbox_enabled_{true};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
