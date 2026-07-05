@@ -430,6 +430,12 @@ if(BUILD_TESTING)
   target_link_libraries(velocity_command_planner_test drone_city_nav_core)
   enable_project_warnings(velocity_command_planner_test)
 
+  ament_add_gtest(velocity_control_config_test
+                  tests/velocity_control_config_test.cpp)
+  target_compile_features(velocity_control_config_test PRIVATE cxx_std_20)
+  target_link_libraries(velocity_control_config_test drone_city_nav_core)
+  enable_project_warnings(velocity_control_config_test)
+
   ament_add_gtest(velocity_smoother_test tests/velocity_smoother_test.cpp)
   target_compile_features(velocity_smoother_test PRIVATE cxx_std_20)
   target_link_libraries(velocity_smoother_test drone_city_nav_core)

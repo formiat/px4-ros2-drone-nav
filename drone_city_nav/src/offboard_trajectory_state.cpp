@@ -80,10 +80,12 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   stats.line_segments = metrics.line_segments;
   stats.arc_segments = metrics.arc_segments;
   stats.length_m = metrics.length_m;
-  stats.speed_profile_config_fingerprint =
-      speedProfileConfigFingerprint(velocity_config);
-  stats.runtime_velocity_config_fingerprint =
-      runtimeVelocityConfigFingerprint(velocity_config);
+  stats.speed_profile_construction_config_fingerprint =
+      speedProfileConstructionConfigFingerprint(velocity_config);
+  stats.runtime_speed_policy_config_fingerprint =
+      runtimeSpeedPolicyConfigFingerprint(velocity_config);
+  stats.runtime_velocity_control_config_fingerprint =
+      runtimeVelocityControlConfigFingerprint(velocity_config);
 
   double curvature_abs_sum = 0.0;
   for (std::size_t i = 0U; i < samples.size(); ++i) {
@@ -144,6 +146,31 @@ buildOffboardTrajectoryState(const std::span<const Point2> path_points,
       velocity_config, state.valid);
   state.stats.speed_profile_duration_ms = speed_profile_duration_ms;
   return state;
+}
+
+TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
+    const std::span<const TrajectoryPointSample> current_samples,
+    const TrajectorySpeedProfile& current_speed_profile,
+    const OffboardTrajectoryState& candidate_state, const Point2 current_position,
+    const Point2 previous_velocity_setpoint,
+    const bool previous_velocity_setpoint_valid, const bool local_position_fresh) {
+  if (!candidate_state.valid || !trajectorySamplesAreUsable(candidate_state.samples) ||
+      !candidate_state.speed_profile.valid) {
+    TrajectoryContinuityResult result{};
+    result.decision = TrajectoryContinuityDecision::kRejectTrajectory;
+    result.reason = "new_trajectory_invalid";
+    return result;
+  }
+  if (!local_position_fresh) {
+    TrajectoryContinuityResult result{};
+    result.decision = TrajectoryContinuityDecision::kResetSmoother;
+    result.reason = "pose_stale";
+    return result;
+  }
+  return evaluateTrajectoryContinuity(
+      current_samples, current_speed_profile, candidate_state.samples,
+      candidate_state.speed_profile, current_position, previous_velocity_setpoint,
+      previous_velocity_setpoint_valid);
 }
 
 } // namespace drone_city_nav

@@ -5,6 +5,7 @@
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
+#include "drone_city_nav/trajectory_update_continuity.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/path.hpp>
@@ -51,5 +52,12 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(std::span<const Point2> path_points,
                              const VelocityFollowerConfig& velocity_config);
+
+[[nodiscard]] TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
+    std::span<const TrajectoryPointSample> current_samples,
+    const TrajectorySpeedProfile& current_speed_profile,
+    const OffboardTrajectoryState& candidate_state, Point2 current_position,
+    Point2 previous_velocity_setpoint, bool previous_velocity_setpoint_valid,
+    bool local_position_fresh);
 
 } // namespace drone_city_nav

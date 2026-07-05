@@ -21,16 +21,31 @@ void mixDouble(std::uint64_t& hash, const double value) noexcept {
 
 } // namespace
 
-std::uint64_t
-speedProfileConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
+std::uint64_t speedProfileConstructionConfigFingerprint(
+    const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 9U> values{
+  const std::array<double, 6U> values{
       config.cruise_speed_mps,
       config.min_turn_speed_mps,
       config.speed_profile_accel_mps2,
       config.speed_profile_decel_mps2,
       config.turn_speed_lateral_accel_mps2,
       config.speed_profile_sample_step_m,
+  };
+  for (const double value : values) {
+    mixDouble(hash, value);
+  }
+  return hash;
+}
+
+std::uint64_t
+runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  const std::array<double, 7U> values{
+      config.cruise_speed_mps,
+      config.speed_profile_decel_mps2,
+      config.setpoint_forward_accel_mps2,
+      config.setpoint_forward_decel_mps2,
       config.speed_profile_lookahead_time_s,
       config.speed_profile_lookahead_min_m,
       config.speed_profile_lookahead_max_m,
@@ -42,18 +57,43 @@ speedProfileConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
 }
 
 std::uint64_t
-runtimeVelocityConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
+runtimeVelocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 11U> values{
+  const std::array<double, 36U> values{
       config.setpoint_forward_accel_mps2,
       config.setpoint_forward_decel_mps2,
       config.setpoint_lateral_response_accel_mps2,
       config.cross_track_gain,
       config.cross_track_derivative_gain,
+      config.cross_track_p_gain_schedule_start_m,
+      config.cross_track_p_gain_schedule_full_m,
+      config.cross_track_p_gain_schedule_min_factor,
+      config.cross_track_p_gain_schedule_max_factor,
       config.tracking_prediction_horizon_s,
       config.max_lateral_control_angle_rad,
+      config.curvature_feedforward_time_s,
+      config.curvature_feedforward_deadband_angle_rad,
+      config.curvature_feedforward_full_angle_rad,
+      config.max_curvature_feedforward_angle_rad,
       config.max_velocity_jerk_mps3,
       config.max_lateral_velocity_jerk_mps3,
+      config.cross_track_d_gain_schedule_min_speed_mps,
+      config.cross_track_d_gain_schedule_full_speed_mps,
+      config.cross_track_d_gain_schedule_max_factor,
+      config.control_tangent_smoothing_back_m,
+      config.control_tangent_smoothing_forward_m,
+      config.control_tangent_smoothing_max_heading_span_rad,
+      config.control_tangent_smoothing_max_abs_curvature_1pm,
+      config.control_curve_smoothing_back_m,
+      config.control_curve_smoothing_forward_m,
+      config.control_curve_smoothing_max_heading_span_rad,
+      config.final_acceptance_radius_m,
+      config.final_hold_max_speed_mps,
+      config.terminal_capture_radius_m,
+      config.terminal_capture_gain_1ps,
+      config.terminal_capture_max_speed_mps,
+      config.terminal_capture_decel_mps2,
+      config.terminal_capture_braking_margin_m,
       config.terminal_position_capture_max_entry_speed_mps,
       config.terminal_stuck_speed_mps,
   };

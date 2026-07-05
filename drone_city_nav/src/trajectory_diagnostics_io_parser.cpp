@@ -47,14 +47,24 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 envelope.stats.speed_profile_curvature_limited_samples);
   parseJsonSize(json, "planning_speed_profile_curvature_limited_samples",
                 envelope.stats.speed_profile_curvature_limited_samples);
-  (void)parseJsonUint64(json, "planning_speed_profile_config_fingerprint",
-                        envelope.stats.speed_profile_config_fingerprint);
-  if (envelope.stats.speed_profile_config_fingerprint == 0U) {
-    (void)parseJsonUint64(json, "planning_speed_config_fingerprint",
-                          envelope.stats.speed_profile_config_fingerprint);
+  (void)parseJsonUint64(json, "planning_speed_profile_construction_config_fingerprint",
+                        envelope.stats.speed_profile_construction_config_fingerprint);
+  if (envelope.stats.speed_profile_construction_config_fingerprint == 0U) {
+    (void)parseJsonUint64(json, "planning_speed_profile_config_fingerprint",
+                          envelope.stats.speed_profile_construction_config_fingerprint);
   }
-  (void)parseJsonUint64(json, "planning_runtime_velocity_config_fingerprint",
-                        envelope.stats.runtime_velocity_config_fingerprint);
+  if (envelope.stats.speed_profile_construction_config_fingerprint == 0U) {
+    (void)parseJsonUint64(json, "planning_speed_config_fingerprint",
+                          envelope.stats.speed_profile_construction_config_fingerprint);
+  }
+  (void)parseJsonUint64(json, "planning_runtime_speed_policy_config_fingerprint",
+                        envelope.stats.runtime_speed_policy_config_fingerprint);
+  (void)parseJsonUint64(json, "planning_runtime_velocity_control_config_fingerprint",
+                        envelope.stats.runtime_velocity_control_config_fingerprint);
+  if (envelope.stats.runtime_velocity_control_config_fingerprint == 0U) {
+    (void)parseJsonUint64(json, "planning_runtime_velocity_config_fingerprint",
+                          envelope.stats.runtime_velocity_control_config_fingerprint);
+  }
   std::size_t top_constraint_count = 0U;
   parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
   top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);

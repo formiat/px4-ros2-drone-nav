@@ -72,17 +72,18 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
-  if (last_trajectory_planner_stats_.speed_profile_config_fingerprint != 0U &&
-      diagnostics.stats.speed_profile_config_fingerprint != 0U &&
-      last_trajectory_planner_stats_.speed_profile_config_fingerprint !=
-          diagnostics.stats.speed_profile_config_fingerprint) {
+  if (last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint !=
+          0U &&
+      diagnostics.stats.speed_profile_construction_config_fingerprint != 0U &&
+      last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint !=
+          diagnostics.stats.speed_profile_construction_config_fingerprint) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "speed_profile_config_fingerprint_mismatch: runtime=%" PRIu64
+        "speed_profile_construction_config_fingerprint_mismatch: runtime=%" PRIu64
         " planning=%" PRIu64 " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
-        last_trajectory_planner_stats_.speed_profile_config_fingerprint,
-        diagnostics.stats.speed_profile_config_fingerprint, diagnostics.planner_path_id,
-        diagnostics.path_stamp_ns);
+        last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
+        diagnostics.stats.speed_profile_construction_config_fingerprint,
+        diagnostics.planner_path_id, diagnostics.path_stamp_ns);
   }
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
@@ -158,17 +159,10 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
 
 TrajectoryContinuityResult Px4OffboardNode::evaluateReceivedTrajectoryContinuity(
     const OffboardTrajectoryState& state) const {
-  if (!localPositionFresh()) {
-    TrajectoryContinuityResult result{};
-    result.decision = TrajectoryContinuityDecision::kResetSmoother;
-    result.reason = "pose_stale";
-    return result;
-  }
-  return evaluateTrajectoryContinuity(
-      final_trajectory_samples_, trajectory_speed_profile_, state.samples,
-      state.speed_profile, current_position_,
+  return evaluateOffboardTrajectoryUpdateContinuity(
+      final_trajectory_samples_, trajectory_speed_profile_, state, current_position_,
       velocity_follower_state_.previous_velocity_setpoint,
-      velocity_follower_state_.previous_velocity_setpoint_valid);
+      velocity_follower_state_.previous_velocity_setpoint_valid, localPositionFresh());
 }
 
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
@@ -221,8 +215,9 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       " planner_path_id=%" PRIu64
       " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
-      "speed_profile_config_fingerprint=%" PRIu64
-      " runtime_velocity_config_fingerprint=%" PRIu64 " "
+      "speed_profile_construction_config_fingerprint=%" PRIu64
+      " runtime_speed_policy_config_fingerprint=%" PRIu64
+      " runtime_velocity_control_config_fingerprint=%" PRIu64 " "
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
       "continuity[decision=%s reason=%s projection_jump=%.2f tangent_jump=%.3f "
       "curvature_jump=%.4f speed_limit_jump=%.2f "
@@ -239,8 +234,9 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       last_trajectory_planner_stats_.speed_profile_mean_mps,
       last_trajectory_planner_stats_.speed_profile_max_mps,
       last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
-      last_trajectory_planner_stats_.speed_profile_config_fingerprint,
-      last_trajectory_planner_stats_.runtime_velocity_config_fingerprint,
+      last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
+      last_trajectory_planner_stats_.runtime_speed_policy_config_fingerprint,
+      last_trajectory_planner_stats_.runtime_velocity_control_config_fingerprint,
       top_speed_constraint_s, top_speed_constraint_radius, top_speed_constraint_limit,
       top_speed_constraint_source,
       trajectoryContinuityDecisionName(continuity.decision), continuity.reason,

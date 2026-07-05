@@ -55,6 +55,46 @@ TEST(OffboardTrajectoryState, EmptyPathBuildsInvalidState) {
   EXPECT_EQ(state.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
 }
 
+TEST(OffboardTrajectoryState, RejectsInvalidCandidateBeforeStalePoseReset) {
+  const std::vector<Point2> current_points{{0.0, 0.0}, {20.0, 0.0}};
+  const std::vector<Point2> invalid_points{{10.0, 0.0}};
+  const OffboardTrajectoryState current_state =
+      buildOffboardTrajectoryState(current_points, VelocityFollowerConfig{});
+  const OffboardTrajectoryState invalid_candidate =
+      buildOffboardTrajectoryState(invalid_points, VelocityFollowerConfig{});
+
+  ASSERT_TRUE(current_state.valid);
+  ASSERT_FALSE(invalid_candidate.valid);
+
+  const TrajectoryContinuityResult continuity =
+      evaluateOffboardTrajectoryUpdateContinuity(
+          current_state.samples, current_state.speed_profile, invalid_candidate,
+          Point2{2.0, 0.0}, Point2{12.0, 0.0}, true, false);
+
+  EXPECT_EQ(continuity.decision, TrajectoryContinuityDecision::kRejectTrajectory);
+  EXPECT_STREQ(continuity.reason, "new_trajectory_invalid");
+}
+
+TEST(OffboardTrajectoryState, ResetsForValidCandidateWhenPoseIsStale) {
+  const std::vector<Point2> current_points{{0.0, 0.0}, {20.0, 0.0}};
+  const std::vector<Point2> candidate_points{{0.0, 0.2}, {20.0, 0.2}};
+  const OffboardTrajectoryState current_state =
+      buildOffboardTrajectoryState(current_points, VelocityFollowerConfig{});
+  const OffboardTrajectoryState candidate_state =
+      buildOffboardTrajectoryState(candidate_points, VelocityFollowerConfig{});
+
+  ASSERT_TRUE(current_state.valid);
+  ASSERT_TRUE(candidate_state.valid);
+
+  const TrajectoryContinuityResult continuity =
+      evaluateOffboardTrajectoryUpdateContinuity(
+          current_state.samples, current_state.speed_profile, candidate_state,
+          Point2{2.0, 0.0}, Point2{12.0, 0.0}, true, false);
+
+  EXPECT_EQ(continuity.decision, TrajectoryContinuityDecision::kResetSmoother);
+  EXPECT_STREQ(continuity.reason, "pose_stale");
+}
+
 TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   TrajectoryPlannerDiagnosticsEnvelope diagnostics;
   diagnostics.path_stamp_ns = 100U;

@@ -52,10 +52,13 @@ struct VelocityFollowerConfig {
   double terminal_stuck_speed_mps{0.5};
 };
 
-[[nodiscard]] std::uint64_t
-speedProfileConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
+[[nodiscard]] std::uint64_t speedProfileConstructionConfigFingerprint(
+    const VelocityFollowerConfig& config) noexcept;
 
 [[nodiscard]] std::uint64_t
-runtimeVelocityConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
+runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
+
+[[nodiscard]] std::uint64_t
+runtimeVelocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
 
 } // namespace drone_city_nav
