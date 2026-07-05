@@ -848,8 +848,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       dot(plan.velocity_xy, control_projection.tangent);
   plan.setpoint_velocity_normal_mps = dot(plan.velocity_xy, left_normal);
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
-  plan.cross_track_progressive_feedback_factor =
-      command.cross_track_progressive_feedback_factor;
+  plan.cross_track_p_gain_factor = command.cross_track_p_gain_factor;
   plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
   plan.cross_track_derivative_damping_factor =
       command.cross_track_derivative_damping_factor;

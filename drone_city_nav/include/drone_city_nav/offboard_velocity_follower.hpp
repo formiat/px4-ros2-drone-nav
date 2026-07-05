@@ -93,7 +93,7 @@ struct VelocitySetpointPlan {
   double desired_to_actual_tangent_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double desired_to_actual_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_feedback_mps{0.0};
-  double cross_track_progressive_feedback_factor{1.0};
+  double cross_track_p_gain_factor{1.0};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};

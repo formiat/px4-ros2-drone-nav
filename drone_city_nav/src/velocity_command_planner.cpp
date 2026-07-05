@@ -121,18 +121,18 @@ speedAwareDerivativeDampingFactor(const double speed_mps,
 }
 
 [[nodiscard]] double
-progressiveCrossTrackFeedbackFactor(const double cross_track_error_m,
-                                    const VelocityFollowerConfig& config) noexcept {
-  const double start_m = sanitizedPositive(
-      config.cross_track_progressive_feedback_start_m, 0.0, 0.0, 1000.0);
-  const double full_m = std::max(
-      start_m, sanitizedPositive(config.cross_track_progressive_feedback_full_m, 2.5,
-                                 0.0, 1000.0));
-  const double min_factor = sanitizedPositive(
-      config.cross_track_progressive_feedback_min_factor, 0.5, 0.0, 100.0);
+crossTrackPGainFactor(const double cross_track_error_m,
+                      const VelocityFollowerConfig& config) noexcept {
+  const double start_m =
+      sanitizedPositive(config.cross_track_p_gain_schedule_start_m, 0.0, 0.0, 1000.0);
+  const double full_m =
+      std::max(start_m, sanitizedPositive(config.cross_track_p_gain_schedule_full_m,
+                                          2.5, 0.0, 1000.0));
+  const double min_factor =
+      sanitizedPositive(config.cross_track_p_gain_schedule_min_factor, 0.5, 0.0, 100.0);
   const double max_factor = std::max(
-      min_factor, sanitizedPositive(config.cross_track_progressive_feedback_max_factor,
-                                    1.3, 0.0, 100.0));
+      min_factor, sanitizedPositive(config.cross_track_p_gain_schedule_max_factor, 1.3,
+                                    0.0, 100.0));
   const double progress =
       smoothstep(start_m, full_m, std::max(0.0, cross_track_error_m));
   return min_factor + (max_factor - min_factor) * progress;
@@ -171,11 +171,10 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
         derivative_speed, plan.cross_track_lateral_velocity_mps, config);
     plan.cross_track_derivative_gain_effective =
         cross_track_derivative_gain * plan.cross_track_derivative_damping_factor;
-    plan.cross_track_progressive_feedback_factor =
-        progressiveCrossTrackFeedbackFactor(cross_track_error, config);
+    plan.cross_track_p_gain_factor = crossTrackPGainFactor(cross_track_error, config);
     cross_track_feedback =
-        cross_track_direction * (cross_track_gain * cross_track_error *
-                                 plan.cross_track_progressive_feedback_factor);
+        cross_track_direction *
+        (cross_track_gain * cross_track_error * plan.cross_track_p_gain_factor);
     cross_track_derivative_damping =
         cross_track_direction * (-plan.cross_track_derivative_gain_effective *
                                  plan.cross_track_lateral_velocity_mps);

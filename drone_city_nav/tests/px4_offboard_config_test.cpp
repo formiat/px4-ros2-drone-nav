@@ -73,13 +73,11 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_progressive_feedback_start_m: 0.0"),
+  EXPECT_NE(yaml.find("cross_track_p_gain_schedule_start_m: 0.0"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_p_gain_schedule_full_m: 2.5"), std::string::npos);
+  EXPECT_NE(yaml.find("cross_track_p_gain_schedule_min_factor: 0.5"),
             std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_progressive_feedback_full_m: 2.5"),
-            std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_progressive_feedback_min_factor: 0.5"),
-            std::string::npos);
-  EXPECT_NE(yaml.find("cross_track_progressive_feedback_max_factor: 1.3"),
+  EXPECT_NE(yaml.find("cross_track_p_gain_schedule_max_factor: 1.3"),
             std::string::npos);
   EXPECT_NE(yaml.find("max_lateral_control_angle_deg: 55.0"), std::string::npos);
   EXPECT_NE(yaml.find("velocity_lateral_response_accel_mps2: 8.0"), std::string::npos);

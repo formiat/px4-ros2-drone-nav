@@ -27,8 +27,8 @@ namespace {
   VelocityFollowerConfig config{};
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 1.0;
-  config.cross_track_progressive_feedback_min_factor = 1.0;
-  config.cross_track_progressive_feedback_max_factor = 1.0;
+  config.cross_track_p_gain_schedule_min_factor = 1.0;
+  config.cross_track_p_gain_schedule_max_factor = 1.0;
   config.max_lateral_control_angle_rad = 1.0;
   return config;
 }
@@ -102,14 +102,14 @@ TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
   EXPECT_GT(moving_toward.cross_track_derivative_damping_mps, 0.0);
 }
 
-TEST(VelocityCommandPlanner, CrossTrackFeedbackProgressivelyIncreasesWithError) {
+TEST(VelocityCommandPlanner, CrossTrackPGainScheduleIncreasesWithError) {
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 0.0;
-  config.cross_track_progressive_feedback_start_m = 0.3;
-  config.cross_track_progressive_feedback_full_m = 2.5;
-  config.cross_track_progressive_feedback_min_factor = 0.25;
-  config.cross_track_progressive_feedback_max_factor = 1.3;
+  config.cross_track_p_gain_schedule_start_m = 0.3;
+  config.cross_track_p_gain_schedule_full_m = 2.5;
+  config.cross_track_p_gain_schedule_min_factor = 0.25;
+  config.cross_track_p_gain_schedule_max_factor = 1.3;
 
   const VelocityCommandPlan near_path =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(0.04),
@@ -139,12 +139,11 @@ TEST(VelocityCommandPlanner, CrossTrackFeedbackProgressivelyIncreasesWithError) 
   ASSERT_TRUE(near_path.valid);
   ASSERT_TRUE(mid_error.valid);
   ASSERT_TRUE(far_from_path.valid);
-  EXPECT_NEAR(near_path.cross_track_progressive_feedback_factor, 0.25, 1.0e-9);
-  EXPECT_GT(mid_error.cross_track_progressive_feedback_factor,
-            near_path.cross_track_progressive_feedback_factor);
-  EXPECT_LT(mid_error.cross_track_progressive_feedback_factor,
-            far_from_path.cross_track_progressive_feedback_factor);
-  EXPECT_NEAR(far_from_path.cross_track_progressive_feedback_factor, 1.3, 1.0e-9);
+  EXPECT_NEAR(near_path.cross_track_p_gain_factor, 0.25, 1.0e-9);
+  EXPECT_GT(mid_error.cross_track_p_gain_factor, near_path.cross_track_p_gain_factor);
+  EXPECT_LT(mid_error.cross_track_p_gain_factor,
+            far_from_path.cross_track_p_gain_factor);
+  EXPECT_NEAR(far_from_path.cross_track_p_gain_factor, 1.3, 1.0e-9);
   EXPECT_NEAR(near_path.cross_track_feedback_mps, 0.05, 1.0e-9);
   EXPECT_NEAR(far_from_path.cross_track_feedback_mps, 3.9, 1.0e-9);
 }

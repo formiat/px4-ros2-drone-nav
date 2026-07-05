@@ -73,24 +73,19 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(
           config.velocity_follower.speed_aware_derivative_damping_max_factor, 2.0, 1.0,
           100.0);
-  config.velocity_follower.cross_track_progressive_feedback_start_m =
-      boundedFiniteDouble(
-          config.velocity_follower.cross_track_progressive_feedback_start_m, 0.0, 0.0,
-          1000.0);
-  config.velocity_follower.cross_track_progressive_feedback_full_m =
-      std::max(config.velocity_follower.cross_track_progressive_feedback_start_m,
+  config.velocity_follower.cross_track_p_gain_schedule_start_m = boundedFiniteDouble(
+      config.velocity_follower.cross_track_p_gain_schedule_start_m, 0.0, 0.0, 1000.0);
+  config.velocity_follower.cross_track_p_gain_schedule_full_m = std::max(
+      config.velocity_follower.cross_track_p_gain_schedule_start_m,
+      boundedFiniteDouble(config.velocity_follower.cross_track_p_gain_schedule_full_m,
+                          2.5, 0.0, 1000.0));
+  config.velocity_follower.cross_track_p_gain_schedule_min_factor = boundedFiniteDouble(
+      config.velocity_follower.cross_track_p_gain_schedule_min_factor, 0.5, 0.0, 100.0);
+  config.velocity_follower.cross_track_p_gain_schedule_max_factor =
+      std::max(config.velocity_follower.cross_track_p_gain_schedule_min_factor,
                boundedFiniteDouble(
-                   config.velocity_follower.cross_track_progressive_feedback_full_m,
-                   2.5, 0.0, 1000.0));
-  config.velocity_follower.cross_track_progressive_feedback_min_factor =
-      boundedFiniteDouble(
-          config.velocity_follower.cross_track_progressive_feedback_min_factor, 0.5,
-          0.0, 100.0);
-  config.velocity_follower.cross_track_progressive_feedback_max_factor =
-      std::max(config.velocity_follower.cross_track_progressive_feedback_min_factor,
-               boundedFiniteDouble(
-                   config.velocity_follower.cross_track_progressive_feedback_max_factor,
-                   1.3, 0.0, 100.0));
+                   config.velocity_follower.cross_track_p_gain_schedule_max_factor, 1.3,
+                   0.0, 100.0));
   config.velocity_follower.control_tangent_smoothing_back_m = boundedFiniteDouble(
       config.velocity_follower.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_forward_m = boundedFiniteDouble(
@@ -165,26 +160,24 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       std::clamp(node.declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
   config.velocity_follower.cross_track_derivative_gain = std::clamp(
       node.declare_parameter<double>("cross_track_derivative_gain", 0.5), 0.0, 10.0);
-  config.velocity_follower.cross_track_progressive_feedback_start_m = std::clamp(
-      node.declare_parameter<double>("cross_track_progressive_feedback_start_m", 0.0),
-      0.0, 1000.0);
-  const double requested_cross_track_progressive_feedback_full_m = std::clamp(
-      node.declare_parameter<double>("cross_track_progressive_feedback_full_m", 2.5),
-      0.0, 1000.0);
-  config.velocity_follower.cross_track_progressive_feedback_full_m =
-      std::max(requested_cross_track_progressive_feedback_full_m,
-               config.velocity_follower.cross_track_progressive_feedback_start_m);
-  config.velocity_follower.cross_track_progressive_feedback_min_factor =
-      std::clamp(node.declare_parameter<double>(
-                     "cross_track_progressive_feedback_min_factor", 0.5),
-                 0.0, 100.0);
-  const double requested_cross_track_progressive_feedback_max_factor =
-      std::clamp(node.declare_parameter<double>(
-                     "cross_track_progressive_feedback_max_factor", 1.3),
-                 0.0, 100.0);
-  config.velocity_follower.cross_track_progressive_feedback_max_factor =
-      std::max(requested_cross_track_progressive_feedback_max_factor,
-               config.velocity_follower.cross_track_progressive_feedback_min_factor);
+  config.velocity_follower.cross_track_p_gain_schedule_start_m = std::clamp(
+      node.declare_parameter<double>("cross_track_p_gain_schedule_start_m", 0.0), 0.0,
+      1000.0);
+  const double requested_cross_track_p_gain_schedule_full_m = std::clamp(
+      node.declare_parameter<double>("cross_track_p_gain_schedule_full_m", 2.5), 0.0,
+      1000.0);
+  config.velocity_follower.cross_track_p_gain_schedule_full_m =
+      std::max(requested_cross_track_p_gain_schedule_full_m,
+               config.velocity_follower.cross_track_p_gain_schedule_start_m);
+  config.velocity_follower.cross_track_p_gain_schedule_min_factor = std::clamp(
+      node.declare_parameter<double>("cross_track_p_gain_schedule_min_factor", 0.5),
+      0.0, 100.0);
+  const double requested_cross_track_p_gain_schedule_max_factor = std::clamp(
+      node.declare_parameter<double>("cross_track_p_gain_schedule_max_factor", 1.3),
+      0.0, 100.0);
+  config.velocity_follower.cross_track_p_gain_schedule_max_factor =
+      std::max(requested_cross_track_p_gain_schedule_max_factor,
+               config.velocity_follower.cross_track_p_gain_schedule_min_factor);
   config.velocity_follower.tracking_prediction_horizon_s = std::clamp(
       node.declare_parameter<double>("tracking_prediction_horizon_s", 0.35), 0.0, 2.0);
   config.velocity_follower.max_lateral_control_angle_rad =

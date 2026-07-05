@@ -122,13 +122,11 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 2.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_derivative_gain, 0.5);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_progressive_feedback_start_m,
-                   0.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_progressive_feedback_full_m,
-                   2.5);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_progressive_feedback_min_factor,
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_start_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_full_m, 2.5);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_min_factor,
                    0.5);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_progressive_feedback_max_factor,
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_max_factor,
                    1.3);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_angle_rad,
                    55.0 * std::numbers::pi / 180.0);

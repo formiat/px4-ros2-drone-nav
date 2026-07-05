@@ -29,7 +29,7 @@ struct VelocityCommandPlan {
   Point2 raw_lateral_control_velocity{};
   Point2 lateral_control_velocity{};
   double cross_track_feedback_mps{0.0};
-  double cross_track_progressive_feedback_factor{1.0};
+  double cross_track_p_gain_factor{1.0};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};

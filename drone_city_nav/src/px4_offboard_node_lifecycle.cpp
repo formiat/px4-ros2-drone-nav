@@ -108,7 +108,7 @@ Px4OffboardNode::Px4OffboardNode()
       "final_hold_max_speed=%.2fmps "
       "terminal_capture[radius=%.2fm gain=%.2f max_speed=%.2fmps] "
       "cross_track_gain=%.2f "
-      "cross_track_progressive_feedback[start=%.2fm full=%.2fm min=%.2f max=%.2f] "
+      "cross_track_p_gain_schedule[start=%.2fm full=%.2fm min=%.2f max=%.2f] "
       "tracking_prediction_horizon=%.2fs "
       "max_lateral_control_angle=%.1fdeg "
       "velocity_lateral_response_accel=%.2fmps2 "
@@ -146,10 +146,10 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.terminal_capture_gain_1ps,
       velocity_follower_config_.terminal_capture_max_speed_mps,
       velocity_follower_config_.cross_track_gain,
-      velocity_follower_config_.cross_track_progressive_feedback_start_m,
-      velocity_follower_config_.cross_track_progressive_feedback_full_m,
-      velocity_follower_config_.cross_track_progressive_feedback_min_factor,
-      velocity_follower_config_.cross_track_progressive_feedback_max_factor,
+      velocity_follower_config_.cross_track_p_gain_schedule_start_m,
+      velocity_follower_config_.cross_track_p_gain_schedule_full_m,
+      velocity_follower_config_.cross_track_p_gain_schedule_min_factor,
+      velocity_follower_config_.cross_track_p_gain_schedule_max_factor,
       velocity_follower_config_.tracking_prediction_horizon_s,
       radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),
       velocity_follower_config_.velocity_lateral_response_accel_mps2,

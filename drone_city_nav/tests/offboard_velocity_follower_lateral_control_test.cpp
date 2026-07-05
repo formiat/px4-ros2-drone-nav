@@ -179,8 +179,8 @@ TEST(OffboardVelocityFollower,
   VelocityFollowerConfig config = testConfig();
   config.cross_track_gain = 1.0;
   config.cross_track_derivative_gain = 1.0;
-  config.cross_track_progressive_feedback_min_factor = 1.0;
-  config.cross_track_progressive_feedback_max_factor = 1.0;
+  config.cross_track_p_gain_schedule_min_factor = 1.0;
+  config.cross_track_p_gain_schedule_max_factor = 1.0;
   config.max_lateral_control_angle_rad = 1.0;
   VelocityFollowerState state{};
   state.previous_velocity_setpoint = Point2{12.0, 0.0};
