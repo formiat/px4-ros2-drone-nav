@@ -146,7 +146,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 20.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
-                   1.5);
+                   2.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m, 18.0);
   EXPECT_DOUBLE_EQ(

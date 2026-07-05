@@ -156,7 +156,7 @@ TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningF
   config.max_lateral_control_angle_rad = 1.0;
   config.speed_aware_derivative_damping_min_speed_mps = 8.0;
   config.speed_aware_derivative_damping_full_speed_mps = 20.0;
-  config.speed_aware_derivative_damping_max_factor = 1.5;
+  config.speed_aware_derivative_damping_max_factor = 2.0;
 
   const VelocityCommandPlan moving_toward =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
@@ -177,9 +177,9 @@ TEST(VelocityCommandPlanner, SpeedAwareDerivativeDampingBoostsOnlyWhenReturningF
 
   ASSERT_TRUE(moving_toward.valid);
   ASSERT_TRUE(moving_away.valid);
-  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_factor, 1.5, 1.0e-9);
-  EXPECT_NEAR(moving_toward.cross_track_derivative_gain_effective, 1.5, 1.0e-9);
-  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_mps, 3.0, 1.0e-9);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_factor, 2.0, 1.0e-9);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_gain_effective, 2.0, 1.0e-9);
+  EXPECT_NEAR(moving_toward.cross_track_derivative_damping_mps, 4.0, 1.0e-9);
   EXPECT_NEAR(moving_away.cross_track_derivative_damping_factor, 1.0, 1.0e-9);
   EXPECT_NEAR(moving_away.cross_track_derivative_gain_effective, 1.0, 1.0e-9);
   EXPECT_NEAR(moving_away.cross_track_derivative_damping_mps, 2.0, 1.0e-9);

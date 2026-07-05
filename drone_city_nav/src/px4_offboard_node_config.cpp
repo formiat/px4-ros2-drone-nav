@@ -71,7 +71,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
           0.0, 1000.0));
   config.velocity_follower.speed_aware_derivative_damping_max_factor =
       boundedFiniteDouble(
-          config.velocity_follower.speed_aware_derivative_damping_max_factor, 1.5, 1.0,
+          config.velocity_follower.speed_aware_derivative_damping_max_factor, 2.0, 1.0,
           100.0);
   config.velocity_follower.cross_track_progressive_feedback_start_m =
       boundedFiniteDouble(
@@ -224,7 +224,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                               "speed_aware_derivative_damping_full_speed_mps", 20.0),
                           0.0, 1000.0));
   config.velocity_follower.speed_aware_derivative_damping_max_factor = std::clamp(
-      node.declare_parameter<double>("speed_aware_derivative_damping_max_factor", 1.5),
+      node.declare_parameter<double>("speed_aware_derivative_damping_max_factor", 2.0),
       1.0, 100.0);
   config.velocity_follower.control_tangent_smoothing_back_m = std::clamp(
       node.declare_parameter<double>("control_tangent_smoothing_back_m", 8.0), 0.0,

@@ -30,7 +30,7 @@ struct VelocityFollowerConfig {
   double max_lateral_velocity_jerk_mps3{22.0};
   double speed_aware_derivative_damping_min_speed_mps{8.0};
   double speed_aware_derivative_damping_full_speed_mps{20.0};
-  double speed_aware_derivative_damping_max_factor{1.5};
+  double speed_aware_derivative_damping_max_factor{2.0};
   double control_tangent_smoothing_back_m{8.0};
   double control_tangent_smoothing_forward_m{18.0};
   double control_tangent_smoothing_max_heading_span_rad{0.20943951023931953};

@@ -114,7 +114,7 @@ speedAwareDerivativeDampingFactor(const double speed_mps,
       min_speed, sanitizedPositive(config.speed_aware_derivative_damping_full_speed_mps,
                                    20.0, 0.0, 1000.0));
   const double max_factor = sanitizedPositive(
-      config.speed_aware_derivative_damping_max_factor, 1.5, 1.0, 100.0);
+      config.speed_aware_derivative_damping_max_factor, 2.0, 1.0, 100.0);
   const double speed_factor =
       smoothstep(min_speed, full_speed, std::max(0.0, speed_mps));
   return 1.0 + (max_factor - 1.0) * speed_factor;
