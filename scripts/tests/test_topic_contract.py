@@ -47,7 +47,8 @@ class TopicContractTest(unittest.TestCase):
             "scripts/record_debug_bag.sh",
             "README.md",
             "CONTRIBUTING.md",
-            "docs/MVP_SIMULATION.md",
+            "docs/obstacle_mapping.md",
+            "docs/navigation_pipeline.md",
         ]
 
         for relative_path in checked_paths:

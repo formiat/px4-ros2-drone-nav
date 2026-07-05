@@ -138,7 +138,7 @@ The container targets use `build/`, `install/`, and `log/`.
 The simulation uses three planner obstacle sources by default: the static
 `generated_city.map2d` city map, accumulated lidar obstacle memory, and the
 current lidar hit overlay. Source toggles and map format details are documented
-in `docs/MVP_SIMULATION.md`.
+in `docs/obstacle_mapping.md` and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/prohibited/debug contract. Raw sources such
 as `/drone_city_nav/obstacle_memory_grid` must contain only direct obstacle
@@ -226,5 +226,3 @@ Key pages:
 - `docs/development.md`
 - `docs/troubleshooting.md`
 - `docs/performance.md`
-
-`docs/MVP_SIMULATION.md` remains as a legacy simulation reference.
