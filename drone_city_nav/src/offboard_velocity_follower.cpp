@@ -21,6 +21,7 @@ struct ControlTangentSmoothingDiagnostics {
   Point2 raw_tangent{};
   double heading_span_rad{std::numeric_limits<double>::quiet_NaN()};
   double max_abs_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_feedforward_context_scale{1.0};
   double window_start_s_m{std::numeric_limits<double>::quiet_NaN()};
   double window_end_s_m{std::numeric_limits<double>::quiet_NaN()};
 };
@@ -28,6 +29,8 @@ struct ControlTangentSmoothingDiagnostics {
 struct ControlTangentSmoothingWindow {
   Point2 tangent{};
   double mean_curvature_1pm{0.0};
+  double min_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
+  double max_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
   double heading_span_rad{std::numeric_limits<double>::quiet_NaN()};
   double max_abs_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
   double window_start_s_m{std::numeric_limits<double>::quiet_NaN()};
@@ -98,6 +101,52 @@ struct ControlTangentSmoothingWindow {
     return fallback;
   }
   return std::clamp(value, min_value, max_value);
+}
+
+[[nodiscard]] double smoothstep(const double edge0, const double edge1,
+                                const double value) noexcept {
+  if (!(edge1 > edge0)) {
+    return value >= edge1 ? 1.0 : 0.0;
+  }
+  const double t = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+
+[[nodiscard]] double
+curvatureFeedforwardContextScale(const ControlTangentSmoothingWindow& window,
+                                 const VelocityFollowerConfig& config) noexcept {
+  if (!std::isfinite(window.heading_span_rad) ||
+      !std::isfinite(window.max_abs_curvature_1pm) ||
+      !(window.max_abs_curvature_1pm > kTinyDistanceM)) {
+    return 1.0;
+  }
+
+  double scale = 1.0;
+  const double straight_heading_span_rad =
+      sanitizedPositive(config.control_tangent_smoothing_max_heading_span_rad,
+                        12.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
+  const double straight_max_abs_curvature = sanitizedPositive(
+      config.control_tangent_smoothing_max_abs_curvature_1pm, 0.015, 0.0, 1000.0);
+  if (straight_heading_span_rad > kTinyDistanceM &&
+      window.max_abs_curvature_1pm <= straight_max_abs_curvature &&
+      window.heading_span_rad < straight_heading_span_rad) {
+    scale *= smoothstep(0.5 * straight_heading_span_rad, straight_heading_span_rad,
+                        window.heading_span_rad);
+  }
+
+  constexpr double kCurvatureSignThreshold = 0.002;
+  const bool curvature_sign_changes =
+      std::isfinite(window.min_curvature_1pm) &&
+      std::isfinite(window.max_curvature_1pm) &&
+      window.min_curvature_1pm < -kCurvatureSignThreshold &&
+      window.max_curvature_1pm > kCurvatureSignThreshold;
+  if (curvature_sign_changes) {
+    const double mean_to_peak_ratio =
+        std::abs(window.mean_curvature_1pm) / window.max_abs_curvature_1pm;
+    scale *= smoothstep(0.35, 0.85, mean_to_peak_ratio);
+  }
+
+  return std::clamp(scale, 0.0, 1.0);
 }
 
 [[nodiscard]] double sanitizedCruiseSpeed(const VelocityFollowerConfig& config) {
@@ -277,6 +326,14 @@ buildControlTangentSmoothingWindow(const std::span<const TrajectoryPointSample> 
           std::isfinite(window.max_abs_curvature_1pm) ? window.max_abs_curvature_1pm
                                                       : 0.0,
           std::abs(sample.curvature_1pm));
+      window.min_curvature_1pm =
+          std::isfinite(window.min_curvature_1pm)
+              ? std::min(window.min_curvature_1pm, sample.curvature_1pm)
+              : sample.curvature_1pm;
+      window.max_curvature_1pm =
+          std::isfinite(window.max_curvature_1pm)
+              ? std::max(window.max_curvature_1pm, sample.curvature_1pm)
+              : sample.curvature_1pm;
       curvature_sum += sample.curvature_1pm;
       ++curvature_count;
     }
@@ -325,6 +382,8 @@ smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samp
     diagnostics.max_abs_curvature_1pm = straight_window->max_abs_curvature_1pm;
     diagnostics.window_start_s_m = straight_window->window_start_s_m;
     diagnostics.window_end_s_m = straight_window->window_end_s_m;
+    diagnostics.curvature_feedforward_context_scale =
+        curvatureFeedforwardContextScale(*straight_window, config);
     if (straight_window->heading_span_rad <= straight_max_heading_span_rad &&
         straight_window->max_abs_curvature_1pm <= straight_max_abs_curvature &&
         dot(straight_window->tangent, control_projection.tangent) > 0.0) {
@@ -348,6 +407,8 @@ smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samp
   diagnostics.max_abs_curvature_1pm = curve_window->max_abs_curvature_1pm;
   diagnostics.window_start_s_m = curve_window->window_start_s_m;
   diagnostics.window_end_s_m = curve_window->window_end_s_m;
+  diagnostics.curvature_feedforward_context_scale =
+      curvatureFeedforwardContextScale(*curve_window, config);
   const double curve_max_heading_span_rad =
       sanitizedPositive(config.control_curve_smoothing_max_heading_span_rad,
                         45.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
@@ -689,7 +750,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
           .dt_s = dt,
           .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
-          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
+          .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq),
+          .curvature_feedforward_context_scale =
+              tangent_smoothing.curvature_feedforward_context_scale},
       config);
   if (!command.valid) {
     return plan;
@@ -798,6 +861,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.curvature_feedforward_raw_angle_rad =
       command.curvature_feedforward_raw_angle_rad;
   plan.curvature_feedforward_scale = command.curvature_feedforward_scale;
+  plan.curvature_feedforward_context_scale =
+      command.curvature_feedforward_context_scale;
   plan.raw_lateral_control_mps = command.raw_lateral_control_mps;
   plan.lateral_control_mps = command.lateral_control_mps;
   plan.terminal_goal_distance_m = terminal_goal_distance;

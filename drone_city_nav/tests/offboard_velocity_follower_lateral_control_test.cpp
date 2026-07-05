@@ -7,6 +7,31 @@ using offboard_velocity_follower_test_helpers::normalizedTestVector;
 using offboard_velocity_follower_test_helpers::testConfig;
 using offboard_velocity_follower_test_helpers::trajectoryWithArc;
 
+namespace {
+
+[[nodiscard]] std::vector<TrajectoryPointSample> shallowSTrajectorySamples() {
+  std::vector<TrajectoryPointSample> samples;
+  samples.reserve(31U);
+  constexpr double kAmplitudeM = 0.5;
+  constexpr double kWavelengthScaleM = 5.0;
+  for (std::size_t i = 0U; i <= 30U; ++i) {
+    const double s_m = static_cast<double>(i) * 2.0;
+    const double phase = s_m / kWavelengthScaleM;
+    const double derivative = kAmplitudeM * std::cos(phase) / kWavelengthScaleM;
+    const double curvature = -kAmplitudeM * std::sin(phase) /
+                             (kWavelengthScaleM * kWavelengthScaleM *
+                              std::pow(1.0 + derivative * derivative, 1.5));
+    samples.push_back(
+        TrajectoryPointSample{.s_m = s_m,
+                              .point = Point2{s_m, kAmplitudeM * std::sin(phase)},
+                              .tangent = normalizedTestVector(1.0, derivative),
+                              .curvature_1pm = curvature});
+  }
+  return samples;
+}
+
+} // namespace
+
 TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
   const VelocityVectorLimitResult result =
       limitVelocityVectorDelta(Point2{0.0, 12.0}, Point2{12.0, 0.0}, true, 0.1, 3.0);
@@ -203,6 +228,29 @@ TEST(OffboardVelocityFollower, ArcProjectionAddsCurvatureFeedforward) {
   EXPECT_GT(std::abs(plan.curvature_feedforward_velocity.x) +
                 std::abs(plan.curvature_feedforward_velocity.y),
             0.0);
+}
+
+TEST(OffboardVelocityFollower, ShallowSCurveSuppressesCurvatureFeedforwardContext) {
+  const std::vector<TrajectoryPointSample> samples = shallowSTrajectorySamples();
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  config.max_decel_mps2 = 100.0;
+  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.curvature_feedforward_time_s = 0.5;
+  config.curvature_feedforward_deadband_angle_rad = 0.0;
+  config.curvature_feedforward_full_angle_rad = 0.0;
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+
+  const Point2 current_position = samples[15U].point;
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      samples, profile, current_position, Point2{12.0, 0.0}, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_TRUE(plan.control_tangent_smoothed);
+  EXPECT_LT(plan.curvature_feedforward_context_scale, 1.0);
 }
 
 TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsLongitudinalBraking) {

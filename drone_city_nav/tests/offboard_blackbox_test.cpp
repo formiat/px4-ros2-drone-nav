@@ -82,6 +82,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.cross_track_derivative_gain_effective = 0.75;
   record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
   record.velocity_plan.curvature_feedforward_scale = 0.5;
+  record.velocity_plan.curvature_feedforward_context_scale = 0.75;
   record.velocity_plan.cross_track_progressive_feedback_factor = 0.4;
   record.velocity_plan.terminal_capture_active = true;
   record.velocity_plan.terminal_goal_distance_m = 3.5;
@@ -360,6 +361,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"cross_track_derivative_gain_effective\":0.75");
   expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");
   expectJsonField(json, "\"curvature_feedforward_scale\":0.5");
+  expectJsonField(json, "\"curvature_feedforward_context_scale\":0.75");
   expectJsonField(json, "\"cross_track_progressive_feedback_factor\":0.4");
   expectJsonField(json, "\"path_frame_lateral_smoothing_applied\":true");
   expectJsonField(json, "\"smoother_lateral_response_accel_mps2\":3.125");

@@ -71,11 +71,10 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return correction_velocity * (max_correction_mps / correction_speed);
 }
 
-[[nodiscard]] Point2
-curvatureFeedforwardVelocity(const TrajectoryProjection& projection,
-                             const double scalar_speed_mps,
-                             const VelocityFollowerConfig& config,
-                             double& raw_angle_rad, double& angle_rad, double& scale) {
+[[nodiscard]] Point2 curvatureFeedforwardVelocity(
+    const TrajectoryProjection& projection, const double scalar_speed_mps,
+    const VelocityFollowerConfig& config, const double context_scale,
+    double& raw_angle_rad, double& angle_rad, double& scale) {
   raw_angle_rad = 0.0;
   angle_rad = 0.0;
   scale = 0.0;
@@ -90,7 +89,10 @@ curvatureFeedforwardVelocity(const TrajectoryProjection& projection,
       deadband_angle, sanitizedPositive(config.curvature_feedforward_full_angle_rad,
                                         deadband_angle, 0.0, max_angle));
   raw_angle_rad = projection.curvature_1pm * speed * anticipation_time_s;
-  scale = smoothstep(deadband_angle, full_angle, std::abs(raw_angle_rad));
+  const double sanitized_context_scale =
+      sanitizedPositive(context_scale, 1.0, 0.0, 1.0);
+  scale = smoothstep(deadband_angle, full_angle, std::abs(raw_angle_rad)) *
+          sanitized_context_scale;
   angle_rad = std::clamp(raw_angle_rad * scale, -max_angle, max_angle);
   if (!(std::abs(angle_rad) > kTinyDistanceM)) {
     return Point2{};
@@ -122,12 +124,12 @@ speedAwareDerivativeDampingFactor(const double speed_mps,
 progressiveCrossTrackFeedbackFactor(const double cross_track_error_m,
                                     const VelocityFollowerConfig& config) noexcept {
   const double start_m = sanitizedPositive(
-      config.cross_track_progressive_feedback_start_m, 0.3, 0.0, 1000.0);
+      config.cross_track_progressive_feedback_start_m, 0.0, 0.0, 1000.0);
   const double full_m = std::max(
       start_m, sanitizedPositive(config.cross_track_progressive_feedback_full_m, 2.5,
                                  0.0, 1000.0));
   const double min_factor = sanitizedPositive(
-      config.cross_track_progressive_feedback_min_factor, 0.25, 0.0, 100.0);
+      config.cross_track_progressive_feedback_min_factor, 0.5, 0.0, 100.0);
   const double max_factor = std::max(
       min_factor, sanitizedPositive(config.cross_track_progressive_feedback_max_factor,
                                     1.3, 0.0, 100.0));
@@ -184,8 +186,8 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   double curvature_feedforward_scale = 0.0;
   const Point2 curvature_feedforward = curvatureFeedforwardVelocity(
       query.projection, query.scalar_speed_mps, config,
-      curvature_feedforward_raw_angle_rad, curvature_feedforward_angle_rad,
-      curvature_feedforward_scale);
+      query.curvature_feedforward_context_scale, curvature_feedforward_raw_angle_rad,
+      curvature_feedforward_angle_rad, curvature_feedforward_scale);
   const Point2 raw_lateral_control =
       cross_track_feedback + cross_track_derivative_damping + curvature_feedforward;
 
@@ -215,6 +217,8 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.curvature_feedforward_angle_rad = curvature_feedforward_angle_rad;
   plan.curvature_feedforward_raw_angle_rad = curvature_feedforward_raw_angle_rad;
   plan.curvature_feedforward_scale = curvature_feedforward_scale;
+  plan.curvature_feedforward_context_scale =
+      sanitizedPositive(query.curvature_feedforward_context_scale, 1.0, 0.0, 1.0);
   plan.raw_lateral_control_mps = norm(raw_lateral_control);
   plan.lateral_control_mps = norm(lateral_control);
   plan.desired_velocity_tangent_mps = dot(desired_velocity, query.projection.tangent);

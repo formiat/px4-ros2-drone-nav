@@ -233,6 +233,41 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardAttenuatesTinyCurvature) {
   EXPECT_NEAR(plan.desired_velocity_normal_mps, 0.0, 1.0e-9);
 }
 
+TEST(VelocityCommandPlanner, CurvatureFeedforwardContextScaleSuppressesFeedforward) {
+  VelocityFollowerConfig config = testConfig();
+  config.curvature_feedforward_time_s = 0.5;
+  config.curvature_feedforward_deadband_angle_rad = 0.0;
+  config.curvature_feedforward_full_angle_rad = 0.0;
+  config.max_curvature_feedforward_angle_rad = 1.0;
+
+  const VelocityCommandPlan full_context = planVelocityCommand(
+      VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1,
+                           .curvature_feedforward_context_scale = 1.0},
+      config);
+  const VelocityCommandPlan suppressed_context = planVelocityCommand(
+      VelocityCommandQuery{.projection = curvedProjectionOnXAxis(0.1),
+                           .current_position = Point2{0.0, 0.0},
+                           .current_velocity = Point2{10.0, 0.0},
+                           .current_velocity_valid = true,
+                           .scalar_speed_mps = 10.0,
+                           .dt_s = 0.1,
+                           .curvature_feedforward_context_scale = 0.0},
+      config);
+
+  ASSERT_TRUE(full_context.valid);
+  ASSERT_TRUE(suppressed_context.valid);
+  EXPECT_GT(full_context.curvature_feedforward_mps, 0.0);
+  EXPECT_NEAR(full_context.curvature_feedforward_context_scale, 1.0, 1.0e-9);
+  EXPECT_NEAR(suppressed_context.curvature_feedforward_context_scale, 0.0, 1.0e-9);
+  EXPECT_NEAR(suppressed_context.curvature_feedforward_mps, 0.0, 1.0e-9);
+  EXPECT_NEAR(suppressed_context.curvature_feedforward_angle_rad, 0.0, 1.0e-9);
+}
+
 TEST(VelocityCommandPlanner, InvalidProjectionReturnsInvalidPlan) {
   TrajectoryProjection invalid_projection = projectionOnXAxis();
   invalid_projection.tangent = Point2{};

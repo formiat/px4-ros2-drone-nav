@@ -166,6 +166,9 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
                                 velocity_plan.curvature_feedforward_raw_angle_rad);
   stream << ",\"curvature_feedforward_scale\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_scale);
+  stream << ",\"curvature_feedforward_context_scale\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.curvature_feedforward_context_scale);
   stream << ",\"raw_lateral_control_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.raw_lateral_control_velocity.x);
   stream << ",\"raw_lateral_control_y\":";

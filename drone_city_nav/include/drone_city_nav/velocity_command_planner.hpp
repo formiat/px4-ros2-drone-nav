@@ -17,6 +17,7 @@ struct VelocityCommandQuery {
   double dt_s{std::numeric_limits<double>::quiet_NaN()};
   double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
+  double curvature_feedforward_context_scale{1.0};
 };
 
 struct VelocityCommandPlan {
@@ -37,6 +38,7 @@ struct VelocityCommandPlan {
   double curvature_feedforward_angle_rad{0.0};
   double curvature_feedforward_raw_angle_rad{0.0};
   double curvature_feedforward_scale{1.0};
+  double curvature_feedforward_context_scale{1.0};
   double raw_lateral_control_mps{0.0};
   double lateral_control_mps{0.0};
   double desired_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};

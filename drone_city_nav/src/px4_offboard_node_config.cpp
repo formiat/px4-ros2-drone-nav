@@ -75,7 +75,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
           100.0);
   config.velocity_follower.cross_track_progressive_feedback_start_m =
       boundedFiniteDouble(
-          config.velocity_follower.cross_track_progressive_feedback_start_m, 0.3, 0.0,
+          config.velocity_follower.cross_track_progressive_feedback_start_m, 0.0, 0.0,
           1000.0);
   config.velocity_follower.cross_track_progressive_feedback_full_m =
       std::max(config.velocity_follower.cross_track_progressive_feedback_start_m,
@@ -84,7 +84,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                    2.5, 0.0, 1000.0));
   config.velocity_follower.cross_track_progressive_feedback_min_factor =
       boundedFiniteDouble(
-          config.velocity_follower.cross_track_progressive_feedback_min_factor, 0.25,
+          config.velocity_follower.cross_track_progressive_feedback_min_factor, 0.5,
           0.0, 100.0);
   config.velocity_follower.cross_track_progressive_feedback_max_factor =
       std::max(config.velocity_follower.cross_track_progressive_feedback_min_factor,
@@ -166,7 +166,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.cross_track_derivative_gain = std::clamp(
       node.declare_parameter<double>("cross_track_derivative_gain", 0.5), 0.0, 10.0);
   config.velocity_follower.cross_track_progressive_feedback_start_m = std::clamp(
-      node.declare_parameter<double>("cross_track_progressive_feedback_start_m", 0.3),
+      node.declare_parameter<double>("cross_track_progressive_feedback_start_m", 0.0),
       0.0, 1000.0);
   const double requested_cross_track_progressive_feedback_full_m = std::clamp(
       node.declare_parameter<double>("cross_track_progressive_feedback_full_m", 2.5),
@@ -176,7 +176,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                config.velocity_follower.cross_track_progressive_feedback_start_m);
   config.velocity_follower.cross_track_progressive_feedback_min_factor =
       std::clamp(node.declare_parameter<double>(
-                     "cross_track_progressive_feedback_min_factor", 0.25),
+                     "cross_track_progressive_feedback_min_factor", 0.5),
                  0.0, 100.0);
   const double requested_cross_track_progressive_feedback_max_factor =
       std::clamp(node.declare_parameter<double>(

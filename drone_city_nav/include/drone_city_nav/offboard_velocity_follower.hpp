@@ -111,6 +111,7 @@ struct VelocitySetpointPlan {
   double curvature_feedforward_angle_rad{0.0};
   double curvature_feedforward_raw_angle_rad{0.0};
   double curvature_feedforward_scale{1.0};
+  double curvature_feedforward_context_scale{1.0};
   double raw_lateral_control_mps{0.0};
   double lateral_control_mps{0.0};
   bool terminal_capture_active{false};
