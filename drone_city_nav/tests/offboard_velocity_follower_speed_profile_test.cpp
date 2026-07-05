@@ -388,9 +388,9 @@ TEST(OffboardVelocityFollower, SmoothsControlTangentOnStraightishSampledTrajecto
 
 TEST(OffboardVelocityFollower, StraightishSmoothingSuppressesLocalSCurveCurvature) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 100.0;
   config.terminal_capture_decel_mps2 = 100.0;
   config.terminal_capture_braking_margin_m = 0.0;
   config.curvature_feedforward_time_s = 0.5;

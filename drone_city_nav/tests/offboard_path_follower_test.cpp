@@ -1,4 +1,5 @@
 #include "drone_city_nav/offboard_path_follower.hpp"
+#include "drone_city_nav/route_diagnostics.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +12,7 @@ namespace {
 [[nodiscard]] OffboardPathFollowerConfig testConfig() {
   OffboardPathFollowerConfig config{};
   config.acceptance_radius_m = 1.0;
-  config.turn_preview_distance_m = 32.0;
+  config.diagnostic_turn_preview_distance_m = 32.0;
   return config;
 }
 
@@ -64,7 +65,7 @@ TEST(OffboardPathFollower, UpcomingTurnIgnoresStraightPath) {
 
 TEST(OffboardPathFollower, UpcomingTurnIgnoresDistantTurnOutsidePreview) {
   OffboardPathFollowerConfig config = testConfig();
-  config.turn_preview_distance_m = 5.0;
+  config.diagnostic_turn_preview_distance_m = 5.0;
   const std::vector<Point2> path{{0.0, 0.0}, {30.0, 0.0}, {30.0, 30.0}};
 
   const UpcomingTurn turn =

@@ -45,7 +45,8 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
     std::span<const Point2> route_points,
     std::span<const TrajectoryPointSample> samples,
     std::span<const TrajectorySegment> trajectory, const TrajectoryMetrics& metrics,
-    const TrajectorySpeedProfile& speed_profile, bool trajectory_valid);
+    const TrajectorySpeedProfile& speed_profile,
+    const VelocityFollowerConfig& velocity_config, bool trajectory_valid);
 
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(std::span<const Point2> path_points,

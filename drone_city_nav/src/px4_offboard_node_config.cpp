@@ -40,8 +40,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.takeoff_hover_s = std::clamp(config.takeoff_hover_s, 0.0, 30.0);
   config.acceptance_radius_m =
       boundedFiniteDouble(config.acceptance_radius_m, 1.5, 0.0, 100.0);
-  config.turn_preview_distance_m =
-      boundedFiniteDouble(config.turn_preview_distance_m, 32.0, 0.0, 500.0);
+  config.diagnostic_turn_preview_distance_m =
+      boundedFiniteDouble(config.diagnostic_turn_preview_distance_m, 32.0, 0.0, 500.0);
   config.command_resend_period_s =
       boundedFiniteDouble(config.command_resend_period_s, 2.0, 0.05, 60.0);
   config.trajectory_update_max_start_cross_track_m = boundedFiniteDouble(
@@ -121,8 +121,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<double>("takeoff_hover_s", config.takeoff_hover_s);
   config.acceptance_radius_m =
       node.declare_parameter<double>("acceptance_radius_m", config.acceptance_radius_m);
-  config.turn_preview_distance_m = node.declare_parameter<double>(
-      "turn_preview_distance_m", config.turn_preview_distance_m);
+  config.diagnostic_turn_preview_distance_m = node.declare_parameter<double>(
+      "diagnostic_turn_preview_distance_m", config.diagnostic_turn_preview_distance_m);
   config.max_clearance_grid_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_clearance_grid_staleness_s", 1.5), 0.0,
       3600.0));
@@ -134,12 +134,16 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.min_turn_speed_mps =
       std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
                  config.velocity_follower.cruise_speed_mps);
-  config.velocity_follower.max_accel_mps2 =
-      std::clamp(node.declare_parameter<double>("max_accel_mps2", 3.0), 0.0, 100.0);
-  config.velocity_follower.max_decel_mps2 =
-      std::clamp(node.declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
-  config.velocity_follower.max_lateral_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
+  config.velocity_follower.speed_profile_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("speed_profile_accel_mps2", 7.0), 0.0, 100.0);
+  config.velocity_follower.setpoint_forward_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("setpoint_forward_accel_mps2",
+                                     config.velocity_follower.speed_profile_accel_mps2),
+      0.0, 100.0);
+  config.velocity_follower.setpoint_forward_decel_mps2 = std::clamp(
+      node.declare_parameter<double>("setpoint_forward_decel_mps2", 20.0), 0.0, 100.0);
+  config.velocity_follower.turn_speed_lateral_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("turn_speed_lateral_accel_mps2", 5.0), 0.0, 100.0);
   config.velocity_follower.speed_profile_decel_mps2 = std::clamp(
       node.declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
   config.velocity_follower.speed_profile_sample_step_m = std::clamp(
@@ -182,8 +186,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
                      "max_lateral_control_angle_deg", 55.0)),
                  0.0, std::numbers::pi / 2.0);
-  config.velocity_follower.velocity_lateral_response_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("velocity_lateral_response_accel_mps2", 8.0), 0.0,
+  config.velocity_follower.setpoint_lateral_response_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("setpoint_lateral_response_accel_mps2", 8.0), 0.0,
       100.0);
   config.velocity_follower.curvature_feedforward_time_s = std::clamp(
       node.declare_parameter<double>("curvature_feedforward_time_s", 0.25), 0.0, 10.0);

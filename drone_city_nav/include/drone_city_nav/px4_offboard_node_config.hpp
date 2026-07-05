@@ -35,7 +35,7 @@ struct Px4OffboardNodeConfig {
   double min_navigation_altitude_m{0.0};
   double takeoff_hover_s{2.0};
   double acceptance_radius_m{1.5};
-  double turn_preview_distance_m{32.0};
+  double diagnostic_turn_preview_distance_m{32.0};
   std::int64_t max_clearance_grid_staleness_ns{1'500'000'000};
   double command_resend_period_s{2.0};
   std::int64_t max_pose_staleness_ns{1'000'000'000};

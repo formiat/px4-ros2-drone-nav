@@ -6,7 +6,8 @@
 namespace drone_city_nav {
 
 [[nodiscard]] OffboardPathFollowerConfig Px4OffboardNode::pathFollowerConfig() const {
-  return OffboardPathFollowerConfig{acceptance_radius_m_, turn_preview_distance_m_};
+  return OffboardPathFollowerConfig{acceptance_radius_m_,
+                                    diagnostic_turn_preview_distance_m_};
 }
 
 [[nodiscard]] std_msgs::msg::Header Px4OffboardNode::makeDebugHeader() const {
@@ -47,6 +48,7 @@ void Px4OffboardNode::clearFinalTrajectory() {
   final_trajectory_samples_.clear();
   trajectory_speed_profile_ = TrajectorySpeedProfile{};
   trajectory_valid_ = false;
+  trajectory_goal_valid_ = false;
   terminal_position_capture_latched_ = false;
   terminal_capture_state_ = TerminalCaptureState{};
   last_trajectory_metrics_ = TrajectoryMetrics{};
@@ -70,6 +72,18 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
+  if (last_trajectory_planner_stats_.speed_config_fingerprint != 0U &&
+      diagnostics.stats.speed_config_fingerprint != 0U &&
+      last_trajectory_planner_stats_.speed_config_fingerprint !=
+          diagnostics.stats.speed_config_fingerprint) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "speed_config_fingerprint_mismatch: runtime=%" PRIu64
+                         " planning=%" PRIu64 " planner_path_id=%" PRIu64
+                         " path_stamp_ns=%" PRIu64,
+                         last_trajectory_planner_stats_.speed_config_fingerprint,
+                         diagnostics.stats.speed_config_fingerprint,
+                         diagnostics.planner_path_id, diagnostics.path_stamp_ns);
+  }
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
 }
@@ -77,7 +91,7 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
 void Px4OffboardNode::updatePlannerStatsForReceivedTrajectory() {
   last_trajectory_planner_stats_ = buildReceivedTrajectoryPlannerStats(
       path_points_, final_trajectory_samples_, trajectory_, last_trajectory_metrics_,
-      trajectory_speed_profile_, trajectory_valid_);
+      trajectory_speed_profile_, velocity_follower_config_, trajectory_valid_);
   if (latest_trajectory_diagnostics_.has_value()) {
     mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*latest_trajectory_diagnostics_);
   }
@@ -142,11 +156,20 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
   return false;
 }
 
+TrajectoryContinuityResult Px4OffboardNode::evaluateReceivedTrajectoryContinuity(
+    const OffboardTrajectoryState& state) const {
+  return evaluateTrajectoryContinuity(
+      final_trajectory_samples_, trajectory_speed_profile_, state.samples,
+      state.speed_profile, current_position_,
+      velocity_follower_state_.previous_velocity_setpoint,
+      velocity_follower_state_.previous_velocity_setpoint_valid);
+}
+
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
-    const char* source_label, const OffboardTrajectoryState& state) {
+    const char* source_label, const OffboardTrajectoryState& state,
+    const TrajectoryContinuityResult& continuity) {
   const bool preserve_velocity_smoother_state =
-      trajectory_valid_ && state.valid &&
-      velocity_follower_state_.previous_velocity_setpoint_valid;
+      continuity.decision == TrajectoryContinuityDecision::kPreserveSmoother;
   final_trajectory_samples_ = state.samples;
   trajectory_ = state.trajectory;
   trajectory_speed_profile_ = state.speed_profile;
@@ -163,7 +186,7 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   if (!trajectory_valid_) {
     resetVelocityDiagnostics();
   } else if (!preserve_velocity_smoother_state) {
-    resetVelocitySmootherState("new_trajectory", true);
+    resetVelocitySmootherState("trajectory_continuity_reset", true);
   }
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
@@ -192,7 +215,10 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       " planner_path_id=%" PRIu64
       " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
+      "speed_config_fingerprint=%" PRIu64 " "
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
+      "continuity[decision=%s reason=%s projection_jump=%.2f tangent_jump=%.3f "
+      "curvature_jump=%.4f speed_limit_jump=%.2f command_jump=%.2f] "
       "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
       "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
@@ -205,8 +231,13 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       last_trajectory_planner_stats_.speed_profile_mean_mps,
       last_trajectory_planner_stats_.speed_profile_max_mps,
       last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
-      top_speed_constraint_s, top_speed_constraint_radius, top_speed_constraint_limit,
+      last_trajectory_planner_stats_.speed_config_fingerprint, top_speed_constraint_s,
+      top_speed_constraint_radius, top_speed_constraint_limit,
       top_speed_constraint_source,
+      trajectoryContinuityDecisionName(continuity.decision), continuity.reason,
+      continuity.projection_jump_m, continuity.tangent_jump_rad,
+      continuity.curvature_jump_1pm, continuity.speed_limit_jump_mps,
+      continuity.command_jump_mps,
       last_trajectory_planner_stats_.isolated_curvature_spike_candidates,
       last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_geometry,
       last_trajectory_planner_stats_.isolated_curvature_spike_max_before_1pm,
@@ -232,6 +263,7 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     last_received_path_stamp_ns_ = candidate_path_stamp_ns;
     path_points_ = std::move(candidate_path_points);
     path_valid_ = false;
+    trajectory_goal_valid_ = false;
     clearFinalTrajectory();
     if (last_logged_path_size_ != 0U) {
       if (local_position_valid_) {
@@ -271,6 +303,24 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                                             candidate_path_points.size())) {
     return;
   }
+  const TrajectoryContinuityResult continuity =
+      evaluateReceivedTrajectoryContinuity(candidate_state);
+  if (continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory) {
+    RCLCPP_WARN(get_logger(),
+                "trajectory_update_rejected: reason=%s decision=%s "
+                "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+                " path_stamp_ns=%" PRIu64 " points=%zu projection_jump=%.2f "
+                "tangent_jump=%.3f curvature_jump=%.4f speed_limit_jump=%.2f "
+                "command_jump=%.2f keeping_previous_trajectory=%s",
+                continuity.reason,
+                trajectoryContinuityDecisionName(continuity.decision),
+                candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+                candidate_path_points.size(), continuity.projection_jump_m,
+                continuity.tangent_jump_rad, continuity.curvature_jump_1pm,
+                continuity.speed_limit_jump_mps, continuity.command_jump_mps,
+                trajectory_valid_ ? "true" : "false");
+    return;
+  }
 
   no_path_hold_target_valid_ = false;
   const std::size_t candidate_index =
@@ -282,8 +332,10 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   last_received_path_stamp_ns_ = candidate_path_stamp_ns;
   path_points_ = std::move(candidate_path_points);
   path_valid_ = true;
+  trajectory_goal_ = path_points_.back();
+  trajectory_goal_valid_ = true;
   waypoint_index_ = candidate_index;
-  applyReceivedFinalTrajectoryPath("path_update", candidate_state);
+  applyReceivedFinalTrajectoryPath("path_update", candidate_state, continuity);
   const Point2 first = path_points_.front();
   const Point2 last = path_points_.back();
   const bool path_changed = path_points_.size() != last_logged_path_size_ ||

@@ -103,8 +103,8 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
   if (velocity_cruise_requested && local_position_valid_) {
     desired_target = current_position_;
   }
-  if (terminal_position_capture_requested && path_valid_ && !path_points_.empty()) {
-    desired_target = path_points_.back();
+  if (terminal_position_capture_requested && trajectoryGoalReady()) {
+    desired_target = trajectory_goal_;
   }
   const bool hold_position = (velocity_cruise_requested || shouldHoldPosition()) &&
                              !terminal_position_capture_requested;
@@ -128,7 +128,7 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 }
 
 [[nodiscard]] OffboardSetpointMode Px4OffboardNode::currentSetpointMode() const {
-  if (terminal_capture_state_.position_capture_active) {
+  if (terminal_capture_state_.state == TerminalFlightState::kPositionCapture) {
     return OffboardSetpointMode::kTerminalPositionCapture;
   }
   return velocityCruiseReady() ? OffboardSetpointMode::kVelocityCruise
@@ -137,100 +137,65 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 
 [[nodiscard]] bool Px4OffboardNode::velocityCruiseReady() const {
   return localPositionFresh() && navigationAllowed() && pathFollowingReady() &&
-         waypoint_index_ < path_points_.size() && !finalPathGoalReached() &&
-         !no_path_hold_target_valid_;
+         !finalPathGoalReached() && !no_path_hold_target_valid_;
 }
 
 [[nodiscard]] Px4OffboardNode::TerminalCaptureState
 Px4OffboardNode::computeTerminalCaptureState() const {
-  TerminalCaptureState state{};
-  const double terminal_radius =
-      std::clamp(velocity_follower_config_.terminal_capture_radius_m, 0.0, 1000.0);
-  const double terminal_max_speed =
-      std::clamp(velocity_follower_config_.terminal_capture_max_speed_mps, 0.0, 100.0);
-  state.activation_radius_m = std::isfinite(terminal_radius) ? terminal_radius : 8.0;
-  state.max_entry_speed_mps =
-      std::min(std::isfinite(terminal_max_speed) ? terminal_max_speed : 8.0, 3.0);
-  state.stuck_speed_mps = 0.5;
-
-  if (final_goal_hold_active_ || no_path_hold_target_valid_ || !localPositionFresh() ||
-      !navigationAllowed() || !pathFollowingReady() || path_points_.empty() ||
-      !std::isfinite(current_speed_mps_)) {
-    return state;
-  }
+  TerminalStateMachineInput input{};
+  input.final_goal_hold_active = final_goal_hold_active_;
+  input.no_path_hold_active = no_path_hold_target_valid_;
+  input.prerequisites_valid = localPositionFresh() && navigationAllowed() &&
+                              pathFollowingReady() && trajectoryGoalReady();
+  input.previous_position_capture_latched = terminal_position_capture_latched_;
+  input.velocity_terminal_capture_active = last_velocity_plan_.terminal_capture_active;
+  input.current_speed_mps = current_speed_mps_;
+  input.acceptance_radius_m = acceptance_radius_m_;
+  input.terminal_capture_radius_m = velocity_follower_config_.terminal_capture_radius_m;
+  input.terminal_capture_max_speed_mps =
+      velocity_follower_config_.terminal_capture_max_speed_mps;
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(final_trajectory_samples_, current_position_);
-  if (!projection.has_value()) {
-    return state;
+  if (input.prerequisites_valid && projection.has_value()) {
+    input.goal_distance_m = distance(current_position_, trajectory_goal_);
+    input.remaining_trajectory_distance_m = std::max(
+        0.0, final_trajectory_samples_.back().s_m - std::max(0.0, projection->s_m));
+  } else if (input.prerequisites_valid) {
+    input.prerequisites_valid = false;
   }
 
-  state.valid = true;
-  state.goal_distance_m = distance(current_position_, path_points_.back());
-  state.remaining_trajectory_distance_m = std::max(
-      0.0, final_trajectory_samples_.back().s_m - std::max(0.0, projection->s_m));
-  state.current_speed_mps = current_speed_mps_;
-
-  state.inside_terminal_zone =
-      state.goal_distance_m <= state.activation_radius_m ||
-      state.remaining_trajectory_distance_m <= state.activation_radius_m;
-  state.slow_enough_for_position_capture =
-      state.current_speed_mps <= state.max_entry_speed_mps;
-  state.terminal_velocity_stuck = last_velocity_plan_.terminal_capture_active &&
-                                  state.current_speed_mps <= state.stuck_speed_mps &&
-                                  state.goal_distance_m > acceptance_radius_m_ &&
-                                  state.inside_terminal_zone;
-  if (state.terminal_velocity_stuck) {
-    state.position_capture_active = true;
-    state.reason = "terminal_stuck";
-    return state;
-  }
-  if (state.slow_enough_for_position_capture &&
-      state.goal_distance_m <= state.activation_radius_m) {
-    state.position_capture_active = true;
-    state.reason = "near_goal_slow";
-    return state;
-  }
-  if (state.slow_enough_for_position_capture &&
-      state.remaining_trajectory_distance_m <= state.activation_radius_m) {
-    state.position_capture_active = true;
-    state.reason = "near_end_slow";
-    return state;
-  }
-  return state;
+  return evaluateTerminalStateMachine(input);
 }
 
 void Px4OffboardNode::updateTerminalCaptureState() {
-  TerminalCaptureState state = computeTerminalCaptureState();
-  if (!state.valid || final_goal_hold_active_ || no_path_hold_target_valid_) {
-    terminal_position_capture_latched_ = false;
-  } else if (state.position_capture_active) {
-    terminal_position_capture_latched_ = true;
-  } else if (terminal_position_capture_latched_) {
-    state.position_capture_active = true;
-    state.reason = "latched";
-  }
-
-  terminal_capture_state_ = state;
-  last_terminal_position_capture_active_ = state.position_capture_active;
-  last_terminal_position_capture_reason_ = state.reason;
-  last_terminal_position_capture_goal_distance_m_ = state.goal_distance_m;
-  last_terminal_position_capture_remaining_s_m_ = state.remaining_trajectory_distance_m;
-  last_terminal_position_capture_speed_mps_ = state.current_speed_mps;
-  last_terminal_position_capture_activation_radius_m_ = state.activation_radius_m;
-  last_terminal_position_capture_max_entry_speed_mps_ = state.max_entry_speed_mps;
-  last_terminal_position_capture_stuck_speed_mps_ = state.stuck_speed_mps;
+  terminal_capture_state_ = computeTerminalCaptureState();
+  terminal_position_capture_latched_ = terminal_capture_state_.position_capture_latched;
+  last_terminal_position_capture_active_ =
+      terminal_capture_state_.position_capture_active;
+  last_terminal_position_capture_reason_ = terminal_capture_state_.reason;
+  last_terminal_position_capture_goal_distance_m_ =
+      terminal_capture_state_.goal_distance_m;
+  last_terminal_position_capture_remaining_s_m_ =
+      terminal_capture_state_.remaining_trajectory_distance_m;
+  last_terminal_position_capture_speed_mps_ = terminal_capture_state_.current_speed_mps;
+  last_terminal_position_capture_activation_radius_m_ =
+      terminal_capture_state_.activation_radius_m;
+  last_terminal_position_capture_max_entry_speed_mps_ =
+      terminal_capture_state_.max_entry_speed_mps;
+  last_terminal_position_capture_stuck_speed_mps_ =
+      terminal_capture_state_.stuck_speed_mps;
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalPathGoalReached() const {
   if (final_goal_hold_active_) {
     return true;
   }
-  if (!localPositionFresh() || !path_valid_ || path_points_.empty()) {
+  if (!localPositionFresh() || !trajectoryGoalReady()) {
     return false;
   }
   const bool geometrically_reached =
-      distance(current_position_, path_points_.back()) <= acceptance_radius_m_;
+      distance(current_position_, trajectory_goal_) <= acceptance_radius_m_;
   if (!geometrically_reached) {
     return false;
   }
@@ -241,12 +206,13 @@ void Px4OffboardNode::updateTerminalCaptureState() {
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalPathGoalPassed() const {
-  if (!localPositionFresh() || !path_valid_ || path_points_.size() < 2U) {
+  if (!localPositionFresh() || !path_valid_ || path_points_.size() < 2U ||
+      !trajectoryGoalReady()) {
     return false;
   }
 
   const Point2 segment_start = path_points_[path_points_.size() - 2U];
-  const Point2 segment_end = path_points_.back();
+  const Point2 segment_end = trajectory_goal_;
   const Point2 segment{segment_end.x - segment_start.x,
                        segment_end.y - segment_start.y};
   const double segment_length_sq = squaredDistance(segment_start, segment_end);
@@ -278,7 +244,7 @@ void Px4OffboardNode::updateFinalGoalHold() {
   }
 
   final_goal_hold_active_ = true;
-  final_goal_hold_target_ = path_points_.back();
+  final_goal_hold_target_ = trajectory_goal_;
   no_path_hold_target_valid_ = false;
   resetVelocityDiagnostics();
   RCLCPP_INFO(get_logger(),
@@ -424,8 +390,8 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
     return final_goal_hold_target_;
   }
 
-  if (localPositionFresh() && pathFollowingReady()) {
-    return path_points_[waypoint_index_];
+  if (localPositionFresh() && pathFollowingReady() && !path_points_.empty()) {
+    return path_points_[std::min(waypoint_index_, path_points_.size() - 1U)];
   }
 
   if (no_path_hold_target_valid_) {
@@ -465,8 +431,7 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
 
 [[nodiscard]] bool Px4OffboardNode::shouldHoldPosition() const {
   return final_goal_hold_active_ || !localPositionFresh() || !navigationAllowed() ||
-         !pathFollowingReady() || waypoint_index_ >= path_points_.size() ||
-         finalPathGoalReached();
+         !pathFollowingReady() || finalPathGoalReached();
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalTrajectoryReady() const {
@@ -474,16 +439,17 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
          trajectory_speed_profile_.valid && final_trajectory_samples_.size() >= 2U;
 }
 
+[[nodiscard]] bool Px4OffboardNode::trajectoryGoalReady() const {
+  return trajectory_goal_valid_ && std::isfinite(trajectory_goal_.x) &&
+         std::isfinite(trajectory_goal_.y);
+}
+
 [[nodiscard]] bool Px4OffboardNode::pathFollowingReady() const {
-  if (!path_valid_ || waypoint_index_ >= path_points_.size()) {
-    return false;
-  }
-  return finalTrajectoryReady();
+  return path_valid_ && trajectoryGoalReady() && finalTrajectoryReady();
 }
 
 [[nodiscard]] bool Px4OffboardNode::missionStartReady() const {
-  return localPositionFresh() && path_valid_ && waypoint_index_ < path_points_.size() &&
-         finalTrajectoryReady();
+  return localPositionFresh() && pathFollowingReady();
 }
 
 [[nodiscard]] UpcomingTurn
@@ -812,10 +778,9 @@ void Px4OffboardNode::logControlSummary() {
   const double mission_goal_distance = local_position_valid_
                                            ? distance(current_position_, mission_goal_)
                                            : std::numeric_limits<double>::quiet_NaN();
-  const double path_goal_distance =
-      local_position_valid_ && path_valid_
-          ? distance(current_position_, path_points_.back())
-          : std::numeric_limits<double>::quiet_NaN();
+  const double path_goal_distance = local_position_valid_ && trajectoryGoalReady()
+                                        ? distance(current_position_, trajectory_goal_)
+                                        : std::numeric_limits<double>::quiet_NaN();
   const double prohibited_grid_clearance_m =
       local_position_valid_ ? estimateProhibitedGridClearanceM(current_position_)
                             : std::numeric_limits<double>::quiet_NaN();
@@ -871,7 +836,7 @@ void Px4OffboardNode::logControlSummary() {
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
       "altitude_error=%.2f "
-      "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
+      "diagnostic_final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
       "prohibited_grid_clearance=%.2f",
       local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",

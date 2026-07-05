@@ -103,9 +103,8 @@ planner_node:
     path_prohibited_intersection_check_period_s: 0.5
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
-    max_accel_mps2: 7.0
-    max_decel_mps2: 20.0
-    max_lateral_accel_mps2: 5.0
+    speed_profile_accel_mps2: 7.0
+    turn_speed_lateral_accel_mps2: 5.0
     speed_profile_decel_mps2: 2.0
     speed_profile_sample_step_m: 0.5
     speed_profile_lookahead_time_s: 1.0
@@ -176,12 +175,13 @@ px4_offboard_node:
     min_navigation_altitude_m: 17.0
     takeoff_hover_s: 2.0
     acceptance_radius_m: 1.0
-    turn_preview_distance_m: 90.0
+    diagnostic_turn_preview_distance_m: 90.0
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
-    max_accel_mps2: 7.0
-    max_decel_mps2: 20.0
-    max_lateral_accel_mps2: 5.0
+    speed_profile_accel_mps2: 7.0
+    setpoint_forward_accel_mps2: 7.0
+    setpoint_forward_decel_mps2: 20.0
+    turn_speed_lateral_accel_mps2: 5.0
     speed_profile_decel_mps2: 2.0
     speed_profile_sample_step_m: 0.5
     speed_profile_lookahead_time_s: 1.0
@@ -201,7 +201,7 @@ px4_offboard_node:
     cross_track_p_gain_schedule_max_factor: 1.3
     tracking_prediction_horizon_s: 0.35
     max_lateral_control_angle_deg: 55.0
-    velocity_lateral_response_accel_mps2: 8.0
+    setpoint_lateral_response_accel_mps2: 8.0
     curvature_feedforward_time_s: 0.25
     curvature_feedforward_deadband_angle_deg: 2.0
     curvature_feedforward_full_angle_deg: 8.0

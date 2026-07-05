@@ -468,20 +468,22 @@ the current trajectory projection.
 
 The main simulation parameters are:
 
-- `turn_preview_distance_m` - legacy path-turn preview distance used for
+- `diagnostic_turn_preview_distance_m` - legacy path-turn preview distance used for
   waypoint/path diagnostics. Active cruise speed limiting is based on the
   trajectory speed profile instead.
 - `cruise_speed_mps` - nominal horizontal cruise speed on straight segments.
 - `min_turn_speed_mps` - lower bound for the speed allowed by curved trajectory
   segments.
-- `max_accel_mps2` - acceleration limit for increasing commanded cruise speed.
-- `max_decel_mps2` - longitudinal deceleration limit for reducing the commanded
-  velocity setpoint.
+- `speed_profile_accel_mps2` - acceleration budget used by the trajectory speed
+  profile forward pass.
 - `speed_profile_decel_mps2` - conservative trajectory-profile deceleration
   budget used to begin slowing before arcs and the final goal.
-- `max_lateral_accel_mps2` - lateral acceleration budget used to convert arc
-  radius/curvature into allowed turn speed, and horizontal velocity-vector
-  change limit.
+- `turn_speed_lateral_accel_mps2` - lateral acceleration budget used to convert arc
+  radius/curvature into allowed turn speed.
+- `setpoint_forward_accel_mps2` and `setpoint_forward_decel_mps2` - forward
+  velocity setpoint dynamics used by the runtime smoother.
+- `setpoint_lateral_response_accel_mps2` - lateral velocity setpoint response
+  limit used by the runtime smoother.
 - `speed_profile_sample_step_m` - regular spacing for trajectory speed-profile
   samples. Segment boundaries and arc interior samples are added separately so
   short arcs cannot be skipped by a large regular step.

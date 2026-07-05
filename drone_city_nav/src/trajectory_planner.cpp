@@ -1,5 +1,8 @@
 #include "drone_city_nav/trajectory_planner.hpp"
 
+#include "drone_city_nav/trajectory_diagnostics.hpp"
+#include "drone_city_nav/trajectory_shape_cleanup.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -10,10 +13,6 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr std::size_t kTopSpeedConstraintCount = 5U;
-constexpr double kIsolatedCurvatureSpikeMin1pm = 0.05;
-constexpr double kIsolatedCurvatureSpikeNeighborRatio = 0.45;
-constexpr double kCurvatureSpikeGeometryBlend = 0.65;
-constexpr std::size_t kCurvatureSpikeSmoothingPasses = 2U;
 
 void computeCurvatureStats(const std::span<const TrajectoryPointSample> samples,
                            TrajectoryPlannerStats& stats) {
@@ -76,6 +75,8 @@ void finalizeResult(TrajectoryPlannerResult& result,
   result.stats.arc_segments = metrics.arc_segments;
   result.stats.length_m = metrics.length_m;
   result.stats.samples = result.samples.size();
+  result.stats.speed_config_fingerprint =
+      velocityControlConfigFingerprint(config.speed_profile);
   computeCurvatureStats(result.samples, result.stats);
   computeSpeedProfileStats(result.speed_profile, result.stats);
   result.valid = trajectoryIsUsable(result.compact_segments) &&
@@ -84,7 +85,6 @@ void finalizeResult(TrajectoryPlannerResult& result,
   if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
   }
-  (void)config;
 }
 
 void populateCorridorReuseStats(const std::span<const CorridorSample> samples,
@@ -195,44 +195,6 @@ corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
   return 2.0 * cross(a, b) / denominator;
 }
 
-[[nodiscard]] bool
-isIsolatedCurvatureSpike(const std::span<const TrajectoryPointSample> samples,
-                         const std::size_t index) noexcept {
-  if (index == 0U || index + 1U >= samples.size()) {
-    return false;
-  }
-  const double current = std::abs(samples[index].curvature_1pm);
-  if (!(current >= kIsolatedCurvatureSpikeMin1pm)) {
-    return false;
-  }
-  const double previous = std::abs(samples[index - 1U].curvature_1pm);
-  const double next = std::abs(samples[index + 1U].curvature_1pm);
-  return previous <= current * kIsolatedCurvatureSpikeNeighborRatio &&
-         next <= current * kIsolatedCurvatureSpikeNeighborRatio;
-}
-
-[[nodiscard]] std::size_t countIsolatedCurvatureSpikes(
-    const std::span<const TrajectoryPointSample> samples) noexcept {
-  std::size_t count = 0U;
-  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-    if (isIsolatedCurvatureSpike(samples, i)) {
-      ++count;
-    }
-  }
-  return count;
-}
-
-[[nodiscard]] double maxIsolatedCurvatureSpike(
-    const std::span<const TrajectoryPointSample> samples) noexcept {
-  double max_spike = 0.0;
-  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-    if (isIsolatedCurvatureSpike(samples, i)) {
-      max_spike = std::max(max_spike, std::abs(samples[i].curvature_1pm));
-    }
-  }
-  return max_spike;
-}
-
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
   double s_m = 0.0;
   for (std::size_t i = 0U; i < samples.size(); ++i) {
@@ -296,63 +258,28 @@ baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_sampl
   return true;
 }
 
-[[nodiscard]] bool localSpikeSmoothingTraversable(const OccupancyGrid2D& grid,
-                                                  const Point2 previous,
-                                                  const Point2 current,
-                                                  const Point2 next) {
-  return segmentTraversable(grid, previous, current) &&
-         segmentTraversable(grid, current, next);
-}
-
 [[nodiscard]] bool
-smoothSingleIsolatedCurvatureSpike(std::vector<TrajectoryPointSample>& samples,
-                                   const OccupancyGrid2D& grid,
-                                   const std::size_t index) {
-  if (!isIsolatedCurvatureSpike(samples, index)) {
+trajectoryStageInvariantsHold(const std::span<const TrajectoryPointSample> samples,
+                              const OccupancyGrid2D& grid, const Point2 expected_start,
+                              const Point2 expected_goal) {
+  constexpr double kEndpointToleranceM = 1.0e-4;
+  if (!trajectorySamplesAreUsable(samples) ||
+      distance(samples.front().point, expected_start) > kEndpointToleranceM ||
+      distance(samples.back().point, expected_goal) > kEndpointToleranceM) {
     return false;
   }
-
-  const Point2 previous = samples[index - 1U].point;
-  const Point2 current = samples[index].point;
-  const Point2 next = samples[index + 1U].point;
-  const Point2 midpoint{0.5 * (previous.x + next.x), 0.5 * (previous.y + next.y)};
-  const Point2 candidate{
-      current.x + (midpoint.x - current.x) * kCurvatureSpikeGeometryBlend,
-      current.y + (midpoint.y - current.y) * kCurvatureSpikeGeometryBlend,
-  };
-  if (!localSpikeSmoothingTraversable(grid, previous, candidate, next)) {
+  std::vector<Point2> points;
+  points.reserve(samples.size());
+  for (const TrajectoryPointSample& sample : samples) {
+    points.push_back(sample.point);
+  }
+  if (!pathTraversable(grid, points)) {
     return false;
   }
-
-  const double current_abs = std::abs(samples[index].curvature_1pm);
-  const double candidate_abs =
-      std::abs(signedCurvatureFromTriplet(previous, candidate, next));
-  if (!(candidate_abs < current_abs * 0.75)) {
-    return false;
-  }
-
-  samples[index].point = candidate;
-  return true;
-}
-
-[[nodiscard]] std::size_t
-smoothIsolatedCurvatureSpikeGeometry(std::vector<TrajectoryPointSample>& samples,
-                                     const OccupancyGrid2D& grid) {
-  std::size_t smoothed = 0U;
-  for (std::size_t pass = 0U; pass < kCurvatureSpikeSmoothingPasses; ++pass) {
-    bool changed = false;
-    for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
-      if (smoothSingleIsolatedCurvatureSpike(samples, grid, i)) {
-        populateSampleGeometry(samples);
-        ++smoothed;
-        changed = true;
-      }
-    }
-    if (!changed) {
-      break;
-    }
-  }
-  return smoothed;
+  const TrajectoryShapeDiagnostics shape = computeTrajectoryShapeDiagnostics(samples);
+  return std::isfinite(shape.max_heading_delta_rad) &&
+         std::isfinite(shape.max_curvature_jump_1pm) &&
+         std::isfinite(shape.max_segment_length_m);
 }
 
 } // namespace
@@ -439,6 +366,13 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
 
   result.stats.status = TrajectoryPlannerStatus::kOk;
   result.samples = baselineSamplesFromCorridor(corridor.samples);
+  if (!trajectoryStageInvariantsHold(result.samples, *input.prohibited_grid,
+                                     input.route_points.front(),
+                                     input.route_points.back())) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   result.speed_profile =
@@ -540,6 +474,13 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     return result;
   }
   result.samples = turn_smoothing.samples;
+  if (!trajectoryStageInvariantsHold(result.samples, *input.prohibited_grid,
+                                     input.route_points.front(),
+                                     input.route_points.back())) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   result.stats.isolated_curvature_spike_candidates =
       countIsolatedCurvatureSpikes(result.samples);
   result.stats.isolated_curvature_spike_max_before_1pm =
@@ -548,6 +489,13 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
       smoothIsolatedCurvatureSpikeGeometry(result.samples, *input.prohibited_grid);
   result.stats.isolated_curvature_spike_max_after_1pm =
       maxIsolatedCurvatureSpike(result.samples);
+  if (!trajectoryStageInvariantsHold(result.samples, *input.prohibited_grid,
+                                     input.route_points.front(),
+                                     input.route_points.back())) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   result.speed_profile =

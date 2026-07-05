@@ -7,7 +7,7 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   min_navigation_altitude_m_ = config.min_navigation_altitude_m;
   takeoff_hover_s_ = config.takeoff_hover_s;
   acceptance_radius_m_ = config.acceptance_radius_m;
-  turn_preview_distance_m_ = config.turn_preview_distance_m;
+  diagnostic_turn_preview_distance_m_ = config.diagnostic_turn_preview_distance_m;
   max_clearance_grid_staleness_ns_ = config.max_clearance_grid_staleness_ns;
   max_pose_staleness_ns_ = config.max_pose_staleness_ns;
   velocity_follower_config_ = config.velocity_follower;
@@ -99,11 +99,13 @@ Px4OffboardNode::Px4OffboardNode()
       "PX4 offboard node ready: altitude=%.1fm acceptance=%.1fm auto_arm=%s "
       "auto_offboard=%s min_navigation_altitude=%.1fm "
       "takeoff_hover=%.1fs "
-      "turn_preview_distance=%.1fm "
+      "diagnostic_turn_preview_distance=%.1fm "
       "velocity_cruise=final_trajectory_only cruise_speed=%.2fmps "
       "min_turn_speed=%.2fmps "
-      "max_accel=%.2fmps2 max_decel=%.2fmps2 max_lateral_accel=%.2fmps2 "
-      "speed_profile_decel=%.2fmps2 speed_profile_sample_step=%.2fm "
+      "speed_profile_accel=%.2fmps2 speed_profile_decel=%.2fmps2 "
+      "turn_speed_lateral_accel=%.2fmps2 "
+      "setpoint_forward_accel=%.2fmps2 setpoint_forward_decel=%.2fmps2 "
+      "speed_profile_sample_step=%.2fm "
       "speed_profile_lookahead[time=%.2fs min=%.2fm max=%.2fm] "
       "final_hold_max_speed=%.2fmps "
       "terminal_capture[radius=%.2fm gain=%.2f max_speed=%.2fmps] "
@@ -111,7 +113,7 @@ Px4OffboardNode::Px4OffboardNode()
       "cross_track_p_gain_schedule[start=%.2fm full=%.2fm min=%.2f max=%.2f] "
       "tracking_prediction_horizon=%.2fs "
       "max_lateral_control_angle=%.1fdeg "
-      "velocity_lateral_response_accel=%.2fmps2 "
+      "setpoint_lateral_response_accel=%.2fmps2 "
       "curvature_feedforward[time=%.2fs deadband=%.1fdeg full=%.1fdeg "
       "max_angle=%.1fdeg] "
       "cross_track_d_gain_schedule[min_speed=%.2fmps full_speed=%.2fmps "
@@ -131,12 +133,13 @@ Px4OffboardNode::Px4OffboardNode()
       "max_pose_staleness=%.2fs command_resend_period=%.2fs",
       cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
       auto_offboard_ ? "true" : "false", min_navigation_altitude_m_, takeoff_hover_s_,
-      turn_preview_distance_m_, velocity_follower_config_.cruise_speed_mps,
+      diagnostic_turn_preview_distance_m_, velocity_follower_config_.cruise_speed_mps,
       velocity_follower_config_.min_turn_speed_mps,
-      velocity_follower_config_.max_accel_mps2,
-      velocity_follower_config_.max_decel_mps2,
-      velocity_follower_config_.max_lateral_accel_mps2,
+      velocity_follower_config_.speed_profile_accel_mps2,
       velocity_follower_config_.speed_profile_decel_mps2,
+      velocity_follower_config_.turn_speed_lateral_accel_mps2,
+      velocity_follower_config_.setpoint_forward_accel_mps2,
+      velocity_follower_config_.setpoint_forward_decel_mps2,
       velocity_follower_config_.speed_profile_sample_step_m,
       velocity_follower_config_.speed_profile_lookahead_time_s,
       velocity_follower_config_.speed_profile_lookahead_min_m,
@@ -152,7 +155,7 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.cross_track_p_gain_schedule_max_factor,
       velocity_follower_config_.tracking_prediction_horizon_s,
       radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),
-      velocity_follower_config_.velocity_lateral_response_accel_mps2,
+      velocity_follower_config_.setpoint_lateral_response_accel_mps2,
       velocity_follower_config_.curvature_feedforward_time_s,
       radiansToDegrees(
           velocity_follower_config_.curvature_feedforward_deadband_angle_rad),

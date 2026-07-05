@@ -11,10 +11,13 @@
 #include "drone_city_nav/px4_offboard_node_config.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/route_diagnostics.hpp"
+#include "drone_city_nav/terminal_capture_state_machine.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
+#include "drone_city_nav/trajectory_update_continuity.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
@@ -142,8 +145,12 @@ private:
       const OffboardTrajectoryState& state, std::uint64_t candidate_update_id,
       std::uint64_t candidate_path_stamp_ns, std::size_t candidate_path_points) const;
 
+  [[nodiscard]] TrajectoryContinuityResult
+  evaluateReceivedTrajectoryContinuity(const OffboardTrajectoryState& state) const;
+
   void applyReceivedFinalTrajectoryPath(const char* source_label,
-                                        const OffboardTrajectoryState& state);
+                                        const OffboardTrajectoryState& state,
+                                        const TrajectoryContinuityResult& continuity);
 
   void onPath(const nav_msgs::msg::Path& path);
 
@@ -188,20 +195,7 @@ private:
 
   [[nodiscard]] bool velocityCruiseReady() const;
 
-  struct TerminalCaptureState {
-    bool valid{false};
-    bool inside_terminal_zone{false};
-    bool slow_enough_for_position_capture{false};
-    bool terminal_velocity_stuck{false};
-    bool position_capture_active{false};
-    const char* reason{"none"};
-    double goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
-    double remaining_trajectory_distance_m{std::numeric_limits<double>::quiet_NaN()};
-    double current_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-    double activation_radius_m{std::numeric_limits<double>::quiet_NaN()};
-    double max_entry_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-    double stuck_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-  };
+  using TerminalCaptureState = TerminalStateMachineDecision;
 
   [[nodiscard]] TerminalCaptureState computeTerminalCaptureState() const;
 
@@ -234,6 +228,8 @@ private:
   [[nodiscard]] bool shouldHoldPosition() const;
 
   [[nodiscard]] bool finalTrajectoryReady() const;
+
+  [[nodiscard]] bool trajectoryGoalReady() const;
 
   [[nodiscard]] bool pathFollowingReady() const;
 
@@ -311,6 +307,7 @@ private:
   Point2 last_published_target_{};
   Point2 last_velocity_setpoint_{};
   Point2 mission_goal_{85.0, 0.0};
+  Point2 trajectory_goal_{};
   Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
@@ -318,7 +315,7 @@ private:
   double min_navigation_altitude_m_{0.0};
   double takeoff_hover_s_{2.0};
   double acceptance_radius_m_{1.5};
-  double turn_preview_distance_m_{32.0};
+  double diagnostic_turn_preview_distance_m_{32.0};
   double altitude_hold_kp_{0.5};
   double max_vertical_speed_mps_{2.0};
   double command_resend_period_s_{2.0};
@@ -348,6 +345,7 @@ private:
   int warmup_setpoints_{20};
   int setpoint_counter_{0};
   bool path_valid_{false};
+  bool trajectory_goal_valid_{false};
   bool local_position_valid_{false};
   bool vehicle_status_valid_{false};
   bool attitude_valid_{false};

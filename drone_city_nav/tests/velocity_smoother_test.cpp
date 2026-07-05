@@ -10,10 +10,10 @@ namespace {
 
 [[nodiscard]] VelocityFollowerConfig testConfig() {
   VelocityFollowerConfig config{};
-  config.max_accel_mps2 = 3.0;
-  config.max_decel_mps2 = 20.0;
-  config.max_lateral_accel_mps2 = 3.0;
-  config.velocity_lateral_response_accel_mps2 = 5.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.setpoint_forward_decel_mps2 = 20.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
+  config.setpoint_lateral_response_accel_mps2 = 5.0;
   config.max_velocity_jerk_mps3 = 12.0;
   config.max_lateral_velocity_jerk_mps3 = 14.0;
   return config;
@@ -23,8 +23,8 @@ namespace {
 
 TEST(VelocitySmoother, AccelerationLimitClampsSpeedIncrease) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 3.0;
-  config.max_lateral_accel_mps2 = 3.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{10.0, 0.0},
@@ -41,7 +41,7 @@ TEST(VelocitySmoother, AccelerationLimitClampsSpeedIncrease) {
 
 TEST(VelocitySmoother, DecelerationLimitClampsSpeedDecrease) {
   VelocityFollowerConfig config = testConfig();
-  config.max_decel_mps2 = 20.0;
+  config.setpoint_forward_decel_mps2 = 20.0;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{0.0, 0.0},
@@ -58,10 +58,10 @@ TEST(VelocitySmoother, DecelerationLimitClampsSpeedDecrease) {
 
 TEST(VelocitySmoother, JerkLimitSmoothsLateralDirectionChange) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
   config.max_velocity_jerk_mps3 = 1.0;
   config.max_lateral_velocity_jerk_mps3 = 1.0;
 
@@ -82,9 +82,9 @@ TEST(VelocitySmoother, JerkLimitSmoothsLateralDirectionChange) {
 
 TEST(VelocitySmoother, JerkLimitSmoothsLongitudinalBraking) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 20.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 20.0;
   config.max_velocity_jerk_mps3 = 1.0;
   config.max_lateral_velocity_jerk_mps3 = 1.0;
 
@@ -107,10 +107,10 @@ TEST(VelocitySmoother, JerkLimitSmoothsLongitudinalBraking) {
 
 TEST(VelocitySmoother, LateralResponseAccelIsSeparateFromSpeedProfileLateralAccel) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 3.0;
-  config.velocity_lateral_response_accel_mps2 = 8.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
+  config.setpoint_lateral_response_accel_mps2 = 8.0;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{10.0, 10.0},
@@ -126,9 +126,9 @@ TEST(VelocitySmoother, LateralResponseAccelIsSeparateFromSpeedProfileLateralAcce
 
 TEST(VelocitySmoother, PathFrameLateralSmoothingLimitsNormalComponentOnly) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 2.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 2.0;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{12.0, 10.0},
@@ -147,9 +147,9 @@ TEST(VelocitySmoother, PathFrameLateralSmoothingLimitsNormalComponentOnly) {
 
 TEST(VelocitySmoother, LateralJerkCanBeHigherThanLongitudinalJerk) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 100.0;
   config.max_velocity_jerk_mps3 = 1.0;
   config.max_lateral_velocity_jerk_mps3 = 10.0;
 
@@ -172,8 +172,8 @@ TEST(VelocitySmoother, LateralJerkCanBeHigherThanLongitudinalJerk) {
 
 TEST(VelocitySmoother, ResetStateDoesNotPullNewDesiredVelocityTowardOldState) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 100.0;
 
   const VelocitySmootherPlan plan = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{0.0, 8.0},

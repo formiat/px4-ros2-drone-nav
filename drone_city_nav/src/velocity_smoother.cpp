@@ -76,18 +76,18 @@ struct VelocityVectorLimitResult {
 
 [[nodiscard]] double
 effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
+  return sanitizedPositive(config.setpoint_forward_accel_mps2, 7.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double
 effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+  return sanitizedPositive(config.setpoint_forward_decel_mps2, 20.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double
 effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.velocity_lateral_response_accel_mps2,
-                           config.max_lateral_accel_mps2, 1.0e-6, 100.0);
+  return sanitizedPositive(config.setpoint_lateral_response_accel_mps2, 8.0, 1.0e-6,
+                           100.0);
 }
 
 [[nodiscard]] PathFrameVelocityLimitResult
@@ -230,7 +230,7 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
 [[nodiscard]] VelocityVectorLimitResult limitVelocityVectorDeltaWithLateral(
     const Point2 desired_velocity, const Point2 previous_velocity,
     const bool previous_velocity_valid, const double dt_s, const double max_accel_mps2,
-    const double max_decel_mps2, const double max_lateral_accel_mps2) {
+    const double max_decel_mps2, const double lateral_response_accel_mps2) {
   VelocityVectorLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -245,7 +245,7 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
   const double max_decel_delta =
       sanitizedPositive(max_decel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
   const double max_lateral_delta =
-      sanitizedPositive(max_lateral_accel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
+      sanitizedPositive(lateral_response_accel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
   const Point2 delta = desired_velocity - previous_velocity;
   const double previous_speed = norm(previous_velocity);
   if (!(previous_speed > kTinyDistanceM)) {

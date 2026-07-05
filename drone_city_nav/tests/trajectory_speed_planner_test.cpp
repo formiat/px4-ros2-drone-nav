@@ -14,9 +14,9 @@ namespace {
   VelocityFollowerConfig config{};
   config.cruise_speed_mps = 12.0;
   config.min_turn_speed_mps = 2.0;
-  config.max_accel_mps2 = 3.0;
-  config.max_decel_mps2 = 20.0;
-  config.max_lateral_accel_mps2 = 3.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.setpoint_forward_decel_mps2 = 20.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile_decel_mps2 = 2.0;
   config.speed_profile_sample_step_m = 1.0;
   config.speed_profile_lookahead_time_s = 1.0;
@@ -135,7 +135,7 @@ TEST(TrajectorySpeedPlanner, BackwardPassBrakesBeforeArcAndGoal) {
 
 TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
   VelocityFollowerConfig config = testConfig();
-  config.max_decel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
 
   const ScalarSpeedPlan plan =
       planScalarSpeed(simpleProfile(),
@@ -157,8 +157,8 @@ TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
 TEST(TrajectorySpeedPlanner, ScalarAccelerationIgnoresLateralTurnLimit) {
   VelocityFollowerConfig config = testConfig();
   config.cruise_speed_mps = 20.0;
-  config.max_accel_mps2 = 5.0;
-  config.max_lateral_accel_mps2 = 1.0;
+  config.setpoint_forward_accel_mps2 = 5.0;
+  config.turn_speed_lateral_accel_mps2 = 1.0;
 
   const ScalarSpeedPlan plan =
       planScalarSpeed(unconstrainedProfile(),

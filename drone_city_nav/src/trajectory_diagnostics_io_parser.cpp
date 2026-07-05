@@ -34,11 +34,21 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "curvature_mean_abs_1pm",
                   envelope.stats.curvature_mean_abs_1pm);
   parseJsonDouble(json, "speed_profile_min_mps", envelope.stats.speed_profile_min_mps);
+  parseJsonDouble(json, "planning_speed_profile_min_mps",
+                  envelope.stats.speed_profile_min_mps);
   parseJsonDouble(json, "speed_profile_max_mps", envelope.stats.speed_profile_max_mps);
+  parseJsonDouble(json, "planning_speed_profile_max_mps",
+                  envelope.stats.speed_profile_max_mps);
   parseJsonDouble(json, "speed_profile_mean_mps",
+                  envelope.stats.speed_profile_mean_mps);
+  parseJsonDouble(json, "planning_speed_profile_mean_mps",
                   envelope.stats.speed_profile_mean_mps);
   parseJsonSize(json, "speed_profile_curvature_limited_samples",
                 envelope.stats.speed_profile_curvature_limited_samples);
+  parseJsonSize(json, "planning_speed_profile_curvature_limited_samples",
+                envelope.stats.speed_profile_curvature_limited_samples);
+  (void)parseJsonUint64(json, "planning_speed_config_fingerprint",
+                        envelope.stats.speed_config_fingerprint);
   std::size_t top_constraint_count = 0U;
   parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
   top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);

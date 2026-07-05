@@ -79,7 +79,7 @@ curvatureSpeedLimitMps(const double radius_m,
   const double min_turn_speed = std::min(
       sanitizedPositive(config.min_turn_speed_mps, 2.0, 0.0, 100.0), cruise_speed);
   const double max_lateral_accel =
-      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+      sanitizedPositive(config.turn_speed_lateral_accel_mps2, 5.0, 1.0e-6, 100.0);
   return std::clamp(std::sqrt(max_lateral_accel * radius_m), min_turn_speed,
                     cruise_speed);
 }

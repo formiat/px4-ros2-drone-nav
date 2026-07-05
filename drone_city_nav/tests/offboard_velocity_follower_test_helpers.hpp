@@ -17,9 +17,9 @@ namespace offboard_velocity_follower_test_helpers {
   VelocityFollowerConfig config{};
   config.cruise_speed_mps = 12.0;
   config.min_turn_speed_mps = 2.0;
-  config.max_accel_mps2 = 3.0;
-  config.max_decel_mps2 = 4.0;
-  config.max_lateral_accel_mps2 = 3.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.setpoint_forward_decel_mps2 = 4.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile_sample_step_m = 1.0;
   config.final_acceptance_radius_m = 1.0;
   config.final_hold_max_speed_mps = 0.8;

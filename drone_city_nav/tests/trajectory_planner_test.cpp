@@ -31,7 +31,7 @@ namespace {
   config.trajectory_optimizer.weight_curvature = 30.0;
   config.debug_sample_step_m = 1.0;
   config.speed_profile.cruise_speed_mps = 12.0;
-  config.speed_profile.max_lateral_accel_mps2 = 3.0;
+  config.speed_profile.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile.speed_profile_decel_mps2 = 4.0;
   config.speed_profile.speed_profile_sample_step_m = 1.0;
   return config;

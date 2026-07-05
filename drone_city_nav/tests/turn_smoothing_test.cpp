@@ -120,7 +120,7 @@ maxAcceptedCurvatureJumpAfter(const TrajectoryShapeDiagnostics& before) {
   VelocityFollowerConfig config{};
   config.cruise_speed_mps = 20.0;
   config.min_turn_speed_mps = 1.5;
-  config.max_lateral_accel_mps2 = 5.0;
+  config.turn_speed_lateral_accel_mps2 = 5.0;
   return config;
 }
 

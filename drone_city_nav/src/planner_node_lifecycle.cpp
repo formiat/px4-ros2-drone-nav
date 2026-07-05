@@ -83,8 +83,8 @@ PlannerNode::PlannerNode()
       get_logger(),
       "Planner trajectory pipeline: output_path=final_optimized_trajectory "
       "rough_astar_scope=internal_seed "
-      "speed[cruise=%.2fmps min_turn=%.2fmps max_accel=%.2fmps2 "
-      "max_decel=%.2fmps2 max_lateral=%.2fmps2 profile_decel=%.2fmps2 "
+      "speed[cruise=%.2fmps min_turn=%.2fmps profile_accel=%.2fmps2 "
+      "profile_decel=%.2fmps2 turn_lateral=%.2fmps2 "
       "sample_step=%.2fm] "
       "corridor[max_radius=%.2fm sample_step=%.2fm center_recovery_max=%.2fm "
       "lateral_window=%.2fm lateral_ratio=%.2f lateral_margin=%.2fm "
@@ -103,10 +103,9 @@ PlannerNode::PlannerNode()
       "outer_shift=[%.2f, %.2f] max_passes=%zu]",
       trajectory_planner_config_.speed_profile.cruise_speed_mps,
       trajectory_planner_config_.speed_profile.min_turn_speed_mps,
-      trajectory_planner_config_.speed_profile.max_accel_mps2,
-      trajectory_planner_config_.speed_profile.max_decel_mps2,
-      trajectory_planner_config_.speed_profile.max_lateral_accel_mps2,
+      trajectory_planner_config_.speed_profile.speed_profile_accel_mps2,
       trajectory_planner_config_.speed_profile.speed_profile_decel_mps2,
+      trajectory_planner_config_.speed_profile.turn_speed_lateral_accel_mps2,
       trajectory_planner_config_.speed_profile.speed_profile_sample_step_m,
       trajectory_planner_config_.corridor.max_radius_m,
       trajectory_planner_config_.corridor.sample_step_m,

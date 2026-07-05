@@ -58,7 +58,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.min_navigation_altitude_m = 100.0;
   config.takeoff_hover_s = -5.0;
   config.acceptance_radius_m = std::numeric_limits<double>::infinity();
-  config.turn_preview_distance_m = 600.0;
+  config.diagnostic_turn_preview_distance_m = 600.0;
   config.command_resend_period_s = 0.0;
   config.trajectory_update_max_start_cross_track_m =
       std::numeric_limits<double>::infinity();
@@ -90,7 +90,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.min_navigation_altitude_m, 12.0);
   EXPECT_DOUBLE_EQ(config.takeoff_hover_s, 0.0);
   EXPECT_DOUBLE_EQ(config.acceptance_radius_m, 1.5);
-  EXPECT_DOUBLE_EQ(config.turn_preview_distance_m, 500.0);
+  EXPECT_DOUBLE_EQ(config.diagnostic_turn_preview_distance_m, 500.0);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 10.0);
@@ -130,7 +130,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
                    1.3);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_control_angle_rad,
                    55.0 * std::numbers::pi / 180.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.velocity_lateral_response_accel_mps2, 8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.setpoint_lateral_response_accel_mps2, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_time_s, 0.25);
   EXPECT_DOUBLE_EQ(config.velocity_follower.curvature_feedforward_deadband_angle_rad,
                    2.0 * std::numbers::pi / 180.0);
@@ -216,7 +216,7 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
       {rclcpp::Parameter{"min_navigation_altitude_m", 100.0},
        rclcpp::Parameter{"takeoff_hover_s", -10.0},
        rclcpp::Parameter{"acceptance_radius_m", 500.0},
-       rclcpp::Parameter{"turn_preview_distance_m", 999.0},
+       rclcpp::Parameter{"diagnostic_turn_preview_distance_m", 999.0},
        rclcpp::Parameter{"max_clearance_grid_staleness_s", 9999.0},
        rclcpp::Parameter{"max_pose_staleness_s", -1.0},
        rclcpp::Parameter{"cruise_speed_mps", 6.0},
@@ -254,7 +254,7 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.min_navigation_altitude_m, 12.0);
   EXPECT_DOUBLE_EQ(config.takeoff_hover_s, 0.0);
   EXPECT_DOUBLE_EQ(config.acceptance_radius_m, 100.0);
-  EXPECT_DOUBLE_EQ(config.turn_preview_distance_m, 500.0);
+  EXPECT_DOUBLE_EQ(config.diagnostic_turn_preview_distance_m, 500.0);
   EXPECT_EQ(config.max_clearance_grid_staleness_ns, 3'600'000'000'000LL);
   EXPECT_EQ(config.max_pose_staleness_ns, 0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 6.0);

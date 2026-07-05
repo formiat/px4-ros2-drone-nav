@@ -149,7 +149,7 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   VelocityFollowerConfig config{};
   config.cruise_speed_mps = 12.0;
   config.min_turn_speed_mps = 2.0;
-  config.max_lateral_accel_mps2 = 3.0;
+  config.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile_decel_mps2 = 4.0;
   config.speed_profile_sample_step_m = 1.0;
   return config;

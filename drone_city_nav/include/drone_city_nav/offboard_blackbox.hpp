@@ -1,8 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/lidar_projection.hpp"
-#include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
+#include "drone_city_nav/route_diagnostics.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
@@ -84,6 +84,7 @@ struct OffboardBlackboxRecord {
   OffboardBlackboxPathTracking path_tracking{};
   std::string motion_phase;
   bool final_goal_hold_active{false};
+  std::string terminal_state;
   bool terminal_position_capture_active{false};
   std::string terminal_position_capture_reason;
   double terminal_position_capture_goal_distance_m{

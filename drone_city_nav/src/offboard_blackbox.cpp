@@ -556,6 +556,7 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"control\":{\"motion_phase\":\"" << record.motion_phase
          << "\",\"final_goal_hold_active\":";
   writeBlackboxJsonBool(stream, record.final_goal_hold_active);
+  stream << ",\"terminal_state\":\"" << record.terminal_state << "\"";
   stream << ",\"terminal_position_capture_active\":";
   writeBlackboxJsonBool(stream, record.terminal_position_capture_active);
   stream << ",\"terminal_position_capture_reason\":\""

@@ -34,9 +34,9 @@ namespace {
 
 TEST(OffboardVelocityFollower, VelocitySmootherClampsAbruptDirectionChange) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 3.0;
-  config.max_decel_mps2 = 3.0;
-  config.velocity_lateral_response_accel_mps2 = 3.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.setpoint_forward_decel_mps2 = 3.0;
+  config.setpoint_lateral_response_accel_mps2 = 3.0;
   const VelocitySmootherPlan result = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{0.0, 12.0},
                             .previous_velocity_setpoint = Point2{12.0, 0.0},
@@ -52,9 +52,9 @@ TEST(OffboardVelocityFollower, VelocitySmootherClampsAbruptDirectionChange) {
 
 TEST(OffboardVelocityFollower, VelocitySmootherAllowsAggressiveLongitudinalBraking) {
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 3.0;
-  config.max_decel_mps2 = 12.0;
-  config.velocity_lateral_response_accel_mps2 = 3.0;
+  config.setpoint_forward_accel_mps2 = 3.0;
+  config.setpoint_forward_decel_mps2 = 12.0;
+  config.setpoint_lateral_response_accel_mps2 = 3.0;
   const VelocitySmootherPlan result = smoothVelocityCommand(
       VelocitySmootherInput{.desired_velocity_xy = Point2{8.0, 0.0},
                             .previous_velocity_setpoint = Point2{12.0, 0.0},
@@ -160,7 +160,7 @@ TEST(OffboardVelocityFollower, LookaheadStageLimitsScalarSpeedBeforeCommandPlann
                             .constraint_limit_mps = 0.0},
   };
   VelocityFollowerConfig config = testConfig();
-  config.max_decel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
   config.speed_profile_lookahead_time_s = 1.0;
   config.speed_profile_lookahead_min_m = 5.0;
   config.speed_profile_lookahead_max_m = 35.0;
@@ -251,9 +251,9 @@ TEST(OffboardVelocityFollower, ArcProjectionAddsCurvatureFeedforward) {
 TEST(OffboardVelocityFollower, ShallowSCurveSuppressesCurvatureFeedforwardContext) {
   const std::vector<TrajectoryPointSample> samples = shallowSTrajectorySamples();
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 100.0;
   config.curvature_feedforward_time_s = 0.5;
   config.curvature_feedforward_deadband_angle_rad = 0.0;
   config.curvature_feedforward_full_angle_rad = 0.0;
@@ -295,9 +295,9 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsLongitudinalBraking) {
                             .constraint_limit_mps = 0.0},
   };
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 20.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 20.0;
   config.max_velocity_jerk_mps3 = 1.0;
   config.max_lateral_velocity_jerk_mps3 = 1.0;
   VelocityFollowerState state{};
@@ -325,10 +325,10 @@ TEST(OffboardVelocityFollower, VelocityJerkLimitSmoothsDirectionChange) {
   const TrajectorySpeedProfile profile =
       buildTrajectorySpeedProfile(trajectory, testConfig());
   VelocityFollowerConfig config = testConfig();
-  config.max_accel_mps2 = 100.0;
-  config.max_lateral_accel_mps2 = 100.0;
-  config.velocity_lateral_response_accel_mps2 = 100.0;
-  config.max_decel_mps2 = 100.0;
+  config.setpoint_forward_accel_mps2 = 100.0;
+  config.turn_speed_lateral_accel_mps2 = 100.0;
+  config.setpoint_lateral_response_accel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
   config.cross_track_gain = 10.0;
   config.max_lateral_control_angle_rad = 1.0;
   config.max_velocity_jerk_mps3 = 1.0;

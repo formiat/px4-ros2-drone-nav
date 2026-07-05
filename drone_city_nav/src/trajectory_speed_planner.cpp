@@ -29,19 +29,24 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] double
-effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
+effectiveSpeedProfileAccelMps2(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.speed_profile_accel_mps2, 7.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double
-effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
+effectiveSetpointForwardAccelMps2(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.setpoint_forward_accel_mps2,
+                           effectiveSpeedProfileAccelMps2(config), 1.0e-6, 100.0);
+}
+
+[[nodiscard]] double
+effectiveSetpointForwardDecelMps2(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.setpoint_forward_decel_mps2, 20.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double
 effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
-  const double fallback = effectiveVelocityDeltaDecelMps2(config);
-  return sanitizedPositive(config.speed_profile_decel_mps2, fallback, 1.0e-6, 100.0);
+  return sanitizedPositive(config.speed_profile_decel_mps2, 2.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double segmentEndS(const TrajectorySegment& segment) noexcept {
@@ -81,8 +86,8 @@ geometricSpeedSampleForSegment(const std::span<const TrajectorySegment> trajecto
   }
   const double cruise_speed = sanitizedCruiseSpeed(config);
   const double min_turn_speed = sanitizedMinTurnSpeed(config);
-  const double max_lateral_accel =
-      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+  const double turn_speed_lateral_accel =
+      sanitizedPositive(config.turn_speed_lateral_accel_mps2, 5.0, 1.0e-6, 100.0);
 
   const double clamped_s =
       std::clamp(requested_s_m, 0.0, trajectoryLengthM(trajectory));
@@ -98,8 +103,9 @@ geometricSpeedSampleForSegment(const std::span<const TrajectorySegment> trajecto
   if (std::abs(sample.curvature_1pm) > kTinyDistanceM) {
     sample.radius_m = 1.0 / std::abs(sample.curvature_1pm);
     sample.reason = SpeedConstraintType::kArc;
-    sample.geometric_limit_mps = std::clamp(
-        std::sqrt(max_lateral_accel * sample.radius_m), min_turn_speed, cruise_speed);
+    sample.geometric_limit_mps =
+        std::clamp(std::sqrt(turn_speed_lateral_accel * sample.radius_m),
+                   min_turn_speed, cruise_speed);
   }
 
   sample.profiled_limit_mps = sample.geometric_limit_mps;
@@ -122,8 +128,8 @@ geometricSpeedSampleFromPointSample(const TrajectoryPointSample& point_sample,
   TrajectorySpeedSample sample{};
   const double cruise_speed = sanitizedCruiseSpeed(config);
   const double min_turn_speed = sanitizedMinTurnSpeed(config);
-  const double max_lateral_accel =
-      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
+  const double turn_speed_lateral_accel =
+      sanitizedPositive(config.turn_speed_lateral_accel_mps2, 5.0, 1.0e-6, 100.0);
   sample.s_m = point_sample.s_m;
   sample.segment_index = sample_index;
   sample.curvature_1pm = point_sample.curvature_1pm;
@@ -133,8 +139,9 @@ geometricSpeedSampleFromPointSample(const TrajectoryPointSample& point_sample,
   if (std::abs(sample.curvature_1pm) > kTinyDistanceM) {
     sample.radius_m = 1.0 / std::abs(sample.curvature_1pm);
     sample.reason = SpeedConstraintType::kArc;
-    sample.geometric_limit_mps = std::clamp(
-        std::sqrt(max_lateral_accel * sample.radius_m), min_turn_speed, cruise_speed);
+    sample.geometric_limit_mps =
+        std::clamp(std::sqrt(turn_speed_lateral_accel * sample.radius_m),
+                   min_turn_speed, cruise_speed);
   }
   sample.profiled_limit_mps = sample.geometric_limit_mps;
   sample.constraint_s_m = sample.s_m;
@@ -249,7 +256,7 @@ void finalizeSpeedProfile(TrajectorySpeedProfile& profile,
     }
   }
 
-  const double max_accel = effectiveVelocityDeltaAccelMps2(config);
+  const double max_accel = effectiveSpeedProfileAccelMps2(config);
   for (std::size_t i = 1U; i < profile.samples.size(); ++i) {
     const double ds = profile.samples[i].s_m - profile.samples[i - 1U].s_m;
     const double allowed = limitedSpeedForDistance(
@@ -560,8 +567,8 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
   const double previous_speed =
       sanitizedNonNegative(query.previous_command_speed_mps, current_speed);
   const double dt = sanitizedPositive(query.dt_s, 0.1, 0.0, 10.0);
-  const double max_accel = effectiveVelocityDeltaAccelMps2(config);
-  const double max_decel = std::min(effectiveVelocityDeltaDecelMps2(config),
+  const double max_accel = effectiveSetpointForwardAccelMps2(config);
+  const double max_decel = std::min(effectiveSetpointForwardDecelMps2(config),
                                     effectiveSpeedProfileDecelMps2(config));
   const double max_speed_delta =
       (plan.speed_after_lookahead_mps >= previous_speed ? max_accel : max_decel) * dt;

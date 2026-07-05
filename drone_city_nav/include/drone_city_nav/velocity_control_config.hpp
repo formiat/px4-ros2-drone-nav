@@ -1,18 +1,22 @@
 #pragma once
 
+#include <cstdint>
+
 namespace drone_city_nav {
 
 struct VelocityFollowerConfig {
   double cruise_speed_mps{12.0};
   double min_turn_speed_mps{2.0};
-  double max_accel_mps2{3.0};
-  double max_decel_mps2{4.0};
-  double max_lateral_accel_mps2{3.0};
+  double speed_profile_accel_mps2{7.0};
   double speed_profile_decel_mps2{2.0};
+  double turn_speed_lateral_accel_mps2{5.0};
   double speed_profile_sample_step_m{1.0};
   double speed_profile_lookahead_time_s{1.0};
   double speed_profile_lookahead_min_m{5.0};
   double speed_profile_lookahead_max_m{35.0};
+  double setpoint_forward_accel_mps2{7.0};
+  double setpoint_forward_decel_mps2{20.0};
+  double setpoint_lateral_response_accel_mps2{8.0};
   double cross_track_gain{0.5};
   double cross_track_derivative_gain{0.5};
   double cross_track_p_gain_schedule_start_m{0.0};
@@ -21,7 +25,6 @@ struct VelocityFollowerConfig {
   double cross_track_p_gain_schedule_max_factor{1.3};
   double tracking_prediction_horizon_s{0.35};
   double max_lateral_control_angle_rad{0.9599310885968813};
-  double velocity_lateral_response_accel_mps2{8.0};
   double curvature_feedforward_time_s{0.25};
   double curvature_feedforward_deadband_angle_rad{0.03490658503988659};
   double curvature_feedforward_full_angle_rad{0.13962634015954636};
@@ -46,5 +49,8 @@ struct VelocityFollowerConfig {
   double terminal_capture_decel_mps2{4.0};
   double terminal_capture_braking_margin_m{2.0};
 };
+
+[[nodiscard]] std::uint64_t
+velocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
 
 } // namespace drone_city_nav

@@ -138,12 +138,14 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.speed_profile.min_turn_speed_mps =
       std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
                  config.trajectory_planner.speed_profile.cruise_speed_mps);
-  config.trajectory_planner.speed_profile.max_accel_mps2 =
-      std::clamp(node.declare_parameter<double>("max_accel_mps2", 3.0), 0.0, 100.0);
-  config.trajectory_planner.speed_profile.max_decel_mps2 =
-      std::clamp(node.declare_parameter<double>("max_decel_mps2", 4.0), 0.0, 100.0);
-  config.trajectory_planner.speed_profile.max_lateral_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("max_lateral_accel_mps2", 3.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.speed_profile_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("speed_profile_accel_mps2", 7.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.setpoint_forward_accel_mps2 =
+      config.trajectory_planner.speed_profile.speed_profile_accel_mps2;
+  config.trajectory_planner.speed_profile.setpoint_forward_decel_mps2 = std::clamp(
+      node.declare_parameter<double>("setpoint_forward_decel_mps2", 20.0), 0.0, 100.0);
+  config.trajectory_planner.speed_profile.turn_speed_lateral_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("turn_speed_lateral_accel_mps2", 5.0), 0.0, 100.0);
   config.trajectory_planner.speed_profile.speed_profile_decel_mps2 = std::clamp(
       node.declare_parameter<double>("speed_profile_decel_mps2", 2.0), 0.0, 100.0);
   config.trajectory_planner.speed_profile.speed_profile_sample_step_m = std::clamp(

@@ -70,7 +70,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
     const std::span<const TrajectoryPointSample> samples,
     const std::span<const TrajectorySegment> trajectory,
     const TrajectoryMetrics& metrics, const TrajectorySpeedProfile& speed_profile,
-    const bool trajectory_valid) {
+    const VelocityFollowerConfig& velocity_config, const bool trajectory_valid) {
   TrajectoryPlannerStats stats{};
   stats.status = trajectory_valid ? TrajectoryPlannerStatus::kOk
                                   : TrajectoryPlannerStatus::kInvalidTrajectory;
@@ -80,6 +80,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   stats.line_segments = metrics.line_segments;
   stats.arc_segments = metrics.arc_segments;
   stats.length_m = metrics.length_m;
+  stats.speed_config_fingerprint = velocityControlConfigFingerprint(velocity_config);
 
   double curvature_abs_sum = 0.0;
   for (std::size_t i = 0U; i < samples.size(); ++i) {
@@ -135,9 +136,9 @@ buildOffboardTrajectoryState(const std::span<const Point2> path_points,
   state.valid = trajectorySamplesAreUsable(state.samples) && state.speed_profile.valid;
   state.metrics = trajectoryMetrics(state.trajectory);
   state.shape = computeTrajectoryShapeDiagnostics(state.samples);
-  state.stats = buildReceivedTrajectoryPlannerStats(path_points, state.samples,
-                                                    state.trajectory, state.metrics,
-                                                    state.speed_profile, state.valid);
+  state.stats = buildReceivedTrajectoryPlannerStats(
+      path_points, state.samples, state.trajectory, state.metrics, state.speed_profile,
+      velocity_config, state.valid);
   state.stats.speed_profile_duration_ms = speed_profile_duration_ms;
   return state;
 }

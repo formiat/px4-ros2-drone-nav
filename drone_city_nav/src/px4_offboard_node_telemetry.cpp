@@ -17,9 +17,9 @@ void Px4OffboardNode::logTelemetry() {
   const Point2 target = loggedTarget();
   const double target_distance = distance(current_position_, target);
   const double mission_goal_distance = distance(current_position_, mission_goal_);
-  const double path_goal_distance =
-      path_valid_ ? distance(current_position_, path_points_.back())
-                  : std::numeric_limits<double>::quiet_NaN();
+  const double path_goal_distance = trajectoryGoalReady()
+                                        ? distance(current_position_, trajectory_goal_)
+                                        : std::numeric_limits<double>::quiet_NaN();
   const NearestProhibitedCellDiagnostic nearest_prohibited_cell =
       nearestProhibitedCellDiagnostic(current_position_, kInflatedOccupancyValue);
   const double prohibited_grid_clearance_m =
@@ -39,32 +39,32 @@ void Px4OffboardNode::logTelemetry() {
   const double turn_angle_rad = upcoming_turn.angle_rad;
   const PathTrackingDiagnostics path_tracking = pathTrackingDiagnostics();
 
-  RCLCPP_INFO(get_logger(),
-              "Drone telemetry: current=(%.2f, %.2f) pose_fresh=%s pose_age_s=%.2f "
-              "altitude=%.2f heading=%.3f "
-              "attitude[valid=%s age_s=%.2f roll=%.3frad pitch=%.3frad yaw=%.3frad "
-              "roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f tilt_deg=%.1f] "
-              "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
-              "target=(%.2f, %.2f) "
-              "distance_to_target=%.2f distance_to_path_goal=%.2f "
-              "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-              "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
-              "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
-              "final_goal_hold=%s",
-              current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
-              pose_age_s, current_altitude_m_, current_heading_rad_,
-              attitude_valid_ ? "true" : "false", attitude_age_s,
-              current_attitude_.roll_rad, current_attitude_.pitch_rad,
-              current_attitude_.yaw_rad, roll_deg, pitch_deg, attitude_yaw_deg,
-              tilt_deg, current_velocity_.x, current_velocity_.y,
-              current_velocity_valid_ ? "true" : "false", current_speed_mps_, target.x,
-              target.y, target_distance, path_goal_distance, mission_goal_distance,
-              path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
-              motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
-              prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
-              upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
-              upcoming_turn.distance_to_turn_m, turn_angle_rad,
-              final_goal_hold_active_ ? "true" : "false");
+  RCLCPP_INFO(
+      get_logger(),
+      "Drone telemetry: current=(%.2f, %.2f) pose_fresh=%s pose_age_s=%.2f "
+      "altitude=%.2f heading=%.3f "
+      "attitude[valid=%s age_s=%.2f roll=%.3frad pitch=%.3frad yaw=%.3frad "
+      "roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f tilt_deg=%.1f] "
+      "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
+      "target=(%.2f, %.2f) "
+      "distance_to_target=%.2f distance_to_path_goal=%.2f "
+      "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
+      "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
+      "diagnostic_final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
+      "final_goal_hold=%s",
+      current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
+      pose_age_s, current_altitude_m_, current_heading_rad_,
+      attitude_valid_ ? "true" : "false", attitude_age_s, current_attitude_.roll_rad,
+      current_attitude_.pitch_rad, current_attitude_.yaw_rad, roll_deg, pitch_deg,
+      attitude_yaw_deg, tilt_deg, current_velocity_.x, current_velocity_.y,
+      current_velocity_valid_ ? "true" : "false", current_speed_mps_, target.x,
+      target.y, target_distance, path_goal_distance, mission_goal_distance,
+      path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
+      motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
+      prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
+      upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
+      upcoming_turn.distance_to_turn_m, turn_angle_rad,
+      final_goal_hold_active_ ? "true" : "false");
   RCLCPP_INFO(
       get_logger(),
       "Drone path diagnostics: path_id[local_update=%" PRIu64 " planner=%" PRIu64
@@ -102,6 +102,7 @@ void Px4OffboardNode::logTelemetry() {
       "brake_limit=%.2f activation=%.2f decel=%.2f margin=%.2f "
       "hold_distance_met=%s hold_speed_met=%s trigger_goal=%s "
       "trigger_remaining=%s] "
+      "terminal_state=%s "
       "terminal_position_capture[active=%s reason=%s goal_distance=%.2f "
       "remaining_s=%.2f speed=%.2f radius=%.2f max_entry_speed=%.2f "
       "stuck_speed=%.2f] "
@@ -173,6 +174,7 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.terminal_capture_goal_distance_triggered ? "true" : "false",
       last_velocity_plan_.terminal_capture_remaining_distance_triggered ? "true"
                                                                         : "false",
+      terminalFlightStateName(terminal_capture_state_.state),
       last_terminal_position_capture_active_ ? "true" : "false",
       last_terminal_position_capture_reason_.c_str(),
       last_terminal_position_capture_goal_distance_m_,
@@ -328,6 +330,7 @@ void Px4OffboardNode::writeFlightBlackbox(
           path_tracking.heading_error_rad, path_tracking.projection},
       motionPhaseName(hold_position),
       final_goal_hold_active_,
+      terminalFlightStateName(terminal_capture_state_.state),
       last_terminal_position_capture_active_,
       last_terminal_position_capture_reason_,
       last_terminal_position_capture_goal_distance_m_,

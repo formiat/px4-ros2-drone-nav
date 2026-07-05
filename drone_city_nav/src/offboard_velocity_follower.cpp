@@ -61,8 +61,7 @@ constexpr double kTinyDistanceM = 1.0e-6;
 
 [[nodiscard]] double
 effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
-  const double fallback = sanitizedPositive(config.max_decel_mps2, 4.0, 1.0e-6, 100.0);
-  return sanitizedPositive(config.speed_profile_decel_mps2, fallback, 1.0e-6, 100.0);
+  return sanitizedPositive(config.speed_profile_decel_mps2, 2.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double finalHoldMaxSpeedMps(const VelocityFollowerConfig& config) {
