@@ -28,6 +28,11 @@ struct PathFrameVelocityLimitResult {
   double lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
 };
 
+struct VelocityVectorLimitResult {
+  Point2 velocity{};
+  double delta_mps{0.0};
+};
+
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
@@ -274,25 +279,6 @@ limitVectorRate(const Point2 desired, const Point2 previous, const bool previous
 }
 
 } // namespace
-
-VelocityVectorLimitResult limitVelocityVectorDelta(const Point2 desired_velocity,
-                                                   const Point2 previous_velocity,
-                                                   const bool previous_velocity_valid,
-                                                   const double dt_s,
-                                                   const double max_delta_mps2) {
-  return limitVelocityVectorDelta(desired_velocity, previous_velocity,
-                                  previous_velocity_valid, dt_s, max_delta_mps2,
-                                  max_delta_mps2);
-}
-
-VelocityVectorLimitResult
-limitVelocityVectorDelta(const Point2 desired_velocity, const Point2 previous_velocity,
-                         const bool previous_velocity_valid, const double dt_s,
-                         const double max_accel_mps2, const double max_decel_mps2) {
-  return limitVelocityVectorDeltaWithLateral(
-      desired_velocity, previous_velocity, previous_velocity_valid, dt_s,
-      max_accel_mps2, max_decel_mps2, max_accel_mps2);
-}
 
 VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
                                            const VelocityFollowerConfig& config) {

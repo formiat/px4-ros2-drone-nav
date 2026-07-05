@@ -73,6 +73,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.trajectory_curvature_1pm = 0.1;
   record.velocity_plan.trajectory_arc_radius_m = 10.0;
   record.velocity_plan.control_tangent_smoothed = true;
+  record.velocity_plan.control_projection_smoothing_mode =
+      ControlProjectionSmoothingMode::kCurve;
   record.velocity_plan.control_tangent_raw = Point2{0.9, 0.1};
   record.velocity_plan.control_tangent_smoothing_heading_span_rad = 0.2;
   record.velocity_plan.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
@@ -352,6 +354,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"target\":{\"x\":10");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");
   expectJsonField(json, "\"control_tangent_smoothed\":true");
+  expectJsonField(json, "\"control_projection_smoothing_mode\":\"curve\"");
   expectJsonField(json, "\"control_tangent_raw_x\":0.9");
   expectJsonField(json, "\"control_tangent_smoothing_heading_span_rad\":0.2");
   expectJsonField(json, "\"control_tangent_smoothing_max_abs_curvature_1pm\":0.01");

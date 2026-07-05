@@ -32,22 +32,40 @@ namespace {
 
 } // namespace
 
-TEST(OffboardVelocityFollower, VectorDeltaLimitClampsAbruptDirectionChange) {
-  const VelocityVectorLimitResult result =
-      limitVelocityVectorDelta(Point2{0.0, 12.0}, Point2{12.0, 0.0}, true, 0.1, 3.0);
+TEST(OffboardVelocityFollower, VelocitySmootherClampsAbruptDirectionChange) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 3.0;
+  config.max_decel_mps2 = 3.0;
+  config.velocity_lateral_response_accel_mps2 = 3.0;
+  const VelocitySmootherPlan result = smoothVelocityCommand(
+      VelocitySmootherInput{.desired_velocity_xy = Point2{0.0, 12.0},
+                            .previous_velocity_setpoint = Point2{12.0, 0.0},
+                            .previous_velocity_setpoint_valid = true,
+                            .dt_s = 0.1},
+      config);
 
-  EXPECT_NEAR(result.delta_mps, std::sqrt(0.3 * 0.3 + 0.3 * 0.3), 1.0e-9);
-  EXPECT_NEAR(result.velocity.x, 11.7, 1.0e-9);
-  EXPECT_NEAR(result.velocity.y, 0.3, 1.0e-9);
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.velocity_delta_mps, std::sqrt(0.3 * 0.3 + 0.3 * 0.3), 1.0e-9);
+  EXPECT_NEAR(result.velocity_xy.x, 11.7, 1.0e-9);
+  EXPECT_NEAR(result.velocity_xy.y, 0.3, 1.0e-9);
 }
 
-TEST(OffboardVelocityFollower, VectorDeltaAllowsAggressiveLongitudinalBraking) {
-  const VelocityVectorLimitResult result = limitVelocityVectorDelta(
-      Point2{8.0, 0.0}, Point2{12.0, 0.0}, true, 0.1, 3.0, 12.0);
+TEST(OffboardVelocityFollower, VelocitySmootherAllowsAggressiveLongitudinalBraking) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 3.0;
+  config.max_decel_mps2 = 12.0;
+  config.velocity_lateral_response_accel_mps2 = 3.0;
+  const VelocitySmootherPlan result = smoothVelocityCommand(
+      VelocitySmootherInput{.desired_velocity_xy = Point2{8.0, 0.0},
+                            .previous_velocity_setpoint = Point2{12.0, 0.0},
+                            .previous_velocity_setpoint_valid = true,
+                            .dt_s = 0.1},
+      config);
 
-  EXPECT_NEAR(result.delta_mps, 1.2, 1.0e-9);
-  EXPECT_NEAR(result.velocity.x, 10.8, 1.0e-9);
-  EXPECT_NEAR(result.velocity.y, 0.0, 1.0e-9);
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.velocity_delta_mps, 1.2, 1.0e-9);
+  EXPECT_NEAR(result.velocity_xy.x, 10.8, 1.0e-9);
+  EXPECT_NEAR(result.velocity_xy.y, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, LateralControlIsBounded) {

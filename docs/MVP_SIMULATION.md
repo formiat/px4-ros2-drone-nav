@@ -503,16 +503,16 @@ The main simulation parameters are:
 - `turn_smoothing_*` - post-processing for residual sharp kinks after optimizer
   line optimization. It can widen a single-corner line inside the corridor while
   rejecting candidates that leave the corridor, cross prohibited cells, or
-  increase length too much.
+  worsen local curvature continuity too much.
 - `final_trajectory_debug_topic` and `final_trajectory_debug_sample_step_m` -
   debug path topic and visualization sample spacing for the executable final
   trajectory.
 - `cross_track_gain`, `cross_track_derivative_gain`,
-  `max_lateral_control_angle_deg`, `max_lateral_control_rate_mps2`,
+  `max_lateral_control_angle_deg`,
   `curvature_feedforward_time_s`, and `max_curvature_feedforward_angle_deg` -
   the unified lateral-control block. It sums cross-track feedback,
-  cross-track derivative damping, and curvature feed-forward before applying one
-  common lateral velocity limiter.
+  cross-track derivative damping, and curvature feed-forward before the velocity
+  smoother applies the final acceleration and jerk limits.
 - `altitude_hold_kp` and `max_vertical_speed_mps` - vertical velocity hold for
   cruise altitude.
 - Final goal completion is latched in the offboard node after the vehicle

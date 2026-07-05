@@ -30,6 +30,7 @@ add_library(
   drone_city_nav_core
   src/astar_planner.cpp
   src/clearance_field.cpp
+  src/control_projection_smoothing.cpp
   src/corridor_samples_io.cpp
   src/corridor.cpp
   src/current_lidar_overlay.cpp

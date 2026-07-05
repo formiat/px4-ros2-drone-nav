@@ -130,6 +130,10 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
                                 velocity_plan.cross_track_derivative_damping_mps);
   stream << ",\"control_tangent_smoothed\":";
   writeBlackboxJsonBool(stream, velocity_plan.control_tangent_smoothed);
+  stream << ",\"control_projection_smoothing_mode\":\""
+         << controlProjectionSmoothingModeName(
+                velocity_plan.control_projection_smoothing_mode)
+         << "\"";
   stream << ",\"control_tangent_raw_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.control_tangent_raw.x);
   stream << ",\"control_tangent_raw_y\":";

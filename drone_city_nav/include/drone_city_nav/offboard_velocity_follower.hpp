@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/control_projection_smoothing.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
 #include "drone_city_nav/types.hpp"
@@ -99,6 +100,8 @@ struct VelocitySetpointPlan {
   double cross_track_d_gain_effective{0.0};
   double cross_track_lateral_velocity_mps{std::numeric_limits<double>::quiet_NaN()};
   bool control_tangent_smoothed{false};
+  ControlProjectionSmoothingMode control_projection_smoothing_mode{
+      ControlProjectionSmoothingMode::kNone};
   double control_tangent_smoothing_heading_span_rad{
       std::numeric_limits<double>::quiet_NaN()};
   double control_tangent_smoothing_max_abs_curvature_1pm{

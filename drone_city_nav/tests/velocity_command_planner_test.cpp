@@ -41,8 +41,7 @@ TEST(VelocityCommandPlanner, StraightTrajectoryReturnsTangentVelocity) {
                                                .current_position = Point2{0.0, 0.0},
                                                .current_velocity = Point2{10.0, 0.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           testConfig());
 
   ASSERT_TRUE(plan.valid);
@@ -62,8 +61,7 @@ TEST(VelocityCommandPlanner, LateralControlIsBoundedByAngle) {
                                                .current_position = Point2{0.0, 10.0},
                                                .current_velocity = Point2{10.0, 0.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
 
   ASSERT_TRUE(plan.valid);
@@ -82,16 +80,14 @@ TEST(VelocityCommandPlanner, DerivativeDampsCorrectionWhenMovingTowardPath) {
                                                .current_position = Point2{0.0, 5.0},
                                                .current_velocity = Point2{0.0, -2.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
   const VelocityCommandPlan moving_away =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
                                                .current_position = Point2{0.0, 5.0},
                                                .current_velocity = Point2{0.0, 2.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
 
   ASSERT_TRUE(moving_toward.valid);
@@ -116,24 +112,21 @@ TEST(VelocityCommandPlanner, CrossTrackPGainScheduleIncreasesWithError) {
                                                .current_position = Point2{0.0, 0.2},
                                                .current_velocity = Point2{10.0, 0.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
   const VelocityCommandPlan mid_error =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(1.96),
                                                .current_position = Point2{0.0, 1.4},
                                                .current_velocity = Point2{10.0, 0.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
   const VelocityCommandPlan far_from_path =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(9.0),
                                                .current_position = Point2{0.0, 3.0},
                                                .current_velocity = Point2{10.0, 0.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           config);
 
   ASSERT_TRUE(near_path.valid);
@@ -162,16 +155,14 @@ TEST(VelocityCommandPlanner, CrossTrackDGainScheduleBoostsOnlyWhenReturningFast)
                                                .current_position = Point2{0.0, 5.0},
                                                .current_velocity = Point2{20.0, -2.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 20.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 20.0},
                           config);
   const VelocityCommandPlan moving_away =
       planVelocityCommand(VelocityCommandQuery{.projection = projectionOnXAxis(25.0),
                                                .current_position = Point2{0.0, 5.0},
                                                .current_velocity = Point2{20.0, 2.0},
                                                .current_velocity_valid = true,
-                                               .scalar_speed_mps = 20.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 20.0},
                           config);
 
   ASSERT_TRUE(moving_toward.valid);
@@ -194,8 +185,7 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardBendsVelocityDirection) {
                            .current_position = Point2{0.0, 0.0},
                            .current_velocity = Point2{10.0, 0.0},
                            .current_velocity_valid = true,
-                           .scalar_speed_mps = 10.0,
-                           .dt_s = 0.1},
+                           .scalar_speed_mps = 10.0},
       config);
 
   ASSERT_TRUE(plan.valid);
@@ -219,8 +209,7 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardAttenuatesTinyCurvature) {
                            .current_position = Point2{0.0, 0.0},
                            .current_velocity = Point2{10.0, 0.0},
                            .current_velocity_valid = true,
-                           .scalar_speed_mps = 10.0,
-                           .dt_s = 0.1},
+                           .scalar_speed_mps = 10.0},
       config);
 
   ASSERT_TRUE(plan.valid);
@@ -245,7 +234,6 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardContextScaleSuppressesFeedforwa
                            .current_velocity = Point2{10.0, 0.0},
                            .current_velocity_valid = true,
                            .scalar_speed_mps = 10.0,
-                           .dt_s = 0.1,
                            .curvature_feedforward_context_scale = 1.0},
       config);
   const VelocityCommandPlan suppressed_context = planVelocityCommand(
@@ -254,7 +242,6 @@ TEST(VelocityCommandPlanner, CurvatureFeedforwardContextScaleSuppressesFeedforwa
                            .current_velocity = Point2{10.0, 0.0},
                            .current_velocity_valid = true,
                            .scalar_speed_mps = 10.0,
-                           .dt_s = 0.1,
                            .curvature_feedforward_context_scale = 0.0},
       config);
 
@@ -274,8 +261,7 @@ TEST(VelocityCommandPlanner, InvalidProjectionReturnsInvalidPlan) {
   const VelocityCommandPlan plan =
       planVelocityCommand(VelocityCommandQuery{.projection = invalid_projection,
                                                .current_position = Point2{0.0, 0.0},
-                                               .scalar_speed_mps = 10.0,
-                                               .dt_s = 0.1},
+                                               .scalar_speed_mps = 10.0},
                           testConfig());
 
   EXPECT_FALSE(plan.valid);

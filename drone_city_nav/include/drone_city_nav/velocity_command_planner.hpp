@@ -14,9 +14,6 @@ struct VelocityCommandQuery {
   Point2 current_velocity{};
   bool current_velocity_valid{false};
   double scalar_speed_mps{std::numeric_limits<double>::quiet_NaN()};
-  double dt_s{std::numeric_limits<double>::quiet_NaN()};
-  double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
-  double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double curvature_feedforward_context_scale{1.0};
 };
 
