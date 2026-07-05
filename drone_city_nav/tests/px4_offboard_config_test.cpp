@@ -118,6 +118,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_EQ(yaml.find("adaptive_lateral_response_max_factor:"), std::string::npos);
   EXPECT_NE(yaml.find("terminal_capture_decel_mps2: 4.0"), std::string::npos);
   EXPECT_NE(yaml.find("terminal_capture_braking_margin_m: 2.0"), std::string::npos);
+  EXPECT_NE(yaml.find("terminal_position_capture_max_entry_speed_mps: 3.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("terminal_stuck_speed_mps: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_update_max_start_cross_track_m: 8.0"),
             std::string::npos);
   EXPECT_EQ(yaml.find("max_cross_track_correction_angle_deg:"), std::string::npos);

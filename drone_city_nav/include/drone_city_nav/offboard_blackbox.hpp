@@ -80,7 +80,7 @@ struct OffboardBlackboxRecord {
   double path_goal_distance_m{0.0};
   double mission_goal_distance_m{0.0};
   UpcomingTurn upcoming_turn{};
-  std::string final_trajectory_segment_type;
+  std::string rough_route_debug_segment_type;
   OffboardBlackboxPathTracking path_tracking{};
   std::string motion_phase;
   bool final_goal_hold_active{false};

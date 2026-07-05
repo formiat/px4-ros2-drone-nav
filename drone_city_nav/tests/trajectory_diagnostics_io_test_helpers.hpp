@@ -268,6 +268,8 @@ void expectContainsAll(const std::string& text,
   stats.speed_profile_mean_mps = 13.4;
   stats.speed_profile_max_mps = 19.1;
   stats.speed_profile_curvature_limited_samples = 69U;
+  stats.speed_profile_config_fingerprint = 0x3456U;
+  stats.runtime_velocity_config_fingerprint = 0x4567U;
   stats.isolated_curvature_spike_candidates = 2U;
   stats.isolated_curvature_spikes_smoothed_geometry = 1U;
   stats.isolated_curvature_spike_max_before_1pm = 0.12;

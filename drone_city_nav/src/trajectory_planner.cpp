@@ -75,8 +75,8 @@ void finalizeResult(TrajectoryPlannerResult& result,
   result.stats.arc_segments = metrics.arc_segments;
   result.stats.length_m = metrics.length_m;
   result.stats.samples = result.samples.size();
-  result.stats.speed_config_fingerprint =
-      velocityControlConfigFingerprint(config.speed_profile);
+  result.stats.speed_profile_config_fingerprint =
+      speedProfileConfigFingerprint(config.speed_profile);
   computeCurvatureStats(result.samples, result.stats);
   computeSpeedProfileStats(result.speed_profile, result.stats);
   result.valid = trajectoryIsUsable(result.compact_segments) &&

@@ -80,7 +80,10 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   stats.line_segments = metrics.line_segments;
   stats.arc_segments = metrics.arc_segments;
   stats.length_m = metrics.length_m;
-  stats.speed_config_fingerprint = velocityControlConfigFingerprint(velocity_config);
+  stats.speed_profile_config_fingerprint =
+      speedProfileConfigFingerprint(velocity_config);
+  stats.runtime_velocity_config_fingerprint =
+      runtimeVelocityConfigFingerprint(velocity_config);
 
   double curvature_abs_sum = 0.0;
   for (std::size_t i = 0U; i < samples.size(); ++i) {

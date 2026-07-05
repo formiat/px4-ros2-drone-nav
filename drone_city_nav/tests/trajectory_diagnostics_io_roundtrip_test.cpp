@@ -22,6 +22,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kRefined);
   EXPECT_EQ(parsed_value.stats.samples, 78U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.length_m, 412.25);
+  EXPECT_EQ(parsed_value.stats.speed_profile_config_fingerprint, 0x3456U);
+  EXPECT_EQ(parsed_value.stats.runtime_velocity_config_fingerprint, 0x4567U);
   EXPECT_EQ(parsed_value.stats.corridor.samples, 42U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.min_width_m, 17.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);

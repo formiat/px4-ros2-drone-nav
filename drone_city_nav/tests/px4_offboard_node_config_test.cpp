@@ -84,6 +84,10 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
       std::numeric_limits<double>::quiet_NaN();
   config.velocity_follower.terminal_capture_braking_margin_m =
       std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.terminal_position_capture_max_entry_speed_mps =
+      std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.terminal_stuck_speed_mps =
+      std::numeric_limits<double>::quiet_NaN();
 
   sanitizePx4OffboardNodeConfig(config);
 
@@ -109,6 +113,9 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
       45.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_decel_mps2, 4.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_braking_margin_m, 2.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 3.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_stuck_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.final_acceptance_radius_m, 1.5);
 }
 
@@ -162,6 +169,9 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_decel_mps2, 4.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_braking_margin_m, 2.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 3.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_stuck_speed_mps, 0.5);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
@@ -242,6 +252,8 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
        rclcpp::Parameter{"terminal_capture_max_speed_mps", 200.0},
        rclcpp::Parameter{"terminal_capture_decel_mps2", -1.0},
        rclcpp::Parameter{"terminal_capture_braking_margin_m", -1.0},
+       rclcpp::Parameter{"terminal_position_capture_max_entry_speed_mps", 200.0},
+       rclcpp::Parameter{"terminal_stuck_speed_mps", -1.0},
        rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
        rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
        rclcpp::Parameter{"telemetry_log_period_s", 0.01},
@@ -291,6 +303,9 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_max_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_decel_mps2, 1.0e-6);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_capture_braking_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 100.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_stuck_speed_mps, 0.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);

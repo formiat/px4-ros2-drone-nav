@@ -83,8 +83,10 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
                  stats.speed_profile_curvature_limited_samples);
   appendJsonSize(stream, "planning_speed_profile_curvature_limited_samples",
                  stats.speed_profile_curvature_limited_samples);
-  appendJsonUint64(stream, "planning_speed_config_fingerprint",
-                   stats.speed_config_fingerprint);
+  appendJsonUint64(stream, "planning_speed_profile_config_fingerprint",
+                   stats.speed_profile_config_fingerprint);
+  appendJsonUint64(stream, "planning_runtime_velocity_config_fingerprint",
+                   stats.runtime_velocity_config_fingerprint);
   stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
   stream << "," << trajectoryTimingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "corridor_input_points", stats.corridor.input_points);

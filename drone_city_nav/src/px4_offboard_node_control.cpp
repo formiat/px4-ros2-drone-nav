@@ -154,6 +154,9 @@ Px4OffboardNode::computeTerminalCaptureState() const {
   input.terminal_capture_radius_m = velocity_follower_config_.terminal_capture_radius_m;
   input.terminal_capture_max_speed_mps =
       velocity_follower_config_.terminal_capture_max_speed_mps;
+  input.terminal_position_capture_max_entry_speed_mps =
+      velocity_follower_config_.terminal_position_capture_max_entry_speed_mps;
+  input.terminal_stuck_speed_mps = velocity_follower_config_.terminal_stuck_speed_mps;
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(final_trajectory_samples_, current_position_);
@@ -836,7 +839,7 @@ void Px4OffboardNode::logControlSummary() {
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
       "altitude_error=%.2f "
-      "diagnostic_final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
+      "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
       "prohibited_grid_clearance=%.2f",
       local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",

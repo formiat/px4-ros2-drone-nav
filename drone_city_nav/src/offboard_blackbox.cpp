@@ -519,21 +519,21 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, record.path_goal_distance_m);
   stream << ",\"mission_goal_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream, record.mission_goal_distance_m);
-  stream << ",\"final_trajectory_debug_turn_angle_rad\":";
+  stream << ",\"rough_route_debug_turn_angle_rad\":";
   writeBlackboxJsonNumberOrNull(stream, record.upcoming_turn.angle_rad);
-  stream << ",\"final_trajectory_debug_turn_valid\":";
+  stream << ",\"rough_route_debug_turn_valid\":";
   writeBlackboxJsonBool(stream, record.upcoming_turn.valid);
-  stream << ",\"final_trajectory_debug_turn_waypoint_index\":"
+  stream << ",\"rough_route_debug_turn_waypoint_index\":"
          << (record.upcoming_turn.valid ? record.upcoming_turn.waypoint_index + 1U
                                         : 0U);
-  stream << ",\"final_trajectory_debug_turn_distance_m\":";
+  stream << ",\"rough_route_debug_turn_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream, record.upcoming_turn.distance_to_turn_m);
-  stream << ",\"final_trajectory_debug_turn_point_x\":";
+  stream << ",\"rough_route_debug_turn_point_x\":";
   writeBlackboxJsonNumberOrNull(stream, record.upcoming_turn.turn_point.x);
-  stream << ",\"final_trajectory_debug_turn_point_y\":";
+  stream << ",\"rough_route_debug_turn_point_y\":";
   writeBlackboxJsonNumberOrNull(stream, record.upcoming_turn.turn_point.y);
-  stream << ",\"final_trajectory_debug_segment_type\":\""
-         << record.final_trajectory_segment_type << "\"";
+  stream << ",\"rough_route_debug_segment_type\":\""
+         << record.rough_route_debug_segment_type << "\"";
   stream << ",\"tracking\":{\"valid\":";
   writeBlackboxJsonBool(stream, record.path_tracking.valid);
   stream << ",\"cross_track_error_m\":";

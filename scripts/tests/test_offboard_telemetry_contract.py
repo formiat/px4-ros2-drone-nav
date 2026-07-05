@@ -279,9 +279,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("speed_profile_limited_by_curvature_count", self.offboard_text)
         self.assertNotIn("trajectory_fallback_reason", self.offboard_text)
         self.assertNotIn("baseline_rounded_corners", self.offboard_text)
-        self.assertIn("final_trajectory_debug_turn_angle_rad", self.offboard_text)
-        self.assertIn("final_trajectory_debug_segment_type", self.offboard_text)
-        self.assertNotIn("rough_route_debug", self.offboard_text)
+        self.assertIn("rough_route_debug_turn_angle_rad", self.offboard_text)
+        self.assertIn("rough_route_debug_segment_type", self.offboard_text)
         self.assertNotIn('\\"turn_angle_rad\\"', self.offboard_text)
         self.assertNotIn('\\"turn_valid\\"', self.offboard_text)
         self.assertNotIn('\\"turn_distance_m\\"', self.offboard_text)
@@ -346,6 +345,10 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                 self.assertIn("speed_profile_lookahead_max_m: 35.0", text)
                 self.assertIn("diagnostic_turn_preview_distance_m: 90.0", text)
                 self.assertIn("speed_profile_sample_step_m: 0.5", text)
+                self.assertIn(
+                    "terminal_position_capture_max_entry_speed_mps: 3.0", text
+                )
+                self.assertIn("terminal_stuck_speed_mps: 0.5", text)
                 self.assertIn("cross_track_derivative_gain: 0.5", text)
                 self.assertIn("tracking_prediction_horizon_s: 0.35", text)
                 self.assertIn("max_lateral_control_angle_deg: 55.0", text)

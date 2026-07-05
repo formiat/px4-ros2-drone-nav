@@ -50,7 +50,7 @@ void Px4OffboardNode::logTelemetry() {
       "distance_to_target=%.2f distance_to_path_goal=%.2f "
       "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
       "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
-      "diagnostic_final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
+      "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
       "final_goal_hold=%s",
       current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
       pose_age_s, current_altitude_m_, current_heading_rad_,

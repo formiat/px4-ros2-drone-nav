@@ -108,7 +108,8 @@ Px4OffboardNode::Px4OffboardNode()
       "speed_profile_sample_step=%.2fm "
       "speed_profile_lookahead[time=%.2fs min=%.2fm max=%.2fm] "
       "final_hold_max_speed=%.2fmps "
-      "terminal_capture[radius=%.2fm gain=%.2f max_speed=%.2fmps] "
+      "terminal_capture[radius=%.2fm gain=%.2f max_speed=%.2fmps "
+      "position_max_entry=%.2fmps stuck_speed=%.2fmps] "
       "cross_track_gain=%.2f "
       "cross_track_p_gain_schedule[start=%.2fm full=%.2fm min=%.2f max=%.2f] "
       "tracking_prediction_horizon=%.2fs "
@@ -148,6 +149,8 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.terminal_capture_radius_m,
       velocity_follower_config_.terminal_capture_gain_1ps,
       velocity_follower_config_.terminal_capture_max_speed_mps,
+      velocity_follower_config_.terminal_position_capture_max_entry_speed_mps,
+      velocity_follower_config_.terminal_stuck_speed_mps,
       velocity_follower_config_.cross_track_gain,
       velocity_follower_config_.cross_track_p_gain_schedule_start_m,
       velocity_follower_config_.cross_track_p_gain_schedule_full_m,

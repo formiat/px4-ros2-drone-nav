@@ -193,6 +193,8 @@ px4_offboard_node:
     terminal_capture_max_speed_mps: 8.0
     terminal_capture_decel_mps2: 4.0
     terminal_capture_braking_margin_m: 2.0
+    terminal_position_capture_max_entry_speed_mps: 3.0
+    terminal_stuck_speed_mps: 0.5
     cross_track_gain: 0.5
     cross_track_derivative_gain: 0.5
     cross_track_p_gain_schedule_start_m: 0.0

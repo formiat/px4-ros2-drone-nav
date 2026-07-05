@@ -48,9 +48,14 @@ struct VelocityFollowerConfig {
   double terminal_capture_max_speed_mps{8.0};
   double terminal_capture_decel_mps2{4.0};
   double terminal_capture_braking_margin_m{2.0};
+  double terminal_position_capture_max_entry_speed_mps{3.0};
+  double terminal_stuck_speed_mps{0.5};
 };
 
 [[nodiscard]] std::uint64_t
-velocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
+speedProfileConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
+
+[[nodiscard]] std::uint64_t
+runtimeVelocityConfigFingerprint(const VelocityFollowerConfig& config) noexcept;
 
 } // namespace drone_city_nav

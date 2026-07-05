@@ -20,10 +20,10 @@ struct TrajectoryContinuityThresholds {
   double preserve_tangent_jump_rad{0.52};
   double preserve_curvature_jump_1pm{0.05};
   double preserve_speed_limit_jump_mps{6.0};
-  double preserve_command_jump_mps{8.0};
+  double preserve_tangent_speed_command_jump_mps{8.0};
   double reject_projection_jump_m{8.0};
   double reject_tangent_jump_rad{1.57};
-  double reject_command_jump_mps{15.0};
+  double reject_tangent_speed_command_jump_mps{15.0};
 };
 
 struct TrajectoryContinuityResult {
@@ -35,7 +35,7 @@ struct TrajectoryContinuityResult {
   double tangent_jump_rad{std::numeric_limits<double>::quiet_NaN()};
   double curvature_jump_1pm{std::numeric_limits<double>::quiet_NaN()};
   double speed_limit_jump_mps{std::numeric_limits<double>::quiet_NaN()};
-  double command_jump_mps{std::numeric_limits<double>::quiet_NaN()};
+  double tangent_speed_command_jump_mps{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] const char*

@@ -40,8 +40,9 @@ constexpr double kTinyDistanceM = 1.0e-6;
   return sample.profiled_limit_mps;
 }
 
-[[nodiscard]] Point2 commandAtProjection(const TrajectorySpeedProfile& profile,
-                                         const TrajectoryProjection& projection) {
+[[nodiscard]] Point2
+tangentSpeedCommandAtProjection(const TrajectorySpeedProfile& profile,
+                                const TrajectoryProjection& projection) {
   const double speed = speedLimitAtProjection(profile, projection);
   if (!std::isfinite(speed)) {
     return Point2{};
@@ -108,14 +109,16 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
   const Point2 reference_command =
       previous_velocity_setpoint_valid
           ? previous_velocity_setpoint
-          : commandAtProjection(old_speed_profile, *old_projection);
-  result.command_jump_mps =
-      norm(commandAtProjection(new_speed_profile, *new_projection) - reference_command);
+          : tangentSpeedCommandAtProjection(old_speed_profile, *old_projection);
+  result.tangent_speed_command_jump_mps =
+      norm(tangentSpeedCommandAtProjection(new_speed_profile, *new_projection) -
+           reference_command);
 
   const bool reject = result.projection_jump_m > thresholds.reject_projection_jump_m ||
                       (std::isfinite(result.tangent_jump_rad) &&
                        result.tangent_jump_rad > thresholds.reject_tangent_jump_rad) ||
-                      result.command_jump_mps > thresholds.reject_command_jump_mps;
+                      result.tangent_speed_command_jump_mps >
+                          thresholds.reject_tangent_speed_command_jump_mps;
   if (reject) {
     result.decision = TrajectoryContinuityDecision::kRejectTrajectory;
     result.reason = "control_discontinuity";
@@ -129,7 +132,8 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
       result.curvature_jump_1pm <= thresholds.preserve_curvature_jump_1pm &&
       (!std::isfinite(result.speed_limit_jump_mps) ||
        result.speed_limit_jump_mps <= thresholds.preserve_speed_limit_jump_mps) &&
-      result.command_jump_mps <= thresholds.preserve_command_jump_mps;
+      result.tangent_speed_command_jump_mps <=
+          thresholds.preserve_tangent_speed_command_jump_mps;
   if (preserve) {
     result.decision = TrajectoryContinuityDecision::kPreserveSmoother;
     result.reason = "compatible";

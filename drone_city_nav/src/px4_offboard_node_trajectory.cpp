@@ -72,17 +72,17 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
-  if (last_trajectory_planner_stats_.speed_config_fingerprint != 0U &&
-      diagnostics.stats.speed_config_fingerprint != 0U &&
-      last_trajectory_planner_stats_.speed_config_fingerprint !=
-          diagnostics.stats.speed_config_fingerprint) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "speed_config_fingerprint_mismatch: runtime=%" PRIu64
-                         " planning=%" PRIu64 " planner_path_id=%" PRIu64
-                         " path_stamp_ns=%" PRIu64,
-                         last_trajectory_planner_stats_.speed_config_fingerprint,
-                         diagnostics.stats.speed_config_fingerprint,
-                         diagnostics.planner_path_id, diagnostics.path_stamp_ns);
+  if (last_trajectory_planner_stats_.speed_profile_config_fingerprint != 0U &&
+      diagnostics.stats.speed_profile_config_fingerprint != 0U &&
+      last_trajectory_planner_stats_.speed_profile_config_fingerprint !=
+          diagnostics.stats.speed_profile_config_fingerprint) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "speed_profile_config_fingerprint_mismatch: runtime=%" PRIu64
+        " planning=%" PRIu64 " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
+        last_trajectory_planner_stats_.speed_profile_config_fingerprint,
+        diagnostics.stats.speed_profile_config_fingerprint, diagnostics.planner_path_id,
+        diagnostics.path_stamp_ns);
   }
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
@@ -158,6 +158,12 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
 
 TrajectoryContinuityResult Px4OffboardNode::evaluateReceivedTrajectoryContinuity(
     const OffboardTrajectoryState& state) const {
+  if (!localPositionFresh()) {
+    TrajectoryContinuityResult result{};
+    result.decision = TrajectoryContinuityDecision::kResetSmoother;
+    result.reason = "pose_stale";
+    return result;
+  }
   return evaluateTrajectoryContinuity(
       final_trajectory_samples_, trajectory_speed_profile_, state.samples,
       state.speed_profile, current_position_,
@@ -215,10 +221,12 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       " planner_path_id=%" PRIu64
       " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
-      "speed_config_fingerprint=%" PRIu64 " "
+      "speed_profile_config_fingerprint=%" PRIu64
+      " runtime_velocity_config_fingerprint=%" PRIu64 " "
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
       "continuity[decision=%s reason=%s projection_jump=%.2f tangent_jump=%.3f "
-      "curvature_jump=%.4f speed_limit_jump=%.2f command_jump=%.2f] "
+      "curvature_jump=%.4f speed_limit_jump=%.2f "
+      "tangent_speed_command_jump=%.2f] "
       "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
       "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
@@ -231,13 +239,14 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       last_trajectory_planner_stats_.speed_profile_mean_mps,
       last_trajectory_planner_stats_.speed_profile_max_mps,
       last_trajectory_planner_stats_.speed_profile_curvature_limited_samples,
-      last_trajectory_planner_stats_.speed_config_fingerprint, top_speed_constraint_s,
-      top_speed_constraint_radius, top_speed_constraint_limit,
+      last_trajectory_planner_stats_.speed_profile_config_fingerprint,
+      last_trajectory_planner_stats_.runtime_velocity_config_fingerprint,
+      top_speed_constraint_s, top_speed_constraint_radius, top_speed_constraint_limit,
       top_speed_constraint_source,
       trajectoryContinuityDecisionName(continuity.decision), continuity.reason,
       continuity.projection_jump_m, continuity.tangent_jump_rad,
       continuity.curvature_jump_1pm, continuity.speed_limit_jump_mps,
-      continuity.command_jump_mps,
+      continuity.tangent_speed_command_jump_mps,
       last_trajectory_planner_stats_.isolated_curvature_spike_candidates,
       last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_geometry,
       last_trajectory_planner_stats_.isolated_curvature_spike_max_before_1pm,
@@ -306,19 +315,19 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   const TrajectoryContinuityResult continuity =
       evaluateReceivedTrajectoryContinuity(candidate_state);
   if (continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory) {
-    RCLCPP_WARN(get_logger(),
-                "trajectory_update_rejected: reason=%s decision=%s "
-                "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
-                " path_stamp_ns=%" PRIu64 " points=%zu projection_jump=%.2f "
-                "tangent_jump=%.3f curvature_jump=%.4f speed_limit_jump=%.2f "
-                "command_jump=%.2f keeping_previous_trajectory=%s",
-                continuity.reason,
-                trajectoryContinuityDecisionName(continuity.decision),
-                candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
-                candidate_path_points.size(), continuity.projection_jump_m,
-                continuity.tangent_jump_rad, continuity.curvature_jump_1pm,
-                continuity.speed_limit_jump_mps, continuity.command_jump_mps,
-                trajectory_valid_ ? "true" : "false");
+    RCLCPP_WARN(
+        get_logger(),
+        "trajectory_update_rejected: reason=%s decision=%s "
+        "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+        " path_stamp_ns=%" PRIu64 " points=%zu projection_jump=%.2f "
+        "tangent_jump=%.3f curvature_jump=%.4f speed_limit_jump=%.2f "
+        "tangent_speed_command_jump=%.2f keeping_previous_trajectory=%s",
+        continuity.reason, trajectoryContinuityDecisionName(continuity.decision),
+        candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+        candidate_path_points.size(), continuity.projection_jump_m,
+        continuity.tangent_jump_rad, continuity.curvature_jump_1pm,
+        continuity.speed_limit_jump_mps, continuity.tangent_speed_command_jump_mps,
+        trajectory_valid_ ? "true" : "false");
     return;
   }
 

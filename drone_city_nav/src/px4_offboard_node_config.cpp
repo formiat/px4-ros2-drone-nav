@@ -108,6 +108,12 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       config.velocity_follower.terminal_capture_decel_mps2, 4.0, 1.0e-6, 100.0);
   config.velocity_follower.terminal_capture_braking_margin_m = boundedFiniteDouble(
       config.velocity_follower.terminal_capture_braking_margin_m, 2.0, 0.0, 1000.0);
+  config.velocity_follower.terminal_position_capture_max_entry_speed_mps =
+      boundedFiniteDouble(
+          config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 3.0,
+          0.0, 100.0);
+  config.velocity_follower.terminal_stuck_speed_mps = boundedFiniteDouble(
+      config.velocity_follower.terminal_stuck_speed_mps, 0.5, 0.0, 100.0);
   config.velocity_follower.final_acceptance_radius_m = config.acceptance_radius_m;
 }
 
@@ -259,6 +265,12 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.terminal_capture_braking_margin_m = std::clamp(
       node.declare_parameter<double>("terminal_capture_braking_margin_m", 2.0), 0.0,
       1000.0);
+  config.velocity_follower.terminal_position_capture_max_entry_speed_mps =
+      std::clamp(node.declare_parameter<double>(
+                     "terminal_position_capture_max_entry_speed_mps", 3.0),
+                 0.0, 100.0);
+  config.velocity_follower.terminal_stuck_speed_mps = std::clamp(
+      node.declare_parameter<double>("terminal_stuck_speed_mps", 0.5), 0.0, 100.0);
   config.trajectory_update_max_start_cross_track_m = std::clamp(
       node.declare_parameter<double>("trajectory_update_max_start_cross_track_m",
                                      config.trajectory_update_max_start_cross_track_m),

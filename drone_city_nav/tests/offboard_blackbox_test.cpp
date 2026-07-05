@@ -319,7 +319,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.upcoming_turn.distance_to_turn_m = 14.0;
   record.upcoming_turn.angle_rad = 1.0;
   record.upcoming_turn.turn_point = Point2{15.0, 16.0};
-  record.final_trajectory_segment_type = "turn";
+  record.rough_route_debug_segment_type = "turn";
   record.path_tracking.valid = true;
   record.path_tracking.cross_track_error_m = 0.7;
   record.path_tracking.projection = Point2{3.0, 4.0};
@@ -574,7 +574,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"trajectory_optimizer_async_refined\":true");
   expectJsonField(json, "\"trajectory_shape_segment_count\":24");
   expectJsonField(json, "\"path\":{\"valid\":true");
-  expectJsonField(json, "\"final_trajectory_debug_segment_type\":\"turn\"");
+  expectJsonField(json, "\"rough_route_debug_segment_type\":\"turn\"");
   expectJsonField(json, "\"tracking\":{\"valid\":true");
   expectJsonField(json, "\"control\":{\"motion_phase\":\"cruise\"");
   expectJsonField(json, "\"terminal_position_capture_active\":true");

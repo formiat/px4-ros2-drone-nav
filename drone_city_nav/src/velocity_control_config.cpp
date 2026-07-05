@@ -22,9 +22,9 @@ void mixDouble(std::uint64_t& hash, const double value) noexcept {
 } // namespace
 
 std::uint64_t
-velocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
+speedProfileConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 14U> values{
+  const std::array<double, 9U> values{
       config.cruise_speed_mps,
       config.min_turn_speed_mps,
       config.speed_profile_accel_mps2,
@@ -34,11 +34,28 @@ velocityControlConfigFingerprint(const VelocityFollowerConfig& config) noexcept 
       config.speed_profile_lookahead_time_s,
       config.speed_profile_lookahead_min_m,
       config.speed_profile_lookahead_max_m,
+  };
+  for (const double value : values) {
+    mixDouble(hash, value);
+  }
+  return hash;
+}
+
+std::uint64_t
+runtimeVelocityConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  const std::array<double, 11U> values{
       config.setpoint_forward_accel_mps2,
       config.setpoint_forward_decel_mps2,
       config.setpoint_lateral_response_accel_mps2,
+      config.cross_track_gain,
+      config.cross_track_derivative_gain,
+      config.tracking_prediction_horizon_s,
+      config.max_lateral_control_angle_rad,
       config.max_velocity_jerk_mps3,
       config.max_lateral_velocity_jerk_mps3,
+      config.terminal_position_capture_max_entry_speed_mps,
+      config.terminal_stuck_speed_mps,
   };
   for (const double value : values) {
     mixDouble(hash, value);

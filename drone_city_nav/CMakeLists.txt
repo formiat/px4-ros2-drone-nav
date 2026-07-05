@@ -390,6 +390,18 @@ if(BUILD_TESTING)
                         drone_city_nav_core)
   enable_project_warnings(trajectory_refinement_scheduler_test)
 
+  ament_add_gtest(terminal_capture_state_machine_test
+                  tests/terminal_capture_state_machine_test.cpp)
+  target_compile_features(terminal_capture_state_machine_test PRIVATE cxx_std_20)
+  target_link_libraries(terminal_capture_state_machine_test drone_city_nav_core)
+  enable_project_warnings(terminal_capture_state_machine_test)
+
+  ament_add_gtest(trajectory_update_continuity_test
+                  tests/trajectory_update_continuity_test.cpp)
+  target_compile_features(trajectory_update_continuity_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_update_continuity_test drone_city_nav_core)
+  enable_project_warnings(trajectory_update_continuity_test)
+
   ament_add_gtest(offboard_path_follower_test
                   tests/offboard_path_follower_test.cpp)
   target_compile_features(offboard_path_follower_test PRIVATE cxx_std_20)
