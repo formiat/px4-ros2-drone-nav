@@ -1,8 +1,8 @@
-# Drone Gazebo ROS 2 PX4 MVP
+# Drone Gazebo ROS 2 PX4 Navigation
 
 This repository is a ROS 2 workspace for a Gazebo + PX4 SITL drone navigation
-MVP. The main package is `drone_city_nav`, an ament CMake package built with
-`colcon`.
+project. The main package is `drone_city_nav`, an ament CMake package built
+with `colcon`.
 
 ## Approved Commands
 
@@ -206,5 +206,25 @@ reason.
 
 ## Documentation
 
-Simulation launch and validation details are documented in
-`docs/MVP_SIMULATION.md`.
+The main documentation set starts at `docs/overview.md`.
+
+Key pages:
+
+- `docs/installation.md`
+- `docs/build_and_run.md`
+- `docs/gazebo_simulation.md`
+- `docs/architecture.md`
+- `docs/navigation_pipeline.md`
+- `docs/trajectory_optimization.md`
+- `docs/drone_control.md`
+- `docs/terminal_capture.md`
+- `docs/replanning.md`
+- `docs/obstacle_mapping.md`
+- `docs/configuration.md`
+- `docs/diagnostics.md`
+- `docs/testing.md`
+- `docs/development.md`
+- `docs/troubleshooting.md`
+- `docs/performance.md`
+
+`docs/MVP_SIMULATION.md` remains as a legacy simulation reference.
