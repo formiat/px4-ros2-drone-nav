@@ -98,11 +98,11 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_EQ(yaml.find("lateral_smoothing_min_speed_mps:"), std::string::npos);
   EXPECT_EQ(yaml.find("lateral_smoothing_full_speed_mps:"), std::string::npos);
   EXPECT_EQ(yaml.find("lateral_smoothing_max_factor:"), std::string::npos);
-  EXPECT_NE(yaml.find("speed_aware_derivative_damping_min_speed_mps: 8.0"),
+  EXPECT_NE(yaml.find("cross_track_d_gain_schedule_min_speed_mps: 8.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("speed_aware_derivative_damping_full_speed_mps: 20.0"),
+  EXPECT_NE(yaml.find("cross_track_d_gain_schedule_full_speed_mps: 20.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("speed_aware_derivative_damping_max_factor: 2.0"),
+  EXPECT_NE(yaml.find("cross_track_d_gain_schedule_max_factor: 2.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("control_tangent_smoothing_back_m: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("control_tangent_smoothing_forward_m: 18.0"), std::string::npos);

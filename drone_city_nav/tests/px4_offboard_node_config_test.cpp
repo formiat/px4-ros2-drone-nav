@@ -139,11 +139,11 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    30.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_lateral_velocity_jerk_mps3, 22.0);
-  EXPECT_DOUBLE_EQ(
-      config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 8.0);
-  EXPECT_DOUBLE_EQ(
-      config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 20.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_min_speed_mps,
+                   8.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_full_speed_mps,
+                   20.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_max_factor,
                    2.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m, 18.0);
@@ -227,9 +227,9 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
        rclcpp::Parameter{"curvature_feedforward_deadband_angle_deg", 20.0},
        rclcpp::Parameter{"curvature_feedforward_full_angle_deg", 10.0},
        rclcpp::Parameter{"max_curvature_feedforward_angle_deg", 500.0},
-       rclcpp::Parameter{"speed_aware_derivative_damping_min_speed_mps", 30.0},
-       rclcpp::Parameter{"speed_aware_derivative_damping_full_speed_mps", 10.0},
-       rclcpp::Parameter{"speed_aware_derivative_damping_max_factor", 0.5},
+       rclcpp::Parameter{"cross_track_d_gain_schedule_min_speed_mps", 30.0},
+       rclcpp::Parameter{"cross_track_d_gain_schedule_full_speed_mps", 10.0},
+       rclcpp::Parameter{"cross_track_d_gain_schedule_max_factor", 0.5},
        rclcpp::Parameter{"control_tangent_smoothing_back_m", -1.0},
        rclcpp::Parameter{"control_tangent_smoothing_forward_m", 2000.0},
        rclcpp::Parameter{"control_tangent_smoothing_max_heading_span_deg", 500.0},
@@ -267,11 +267,11 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
                    20.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.max_curvature_feedforward_angle_rad,
                    std::numbers::pi / 2.0);
-  EXPECT_DOUBLE_EQ(
-      config.velocity_follower.speed_aware_derivative_damping_min_speed_mps, 30.0);
-  EXPECT_DOUBLE_EQ(
-      config.velocity_follower.speed_aware_derivative_damping_full_speed_mps, 30.0);
-  EXPECT_DOUBLE_EQ(config.velocity_follower.speed_aware_derivative_damping_max_factor,
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_min_speed_mps,
+                   30.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_full_speed_mps,
+                   30.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_d_gain_schedule_max_factor,
                    1.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 0.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_forward_m,

@@ -102,19 +102,19 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] double
-speedAwareDerivativeDampingFactor(const double speed_mps,
-                                  const double cross_track_lateral_velocity_mps,
-                                  const VelocityFollowerConfig& config) noexcept {
+crossTrackDGainFactor(const double speed_mps,
+                      const double cross_track_lateral_velocity_mps,
+                      const VelocityFollowerConfig& config) noexcept {
   if (!(cross_track_lateral_velocity_mps > kTinyDistanceM)) {
     return 1.0;
   }
   const double min_speed = sanitizedPositive(
-      config.speed_aware_derivative_damping_min_speed_mps, 8.0, 0.0, 1000.0);
+      config.cross_track_d_gain_schedule_min_speed_mps, 8.0, 0.0, 1000.0);
   const double full_speed = std::max(
-      min_speed, sanitizedPositive(config.speed_aware_derivative_damping_full_speed_mps,
+      min_speed, sanitizedPositive(config.cross_track_d_gain_schedule_full_speed_mps,
                                    20.0, 0.0, 1000.0));
-  const double max_factor = sanitizedPositive(
-      config.speed_aware_derivative_damping_max_factor, 2.0, 1.0, 100.0);
+  const double max_factor =
+      sanitizedPositive(config.cross_track_d_gain_schedule_max_factor, 2.0, 1.0, 100.0);
   const double speed_factor =
       smoothstep(min_speed, full_speed, std::max(0.0, speed_mps));
   return 1.0 + (max_factor - 1.0) * speed_factor;
@@ -167,17 +167,17 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
         query.current_velocity_valid && finite2D(query.current_velocity)
             ? norm(query.current_velocity)
             : query.scalar_speed_mps;
-    plan.cross_track_derivative_damping_factor = speedAwareDerivativeDampingFactor(
+    plan.cross_track_d_gain_factor = crossTrackDGainFactor(
         derivative_speed, plan.cross_track_lateral_velocity_mps, config);
-    plan.cross_track_derivative_gain_effective =
-        cross_track_derivative_gain * plan.cross_track_derivative_damping_factor;
+    plan.cross_track_d_gain_effective =
+        cross_track_derivative_gain * plan.cross_track_d_gain_factor;
     plan.cross_track_p_gain_factor = crossTrackPGainFactor(cross_track_error, config);
     cross_track_feedback =
         cross_track_direction *
         (cross_track_gain * cross_track_error * plan.cross_track_p_gain_factor);
     cross_track_derivative_damping =
-        cross_track_direction * (-plan.cross_track_derivative_gain_effective *
-                                 plan.cross_track_lateral_velocity_mps);
+        cross_track_direction *
+        (-plan.cross_track_d_gain_effective * plan.cross_track_lateral_velocity_mps);
   }
 
   double curvature_feedforward_angle_rad = 0.0;

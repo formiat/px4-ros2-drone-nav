@@ -850,10 +850,8 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
   plan.cross_track_p_gain_factor = command.cross_track_p_gain_factor;
   plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
-  plan.cross_track_derivative_damping_factor =
-      command.cross_track_derivative_damping_factor;
-  plan.cross_track_derivative_gain_effective =
-      command.cross_track_derivative_gain_effective;
+  plan.cross_track_d_gain_factor = command.cross_track_d_gain_factor;
+  plan.cross_track_d_gain_effective = command.cross_track_d_gain_effective;
   plan.cross_track_lateral_velocity_mps = command.cross_track_lateral_velocity_mps;
   plan.curvature_feedforward_mps = command.curvature_feedforward_mps;
   plan.curvature_feedforward_angle_rad = command.curvature_feedforward_angle_rad;

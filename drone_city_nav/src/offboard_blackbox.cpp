@@ -146,12 +146,10 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"control_tangent_smoothing_window_end_s_m\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.control_tangent_smoothing_window_end_s_m);
-  stream << ",\"cross_track_derivative_damping_factor\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_derivative_damping_factor);
-  stream << ",\"cross_track_derivative_gain_effective\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_derivative_gain_effective);
+  stream << ",\"cross_track_d_gain_factor\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_d_gain_factor);
+  stream << ",\"cross_track_d_gain_effective\":";
+  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_d_gain_effective);
   stream << ",\"curvature_feedforward_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.curvature_feedforward_velocity.x);
   stream << ",\"curvature_feedforward_y\":";
