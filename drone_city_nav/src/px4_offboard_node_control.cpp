@@ -9,6 +9,8 @@ void Px4OffboardNode::onTimer() {
   }
 
   updateFinalGoalHold();
+  advanceWaypointIfNeeded();
+  updateTerminalCaptureState();
   publishOffboardControlMode();
   publishTrajectorySetpoint();
   publishOffboardDebugMarkers();
@@ -78,29 +80,12 @@ void Px4OffboardNode::publishOffboardControlMode() {
 }
 
 void Px4OffboardNode::publishTrajectorySetpoint() {
-  advanceWaypointIfNeeded();
-
   const OffboardSetpointMode requested_mode = currentSetpointMode();
   const bool velocity_cruise_requested =
       requested_mode == OffboardSetpointMode::kVelocityCruise;
   const bool terminal_position_capture_requested =
       requested_mode == OffboardSetpointMode::kTerminalPositionCapture;
-  const TerminalPositionCaptureDecision terminal_position_capture =
-      terminalPositionCaptureDecision();
   last_terminal_position_capture_active_ = terminal_position_capture_requested;
-  last_terminal_position_capture_reason_ = terminal_position_capture.reason;
-  last_terminal_position_capture_goal_distance_m_ =
-      terminal_position_capture.goal_distance_m;
-  last_terminal_position_capture_remaining_s_m_ =
-      terminal_position_capture.remaining_trajectory_distance_m;
-  last_terminal_position_capture_speed_mps_ =
-      terminal_position_capture.current_speed_mps;
-  last_terminal_position_capture_activation_radius_m_ =
-      terminal_position_capture.activation_radius_m;
-  last_terminal_position_capture_max_entry_speed_mps_ =
-      terminal_position_capture.max_entry_speed_mps;
-  last_terminal_position_capture_stuck_speed_mps_ =
-      terminal_position_capture.stuck_speed_mps;
   if (velocity_cruise_requested) {
     if (publishVelocityTrajectorySetpoint()) {
       return;
@@ -143,7 +128,7 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 }
 
 [[nodiscard]] OffboardSetpointMode Px4OffboardNode::currentSetpointMode() const {
-  if (terminalPositionCaptureDecision().active) {
+  if (terminal_capture_state_.position_capture_active) {
     return OffboardSetpointMode::kTerminalPositionCapture;
   }
   return velocityCruiseReady() ? OffboardSetpointMode::kVelocityCruise
@@ -156,60 +141,85 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
          !no_path_hold_target_valid_;
 }
 
-[[nodiscard]] Px4OffboardNode::TerminalPositionCaptureDecision
-Px4OffboardNode::terminalPositionCaptureDecision() const {
-  TerminalPositionCaptureDecision decision{};
+[[nodiscard]] Px4OffboardNode::TerminalCaptureState
+Px4OffboardNode::computeTerminalCaptureState() const {
+  TerminalCaptureState state{};
   const double terminal_radius =
       std::clamp(velocity_follower_config_.terminal_capture_radius_m, 0.0, 1000.0);
   const double terminal_max_speed =
       std::clamp(velocity_follower_config_.terminal_capture_max_speed_mps, 0.0, 100.0);
-  decision.activation_radius_m = std::isfinite(terminal_radius) ? terminal_radius : 8.0;
-  decision.max_entry_speed_mps =
+  state.activation_radius_m = std::isfinite(terminal_radius) ? terminal_radius : 8.0;
+  state.max_entry_speed_mps =
       std::min(std::isfinite(terminal_max_speed) ? terminal_max_speed : 8.0, 3.0);
-  decision.stuck_speed_mps = 0.5;
+  state.stuck_speed_mps = 0.5;
 
   if (final_goal_hold_active_ || no_path_hold_target_valid_ || !localPositionFresh() ||
       !navigationAllowed() || !pathFollowingReady() || path_points_.empty() ||
       !std::isfinite(current_speed_mps_)) {
-    return decision;
+    return state;
   }
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(final_trajectory_samples_, current_position_);
   if (!projection.has_value()) {
-    return decision;
+    return state;
   }
 
-  decision.goal_distance_m = distance(current_position_, path_points_.back());
-  decision.remaining_trajectory_distance_m = std::max(
+  state.valid = true;
+  state.goal_distance_m = distance(current_position_, path_points_.back());
+  state.remaining_trajectory_distance_m = std::max(
       0.0, final_trajectory_samples_.back().s_m - std::max(0.0, projection->s_m));
-  decision.current_speed_mps = current_speed_mps_;
+  state.current_speed_mps = current_speed_mps_;
 
-  const bool inside_terminal_zone =
-      decision.goal_distance_m <= decision.activation_radius_m ||
-      decision.remaining_trajectory_distance_m <= decision.activation_radius_m;
-  const bool slow_enough = decision.current_speed_mps <= decision.max_entry_speed_mps;
-  const bool terminal_velocity_stuck =
-      last_velocity_plan_.terminal_capture_active &&
-      decision.current_speed_mps <= decision.stuck_speed_mps &&
-      decision.goal_distance_m > acceptance_radius_m_ && inside_terminal_zone;
-  if (terminal_velocity_stuck) {
-    decision.active = true;
-    decision.reason = "terminal_stuck";
-    return decision;
+  state.inside_terminal_zone =
+      state.goal_distance_m <= state.activation_radius_m ||
+      state.remaining_trajectory_distance_m <= state.activation_radius_m;
+  state.slow_enough_for_position_capture =
+      state.current_speed_mps <= state.max_entry_speed_mps;
+  state.terminal_velocity_stuck = last_velocity_plan_.terminal_capture_active &&
+                                  state.current_speed_mps <= state.stuck_speed_mps &&
+                                  state.goal_distance_m > acceptance_radius_m_ &&
+                                  state.inside_terminal_zone;
+  if (state.terminal_velocity_stuck) {
+    state.position_capture_active = true;
+    state.reason = "terminal_stuck";
+    return state;
   }
-  if (slow_enough && decision.goal_distance_m <= decision.activation_radius_m) {
-    decision.active = true;
-    decision.reason = "near_goal_slow";
-    return decision;
+  if (state.slow_enough_for_position_capture &&
+      state.goal_distance_m <= state.activation_radius_m) {
+    state.position_capture_active = true;
+    state.reason = "near_goal_slow";
+    return state;
   }
-  if (slow_enough &&
-      decision.remaining_trajectory_distance_m <= decision.activation_radius_m) {
-    decision.active = true;
-    decision.reason = "near_end_slow";
-    return decision;
+  if (state.slow_enough_for_position_capture &&
+      state.remaining_trajectory_distance_m <= state.activation_radius_m) {
+    state.position_capture_active = true;
+    state.reason = "near_end_slow";
+    return state;
   }
-  return decision;
+  return state;
+}
+
+void Px4OffboardNode::updateTerminalCaptureState() {
+  TerminalCaptureState state = computeTerminalCaptureState();
+  if (!state.valid || final_goal_hold_active_ || no_path_hold_target_valid_) {
+    terminal_position_capture_latched_ = false;
+  } else if (state.position_capture_active) {
+    terminal_position_capture_latched_ = true;
+  } else if (terminal_position_capture_latched_) {
+    state.position_capture_active = true;
+    state.reason = "latched";
+  }
+
+  terminal_capture_state_ = state;
+  last_terminal_position_capture_active_ = state.position_capture_active;
+  last_terminal_position_capture_reason_ = state.reason;
+  last_terminal_position_capture_goal_distance_m_ = state.goal_distance_m;
+  last_terminal_position_capture_remaining_s_m_ = state.remaining_trajectory_distance_m;
+  last_terminal_position_capture_speed_mps_ = state.current_speed_mps;
+  last_terminal_position_capture_activation_radius_m_ = state.activation_radius_m;
+  last_terminal_position_capture_max_entry_speed_mps_ = state.max_entry_speed_mps;
+  last_terminal_position_capture_stuck_speed_mps_ = state.stuck_speed_mps;
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalPathGoalReached() const {

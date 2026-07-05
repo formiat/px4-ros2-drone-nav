@@ -47,6 +47,8 @@ void Px4OffboardNode::clearFinalTrajectory() {
   final_trajectory_samples_.clear();
   trajectory_speed_profile_ = TrajectorySpeedProfile{};
   trajectory_valid_ = false;
+  terminal_position_capture_latched_ = false;
+  terminal_capture_state_ = TerminalCaptureState{};
   last_trajectory_metrics_ = TrajectoryMetrics{};
   last_trajectory_planner_stats_ = TrajectoryPlannerStats{};
   last_trajectory_shape_diagnostics_ = TrajectoryShapeDiagnostics{};
@@ -146,6 +148,8 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   trajectory_ = state.trajectory;
   trajectory_speed_profile_ = state.speed_profile;
   trajectory_valid_ = state.valid;
+  terminal_position_capture_latched_ = false;
+  terminal_capture_state_ = TerminalCaptureState{};
   last_trajectory_route_points_ = path_points_.size();
   last_trajectory_metrics_ = state.metrics;
   last_trajectory_shape_diagnostics_ = state.shape;

@@ -90,6 +90,8 @@ void Px4OffboardNode::onEmergencyStop(const std_msgs::msg::Bool& msg) {
   emergency_stop_requested_ = true;
   path_valid_ = false;
   final_goal_hold_active_ = false;
+  terminal_position_capture_latched_ = false;
+  terminal_capture_state_ = TerminalCaptureState{};
   RCLCPP_ERROR(get_logger(),
                "Emergency stop requested; stopping trajectory setpoints and "
                "sending disarm commands");

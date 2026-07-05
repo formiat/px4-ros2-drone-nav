@@ -188,8 +188,12 @@ private:
 
   [[nodiscard]] bool velocityCruiseReady() const;
 
-  struct TerminalPositionCaptureDecision {
-    bool active{false};
+  struct TerminalCaptureState {
+    bool valid{false};
+    bool inside_terminal_zone{false};
+    bool slow_enough_for_position_capture{false};
+    bool terminal_velocity_stuck{false};
+    bool position_capture_active{false};
     const char* reason{"none"};
     double goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
     double remaining_trajectory_distance_m{std::numeric_limits<double>::quiet_NaN()};
@@ -199,7 +203,9 @@ private:
     double stuck_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   };
 
-  [[nodiscard]] TerminalPositionCaptureDecision terminalPositionCaptureDecision() const;
+  [[nodiscard]] TerminalCaptureState computeTerminalCaptureState() const;
+
+  void updateTerminalCaptureState();
 
   [[nodiscard]] bool finalPathGoalReached() const;
 
@@ -356,6 +362,7 @@ private:
   bool no_path_hold_target_valid_{false};
   bool final_goal_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
+  bool terminal_position_capture_latched_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
   bool navigation_altitude_reached_{false};
@@ -398,6 +405,7 @@ private:
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
   std::size_t last_final_trajectory_debug_samples_{0U};
   std::size_t last_trajectory_route_points_{0U};
+  TerminalCaptureState terminal_capture_state_{};
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
