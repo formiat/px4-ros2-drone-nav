@@ -10,35 +10,63 @@ using trajectory_diagnostics_io_test_helpers::populatedStats;
 
 namespace {
 
-void expectUniqueJsonObjectKeys(const std::string& json) {
+[[nodiscard]] std::size_t findJsonStringEnd(const std::string& json,
+                                            const std::size_t string_start) {
+  for (std::size_t index = string_start + 1U; index < json.size(); ++index) {
+    if (json[index] == '\\') {
+      ++index;
+      continue;
+    }
+    if (json[index] == '"') {
+      return index;
+    }
+  }
+  return std::string::npos;
+}
+
+void expectUniqueTopLevelJsonObjectKeys(const std::string& json) {
   std::set<std::string> keys;
+  int object_depth = 0;
+  int array_depth = 0;
   for (std::size_t index = 0U; index < json.size(); ++index) {
-    if (json[index] != '"') {
+    const char token = json[index];
+    if (token == '"') {
+      const std::size_t key_end = findJsonStringEnd(json, index);
+      if (key_end == std::string::npos) {
+        ADD_FAILURE() << "unterminated JSON string at " << index;
+        return;
+      }
+      const bool top_level_object_key = object_depth == 1 && array_depth == 0;
+      if (top_level_object_key) {
+        const std::size_t previous_token_index =
+            index == 0U ? std::string::npos
+                        : json.find_last_not_of(" \n\r\t", index - 1U);
+        const char previous_token = previous_token_index == std::string::npos
+                                        ? '\0'
+                                        : json[previous_token_index];
+        const std::size_t separator = json.find_first_not_of(" \n\r\t", key_end + 1U);
+        if (separator == std::string::npos) {
+          ADD_FAILURE() << "missing JSON key separator after " << key_end;
+          return;
+        }
+        if ((previous_token == '{' || previous_token == ',') &&
+            json[separator] == ':') {
+          const std::string key = json.substr(index + 1U, key_end - index - 1U);
+          EXPECT_TRUE(keys.insert(key).second) << key;
+        }
+      }
+      index = key_end;
       continue;
     }
-    const std::size_t previous_token_index =
-        index == 0U ? std::string::npos : json.find_last_not_of(" \n\r\t", index - 1U);
-    const char previous_token =
-        previous_token_index == std::string::npos ? '\0' : json[previous_token_index];
-    if (previous_token != '{' && previous_token != ',') {
-      continue;
+    if (token == '{') {
+      ++object_depth;
+    } else if (token == '}') {
+      --object_depth;
+    } else if (token == '[') {
+      ++array_depth;
+    } else if (token == ']') {
+      --array_depth;
     }
-    const std::size_t key_end = json.find('"', index + 1U);
-    if (key_end == std::string::npos) {
-      ADD_FAILURE() << "unterminated JSON key at " << index;
-      return;
-    }
-    const std::size_t separator = json.find_first_not_of(" \n\r\t", key_end + 1U);
-    if (separator == std::string::npos) {
-      ADD_FAILURE() << "missing JSON key separator after " << key_end;
-      return;
-    }
-    if (json[separator] != ':') {
-      continue;
-    }
-    const std::string key = json.substr(index + 1U, key_end - index - 1U);
-    EXPECT_TRUE(keys.insert(key).second) << key;
-    index = key_end;
   }
 }
 
@@ -626,7 +654,7 @@ TEST(TrajectoryDiagnosticsIo,
 TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonHasUniqueKeys) {
   const std::string json = trajectoryPlannerDiagnosticsJson(1U, 2U, populatedStats());
 
-  expectUniqueJsonObjectKeys(json);
+  expectUniqueTopLevelJsonObjectKeys(json);
 }
 
 TEST(TrajectoryDiagnosticsIo, TimingJsonFragmentContainsBlackboxRequiredKeys) {

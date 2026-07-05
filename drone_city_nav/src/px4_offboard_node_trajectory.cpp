@@ -4,6 +4,16 @@
 #include "px4_offboard_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] bool
+configFingerprintMismatch(const std::uint64_t runtime_fingerprint,
+                          const std::uint64_t planning_fingerprint) noexcept {
+  return runtime_fingerprint != 0U && planning_fingerprint != 0U &&
+         runtime_fingerprint != planning_fingerprint;
+}
+
+} // namespace
 
 [[nodiscard]] OffboardPathFollowerConfig Px4OffboardNode::pathFollowerConfig() const {
   return OffboardPathFollowerConfig{acceptance_radius_m_,
@@ -65,8 +75,7 @@ void Px4OffboardNode::clearFinalTrajectory() {
 [[nodiscard]] bool Px4OffboardNode::trajectoryDiagnosticsMatchesCurrentPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) const {
   return trajectoryDiagnosticsMatchesPath(diagnostics, last_received_path_stamp_ns_,
-                                          accepted_planner_path_id_seen_,
-                                          accepted_planner_path_id_);
+                                          false, 0U);
 }
 
 void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
@@ -74,33 +83,19 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   if (!trajectoryDiagnosticsMatchesCurrentPath(diagnostics)) {
     return;
   }
-  const auto warn_on_fingerprint_mismatch =
-      [this, &diagnostics](const char* fingerprint_name,
-                           const std::uint64_t runtime_fingerprint,
-                           const std::uint64_t planning_fingerprint) {
-        if (runtime_fingerprint == 0U || planning_fingerprint == 0U ||
-            runtime_fingerprint == planning_fingerprint) {
-          return;
-        }
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                             "%s_mismatch: runtime=%" PRIu64 " planning=%" PRIu64
-                             " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
-                             fingerprint_name, runtime_fingerprint,
-                             planning_fingerprint, diagnostics.planner_path_id,
-                             diagnostics.path_stamp_ns);
-      };
-  warn_on_fingerprint_mismatch(
-      "speed_profile_construction_config_fingerprint",
-      last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
-      diagnostics.stats.speed_profile_construction_config_fingerprint);
-  warn_on_fingerprint_mismatch(
-      "runtime_speed_policy_config_fingerprint",
-      last_trajectory_planner_stats_.runtime_speed_policy_config_fingerprint,
-      diagnostics.stats.runtime_speed_policy_config_fingerprint);
-  warn_on_fingerprint_mismatch(
-      "runtime_velocity_control_config_fingerprint",
-      last_trajectory_planner_stats_.runtime_velocity_control_config_fingerprint,
-      diagnostics.stats.runtime_velocity_control_config_fingerprint);
+  accepted_planner_path_id_ = diagnostics.planner_path_id;
+  accepted_planner_path_id_seen_ = true;
+  if (configFingerprintMismatch(
+          last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
+          diagnostics.stats.speed_profile_construction_config_fingerprint)) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "speed_profile_construction_config_fingerprint_mismatch: runtime=%" PRIu64
+        " planning=%" PRIu64 " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64,
+        last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
+        diagnostics.stats.speed_profile_construction_config_fingerprint,
+        diagnostics.planner_path_id, diagnostics.path_stamp_ns);
+  }
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
 }
@@ -351,8 +346,8 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                            : 0U;
   received_path_update_id_ = candidate_update_id;
   last_received_path_stamp_ns_ = candidate_path_stamp_ns;
-  accepted_planner_path_id_ = latest_planner_path_id_;
-  accepted_planner_path_id_seen_ = latest_planner_path_id_seen_;
+  accepted_planner_path_id_ = 0U;
+  accepted_planner_path_id_seen_ = false;
   path_points_ = std::move(candidate_path_points);
   path_valid_ = true;
   trajectory_goal_ = path_points_.back();
@@ -407,17 +402,26 @@ void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) 
   }
 
   mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*diagnostics);
+  const bool runtime_speed_policy_mismatch = configFingerprintMismatch(
+      last_trajectory_planner_stats_.runtime_speed_policy_config_fingerprint,
+      diagnostics->stats.runtime_speed_policy_config_fingerprint);
+  const bool runtime_velocity_control_mismatch = configFingerprintMismatch(
+      last_trajectory_planner_stats_.runtime_velocity_control_config_fingerprint,
+      diagnostics->stats.runtime_velocity_control_config_fingerprint);
   RCLCPP_INFO(get_logger(),
               "Applied planner trajectory diagnostics: planner_path_id=%" PRIu64
               " path_stamp_ns=%" PRIu64 " corridor_width[min=%.2f mean=%.2f max=%.2f] "
-              "optimizer[length=%.2f time=%.2f max_offset=%.2f]",
+              "optimizer[length=%.2f time=%.2f max_offset=%.2f] "
+              "runtime_fingerprint_mismatch[speed_policy=%s velocity_control=%s]",
               diagnostics->planner_path_id, diagnostics->path_stamp_ns,
               diagnostics->stats.corridor.min_width_m,
               diagnostics->stats.corridor.mean_width_m,
               diagnostics->stats.corridor.max_width_m,
               diagnostics->stats.trajectory_optimizer.final_length_m,
               diagnostics->stats.trajectory_optimizer.estimated_time_s,
-              diagnostics->stats.trajectory_optimizer.max_abs_offset_m);
+              diagnostics->stats.trajectory_optimizer.max_abs_offset_m,
+              runtime_speed_policy_mismatch ? "true" : "false",
+              runtime_velocity_control_mismatch ? "true" : "false");
 }
 
 void Px4OffboardNode::openFlightBlackbox() {
