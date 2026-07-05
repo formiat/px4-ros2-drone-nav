@@ -339,7 +339,6 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.speed_profile_curvature_limited_samples, 69U);
   EXPECT_EQ(parsed_value.stats.isolated_curvature_spike_candidates, 2U);
   EXPECT_EQ(parsed_value.stats.isolated_curvature_spikes_smoothed_geometry, 1U);
-  EXPECT_EQ(parsed_value.stats.isolated_curvature_spikes_smoothed_speed_profile, 1U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.isolated_curvature_spike_max_before_1pm, 0.12);
   EXPECT_DOUBLE_EQ(parsed_value.stats.isolated_curvature_spike_max_after_1pm, 0.04);
   ASSERT_EQ(parsed_value.stats.top_speed_constraints.size(), 1U);

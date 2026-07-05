@@ -116,7 +116,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
                    1.5);
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
-            1U);
+            0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 16.0);

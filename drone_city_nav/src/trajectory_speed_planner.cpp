@@ -30,10 +30,7 @@ constexpr double kTinyDistanceM = 1.0e-6;
 
 [[nodiscard]] double
 effectiveVelocityDeltaAccelMps2(const VelocityFollowerConfig& config) {
-  const double max_accel = sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
-  const double max_lateral =
-      sanitizedPositive(config.max_lateral_accel_mps2, 3.0, 1.0e-6, 100.0);
-  return std::min(max_accel, max_lateral);
+  return sanitizedPositive(config.max_accel_mps2, 3.0, 1.0e-6, 100.0);
 }
 
 [[nodiscard]] double

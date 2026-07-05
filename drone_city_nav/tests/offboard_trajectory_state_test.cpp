@@ -63,6 +63,18 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   diagnostics.stats.trajectory_optimizer.final_length_m = 34.0;
   diagnostics.stats.turn_smoothing.smoothed_corners = 2U;
   diagnostics.stats.total_duration_ms = 56.0;
+  diagnostics.stats.speed_profile_duration_ms = 99.0;
+  diagnostics.stats.speed_profile_min_mps = 1.0;
+  diagnostics.stats.top_speed_constraints.push_back(SpeedProfileConstraintDiagnostic{
+      .sample_index = 7U,
+      .s_m = 11.0,
+      .radius_m = 12.0,
+      .curvature_1pm = 0.08,
+      .speed_limit_mps = 6.0,
+      .profiled_limit_mps = 6.0,
+      .source = SpeedConstraintType::kArc,
+      .isolated_curvature_spike = false,
+  });
 
   EXPECT_TRUE(trajectoryDiagnosticsMatchesPath(diagnostics, 100U, true, 9U));
   EXPECT_FALSE(trajectoryDiagnosticsMatchesPath(diagnostics, 101U, true, 9U));
@@ -70,12 +82,17 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   EXPECT_TRUE(trajectoryDiagnosticsMatchesPath(diagnostics, 100U, false, 10U));
 
   TrajectoryPlannerStats stats;
+  stats.speed_profile_duration_ms = 1.5;
+  stats.speed_profile_min_mps = 4.0;
   mergePlannerDiagnosticsIntoTrajectoryStats(stats, diagnostics);
 
   EXPECT_DOUBLE_EQ(stats.corridor.mean_width_m, 12.0);
   EXPECT_DOUBLE_EQ(stats.trajectory_optimizer.final_length_m, 34.0);
   EXPECT_EQ(stats.turn_smoothing.smoothed_corners, 2U);
   EXPECT_DOUBLE_EQ(stats.total_duration_ms, 56.0);
+  EXPECT_DOUBLE_EQ(stats.speed_profile_duration_ms, 1.5);
+  EXPECT_DOUBLE_EQ(stats.speed_profile_min_mps, 4.0);
+  EXPECT_TRUE(stats.top_speed_constraints.empty());
 }
 
 } // namespace drone_city_nav

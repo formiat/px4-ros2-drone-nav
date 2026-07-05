@@ -144,6 +144,9 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
 
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
     const char* source_label, const OffboardTrajectoryState& state) {
+  const bool preserve_velocity_smoother_state =
+      trajectory_valid_ && state.valid &&
+      velocity_follower_state_.previous_velocity_setpoint_valid;
   final_trajectory_samples_ = state.samples;
   trajectory_ = state.trajectory;
   trajectory_speed_profile_ = state.speed_profile;
@@ -159,7 +162,7 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   }
   if (!trajectory_valid_) {
     resetVelocityDiagnostics();
-  } else {
+  } else if (!preserve_velocity_smoother_state) {
     resetVelocitySmootherState("new_trajectory", true);
   }
   publishFinalTrajectoryDebug();
@@ -191,7 +194,7 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
       "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
-      "speed_profile_smoothed=%zu max_before=%.4f max_after=%.4f] "
+      "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
       "max_heading_delta=%.1fdeg max_curvature_jump=%.4f] samples_csv='%s'",
       source_label, received_path_update_id_, latest_planner_path_id_,
@@ -206,7 +209,6 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       top_speed_constraint_source,
       last_trajectory_planner_stats_.isolated_curvature_spike_candidates,
       last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_geometry,
-      last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_speed_profile,
       last_trajectory_planner_stats_.isolated_curvature_spike_max_before_1pm,
       last_trajectory_planner_stats_.isolated_curvature_spike_max_after_1pm,
       last_trajectory_shape_diagnostics_.segment_count,

@@ -566,23 +566,21 @@ TEST(TrajectoryDiagnosticsIo,
   const std::string fragment =
       speedProfileConstraintDiagnosticsJsonFields(populatedStats());
 
-  expectContainsAll(fragment,
-                    std::array{
-                        "\"speed_profile_top_constraint_count\"",
-                        "\"speed_profile_top1_sample_index\"",
-                        "\"speed_profile_top1_s_m\"",
-                        "\"speed_profile_top1_radius_m\"",
-                        "\"speed_profile_top1_curvature_1pm\"",
-                        "\"speed_profile_top1_speed_limit_mps\"",
-                        "\"speed_profile_top1_profiled_limit_mps\"",
-                        "\"speed_profile_top1_source\"",
-                        "\"speed_profile_top1_isolated_curvature_spike\"",
-                        "\"isolated_curvature_spike_candidates\"",
-                        "\"isolated_curvature_spikes_smoothed_geometry\"",
-                        "\"isolated_curvature_spikes_smoothed_speed_profile\"",
-                        "\"isolated_curvature_spike_max_before_1pm\"",
-                        "\"isolated_curvature_spike_max_after_1pm\"",
-                    });
+  expectContainsAll(fragment, std::array{
+                                  "\"speed_profile_top_constraint_count\"",
+                                  "\"speed_profile_top1_sample_index\"",
+                                  "\"speed_profile_top1_s_m\"",
+                                  "\"speed_profile_top1_radius_m\"",
+                                  "\"speed_profile_top1_curvature_1pm\"",
+                                  "\"speed_profile_top1_speed_limit_mps\"",
+                                  "\"speed_profile_top1_profiled_limit_mps\"",
+                                  "\"speed_profile_top1_source\"",
+                                  "\"speed_profile_top1_isolated_curvature_spike\"",
+                                  "\"isolated_curvature_spike_candidates\"",
+                                  "\"isolated_curvature_spikes_smoothed_geometry\"",
+                                  "\"isolated_curvature_spike_max_before_1pm\"",
+                                  "\"isolated_curvature_spike_max_after_1pm\"",
+                              });
   EXPECT_EQ(fragment.find("nan"), std::string::npos);
 }
 

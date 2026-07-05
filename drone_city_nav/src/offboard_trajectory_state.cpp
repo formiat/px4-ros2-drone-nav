@@ -1,6 +1,7 @@
 #include "drone_city_nav/offboard_trajectory_state.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 
@@ -34,6 +35,14 @@ pathPointsFromMessage(const nav_msgs::msg::Path& path) {
          diagnostics.planner_path_id == expected_planner_path_id;
 }
 
+[[nodiscard]] double
+elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
+  return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - start)
+                                 .count()) /
+         1000.0;
+}
+
 void mergePlannerDiagnosticsIntoTrajectoryStats(
     TrajectoryPlannerStats& output_stats,
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) {
@@ -46,18 +55,14 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
       diagnostics.stats.trajectory_optimizer_duration_ms;
   output_stats.turn_smoothing_duration_ms =
       diagnostics.stats.turn_smoothing_duration_ms;
-  output_stats.speed_profile_duration_ms = diagnostics.stats.speed_profile_duration_ms;
   output_stats.isolated_curvature_spike_candidates =
       diagnostics.stats.isolated_curvature_spike_candidates;
   output_stats.isolated_curvature_spikes_smoothed_geometry =
       diagnostics.stats.isolated_curvature_spikes_smoothed_geometry;
-  output_stats.isolated_curvature_spikes_smoothed_speed_profile =
-      diagnostics.stats.isolated_curvature_spikes_smoothed_speed_profile;
   output_stats.isolated_curvature_spike_max_before_1pm =
       diagnostics.stats.isolated_curvature_spike_max_before_1pm;
   output_stats.isolated_curvature_spike_max_after_1pm =
       diagnostics.stats.isolated_curvature_spike_max_after_1pm;
-  output_stats.top_speed_constraints = diagnostics.stats.top_speed_constraints;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
@@ -123,13 +128,17 @@ buildOffboardTrajectoryState(const std::span<const Point2> path_points,
   OffboardTrajectoryState state;
   state.samples = trajectoryPointSamplesFromPoints(path_points);
   state.trajectory = lineTrajectoryFromSamples(state.samples);
+  const auto speed_profile_started_at = std::chrono::steady_clock::now();
   state.speed_profile = buildTrajectorySpeedProfile(state.samples, velocity_config);
+  const double speed_profile_duration_ms =
+      elapsedMilliseconds(speed_profile_started_at);
   state.valid = trajectorySamplesAreUsable(state.samples) && state.speed_profile.valid;
   state.metrics = trajectoryMetrics(state.trajectory);
   state.shape = computeTrajectoryShapeDiagnostics(state.samples);
   state.stats = buildReceivedTrajectoryPlannerStats(path_points, state.samples,
                                                     state.trajectory, state.metrics,
                                                     state.speed_profile, state.valid);
+  state.stats.speed_profile_duration_ms = speed_profile_duration_ms;
   return state;
 }
 

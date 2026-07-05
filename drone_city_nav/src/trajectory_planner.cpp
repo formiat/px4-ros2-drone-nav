@@ -355,42 +355,6 @@ smoothIsolatedCurvatureSpikeGeometry(std::vector<TrajectoryPointSample>& samples
   return smoothed;
 }
 
-[[nodiscard]] double
-smoothedSpeedProfileCurvature(const std::span<const TrajectoryPointSample> samples,
-                              const std::size_t index) noexcept {
-  const double previous = samples[index - 1U].curvature_1pm;
-  const double next = samples[index + 1U].curvature_1pm;
-  const double neighbor_limit = 1.5 * std::max(std::abs(previous), std::abs(next));
-  const double averaged = 0.5 * (previous + next);
-  const double magnitude = std::max(std::abs(averaged), neighbor_limit);
-  const double bounded_magnitude =
-      std::min(std::abs(samples[index].curvature_1pm), magnitude);
-  return std::copysign(bounded_magnitude, samples[index].curvature_1pm);
-}
-
-[[nodiscard]] std::size_t smoothIsolatedCurvatureSpikeSpeedProfile(
-    std::vector<TrajectoryPointSample>& speed_profile_samples,
-    const OccupancyGrid2D& grid) {
-  std::size_t smoothed = 0U;
-  for (std::size_t i = 1U; i + 1U < speed_profile_samples.size(); ++i) {
-    if (!isIsolatedCurvatureSpike(speed_profile_samples, i)) {
-      continue;
-    }
-    if (!segmentTraversable(grid, speed_profile_samples[i - 1U].point,
-                            speed_profile_samples[i + 1U].point)) {
-      continue;
-    }
-    const double smoothed_curvature =
-        smoothedSpeedProfileCurvature(speed_profile_samples, i);
-    if (std::abs(smoothed_curvature) <
-        std::abs(speed_profile_samples[i].curvature_1pm)) {
-      speed_profile_samples[i].curvature_1pm = smoothed_curvature;
-      ++smoothed;
-    }
-  }
-  return smoothed;
-}
-
 } // namespace
 
 std::string_view
@@ -586,12 +550,8 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
       maxIsolatedCurvatureSpike(result.samples);
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
-  std::vector<TrajectoryPointSample> speed_profile_samples = result.samples;
-  result.stats.isolated_curvature_spikes_smoothed_speed_profile =
-      smoothIsolatedCurvatureSpikeSpeedProfile(speed_profile_samples,
-                                               *input.prohibited_grid);
   result.speed_profile =
-      buildTrajectorySpeedProfile(speed_profile_samples, config.speed_profile);
+      buildTrajectorySpeedProfile(result.samples, config.speed_profile);
   result.stats.speed_profile_duration_ms =
       elapsedMilliseconds(speed_profile_started_at);
   finalizeResult(result, config);

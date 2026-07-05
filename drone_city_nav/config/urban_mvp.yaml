@@ -145,7 +145,7 @@ planner_node:
     trajectory_optimizer_dp_coarse_offset_step_m: 2.0
     trajectory_optimizer_dp_fine_offset_step_m: 0.75
     trajectory_optimizer_dp_fine_radius_m: 1.5
-    trajectory_optimizer_async_refinement_workers: 1
+    trajectory_optimizer_async_refinement_workers: 0
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 16.0
     turn_smoothing_trigger_speed_limit_mps: 12.0

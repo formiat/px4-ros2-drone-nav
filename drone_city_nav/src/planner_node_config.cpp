@@ -284,7 +284,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.trajectory_optimizer.async_refinement_workers =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>(
-              "trajectory_optimizer_async_refinement_workers", 1),
+              "trajectory_optimizer_async_refinement_workers", 0),
           0, 1));
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *

@@ -55,7 +55,6 @@ struct TrajectoryPlannerStats {
   std::size_t speed_profile_curvature_limited_samples{0U};
   std::size_t isolated_curvature_spike_candidates{0U};
   std::size_t isolated_curvature_spikes_smoothed_geometry{0U};
-  std::size_t isolated_curvature_spikes_smoothed_speed_profile{0U};
   double isolated_curvature_spike_max_before_1pm{0.0};
   double isolated_curvature_spike_max_after_1pm{0.0};
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;

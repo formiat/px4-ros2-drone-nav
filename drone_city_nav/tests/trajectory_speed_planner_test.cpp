@@ -67,6 +67,26 @@ namespace {
   return profile;
 }
 
+[[nodiscard]] TrajectorySpeedProfile unconstrainedProfile() {
+  TrajectorySpeedProfile profile{};
+  profile.valid = true;
+  profile.samples = {
+      TrajectorySpeedSample{.s_m = 0.0,
+                            .geometric_limit_mps = 20.0,
+                            .profiled_limit_mps = 20.0,
+                            .reason = SpeedConstraintType::kNone,
+                            .constraint_s_m = 0.0,
+                            .constraint_limit_mps = 20.0},
+      TrajectorySpeedSample{.s_m = 40.0,
+                            .geometric_limit_mps = 20.0,
+                            .profiled_limit_mps = 20.0,
+                            .reason = SpeedConstraintType::kNone,
+                            .constraint_s_m = 40.0,
+                            .constraint_limit_mps = 20.0},
+  };
+  return profile;
+}
+
 } // namespace
 
 TEST(TrajectorySpeedPlanner, NarrowArcGetsLowerGeometricLimitThanWideArc) {
@@ -132,6 +152,25 @@ TEST(TrajectorySpeedPlanner, LookaheadSeesUpcomingLowSpeedConstraint) {
   EXPECT_NEAR(plan.speed_after_lookahead_mps, 4.0, 1.0e-9);
   EXPECT_EQ(plan.lookahead_constraint_type, SpeedConstraintType::kArc);
   EXPECT_NEAR(plan.lookahead_constraint_distance_m, 8.0, 1.0e-9);
+}
+
+TEST(TrajectorySpeedPlanner, ScalarAccelerationIgnoresLateralTurnLimit) {
+  VelocityFollowerConfig config = testConfig();
+  config.cruise_speed_mps = 20.0;
+  config.max_accel_mps2 = 5.0;
+  config.max_lateral_accel_mps2 = 1.0;
+
+  const ScalarSpeedPlan plan =
+      planScalarSpeed(unconstrainedProfile(),
+                      ScalarSpeedQuery{.trajectory_s_m = 0.0,
+                                       .previous_command_speed_mps = 0.0,
+                                       .current_speed_mps = 0.0,
+                                       .dt_s = 1.0},
+                      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_NEAR(plan.speed_after_lookahead_mps, 20.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 5.0, 1.0e-9);
 }
 
 TEST(TrajectorySpeedPlanner, TopConstraintsAreUniqueAndFlagIsolatedSpikes) {

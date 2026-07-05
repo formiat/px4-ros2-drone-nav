@@ -66,8 +66,6 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                 envelope.stats.isolated_curvature_spike_candidates);
   parseJsonSize(json, "isolated_curvature_spikes_smoothed_geometry",
                 envelope.stats.isolated_curvature_spikes_smoothed_geometry);
-  parseJsonSize(json, "isolated_curvature_spikes_smoothed_speed_profile",
-                envelope.stats.isolated_curvature_spikes_smoothed_speed_profile);
   parseJsonDouble(json, "isolated_curvature_spike_max_before_1pm",
                   envelope.stats.isolated_curvature_spike_max_before_1pm);
   parseJsonDouble(json, "isolated_curvature_spike_max_after_1pm",

@@ -239,8 +239,6 @@ speedProfileConstraintDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& st
                  stats.isolated_curvature_spike_candidates);
   appendJsonSize(stream, "isolated_curvature_spikes_smoothed_geometry",
                  stats.isolated_curvature_spikes_smoothed_geometry);
-  appendJsonSize(stream, "isolated_curvature_spikes_smoothed_speed_profile",
-                 stats.isolated_curvature_spikes_smoothed_speed_profile);
   appendJsonNumber(stream, "isolated_curvature_spike_max_before_1pm",
                    stats.isolated_curvature_spike_max_before_1pm);
   appendJsonNumber(stream, "isolated_curvature_spike_max_after_1pm",

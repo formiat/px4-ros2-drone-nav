@@ -270,7 +270,6 @@ void expectContainsAll(const std::string& text,
   stats.speed_profile_curvature_limited_samples = 69U;
   stats.isolated_curvature_spike_candidates = 2U;
   stats.isolated_curvature_spikes_smoothed_geometry = 1U;
-  stats.isolated_curvature_spikes_smoothed_speed_profile = 1U;
   stats.isolated_curvature_spike_max_before_1pm = 0.12;
   stats.isolated_curvature_spike_max_after_1pm = 0.04;
   stats.top_speed_constraints.push_back(SpeedProfileConstraintDiagnostic{

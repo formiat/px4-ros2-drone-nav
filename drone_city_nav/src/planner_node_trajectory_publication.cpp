@@ -163,25 +163,34 @@ bool PlannerNode::publishPathFromPathCells(
 
   const std::uint64_t generation = ++trajectory_generation_;
   const auto started_at = std::chrono::steady_clock::now();
-  TrajectoryPlannerResult trajectory_result = planBaselineTrajectory(
-      TrajectoryPlannerInput{
-          std::span<const Point2>{route_points.data(), route_points.size()},
-          &route_grid, route_clearance_field, route_clearance_field_cache_hit,
-          std::span<const CorridorSample>{}, nullptr},
-      trajectory_planner_config_);
+  const TrajectoryPlannerInput trajectory_input{
+      std::span<const Point2>{route_points.data(), route_points.size()},
+      &route_grid,
+      route_clearance_field,
+      route_clearance_field_cache_hit,
+      std::span<const CorridorSample>{},
+      nullptr};
+  const bool async_refinement_enabled =
+      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers > 0U;
+  TrajectoryPlannerResult trajectory_result =
+      async_refinement_enabled
+          ? planBaselineTrajectory(trajectory_input, trajectory_planner_config_)
+          : planOptimizedTrajectory(trajectory_input, trajectory_planner_config_);
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
-  std::uint64_t baseline_path_id = 0U;
+  std::uint64_t published_path_id = 0U;
   if (!publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
-                               source_label, duration_ms, &baseline_path_id)) {
+                               source_label, duration_ms, &published_path_id)) {
     return false;
   }
-  startAsyncTrajectoryRefinement(route_grid, route_points, generation, baseline_path_id,
-                                 trajectory_result, source_label, route_clearance_field,
-                                 route_clearance_field_cache_hit);
+  if (async_refinement_enabled) {
+    startAsyncTrajectoryRefinement(
+        route_grid, route_points, generation, published_path_id, trajectory_result,
+        source_label, route_clearance_field, route_clearance_field_cache_hit);
+  }
   return true;
 }
 
@@ -384,7 +393,7 @@ bool PlannerNode::publishTrajectoryResult(
       "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
       "limit=%.2f source=%s isolated=%s) "
       "isolated_spikes(candidates=%zu geometry_smoothed=%zu "
-      "speed_profile_smoothed=%zu max_before=%.4f max_after=%.4f)]",
+      "max_before=%.4f max_after=%.4f)]",
       source_label, route_points.size(), trajectory_points.size(), duration_ms,
       static_cast<int>(
           trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
@@ -631,7 +640,6 @@ bool PlannerNode::publishTrajectoryResult(
       top_speed_constraint_isolated ? "true" : "false",
       trajectory_result.stats.isolated_curvature_spike_candidates,
       trajectory_result.stats.isolated_curvature_spikes_smoothed_geometry,
-      trajectory_result.stats.isolated_curvature_spikes_smoothed_speed_profile,
       trajectory_result.stats.isolated_curvature_spike_max_before_1pm,
       trajectory_result.stats.isolated_curvature_spike_max_after_1pm);
 
