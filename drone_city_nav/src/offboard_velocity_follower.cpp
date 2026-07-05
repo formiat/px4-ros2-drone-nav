@@ -562,8 +562,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
                 previous_state.previous_velocity_setpoint_valid,
             .previous_velocity_acceleration_setpoint_valid =
                 previous_state.previous_velocity_acceleration_setpoint_valid,
-            .dt_s = dt,
-            .lateral_response_factor = 1.0},
+            .dt_s = dt},
         config);
     if (!smoothed.valid) {
       return plan;
@@ -603,7 +602,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
     plan.path_frame_lateral_smoothing_applied =
         smoothed.path_frame_lateral_smoothing_applied;
-    plan.lateral_smoothing_factor = smoothed.lateral_smoothing_factor;
     plan.smoother_lateral_response_accel_mps2 =
         smoothed.smoother_lateral_response_accel_mps2;
     plan.path_tangent = terminal_tangent;
@@ -623,7 +621,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.raw_speed_limit_mps = capture_speed_limit;
     plan.profile_speed_limit_mps = capture_speed_limit;
     plan.speed_after_lookahead_mps = capture_speed_limit;
-    plan.cross_track_limited_speed_mps = capture_speed_limit;
     plan.accel_limited_speed_mps = plan.speed_mps;
     plan.velocity_delta_mps = smoothed.velocity_delta_mps;
     plan.desired_velocity_delta_mps = smoothed.desired_velocity_delta_mps;
@@ -691,10 +688,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .current_velocity_valid = current_velocity_valid,
           .scalar_speed_mps = scalar_speed.final_scalar_speed_mps,
           .dt_s = dt,
-          .previous_lateral_control_velocity =
-              previous_state.previous_lateral_control_velocity,
-          .previous_lateral_control_velocity_valid =
-              previous_state.previous_lateral_control_velocity_valid,
           .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
           .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq)},
       config);
@@ -713,8 +706,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
               previous_state.previous_velocity_setpoint_valid,
           .previous_velocity_acceleration_setpoint_valid =
               previous_state.previous_velocity_acceleration_setpoint_valid,
-          .dt_s = dt,
-          .lateral_response_factor = command.adaptive_lateral_response_factor},
+          .dt_s = dt},
       config);
   if (!smoothed.valid) {
     return plan;
@@ -724,10 +716,10 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.valid = true;
   plan.reason = VelocitySetpointReason::kStraight;
   if (scalar_speed.constraint_type == SpeedConstraintType::kArc &&
-      scalar_speed.cross_track_limited_speed_mps + 1.0e-6 < cruise_speed) {
+      scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kTrajectorySpeedProfile;
   } else if (scalar_speed.constraint_type == SpeedConstraintType::kGoal &&
-             scalar_speed.cross_track_limited_speed_mps + 1.0e-6 < cruise_speed) {
+             scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kFinalApproach;
   }
 
@@ -742,7 +734,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.velocity_setpoint_jerk_mps3 = smoothed.velocity_setpoint_jerk_mps3;
   plan.path_frame_lateral_smoothing_applied =
       smoothed.path_frame_lateral_smoothing_applied;
-  plan.lateral_smoothing_factor = smoothed.lateral_smoothing_factor;
   plan.smoother_lateral_response_accel_mps2 =
       smoothed.smoother_lateral_response_accel_mps2;
   plan.path_tangent = control_projection.tangent;
@@ -763,7 +754,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.curvature_feedforward_velocity = command.curvature_feedforward_velocity;
   plan.raw_lateral_control_velocity = command.raw_lateral_control_velocity;
   plan.lateral_control_velocity = command.lateral_control_velocity;
-  plan.raw_speed_limit_mps = scalar_speed.cross_track_limited_speed_mps;
+  plan.raw_speed_limit_mps = scalar_speed.speed_after_lookahead_mps;
   plan.profile_speed_limit_mps = scalar_speed.profile_speed_limit_mps;
   plan.speed_lookahead_distance_m = scalar_speed.lookahead_distance_m;
   plan.lookahead_speed_limit_mps = scalar_speed.lookahead_speed_limit_mps;
@@ -772,8 +763,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.lookahead_limiting_constraint_distance_m =
       scalar_speed.lookahead_constraint_distance_m;
   plan.speed_after_lookahead_mps = scalar_speed.speed_after_lookahead_mps;
-  plan.cross_track_speed_factor = scalar_speed.cross_track_speed_factor;
-  plan.cross_track_limited_speed_mps = scalar_speed.cross_track_limited_speed_mps;
   plan.accel_limited_speed_mps = scalar_speed.accel_limited_speed_mps;
   plan.velocity_delta_mps = smoothed.velocity_delta_mps;
   plan.desired_velocity_delta_mps = smoothed.desired_velocity_delta_mps;
@@ -798,9 +787,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.cross_track_feedback_mps = command.cross_track_feedback_mps;
   plan.cross_track_progressive_feedback_factor =
       command.cross_track_progressive_feedback_factor;
-  plan.cross_track_feedback_scale = command.cross_track_feedback_scale;
-  plan.cross_track_closing_speed_target_mps =
-      command.cross_track_closing_speed_target_mps;
   plan.cross_track_derivative_damping_mps = command.cross_track_derivative_damping_mps;
   plan.cross_track_derivative_damping_factor =
       command.cross_track_derivative_damping_factor;
@@ -814,8 +800,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.curvature_feedforward_scale = command.curvature_feedforward_scale;
   plan.raw_lateral_control_mps = command.raw_lateral_control_mps;
   plan.lateral_control_mps = command.lateral_control_mps;
-  plan.lateral_control_delta_mps = command.lateral_control_delta_mps;
-  plan.adaptive_lateral_response_factor = command.adaptive_lateral_response_factor;
   plan.terminal_goal_distance_m = terminal_goal_distance;
   plan.terminal_signed_along_track_distance_m = terminal_signed_along_track_distance;
   plan.terminal_remaining_trajectory_distance_m = remaining_trajectory_distance;

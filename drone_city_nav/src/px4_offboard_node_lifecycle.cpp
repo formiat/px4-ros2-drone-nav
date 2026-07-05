@@ -111,7 +111,6 @@ Px4OffboardNode::Px4OffboardNode()
       "cross_track_progressive_feedback[start=%.2fm full=%.2fm min=%.2f max=%.2f] "
       "tracking_prediction_horizon=%.2fs "
       "max_lateral_control_angle=%.1fdeg "
-      "max_lateral_control_rate=%.2fmps2 "
       "velocity_lateral_response_accel=%.2fmps2 "
       "curvature_feedforward[time=%.2fs deadband=%.1fdeg full=%.1fdeg "
       "max_angle=%.1fdeg] "
@@ -120,9 +119,6 @@ Px4OffboardNode::Px4OffboardNode()
       "control_tangent_smoothing[back=%.2fm forward=%.2fm "
       "max_heading_span=%.1fdeg max_abs_curvature=%.4f] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
-      "path_frame_lateral_smoothing[min_speed=%.2fmps full_speed=%.2fmps "
-      "max_factor=%.2f] "
-      "adaptive_lateral_response[scale=%.2fm max_factor=%.2f] "
       "trajectory_update_max_start_cross_track=%.2fm "
       "altitude_hold_kp=%.2f "
       "max_vertical_speed=%.2fmps "
@@ -156,7 +152,6 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.cross_track_progressive_feedback_max_factor,
       velocity_follower_config_.tracking_prediction_horizon_s,
       radiansToDegrees(velocity_follower_config_.max_lateral_control_angle_rad),
-      velocity_follower_config_.max_lateral_control_rate_mps2,
       velocity_follower_config_.velocity_lateral_response_accel_mps2,
       velocity_follower_config_.curvature_feedforward_time_s,
       radiansToDegrees(
@@ -173,11 +168,6 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.control_tangent_smoothing_max_abs_curvature_1pm,
       velocity_follower_config_.max_velocity_jerk_mps3,
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
-      velocity_follower_config_.lateral_smoothing_min_speed_mps,
-      velocity_follower_config_.lateral_smoothing_full_speed_mps,
-      velocity_follower_config_.lateral_smoothing_max_factor,
-      velocity_follower_config_.adaptive_lateral_response_scale_m,
-      velocity_follower_config_.adaptive_lateral_response_max_factor,
       trajectory_update_max_start_cross_track_m_, altitude_hold_kp_,
       max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
       final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),

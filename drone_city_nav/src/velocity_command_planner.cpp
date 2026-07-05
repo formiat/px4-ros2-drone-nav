@@ -9,11 +9,6 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 
-struct VectorRateLimitResult {
-  Point2 value{};
-  double delta{std::numeric_limits<double>::quiet_NaN()};
-};
-
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
@@ -62,31 +57,6 @@ struct VectorRateLimitResult {
     return fallback;
   }
   return std::clamp(value, min_value, max_value);
-}
-
-[[nodiscard]] VectorRateLimitResult
-limitVectorRate(const Point2 desired, const Point2 previous, const bool previous_valid,
-                const double dt_s, const double max_rate) {
-  VectorRateLimitResult result{};
-  result.value = desired;
-  if (!previous_valid || !finite2D(previous) || !finite2D(desired)) {
-    return result;
-  }
-  const double sanitized_rate = sanitizedPositive(max_rate, 0.0, 0.0, 1000.0);
-  const Point2 delta = desired - previous;
-  const double delta_norm = norm(delta);
-  result.delta = delta_norm;
-  if (!(sanitized_rate > 0.0)) {
-    return result;
-  }
-  const double dt = sanitizedPositive(dt_s, 0.1, 0.0, 10.0);
-  const double max_delta = sanitized_rate * dt;
-  if (delta_norm <= max_delta || !(delta_norm > kTinyDistanceM)) {
-    return result;
-  }
-  result.value = previous + delta * (max_delta / delta_norm);
-  result.delta = max_delta;
-  return result;
 }
 
 [[nodiscard]] Point2 boundedCorrectionByAngle(const Point2 correction_velocity,
@@ -166,46 +136,6 @@ progressiveCrossTrackFeedbackFactor(const double cross_track_error_m,
   return min_factor + (max_factor - min_factor) * progress;
 }
 
-[[nodiscard]] double
-adaptiveLateralResponseFactor(const VelocityCommandQuery& query,
-                              const VelocityFollowerConfig& config) noexcept {
-  if (!std::isfinite(query.current_cross_track_error_m) ||
-      !std::isfinite(query.predicted_cross_track_error_m) ||
-      query.predicted_cross_track_error_m <= query.current_cross_track_error_m) {
-    return 1.0;
-  }
-
-  const double cross_track_growth_m =
-      query.predicted_cross_track_error_m - query.current_cross_track_error_m;
-  const double scale_m =
-      sanitizedPositive(config.adaptive_lateral_response_scale_m, 3.0, 1.0e-6, 1000.0);
-  const double max_factor =
-      sanitizedPositive(config.adaptive_lateral_response_max_factor, 1.4, 1.0, 100.0);
-  return std::clamp(1.0 + cross_track_growth_m / scale_m, 1.0, max_factor);
-}
-
-[[nodiscard]] double crossTrackFeedbackScale(
-    const double cross_track_error_m, const double cross_track_lateral_velocity_mps,
-    const VelocityFollowerConfig& config, double& closing_speed_target_mps) noexcept {
-  closing_speed_target_mps = std::numeric_limits<double>::quiet_NaN();
-  if (!(cross_track_error_m > kTinyDistanceM) ||
-      !(cross_track_lateral_velocity_mps > kTinyDistanceM)) {
-    return 1.0;
-  }
-
-  const double target_time_s =
-      sanitizedPositive(config.cross_track_anti_overshoot_time_s, 1.0, 1.0e-6, 1000.0);
-  closing_speed_target_mps = cross_track_error_m / target_time_s;
-  if (!(cross_track_lateral_velocity_mps > closing_speed_target_mps)) {
-    return 1.0;
-  }
-
-  const double min_scale = sanitizedPositive(
-      config.cross_track_anti_overshoot_min_feedback_scale, 0.25, 0.0, 1.0);
-  return std::clamp(closing_speed_target_mps / cross_track_lateral_velocity_mps,
-                    min_scale, 1.0);
-}
-
 } // namespace
 
 VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
@@ -239,15 +169,11 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
         derivative_speed, plan.cross_track_lateral_velocity_mps, config);
     plan.cross_track_derivative_gain_effective =
         cross_track_derivative_gain * plan.cross_track_derivative_damping_factor;
-    plan.cross_track_feedback_scale = crossTrackFeedbackScale(
-        cross_track_error, plan.cross_track_lateral_velocity_mps, config,
-        plan.cross_track_closing_speed_target_mps);
     plan.cross_track_progressive_feedback_factor =
         progressiveCrossTrackFeedbackFactor(cross_track_error, config);
     cross_track_feedback =
         cross_track_direction * (cross_track_gain * cross_track_error *
-                                 plan.cross_track_progressive_feedback_factor *
-                                 plan.cross_track_feedback_scale);
+                                 plan.cross_track_progressive_feedback_factor);
     cross_track_derivative_damping =
         cross_track_direction * (-plan.cross_track_derivative_gain_effective *
                                  plan.cross_track_lateral_velocity_mps);
@@ -260,19 +186,12 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
       query.projection, query.scalar_speed_mps, config,
       curvature_feedforward_raw_angle_rad, curvature_feedforward_angle_rad,
       curvature_feedforward_scale);
-  const double adaptive_lateral_response_factor =
-      adaptiveLateralResponseFactor(query, config);
   const Point2 raw_lateral_control =
       cross_track_feedback + cross_track_derivative_damping + curvature_feedforward;
 
-  const Point2 bounded_lateral_control =
+  const Point2 lateral_control =
       boundedCorrectionByAngle(raw_lateral_control, query.scalar_speed_mps,
                                config.max_lateral_control_angle_rad);
-  const VectorRateLimitResult limited_lateral_control = limitVectorRate(
-      bounded_lateral_control, query.previous_lateral_control_velocity,
-      query.previous_lateral_control_velocity_valid, query.dt_s,
-      config.max_lateral_control_rate_mps2 * adaptive_lateral_response_factor);
-  const Point2 lateral_control = limited_lateral_control.value;
 
   const Point2 desired_direction =
       normalized(query.projection.tangent * std::max(query.scalar_speed_mps, 1.0) +
@@ -298,8 +217,6 @@ VelocityCommandPlan planVelocityCommand(const VelocityCommandQuery& query,
   plan.curvature_feedforward_scale = curvature_feedforward_scale;
   plan.raw_lateral_control_mps = norm(raw_lateral_control);
   plan.lateral_control_mps = norm(lateral_control);
-  plan.lateral_control_delta_mps = limited_lateral_control.delta;
-  plan.adaptive_lateral_response_factor = adaptive_lateral_response_factor;
   plan.desired_velocity_tangent_mps = dot(desired_velocity, query.projection.tangent);
   plan.desired_velocity_normal_mps = dot(desired_velocity, left_normal);
   return plan;

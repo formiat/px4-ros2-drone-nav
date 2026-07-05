@@ -26,8 +26,6 @@ struct VelocityFollowerState {
   bool previous_velocity_setpoint_valid{false};
   Point2 previous_velocity_acceleration_setpoint{};
   bool previous_velocity_acceleration_setpoint_valid{false};
-  Point2 previous_lateral_control_velocity{};
-  bool previous_lateral_control_velocity_valid{false};
   double previous_scalar_speed_command_mps{std::numeric_limits<double>::quiet_NaN()};
   bool previous_scalar_speed_command_valid{false};
   double previous_terminal_capture_speed_limit_mps{
@@ -66,7 +64,6 @@ struct VelocitySetpointPlan {
   double velocity_setpoint_acceleration_mps2{std::numeric_limits<double>::quiet_NaN()};
   double velocity_setpoint_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
   bool path_frame_lateral_smoothing_applied{false};
-  double lateral_smoothing_factor{1.0};
   double smoother_lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
   double raw_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double profile_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
@@ -77,8 +74,6 @@ struct VelocitySetpointPlan {
   double lookahead_limiting_constraint_distance_m{
       std::numeric_limits<double>::quiet_NaN()};
   double speed_after_lookahead_mps{std::numeric_limits<double>::quiet_NaN()};
-  double cross_track_speed_factor{1.0};
-  double cross_track_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double final_command_speed_mps{0.0};
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double velocity_delta_mps{std::numeric_limits<double>::quiet_NaN()};
@@ -99,8 +94,6 @@ struct VelocitySetpointPlan {
   double desired_to_actual_normal_error_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_feedback_mps{0.0};
   double cross_track_progressive_feedback_factor{1.0};
-  double cross_track_feedback_scale{1.0};
-  double cross_track_closing_speed_target_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};
@@ -120,8 +113,6 @@ struct VelocitySetpointPlan {
   double curvature_feedforward_scale{1.0};
   double raw_lateral_control_mps{0.0};
   double lateral_control_mps{0.0};
-  double lateral_control_delta_mps{std::numeric_limits<double>::quiet_NaN()};
-  double adaptive_lateral_response_factor{1.0};
   bool terminal_capture_active{false};
   double terminal_goal_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double terminal_signed_along_track_distance_m{

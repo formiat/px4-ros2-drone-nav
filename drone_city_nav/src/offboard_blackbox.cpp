@@ -120,11 +120,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"cross_track_progressive_feedback_factor\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.cross_track_progressive_feedback_factor);
-  stream << ",\"cross_track_feedback_scale\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_feedback_scale);
-  stream << ",\"cross_track_closing_speed_target_mps\":";
-  writeBlackboxJsonNumberOrNull(stream,
-                                velocity_plan.cross_track_closing_speed_target_mps);
   stream << ",\"cross_track_derivative_damping_x\":";
   writeBlackboxJsonNumberOrNull(
       stream, velocity_plan.cross_track_derivative_damping_velocity.x);
@@ -183,10 +178,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_control_velocity.y);
   stream << ",\"lateral_control_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_control_mps);
-  stream << ",\"lateral_control_delta_mps\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_control_delta_mps);
-  stream << ",\"adaptive_lateral_response_factor\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.adaptive_lateral_response_factor);
   stream << ",\"velocity_setpoint_accel_x\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.velocity_setpoint_acceleration_xy.x);
@@ -200,8 +191,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.velocity_setpoint_jerk_mps3);
   stream << ",\"path_frame_lateral_smoothing_applied\":";
   writeBlackboxJsonBool(stream, velocity_plan.path_frame_lateral_smoothing_applied);
-  stream << ",\"lateral_smoothing_factor\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.lateral_smoothing_factor);
   stream << ",\"smoother_lateral_response_accel_mps2\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.smoother_lateral_response_accel_mps2);
@@ -268,10 +257,6 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"lookahead_limiting_constraint_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream,
                                 velocity_plan.lookahead_limiting_constraint_distance_m);
-  stream << ",\"cross_track_speed_factor\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_speed_factor);
-  stream << ",\"cross_track_limited_speed_mps\":";
-  writeBlackboxJsonNumberOrNull(stream, velocity_plan.cross_track_limited_speed_mps);
   stream << ",\"accel_limited_speed_mps\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.accel_limited_speed_mps);
   stream << ",\"limiting_constraint_type\":\""

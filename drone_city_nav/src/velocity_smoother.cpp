@@ -25,7 +25,6 @@ struct PathFrameVelocityLimitResult {
   Point2 velocity{};
   double delta_mps{std::numeric_limits<double>::quiet_NaN()};
   bool applied{false};
-  double lateral_smoothing_factor{1.0};
   double lateral_response_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
 };
 
@@ -61,15 +60,6 @@ struct PathFrameVelocityLimitResult {
   return Point2{point.x / length, point.y / length};
 }
 
-[[nodiscard]] double smoothStep(const double edge0, const double edge1,
-                                const double value) noexcept {
-  if (!(edge1 > edge0)) {
-    return value >= edge1 ? 1.0 : 0.0;
-  }
-  const double t = std::clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
-  return t * t * (3.0 - 2.0 * t);
-}
-
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
                                        const double min_value,
                                        const double max_value) noexcept {
@@ -90,32 +80,17 @@ effectiveVelocityDeltaDecelMps2(const VelocityFollowerConfig& config) {
 }
 
 [[nodiscard]] double
-effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
-                                  const double response_factor) {
-  const double lateral_response_accel =
-      sanitizedPositive(config.velocity_lateral_response_accel_mps2,
-                        config.max_lateral_accel_mps2, 1.0e-6, 100.0);
-  const double factor = sanitizedPositive(response_factor, 1.0, 1.0, 100.0);
-  return lateral_response_accel * factor;
+effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config) {
+  return sanitizedPositive(config.velocity_lateral_response_accel_mps2,
+                           config.max_lateral_accel_mps2, 1.0e-6, 100.0);
 }
 
-[[nodiscard]] double lateralSmoothingFactor(const VelocityFollowerConfig& config,
-                                            const double speed_mps) noexcept {
-  const double min_speed =
-      sanitizedPositive(config.lateral_smoothing_min_speed_mps, 8.0, 0.0, 1000.0);
-  const double full_speed =
-      std::max(min_speed, sanitizedPositive(config.lateral_smoothing_full_speed_mps,
-                                            20.0, 0.0, 1000.0));
-  const double max_factor =
-      sanitizedPositive(config.lateral_smoothing_max_factor, 1.0, 1.0, 100.0);
-  return 1.0 + (max_factor - 1.0) * smoothStep(min_speed, full_speed, speed_mps);
-}
-
-[[nodiscard]] PathFrameVelocityLimitResult limitVelocityPathFrame(
-    const Point2 desired_velocity, const Point2 previous_velocity,
-    const bool previous_velocity_valid, const Point2 path_tangent, const double dt_s,
-    const double max_accel_mps2, const double max_decel_mps2,
-    const double lateral_response_accel_mps2, const VelocityFollowerConfig& config) {
+[[nodiscard]] PathFrameVelocityLimitResult
+limitVelocityPathFrame(const Point2 desired_velocity, const Point2 previous_velocity,
+                       const bool previous_velocity_valid, const Point2 path_tangent,
+                       const double dt_s, const double max_accel_mps2,
+                       const double max_decel_mps2,
+                       const double lateral_response_accel_mps2) {
   PathFrameVelocityLimitResult result{};
   result.velocity = desired_velocity;
   if (!previous_velocity_valid || !finite2D(previous_velocity) ||
@@ -134,11 +109,8 @@ effectiveLateralResponseAccelMps2(const VelocityFollowerConfig& config,
       sanitizedPositive(max_accel_mps2, 3.0, 0.0, 100.0) * dt;
   const double max_forward_decel_delta =
       sanitizedPositive(max_decel_mps2, max_accel_mps2, 0.0, 100.0) * dt;
-  const double previous_speed = norm(previous_velocity);
-  result.lateral_smoothing_factor = lateralSmoothingFactor(config, previous_speed);
   result.lateral_response_accel_mps2 =
-      sanitizedPositive(lateral_response_accel_mps2, max_accel_mps2, 0.0, 100.0) /
-      result.lateral_smoothing_factor;
+      sanitizedPositive(lateral_response_accel_mps2, max_accel_mps2, 0.0, 100.0);
   const double max_lateral_delta = result.lateral_response_accel_mps2 * dt;
 
   const Point2 normal{-tangent.y, tangent.x};
@@ -331,13 +303,12 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
 
   const double max_accel_mps2 = effectiveVelocityDeltaAccelMps2(config);
   const double max_decel_mps2 = effectiveVelocityDeltaDecelMps2(config);
-  const double lateral_response_accel_mps2 =
-      effectiveLateralResponseAccelMps2(config, input.lateral_response_factor);
+  const double lateral_response_accel_mps2 = effectiveLateralResponseAccelMps2(config);
   const PathFrameVelocityLimitResult path_frame_limited_velocity =
       limitVelocityPathFrame(
           input.desired_velocity_xy, input.previous_velocity_setpoint,
           input.previous_velocity_setpoint_valid, input.path_tangent, input.dt_s,
-          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2, config);
+          max_accel_mps2, max_decel_mps2, lateral_response_accel_mps2);
   const VelocityVectorLimitResult fallback_limited_velocity =
       path_frame_limited_velocity.applied
           ? VelocityVectorLimitResult{.velocity = path_frame_limited_velocity.velocity,
@@ -367,10 +338,6 @@ VelocitySmootherPlan smoothVelocityCommand(const VelocitySmootherInput& input,
       jerk_limited_velocity.acceleration_norm_mps2;
   plan.velocity_setpoint_jerk_mps3 = jerk_limited_velocity.jerk_mps3;
   plan.path_frame_lateral_smoothing_applied = path_frame_limited_velocity.applied;
-  plan.lateral_smoothing_factor =
-      path_frame_limited_velocity.applied
-          ? path_frame_limited_velocity.lateral_smoothing_factor
-          : 1.0;
   plan.smoother_lateral_response_accel_mps2 =
       path_frame_limited_velocity.applied
           ? path_frame_limited_velocity.lateral_response_accel_mps2

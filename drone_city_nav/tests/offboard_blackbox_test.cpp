@@ -82,10 +82,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.cross_track_derivative_gain_effective = 0.75;
   record.velocity_plan.curvature_feedforward_raw_angle_rad = 0.2;
   record.velocity_plan.curvature_feedforward_scale = 0.5;
-  record.velocity_plan.adaptive_lateral_response_factor = 2.5;
   record.velocity_plan.cross_track_progressive_feedback_factor = 0.4;
-  record.velocity_plan.cross_track_feedback_scale = 0.625;
-  record.velocity_plan.cross_track_closing_speed_target_mps = 5.0;
   record.velocity_plan.terminal_capture_active = true;
   record.velocity_plan.terminal_goal_distance_m = 3.5;
   record.velocity_plan.terminal_signed_along_track_distance_m = 3.25;
@@ -111,7 +108,6 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.desired_to_actual_tangent_error_mps = 0.6;
   record.velocity_plan.desired_to_actual_normal_error_mps = -0.4;
   record.velocity_plan.path_frame_lateral_smoothing_applied = true;
-  record.velocity_plan.lateral_smoothing_factor = 1.6;
   record.velocity_plan.smoother_lateral_response_accel_mps2 = 3.125;
   record.velocity_smoother_reset_reason = "path_update";
   record.path_update_velocity_smoother_reset_count = 3U;
@@ -364,12 +360,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"cross_track_derivative_gain_effective\":0.75");
   expectJsonField(json, "\"curvature_feedforward_raw_angle_rad\":0.2");
   expectJsonField(json, "\"curvature_feedforward_scale\":0.5");
-  expectJsonField(json, "\"adaptive_lateral_response_factor\":2.5");
   expectJsonField(json, "\"cross_track_progressive_feedback_factor\":0.4");
-  expectJsonField(json, "\"cross_track_feedback_scale\":0.625");
-  expectJsonField(json, "\"cross_track_closing_speed_target_mps\":5");
   expectJsonField(json, "\"path_frame_lateral_smoothing_applied\":true");
-  expectJsonField(json, "\"lateral_smoothing_factor\":1.6");
   expectJsonField(json, "\"smoother_lateral_response_accel_mps2\":3.125");
   expectJsonField(json, "\"speed_limit_reason\":\"trajectory_profile\"");
   expectJsonField(json, "\"terminal_capture_active\":true");

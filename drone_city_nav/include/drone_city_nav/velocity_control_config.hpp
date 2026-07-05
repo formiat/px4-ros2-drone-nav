@@ -19,11 +19,8 @@ struct VelocityFollowerConfig {
   double cross_track_progressive_feedback_full_m{2.5};
   double cross_track_progressive_feedback_min_factor{0.25};
   double cross_track_progressive_feedback_max_factor{1.3};
-  double cross_track_anti_overshoot_time_s{1.0};
-  double cross_track_anti_overshoot_min_feedback_scale{0.25};
   double tracking_prediction_horizon_s{0.35};
   double max_lateral_control_angle_rad{0.9599310885968813};
-  double max_lateral_control_rate_mps2{5.0};
   double velocity_lateral_response_accel_mps2{8.0};
   double curvature_feedforward_time_s{0.25};
   double curvature_feedforward_deadband_angle_rad{0.03490658503988659};
@@ -31,9 +28,6 @@ struct VelocityFollowerConfig {
   double max_curvature_feedforward_angle_rad{0.5235987755982988};
   double max_velocity_jerk_mps3{12.0};
   double max_lateral_velocity_jerk_mps3{22.0};
-  double lateral_smoothing_min_speed_mps{8.0};
-  double lateral_smoothing_full_speed_mps{20.0};
-  double lateral_smoothing_max_factor{1.0};
   double speed_aware_derivative_damping_min_speed_mps{8.0};
   double speed_aware_derivative_damping_full_speed_mps{20.0};
   double speed_aware_derivative_damping_max_factor{1.5};
@@ -44,8 +38,6 @@ struct VelocityFollowerConfig {
   double control_curve_smoothing_back_m{2.0};
   double control_curve_smoothing_forward_m{6.0};
   double control_curve_smoothing_max_heading_span_rad{0.7853981633974483};
-  double adaptive_lateral_response_scale_m{3.0};
-  double adaptive_lateral_response_max_factor{1.2};
   double final_acceptance_radius_m{1.0};
   double final_hold_max_speed_mps{0.8};
   double terminal_capture_radius_m{8.0};

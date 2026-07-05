@@ -91,20 +91,6 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                boundedFiniteDouble(
                    config.velocity_follower.cross_track_progressive_feedback_max_factor,
                    1.3, 0.0, 100.0));
-  config.velocity_follower.cross_track_anti_overshoot_time_s = boundedFiniteDouble(
-      config.velocity_follower.cross_track_anti_overshoot_time_s, 1.0, 1.0e-6, 1000.0);
-  config.velocity_follower.cross_track_anti_overshoot_min_feedback_scale =
-      boundedFiniteDouble(
-          config.velocity_follower.cross_track_anti_overshoot_min_feedback_scale, 0.25,
-          0.0, 1.0);
-  config.velocity_follower.lateral_smoothing_min_speed_mps = boundedFiniteDouble(
-      config.velocity_follower.lateral_smoothing_min_speed_mps, 8.0, 0.0, 1000.0);
-  config.velocity_follower.lateral_smoothing_full_speed_mps = std::max(
-      config.velocity_follower.lateral_smoothing_min_speed_mps,
-      boundedFiniteDouble(config.velocity_follower.lateral_smoothing_full_speed_mps,
-                          20.0, 0.0, 1000.0));
-  config.velocity_follower.lateral_smoothing_max_factor = boundedFiniteDouble(
-      config.velocity_follower.lateral_smoothing_max_factor, 1.0, 1.0, 100.0);
   config.velocity_follower.control_tangent_smoothing_back_m = boundedFiniteDouble(
       config.velocity_follower.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
   config.velocity_follower.control_tangent_smoothing_forward_m = boundedFiniteDouble(
@@ -199,21 +185,12 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.cross_track_progressive_feedback_max_factor =
       std::max(requested_cross_track_progressive_feedback_max_factor,
                config.velocity_follower.cross_track_progressive_feedback_min_factor);
-  config.velocity_follower.cross_track_anti_overshoot_time_s = std::clamp(
-      node.declare_parameter<double>("cross_track_anti_overshoot_time_s", 1.0), 1.0e-6,
-      1000.0);
-  config.velocity_follower.cross_track_anti_overshoot_min_feedback_scale =
-      std::clamp(node.declare_parameter<double>(
-                     "cross_track_anti_overshoot_min_feedback_scale", 0.25),
-                 0.0, 1.0);
   config.velocity_follower.tracking_prediction_horizon_s = std::clamp(
       node.declare_parameter<double>("tracking_prediction_horizon_s", 0.35), 0.0, 2.0);
   config.velocity_follower.max_lateral_control_angle_rad =
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
                      "max_lateral_control_angle_deg", 55.0)),
                  0.0, std::numbers::pi / 2.0);
-  config.velocity_follower.max_lateral_control_rate_mps2 = std::clamp(
-      node.declare_parameter<double>("max_lateral_control_rate_mps2", 5.0), 0.0, 100.0);
   config.velocity_follower.velocity_lateral_response_accel_mps2 = std::clamp(
       node.declare_parameter<double>("velocity_lateral_response_accel_mps2", 8.0), 0.0,
       100.0);
@@ -237,16 +214,6 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.max_lateral_velocity_jerk_mps3 =
       std::clamp(node.declare_parameter<double>("max_lateral_velocity_jerk_mps3", 22.0),
                  0.0, 1000.0);
-  config.velocity_follower.lateral_smoothing_min_speed_mps =
-      std::clamp(node.declare_parameter<double>("lateral_smoothing_min_speed_mps", 8.0),
-                 0.0, 1000.0);
-  config.velocity_follower.lateral_smoothing_full_speed_mps =
-      std::max(config.velocity_follower.lateral_smoothing_min_speed_mps,
-               std::clamp(node.declare_parameter<double>(
-                              "lateral_smoothing_full_speed_mps", 20.0),
-                          0.0, 1000.0));
-  config.velocity_follower.lateral_smoothing_max_factor = std::clamp(
-      node.declare_parameter<double>("lateral_smoothing_max_factor", 1.0), 1.0, 100.0);
   config.velocity_follower.speed_aware_derivative_damping_min_speed_mps =
       std::clamp(node.declare_parameter<double>(
                      "speed_aware_derivative_damping_min_speed_mps", 8.0),
@@ -283,12 +250,6 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
                      "control_curve_smoothing_max_heading_span_deg", 45.0)),
                  0.0, std::numbers::pi);
-  config.velocity_follower.adaptive_lateral_response_scale_m = std::clamp(
-      node.declare_parameter<double>("adaptive_lateral_response_scale_m", 3.0), 0.1,
-      1000.0);
-  config.velocity_follower.adaptive_lateral_response_max_factor = std::clamp(
-      node.declare_parameter<double>("adaptive_lateral_response_max_factor", 1.2), 1.0,
-      100.0);
   config.velocity_follower.final_hold_max_speed_mps = std::clamp(
       node.declare_parameter<double>("final_hold_max_speed_mps", 0.8), 0.0, 100.0);
   config.velocity_follower.terminal_capture_radius_m = std::clamp(

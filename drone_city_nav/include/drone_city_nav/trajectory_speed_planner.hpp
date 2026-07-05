@@ -71,8 +71,6 @@ struct ScalarSpeedPlan {
   std::size_t lookahead_constraint_index{0U};
   double lookahead_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double speed_after_lookahead_mps{std::numeric_limits<double>::quiet_NaN()};
-  double cross_track_speed_factor{1.0};
-  double cross_track_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double accel_limited_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double final_scalar_speed_mps{0.0};
   double limiting_constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};

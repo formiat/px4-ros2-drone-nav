@@ -560,9 +560,6 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
     plan.limiting_curve_radius_m = lookahead_sample.radius_m;
     plan.limiting_curvature_1pm = lookahead_sample.curvature_1pm;
   }
-  plan.cross_track_speed_factor = 1.0;
-  plan.cross_track_limited_speed_mps = plan.speed_after_lookahead_mps;
-
   const double previous_speed =
       sanitizedNonNegative(query.previous_command_speed_mps, current_speed);
   const double dt = sanitizedPositive(query.dt_s, 0.1, 0.0, 10.0);

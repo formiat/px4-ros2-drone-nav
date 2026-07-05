@@ -199,11 +199,8 @@ px4_offboard_node:
     cross_track_progressive_feedback_full_m: 2.5
     cross_track_progressive_feedback_min_factor: 0.25
     cross_track_progressive_feedback_max_factor: 1.3
-    cross_track_anti_overshoot_time_s: 1.0
-    cross_track_anti_overshoot_min_feedback_scale: 0.25
     tracking_prediction_horizon_s: 0.35
     max_lateral_control_angle_deg: 55.0
-    max_lateral_control_rate_mps2: 5.0
     velocity_lateral_response_accel_mps2: 8.0
     curvature_feedforward_time_s: 0.25
     curvature_feedforward_deadband_angle_deg: 2.0
@@ -211,9 +208,6 @@ px4_offboard_node:
     max_curvature_feedforward_angle_deg: 30.0
     max_velocity_jerk_mps3: 12.0
     max_lateral_velocity_jerk_mps3: 22.0
-    lateral_smoothing_min_speed_mps: 8.0
-    lateral_smoothing_full_speed_mps: 20.0
-    lateral_smoothing_max_factor: 1.0
     speed_aware_derivative_damping_min_speed_mps: 8.0
     speed_aware_derivative_damping_full_speed_mps: 20.0
     speed_aware_derivative_damping_max_factor: 1.5
@@ -224,8 +218,6 @@ px4_offboard_node:
     control_curve_smoothing_back_m: 2.0
     control_curve_smoothing_forward_m: 6.0
     control_curve_smoothing_max_heading_span_deg: 45.0
-    adaptive_lateral_response_scale_m: 3.0
-    adaptive_lateral_response_max_factor: 1.2
     trajectory_update_max_start_cross_track_m: 8.0
     final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
     final_trajectory_debug_sample_step_m: 1.0

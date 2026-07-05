@@ -327,9 +327,6 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
       plan.velocity_setpoint_acceleration_xy;
   velocity_follower_state_.previous_velocity_acceleration_setpoint_valid =
       std::isfinite(plan.velocity_setpoint_acceleration_mps2);
-  velocity_follower_state_.previous_lateral_control_velocity =
-      plan.lateral_control_velocity;
-  velocity_follower_state_.previous_lateral_control_velocity_valid = true;
   velocity_follower_state_.previous_scalar_speed_command_mps =
       plan.accel_limited_speed_mps;
   velocity_follower_state_.previous_scalar_speed_command_valid =
@@ -836,9 +833,8 @@ void Px4OffboardNode::logControlSummary() {
       "velocity_setpoint=(%.2f, %.2f, %.2f) velocity_setpoint_speed=%.2f "
       "velocity_setpoint_accel=%.2f velocity_setpoint_jerk=%.2f "
       "lateral_control[feedback=%.2f derivative=%.2f curvature_ff=%.2f "
-      "raw=%.2f final=%.2f delta=%.2f adaptive_response=%.2f "
-      "curvature_angle=%.1fdeg progressive_feedback=%.2f feedback_scale=%.2f "
-      "closing_target=%.2f] "
+      "raw=%.2f final=%.2f curvature_angle=%.1fdeg "
+      "progressive_feedback=%.2f] "
       "speed_limit_reason=%s "
       "terminal_capture[active=%s goal_distance=%.2f signed_along=%.2f "
       "remaining_s=%.2f "
@@ -853,7 +849,6 @@ void Px4OffboardNode::logControlSummary() {
       "lookahead_distance=%.2f lookahead_speed_limit=%.2f "
       "speed_after_lookahead=%.2f lookahead_constraint[type=%s index=%zu "
       "distance=%.2f] "
-      "cross_track_speed_factor=%.2f cross_track_limited_speed=%.2f "
       "final_command_speed=%.2f accel_limited_speed=%.2f "
       "constraint[type=%s index=%zu distance=%.2f speed=%.2f allowed=%.2f "
       "curve_radius=%.2f] "
@@ -864,7 +859,7 @@ void Px4OffboardNode::logControlSummary() {
       "max_abs_curvature=%.4f window=(%.2f, %.2f)] "
       "cross_track_lateral_velocity=%.2f "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
-      " path_frame=%s lateral_factor=%.2f lateral_accel=%.2f] "
+      " path_frame=%s lateral_accel=%.2f] "
       "altitude_error=%.2f "
       "final_trajectory_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
@@ -908,12 +903,8 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_plan_.curvature_feedforward_mps,
       last_velocity_plan_.raw_lateral_control_mps,
       last_velocity_plan_.lateral_control_mps,
-      last_velocity_plan_.lateral_control_delta_mps,
-      last_velocity_plan_.adaptive_lateral_response_factor,
       radiansToDegrees(last_velocity_plan_.curvature_feedforward_angle_rad),
       last_velocity_plan_.cross_track_progressive_feedback_factor,
-      last_velocity_plan_.cross_track_feedback_scale,
-      last_velocity_plan_.cross_track_closing_speed_target_mps,
       velocitySetpointReasonName(last_velocity_plan_.reason),
       last_velocity_plan_.terminal_capture_active ? "true" : "false",
       last_velocity_plan_.terminal_goal_distance_m,
@@ -947,8 +938,6 @@ void Px4OffboardNode::logControlSummary() {
       speedConstraintTypeName(last_velocity_plan_.lookahead_limiting_constraint_type),
       last_velocity_plan_.lookahead_limiting_constraint_index,
       last_velocity_plan_.lookahead_limiting_constraint_distance_m,
-      last_velocity_plan_.cross_track_speed_factor,
-      last_velocity_plan_.cross_track_limited_speed_mps,
       last_velocity_plan_.final_command_speed_mps,
       last_velocity_plan_.accel_limited_speed_mps,
       speedConstraintTypeName(last_velocity_plan_.limiting_constraint_type),
@@ -976,7 +965,6 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.lateral_smoothing_factor,
       last_velocity_plan_.smoother_lateral_response_accel_mps2, last_altitude_error_m_,
       upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,

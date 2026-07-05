@@ -15,8 +15,6 @@ struct VelocityCommandQuery {
   bool current_velocity_valid{false};
   double scalar_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double dt_s{std::numeric_limits<double>::quiet_NaN()};
-  Point2 previous_lateral_control_velocity{};
-  bool previous_lateral_control_velocity_valid{false};
   double current_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
   double predicted_cross_track_error_m{std::numeric_limits<double>::quiet_NaN()};
 };
@@ -31,8 +29,6 @@ struct VelocityCommandPlan {
   Point2 lateral_control_velocity{};
   double cross_track_feedback_mps{0.0};
   double cross_track_progressive_feedback_factor{1.0};
-  double cross_track_feedback_scale{1.0};
-  double cross_track_closing_speed_target_mps{std::numeric_limits<double>::quiet_NaN()};
   double cross_track_derivative_damping_mps{0.0};
   double cross_track_derivative_damping_factor{1.0};
   double cross_track_derivative_gain_effective{0.0};
@@ -43,8 +39,6 @@ struct VelocityCommandPlan {
   double curvature_feedforward_scale{1.0};
   double raw_lateral_control_mps{0.0};
   double lateral_control_mps{0.0};
-  double lateral_control_delta_mps{std::numeric_limits<double>::quiet_NaN()};
-  double adaptive_lateral_response_factor{1.0};
   double desired_velocity_tangent_mps{std::numeric_limits<double>::quiet_NaN()};
   double desired_velocity_normal_mps{std::numeric_limits<double>::quiet_NaN()};
 };
