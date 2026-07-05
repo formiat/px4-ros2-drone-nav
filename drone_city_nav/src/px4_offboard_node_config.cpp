@@ -84,7 +84,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                    2.5, 0.0, 1000.0));
   config.velocity_follower.cross_track_progressive_feedback_min_factor =
       boundedFiniteDouble(
-          config.velocity_follower.cross_track_progressive_feedback_min_factor, 0.65,
+          config.velocity_follower.cross_track_progressive_feedback_min_factor, 0.3,
           0.0, 100.0);
   config.velocity_follower.cross_track_progressive_feedback_max_factor =
       std::max(config.velocity_follower.cross_track_progressive_feedback_min_factor,
@@ -176,7 +176,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                config.velocity_follower.cross_track_progressive_feedback_start_m);
   config.velocity_follower.cross_track_progressive_feedback_min_factor =
       std::clamp(node.declare_parameter<double>(
-                     "cross_track_progressive_feedback_min_factor", 0.65),
+                     "cross_track_progressive_feedback_min_factor", 0.3),
                  0.0, 100.0);
   const double requested_cross_track_progressive_feedback_max_factor =
       std::clamp(node.declare_parameter<double>(

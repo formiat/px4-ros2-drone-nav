@@ -17,7 +17,7 @@ struct VelocityFollowerConfig {
   double cross_track_derivative_gain{0.5};
   double cross_track_progressive_feedback_start_m{0.0};
   double cross_track_progressive_feedback_full_m{2.5};
-  double cross_track_progressive_feedback_min_factor{0.65};
+  double cross_track_progressive_feedback_min_factor{0.3};
   double cross_track_progressive_feedback_max_factor{1.3};
   double tracking_prediction_horizon_s{0.35};
   double max_lateral_control_angle_rad{0.9599310885968813};
