@@ -16,7 +16,7 @@ namespace {
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
-struct ControlTangentSmoothingDiagnostics {
+struct ControlProjectionSmoothingDiagnostics {
   bool applied{false};
   Point2 raw_tangent{};
   double heading_span_rad{std::numeric_limits<double>::quiet_NaN()};
@@ -26,7 +26,7 @@ struct ControlTangentSmoothingDiagnostics {
   double window_end_s_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
-struct ControlTangentSmoothingWindow {
+struct ControlProjectionSmoothingWindow {
   Point2 tangent{};
   double mean_curvature_1pm{0.0};
   double min_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
@@ -35,6 +35,11 @@ struct ControlTangentSmoothingWindow {
   double max_abs_curvature_1pm{std::numeric_limits<double>::quiet_NaN()};
   double window_start_s_m{std::numeric_limits<double>::quiet_NaN()};
   double window_end_s_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct SmoothedControlProjection {
+  TrajectoryProjection projection{};
+  ControlProjectionSmoothingDiagnostics diagnostics{};
 };
 
 [[nodiscard]] bool finite2D(const Point2 point) noexcept {
@@ -113,7 +118,7 @@ struct ControlTangentSmoothingWindow {
 }
 
 [[nodiscard]] double
-curvatureFeedforwardContextScale(const ControlTangentSmoothingWindow& window,
+curvatureFeedforwardContextScale(const ControlProjectionSmoothingWindow& window,
                                  const VelocityFollowerConfig& config) noexcept {
   if (!std::isfinite(window.heading_span_rad) ||
       !std::isfinite(window.max_abs_curvature_1pm) ||
@@ -287,15 +292,15 @@ sampleAtS(const std::span<const TrajectoryPointSample> samples, const double s_m
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<ControlTangentSmoothingWindow>
-buildControlTangentSmoothingWindow(const std::span<const TrajectoryPointSample> samples,
-                                   const double station_s_m, const double back_m,
-                                   const double forward_m) {
+[[nodiscard]] std::optional<ControlProjectionSmoothingWindow>
+buildControlProjectionSmoothingWindow(
+    const std::span<const TrajectoryPointSample> samples, const double station_s_m,
+    const double back_m, const double forward_m) {
   if (!(back_m + forward_m > kTinyDistanceM) || !trajectorySamplesAreUsable(samples)) {
     return std::nullopt;
   }
 
-  ControlTangentSmoothingWindow window{};
+  ControlProjectionSmoothingWindow window{};
   window.window_start_s_m = std::max(samples.front().s_m, station_s_m - back_m);
   window.window_end_s_m = std::min(samples.back().s_m, station_s_m + forward_m);
   if (!(window.window_end_s_m - window.window_start_s_m > kTinyDistanceM)) {
@@ -353,25 +358,27 @@ buildControlTangentSmoothingWindow(const std::span<const TrajectoryPointSample> 
   return window;
 }
 
-[[nodiscard]] ControlTangentSmoothingDiagnostics
-smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samples,
-                               TrajectoryProjection& control_projection,
-                               const VelocityFollowerConfig& config) {
-  ControlTangentSmoothingDiagnostics diagnostics{};
-  diagnostics.raw_tangent = control_projection.tangent;
+[[nodiscard]] SmoothedControlProjection
+smoothControlProjection(const std::span<const TrajectoryPointSample> samples,
+                        const TrajectoryProjection& raw_projection,
+                        const VelocityFollowerConfig& config) {
+  SmoothedControlProjection result{.projection = raw_projection};
+  ControlProjectionSmoothingDiagnostics& diagnostics = result.diagnostics;
+  TrajectoryProjection& control_projection = result.projection;
+  diagnostics.raw_tangent = raw_projection.tangent;
   if (!control_projection.valid ||
       !(norm(control_projection.tangent) > kTinyDistanceM) ||
       !trajectorySamplesAreUsable(samples)) {
-    return diagnostics;
+    return result;
   }
 
   const double straight_back_m =
       sanitizedPositive(config.control_tangent_smoothing_back_m, 8.0, 0.0, 1000.0);
   const double straight_forward_m =
       sanitizedPositive(config.control_tangent_smoothing_forward_m, 18.0, 0.0, 1000.0);
-  const std::optional<ControlTangentSmoothingWindow> straight_window =
-      buildControlTangentSmoothingWindow(samples, control_projection.s_m,
-                                         straight_back_m, straight_forward_m);
+  const std::optional<ControlProjectionSmoothingWindow> straight_window =
+      buildControlProjectionSmoothingWindow(samples, control_projection.s_m,
+                                            straight_back_m, straight_forward_m);
   const double straight_max_heading_span_rad =
       sanitizedPositive(config.control_tangent_smoothing_max_heading_span_rad,
                         12.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
@@ -389,7 +396,7 @@ smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samp
         dot(straight_window->tangent, control_projection.tangent) > 0.0) {
       control_projection.tangent = straight_window->tangent;
       diagnostics.applied = true;
-      return diagnostics;
+      return result;
     }
   }
 
@@ -397,11 +404,11 @@ smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samp
       sanitizedPositive(config.control_curve_smoothing_back_m, 2.0, 0.0, 1000.0);
   const double curve_forward_m =
       sanitizedPositive(config.control_curve_smoothing_forward_m, 6.0, 0.0, 1000.0);
-  const std::optional<ControlTangentSmoothingWindow> curve_window =
-      buildControlTangentSmoothingWindow(samples, control_projection.s_m, curve_back_m,
-                                         curve_forward_m);
+  const std::optional<ControlProjectionSmoothingWindow> curve_window =
+      buildControlProjectionSmoothingWindow(samples, control_projection.s_m,
+                                            curve_back_m, curve_forward_m);
   if (!curve_window.has_value()) {
-    return diagnostics;
+    return result;
   }
   diagnostics.heading_span_rad = curve_window->heading_span_rad;
   diagnostics.max_abs_curvature_1pm = curve_window->max_abs_curvature_1pm;
@@ -414,13 +421,13 @@ smoothControlTangentForCommand(const std::span<const TrajectoryPointSample> samp
                         45.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
   if (!(curve_window->heading_span_rad <= curve_max_heading_span_rad) ||
       dot(curve_window->tangent, control_projection.tangent) <= 0.0) {
-    return diagnostics;
+    return result;
   }
 
   control_projection.tangent = curve_window->tangent;
   control_projection.curvature_1pm = curve_window->mean_curvature_1pm;
   diagnostics.applied = true;
-  return diagnostics;
+  return result;
 }
 
 } // namespace
@@ -487,7 +494,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const ControlTangentSmoothingDiagnostics& tangent_smoothing) {
+    const ControlProjectionSmoothingDiagnostics& projection_smoothing) {
   VelocitySetpointPlan plan{};
   if (!finite2D(current_position) || !finite2D(predicted_position) ||
       !finite2D(final_point) || !control_projection.valid ||
@@ -567,15 +574,15 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.trajectory_segment_kind = segment_kind;
     plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
     plan.trajectory_projection = control_projection;
-    plan.control_tangent_raw = tangent_smoothing.raw_tangent;
-    plan.control_tangent_smoothed = tangent_smoothing.applied;
+    plan.control_tangent_raw = projection_smoothing.raw_tangent;
+    plan.control_tangent_smoothed = projection_smoothing.applied;
     plan.control_tangent_smoothing_heading_span_rad =
-        tangent_smoothing.heading_span_rad;
+        projection_smoothing.heading_span_rad;
     plan.control_tangent_smoothing_max_abs_curvature_1pm =
-        tangent_smoothing.max_abs_curvature_1pm;
+        projection_smoothing.max_abs_curvature_1pm;
     plan.control_tangent_smoothing_window_start_s_m =
-        tangent_smoothing.window_start_s_m;
-    plan.control_tangent_smoothing_window_end_s_m = tangent_smoothing.window_end_s_m;
+        projection_smoothing.window_start_s_m;
+    plan.control_tangent_smoothing_window_end_s_m = projection_smoothing.window_end_s_m;
     return plan;
   }
 
@@ -666,15 +673,15 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     plan.smoother_lateral_response_accel_mps2 =
         smoothed.smoother_lateral_response_accel_mps2;
     plan.path_tangent = terminal_tangent;
-    plan.control_tangent_raw = tangent_smoothing.raw_tangent;
-    plan.control_tangent_smoothed = tangent_smoothing.applied;
+    plan.control_tangent_raw = projection_smoothing.raw_tangent;
+    plan.control_tangent_smoothed = projection_smoothing.applied;
     plan.control_tangent_smoothing_heading_span_rad =
-        tangent_smoothing.heading_span_rad;
+        projection_smoothing.heading_span_rad;
     plan.control_tangent_smoothing_max_abs_curvature_1pm =
-        tangent_smoothing.max_abs_curvature_1pm;
+        projection_smoothing.max_abs_curvature_1pm;
     plan.control_tangent_smoothing_window_start_s_m =
-        tangent_smoothing.window_start_s_m;
-    plan.control_tangent_smoothing_window_end_s_m = tangent_smoothing.window_end_s_m;
+        projection_smoothing.window_start_s_m;
+    plan.control_tangent_smoothing_window_end_s_m = projection_smoothing.window_end_s_m;
     plan.projection = final_point;
     plan.current_projection = current_projection.point;
     plan.predicted_position = predicted_position;
@@ -752,7 +759,7 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
           .current_cross_track_error_m = std::sqrt(current_projection.distance_sq),
           .predicted_cross_track_error_m = std::sqrt(control_projection.distance_sq),
           .curvature_feedforward_context_scale =
-              tangent_smoothing.curvature_feedforward_context_scale},
+              projection_smoothing.curvature_feedforward_context_scale},
       config);
   if (!command.valid) {
     return plan;
@@ -800,13 +807,15 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.smoother_lateral_response_accel_mps2 =
       smoothed.smoother_lateral_response_accel_mps2;
   plan.path_tangent = control_projection.tangent;
-  plan.control_tangent_raw = tangent_smoothing.raw_tangent;
-  plan.control_tangent_smoothed = tangent_smoothing.applied;
-  plan.control_tangent_smoothing_heading_span_rad = tangent_smoothing.heading_span_rad;
+  plan.control_tangent_raw = projection_smoothing.raw_tangent;
+  plan.control_tangent_smoothed = projection_smoothing.applied;
+  plan.control_tangent_smoothing_heading_span_rad =
+      projection_smoothing.heading_span_rad;
   plan.control_tangent_smoothing_max_abs_curvature_1pm =
-      tangent_smoothing.max_abs_curvature_1pm;
-  plan.control_tangent_smoothing_window_start_s_m = tangent_smoothing.window_start_s_m;
-  plan.control_tangent_smoothing_window_end_s_m = tangent_smoothing.window_end_s_m;
+      projection_smoothing.max_abs_curvature_1pm;
+  plan.control_tangent_smoothing_window_start_s_m =
+      projection_smoothing.window_start_s_m;
+  plan.control_tangent_smoothing_window_end_s_m = projection_smoothing.window_end_s_m;
   plan.projection = control_projection.point;
   plan.current_projection = current_projection.point;
   plan.predicted_position = predicted_position;
@@ -936,15 +945,15 @@ VelocitySetpointPlan planVelocitySetpoint(
   }
   const TrajectorySegment& segment =
       trajectory[std::min(control_projection->segment_index, trajectory.size() - 1U)];
-  ControlTangentSmoothingDiagnostics tangent_smoothing{};
-  tangent_smoothing.raw_tangent = control_projection->tangent;
+  ControlProjectionSmoothingDiagnostics projection_smoothing{};
+  projection_smoothing.raw_tangent = control_projection->tangent;
   const double trajectory_length_m = trajectoryLengthM(trajectory);
   const Point2 final_tangent = trajectoryTangentAtS(trajectory, trajectory_length_m);
   return planVelocitySetpointFromProjection(
       *control_projection, *current_projection, predicted_position, prediction_horizon,
       trajectory.back().end, final_tangent, trajectory_length_m, segment.kind,
       speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
-      previous_state, config, tangent_smoothing);
+      previous_state, config, projection_smoothing);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -968,9 +977,8 @@ VelocitySetpointPlan planVelocitySetpoint(
   if (!control_projection.has_value()) {
     return VelocitySetpointPlan{};
   }
-  TrajectoryProjection command_projection = *control_projection;
-  const ControlTangentSmoothingDiagnostics tangent_smoothing =
-      smoothControlTangentForCommand(trajectory_samples, command_projection, config);
+  const SmoothedControlProjection smoothed_projection =
+      smoothControlProjection(trajectory_samples, *control_projection, config);
   const TrajectorySegmentKind segment_kind =
       std::abs(control_projection->curvature_1pm) > kTinyDistanceM
           ? TrajectorySegmentKind::kArc
@@ -982,10 +990,11 @@ VelocitySetpointPlan planVelocitySetpoint(
                    trajectory_samples[trajectory_samples.size() - 2U].point);
   }
   return planVelocitySetpointFromProjection(
-      command_projection, *current_projection, predicted_position, prediction_horizon,
-      trajectory_samples.back().point, final_tangent, trajectory_samples.back().s_m,
-      segment_kind, speed_profile, current_position, current_velocity,
-      current_velocity_valid, dt_s, previous_state, config, tangent_smoothing);
+      smoothed_projection.projection, *current_projection, predicted_position,
+      prediction_horizon, trajectory_samples.back().point, final_tangent,
+      trajectory_samples.back().s_m, segment_kind, speed_profile, current_position,
+      current_velocity, current_velocity_valid, dt_s, previous_state, config,
+      smoothed_projection.diagnostics);
 }
 
 } // namespace drone_city_nav
