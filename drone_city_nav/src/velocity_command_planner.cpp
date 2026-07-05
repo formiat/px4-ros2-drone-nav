@@ -129,7 +129,7 @@ progressiveCrossTrackFeedbackFactor(const double cross_track_error_m,
       start_m, sanitizedPositive(config.cross_track_progressive_feedback_full_m, 2.5,
                                  0.0, 1000.0));
   const double min_factor = sanitizedPositive(
-      config.cross_track_progressive_feedback_min_factor, 0.3, 0.0, 100.0);
+      config.cross_track_progressive_feedback_min_factor, 0.5, 0.0, 100.0);
   const double max_factor = std::max(
       min_factor, sanitizedPositive(config.cross_track_progressive_feedback_max_factor,
                                     1.3, 0.0, 100.0));
