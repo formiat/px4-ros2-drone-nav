@@ -15,6 +15,7 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
+constexpr double kCurvatureSignChangeThreshold1pm = 0.002;
 
 struct ControlProjectionSmoothingDiagnostics {
   bool applied{false};
@@ -117,6 +118,29 @@ struct SmoothedControlProjection {
   return t * t * (3.0 - 2.0 * t);
 }
 
+[[nodiscard]] bool
+curvatureSignChanges(const ControlProjectionSmoothingWindow& window) noexcept {
+  return std::isfinite(window.min_curvature_1pm) &&
+         std::isfinite(window.max_curvature_1pm) &&
+         window.min_curvature_1pm < -kCurvatureSignChangeThreshold1pm &&
+         window.max_curvature_1pm > kCurvatureSignChangeThreshold1pm;
+}
+
+[[nodiscard]] double
+smoothedStraightishCurvature1pm(const ControlProjectionSmoothingWindow& window,
+                                const double straight_max_heading_span_rad,
+                                const double straight_max_abs_curvature_1pm) noexcept {
+  const bool nearly_straight_heading =
+      window.heading_span_rad <= 0.5 * straight_max_heading_span_rad;
+  const bool nearly_zero_curvature =
+      window.max_abs_curvature_1pm <= 0.5 * straight_max_abs_curvature_1pm;
+  if (curvatureSignChanges(window) || nearly_straight_heading ||
+      nearly_zero_curvature) {
+    return 0.0;
+  }
+  return window.mean_curvature_1pm;
+}
+
 [[nodiscard]] double
 curvatureFeedforwardContextScale(const ControlProjectionSmoothingWindow& window,
                                  const VelocityFollowerConfig& config) noexcept {
@@ -139,13 +163,7 @@ curvatureFeedforwardContextScale(const ControlProjectionSmoothingWindow& window,
                         window.heading_span_rad);
   }
 
-  constexpr double kCurvatureSignThreshold = 0.002;
-  const bool curvature_sign_changes =
-      std::isfinite(window.min_curvature_1pm) &&
-      std::isfinite(window.max_curvature_1pm) &&
-      window.min_curvature_1pm < -kCurvatureSignThreshold &&
-      window.max_curvature_1pm > kCurvatureSignThreshold;
-  if (curvature_sign_changes) {
+  if (curvatureSignChanges(window)) {
     const double mean_to_peak_ratio =
         std::abs(window.mean_curvature_1pm) / window.max_abs_curvature_1pm;
     scale *= smoothstep(0.35, 0.85, mean_to_peak_ratio);
@@ -395,6 +413,11 @@ smoothControlProjection(const std::span<const TrajectoryPointSample> samples,
         straight_window->max_abs_curvature_1pm <= straight_max_abs_curvature &&
         dot(straight_window->tangent, control_projection.tangent) > 0.0) {
       control_projection.tangent = straight_window->tangent;
+      control_projection.curvature_1pm = smoothedStraightishCurvature1pm(
+          *straight_window, straight_max_heading_span_rad, straight_max_abs_curvature);
+      if (!(std::abs(control_projection.curvature_1pm) > kTinyDistanceM)) {
+        diagnostics.curvature_feedforward_context_scale = 0.0;
+      }
       diagnostics.applied = true;
       return result;
     }

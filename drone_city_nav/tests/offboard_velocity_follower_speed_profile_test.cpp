@@ -1,3 +1,5 @@
+#include <array>
+
 #include "offboard_velocity_follower_test_helpers.hpp"
 
 namespace drone_city_nav {
@@ -382,6 +384,50 @@ TEST(OffboardVelocityFollower, SmoothsControlTangentOnStraightishSampledTrajecto
   EXPECT_NEAR(plan.desired_velocity_normal_mps, 0.0, 1.0e-9);
   EXPECT_NEAR(plan.control_tangent_smoothing_window_start_s_m, 5.0, 1.0e-9);
   EXPECT_NEAR(plan.control_tangent_smoothing_window_end_s_m, 20.0, 1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, StraightishSmoothingSuppressesLocalSCurveCurvature) {
+  VelocityFollowerConfig config = testConfig();
+  config.max_accel_mps2 = 100.0;
+  config.max_decel_mps2 = 100.0;
+  config.velocity_lateral_response_accel_mps2 = 100.0;
+  config.terminal_capture_decel_mps2 = 100.0;
+  config.terminal_capture_braking_margin_m = 0.0;
+  config.curvature_feedforward_time_s = 0.5;
+  config.curvature_feedforward_deadband_angle_rad = 0.0;
+  config.curvature_feedforward_full_angle_rad = 0.0;
+  config.control_tangent_smoothing_back_m = 5.0;
+  config.control_tangent_smoothing_forward_m = 10.0;
+  config.control_tangent_smoothing_max_heading_span_rad =
+      25.0 * std::numbers::pi / 180.0;
+  config.control_tangent_smoothing_max_abs_curvature_1pm = 0.01;
+
+  const std::array<double, 5U> curvatures{-0.008, -0.004, 0.008, 0.004, -0.008};
+  std::vector<TrajectoryPointSample> samples;
+  double sample_s_m = 0.0;
+  for (const double curvature_1pm : curvatures) {
+    TrajectoryPointSample sample{};
+    sample.s_m = sample_s_m;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = (samples.size() % 2U == 0U) ? normalizedTestVector(1.0, -0.05)
+                                                 : normalizedTestVector(1.0, 0.05);
+    sample.curvature_1pm = curvature_1pm;
+    samples.push_back(sample);
+    sample_s_m += 5.0;
+  }
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  const VelocitySetpointPlan plan = planVelocitySetpoint(
+      samples, profile, Point2{10.0, 0.0}, Point2{12.0, 0.0}, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_TRUE(plan.control_tangent_smoothed);
+  EXPECT_NEAR(plan.trajectory_curvature_1pm, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_context_scale, 0.0, 1.0e-9);
+  EXPECT_NEAR(plan.curvature_feedforward_mps, 0.0, 1.0e-9);
 }
 
 TEST(OffboardVelocityFollower, UsesShortCurveSmoothingAcrossRealCurvature) {
