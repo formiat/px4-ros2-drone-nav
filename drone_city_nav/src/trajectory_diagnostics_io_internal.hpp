@@ -51,9 +51,50 @@ inline void appendJsonBool(std::ostream& stream, const std::string_view key,
   stream << ",\"" << key << "\":" << (value ? "true" : "false");
 }
 
+inline void writeJsonEscapedString(std::ostream& stream, const std::string_view value) {
+  constexpr std::array<char, 16U> kHexDigits{'0', '1', '2', '3', '4', '5', '6', '7',
+                                             '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+  for (const char character : value) {
+    switch (character) {
+      case '"':
+        stream << "\\\"";
+        break;
+      case '\\':
+        stream << "\\\\";
+        break;
+      case '\b':
+        stream << "\\b";
+        break;
+      case '\f':
+        stream << "\\f";
+        break;
+      case '\n':
+        stream << "\\n";
+        break;
+      case '\r':
+        stream << "\\r";
+        break;
+      case '\t':
+        stream << "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(character) < 0x20U) {
+          const auto value_byte = static_cast<unsigned char>(character);
+          stream << "\\u00" << kHexDigits[value_byte >> 4U]
+                 << kHexDigits[value_byte & 0x0FU];
+        } else {
+          stream << character;
+        }
+        break;
+    }
+  }
+}
+
 inline void appendJsonString(std::ostream& stream, const std::string_view key,
                              const std::string_view value) {
-  stream << ",\"" << key << "\":\"" << value << "\"";
+  stream << ",\"" << key << "\":\"";
+  writeJsonEscapedString(stream, value);
+  stream << "\"";
 }
 
 inline void appendJsonUint64(std::ostream& stream, const std::string_view key,
@@ -79,11 +120,17 @@ jsonValueForKey(const std::string_view json, const std::string_view key) {
   }
 
   if (json[value_begin] == '"') {
-    const std::size_t string_end = json.find('"', value_begin + 1U);
-    if (string_end == std::string_view::npos) {
-      return std::nullopt;
+    for (std::size_t string_end = value_begin + 1U; string_end < json.size();
+         ++string_end) {
+      if (json[string_end] == '\\') {
+        ++string_end;
+        continue;
+      }
+      if (json[string_end] == '"') {
+        return json.substr(value_begin + 1U, string_end - value_begin - 1U);
+      }
     }
-    return json.substr(value_begin + 1U, string_end - value_begin - 1U);
+    return std::nullopt;
   }
 
   std::size_t value_end = value_begin;
@@ -96,6 +143,75 @@ jsonValueForKey(const std::string_view json, const std::string_view key) {
     --value_end;
   }
   return json.substr(value_begin, value_end - value_begin);
+}
+
+[[nodiscard]] inline std::string decodeJsonStringValue(const std::string_view value) {
+  const auto hexValue = [](const char character) -> int {
+    if (character >= '0' && character <= '9') {
+      return character - '0';
+    }
+    if (character >= 'a' && character <= 'f') {
+      return character - 'a' + 10;
+    }
+    if (character >= 'A' && character <= 'F') {
+      return character - 'A' + 10;
+    }
+    return -1;
+  };
+  std::string output;
+  output.reserve(value.size());
+  for (std::size_t index = 0U; index < value.size(); ++index) {
+    const char character = value[index];
+    if (character != '\\' || index + 1U >= value.size()) {
+      output.push_back(character);
+      continue;
+    }
+
+    ++index;
+    switch (value[index]) {
+      case '"':
+        output.push_back('"');
+        break;
+      case '\\':
+        output.push_back('\\');
+        break;
+      case '/':
+        output.push_back('/');
+        break;
+      case 'b':
+        output.push_back('\b');
+        break;
+      case 'f':
+        output.push_back('\f');
+        break;
+      case 'n':
+        output.push_back('\n');
+        break;
+      case 'r':
+        output.push_back('\r');
+        break;
+      case 't':
+        output.push_back('\t');
+        break;
+      case 'u':
+        if (index + 4U < value.size() && value[index + 1U] == '0' &&
+            value[index + 2U] == '0') {
+          const int high = hexValue(value[index + 3U]);
+          const int low = hexValue(value[index + 4U]);
+          if (high >= 0 && low >= 0) {
+            output.push_back(static_cast<char>((high << 4U) | low));
+            index += 4U;
+            break;
+          }
+        }
+        output.push_back('u');
+        break;
+      default:
+        output.push_back(value[index]);
+        break;
+    }
+  }
+  return output;
 }
 
 inline void parseJsonDouble(const std::string_view json, const std::string_view key,

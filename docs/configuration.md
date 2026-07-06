@@ -83,8 +83,9 @@ The validation layer applies a diagnostics-only no-over-building rule:
   violation with `structure_without_opening` or `opening_volume_miss`;
 - `known_passage_validation_min_opening_overlap_m` controls the minimum station
   overlap required to count an opening match;
-- `known_passage_validation_clearance_margin_m` is reserved for clearance
-  diagnostics and future hardening;
+- `known_passage_validation_clearance_margin_m` is an active shadow-validation
+  threshold: an opening match is rejected as `opening_volume_miss` when its
+  lateral/vertical clearance is below this margin;
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
 
 ## A* Parameters

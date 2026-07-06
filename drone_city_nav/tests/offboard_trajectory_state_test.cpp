@@ -156,6 +156,25 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   diagnostics.stats.speed_profile_construction_config_fingerprint = 10U;
   diagnostics.stats.runtime_speed_policy_config_fingerprint = 11U;
   diagnostics.stats.runtime_velocity_control_config_fingerprint = 12U;
+  diagnostics.stats.known_passage_validation.enabled = true;
+  diagnostics.stats.known_passage_validation.valid = false;
+  diagnostics.stats.known_passage_validation.structures_checked = 3U;
+  diagnostics.stats.known_passage_validation.structures_intersected = 1U;
+  diagnostics.stats.known_passage_validation.opening_matches = 0U;
+  diagnostics.stats.known_passage_validation.violations = 1U;
+  diagnostics.stats.known_passage_validation.worst_reason =
+      KnownPassageValidationReason::kOpeningVolumeMiss;
+  diagnostics.stats.known_passage_validation.diagnostics.push_back(
+      KnownPassageValidationSpan{
+          .structure_id = "arch_01",
+          .opening_id = "",
+          .entry_s_m = 42.0,
+          .exit_s_m = 47.0,
+          .overlap_m = 0.0,
+          .clearance_m = -0.5,
+          .reason = KnownPassageValidationReason::kOpeningVolumeMiss,
+          .valid = false,
+      });
   diagnostics.stats.top_speed_constraints.push_back(SpeedProfileConstraintDiagnostic{
       .sample_index = 7U,
       .s_m = 11.0,
@@ -189,6 +208,19 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   EXPECT_EQ(stats.speed_profile_construction_config_fingerprint, 20U);
   EXPECT_EQ(stats.runtime_speed_policy_config_fingerprint, 21U);
   EXPECT_EQ(stats.runtime_velocity_control_config_fingerprint, 22U);
+  EXPECT_TRUE(stats.known_passage_validation.enabled);
+  EXPECT_FALSE(stats.known_passage_validation.valid);
+  EXPECT_EQ(stats.known_passage_validation.structures_checked, 3U);
+  EXPECT_EQ(stats.known_passage_validation.structures_intersected, 1U);
+  EXPECT_EQ(stats.known_passage_validation.opening_matches, 0U);
+  EXPECT_EQ(stats.known_passage_validation.violations, 1U);
+  EXPECT_EQ(stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
+  ASSERT_EQ(stats.known_passage_validation.diagnostics.size(), 1U);
+  EXPECT_EQ(stats.known_passage_validation.diagnostics.front().structure_id, "arch_01");
+  EXPECT_DOUBLE_EQ(stats.known_passage_validation.diagnostics.front().entry_s_m, 42.0);
+  EXPECT_DOUBLE_EQ(stats.known_passage_validation.diagnostics.front().clearance_m,
+                   -0.5);
   EXPECT_TRUE(stats.top_speed_constraints.empty());
 }
 

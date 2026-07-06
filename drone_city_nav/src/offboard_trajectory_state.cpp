@@ -114,6 +114,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
       diagnostics.stats.isolated_curvature_spike_max_before_1pm;
   output_stats.isolated_curvature_spike_max_after_1pm =
       diagnostics.stats.isolated_curvature_spike_max_after_1pm;
+  output_stats.known_passage_validation = diagnostics.stats.known_passage_validation;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(

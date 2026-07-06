@@ -92,12 +92,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     if (const std::optional<std::string_view> structure_id =
             jsonValueForKey(json, prefix + "structure_id");
         structure_id.has_value()) {
-      diagnostic.structure_id = std::string{*structure_id};
+      diagnostic.structure_id = decodeJsonStringValue(*structure_id);
     }
     if (const std::optional<std::string_view> opening_id =
             jsonValueForKey(json, prefix + "opening_id");
         opening_id.has_value()) {
-      diagnostic.opening_id = std::string{*opening_id};
+      diagnostic.opening_id = decodeJsonStringValue(*opening_id);
     }
     parseJsonDouble(json, prefix + "entry_s_m", diagnostic.entry_s_m);
     parseJsonDouble(json, prefix + "exit_s_m", diagnostic.exit_s_m);

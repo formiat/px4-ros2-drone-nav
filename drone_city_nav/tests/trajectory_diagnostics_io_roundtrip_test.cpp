@@ -404,4 +404,30 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonExposesBaselineQuality) {
   EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kBaseline);
 }
 
+TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonEscapesKnownPassageIds) {
+  TrajectoryPlannerStats stats = populatedStats();
+  ASSERT_FALSE(stats.known_passage_validation.diagnostics.empty());
+  stats.known_passage_validation.diagnostics[0].structure_id = "arch_\"01\\north";
+  stats.known_passage_validation.diagnostics[0].opening_id = "main\\gate\"east";
+
+  const std::string json = trajectoryPlannerDiagnosticsJson(42U, 100U, stats);
+
+  EXPECT_NE(json.find("\"known_passage_diag0_structure_id\":\"arch_\\\"01\\\\north\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_opening_id\":\"main\\\\gate\\\"east\""),
+            std::string::npos);
+
+  const std::optional<TrajectoryPlannerDiagnosticsEnvelope> parsed =
+      parseTrajectoryPlannerDiagnosticsJson(json);
+
+  ASSERT_TRUE(parsed.has_value());
+  const TrajectoryPlannerDiagnosticsEnvelope parsed_value =
+      parsed.value_or(TrajectoryPlannerDiagnosticsEnvelope{});
+  ASSERT_FALSE(parsed_value.stats.known_passage_validation.diagnostics.empty());
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.diagnostics[0].structure_id,
+            "arch_\"01\\north");
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.diagnostics[0].opening_id,
+            "main\\gate\"east");
+}
+
 } // namespace drone_city_nav
