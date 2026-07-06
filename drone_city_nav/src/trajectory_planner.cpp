@@ -88,7 +88,8 @@ void finalizeResult(TrajectoryPlannerResult& result,
   computeSpeedProfileStats(result.speed_profile, result.stats);
   result.valid = trajectoryIsUsable(result.compact_segments) &&
                  trajectorySamplesAreUsable(result.samples) &&
-                 result.speed_profile.valid && result.stats.vertical_profile.valid;
+                 result.speed_profile.valid && result.stats.vertical_profile.valid &&
+                 result.stats.known_passage_validation.valid;
   if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
   }
@@ -103,7 +104,7 @@ bool applyVerticalProfileStage(TrajectoryPlannerResult& result,
   result.stats.vertical_profile = vertical_profile.stats;
   result.stats.known_passage_validation = validateKnownPassageTraversal(
       result.samples, input.known_passage_map, config.known_passage_validation);
-  if (!vertical_profile.valid) {
+  if (!vertical_profile.valid || !result.stats.known_passage_validation.valid) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     return false;
   }

@@ -73,6 +73,19 @@ namespace {
   return map;
 }
 
+[[nodiscard]] KnownPassageMap makeOverlappingCompatibleMap() {
+  PassageOpening first = makeOpening(8.0, 12.0);
+  first.id = "first_window";
+  PassageOpening second = makeOpening(8.0, 12.0);
+  second.id = "second_window";
+
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(makeStructure("first_arch", -4.0, std::move(first)));
+  map.structures.push_back(makeStructure("second_arch", 4.0, std::move(second)));
+  return map;
+}
+
 [[nodiscard]] std::vector<TrajectoryPointSample>
 makeSamplesRange(const double start_x_m, const double end_x_m, const double step_m,
                  const double z_m) {
@@ -211,6 +224,34 @@ TEST(TrajectoryVerticalProfile, OverlappingIncompatibleWindowsAreRejected) {
         return diagnostic.reason == "overlapping_infeasible_windows" &&
                !diagnostic.valid;
       }));
+  for (const TrajectoryPointSample& sample : samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
+    EXPECT_TRUE(sample.vertical_profile_passage_id.empty());
+  }
+}
+
+TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsAreRejectedUntilMerged) {
+  KnownPassageMap map = makeOverlappingCompatibleMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-120.0, 120.0, 2.0, 18.0);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_FALSE(result.stats.valid);
+  EXPECT_FALSE(result.stats.active);
+  EXPECT_EQ(result.stats.passages_matched, 2U);
+  EXPECT_EQ(result.stats.passages_profiled, 0U);
+  EXPECT_TRUE(std::ranges::any_of(
+      result.stats.diagnostics, [](const VerticalProfilePassageDiagnostic& diagnostic) {
+        return diagnostic.reason == "overlapping_infeasible_windows" &&
+               !diagnostic.valid;
+      }));
+  const KnownPassageValidationSummary validation =
+      validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
+  EXPECT_FALSE(validation.valid);
   for (const TrajectoryPointSample& sample : samples) {
     EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
     EXPECT_TRUE(sample.vertical_profile_passage_id.empty());

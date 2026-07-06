@@ -11,7 +11,6 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kSmootherstepMaxDerivative = 1.875;
-constexpr double kAltitudeConflictToleranceM = 1.0e-3;
 
 [[nodiscard]] double sanitizedPositive(const double value, const double fallback,
                                        const double min_value,
@@ -210,12 +209,9 @@ diagnosticFromWindow(const ProfileWindow& window, const char* const reason,
   };
 }
 
-[[nodiscard]] bool profileWindowsConflict(const ProfileWindow& lhs,
-                                          const ProfileWindow& rhs) noexcept {
-  if (rhs.approach_start_s_m >= lhs.exit_end_s_m - kTinyDistanceM) {
-    return false;
-  }
-  return std::abs(lhs.gate_z_m - rhs.gate_z_m) > kAltitudeConflictToleranceM;
+[[nodiscard]] bool profileWindowsOverlap(const ProfileWindow& lhs,
+                                         const ProfileWindow& rhs) noexcept {
+  return rhs.approach_start_s_m < lhs.exit_end_s_m - kTinyDistanceM;
 }
 
 [[nodiscard]] bool
@@ -228,7 +224,7 @@ rejectOverlappingInfeasibleWindows(std::span<const ProfileWindow> windows,
       if (windows[j].approach_start_s_m >= windows[i].exit_end_s_m - kTinyDistanceM) {
         break;
       }
-      if (!profileWindowsConflict(windows[i], windows[j])) {
+      if (!profileWindowsOverlap(windows[i], windows[j])) {
         continue;
       }
       conflict_found = true;

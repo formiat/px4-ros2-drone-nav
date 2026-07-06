@@ -48,6 +48,35 @@ samplePoints(const std::span<const TrajectoryPointSample> samples) {
   return points;
 }
 
+[[nodiscard]] KnownPassageMap plannerValidationPassageMap() {
+  PassageOpening opening{};
+  opening.id = "window";
+  opening.structure_id = "arch";
+  opening.center = Point3{0.0, 0.0, 10.0};
+  opening.normal_xy = Point2{1.0, 0.0};
+  opening.width_m = 6.0;
+  opening.height_m = 4.0;
+  opening.depth_m = 6.0;
+  opening.min_z_m = 8.0;
+  opening.max_z_m = 12.0;
+  opening.approach_distance_m = 8.0;
+  opening.exit_distance_m = 8.0;
+
+  PassageStructure structure{};
+  structure.id = "arch";
+  structure.center = Point2{0.0, 0.0};
+  structure.size_x_m = 10.0;
+  structure.size_y_m = 10.0;
+  structure.z_min_m = 0.0;
+  structure.z_max_m = 20.0;
+  structure.openings.push_back(opening);
+
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(structure);
+  return map;
+}
+
 } // namespace
 
 TEST(TrajectoryPlanner, EmptyRouteIsInvalid) {
@@ -137,6 +166,27 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   for (const TrajectoryPointSample& sample : result.samples) {
     EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
   }
+}
+
+TEST(TrajectoryPlanner, InvalidKnownPassageValidationRejectsTrajectory) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  TrajectoryPlannerConfig config = testConfig();
+  config.vertical_profile.enabled = false;
+
+  const TrajectoryPlannerResult result = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{}, nullptr,
+                             &map},
+      config);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
+  EXPECT_FALSE(result.stats.vertical_profile.active);
+  EXPECT_FALSE(result.stats.known_passage_validation.valid);
+  EXPECT_EQ(result.stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
 }
 
 TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
