@@ -82,3 +82,82 @@ python3 scripts/analyze_lidar_projection_snapshots.py \
   log/lidar_debug/snapshots.jsonl \
   --static-map drone_city_nav/worlds/generated_city.map2d
 ```
+
+## RViz Interpretation Rules
+
+RViz is a diagnostic view, not the source of truth. Use it to identify where to
+look in logs. Do not tune a parameter only because a color looks surprising.
+The color should be traced to a numeric field such as curvature, speed limit,
+clearance, or candidate rejection reason.
+
+Useful interpretation rules:
+
+- raw obstacle layers should align with visible static geometry;
+- prohibited grid should be wider than raw obstacles by the hard inflation
+  radius;
+- planning clearance can influence the route without appearing as a hard
+  replan boundary;
+- the final trajectory is the executable curve, not the rough route;
+- a slightly wavy final trajectory is acceptable if control metrics are stable;
+- a visually smooth curve can still be too fast or poorly tracked.
+
+## Layer Correlation Workflow
+
+When a path looks wrong:
+
+1. Hide the final trajectory and inspect raw static and lidar layers.
+2. Enable the prohibited grid and confirm hard safety space.
+3. Enable the corridor and check whether the desired smooth path had room.
+4. Enable the final trajectory and inspect whether it uses available corridor
+   width.
+5. Check speed/curvature coloring around suspicious segments.
+6. Open trajectory diagnostics for the same path stamp.
+7. Open offboard blackbox around the matching flight time.
+
+This order separates geometry availability from optimizer choice and runtime
+tracking.
+
+## Reading Purple Or Red Segments
+
+Purple or red-like segments usually mean the trajectory is constrained, but the
+reason can differ:
+
+- tight radius from actual geometry;
+- isolated curvature spike;
+- speed-profile braking before a later turn;
+- terminal capture slowing near the goal;
+- debug coloring threshold rather than a hard problem.
+
+Confirm with top speed constraints and local curvature metrics. If a segment
+is slow because radius is small, improve trajectory geometry if the corridor
+allows it. If it is slow because the speed profile is braking for a later turn,
+the visible slow segment can be upstream of the actual curve.
+
+## RViz Versus Runtime Control
+
+RViz shows the path and debug markers, but the actual drone command is shaped
+after that path is accepted. Runtime control also depends on:
+
+- predicted projection;
+- projection smoothing mode;
+- P and D gain schedules;
+- curvature feedforward context;
+- speed policy;
+- velocity smoother;
+- terminal state.
+
+If the drone oscillates on a path that looks acceptable, inspect blackbox
+control fields. The trajectory may not be the problem.
+
+## Common RViz Misreads
+
+Common mistakes:
+
+- treating planning clearance as a collision boundary;
+- treating the rough route as the executable trajectory;
+- assuming path color explains the cause without checking diagnostics;
+- judging terminal position capture as normal lateral control;
+- ignoring path stamp mismatch between RViz display and diagnostics;
+- forgetting that a rejected trajectory may still appear in planner logs.
+
+When in doubt, correlate by path stamp and navigation time.

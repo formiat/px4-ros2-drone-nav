@@ -105,3 +105,95 @@ Useful visualization topics:
   clearing.
 - If the planner replans unexpectedly, compare raw sources, prohibited grid,
   and the current executable trajectory.
+
+## Obstacle Evidence Contract
+
+Obstacle mapping starts from evidence, not from final safety decisions. A lidar
+hit, a remembered obstacle cell, and a static map cell all mean that obstacle
+evidence exists at a location. They do not mean that the whole safety margin is
+already occupied. The grid builder owns the conversion from raw evidence to
+hard prohibited space and planning-clearance preference space.
+
+This contract prevents hidden double margins. If obstacle memory stored already
+inflated cells and the planner inflated them again, the effective blocked area
+would grow with every source and become difficult to reason about. Keeping raw
+sources raw makes every margin visible in configuration and diagnostics.
+
+## Static, Dynamic, And Memory Roles
+
+Static map data represents known world geometry. It should be stable across
+the run and is the best candidate for caching or preprocessing.
+
+Current lidar overlay represents the most recent sensor evidence. It is useful
+for quick reaction, but it can be sparse or noisy because a lidar scan sees only
+what the current pose exposes.
+
+Obstacle memory bridges the gap between static map and current scan. It keeps
+recently observed obstacles available after they leave the instantaneous scan.
+Memory is especially important when the drone turns away from an obstacle but
+the planner still needs to avoid it.
+
+These sources are complementary:
+
+- static map gives persistent structure;
+- current lidar gives fresh evidence;
+- memory gives temporal continuity;
+- inflation turns merged evidence into safety space.
+
+## Inflation And Distance Fields
+
+Inflation answers whether a cell is too close to obstacle evidence. Clearance
+answers how far the nearest obstacle evidence is. These two ideas can come
+from the same distance field:
+
+- cells with distance less than hard inflation become prohibited;
+- cells with distance less than hard inflation plus planning clearance become
+  planning-disfavored;
+- the raw distance can be reused for diagnostics, corridor clearance, and
+  scoring.
+
+The current architecture already treats clearance as a reusable artifact where
+possible. A future Euclidean Distance Transform implementation would make this
+relationship more direct: build one distance-to-obstacle field, threshold it
+for hard and planning grids, and reuse it for clearance diagnostics.
+
+The risk of changing inflation is boundary behavior. Two algorithms can differ
+by one cell near the radius threshold. Any replacement must be tested against
+expected hard safety behavior and RViz output.
+
+## Motion Compensation Diagnostics
+
+Lidar hits must be projected into a stable frame. The drone is moving and
+tilting while scans arrive, so treating every scan as if the vehicle were level
+and stationary can shift obstacle evidence. Attitude compensation and PX4 pose
+freshness matter because a small angular error can become a large map error at
+range.
+
+Symptoms of bad compensation:
+
+- obstacle memory appears rotated around the drone;
+- lidar points are offset from static buildings;
+- replans happen near turns where vehicle attitude changes quickly;
+- obstacles appear to move relative to the world when the drone rolls or
+  pitches.
+
+When debugging, compare current lidar points, obstacle memory, prohibited grid,
+and static map in RViz. The layers should agree in map coordinates even though
+they are produced by different stages.
+
+## Mapping Diagnostics Checklist
+
+For an unexpected replan, inspect:
+
+1. Was the prohibited intersection caused by static map, memory, or current
+   lidar?
+2. Did the raw evidence actually overlap the trajectory, or only the inflated
+   margin?
+3. Was the intersecting span ahead of the drone or already behind it?
+4. Did planning clearance get mistaken for hard prohibited space?
+5. Did pose or attitude compensation shift the lidar overlay?
+6. Did obstacle memory keep an old obstacle longer than expected?
+7. Did the planner retain the previous trajectory while rebuilding?
+
+Answering these questions usually separates a real obstacle from a mapping
+artifact.

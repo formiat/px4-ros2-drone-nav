@@ -112,3 +112,96 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
   `gazebo_aligned_map_tf` transform from the launch file.
 - Multiple simultaneous Gazebo instances are not supported by the standard
   workflow.
+
+## Simulation Responsibilities
+
+Gazebo is the physics and sensor environment. It should not contain navigation
+logic. The world defines geometry, models, plugins, and sensor output. The ROS
+nodes decide how to interpret that data and how to control PX4.
+
+Keep these responsibilities separate:
+
+- Gazebo world: buildings, ground, drone model, sensor placement;
+- PX4 SITL: vehicle state, arming, offboard mode, low-level control;
+- ROS navigation stack: mapping, planning, trajectory generation, setpoints;
+- RViz: visualization and debug interpretation.
+
+This separation matters when debugging. A bad trajectory color is rarely a
+Gazebo problem. A shifted lidar point cloud can be a Gazebo frame, TF, origin,
+or compensation problem. A drone that refuses offboard control may be PX4 state
+or arming rather than planner geometry.
+
+## World And Static Map Consistency
+
+The `.sdf` world and `.map2d` static map must describe the same obstacle
+layout. Gazebo uses the world for rendering and collision. The planner uses the
+static map as raw obstacle evidence. If they drift apart, RViz can show a
+planner-valid route through a building, or the planner can avoid empty space.
+
+When editing a world, verify:
+
+- building positions and sizes in Gazebo;
+- matching static map cells;
+- map origin relative to PX4 local origin;
+- grid bounds cover the full mission;
+- spawn and goal are inside navigable area;
+- RViz static map overlays the visible city.
+
+The static map should remain raw. Do not pre-inflate buildings in the map to
+"help" the planner. Inflation and planning clearance are planner parameters.
+
+## Spawn And Goal Consistency
+
+The spawn pose, PX4 local origin, and mission goal are coupled. A mismatch can
+look like a planner bug because A* and RViz operate in map coordinates while
+Gazebo renders world coordinates.
+
+Useful checks:
+
+- the drone spawns where RViz says it spawns;
+- the goal marker is reachable and not inside hard prohibited cells;
+- the first planned segment starts near the drone, not offset by a map origin
+  error;
+- lidar points align with static map buildings while the drone is stationary.
+
+If these checks fail, fix coordinate configuration before tuning planning or
+control.
+
+## Headless Versus GUI Runs
+
+GUI runs are better for visual inspection. Headless runs are better for repeat
+checks, script automation, and quality validation. Both should use the same
+navigation configuration.
+
+Use GUI when investigating:
+
+- visual trajectory shape;
+- RViz color interpretation;
+- Gazebo model placement;
+- obvious vehicle motion anomalies.
+
+Use headless when investigating:
+
+- regression checks;
+- mission completion;
+- planner timing;
+- blackbox metrics;
+- repeated comparison after a parameter change.
+
+Do not rely only on visual judgment. A trajectory can look slightly worse but
+track better, or look smooth while producing excessive setpoint lag.
+
+## Simulation Change Checklist
+
+After changing simulation assets or launch setup:
+
+1. Stop old Gazebo and PX4 processes.
+2. Start a clean GUI run and confirm model placement.
+3. Verify static map and prohibited grid in RViz.
+4. Confirm lidar points align with visible obstacles.
+5. Confirm start and goal are valid.
+6. Run a headless smoke test.
+7. Inspect logs for unexpected replans or frame warnings.
+
+This checklist catches environment problems before they are misdiagnosed as
+planner or controller regressions.

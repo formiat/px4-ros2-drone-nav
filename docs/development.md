@@ -91,3 +91,68 @@ Before refactoring:
 - keep generated files out of commits.
 
 For behavior changes, make the changed contract explicit in tests and logs.
+
+## Adding Or Changing A Planning Stage
+
+When adding a planning stage, define its contract before writing the code:
+
+- input artifact and owner;
+- output artifact and owner;
+- hard validation rules;
+- diagnostics that prove why it changed the path;
+- timing fields;
+- tests or script checks;
+- how it behaves when it fails.
+
+The stage should not silently change ownership. For example, a geometry cleanup
+stage can modify trajectory points if that is its documented job. A
+speed-profile diagnostic stage should not secretly change the executable
+geometry.
+
+## Adding Or Changing Runtime Control Logic
+
+Runtime control changes should identify which layer is affected:
+
+- projection and prediction;
+- projection smoothing;
+- P gain schedule;
+- D gain schedule;
+- curvature feedforward;
+- speed policy;
+- velocity smoother;
+- terminal state machine;
+- PX4 setpoint mode.
+
+Do not add a new feature that compensates for another feature without proving
+the existing layer cannot be tuned or simplified. Lateral control in particular
+should remain understandable: predicted projection, optional smoothing, P plus
+D plus feedforward, angle cap, smoother.
+
+## Documentation Requirements For New Features
+
+Every non-trivial feature should update docs in the same change:
+
+- configuration reference for new parameters;
+- architecture or pipeline docs for ownership changes;
+- diagnostics docs for new log fields;
+- troubleshooting docs for common failure modes;
+- performance docs if the feature changes timing.
+
+Documentation should explain the reason for the feature, not only its name.
+Avoid leaving a parameter in YAML without describing what layer owns it and how
+to read its diagnostics.
+
+## Review Checklist
+
+Before committing a planning or control change, check:
+
+- code defaults and YAML defaults match for active features;
+- stale diagnostics or docs were removed;
+- path publication cannot erase a valid old trajectory on failure;
+- offboard continuity behavior is logged;
+- new decision modules have direct tests;
+- blackbox fields are enough to diagnose the new behavior;
+- script contracts still match the current telemetry schema.
+
+This checklist keeps the project from accumulating hidden legacy assumptions as
+the system grows.

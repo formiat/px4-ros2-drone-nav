@@ -174,3 +174,116 @@ configuration drift.
 - `diagnostic_turn_preview_distance_m`
 
 `diagnostic_turn_preview_distance_m` is diagnostics-only.
+
+## Configuration Philosophy
+
+Configuration values are part of the system contract. A parameter should have a
+clear owner, a clear default, and the same value in code defaults and the main
+YAML unless there is an explicit reason for a launch-specific override.
+
+The project uses this rule because many failures look like algorithmic
+problems but are really configuration drift. If a parameter is enabled in YAML
+but disabled by code default, a developer running without the YAML can observe
+a different controller. For active features, code defaults and the main
+configuration should match.
+
+Parameters should be grouped by physical meaning:
+
+- route and grid parameters describe space and obstacles;
+- trajectory parameters describe geometry generation;
+- speed-profile parameters describe scalar speed along geometry;
+- velocity-control parameters describe runtime setpoint behavior;
+- terminal parameters describe final state transitions;
+- diagnostic parameters describe logging and visualization only.
+
+## Hard Margins And Planning Margins
+
+Hard obstacle inflation and planning clearance must be tuned together but
+understood separately.
+
+Hard inflation is the safety margin around raw obstacle evidence. It defines
+the prohibited grid and can trigger replans when the accepted trajectory
+intersects it.
+
+Planning clearance is extra margin used during planning. It encourages A*,
+corridor construction, and trajectory generation to stay farther away from
+obstacles. It should not be treated as a runtime replan boundary.
+
+When changing margins, update both code defaults and YAML. Then verify in RViz
+that:
+
+- hard prohibited grid matches the intended collision margin;
+- planning-generated trajectories keep the intended extra clearance;
+- runtime replans still come only from hard prohibited intersections.
+
+## Speed And Control Parameter Boundaries
+
+Several parameters sound similar but belong to different layers.
+
+`turn_speed_lateral_accel_mps2` describes how fast the drone may fly through a
+curve based on radius. It belongs to speed profile and turn-speed feasibility.
+
+`setpoint_lateral_response_accel_mps2` describes how quickly the velocity
+setpoint can respond laterally. It belongs to the velocity smoother and
+setpoint dynamics.
+
+`setpoint_forward_accel_mps2` and `setpoint_forward_decel_mps2` describe
+forward setpoint response. They should not be silently limited by a turn-speed
+lateral acceleration budget.
+
+Keeping these names separate prevents one parameter from accidentally meaning
+both "how fast through a turn" and "how fast the command can change".
+
+## Fingerprints
+
+Configuration fingerprints are diagnostics for cross-node compatibility. They
+are split by purpose:
+
+- speed-profile construction fingerprint;
+- runtime speed-policy fingerprint;
+- runtime velocity-control fingerprint.
+
+The construction fingerprint is the strongest compatibility check between
+planner and offboard because both sides can reason about speed-profile sample
+construction. Runtime fingerprints are useful context, but some runtime control
+parameters are intentionally offboard-owned. A mismatch there should be
+reported carefully so logs do not produce noisy false alarms.
+
+## Safe Tuning Workflow
+
+For behavior changes:
+
+1. Change one conceptual layer at a time.
+2. Update code default and YAML together.
+3. Run tests and quality checks.
+4. Run a simulation and compare blackbox metrics.
+5. Inspect RViz for visual regressions.
+6. Keep notes on which metric improved and which metric worsened.
+
+Examples:
+
+- To make trajectories rounder, tune trajectory optimizer radius and curvature
+  weights before changing the controller.
+- To reduce left-right oscillation on a straight, inspect projection smoothing,
+  P schedule, D schedule, feedforward suppression, and smoother lag.
+- To improve final positioning, tune terminal state thresholds rather than
+  normal lateral control.
+
+Avoid stacking several fixes for the same symptom at once. If a change helps,
+the logs should show why it helped.
+
+## Deprecated Or Diagnostic-Only Parameters
+
+When a parameter no longer affects control, either remove it or rename it so
+its diagnostic-only role is obvious. Stale parameters are dangerous because
+they invite tuning that cannot affect the run.
+
+Examples of parameters that should be handled carefully:
+
+- old turn-preview values that are route diagnostics only;
+- planner-side speed diagnostics that are not the runtime speed profile;
+- any field left over from a removed rate limiter or old lateral feature.
+
+The configuration reference should not preserve legacy names merely for
+comfort. If the project no longer uses a concept, the docs should say so or the
+concept should be removed.

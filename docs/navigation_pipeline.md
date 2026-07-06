@@ -109,3 +109,99 @@ The offboard node publishes:
 - `/drone_city_nav/offboard_debug_markers`
 
 The accepted trajectory is matched to diagnostics by `path_stamp_ns`.
+
+## Pipeline Contracts
+
+The pipeline works because each stage has a narrow contract. A later stage can
+improve shape or timing, but it should not reinterpret the meaning of earlier
+artifacts.
+
+Raw obstacle sources mean "there is evidence of an obstacle here". They do not
+carry safety inflation. The grid builder owns inflation and planning
+clearance. A* owns connectivity. Corridor construction owns continuous lateral
+bounds. The trajectory optimizer owns smoothness inside those bounds. Turn
+smoothing owns local corner repair. The speed profile owns scalar speed along
+the final geometry. Offboard owns the actual runtime command.
+
+When a run looks wrong, identify which contract failed before changing
+parameters. Examples:
+
+- If A* cannot find a route, inspect hard grid occupancy and start/goal
+  validity before changing trajectory weights.
+- If the trajectory is angular inside a wide corridor, inspect optimizer active
+  windows and radius penalties.
+- If the trajectory is smooth but the drone cuts a turn, inspect runtime speed,
+  lateral command, smoother lag, and actual velocity.
+- If a path disappears, inspect publication and rejection behavior before
+  assuming the planner produced no route.
+
+## Hard Safety Versus Planning Preference
+
+The current default model uses hard inflation and additional planning
+clearance. The hard inflated grid is the prohibited grid. It defines where a
+trajectory must not go. The planning-clearance band is extra caution used for
+planning. It biases route search and trajectory construction away from
+obstacles, but it should not cause a runtime replan by itself.
+
+This model lets the drone fly accurately without excessive replans. A route is
+planned with a generous margin. If the drone or controller drifts slightly
+toward the planning-clearance boundary, the system does not immediately throw
+away the path. If the trajectory crosses the hard prohibited grid, the system
+has a real reason to rebuild.
+
+The distinction must be visible in logs and RViz. If a developer cannot tell
+whether a decision came from hard prohibited space or planning clearance, the
+diagnostics are not sufficient.
+
+## Stage-By-Stage Failure Reading
+
+A useful analysis order for a failed or ugly run is:
+
+1. Confirm that raw obstacle sources are plausible in RViz.
+2. Confirm that prohibited inflation matches expected hard margin.
+3. Confirm that planning clearance does not close the route unnecessarily.
+4. Inspect A* route topology and whether the route is forced through a narrow
+   passage.
+5. Inspect corridor width and centerline blocked spans.
+6. Inspect optimizer active samples and candidate rejection reasons.
+7. Inspect turn-smoothing detected corners, attempted corners, and acceptance
+   reasons.
+8. Inspect final curvature and speed-profile constraints.
+9. Inspect offboard cross-track, normal velocity, setpoint lag, and smoother
+   limits.
+
+This order prevents tuning late-stage control parameters for an early-stage
+geometry problem, or changing planner weights for a runtime tracking problem.
+
+## Why Speed Is Built After Geometry
+
+Speed is a property of the final selected curve. It should not be used to hide
+bad geometry. If a turn has a small radius, the speed profile will reduce speed
+there, but the preferred fix is usually to increase the radius if the corridor
+allows it.
+
+Candidate selection no longer runs a full speed planner for every trajectory
+candidate. That was expensive and pushed the optimizer toward "fast" geometry
+instead of "smooth and trackable" geometry. The current approach is:
+
+- choose geometry by smoothness, radius, curvature change, and validity;
+- build one speed profile for the selected trajectory;
+- let offboard runtime speed policy and smoother execute it.
+
+This is why a final trajectory can still be color-coded by speed even though
+speed was not the primary criterion for selecting the curve.
+
+## Publication Invariants
+
+A published executable path should satisfy:
+
+- finite points and stable sample spacing;
+- start and goal anchoring appropriate for the current plan;
+- no hard prohibited intersection;
+- joins without unacceptable tangent or curvature jumps;
+- diagnostics with the same path timestamp;
+- continuity decision before replacing the accepted runtime trajectory.
+
+If a build fails, the old trajectory should remain active unless a separate
+safety condition requires hold. Publication should not use an empty path as an
+ordinary "failed optimization" signal.

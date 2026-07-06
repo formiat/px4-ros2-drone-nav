@@ -128,3 +128,143 @@ Potentially behavior-changing:
 6. Confirm whether any expensive work is diagnostics-only.
 7. Compare previous and current runs with the same map and config.
 8. Avoid optimizing a non-dominant stage first.
+
+## Optimization Principles
+
+Performance work in this project is constrained by trajectory quality and
+safety. A faster planner that produces sharper turns, worse curvature jumps, or
+more controller oscillation is not a successful optimization.
+
+Classify every optimization before implementing it:
+
+- exact optimization, expected to preserve the chosen trajectory;
+- diagnostic optimization, expected to reduce logging cost only;
+- shadow-mode optimization, not yet allowed to affect behavior;
+- behavior-changing optimization, allowed only when quality tradeoffs are
+  understood.
+
+Examples of exact optimizations include buffer reuse, exact cache hits, worker
+pool reuse, and avoiding repeated computation of diagnostics that are no longer
+used. Examples of behavior-changing optimizations include adaptive candidate
+space, top-N candidate scoring, pruning by approximate lower bounds, and
+coarse-to-fine candidate search.
+
+## Wall-Time Versus Aggregate Time
+
+Parallel candidate evaluation can make aggregate time look alarming. If 16
+workers each spend 100 ms, aggregate time can report 1600 ms while wall time is
+near 100 ms. Both numbers matter, but they answer different questions.
+
+Use wall time for mission responsiveness:
+
+- how long before a trajectory is published;
+- how long a replan blocks improvement;
+- whether a local repair target is realistic.
+
+Use aggregate time for CPU efficiency:
+
+- whether candidate scoring is doing too much repeated work;
+- whether a diagnostic is expensive across many candidates;
+- whether a cache would reduce total CPU load.
+
+## Current High-Value Targets
+
+The usual high-value planning targets are:
+
+- trajectory optimizer candidate evaluation;
+- turn smoothing candidate generation and validation;
+- grid and clearance-field construction when obstacle sources are large;
+- diagnostics that compute expensive metrics in hot loops.
+
+Before optimizing, confirm from the latest run that the target is still a
+bottleneck. This project has changed substantially: grid and speed-profile
+candidate cost were once larger issues than they are after later refactors.
+
+## Trajectory Optimizer Performance
+
+The optimizer cost is driven mainly by:
+
+- number of active samples;
+- number of offset candidates;
+- full scoring frequency;
+- collision and traversability checks;
+- curvature and radius metric evaluation;
+- worker scheduling overhead.
+
+The safest improvements are exact:
+
+- reuse worker buffers;
+- reserve candidate vectors;
+- cache exact collision checks;
+- cache exact segment geometry;
+- avoid unused speed-profile scoring for candidates;
+- keep deterministic result order in parallel evaluation.
+
+Riskier improvements should stay in shadow mode first:
+
+- adaptive candidate space;
+- lower-bound pruning;
+- local speed-profile approximation;
+- top-N full scoring.
+
+Top-N full scoring is a known cautionary example. It can reduce work but can
+also select a worse-looking trajectory if the cheap score misses the true best
+candidate.
+
+## Turn Smoothing Performance
+
+Turn smoothing becomes expensive when many candidates are generated for each
+corner or strict acceptance rules force long searches. The right goal is not to
+evaluate every possible local curve. The goal is to find a good enough local
+repair without harming global shape.
+
+Useful controls:
+
+- number of corners attempted per pass;
+- maximum candidates per corner;
+- early acceptance when a candidate clearly improves radius and curvature jump;
+- scoring valid candidates instead of hard-rejecting too many;
+- skipping speed/time computations in the hot loop when they are diagnostic
+  only.
+
+If turn smoothing takes more time but does not visibly improve trajectory
+quality, check whether it is searching for a perfect candidate after already
+finding a good one.
+
+## Grid And Clearance Performance
+
+Grid build is safety-critical and should be optimized carefully. Static map
+data is a natural cache candidate because buildings do not change during a run.
+Dynamic lidar and memory overlays change more often.
+
+A future optimized model can split:
+
+- static raw grid;
+- static inflated grid;
+- dynamic raw grid;
+- dynamic inflated grid;
+- final hard prohibited grid;
+- planning-clearance grid.
+
+The merge must be exact and invalidation must be conservative. A grid-cache bug
+can become a safety bug, so this is a medium-risk optimization even if the idea
+is straightforward.
+
+An EDT-based distance field can improve inflation and clearance reuse, but it
+can change boundary cells. It should be introduced with tests that compare
+expected prohibited cells near the radius threshold.
+
+## Local Repair Performance Target
+
+A future local repair should aim to beat full replan wall time when only a
+small future span is blocked. The realistic target is not "always under
+500 ms"; it depends on window length, grid size, and whether the repair needs
+full validation. The useful target is:
+
+- faster than full replan for small blocked spans;
+- no worse than full replan for quality;
+- never accepted without whole-trajectory validation;
+- full replan still available as fallback.
+
+Performance logs for local repair should report both local-repair time and
+full-replan time for the same trigger when they run in parallel.

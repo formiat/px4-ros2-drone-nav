@@ -125,3 +125,94 @@ Check terminal logs:
 
 Position capture should take over near the end. If it does not, check terminal
 thresholds and speed.
+
+## Drone Oscillates On A Nearly Straight Segment
+
+Check:
+
+- signed cross-track zero crossings;
+- normal velocity zero crossings;
+- desired versus smoothed normal velocity;
+- projection smoothing mode;
+- curvature feedforward context scale;
+- P gain factor near the path;
+- effective D gain factor;
+- smoother jerk limit activity.
+
+Likely causes:
+
+- local tangent noise is being followed too literally;
+- curvature feedforward is active on sign-changing micro-curvature;
+- near-path P gain is too weak or too strong;
+- D damping is insufficient at high speed;
+- smoother lag makes the command arrive late.
+
+Do not assume the published trajectory is broken only because it is slightly
+wavy. The drone should track reasonable smooth waves without visible
+left-right oscillation.
+
+## Drone Misses A Turn
+
+Separate scalar speed from velocity direction:
+
+- Was speed consistent with the turn radius?
+- Was actual normal velocity outward before the turn?
+- Did desired normal velocity point into the turn early enough?
+- Did the smoother clip setpoint rotation?
+- Did projection smoothing suppress curvature too much?
+- Did the turn radius shrink quickly over a short distance?
+
+If scalar speed was too high for the radius, inspect speed profile and
+lookahead. If scalar speed was reasonable but direction was wrong, inspect
+projection, feedforward, normal velocity, and smoother lag.
+
+## Trajectory Looks Too Angular
+
+Check:
+
+- corridor width near the angular segment;
+- optimizer active windows;
+- minimum radius and radius-shortfall cost;
+- curvature-jump cost;
+- turn-smoothing detected and attempted corners;
+- rejected smoothing candidate reasons;
+- prohibited-grid intersections for nicer candidates.
+
+If the corridor is narrow, the planner may not have space to create a large
+radius. If the corridor is wide, tune trajectory optimizer and turn-smoothing
+logic before changing runtime control.
+
+## Planning Time Regressed
+
+Check stage wall time first:
+
+- grid and clearance;
+- A*;
+- corridor;
+- trajectory optimizer;
+- turn smoothing;
+- speed profile;
+- diagnostics.
+
+Then inspect aggregate candidate timing. A wall-time regression in optimizer or
+turn smoothing often comes from too many active samples, too many candidates,
+or strict rejection rules that force long searches.
+
+If a diagnostic-only feature became expensive, disable or sample it before
+changing path selection.
+
+## New Trajectory Is Rejected
+
+Check:
+
+- candidate path validity;
+- stale pose handling;
+- projection jump;
+- tangent jump;
+- curvature jump;
+- speed-limit jump;
+- tangent-speed command jump;
+- accepted path stamp and diagnostics stamp.
+
+A rejected candidate should not delete the active trajectory. If the path
+disappears after rejection, inspect publication and fallback behavior.

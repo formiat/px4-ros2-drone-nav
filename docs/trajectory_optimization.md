@@ -114,3 +114,131 @@ Optimizer timing is visible in planner summary logs and trajectory diagnostics:
 - worker/chunk metrics.
 
 See `performance.md` for optimization guidance.
+
+## Optimization Philosophy
+
+The optimizer is now a smooth-trajectory optimizer, not a racing-line
+optimizer. The practical priority is:
+
+1. valid inside hard safety constraints;
+2. smooth enough for the drone to track;
+3. large local radius where the corridor permits it;
+4. low curvature jump at joins and transitions;
+5. reasonable path length as a secondary side effect.
+
+This philosophy matters when tuning weights. A shorter path can be worse if it
+creates small-radius turns, abrupt curvature changes, or a path that makes the
+velocity follower oscillate. The A* route and corridor already keep the path
+globally reasonable. After the corridor, the optimizer should spend its freedom
+on smoothness rather than shaving distance.
+
+## Active-Window Interpretation
+
+An active window is a promise that changing offsets in that region is worth the
+CPU cost. Activating the whole path should be rare. A long straight street with
+constant corridor asymmetry should not be treated the same as a blocked span or
+a sharp turn.
+
+Strong active-window reasons:
+
+- centerline blocked by planning or prohibited space;
+- bottleneck near the centerline;
+- large heading span;
+- local curvature or curvature-jump problem;
+- sharp corridor-width change;
+- detected blocked span from diagnostics.
+
+Weak active-window reasons:
+
+- constant asymmetry over many samples;
+- wide corridor with no meaningful heading change;
+- small width noise that does not affect available radius;
+- regions already smooth and far from obstacles.
+
+Performance analysis should always start with active sample count. If active
+samples are nearly all samples, candidate count and scoring cost will be high
+even if each candidate is individually cheap.
+
+## Candidate Lifecycle
+
+A candidate usually goes through these conceptual steps:
+
+1. choose the affected sample or window;
+2. generate an offset or local curve variation;
+3. check basic geometry and corridor bounds;
+4. check prohibited/planning-grid validity;
+5. compute smoothness metrics;
+6. compare score against the current best;
+7. record accepted or rejected diagnostics.
+
+Candidate logs should explain both invalid candidates and merely worse
+candidates. This is important when RViz shows a sharper turn than expected. The
+answer might be that the smoother candidate crossed prohibited space, that it
+joined with a large tangent jump, or that weights still preferred a tighter
+path.
+
+The useful candidate fields are:
+
+- candidate window or corner index;
+- entry and exit distances;
+- lateral shift or offset;
+- minimum radius before and after;
+- maximum curvature jump before and after;
+- hard validation result;
+- score contribution summary;
+- rejection reason.
+
+## Scoring Terms
+
+Radius shortfall penalizes turns below the preferred minimum radius. It is the
+most direct way to tell the optimizer that visually tight turns are undesirable
+even if they are valid.
+
+Curvature cost penalizes high curvature in general. It discourages tight arcs,
+but it does not by itself guarantee smooth transitions.
+
+Curvature-change cost penalizes sudden steering changes between neighboring
+samples. This helps avoid shapes that have a large radius in the middle but a
+sharp entry or exit.
+
+Offset-change and second-change costs keep the chosen lateral offset from
+zigzagging inside the corridor. They are especially useful when the corridor is
+wide and many offset choices are valid.
+
+Length is still measured because it is useful geometry, but it should not be a
+dominant post-corridor cost. The project values a longer smooth curve over a
+shorter angular one.
+
+## Turn Smoothing Diagnostics
+
+Turn smoothing should answer:
+
+- How many problematic corners were detected?
+- Which corner was attempted first?
+- Did it try the next worst corner if the first one had no acceptable repair?
+- How many candidates were built?
+- Which candidates were hard-rejected?
+- Which candidates were valid but worse?
+- Which accepted candidate improved local radius or curvature jump?
+
+If turn smoothing becomes expensive, the first fix is usually not to make it
+stricter. A strict rejection rule can make it search many more candidates for a
+small visual improvement. Prefer scoring valid candidates by smoothness and
+accepting a good-enough improvement over spending seconds searching for a
+perfect local curve.
+
+## Safe Performance Work
+
+Exact optimizations are preferred:
+
+- reserve and reuse buffers;
+- cache exact collision checks;
+- cache exact segment geometry where inputs match;
+- reuse clearance fields built from the same grid;
+- avoid computing diagnostics that no longer affect scoring.
+
+Behavior-changing optimizations must be introduced with shadow metrics first.
+Examples include adaptive candidate spaces, lower-bound pruning, local speed
+profile recompute, and top-N full scoring. Previous experiments showed that an
+optimization can improve timing but degrade smoothness, so winner mismatch and
+trajectory-quality checks are part of the optimization contract.
