@@ -52,8 +52,8 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
 - Known passage geometry/matching: `known_passage_validation.hpp/cpp`, новый shared matcher.
 - Planner integration: `trajectory_planner.hpp/cpp`, `planner_node_config.cpp`, `urban_mvp.yaml`.
 - Speed profile: `trajectory_speed_planner.hpp/cpp`, speed diagnostics.
-- Offboard runtime altitude following: `px4_offboard_node_control.cpp`, возможно node state/diagnostics headers.
-- Diagnostics/dumps: `trajectory_diagnostics_io_*`, `final_trajectory_debug_io.cpp`, blackbox/offboard trajectory stats.
+- Offboard runtime altitude following: `px4_offboard_node_control.cpp`, `px4_offboard_node_telemetry.cpp`, node state/diagnostics fields.
+- Diagnostics/dumps: `trajectory_diagnostics_io_*`, `final_trajectory_debug_io.cpp`, `offboard_blackbox.hpp/cpp`, blackbox/offboard trajectory stats.
 - RViz markers: `trajectory_debug_markers.cpp`.
 - Tests: `known_passage_validation_test.cpp`, новый `trajectory_vertical_profile_test.cpp`, `trajectory_speed_planner_test.cpp`, `trajectory_planner_test.cpp`, `offboard_velocity_follower`/node-state tests, diagnostics roundtrip/json/csv tests, config tests.
 
@@ -292,7 +292,10 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
 
 8. Переключить offboard vertical target на trajectory altitude.
 
-   Файл: `px4_offboard_node_control.cpp`.
+   Файлы:
+   - `drone_city_nav/src/px4_offboard_node_control.cpp`
+   - `drone_city_nav/src/px4_offboard_node_telemetry.cpp`
+   - node header/state fields, если новые `last_*` поля потребуются для telemetry/blackbox.
 
    Текущий якорь: `verticalVelocitySetpointNed()` держит `cruise_altitude_m_`.
 
@@ -324,6 +327,11 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
    - `altitude_error_m`;
    - `vertical_velocity_setpoint_mps`.
 
+   Эти значения должны быть сохранены как runtime state, доступный обычной headless telemetry, а не остаться локальными переменными внутри control path. Конкретный результат:
+   - `logTelemetry()` в `px4_offboard_node_telemetry.cpp` печатает `altitude[target=... trajectory_target_valid=... error=... vz_setpoint=...]`;
+   - `writeFlightBlackbox()` передаёт те же значения в `OffboardBlackboxRecord`;
+   - при invalid/non-finite trajectory altitude target логируется `trajectory_altitude_target_valid=false`, `target_altitude_m=cruise_altitude_m_`, и fallback явно виден в telemetry/blackbox.
+
    Terminal position capture остаётся как сейчас: у финиша position setpoint владеет режимом стабилизации.
 
 9. Добавить dumps/logs для vertical profile.
@@ -335,6 +343,10 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
    - `trajectory_diagnostics_io_json_fields.cpp`
    - `trajectory_diagnostics_io_parser.cpp`
    - `px4_offboard_node_trajectory.cpp`
+   - `px4_offboard_node_telemetry.cpp`
+   - `offboard_blackbox.hpp`
+   - `offboard_blackbox.cpp`
+   - `offboard_blackbox_test.cpp`
 
    CSV `final_trajectory_samples` расширить колонками:
 
@@ -355,6 +367,19 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
    ```
 
    JSON summary добавить top-level поля `vertical_profile_*` и diagnostic array/count по passages.
+
+   Headless runtime blackbox contract расширить явными altitude-control полями:
+
+   ```json
+   "altitude_control": {
+     "target_altitude_m": 12.5,
+     "trajectory_altitude_target_valid": true,
+     "altitude_error_m": -0.4,
+     "vertical_velocity_setpoint_mps": 0.8
+   }
+   ```
+
+   Если implementation решит не добавлять отдельный object, допустимы поля внутри существующего `velocity_command`, но contract должен быть явным и покрытым `offboard_blackbox_test.cpp`. Главное требование: по `log/offboard_blackbox.jsonl` должно быть понятно, следовал ли controller `z(s)` или fallback-нул на cruise altitude.
 
 10. Добавить RViz altitude/profile markers.
 
@@ -416,12 +441,25 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
       - path message z survives sample retention.
 
     - `offboard_velocity_follower` or node-level test
-      - vertical target uses trajectory altitude at projection s, fallback to cruise altitude if invalid.
+      - vertical target uses trajectory altitude at projection s;
+      - fallback to `cruise_altitude_m` when trajectory altitude target is invalid/non-finite;
+      - fallback exposes `trajectory_altitude_target_valid=false` in diagnostic state.
 
     - diagnostics tests:
       - CSV header/row include vertical fields;
       - JSON fields contain vertical stats;
       - parser roundtrip preserves vertical stats.
+
+    - `offboard_blackbox_test.cpp`
+      - blackbox JSON contains `target_altitude_m`;
+      - blackbox JSON contains `trajectory_altitude_target_valid`;
+      - blackbox JSON contains `altitude_error_m`;
+      - blackbox JSON contains `vertical_velocity_setpoint_mps`;
+      - fallback case serializes cruise target and invalid trajectory target flag.
+
+    - telemetry/headless diagnostics contract
+      - helper or node-level test verifies telemetry state fields are populated before `writeFlightBlackbox()`;
+      - log format includes target altitude and validity flag, so headless run can distinguish `trajectory z(s)` following from cruise-altitude fallback.
 
     - config tests:
       - YAML/default params load;
@@ -453,17 +491,24 @@ final XY samples -> vertical profile z(s) -> speed profile with vertical caps
 4. Script-level tests:
 
    ```bash
+   ./scripts/dev_shell.sh
+   make test-scripts
+   ```
+
+5. Full package tests:
+
+   ```bash
    ./scripts/test.sh
    ```
 
-5. Quality gate before commit:
+6. Quality gate before commit:
 
    ```bash
    ./scripts/dev_shell.sh
    make quality
    ```
 
-6. Optional integration validation after implementation:
+7. Optional integration validation after implementation:
 
    ```bash
    ./scripts/sim_headless.sh
