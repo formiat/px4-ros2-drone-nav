@@ -235,6 +235,39 @@ TEST(TrajectorySpeedPlanner, TopConstraintsAreUniqueAndFlagIsolatedSpikes) {
   EXPECT_NEAR(constraints[1].speed_limit_mps, 8.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, VerticalProfileCapsSpeedAndTopConstraintSource) {
+  VelocityFollowerConfig config = testConfig();
+  config.cruise_speed_mps = 20.0;
+  config.min_turn_speed_mps = 2.0;
+  config.vertical_profile_max_vertical_speed_mps = 2.0;
+  config.vertical_profile_max_vertical_accel_mps2 = 100.0;
+  config.vertical_profile_max_vertical_jerk_mps3 = 1000.0;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 5U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.z_m = static_cast<double>(i) * 5.0;
+    samples.push_back(sample);
+  }
+
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  ASSERT_TRUE(profile.valid);
+  const TrajectorySpeedSample ramp = speedProfileSampleAtS(profile, 10.0);
+  EXPECT_EQ(ramp.reason, SpeedConstraintType::kVerticalProfile);
+  EXPECT_NEAR(ramp.geometric_limit_mps, 2.0, 1.0e-9);
+  EXPECT_NEAR(ramp.vertical_slope_dz_ds, 1.0, 1.0e-9);
+
+  const std::vector<SpeedProfileConstraintDiagnostic> constraints =
+      topSpeedProfileConstraints(profile, 3U);
+  ASSERT_FALSE(constraints.empty());
+  EXPECT_EQ(constraints.front().source, SpeedConstraintType::kVerticalProfile);
+  EXPECT_NEAR(constraints.front().speed_limit_mps, 2.0, 1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, SpeedProfileSampleInterpolatesBetweenSamples) {
   const TrajectorySpeedSample sample = speedProfileSampleAtS(simpleProfile(), 4.0);
 

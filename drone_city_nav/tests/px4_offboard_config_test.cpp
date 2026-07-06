@@ -81,6 +81,16 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("known_passage_validation_max_diagnostics: 8"),
             std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_speed_mps: 2.5"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_accel_mps2: 2.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_jerk_mps3: 6.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_climb_angle_deg: 12.0"), std::string::npos);
   EXPECT_NE(yaml.find("known_passage_markers_topic: "
                       "/drone_city_nav/known_passage_markers"),
             std::string::npos);

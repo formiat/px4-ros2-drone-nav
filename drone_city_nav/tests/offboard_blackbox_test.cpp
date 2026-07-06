@@ -114,6 +114,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.smoother_lateral_response_accel_mps2 = 3.125;
   record.velocity_smoother_reset_reason = "path_update";
   record.path_update_velocity_smoother_reset_count = 3U;
+  record.target_altitude_m = 11.5;
+  record.trajectory_altitude_target_valid = true;
   record.last_altitude_error_m = 0.2;
   record.trajectory_valid = true;
   record.trajectory_metrics.length_m = 100.0;
@@ -353,6 +355,9 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"attitude\":{\"valid\":true");
   expectJsonField(json, "\"velocity\":{\"valid\":true");
   expectJsonField(json, "\"target\":{\"x\":10");
+  expectJsonField(json, "\"altitude_control\":{\"target_altitude_m\":11.5");
+  expectJsonField(json, "\"trajectory_altitude_target_valid\":true");
+  expectJsonField(json, "\"vertical_velocity_setpoint_mps\":-0.5");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");
   expectJsonField(json, "\"control_tangent_smoothed\":true");
   expectJsonField(json, "\"control_projection_smoothing_mode\":\"curve\"");
@@ -394,6 +399,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"setpoint_to_actual_normal_error_mps\":-0.1");
   expectJsonField(json, "\"desired_to_actual_tangent_error_mps\":0.6");
   expectJsonField(json, "\"desired_to_actual_normal_error_mps\":-0.4");
+  expectJsonField(json, "\"target_altitude_m\":11.5");
   expectJsonField(json, "\"trajectory_segment_type\":\"arc\"");
   expectJsonField(json, "\"trajectory_planner_status\":\"none\"");
   expectJsonField(json, "\"trajectory_quality\":\"refined\"");

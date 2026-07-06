@@ -69,7 +69,9 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
 
 void finalizeResult(TrajectoryPlannerResult& result,
                     const TrajectoryPlannerConfig& config) {
-  assignTrajectorySampleAltitude(result.samples, config.default_altitude_m);
+  if (!result.stats.vertical_profile.applied) {
+    assignTrajectorySampleAltitude(result.samples, config.default_altitude_m);
+  }
   const TrajectoryMetrics metrics = trajectoryMetrics(result.compact_segments);
   result.stats.compact_segments = result.compact_segments.size();
   result.stats.line_segments = metrics.line_segments;
@@ -86,10 +88,26 @@ void finalizeResult(TrajectoryPlannerResult& result,
   computeSpeedProfileStats(result.speed_profile, result.stats);
   result.valid = trajectoryIsUsable(result.compact_segments) &&
                  trajectorySamplesAreUsable(result.samples) &&
-                 result.speed_profile.valid;
+                 result.speed_profile.valid && result.stats.vertical_profile.valid;
   if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
   }
+}
+
+bool applyVerticalProfileStage(TrajectoryPlannerResult& result,
+                               const TrajectoryPlannerInput& input,
+                               const TrajectoryPlannerConfig& config) {
+  const VerticalProfileResult vertical_profile = applyVerticalProfile(
+      result.samples, input.known_passage_map, config.known_passage_validation,
+      config.vertical_profile, config.default_altitude_m);
+  result.stats.vertical_profile = vertical_profile.stats;
+  result.stats.known_passage_validation = validateKnownPassageTraversal(
+      result.samples, input.known_passage_map, config.known_passage_validation);
+  if (!vertical_profile.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    return false;
+  }
+  return true;
 }
 
 void populateCorridorReuseStats(const std::span<const CorridorSample> samples,
@@ -379,6 +397,10 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
     return result;
   }
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
+  if (!applyVerticalProfileStage(result, input, config)) {
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   result.speed_profile =
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
@@ -502,6 +524,10 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     return result;
   }
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
+  if (!applyVerticalProfileStage(result, input, config)) {
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   result.speed_profile =
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
@@ -518,6 +544,7 @@ TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
     const bool prohibited_clearance_field_cache_hit,
     const std::span<const CorridorSample> precomputed_corridor_samples,
     const CorridorStats* precomputed_corridor_stats,
+    const KnownPassageMap* const known_passage_map,
     const TrajectoryPlannerConfig& config) {
   return planOptimizedTrajectory(
       TrajectoryPlannerInput{
@@ -527,6 +554,7 @@ TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
           prohibited_clearance_field_cache_hit,
           precomputed_corridor_samples,
           precomputed_corridor_stats,
+          known_passage_map,
       },
       config);
 }

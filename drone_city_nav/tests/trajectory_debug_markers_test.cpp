@@ -47,27 +47,32 @@ TEST(TrajectoryDebugMarkers, BuildsSpeedAndCurvatureColorMaps) {
   const visualization_msgs::msg::MarkerArray markers =
       buildTrajectoryDebugMarkers(testHeader(), testSamples(), testProfile());
 
-  ASSERT_EQ(markers.markers.size(), 2U);
+  ASSERT_EQ(markers.markers.size(), 3U);
   EXPECT_EQ(markers.markers[0].ns, "final_trajectory_speed_colormap");
   EXPECT_EQ(markers.markers[1].ns, "final_trajectory_curvature_colormap");
+  EXPECT_EQ(markers.markers[2].ns, "final_trajectory_altitude_colormap");
   EXPECT_EQ(markers.markers[0].type, visualization_msgs::msg::Marker::LINE_LIST);
   EXPECT_EQ(markers.markers[0].action, visualization_msgs::msg::Marker::ADD);
   EXPECT_EQ(markers.markers[0].points.size(), 4U);
   EXPECT_EQ(markers.markers[0].colors.size(), markers.markers[0].points.size());
   EXPECT_EQ(markers.markers[1].colors.size(), markers.markers[1].points.size());
+  EXPECT_EQ(markers.markers[2].colors.size(), markers.markers[2].points.size());
   EXPECT_DOUBLE_EQ(markers.markers[0].points[0].z, 10.04);
   EXPECT_DOUBLE_EQ(markers.markers[0].points[1].z, 11.04);
   EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, 10.08);
   EXPECT_DOUBLE_EQ(markers.markers[1].points[1].z, 11.08);
+  EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, 10.12);
+  EXPECT_DOUBLE_EQ(markers.markers[2].points[1].z, 11.12);
 }
 
 TEST(TrajectoryDebugMarkers, EmptyTrajectoryDeletesPreviousMarkers) {
   const visualization_msgs::msg::MarkerArray markers =
       buildTrajectoryDebugMarkers(testHeader(), {}, TrajectorySpeedProfile{});
 
-  ASSERT_EQ(markers.markers.size(), 2U);
+  ASSERT_EQ(markers.markers.size(), 3U);
   EXPECT_EQ(markers.markers[0].action, visualization_msgs::msg::Marker::DELETE);
   EXPECT_EQ(markers.markers[1].action, visualization_msgs::msg::Marker::DELETE);
+  EXPECT_EQ(markers.markers[2].action, visualization_msgs::msg::Marker::DELETE);
 }
 
 } // namespace drone_city_nav

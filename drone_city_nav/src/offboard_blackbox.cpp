@@ -89,6 +89,15 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"command\":{\"yaw_rad\":";
   writeBlackboxJsonNumberOrNull(stream, record.last_commanded_yaw_rad);
   stream << "}";
+  stream << ",\"altitude_control\":{\"target_altitude_m\":";
+  writeBlackboxJsonNumberOrNull(stream, record.target_altitude_m);
+  stream << ",\"trajectory_altitude_target_valid\":";
+  writeBlackboxJsonBool(stream, record.trajectory_altitude_target_valid);
+  stream << ",\"altitude_error_m\":";
+  writeBlackboxJsonNumberOrNull(stream, record.last_altitude_error_m);
+  stream << ",\"vertical_velocity_setpoint_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, record.last_vertical_velocity_setpoint_mps);
+  stream << "}";
 
   stream << ",\"velocity_command\":{\"control_mode\":\"" << record.control_mode
          << "\",\"setpoint_x\":";
@@ -321,6 +330,10 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.trajectory_cross_track_error_m);
   stream << ",\"altitude_error_m\":";
   writeBlackboxJsonNumberOrNull(stream, record.last_altitude_error_m);
+  stream << ",\"target_altitude_m\":";
+  writeBlackboxJsonNumberOrNull(stream, record.target_altitude_m);
+  stream << ",\"trajectory_altitude_target_valid\":";
+  writeBlackboxJsonBool(stream, record.trajectory_altitude_target_valid);
   stream << ",\"path_tangent_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.path_tangent.x);
   stream << ",\"path_tangent_y\":";

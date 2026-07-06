@@ -14,6 +14,7 @@ namespace drone_city_nav {
 enum class SpeedConstraintType {
   kNone,
   kArc,
+  kVerticalProfile,
   kGoal,
 };
 
@@ -27,6 +28,10 @@ struct TrajectorySpeedSample {
   double radius_m{std::numeric_limits<double>::quiet_NaN()};
   double constraint_s_m{std::numeric_limits<double>::quiet_NaN()};
   double constraint_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_slope_dz_ds{0.0};
+  double vertical_accel_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_jerk_limit_mps{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct TrajectorySpeedProfile {
@@ -93,6 +98,10 @@ buildTrajectorySpeedProfile(std::span<const TrajectorySegment> trajectory,
 [[nodiscard]] TrajectorySpeedProfile
 buildTrajectorySpeedProfile(std::span<const TrajectoryPointSample> trajectory_samples,
                             const VelocityFollowerConfig& config);
+
+void populateTrajectoryVerticalSpeedConstraints(
+    std::span<TrajectoryPointSample> trajectory_samples,
+    const VelocityFollowerConfig& config);
 
 [[nodiscard]] TrajectorySpeedSample
 speedProfileSampleAtS(const TrajectorySpeedProfile& profile, double s_m);

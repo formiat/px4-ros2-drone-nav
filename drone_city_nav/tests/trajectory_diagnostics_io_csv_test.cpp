@@ -15,6 +15,9 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   sample.left_bound_m = 3.0;
   sample.right_bound_m = 4.0;
   sample.lateral_offset_m = -0.5;
+  sample.vertical_slope_dz_ds = 0.2;
+  sample.vertical_constraint_active = true;
+  sample.vertical_profile_passage_id = "window_01";
 
   TrajectorySpeedSample speed_sample{};
   speed_sample.geometric_limit_mps = 8.0;
@@ -22,6 +25,9 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   speed_sample.reason = SpeedConstraintType::kArc;
   speed_sample.constraint_s_m = 5.0;
   speed_sample.constraint_limit_mps = 4.0;
+  speed_sample.vertical_speed_limit_mps = 10.0;
+  speed_sample.vertical_accel_limit_mps = 9.0;
+  speed_sample.vertical_jerk_limit_mps = 8.0;
 
   const std::string header = finalTrajectorySamplesCsvHeader();
   const std::string row =
@@ -34,6 +40,12 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
                                 "y",
                                 "z_m",
                                 "curvature_1pm",
+                                "vertical_slope_dz_ds",
+                                "vertical_speed_limit_mps",
+                                "vertical_accel_limit_mps",
+                                "vertical_jerk_limit_mps",
+                                "vertical_constraint_active",
+                                "vertical_profile_passage_id",
                                 "speed_geometric_limit_mps",
                                 "speed_profiled_limit_mps",
                                 "speed_reason",
@@ -45,6 +57,8 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
                             });
   EXPECT_NE(row.find("arc"), std::string::npos);
   EXPECT_NE(row.find("18"), std::string::npos);
+  EXPECT_NE(row.find("window_01"), std::string::npos);
+  EXPECT_NE(row.find("true"), std::string::npos);
   EXPECT_NE(row.find("1.25"), std::string::npos);
   EXPECT_NE(row.find("3.5"), std::string::npos);
   EXPECT_EQ(row.find("nan"), std::string::npos);

@@ -127,7 +127,8 @@ void Px4OffboardNode::logTelemetry() {
       "desired_to_actual_tangent=%.2f desired_to_actual_normal=%.2f] "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
-      "altitude_error=%.2f tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
+      "altitude[target=%.2f trajectory_target_valid=%s error=%.2f "
+      "vz_setpoint=%.2f] tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
       "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
       "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
       "status=%.*s corridor_width_min=%.2f lateral_offset_max=%.2f] "
@@ -229,11 +230,12 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_altitude_error_m_,
-      last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
-      last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
-      trajectory_valid_ ? "true" : "false", last_velocity_plan_.trajectory_s_m,
-      last_velocity_plan_.trajectory_segment_index,
+      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_target_altitude_m_,
+      last_trajectory_altitude_target_valid_ ? "true" : "false", last_altitude_error_m_,
+      last_vertical_velocity_setpoint_mps_, last_velocity_plan_.path_tangent.x,
+      last_velocity_plan_.path_tangent.y, last_velocity_plan_.projection.x,
+      last_velocity_plan_.projection.y, trajectory_valid_ ? "true" : "false",
+      last_velocity_plan_.trajectory_s_m, last_velocity_plan_.trajectory_segment_index,
       trajectorySegmentKindName(last_velocity_plan_.trajectory_segment_kind),
       last_velocity_plan_.trajectory_curvature_1pm,
       last_velocity_plan_.trajectory_arc_radius_m,
@@ -311,6 +313,8 @@ void Px4OffboardNode::writeFlightBlackbox(
       last_velocity_plan_,
       last_velocity_smoother_reset_reason_,
       path_update_velocity_smoother_reset_count_,
+      last_target_altitude_m_,
+      last_trajectory_altitude_target_valid_,
       last_altitude_error_m_,
       trajectory_valid_,
       last_trajectory_metrics_,

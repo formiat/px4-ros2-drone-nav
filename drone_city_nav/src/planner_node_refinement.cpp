@@ -47,6 +47,7 @@ void PlannerNode::startAsyncTrajectoryRefinement(
       .prohibited_clearance_field_cache_hit = prohibited_clearance_field_cache_hit,
       .corridor_samples = baseline.corridor_samples,
       .corridor_stats = baseline.stats.corridor,
+      .known_passages = known_passages_,
       .config = trajectory_planner_config_};
   if (schedule.action == TrajectoryRefinementScheduleAction::kQueuedLatest ||
       schedule.action == TrajectoryRefinementScheduleAction::kReplacedQueuedLatest) {
@@ -81,7 +82,9 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
        clearance_field = std::move(request.prohibited_clearance_field),
        clearance_cache_hit = request.prohibited_clearance_field_cache_hit,
        corridor_samples = std::move(request.corridor_samples),
-       corridor_stats = request.corridor_stats, config = request.config]() mutable {
+       corridor_stats = request.corridor_stats,
+       known_passages = std::move(request.known_passages),
+       config = request.config]() mutable {
         const ClearanceField2D* clearance_field_ptr =
             clearance_field.has_value() ? &*clearance_field : nullptr;
         const CorridorStats* corridor_stats_ptr =
@@ -91,7 +94,8 @@ void PlannerNode::launchScheduledTrajectoryRefinement(
             clearance_field_ptr, clearance_cache_hit,
             std::span<const CorridorSample>{corridor_samples.data(),
                                             corridor_samples.size()},
-            corridor_stats_ptr, config);
+            corridor_stats_ptr, known_passages.has_value() ? &*known_passages : nullptr,
+            config);
         refined.stats.quality = TrajectoryQuality::kRefined;
         refined.stats.trajectory_optimizer.async_refined = true;
         return refined;

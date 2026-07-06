@@ -67,6 +67,18 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
+  EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
+                   0.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
+                   2.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_accel_mps2,
+                   2.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_jerk_mps3,
+                   6.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
+      2.5);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.known_passage_markers,
             "/drone_city_nav/known_passage_markers");
@@ -260,6 +272,15 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", 1.25},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 0.75},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 3},
+       rclcpp::Parameter{"vertical_profile_enabled", false},
+       rclcpp::Parameter{"vertical_profile_gate_clearance_margin_m", 0.8},
+       rclcpp::Parameter{"vertical_profile_max_vertical_speed_mps", 3.5},
+       rclcpp::Parameter{"vertical_profile_max_vertical_accel_mps2", 2.75},
+       rclcpp::Parameter{"vertical_profile_max_vertical_jerk_mps3", 9.0},
+       rclcpp::Parameter{"vertical_profile_max_climb_angle_deg", 15.0},
+       rclcpp::Parameter{"vertical_profile_min_transition_distance_m", 12.0},
+       rclcpp::Parameter{"vertical_profile_max_transition_distance_m", 55.0},
+       rclcpp::Parameter{"vertical_profile_max_diagnostics", 4},
        rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
        rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
@@ -304,6 +325,25 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 1.25);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.75);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 3U);
+  EXPECT_FALSE(config.trajectory_planner.vertical_profile.enabled);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
+                   0.8);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
+                   3.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_accel_mps2,
+                   2.75);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_jerk_mps3,
+                   9.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_climb_angle_rad,
+                   15.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.min_transition_distance_m,
+                   12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_transition_distance_m,
+                   55.0);
+  EXPECT_EQ(config.trajectory_planner.vertical_profile.max_diagnostics, 4U);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
+      3.5);
   EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);

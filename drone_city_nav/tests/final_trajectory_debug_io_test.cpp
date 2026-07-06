@@ -12,8 +12,14 @@ namespace {
 
 TEST(FinalTrajectoryDebugIoTest, WritesSamplesCsvWithProfiledTimes) {
   std::vector<TrajectoryPointSample> samples{
-      TrajectoryPointSample{.s_m = 0.0, .point = Point2{1.0, 2.0}, .z_m = 18.0},
-      TrajectoryPointSample{.s_m = 2.0, .point = Point2{3.0, 2.0}, .z_m = 19.0},
+      TrajectoryPointSample{.s_m = 0.0,
+                            .point = Point2{1.0, 2.0},
+                            .z_m = 18.0,
+                            .vertical_profile_passage_id = ""},
+      TrajectoryPointSample{.s_m = 2.0,
+                            .point = Point2{3.0, 2.0},
+                            .z_m = 19.0,
+                            .vertical_profile_passage_id = ""},
   };
   TrajectorySpeedProfile speed_profile;
   speed_profile.valid = true;
@@ -70,9 +76,11 @@ TEST(FinalTrajectoryDebugIoTest, WritesSummaryJsonWithShapeFields) {
 
 TEST(FinalTrajectoryDebugIoTest, HandlesInvalidStationingWithoutThrowing) {
   std::vector<TrajectoryPointSample> samples{
-      TrajectoryPointSample{.s_m = 0.0, .point = Point2{0.0, 0.0}},
+      TrajectoryPointSample{
+          .s_m = 0.0, .point = Point2{0.0, 0.0}, .vertical_profile_passage_id = ""},
       TrajectoryPointSample{.s_m = std::numeric_limits<double>::quiet_NaN(),
-                            .point = Point2{0.0, 0.0}},
+                            .point = Point2{0.0, 0.0},
+                            .vertical_profile_passage_id = ""},
   };
   TrajectorySpeedProfile speed_profile;
   speed_profile.valid = true;

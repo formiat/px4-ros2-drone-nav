@@ -122,6 +122,7 @@ private:
     bool prohibited_clearance_field_cache_hit{false};
     std::vector<CorridorSample> corridor_samples;
     CorridorStats corridor_stats{};
+    std::optional<KnownPassageMap> known_passages;
     TrajectoryPlannerConfig config;
   };
 

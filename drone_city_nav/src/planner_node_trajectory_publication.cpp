@@ -169,7 +169,8 @@ bool PlannerNode::publishPathFromPathCells(
       route_clearance_field,
       route_clearance_field_cache_hit,
       std::span<const CorridorSample>{},
-      nullptr};
+      nullptr,
+      known_passages_ ? &*known_passages_ : nullptr};
   const bool async_refinement_enabled =
       trajectory_planner_config_.trajectory_optimizer.async_refinement_workers > 0U;
   TrajectoryPlannerResult trajectory_result =
@@ -279,9 +280,7 @@ bool PlannerNode::publishTrajectoryResult(
     return false;
   }
 
-  stats.known_passage_validation = validateKnownPassageTraversal(
-      trajectory_result.samples, known_passages_ ? &*known_passages_ : nullptr,
-      known_passage_validation_config_);
+  stats.known_passage_validation = trajectory_result.stats.known_passage_validation;
   const KnownPassageValidationSummary& passage_validation =
       stats.known_passage_validation;
   const KnownPassageValidationSpan* first_passage_diagnostic =
@@ -415,6 +414,9 @@ bool PlannerNode::publishTrajectoryResult(
       "intersected=%zu matches=%zu violations=%zu reason=%s "
       "first(structure=%s opening=%s s=[%.2f,%.2f] overlap=%.2f "
       "clearance=%.2f reason=%s)] "
+      "vertical_profile[enabled=%s active=%s applied=%s valid=%s "
+      "matched=%zu profiled=%zu infeasible=%zu z=[%.2f,%.2f] "
+      "max_slope=%.4f min_cap=%.2f] "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu "
       "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
       "limit=%.2f source=%s isolated=%s) "
@@ -603,12 +605,19 @@ bool PlannerNode::publishTrajectoryResult(
       knownPassageValidationReasonName(passage_validation.worst_reason),
       first_passage_structure, first_passage_opening, first_passage_entry_s,
       first_passage_exit_s, first_passage_overlap, first_passage_clearance,
-      first_passage_reason, stats.speed_profile_min_mps, stats.speed_profile_mean_mps,
-      stats.speed_profile_max_mps, stats.speed_profile_curvature_limited_samples,
-      stats.top_speed_constraints.size(), top_speed_constraint_s,
-      top_speed_constraint_radius, top_speed_constraint_curvature,
-      top_speed_constraint_limit, top_speed_constraint_source,
-      top_speed_constraint_isolated ? "true" : "false",
+      first_passage_reason, stats.vertical_profile.enabled ? "true" : "false",
+      stats.vertical_profile.active ? "true" : "false",
+      stats.vertical_profile.applied ? "true" : "false",
+      stats.vertical_profile.valid ? "true" : "false",
+      stats.vertical_profile.passages_matched, stats.vertical_profile.passages_profiled,
+      stats.vertical_profile.infeasible_count, stats.vertical_profile.min_z_m,
+      stats.vertical_profile.max_z_m, stats.vertical_profile.max_abs_dz_ds,
+      stats.vertical_profile.min_vertical_speed_cap_mps, stats.speed_profile_min_mps,
+      stats.speed_profile_mean_mps, stats.speed_profile_max_mps,
+      stats.speed_profile_curvature_limited_samples, stats.top_speed_constraints.size(),
+      top_speed_constraint_s, top_speed_constraint_radius,
+      top_speed_constraint_curvature, top_speed_constraint_limit,
+      top_speed_constraint_source, top_speed_constraint_isolated ? "true" : "false",
       stats.isolated_curvature_spike_candidates,
       stats.isolated_curvature_spikes_smoothed_geometry,
       stats.isolated_curvature_spike_max_before_1pm,

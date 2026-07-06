@@ -143,9 +143,29 @@ geometricSpeedSampleFromPointSample(const TrajectoryPointSample& point_sample,
         std::clamp(std::sqrt(turn_speed_lateral_accel * sample.radius_m),
                    min_turn_speed, cruise_speed);
   }
+  sample.vertical_speed_limit_mps = point_sample.vertical_speed_limit_mps;
+  sample.vertical_slope_dz_ds = point_sample.vertical_slope_dz_ds;
+  sample.vertical_accel_limit_mps = point_sample.vertical_accel_limit_mps;
+  sample.vertical_jerk_limit_mps = point_sample.vertical_jerk_limit_mps;
+  double vertical_limit = cruise_speed;
+  if (std::isfinite(point_sample.vertical_speed_limit_mps)) {
+    vertical_limit = std::min(vertical_limit, point_sample.vertical_speed_limit_mps);
+  }
+  if (std::isfinite(point_sample.vertical_accel_limit_mps)) {
+    vertical_limit = std::min(vertical_limit, point_sample.vertical_accel_limit_mps);
+  }
+  if (std::isfinite(point_sample.vertical_jerk_limit_mps)) {
+    vertical_limit = std::min(vertical_limit, point_sample.vertical_jerk_limit_mps);
+  }
+  if (point_sample.vertical_constraint_active &&
+      vertical_limit + 1.0e-9 < sample.geometric_limit_mps) {
+    sample.reason = SpeedConstraintType::kVerticalProfile;
+    sample.geometric_limit_mps = std::clamp(vertical_limit, 0.0, cruise_speed);
+  }
   sample.profiled_limit_mps = sample.geometric_limit_mps;
   sample.constraint_s_m = sample.s_m;
   sample.constraint_limit_mps = sample.geometric_limit_mps;
+  (void)min_turn_speed;
   return sample;
 }
 
@@ -167,6 +187,10 @@ void mergeSpeedSample(std::vector<TrajectorySpeedSample>& samples,
     existing.radius_m = candidate.radius_m;
     existing.constraint_s_m = candidate.constraint_s_m;
     existing.constraint_limit_mps = candidate.constraint_limit_mps;
+    existing.vertical_speed_limit_mps = candidate.vertical_speed_limit_mps;
+    existing.vertical_slope_dz_ds = candidate.vertical_slope_dz_ds;
+    existing.vertical_accel_limit_mps = candidate.vertical_accel_limit_mps;
+    existing.vertical_jerk_limit_mps = candidate.vertical_jerk_limit_mps;
   }
 }
 
@@ -222,6 +246,15 @@ interpolateProfileSample(const TrajectorySpeedSample& start,
       interpolateSpeed(start.profiled_limit_mps, end.profiled_limit_mps, ratio);
   sample.curvature_1pm =
       start.curvature_1pm + (end.curvature_1pm - start.curvature_1pm) * ratio;
+  sample.vertical_slope_dz_ds =
+      start.vertical_slope_dz_ds +
+      (end.vertical_slope_dz_ds - start.vertical_slope_dz_ds) * ratio;
+  sample.vertical_speed_limit_mps = interpolateSpeed(
+      start.vertical_speed_limit_mps, end.vertical_speed_limit_mps, ratio);
+  sample.vertical_accel_limit_mps = interpolateSpeed(
+      start.vertical_accel_limit_mps, end.vertical_accel_limit_mps, ratio);
+  sample.vertical_jerk_limit_mps = interpolateSpeed(start.vertical_jerk_limit_mps,
+                                                    end.vertical_jerk_limit_mps, ratio);
   sample.radius_m = std::abs(sample.curvature_1pm) > kTinyDistanceM
                         ? 1.0 / std::abs(sample.curvature_1pm)
                         : std::numeric_limits<double>::quiet_NaN();
@@ -253,6 +286,14 @@ void finalizeSpeedProfile(TrajectorySpeedProfile& profile,
       profile.samples[i - 1U].constraint_s_m = profile.samples[i].constraint_s_m;
       profile.samples[i - 1U].constraint_limit_mps =
           profile.samples[i].constraint_limit_mps;
+      profile.samples[i - 1U].vertical_speed_limit_mps =
+          profile.samples[i].vertical_speed_limit_mps;
+      profile.samples[i - 1U].vertical_slope_dz_ds =
+          profile.samples[i].vertical_slope_dz_ds;
+      profile.samples[i - 1U].vertical_accel_limit_mps =
+          profile.samples[i].vertical_accel_limit_mps;
+      profile.samples[i - 1U].vertical_jerk_limit_mps =
+          profile.samples[i].vertical_jerk_limit_mps;
     }
   }
 
@@ -337,10 +378,73 @@ speedConstraintTypeName(const SpeedConstraintType constraint_type) noexcept {
       return "none";
     case SpeedConstraintType::kArc:
       return "arc";
+    case SpeedConstraintType::kVerticalProfile:
+      return "vertical_profile";
     case SpeedConstraintType::kGoal:
       return "goal";
   }
   return "unknown";
+}
+
+void populateTrajectoryVerticalSpeedConstraints(
+    const std::span<TrajectoryPointSample> samples,
+    const VelocityFollowerConfig& config) {
+  if (samples.size() < 2U) {
+    return;
+  }
+  const double max_vz = sanitizedPositive(
+      config.vertical_profile_max_vertical_speed_mps, 2.5, 1.0e-6, 100.0);
+  const double max_accel = sanitizedPositive(
+      config.vertical_profile_max_vertical_accel_mps2, 2.0, 1.0e-6, 100.0);
+  const double max_jerk = sanitizedPositive(
+      config.vertical_profile_max_vertical_jerk_mps3, 6.0, 1.0e-6, 1000.0);
+
+  std::vector<double> slopes(samples.size(), 0.0);
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    samples[i].vertical_slope_dz_ds = 0.0;
+    samples[i].vertical_speed_limit_mps = std::numeric_limits<double>::quiet_NaN();
+    samples[i].vertical_accel_limit_mps = std::numeric_limits<double>::quiet_NaN();
+    samples[i].vertical_jerk_limit_mps = std::numeric_limits<double>::quiet_NaN();
+    samples[i].vertical_constraint_active = false;
+
+    const std::size_t prev = i == 0U ? 0U : i - 1U;
+    const std::size_t next = i + 1U < samples.size() ? i + 1U : samples.size() - 1U;
+    const double ds = samples[next].s_m - samples[prev].s_m;
+    const double slope =
+        ds > kTinyDistanceM ? (samples[next].z_m - samples[prev].z_m) / ds : 0.0;
+    slopes[i] = slope;
+    samples[i].vertical_slope_dz_ds = slope;
+    if (std::abs(slope) > kTinyDistanceM) {
+      samples[i].vertical_speed_limit_mps = max_vz / std::abs(slope);
+      samples[i].vertical_constraint_active = true;
+    }
+  }
+
+  std::vector<double> curvature(samples.size(), 0.0);
+  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
+    const double ds = samples[i + 1U].s_m - samples[i - 1U].s_m;
+    if (!(ds > kTinyDistanceM)) {
+      continue;
+    }
+    curvature[i] = (slopes[i + 1U] - slopes[i - 1U]) / ds;
+    if (std::abs(curvature[i]) > kTinyDistanceM) {
+      samples[i].vertical_accel_limit_mps =
+          std::sqrt(max_accel / std::abs(curvature[i]));
+      samples[i].vertical_constraint_active = true;
+    }
+  }
+
+  for (std::size_t i = 1U; i + 1U < samples.size(); ++i) {
+    const double ds = samples[i + 1U].s_m - samples[i - 1U].s_m;
+    if (!(ds > kTinyDistanceM)) {
+      continue;
+    }
+    const double jerk = (curvature[i + 1U] - curvature[i - 1U]) / ds;
+    if (std::abs(jerk) > kTinyDistanceM) {
+      samples[i].vertical_jerk_limit_mps = std::cbrt(max_jerk / std::abs(jerk));
+      samples[i].vertical_constraint_active = true;
+    }
+  }
 }
 
 double distanceFromTrajectorySToEnd(const std::span<const TrajectorySegment> trajectory,
@@ -400,10 +504,14 @@ TrajectorySpeedProfile buildTrajectorySpeedProfile(
     return profile;
   }
 
-  profile.samples.reserve(trajectory_samples.size());
-  for (std::size_t i = 0U; i < trajectory_samples.size(); ++i) {
+  std::vector<TrajectoryPointSample> samples_with_vertical_caps{
+      trajectory_samples.begin(), trajectory_samples.end()};
+  populateTrajectoryVerticalSpeedConstraints(samples_with_vertical_caps, config);
+
+  profile.samples.reserve(samples_with_vertical_caps.size());
+  for (std::size_t i = 0U; i < samples_with_vertical_caps.size(); ++i) {
     mergeSpeedSample(profile.samples, geometricSpeedSampleFromPointSample(
-                                          trajectory_samples[i], i, config));
+                                          samples_with_vertical_caps[i], i, config));
   }
   finalizeSpeedProfile(profile, config);
   return profile;
@@ -438,7 +546,8 @@ topSpeedProfileConstraints(const TrajectorySpeedProfile& profile,
   }
 
   for (const TrajectorySpeedSample& sample : profile.samples) {
-    if (sample.reason != SpeedConstraintType::kArc ||
+    if ((sample.reason != SpeedConstraintType::kArc &&
+         sample.reason != SpeedConstraintType::kVerticalProfile) ||
         !std::isfinite(sample.constraint_limit_mps)) {
       continue;
     }
@@ -592,10 +701,13 @@ estimateTraversalTime(const std::span<const TrajectoryPointSample> trajectory_sa
   if (use_forward_backward_profile) {
     profile = buildTrajectorySpeedProfile(trajectory_samples, config);
   } else {
-    profile.samples.reserve(trajectory_samples.size());
-    for (std::size_t i = 0U; i < trajectory_samples.size(); ++i) {
+    std::vector<TrajectoryPointSample> samples_with_vertical_caps{
+        trajectory_samples.begin(), trajectory_samples.end()};
+    populateTrajectoryVerticalSpeedConstraints(samples_with_vertical_caps, config);
+    profile.samples.reserve(samples_with_vertical_caps.size());
+    for (std::size_t i = 0U; i < samples_with_vertical_caps.size(); ++i) {
       mergeSpeedSample(profile.samples, geometricSpeedSampleFromPointSample(
-                                            trajectory_samples[i], i, config));
+                                            samples_with_vertical_caps[i], i, config));
     }
     profile.valid = !profile.samples.empty();
   }

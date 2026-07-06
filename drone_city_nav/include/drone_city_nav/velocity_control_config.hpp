@@ -10,6 +10,10 @@ struct VelocityFollowerConfig {
   double speed_profile_accel_mps2{7.0};
   double speed_profile_decel_mps2{2.0};
   double turn_speed_lateral_accel_mps2{5.0};
+  double vertical_profile_max_vertical_speed_mps{2.5};
+  double vertical_profile_max_vertical_accel_mps2{2.0};
+  double vertical_profile_max_vertical_jerk_mps3{6.0};
+  double vertical_profile_max_climb_angle_rad{0.20943951023931953};
   double speed_profile_sample_step_m{1.0};
   double speed_profile_lookahead_time_s{1.0};
   double speed_profile_lookahead_min_m{5.0};

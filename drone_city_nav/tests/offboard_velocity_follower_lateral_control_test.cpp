@@ -25,7 +25,8 @@ namespace {
         TrajectoryPointSample{.s_m = s_m,
                               .point = Point2{s_m, kAmplitudeM * std::sin(phase)},
                               .tangent = normalizedTestVector(1.0, derivative),
-                              .curvature_1pm = curvature});
+                              .curvature_1pm = curvature,
+                              .vertical_profile_passage_id = ""});
   }
   return samples;
 }

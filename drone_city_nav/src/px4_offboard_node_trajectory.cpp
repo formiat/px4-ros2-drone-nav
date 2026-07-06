@@ -363,20 +363,28 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                             squaredDistance(last, last_logged_path_last_) > 0.01;
   if (path_changed) {
     const PathMetrics metrics = pointPathMetrics(path_points_);
-    RCLCPP_INFO(get_logger(),
-                "Received path: local_path_update_id=%" PRIu64
-                " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
-                " waypoints=%zu segments=%zu straight_segments=%zu "
-                "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
-                "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu lt10=%zu] "
-                "last=(%.2f, %.2f)",
-                received_path_update_id_, accepted_planner_path_id_,
-                last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
-                metrics.straight_segments, metrics.turns, metrics.length_m,
-                waypoint_index_ + 1U, first.x, first.y, metrics.min_segment_length_m,
-                metrics.mean_segment_length_m, metrics.max_segment_length_m,
-                metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
-                metrics.segments_shorter_than_10m, last.x, last.y);
+    RCLCPP_INFO(
+        get_logger(),
+        "Received path: local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
+        " path_stamp_ns=%" PRIu64 " waypoints=%zu segments=%zu straight_segments=%zu "
+        "turns=%zu length=%.2f selected=%zu first=(%.2f, %.2f) "
+        "segment_lengths[min=%.2f mean=%.2f max=%.2f lt2=%zu lt5=%zu lt10=%zu] "
+        "last=(%.2f, %.2f) altitude[z_min=%.2f z_max=%.2f "
+        "vertical_profile_active=%s passages=%zu profiled=%zu "
+        "min_cap=%.2f]",
+        received_path_update_id_, accepted_planner_path_id_,
+        last_received_path_stamp_ns_, path_points_.size(), metrics.segments,
+        metrics.straight_segments, metrics.turns, metrics.length_m,
+        waypoint_index_ + 1U, first.x, first.y, metrics.min_segment_length_m,
+        metrics.mean_segment_length_m, metrics.max_segment_length_m,
+        metrics.segments_shorter_than_2m, metrics.segments_shorter_than_5m,
+        metrics.segments_shorter_than_10m, last.x, last.y,
+        last_trajectory_planner_stats_.vertical_profile.min_z_m,
+        last_trajectory_planner_stats_.vertical_profile.max_z_m,
+        last_trajectory_planner_stats_.vertical_profile.active ? "true" : "false",
+        last_trajectory_planner_stats_.vertical_profile.passages_matched,
+        last_trajectory_planner_stats_.vertical_profile.passages_profiled,
+        last_trajectory_planner_stats_.vertical_profile.min_vertical_speed_cap_mps);
     last_logged_path_size_ = path_points_.size();
     last_logged_path_first_ = first;
     last_logged_path_last_ = last;

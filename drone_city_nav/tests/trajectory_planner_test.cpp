@@ -387,7 +387,7 @@ TEST(TrajectoryPlanner, SnapshotHelperWiresClearanceAndCorridorReuse) {
       std::span<const Point2>{route.data(), route.size()}, grid, &clearance_field, true,
       std::span<const CorridorSample>{baseline.corridor_samples.data(),
                                       baseline.corridor_samples.size()},
-      &baseline.stats.corridor, config);
+      &baseline.stats.corridor, nullptr, config);
 
   ASSERT_TRUE(refined.valid);
   EXPECT_TRUE(refined.stats.corridor.samples_reused);

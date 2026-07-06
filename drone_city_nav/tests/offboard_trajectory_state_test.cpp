@@ -80,6 +80,27 @@ TEST(OffboardTrajectoryState, PreservesAltitudeWhenCompactingDuplicateInteriorPo
   EXPECT_DOUBLE_EQ(state.metrics.length_m, 8.0);
 }
 
+TEST(OffboardTrajectoryState, RebuildsVerticalSpeedConstraintsFromPathAltitude) {
+  nav_msgs::msg::Path path;
+  path.poses = {makePose(0.0, 0.0, 10.0), makePose(5.0, 0.0, 15.0),
+                makePose(10.0, 0.0, 20.0)};
+  VelocityFollowerConfig config{};
+  config.cruise_speed_mps = 20.0;
+  config.vertical_profile_max_vertical_speed_mps = 2.0;
+
+  const std::vector<TrajectoryPointSample> samples = pathSamplesFromMessage(path);
+  const OffboardTrajectoryState state = buildOffboardTrajectoryState(samples, config);
+
+  ASSERT_TRUE(state.valid);
+  ASSERT_EQ(state.samples.size(), 3U);
+  EXPECT_TRUE(state.samples[1].vertical_constraint_active);
+  EXPECT_NEAR(state.samples[1].vertical_slope_dz_ds, 1.0, 1.0e-9);
+  const TrajectorySpeedSample speed_sample =
+      speedProfileSampleAtS(state.speed_profile, state.samples[1].s_m);
+  EXPECT_EQ(speed_sample.reason, SpeedConstraintType::kVerticalProfile);
+  EXPECT_NEAR(speed_sample.geometric_limit_mps, 2.0, 1.0e-9);
+}
+
 TEST(OffboardTrajectoryState, RejectsNonFiniteAltitudeBeforeStalePoseReset) {
   nav_msgs::msg::Path invalid_path = makePath();
   invalid_path.poses[1].pose.position.z = std::numeric_limits<double>::quiet_NaN();

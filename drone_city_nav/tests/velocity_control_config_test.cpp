@@ -27,6 +27,15 @@ TEST(VelocityControlConfig, ConstructionFingerprintTracksProfileBuildInputs) {
   EXPECT_NE(speedProfileConstructionConfigFingerprint(config), construction);
 }
 
+TEST(VelocityControlConfig, ConstructionFingerprintTracksVerticalProfileCaps) {
+  VelocityFollowerConfig config{};
+  const std::uint64_t construction = speedProfileConstructionConfigFingerprint(config);
+
+  config.vertical_profile_max_vertical_speed_mps += 0.5;
+
+  EXPECT_NE(speedProfileConstructionConfigFingerprint(config), construction);
+}
+
 TEST(VelocityControlConfig, RuntimeVelocityControlTracksLateralAndTerminalInputs) {
   VelocityFollowerConfig config{};
   const std::uint64_t construction = speedProfileConstructionConfigFingerprint(config);

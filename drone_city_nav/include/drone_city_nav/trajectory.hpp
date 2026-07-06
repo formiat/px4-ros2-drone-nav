@@ -6,6 +6,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -57,9 +58,15 @@ struct TrajectoryPointSample {
   Point2 tangent{};
   double curvature_1pm{0.0};
   double z_m{0.0};
+  double vertical_slope_dz_ds{0.0};
+  double vertical_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_accel_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_jerk_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool vertical_constraint_active{false};
   double left_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double right_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double lateral_offset_m{std::numeric_limits<double>::quiet_NaN()};
+  std::string vertical_profile_passage_id;
 };
 
 [[nodiscard]] const char*

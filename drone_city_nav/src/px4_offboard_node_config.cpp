@@ -164,6 +164,19 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.speed_profile_lookahead_max_m =
       std::max(requested_speed_profile_lookahead_max_m,
                config.velocity_follower.speed_profile_lookahead_min_m);
+  config.velocity_follower.vertical_profile_max_vertical_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 2.5),
+      0.0, 100.0);
+  config.velocity_follower.vertical_profile_max_vertical_accel_mps2 = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 2.0),
+      0.0, 100.0);
+  config.velocity_follower.vertical_profile_max_vertical_jerk_mps3 = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_vertical_jerk_mps3", 6.0),
+      0.0, 1000.0);
+  config.velocity_follower.vertical_profile_max_climb_angle_rad =
+      std::clamp(radiansFromDegrees(node.declare_parameter<double>(
+                     "vertical_profile_max_climb_angle_deg", 12.0)),
+                 0.0, std::numbers::pi / 2.0);
   config.velocity_follower.cross_track_gain =
       std::clamp(node.declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
   config.velocity_follower.cross_track_derivative_gain = std::clamp(

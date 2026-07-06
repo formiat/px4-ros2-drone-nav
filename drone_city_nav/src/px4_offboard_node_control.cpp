@@ -269,13 +269,29 @@ void Px4OffboardNode::updateFinalGoalHold() {
   return dt_s;
 }
 
+[[nodiscard]] double Px4OffboardNode::targetAltitudeForCurrentTrajectory() {
+  last_trajectory_altitude_target_valid_ = false;
+  if (last_velocity_plan_valid_ && finalTrajectoryReady()) {
+    const double trajectory_z_m = trajectorySampleAltitudeAtS(
+        final_trajectory_samples_, last_velocity_plan_.trajectory_s_m);
+    if (std::isfinite(trajectory_z_m)) {
+      last_trajectory_altitude_target_valid_ = true;
+      return trajectory_z_m;
+    }
+  }
+  return cruise_altitude_m_;
+}
+
 [[nodiscard]] double Px4OffboardNode::verticalVelocitySetpointNed() {
   if (!altitude_valid_ || !(max_vertical_speed_mps_ > 0.0)) {
     last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
+    last_target_altitude_m_ = cruise_altitude_m_;
+    last_trajectory_altitude_target_valid_ = false;
     return 0.0;
   }
 
-  last_altitude_error_m_ = cruise_altitude_m_ - current_altitude_m_;
+  last_target_altitude_m_ = targetAltitudeForCurrentTrajectory();
+  last_altitude_error_m_ = last_target_altitude_m_ - current_altitude_m_;
   return -std::clamp(last_altitude_error_m_ * altitude_hold_kp_,
                      -max_vertical_speed_mps_, max_vertical_speed_mps_);
 }
@@ -339,7 +355,9 @@ void Px4OffboardNode::resetVelocityDiagnostics() {
   last_velocity_setpoint_ = Point2{};
   last_velocity_setpoint_speed_mps_ = 0.0;
   last_vertical_velocity_setpoint_mps_ = 0.0;
+  last_target_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
   last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
+  last_trajectory_altitude_target_valid_ = false;
   last_offboard_setpoint_mode_ = OffboardSetpointMode::kPositionHold;
   last_velocity_plan_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
 }
@@ -840,7 +858,8 @@ void Px4OffboardNode::logControlSummary() {
       "cross_track_lateral_velocity=%.2f "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
-      "altitude_error=%.2f "
+      "altitude[target=%.2f trajectory_target_valid=%s error=%.2f "
+      "vz_setpoint=%.2f] "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
       "prohibited_grid_clearance=%.2f",
@@ -948,8 +967,9 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_altitude_error_m_,
-      upcoming_turn.valid ? "true" : "false",
+      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_target_altitude_m_,
+      last_trajectory_altitude_target_valid_ ? "true" : "false", last_altitude_error_m_,
+      last_vertical_velocity_setpoint_mps_, upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false", prohibited_grid_clearance_m);

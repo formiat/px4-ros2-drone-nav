@@ -111,6 +111,61 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     parseJsonBool(json, prefix + "valid", diagnostic.valid);
     passage_validation.diagnostics.push_back(diagnostic);
   }
+  VerticalProfileStats& vertical_profile = envelope.stats.vertical_profile;
+  parseJsonBool(json, "vertical_profile_enabled", vertical_profile.enabled);
+  parseJsonBool(json, "vertical_profile_active", vertical_profile.active);
+  parseJsonBool(json, "vertical_profile_applied", vertical_profile.applied);
+  parseJsonBool(json, "vertical_profile_valid", vertical_profile.valid);
+  parseJsonSize(json, "vertical_profile_passages_matched",
+                vertical_profile.passages_matched);
+  parseJsonSize(json, "vertical_profile_passages_profiled",
+                vertical_profile.passages_profiled);
+  parseJsonSize(json, "vertical_profile_infeasible_count",
+                vertical_profile.infeasible_count);
+  parseJsonDouble(json, "vertical_profile_min_z_m", vertical_profile.min_z_m);
+  parseJsonDouble(json, "vertical_profile_max_z_m", vertical_profile.max_z_m);
+  parseJsonDouble(json, "vertical_profile_max_abs_dz_ds",
+                  vertical_profile.max_abs_dz_ds);
+  parseJsonDouble(json, "vertical_profile_max_abs_d2z_ds2",
+                  vertical_profile.max_abs_d2z_ds2);
+  parseJsonDouble(json, "vertical_profile_max_abs_d3z_ds3",
+                  vertical_profile.max_abs_d3z_ds3);
+  parseJsonDouble(json, "vertical_profile_min_vertical_speed_cap_mps",
+                  vertical_profile.min_vertical_speed_cap_mps);
+  std::size_t vertical_profile_diagnostic_count = 0U;
+  parseJsonSize(json, "vertical_profile_diag_count", vertical_profile_diagnostic_count);
+  vertical_profile_diagnostic_count =
+      std::min<std::size_t>(vertical_profile_diagnostic_count, 100U);
+  vertical_profile.diagnostics.clear();
+  vertical_profile.diagnostics.reserve(vertical_profile_diagnostic_count);
+  for (std::size_t i = 0U; i < vertical_profile_diagnostic_count; ++i) {
+    const std::string prefix = verticalProfileDiagnosticPrefix(i);
+    VerticalProfilePassageDiagnostic diagnostic{};
+    if (const std::optional<std::string_view> structure_id =
+            jsonValueForKey(json, prefix + "structure_id");
+        structure_id.has_value()) {
+      diagnostic.structure_id = decodeJsonStringValue(*structure_id);
+    }
+    if (const std::optional<std::string_view> opening_id =
+            jsonValueForKey(json, prefix + "opening_id");
+        opening_id.has_value()) {
+      diagnostic.opening_id = decodeJsonStringValue(*opening_id);
+    }
+    parseJsonDouble(json, prefix + "entry_s_m", diagnostic.entry_s_m);
+    parseJsonDouble(json, prefix + "exit_s_m", diagnostic.exit_s_m);
+    parseJsonDouble(json, prefix + "approach_start_s_m", diagnostic.approach_start_s_m);
+    parseJsonDouble(json, prefix + "exit_end_s_m", diagnostic.exit_end_s_m);
+    parseJsonDouble(json, prefix + "gate_z_m", diagnostic.gate_z_m);
+    parseJsonDouble(json, prefix + "min_z_m", diagnostic.min_z_m);
+    parseJsonDouble(json, prefix + "max_z_m", diagnostic.max_z_m);
+    if (const std::optional<std::string_view> reason =
+            jsonValueForKey(json, prefix + "reason");
+        reason.has_value()) {
+      diagnostic.reason = decodeJsonStringValue(*reason);
+    }
+    parseJsonBool(json, prefix + "valid", diagnostic.valid);
+    vertical_profile.diagnostics.push_back(diagnostic);
+  }
   std::size_t top_constraint_count = 0U;
   parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
   top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);

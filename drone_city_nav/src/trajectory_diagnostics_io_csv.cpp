@@ -7,6 +7,9 @@ using namespace trajectory_diagnostics_io_detail;
 std::string finalTrajectorySamplesCsvHeader() {
   return "sample_index,s_m,x,y,z_m,tangent_x,tangent_y,curvature_1pm,"
          "arc_radius_m,left_bound_m,right_bound_m,lateral_offset_m,"
+         "vertical_slope_dz_ds,vertical_speed_limit_mps,"
+         "vertical_accel_limit_mps,vertical_jerk_limit_mps,"
+         "vertical_constraint_active,vertical_profile_passage_id,"
          "speed_geometric_limit_mps,speed_profiled_limit_mps,speed_reason,"
          "speed_limit_source,constraint_s_m,constraint_limit_mps,"
          "profiled_time_from_start_s,profiled_time_to_finish_s";
@@ -44,6 +47,15 @@ std::string finalTrajectorySamplesCsvRow(const std::size_t sample_index,
   stream << ",";
   writeCsvNumberOrEmpty(stream, sample.lateral_offset_m);
   stream << ",";
+  writeCsvNumberOrEmpty(stream, sample.vertical_slope_dz_ds);
+  stream << ",";
+  writeCsvNumberOrEmpty(stream, speed_sample.vertical_speed_limit_mps);
+  stream << ",";
+  writeCsvNumberOrEmpty(stream, speed_sample.vertical_accel_limit_mps);
+  stream << ",";
+  writeCsvNumberOrEmpty(stream, speed_sample.vertical_jerk_limit_mps);
+  stream << "," << (sample.vertical_constraint_active ? "true" : "false") << ","
+         << sample.vertical_profile_passage_id << ",";
   writeCsvNumberOrEmpty(stream, speed_sample.geometric_limit_mps);
   stream << ",";
   writeCsvNumberOrEmpty(stream, speed_sample.profiled_limit_mps);

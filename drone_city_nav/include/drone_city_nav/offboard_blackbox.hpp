@@ -70,6 +70,8 @@ struct OffboardBlackboxRecord {
   VelocitySetpointPlan velocity_plan{};
   std::string velocity_smoother_reset_reason;
   std::uint64_t path_update_velocity_smoother_reset_count{0U};
+  double target_altitude_m{std::numeric_limits<double>::quiet_NaN()};
+  bool trajectory_altitude_target_valid{false};
   double last_altitude_error_m{0.0};
   bool trajectory_valid{false};
   TrajectoryMetrics trajectory_metrics{};

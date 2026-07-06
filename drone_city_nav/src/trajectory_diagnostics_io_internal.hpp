@@ -319,6 +319,9 @@ parseSpeedConstraintTypeName(const std::string_view value) {
   if (value == speedConstraintTypeName(SpeedConstraintType::kArc)) {
     return SpeedConstraintType::kArc;
   }
+  if (value == speedConstraintTypeName(SpeedConstraintType::kVerticalProfile)) {
+    return SpeedConstraintType::kVerticalProfile;
+  }
   if (value == speedConstraintTypeName(SpeedConstraintType::kGoal)) {
     return SpeedConstraintType::kGoal;
   }
@@ -422,6 +425,51 @@ knownPassageValidationDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& st
     appendJsonNumber(stream, prefix + "clearance_m", diagnostic.clearance_m);
     appendJsonString(stream, prefix + "reason",
                      knownPassageValidationReasonName(diagnostic.reason));
+    appendJsonBool(stream, prefix + "valid", diagnostic.valid);
+  }
+  return stream.str();
+}
+
+[[nodiscard]] inline std::string
+verticalProfileDiagnosticPrefix(const std::size_t index) {
+  return "vertical_profile_diag" + std::to_string(index) + "_";
+}
+
+inline std::string
+verticalProfileDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
+  const VerticalProfileStats& profile = stats.vertical_profile;
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"vertical_profile_enabled\":" << (profile.enabled ? "true" : "false");
+  appendJsonBool(stream, "vertical_profile_active", profile.active);
+  appendJsonBool(stream, "vertical_profile_applied", profile.applied);
+  appendJsonBool(stream, "vertical_profile_valid", profile.valid);
+  appendJsonSize(stream, "vertical_profile_passages_matched", profile.passages_matched);
+  appendJsonSize(stream, "vertical_profile_passages_profiled",
+                 profile.passages_profiled);
+  appendJsonSize(stream, "vertical_profile_infeasible_count", profile.infeasible_count);
+  appendJsonNumber(stream, "vertical_profile_min_z_m", profile.min_z_m);
+  appendJsonNumber(stream, "vertical_profile_max_z_m", profile.max_z_m);
+  appendJsonNumber(stream, "vertical_profile_max_abs_dz_ds", profile.max_abs_dz_ds);
+  appendJsonNumber(stream, "vertical_profile_max_abs_d2z_ds2", profile.max_abs_d2z_ds2);
+  appendJsonNumber(stream, "vertical_profile_max_abs_d3z_ds3", profile.max_abs_d3z_ds3);
+  appendJsonNumber(stream, "vertical_profile_min_vertical_speed_cap_mps",
+                   profile.min_vertical_speed_cap_mps);
+  appendJsonSize(stream, "vertical_profile_diag_count", profile.diagnostics.size());
+  for (std::size_t i = 0U; i < profile.diagnostics.size(); ++i) {
+    const VerticalProfilePassageDiagnostic& diagnostic = profile.diagnostics[i];
+    const std::string prefix = verticalProfileDiagnosticPrefix(i);
+    appendJsonString(stream, prefix + "structure_id", diagnostic.structure_id);
+    appendJsonString(stream, prefix + "opening_id", diagnostic.opening_id);
+    appendJsonNumber(stream, prefix + "entry_s_m", diagnostic.entry_s_m);
+    appendJsonNumber(stream, prefix + "exit_s_m", diagnostic.exit_s_m);
+    appendJsonNumber(stream, prefix + "approach_start_s_m",
+                     diagnostic.approach_start_s_m);
+    appendJsonNumber(stream, prefix + "exit_end_s_m", diagnostic.exit_end_s_m);
+    appendJsonNumber(stream, prefix + "gate_z_m", diagnostic.gate_z_m);
+    appendJsonNumber(stream, prefix + "min_z_m", diagnostic.min_z_m);
+    appendJsonNumber(stream, prefix + "max_z_m", diagnostic.max_z_m);
+    appendJsonString(stream, prefix + "reason", diagnostic.reason);
     appendJsonBool(stream, prefix + "valid", diagnostic.valid);
   }
   return stream.str();

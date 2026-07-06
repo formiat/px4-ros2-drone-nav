@@ -210,6 +210,8 @@ private:
 
   [[nodiscard]] double consumeVelocityPlanDtS();
 
+  [[nodiscard]] double targetAltitudeForCurrentTrajectory();
+
   [[nodiscard]] double verticalVelocitySetpointNed();
 
   bool publishVelocityTrajectorySetpoint();
@@ -328,6 +330,7 @@ private:
   double last_commanded_yaw_rad_{std::numeric_limits<double>::quiet_NaN()};
   double last_velocity_setpoint_speed_mps_{0.0};
   double last_vertical_velocity_setpoint_mps_{0.0};
+  double last_target_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
@@ -365,6 +368,7 @@ private:
   bool terminal_position_capture_latched_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
+  bool last_trajectory_altitude_target_valid_{false};
   bool navigation_altitude_reached_{false};
   bool navigation_started_{false};
   bool last_terminal_position_capture_active_{false};

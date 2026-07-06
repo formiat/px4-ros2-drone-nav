@@ -13,6 +13,7 @@ namespace {
 
 constexpr int kSpeedMarkerId = 0;
 constexpr int kCurvatureMarkerId = 1;
+constexpr int kAltitudeMarkerId = 2;
 
 [[nodiscard]] float normalized(const double value, const double min_value,
                                const double max_value) {
@@ -35,6 +36,12 @@ constexpr int kCurvatureMarkerId = 1;
                                                       const double max_abs_curvature) {
   const float t = normalized(abs_curvature, 0.0, max_abs_curvature);
   return rgba(0.35F + 0.65F * t, 1.0F - 0.85F * t, 0.25F + 0.55F * t, 0.95F);
+}
+
+[[nodiscard]] std_msgs::msg::ColorRGBA
+altitudeColor(const double z_m, const double min_z_m, const double max_z_m) {
+  const float t = normalized(z_m, min_z_m, max_z_m);
+  return rgba(0.15F + 0.75F * t, 0.85F - 0.55F * t, 0.35F + 0.50F * t, 0.95F);
 }
 
 [[nodiscard]] visualization_msgs::msg::Marker
@@ -69,11 +76,15 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
         makeDeleteMarker(header, "final_trajectory_speed_colormap", kSpeedMarkerId));
     markers.markers.push_back(makeDeleteMarker(
         header, "final_trajectory_curvature_colormap", kCurvatureMarkerId));
+    markers.markers.push_back(makeDeleteMarker(
+        header, "final_trajectory_altitude_colormap", kAltitudeMarkerId));
     return markers;
   }
 
   double min_speed = std::numeric_limits<double>::infinity();
   double max_speed = -std::numeric_limits<double>::infinity();
+  double min_z = std::numeric_limits<double>::infinity();
+  double max_z = -std::numeric_limits<double>::infinity();
   double max_abs_curvature = 0.0;
   for (const TrajectoryPointSample& sample : trajectory_samples) {
     const TrajectorySpeedSample speed_sample =
@@ -82,6 +93,10 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
       min_speed = std::min(min_speed, speed_sample.profiled_limit_mps);
       max_speed = std::max(max_speed, speed_sample.profiled_limit_mps);
     }
+    if (std::isfinite(sample.z_m)) {
+      min_z = std::min(min_z, sample.z_m);
+      max_z = std::max(max_z, sample.z_m);
+    }
     max_abs_curvature = std::max(max_abs_curvature, std::abs(sample.curvature_1pm));
   }
 
@@ -89,6 +104,8 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
       makeLineList(header, "final_trajectory_speed_colormap", kSpeedMarkerId);
   visualization_msgs::msg::Marker curvature_marker =
       makeLineList(header, "final_trajectory_curvature_colormap", kCurvatureMarkerId);
+  visualization_msgs::msg::Marker altitude_marker =
+      makeLineList(header, "final_trajectory_altitude_colormap", kAltitudeMarkerId);
 
   for (std::size_t i = 1U; i < trajectory_samples.size(); ++i) {
     const TrajectoryPointSample& previous = trajectory_samples[i - 1U];
@@ -99,6 +116,8 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
         speedColor(speed_sample.profiled_limit_mps, min_speed, max_speed);
     const std_msgs::msg::ColorRGBA curvature_color =
         curvatureColor(std::abs(current.curvature_1pm), max_abs_curvature);
+    const std_msgs::msg::ColorRGBA altitude_color =
+        altitudeColor(current.z_m, min_z, max_z);
 
     speed_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.04));
     speed_marker.points.push_back(markerPoint(current.point, current.z_m + 0.04));
@@ -109,10 +128,16 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
     curvature_marker.points.push_back(markerPoint(current.point, current.z_m + 0.08));
     curvature_marker.colors.push_back(curvature_color);
     curvature_marker.colors.push_back(curvature_color);
+
+    altitude_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.12));
+    altitude_marker.points.push_back(markerPoint(current.point, current.z_m + 0.12));
+    altitude_marker.colors.push_back(altitude_color);
+    altitude_marker.colors.push_back(altitude_color);
   }
 
   markers.markers.push_back(speed_marker);
   markers.markers.push_back(curvature_marker);
+  markers.markers.push_back(altitude_marker);
   return markers;
 }
 

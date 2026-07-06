@@ -115,6 +115,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   output_stats.isolated_curvature_spike_max_after_1pm =
       diagnostics.stats.isolated_curvature_spike_max_after_1pm;
   output_stats.known_passage_validation = diagnostics.stats.known_passage_validation;
+  output_stats.vertical_profile = diagnostics.stats.vertical_profile;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
@@ -195,6 +196,7 @@ buildOffboardTrajectoryState(const std::span<const TrajectoryPointSample> path_s
                              const VelocityFollowerConfig& velocity_config) {
   OffboardTrajectoryState state;
   state.samples.assign(path_samples.begin(), path_samples.end());
+  populateTrajectoryVerticalSpeedConstraints(state.samples, velocity_config);
   state.trajectory = lineTrajectoryFromSamples(state.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   state.speed_profile = buildTrajectorySpeedProfile(state.samples, velocity_config);

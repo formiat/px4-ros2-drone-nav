@@ -82,6 +82,15 @@ planner_node:
     known_passage_validation_min_opening_overlap_m: 0.5
     known_passage_validation_clearance_margin_m: 0.0
     known_passage_validation_max_diagnostics: 8
+    vertical_profile_enabled: true
+    vertical_profile_gate_clearance_margin_m: 0.5
+    vertical_profile_max_vertical_speed_mps: 2.5
+    vertical_profile_max_vertical_accel_mps2: 2.0
+    vertical_profile_max_vertical_jerk_mps3: 6.0
+    vertical_profile_max_climb_angle_deg: 12.0
+    vertical_profile_min_transition_distance_m: 6.0
+    vertical_profile_max_transition_distance_m: 80.0
+    vertical_profile_max_diagnostics: 8
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 345.0
     planning_grid_height_m: 525.0
@@ -195,6 +204,10 @@ px4_offboard_node:
     speed_profile_lookahead_time_s: 1.0
     speed_profile_lookahead_min_m: 5.0
     speed_profile_lookahead_max_m: 35.0
+    vertical_profile_max_vertical_speed_mps: 2.5
+    vertical_profile_max_vertical_accel_mps2: 2.0
+    vertical_profile_max_vertical_jerk_mps3: 6.0
+    vertical_profile_max_climb_angle_deg: 12.0
     final_hold_max_speed_mps: 0.8
     terminal_capture_radius_m: 8.0
     terminal_capture_gain_1ps: 1.0

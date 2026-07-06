@@ -4,6 +4,7 @@
 #include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/trajectory_optimizer.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
+#include "drone_city_nav/trajectory_vertical_profile.hpp"
 #include "drone_city_nav/turn_smoothing.hpp"
 
 #include <cstddef>
@@ -37,6 +38,8 @@ struct TrajectoryPlannerConfig {
   TrajectoryOptimizerConfig trajectory_optimizer{};
   TurnSmoothingConfig turn_smoothing{};
   VelocityFollowerConfig speed_profile{};
+  VerticalProfileConfig vertical_profile{};
+  KnownPassageValidationConfig known_passage_validation{};
   double debug_sample_step_m{1.0};
   double default_altitude_m{0.0};
 };
@@ -64,6 +67,7 @@ struct TrajectoryPlannerStats {
   double isolated_curvature_spike_max_after_1pm{0.0};
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;
   KnownPassageValidationSummary known_passage_validation{};
+  VerticalProfileStats vertical_profile{};
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double trajectory_optimizer_duration_ms{0.0};
@@ -83,6 +87,7 @@ struct TrajectoryPlannerInput {
   bool prohibited_clearance_field_cache_hit{false};
   std::span<const CorridorSample> precomputed_corridor_samples;
   const CorridorStats* precomputed_corridor_stats{nullptr};
+  const KnownPassageMap* known_passage_map{nullptr};
 };
 
 struct TrajectoryPlannerResult {
@@ -147,7 +152,7 @@ planOptimizedTrajectory(const TrajectoryPlannerInput& input,
     bool prohibited_clearance_field_cache_hit,
     std::span<const CorridorSample> precomputed_corridor_samples,
     const CorridorStats* precomputed_corridor_stats,
-    const TrajectoryPlannerConfig& config);
+    const KnownPassageMap* known_passage_map, const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryRefinementDecision
 evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input);

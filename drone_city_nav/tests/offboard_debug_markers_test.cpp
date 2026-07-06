@@ -24,12 +24,14 @@ namespace {
                             .point = Point2{0.0, 0.0},
                             .tangent = Point2{1.0, 0.0},
                             .curvature_1pm = 0.0,
-                            .z_m = 12.0},
+                            .z_m = 12.0,
+                            .vertical_profile_passage_id = ""},
       TrajectoryPointSample{.s_m = 1.0,
                             .point = Point2{1.0, 0.0},
                             .tangent = Point2{1.0, 0.0},
                             .curvature_1pm = 0.0,
-                            .z_m = 14.0}};
+                            .z_m = 14.0,
+                            .vertical_profile_passage_id = ""}};
 }
 
 [[nodiscard]] TrajectorySpeedProfile testSpeedProfile() {
