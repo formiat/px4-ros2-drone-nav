@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numbers>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -44,18 +45,55 @@ namespace {
   return map;
 }
 
-[[nodiscard]] std::vector<TrajectoryPointSample> makeSamples(const double z_m) {
+[[nodiscard]] PassageStructure makeStructure(std::string id, const double center_x_m,
+                                             PassageOpening opening) {
+  opening.structure_id = id;
+  opening.center.x = center_x_m;
+  PassageStructure structure{};
+  structure.id = std::move(id);
+  structure.center = Point2{center_x_m, 0.0};
+  structure.size_x_m = 8.0;
+  structure.size_y_m = 10.0;
+  structure.z_min_m = 0.0;
+  structure.z_max_m = 20.0;
+  structure.openings.push_back(std::move(opening));
+  return structure;
+}
+
+[[nodiscard]] KnownPassageMap makeOverlappingIncompatibleMap() {
+  PassageOpening low = makeOpening(8.0, 12.0);
+  low.id = "low_window";
+  PassageOpening high = makeOpening(13.0, 15.0);
+  high.id = "high_window";
+
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(makeStructure("low_arch", -4.0, std::move(low)));
+  map.structures.push_back(makeStructure("high_arch", 4.0, std::move(high)));
+  return map;
+}
+
+[[nodiscard]] std::vector<TrajectoryPointSample>
+makeSamplesRange(const double start_x_m, const double end_x_m, const double step_m,
+                 const double z_m) {
   std::vector<TrajectoryPointSample> samples;
-  for (std::size_t i = 0U; i <= 20U; ++i) {
-    const double x = -20.0 + static_cast<double>(i) * 2.0;
+  const std::size_t count =
+      static_cast<std::size_t>(std::floor((end_x_m - start_x_m) / step_m));
+  samples.reserve(count + 1U);
+  for (std::size_t i = 0U; i <= count; ++i) {
+    const double x = start_x_m + static_cast<double>(i) * step_m;
     TrajectoryPointSample sample{};
-    sample.s_m = static_cast<double>(i) * 2.0;
+    sample.s_m = static_cast<double>(i) * step_m;
     sample.point = Point2{x, 0.0};
     sample.tangent = Point2{1.0, 0.0};
     sample.z_m = z_m;
     samples.push_back(sample);
   }
   return samples;
+}
+
+[[nodiscard]] std::vector<TrajectoryPointSample> makeSamples(const double z_m) {
+  return makeSamplesRange(-20.0, 20.0, 2.0, z_m);
 }
 
 } // namespace
@@ -74,6 +112,23 @@ TEST(TrajectoryVerticalProfile, DisabledKeepsCruiseAltitude) {
   for (const TrajectoryPointSample& sample : samples) {
     EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
     EXPECT_FALSE(sample.vertical_constraint_active);
+  }
+}
+
+TEST(TrajectoryVerticalProfile, EnabledWithoutMapKeepsCruiseAltitude) {
+  std::vector<TrajectoryPointSample> samples = makeSamples(0.0);
+  VerticalProfileConfig config{};
+  config.enabled = true;
+
+  const VerticalProfileResult result = applyVerticalProfile(
+      samples, nullptr, KnownPassageValidationConfig{}, config, 18.0);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.applied);
+  EXPECT_FALSE(result.stats.active);
+  for (const TrajectoryPointSample& sample : samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
+    EXPECT_TRUE(sample.vertical_profile_passage_id.empty());
   }
 }
 
@@ -105,6 +160,63 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothCruiseGateCruiseProfil
   }));
 }
 
+TEST(TrajectoryVerticalProfile, DefaultClimbAngleAccountsForSmootherstepPeakSlope) {
+  KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-140.0, 140.0, 2.0, 18.0);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.active);
+  EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 18.0);
+  EXPECT_NEAR(result.stats.min_z_m, 11.5, 1.0e-9);
+  EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
+}
+
+TEST(TrajectoryVerticalProfile, GateAltitudeClampsToOpeningWithMargin) {
+  KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-140.0, 140.0, 2.0, 4.0);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 4.0);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.active);
+  EXPECT_NEAR(result.stats.max_z_m, 8.5, 1.0e-9);
+  EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
+}
+
+TEST(TrajectoryVerticalProfile, OverlappingIncompatibleWindowsAreRejected) {
+  KnownPassageMap map = makeOverlappingIncompatibleMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-120.0, 120.0, 2.0, 18.0);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_FALSE(result.stats.valid);
+  EXPECT_FALSE(result.stats.active);
+  EXPECT_EQ(result.stats.passages_matched, 2U);
+  EXPECT_EQ(result.stats.passages_profiled, 0U);
+  EXPECT_TRUE(std::ranges::any_of(
+      result.stats.diagnostics, [](const VerticalProfilePassageDiagnostic& diagnostic) {
+        return diagnostic.reason == "overlapping_infeasible_windows" &&
+               !diagnostic.valid;
+      }));
+  for (const TrajectoryPointSample& sample : samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
+    EXPECT_TRUE(sample.vertical_profile_passage_id.empty());
+  }
+}
+
 TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {
   KnownPassageMap map = makeMap();
   std::vector<TrajectoryPointSample> samples = makeSamples(18.0);
@@ -118,7 +230,12 @@ TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {
 
   EXPECT_FALSE(result.valid);
   EXPECT_FALSE(result.stats.valid);
-  EXPECT_TRUE(result.stats.active);
+  EXPECT_FALSE(result.stats.active);
+  EXPECT_TRUE(std::ranges::any_of(
+      result.stats.diagnostics, [](const VerticalProfilePassageDiagnostic& diagnostic) {
+        return diagnostic.reason == "insufficient_transition_distance" &&
+               !diagnostic.valid;
+      }));
 }
 
 } // namespace drone_city_nav
