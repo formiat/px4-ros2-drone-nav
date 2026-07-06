@@ -61,11 +61,26 @@ Important fields:
 - active windows;
 - candidate counts;
 - speed-profile top constraints;
+- known-passage validation summary and capped per-span diagnostics;
 - fingerprints for speed profile construction and runtime policy/control.
 
 Only construction fingerprint mismatch is a warning. Runtime mismatches are
 context because offboard-only control settings can legitimately differ from
 planner settings.
+
+Known-passage validation fields include:
+
+- `known_passage_validation_enabled`
+- `known_passage_validation_valid`
+- `known_passage_structures_checked`
+- `known_passage_structures_intersected`
+- `known_passage_opening_matches`
+- `known_passage_violations`
+- `known_passage_validation_reason`
+- `known_passage_diag_count`
+
+Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
+`s`, overlap, clearance, reason, and validity for one capped span.
 
 ## Replan Diagnostics
 
@@ -103,6 +118,8 @@ For planner quality:
 - turn smoothing time;
 - speed profile time;
 - replan count.
+- known-passage validation result if the trajectory intersects an annotated
+  structure footprint.
 
 ## Last Run Analysis Checklist
 

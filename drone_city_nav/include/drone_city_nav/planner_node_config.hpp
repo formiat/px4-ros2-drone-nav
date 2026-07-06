@@ -69,6 +69,7 @@ struct PlannerNodeConfig {
   LidarProjectionConfig lidar_projection{};
   StaticMapSourceConfig static_map{};
   KnownPassageSourceConfig known_passages{};
+  KnownPassageValidationConfig known_passage_validation{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

@@ -65,6 +65,52 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     (void)parseJsonUint64(json, "planning_runtime_velocity_config_fingerprint",
                           envelope.stats.runtime_velocity_control_config_fingerprint);
   }
+  KnownPassageValidationSummary& passage_validation =
+      envelope.stats.known_passage_validation;
+  parseJsonBool(json, "known_passage_validation_enabled", passage_validation.enabled);
+  parseJsonBool(json, "known_passage_validation_valid", passage_validation.valid);
+  parseJsonSize(json, "known_passage_structures_checked",
+                passage_validation.structures_checked);
+  parseJsonSize(json, "known_passage_structures_intersected",
+                passage_validation.structures_intersected);
+  parseJsonSize(json, "known_passage_opening_matches",
+                passage_validation.opening_matches);
+  parseJsonSize(json, "known_passage_violations", passage_validation.violations);
+  if (const std::optional<std::string_view> reason =
+          jsonValueForKey(json, "known_passage_validation_reason");
+      reason.has_value()) {
+    passage_validation.worst_reason = parseKnownPassageValidationReasonName(*reason);
+  }
+  std::size_t passage_diagnostic_count = 0U;
+  parseJsonSize(json, "known_passage_diag_count", passage_diagnostic_count);
+  passage_diagnostic_count = std::min<std::size_t>(passage_diagnostic_count, 100U);
+  passage_validation.diagnostics.clear();
+  passage_validation.diagnostics.reserve(passage_diagnostic_count);
+  for (std::size_t i = 0U; i < passage_diagnostic_count; ++i) {
+    const std::string prefix = knownPassageDiagnosticPrefix(i);
+    KnownPassageValidationSpan diagnostic{};
+    if (const std::optional<std::string_view> structure_id =
+            jsonValueForKey(json, prefix + "structure_id");
+        structure_id.has_value()) {
+      diagnostic.structure_id = std::string{*structure_id};
+    }
+    if (const std::optional<std::string_view> opening_id =
+            jsonValueForKey(json, prefix + "opening_id");
+        opening_id.has_value()) {
+      diagnostic.opening_id = std::string{*opening_id};
+    }
+    parseJsonDouble(json, prefix + "entry_s_m", diagnostic.entry_s_m);
+    parseJsonDouble(json, prefix + "exit_s_m", diagnostic.exit_s_m);
+    parseJsonDouble(json, prefix + "overlap_m", diagnostic.overlap_m);
+    parseJsonDouble(json, prefix + "clearance_m", diagnostic.clearance_m);
+    if (const std::optional<std::string_view> diagnostic_reason =
+            jsonValueForKey(json, prefix + "reason");
+        diagnostic_reason.has_value()) {
+      diagnostic.reason = parseKnownPassageValidationReasonName(*diagnostic_reason);
+    }
+    parseJsonBool(json, prefix + "valid", diagnostic.valid);
+    passage_validation.diagnostics.push_back(diagnostic);
+  }
   std::size_t top_constraint_count = 0U;
   parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
   top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);

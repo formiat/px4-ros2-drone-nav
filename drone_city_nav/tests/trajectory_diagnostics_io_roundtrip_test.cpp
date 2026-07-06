@@ -25,6 +25,32 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.speed_profile_construction_config_fingerprint, 0x3456U);
   EXPECT_EQ(parsed_value.stats.runtime_speed_policy_config_fingerprint, 0x4567U);
   EXPECT_EQ(parsed_value.stats.runtime_velocity_control_config_fingerprint, 0x5678U);
+  EXPECT_TRUE(parsed_value.stats.known_passage_validation.enabled);
+  EXPECT_FALSE(parsed_value.stats.known_passage_validation.valid);
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.structures_checked, 2U);
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.structures_intersected, 1U);
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.opening_matches, 1U);
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.violations, 1U);
+  EXPECT_EQ(parsed_value.stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
+  ASSERT_EQ(parsed_value.stats.known_passage_validation.diagnostics.size(), 2U);
+  const KnownPassageValidationSpan& passage0 =
+      parsed_value.stats.known_passage_validation.diagnostics[0];
+  EXPECT_EQ(passage0.structure_id, "arch_01");
+  EXPECT_EQ(passage0.opening_id, "main");
+  EXPECT_DOUBLE_EQ(passage0.entry_s_m, 42.5);
+  EXPECT_DOUBLE_EQ(passage0.exit_s_m, 48.75);
+  EXPECT_DOUBLE_EQ(passage0.overlap_m, 3.25);
+  EXPECT_DOUBLE_EQ(passage0.clearance_m, 1.5);
+  EXPECT_EQ(passage0.reason, KnownPassageValidationReason::kMatchedOpening);
+  EXPECT_TRUE(passage0.valid);
+  const KnownPassageValidationSpan& passage1 =
+      parsed_value.stats.known_passage_validation.diagnostics[1];
+  EXPECT_EQ(passage1.structure_id, "arch_02");
+  EXPECT_TRUE(passage1.opening_id.empty());
+  EXPECT_DOUBLE_EQ(passage1.clearance_m, -1.25);
+  EXPECT_EQ(passage1.reason, KnownPassageValidationReason::kOpeningVolumeMiss);
+  EXPECT_FALSE(passage1.valid);
   EXPECT_EQ(parsed_value.stats.corridor.samples, 42U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.min_width_m, 17.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);

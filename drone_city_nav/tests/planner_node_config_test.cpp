@@ -63,6 +63,10 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.known_passages.enabled);
   EXPECT_EQ(config.known_passages.configured_path.string(),
             "worlds/known_passages.passages3d");
+  EXPECT_TRUE(config.known_passage_validation.enabled);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.5);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.0);
+  EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.known_passage_markers,
             "/drone_city_nav/known_passage_markers");
@@ -168,6 +172,9 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_offset_step_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 5000},
+       rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", -1.0},
+       rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
+       rclcpp::Parameter{"known_passage_validation_max_diagnostics", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
@@ -224,6 +231,9 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    0.05);
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
             1U);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
+  EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 0.0);
@@ -246,6 +256,10 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"use_static_map", false},
        rclcpp::Parameter{"known_passages_enabled", false},
        rclcpp::Parameter{"known_passages_path", "worlds/custom.passages3d"},
+       rclcpp::Parameter{"known_passage_validation_enabled", false},
+       rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", 1.25},
+       rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 0.75},
+       rclcpp::Parameter{"known_passage_validation_max_diagnostics", 3},
        rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
        rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
@@ -286,6 +300,10 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
   EXPECT_FALSE(config.known_passages.enabled);
   EXPECT_EQ(config.known_passages.configured_path.string(), "worlds/custom.passages3d");
+  EXPECT_FALSE(config.known_passage_validation.enabled);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 1.25);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.75);
+  EXPECT_EQ(config.known_passage_validation.max_diagnostics, 3U);
   EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);

@@ -246,5 +246,70 @@ speedProfileConstraintDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& st
   return stream.str();
 }
 
+[[nodiscard]] inline std::string knownPassageDiagnosticPrefix(const std::size_t index) {
+  return "known_passage_diag" + std::to_string(index) + "_";
+}
+
+[[nodiscard]] inline KnownPassageValidationReason
+parseKnownPassageValidationReasonName(const std::string_view value) {
+  if (value ==
+      knownPassageValidationReasonName(KnownPassageValidationReason::kDisabled)) {
+    return KnownPassageValidationReason::kDisabled;
+  }
+  if (value == knownPassageValidationReasonName(KnownPassageValidationReason::kNoMap)) {
+    return KnownPassageValidationReason::kNoMap;
+  }
+  if (value == knownPassageValidationReasonName(
+                   KnownPassageValidationReason::kInvalidTrajectory)) {
+    return KnownPassageValidationReason::kInvalidTrajectory;
+  }
+  if (value ==
+      knownPassageValidationReasonName(KnownPassageValidationReason::kMatchedOpening)) {
+    return KnownPassageValidationReason::kMatchedOpening;
+  }
+  if (value == knownPassageValidationReasonName(
+                   KnownPassageValidationReason::kStructureWithoutOpening)) {
+    return KnownPassageValidationReason::kStructureWithoutOpening;
+  }
+  if (value == knownPassageValidationReasonName(
+                   KnownPassageValidationReason::kOpeningVolumeMiss)) {
+    return KnownPassageValidationReason::kOpeningVolumeMiss;
+  }
+  return KnownPassageValidationReason::kNoStructureIntersection;
+}
+
+inline std::string
+knownPassageValidationDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
+  const KnownPassageValidationSummary& validation = stats.known_passage_validation;
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"known_passage_validation_enabled\":"
+         << (validation.enabled ? "true" : "false");
+  appendJsonBool(stream, "known_passage_validation_valid", validation.valid);
+  appendJsonSize(stream, "known_passage_structures_checked",
+                 validation.structures_checked);
+  appendJsonSize(stream, "known_passage_structures_intersected",
+                 validation.structures_intersected);
+  appendJsonSize(stream, "known_passage_opening_matches", validation.opening_matches);
+  appendJsonSize(stream, "known_passage_violations", validation.violations);
+  appendJsonString(stream, "known_passage_validation_reason",
+                   knownPassageValidationReasonName(validation.worst_reason));
+  appendJsonSize(stream, "known_passage_diag_count", validation.diagnostics.size());
+  for (std::size_t i = 0U; i < validation.diagnostics.size(); ++i) {
+    const KnownPassageValidationSpan& diagnostic = validation.diagnostics[i];
+    const std::string prefix = knownPassageDiagnosticPrefix(i);
+    appendJsonString(stream, prefix + "structure_id", diagnostic.structure_id);
+    appendJsonString(stream, prefix + "opening_id", diagnostic.opening_id);
+    appendJsonNumber(stream, prefix + "entry_s_m", diagnostic.entry_s_m);
+    appendJsonNumber(stream, prefix + "exit_s_m", diagnostic.exit_s_m);
+    appendJsonNumber(stream, prefix + "overlap_m", diagnostic.overlap_m);
+    appendJsonNumber(stream, prefix + "clearance_m", diagnostic.clearance_m);
+    appendJsonString(stream, prefix + "reason",
+                     knownPassageValidationReasonName(diagnostic.reason));
+    appendJsonBool(stream, prefix + "valid", diagnostic.valid);
+  }
+  return stream.str();
+}
+
 } // namespace trajectory_diagnostics_io_detail
 } // namespace drone_city_nav

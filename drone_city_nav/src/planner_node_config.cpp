@@ -51,6 +51,20 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.known_passages.configured_path = node.declare_parameter<std::string>(
       "known_passages_path", "worlds/known_passages.passages3d");
   config.known_passages.expected_frame_id = config.frame_id;
+  config.known_passage_validation.enabled =
+      node.declare_parameter<bool>("known_passage_validation_enabled", true);
+  config.known_passage_validation.min_opening_overlap_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_passage_validation_min_opening_overlap_m", 0.5),
+                 0.0, 1000.0);
+  config.known_passage_validation.clearance_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_passage_validation_clearance_margin_m", 0.0),
+                 0.0, 1000.0);
+  config.known_passage_validation.max_diagnostics = static_cast<std::size_t>(
+      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                   "known_passage_validation_max_diagnostics", 8),
+                               0, 100));
   const double planning_grid_origin_x =
       node.declare_parameter<double>("planning_grid_origin_x", -10.0);
   const double planning_grid_origin_y =

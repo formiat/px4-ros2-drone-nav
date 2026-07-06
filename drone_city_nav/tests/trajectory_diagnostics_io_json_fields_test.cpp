@@ -126,6 +126,31 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"corridor_sample_build_duration_ms\":6.25"), std::string::npos);
   EXPECT_NE(json.find("\"clearance_field_reused_by_corridor\":true"),
             std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_validation_enabled\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_validation_valid\":false"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_structures_checked\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_structures_intersected\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_opening_matches\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_violations\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_validation_reason\":\"opening_volume_miss\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag_count\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_structure_id\":\"arch_01\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_opening_id\":\"main\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_entry_s_m\":42.5"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_exit_s_m\":48.75"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_overlap_m\":3.25"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_clearance_m\":1.5"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_reason\":\"matched_opening\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag0_valid\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag1_structure_id\":\"arch_02\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag1_reason\":\"opening_volume_miss\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"known_passage_diag1_clearance_m\":-1.25"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_parallel_workers_used\":2"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_candidate_chunks\":31"),

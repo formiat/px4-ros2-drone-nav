@@ -78,6 +78,10 @@ planner_node:
     static_map_min_blocking_height_m: 0.0
     known_passages_enabled: true
     known_passages_path: worlds/known_passages.passages3d
+    known_passage_validation_enabled: true
+    known_passage_validation_min_opening_overlap_m: 0.5
+    known_passage_validation_clearance_margin_m: 0.0
+    known_passage_validation_max_diagnostics: 8
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 345.0
     planning_grid_height_m: 525.0

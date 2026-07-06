@@ -271,6 +271,32 @@ void expectContainsAll(const std::string& text,
   stats.speed_profile_construction_config_fingerprint = 0x3456U;
   stats.runtime_speed_policy_config_fingerprint = 0x4567U;
   stats.runtime_velocity_control_config_fingerprint = 0x5678U;
+  stats.known_passage_validation.enabled = true;
+  stats.known_passage_validation.valid = false;
+  stats.known_passage_validation.structures_checked = 2U;
+  stats.known_passage_validation.structures_intersected = 1U;
+  stats.known_passage_validation.opening_matches = 1U;
+  stats.known_passage_validation.violations = 1U;
+  stats.known_passage_validation.worst_reason =
+      KnownPassageValidationReason::kOpeningVolumeMiss;
+  stats.known_passage_validation.diagnostics.push_back(KnownPassageValidationSpan{
+      .structure_id = "arch_01",
+      .opening_id = "main",
+      .entry_s_m = 42.5,
+      .exit_s_m = 48.75,
+      .overlap_m = 3.25,
+      .clearance_m = 1.5,
+      .reason = KnownPassageValidationReason::kMatchedOpening,
+      .valid = true});
+  stats.known_passage_validation.diagnostics.push_back(KnownPassageValidationSpan{
+      .structure_id = "arch_02",
+      .opening_id = "",
+      .entry_s_m = 90.0,
+      .exit_s_m = 96.0,
+      .overlap_m = 0.0,
+      .clearance_m = -1.25,
+      .reason = KnownPassageValidationReason::kOpeningVolumeMiss,
+      .valid = false});
   stats.isolated_curvature_spike_candidates = 2U;
   stats.isolated_curvature_spikes_smoothed_geometry = 1U;
   stats.isolated_curvature_spike_max_before_1pm = 0.12;

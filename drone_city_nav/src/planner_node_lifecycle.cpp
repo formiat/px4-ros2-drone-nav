@@ -164,6 +164,13 @@ PlannerNode::PlannerNode()
       fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
       fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
   RCLCPP_INFO(get_logger(),
+              "Known passage validation: mode=shadow enabled=%s "
+              "min_opening_overlap=%.2fm clearance_margin=%.2fm max_diagnostics=%zu",
+              known_passage_validation_config_.enabled ? "true" : "false",
+              known_passage_validation_config_.min_opening_overlap_m,
+              known_passage_validation_config_.clearance_margin_m,
+              known_passage_validation_config_.max_diagnostics);
+  RCLCPP_INFO(get_logger(),
               "Planner lidar overlay: enabled=always topic='%s' max_range=%.2f "
               "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
               "motion_compensation=%s pose_latency=%.3fs "
@@ -212,6 +219,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
   use_known_passages_ = config.known_passages.enabled;
   known_passages_path_param_ = config.known_passages.configured_path.string();
+  known_passage_validation_config_ = config.known_passage_validation;
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
   max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;

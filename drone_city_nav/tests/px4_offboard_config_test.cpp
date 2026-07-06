@@ -74,6 +74,13 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("known_passages_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("known_passages_path: worlds/known_passages.passages3d"),
             std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_validation_enabled: true"), std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_validation_min_opening_overlap_m: 0.5"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_validation_clearance_margin_m: 0.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_validation_max_diagnostics: 8"),
+            std::string::npos);
   EXPECT_NE(yaml.find("known_passage_markers_topic: "
                       "/drone_city_nav/known_passage_markers"),
             std::string::npos);

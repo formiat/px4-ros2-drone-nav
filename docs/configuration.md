@@ -50,11 +50,17 @@ Known passages:
 - `known_passages_path`
 - `known_passage_markers_topic`
 - `known_passage_debug_publish_period_s`
+- `known_passage_validation_enabled`
+- `known_passage_validation_min_opening_overlap_m`
+- `known_passage_validation_clearance_margin_m`
+- `known_passage_validation_max_diagnostics`
 
-Known passages are diagnostics-only in the current stage. They describe
-pre-annotated passage structures and openings for future 3D traversal, but
-they do not modify obstacle grids, planner constraints, trajectory geometry, or
-runtime control.
+Known passages are shadow diagnostics in the current stage. They describe
+pre-annotated passage structures and openings for future 3D traversal, publish
+RViz markers, and validate whether the final executable trajectory crosses a
+known structure footprint through an allowed opening volume. They still do not
+modify obstacle grids, planner constraints, trajectory geometry, speed profile,
+or runtime control, and they do not reject trajectories.
 
 The default file format is line-based and versioned:
 
@@ -68,6 +74,18 @@ opening <structure_id> <opening_id> <center_x> <center_y> <center_z> <normal_x> 
 The parser rejects unknown keywords, duplicate ids, invalid dimensions,
 non-finite values, openings outside their structure footprint, and opening z
 ranges outside the structure z range.
+
+The validation layer applies a diagnostics-only no-over-building rule:
+
+- no structure footprint intersection is valid;
+- structure footprint intersection through a matching opening volume is valid;
+- structure footprint intersection without a matching opening is reported as a
+  violation with `structure_without_opening` or `opening_volume_miss`;
+- `known_passage_validation_min_opening_overlap_m` controls the minimum station
+  overlap required to count an opening match;
+- `known_passage_validation_clearance_margin_m` is reserved for clearance
+  diagnostics and future hardening;
+- `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
 
 ## A* Parameters
 

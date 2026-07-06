@@ -13,8 +13,11 @@ The planner can use:
 
 The planner can also load known 3D passage annotations from
 `known_passages.passages3d`. In the current stage, these annotations are
-diagnostics-only. They are not raw obstacle sources, do not alter the
-prohibited grid, and do not constrain or relax the XY planner.
+shadow diagnostics. They are not raw obstacle sources, do not alter the
+prohibited grid, and do not constrain or relax the XY planner. After a final
+trajectory is built, the planner validates whether it crosses any known
+structure footprint through an allowed opening volume and reports the result in
+logs and trajectory diagnostics.
 
 Raw sources are merged before inflation. Raw sources must not contain safety
 inflation.
@@ -126,7 +129,10 @@ carry per-sample altitude in `pose.position.z`.
 
 Known passage markers are RViz/debug artifacts. Structure volumes, opening
 frames, gate centers, approach arrows, and exit arrows help verify annotation
-geometry before any later 3D traversal logic uses it.
+geometry before any later 3D traversal logic uses it. The same annotations also
+feed a shadow no-over-building validator for the published trajectory. A
+validation violation is diagnostic-only in this stage; it does not cancel path
+publication or change controller behavior.
 
 ## Pipeline Contracts
 
@@ -216,6 +222,8 @@ A published executable path should satisfy:
 - finite points and stable sample spacing;
 - start and goal anchoring appropriate for the current plan;
 - no hard prohibited intersection;
+- known passage footprint intersections are reported with matched-opening or
+  violation diagnostics;
 - joins without unacceptable tangent or curvature jumps;
 - diagnostics with the same path timestamp;
 - continuity decision before replacing the accepted runtime trajectory.

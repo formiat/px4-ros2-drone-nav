@@ -216,6 +216,7 @@ bool PlannerNode::publishTrajectoryResult(
     const double duration_ms, std::uint64_t* published_path_id) {
   writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
   writeTrajectoryCandidateDumps(trajectory_result, source_label, next_path_id_);
+  TrajectoryPlannerStats stats = trajectory_result.stats;
   if (!trajectory_result.valid) {
     RCLCPP_WARN(
         get_logger(),
@@ -229,28 +230,20 @@ bool PlannerNode::publishTrajectoryResult(
         " width_min=%.2f width_mean=%.2f] "
         "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu]",
         source_label,
-        static_cast<int>(
-            trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
-        trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-        route_points.size(), duration_ms,
-        static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
-        trajectoryQualityName(trajectory_result.stats.quality).data(),
-        trajectory_result.stats.total_duration_ms,
-        trajectory_result.stats.corridor_duration_ms,
-        trajectory_result.stats.trajectory_optimizer_duration_ms,
-        trajectory_result.stats.turn_smoothing_duration_ms,
-        trajectory_result.stats.speed_profile_duration_ms,
-        trajectory_result.stats.corridor.samples,
-        trajectory_result.stats.corridor.samples_reused ? "true" : "false",
-        trajectory_result.stats.corridor.reused_samples,
-        trajectory_result.stats.corridor.route_fingerprint,
-        trajectory_result.stats.corridor.prohibited_grid_fingerprint.cells_hash,
-        trajectory_result.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
-        trajectory_result.stats.corridor.min_width_m,
-        trajectory_result.stats.corridor.mean_width_m,
-        trajectory_result.stats.trajectory_optimizer.iterations,
-        trajectory_result.stats.trajectory_optimizer.candidate_evaluations,
-        trajectory_result.stats.trajectory_optimizer.collision_rejections);
+        static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
+        trajectoryPlannerStatusName(stats.status).data(), route_points.size(),
+        duration_ms, static_cast<int>(trajectoryQualityName(stats.quality).size()),
+        trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
+        stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
+        stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms,
+        stats.corridor.samples, stats.corridor.samples_reused ? "true" : "false",
+        stats.corridor.reused_samples, stats.corridor.route_fingerprint,
+        stats.corridor.prohibited_grid_fingerprint.cells_hash,
+        stats.corridor.prohibited_grid_fingerprint.inflated_hash,
+        stats.corridor.min_width_m, stats.corridor.mean_width_m,
+        stats.trajectory_optimizer.iterations,
+        stats.trajectory_optimizer.candidate_evaluations,
+        stats.trajectory_optimizer.collision_rejections);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_build_failed")) {
       return false;
@@ -263,25 +256,21 @@ bool PlannerNode::publishTrajectoryResult(
       trajectorySamplePoints(trajectory_result.samples);
   if (trajectory_points.size() < 2U ||
       !pathIsTraversable(validation_grid, trajectory_points)) {
-    RCLCPP_WARN(
-        get_logger(),
-        "%s trajectory build produced a non-traversable runtime trajectory; "
-        "holding instead of publishing rough A* route: route_points=%zu "
-        "trajectory_points=%zu duration_ms=%.1f status=%.*s "
-        "trajectory_quality=%.*s "
-        "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
-        "turn_smoothing=%.1f speed_profile=%.1f]",
-        source_label, route_points.size(), trajectory_points.size(), duration_ms,
-        static_cast<int>(
-            trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
-        trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-        static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
-        trajectoryQualityName(trajectory_result.stats.quality).data(),
-        trajectory_result.stats.total_duration_ms,
-        trajectory_result.stats.corridor_duration_ms,
-        trajectory_result.stats.trajectory_optimizer_duration_ms,
-        trajectory_result.stats.turn_smoothing_duration_ms,
-        trajectory_result.stats.speed_profile_duration_ms);
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory build produced a non-traversable runtime trajectory; "
+                "holding instead of publishing rough A* route: route_points=%zu "
+                "trajectory_points=%zu duration_ms=%.1f status=%.*s "
+                "trajectory_quality=%.*s "
+                "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
+                "turn_smoothing=%.1f speed_profile=%.1f]",
+                source_label, route_points.size(), trajectory_points.size(),
+                duration_ms,
+                static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
+                trajectoryPlannerStatusName(stats.status).data(),
+                static_cast<int>(trajectoryQualityName(stats.quality).size()),
+                trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
+                stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
+                stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_non_traversable")) {
       return false;
@@ -290,10 +279,43 @@ bool PlannerNode::publishTrajectoryResult(
     return false;
   }
 
+  stats.known_passage_validation = validateKnownPassageTraversal(
+      trajectory_result.samples, known_passages_ ? &*known_passages_ : nullptr,
+      known_passage_validation_config_);
+  const KnownPassageValidationSummary& passage_validation =
+      stats.known_passage_validation;
+  const KnownPassageValidationSpan* first_passage_diagnostic =
+      passage_validation.diagnostics.empty() ? nullptr
+                                             : &passage_validation.diagnostics.front();
+  const char* first_passage_structure =
+      first_passage_diagnostic != nullptr
+          ? first_passage_diagnostic->structure_id.c_str()
+          : "<none>";
+  const char* first_passage_opening =
+      first_passage_diagnostic != nullptr &&
+              !first_passage_diagnostic->opening_id.empty()
+          ? first_passage_diagnostic->opening_id.c_str()
+          : "<none>";
+  const char* first_passage_reason =
+      first_passage_diagnostic != nullptr
+          ? knownPassageValidationReasonName(first_passage_diagnostic->reason)
+          : knownPassageValidationReasonName(
+                KnownPassageValidationReason::kNoStructureIntersection);
+  const double first_passage_entry_s = first_passage_diagnostic != nullptr
+                                           ? first_passage_diagnostic->entry_s_m
+                                           : std::numeric_limits<double>::quiet_NaN();
+  const double first_passage_exit_s = first_passage_diagnostic != nullptr
+                                          ? first_passage_diagnostic->exit_s_m
+                                          : std::numeric_limits<double>::quiet_NaN();
+  const double first_passage_overlap = first_passage_diagnostic != nullptr
+                                           ? first_passage_diagnostic->overlap_m
+                                           : std::numeric_limits<double>::quiet_NaN();
+  const double first_passage_clearance = first_passage_diagnostic != nullptr
+                                             ? first_passage_diagnostic->clearance_m
+                                             : std::numeric_limits<double>::quiet_NaN();
   const SpeedProfileConstraintDiagnostic* top_speed_constraint =
-      trajectory_result.stats.top_speed_constraints.empty()
-          ? nullptr
-          : &trajectory_result.stats.top_speed_constraints.front();
+      stats.top_speed_constraints.empty() ? nullptr
+                                          : &stats.top_speed_constraints.front();
   const double top_speed_constraint_s = top_speed_constraint != nullptr
                                             ? top_speed_constraint->s_m
                                             : std::numeric_limits<double>::quiet_NaN();
@@ -313,7 +335,7 @@ bool PlannerNode::publishTrajectoryResult(
   const bool top_speed_constraint_isolated =
       top_speed_constraint != nullptr && top_speed_constraint->isolated_curvature_spike;
   const std::string centerline_blocked_spans =
-      centerlineBlockedSpansSummary(trajectory_result.stats.trajectory_optimizer);
+      centerlineBlockedSpansSummary(stats.trajectory_optimizer);
 
   RCLCPP_INFO(
       get_logger(),
@@ -389,264 +411,212 @@ bool PlannerNode::publishTrajectoryResult(
       "accepted(entry=%.2fm exit=%.2fm shift_scale=%.2f "
       "relaxed_angle=%.1fdeg score=%.3f radius=%.2f->%.2f "
       "speed=%.2f->%.2f time=%.2f->%.2f)] "
+      "known_passage_validation[enabled=%s valid=%s checked=%zu "
+      "intersected=%zu matches=%zu violations=%zu reason=%s "
+      "first(structure=%s opening=%s s=[%.2f,%.2f] overlap=%.2f "
+      "clearance=%.2f reason=%s)] "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu "
       "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
       "limit=%.2f source=%s isolated=%s) "
       "isolated_spikes(candidates=%zu geometry_smoothed=%zu "
       "max_before=%.4f max_after=%.4f)]",
       source_label, route_points.size(), trajectory_points.size(), duration_ms,
-      static_cast<int>(
-          trajectoryPlannerStatusName(trajectory_result.stats.status).size()),
-      trajectoryPlannerStatusName(trajectory_result.stats.status).data(),
-      static_cast<int>(trajectoryQualityName(trajectory_result.stats.quality).size()),
-      trajectoryQualityName(trajectory_result.stats.quality).data(),
-      trajectory_result.stats.total_duration_ms,
-      trajectory_result.stats.corridor_duration_ms,
-      trajectory_result.stats.trajectory_optimizer_duration_ms,
-      trajectory_result.stats.turn_smoothing_duration_ms,
-      trajectory_result.stats.speed_profile_duration_ms,
-      trajectory_result.stats.length_m, trajectory_result.stats.samples,
-      trajectory_result.stats.corridor.samples,
-      trajectory_result.stats.corridor.samples_reused ? "true" : "false",
-      trajectory_result.stats.corridor.reused_samples,
-      trajectory_result.stats.corridor.route_fingerprint,
-      trajectory_result.stats.corridor.prohibited_grid_fingerprint.cells_hash,
-      trajectory_result.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
-      trajectory_result.stats.corridor.min_width_m,
-      trajectory_result.stats.corridor.mean_width_m,
-      trajectory_result.stats.corridor.max_width_m,
-      trajectory_result.stats.corridor.lateral_limited_samples,
-      trajectory_result.stats.corridor.parallel_workers_used,
-      trajectory_result.stats.corridor.sample_build_duration_ms,
-      trajectory_result.stats.corridor.raycast_duration_ms,
-      trajectory_result.stats.corridor.lateral_limit_duration_ms,
-      trajectory_result.stats.corridor.clearance_field_build_duration_ms,
-      trajectory_result.stats.corridor.clearance_field_reused ? "true" : "false",
-      trajectory_result.stats.corridor.clearance_field_cache_hit ? "true" : "false",
-      trajectory_result.stats.corridor.config_fingerprint,
-      trajectory_result.stats.trajectory_optimizer.iterations,
-      trajectory_result.stats.trajectory_optimizer.candidate_evaluations,
-      trajectory_result.stats.trajectory_optimizer.skipped_noop_candidates,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_path_evaluation_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_point_build_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_sample_build_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_cost_breakdown_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_shape_diagnostics_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.regularization_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.scratch_reused_candidates,
-      trajectory_result.stats.trajectory_optimizer.parallel_candidate_evaluation_used
-          ? "true"
-          : "false",
-      trajectory_result.stats.trajectory_optimizer.parallel_workers_used,
-      trajectory_result.stats.trajectory_optimizer.candidate_chunks,
-      trajectory_result.stats.trajectory_optimizer.candidate_parallel_batches,
-      trajectory_result.stats.trajectory_optimizer.candidate_threads_launched,
-      trajectory_result.stats.trajectory_optimizer.worker_scratch_reuses,
-      trajectory_result.stats.trajectory_optimizer.candidate_batch_wall_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_batch_wait_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_worker_buffer_prepare_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.candidate_thread_launch_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_thread_join_wait_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_snapshot_allocations_avoided,
-      trajectory_result.stats.trajectory_optimizer.local_candidate_evaluations,
-      trajectory_result.stats.trajectory_optimizer.local_candidate_full_score_fallbacks,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_offset_changed_samples_total,
-      trajectory_result.stats.trajectory_optimizer.candidate_offset_changed_samples_max,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_offset_changed_span_samples_total,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_offset_changed_span_samples_max,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_local_speed_window_samples_total,
-      trajectory_result.stats.trajectory_optimizer
-          .candidate_local_speed_window_samples_max,
-      trajectory_result.stats.trajectory_optimizer.local_candidate_full_score_required,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_full_score_required_invalid_input,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_full_score_required_boundary,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_full_score_required_unsafe_base,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_full_score_required_window_invalid,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_acceptance_full_scores,
-      trajectory_result.stats.trajectory_optimizer.local_score_false_positives,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_point_build_duration_ms,
-      trajectory_result.stats.trajectory_optimizer
-          .local_candidate_path_evaluation_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.local_candidate_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.full_candidate_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_evaluations,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_unavailable,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_prunable,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_false_prunes,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_winner_mismatches,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_window_samples_total,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_window_samples_max,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_abs_error_sum,
-      trajectory_result.stats.trajectory_optimizer.shadow_segment_score_abs_error_p95,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_max_overestimate,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_max_underestimate,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_segment_score_max_false_prune_improvement_score,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_boundary_clamped_local_candidates,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_boundary_clamped_window_samples_total,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_boundary_clamped_window_samples_max,
-      trajectory_result.stats.trajectory_optimizer.initial_cost,
-      trajectory_result.stats.trajectory_optimizer.final_cost,
-      trajectory_result.stats.trajectory_optimizer.centerline_length_m,
-      trajectory_result.stats.trajectory_optimizer.final_length_m,
-      trajectory_result.stats.trajectory_optimizer.final_length_ratio,
-      trajectory_result.stats.trajectory_optimizer.max_abs_offset_m,
-      trajectory_result.stats.trajectory_optimizer.min_edge_margin_m,
-      trajectory_result.stats.trajectory_optimizer.cost_offset_slope,
-      trajectory_result.stats.trajectory_optimizer.estimated_time_s,
-      trajectory_result.stats.trajectory_optimizer.min_speed_limit_mps,
-      trajectory_result.stats.trajectory_optimizer.max_speed_limit_mps,
-      trajectory_result.stats.trajectory_optimizer.curvature_limited_samples,
-      trajectory_result.stats.trajectory_optimizer.window_count,
-      trajectory_result.stats.trajectory_optimizer.active_window_count,
-      trajectory_result.stats.trajectory_optimizer.active_window_samples,
-      trajectory_result.stats.trajectory_optimizer.active_window_centerline_blocked,
-      trajectory_result.stats.trajectory_optimizer.active_window_heading_change_samples,
-      trajectory_result.stats.trajectory_optimizer.active_window_heading_span_samples,
-      trajectory_result.stats.trajectory_optimizer.active_window_curvature_samples,
-      trajectory_result.stats.trajectory_optimizer.active_window_width_change_samples,
-      trajectory_result.stats.trajectory_optimizer
-          .active_window_width_asymmetry_samples,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_width_asymmetry_count,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_width_asymmetry_samples,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_width_triggers_count,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_width_triggers_samples,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_heading_span_count,
-      trajectory_result.stats.trajectory_optimizer
-          .shadow_active_window_no_heading_span_samples,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_windows,
-      trajectory_result.stats.trajectory_optimizer
-          .centerline_blocked_window_merged_count,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_window_samples,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_prohibited_cells,
-      trajectory_result.stats.trajectory_optimizer
-          .centerline_blocked_outside_grid_segments,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_segment_count,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_span_count,
-      trajectory_result.stats.trajectory_optimizer
-          .centerline_blocked_first_segment_index,
-      trajectory_result.stats.trajectory_optimizer
-          .centerline_blocked_last_segment_index,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_s_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_s_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_span_length_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_x_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_y_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_x_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_y_m,
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_first_outside_grid
-          ? "true"
-          : "false",
-      trajectory_result.stats.trajectory_optimizer.centerline_blocked_last_outside_grid
-          ? "true"
-          : "false",
-      centerline_blocked_spans.c_str(),
-      trajectory_result.stats.trajectory_optimizer.dp_states,
-      trajectory_result.stats.trajectory_optimizer.dp_transitions,
-      trajectory_result.stats.trajectory_optimizer.dp_segment_cache_hits,
-      trajectory_result.stats.trajectory_optimizer.dp_segment_cache_misses,
-      trajectory_result.stats.trajectory_optimizer.candidate_segment_cache_hits,
-      trajectory_result.stats.trajectory_optimizer.candidate_segment_cache_misses,
-      trajectory_result.stats.trajectory_optimizer.full_path_segment_cache_hits,
-      trajectory_result.stats.trajectory_optimizer.full_path_segment_cache_misses,
-      trajectory_result.stats.trajectory_optimizer.dp_coarse_states,
-      trajectory_result.stats.trajectory_optimizer.dp_coarse_transitions,
-      trajectory_result.stats.trajectory_optimizer.dp_fine_states,
-      trajectory_result.stats.trajectory_optimizer.dp_fine_transitions,
-      trajectory_result.stats.trajectory_optimizer.dp_coarse_to_fine_used ? "true"
-                                                                          : "false",
-      trajectory_result.stats.trajectory_optimizer.window_detection_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.window_eval_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.dp_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.full_final_score_duration_ms,
-      trajectory_result.stats.trajectory_optimizer.async_refined ? "true" : "false",
-      trajectory_result.stats.turn_smoothing.detected_corners,
-      trajectory_result.stats.turn_smoothing.attempted_corners,
-      trajectory_result.stats.turn_smoothing.candidate_attempts,
-      trajectory_result.stats.turn_smoothing.relaxed_candidate_attempts,
-      trajectory_result.stats.turn_smoothing.bezier_cache_hits,
-      trajectory_result.stats.turn_smoothing.bezier_cache_misses,
-      trajectory_result.stats.turn_smoothing.before_metrics_cache_hits,
-      trajectory_result.stats.turn_smoothing.before_metrics_cache_misses,
-      trajectory_result.stats.turn_smoothing.traversability_cache_hits,
-      trajectory_result.stats.turn_smoothing.traversability_cache_misses,
-      trajectory_result.stats.turn_smoothing.candidate_build_duration_ms,
-      trajectory_result.stats.turn_smoothing.candidate_replace_duration_ms,
-      trajectory_result.stats.turn_smoothing.collision_check_duration_ms,
-      trajectory_result.stats.turn_smoothing.metrics_duration_ms,
-      trajectory_result.stats.turn_smoothing.shape_diagnostics_duration_ms,
-      trajectory_result.stats.turn_smoothing.speed_profile_duration_ms,
-      trajectory_result.stats.turn_smoothing.smoothed_corners,
-      trajectory_result.stats.turn_smoothing.rejected_prohibited,
-      trajectory_result.stats.turn_smoothing.rejected_corridor,
-      trajectory_result.stats.turn_smoothing.rejected_not_improved,
-      trajectory_result.stats.turn_smoothing.rejected_curvature_regression,
-      trajectory_result.stats.turn_smoothing.rejected_radius_regression,
-      radiansToDegrees(
-          trajectory_result.stats.turn_smoothing.max_heading_delta_before_rad),
-      radiansToDegrees(
-          trajectory_result.stats.turn_smoothing.max_heading_delta_after_rad),
-      trajectory_result.stats.turn_smoothing.max_curvature_jump_before_1pm,
-      trajectory_result.stats.turn_smoothing.max_curvature_jump_after_1pm,
-      trajectory_result.stats.turn_smoothing.min_inner_margin_m,
-      trajectory_result.stats.turn_smoothing.max_applied_outer_shift_m,
-      trajectory_result.stats.turn_smoothing.accepted_entry_distance_m,
-      trajectory_result.stats.turn_smoothing.accepted_exit_distance_m,
-      trajectory_result.stats.turn_smoothing.accepted_shift_scale,
-      trajectory_result.stats.turn_smoothing.accepted_relaxed_angle_deg,
-      trajectory_result.stats.turn_smoothing.accepted_score,
-      trajectory_result.stats.turn_smoothing.accepted_min_radius_before_m,
-      trajectory_result.stats.turn_smoothing.accepted_min_radius_after_m,
-      trajectory_result.stats.turn_smoothing.accepted_min_speed_before_mps,
-      trajectory_result.stats.turn_smoothing.accepted_min_speed_after_mps,
-      trajectory_result.stats.turn_smoothing.accepted_local_time_before_s,
-      trajectory_result.stats.turn_smoothing.accepted_local_time_after_s,
-      trajectory_result.stats.speed_profile_min_mps,
-      trajectory_result.stats.speed_profile_mean_mps,
-      trajectory_result.stats.speed_profile_max_mps,
-      trajectory_result.stats.speed_profile_curvature_limited_samples,
-      trajectory_result.stats.top_speed_constraints.size(), top_speed_constraint_s,
+      static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
+      trajectoryPlannerStatusName(stats.status).data(),
+      static_cast<int>(trajectoryQualityName(stats.quality).size()),
+      trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
+      stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
+      stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms, stats.length_m,
+      stats.samples, stats.corridor.samples,
+      stats.corridor.samples_reused ? "true" : "false", stats.corridor.reused_samples,
+      stats.corridor.route_fingerprint,
+      stats.corridor.prohibited_grid_fingerprint.cells_hash,
+      stats.corridor.prohibited_grid_fingerprint.inflated_hash,
+      stats.corridor.min_width_m, stats.corridor.mean_width_m,
+      stats.corridor.max_width_m, stats.corridor.lateral_limited_samples,
+      stats.corridor.parallel_workers_used, stats.corridor.sample_build_duration_ms,
+      stats.corridor.raycast_duration_ms, stats.corridor.lateral_limit_duration_ms,
+      stats.corridor.clearance_field_build_duration_ms,
+      stats.corridor.clearance_field_reused ? "true" : "false",
+      stats.corridor.clearance_field_cache_hit ? "true" : "false",
+      stats.corridor.config_fingerprint, stats.trajectory_optimizer.iterations,
+      stats.trajectory_optimizer.candidate_evaluations,
+      stats.trajectory_optimizer.skipped_noop_candidates,
+      stats.trajectory_optimizer.candidate_path_evaluation_duration_ms,
+      stats.trajectory_optimizer.candidate_score_duration_ms,
+      stats.trajectory_optimizer.candidate_point_build_duration_ms,
+      stats.trajectory_optimizer.candidate_sample_build_duration_ms,
+      stats.trajectory_optimizer.candidate_cost_breakdown_duration_ms,
+      stats.trajectory_optimizer.candidate_shape_diagnostics_duration_ms,
+      stats.trajectory_optimizer.regularization_duration_ms,
+      stats.trajectory_optimizer.scratch_reused_candidates,
+      stats.trajectory_optimizer.parallel_candidate_evaluation_used ? "true" : "false",
+      stats.trajectory_optimizer.parallel_workers_used,
+      stats.trajectory_optimizer.candidate_chunks,
+      stats.trajectory_optimizer.candidate_parallel_batches,
+      stats.trajectory_optimizer.candidate_threads_launched,
+      stats.trajectory_optimizer.worker_scratch_reuses,
+      stats.trajectory_optimizer.candidate_batch_wall_duration_ms,
+      stats.trajectory_optimizer.candidate_batch_wait_duration_ms,
+      stats.trajectory_optimizer.candidate_worker_buffer_prepare_duration_ms,
+      stats.trajectory_optimizer.candidate_thread_launch_duration_ms,
+      stats.trajectory_optimizer.candidate_thread_join_wait_duration_ms,
+      stats.trajectory_optimizer.candidate_snapshot_allocations_avoided,
+      stats.trajectory_optimizer.local_candidate_evaluations,
+      stats.trajectory_optimizer.local_candidate_full_score_fallbacks,
+      stats.trajectory_optimizer.candidate_offset_changed_samples_total,
+      stats.trajectory_optimizer.candidate_offset_changed_samples_max,
+      stats.trajectory_optimizer.candidate_offset_changed_span_samples_total,
+      stats.trajectory_optimizer.candidate_offset_changed_span_samples_max,
+      stats.trajectory_optimizer.candidate_local_speed_window_samples_total,
+      stats.trajectory_optimizer.candidate_local_speed_window_samples_max,
+      stats.trajectory_optimizer.local_candidate_full_score_required,
+      stats.trajectory_optimizer.local_candidate_full_score_required_invalid_input,
+      stats.trajectory_optimizer.local_candidate_full_score_required_boundary,
+      stats.trajectory_optimizer.local_candidate_full_score_required_unsafe_base,
+      stats.trajectory_optimizer.local_candidate_full_score_required_window_invalid,
+      stats.trajectory_optimizer.local_candidate_acceptance_full_scores,
+      stats.trajectory_optimizer.local_score_false_positives,
+      stats.trajectory_optimizer.local_candidate_point_build_duration_ms,
+      stats.trajectory_optimizer.local_candidate_path_evaluation_duration_ms,
+      stats.trajectory_optimizer.local_candidate_score_duration_ms,
+      stats.trajectory_optimizer.full_candidate_score_duration_ms,
+      stats.trajectory_optimizer.shadow_segment_score_evaluations,
+      stats.trajectory_optimizer.shadow_segment_score_unavailable,
+      stats.trajectory_optimizer.shadow_segment_score_prunable,
+      stats.trajectory_optimizer.shadow_segment_score_false_prunes,
+      stats.trajectory_optimizer.shadow_segment_score_winner_mismatches,
+      stats.trajectory_optimizer.shadow_segment_score_window_samples_total,
+      stats.trajectory_optimizer.shadow_segment_score_window_samples_max,
+      stats.trajectory_optimizer.shadow_segment_score_abs_error_sum,
+      stats.trajectory_optimizer.shadow_segment_score_abs_error_p95,
+      stats.trajectory_optimizer.shadow_segment_score_max_overestimate,
+      stats.trajectory_optimizer.shadow_segment_score_max_underestimate,
+      stats.trajectory_optimizer.shadow_segment_score_max_false_prune_improvement_score,
+      stats.trajectory_optimizer.shadow_boundary_clamped_local_candidates,
+      stats.trajectory_optimizer.shadow_boundary_clamped_window_samples_total,
+      stats.trajectory_optimizer.shadow_boundary_clamped_window_samples_max,
+      stats.trajectory_optimizer.initial_cost, stats.trajectory_optimizer.final_cost,
+      stats.trajectory_optimizer.centerline_length_m,
+      stats.trajectory_optimizer.final_length_m,
+      stats.trajectory_optimizer.final_length_ratio,
+      stats.trajectory_optimizer.max_abs_offset_m,
+      stats.trajectory_optimizer.min_edge_margin_m,
+      stats.trajectory_optimizer.cost_offset_slope,
+      stats.trajectory_optimizer.estimated_time_s,
+      stats.trajectory_optimizer.min_speed_limit_mps,
+      stats.trajectory_optimizer.max_speed_limit_mps,
+      stats.trajectory_optimizer.curvature_limited_samples,
+      stats.trajectory_optimizer.window_count,
+      stats.trajectory_optimizer.active_window_count,
+      stats.trajectory_optimizer.active_window_samples,
+      stats.trajectory_optimizer.active_window_centerline_blocked,
+      stats.trajectory_optimizer.active_window_heading_change_samples,
+      stats.trajectory_optimizer.active_window_heading_span_samples,
+      stats.trajectory_optimizer.active_window_curvature_samples,
+      stats.trajectory_optimizer.active_window_width_change_samples,
+      stats.trajectory_optimizer.active_window_width_asymmetry_samples,
+      stats.trajectory_optimizer.shadow_active_window_no_width_asymmetry_count,
+      stats.trajectory_optimizer.shadow_active_window_no_width_asymmetry_samples,
+      stats.trajectory_optimizer.shadow_active_window_no_width_triggers_count,
+      stats.trajectory_optimizer.shadow_active_window_no_width_triggers_samples,
+      stats.trajectory_optimizer.shadow_active_window_no_heading_span_count,
+      stats.trajectory_optimizer.shadow_active_window_no_heading_span_samples,
+      stats.trajectory_optimizer.centerline_blocked_windows,
+      stats.trajectory_optimizer.centerline_blocked_window_merged_count,
+      stats.trajectory_optimizer.centerline_blocked_window_samples,
+      stats.trajectory_optimizer.centerline_blocked_prohibited_cells,
+      stats.trajectory_optimizer.centerline_blocked_outside_grid_segments,
+      stats.trajectory_optimizer.centerline_blocked_segment_count,
+      stats.trajectory_optimizer.centerline_blocked_span_count,
+      stats.trajectory_optimizer.centerline_blocked_first_segment_index,
+      stats.trajectory_optimizer.centerline_blocked_last_segment_index,
+      stats.trajectory_optimizer.centerline_blocked_first_s_m,
+      stats.trajectory_optimizer.centerline_blocked_last_s_m,
+      stats.trajectory_optimizer.centerline_blocked_span_length_m,
+      stats.trajectory_optimizer.centerline_blocked_first_x_m,
+      stats.trajectory_optimizer.centerline_blocked_first_y_m,
+      stats.trajectory_optimizer.centerline_blocked_last_x_m,
+      stats.trajectory_optimizer.centerline_blocked_last_y_m,
+      stats.trajectory_optimizer.centerline_blocked_first_outside_grid ? "true"
+                                                                       : "false",
+      stats.trajectory_optimizer.centerline_blocked_last_outside_grid ? "true"
+                                                                      : "false",
+      centerline_blocked_spans.c_str(), stats.trajectory_optimizer.dp_states,
+      stats.trajectory_optimizer.dp_transitions,
+      stats.trajectory_optimizer.dp_segment_cache_hits,
+      stats.trajectory_optimizer.dp_segment_cache_misses,
+      stats.trajectory_optimizer.candidate_segment_cache_hits,
+      stats.trajectory_optimizer.candidate_segment_cache_misses,
+      stats.trajectory_optimizer.full_path_segment_cache_hits,
+      stats.trajectory_optimizer.full_path_segment_cache_misses,
+      stats.trajectory_optimizer.dp_coarse_states,
+      stats.trajectory_optimizer.dp_coarse_transitions,
+      stats.trajectory_optimizer.dp_fine_states,
+      stats.trajectory_optimizer.dp_fine_transitions,
+      stats.trajectory_optimizer.dp_coarse_to_fine_used ? "true" : "false",
+      stats.trajectory_optimizer.window_detection_duration_ms,
+      stats.trajectory_optimizer.window_eval_duration_ms,
+      stats.trajectory_optimizer.dp_duration_ms,
+      stats.trajectory_optimizer.full_final_score_duration_ms,
+      stats.trajectory_optimizer.async_refined ? "true" : "false",
+      stats.turn_smoothing.detected_corners, stats.turn_smoothing.attempted_corners,
+      stats.turn_smoothing.candidate_attempts,
+      stats.turn_smoothing.relaxed_candidate_attempts,
+      stats.turn_smoothing.bezier_cache_hits, stats.turn_smoothing.bezier_cache_misses,
+      stats.turn_smoothing.before_metrics_cache_hits,
+      stats.turn_smoothing.before_metrics_cache_misses,
+      stats.turn_smoothing.traversability_cache_hits,
+      stats.turn_smoothing.traversability_cache_misses,
+      stats.turn_smoothing.candidate_build_duration_ms,
+      stats.turn_smoothing.candidate_replace_duration_ms,
+      stats.turn_smoothing.collision_check_duration_ms,
+      stats.turn_smoothing.metrics_duration_ms,
+      stats.turn_smoothing.shape_diagnostics_duration_ms,
+      stats.turn_smoothing.speed_profile_duration_ms,
+      stats.turn_smoothing.smoothed_corners, stats.turn_smoothing.rejected_prohibited,
+      stats.turn_smoothing.rejected_corridor,
+      stats.turn_smoothing.rejected_not_improved,
+      stats.turn_smoothing.rejected_curvature_regression,
+      stats.turn_smoothing.rejected_radius_regression,
+      radiansToDegrees(stats.turn_smoothing.max_heading_delta_before_rad),
+      radiansToDegrees(stats.turn_smoothing.max_heading_delta_after_rad),
+      stats.turn_smoothing.max_curvature_jump_before_1pm,
+      stats.turn_smoothing.max_curvature_jump_after_1pm,
+      stats.turn_smoothing.min_inner_margin_m,
+      stats.turn_smoothing.max_applied_outer_shift_m,
+      stats.turn_smoothing.accepted_entry_distance_m,
+      stats.turn_smoothing.accepted_exit_distance_m,
+      stats.turn_smoothing.accepted_shift_scale,
+      stats.turn_smoothing.accepted_relaxed_angle_deg,
+      stats.turn_smoothing.accepted_score,
+      stats.turn_smoothing.accepted_min_radius_before_m,
+      stats.turn_smoothing.accepted_min_radius_after_m,
+      stats.turn_smoothing.accepted_min_speed_before_mps,
+      stats.turn_smoothing.accepted_min_speed_after_mps,
+      stats.turn_smoothing.accepted_local_time_before_s,
+      stats.turn_smoothing.accepted_local_time_after_s,
+      passage_validation.enabled ? "true" : "false",
+      passage_validation.valid ? "true" : "false",
+      passage_validation.structures_checked, passage_validation.structures_intersected,
+      passage_validation.opening_matches, passage_validation.violations,
+      knownPassageValidationReasonName(passage_validation.worst_reason),
+      first_passage_structure, first_passage_opening, first_passage_entry_s,
+      first_passage_exit_s, first_passage_overlap, first_passage_clearance,
+      first_passage_reason, stats.speed_profile_min_mps, stats.speed_profile_mean_mps,
+      stats.speed_profile_max_mps, stats.speed_profile_curvature_limited_samples,
+      stats.top_speed_constraints.size(), top_speed_constraint_s,
       top_speed_constraint_radius, top_speed_constraint_curvature,
       top_speed_constraint_limit, top_speed_constraint_source,
       top_speed_constraint_isolated ? "true" : "false",
-      trajectory_result.stats.isolated_curvature_spike_candidates,
-      trajectory_result.stats.isolated_curvature_spikes_smoothed_geometry,
-      trajectory_result.stats.isolated_curvature_spike_max_before_1pm,
-      trajectory_result.stats.isolated_curvature_spike_max_after_1pm);
+      stats.isolated_curvature_spike_candidates,
+      stats.isolated_curvature_spikes_smoothed_geometry,
+      stats.isolated_curvature_spike_max_before_1pm,
+      stats.isolated_curvature_spike_max_after_1pm);
 
-  for (std::size_t i = 0U;
-       i < trajectory_result.stats.turn_smoothing.corner_diagnostics.size(); ++i) {
+  for (std::size_t i = 0U; i < stats.turn_smoothing.corner_diagnostics.size(); ++i) {
     const TurnSmoothingCornerDiagnostic& diagnostic =
-        trajectory_result.stats.turn_smoothing.corner_diagnostics[i];
+        stats.turn_smoothing.corner_diagnostics[i];
     RCLCPP_INFO(get_logger(),
                 "%s turn_smoothing corner[%zu]: accepted=%s reason=%s corner_s=%.2f "
                 "entry=%.2fm exit=%.2fm shift_scale=%.2f relaxed_angle=%.1fdeg "
@@ -669,8 +639,7 @@ bool PlannerNode::publishTrajectoryResult(
   last_valid_path_points_ = trajectory_points;
   logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");
   const std::uint64_t path_id = publishTrajectoryPath(
-      trajectory_result.samples, PathPublicationReason::kComputedPath,
-      &trajectory_result.stats);
+      trajectory_result.samples, PathPublicationReason::kComputedPath, &stats);
   if (published_path_id != nullptr) {
     *published_path_id = path_id;
   }

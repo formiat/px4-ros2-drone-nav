@@ -36,6 +36,7 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                  stats.corridor.clearance_field_reused);
   appendJsonBool(stream, "corridor_clearance_field_cache_hit",
                  stats.corridor.clearance_field_cache_hit);
+  stream << "," << knownPassageValidationDiagnosticsJsonFieldsImpl(stats);
   stream << "," << trajectoryOptimizerDiagnosticsJsonFields(stats);
   stream << "," << turnSmoothingDiagnosticsJsonFields(stats);
   stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
@@ -90,6 +91,7 @@ std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id
   appendJsonUint64(stream, "planning_runtime_velocity_control_config_fingerprint",
                    stats.runtime_velocity_control_config_fingerprint);
   stream << "," << speedProfileConstraintDiagnosticsJsonFields(stats);
+  stream << "," << knownPassageValidationDiagnosticsJsonFieldsImpl(stats);
   stream << "," << trajectoryTimingDiagnosticsJsonFields(stats);
   appendJsonSize(stream, "corridor_input_points", stats.corridor.input_points);
   appendJsonSize(stream, "corridor_samples", stats.corridor.samples);

@@ -40,6 +40,7 @@ add_library(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_passage_map.cpp
+  src/known_passage_validation.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_projection.cpp
@@ -309,6 +310,12 @@ if(BUILD_TESTING)
   target_compile_features(known_passage_map_test PRIVATE cxx_std_20)
   target_link_libraries(known_passage_map_test drone_city_nav_core)
   enable_project_warnings(known_passage_map_test)
+
+  ament_add_gtest(known_passage_validation_test
+                  tests/known_passage_validation_test.cpp)
+  target_compile_features(known_passage_validation_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_validation_test drone_city_nav_core)
+  enable_project_warnings(known_passage_validation_test)
 
   ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test PRIVATE cxx_std_20)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/corridor.hpp"
+#include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/trajectory_optimizer.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
 #include "drone_city_nav/turn_smoothing.hpp"
@@ -62,6 +63,7 @@ struct TrajectoryPlannerStats {
   double isolated_curvature_spike_max_before_1pm{0.0};
   double isolated_curvature_spike_max_after_1pm{0.0};
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;
+  KnownPassageValidationSummary known_passage_validation{};
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double trajectory_optimizer_duration_ms{0.0};
