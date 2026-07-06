@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 namespace drone_city_nav {
 namespace {
 
@@ -14,12 +16,15 @@ namespace {
   geometry_msgs::msg::PoseStamped first;
   first.pose.position.x = 0.0;
   first.pose.position.y = 0.0;
+  first.pose.position.z = 10.0;
   geometry_msgs::msg::PoseStamped second;
   second.pose.position.x = 4.0;
   second.pose.position.y = 0.0;
+  second.pose.position.z = 12.0;
   geometry_msgs::msg::PoseStamped third;
   third.pose.position.x = 4.0;
   third.pose.position.y = 3.0;
+  third.pose.position.z = 14.0;
   path.poses = {first, second, third};
   return path;
 }
@@ -30,13 +35,18 @@ TEST(OffboardTrajectoryState, ConvertsPathAndBuildsExecutableState) {
   const nav_msgs::msg::Path path = makePath();
 
   const std::vector<Point2> points = pathPointsFromMessage(path);
+  const std::vector<TrajectoryPointSample> samples = pathSamplesFromMessage(path);
   const OffboardTrajectoryState state =
-      buildOffboardTrajectoryState(points, VelocityFollowerConfig{});
+      buildOffboardTrajectoryState(samples, VelocityFollowerConfig{});
 
   ASSERT_EQ(points.size(), 3U);
+  ASSERT_EQ(samples.size(), 3U);
   EXPECT_EQ(messageStampNanoseconds(path.header.stamp), 2'000'000'003U);
   EXPECT_TRUE(state.valid);
   EXPECT_EQ(state.samples.size(), 3U);
+  EXPECT_DOUBLE_EQ(state.samples[0].z_m, 10.0);
+  EXPECT_DOUBLE_EQ(state.samples[1].z_m, 12.0);
+  EXPECT_DOUBLE_EQ(state.samples[2].z_m, 14.0);
   EXPECT_EQ(state.trajectory.size(), 2U);
   EXPECT_EQ(state.stats.input_points, 3U);
   EXPECT_EQ(state.stats.samples, 3U);
@@ -53,6 +63,29 @@ TEST(OffboardTrajectoryState, EmptyPathBuildsInvalidState) {
   EXPECT_TRUE(state.samples.empty());
   EXPECT_TRUE(state.trajectory.empty());
   EXPECT_EQ(state.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
+}
+
+TEST(OffboardTrajectoryState, RejectsNonFiniteAltitudeBeforeStalePoseReset) {
+  nav_msgs::msg::Path invalid_path = makePath();
+  invalid_path.poses[1].pose.position.z = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<TrajectoryPointSample> invalid_samples =
+      pathSamplesFromMessage(invalid_path);
+  const OffboardTrajectoryState invalid_candidate =
+      buildOffboardTrajectoryState(invalid_samples, VelocityFollowerConfig{});
+  const std::vector<Point2> current_points{{0.0, 0.0}, {20.0, 0.0}};
+  const OffboardTrajectoryState current_state =
+      buildOffboardTrajectoryState(current_points, VelocityFollowerConfig{});
+
+  ASSERT_TRUE(current_state.valid);
+  ASSERT_FALSE(invalid_candidate.valid);
+
+  const TrajectoryContinuityResult continuity =
+      evaluateOffboardTrajectoryUpdateContinuity(
+          current_state.samples, current_state.speed_profile, invalid_candidate,
+          Point2{2.0, 0.0}, Point2{12.0, 0.0}, true, false);
+
+  EXPECT_EQ(continuity.decision, TrajectoryContinuityDecision::kRejectTrajectory);
+  EXPECT_STREQ(continuity.reason, "new_trajectory_invalid");
 }
 
 TEST(OffboardTrajectoryState, RejectsInvalidCandidateBeforeStalePoseReset) {

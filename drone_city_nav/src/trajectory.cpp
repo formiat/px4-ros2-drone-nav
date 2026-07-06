@@ -124,7 +124,8 @@ segmentIndexAtS(const std::span<const TrajectorySegment> trajectory,
 
 [[nodiscard]] bool sampleIsFinite(const TrajectoryPointSample& sample) noexcept {
   return std::isfinite(sample.s_m) && finite2D(sample.point) &&
-         finite2D(sample.tangent) && std::isfinite(sample.curvature_1pm);
+         finite2D(sample.tangent) && std::isfinite(sample.curvature_1pm) &&
+         std::isfinite(sample.z_m);
 }
 
 [[nodiscard]] double signedCurvatureFromTriplet(const Point2 previous,
@@ -265,6 +266,64 @@ bool trajectorySamplesAreUsable(const std::span<const TrajectoryPointSample> sam
     previous_s = sample.s_m;
   }
   return true;
+}
+
+void assignTrajectorySampleAltitude(const std::span<TrajectoryPointSample> samples,
+                                    const double altitude_m) {
+  for (TrajectoryPointSample& sample : samples) {
+    sample.z_m = altitude_m;
+  }
+}
+
+double trajectorySampleAltitudeAtS(const std::span<const TrajectoryPointSample> samples,
+                                   const double s_m) {
+  if (!trajectorySamplesAreUsable(samples)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const double clamped_s =
+      std::clamp(std::isfinite(s_m) ? s_m : 0.0, 0.0, samples.back().s_m);
+  for (std::size_t i = 0U; i + 1U < samples.size(); ++i) {
+    const TrajectoryPointSample& start = samples[i];
+    const TrajectoryPointSample& end = samples[i + 1U];
+    if (clamped_s > end.s_m && i + 2U < samples.size()) {
+      continue;
+    }
+    const double station_delta_m = end.s_m - start.s_m;
+    if (!(station_delta_m > kTinyDistanceM)) {
+      return start.z_m;
+    }
+    const double t = std::clamp((clamped_s - start.s_m) / station_delta_m, 0.0, 1.0);
+    return start.z_m * (1.0 - t) + end.z_m * t;
+  }
+  return samples.back().z_m;
+}
+
+TrajectoryAltitudeStats
+trajectoryAltitudeStats(const std::span<const TrajectoryPointSample> samples) {
+  TrajectoryAltitudeStats stats{};
+  if (samples.empty()) {
+    return stats;
+  }
+
+  double sum_z_m = 0.0;
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    const double z_m = samples[i].z_m;
+    if (!std::isfinite(z_m)) {
+      return TrajectoryAltitudeStats{};
+    }
+    if (i == 0U) {
+      stats.min_z_m = z_m;
+      stats.max_z_m = z_m;
+    } else {
+      stats.min_z_m = std::min(stats.min_z_m, z_m);
+      stats.max_z_m = std::max(stats.max_z_m, z_m);
+    }
+    sum_z_m += z_m;
+  }
+  stats.valid = true;
+  stats.mean_z_m = sum_z_m / static_cast<double>(samples.size());
+  return stats;
 }
 
 TrajectoryMetrics

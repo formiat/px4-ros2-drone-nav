@@ -31,6 +31,11 @@ Mission and map:
 - `px4_local_origin_x_m`, `px4_local_origin_y_m`
 - planning grid resolution, size, and origin.
 
+`cruise_altitude_m` is also the default `z_m` assigned to executable
+trajectory samples. This makes ROS paths, RViz markers, and trajectory dumps
+3D-aware while the runtime vertical controller still holds the same cruise
+altitude.
+
 Obstacle/grid:
 
 - `inflation_radius_m`

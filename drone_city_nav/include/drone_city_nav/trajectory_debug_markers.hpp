@@ -13,7 +13,6 @@ namespace drone_city_nav {
 [[nodiscard]] visualization_msgs::msg::MarkerArray
 buildTrajectoryDebugMarkers(const std_msgs::msg::Header& header,
                             std::span<const TrajectoryPointSample> trajectory_samples,
-                            const TrajectorySpeedProfile& speed_profile,
-                            double marker_z_m);
+                            const TrajectorySpeedProfile& speed_profile);
 
 } // namespace drone_city_nav

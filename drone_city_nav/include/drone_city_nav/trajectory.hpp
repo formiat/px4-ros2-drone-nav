@@ -44,11 +44,19 @@ struct TrajectoryMetrics {
   double length_m{0.0};
 };
 
+struct TrajectoryAltitudeStats {
+  bool valid{false};
+  double min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double mean_z_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct TrajectoryPointSample {
   double s_m{0.0};
   Point2 point{};
   Point2 tangent{};
   double curvature_1pm{0.0};
+  double z_m{0.0};
   double left_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double right_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double lateral_offset_m{std::numeric_limits<double>::quiet_NaN()};
@@ -74,6 +82,15 @@ lineTrajectoryFromSamples(std::span<const TrajectoryPointSample> samples);
 
 [[nodiscard]] bool
 trajectorySamplesAreUsable(std::span<const TrajectoryPointSample> samples);
+
+void assignTrajectorySampleAltitude(std::span<TrajectoryPointSample> samples,
+                                    double altitude_m);
+
+[[nodiscard]] double
+trajectorySampleAltitudeAtS(std::span<const TrajectoryPointSample> samples, double s_m);
+
+[[nodiscard]] TrajectoryAltitudeStats
+trajectoryAltitudeStats(std::span<const TrajectoryPointSample> samples);
 
 [[nodiscard]] TrajectoryMetrics
 trajectoryMetrics(std::span<const TrajectorySegment> trajectory);

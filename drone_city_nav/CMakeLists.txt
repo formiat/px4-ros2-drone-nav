@@ -105,7 +105,8 @@ add_library(
   src/ros_conversions.cpp
   src/static_map_debug.cpp
   src/static_map_source.cpp
-  src/trajectory_debug_markers.cpp)
+  src/trajectory_debug_markers.cpp
+  src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
 target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_core)
 ament_target_dependencies(
@@ -333,7 +334,8 @@ if(BUILD_TESTING)
 
   ament_add_gtest(trajectory_debug_markers_test
                   tests/trajectory_debug_markers_test.cpp
-                  src/trajectory_debug_markers.cpp)
+                  src/trajectory_debug_markers.cpp
+                  src/visualization_marker_helpers.cpp)
   target_compile_features(trajectory_debug_markers_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_debug_markers_test drone_city_nav_core)
   ament_target_dependencies(trajectory_debug_markers_test geometry_msgs std_msgs

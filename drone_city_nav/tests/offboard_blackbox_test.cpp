@@ -323,6 +323,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.path_tracking.valid = true;
   record.path_tracking.cross_track_error_m = 0.7;
   record.path_tracking.projection = Point2{3.0, 4.0};
+  record.path_tracking.projection_z_m = 18.0;
   record.motion_phase = "cruise";
   record.final_goal_hold_active = false;
   record.terminal_position_capture_active = true;
@@ -576,6 +577,7 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"path\":{\"valid\":true");
   expectJsonField(json, "\"rough_route_debug_segment_type\":\"turn\"");
   expectJsonField(json, "\"tracking\":{\"valid\":true");
+  expectJsonField(json, "\"projection_z_m\":18");
   expectJsonField(json, "\"control\":{\"motion_phase\":\"cruise\"");
   expectJsonField(json, "\"terminal_position_capture_active\":true");
   expectJsonField(json, "\"terminal_position_capture_reason\":\"terminal_stuck\"");

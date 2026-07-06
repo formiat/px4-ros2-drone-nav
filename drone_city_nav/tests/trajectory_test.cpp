@@ -102,10 +102,12 @@ TEST(Trajectory, ProjectsOnSamplesWithInterpolatedTangentAndCurvature) {
   samples[0].point = Point2{0.0, 0.0};
   samples[0].tangent = Point2{1.0, 0.0};
   samples[0].curvature_1pm = 0.0;
+  samples[0].z_m = 10.0;
   samples[1].s_m = 10.0;
   samples[1].point = Point2{10.0, 0.0};
   samples[1].tangent = Point2{0.0, 1.0};
   samples[1].curvature_1pm = 0.2;
+  samples[1].z_m = 20.0;
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(samples, Point2{5.0, 2.0});
@@ -119,6 +121,7 @@ TEST(Trajectory, ProjectsOnSamplesWithInterpolatedTangentAndCurvature) {
   EXPECT_NEAR(projection_value.tangent.x, std::sqrt(0.5), 1.0e-9);
   EXPECT_NEAR(projection_value.tangent.y, std::sqrt(0.5), 1.0e-9);
   EXPECT_NEAR(projection_value.curvature_1pm, 0.1, 1.0e-9);
+  EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, projection_value.s_m), 15.0, 1.0e-9);
 }
 
 TEST(Trajectory, LineTrajectoryFromSamplesRejectsNonFiniteSample) {
@@ -131,6 +134,78 @@ TEST(Trajectory, LineTrajectoryFromSamplesRejectsNonFiniteSample) {
 
   EXPECT_TRUE(lineTrajectoryFromSamples(samples).empty());
   EXPECT_FALSE(trajectorySamplesAreUsable(samples));
+}
+
+TEST(Trajectory, SamplesRejectNonFiniteAltitude) {
+  std::vector<TrajectoryPointSample> samples(2U);
+  samples[0].s_m = 0.0;
+  samples[0].point = Point2{0.0, 0.0};
+  samples[0].tangent = Point2{1.0, 0.0};
+  samples[0].z_m = 12.0;
+  samples[1].s_m = 1.0;
+  samples[1].point = Point2{1.0, 0.0};
+  samples[1].tangent = Point2{1.0, 0.0};
+  samples[1].z_m = std::numeric_limits<double>::quiet_NaN();
+
+  EXPECT_FALSE(trajectorySamplesAreUsable(samples));
+  EXPECT_TRUE(lineTrajectoryFromSamples(samples).empty());
+}
+
+TEST(Trajectory, AssignsAndSummarizesSampleAltitude) {
+  std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{Point2{0.0, 0.0}, Point2{4.0, 0.0}, Point2{8.0, 0.0}});
+  ASSERT_TRUE(trajectorySamplesAreUsable(samples));
+
+  assignTrajectorySampleAltitude(samples, 18.0);
+
+  EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 18.0);
+  const TrajectoryAltitudeStats stats = trajectoryAltitudeStats(samples);
+  ASSERT_TRUE(stats.valid);
+  EXPECT_DOUBLE_EQ(stats.min_z_m, 18.0);
+  EXPECT_DOUBLE_EQ(stats.mean_z_m, 18.0);
+  EXPECT_DOUBLE_EQ(stats.max_z_m, 18.0);
+}
+
+TEST(Trajectory, AltitudeInterpolationIsByStationing) {
+  std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{Point2{0.0, 0.0}, Point2{4.0, 0.0}, Point2{8.0, 0.0}});
+  ASSERT_EQ(samples.size(), 3U);
+  samples[0].z_m = 10.0;
+  samples[1].z_m = 20.0;
+  samples[2].z_m = 30.0;
+
+  EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, 2.0), 15.0, 1.0e-9);
+  EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, 6.0), 25.0, 1.0e-9);
+  EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, -5.0), 10.0, 1.0e-9);
+  EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, 99.0), 30.0, 1.0e-9);
+}
+
+TEST(Trajectory, ProjectionAndLengthStayTwoDimensionalWithAltitude) {
+  std::vector<TrajectoryPointSample> flat_samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{Point2{0.0, 0.0}, Point2{10.0, 0.0}});
+  std::vector<TrajectoryPointSample> elevated_samples = flat_samples;
+  elevated_samples[0].z_m = 0.0;
+  elevated_samples[1].z_m = 100.0;
+
+  const std::vector<TrajectorySegment> flat = lineTrajectoryFromSamples(flat_samples);
+  const std::vector<TrajectorySegment> elevated =
+      lineTrajectoryFromSamples(elevated_samples);
+  const std::optional<TrajectoryProjection> flat_projection =
+      projectOnTrajectorySamples(flat_samples, Point2{5.0, 3.0});
+  const std::optional<TrajectoryProjection> elevated_projection =
+      projectOnTrajectorySamples(elevated_samples, Point2{5.0, 3.0});
+
+  ASSERT_TRUE(flat_projection.has_value());
+  ASSERT_TRUE(elevated_projection.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): asserted above.
+  const TrajectoryProjection flat_projection_value = flat_projection.value();
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access): asserted above.
+  const TrajectoryProjection elevated_projection_value = elevated_projection.value();
+  EXPECT_DOUBLE_EQ(trajectoryLengthM(flat), trajectoryLengthM(elevated));
+  EXPECT_DOUBLE_EQ(flat_projection_value.point.x, elevated_projection_value.point.x);
+  EXPECT_DOUBLE_EQ(flat_projection_value.point.y, elevated_projection_value.point.y);
+  EXPECT_DOUBLE_EQ(flat_projection_value.s_m, elevated_projection_value.s_m);
 }
 
 TEST(Trajectory, InvalidInputsReturnInvalidProjection) {

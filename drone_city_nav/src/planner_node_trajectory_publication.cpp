@@ -668,9 +668,9 @@ bool PlannerNode::publishTrajectoryResult(
 
   last_valid_path_points_ = trajectory_points;
   logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");
-  const std::uint64_t path_id =
-      publishPath(trajectory_points, PathPublicationReason::kComputedPath,
-                  &trajectory_result.stats);
+  const std::uint64_t path_id = publishTrajectoryPath(
+      trajectory_result.samples, PathPublicationReason::kComputedPath,
+      &trajectory_result.stats);
   if (published_path_id != nullptr) {
     *published_path_id = path_id;
   }

@@ -9,6 +9,7 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   TrajectoryPointSample sample{};
   sample.s_m = 4.0;
   sample.point = Point2{1.0, 2.0};
+  sample.z_m = 18.0;
   sample.tangent = Point2{1.0, 0.0};
   sample.curvature_1pm = 0.25;
   sample.left_bound_m = 3.0;
@@ -31,6 +32,7 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
                                 "s_m",
                                 "x",
                                 "y",
+                                "z_m",
                                 "curvature_1pm",
                                 "speed_geometric_limit_mps",
                                 "speed_profiled_limit_mps",
@@ -42,6 +44,7 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
                                 "profiled_time_to_finish_s",
                             });
   EXPECT_NE(row.find("arc"), std::string::npos);
+  EXPECT_NE(row.find("18"), std::string::npos);
   EXPECT_NE(row.find("1.25"), std::string::npos);
   EXPECT_NE(row.find("3.5"), std::string::npos);
   EXPECT_EQ(row.find("nan"), std::string::npos);

@@ -226,6 +226,11 @@ private:
                             PathPublicationReason reason,
                             const TrajectoryPlannerStats* trajectory_stats = nullptr);
 
+  std::uint64_t
+  publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
+                        PathPublicationReason reason,
+                        const TrajectoryPlannerStats* trajectory_stats = nullptr);
+
   void publishTrajectoryDiagnostics(const std::uint64_t path_id,
                                     const std::uint64_t path_stamp_ns,
                                     const TrajectoryPlannerStats& stats) const;
@@ -315,6 +320,7 @@ private:
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{1.0};
   double planning_clearance_m_{3.0};
+  double cruise_altitude_m_{12.0};
   double static_map_min_blocking_height_m_{0.0};
   double stable_path_goal_tolerance_m_{3.0};
   double max_lidar_range_m_{35.0};

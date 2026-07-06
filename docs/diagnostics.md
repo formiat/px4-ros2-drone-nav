@@ -37,6 +37,7 @@ Use this file for control-quality analysis.
 These files are useful for:
 
 - geometry inspection;
+- trajectory altitude inspection through the `z_m` column;
 - speed-profile constraints;
 - curvature spikes;
 - accepted trajectory id and stamp;
@@ -187,6 +188,12 @@ actual vehicle motion. For lateral behavior, inspect:
 - curvature feedforward;
 - projection smoothing mode;
 - smoother acceleration and jerk limiting.
+
+For 3D trajectory representation checks, inspect `projection_z_m` in the
+blackbox tracking object and the accepted trajectory altitude range in the
+`Received executable final trajectory` log. These fields describe trajectory
+representation altitude; runtime vertical velocity still follows the cruise
+altitude hold controller in this stage.
 
 If desired command is already wrong, fix projection, feedforward, or lateral
 controller tuning. If desired command is right but the setpoint is clipped, fix

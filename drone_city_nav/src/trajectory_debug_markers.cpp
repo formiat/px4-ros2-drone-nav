@@ -1,7 +1,7 @@
 #include "drone_city_nav/trajectory_debug_markers.hpp"
 
-#include <geometry_msgs/msg/point.hpp>
-#include <std_msgs/msg/color_rgba.hpp>
+#include "drone_city_nav/visualization_marker_helpers.hpp"
+
 #include <visualization_msgs/msg/marker.hpp>
 
 #include <algorithm>
@@ -13,25 +13,6 @@ namespace {
 
 constexpr int kSpeedMarkerId = 0;
 constexpr int kCurvatureMarkerId = 1;
-
-[[nodiscard]] geometry_msgs::msg::Point markerPoint(const Point2 point,
-                                                    const double z_m) {
-  geometry_msgs::msg::Point msg;
-  msg.x = point.x;
-  msg.y = point.y;
-  msg.z = z_m;
-  return msg;
-}
-
-[[nodiscard]] std_msgs::msg::ColorRGBA rgba(const float red, const float green,
-                                            const float blue, const float alpha) {
-  std_msgs::msg::ColorRGBA color;
-  color.r = red;
-  color.g = green;
-  color.b = blue;
-  color.a = alpha;
-  return color;
-}
 
 [[nodiscard]] float normalized(const double value, const double min_value,
                                const double max_value) {
@@ -59,13 +40,8 @@ constexpr int kCurvatureMarkerId = 1;
 [[nodiscard]] visualization_msgs::msg::Marker
 makeLineList(const std_msgs::msg::Header& header, const char* marker_namespace,
              const int marker_id) {
-  visualization_msgs::msg::Marker marker;
-  marker.header = header;
-  marker.ns = marker_namespace;
-  marker.id = marker_id;
-  marker.type = visualization_msgs::msg::Marker::LINE_LIST;
-  marker.action = visualization_msgs::msg::Marker::ADD;
-  marker.pose.orientation.w = 1.0;
+  visualization_msgs::msg::Marker marker = makeMarker(
+      header, marker_namespace, marker_id, visualization_msgs::msg::Marker::LINE_LIST);
   marker.scale.x = 0.28;
   marker.color = rgba(1.0F, 1.0F, 1.0F, 1.0F);
   return marker;
@@ -85,7 +61,7 @@ makeDeleteMarker(const std_msgs::msg::Header& header, const char* marker_namespa
 visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
     const std_msgs::msg::Header& header,
     const std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, const double marker_z_m) {
+    const TrajectorySpeedProfile& speed_profile) {
   visualization_msgs::msg::MarkerArray markers;
   if (trajectory_samples.size() < 2U || !speed_profile.valid ||
       speed_profile.samples.empty()) {
@@ -124,13 +100,13 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
     const std_msgs::msg::ColorRGBA curvature_color =
         curvatureColor(std::abs(current.curvature_1pm), max_abs_curvature);
 
-    speed_marker.points.push_back(markerPoint(previous.point, marker_z_m + 0.04));
-    speed_marker.points.push_back(markerPoint(current.point, marker_z_m + 0.04));
+    speed_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.04));
+    speed_marker.points.push_back(markerPoint(current.point, current.z_m + 0.04));
     speed_marker.colors.push_back(speed_color);
     speed_marker.colors.push_back(speed_color);
 
-    curvature_marker.points.push_back(markerPoint(previous.point, marker_z_m + 0.08));
-    curvature_marker.points.push_back(markerPoint(current.point, marker_z_m + 0.08));
+    curvature_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.08));
+    curvature_marker.points.push_back(markerPoint(current.point, current.z_m + 0.08));
     curvature_marker.colors.push_back(curvature_color);
     curvature_marker.colors.push_back(curvature_color);
   }

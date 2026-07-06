@@ -33,6 +33,9 @@ messageStampNanoseconds(const builtin_interfaces::msg::Time& stamp);
 [[nodiscard]] std::vector<Point2>
 pathPointsFromMessage(const nav_msgs::msg::Path& path);
 
+[[nodiscard]] std::vector<TrajectoryPointSample>
+pathSamplesFromMessage(const nav_msgs::msg::Path& path);
+
 [[nodiscard]] bool trajectoryDiagnosticsMatchesPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics,
     std::uint64_t expected_path_stamp_ns, bool planner_path_id_seen,
@@ -51,6 +54,10 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
 
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(std::span<const Point2> path_points,
+                             const VelocityFollowerConfig& velocity_config);
+
+[[nodiscard]] OffboardTrajectoryState
+buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples,
                              const VelocityFollowerConfig& velocity_config);
 
 [[nodiscard]] TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(

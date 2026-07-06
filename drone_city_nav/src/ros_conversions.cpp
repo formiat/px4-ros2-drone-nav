@@ -260,4 +260,23 @@ nav_msgs::msg::Path pathToRos(std::span<const Point2> points,
   return path;
 }
 
+nav_msgs::msg::Path pathToRos(const std::span<const TrajectoryPointSample> samples,
+                              const std_msgs::msg::Header& header) {
+  nav_msgs::msg::Path path;
+  path.header = header;
+  path.poses.reserve(samples.size());
+
+  for (const TrajectoryPointSample& sample : samples) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header = path.header;
+    pose.pose.position.x = sample.point.x;
+    pose.pose.position.y = sample.point.y;
+    pose.pose.position.z = sample.z_m;
+    pose.pose.orientation.w = 1.0;
+    path.poses.push_back(pose);
+  }
+
+  return path;
+}
+
 } // namespace drone_city_nav

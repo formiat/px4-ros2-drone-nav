@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -32,6 +33,7 @@ struct OffboardBlackboxPathTracking {
   double path_heading_rad{0.0};
   double heading_error_rad{0.0};
   Point2 projection{};
+  double projection_z_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct OffboardBlackboxNearestProhibitedCell {

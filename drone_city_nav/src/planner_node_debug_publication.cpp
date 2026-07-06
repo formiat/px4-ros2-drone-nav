@@ -58,8 +58,43 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   const PathMetrics metrics = pointPathMetrics(points);
   const std_msgs::msg::Header header = makePlannerHeader();
   const std::uint64_t path_stamp_ns = stampNanoseconds(header.stamp);
-  const nav_msgs::msg::Path path = pathToRos(
-      std::span<const Point2>{points.data(), points.size()}, header, kGroundDebugZ);
+  const nav_msgs::msg::Path path =
+      pathToRos(std::span<const Point2>{points.data(), points.size()}, header,
+                cruise_altitude_m_);
+
+  std_msgs::msg::UInt64 path_id_msg;
+  path_id_msg.data = path_id;
+  path_id_pub_->publish(path_id_msg);
+  if (trajectory_stats != nullptr && !points.empty()) {
+    publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats);
+  }
+  path_pub_->publish(path);
+  if (!path.poses.empty()) {
+    waypoint_pub_->publish(path.poses.front());
+  }
+
+  logPathUpdate(path, metrics, reason, path_id);
+  logPlannerCountersThrottled();
+  return path_id;
+}
+
+std::uint64_t
+PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> samples,
+                                   const PathPublicationReason reason,
+                                   const TrajectoryPlannerStats* trajectory_stats) {
+  std::vector<Point2> points = trajectorySamplePoints(samples);
+  recordPathPublication(reason, points.empty());
+  const std::uint64_t path_id = next_path_id_++;
+  last_published_path_id_ = path_id;
+
+  if (points.empty()) {
+    last_valid_path_points_.clear();
+  }
+
+  const PathMetrics metrics = pointPathMetrics(points);
+  const std_msgs::msg::Header header = makePlannerHeader();
+  const std::uint64_t path_stamp_ns = stampNanoseconds(header.stamp);
+  const nav_msgs::msg::Path path = pathToRos(samples, header);
 
   std_msgs::msg::UInt64 path_id_msg;
   path_id_msg.data = path_id;

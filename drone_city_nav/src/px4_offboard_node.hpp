@@ -95,6 +95,7 @@ struct PathTrackingDiagnostics {
   double path_heading_rad{std::numeric_limits<double>::quiet_NaN()};
   double heading_error_rad{std::numeric_limits<double>::quiet_NaN()};
   Point2 projection{};
+  double projection_z_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct NearestProhibitedCellDiagnostic {

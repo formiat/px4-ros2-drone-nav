@@ -229,6 +229,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("tracking_predicted_y", self.offboard_text)
         self.assertIn("current_projection_x", self.offboard_text)
         self.assertIn("current_projection_y", self.offboard_text)
+        self.assertIn("projection_z_m", self.offboard_text)
         self.assertIn("predicted_projection_x", self.offboard_text)
         self.assertIn("predicted_projection_y", self.offboard_text)
         self.assertIn("current_cross_track_error_m", self.offboard_text)
@@ -296,7 +297,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
             self.final_trajectory_debug_io_text,
         )
         self.assertIn(
-            "sample_index,s_m,x,y",
+            "sample_index,s_m,x,y,z_m",
             self.trajectory_diagnostics_io_text,
         )
         self.assertIn("lateral_offset_m", self.trajectory_diagnostics_io_text)
@@ -304,6 +305,18 @@ class OffboardTelemetryContractTest(unittest.TestCase):
             "speed_profiled_limit_mps",
             self.trajectory_diagnostics_io_text,
         )
+
+    def test_final_trajectory_debug_path_uses_sample_altitude(self) -> None:
+        self.assertIn(
+            "pathToRos(final_trajectory_samples_",
+            self.offboard_text,
+        )
+        self.assertNotIn(
+            "pathToRos(\n      std::span<const Point2>{samples.data(), samples.size()}, makeDebugHeader(), 0.0)",
+            self.offboard_text,
+        )
+        self.assertIn("verticalVelocitySetpointNed(", self.offboard_text)
+        self.assertIn("cruise_altitude_m_", self.offboard_text)
 
     def test_corridor_samples_are_planner_owned(self) -> None:
         self.assertIn("result.corridor_samples = corridor.samples", self.trajectory_planner_text)

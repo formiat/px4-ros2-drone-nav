@@ -35,7 +35,7 @@ The current stack supports:
 - smooth trajectory optimization inside the corridor;
 - turn smoothing and isolated geometry spike cleanup;
 - speed-profile construction for trajectory samples;
-- accepted executable trajectory publication;
+- accepted executable trajectory publication with per-sample debug altitude;
 - offboard velocity following with P/D cross-track control, curvature
   feedforward, projection smoothing, and velocity smoothing;
 - a terminal state machine that transitions from cruise to velocity terminal
@@ -68,8 +68,11 @@ This project is not currently intended to provide:
 - a general SLAM system;
 - support for arbitrary simulator versions outside the repository container.
 
-The planner currently uses a 2D navigation representation with altitude handled
-by offboard control and simulation safety checks.
+The planner still performs XY obstacle avoidance and trajectory shaping in a
+2D navigation representation. Executable trajectory samples now also carry
+`z_m`, currently initialized from `cruise_altitude_m`, so RViz paths, markers,
+and dumps can represent the trajectory in 3D. Runtime vertical control still
+holds the configured cruise altitude in this stage.
 
 ## Important Terms
 
@@ -81,6 +84,8 @@ by offboard control and simulation safety checks.
   paths and trajectories. Entering the planning-clearance margin is not itself
   a replan reason.
 - Executable trajectory: the accepted path that the offboard controller tracks.
+  Its geometry and speed profile are currently XY-owned, while `z_m` is a
+  representation/debug altitude for RViz and diagnostics.
 - Trajectory optimizer: the post-corridor optimizer that improves smoothness
   and radius while staying inside the valid corridor.
 - Terminal capture: the final control state sequence that slows down, enters

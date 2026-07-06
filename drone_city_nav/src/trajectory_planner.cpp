@@ -69,6 +69,7 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
 
 void finalizeResult(TrajectoryPlannerResult& result,
                     const TrajectoryPlannerConfig& config) {
+  assignTrajectorySampleAltitude(result.samples, config.default_altitude_m);
   const TrajectoryMetrics metrics = trajectoryMetrics(result.compact_segments);
   result.stats.compact_segments = result.compact_segments.size();
   result.stats.line_segments = metrics.line_segments;

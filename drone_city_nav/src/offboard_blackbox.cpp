@@ -552,6 +552,8 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, record.path_tracking.projection.x);
   stream << ",\"projection_y\":";
   writeBlackboxJsonNumberOrNull(stream, record.path_tracking.projection.y);
+  stream << ",\"projection_z_m\":";
+  writeBlackboxJsonNumberOrNull(stream, record.path_tracking.projection_z_m);
   stream << "}}";
   stream << ",\"control\":{\"motion_phase\":\"" << record.motion_phase
          << "\",\"final_goal_hold_active\":";

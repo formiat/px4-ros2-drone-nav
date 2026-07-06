@@ -610,6 +610,8 @@ Px4OffboardNode::currentProhibitedGrid() const {
   diagnostics.heading_error_rad =
       normalizeAngle(current_heading_rad_ - path_heading_rad);
   diagnostics.projection = projection->point;
+  diagnostics.projection_z_m =
+      trajectorySampleAltitudeAtS(final_trajectory_samples_, projection->s_m);
   return diagnostics;
 }
 

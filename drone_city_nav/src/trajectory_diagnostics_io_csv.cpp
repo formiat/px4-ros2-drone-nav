@@ -5,7 +5,7 @@ namespace drone_city_nav {
 using namespace trajectory_diagnostics_io_detail;
 
 std::string finalTrajectorySamplesCsvHeader() {
-  return "sample_index,s_m,x,y,tangent_x,tangent_y,curvature_1pm,"
+  return "sample_index,s_m,x,y,z_m,tangent_x,tangent_y,curvature_1pm,"
          "arc_radius_m,left_bound_m,right_bound_m,lateral_offset_m,"
          "speed_geometric_limit_mps,speed_profiled_limit_mps,speed_reason,"
          "speed_limit_source,constraint_s_m,constraint_limit_mps,"
@@ -25,6 +25,8 @@ std::string finalTrajectorySamplesCsvRow(const std::size_t sample_index,
   writeCsvNumberOrEmpty(stream, sample.point.x);
   stream << ",";
   writeCsvNumberOrEmpty(stream, sample.point.y);
+  stream << ",";
+  writeCsvNumberOrEmpty(stream, sample.z_m);
   stream << ",";
   writeCsvNumberOrEmpty(stream, sample.tangent.x);
   stream << ",";

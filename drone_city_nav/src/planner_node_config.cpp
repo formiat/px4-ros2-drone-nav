@@ -23,6 +23,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.goal = Point2{node.declare_parameter<double>("goal_x_m", 85.0),
                        node.declare_parameter<double>("goal_y_m", 0.0)};
   config.cruise_altitude_m = node.declare_parameter<double>("cruise_altitude_m", 12.0);
+  config.trajectory_planner.default_altitude_m = config.cruise_altitude_m;
   config.inflation_radius_m = std::clamp(
       node.declare_parameter<double>("inflation_radius_m", 1.0), 0.0, 1000.0);
   config.planning_clearance_m = std::clamp(

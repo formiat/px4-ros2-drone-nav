@@ -94,6 +94,12 @@ deceleration, minimum turn speed, and lookahead policy. Planner-side speed
 profile diagnostics are planning diagnostics; offboard rebuilds the runtime
 profile for actual control.
 
+Trajectory sample length, curvature, projection, and speed profile are still
+computed in XY. Each executable sample also carries `z_m`. In the current 3D
+representation foundation stage, the planner assigns this altitude from
+`cruise_altitude_m`; it is used by ROS path publication, RViz, dumps, and
+diagnostics, not by vertical maneuver control.
+
 ## 10. Publication
 
 The planner publishes:
@@ -109,6 +115,8 @@ The offboard node publishes:
 - `/drone_city_nav/offboard_debug_markers`
 
 The accepted trajectory is matched to diagnostics by `path_stamp_ns`.
+The `/drone_city_nav/path` and `/drone_city_nav/final_trajectory_path` messages
+carry per-sample altitude in `pose.position.z`.
 
 ## Pipeline Contracts
 

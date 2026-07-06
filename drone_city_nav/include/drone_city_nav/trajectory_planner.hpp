@@ -37,6 +37,7 @@ struct TrajectoryPlannerConfig {
   TurnSmoothingConfig turn_smoothing{};
   VelocityFollowerConfig speed_profile{};
   double debug_sample_step_m{1.0};
+  double default_altitude_m{0.0};
 };
 
 struct TrajectoryPlannerStats {

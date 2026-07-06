@@ -12,8 +12,8 @@ namespace {
 
 TEST(FinalTrajectoryDebugIoTest, WritesSamplesCsvWithProfiledTimes) {
   std::vector<TrajectoryPointSample> samples{
-      TrajectoryPointSample{.s_m = 0.0, .point = Point2{1.0, 2.0}},
-      TrajectoryPointSample{.s_m = 2.0, .point = Point2{3.0, 2.0}},
+      TrajectoryPointSample{.s_m = 0.0, .point = Point2{1.0, 2.0}, .z_m = 18.0},
+      TrajectoryPointSample{.s_m = 2.0, .point = Point2{3.0, 2.0}, .z_m = 19.0},
   };
   TrajectorySpeedProfile speed_profile;
   speed_profile.valid = true;
@@ -37,9 +37,9 @@ TEST(FinalTrajectoryDebugIoTest, WritesSamplesCsvWithProfiledTimes) {
   const std::string csv = stream.str();
   EXPECT_NE(csv.find("# source=unit local_path_update_id=7 planner_path_id=11"),
             std::string::npos);
-  EXPECT_NE(csv.find("sample_index,s_m,x,y"), std::string::npos);
-  EXPECT_NE(csv.find("0,0,1,2"), std::string::npos);
-  EXPECT_NE(csv.find("1,2,3,2"), std::string::npos);
+  EXPECT_NE(csv.find("sample_index,s_m,x,y,z_m"), std::string::npos);
+  EXPECT_NE(csv.find("0,0,1,2,18"), std::string::npos);
+  EXPECT_NE(csv.find("1,2,3,2,19"), std::string::npos);
 
   const std::vector<double> times =
       finalTrajectoryProfiledTimesFromStart(samples, speed_profile);

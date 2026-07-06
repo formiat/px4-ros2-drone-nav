@@ -24,6 +24,27 @@ pathPointsFromMessage(const nav_msgs::msg::Path& path) {
   return points;
 }
 
+[[nodiscard]] std::vector<TrajectoryPointSample>
+pathSamplesFromMessage(const nav_msgs::msg::Path& path) {
+  std::vector<Point2> points;
+  std::vector<double> altitudes_m;
+  points.reserve(path.poses.size());
+  altitudes_m.reserve(path.poses.size());
+  for (const auto& pose : path.poses) {
+    points.push_back(Point2{pose.pose.position.x, pose.pose.position.y});
+    altitudes_m.push_back(pose.pose.position.z);
+  }
+
+  std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(points);
+  if (samples.size() != altitudes_m.size()) {
+    return {};
+  }
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    samples[i].z_m = altitudes_m[i];
+  }
+  return samples;
+}
+
 [[nodiscard]] bool trajectoryDiagnosticsMatchesPath(
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics,
     const std::uint64_t expected_path_stamp_ns, const bool planner_path_id_seen,
@@ -131,8 +152,18 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(const std::span<const Point2> path_points,
                              const VelocityFollowerConfig& velocity_config) {
+  std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(path_points);
+  return buildOffboardTrajectoryState(
+      std::span<const TrajectoryPointSample>{samples.data(), samples.size()},
+      velocity_config);
+}
+
+[[nodiscard]] OffboardTrajectoryState
+buildOffboardTrajectoryState(const std::span<const TrajectoryPointSample> path_samples,
+                             const VelocityFollowerConfig& velocity_config) {
   OffboardTrajectoryState state;
-  state.samples = trajectoryPointSamplesFromPoints(path_points);
+  state.samples.assign(path_samples.begin(), path_samples.end());
   state.trajectory = lineTrajectoryFromSamples(state.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();
   state.speed_profile = buildTrajectorySpeedProfile(state.samples, velocity_config);
@@ -141,6 +172,11 @@ buildOffboardTrajectoryState(const std::span<const Point2> path_points,
   state.valid = trajectorySamplesAreUsable(state.samples) && state.speed_profile.valid;
   state.metrics = trajectoryMetrics(state.trajectory);
   state.shape = computeTrajectoryShapeDiagnostics(state.samples);
+  std::vector<Point2> path_points;
+  path_points.reserve(state.samples.size());
+  for (const TrajectoryPointSample& sample : state.samples) {
+    path_points.push_back(sample.point);
+  }
   state.stats = buildReceivedTrajectoryPlannerStats(
       path_points, state.samples, state.trajectory, state.metrics, state.speed_profile,
       velocity_config, state.valid);

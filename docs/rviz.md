@@ -36,9 +36,15 @@ visual world convention, so the launch file publishes a fixed transform from
 - Corridor: left/right/free-space bounds around the rough route.
 - Final optimized trajectory: executable trajectory published by offboard on
   `/drone_city_nav/final_trajectory_path`.
-- Drone markers: current drone pose, heading, and offboard debug markers.
+- Drone markers: current drone pose, altitude, heading, and offboard debug
+  markers.
 - Speed/curvature coloring: path debug colors that help identify slow or tight
   segments.
+
+The final trajectory path and trajectory color markers are displayed at the
+sample `z_m` altitude, not on the ground plane. The drone pose marker is a 3D
+sphere at the current PX4 local altitude and is deleted when pose or altitude
+data is stale/invalid.
 
 ## Reading The Colors
 

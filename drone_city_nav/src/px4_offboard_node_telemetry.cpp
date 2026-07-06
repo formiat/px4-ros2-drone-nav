@@ -65,19 +65,20 @@ void Px4OffboardNode::logTelemetry() {
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false");
-  RCLCPP_INFO(
-      get_logger(),
-      "Drone path diagnostics: path_id[local_update=%" PRIu64 " planner=%" PRIu64
-      " planner_seen=%s stamp_ns=%" PRIu64
-      "] tracking[valid=%s cross_track=%.2f signed_cross_track=%.2f "
-      "heading_error=%.3f path_heading=%.3f segment=%zu t=%.2f "
-      "projection=(%.2f, %.2f)]",
-      received_path_update_id_, accepted_planner_path_id_,
-      accepted_planner_path_id_seen_ ? "true" : "false", last_received_path_stamp_ns_,
-      path_tracking.valid ? "true" : "false", path_tracking.cross_track_error_m,
-      path_tracking.signed_cross_track_error_m, path_tracking.heading_error_rad,
-      path_tracking.path_heading_rad, path_tracking.segment_start_index,
-      path_tracking.segment_t, path_tracking.projection.x, path_tracking.projection.y);
+  RCLCPP_INFO(get_logger(),
+              "Drone path diagnostics: path_id[local_update=%" PRIu64
+              " planner=%" PRIu64 " planner_seen=%s stamp_ns=%" PRIu64
+              "] tracking[valid=%s cross_track=%.2f signed_cross_track=%.2f "
+              "heading_error=%.3f path_heading=%.3f segment=%zu t=%.2f "
+              "projection=(%.2f, %.2f, %.2f)]",
+              received_path_update_id_, accepted_planner_path_id_,
+              accepted_planner_path_id_seen_ ? "true" : "false",
+              last_received_path_stamp_ns_, path_tracking.valid ? "true" : "false",
+              path_tracking.cross_track_error_m,
+              path_tracking.signed_cross_track_error_m, path_tracking.heading_error_rad,
+              path_tracking.path_heading_rad, path_tracking.segment_start_index,
+              path_tracking.segment_t, path_tracking.projection.x,
+              path_tracking.projection.y, path_tracking.projection_z_m);
   RCLCPP_INFO(get_logger(),
               "Drone command diagnostics: command[target_delta=%.2f "
               "target_distance=%.2f yaw=%.3f]",
@@ -327,7 +328,8 @@ void Px4OffboardNode::writeFlightBlackbox(
           path_tracking.valid, path_tracking.segment_start_index,
           path_tracking.segment_t, path_tracking.cross_track_error_m,
           path_tracking.signed_cross_track_error_m, path_tracking.path_heading_rad,
-          path_tracking.heading_error_rad, path_tracking.projection},
+          path_tracking.heading_error_rad, path_tracking.projection,
+          path_tracking.projection_z_m},
       motionPhaseName(hold_position),
       final_goal_hold_active_,
       terminalFlightStateName(terminal_capture_state_.state),

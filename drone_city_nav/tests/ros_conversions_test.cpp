@@ -243,4 +243,25 @@ TEST(RosConversions, BuildsEmptyPathWithoutSideEffects) {
   EXPECT_TRUE(path.poses.empty());
 }
 
+TEST(RosConversions, BuildsPathFromTrajectorySamplesWithPerSampleAltitude) {
+  std_msgs::msg::Header header;
+  header.frame_id = "map";
+  std::vector<TrajectoryPointSample> samples(2U);
+  samples[0].point = Point2{1.0, 2.0};
+  samples[0].z_m = 12.0;
+  samples[1].point = Point2{3.0, 4.0};
+  samples[1].z_m = 18.0;
+
+  const nav_msgs::msg::Path path = pathToRos(samples, header);
+
+  ASSERT_EQ(path.poses.size(), 2U);
+  EXPECT_DOUBLE_EQ(path.poses[0].pose.position.x, 1.0);
+  EXPECT_DOUBLE_EQ(path.poses[0].pose.position.y, 2.0);
+  EXPECT_DOUBLE_EQ(path.poses[0].pose.position.z, 12.0);
+  EXPECT_DOUBLE_EQ(path.poses[1].pose.position.x, 3.0);
+  EXPECT_DOUBLE_EQ(path.poses[1].pose.position.y, 4.0);
+  EXPECT_DOUBLE_EQ(path.poses[1].pose.position.z, 18.0);
+  EXPECT_DOUBLE_EQ(path.poses[1].pose.orientation.w, 1.0);
+}
+
 } // namespace drone_city_nav

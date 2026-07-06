@@ -31,14 +31,9 @@ void Px4OffboardNode::publishFinalTrajectoryDebug() {
   if (!final_trajectory_pub_) {
     return;
   }
-  std::vector<Point2> samples;
-  samples.reserve(final_trajectory_samples_.size());
-  for (const TrajectoryPointSample& sample : final_trajectory_samples_) {
-    samples.push_back(sample.point);
-  }
-  last_final_trajectory_debug_samples_ = samples.size();
-  final_trajectory_pub_->publish(pathToRos(
-      std::span<const Point2>{samples.data(), samples.size()}, makeDebugHeader(), 0.0));
+  last_final_trajectory_debug_samples_ = final_trajectory_samples_.size();
+  final_trajectory_pub_->publish(
+      pathToRos(final_trajectory_samples_, makeDebugHeader()));
 }
 
 void Px4OffboardNode::publishOffboardDebugMarkers() {
@@ -46,10 +41,11 @@ void Px4OffboardNode::publishOffboardDebugMarkers() {
     return;
   }
   const DroneDebugMarkerState drone_state{localPositionFresh(), current_position_,
+                                          current_altitude_m_, altitude_valid_,
                                           current_heading_rad_};
-  visualization_msgs::msg::MarkerArray markers = buildOffboardDebugMarkers(
-      makeDebugHeader(), drone_state, final_trajectory_samples_,
-      trajectory_speed_profile_, kRvizGroundZ);
+  visualization_msgs::msg::MarkerArray markers =
+      buildOffboardDebugMarkers(makeDebugHeader(), drone_state,
+                                final_trajectory_samples_, trajectory_speed_profile_);
   offboard_debug_marker_pub_->publish(markers);
 }
 
@@ -219,12 +215,15 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       top_speed_constraint != nullptr
           ? speedConstraintTypeName(top_speed_constraint->source)
           : speedConstraintTypeName(SpeedConstraintType::kNone);
+  const TrajectoryAltitudeStats altitude_stats =
+      trajectoryAltitudeStats(final_trajectory_samples_);
 
   RCLCPP_INFO(
       get_logger(),
       "Received executable final trajectory: source=%s local_path_update_id=%" PRIu64
       " planner_path_id=%" PRIu64
       " points=%zu valid=%s line_segments=%zu total_length=%.2f samples=%zu "
+      "altitude[min=%.2f mean=%.2f max=%.2f valid=%s] "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu] "
       "speed_profile_construction_config_fingerprint=%" PRIu64
       " runtime_speed_policy_config_fingerprint=%" PRIu64
@@ -240,7 +239,8 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       source_label, received_path_update_id_, accepted_planner_path_id_,
       path_points_.size(), trajectory_valid_ ? "true" : "false",
       last_trajectory_metrics_.line_segments, last_trajectory_metrics_.length_m,
-      final_trajectory_samples_.size(),
+      final_trajectory_samples_.size(), altitude_stats.min_z_m, altitude_stats.mean_z_m,
+      altitude_stats.max_z_m, altitude_stats.valid ? "true" : "false",
       last_trajectory_planner_stats_.speed_profile_min_mps,
       last_trajectory_planner_stats_.speed_profile_mean_mps,
       last_trajectory_planner_stats_.speed_profile_max_mps,
@@ -273,6 +273,8 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
       messageStampNanoseconds(path.header.stamp);
   std::vector<Point2> candidate_path_points =
       drone_city_nav::pathPointsFromMessage(path);
+  std::vector<TrajectoryPointSample> candidate_path_samples =
+      drone_city_nav::pathSamplesFromMessage(path);
 
   if (candidate_path_points.empty()) {
     received_path_update_id_ = candidate_update_id;
@@ -313,7 +315,7 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   }
 
   const OffboardTrajectoryState candidate_state =
-      buildOffboardTrajectoryState(candidate_path_points, velocity_follower_config_);
+      buildOffboardTrajectoryState(candidate_path_samples, velocity_follower_config_);
   if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
                                             candidate_path_stamp_ns,
                                             candidate_path_points.size())) {

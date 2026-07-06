@@ -30,6 +30,7 @@ namespace {
   config.trajectory_optimizer.min_offset_step_m = 0.1;
   config.trajectory_optimizer.weight_curvature = 30.0;
   config.debug_sample_step_m = 1.0;
+  config.default_altitude_m = 18.0;
   config.speed_profile.cruise_speed_mps = 12.0;
   config.speed_profile.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile.speed_profile_decel_mps2 = 4.0;
@@ -109,6 +110,9 @@ TEST(TrajectoryPlanner, TrajectoryOptimizerTrajectoryProducesSamplesAndSpeedProf
   EXPECT_GT(result.stats.trajectory_optimizer.active_window_count, 0U);
   EXPECT_GT(result.stats.trajectory_optimizer.dp_states, 0U);
   EXPECT_TRUE(std::isfinite(result.stats.trajectory_optimizer.estimated_time_s));
+  for (const TrajectoryPointSample& sample : result.samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
+  }
 }
 
 TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
@@ -130,6 +134,9 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   EXPECT_FALSE(result.stats.trajectory_optimizer.async_refined);
   ASSERT_FALSE(result.samples.empty());
   EXPECT_NEAR(distance(result.samples.back().point, route.back()), 0.0, 1.0e-6);
+  for (const TrajectoryPointSample& sample : result.samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
+  }
 }
 
 TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
