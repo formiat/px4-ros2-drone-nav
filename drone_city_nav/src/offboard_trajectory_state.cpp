@@ -4,8 +4,35 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <span>
+#include <vector>
 
 namespace drone_city_nav {
+namespace {
+
+constexpr double kTinyDistanceM = 1.0e-6;
+
+[[nodiscard]] std::vector<double>
+retainedPathAltitudes(const std::span<const Point2> points,
+                      const std::span<const double> altitudes_m) {
+  std::vector<double> retained_altitudes_m;
+  if (points.size() != altitudes_m.size()) {
+    return retained_altitudes_m;
+  }
+  retained_altitudes_m.reserve(altitudes_m.size());
+  for (std::size_t i = 0U; i < points.size(); ++i) {
+    if (i > 0U) {
+      const double ds = distance(points[i - 1U], points[i]);
+      if (!(ds > kTinyDistanceM) || !std::isfinite(ds)) {
+        continue;
+      }
+    }
+    retained_altitudes_m.push_back(altitudes_m[i]);
+  }
+  return retained_altitudes_m;
+}
+
+} // namespace
 
 [[nodiscard]] std::uint64_t
 messageStampNanoseconds(const builtin_interfaces::msg::Time& stamp) {
@@ -36,11 +63,14 @@ pathSamplesFromMessage(const nav_msgs::msg::Path& path) {
   }
 
   std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(points);
-  if (samples.size() != altitudes_m.size()) {
+  const std::vector<double> retained_altitudes_m = retainedPathAltitudes(
+      std::span<const Point2>{points.data(), points.size()},
+      std::span<const double>{altitudes_m.data(), altitudes_m.size()});
+  if (samples.size() != retained_altitudes_m.size()) {
     return {};
   }
   for (std::size_t i = 0U; i < samples.size(); ++i) {
-    samples[i].z_m = altitudes_m[i];
+    samples[i].z_m = retained_altitudes_m[i];
   }
   return samples;
 }

@@ -9,23 +9,21 @@
 namespace drone_city_nav {
 namespace {
 
+[[nodiscard]] geometry_msgs::msg::PoseStamped
+makePose(const double x_m, const double y_m, const double z_m) {
+  geometry_msgs::msg::PoseStamped pose;
+  pose.pose.position.x = x_m;
+  pose.pose.position.y = y_m;
+  pose.pose.position.z = z_m;
+  return pose;
+}
+
 [[nodiscard]] nav_msgs::msg::Path makePath() {
   nav_msgs::msg::Path path;
   path.header.stamp.sec = 2;
   path.header.stamp.nanosec = 3;
-  geometry_msgs::msg::PoseStamped first;
-  first.pose.position.x = 0.0;
-  first.pose.position.y = 0.0;
-  first.pose.position.z = 10.0;
-  geometry_msgs::msg::PoseStamped second;
-  second.pose.position.x = 4.0;
-  second.pose.position.y = 0.0;
-  second.pose.position.z = 12.0;
-  geometry_msgs::msg::PoseStamped third;
-  third.pose.position.x = 4.0;
-  third.pose.position.y = 3.0;
-  third.pose.position.z = 14.0;
-  path.poses = {first, second, third};
+  path.poses = {makePose(0.0, 0.0, 10.0), makePose(4.0, 0.0, 12.0),
+                makePose(4.0, 3.0, 14.0)};
   return path;
 }
 
@@ -63,6 +61,23 @@ TEST(OffboardTrajectoryState, EmptyPathBuildsInvalidState) {
   EXPECT_TRUE(state.samples.empty());
   EXPECT_TRUE(state.trajectory.empty());
   EXPECT_EQ(state.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
+}
+
+TEST(OffboardTrajectoryState, PreservesAltitudeWhenCompactingDuplicateInteriorPose) {
+  nav_msgs::msg::Path path;
+  path.poses = {makePose(0.0, 0.0, 10.0), makePose(4.0, 0.0, 12.0),
+                makePose(4.0, 0.0, 13.0), makePose(8.0, 0.0, 14.0)};
+
+  const std::vector<TrajectoryPointSample> samples = pathSamplesFromMessage(path);
+  const OffboardTrajectoryState state =
+      buildOffboardTrajectoryState(samples, VelocityFollowerConfig{});
+
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_TRUE(state.valid);
+  EXPECT_DOUBLE_EQ(samples[0].z_m, 10.0);
+  EXPECT_DOUBLE_EQ(samples[1].z_m, 12.0);
+  EXPECT_DOUBLE_EQ(samples[2].z_m, 14.0);
+  EXPECT_DOUBLE_EQ(state.metrics.length_m, 8.0);
 }
 
 TEST(OffboardTrajectoryState, RejectsNonFiniteAltitudeBeforeStalePoseReset) {
