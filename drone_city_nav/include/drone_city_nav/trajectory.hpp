@@ -69,6 +69,15 @@ struct TrajectoryPointSample {
   std::string vertical_profile_passage_id;
 };
 
+struct TrajectoryVerticalTarget {
+  bool valid{false};
+  double s_m{0.0};
+  double z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_slope_dz_ds{0.0};
+  bool vertical_constraint_active{false};
+  std::string vertical_profile_passage_id;
+};
+
 [[nodiscard]] const char*
 trajectorySegmentKindName(TrajectorySegmentKind kind) noexcept;
 
@@ -95,6 +104,9 @@ void assignTrajectorySampleAltitude(std::span<TrajectoryPointSample> samples,
 
 [[nodiscard]] double
 trajectorySampleAltitudeAtS(std::span<const TrajectoryPointSample> samples, double s_m);
+
+[[nodiscard]] TrajectoryVerticalTarget
+trajectoryVerticalTargetAtS(std::span<const TrajectoryPointSample> samples, double s_m);
 
 [[nodiscard]] TrajectoryAltitudeStats
 trajectoryAltitudeStats(std::span<const TrajectoryPointSample> samples);

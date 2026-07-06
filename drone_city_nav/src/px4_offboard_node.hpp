@@ -7,6 +7,7 @@
 #include "drone_city_nav/offboard_path_follower.hpp"
 #include "drone_city_nav/offboard_trajectory_state.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
+#include "drone_city_nav/offboard_vertical_follower.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/px4_offboard_node_config.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
@@ -210,9 +211,11 @@ private:
 
   [[nodiscard]] double consumeVelocityPlanDtS();
 
-  [[nodiscard]] double targetAltitudeForCurrentTrajectory();
+  [[nodiscard]] double finalTrajectoryGoalAltitudeM() const;
 
-  [[nodiscard]] double verticalVelocitySetpointNed();
+  [[nodiscard]] VerticalSetpointPlan
+  planVerticalSetpointForCurrentTrajectory(const VelocitySetpointPlan& velocity_plan,
+                                           double dt_s) const;
 
   bool publishVelocityTrajectorySetpoint();
 
@@ -386,13 +389,17 @@ private:
   Point2 last_logged_path_last_{};
   VelocityFollowerConfig velocity_follower_config_{};
   VelocityFollowerState velocity_follower_state_{};
+  VerticalFollowerConfig vertical_follower_config_{};
+  VerticalFollowerState vertical_follower_state_{};
   VelocitySetpointPlan last_velocity_plan_{};
+  VerticalSetpointPlan last_vertical_plan_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
   bool last_velocity_plan_valid_{false};
+  bool last_vertical_plan_valid_{false};
   bool trajectory_valid_{false};
   OffboardSetpointMode last_offboard_setpoint_mode_{
       OffboardSetpointMode::kPositionHold};

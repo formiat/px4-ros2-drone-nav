@@ -11,13 +11,14 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   max_clearance_grid_staleness_ns_ = config.max_clearance_grid_staleness_ns;
   max_pose_staleness_ns_ = config.max_pose_staleness_ns;
   velocity_follower_config_ = config.velocity_follower;
+  vertical_follower_config_ = config.vertical_follower;
   final_trajectory_debug_topic_ = config.topics.final_trajectory_debug;
   final_trajectory_debug_sample_step_m_ = config.final_trajectory_debug_sample_step_m;
   trajectory_update_max_start_cross_track_m_ =
       config.trajectory_update_max_start_cross_track_m;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
-  altitude_hold_kp_ = config.altitude_hold_kp;
-  max_vertical_speed_mps_ = config.max_vertical_speed_mps;
+  altitude_hold_kp_ = config.vertical_follower.altitude_feedback_kp_1ps;
+  max_vertical_speed_mps_ = config.vertical_follower.max_vertical_speed_mps;
   telemetry_log_period_ns_ = config.telemetry_log_period_ns;
   flight_blackbox_enabled_ = config.flight_blackbox_enabled;
   flight_blackbox_path_ = config.flight_blackbox_path;
@@ -123,8 +124,8 @@ Px4OffboardNode::Px4OffboardNode()
       "max_heading_span=%.1fdeg max_abs_curvature=%.4f] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
       "trajectory_update_max_start_cross_track=%.2fm "
-      "altitude_hold_kp=%.2f "
-      "max_vertical_speed=%.2fmps "
+      "vertical_follower[kp=%.2f max_speed=%.2fmps max_accel=%.2fmps2 "
+      "max_jerk=%.2fmps3 target_vz_ff_scale=%.2f] "
       "executable_trajectory[source=planner_final_path final_topic='%s' "
       "debug_sample_step=%.2fm "
       "marker_topic='%s'] "
@@ -174,10 +175,15 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.control_tangent_smoothing_max_abs_curvature_1pm,
       velocity_follower_config_.max_velocity_jerk_mps3,
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
-      trajectory_update_max_start_cross_track_m_, altitude_hold_kp_,
-      max_vertical_speed_mps_, final_trajectory_debug_topic_.c_str(),
-      final_trajectory_debug_sample_step_m_, offboard_debug_marker_topic_.c_str(),
-      mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
+      trajectory_update_max_start_cross_track_m_,
+      vertical_follower_config_.altitude_feedback_kp_1ps,
+      vertical_follower_config_.max_vertical_speed_mps,
+      vertical_follower_config_.max_vertical_accel_mps2,
+      vertical_follower_config_.max_vertical_jerk_mps3,
+      vertical_follower_config_.target_vz_feedforward_scale,
+      final_trajectory_debug_topic_.c_str(), final_trajectory_debug_sample_step_m_,
+      offboard_debug_marker_topic_.c_str(), mission_goal_.x, mission_goal_.y,
+      px4_local_origin_.x, px4_local_origin_.y,
       static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
       flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);

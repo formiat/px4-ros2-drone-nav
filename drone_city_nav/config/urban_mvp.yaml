@@ -247,6 +247,11 @@ px4_offboard_node:
     offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers
     altitude_hold_kp: 0.5
     max_vertical_speed_mps: 2.0
+    altitude_feedback_kp_1ps: 0.5
+    vertical_setpoint_max_speed_mps: 2.0
+    vertical_setpoint_max_accel_mps2: 2.0
+    vertical_setpoint_max_jerk_mps3: 6.0
+    vertical_target_vz_feedforward_scale: 1.0
     max_clearance_grid_staleness_s: 1.5
     telemetry_log_period_s: 0.1
     flight_blackbox_enabled: true

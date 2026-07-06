@@ -49,6 +49,7 @@ add_library(
   src/navigation_pose.cpp
   src/offboard_blackbox.cpp
   src/offboard_path_follower.cpp
+  src/offboard_vertical_follower.cpp
   src/offboard_velocity_follower.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
@@ -170,7 +171,8 @@ add_executable(
   src/px4_offboard_node_inputs.cpp
   src/px4_offboard_node_lifecycle.cpp
   src/px4_offboard_node_telemetry.cpp
-  src/px4_offboard_node_trajectory.cpp)
+  src/px4_offboard_node_trajectory.cpp
+  src/px4_offboard_node_vertical.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
 ament_target_dependencies(
@@ -441,6 +443,12 @@ if(BUILD_TESTING)
   target_compile_features(offboard_path_follower_test PRIVATE cxx_std_20)
   target_link_libraries(offboard_path_follower_test drone_city_nav_core)
   enable_project_warnings(offboard_path_follower_test)
+
+  ament_add_gtest(offboard_vertical_follower_test
+                  tests/offboard_vertical_follower_test.cpp)
+  target_compile_features(offboard_vertical_follower_test PRIVATE cxx_std_20)
+  target_link_libraries(offboard_vertical_follower_test drone_city_nav_core)
+  enable_project_warnings(offboard_vertical_follower_test)
 
   ament_add_gtest(
     offboard_velocity_follower_test

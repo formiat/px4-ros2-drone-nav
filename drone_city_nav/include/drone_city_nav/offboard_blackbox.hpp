@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/offboard_velocity_follower.hpp"
+#include "drone_city_nav/offboard_vertical_follower.hpp"
 #include "drone_city_nav/route_diagnostics.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
@@ -68,6 +69,7 @@ struct OffboardBlackboxRecord {
   double last_vertical_velocity_setpoint_mps{0.0};
   double last_velocity_setpoint_speed_mps{0.0};
   VelocitySetpointPlan velocity_plan{};
+  VerticalSetpointPlan vertical_plan{};
   std::string velocity_smoother_reset_reason;
   std::uint64_t path_update_velocity_smoother_reset_count{0U};
   double target_altitude_m{std::numeric_limits<double>::quiet_NaN()};

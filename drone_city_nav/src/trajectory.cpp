@@ -299,6 +299,55 @@ double trajectorySampleAltitudeAtS(const std::span<const TrajectoryPointSample> 
   return samples.back().z_m;
 }
 
+TrajectoryVerticalTarget
+trajectoryVerticalTargetAtS(const std::span<const TrajectoryPointSample> samples,
+                            const double s_m) {
+  TrajectoryVerticalTarget target{};
+  if (!trajectorySamplesAreUsable(samples)) {
+    return target;
+  }
+
+  const double clamped_s =
+      std::clamp(std::isfinite(s_m) ? s_m : 0.0, 0.0, samples.back().s_m);
+  for (std::size_t i = 0U; i + 1U < samples.size(); ++i) {
+    const TrajectoryPointSample& start = samples[i];
+    const TrajectoryPointSample& end = samples[i + 1U];
+    if (clamped_s > end.s_m && i + 2U < samples.size()) {
+      continue;
+    }
+
+    const double station_delta_m = end.s_m - start.s_m;
+    const double t =
+        station_delta_m > kTinyDistanceM
+            ? std::clamp((clamped_s - start.s_m) / station_delta_m, 0.0, 1.0)
+            : 0.0;
+    const TrajectoryPointSample& nearest = t <= 0.5 ? start : end;
+    target.valid = true;
+    target.s_m = clamped_s;
+    target.z_m = start.z_m * (1.0 - t) + end.z_m * t;
+    target.vertical_slope_dz_ds =
+        start.vertical_slope_dz_ds * (1.0 - t) + end.vertical_slope_dz_ds * t;
+    target.vertical_constraint_active =
+        start.vertical_constraint_active || end.vertical_constraint_active;
+    if (!nearest.vertical_profile_passage_id.empty()) {
+      target.vertical_profile_passage_id = nearest.vertical_profile_passage_id;
+    } else if (!start.vertical_profile_passage_id.empty()) {
+      target.vertical_profile_passage_id = start.vertical_profile_passage_id;
+    } else {
+      target.vertical_profile_passage_id = end.vertical_profile_passage_id;
+    }
+    return target;
+  }
+
+  target.valid = true;
+  target.s_m = samples.back().s_m;
+  target.z_m = samples.back().z_m;
+  target.vertical_slope_dz_ds = samples.back().vertical_slope_dz_ds;
+  target.vertical_constraint_active = samples.back().vertical_constraint_active;
+  target.vertical_profile_passage_id = samples.back().vertical_profile_passage_id;
+  return target;
+}
+
 TrajectoryAltitudeStats
 trajectoryAltitudeStats(const std::span<const TrajectoryPointSample> samples) {
   TrajectoryAltitudeStats stats{};

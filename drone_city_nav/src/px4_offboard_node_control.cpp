@@ -109,6 +109,13 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
   const bool hold_position = (velocity_cruise_requested || shouldHoldPosition()) &&
                              !terminal_position_capture_requested;
   const Point2 target = selectCommandTarget(desired_target, hold_position);
+  const bool terminal_altitude_valid =
+      terminal_position_capture_requested &&
+      trajectorySamplesAreUsable(final_trajectory_samples_) &&
+      std::isfinite(final_trajectory_samples_.back().z_m);
+  const double position_target_altitude_m = terminal_position_capture_requested
+                                                ? finalTrajectoryGoalAltitudeM()
+                                                : cruise_altitude_m_;
   commanded_target_ = target;
   commanded_target_valid_ = local_position_valid_;
   last_published_target_ = target;
@@ -116,10 +123,15 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 
   const Point2 px4_local_target = mapToPx4Local(target);
   const px4_msgs::msg::TrajectorySetpoint msg = buildPositionTrajectorySetpoint(
-      nowMicros(), px4_local_target, cruise_altitude_m_, current_heading_rad_);
+      nowMicros(), px4_local_target, position_target_altitude_m, current_heading_rad_);
   updateCommandDiagnostics(target, previous_target, had_previous_target,
                            static_cast<double>(msg.yaw));
   resetVelocityDiagnostics();
+  last_target_altitude_m_ = position_target_altitude_m;
+  last_trajectory_altitude_target_valid_ = terminal_altitude_valid;
+  last_altitude_error_m_ = altitude_valid_
+                               ? position_target_altitude_m - current_altitude_m_
+                               : std::numeric_limits<double>::quiet_NaN();
   if (terminal_position_capture_requested) {
     last_offboard_setpoint_mode_ = OffboardSetpointMode::kTerminalPositionCapture;
   }
@@ -269,33 +281,6 @@ void Px4OffboardNode::updateFinalGoalHold() {
   return dt_s;
 }
 
-[[nodiscard]] double Px4OffboardNode::targetAltitudeForCurrentTrajectory() {
-  last_trajectory_altitude_target_valid_ = false;
-  if (last_velocity_plan_valid_ && finalTrajectoryReady()) {
-    const double trajectory_z_m = trajectorySampleAltitudeAtS(
-        final_trajectory_samples_, last_velocity_plan_.trajectory_s_m);
-    if (std::isfinite(trajectory_z_m)) {
-      last_trajectory_altitude_target_valid_ = true;
-      return trajectory_z_m;
-    }
-  }
-  return cruise_altitude_m_;
-}
-
-[[nodiscard]] double Px4OffboardNode::verticalVelocitySetpointNed() {
-  if (!altitude_valid_ || !(max_vertical_speed_mps_ > 0.0)) {
-    last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
-    last_target_altitude_m_ = cruise_altitude_m_;
-    last_trajectory_altitude_target_valid_ = false;
-    return 0.0;
-  }
-
-  last_target_altitude_m_ = targetAltitudeForCurrentTrajectory();
-  last_altitude_error_m_ = last_target_altitude_m_ - current_altitude_m_;
-  return -std::clamp(last_altitude_error_m_ * altitude_hold_kp_,
-                     -max_vertical_speed_mps_, max_vertical_speed_mps_);
-}
-
 bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
   const bool had_previous_target = last_published_target_valid_;
   const Point2 previous_target = last_published_target_;
@@ -312,7 +297,14 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
     return false;
   }
 
-  const double vz_ned = verticalVelocitySetpointNed();
+  const VerticalSetpointPlan vertical_plan =
+      planVerticalSetpointForCurrentTrajectory(plan, dt_s);
+  last_vertical_plan_ = vertical_plan;
+  last_vertical_plan_valid_ = vertical_plan.valid;
+  last_target_altitude_m_ = vertical_plan.target_z_m;
+  last_altitude_error_m_ = vertical_plan.z_error_m;
+  last_trajectory_altitude_target_valid_ = vertical_plan.trajectory_target_valid;
+  const double vz_ned = vertical_plan.commanded_vz_ned_mps;
   const px4_msgs::msg::TrajectorySetpoint msg = buildVelocityTrajectorySetpoint(
       nowMicros(), plan.velocity_xy, vz_ned, current_heading_rad_);
 
@@ -333,6 +325,14 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
   velocity_follower_state_.previous_terminal_capture_speed_limit_valid =
       plan.terminal_capture_active &&
       std::isfinite(plan.terminal_capture_speed_limit_mps);
+  if (vertical_plan.valid) {
+    vertical_follower_state_.previous_command_valid = true;
+    vertical_follower_state_.previous_commanded_vz_mps = vertical_plan.commanded_vz_mps;
+    vertical_follower_state_.previous_vertical_accel_mps2 =
+        std::isfinite(vertical_plan.vertical_accel_mps2)
+            ? vertical_plan.vertical_accel_mps2
+            : 0.0;
+  }
   last_velocity_setpoint_ = plan.velocity_xy;
   last_vertical_velocity_setpoint_mps_ = vz_ned;
   last_velocity_setpoint_speed_mps_ = plan.speed_mps;
@@ -352,6 +352,8 @@ void Px4OffboardNode::resetVelocityDiagnostics() {
   last_velocity_plan_valid_ = false;
   last_velocity_plan_ = VelocitySetpointPlan{};
   last_velocity_plan_.reason = VelocitySetpointReason::kHold;
+  last_vertical_plan_valid_ = false;
+  last_vertical_plan_ = VerticalSetpointPlan{};
   last_velocity_setpoint_ = Point2{};
   last_velocity_setpoint_speed_mps_ = 0.0;
   last_vertical_velocity_setpoint_mps_ = 0.0;
@@ -858,8 +860,10 @@ void Px4OffboardNode::logControlSummary() {
       "cross_track_lateral_velocity=%.2f "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
-      "altitude[target=%.2f trajectory_target_valid=%s error=%.2f "
-      "vz_setpoint=%.2f] "
+      "altitude[target_z=%.2f actual_z=%.2f z_error=%.2f target_vz=%.2f "
+      "feedback_vz=%.2f desired_vz=%.2f commanded_vz=%.2f "
+      "commanded_vz_ned=%.2f trajectory_target_valid=%s passage_mode=%s "
+      "passage_id=%s slope=%.4f constraint=%s reason=%s] "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
       "prohibited_grid_clearance=%.2f",
@@ -967,9 +971,16 @@ void Px4OffboardNode::logControlSummary() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_target_altitude_m_,
-      last_trajectory_altitude_target_valid_ ? "true" : "false", last_altitude_error_m_,
-      last_vertical_velocity_setpoint_mps_, upcoming_turn.valid ? "true" : "false",
+      last_velocity_plan_.smoother_lateral_response_accel_mps2,
+      last_vertical_plan_.target_z_m, last_vertical_plan_.actual_z_m,
+      last_vertical_plan_.z_error_m, last_vertical_plan_.target_vz_mps,
+      last_vertical_plan_.feedback_vz_mps, last_vertical_plan_.desired_vz_mps,
+      last_vertical_plan_.commanded_vz_mps, last_vertical_plan_.commanded_vz_ned_mps,
+      last_vertical_plan_.trajectory_target_valid ? "true" : "false",
+      last_vertical_plan_.passage_mode ? "true" : "false",
+      last_vertical_plan_.passage_id.c_str(), last_vertical_plan_.vertical_slope_dz_ds,
+      last_vertical_plan_.vertical_constraint_active ? "true" : "false",
+      last_vertical_plan_.reason.c_str(), upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false", prohibited_grid_clearance_m);

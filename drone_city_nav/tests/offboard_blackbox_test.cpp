@@ -28,8 +28,11 @@ TEST(OffboardBlackbox, WritesJsonPrimitives) {
   writeBlackboxJsonNumberOrNull(stream, std::numeric_limits<double>::quiet_NaN());
   stream << ",";
   writeBlackboxStringField(stream, "mode", "velocity_cruise");
+  stream << ",";
+  writeBlackboxStringField(stream, "passage", "arch_\"main\\north");
 
-  EXPECT_EQ(stream.str(), "true,false,4.25,null,\"mode\":\"velocity_cruise\"");
+  EXPECT_EQ(stream.str(), "true,false,4.25,null,\"mode\":\"velocity_cruise\","
+                          "\"passage\":\"arch_\\\"main\\\\north\"");
 }
 
 TEST(OffboardBlackbox, WritesPathIdContract) {
@@ -117,6 +120,24 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.target_altitude_m = 11.5;
   record.trajectory_altitude_target_valid = true;
   record.last_altitude_error_m = 0.2;
+  record.vertical_plan.valid = true;
+  record.vertical_plan.trajectory_target_valid = true;
+  record.vertical_plan.target_z_m = 11.5;
+  record.vertical_plan.actual_z_m = 11.3;
+  record.vertical_plan.z_error_m = 0.2;
+  record.vertical_plan.target_vz_mps = 0.7;
+  record.vertical_plan.feedback_vz_mps = 0.1;
+  record.vertical_plan.desired_vz_mps = 0.8;
+  record.vertical_plan.commanded_vz_mps = 0.6;
+  record.vertical_plan.commanded_vz_ned_mps = -0.6;
+  record.vertical_plan.scalar_speed_mps = 10.0;
+  record.vertical_plan.vertical_slope_dz_ds = 0.07;
+  record.vertical_plan.vertical_accel_mps2 = 0.4;
+  record.vertical_plan.vertical_jerk_mps3 = 2.0;
+  record.vertical_plan.vertical_constraint_active = true;
+  record.vertical_plan.passage_mode = true;
+  record.vertical_plan.passage_id = "arch_\"main\\north";
+  record.vertical_plan.reason = "trajectory";
   record.trajectory_valid = true;
   record.trajectory_metrics.length_m = 100.0;
   record.trajectory_metrics.line_segments = 2U;
@@ -355,7 +376,20 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"attitude\":{\"valid\":true");
   expectJsonField(json, "\"velocity\":{\"valid\":true");
   expectJsonField(json, "\"target\":{\"x\":10");
-  expectJsonField(json, "\"altitude_control\":{\"target_altitude_m\":11.5");
+  expectJsonField(json, "\"altitude_control\":{\"target_z_m\":11.5");
+  expectJsonField(json, "\"actual_z_m\":11.3");
+  expectJsonField(json, "\"z_error_m\":0.2");
+  expectJsonField(json, "\"target_vz_mps\":0.7");
+  expectJsonField(json, "\"feedback_vz_mps\":0.1");
+  expectJsonField(json, "\"desired_vz_mps\":0.8");
+  expectJsonField(json, "\"commanded_vz_mps\":0.6");
+  expectJsonField(json, "\"commanded_vz_ned_mps\":-0.6");
+  expectJsonField(json, "\"vertical_slope_dz_ds\":0.07");
+  expectJsonField(json, "\"vertical_constraint_active\":true");
+  expectJsonField(json, "\"passage_mode\":true");
+  expectJsonField(json, "\"passage_id\":\"arch_\\\"main\\\\north\"");
+  expectJsonField(json, "\"reason\":\"trajectory\"");
+  expectJsonField(json, "\"target_altitude_m\":11.5");
   expectJsonField(json, "\"trajectory_altitude_target_valid\":true");
   expectJsonField(json, "\"vertical_velocity_setpoint_mps\":-0.5");
   expectJsonField(json, "\"velocity_command\":{\"control_mode\":\"velocity\"");

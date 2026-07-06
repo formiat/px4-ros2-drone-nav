@@ -16,11 +16,13 @@ OFFBOARD_SOURCES = [
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_telemetry.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_trajectory.cpp",
+    REPO_ROOT / "drone_city_nav/src/px4_offboard_node_vertical.cpp",
     REPO_ROOT / "drone_city_nav/src/offboard_blackbox.cpp",
     REPO_ROOT / "drone_city_nav/src/offboard_debug_markers.cpp",
     REPO_ROOT / "drone_city_nav/src/offboard_trajectory_state.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_node_config.cpp",
     REPO_ROOT / "drone_city_nav/src/px4_offboard_setpoint_io.cpp",
+    REPO_ROOT / "drone_city_nav/src/offboard_vertical_follower.cpp",
 ]
 PLANNER_SOURCES = [
     REPO_ROOT / "drone_city_nav/src/planner_node.cpp",
@@ -109,6 +111,13 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("current_cross=%.2f predicted_cross=%.2f", self.offboard_text)
         self.assertIn("response_delay_distance=%.2f", self.offboard_text)
         self.assertIn("control_tangent[smoothed=%s mode=%s", self.offboard_text)
+        self.assertIn("altitude[target_z=%.2f actual_z=%.2f", self.offboard_text)
+        self.assertIn("target_vz=%.2f", self.offboard_text)
+        self.assertIn("feedback_vz=%.2f", self.offboard_text)
+        self.assertIn("commanded_vz=%.2f", self.offboard_text)
+        self.assertIn("commanded_vz_ned=%.2f", self.offboard_text)
+        self.assertIn("passage_mode=%s", self.offboard_text)
+        self.assertIn("passage_id=%s", self.offboard_text)
         self.assertIn("Drone obstacle diagnostics:", self.offboard_text)
         self.assertIn("nearest_prohibited_cell[valid=%s", self.offboard_text)
         self.assertIn("prohibited_grid_clearance=%.2f", self.offboard_text)
@@ -253,6 +262,18 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("trajectory_shape_max_heading_delta_rad", self.offboard_text)
         self.assertIn("trajectory_shape_max_curvature_jump_1pm", self.offboard_text)
         self.assertIn("trajectory_shape_max_offset_delta_m", self.offboard_text)
+        self.assertIn("target_z_m", self.offboard_text)
+        self.assertIn("actual_z_m", self.offboard_text)
+        self.assertIn("z_error_m", self.offboard_text)
+        self.assertIn("target_vz_mps", self.offboard_text)
+        self.assertIn("feedback_vz_mps", self.offboard_text)
+        self.assertIn("desired_vz_mps", self.offboard_text)
+        self.assertIn("commanded_vz_mps", self.offboard_text)
+        self.assertIn("commanded_vz_ned_mps", self.offboard_text)
+        self.assertIn("vertical_slope_dz_ds", self.offboard_text)
+        self.assertIn("vertical_constraint_active", self.offboard_text)
+        self.assertIn("passage_mode", self.offboard_text)
+        self.assertIn("passage_id", self.offboard_text)
         self.assertIn("trajectory_planner_status", self.offboard_text)
         self.assertIn("corridor_width_min_m", self.offboard_text)
         self.assertIn("corridor_width_max_m", self.offboard_text)
@@ -315,7 +336,10 @@ class OffboardTelemetryContractTest(unittest.TestCase):
             "pathToRos(\n      std::span<const Point2>{samples.data(), samples.size()}, makeDebugHeader(), 0.0)",
             self.offboard_text,
         )
-        self.assertIn("verticalVelocitySetpointNed(", self.offboard_text)
+        self.assertIn("planVerticalSetpointForCurrentTrajectory(", self.offboard_text)
+        self.assertIn("finalTrajectoryGoalAltitudeM(", self.offboard_text)
+        self.assertIn("planVerticalSetpoint(", self.offboard_text)
+        self.assertIn("trajectoryVerticalTargetAtS(", self.offboard_text)
         self.assertIn("cruise_altitude_m_", self.offboard_text)
 
     def test_corridor_samples_are_planner_owned(self) -> None:
@@ -362,6 +386,11 @@ class OffboardTelemetryContractTest(unittest.TestCase):
                     "terminal_position_capture_max_entry_speed_mps: 3.0", text
                 )
                 self.assertIn("terminal_stuck_speed_mps: 0.5", text)
+                self.assertIn("altitude_feedback_kp_1ps: 0.5", text)
+                self.assertIn("vertical_setpoint_max_speed_mps: 2.0", text)
+                self.assertIn("vertical_setpoint_max_accel_mps2: 2.0", text)
+                self.assertIn("vertical_setpoint_max_jerk_mps3: 6.0", text)
+                self.assertIn("vertical_target_vz_feedforward_scale: 1.0", text)
                 self.assertIn("cross_track_derivative_gain: 0.5", text)
                 self.assertIn("tracking_prediction_horizon_s: 0.35", text)
                 self.assertIn("max_lateral_control_angle_deg: 55.0", text)

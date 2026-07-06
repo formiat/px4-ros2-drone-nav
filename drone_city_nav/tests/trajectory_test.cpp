@@ -181,6 +181,40 @@ TEST(Trajectory, AltitudeInterpolationIsByStationing) {
   EXPECT_NEAR(trajectorySampleAltitudeAtS(samples, 99.0), 30.0, 1.0e-9);
 }
 
+TEST(Trajectory, VerticalTargetInterpolatesAltitudeSlopeAndPassageMetadata) {
+  std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{Point2{0.0, 0.0}, Point2{10.0, 0.0}, Point2{20.0, 0.0}});
+  ASSERT_EQ(samples.size(), 3U);
+  samples[0].z_m = 10.0;
+  samples[0].vertical_slope_dz_ds = 0.1;
+  samples[1].z_m = 12.0;
+  samples[1].vertical_slope_dz_ds = 0.3;
+  samples[1].vertical_constraint_active = true;
+  samples[1].vertical_profile_passage_id = "arch_main";
+  samples[2].z_m = 20.0;
+  samples[2].vertical_slope_dz_ds = 0.5;
+
+  const TrajectoryVerticalTarget target = trajectoryVerticalTargetAtS(samples, 5.0);
+
+  ASSERT_TRUE(target.valid);
+  EXPECT_NEAR(target.s_m, 5.0, 1.0e-9);
+  EXPECT_NEAR(target.z_m, 11.0, 1.0e-9);
+  EXPECT_NEAR(target.vertical_slope_dz_ds, 0.2, 1.0e-9);
+  EXPECT_TRUE(target.vertical_constraint_active);
+  EXPECT_EQ(target.vertical_profile_passage_id, "arch_main");
+}
+
+TEST(Trajectory, VerticalTargetRejectsInvalidSamples) {
+  std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{Point2{0.0, 0.0}, Point2{10.0, 0.0}});
+  ASSERT_EQ(samples.size(), 2U);
+  samples[1].z_m = std::numeric_limits<double>::quiet_NaN();
+
+  const TrajectoryVerticalTarget target = trajectoryVerticalTargetAtS(samples, 5.0);
+
+  EXPECT_FALSE(target.valid);
+}
+
 TEST(Trajectory, ProjectionAndLengthStayTwoDimensionalWithAltitude) {
   std::vector<TrajectoryPointSample> flat_samples = trajectoryPointSamplesFromPoints(
       std::vector<Point2>{Point2{0.0, 0.0}, Point2{10.0, 0.0}});

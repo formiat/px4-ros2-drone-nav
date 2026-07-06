@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/offboard_vertical_follower.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/velocity_control_config.hpp"
 
@@ -57,6 +58,7 @@ struct Px4OffboardNodeConfig {
   std::uint8_t source_system{1U};
   std::uint16_t source_component{1U};
   VelocityFollowerConfig velocity_follower{};
+  VerticalFollowerConfig vertical_follower{};
   std::string flight_blackbox_path{"log/offboard_blackbox.jsonl"};
   Px4OffboardNodeTopics topics{};
 };

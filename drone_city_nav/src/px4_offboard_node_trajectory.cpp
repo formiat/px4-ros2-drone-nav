@@ -108,6 +108,7 @@ void Px4OffboardNode::updatePlannerStatsForReceivedTrajectory() {
 void Px4OffboardNode::resetVelocitySmootherState(const std::string_view reason,
                                                  const bool count_path_update_reset) {
   velocity_follower_state_ = VelocityFollowerState{};
+  vertical_follower_state_ = VerticalFollowerState{};
   last_velocity_smoother_reset_reason_ = std::string{reason};
   if (count_path_update_reset) {
     ++path_update_velocity_smoother_reset_count_;

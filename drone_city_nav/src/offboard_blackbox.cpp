@@ -20,6 +20,33 @@ void writeBlackboxJsonNumberOrNull(std::ostream& stream, const double value) {
   stream << "null";
 }
 
+void writeBlackboxJsonStringValue(std::ostream& stream, const std::string_view value) {
+  stream << "\"";
+  for (const char ch : value) {
+    switch (ch) {
+      case '"':
+        stream << "\\\"";
+        break;
+      case '\\':
+        stream << "\\\\";
+        break;
+      case '\n':
+        stream << "\\n";
+        break;
+      case '\r':
+        stream << "\\r";
+        break;
+      case '\t':
+        stream << "\\t";
+        break;
+      default:
+        stream << ch;
+        break;
+    }
+  }
+  stream << "\"";
+}
+
 void writeBlackboxPathId(std::ostream& stream, const OffboardBlackboxPathId& path_id) {
   stream << "\"path_id\":{\"local_update\":" << path_id.local_update
          << ",\"planner\":" << path_id.planner << ",\"planner_seen\":";
@@ -29,12 +56,14 @@ void writeBlackboxPathId(std::ostream& stream, const OffboardBlackboxPathId& pat
 
 void writeBlackboxStringField(std::ostream& stream, const std::string_view key,
                               const std::string_view value) {
-  stream << "\"" << key << "\":\"" << value << "\"";
+  stream << "\"" << key << "\":";
+  writeBlackboxJsonStringValue(stream, value);
 }
 
 void writeOffboardBlackboxRecord(std::ostream& stream,
                                  const OffboardBlackboxRecord& record) {
   const VelocitySetpointPlan& velocity_plan = record.velocity_plan;
+  const VerticalSetpointPlan& vertical_plan = record.vertical_plan;
   const TrajectoryPlannerStats& planner_stats = record.trajectory_planner_stats;
   const TrajectoryShapeDiagnostics& shape = record.trajectory_shape_diagnostics;
 
@@ -89,7 +118,39 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   stream << ",\"command\":{\"yaw_rad\":";
   writeBlackboxJsonNumberOrNull(stream, record.last_commanded_yaw_rad);
   stream << "}";
-  stream << ",\"altitude_control\":{\"target_altitude_m\":";
+  stream << ",\"altitude_control\":{\"target_z_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.target_z_m);
+  stream << ",\"actual_z_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.actual_z_m);
+  stream << ",\"z_error_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.z_error_m);
+  stream << ",\"target_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.target_vz_mps);
+  stream << ",\"feedback_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.feedback_vz_mps);
+  stream << ",\"desired_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.desired_vz_mps);
+  stream << ",\"commanded_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.commanded_vz_mps);
+  stream << ",\"commanded_vz_ned_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.commanded_vz_ned_mps);
+  stream << ",\"scalar_speed_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.scalar_speed_mps);
+  stream << ",\"vertical_slope_dz_ds\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.vertical_slope_dz_ds);
+  stream << ",\"vertical_accel_mps2\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.vertical_accel_mps2);
+  stream << ",\"vertical_jerk_mps3\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.vertical_jerk_mps3);
+  stream << ",\"vertical_constraint_active\":";
+  writeBlackboxJsonBool(stream, vertical_plan.vertical_constraint_active);
+  stream << ",\"passage_mode\":";
+  writeBlackboxJsonBool(stream, vertical_plan.passage_mode);
+  stream << ",\"passage_id\":";
+  writeBlackboxJsonStringValue(stream, vertical_plan.passage_id);
+  stream << ",\"reason\":";
+  writeBlackboxJsonStringValue(stream, vertical_plan.reason);
+  stream << ",\"target_altitude_m\":";
   writeBlackboxJsonNumberOrNull(stream, record.target_altitude_m);
   stream << ",\"trajectory_altitude_target_valid\":";
   writeBlackboxJsonBool(stream, record.trajectory_altitude_target_valid);
@@ -334,6 +395,30 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, record.target_altitude_m);
   stream << ",\"trajectory_altitude_target_valid\":";
   writeBlackboxJsonBool(stream, record.trajectory_altitude_target_valid);
+  stream << ",\"target_z_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.target_z_m);
+  stream << ",\"actual_z_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.actual_z_m);
+  stream << ",\"z_error_m\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.z_error_m);
+  stream << ",\"target_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.target_vz_mps);
+  stream << ",\"feedback_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.feedback_vz_mps);
+  stream << ",\"desired_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.desired_vz_mps);
+  stream << ",\"commanded_vz_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.commanded_vz_mps);
+  stream << ",\"commanded_vz_ned_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.commanded_vz_ned_mps);
+  stream << ",\"vertical_slope_dz_ds\":";
+  writeBlackboxJsonNumberOrNull(stream, vertical_plan.vertical_slope_dz_ds);
+  stream << ",\"vertical_constraint_active\":";
+  writeBlackboxJsonBool(stream, vertical_plan.vertical_constraint_active);
+  stream << ",\"passage_mode\":";
+  writeBlackboxJsonBool(stream, vertical_plan.passage_mode);
+  stream << ",\"passage_id\":";
+  writeBlackboxJsonStringValue(stream, vertical_plan.passage_id);
   stream << ",\"path_tangent_x\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.path_tangent.x);
   stream << ",\"path_tangent_y\":";

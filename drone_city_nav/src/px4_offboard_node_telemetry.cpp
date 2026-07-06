@@ -127,8 +127,11 @@ void Px4OffboardNode::logTelemetry() {
       "desired_to_actual_tangent=%.2f desired_to_actual_normal=%.2f] "
       "smoother[reset_reason=%s path_update_resets=%" PRIu64
       " path_frame=%s lateral_accel=%.2f] "
-      "altitude[target=%.2f trajectory_target_valid=%s error=%.2f "
-      "vz_setpoint=%.2f] tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
+      "altitude[target_z=%.2f actual_z=%.2f z_error=%.2f target_vz=%.2f "
+      "feedback_vz=%.2f desired_vz=%.2f commanded_vz=%.2f "
+      "commanded_vz_ned=%.2f trajectory_target_valid=%s passage_mode=%s "
+      "passage_id=%s slope=%.4f constraint=%s reason=%s] "
+      "tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
       "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
       "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
       "status=%.*s corridor_width_min=%.2f lateral_offset_max=%.2f] "
@@ -230,9 +233,16 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_smoother_reset_reason_.c_str(),
       path_update_velocity_smoother_reset_count_,
       last_velocity_plan_.path_frame_lateral_smoothing_applied ? "true" : "false",
-      last_velocity_plan_.smoother_lateral_response_accel_mps2, last_target_altitude_m_,
-      last_trajectory_altitude_target_valid_ ? "true" : "false", last_altitude_error_m_,
-      last_vertical_velocity_setpoint_mps_, last_velocity_plan_.path_tangent.x,
+      last_velocity_plan_.smoother_lateral_response_accel_mps2,
+      last_vertical_plan_.target_z_m, last_vertical_plan_.actual_z_m,
+      last_vertical_plan_.z_error_m, last_vertical_plan_.target_vz_mps,
+      last_vertical_plan_.feedback_vz_mps, last_vertical_plan_.desired_vz_mps,
+      last_vertical_plan_.commanded_vz_mps, last_vertical_plan_.commanded_vz_ned_mps,
+      last_vertical_plan_.trajectory_target_valid ? "true" : "false",
+      last_vertical_plan_.passage_mode ? "true" : "false",
+      last_vertical_plan_.passage_id.c_str(), last_vertical_plan_.vertical_slope_dz_ds,
+      last_vertical_plan_.vertical_constraint_active ? "true" : "false",
+      last_vertical_plan_.reason.c_str(), last_velocity_plan_.path_tangent.x,
       last_velocity_plan_.path_tangent.y, last_velocity_plan_.projection.x,
       last_velocity_plan_.projection.y, trajectory_valid_ ? "true" : "false",
       last_velocity_plan_.trajectory_s_m, last_velocity_plan_.trajectory_segment_index,
@@ -311,6 +321,7 @@ void Px4OffboardNode::writeFlightBlackbox(
       last_vertical_velocity_setpoint_mps_,
       last_velocity_setpoint_speed_mps_,
       last_velocity_plan_,
+      last_vertical_plan_,
       last_velocity_smoother_reset_reason_,
       path_update_velocity_smoother_reset_count_,
       last_target_altitude_m_,
