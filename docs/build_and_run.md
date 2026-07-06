@@ -76,8 +76,8 @@ Preview cleanup without terminating processes:
 ./scripts/stop_sim.sh --dry-run
 ```
 
-The GUI workflow logs Gazebo server output to `log/gz_city_mvp.log` and Gazebo
-GUI output to `log/gz_gui_city_mvp.log`.
+The GUI workflow logs Gazebo server output to `log/gz_drone_nav.log` and Gazebo
+GUI output to `log/gz_gui_drone_nav.log`.
 
 ## Logs And Artifacts
 

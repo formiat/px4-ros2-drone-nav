@@ -1,10 +1,16 @@
 .git/
+.agent-io/
 build/
 install/
 log/
+build-*/
+install-*/
+log-*/
 .colcon/
 .gazebo/
 .gz/
+external/
+.pytest_cache/
 *.bag
 *.db3
 *.log

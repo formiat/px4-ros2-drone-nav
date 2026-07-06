@@ -3,8 +3,8 @@
 <package format="3">
   <name>drone_city_nav</name>
   <version>0.1.0</version>
-  <description>ROS 2/PX4 MVP for lidar-based urban drone navigation in Gazebo.</description>
-  <maintainer email="formi@example.com">formi</maintainer>
+  <description>ROS 2/PX4 drone navigation stack for Gazebo simulation with lidar-based planning and offboard control.</description>
+  <maintainer email="formiat95@gmail.com">Alexander Aglerimov</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -1,8 +1,18 @@
-# Drone Gazebo ROS 2 PX4 Navigation
+# PX4 ROS 2 Drone Navigation
 
-This repository is a ROS 2 workspace for a Gazebo + PX4 SITL drone navigation
-project. The main package is `drone_city_nav`, an ament CMake package built
-with `colcon`.
+This repository is a ROS 2 workspace for a PX4/Gazebo drone navigation stack.
+The main package is `drone_city_nav`, an ament CMake package built with
+`colcon`.
+
+## Status And Safety
+
+This project is a simulation-oriented research and development stack. It is
+tested with PX4 SITL in Gazebo and is not certified or validated for real
+aircraft operation.
+
+Use it as a planning, simulation, and offboard-control testbed. Do not use it
+on physical drones without a separate safety review, hardware-specific failsafe
+design, controlled test environment, and compliance with local regulations.
 
 ## Approved Commands
 
@@ -103,14 +113,14 @@ After a GUI run, validate deterministic Gazebo launch diagnostics:
 
 ```bash
 python3 scripts/validate_gazebo_gui_launch_log.py \
-  log/gz_city_mvp.log \
-  --gui-log log/gz_gui_city_mvp.log \
+  log/gz_drone_nav.log \
+  --gui-log log/gz_gui_drone_nav.log \
   --scene-diagnostics-dir log/gazebo_scene_debug
 ```
 
 GUI runs keep Gazebo server/world orchestration output in
-`log/gz_city_mvp.log` and Gazebo GUI client output in
-`log/gz_gui_city_mvp.log`. The launcher also captures bounded Gazebo scene
+`log/gz_drone_nav.log` and Gazebo GUI client output in
+`log/gz_gui_drone_nav.log`. The launcher also captures bounded Gazebo scene
 diagnostics under `log/gazebo_scene_debug/` by default. Disable only the
 scene diagnostics with `ENABLE_GZ_SCENE_DIAGNOSTICS=false` when you need a
 minimal run.

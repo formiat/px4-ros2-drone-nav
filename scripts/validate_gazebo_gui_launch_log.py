@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Gazebo GUI launch diagnostics emitted by run_city_mvp.sh."""
+"""Validate Gazebo GUI launch diagnostics emitted by run_drone_nav_sim.sh."""
 
 from __future__ import annotations
 

@@ -105,12 +105,12 @@ def is_project_run_script(cmd: str) -> bool:
 
     executable = os.path.basename(tokens[command_index])
     has_runner_arg = any(
-        token.endswith("scripts/run_city_mvp.sh")
-        or token.endswith("./scripts/run_city_mvp.sh")
+        token.endswith("scripts/run_drone_nav_sim.sh")
+        or token.endswith("./scripts/run_drone_nav_sim.sh")
         for token in tokens[command_index + 1 :]
     )
-    return executable in {"bash", "sh", "run_city_mvp.sh"} and (
-        executable == "run_city_mvp.sh" or has_runner_arg
+    return executable in {"bash", "sh", "run_drone_nav_sim.sh"} and (
+        executable == "run_drone_nav_sim.sh" or has_runner_arg
     )
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate deterministic log markers for the city MVP headless run."""
+"""Validate deterministic log markers for the drone navigation headless run."""
 
 from __future__ import annotations
 
@@ -304,7 +304,7 @@ def read_text(path: Path) -> str:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate city MVP headless run logs."
+        description="Validate drone navigation headless run logs."
     )
     parser.add_argument("--ros-log", required=True, type=Path)
     parser.add_argument("--px4-log", required=True, type=Path)

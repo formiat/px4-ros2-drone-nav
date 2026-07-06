@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture bounded Gazebo scene diagnostics for the city MVP launcher."""
+"""Capture bounded Gazebo scene diagnostics for the drone navigation launcher."""
 
 from __future__ import annotations
 

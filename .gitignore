@@ -8,6 +8,9 @@ log-*/
 .colcon/
 *.colcon
 
+# Local agent transport
+.agent-io/
+
 # CMake / C++
 CMakeFiles/
 CMakeCache.txt

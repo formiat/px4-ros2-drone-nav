@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static launch-contract tests for the city MVP runner."""
+"""Static launch-contract tests for the drone navigation simulator runner."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 
-RUNNER = Path(__file__).resolve().parents[1] / "run_city_mvp.sh"
+RUNNER = Path(__file__).resolve().parents[1] / "run_drone_nav_sim.sh"
 CONTAINER_RUNNER = Path(__file__).resolve().parents[1] / "container_run.sh"
 LAUNCH_FILE = (
     Path(__file__).resolve().parents[2]
@@ -17,7 +17,7 @@ LAUNCH_FILE = (
 )
 
 
-class RunCityMvpLaunchContractTest(unittest.TestCase):
+class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = RUNNER.read_text(encoding="utf-8")

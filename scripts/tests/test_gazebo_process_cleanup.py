@@ -27,7 +27,7 @@ class GazeboProcessCleanupTest(unittest.TestCase):
                     "101 1 101 gz sim -g",
                     "102 1 102 python3 unrelated.py --arg gazebo",
                     "103 1 103 python3 note.py --message please run gz sim later",
-                    "104 1 104 rg gz sim scripts/run_city_mvp.sh",
+                    "104 1 104 rg gz sim scripts/run_drone_nav_sim.sh",
                     "105 1 105 bash -lc echo gz sim",
                 ]
             )
@@ -41,7 +41,7 @@ class GazeboProcessCleanupTest(unittest.TestCase):
         processes = cleanup.parse_ps_output(
             "\n".join(
                 [
-                    "100 1 100 bash ./scripts/run_city_mvp.sh",
+                    "100 1 100 bash ./scripts/run_drone_nav_sim.sh",
                     (
                         "101 100 100 /usr/bin/python3 /opt/ros/jazzy/bin/ros2 "
                         "launch drone_city_nav city_nav.launch.py"
@@ -84,12 +84,12 @@ class GazeboProcessCleanupTest(unittest.TestCase):
             "\n".join(
                 [
                     "10 1 10 /bin/bash parent",
-                    "20 10 20 bash ./scripts/run_city_mvp.sh",
+                    "20 10 20 bash ./scripts/run_drone_nav_sim.sh",
                     (
                         "30 20 20 /workspace/install/drone_city_nav/lib/"
                         "drone_city_nav/planner_node"
                     ),
-                    "40 1 40 bash ./scripts/run_city_mvp.sh",
+                    "40 1 40 bash ./scripts/run_drone_nav_sim.sh",
                     (
                         "50 40 40 /workspace/install/drone_city_nav/lib/"
                         "drone_city_nav/planner_node"
@@ -130,7 +130,7 @@ class GazeboProcessCleanupTest(unittest.TestCase):
             )
         )
         self.assertFalse(
-            cleanup.is_conflicting_gazebo_process("rg gz sim scripts/run_city_mvp.sh")
+            cleanup.is_conflicting_gazebo_process("rg gz sim scripts/run_drone_nav_sim.sh")
         )
         self.assertFalse(
             cleanup.is_conflicting_gazebo_process("bash -lc echo gz sim")

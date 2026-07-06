@@ -1,9 +1,8 @@
 # Project Overview
 
-This repository is a ROS 2 workspace for autonomous drone navigation in
-Gazebo with PX4 SITL. The main package is `drone_city_nav`, an ament CMake
-package that builds the planner, obstacle-memory, offboard-control,
-diagnostics, and simulation helper nodes.
+This repository is a ROS 2 workspace for PX4/Gazebo drone navigation. The main
+package is `drone_city_nav`, an ament CMake package that builds the planner,
+obstacle-memory, offboard-control, diagnostics, and simulation helper nodes.
 
 The project is no longer just a minimal proof of concept. It is a working
 navigation stack with a Gazebo/PX4 simulation environment, a planner that

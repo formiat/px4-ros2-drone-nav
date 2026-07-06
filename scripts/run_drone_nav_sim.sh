@@ -59,11 +59,11 @@ world_name="generated_city"
 px4_model_target="${PX4_MODEL_TARGET:-gz_x500_lidar_2d}"
 startup_sleep_s="${STARTUP_SLEEP_S:-8}"
 smoke_duration_s="${SMOKE_DURATION_S:-0}"
-px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_city_mvp.log}"
-uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_city_mvp.log}"
-ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_city_mvp.log}"
-gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_city_mvp.log}"
-gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_city_mvp.log}"
+px4_log_file="${PX4_LOG_FILE:-${run_log_dir}/px4_drone_nav.log}"
+uxrce_log_file="${UXRCE_AGENT_LOG_FILE:-${run_log_dir}/uxrce_agent_drone_nav.log}"
+ros_log_file="${ROS_LOG_FILE:-${run_log_dir}/ros_drone_nav.log}"
+gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
+gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_drone_nav.log}"
 gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${run_log_dir}/gazebo_scene_debug}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
@@ -119,7 +119,7 @@ spawn_x_m="${SIM_START_X_M:--171.0}"
 spawn_y_m="${SIM_START_Y_M:--81.0}"
 spawn_z_m="${SIM_START_Z_M:-0.3}"
 spawn_yaw_rad="${SIM_START_YAW_RAD:-0}"
-runtime_dir="${colcon_build_base}/gazebo_city_mvp"
+runtime_dir="${colcon_build_base}/gazebo_drone_nav"
 runtime_models_dir="${runtime_dir}/models"
 runtime_worlds_dir="${runtime_dir}/worlds"
 px4_models_dir="${px4_dir}/Tools/simulation/gz/models"
@@ -475,7 +475,7 @@ check_headless_run() {
     validation_args+=(--allow-mission-failure)
   fi
 
-  if ! python3 "${repo_root}/scripts/validate_city_mvp_headless.py" \
+  if ! python3 "${repo_root}/scripts/validate_drone_nav_headless.py" \
     "${validation_args[@]}"; then
     print_log_tail "Gazebo" "${gz_log_file}"
     print_log_tail "PX4 SITL" "${px4_log_file}"

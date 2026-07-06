@@ -10,8 +10,8 @@ behavior should be debugged from logs and artifacts, not only from RViz.
 - `log/corridor_samples/`
 - `log/lidar_debug/`
 - `log/gazebo_scene_debug/`
-- `log/gz_city_mvp.log`
-- `log/gz_gui_city_mvp.log`
+- `log/gz_drone_nav.log`
+- `log/gz_gui_drone_nav.log`
 
 ## Offboard Blackbox
 

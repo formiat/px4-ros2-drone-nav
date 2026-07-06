@@ -30,8 +30,8 @@ format:
 
 .PHONY: sim-gui
 sim-gui: build
-	./scripts/run_city_mvp.sh
+	./scripts/run_drone_nav_sim.sh
 
 .PHONY: sim-headless
 sim-headless: build
-	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_city_mvp.sh
+	HEADLESS=1 SMOKE_DURATION_S="$${SMOKE_DURATION_S:-90}" ./scripts/run_drone_nav_sim.sh

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the city MVP headless log validator."""
+"""Tests for the drone navigation headless log validator."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from io import StringIO
 from pathlib import Path
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "validate_city_mvp_headless.py"
-SPEC = importlib.util.spec_from_file_location("city_mvp_validator", SCRIPT_PATH)
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "validate_drone_nav_headless.py"
+SPEC = importlib.util.spec_from_file_location("drone_nav_validator", SCRIPT_PATH)
 assert SPEC is not None
 validator = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = validator
@@ -104,7 +104,7 @@ def make_ros_log(
     return "\n".join(lines) + "\n"
 
 
-class CityMvpHeadlessValidatorTest(unittest.TestCase):
+class DroneNavHeadlessValidatorTest(unittest.TestCase):
     def test_active_lidar_stable_path_reuse_passes_without_used_summary(self) -> None:
         result = validator.validate_logs(
             ros_log=make_ros_log(current_lidar_used_summary=False),

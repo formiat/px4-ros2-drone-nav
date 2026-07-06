@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gazebo GUI and world-control commands for the city MVP launcher."""
+"""Gazebo GUI and world-control commands for the drone navigation launcher."""
 
 from __future__ import annotations
 
