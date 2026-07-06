@@ -60,11 +60,17 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.static_map.enabled);
   EXPECT_TRUE(config.planning_grid_builder.use_static_map);
   EXPECT_EQ(config.static_map.configured_path.string(), "worlds/generated_city.map2d");
+  EXPECT_TRUE(config.known_passages.enabled);
+  EXPECT_EQ(config.known_passages.configured_path.string(),
+            "worlds/known_passages.passages3d");
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
+  EXPECT_EQ(config.topics.known_passage_markers,
+            "/drone_city_nav/known_passage_markers");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
+  EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 1.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);
   EXPECT_FALSE(config.planner_core.astar.evasive_maneuvering_enabled);
   EXPECT_TRUE(config.planner_core.astar.initial_heading_bias_enabled);
@@ -166,6 +172,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
        rclcpp::Parameter{"turn_smoothing_entry_distance_m", -5.0},
+       rclcpp::Parameter{"known_passage_debug_publish_period_s", 100.0},
        rclcpp::Parameter{"static_map_debug_publish_period_s", 100.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
@@ -223,6 +230,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_speed_limit_mps,
                    0.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 0.1);
+  EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 60.0);
   EXPECT_DOUBLE_EQ(config.timing.static_map_debug_publish_period_s, 60.0);
 }
 
@@ -236,6 +244,10 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
        rclcpp::Parameter{"use_static_map", false},
+       rclcpp::Parameter{"known_passages_enabled", false},
+       rclcpp::Parameter{"known_passages_path", "worlds/custom.passages3d"},
+       rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
+       rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
        rclcpp::Parameter{"trajectory_optimizer_weight_curvature", 125.0},
        rclcpp::Parameter{"trajectory_optimizer_parallel_workers", 2},
@@ -272,6 +284,10 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 40.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
+  EXPECT_FALSE(config.known_passages.enabled);
+  EXPECT_EQ(config.known_passages.configured_path.string(), "worlds/custom.passages3d");
+  EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
+  EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_curvature,
                    125.0);

@@ -46,6 +46,11 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.static_map.min_blocking_height_m = std::clamp(
       node.declare_parameter<double>("static_map_min_blocking_height_m", 0.0), 0.0,
       100000.0);
+  config.known_passages.enabled =
+      node.declare_parameter<bool>("known_passages_enabled", true);
+  config.known_passages.configured_path = node.declare_parameter<std::string>(
+      "known_passages_path", "worlds/known_passages.passages3d");
+  config.known_passages.expected_frame_id = config.frame_id;
   const double planning_grid_origin_x =
       node.declare_parameter<double>("planning_grid_origin_x", -10.0);
   const double planning_grid_origin_y =
@@ -355,8 +360,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "static_map_grid_topic", "/drone_city_nav/static_map_grid");
   config.topics.static_map_points = node.declare_parameter<std::string>(
       "static_map_points_topic", "/drone_city_nav/static_map_points");
+  config.topics.known_passage_markers = node.declare_parameter<std::string>(
+      "known_passage_markers_topic", "/drone_city_nav/known_passage_markers");
   config.timing.static_map_debug_publish_period_s = std::clamp(
       node.declare_parameter<double>("static_map_debug_publish_period_s", 1.0), 0.0,
+      60.0);
+  config.timing.known_passage_debug_publish_period_s = std::clamp(
+      node.declare_parameter<double>("known_passage_debug_publish_period_s", 1.0), 0.0,
       60.0);
   config.topics.path =
       node.declare_parameter<std::string>("path_topic", "/drone_city_nav/path");

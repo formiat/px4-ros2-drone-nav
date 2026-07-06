@@ -71,6 +71,13 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("trajectory_diagnostics_topic: "
                       "/drone_city_nav/trajectory_diagnostics"),
             std::string::npos);
+  EXPECT_NE(yaml.find("known_passages_enabled: true"), std::string::npos);
+  EXPECT_NE(yaml.find("known_passages_path: worlds/known_passages.passages3d"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_markers_topic: "
+                      "/drone_city_nav/known_passage_markers"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_debug_publish_period_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_p_gain_schedule_start_m: 0.0"), std::string::npos);

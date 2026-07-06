@@ -39,6 +39,8 @@ PlannerNode::PlannerNode()
       config.topics.static_map_grid, rclcpp::QoS{1}.transient_local());
   static_map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
       config.topics.static_map_points, rclcpp::QoS{1}.transient_local());
+  known_passage_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      config.topics.known_passage_markers, rclcpp::QoS{1}.transient_local());
   path_pub_ = create_publisher<nav_msgs::msg::Path>(config.topics.path,
                                                     rclcpp::QoS{1}.reliable());
   path_id_pub_ = create_publisher<std_msgs::msg::UInt64>(config.topics.path_id,
@@ -49,10 +51,16 @@ PlannerNode::PlannerNode()
       config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
   loadConfiguredStaticMap();
+  loadConfiguredKnownPassages();
   if (static_map_debug_publish_period_s_ > 0.0) {
     static_map_debug_timer_ = create_wall_timer(
         std::chrono::duration<double>{static_map_debug_publish_period_s_},
         [this]() { republishStaticMapDebug(); });
+  }
+  if (known_passage_debug_publish_period_s_ > 0.0) {
+    known_passage_debug_timer_ = create_wall_timer(
+        std::chrono::duration<double>{known_passage_debug_publish_period_s_},
+        [this]() { republishKnownPassageDebug(); });
   }
   timer_ = create_wall_timer(
       std::chrono::duration<double>{
@@ -145,14 +153,16 @@ PlannerNode::PlannerNode()
       trajectory_planner_config_.turn_smoothing.min_outer_shift_m,
       trajectory_planner_config_.turn_smoothing.max_outer_shift_m,
       trajectory_planner_config_.turn_smoothing.max_passes);
-  RCLCPP_INFO(get_logger(),
-              "Planner obstacle sources: static=%s memory=always current_lidar=always "
-              "static_path='%s' fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
-              use_static_map_ ? "true" : "false",
-              static_map_resolved_path_.string().c_str(),
-              fallback_grid_bounds_.width_cells, fallback_grid_bounds_.height_cells,
-              fallback_grid_bounds_.resolution_m, fallback_grid_bounds_.origin_x,
-              fallback_grid_bounds_.origin_y);
+  RCLCPP_INFO(
+      get_logger(),
+      "Planner obstacle sources: static=%s memory=always current_lidar=always "
+      "static_path='%s' known_passages=%s known_passages_path='%s' "
+      "fallback_grid=%dx%d@%.2fm origin=(%.2f, %.2f)",
+      use_static_map_ ? "true" : "false", static_map_resolved_path_.string().c_str(),
+      use_known_passages_ ? "true" : "false",
+      known_passages_resolved_path_.string().c_str(), fallback_grid_bounds_.width_cells,
+      fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
+      fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
   RCLCPP_INFO(get_logger(),
               "Planner lidar overlay: enabled=always topic='%s' max_range=%.2f "
               "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
@@ -200,6 +210,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   use_static_map_ = config.static_map.enabled;
   static_map_path_param_ = config.static_map.configured_path.string();
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
+  use_known_passages_ = config.known_passages.enabled;
+  known_passages_path_param_ = config.known_passages.configured_path.string();
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
   max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
@@ -222,6 +234,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   initial_heading_rad_ = config.initial_pose.heading_rad;
   px4_local_origin_ = config.initial_pose.px4_local_origin;
   static_map_debug_publish_period_s_ = config.timing.static_map_debug_publish_period_s;
+  known_passage_debug_publish_period_s_ =
+      config.timing.known_passage_debug_publish_period_s;
   planner_core_.setConfig(config.planner_core);
 }
 

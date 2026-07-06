@@ -44,6 +44,31 @@ Obstacle/grid:
 - `static_map_path`
 - lidar overlay and memory input settings.
 
+Known passages:
+
+- `known_passages_enabled`
+- `known_passages_path`
+- `known_passage_markers_topic`
+- `known_passage_debug_publish_period_s`
+
+Known passages are diagnostics-only in the current stage. They describe
+pre-annotated passage structures and openings for future 3D traversal, but
+they do not modify obstacle grids, planner constraints, trajectory geometry, or
+runtime control.
+
+The default file format is line-based and versioned:
+
+```text
+drone_city_nav_known_passages_v1
+frame_id map
+structure <id> <center_x> <center_y> <size_x> <size_y> <z_min> <z_max>
+opening <structure_id> <opening_id> <center_x> <center_y> <center_z> <normal_x> <normal_y> <width> <height> <depth> <min_z> <max_z> <approach_m> <exit_m>
+```
+
+The parser rejects unknown keywords, duplicate ids, invalid dimensions,
+non-finite values, openings outside their structure footprint, and opening z
+ranges outside the structure z range.
+
 ## A* Parameters
 
 - `astar_heuristic_weight`
@@ -176,6 +201,8 @@ configuration drift.
 - `final_trajectory_debug_topic`
 - `final_trajectory_debug_sample_step_m`
 - `offboard_debug_marker_topic`
+- `known_passage_markers_topic`
+- `known_passage_debug_publish_period_s`
 - `diagnostic_turn_preview_distance_m`
 
 `diagnostic_turn_preview_distance_m` is diagnostics-only.

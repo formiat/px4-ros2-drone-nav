@@ -105,8 +105,25 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("/drone_city_nav/prohibited_grid", text)
         self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
         self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
+        self.assertIn("/drone_city_nav/known_passage_markers", text)
         self.assertNotIn("/drone_city_nav/obstacle_memory_inflated_grid", text)
         self.assertNotIn("/drone_city_nav/occupancy_grid", text)
+
+    def test_known_passage_marker_contract_is_wired_for_debugging(self) -> None:
+        yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
+        rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")
+        bag_text = read("scripts/record_debug_bag.sh")
+
+        self.assertIn("known_passages_enabled: true", yaml_text)
+        self.assertIn(
+            "known_passages_path: worlds/known_passages.passages3d", yaml_text
+        )
+        self.assertIn(
+            "known_passage_markers_topic: /drone_city_nav/known_passage_markers",
+            yaml_text,
+        )
+        self.assertIn("/drone_city_nav/known_passage_markers", rviz_text)
+        self.assertIn("/drone_city_nav/known_passage_markers", bag_text)
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [

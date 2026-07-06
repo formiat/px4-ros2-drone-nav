@@ -64,6 +64,17 @@ Visualization Manager:
         trajectory_optimizer_corridor_right: true
       Topic:
         Value: /drone_city_nav/offboard_debug_markers
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Known Passages
+      Namespaces:
+        known_passage_approach: true
+        known_passage_exit: true
+        known_passage_gate_center: true
+        known_passage_opening_frame: true
+        known_passage_structure: true
+      Topic:
+        Value: /drone_city_nav/known_passage_markers
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 80; 120; 255

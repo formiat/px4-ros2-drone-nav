@@ -34,6 +34,8 @@ visual world convention, so the launch file publishes a fixed transform from
 - Raw memory: uninflated obstacle memory evidence.
 - Current lidar hits: current scan projection into the map.
 - Corridor: left/right/free-space bounds around the rough route.
+- Known passages: diagnostics-only 3D passage annotations from
+  `/drone_city_nav/known_passage_markers`.
 - Final optimized trajectory: executable trajectory published by offboard on
   `/drone_city_nav/final_trajectory_path`.
 - Drone markers: current drone pose, altitude, heading, and offboard debug
@@ -45,6 +47,29 @@ The final trajectory path and trajectory color markers are displayed at the
 sample `z_m` altitude, not on the ground plane. The drone pose marker is a 3D
 sphere at the current PX4 local altitude and is deleted when pose or altitude
 data is stale/invalid.
+
+## Known Passage Markers
+
+Known passages are pre-annotated 3D passages for future traversal work. The
+current system only loads, logs, and visualizes them. They do not change the
+prohibited grid, route, trajectory optimizer, speed profile, or controller.
+
+The RViz `Known Passages` display subscribes to:
+
+```text
+/drone_city_nav/known_passage_markers
+```
+
+Marker namespaces:
+
+- `known_passage_structure`: transparent volume of the annotated structure.
+- `known_passage_opening_frame`: wireframe box for the traversable opening.
+- `known_passage_gate_center`: center point of the gate.
+- `known_passage_approach`: approach direction into the opening.
+- `known_passage_exit`: exit direction after the opening.
+
+If the known passage source is disabled, empty, or fails to load, the planner
+publishes delete markers so stale passage objects disappear from RViz.
 
 ## Reading The Colors
 

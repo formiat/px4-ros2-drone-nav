@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
@@ -21,6 +22,7 @@ struct PlannerTopics {
   std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
   std::string static_map_grid{"/drone_city_nav/static_map_grid"};
   std::string static_map_points{"/drone_city_nav/static_map_points"};
+  std::string known_passage_markers{"/drone_city_nav/known_passage_markers"};
   std::string path{"/drone_city_nav/path"};
   std::string path_id{"/drone_city_nav/path_id"};
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
@@ -31,6 +33,7 @@ struct PlannerTimingConfig {
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   std::int64_t max_current_lidar_staleness_ns{750'000'000};
   double static_map_debug_publish_period_s{1.0};
+  double known_passage_debug_publish_period_s{1.0};
   double path_prohibited_intersection_check_period_s{0.5};
 };
 
@@ -65,6 +68,7 @@ struct PlannerNodeConfig {
   PlanningGridBuilderConfig planning_grid_builder{};
   LidarProjectionConfig lidar_projection{};
   StaticMapSourceConfig static_map{};
+  KnownPassageSourceConfig known_passages{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

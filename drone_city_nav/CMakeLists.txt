@@ -39,6 +39,7 @@ add_library(
   src/final_trajectory_debug_io.cpp
   src/grid_config.cpp
   src/grid_overlay.cpp
+  src/known_passage_map.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_projection.cpp
@@ -103,6 +104,7 @@ add_library(
   src/px4_offboard_setpoint_io.cpp
   src/lidar_debug_pointclouds.cpp
   src/ros_conversions.cpp
+  src/known_passage_debug_markers.cpp
   src/static_map_debug.cpp
   src/static_map_source.cpp
   src/trajectory_debug_markers.cpp
@@ -143,7 +145,8 @@ ament_target_dependencies(
   px4_msgs
   rclcpp
   sensor_msgs
-  std_msgs)
+  std_msgs
+  visualization_msgs)
 enable_project_warnings(planner_node)
 
 add_executable(obstacle_memory_node src/obstacle_memory_node.cpp)
@@ -302,6 +305,11 @@ if(BUILD_TESTING)
   target_link_libraries(static_city_map_test drone_city_nav_core)
   enable_project_warnings(static_city_map_test)
 
+  ament_add_gtest(known_passage_map_test tests/known_passage_map_test.cpp)
+  target_compile_features(known_passage_map_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_map_test drone_city_nav_core)
+  enable_project_warnings(known_passage_map_test)
+
   ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test PRIVATE cxx_std_20)
   target_link_libraries(grid_overlay_test drone_city_nav_core)
@@ -341,6 +349,15 @@ if(BUILD_TESTING)
   ament_target_dependencies(trajectory_debug_markers_test geometry_msgs std_msgs
                             visualization_msgs)
   enable_project_warnings(trajectory_debug_markers_test)
+
+  ament_add_gtest(known_passage_debug_markers_test
+                  tests/known_passage_debug_markers_test.cpp)
+  target_compile_features(known_passage_debug_markers_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_debug_markers_test
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(known_passage_debug_markers_test geometry_msgs std_msgs
+                            visualization_msgs)
+  enable_project_warnings(known_passage_debug_markers_test)
 
   ament_add_gtest(corridor_test tests/corridor_test.cpp)
   target_compile_features(corridor_test PRIVATE cxx_std_20)

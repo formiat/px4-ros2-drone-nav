@@ -28,6 +28,8 @@ The current stack supports:
 - ROS 2 nodes for obstacle memory, planning, offboard control, lidar debug, and
   mission monitoring;
 - a static city map loaded from `drone_city_nav/worlds/generated_city.map2d`;
+- a diagnostics-only known passage annotation map loaded from
+  `drone_city_nav/worlds/known_passages.passages3d`;
 - current lidar obstacle overlay and accumulated obstacle memory;
 - runtime prohibited-grid construction with extra planning clearance;
 - A* rough route planning;
@@ -74,6 +76,12 @@ The planner still performs XY obstacle avoidance and trajectory shaping in a
 and dumps can represent the trajectory in 3D. Runtime vertical control still
 holds the configured cruise altitude in this stage.
 
+Known 3D passages are currently annotations only. Passage structures,
+openings, gate centers, approach arrows, and exit arrows are loaded and
+published for RViz/debugging, but they are not added to or removed from
+`prohibited_grid` and do not affect A*, corridor construction, trajectory
+optimization, speed profile, or offboard control yet.
+
 ## Important Terms
 
 - Raw obstacle source: direct obstacle evidence from a static map, lidar
@@ -86,6 +94,8 @@ holds the configured cruise altitude in this stage.
 - Executable trajectory: the accepted path that the offboard controller tracks.
   Its geometry and speed profile are currently XY-owned, while `z_m` is a
   representation/debug altitude for RViz and diagnostics.
+- Known passage: a pre-annotated 3D passage structure and opening that can be
+  visualized now and used by future 3D traversal stages.
 - Trajectory optimizer: the post-corridor optimizer that improves smoothness
   and radius while staying inside the valid corridor.
 - Terminal capture: the final control state sequence that slows down, enters

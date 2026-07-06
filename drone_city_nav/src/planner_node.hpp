@@ -3,6 +3,8 @@
 #include "drone_city_nav/corridor_samples_io.hpp"
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
+#include "drone_city_nav/known_passage_debug_markers.hpp"
+#include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -31,6 +33,7 @@
 #include <std_msgs/msg/header.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/u_int64.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -136,6 +139,8 @@ private:
 
   void loadConfiguredStaticMap();
 
+  void loadConfiguredKnownPassages();
+
   [[nodiscard]] PlanningGridBuilderConfig planningGridBuilderConfig() const;
 
   [[nodiscard]] std::optional<PlanningGridBuildResult>
@@ -220,6 +225,10 @@ private:
 
   void republishStaticMapDebug();
 
+  void publishKnownPassageDebug(const bool log_publication);
+
+  void republishKnownPassageDebug();
+
   void publishProhibitedGrid(const OccupancyGrid2D& grid);
 
   std::uint64_t publishPath(const std::vector<Point2>& points,
@@ -288,6 +297,7 @@ private:
 
   std::optional<OccupancyGrid2D> memory_grid_;
   std::optional<OccupancyGrid2D> static_grid_;
+  std::optional<KnownPassageMap> known_passages_;
   PlanningGridBuilder planning_grid_builder_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
@@ -307,6 +317,7 @@ private:
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
   bool use_static_map_{true};
+  bool use_known_passages_{true};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};
@@ -316,7 +327,9 @@ private:
   bool last_scan_projection_pose_valid_{false};
   std::string frame_id_{"map"};
   std::string static_map_path_param_{"worlds/generated_city.map2d"};
+  std::string known_passages_path_param_{"worlds/known_passages.passages3d"};
   std::filesystem::path static_map_resolved_path_;
+  std::filesystem::path known_passages_resolved_path_;
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{1.0};
   double planning_clearance_m_{3.0};
@@ -328,6 +341,7 @@ private:
   double scan_yaw_offset_rad_{0.0};
   double initial_heading_rad_{0.0};
   double static_map_debug_publish_period_s_{1.0};
+  double known_passage_debug_publish_period_s_{1.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_scan_pose_lag_s_{0.0};
@@ -350,6 +364,8 @@ private:
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
   std::size_t static_map_rectangles_{0U};
   std::size_t static_map_occupied_cells_{0U};
+  std::size_t known_passage_structures_{0U};
+  std::size_t known_passage_openings_{0U};
   std::uint64_t astar_runs_{0U};
   std::uint64_t astar_successes_{0U};
   std::uint64_t astar_failures_{0U};
@@ -376,11 +392,14 @@ private:
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+      known_passage_markers_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
+  rclcpp::TimerBase::SharedPtr known_passage_debug_timer_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

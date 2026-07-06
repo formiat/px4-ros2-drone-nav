@@ -39,6 +39,40 @@ void PlannerNode::republishStaticMapDebug() {
   publishStaticMapDebug(*static_grid_, false);
 }
 
+void PlannerNode::publishKnownPassageDebug(const bool log_publication) {
+  if (!known_passage_markers_pub_) {
+    return;
+  }
+
+  const std_msgs::msg::Header header = makePlannerHeader();
+  if (!known_passages_.has_value()) {
+    known_passage_markers_pub_->publish(buildKnownPassageDeleteMarkers(header));
+    if (log_publication) {
+      RCLCPP_INFO(get_logger(),
+                  "Published known passage delete markers: topic='%s' "
+                  "source_path='%s'",
+                  known_passage_markers_pub_->get_topic_name(),
+                  known_passages_resolved_path_.string().c_str());
+    }
+    return;
+  }
+
+  known_passage_markers_pub_->publish(
+      buildKnownPassageDebugMarkers(header, *known_passages_));
+  if (log_publication) {
+    RCLCPP_INFO(get_logger(),
+                "Published known passage markers: structures=%zu openings=%zu "
+                "topic='%s' republish_period=%.2fs",
+                known_passage_structures_, known_passage_openings_,
+                known_passage_markers_pub_->get_topic_name(),
+                known_passage_debug_publish_period_s_);
+  }
+}
+
+void PlannerNode::republishKnownPassageDebug() {
+  publishKnownPassageDebug(false);
+}
+
 void PlannerNode::publishProhibitedGrid(const OccupancyGrid2D& grid) {
   prohibited_grid_pub_->publish(
       prohibitedGridToRos(grid, ProhibitedGridToRosConfig{makePlannerHeader()}));

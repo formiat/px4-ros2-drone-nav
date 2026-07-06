@@ -11,6 +11,11 @@ The planner can use:
 - accumulated obstacle memory from `/drone_city_nav/obstacle_memory_grid`;
 - current lidar scan overlay from `/scan`.
 
+The planner can also load known 3D passage annotations from
+`known_passages.passages3d`. In the current stage, these annotations are
+diagnostics-only. They are not raw obstacle sources, do not alter the
+prohibited grid, and do not constrain or relax the XY planner.
+
 Raw sources are merged before inflation. Raw sources must not contain safety
 inflation.
 
@@ -108,6 +113,7 @@ The planner publishes:
 - `/drone_city_nav/path_id`
 - `/drone_city_nav/trajectory_diagnostics`
 - `/drone_city_nav/current_waypoint`
+- `/drone_city_nav/known_passage_markers`
 
 The offboard node publishes:
 
@@ -117,6 +123,10 @@ The offboard node publishes:
 The accepted trajectory is matched to diagnostics by `path_stamp_ns`.
 The `/drone_city_nav/path` and `/drone_city_nav/final_trajectory_path` messages
 carry per-sample altitude in `pose.position.z`.
+
+Known passage markers are RViz/debug artifacts. Structure volumes, opening
+frames, gate centers, approach arrows, and exit arrows help verify annotation
+geometry before any later 3D traversal logic uses it.
 
 ## Pipeline Contracts
 

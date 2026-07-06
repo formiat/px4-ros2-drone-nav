@@ -202,6 +202,57 @@ void PlannerNode::loadConfiguredStaticMap() {
   publishStaticMapDebug(*static_grid_, true);
 }
 
+void PlannerNode::loadConfiguredKnownPassages() {
+  const KnownPassageSourceResult result = loadKnownPassageMapSource(
+      KnownPassageSourceConfig{use_known_passages_, known_passages_path_param_,
+                               staticMapPackageShareDirectory(), frame_id_});
+  known_passages_resolved_path_ = result.resolved_path;
+
+  if (result.status == KnownPassageSourceStatus::kDisabled) {
+    known_passages_.reset();
+    known_passage_structures_ = 0U;
+    known_passage_openings_ = 0U;
+    RCLCPP_INFO(get_logger(), "Known passage map source is disabled");
+    publishKnownPassageDebug(true);
+    return;
+  }
+
+  if (result.status == KnownPassageSourceStatus::kLoadFailed ||
+      !result.map.has_value()) {
+    known_passages_.reset();
+    known_passage_structures_ = 0U;
+    known_passage_openings_ = 0U;
+    RCLCPP_ERROR(get_logger(),
+                 "Failed to load known passage map: path='%s' status=%s error='%s'",
+                 known_passages_resolved_path_.string().c_str(),
+                 knownPassageSourceStatusName(result.status),
+                 result.error_message.c_str());
+    publishKnownPassageDebug(true);
+    return;
+  }
+
+  if (!result.frame_matches) {
+    RCLCPP_WARN(get_logger(),
+                "Known passage map frame differs from planner frame: map='%s' "
+                "planner='%s'",
+                result.map->frame_id.c_str(), frame_id_.c_str());
+  }
+
+  known_passages_ = result.map;
+  known_passage_structures_ = result.structures;
+  known_passage_openings_ = result.openings;
+  RCLCPP_INFO(get_logger(),
+              "Known passage map loaded: path='%s' status=%s frame='%s' "
+              "structures=%zu openings=%zu markers_topic='%s'",
+              known_passages_resolved_path_.string().c_str(),
+              knownPassageSourceStatusName(result.status),
+              known_passages_->frame_id.c_str(), known_passage_structures_,
+              known_passage_openings_,
+              known_passage_markers_pub_ ? known_passage_markers_pub_->get_topic_name()
+                                         : "<unavailable>");
+  publishKnownPassageDebug(true);
+}
+
 [[nodiscard]] PlanningGridBuilderConfig PlannerNode::planningGridBuilderConfig() const {
   PlanningGridBuilderConfig config{};
   config.use_static_map = use_static_map_;
