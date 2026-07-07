@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace drone_city_nav {
 namespace {
@@ -28,6 +29,7 @@ constexpr double kSmootherstepMaxDerivative = 1.875;
 
 struct ProfileWindow {
   KnownPassageTraversalMatch match{};
+  double start_z_m{std::numeric_limits<double>::quiet_NaN()};
   double gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   double approach_start_s_m{0.0};
   double exit_end_s_m{0.0};
@@ -43,13 +45,16 @@ struct ProfileWindow {
   return start_z + (end_z - start_z) * smootherstep((s_m - start_s) / length);
 }
 
-[[nodiscard]] double nearestValidGateAltitude(const PassageOpening& opening,
-                                              const VerticalProfileConfig& config,
-                                              const double cruise_altitude_m) noexcept {
+[[nodiscard]] double targetGateAltitude(const PassageOpening& opening,
+                                        const VerticalProfileConfig& config,
+                                        const double reference_altitude_m) noexcept {
   const double min_z = opening.min_z_m + std::max(0.0, config.gate_clearance_margin_m);
   const double max_z = opening.max_z_m - std::max(0.0, config.gate_clearance_margin_m);
   if (max_z >= min_z) {
-    return std::clamp(cruise_altitude_m, min_z, max_z);
+    if (reference_altitude_m >= min_z && reference_altitude_m <= max_z) {
+      return reference_altitude_m;
+    }
+    return 0.5 * (min_z + max_z);
   }
   return 0.5 * (opening.min_z_m + opening.max_z_m);
 }
@@ -59,6 +64,9 @@ transitionDistanceForAltitudeDelta(const double dz_m, const double requested_dis
                                    const VerticalProfileConfig& config,
                                    const double min_transition_m,
                                    const double max_transition_m) noexcept {
+  if (dz_m <= kTinyDistanceM) {
+    return 0.0;
+  }
   const double max_slope = std::tan(std::max(1.0e-6, config.max_climb_angle_rad));
   const double slope_distance = max_slope > kTinyDistanceM
                                     ? kSmootherstepMaxDerivative * dz_m / max_slope
@@ -67,9 +75,9 @@ transitionDistanceForAltitudeDelta(const double dz_m, const double requested_dis
 }
 
 void resetVerticalMetadata(std::span<TrajectoryPointSample> samples,
-                           const double cruise_altitude_m) {
+                           const double initial_altitude_m) {
   for (TrajectoryPointSample& sample : samples) {
-    sample.z_m = cruise_altitude_m;
+    sample.z_m = initial_altitude_m;
     sample.vertical_slope_dz_ds = 0.0;
     sample.vertical_speed_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_accel_limit_mps = std::numeric_limits<double>::quiet_NaN();
@@ -227,6 +235,9 @@ rejectOverlappingInfeasibleWindows(std::span<const ProfileWindow> windows,
       if (!profileWindowsOverlap(windows[i], windows[j])) {
         continue;
       }
+      if (std::abs(windows[i].gate_z_m - windows[j].gate_z_m) <= kTinyDistanceM) {
+        continue;
+      }
       conflict_found = true;
       stats.infeasible_count += 2U;
       appendDiagnostic(
@@ -249,18 +260,18 @@ const char* verticalProfileStatusName(const bool valid) noexcept {
 VerticalProfileResult applyVerticalProfile(
     const std::span<TrajectoryPointSample> samples, const KnownPassageMap* const map,
     const KnownPassageValidationConfig& validation_config,
-    const VerticalProfileConfig& config, const double cruise_altitude_m) {
+    const VerticalProfileConfig& config, const double initial_altitude_m) {
   VerticalProfileResult result{};
   result.stats.enabled = config.enabled;
-  if (samples.empty() || !std::isfinite(cruise_altitude_m) || !config.enabled ||
+  if (samples.empty() || !std::isfinite(initial_altitude_m) || !config.enabled ||
       map == nullptr) {
-    resetVerticalMetadata(samples, cruise_altitude_m);
+    resetVerticalMetadata(samples, initial_altitude_m);
     result.stats.applied = true;
     updateAltitudeStats(result.stats, samples);
     return result;
   }
 
-  resetVerticalMetadata(samples, cruise_altitude_m);
+  resetVerticalMetadata(samples, initial_altitude_m);
   result.stats.applied = true;
   if (!hasFiniteSamples(samples)) {
     result.valid = false;
@@ -271,14 +282,15 @@ VerticalProfileResult applyVerticalProfile(
   const std::vector<KnownPassageTraversalMatch> matches =
       findKnownPassageTraversalMatches(samples, *map, validation_config, true);
   const double total_s = samples.back().s_m;
+  const double first_s = samples.front().s_m;
   const double min_transition =
       sanitizedPositive(config.min_transition_distance_m, 6.0, 0.0, 1000.0);
   const double max_transition =
       std::max(min_transition,
                sanitizedPositive(config.max_transition_distance_m, 80.0, 0.0, 10000.0));
 
-  std::vector<ProfileWindow> windows;
-  windows.reserve(matches.size());
+  std::vector<KnownPassageTraversalMatch> valid_matches;
+  valid_matches.reserve(matches.size());
   for (const KnownPassageTraversalMatch& match : matches) {
     if (!match.valid) {
       ++result.stats.infeasible_count;
@@ -295,26 +307,39 @@ VerticalProfileResult applyVerticalProfile(
     }
 
     ++result.stats.passages_matched;
-    const double gate_z =
-        nearestValidGateAltitude(match.opening, config, cruise_altitude_m);
-    const double dz = std::abs(gate_z - cruise_altitude_m);
+    valid_matches.push_back(match);
+  }
+  std::ranges::sort(valid_matches, [](const KnownPassageTraversalMatch& lhs,
+                                      const KnownPassageTraversalMatch& rhs) {
+    if (std::abs(lhs.entry_s_m - rhs.entry_s_m) > kTinyDistanceM) {
+      return lhs.entry_s_m < rhs.entry_s_m;
+    }
+    return lhs.exit_s_m < rhs.exit_s_m;
+  });
+
+  std::vector<ProfileWindow> windows;
+  windows.reserve(valid_matches.size());
+  double carried_altitude_m = initial_altitude_m;
+  double transition_available_after_s_m = first_s;
+  for (const KnownPassageTraversalMatch& match : valid_matches) {
+    const double start_z = carried_altitude_m;
+    const double gate_z = targetGateAltitude(match.opening, config, start_z);
+    const double dz = std::abs(gate_z - start_z);
     const double transition_distance_required = transitionDistanceForAltitudeDelta(
         dz, match.opening.approach_distance_m, config, min_transition, max_transition);
-    const double exit_transition_distance_required = transitionDistanceForAltitudeDelta(
-        dz, match.opening.exit_distance_m, config, min_transition, max_transition);
+    const bool transition_required = transition_distance_required > kTinyDistanceM;
     const double transition_distance =
-        std::clamp(transition_distance_required, min_transition, max_transition);
-    const double exit_transition_distance =
-        std::clamp(exit_transition_distance_required, min_transition, max_transition);
+        std::min(transition_distance_required, max_transition);
     const double approach_start_s =
-        std::clamp(match.entry_s_m - transition_distance, 0.0, total_s);
-    const double exit_end_s =
-        std::clamp(match.exit_s_m + exit_transition_distance, 0.0, total_s);
+        std::clamp(match.entry_s_m - transition_distance, first_s, total_s);
+    const double available_transition_distance =
+        match.entry_s_m - std::max(first_s, transition_available_after_s_m);
     if (transition_distance_required > max_transition + kTinyDistanceM ||
-        exit_transition_distance_required > max_transition + kTinyDistanceM ||
         !(match.exit_s_m >= match.entry_s_m) ||
-        !(match.entry_s_m > approach_start_s + kTinyDistanceM) ||
-        !(exit_end_s > match.exit_s_m + kTinyDistanceM)) {
+        (transition_required &&
+         (available_transition_distance + kTinyDistanceM <
+              transition_distance_required ||
+          !(match.entry_s_m > approach_start_s + kTinyDistanceM)))) {
       ++result.stats.infeasible_count;
       appendDiagnostic(result.stats, config,
                        VerticalProfilePassageDiagnostic{
@@ -323,7 +348,7 @@ VerticalProfileResult applyVerticalProfile(
                            .entry_s_m = match.entry_s_m,
                            .exit_s_m = match.exit_s_m,
                            .approach_start_s_m = approach_start_s,
-                           .exit_end_s_m = exit_end_s,
+                           .exit_end_s_m = match.exit_s_m,
                            .gate_z_m = gate_z,
                            .reason = "insufficient_transition_distance",
                            .valid = false,
@@ -333,10 +358,14 @@ VerticalProfileResult applyVerticalProfile(
 
     windows.push_back(ProfileWindow{
         .match = match,
+        .start_z_m = start_z,
         .gate_z_m = gate_z,
         .approach_start_s_m = approach_start_s,
-        .exit_end_s_m = exit_end_s,
+        .exit_end_s_m = match.exit_s_m,
     });
+    carried_altitude_m = gate_z;
+    transition_available_after_s_m =
+        std::max(transition_available_after_s_m, match.exit_s_m);
   }
 
   std::ranges::sort(windows, [](const ProfileWindow& lhs, const ProfileWindow& rhs) {
@@ -352,24 +381,47 @@ VerticalProfileResult applyVerticalProfile(
     result.stats.valid = false;
     return result;
   }
+  if (result.stats.infeasible_count > 0U) {
+    computeVerticalDerivatives(samples, config, result.stats);
+    updateAltitudeStats(result.stats, samples);
+    result.valid = false;
+    result.stats.valid = false;
+    return result;
+  }
+
+  std::size_t window_index = 0U;
+  double sample_altitude_m = initial_altitude_m;
+  for (TrajectoryPointSample& sample : samples) {
+    while (window_index < windows.size() &&
+           sample.s_m > windows[window_index].exit_end_s_m + kTinyDistanceM) {
+      sample_altitude_m = windows[window_index].gate_z_m;
+      ++window_index;
+    }
+    if (window_index >= windows.size()) {
+      sample.z_m = sample_altitude_m;
+      continue;
+    }
+
+    const ProfileWindow& window = windows[window_index];
+    const KnownPassageTraversalMatch& match = window.match;
+    if (sample.s_m < window.approach_start_s_m) {
+      sample.z_m = sample_altitude_m;
+      continue;
+    }
+    if (sample.s_m <= match.entry_s_m) {
+      sample.z_m = interpolateProfile(window.approach_start_s_m, match.entry_s_m,
+                                      window.start_z_m, window.gate_z_m, sample.s_m);
+      sample.vertical_profile_passage_id = match.opening_id;
+    } else if (sample.s_m <= match.exit_s_m) {
+      sample.z_m = window.gate_z_m;
+      sample.vertical_profile_passage_id = match.opening_id;
+    } else {
+      sample_altitude_m = window.gate_z_m;
+      sample.z_m = sample_altitude_m;
+    }
+  }
 
   for (const ProfileWindow& window : windows) {
-    const KnownPassageTraversalMatch& match = window.match;
-    for (TrajectoryPointSample& sample : samples) {
-      if (sample.s_m < window.approach_start_s_m || sample.s_m > window.exit_end_s_m) {
-        continue;
-      }
-      if (sample.s_m <= match.entry_s_m) {
-        sample.z_m = interpolateProfile(window.approach_start_s_m, match.entry_s_m,
-                                        cruise_altitude_m, window.gate_z_m, sample.s_m);
-      } else if (sample.s_m <= match.exit_s_m) {
-        sample.z_m = window.gate_z_m;
-      } else {
-        sample.z_m = interpolateProfile(match.exit_s_m, window.exit_end_s_m,
-                                        window.gate_z_m, cruise_altitude_m, sample.s_m);
-      }
-      sample.vertical_profile_passage_id = match.opening_id;
-    }
     ++result.stats.passages_profiled;
     result.stats.active = true;
     appendDiagnostic(result.stats, config,

@@ -154,6 +154,9 @@ private:
   [[nodiscard]] static bool
   initialHeadingBiasActive(const AStarConfig& config) noexcept;
 
+  [[nodiscard]] TrajectoryPlannerConfig
+  trajectoryPlannerConfigForCurrentAltitude() const;
+
   [[nodiscard]] std::optional<PathComputationResult>
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
                     const AStarConfig& astar_config);
@@ -181,7 +184,7 @@ private:
       std::uint64_t generation, std::uint64_t baseline_path_id,
       const TrajectoryPlannerResult& baseline, const char* source_label,
       const ClearanceField2D* prohibited_clearance_field,
-      bool prohibited_clearance_field_cache_hit);
+      bool prohibited_clearance_field_cache_hit, const TrajectoryPlannerConfig& config);
 
   void launchScheduledTrajectoryRefinement(TrajectoryRefinementRequest request);
 

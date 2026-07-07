@@ -306,7 +306,7 @@ minRadiusInRange(const std::span<const TrajectoryPointSample> samples,
 [[nodiscard]] std::vector<TrajectoryPointSample> buildStitchedCandidate(
     const std::span<const TrajectoryPointSample> samples, const PassageOpening& opening,
     KnownPassageOpeningFrame frame, const double anchor_s_m, const double reconnect_s_m,
-    const PassageInsertionConfig& config, const double default_altitude_m) {
+    const PassageInsertionConfig& config, const double initial_altitude_m) {
   const TrajectoryPointSample anchor = sampleAtS(samples, anchor_s_m);
   const TrajectoryPointSample reconnect = sampleAtS(samples, reconnect_s_m);
   if (dot(reconnect.point - anchor.point, frame.normal) < 0.0) {
@@ -340,7 +340,7 @@ minRadiusInRange(const std::span<const TrajectoryPointSample> samples,
 
   populateTrajectorySampleGeometry(stitched);
   for (TrajectoryPointSample& sample : stitched) {
-    sample.z_m = default_altitude_m;
+    sample.z_m = initial_altitude_m;
     sample.vertical_slope_dz_ds = 0.0;
     sample.vertical_speed_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_accel_limit_mps = std::numeric_limits<double>::quiet_NaN();
@@ -366,7 +366,7 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
                   const PassageInsertionConfig& config,
                   const KnownPassageTraversalMatch& match,
                   const PassageOpening& opening, const std::size_t before_violations,
-                  const double default_altitude_m) {
+                  const double initial_altitude_m) {
   CandidateEvaluation evaluation{};
   evaluation.diagnostic.structure_id = match.structure_id;
   evaluation.diagnostic.opening_id = opening.id;
@@ -401,7 +401,7 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
 
   evaluation.samples =
       buildStitchedCandidate(original_samples, opening, *frame, anchor_s_m,
-                             reconnect_s_m, config, default_altitude_m);
+                             reconnect_s_m, config, initial_altitude_m);
   if (!trajectorySamplesAreUsable(evaluation.samples)) {
     evaluation.reason = PassageInsertionRejectReason::kInvalidGeometry;
     return evaluation;
@@ -523,7 +523,7 @@ PassageInsertionResult insertLocalPassageSegments(
     const std::span<const TrajectoryPointSample> samples, const OccupancyGrid2D& grid,
     const KnownPassageMap* const map,
     const KnownPassageValidationConfig& validation_config,
-    const PassageInsertionConfig& input_config, const double default_altitude_m) {
+    const PassageInsertionConfig& input_config, const double initial_altitude_m) {
   const PassageInsertionConfig config = sanitizeConfig(input_config);
   PassageInsertionResult result{};
   result.samples.assign(samples.begin(), samples.end());
@@ -579,7 +579,7 @@ PassageInsertionResult insertLocalPassageSegments(
       ++result.stats.candidates;
       CandidateEvaluation evaluation =
           evaluateCandidate(samples, grid, *map, validation_config, config, match,
-                            opening, before_violations, default_altitude_m);
+                            opening, before_violations, initial_altitude_m);
       evaluation.diagnostic.reason = evaluation.reason;
       evaluation.diagnostic.accepted = evaluation.accepted;
       appendDiagnostic(result.stats, config, evaluation.diagnostic);

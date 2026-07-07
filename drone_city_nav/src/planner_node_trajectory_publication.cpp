@@ -46,6 +46,17 @@ centerlineBlockedSpansSummary(const TrajectoryOptimizerStats& stats) {
 
 } // namespace
 
+TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude() const {
+  TrajectoryPlannerConfig config = trajectory_planner_config_;
+  const bool has_accepted_trajectory = last_valid_trajectory_samples_.size() >= 2U;
+  const bool airborne_altitude_valid =
+      altitude_valid_ && std::isfinite(current_altitude_m_) &&
+      (has_accepted_trajectory || current_altitude_m_ > 1.0);
+  config.initial_altitude_m =
+      airborne_altitude_valid ? current_altitude_m_ : cruise_altitude_m_;
+  return config;
+}
+
 bool PlannerNode::publishPathFromPathCells(
     const OccupancyGrid2D& route_grid, const OccupancyGrid2D& runtime_grid,
     const std::vector<GridIndex>& raw_cells,
@@ -163,6 +174,8 @@ bool PlannerNode::publishPathFromPathCells(
 
   const std::uint64_t generation = ++trajectory_generation_;
   const auto started_at = std::chrono::steady_clock::now();
+  const TrajectoryPlannerConfig trajectory_config =
+      trajectoryPlannerConfigForCurrentAltitude();
   const TrajectoryPlannerInput trajectory_input{
       std::span<const Point2>{route_points.data(), route_points.size()},
       &route_grid,
@@ -175,8 +188,8 @@ bool PlannerNode::publishPathFromPathCells(
       trajectory_planner_config_.trajectory_optimizer.async_refinement_workers > 0U;
   TrajectoryPlannerResult trajectory_result =
       async_refinement_enabled
-          ? planBaselineTrajectory(trajectory_input, trajectory_planner_config_)
-          : planOptimizedTrajectory(trajectory_input, trajectory_planner_config_);
+          ? planBaselineTrajectory(trajectory_input, trajectory_config)
+          : planOptimizedTrajectory(trajectory_input, trajectory_config);
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now() - started_at)
@@ -188,9 +201,10 @@ bool PlannerNode::publishPathFromPathCells(
     return false;
   }
   if (async_refinement_enabled) {
-    startAsyncTrajectoryRefinement(
-        route_grid, route_points, generation, published_path_id, trajectory_result,
-        source_label, route_clearance_field, route_clearance_field_cache_hit);
+    startAsyncTrajectoryRefinement(route_grid, route_points, generation,
+                                   published_path_id, trajectory_result, source_label,
+                                   route_clearance_field,
+                                   route_clearance_field_cache_hit, trajectory_config);
   }
   return true;
 }

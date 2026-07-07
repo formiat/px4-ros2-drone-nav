@@ -70,7 +70,7 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
 void finalizeResult(TrajectoryPlannerResult& result,
                     const TrajectoryPlannerConfig& config) {
   if (!result.stats.vertical_profile.applied) {
-    assignTrajectorySampleAltitude(result.samples, config.default_altitude_m);
+    assignTrajectorySampleAltitude(result.samples, config.initial_altitude_m);
   }
   const TrajectoryMetrics metrics = trajectoryMetrics(result.compact_segments);
   result.stats.compact_segments = result.compact_segments.size();
@@ -100,7 +100,7 @@ bool applyVerticalProfileStage(TrajectoryPlannerResult& result,
                                const TrajectoryPlannerConfig& config) {
   const VerticalProfileResult vertical_profile = applyVerticalProfile(
       result.samples, input.known_passage_map, config.known_passage_validation,
-      config.vertical_profile, config.default_altitude_m);
+      config.vertical_profile, config.initial_altitude_m);
   result.stats.vertical_profile = vertical_profile.stats;
   result.stats.known_passage_validation = validateKnownPassageTraversal(
       result.samples, input.known_passage_map, config.known_passage_validation);
@@ -475,7 +475,7 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   const PassageInsertionResult passage_insertion = insertLocalPassageSegments(
       result.samples, *input.prohibited_grid, input.known_passage_map,
       config.known_passage_validation, config.passage_insertion,
-      config.default_altitude_m);
+      config.initial_altitude_m);
   result.stats.passage_insertion_duration_ms =
       elapsedMilliseconds(passage_insertion_started_at);
   result.stats.passage_insertion = passage_insertion.stats;

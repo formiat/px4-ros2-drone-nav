@@ -43,7 +43,7 @@ struct TrajectoryPlannerConfig {
   KnownPassageValidationConfig known_passage_validation{};
   PassageInsertionConfig passage_insertion{};
   double debug_sample_step_m{1.0};
-  double default_altitude_m{0.0};
+  double initial_altitude_m{0.0};
 };
 
 struct TrajectoryPlannerStats {

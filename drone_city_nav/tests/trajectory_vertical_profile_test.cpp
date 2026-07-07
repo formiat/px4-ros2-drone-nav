@@ -111,7 +111,7 @@ makeSamplesRange(const double start_x_m, const double end_x_m, const double step
 
 } // namespace
 
-TEST(TrajectoryVerticalProfile, DisabledKeepsCruiseAltitude) {
+TEST(TrajectoryVerticalProfile, DisabledKeepsInitialAltitude) {
   std::vector<TrajectoryPointSample> samples = makeSamples(0.0);
   VerticalProfileConfig config{};
   config.enabled = false;
@@ -128,7 +128,7 @@ TEST(TrajectoryVerticalProfile, DisabledKeepsCruiseAltitude) {
   }
 }
 
-TEST(TrajectoryVerticalProfile, EnabledWithoutMapKeepsCruiseAltitude) {
+TEST(TrajectoryVerticalProfile, EnabledWithoutMapKeepsInitialAltitude) {
   std::vector<TrajectoryPointSample> samples = makeSamples(0.0);
   VerticalProfileConfig config{};
   config.enabled = true;
@@ -145,7 +145,7 @@ TEST(TrajectoryVerticalProfile, EnabledWithoutMapKeepsCruiseAltitude) {
   }
 }
 
-TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothCruiseGateCruiseProfile) {
+TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfile) {
   KnownPassageMap map = makeMap();
   std::vector<TrajectoryPointSample> samples = makeSamples(18.0);
 
@@ -158,9 +158,9 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothCruiseGateCruiseProfil
   EXPECT_TRUE(result.stats.active);
   EXPECT_EQ(result.stats.passages_matched, 1U);
   EXPECT_EQ(result.stats.passages_profiled, 1U);
-  EXPECT_LT(result.stats.min_z_m, 18.0);
+  EXPECT_NEAR(result.stats.min_z_m, 10.0, 1.0e-9);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 18.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
 
   const KnownPassageValidationSummary validation =
       validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
@@ -185,12 +185,12 @@ TEST(TrajectoryVerticalProfile, DefaultClimbAngleAccountsForSmootherstepPeakSlop
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.active);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 18.0);
-  EXPECT_NEAR(result.stats.min_z_m, 11.5, 1.0e-9);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
+  EXPECT_NEAR(result.stats.min_z_m, 10.0, 1.0e-9);
   EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
 }
 
-TEST(TrajectoryVerticalProfile, GateAltitudeClampsToOpeningWithMargin) {
+TEST(TrajectoryVerticalProfile, GateAltitudeTargetsOpeningCenterOutsideMargin) {
   KnownPassageMap map = makeMap();
   std::vector<TrajectoryPointSample> samples =
       makeSamplesRange(-140.0, 140.0, 2.0, 4.0);
@@ -201,7 +201,9 @@ TEST(TrajectoryVerticalProfile, GateAltitudeClampsToOpeningWithMargin) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.active);
-  EXPECT_NEAR(result.stats.max_z_m, 8.5, 1.0e-9);
+  EXPECT_NEAR(result.stats.max_z_m, 10.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(samples.front().z_m, 4.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
   EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
 }
 
@@ -221,7 +223,7 @@ TEST(TrajectoryVerticalProfile, OverlappingIncompatibleWindowsAreRejected) {
   EXPECT_EQ(result.stats.passages_profiled, 0U);
   EXPECT_TRUE(std::ranges::any_of(
       result.stats.diagnostics, [](const VerticalProfilePassageDiagnostic& diagnostic) {
-        return diagnostic.reason == "overlapping_infeasible_windows" &&
+        return diagnostic.reason == "insufficient_transition_distance" &&
                !diagnostic.valid;
       }));
   for (const TrajectoryPointSample& sample : samples) {
@@ -230,7 +232,7 @@ TEST(TrajectoryVerticalProfile, OverlappingIncompatibleWindowsAreRejected) {
   }
 }
 
-TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsAreRejectedUntilMerged) {
+TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsShareCarriedAltitude) {
   KnownPassageMap map = makeOverlappingCompatibleMap();
   std::vector<TrajectoryPointSample> samples =
       makeSamplesRange(-120.0, 120.0, 2.0, 18.0);
@@ -239,23 +241,17 @@ TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsAreRejectedUntilMerg
   const VerticalProfileResult result =
       applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0);
 
-  EXPECT_FALSE(result.valid);
-  EXPECT_FALSE(result.stats.valid);
-  EXPECT_FALSE(result.stats.active);
+  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.valid);
+  EXPECT_TRUE(result.stats.active);
   EXPECT_EQ(result.stats.passages_matched, 2U);
-  EXPECT_EQ(result.stats.passages_profiled, 0U);
-  EXPECT_TRUE(std::ranges::any_of(
-      result.stats.diagnostics, [](const VerticalProfilePassageDiagnostic& diagnostic) {
-        return diagnostic.reason == "overlapping_infeasible_windows" &&
-               !diagnostic.valid;
-      }));
+  EXPECT_EQ(result.stats.passages_profiled, 2U);
   const KnownPassageValidationSummary validation =
       validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
-  EXPECT_FALSE(validation.valid);
-  for (const TrajectoryPointSample& sample : samples) {
-    EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
-    EXPECT_TRUE(sample.vertical_profile_passage_id.empty());
-  }
+  EXPECT_TRUE(validation.valid);
+  EXPECT_EQ(validation.opening_matches, 2U);
+  EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
 }
 
 TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {

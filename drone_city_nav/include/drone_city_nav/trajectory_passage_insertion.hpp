@@ -90,6 +90,6 @@ passageInsertionRejectReasonName(PassageInsertionRejectReason reason) noexcept;
 [[nodiscard]] PassageInsertionResult insertLocalPassageSegments(
     std::span<const TrajectoryPointSample> samples, const OccupancyGrid2D& grid,
     const KnownPassageMap* map, const KnownPassageValidationConfig& validation_config,
-    const PassageInsertionConfig& config, double default_altitude_m);
+    const PassageInsertionConfig& config, double initial_altitude_m);
 
 } // namespace drone_city_nav

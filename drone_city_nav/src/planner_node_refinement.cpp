@@ -13,7 +13,8 @@ void PlannerNode::startAsyncTrajectoryRefinement(
     const std::uint64_t generation, const std::uint64_t baseline_path_id,
     const TrajectoryPlannerResult& baseline, const char* source_label,
     const ClearanceField2D* prohibited_clearance_field,
-    const bool prohibited_clearance_field_cache_hit) {
+    const bool prohibited_clearance_field_cache_hit,
+    const TrajectoryPlannerConfig& config) {
   if (route_points.size() < 2U || !baseline.valid) {
     return;
   }
@@ -48,7 +49,7 @@ void PlannerNode::startAsyncTrajectoryRefinement(
       .corridor_samples = baseline.corridor_samples,
       .corridor_stats = baseline.stats.corridor,
       .known_passages = known_passages_,
-      .config = trajectory_planner_config_};
+      .config = config};
   if (schedule.action == TrajectoryRefinementScheduleAction::kQueuedLatest ||
       schedule.action == TrajectoryRefinementScheduleAction::kReplacedQueuedLatest) {
     queued_refinement_ = std::move(request);

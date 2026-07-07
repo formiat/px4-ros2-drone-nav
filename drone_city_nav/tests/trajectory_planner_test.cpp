@@ -31,7 +31,7 @@ namespace {
   config.trajectory_optimizer.min_offset_step_m = 0.1;
   config.trajectory_optimizer.weight_curvature = 30.0;
   config.debug_sample_step_m = 1.0;
-  config.default_altitude_m = 18.0;
+  config.initial_altitude_m = 18.0;
   config.speed_profile.cruise_speed_mps = 12.0;
   config.speed_profile.turn_speed_lateral_accel_mps2 = 3.0;
   config.speed_profile.speed_profile_decel_mps2 = 4.0;
@@ -195,7 +195,7 @@ TEST(TrajectoryPlanner, PassageInsertionRepairsKnownPassageBeforeVerticalProfile
   const std::vector<Point2> route{{-15.0, 4.0}, {15.0, 4.0}};
   const KnownPassageMap map = plannerValidationPassageMap();
   TrajectoryPlannerConfig config = testConfig();
-  config.default_altitude_m = 10.0;
+  config.initial_altitude_m = 10.0;
   config.vertical_profile.enabled = true;
   config.vertical_profile.max_climb_angle_rad = 80.0 * std::numbers::pi / 180.0;
   config.passage_insertion.enabled = false;

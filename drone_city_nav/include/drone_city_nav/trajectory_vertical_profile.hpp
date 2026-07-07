@@ -66,6 +66,6 @@ struct VerticalProfileResult {
 applyVerticalProfile(std::span<TrajectoryPointSample> samples,
                      const KnownPassageMap* map,
                      const KnownPassageValidationConfig& validation_config,
-                     const VerticalProfileConfig& config, double cruise_altitude_m);
+                     const VerticalProfileConfig& config, double initial_altitude_m);
 
 } // namespace drone_city_nav
