@@ -91,7 +91,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("vertical_profile_max_vertical_jerk_mps3: 6.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_max_climb_angle_deg: 12.0"), std::string::npos);
-  EXPECT_NE(yaml.find("passage_insertion_enabled: false"), std::string::npos);
+  EXPECT_NE(yaml.find("passage_insertion_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_sample_step_m: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_min_anchor_margin_m: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_max_anchor_margin_m: 60.0"),

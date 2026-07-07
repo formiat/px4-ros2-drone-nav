@@ -97,7 +97,7 @@ opening gate and stitch it into the trajectory.
 
 The stage is intentionally conservative:
 
-- it is disabled by default;
+- it is enabled by default;
 - it only acts on known-passage validation misses;
 - it does not score by length or traversal time;
 - it rejects candidates that cross prohibited cells;

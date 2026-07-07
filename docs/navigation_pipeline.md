@@ -106,8 +106,8 @@ Local passage insertion is an optional repair stage for known 3D passages. It
 runs after optimizer, turn smoothing, and isolated geometry cleanup, but before
 vertical profile and speed profile construction.
 
-The stage is disabled by default. When enabled, it only targets known-passage
-validation spans where the current XY trajectory intersects a known structure
+The stage is enabled by default. It only targets known-passage validation spans
+where the current XY trajectory intersects a known structure
 but misses the opening corridor. It builds a local smooth XY segment through
 the opening gate, stitches it back into the original trajectory, recomputes
 sample stationing/tangent/curvature, and accepts the result only if:

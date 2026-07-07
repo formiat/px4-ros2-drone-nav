@@ -32,7 +32,7 @@ enum class PassageInsertionRejectReason {
 };
 
 struct PassageInsertionConfig {
-  bool enabled{false};
+  bool enabled{true};
   double sample_step_m{1.0};
   double min_anchor_margin_m{8.0};
   double max_anchor_margin_m{60.0};

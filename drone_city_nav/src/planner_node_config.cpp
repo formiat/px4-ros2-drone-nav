@@ -114,7 +114,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
           node.declare_parameter<std::int64_t>("vertical_profile_max_diagnostics", 8),
           0, 100));
   config.trajectory_planner.passage_insertion.enabled =
-      node.declare_parameter<bool>("passage_insertion_enabled", false);
+      node.declare_parameter<bool>("passage_insertion_enabled", true);
   config.trajectory_planner.passage_insertion.sample_step_m =
       std::clamp(node.declare_parameter<double>("passage_insertion_sample_step_m", 1.0),
                  0.1, 20.0);

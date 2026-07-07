@@ -114,7 +114,8 @@ The validation layer applies a diagnostics-only no-over-building rule:
 - `passage_traversal_expected_wall_margin_m` expands the known structure
   footprint used for expected-wall filtering.
 - `passage_insertion_enabled` controls the optional local XY repair stage. It
-  is disabled by default because it changes trajectory geometry.
+  is enabled by default so annotated passages can locally align XY trajectory
+  geometry before vertical profiling.
 - `passage_insertion_sample_step_m` controls inserted segment sampling.
 - `passage_insertion_min_anchor_margin_m` and
   `passage_insertion_max_anchor_margin_m` bound the stitch window around the

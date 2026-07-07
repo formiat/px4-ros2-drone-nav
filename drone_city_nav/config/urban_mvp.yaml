@@ -96,7 +96,7 @@ planner_node:
     vertical_profile_min_transition_distance_m: 6.0
     vertical_profile_max_transition_distance_m: 80.0
     vertical_profile_max_diagnostics: 8
-    passage_insertion_enabled: false
+    passage_insertion_enabled: true
     passage_insertion_sample_step_m: 1.0
     passage_insertion_min_anchor_margin_m: 8.0
     passage_insertion_max_anchor_margin_m: 60.0

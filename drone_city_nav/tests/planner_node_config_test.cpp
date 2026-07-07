@@ -86,7 +86,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
       2.5);
-  EXPECT_FALSE(config.trajectory_planner.passage_insertion.enabled);
+  EXPECT_TRUE(config.trajectory_planner.passage_insertion.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
                    8.0);
