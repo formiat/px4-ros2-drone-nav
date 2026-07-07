@@ -474,6 +474,14 @@ verticalProfileDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
     appendJsonNumber(stream, prefix + "gate_z_m", diagnostic.gate_z_m);
     appendJsonNumber(stream, prefix + "min_z_m", diagnostic.min_z_m);
     appendJsonNumber(stream, prefix + "max_z_m", diagnostic.max_z_m);
+    appendJsonNumber(stream, prefix + "transition_required_m",
+                     diagnostic.transition_required_m);
+    appendJsonNumber(stream, prefix + "transition_available_m",
+                     diagnostic.transition_available_m);
+    appendJsonNumber(stream, prefix + "desired_gate_hold_m",
+                     diagnostic.desired_gate_hold_m);
+    appendJsonNumber(stream, prefix + "actual_gate_hold_m",
+                     diagnostic.actual_gate_hold_m);
     appendJsonString(stream, prefix + "reason", diagnostic.reason);
     appendJsonBool(stream, prefix + "valid", diagnostic.valid);
   }

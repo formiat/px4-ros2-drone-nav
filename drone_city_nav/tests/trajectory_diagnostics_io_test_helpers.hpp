@@ -321,6 +321,10 @@ void expectContainsAll(const std::string& text,
                                        .gate_z_m = 10.5,
                                        .min_z_m = 8.0,
                                        .max_z_m = 12.0,
+                                       .transition_required_m = 24.0,
+                                       .transition_available_m = 30.0,
+                                       .desired_gate_hold_m = 15.0,
+                                       .actual_gate_hold_m = 8.0,
                                        .reason = "profiled",
                                        .valid = true});
   stats.passage_insertion.enabled = true;

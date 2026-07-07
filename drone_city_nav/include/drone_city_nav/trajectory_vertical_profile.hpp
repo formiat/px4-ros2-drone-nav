@@ -39,6 +39,10 @@ struct VerticalProfilePassageDiagnostic {
   double gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   double min_z_m{std::numeric_limits<double>::quiet_NaN()};
   double max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double transition_required_m{std::numeric_limits<double>::quiet_NaN()};
+  double transition_available_m{std::numeric_limits<double>::quiet_NaN()};
+  double desired_gate_hold_m{std::numeric_limits<double>::quiet_NaN()};
+  double actual_gate_hold_m{std::numeric_limits<double>::quiet_NaN()};
   std::string reason;
   bool valid{false};
 };

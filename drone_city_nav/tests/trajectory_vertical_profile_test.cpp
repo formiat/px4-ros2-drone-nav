@@ -86,6 +86,19 @@ namespace {
   return map;
 }
 
+[[nodiscard]] KnownPassageMap makeCloseSequentialPassagesMap() {
+  PassageOpening first = makeOpening(13.0, 15.0);
+  first.id = "first_mid_window";
+  PassageOpening second = makeOpening(20.0, 22.0);
+  second.id = "second_high_window";
+
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(makeStructure("first_arch", 0.0, std::move(first)));
+  map.structures.push_back(makeStructure("second_arch", 50.0, std::move(second)));
+  return map;
+}
+
 [[nodiscard]] std::vector<TrajectoryPointSample>
 makeSamplesRange(const double start_x_m, const double end_x_m, const double step_m,
                  const double z_m) {
@@ -255,6 +268,37 @@ TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsShareCarriedAltitude
   EXPECT_EQ(validation.opening_matches, 2U);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
   EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
+}
+
+TEST(TrajectoryVerticalProfile,
+     CloseSequentialPassagesShrinkPreGateHoldBeforeRejecting) {
+  KnownPassageMap map = makeCloseSequentialPassagesMap();
+  std::vector<TrajectoryPointSample> samples = makeSamplesRange(-20.0, 90.0, 1.0, 14.0);
+  VerticalProfileConfig config{};
+  config.pre_gate_hold_time_s = 1.0;
+  config.pre_gate_hold_min_distance_m = 22.0;
+  config.pre_gate_hold_max_distance_m = 22.0;
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 14.0);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.valid);
+  EXPECT_TRUE(result.stats.active);
+  EXPECT_EQ(result.stats.passages_matched, 2U);
+  EXPECT_EQ(result.stats.passages_profiled, 2U);
+  ASSERT_EQ(result.stats.diagnostics.size(), 2U);
+  const VerticalProfilePassageDiagnostic& second = result.stats.diagnostics.back();
+  EXPECT_EQ(second.opening_id, "second_high_window");
+  EXPECT_LT(second.actual_gate_hold_m, second.desired_gate_hold_m);
+  EXPECT_GT(second.actual_gate_hold_m, 0.0);
+  EXPECT_GE(second.transition_available_m, second.transition_required_m);
+  EXPECT_NEAR(samples.back().z_m, 21.0, 1.0e-9);
+
+  const KnownPassageValidationSummary validation =
+      validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
+  EXPECT_TRUE(validation.valid);
+  EXPECT_EQ(validation.opening_matches, 2U);
 }
 
 TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {

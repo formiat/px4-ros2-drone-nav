@@ -34,6 +34,10 @@ struct ProfileWindow {
   double approach_start_s_m{0.0};
   double gate_hold_start_s_m{0.0};
   double exit_end_s_m{0.0};
+  double transition_required_m{std::numeric_limits<double>::quiet_NaN()};
+  double transition_available_m{std::numeric_limits<double>::quiet_NaN()};
+  double desired_gate_hold_m{std::numeric_limits<double>::quiet_NaN()};
+  double actual_gate_hold_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] double interpolateProfile(const double start_s, const double end_s,
@@ -228,6 +232,10 @@ diagnosticFromWindow(const ProfileWindow& window, const char* const reason,
       .gate_z_m = window.gate_z_m,
       .min_z_m = window.match.opening.min_z_m,
       .max_z_m = window.match.opening.max_z_m,
+      .transition_required_m = window.transition_required_m,
+      .transition_available_m = window.transition_available_m,
+      .desired_gate_hold_m = window.desired_gate_hold_m,
+      .actual_gate_hold_m = window.actual_gate_hold_m,
       .reason = reason,
       .valid = valid,
   };
@@ -297,7 +305,6 @@ VerticalProfileResult applyVerticalProfile(
 
   const std::vector<KnownPassageTraversalMatch> matches =
       findKnownPassageTraversalMatches(samples, *map, validation_config, true);
-  const double total_s = samples.back().s_m;
   const double first_s = samples.front().s_m;
   const double min_transition =
       sanitizedPositive(config.min_transition_distance_m, 6.0, 0.0, 1000.0);
@@ -345,19 +352,21 @@ VerticalProfileResult applyVerticalProfile(
     const double transition_distance_required = transitionDistanceForAltitudeDelta(
         dz, match.opening.approach_distance_m, config, min_transition, max_transition);
     const bool transition_required = transition_distance_required > kTinyDistanceM;
-    const double transition_distance =
-        std::min(transition_distance_required, max_transition);
-    const double gate_hold_start_s =
-        std::clamp(match.entry_s_m - pre_gate_hold_distance, first_s, total_s);
+    const double transition_window_start_s =
+        std::max(first_s, transition_available_after_s_m);
+    const double available_before_entry_s =
+        std::max(0.0, match.entry_s_m - transition_window_start_s);
+    const double actual_gate_hold_distance = std::min(
+        pre_gate_hold_distance,
+        std::max(0.0, available_before_entry_s - transition_distance_required));
+    const double gate_hold_start_s = match.entry_s_m - actual_gate_hold_distance;
     const double approach_start_s =
-        std::clamp(gate_hold_start_s - transition_distance, first_s, gate_hold_start_s);
-    const double available_transition_distance =
-        gate_hold_start_s - std::max(first_s, transition_available_after_s_m);
+        gate_hold_start_s - std::min(transition_distance_required, max_transition);
     if (transition_distance_required > max_transition + kTinyDistanceM ||
         !(match.exit_s_m >= match.entry_s_m) ||
         (transition_required &&
-         (available_transition_distance + kTinyDistanceM <
-              transition_distance_required ||
+         (available_before_entry_s + kTinyDistanceM < transition_distance_required ||
+          approach_start_s + kTinyDistanceM < transition_window_start_s ||
           !(match.entry_s_m > approach_start_s + kTinyDistanceM)))) {
       ++result.stats.infeasible_count;
       appendDiagnostic(result.stats, config,
@@ -370,6 +379,12 @@ VerticalProfileResult applyVerticalProfile(
                            .gate_hold_start_s_m = gate_hold_start_s,
                            .exit_end_s_m = match.exit_s_m,
                            .gate_z_m = gate_z,
+                           .min_z_m = match.opening.min_z_m,
+                           .max_z_m = match.opening.max_z_m,
+                           .transition_required_m = transition_distance_required,
+                           .transition_available_m = available_before_entry_s,
+                           .desired_gate_hold_m = pre_gate_hold_distance,
+                           .actual_gate_hold_m = actual_gate_hold_distance,
                            .reason = "insufficient_transition_distance",
                            .valid = false,
                        });
@@ -383,6 +398,10 @@ VerticalProfileResult applyVerticalProfile(
         .approach_start_s_m = approach_start_s,
         .gate_hold_start_s_m = gate_hold_start_s,
         .exit_end_s_m = match.exit_s_m,
+        .transition_required_m = transition_distance_required,
+        .transition_available_m = available_before_entry_s,
+        .desired_gate_hold_m = pre_gate_hold_distance,
+        .actual_gate_hold_m = actual_gate_hold_distance,
     });
     carried_altitude_m = gate_z;
     transition_available_after_s_m =

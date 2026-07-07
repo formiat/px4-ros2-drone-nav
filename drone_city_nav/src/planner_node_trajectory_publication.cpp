@@ -44,6 +44,37 @@ centerlineBlockedSpansSummary(const TrajectoryOptimizerStats& stats) {
   return stream.str();
 }
 
+[[nodiscard]] std::string
+verticalProfileDiagnosticsSummary(const VerticalProfileStats& stats) {
+  if (!stats.applied) {
+    return "not_applied";
+  }
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  stream << "valid=" << (stats.valid ? "true" : "false")
+         << " active=" << (stats.active ? "true" : "false")
+         << " matched=" << stats.passages_matched
+         << " profiled=" << stats.passages_profiled
+         << " infeasible=" << stats.infeasible_count;
+  const std::size_t count = std::min<std::size_t>(stats.diagnostics.size(), 3U);
+  for (std::size_t i = 0U; i < count; ++i) {
+    const VerticalProfilePassageDiagnostic& diagnostic = stats.diagnostics.at(i);
+    stream << " diag" << i << "[opening="
+           << (diagnostic.opening_id.empty() ? "<none>" : diagnostic.opening_id)
+           << " reason=" << (diagnostic.reason.empty() ? "<none>" : diagnostic.reason)
+           << " valid=" << (diagnostic.valid ? "true" : "false") << " s=["
+           << diagnostic.entry_s_m << ".." << diagnostic.exit_s_m << "]"
+           << " approach=" << diagnostic.approach_start_s_m
+           << " hold_start=" << diagnostic.gate_hold_start_s_m
+           << " gate_z=" << diagnostic.gate_z_m
+           << " transition_required=" << diagnostic.transition_required_m
+           << " transition_available=" << diagnostic.transition_available_m
+           << " hold_desired=" << diagnostic.desired_gate_hold_m
+           << " hold_actual=" << diagnostic.actual_gate_hold_m << "]";
+  }
+  return stream.str();
+}
+
 } // namespace
 
 TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude() const {
@@ -233,6 +264,8 @@ bool PlannerNode::publishTrajectoryResult(
   writeTrajectoryCandidateDumps(trajectory_result, source_label, next_path_id_);
   TrajectoryPlannerStats stats = trajectory_result.stats;
   if (!trajectory_result.valid) {
+    const std::string vertical_profile_summary =
+        verticalProfileDiagnosticsSummary(stats.vertical_profile);
     RCLCPP_WARN(
         get_logger(),
         "%s trajectory build failed; rough A* route will not be published as "
@@ -243,7 +276,8 @@ bool PlannerNode::publishTrajectoryResult(
         "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
         "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
         " width_min=%.2f width_mean=%.2f] "
-        "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu]",
+        "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu] "
+        "vertical_profile[%s]",
         source_label,
         static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
         trajectoryPlannerStatusName(stats.status).data(), route_points.size(),
@@ -259,7 +293,8 @@ bool PlannerNode::publishTrajectoryResult(
         stats.corridor.min_width_m, stats.corridor.mean_width_m,
         stats.trajectory_optimizer.iterations,
         stats.trajectory_optimizer.candidate_evaluations,
-        stats.trajectory_optimizer.collision_rejections);
+        stats.trajectory_optimizer.collision_rejections,
+        vertical_profile_summary.c_str());
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_build_failed")) {
       return false;
