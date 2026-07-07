@@ -28,7 +28,7 @@ The current stack supports:
 - ROS 2 nodes for obstacle memory, planning, offboard control, lidar debug, and
   mission monitoring;
 - a static city map loaded from `drone_city_nav/worlds/generated_city.map2d`;
-- a shadow-diagnostic known passage annotation map loaded from
+- a known passage annotation map loaded from
   `drone_city_nav/worlds/known_passages.passages3d`;
 - current lidar obstacle overlay and accumulated obstacle memory;
 - runtime prohibited-grid construction with extra planning clearance;
@@ -76,14 +76,15 @@ The planner still performs XY obstacle avoidance and trajectory shaping in a
 and dumps can represent the trajectory in 3D. Runtime vertical control still
 holds the configured cruise altitude in this stage.
 
-Known 3D passages are currently shadow diagnostics. Passage structures,
-openings, gate centers, approach arrows, and exit arrows are loaded and
-published for RViz/debugging. The planner also validates whether the final
-trajectory crosses a known structure footprint through an allowed opening
-volume. The result is logged and serialized in trajectory diagnostics, but it
-does not add to or remove from `prohibited_grid` and does not affect A*,
-corridor construction, trajectory optimization, speed profile, or offboard
-control yet.
+Known 3D passages are loaded as annotations. Passage structures, openings, gate
+centers, approach arrows, and exit arrows are published for RViz/debugging. The
+planner validates whether the final trajectory crosses a known structure
+footprint through an allowed opening volume. During active traversal of a
+matched passage span, a narrow sensor policy can ignore dynamic expected-wall
+returns around the opening while preserving opening-corridor blockers. This
+policy does not detect passages, does not filter static map cells, and does not
+change A*, corridor construction, trajectory geometry, speed profile, or
+offboard control.
 
 ## Important Terms
 
@@ -98,7 +99,7 @@ control yet.
   Its geometry and speed profile are currently XY-owned, while `z_m` is a
   representation/debug altitude for RViz and diagnostics.
 - Known passage: a pre-annotated 3D passage structure and opening that can be
-  visualized and shadow-validated now, then used by future 3D traversal stages.
+  visualized, validated, and used by the active traversal sensor policy.
 - Trajectory optimizer: the post-corridor optimizer that improves smoothness
   and radius while staying inside the valid corridor.
 - Terminal capture: the final control state sequence that slows down, enters

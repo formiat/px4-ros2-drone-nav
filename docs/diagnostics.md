@@ -82,6 +82,22 @@ Known-passage validation fields include:
 Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
 `s`, overlap, clearance, reason, and validity for one capped span.
 
+Passage traversal sensor policy fields appear in planner summary and prohibited
+intersection logs:
+
+- `passage_traversal_active`
+- `lidar_policy`
+- `ignored_expected_obstacle_count`
+- `emergency_blocker_count`
+- active structure/opening ids;
+- active trajectory `s`;
+- current-lidar and memory checked/ignored counts.
+
+`lidar_policy=ignore_expected_walls` means dynamic expected-wall evidence was
+filtered during active known passage traversal. `lidar_policy=emergency_blocker`
+means an obstacle was preserved inside the opening corridor and normal
+prohibited/replan handling remains active.
+
 ## Replan Diagnostics
 
 Planner logs include replan reasons and blockers, for example:
@@ -120,6 +136,8 @@ For planner quality:
 - replan count.
 - known-passage validation result if the trajectory intersects an annotated
   structure footprint.
+- passage traversal sensor policy state when flying through an annotated
+  opening.
 
 ## Last Run Analysis Checklist
 

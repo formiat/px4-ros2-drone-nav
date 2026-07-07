@@ -34,7 +34,7 @@ visual world convention, so the launch file publishes a fixed transform from
 - Raw memory: uninflated obstacle memory evidence.
 - Current lidar hits: current scan projection into the map.
 - Corridor: left/right/free-space bounds around the rough route.
-- Known passages: shadow-diagnostic 3D passage annotations from
+- Known passages: 3D passage annotations from
   `/drone_city_nav/known_passage_markers`.
 - Final optimized trajectory: executable trajectory published by offboard on
   `/drone_city_nav/final_trajectory_path`.
@@ -50,11 +50,12 @@ data is stale/invalid.
 
 ## Known Passage Markers
 
-Known passages are pre-annotated 3D passages for future traversal work. The
-current system loads, logs, visualizes, and shadow-validates them against the
-published trajectory. They do not change the prohibited grid, route, trajectory
-optimizer, speed profile, or controller, and validation failures do not reject
-the path in this stage.
+Known passages are pre-annotated 3D passages. The system loads, logs,
+visualizes, and validates them against the published trajectory. During active
+known passage traversal, the same annotations can filter dynamic expected-wall
+lidar/memory evidence before inflation. They do not change the route,
+trajectory optimizer, speed profile, or controller, and validation failures do
+not reject the path by themselves.
 
 The RViz `Known Passages` display subscribes to:
 
@@ -74,9 +75,10 @@ If the known passage source is disabled, empty, or fails to load, the planner
 publishes delete markers so stale passage objects disappear from RViz.
 
 RViz currently shows the annotated volumes and final trajectory, but it does
-not highlight matched or violated trajectory spans. Use trajectory diagnostics
-JSON and the final trajectory planner log to inspect
-`known_passage_validation[...]` and `known_passage_diagN_*` details.
+not highlight matched, violated, or sensor-policy-filtered trajectory spans. Use
+trajectory diagnostics JSON and planner logs to inspect
+`known_passage_validation[...]`, `known_passage_diagN_*`, and
+`passage_sensor_policy[...]` details.
 
 ## Reading The Colors
 

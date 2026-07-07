@@ -344,6 +344,7 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double known_passage_debug_publish_period_s_{1.0};
   KnownPassageValidationConfig known_passage_validation_config_{};
+  PassageTraversalSensorPolicyConfig passage_traversal_sensor_policy_config_{};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_scan_pose_lag_s_{0.0};
@@ -382,6 +383,7 @@ private:
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
+  std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<PendingTrajectoryRefinement> pending_refinement_;
   std::optional<TrajectoryRefinementRequest> queued_refinement_;
   TrajectoryRefinementScheduler refinement_scheduler_;

@@ -87,6 +87,7 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
 
   if (points.empty()) {
     last_valid_path_points_.clear();
+    last_valid_trajectory_samples_.clear();
   }
 
   const PathMetrics metrics = pointPathMetrics(points);
@@ -123,6 +124,7 @@ PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> 
 
   if (points.empty()) {
     last_valid_path_points_.clear();
+    last_valid_trajectory_samples_.clear();
   }
 
   const PathMetrics metrics = pointPathMetrics(points);

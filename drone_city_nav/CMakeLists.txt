@@ -54,6 +54,7 @@ add_library(
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
   src/path_smoothing.cpp
+  src/passage_traversal_sensor_policy.cpp
   src/planning_grid_builder.cpp
   src/planner_core.cpp
   src/planner_diagnostics_format.cpp
@@ -403,6 +404,12 @@ if(BUILD_TESTING)
   target_compile_features(planner_runtime_state_test PRIVATE cxx_std_20)
   target_link_libraries(planner_runtime_state_test drone_city_nav_core)
   enable_project_warnings(planner_runtime_state_test)
+
+  ament_add_gtest(passage_traversal_sensor_policy_test
+                  tests/passage_traversal_sensor_policy_test.cpp)
+  target_compile_features(passage_traversal_sensor_policy_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_traversal_sensor_policy_test drone_city_nav_core)
+  enable_project_warnings(passage_traversal_sensor_policy_test)
 
   ament_add_gtest(trajectory_optimizer_test tests/trajectory_optimizer_test.cpp)
   target_compile_features(trajectory_optimizer_test PRIVATE cxx_std_20)

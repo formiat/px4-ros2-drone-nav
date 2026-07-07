@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/passage_traversal_sensor_policy.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/static_map_source.hpp"
@@ -70,6 +71,7 @@ struct PlannerNodeConfig {
   StaticMapSourceConfig static_map{};
   KnownPassageSourceConfig known_passages{};
   KnownPassageValidationConfig known_passage_validation{};
+  PassageTraversalSensorPolicyConfig passage_traversal_sensor_policy{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

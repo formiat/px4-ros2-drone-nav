@@ -273,6 +273,8 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
   sources.memory_grid = memory_grid_ ? &*memory_grid_ : nullptr;
 
   std::optional<OccupancyGrid2D> current_lidar_grid;
+  std::optional<OccupancyGrid2D> filtered_memory_grid;
+  PassageTraversalSensorPolicyStats passage_sensor_policy_stats{};
   if (const std::optional<GridBounds> bounds =
           selectPlanningGridBounds(config, sources);
       bounds.has_value()) {
@@ -280,8 +282,27 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
     sources.current_lidar = overlayCurrentLidarHits(*current_lidar_grid, now_ns);
     sources.current_lidar_grid = &*current_lidar_grid;
   }
+  PassageTraversalSensorPolicyResult policy_result =
+      applyPassageTraversalSensorPolicy(PassageTraversalSensorPolicyInput{
+          .config = passage_traversal_sensor_policy_config_,
+          .validation_config = known_passage_validation_config_,
+          .known_passage_map = known_passages_ ? &*known_passages_ : nullptr,
+          .trajectory_samples =
+              std::span<const TrajectoryPointSample>{
+                  last_valid_trajectory_samples_.data(),
+                  last_valid_trajectory_samples_.size()},
+          .current_position = current_pose_.position,
+          .memory_grid = sources.memory_grid,
+          .current_lidar_grid = current_lidar_grid ? &*current_lidar_grid : nullptr,
+      });
+  passage_sensor_policy_stats = policy_result.stats;
+  if (policy_result.filtered_memory_grid.has_value()) {
+    filtered_memory_grid = std::move(policy_result.filtered_memory_grid);
+    sources.memory_grid = &*filtered_memory_grid;
+  }
 
   PlanningGridBuildResult result = planning_grid_builder_.build(config, sources);
+  result.passage_sensor_policy = std::move(passage_sensor_policy_stats);
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
   }
@@ -398,6 +419,8 @@ void PlannerNode::checkCurrentPathAndPublish() {
     return;
   }
   const GridStats prohibited_grid_stats = collectGridStats(prohibited_grid);
+  const PassageTraversalSensorPolicyStats& passage_policy =
+      planning_result->passage_sensor_policy;
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
@@ -418,6 +441,11 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
       "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
       "overlay_preserved=%zu outside=%zu] "
+      "passage_sensor_policy[passage_traversal_active=%s lidar_policy=%s "
+      "ignored_expected_obstacle_count=%zu emergency_blocker_count=%zu "
+      "structure=%s opening=%s active_s=%.2f current_lidar_checked=%zu "
+      "memory_checked=%zu current_lidar_expected_wall=%zu "
+      "memory_expected_wall=%zu] "
       "source=planning_clearance astar_status=%s heuristic_weight=%.2f expanded=%zu "
       "cost=%.2f raw_path=%zu smoothed_path=%zu "
       "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
@@ -477,6 +505,20 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->current_lidar.overlay_occupied_cells_applied,
       planning_result->current_lidar.overlay_occupied_cells_preserved,
       planning_result->current_lidar.outside_hits,
+      passage_policy.passage_traversal_active ? "true" : "false",
+      passageLidarPolicyName(passage_policy.lidar_policy),
+      passage_policy.ignored_expected_obstacle_count,
+      passage_policy.emergency_blocker_count,
+      passage_policy.active_structure_id.empty()
+          ? "<none>"
+          : passage_policy.active_structure_id.c_str(),
+      passage_policy.active_opening_id.empty()
+          ? "<none>"
+          : passage_policy.active_opening_id.c_str(),
+      passage_policy.active_s_m, passage_policy.current_lidar_cells_checked,
+      passage_policy.memory_cells_checked,
+      passage_policy.current_lidar_expected_wall_cells,
+      passage_policy.memory_expected_wall_cells,
       astarStatusName(path_result->astar.status),
       planning_astar_config.heuristic_weight, path_result->astar.expanded_cells,
       path_result->astar.total_cost, path_result->raw_path_metrics.points,

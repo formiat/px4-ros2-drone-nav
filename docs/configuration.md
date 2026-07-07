@@ -54,13 +54,23 @@ Known passages:
 - `known_passage_validation_min_opening_overlap_m`
 - `known_passage_validation_clearance_margin_m`
 - `known_passage_validation_max_diagnostics`
+- `passage_traversal_sensor_policy_enabled`
+- `passage_traversal_activation_margin_m`
+- `passage_traversal_opening_corridor_lateral_margin_m`
+- `passage_traversal_opening_corridor_depth_margin_m`
+- `passage_traversal_expected_wall_margin_m`
+- `passage_traversal_max_active_passages`
+- `passage_traversal_max_diagnostics`
 
-Known passages are shadow diagnostics in the current stage. They describe
-pre-annotated passage structures and openings for future 3D traversal, publish
-RViz markers, and validate whether the final executable trajectory crosses a
-known structure footprint through an allowed opening volume. They still do not
-modify obstacle grids, planner constraints, trajectory geometry, speed profile,
-or runtime control, and they do not reject trajectories.
+Known passages describe pre-annotated passage structures and openings. They
+publish RViz markers, validate whether the final executable trajectory crosses a
+known structure footprint through an allowed opening volume, and drive a narrow
+sensor policy during active passage traversal.
+
+The validation layer does not reject trajectories by itself. The sensor policy
+does not detect passages and does not modify static map cells. It only filters
+dynamic current-lidar/memory working copies while the current executable
+trajectory is inside an active known passage span.
 
 The default file format is line-based and versioned:
 
@@ -87,6 +97,13 @@ The validation layer applies a diagnostics-only no-over-building rule:
   threshold: an opening match is rejected as `opening_volume_miss` when its
   lateral/vertical clearance is below this margin;
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
+- `passage_traversal_activation_margin_m` expands the active station interval
+  around a matched passage span.
+- `passage_traversal_opening_corridor_lateral_margin_m` and
+  `passage_traversal_opening_corridor_depth_margin_m` define the protected
+  opening corridor where obstacles remain emergency blockers.
+- `passage_traversal_expected_wall_margin_m` expands the known structure
+  footprint used for expected-wall filtering.
 
 ## A* Parameters
 

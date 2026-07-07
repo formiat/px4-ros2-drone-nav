@@ -12,12 +12,17 @@ The planner can use:
 - current lidar scan overlay from `/scan`.
 
 The planner can also load known 3D passage annotations from
-`known_passages.passages3d`. In the current stage, these annotations are
-shadow diagnostics. They are not raw obstacle sources, do not alter the
-prohibited grid, and do not constrain or relax the XY planner. After a final
-trajectory is built, the planner validates whether it crosses any known
-structure footprint through an allowed opening volume and reports the result in
-logs and trajectory diagnostics.
+`known_passages.passages3d`. These annotations are not raw obstacle sources and
+do not make the XY planner search through buildings. After a final trajectory is
+built, the planner validates whether it crosses any known structure footprint
+through an allowed opening volume and reports the result in logs and trajectory
+diagnostics.
+
+Known passages also feed a narrow traversal sensor policy. While the current
+executable trajectory is inside an active known passage span, dynamic lidar and
+memory hits that match expected walls around the opening can be ignored before
+inflation. A dynamic hit inside the opening corridor is not ignored and remains
+an emergency blocker. Static map cells are never filtered by this policy.
 
 Raw sources are merged before inflation. Raw sources must not contain safety
 inflation.
@@ -129,10 +134,10 @@ carry per-sample altitude in `pose.position.z`.
 
 Known passage markers are RViz/debug artifacts. Structure volumes, opening
 frames, gate centers, approach arrows, and exit arrows help verify annotation
-geometry before any later 3D traversal logic uses it. The same annotations also
-feed a shadow no-over-building validator for the published trajectory. A
-validation violation is diagnostic-only in this stage; it does not cancel path
-publication or change controller behavior.
+geometry. The same annotations feed the no-over-building validator and the
+passage traversal sensor policy. A validation violation is diagnostic-only; it
+does not cancel path publication by itself. Sensor policy decisions are applied
+only to dynamic obstacle evidence during an active known passage traversal.
 
 ## Pipeline Contracts
 

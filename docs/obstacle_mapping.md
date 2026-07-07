@@ -35,6 +35,11 @@ Important parameters:
 - `range_hit_epsilon_m`
 - lidar pose latency and attitude compensation settings.
 
+During active known passage traversal, the planner applies a sensor policy to a
+working copy of the current lidar overlay before inflation. Expected wall hits
+around the annotated opening may be cleared from that working copy. Hits inside
+the opening corridor are preserved as emergency blockers.
+
 ## Obstacle Memory
 
 `obstacle_memory_node` accumulates scan evidence into
@@ -133,12 +138,21 @@ recently observed obstacles available after they leave the instantaneous scan.
 Memory is especially important when the drone turns away from an obstacle but
 the planner still needs to avoid it.
 
+The known passage sensor policy can also filter a temporary copy of obstacle
+memory during active traversal. It never mutates the permanent memory grid.
+
 These sources are complementary:
 
 - static map gives persistent structure;
 - current lidar gives fresh evidence;
 - memory gives temporal continuity;
 - inflation turns merged evidence into safety space.
+
+The passage traversal sensor policy is deliberately narrow. It only runs when
+the accepted executable trajectory is inside a known passage span, only filters
+dynamic current-lidar/memory working copies, and never filters the static map.
+This keeps static world geometry authoritative while preventing expected wall
+returns around a known opening from causing a full replan.
 
 ## Inflation And Distance Fields
 
@@ -193,7 +207,9 @@ For an unexpected replan, inspect:
 4. Did planning clearance get mistaken for hard prohibited space?
 5. Did pose or attitude compensation shift the lidar overlay?
 6. Did obstacle memory keep an old obstacle longer than expected?
-7. Did the planner retain the previous trajectory while rebuilding?
+7. Was passage traversal active, and did the policy ignore only expected wall
+   evidence?
+8. Did the planner retain the previous trajectory while rebuilding?
 
 Answering these questions usually separates a real obstacle from a mapping
 artifact.

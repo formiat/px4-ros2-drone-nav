@@ -65,6 +65,30 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
                                    "known_passage_validation_max_diagnostics", 8),
                                0, 100));
+  config.passage_traversal_sensor_policy.enabled =
+      node.declare_parameter<bool>("passage_traversal_sensor_policy_enabled", true);
+  config.passage_traversal_sensor_policy.activation_margin_m = std::clamp(
+      node.declare_parameter<double>("passage_traversal_activation_margin_m", 3.0), 0.0,
+      1000.0);
+  config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_traversal_opening_corridor_lateral_margin_m", 0.75),
+                 0.0, 1000.0);
+  config.passage_traversal_sensor_policy.opening_corridor_depth_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_traversal_opening_corridor_depth_margin_m", 1.0),
+                 0.0, 1000.0);
+  config.passage_traversal_sensor_policy.expected_wall_margin_m = std::clamp(
+      node.declare_parameter<double>("passage_traversal_expected_wall_margin_m", 0.5),
+      0.0, 1000.0);
+  config.passage_traversal_sensor_policy.max_active_passages = static_cast<std::size_t>(
+      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                   "passage_traversal_max_active_passages", 2),
+                               0, 100));
+  config.passage_traversal_sensor_policy.max_diagnostics =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("passage_traversal_max_diagnostics", 8),
+          0, 100));
   config.trajectory_planner.known_passage_validation = config.known_passage_validation;
   config.trajectory_planner.vertical_profile.enabled =
       node.declare_parameter<bool>("vertical_profile_enabled", true);

@@ -67,6 +67,15 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
+  EXPECT_TRUE(config.passage_traversal_sensor_policy.enabled);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 3.0);
+  EXPECT_DOUBLE_EQ(
+      config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m, 0.75);
+  EXPECT_DOUBLE_EQ(
+      config.passage_traversal_sensor_policy.opening_corridor_depth_margin_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.expected_wall_margin_m, 0.5);
+  EXPECT_EQ(config.passage_traversal_sensor_policy.max_active_passages, 2U);
+  EXPECT_EQ(config.passage_traversal_sensor_policy.max_diagnostics, 8U);
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);
@@ -187,6 +196,12 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", -1.0},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 5000},
+       rclcpp::Parameter{"passage_traversal_activation_margin_m", -1.0},
+       rclcpp::Parameter{"passage_traversal_opening_corridor_lateral_margin_m", 9999.0},
+       rclcpp::Parameter{"passage_traversal_opening_corridor_depth_margin_m", 9999.0},
+       rclcpp::Parameter{"passage_traversal_expected_wall_margin_m", 9999.0},
+       rclcpp::Parameter{"passage_traversal_max_active_passages", 5000},
+       rclcpp::Parameter{"passage_traversal_max_diagnostics", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
@@ -246,6 +261,15 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(
+      config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m, 1000.0);
+  EXPECT_DOUBLE_EQ(
+      config.passage_traversal_sensor_policy.opening_corridor_depth_margin_m, 1000.0);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.expected_wall_margin_m,
+                   1000.0);
+  EXPECT_EQ(config.passage_traversal_sensor_policy.max_active_passages, 100U);
+  EXPECT_EQ(config.passage_traversal_sensor_policy.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 0.0);

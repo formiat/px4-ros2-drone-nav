@@ -82,6 +82,13 @@ planner_node:
     known_passage_validation_min_opening_overlap_m: 0.5
     known_passage_validation_clearance_margin_m: 0.0
     known_passage_validation_max_diagnostics: 8
+    passage_traversal_sensor_policy_enabled: true
+    passage_traversal_activation_margin_m: 3.0
+    passage_traversal_opening_corridor_lateral_margin_m: 0.75
+    passage_traversal_opening_corridor_depth_margin_m: 1.0
+    passage_traversal_expected_wall_margin_m: 0.5
+    passage_traversal_max_active_passages: 2
+    passage_traversal_max_diagnostics: 8
     vertical_profile_enabled: true
     vertical_profile_gate_clearance_margin_m: 0.5
     vertical_profile_max_vertical_speed_mps: 2.5
