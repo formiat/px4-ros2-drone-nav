@@ -70,6 +70,7 @@ struct PlanningGridBuildResult {
   std::optional<OccupancyGrid2D> grid;
   std::optional<OccupancyGrid2D> planning_grid;
   std::optional<OccupancyGrid2D> current_lidar_grid;
+  std::optional<OccupancyGrid2D> filtered_memory_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};
   CurrentLidarOverlayStats current_lidar{};

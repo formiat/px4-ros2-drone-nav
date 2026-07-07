@@ -26,7 +26,6 @@ enum class PassageObstacleClassification {
 };
 
 enum class PassageAwareReuseAction {
-  kKeepCurrentPath,
   kRunAStar,
   kEmergencyBlocker,
 };
@@ -37,8 +36,6 @@ struct PassageTraversalSensorPolicyConfig {
   double opening_corridor_lateral_margin_m{0.75};
   double opening_corridor_depth_margin_m{1.0};
   double expected_wall_margin_m{0.5};
-  std::size_t max_active_passages{2U};
-  std::size_t max_diagnostics{8U};
 };
 
 struct ActivePassageTraversal {
@@ -108,9 +105,7 @@ classifyPassageObstaclePoint(const ActivePassageTraversal& active_passage,
 [[nodiscard]] PassageTraversalSensorPolicyResult
 applyPassageTraversalSensorPolicy(const PassageTraversalSensorPolicyInput& input);
 
-[[nodiscard]] PassageAwareReuseAction evaluatePassageAwareStablePathReuse(
-    const PassageTraversalSensorPolicyStats& stats,
-    std::optional<Point2> prohibited_intersection_center,
-    const PassageTraversalSensorPolicyConfig& config) noexcept;
+[[nodiscard]] PassageAwareReuseAction evaluatePassageAwareProhibitedIntersectionAction(
+    const PassageTraversalSensorPolicyStats& stats) noexcept;
 
 } // namespace drone_city_nav

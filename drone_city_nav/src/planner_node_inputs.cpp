@@ -306,6 +306,9 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
   }
+  if (filtered_memory_grid.has_value()) {
+    result.filtered_memory_grid = std::move(filtered_memory_grid);
+  }
   if (result.memory.enabled && !result.memory.seen) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Obstacle memory source is enabled but no grid has been "

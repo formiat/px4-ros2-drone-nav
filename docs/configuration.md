@@ -59,8 +59,6 @@ Known passages:
 - `passage_traversal_opening_corridor_lateral_margin_m`
 - `passage_traversal_opening_corridor_depth_margin_m`
 - `passage_traversal_expected_wall_margin_m`
-- `passage_traversal_max_active_passages`
-- `passage_traversal_max_diagnostics`
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a

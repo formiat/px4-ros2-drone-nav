@@ -13,13 +13,14 @@ Planning clearance is different. It is an extra planner margin used to prefer
 safer trajectories. Entering the planning-clearance margin is not by itself a
 runtime replan reason.
 
-Known passage traversal has one explicit exception to the hard trigger. If the
-current executable trajectory is inside an active known passage span, dynamic
-lidar or memory cells classified as expected walls around the opening can be
-filtered before inflation and can suppress the corresponding normal replan. A
-cell inside the opening corridor is an emergency blocker and keeps the normal
-prohibited/replan behavior. Static map cells are never suppressed by this
-policy.
+Known passage traversal has one explicit pre-inflation sensor-policy exception.
+If the current executable trajectory is inside an active known passage span,
+dynamic lidar or memory cells classified as expected walls around the opening
+can be filtered before inflation. If a prohibited-grid intersection still
+exists after that filtering, runtime validation treats it as a normal hard
+replan trigger. A cell inside the opening corridor is an emergency blocker and
+keeps the normal prohibited/replan behavior. Static map cells are never
+suppressed by this policy.
 
 ## Runtime Validation
 

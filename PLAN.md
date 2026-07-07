@@ -140,8 +140,6 @@ Remote HTTP/SSH не использовался.
      double opening_corridor_lateral_margin_m{0.75};
      double opening_corridor_depth_margin_m{1.0};
      double expected_wall_margin_m{0.5};
-     std::size_t max_active_passages{2U};
-     std::size_t max_diagnostics{8U};
    };
 
    struct ActivePassageTraversal {
@@ -274,19 +272,19 @@ Remote HTTP/SSH не использовался.
 
      ```cpp
      enum class PassageAwareReuseAction {
-       kKeepCurrentPath,
        kRunAStar,
        kEmergencyBlocker,
      };
      ```
 
-   - если intersection source классифицирован как expected passage wall и `passage_traversal_active=true`, вернуть `kKeepCurrentPath`;
+   - если `kProhibitedConfirmed` всё-таки возник после pre-inflation filtering, не подавлять hard replan по одной геометрии expected wall;
    - если `emergency_blocker_count > 0`, оставить `kRunAStar`/существующее safety поведение и логировать emergency;
    - если policy inactive, поведение должно остаться byte-for-byte логически прежним.
 
    Материализованный результат:
 
-   - expected wall больше не запускает normal replan;
+   - expected wall returns подавляются только до inflation как dynamic source filtering;
+   - любой оставшийся hard prohibited intersection запускает normal replan;
    - emergency blocker не подавляется.
 
 6. Добавить config params.
@@ -306,8 +304,6 @@ Remote HTTP/SSH не использовался.
    passage_traversal_opening_corridor_lateral_margin_m: 0.75
    passage_traversal_opening_corridor_depth_margin_m: 1.0
    passage_traversal_expected_wall_margin_m: 0.5
-   passage_traversal_max_active_passages: 2
-   passage_traversal_max_diagnostics: 8
    ```
 
    Все значения clamp-ить в `loadPlannerNodeConfig()`.
@@ -385,7 +381,7 @@ Remote HTTP/SSH не использовался.
     Кейсы:
 
     1. `kProhibitedConfirmed + normal policy -> kRunAStar`;
-    2. `kProhibitedConfirmed + active expected wall -> kKeepCurrentPath`;
+    2. `kProhibitedConfirmed + active expected wall geometry -> kRunAStar`;
     3. `kProhibitedConfirmed + emergency blocker -> kRunAStar`;
     4. non-prohibited stable-path rejection reasons не меняются;
     5. stats counters do not increment `prohibited_replans_` for expected wall suppression.

@@ -114,9 +114,15 @@ void PlannerNode::invalidateCurrentPose() {
 std::string PlannerNode::describeProhibitedIntersectionSource(
     const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
     const PlanningGridBuildResult& planning_result) const {
+  const OccupancyGrid2D* memory_source_grid = nullptr;
+  if (planning_result.filtered_memory_grid) {
+    memory_source_grid = &*planning_result.filtered_memory_grid;
+  } else if (memory_grid_) {
+    memory_source_grid = &*memory_grid_;
+  }
   const std::array<RawSourceProbe, 3U> sources{
       RawSourceProbe{"static", static_grid_ ? &*static_grid_ : nullptr},
-      RawSourceProbe{"memory", memory_grid_ ? &*memory_grid_ : nullptr},
+      RawSourceProbe{"memory", memory_source_grid},
       RawSourceProbe{"current_lidar", planning_result.current_lidar_grid
                                           ? &*planning_result.current_lidar_grid
                                           : nullptr}};
@@ -189,43 +195,9 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             : std::string{"raw_sources[exact=unknown nearest=unknown "
                           "nearest_distance=nanm nearest_cell=(-1, -1) "
                           "nearest_center=(nan, nan) search_radius=nanm]"};
-    const PassageAwareReuseAction passage_reuse_action =
-        evaluatePassageAwareStablePathReuse(
-            planning_result.passage_sensor_policy,
-            decision.prohibited_intersection
-                ? std::optional<Point2>{intersection.cell_center}
-                : std::nullopt,
-            passage_traversal_sensor_policy_config_);
-    if (passage_reuse_action == PassageAwareReuseAction::kKeepCurrentPath) {
-      last_valid_path_points_ = decision.remaining_path;
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 3000,
-          "Current path intersects expected known-passage wall data; keeping current "
-          "trajectory instead of running A*: reason=%s remaining_waypoints=%zu "
-          "deviation=%.2fm prohibited_segment=%zu blocker[cell=(%d, %d) "
-          "center=(%.2f, %.2f) path_distance=%.2fm] passage_sensor_policy["
-          "passage_traversal_active=%s lidar_policy=%s "
-          "ignored_expected_obstacle_count=%zu emergency_blocker_count=%zu "
-          "structure=%s opening=%s active_s=%.2f reuse_action=%s] %s",
-          stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-          decision.deviation_m, decision.prohibited_segment_index, intersection.cell.x,
-          intersection.cell.y, intersection.cell_center.x, intersection.cell_center.y,
-          intersection.path_distance_m,
-          planning_result.passage_sensor_policy.passage_traversal_active ? "true"
-                                                                         : "false",
-          passageLidarPolicyName(planning_result.passage_sensor_policy.lidar_policy),
-          planning_result.passage_sensor_policy.ignored_expected_obstacle_count,
-          planning_result.passage_sensor_policy.emergency_blocker_count,
-          planning_result.passage_sensor_policy.active_structure_id.empty()
-              ? "<none>"
-              : planning_result.passage_sensor_policy.active_structure_id.c_str(),
-          planning_result.passage_sensor_policy.active_opening_id.empty()
-              ? "<none>"
-              : planning_result.passage_sensor_policy.active_opening_id.c_str(),
-          planning_result.passage_sensor_policy.active_s_m,
-          passageAwareReuseActionName(passage_reuse_action), source_diagnostic.c_str());
-      return true;
-    }
+    const PassageAwareReuseAction passage_replan_action =
+        evaluatePassageAwareProhibitedIntersectionAction(
+            planning_result.passage_sensor_policy);
     ++prohibited_replans_;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
@@ -239,7 +211,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         "segment_end_prohibited=%s] passage_sensor_policy["
         "passage_traversal_active=%s lidar_policy=%s "
         "ignored_expected_obstacle_count=%zu emergency_blocker_count=%zu "
-        "structure=%s opening=%s active_s=%.2f reuse_action=%s] %s",
+        "structure=%s opening=%s active_s=%.2f replan_action=%s] %s",
         stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
         decision.deviation_m, decision.prohibited_segment_index, prohibited_start.x,
         prohibited_start.y, prohibited_end.x, prohibited_end.y, intersection.cell.x,
@@ -262,7 +234,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             ? "<none>"
             : planning_result.passage_sensor_policy.active_opening_id.c_str(),
         planning_result.passage_sensor_policy.active_s_m,
-        passageAwareReuseActionName(passage_reuse_action), source_diagnostic.c_str());
+        passageAwareReuseActionName(passage_replan_action), source_diagnostic.c_str());
     return false;
   }
 

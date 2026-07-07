@@ -173,15 +173,12 @@ PlannerNode::PlannerNode()
   RCLCPP_INFO(get_logger(),
               "Passage traversal sensor policy: enabled=%s activation_margin=%.2fm "
               "opening_corridor_margin[lateral=%.2fm depth=%.2fm] "
-              "expected_wall_margin=%.2fm max_active_passages=%zu "
-              "max_diagnostics=%zu",
+              "expected_wall_margin=%.2fm",
               passage_traversal_sensor_policy_config_.enabled ? "true" : "false",
               passage_traversal_sensor_policy_config_.activation_margin_m,
               passage_traversal_sensor_policy_config_.opening_corridor_lateral_margin_m,
               passage_traversal_sensor_policy_config_.opening_corridor_depth_margin_m,
-              passage_traversal_sensor_policy_config_.expected_wall_margin_m,
-              passage_traversal_sensor_policy_config_.max_active_passages,
-              passage_traversal_sensor_policy_config_.max_diagnostics);
+              passage_traversal_sensor_policy_config_.expected_wall_margin_m);
   RCLCPP_INFO(get_logger(),
               "Planner lidar overlay: enabled=always topic='%s' max_range=%.2f "
               "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "

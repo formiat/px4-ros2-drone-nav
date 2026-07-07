@@ -199,8 +199,6 @@ const char* passageObstacleClassificationName(
 
 const char* passageAwareReuseActionName(const PassageAwareReuseAction action) noexcept {
   switch (action) {
-    case PassageAwareReuseAction::kKeepCurrentPath:
-      return "keep_current_path";
     case PassageAwareReuseAction::kRunAStar:
       return "run_astar";
     case PassageAwareReuseAction::kEmergencyBlocker:
@@ -317,24 +315,12 @@ applyPassageTraversalSensorPolicy(const PassageTraversalSensorPolicyInput& input
   return result;
 }
 
-PassageAwareReuseAction evaluatePassageAwareStablePathReuse(
-    const PassageTraversalSensorPolicyStats& stats,
-    const std::optional<Point2> prohibited_intersection_center,
-    const PassageTraversalSensorPolicyConfig& config) noexcept {
-  if (!stats.passage_traversal_active) {
-    return PassageAwareReuseAction::kRunAStar;
-  }
+PassageAwareReuseAction evaluatePassageAwareProhibitedIntersectionAction(
+    const PassageTraversalSensorPolicyStats& stats) noexcept {
   if (stats.emergency_blocker_count > 0U) {
     return PassageAwareReuseAction::kEmergencyBlocker;
   }
-  if (!prohibited_intersection_center.has_value()) {
-    return PassageAwareReuseAction::kRunAStar;
-  }
-  const PassageObstacleClassification classification = classifyPassageObstaclePoint(
-      stats.active_passage, config, *prohibited_intersection_center);
-  return classification == PassageObstacleClassification::kExpectedPassageWall
-             ? PassageAwareReuseAction::kKeepCurrentPath
-             : PassageAwareReuseAction::kRunAStar;
+  return PassageAwareReuseAction::kRunAStar;
 }
 
 } // namespace drone_city_nav

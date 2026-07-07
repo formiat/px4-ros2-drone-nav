@@ -241,21 +241,18 @@ TEST(PassageTraversalSensorPolicy, ChoosesActiveSpanClosestToCurrentStation) {
   EXPECT_EQ(active.opening_id, "opening_a");
 }
 
-TEST(PassageTraversalSensorPolicy, ReuseDecisionOnlySuppressesExpectedWall) {
+TEST(PassageTraversalSensorPolicy, ReuseDecisionNeverSuppressesHardProhibited) {
   PassageTraversalSensorPolicyStats stats{};
   stats.passage_traversal_active = true;
   stats.active_passage.active = true;
   stats.active_passage.structure = makePassageMap().structures.front();
   stats.active_passage.opening = stats.active_passage.structure.openings.front();
 
-  PassageTraversalSensorPolicyConfig config{};
-  EXPECT_EQ(evaluatePassageAwareStablePathReuse(stats, Point2{10.2, 4.2}, config),
-            PassageAwareReuseAction::kKeepCurrentPath);
-  EXPECT_EQ(evaluatePassageAwareStablePathReuse(stats, Point2{15.2, 4.2}, config),
+  EXPECT_EQ(evaluatePassageAwareProhibitedIntersectionAction(stats),
             PassageAwareReuseAction::kRunAStar);
 
   stats.emergency_blocker_count = 1U;
-  EXPECT_EQ(evaluatePassageAwareStablePathReuse(stats, Point2{10.2, 4.2}, config),
+  EXPECT_EQ(evaluatePassageAwareProhibitedIntersectionAction(stats),
             PassageAwareReuseAction::kEmergencyBlocker);
 }
 
