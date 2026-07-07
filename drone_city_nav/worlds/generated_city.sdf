@@ -550,9 +550,34 @@
       </link>
     </model>
 
-    <model name="known_passage_test_mid_air_gate_01">
+    <model name="known_passage_test_gate_01">
       <static>true</static>
-      <pose>-165.00 64.00 0.00 0.00 0.00 0.00</pose>
+      <pose>-167.89 -6.06 0.00 0.00 0.00 0.00</pose>
+      <link name="left_pillar">
+        <pose>-8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+      </link>
+      <link name="right_pillar">
+        <pose>8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+      </link>
+      <link name="lower_sill">
+        <pose>0.00 0.00 9.50 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 19.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 19.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+      </link>
+      <link name="upper_lintel">
+        <pose>0.00 0.00 28.50 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 7.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 7.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="known_passage_test_gate_02">
+      <static>true</static>
+      <pose>-164.99 63.88 0.00 0.00 0.00 0.00</pose>
       <link name="left_pillar">
         <pose>-8.00 0.00 16.00 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
@@ -572,6 +597,31 @@
         <pose>0.00 0.00 29.00 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>8.00 6.00 6.00</size></box></geometry></collision>
         <visual name="visual"><geometry><box><size>8.00 6.00 6.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="known_passage_test_gate_03">
+      <static>true</static>
+      <pose>-164.99 133.72 0.00 0.00 0.00 0.00</pose>
+      <link name="left_pillar">
+        <pose>-8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+      </link>
+      <link name="right_pillar">
+        <pose>8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+      </link>
+      <link name="lower_sill">
+        <pose>0.00 0.00 10.50 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 21.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 21.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+      </link>
+      <link name="upper_lintel">
+        <pose>0.00 0.00 29.50 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 5.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 5.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
       </link>
     </model>
 
