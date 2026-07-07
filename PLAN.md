@@ -190,8 +190,6 @@ ad-hoc top-level CMake-команды.
    - `sample_step_m`
    - `min_anchor_margin_m`
    - `max_anchor_margin_m`
-   - `approach_time_margin_s`
-   - `exit_time_margin_s`
    - `opening_lateral_target_margin_m`
    - `max_lateral_shift_m`
    - `max_join_tangent_delta_rad`

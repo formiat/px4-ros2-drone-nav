@@ -36,8 +36,6 @@ struct PassageInsertionConfig {
   double sample_step_m{1.0};
   double min_anchor_margin_m{8.0};
   double max_anchor_margin_m{60.0};
-  double approach_time_margin_s{0.0};
-  double exit_time_margin_s{0.0};
   double opening_lateral_target_margin_m{0.0};
   double max_lateral_shift_m{80.0};
   double max_join_tangent_delta_rad{0.35};

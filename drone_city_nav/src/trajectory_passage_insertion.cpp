@@ -194,15 +194,6 @@ countInvalidMatches(const std::vector<KnownPassageTraversalMatch>& matches) noex
       matches, [](const KnownPassageTraversalMatch& match) { return !match.valid; }));
 }
 
-[[nodiscard]] bool
-targetOpeningMatched(const std::vector<KnownPassageTraversalMatch>& matches,
-                     const std::string& structure_id, const std::string& opening_id) {
-  return std::ranges::any_of(matches, [&](const KnownPassageTraversalMatch& match) {
-    return match.valid && match.structure_id == structure_id &&
-           match.opening_id == opening_id;
-  });
-}
-
 [[nodiscard]] double
 spanLateralMissM(const std::span<const TrajectoryPointSample> samples,
                  const double entry_s_m, const double exit_s_m,
@@ -472,8 +463,7 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
       findKnownPassageTraversalMatches(evaluation.samples, map, validation_config,
                                        true);
   const std::size_t after_violations = countInvalidMatches(after_matches);
-  if (!(after_violations < before_violations) &&
-      !targetOpeningMatched(after_matches, match.structure_id, opening.id)) {
+  if (!(after_violations < before_violations)) {
     evaluation.reason = PassageInsertionRejectReason::kValidationNotImproved;
     return evaluation;
   }

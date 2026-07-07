@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <span>
 #include <vector>
 
@@ -187,6 +188,46 @@ TEST(TrajectoryPlanner, InvalidKnownPassageValidationRejectsTrajectory) {
   EXPECT_FALSE(result.stats.known_passage_validation.valid);
   EXPECT_EQ(result.stats.known_passage_validation.worst_reason,
             KnownPassageValidationReason::kOpeningVolumeMiss);
+}
+
+TEST(TrajectoryPlanner, PassageInsertionRepairsKnownPassageBeforeVerticalProfile) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{-15.0, 4.0}, {15.0, 4.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  TrajectoryPlannerConfig config = testConfig();
+  config.default_altitude_m = 10.0;
+  config.vertical_profile.enabled = true;
+  config.vertical_profile.max_climb_angle_rad = 80.0 * std::numbers::pi / 180.0;
+  config.passage_insertion.enabled = false;
+
+  const TrajectoryPlannerInput input{
+      std::span<const Point2>{route.data(), route.size()},
+      &grid,
+      nullptr,
+      false,
+      std::span<const CorridorSample>{},
+      nullptr,
+      &map};
+  const TrajectoryPlannerResult missed = planOptimizedTrajectory(input, config);
+  ASSERT_FALSE(missed.valid);
+  EXPECT_FALSE(missed.stats.passage_insertion.applied);
+  EXPECT_FALSE(missed.stats.known_passage_validation.valid);
+
+  config.passage_insertion.enabled = true;
+  config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;
+  config.passage_insertion.max_join_curvature_jump_1pm = 10.0;
+  config.passage_insertion.max_lateral_shift_m = 20.0;
+  const TrajectoryPlannerResult repaired = planOptimizedTrajectory(input, config);
+
+  ASSERT_TRUE(repaired.valid);
+  EXPECT_TRUE(repaired.stats.passage_insertion.applied);
+  EXPECT_TRUE(repaired.stats.vertical_profile.valid);
+  EXPECT_TRUE(repaired.stats.known_passage_validation.valid);
+  EXPECT_EQ(repaired.stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kMatchedOpening);
+  ASSERT_FALSE(repaired.samples.empty());
+  EXPECT_NEAR(distance(repaired.samples.front().point, route.front()), 0.0, 1.0e-6);
+  EXPECT_NEAR(distance(repaired.samples.back().point, route.back()), 0.0, 1.0e-6);
 }
 
 TEST(TrajectoryPlanner, ReusesProvidedClearanceFieldForCorridor) {
