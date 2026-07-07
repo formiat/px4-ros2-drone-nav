@@ -40,6 +40,7 @@ add_library(
   src/grid_config.cpp
   src/grid_overlay.cpp
   src/known_passage_map.cpp
+  src/known_passage_geometry.cpp
   src/known_passage_matching.cpp
   src/known_passage_validation.cpp
   src/lidar_debug_renderer.cpp
@@ -78,6 +79,7 @@ add_library(
   src/trajectory_diagnostics_io_json_summary.cpp
   src/trajectory_diagnostics_io_parser.cpp
   src/trajectory_planner.cpp
+  src/trajectory_passage_insertion.cpp
   src/trajectory_refinement_scheduler.cpp
   src/trajectory_shape_cleanup.cpp
   src/trajectory_speed_planner.cpp
@@ -425,6 +427,12 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_planner_test drone_city_nav_core)
   enable_project_warnings(trajectory_planner_test)
+
+  ament_add_gtest(trajectory_passage_insertion_test
+                  tests/trajectory_passage_insertion_test.cpp)
+  target_compile_features(trajectory_passage_insertion_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_passage_insertion_test drone_city_nav_core)
+  enable_project_warnings(trajectory_passage_insertion_test)
 
   ament_add_gtest(trajectory_refinement_scheduler_test
                   tests/trajectory_refinement_scheduler_test.cpp)

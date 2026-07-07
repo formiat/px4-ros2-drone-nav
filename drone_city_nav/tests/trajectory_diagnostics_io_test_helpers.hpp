@@ -322,6 +322,31 @@ void expectContainsAll(const std::string& text,
                                        .max_z_m = 12.0,
                                        .reason = "profiled",
                                        .valid = true});
+  stats.passage_insertion.enabled = true;
+  stats.passage_insertion.applied = true;
+  stats.passage_insertion.candidates = 3U;
+  stats.passage_insertion.inserted_count = 1U;
+  stats.passage_insertion.rejected_join = 1U;
+  stats.passage_insertion.rejected_traversability = 1U;
+  stats.passage_insertion.rejected_validation = 0U;
+  stats.passage_insertion.rejected_geometry = 0U;
+  stats.passage_insertion.final_reason = PassageInsertionRejectReason::kNone;
+  stats.passage_insertion.diagnostics.push_back(
+      PassageInsertionDiagnostic{.structure_id = "arch_02",
+                                 .opening_id = "main",
+                                 .anchor_s_m = 70.0,
+                                 .entry_s_m = 90.0,
+                                 .exit_s_m = 96.0,
+                                 .reconnect_s_m = 116.0,
+                                 .lateral_miss_before_m = 2.25,
+                                 .lateral_miss_after_m = 0.0,
+                                 .join_tangent_delta_before_rad = 0.03,
+                                 .join_tangent_delta_after_rad = 0.04,
+                                 .join_curvature_jump_before_1pm = 0.01,
+                                 .join_curvature_jump_after_1pm = 0.02,
+                                 .min_inserted_radius_m = 28.0,
+                                 .reason = PassageInsertionRejectReason::kNone,
+                                 .accepted = true});
   stats.isolated_curvature_spike_candidates = 2U;
   stats.isolated_curvature_spikes_smoothed_geometry = 1U;
   stats.isolated_curvature_spike_max_before_1pm = 0.12;
@@ -340,6 +365,7 @@ void expectContainsAll(const std::string& text,
   stats.corridor_duration_ms = 5.5;
   stats.trajectory_optimizer_duration_ms = 99.9;
   stats.turn_smoothing_duration_ms = 8.75;
+  stats.passage_insertion_duration_ms = 2.25;
   stats.speed_profile_duration_ms = 1.5;
   return stats;
 }

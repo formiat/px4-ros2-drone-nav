@@ -62,6 +62,7 @@ Important fields:
 - candidate counts;
 - speed-profile top constraints;
 - known-passage validation summary and capped per-span diagnostics;
+- local passage insertion summary and capped candidate diagnostics;
 - fingerprints for speed profile construction and runtime policy/control.
 
 Only construction fingerprint mismatch is a warning. Runtime mismatches are
@@ -81,6 +82,26 @@ Known-passage validation fields include:
 
 Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
 `s`, overlap, clearance, reason, and validity for one capped span.
+
+Local passage insertion fields include:
+
+- `passage_insertion_enabled`
+- `passage_insertion_applied`
+- `passage_insertion_candidates`
+- `passage_insertion_inserted_count`
+- `passage_insertion_rejected_join`
+- `passage_insertion_rejected_traversability`
+- `passage_insertion_rejected_validation`
+- `passage_insertion_rejected_geometry`
+- `passage_insertion_reason`
+- `passage_insertion_duration_ms`
+- `passage_insertion_diag_count`
+
+Each `passage_insertion_diagN_*` entry reports structure id, opening id,
+anchor/entry/exit/reconnect station, lateral miss before/after, join tangent
+and curvature metrics, rejection reason, and whether the candidate was accepted.
+These fields are intended for headless debugging when a known-passage XY repair
+is possible but not selected.
 
 Passage traversal sensor policy fields appear in planner summary and prohibited
 intersection logs:
@@ -132,6 +153,7 @@ For planner quality:
 - corridor time;
 - trajectory optimizer time;
 - turn smoothing time;
+- local passage insertion time;
 - speed profile time;
 - replan count.
 - known-passage validation result if the trajectory intersects an annotated

@@ -268,6 +268,28 @@ bool trajectorySamplesAreUsable(const std::span<const TrajectoryPointSample> sam
   return true;
 }
 
+void populateTrajectorySampleGeometry(std::vector<TrajectoryPointSample>& samples) {
+  double s_m = 0.0;
+  for (std::size_t i = 0U; i < samples.size(); ++i) {
+    if (i > 0U) {
+      s_m += distance(samples[i - 1U].point, samples[i].point);
+    }
+    samples[i].s_m = s_m;
+    samples[i].curvature_1pm = 0.0;
+    if (samples.size() == 1U) {
+      samples[i].tangent = Point2{1.0, 0.0};
+    } else if (i == 0U) {
+      samples[i].tangent = normalized(samples[i + 1U].point - samples[i].point);
+    } else if (i + 1U == samples.size()) {
+      samples[i].tangent = normalized(samples[i].point - samples[i - 1U].point);
+    } else {
+      samples[i].tangent = normalized(samples[i + 1U].point - samples[i - 1U].point);
+      samples[i].curvature_1pm = signedCurvatureFromTriplet(
+          samples[i - 1U].point, samples[i].point, samples[i + 1U].point);
+    }
+  }
+}
+
 void assignTrajectorySampleAltitude(const std::span<TrajectoryPointSample> samples,
                                     const double altitude_m) {
   for (TrajectoryPointSample& sample : samples) {

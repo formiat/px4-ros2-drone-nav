@@ -166,6 +166,73 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     parseJsonBool(json, prefix + "valid", diagnostic.valid);
     vertical_profile.diagnostics.push_back(diagnostic);
   }
+  PassageInsertionStats& passage_insertion = envelope.stats.passage_insertion;
+  parseJsonBool(json, "passage_insertion_enabled", passage_insertion.enabled);
+  parseJsonBool(json, "passage_insertion_applied", passage_insertion.applied);
+  parseJsonSize(json, "passage_insertion_candidates", passage_insertion.candidates);
+  parseJsonSize(json, "passage_insertion_inserted_count",
+                passage_insertion.inserted_count);
+  parseJsonSize(json, "passage_insertion_rejected_join",
+                passage_insertion.rejected_join);
+  parseJsonSize(json, "passage_insertion_rejected_traversability",
+                passage_insertion.rejected_traversability);
+  parseJsonSize(json, "passage_insertion_rejected_validation",
+                passage_insertion.rejected_validation);
+  parseJsonSize(json, "passage_insertion_rejected_geometry",
+                passage_insertion.rejected_geometry);
+  parseJsonSize(json, "passage_insertion_diagnostics_dropped",
+                passage_insertion.diagnostics_dropped);
+  if (const std::optional<std::string_view> reason =
+          jsonValueForKey(json, "passage_insertion_reason");
+      reason.has_value()) {
+    passage_insertion.final_reason = parsePassageInsertionRejectReasonName(*reason);
+  }
+  std::size_t passage_insertion_diagnostic_count = 0U;
+  parseJsonSize(json, "passage_insertion_diag_count",
+                passage_insertion_diagnostic_count);
+  passage_insertion_diagnostic_count =
+      std::min<std::size_t>(passage_insertion_diagnostic_count, 100U);
+  passage_insertion.diagnostics.clear();
+  passage_insertion.diagnostics.reserve(passage_insertion_diagnostic_count);
+  for (std::size_t i = 0U; i < passage_insertion_diagnostic_count; ++i) {
+    const std::string prefix = passageInsertionDiagnosticPrefix(i);
+    PassageInsertionDiagnostic diagnostic{};
+    if (const std::optional<std::string_view> structure_id =
+            jsonValueForKey(json, prefix + "structure_id");
+        structure_id.has_value()) {
+      diagnostic.structure_id = decodeJsonStringValue(*structure_id);
+    }
+    if (const std::optional<std::string_view> opening_id =
+            jsonValueForKey(json, prefix + "opening_id");
+        opening_id.has_value()) {
+      diagnostic.opening_id = decodeJsonStringValue(*opening_id);
+    }
+    parseJsonDouble(json, prefix + "anchor_s_m", diagnostic.anchor_s_m);
+    parseJsonDouble(json, prefix + "entry_s_m", diagnostic.entry_s_m);
+    parseJsonDouble(json, prefix + "exit_s_m", diagnostic.exit_s_m);
+    parseJsonDouble(json, prefix + "reconnect_s_m", diagnostic.reconnect_s_m);
+    parseJsonDouble(json, prefix + "lateral_miss_before_m",
+                    diagnostic.lateral_miss_before_m);
+    parseJsonDouble(json, prefix + "lateral_miss_after_m",
+                    diagnostic.lateral_miss_after_m);
+    parseJsonDouble(json, prefix + "join_tangent_delta_before_rad",
+                    diagnostic.join_tangent_delta_before_rad);
+    parseJsonDouble(json, prefix + "join_tangent_delta_after_rad",
+                    diagnostic.join_tangent_delta_after_rad);
+    parseJsonDouble(json, prefix + "join_curvature_jump_before_1pm",
+                    diagnostic.join_curvature_jump_before_1pm);
+    parseJsonDouble(json, prefix + "join_curvature_jump_after_1pm",
+                    diagnostic.join_curvature_jump_after_1pm);
+    parseJsonDouble(json, prefix + "min_inserted_radius_m",
+                    diagnostic.min_inserted_radius_m);
+    if (const std::optional<std::string_view> diagnostic_reason =
+            jsonValueForKey(json, prefix + "reason");
+        diagnostic_reason.has_value()) {
+      diagnostic.reason = parsePassageInsertionRejectReasonName(*diagnostic_reason);
+    }
+    parseJsonBool(json, prefix + "accepted", diagnostic.accepted);
+    passage_insertion.diagnostics.push_back(diagnostic);
+  }
   std::size_t top_constraint_count = 0U;
   parseJsonSize(json, "speed_profile_top_constraint_count", top_constraint_count);
   top_constraint_count = std::min<std::size_t>(top_constraint_count, 5U);
@@ -205,6 +272,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   envelope.stats.trajectory_optimizer_duration_ms);
   parseJsonDouble(json, "trajectory_turn_smoothing_duration_ms",
                   envelope.stats.turn_smoothing_duration_ms);
+  parseJsonDouble(json, "trajectory_passage_insertion_duration_ms",
+                  envelope.stats.passage_insertion_duration_ms);
   parseJsonDouble(json, "trajectory_speed_profile_duration_ms",
                   envelope.stats.speed_profile_duration_ms);
 

@@ -225,7 +225,7 @@ bool PlannerNode::publishTrajectoryResult(
         "runtime path: status=%.*s route_points=%zu duration_ms=%.1f "
         "trajectory_quality=%.*s "
         "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
-        "turn_smoothing=%.1f speed_profile=%.1f] "
+        "turn_smoothing=%.1f passage_insertion=%.1f speed_profile=%.1f] "
         "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
         "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
         " width_min=%.2f width_mean=%.2f] "
@@ -236,9 +236,10 @@ bool PlannerNode::publishTrajectoryResult(
         duration_ms, static_cast<int>(trajectoryQualityName(stats.quality).size()),
         trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
         stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
-        stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms,
-        stats.corridor.samples, stats.corridor.samples_reused ? "true" : "false",
-        stats.corridor.reused_samples, stats.corridor.route_fingerprint,
+        stats.turn_smoothing_duration_ms, stats.passage_insertion_duration_ms,
+        stats.speed_profile_duration_ms, stats.corridor.samples,
+        stats.corridor.samples_reused ? "true" : "false", stats.corridor.reused_samples,
+        stats.corridor.route_fingerprint,
         stats.corridor.prohibited_grid_fingerprint.cells_hash,
         stats.corridor.prohibited_grid_fingerprint.inflated_hash,
         stats.corridor.min_width_m, stats.corridor.mean_width_m,
@@ -263,7 +264,7 @@ bool PlannerNode::publishTrajectoryResult(
                 "trajectory_points=%zu duration_ms=%.1f status=%.*s "
                 "trajectory_quality=%.*s "
                 "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
-                "turn_smoothing=%.1f speed_profile=%.1f]",
+                "turn_smoothing=%.1f passage_insertion=%.1f speed_profile=%.1f]",
                 source_label, route_points.size(), trajectory_points.size(),
                 duration_ms,
                 static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
@@ -271,7 +272,8 @@ bool PlannerNode::publishTrajectoryResult(
                 static_cast<int>(trajectoryQualityName(stats.quality).size()),
                 trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
                 stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
-                stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms);
+                stats.turn_smoothing_duration_ms, stats.passage_insertion_duration_ms,
+                stats.speed_profile_duration_ms);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_non_traversable")) {
       return false;
@@ -312,6 +314,37 @@ bool PlannerNode::publishTrajectoryResult(
   const double first_passage_clearance = first_passage_diagnostic != nullptr
                                              ? first_passage_diagnostic->clearance_m
                                              : std::numeric_limits<double>::quiet_NaN();
+  const PassageInsertionDiagnostic* first_insertion_diagnostic =
+      stats.passage_insertion.diagnostics.empty()
+          ? nullptr
+          : &stats.passage_insertion.diagnostics.front();
+  const char* first_insertion_structure =
+      first_insertion_diagnostic != nullptr
+          ? first_insertion_diagnostic->structure_id.c_str()
+          : "<none>";
+  const char* first_insertion_opening =
+      first_insertion_diagnostic != nullptr &&
+              !first_insertion_diagnostic->opening_id.empty()
+          ? first_insertion_diagnostic->opening_id.c_str()
+          : "<none>";
+  const char* first_insertion_reason =
+      first_insertion_diagnostic != nullptr
+          ? passageInsertionRejectReasonName(first_insertion_diagnostic->reason)
+          : passageInsertionRejectReasonName(stats.passage_insertion.final_reason);
+  const double first_insertion_anchor_s =
+      first_insertion_diagnostic != nullptr ? first_insertion_diagnostic->anchor_s_m
+                                            : std::numeric_limits<double>::quiet_NaN();
+  const double first_insertion_reconnect_s =
+      first_insertion_diagnostic != nullptr ? first_insertion_diagnostic->reconnect_s_m
+                                            : std::numeric_limits<double>::quiet_NaN();
+  const double first_insertion_miss_before =
+      first_insertion_diagnostic != nullptr
+          ? first_insertion_diagnostic->lateral_miss_before_m
+          : std::numeric_limits<double>::quiet_NaN();
+  const double first_insertion_miss_after =
+      first_insertion_diagnostic != nullptr
+          ? first_insertion_diagnostic->lateral_miss_after_m
+          : std::numeric_limits<double>::quiet_NaN();
   const SpeedProfileConstraintDiagnostic* top_speed_constraint =
       stats.top_speed_constraints.empty() ? nullptr
                                           : &stats.top_speed_constraints.front();
@@ -342,7 +375,7 @@ bool PlannerNode::publishTrajectoryResult(
       "duration_ms=%.1f status=%.*s "
       "trajectory_quality=%.*s "
       "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
-      "turn_smoothing=%.1f speed_profile=%.1f] "
+      "turn_smoothing=%.1f passage_insertion=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
       "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
       "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
@@ -417,6 +450,10 @@ bool PlannerNode::publishTrajectoryResult(
       "vertical_profile[enabled=%s active=%s applied=%s valid=%s "
       "matched=%zu profiled=%zu infeasible=%zu z=[%.2f,%.2f] "
       "max_slope=%.4f min_cap=%.2f] "
+      "passage_insertion[enabled=%s applied=%s candidates=%zu inserted=%zu "
+      "rejected(join=%zu traversability=%zu validation=%zu geometry=%zu) "
+      "reason=%s first(structure=%s opening=%s s=[%.2f,%.2f] "
+      "miss=%.2f->%.2f reason=%s accepted=%s)] "
       "speed_profile[min=%.2f mean=%.2f max=%.2f curvature_limited=%zu "
       "top_constraints=%zu top1(s=%.2f radius=%.2f curvature=%.4f "
       "limit=%.2f source=%s isolated=%s) "
@@ -428,10 +465,10 @@ bool PlannerNode::publishTrajectoryResult(
       static_cast<int>(trajectoryQualityName(stats.quality).size()),
       trajectoryQualityName(stats.quality).data(), stats.total_duration_ms,
       stats.corridor_duration_ms, stats.trajectory_optimizer_duration_ms,
-      stats.turn_smoothing_duration_ms, stats.speed_profile_duration_ms, stats.length_m,
-      stats.samples, stats.corridor.samples,
-      stats.corridor.samples_reused ? "true" : "false", stats.corridor.reused_samples,
-      stats.corridor.route_fingerprint,
+      stats.turn_smoothing_duration_ms, stats.passage_insertion_duration_ms,
+      stats.speed_profile_duration_ms, stats.length_m, stats.samples,
+      stats.corridor.samples, stats.corridor.samples_reused ? "true" : "false",
+      stats.corridor.reused_samples, stats.corridor.route_fingerprint,
       stats.corridor.prohibited_grid_fingerprint.cells_hash,
       stats.corridor.prohibited_grid_fingerprint.inflated_hash,
       stats.corridor.min_width_m, stats.corridor.mean_width_m,
@@ -612,12 +649,27 @@ bool PlannerNode::publishTrajectoryResult(
       stats.vertical_profile.passages_matched, stats.vertical_profile.passages_profiled,
       stats.vertical_profile.infeasible_count, stats.vertical_profile.min_z_m,
       stats.vertical_profile.max_z_m, stats.vertical_profile.max_abs_dz_ds,
-      stats.vertical_profile.min_vertical_speed_cap_mps, stats.speed_profile_min_mps,
-      stats.speed_profile_mean_mps, stats.speed_profile_max_mps,
-      stats.speed_profile_curvature_limited_samples, stats.top_speed_constraints.size(),
-      top_speed_constraint_s, top_speed_constraint_radius,
-      top_speed_constraint_curvature, top_speed_constraint_limit,
-      top_speed_constraint_source, top_speed_constraint_isolated ? "true" : "false",
+      stats.vertical_profile.min_vertical_speed_cap_mps,
+      stats.passage_insertion.enabled ? "true" : "false",
+      stats.passage_insertion.applied ? "true" : "false",
+      stats.passage_insertion.candidates, stats.passage_insertion.inserted_count,
+      stats.passage_insertion.rejected_join,
+      stats.passage_insertion.rejected_traversability,
+      stats.passage_insertion.rejected_validation,
+      stats.passage_insertion.rejected_geometry,
+      passageInsertionRejectReasonName(stats.passage_insertion.final_reason),
+      first_insertion_structure, first_insertion_opening, first_insertion_anchor_s,
+      first_insertion_reconnect_s, first_insertion_miss_before,
+      first_insertion_miss_after, first_insertion_reason,
+      first_insertion_diagnostic != nullptr && first_insertion_diagnostic->accepted
+          ? "true"
+          : "false",
+      stats.speed_profile_min_mps, stats.speed_profile_mean_mps,
+      stats.speed_profile_max_mps, stats.speed_profile_curvature_limited_samples,
+      stats.top_speed_constraints.size(), top_speed_constraint_s,
+      top_speed_constraint_radius, top_speed_constraint_curvature,
+      top_speed_constraint_limit, top_speed_constraint_source,
+      top_speed_constraint_isolated ? "true" : "false",
       stats.isolated_curvature_spike_candidates,
       stats.isolated_curvature_spikes_smoothed_geometry,
       stats.isolated_curvature_spike_max_before_1pm,

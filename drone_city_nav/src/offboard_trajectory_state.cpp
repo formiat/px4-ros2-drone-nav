@@ -106,6 +106,8 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
       diagnostics.stats.trajectory_optimizer_duration_ms;
   output_stats.turn_smoothing_duration_ms =
       diagnostics.stats.turn_smoothing_duration_ms;
+  output_stats.passage_insertion_duration_ms =
+      diagnostics.stats.passage_insertion_duration_ms;
   output_stats.isolated_curvature_spike_candidates =
       diagnostics.stats.isolated_curvature_spike_candidates;
   output_stats.isolated_curvature_spikes_smoothed_geometry =
@@ -116,6 +118,7 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
       diagnostics.stats.isolated_curvature_spike_max_after_1pm;
   output_stats.known_passage_validation = diagnostics.stats.known_passage_validation;
   output_stats.vertical_profile = diagnostics.stats.vertical_profile;
+  output_stats.passage_insertion = diagnostics.stats.passage_insertion;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(

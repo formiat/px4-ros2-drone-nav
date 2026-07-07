@@ -100,7 +100,27 @@ The shape-cleanup stage handles isolated curvature spikes that survive the
 optimizer and turn smoothing. It is a geometry cleanup layer, not a
 speed-profile-only patch.
 
-## 9. Speed Profile Construction
+## 9. Optional Local Passage Insertion
+
+Local passage insertion is an optional repair stage for known 3D passages. It
+runs after optimizer, turn smoothing, and isolated geometry cleanup, but before
+vertical profile and speed profile construction.
+
+The stage is disabled by default. When enabled, it only targets known-passage
+validation spans where the current XY trajectory intersects a known structure
+but misses the opening corridor. It builds a local smooth XY segment through
+the opening gate, stitches it back into the original trajectory, recomputes
+sample stationing/tangent/curvature, and accepts the result only if:
+
+- the full stitched trajectory remains traversable on the prohibited grid;
+- mission start and goal endpoints stay anchored;
+- join tangent and curvature jumps stay within configured limits;
+- the known-passage XY match improves.
+
+This stage must not optimize for shortest or fastest path. Its purpose is to
+repair opening alignment while preserving smoothness and safety.
+
+## 10. Speed Profile Construction
 
 A speed profile is built for trajectory samples using curvature, acceleration,
 deceleration, minimum turn speed, and lookahead policy. Planner-side speed
@@ -113,7 +133,7 @@ representation foundation stage, the planner assigns this altitude from
 `cruise_altitude_m`; it is used by ROS path publication, RViz, dumps, and
 diagnostics, not by vertical maneuver control.
 
-## 10. Publication
+## 11. Publication
 
 The planner publishes:
 
@@ -149,8 +169,9 @@ Raw obstacle sources mean "there is evidence of an obstacle here". They do not
 carry safety inflation. The grid builder owns inflation and planning
 clearance. A* owns connectivity. Corridor construction owns continuous lateral
 bounds. The trajectory optimizer owns smoothness inside those bounds. Turn
-smoothing owns local corner repair. The speed profile owns scalar speed along
-the final geometry. Offboard owns the actual runtime command.
+smoothing owns local corner repair. Local passage insertion owns optional
+known-passage XY repair. The speed profile owns scalar speed along the final
+geometry. Offboard owns the actual runtime command.
 
 When a run looks wrong, identify which contract failed before changing
 parameters. Examples:

@@ -188,59 +188,6 @@ corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
              kEndpointToleranceM;
 }
 
-[[nodiscard]] Point2 operator-(const Point2 lhs, const Point2 rhs) noexcept {
-  return Point2{lhs.x - rhs.x, lhs.y - rhs.y};
-}
-
-[[nodiscard]] Point2 normalized(const Point2 point) noexcept {
-  const double length = std::hypot(point.x, point.y);
-  if (!(length > kTinyDistanceM)) {
-    return Point2{1.0, 0.0};
-  }
-  return Point2{point.x / length, point.y / length};
-}
-
-[[nodiscard]] double cross(const Point2 lhs, const Point2 rhs) noexcept {
-  return lhs.x * rhs.y - lhs.y * rhs.x;
-}
-
-[[nodiscard]] double signedCurvatureFromTriplet(const Point2 previous,
-                                                const Point2 current,
-                                                const Point2 next) noexcept {
-  const Point2 a = current - previous;
-  const Point2 b = next - current;
-  const double ab = distance(previous, current);
-  const double bc = distance(current, next);
-  const double ac = distance(previous, next);
-  const double denominator = ab * bc * ac;
-  if (!(denominator > kTinyDistanceM)) {
-    return 0.0;
-  }
-  return 2.0 * cross(a, b) / denominator;
-}
-
-void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples) {
-  double s_m = 0.0;
-  for (std::size_t i = 0U; i < samples.size(); ++i) {
-    if (i > 0U) {
-      s_m += distance(samples[i - 1U].point, samples[i].point);
-    }
-    samples[i].s_m = s_m;
-    samples[i].curvature_1pm = 0.0;
-    if (samples.size() == 1U) {
-      samples[i].tangent = Point2{1.0, 0.0};
-    } else if (i == 0U) {
-      samples[i].tangent = normalized(samples[i + 1U].point - samples[i].point);
-    } else if (i + 1U == samples.size()) {
-      samples[i].tangent = normalized(samples[i].point - samples[i - 1U].point);
-    } else {
-      samples[i].tangent = normalized(samples[i + 1U].point - samples[i - 1U].point);
-      samples[i].curvature_1pm = signedCurvatureFromTriplet(
-          samples[i - 1U].point, samples[i].point, samples[i + 1U].point);
-    }
-  }
-}
-
 [[nodiscard]] std::vector<TrajectoryPointSample>
 baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_samples) {
   std::vector<TrajectoryPointSample> samples;
@@ -253,7 +200,7 @@ baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_sampl
     sample.lateral_offset_m = 0.0;
     samples.push_back(sample);
   }
-  populateSampleGeometry(samples);
+  populateTrajectorySampleGeometry(samples);
   return samples;
 }
 
@@ -523,6 +470,29 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
+  }
+  const auto passage_insertion_started_at = std::chrono::steady_clock::now();
+  const PassageInsertionResult passage_insertion = insertLocalPassageSegments(
+      result.samples, *input.prohibited_grid, input.known_passage_map,
+      config.known_passage_validation, config.passage_insertion,
+      config.default_altitude_m);
+  result.stats.passage_insertion_duration_ms =
+      elapsedMilliseconds(passage_insertion_started_at);
+  result.stats.passage_insertion = passage_insertion.stats;
+  if (!passage_insertion.valid) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+  if (passage_insertion.applied) {
+    result.samples = passage_insertion.samples;
+    if (!trajectoryStageInvariantsHold(result.samples, *input.prohibited_grid,
+                                       input.route_points.front(),
+                                       input.route_points.back())) {
+      result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+      result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+      return result;
+    }
   }
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   if (!applyVerticalProfileStage(result, input, config)) {

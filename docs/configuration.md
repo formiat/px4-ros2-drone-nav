@@ -59,6 +59,17 @@ Known passages:
 - `passage_traversal_opening_corridor_lateral_margin_m`
 - `passage_traversal_opening_corridor_depth_margin_m`
 - `passage_traversal_expected_wall_margin_m`
+- `passage_insertion_enabled`
+- `passage_insertion_sample_step_m`
+- `passage_insertion_min_anchor_margin_m`
+- `passage_insertion_max_anchor_margin_m`
+- `passage_insertion_opening_lateral_target_margin_m`
+- `passage_insertion_max_lateral_shift_m`
+- `passage_insertion_max_join_tangent_delta_deg`
+- `passage_insertion_max_join_curvature_jump_1pm`
+- `passage_insertion_min_inserted_radius_m`
+- `passage_insertion_max_candidates`
+- `passage_insertion_max_diagnostics`
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
@@ -102,6 +113,22 @@ The validation layer applies a diagnostics-only no-over-building rule:
   opening corridor where obstacles remain emergency blockers.
 - `passage_traversal_expected_wall_margin_m` expands the known structure
   footprint used for expected-wall filtering.
+- `passage_insertion_enabled` controls the optional local XY repair stage. It
+  is disabled by default because it changes trajectory geometry.
+- `passage_insertion_sample_step_m` controls inserted segment sampling.
+- `passage_insertion_min_anchor_margin_m` and
+  `passage_insertion_max_anchor_margin_m` bound the stitch window around the
+  missed opening span.
+- `passage_insertion_opening_lateral_target_margin_m` keeps the repaired path
+  away from the opening side edges.
+- `passage_insertion_max_lateral_shift_m` rejects repairs that would require a
+  large local shift.
+- `passage_insertion_max_join_tangent_delta_deg` and
+  `passage_insertion_max_join_curvature_jump_1pm` protect stitch continuity.
+- `passage_insertion_min_inserted_radius_m` can require a minimum local radius;
+  `0` disables this radius gate.
+- `passage_insertion_max_candidates` and `passage_insertion_max_diagnostics`
+  bound CPU work and log volume.
 
 ## A* Parameters
 

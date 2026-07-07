@@ -86,6 +86,25 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
       2.5);
+  EXPECT_FALSE(config.trajectory_planner.passage_insertion.enabled);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 1.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
+                   8.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_anchor_margin_m,
+                   60.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
+                   80.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_tangent_delta_rad,
+      20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_curvature_jump_1pm, 0.08);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_inserted_radius_m,
+                   0.0);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 8U);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 8U);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.known_passage_markers,
             "/drone_city_nav/known_passage_markers");
@@ -198,6 +217,16 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"passage_traversal_opening_corridor_lateral_margin_m", 9999.0},
        rclcpp::Parameter{"passage_traversal_opening_corridor_depth_margin_m", 9999.0},
        rclcpp::Parameter{"passage_traversal_expected_wall_margin_m", 9999.0},
+       rclcpp::Parameter{"passage_insertion_sample_step_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_max_anchor_margin_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_opening_lateral_target_margin_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_max_lateral_shift_m", 9999.0},
+       rclcpp::Parameter{"passage_insertion_max_join_tangent_delta_deg", 9999.0},
+       rclcpp::Parameter{"passage_insertion_max_join_curvature_jump_1pm", 9999.0},
+       rclcpp::Parameter{"passage_insertion_min_inserted_radius_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_max_candidates", 5000},
+       rclcpp::Parameter{"passage_insertion_max_diagnostics", 5000},
        rclcpp::Parameter{"turn_smoothing_trigger_heading_delta_deg", 500.0},
        rclcpp::Parameter{"turn_smoothing_trigger_min_radius_m", -5.0},
        rclcpp::Parameter{"turn_smoothing_trigger_speed_limit_mps", -5.0},
@@ -264,6 +293,24 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
       config.passage_traversal_sensor_policy.opening_corridor_depth_margin_m, 1000.0);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.expected_wall_margin_m,
                    1000.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 0.1);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
+                   0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_anchor_margin_m,
+                   0.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
+                   5000.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_tangent_delta_rad,
+      std::numbers::pi);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_curvature_jump_1pm, 1000.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_inserted_radius_m,
+                   0.0);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 100U);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    std::numbers::pi);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 0.0);
@@ -299,6 +346,17 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"vertical_profile_min_transition_distance_m", 12.0},
        rclcpp::Parameter{"vertical_profile_max_transition_distance_m", 55.0},
        rclcpp::Parameter{"vertical_profile_max_diagnostics", 4},
+       rclcpp::Parameter{"passage_insertion_enabled", true},
+       rclcpp::Parameter{"passage_insertion_sample_step_m", 0.75},
+       rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", 9.0},
+       rclcpp::Parameter{"passage_insertion_max_anchor_margin_m", 45.0},
+       rclcpp::Parameter{"passage_insertion_opening_lateral_target_margin_m", 0.5},
+       rclcpp::Parameter{"passage_insertion_max_lateral_shift_m", 25.0},
+       rclcpp::Parameter{"passage_insertion_max_join_tangent_delta_deg", 15.0},
+       rclcpp::Parameter{"passage_insertion_max_join_curvature_jump_1pm", 0.12},
+       rclcpp::Parameter{"passage_insertion_min_inserted_radius_m", 18.0},
+       rclcpp::Parameter{"passage_insertion_max_candidates", 5},
+       rclcpp::Parameter{"passage_insertion_max_diagnostics", 6},
        rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
        rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
@@ -362,6 +420,25 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
       3.5);
+  EXPECT_TRUE(config.trajectory_planner.passage_insertion.enabled);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 0.75);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
+                   9.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_anchor_margin_m,
+                   45.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
+                   25.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_tangent_delta_rad,
+      15.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.max_join_curvature_jump_1pm, 0.12);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_inserted_radius_m,
+                   18.0);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 5U);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 6U);
   EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);

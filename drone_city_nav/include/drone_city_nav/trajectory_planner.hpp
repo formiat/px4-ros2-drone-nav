@@ -3,6 +3,7 @@
 #include "drone_city_nav/corridor.hpp"
 #include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/trajectory_optimizer.hpp"
+#include "drone_city_nav/trajectory_passage_insertion.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
 #include "drone_city_nav/trajectory_vertical_profile.hpp"
 #include "drone_city_nav/turn_smoothing.hpp"
@@ -40,6 +41,7 @@ struct TrajectoryPlannerConfig {
   VelocityFollowerConfig speed_profile{};
   VerticalProfileConfig vertical_profile{};
   KnownPassageValidationConfig known_passage_validation{};
+  PassageInsertionConfig passage_insertion{};
   double debug_sample_step_m{1.0};
   double default_altitude_m{0.0};
 };
@@ -68,10 +70,12 @@ struct TrajectoryPlannerStats {
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;
   KnownPassageValidationSummary known_passage_validation{};
   VerticalProfileStats vertical_profile{};
+  PassageInsertionStats passage_insertion{};
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double trajectory_optimizer_duration_ms{0.0};
   double turn_smoothing_duration_ms{0.0};
+  double passage_insertion_duration_ms{0.0};
   double speed_profile_duration_ms{0.0};
   TrajectoryPlannerStatus status{TrajectoryPlannerStatus::kOk};
   TrajectoryQuality quality{TrajectoryQuality::kUnknown};

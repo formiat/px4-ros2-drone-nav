@@ -458,6 +458,8 @@ std::string trajectoryTimingDiagnosticsJsonFields(const TrajectoryPlannerStats& 
                    stats.trajectory_optimizer_duration_ms);
   appendJsonNumber(stream, "trajectory_turn_smoothing_duration_ms",
                    stats.turn_smoothing_duration_ms);
+  appendJsonNumber(stream, "trajectory_passage_insertion_duration_ms",
+                   stats.passage_insertion_duration_ms);
   appendJsonNumber(stream, "trajectory_speed_profile_duration_ms",
                    stats.speed_profile_duration_ms);
   return stream.str();

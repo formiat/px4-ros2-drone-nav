@@ -475,5 +475,130 @@ verticalProfileDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   return stream.str();
 }
 
+[[nodiscard]] inline std::string
+passageInsertionDiagnosticPrefix(const std::size_t index) {
+  return "passage_insertion_diag" + std::to_string(index) + "_";
+}
+
+[[nodiscard]] inline PassageInsertionRejectReason
+parsePassageInsertionRejectReasonName(const std::string_view value) {
+  if (value == passageInsertionRejectReasonName(PassageInsertionRejectReason::kNone)) {
+    return PassageInsertionRejectReason::kNone;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kDisabled)) {
+    return PassageInsertionRejectReason::kDisabled;
+  }
+  if (value == passageInsertionRejectReasonName(PassageInsertionRejectReason::kNoMap)) {
+    return PassageInsertionRejectReason::kNoMap;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kInvalidInput)) {
+    return PassageInsertionRejectReason::kInvalidInput;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kNoRepairNeeded)) {
+    return PassageInsertionRejectReason::kNoRepairNeeded;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kNoCandidate)) {
+    return PassageInsertionRejectReason::kNoCandidate;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kTooManyCandidates)) {
+    return PassageInsertionRejectReason::kTooManyCandidates;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kInvalidOpeningFrame)) {
+    return PassageInsertionRejectReason::kInvalidOpeningFrame;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kExcessiveLateralShift)) {
+    return PassageInsertionRejectReason::kExcessiveLateralShift;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kInvalidGeometry)) {
+    return PassageInsertionRejectReason::kInvalidGeometry;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kNonTraversable)) {
+    return PassageInsertionRejectReason::kNonTraversable;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kEndpointMismatch)) {
+    return PassageInsertionRejectReason::kEndpointMismatch;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kJoinTangent)) {
+    return PassageInsertionRejectReason::kJoinTangent;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kJoinCurvature)) {
+    return PassageInsertionRejectReason::kJoinCurvature;
+  }
+  if (value ==
+      passageInsertionRejectReasonName(PassageInsertionRejectReason::kInsertedRadius)) {
+    return PassageInsertionRejectReason::kInsertedRadius;
+  }
+  if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kValidationNotImproved)) {
+    return PassageInsertionRejectReason::kValidationNotImproved;
+  }
+  return PassageInsertionRejectReason::kNone;
+}
+
+inline std::string
+passageInsertionDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
+  const PassageInsertionStats& insertion = stats.passage_insertion;
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"passage_insertion_enabled\":" << (insertion.enabled ? "true" : "false");
+  appendJsonBool(stream, "passage_insertion_applied", insertion.applied);
+  appendJsonSize(stream, "passage_insertion_candidates", insertion.candidates);
+  appendJsonSize(stream, "passage_insertion_inserted_count", insertion.inserted_count);
+  appendJsonSize(stream, "passage_insertion_rejected_join", insertion.rejected_join);
+  appendJsonSize(stream, "passage_insertion_rejected_traversability",
+                 insertion.rejected_traversability);
+  appendJsonSize(stream, "passage_insertion_rejected_validation",
+                 insertion.rejected_validation);
+  appendJsonSize(stream, "passage_insertion_rejected_geometry",
+                 insertion.rejected_geometry);
+  appendJsonSize(stream, "passage_insertion_diagnostics_dropped",
+                 insertion.diagnostics_dropped);
+  appendJsonString(stream, "passage_insertion_reason",
+                   passageInsertionRejectReasonName(insertion.final_reason));
+  appendJsonNumber(stream, "passage_insertion_duration_ms",
+                   stats.passage_insertion_duration_ms);
+  appendJsonSize(stream, "passage_insertion_diag_count", insertion.diagnostics.size());
+  for (std::size_t i = 0U; i < insertion.diagnostics.size(); ++i) {
+    const PassageInsertionDiagnostic& diagnostic = insertion.diagnostics[i];
+    const std::string prefix = passageInsertionDiagnosticPrefix(i);
+    appendJsonString(stream, prefix + "structure_id", diagnostic.structure_id);
+    appendJsonString(stream, prefix + "opening_id", diagnostic.opening_id);
+    appendJsonNumber(stream, prefix + "anchor_s_m", diagnostic.anchor_s_m);
+    appendJsonNumber(stream, prefix + "entry_s_m", diagnostic.entry_s_m);
+    appendJsonNumber(stream, prefix + "exit_s_m", diagnostic.exit_s_m);
+    appendJsonNumber(stream, prefix + "reconnect_s_m", diagnostic.reconnect_s_m);
+    appendJsonNumber(stream, prefix + "lateral_miss_before_m",
+                     diagnostic.lateral_miss_before_m);
+    appendJsonNumber(stream, prefix + "lateral_miss_after_m",
+                     diagnostic.lateral_miss_after_m);
+    appendJsonNumber(stream, prefix + "join_tangent_delta_before_rad",
+                     diagnostic.join_tangent_delta_before_rad);
+    appendJsonNumber(stream, prefix + "join_tangent_delta_after_rad",
+                     diagnostic.join_tangent_delta_after_rad);
+    appendJsonNumber(stream, prefix + "join_curvature_jump_before_1pm",
+                     diagnostic.join_curvature_jump_before_1pm);
+    appendJsonNumber(stream, prefix + "join_curvature_jump_after_1pm",
+                     diagnostic.join_curvature_jump_after_1pm);
+    appendJsonNumber(stream, prefix + "min_inserted_radius_m",
+                     diagnostic.min_inserted_radius_m);
+    appendJsonString(stream, prefix + "reason",
+                     passageInsertionRejectReasonName(diagnostic.reason));
+    appendJsonBool(stream, prefix + "accepted", diagnostic.accepted);
+  }
+  return stream.str();
+}
+
 } // namespace trajectory_diagnostics_io_detail
 } // namespace drone_city_nav

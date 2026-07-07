@@ -99,6 +99,8 @@ lineTrajectoryFromSamples(std::span<const TrajectoryPointSample> samples);
 [[nodiscard]] bool
 trajectorySamplesAreUsable(std::span<const TrajectoryPointSample> samples);
 
+void populateTrajectorySampleGeometry(std::vector<TrajectoryPointSample>& samples);
+
 void assignTrajectorySampleAltitude(std::span<TrajectoryPointSample> samples,
                                     double altitude_m);
 

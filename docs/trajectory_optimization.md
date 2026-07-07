@@ -87,6 +87,27 @@ Isolated geometry spike smoothing handles single-point or very local curvature
 spikes. It should not change endpoints and should only apply when it improves
 the local shape while preserving traversability.
 
+## Local Passage Insertion Role
+
+Local passage insertion is not part of the global smoothness optimizer. It is an
+optional geometry repair stage for known annotated passages. If the final XY
+trajectory intersects a known structure footprint but misses the opening
+corridor, the stage may build a local Hermite/Bezier-style segment through the
+opening gate and stitch it into the trajectory.
+
+The stage is intentionally conservative:
+
+- it is disabled by default;
+- it only acts on known-passage validation misses;
+- it does not score by length or traversal time;
+- it rejects candidates that cross prohibited cells;
+- it rejects candidates with excessive tangent or curvature discontinuity at
+  stitch points;
+- it leaves the original trajectory unchanged when no safe candidate exists.
+
+Diagnostics report candidate counts, rejection reasons, accepted/rejected
+opening ids, lateral miss before/after, and join metrics.
+
 ## Baseline And Optimized Trajectories
 
 The code still has baseline/refined concepts internally:

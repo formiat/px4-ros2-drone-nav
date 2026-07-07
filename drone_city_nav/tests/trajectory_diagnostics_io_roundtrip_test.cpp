@@ -76,6 +76,26 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(vertical0.gate_z_m, 10.5);
   EXPECT_EQ(vertical0.reason, "profiled");
   EXPECT_TRUE(vertical0.valid);
+  EXPECT_TRUE(parsed_value.stats.passage_insertion.enabled);
+  EXPECT_TRUE(parsed_value.stats.passage_insertion.applied);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.candidates, 3U);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.inserted_count, 1U);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.rejected_join, 1U);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.rejected_traversability, 1U);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.final_reason,
+            PassageInsertionRejectReason::kNone);
+  ASSERT_EQ(parsed_value.stats.passage_insertion.diagnostics.size(), 1U);
+  const PassageInsertionDiagnostic& insertion0 =
+      parsed_value.stats.passage_insertion.diagnostics.front();
+  EXPECT_EQ(insertion0.structure_id, "arch_02");
+  EXPECT_EQ(insertion0.opening_id, "main");
+  EXPECT_DOUBLE_EQ(insertion0.anchor_s_m, 70.0);
+  EXPECT_DOUBLE_EQ(insertion0.reconnect_s_m, 116.0);
+  EXPECT_DOUBLE_EQ(insertion0.lateral_miss_before_m, 2.25);
+  EXPECT_DOUBLE_EQ(insertion0.lateral_miss_after_m, 0.0);
+  EXPECT_EQ(insertion0.reason, PassageInsertionRejectReason::kNone);
+  EXPECT_TRUE(insertion0.accepted);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.passage_insertion_duration_ms, 2.25);
   EXPECT_EQ(parsed_value.stats.corridor.samples, 42U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.min_width_m, 17.5);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.mean_width_m, 24.25);

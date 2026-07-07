@@ -113,6 +113,46 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("vertical_profile_max_diagnostics", 8),
           0, 100));
+  config.trajectory_planner.passage_insertion.enabled =
+      node.declare_parameter<bool>("passage_insertion_enabled", false);
+  config.trajectory_planner.passage_insertion.sample_step_m =
+      std::clamp(node.declare_parameter<double>("passage_insertion_sample_step_m", 1.0),
+                 0.1, 20.0);
+  config.trajectory_planner.passage_insertion.min_anchor_margin_m = std::clamp(
+      node.declare_parameter<double>("passage_insertion_min_anchor_margin_m", 8.0), 0.0,
+      1000.0);
+  config.trajectory_planner.passage_insertion.max_anchor_margin_m =
+      std::max(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
+               std::clamp(node.declare_parameter<double>(
+                              "passage_insertion_max_anchor_margin_m", 60.0),
+                          0.0, 5000.0));
+  config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_insertion_opening_lateral_target_margin_m", 0.0),
+                 0.0, 1000.0);
+  config.trajectory_planner.passage_insertion.max_lateral_shift_m = std::clamp(
+      node.declare_parameter<double>("passage_insertion_max_lateral_shift_m", 80.0),
+      0.0, 5000.0);
+  config.trajectory_planner.passage_insertion.max_join_tangent_delta_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_insertion_max_join_tangent_delta_deg", 20.0),
+                 0.0, 180.0) *
+      std::numbers::pi / 180.0;
+  config.trajectory_planner.passage_insertion.max_join_curvature_jump_1pm =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_insertion_max_join_curvature_jump_1pm", 0.08),
+                 0.0, 1000.0);
+  config.trajectory_planner.passage_insertion.min_inserted_radius_m = std::clamp(
+      node.declare_parameter<double>("passage_insertion_min_inserted_radius_m", 0.0),
+      0.0, 100000.0);
+  config.trajectory_planner.passage_insertion.max_candidates =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("passage_insertion_max_candidates", 8),
+          0, 100));
+  config.trajectory_planner.passage_insertion.max_diagnostics =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("passage_insertion_max_diagnostics", 8),
+          0, 100));
   const double planning_grid_origin_x =
       node.declare_parameter<double>("planning_grid_origin_x", -10.0);
   const double planning_grid_origin_y =

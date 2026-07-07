@@ -151,6 +151,25 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"known_passage_diag1_reason\":\"opening_volume_miss\""),
             std::string::npos);
   EXPECT_NE(json.find("\"known_passage_diag1_clearance_m\":-1.25"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_enabled\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_applied\":true"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_candidates\":3"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_inserted_count\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_rejected_join\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_rejected_traversability\":1"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_reason\":\"none\""), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_duration_ms\":2.25"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag_count\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag0_structure_id\":\"arch_02\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag0_opening_id\":\"main\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag0_lateral_miss_before_m\":2.25"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag0_lateral_miss_after_m\":0"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_diag0_accepted\":true"), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_parallel_workers_used\":2"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_candidate_chunks\":31"),

@@ -96,6 +96,17 @@ planner_node:
     vertical_profile_min_transition_distance_m: 6.0
     vertical_profile_max_transition_distance_m: 80.0
     vertical_profile_max_diagnostics: 8
+    passage_insertion_enabled: false
+    passage_insertion_sample_step_m: 1.0
+    passage_insertion_min_anchor_margin_m: 8.0
+    passage_insertion_max_anchor_margin_m: 60.0
+    passage_insertion_opening_lateral_target_margin_m: 0.0
+    passage_insertion_max_lateral_shift_m: 80.0
+    passage_insertion_max_join_tangent_delta_deg: 20.0
+    passage_insertion_max_join_curvature_jump_1pm: 0.08
+    passage_insertion_min_inserted_radius_m: 0.0
+    passage_insertion_max_candidates: 8
+    passage_insertion_max_diagnostics: 8
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 345.0
     planning_grid_height_m: 525.0

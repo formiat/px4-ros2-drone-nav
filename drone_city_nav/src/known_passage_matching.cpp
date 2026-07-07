@@ -1,5 +1,6 @@
 #include "drone_city_nav/known_passage_matching.hpp"
 
+#include "drone_city_nav/known_passage_geometry.hpp"
 #include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -171,58 +172,37 @@ clipSampleSegmentToStationRange(const TrajectoryPointSample& start,
   return interval;
 }
 
-struct OpeningLocalPoint {
-  double u{0.0};
-  double v{0.0};
-  double z{0.0};
-  double s_m{0.0};
-};
-
-[[nodiscard]] OpeningLocalPoint
-toOpeningLocalPoint(const Point3S& point, const PassageOpening& opening) noexcept {
-  const double dx = point.x - opening.center.x;
-  const double dy = point.y - opening.center.y;
-  const Point2 normal = opening.normal_xy;
-  const Point2 lateral{-normal.y, normal.x};
-  return OpeningLocalPoint{
-      .u = dx * normal.x + dy * normal.y,
-      .v = dx * lateral.x + dy * lateral.y,
-      .z = point.z,
+[[nodiscard]] KnownPassageOpeningWorldPoint
+toOpeningWorldPoint(const Point3S& point) noexcept {
+  return KnownPassageOpeningWorldPoint{
+      .point = Point2{point.x, point.y},
+      .z_m = point.z,
       .s_m = point.s_m,
   };
-}
-
-[[nodiscard]] double openingPassageClearance(const OpeningLocalPoint& point,
-                                             const PassageOpening& opening) noexcept {
-  const double half_width = opening.width_m / 2.0;
-  return std::min({half_width - std::abs(point.v), point.z - opening.min_z_m,
-                   opening.max_z_m - point.z});
-}
-
-[[nodiscard]] double signedOpeningVolumeMargin(const OpeningLocalPoint& point,
-                                               const PassageOpening& opening) noexcept {
-  const double half_depth = opening.depth_m / 2.0;
-  return std::min(half_depth - std::abs(point.u),
-                  openingPassageClearance(point, opening));
 }
 
 [[nodiscard]] std::optional<OpeningMatch> clipStationSegmentToOpening(
     const ClipInterval& station_clip, const PassageOpening& opening,
     const KnownPassageValidationConfig& config, const bool ignore_altitude) {
-  const OpeningLocalPoint start = toOpeningLocalPoint(station_clip.p0, opening);
-  const OpeningLocalPoint end = toOpeningLocalPoint(station_clip.p1, opening);
+  const std::optional<KnownPassageOpeningFrame> frame =
+      knownPassageOpeningFrame(opening);
+  if (!frame.has_value()) {
+    return std::nullopt;
+  }
+  const KnownPassageOpeningLocalPoint start =
+      knownPassageOpeningLocalPoint(toOpeningWorldPoint(station_clip.p0), *frame);
+  const KnownPassageOpeningLocalPoint end =
+      knownPassageOpeningLocalPoint(toOpeningWorldPoint(station_clip.p1), *frame);
   double t0 = 0.0;
   double t1 = 1.0;
-  const double half_depth = opening.depth_m / 2.0;
-  const double half_width = opening.width_m / 2.0;
-  if (!updateLineClip(start.u, end.u - start.u, AxisRange{-half_depth, half_depth}, t0,
-                      t1) ||
-      !updateLineClip(start.v, end.v - start.v, AxisRange{-half_width, half_width}, t0,
-                      t1)) {
+  if (!updateLineClip(start.u_m, end.u_m - start.u_m,
+                      AxisRange{-frame->half_depth_m, frame->half_depth_m}, t0, t1) ||
+      !updateLineClip(start.v_m, end.v_m - start.v_m,
+                      AxisRange{-frame->half_width_m, frame->half_width_m}, t0, t1)) {
     return std::nullopt;
   }
   if (!ignore_altitude &&
-      !updateLineClip(start.z, end.z - start.z,
+      !updateLineClip(start.z_m, end.z_m - start.z_m,
                       AxisRange{opening.min_z_m, opening.max_z_m}, t0, t1)) {
     return std::nullopt;
   }
@@ -235,20 +215,21 @@ toOpeningLocalPoint(const Point3S& point, const PassageOpening& opening) noexcep
   const double overlap_m = (station_clip.s1_m - station_clip.s0_m) * (t1 - t0);
 
   const auto localAtT = [&start, &end](const double t) noexcept {
-    return OpeningLocalPoint{
-        .u = start.u + (end.u - start.u) * t,
-        .v = start.v + (end.v - start.v) * t,
-        .z = start.z + (end.z - start.z) * t,
+    return KnownPassageOpeningLocalPoint{
+        .u_m = start.u_m + (end.u_m - start.u_m) * t,
+        .v_m = start.v_m + (end.v_m - start.v_m) * t,
+        .z_m = start.z_m + (end.z_m - start.z_m) * t,
         .s_m = start.s_m + (end.s_m - start.s_m) * t,
     };
   };
-  double clearance_m = std::min(openingPassageClearance(localAtT(t0), opening),
-                                openingPassageClearance(localAtT(t1), opening));
+  double clearance_m =
+      std::min(knownPassageOpeningPassageClearanceM(localAtT(t0), opening, *frame),
+               knownPassageOpeningPassageClearanceM(localAtT(t1), opening, *frame));
   if (ignore_altitude) {
-    const OpeningLocalPoint first = localAtT(t0);
-    const OpeningLocalPoint second = localAtT(t1);
-    clearance_m =
-        std::min(half_width - std::abs(first.v), half_width - std::abs(second.v));
+    const KnownPassageOpeningLocalPoint first = localAtT(t0);
+    const KnownPassageOpeningLocalPoint second = localAtT(t1);
+    clearance_m = std::min(knownPassageOpeningLateralClearanceM(first, *frame),
+                           knownPassageOpeningLateralClearanceM(second, *frame));
   }
   if (!ignore_altitude && clearance_m + kTinyDistanceM < config.clearance_margin_m) {
     return std::nullopt;
@@ -273,6 +254,11 @@ void mergeOpeningMatch(std::optional<OpeningMatch>& best_match,
 [[nodiscard]] double
 estimateOpeningMissClearance(std::span<const TrajectoryPointSample> samples,
                              const FootprintSpan& span, const PassageOpening& opening) {
+  const std::optional<KnownPassageOpeningFrame> frame =
+      knownPassageOpeningFrame(opening);
+  if (!frame.has_value()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
   double best_clearance_m = -std::numeric_limits<double>::infinity();
   for (std::size_t i = 0U; i + 1U < samples.size(); ++i) {
     const std::optional<ClipInterval> station_clip =
@@ -280,12 +266,16 @@ estimateOpeningMissClearance(std::span<const TrajectoryPointSample> samples,
     if (!station_clip.has_value()) {
       continue;
     }
-    best_clearance_m = std::max(
-        best_clearance_m, signedOpeningVolumeMargin(
-                              toOpeningLocalPoint(station_clip->p0, opening), opening));
-    best_clearance_m = std::max(
-        best_clearance_m, signedOpeningVolumeMargin(
-                              toOpeningLocalPoint(station_clip->p1, opening), opening));
+    best_clearance_m = std::max(best_clearance_m,
+                                knownPassageOpeningSignedVolumeMarginM(
+                                    knownPassageOpeningLocalPoint(
+                                        toOpeningWorldPoint(station_clip->p0), *frame),
+                                    opening, *frame));
+    best_clearance_m = std::max(best_clearance_m,
+                                knownPassageOpeningSignedVolumeMarginM(
+                                    knownPassageOpeningLocalPoint(
+                                        toOpeningWorldPoint(station_clip->p1), *frame),
+                                    opening, *frame));
   }
   if (!std::isfinite(best_clearance_m)) {
     return std::numeric_limits<double>::quiet_NaN();
