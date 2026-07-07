@@ -5,5 +5,5 @@ frame_id map
 # Gazebo-only obstacle: it is intentionally not present in generated_city.map2d
 # so the 2D route can remain unchanged while the executable trajectory validates
 # and profiles the known 3D opening.
-structure test_mid_air_gate_01 60.0 199.0 24.0 6.0 0.0 28.0
-opening test_mid_air_gate_01 center_window 60.0 199.0 18.0 0.0 1.0 8.0 8.0 6.0 14.0 22.0 18.0 18.0
+structure test_mid_air_gate_01 60.0 199.0 24.0 6.0 0.0 32.0
+opening test_mid_air_gate_01 raised_center_window 60.0 199.0 23.0 0.0 1.0 8.0 6.0 6.0 20.0 26.0 18.0 18.0

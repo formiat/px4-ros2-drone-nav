@@ -554,22 +554,22 @@
       <static>true</static>
       <pose>-165.00 64.00 0.00 0.00 0.00 0.00</pose>
       <link name="left_pillar">
-        <pose>-8.00 0.00 14.00 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>8.00 6.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>8.00 6.00 28.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+        <pose>-8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
       </link>
       <link name="right_pillar">
-        <pose>8.00 0.00 14.00 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>8.00 6.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>8.00 6.00 28.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
+        <pose>8.00 0.00 16.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 32.00</size></box></geometry><material><diffuse>0.36 0.42 0.52 1</diffuse></material></visual>
       </link>
       <link name="lower_sill">
-        <pose>0.00 0.00 7.00 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>8.00 6.00 14.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>8.00 6.00 14.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+        <pose>0.00 0.00 10.00 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 20.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 20.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_lintel">
-        <pose>0.00 0.00 25.00 0.00 0.00 0.00</pose>
+        <pose>0.00 0.00 29.00 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>8.00 6.00 6.00</size></box></geometry></collision>
         <visual name="visual"><geometry><box><size>8.00 6.00 6.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
       </link>
