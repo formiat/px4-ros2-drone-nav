@@ -350,6 +350,48 @@ TEST(OffboardVelocityFollower, SampledTrajectoryCurvatureFeedsVelocityAnticipati
   EXPECT_GT(plan.desired_velocity_normal_mps, 0.0);
 }
 
+TEST(OffboardVelocityFollower, VerticalTrackabilityCapsSpeedDuringPassageLag) {
+  VelocityFollowerConfig config = testConfig();
+  config.tracking_prediction_horizon_s = 0.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+  config.vertical_trackability_max_vertical_speed_mps = 4.0;
+  config.vertical_trackability_altitude_tolerance_m = 0.4;
+  config.vertical_trackability_response_time_s = 0.4;
+  config.vertical_trackability_min_speed_mps = 1.0;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 9U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 10.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.z_m = 10.0;
+    if (sample.s_m >= 20.0 && sample.s_m <= 30.0) {
+      sample.vertical_profile_passage_id = "window";
+      sample.vertical_constraint_active = true;
+    }
+    samples.push_back(sample);
+  }
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{12.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_scalar_speed_command_mps = 12.0;
+  state.previous_scalar_speed_command_valid = true;
+
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(samples, profile, Point2{20.0, 0.0}, Point2{12.0, 0.0}, true,
+                           18.0, true, 0.1, state, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kTrajectorySpeedProfile);
+  EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kVerticalTrackability);
+  EXPECT_TRUE(plan.vertical_trackability_speed_cap_active);
+  EXPECT_LT(plan.vertical_trackability_speed_limit_mps, config.cruise_speed_mps);
+  EXPECT_NEAR(plan.vertical_trackability_altitude_error_m, -8.0, 1.0e-9);
+  EXPECT_NEAR(plan.vertical_trackability_constraint_distance_m, 20.0, 1.0e-9);
+}
+
 TEST(OffboardVelocityFollower, SmoothsControlTangentOnStraightishSampledTrajectory) {
   VelocityFollowerConfig config = testConfig();
   config.control_tangent_smoothing_back_m = 5.0;

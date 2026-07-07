@@ -322,6 +322,9 @@ parseSpeedConstraintTypeName(const std::string_view value) {
   if (value == speedConstraintTypeName(SpeedConstraintType::kVerticalProfile)) {
     return SpeedConstraintType::kVerticalProfile;
   }
+  if (value == speedConstraintTypeName(SpeedConstraintType::kVerticalTrackability)) {
+    return SpeedConstraintType::kVerticalTrackability;
+  }
   if (value == speedConstraintTypeName(SpeedConstraintType::kGoal)) {
     return SpeedConstraintType::kGoal;
   }
@@ -465,6 +468,8 @@ verticalProfileDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
     appendJsonNumber(stream, prefix + "exit_s_m", diagnostic.exit_s_m);
     appendJsonNumber(stream, prefix + "approach_start_s_m",
                      diagnostic.approach_start_s_m);
+    appendJsonNumber(stream, prefix + "gate_hold_start_s_m",
+                     diagnostic.gate_hold_start_s_m);
     appendJsonNumber(stream, prefix + "exit_end_s_m", diagnostic.exit_end_s_m);
     appendJsonNumber(stream, prefix + "gate_z_m", diagnostic.gate_z_m);
     appendJsonNumber(stream, prefix + "min_z_m", diagnostic.min_z_m);

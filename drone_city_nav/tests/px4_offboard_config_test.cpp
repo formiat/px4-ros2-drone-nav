@@ -84,13 +84,18 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),
             std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_max_vertical_speed_mps: 2.5"),
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_speed_mps: 3.2"),
             std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_max_vertical_accel_mps2: 2.0"),
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_accel_mps2: 3.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_max_vertical_jerk_mps3: 6.0"),
+  EXPECT_NE(yaml.find("vertical_profile_max_vertical_jerk_mps3: 9.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_max_climb_angle_deg: 12.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_climb_angle_deg: 20.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_pre_gate_hold_time_s: 1.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_pre_gate_hold_min_distance_m: 15.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_pre_gate_hold_max_distance_m: 80.0"),
+            std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_sample_step_m: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_min_anchor_margin_m: 8.0"), std::string::npos);
@@ -99,9 +104,13 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("passage_insertion_max_candidates: 8"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_max_diagnostics: 8"), std::string::npos);
   EXPECT_NE(yaml.find("altitude_feedback_kp_1ps: 0.5"), std::string::npos);
-  EXPECT_NE(yaml.find("vertical_setpoint_max_speed_mps: 2.0"), std::string::npos);
-  EXPECT_NE(yaml.find("vertical_setpoint_max_accel_mps2: 2.0"), std::string::npos);
-  EXPECT_NE(yaml.find("vertical_setpoint_max_jerk_mps3: 6.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_trackability_altitude_tolerance_m: 0.4"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_trackability_response_time_s: 0.4"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_trackability_min_speed_mps: 1.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_setpoint_max_speed_mps: 4.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_setpoint_max_accel_mps2: 3.5"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_setpoint_max_jerk_mps3: 10.0"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_target_vz_feedforward_scale: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("known_passage_markers_topic: "
                       "/drone_city_nav/known_passage_markers"),

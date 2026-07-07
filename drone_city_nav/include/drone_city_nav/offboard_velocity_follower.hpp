@@ -152,6 +152,13 @@ struct VelocitySetpointPlan {
   double limiting_curve_radius_m{std::numeric_limits<double>::quiet_NaN()};
   double limiting_constraint_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double limiting_allowed_speed_now_mps{std::numeric_limits<double>::quiet_NaN()};
+  bool vertical_trackability_speed_cap_active{false};
+  double vertical_trackability_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_constraint_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_altitude_error_m{
+      std::numeric_limits<double>::quiet_NaN()};
   double trajectory_s_m{std::numeric_limits<double>::quiet_NaN()};
   std::size_t trajectory_segment_index{0U};
   TrajectorySegmentKind trajectory_segment_kind{TrajectorySegmentKind::kLine};
@@ -175,5 +182,12 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
     const TrajectorySpeedProfile& speed_profile, Point2 current_position,
     Point2 current_velocity, bool current_velocity_valid, double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
+
+[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
+    std::span<const TrajectoryPointSample> trajectory_samples,
+    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
+    Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
+    bool altitude_valid, double dt_s, const VelocityFollowerState& previous_state,
+    const VelocityFollowerConfig& config);
 
 } // namespace drone_city_nav

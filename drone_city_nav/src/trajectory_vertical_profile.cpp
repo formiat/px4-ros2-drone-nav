@@ -32,6 +32,7 @@ struct ProfileWindow {
   double start_z_m{std::numeric_limits<double>::quiet_NaN()};
   double gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   double approach_start_s_m{0.0};
+  double gate_hold_start_s_m{0.0};
   double exit_end_s_m{0.0};
 };
 
@@ -72,6 +73,20 @@ transitionDistanceForAltitudeDelta(const double dz_m, const double requested_dis
                                     ? kSmootherstepMaxDerivative * dz_m / max_slope
                                     : max_transition_m;
   return std::max({min_transition_m, slope_distance, requested_distance_m});
+}
+
+[[nodiscard]] double preGateHoldDistanceM(const VerticalProfileConfig& config) {
+  const double nominal_speed =
+      sanitizedPositive(config.nominal_horizontal_speed_mps, 12.0, 0.0, 100.0);
+  const double hold_time =
+      sanitizedPositive(config.pre_gate_hold_time_s, 1.0, 0.0, 60.0);
+  const double min_distance =
+      sanitizedPositive(config.pre_gate_hold_min_distance_m, 15.0, 0.0, 1000.0);
+  const double max_distance =
+      std::max(min_distance, sanitizedPositive(config.pre_gate_hold_max_distance_m,
+                                               80.0, 0.0, 5000.0));
+  return std::clamp(std::max(min_distance, nominal_speed * hold_time), min_distance,
+                    max_distance);
 }
 
 void resetVerticalMetadata(std::span<TrajectoryPointSample> samples,
@@ -118,11 +133,11 @@ void computeVerticalDerivatives(std::span<TrajectoryPointSample> samples,
                                 const VerticalProfileConfig& config,
                                 VerticalProfileStats& stats) {
   const double max_vz =
-      sanitizedPositive(config.max_vertical_speed_mps, 2.5, 1.0e-6, 100.0);
+      sanitizedPositive(config.max_vertical_speed_mps, 3.2, 1.0e-6, 100.0);
   const double max_accel =
-      sanitizedPositive(config.max_vertical_accel_mps2, 2.0, 1.0e-6, 100.0);
+      sanitizedPositive(config.max_vertical_accel_mps2, 3.0, 1.0e-6, 100.0);
   const double max_jerk =
-      sanitizedPositive(config.max_vertical_jerk_mps3, 6.0, 1.0e-6, 1000.0);
+      sanitizedPositive(config.max_vertical_jerk_mps3, 9.0, 1.0e-6, 1000.0);
   std::vector<double> slopes(samples.size(), 0.0);
   for (std::size_t i = 0U; i < samples.size(); ++i) {
     std::size_t prev = i == 0U ? i : i - 1U;
@@ -208,6 +223,7 @@ diagnosticFromWindow(const ProfileWindow& window, const char* const reason,
       .entry_s_m = window.match.entry_s_m,
       .exit_s_m = window.match.exit_s_m,
       .approach_start_s_m = window.approach_start_s_m,
+      .gate_hold_start_s_m = window.gate_hold_start_s_m,
       .exit_end_s_m = window.exit_end_s_m,
       .gate_z_m = window.gate_z_m,
       .min_z_m = window.match.opening.min_z_m,
@@ -288,6 +304,7 @@ VerticalProfileResult applyVerticalProfile(
   const double max_transition =
       std::max(min_transition,
                sanitizedPositive(config.max_transition_distance_m, 80.0, 0.0, 10000.0));
+  const double pre_gate_hold_distance = preGateHoldDistanceM(config);
 
   std::vector<KnownPassageTraversalMatch> valid_matches;
   valid_matches.reserve(matches.size());
@@ -330,10 +347,12 @@ VerticalProfileResult applyVerticalProfile(
     const bool transition_required = transition_distance_required > kTinyDistanceM;
     const double transition_distance =
         std::min(transition_distance_required, max_transition);
+    const double gate_hold_start_s =
+        std::clamp(match.entry_s_m - pre_gate_hold_distance, first_s, total_s);
     const double approach_start_s =
-        std::clamp(match.entry_s_m - transition_distance, first_s, total_s);
+        std::clamp(gate_hold_start_s - transition_distance, first_s, gate_hold_start_s);
     const double available_transition_distance =
-        match.entry_s_m - std::max(first_s, transition_available_after_s_m);
+        gate_hold_start_s - std::max(first_s, transition_available_after_s_m);
     if (transition_distance_required > max_transition + kTinyDistanceM ||
         !(match.exit_s_m >= match.entry_s_m) ||
         (transition_required &&
@@ -348,6 +367,7 @@ VerticalProfileResult applyVerticalProfile(
                            .entry_s_m = match.entry_s_m,
                            .exit_s_m = match.exit_s_m,
                            .approach_start_s_m = approach_start_s,
+                           .gate_hold_start_s_m = gate_hold_start_s,
                            .exit_end_s_m = match.exit_s_m,
                            .gate_z_m = gate_z,
                            .reason = "insufficient_transition_distance",
@@ -361,6 +381,7 @@ VerticalProfileResult applyVerticalProfile(
         .start_z_m = start_z,
         .gate_z_m = gate_z,
         .approach_start_s_m = approach_start_s,
+        .gate_hold_start_s_m = gate_hold_start_s,
         .exit_end_s_m = match.exit_s_m,
     });
     carried_altitude_m = gate_z;
@@ -408,9 +429,10 @@ VerticalProfileResult applyVerticalProfile(
       sample.z_m = sample_altitude_m;
       continue;
     }
-    if (sample.s_m <= match.entry_s_m) {
-      sample.z_m = interpolateProfile(window.approach_start_s_m, match.entry_s_m,
-                                      window.start_z_m, window.gate_z_m, sample.s_m);
+    if (sample.s_m <= window.gate_hold_start_s_m) {
+      sample.z_m =
+          interpolateProfile(window.approach_start_s_m, window.gate_hold_start_s_m,
+                             window.start_z_m, window.gate_z_m, sample.s_m);
       sample.vertical_profile_passage_id = match.opening_id;
     } else if (sample.s_m <= match.exit_s_m) {
       sample.z_m = window.gate_z_m;

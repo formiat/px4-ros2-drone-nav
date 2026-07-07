@@ -87,18 +87,24 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.vertical_profile.gate_clearance_margin_m = std::clamp(
       node.declare_parameter<double>("vertical_profile_gate_clearance_margin_m", 0.5),
       0.0, 100.0);
-  config.trajectory_planner.vertical_profile.max_vertical_speed_mps = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 2.5),
+  const double runtime_vertical_setpoint_max_speed_mps =
+      std::clamp(node.declare_parameter<double>("vertical_setpoint_max_speed_mps", 4.0),
+                 0.0, 20.0);
+  const double requested_vertical_profile_max_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 3.2),
       0.0, 100.0);
+  config.trajectory_planner.vertical_profile.max_vertical_speed_mps =
+      std::min(requested_vertical_profile_max_speed_mps,
+               runtime_vertical_setpoint_max_speed_mps);
   config.trajectory_planner.vertical_profile.max_vertical_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 2.0),
+      node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 3.0),
       0.0, 100.0);
   config.trajectory_planner.vertical_profile.max_vertical_jerk_mps3 = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_jerk_mps3", 6.0),
+      node.declare_parameter<double>("vertical_profile_max_vertical_jerk_mps3", 9.0),
       0.0, 1000.0);
   config.trajectory_planner.vertical_profile.max_climb_angle_rad =
       std::clamp(
-          node.declare_parameter<double>("vertical_profile_max_climb_angle_deg", 12.0),
+          node.declare_parameter<double>("vertical_profile_max_climb_angle_deg", 20.0),
           0.0, 89.0) *
       std::numbers::pi / 180.0;
   config.trajectory_planner.vertical_profile.min_transition_distance_m = std::clamp(
@@ -109,6 +115,20 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                std::clamp(node.declare_parameter<double>(
                               "vertical_profile_max_transition_distance_m", 80.0),
                           0.0, 10000.0));
+  config.trajectory_planner.vertical_profile.pre_gate_hold_time_s = std::clamp(
+      node.declare_parameter<double>("vertical_profile_pre_gate_hold_time_s", 1.0), 0.0,
+      60.0);
+  config.trajectory_planner.vertical_profile.pre_gate_hold_min_distance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "vertical_profile_pre_gate_hold_min_distance_m", 15.0),
+                 0.0, 1000.0);
+  const double requested_pre_gate_hold_max_distance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "vertical_profile_pre_gate_hold_max_distance_m", 80.0),
+                 0.0, 5000.0);
+  config.trajectory_planner.vertical_profile.pre_gate_hold_max_distance_m =
+      std::max(requested_pre_gate_hold_max_distance_m,
+               config.trajectory_planner.vertical_profile.pre_gate_hold_min_distance_m);
   config.trajectory_planner.vertical_profile.max_diagnostics =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("vertical_profile_max_diagnostics", 8),
@@ -243,6 +263,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.trajectory_planner.speed_profile.cruise_speed_mps =
       std::clamp(node.declare_parameter<double>("cruise_speed_mps", 12.0), 0.0, 100.0);
+  config.trajectory_planner.vertical_profile.nominal_horizontal_speed_mps =
+      config.trajectory_planner.speed_profile.cruise_speed_mps;
   config.trajectory_planner.speed_profile.min_turn_speed_mps =
       std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
                  config.trajectory_planner.speed_profile.cruise_speed_mps);

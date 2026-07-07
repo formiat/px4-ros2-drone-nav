@@ -147,7 +147,7 @@ TEST(TrajectoryVerticalProfile, EnabledWithoutMapKeepsInitialAltitude) {
 
 TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfile) {
   KnownPassageMap map = makeMap();
-  std::vector<TrajectoryPointSample> samples = makeSamples(18.0);
+  std::vector<TrajectoryPointSample> samples = makeSamplesRange(-50.0, 20.0, 2.0, 18.0);
 
   VerticalProfileConfig config{};
   config.max_climb_angle_rad = 80.0 * std::numbers::pi / 180.0;
@@ -158,6 +158,9 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfil
   EXPECT_TRUE(result.stats.active);
   EXPECT_EQ(result.stats.passages_matched, 1U);
   EXPECT_EQ(result.stats.passages_profiled, 1U);
+  ASSERT_EQ(result.stats.diagnostics.size(), 1U);
+  EXPECT_LT(result.stats.diagnostics.front().gate_hold_start_s_m,
+            result.stats.diagnostics.front().entry_s_m);
   EXPECT_NEAR(result.stats.min_z_m, 10.0, 1.0e-9);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
   EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);

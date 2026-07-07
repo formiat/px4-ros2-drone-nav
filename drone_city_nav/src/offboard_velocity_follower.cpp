@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace drone_city_nav {
@@ -153,6 +155,112 @@ previousCommandSpeedMps(const VelocityFollowerState& previous_state,
   return current_speed_mps;
 }
 
+struct VerticalTrackabilitySpeedCap {
+  bool active{false};
+  double speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double constraint_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double altitude_error_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+[[nodiscard]] std::size_t
+firstSampleIndexAtOrAfterS(const std::span<const TrajectoryPointSample> samples,
+                           const double s_m) noexcept {
+  if (samples.empty()) {
+    return 0U;
+  }
+  const double clamped_s =
+      std::clamp(std::isfinite(s_m) ? s_m : 0.0, 0.0, samples.back().s_m);
+  const auto it =
+      std::lower_bound(samples.begin(), samples.end(), clamped_s,
+                       [](const TrajectoryPointSample& sample, const double station_m) {
+                         return sample.s_m < station_m;
+                       });
+  if (it == samples.end()) {
+    return samples.size() - 1U;
+  }
+  return static_cast<std::size_t>(std::distance(samples.begin(), it));
+}
+
+[[nodiscard]] double
+verticalProfileWindowEndS(const std::span<const TrajectoryPointSample> samples,
+                          const std::size_t start_index,
+                          const std::string& passage_id) noexcept {
+  if (samples.empty() || passage_id.empty()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  for (std::size_t i = start_index; i < samples.size(); ++i) {
+    if (!samples[i].vertical_profile_passage_id.empty() &&
+        samples[i].vertical_profile_passage_id != passage_id) {
+      return samples[i].s_m;
+    }
+    if (samples[i].vertical_profile_passage_id.empty() && i > start_index) {
+      return samples[i].s_m;
+    }
+  }
+  return samples.back().s_m;
+}
+
+[[nodiscard]] VerticalTrackabilitySpeedCap computeVerticalTrackabilitySpeedCap(
+    const std::span<const TrajectoryPointSample> trajectory_samples,
+    const double trajectory_s_m, const double current_altitude_m,
+    const bool altitude_valid, const VelocityFollowerConfig& config) {
+  VerticalTrackabilitySpeedCap cap{};
+  if (!altitude_valid || !std::isfinite(current_altitude_m) ||
+      !trajectorySamplesAreUsable(trajectory_samples)) {
+    return cap;
+  }
+
+  const TrajectoryVerticalTarget target =
+      trajectoryVerticalTargetAtS(trajectory_samples, trajectory_s_m);
+  if (!target.valid || !std::isfinite(target.z_m) ||
+      target.vertical_profile_passage_id.empty()) {
+    return cap;
+  }
+
+  const double altitude_error = target.z_m - current_altitude_m;
+  const double tolerance = sanitizedPositive(
+      config.vertical_trackability_altitude_tolerance_m, 0.4, 0.0, 100.0);
+  const double required_error = std::abs(altitude_error) - tolerance;
+  if (!(required_error > 0.0)) {
+    return cap;
+  }
+
+  const std::size_t start_index =
+      firstSampleIndexAtOrAfterS(trajectory_samples, target.s_m);
+  const double window_end_s = verticalProfileWindowEndS(
+      trajectory_samples, start_index, target.vertical_profile_passage_id);
+  if (!std::isfinite(window_end_s)) {
+    return cap;
+  }
+
+  const double remaining_distance_m = std::max(0.0, window_end_s - target.s_m);
+  const double vertical_speed_mps = sanitizedPositive(
+      config.vertical_trackability_max_vertical_speed_mps,
+      std::max(1.0, config.vertical_profile_max_vertical_speed_mps), 1.0e-6, 100.0);
+  const double response_time_s =
+      sanitizedPositive(config.vertical_trackability_response_time_s, 0.4, 0.0, 10.0);
+  const double time_needed_s = required_error / vertical_speed_mps + response_time_s;
+  if (!(time_needed_s > 1.0e-6)) {
+    return cap;
+  }
+
+  const double cruise_speed_mps = sanitizedCruiseSpeed(config);
+  const double min_speed_mps = std::min(
+      cruise_speed_mps,
+      sanitizedPositive(config.vertical_trackability_min_speed_mps, 1.0, 0.0, 100.0));
+  const double speed_limit_mps =
+      std::clamp(remaining_distance_m / time_needed_s, min_speed_mps, cruise_speed_mps);
+  if (speed_limit_mps + 1.0e-9 >= cruise_speed_mps) {
+    return cap;
+  }
+
+  cap.active = true;
+  cap.speed_limit_mps = speed_limit_mps;
+  cap.constraint_distance_m = remaining_distance_m;
+  cap.altitude_error_m = altitude_error;
+  return cap;
+}
+
 } // namespace
 
 const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noexcept {
@@ -209,13 +317,15 @@ void populateVelocityBasisErrors(VelocitySetpointPlan& plan) {
 }
 
 VelocitySetpointPlan planVelocitySetpointFromProjection(
+    const std::span<const TrajectoryPointSample> trajectory_samples,
     const TrajectoryProjection& control_projection,
     const TrajectoryProjection& current_projection, const Point2 predicted_position,
     const double prediction_horizon_s, const Point2 final_point,
     const Point2 final_tangent, const double trajectory_length_m,
     const TrajectorySegmentKind segment_kind,
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
-    const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
+    const Point2 current_velocity, const bool current_velocity_valid,
+    const double current_altitude_m, const bool altitude_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
     const ControlProjectionSmoothingDiagnostics& projection_smoothing) {
   VelocitySetpointPlan plan{};
@@ -461,13 +571,24 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     return plan;
   }
 
+  const VerticalTrackabilitySpeedCap vertical_trackability =
+      computeVerticalTrackabilitySpeedCap(trajectory_samples, control_projection.s_m,
+                                          current_altitude_m, altitude_valid, config);
   const ScalarSpeedPlan scalar_speed = planScalarSpeed(
       speed_profile,
       ScalarSpeedQuery{.trajectory_s_m = control_projection.s_m,
                        .previous_command_speed_mps =
                            previousCommandSpeedMps(previous_state, current_speed),
                        .current_speed_mps = current_speed,
-                       .dt_s = dt},
+                       .dt_s = dt,
+                       .vertical_trackability_speed_cap_active =
+                           vertical_trackability.active,
+                       .vertical_trackability_speed_limit_mps =
+                           vertical_trackability.speed_limit_mps,
+                       .vertical_trackability_constraint_distance_m =
+                           vertical_trackability.constraint_distance_m,
+                       .vertical_trackability_altitude_error_m =
+                           vertical_trackability.altitude_error_m},
       config);
   if (!scalar_speed.valid) {
     return plan;
@@ -507,7 +628,9 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   const double cruise_speed = sanitizedCruiseSpeed(config);
   plan.valid = true;
   plan.reason = VelocitySetpointReason::kStraight;
-  if (scalar_speed.constraint_type == SpeedConstraintType::kArc &&
+  if ((scalar_speed.constraint_type == SpeedConstraintType::kArc ||
+       scalar_speed.constraint_type == SpeedConstraintType::kVerticalProfile ||
+       scalar_speed.constraint_type == SpeedConstraintType::kVerticalTrackability) &&
       scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kTrajectorySpeedProfile;
   } else if (scalar_speed.constraint_type == SpeedConstraintType::kGoal &&
@@ -622,6 +745,14 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
   plan.limiting_constraint_speed_mps = scalar_speed.limiting_constraint_speed_mps;
   plan.limiting_allowed_speed_now_mps = scalar_speed.limiting_allowed_speed_now_mps;
   plan.limiting_curve_radius_m = scalar_speed.limiting_curve_radius_m;
+  plan.vertical_trackability_speed_cap_active =
+      scalar_speed.vertical_trackability_speed_cap_active;
+  plan.vertical_trackability_speed_limit_mps =
+      scalar_speed.vertical_trackability_speed_limit_mps;
+  plan.vertical_trackability_constraint_distance_m =
+      scalar_speed.vertical_trackability_constraint_distance_m;
+  plan.vertical_trackability_altitude_error_m =
+      scalar_speed.vertical_trackability_altitude_error_m;
   plan.trajectory_s_m = control_projection.s_m;
   plan.trajectory_segment_index = control_projection.segment_index;
   plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
@@ -675,10 +806,12 @@ VelocitySetpointPlan planVelocitySetpoint(
   projection_smoothing.raw_tangent = control_projection->tangent;
   const double trajectory_length_m = trajectoryLengthM(trajectory);
   const Point2 final_tangent = trajectoryTangentAtS(trajectory, trajectory_length_m);
+  const std::span<const TrajectoryPointSample> trajectory_samples{};
   return planVelocitySetpointFromProjection(
-      *control_projection, *current_projection, predicted_position, prediction_horizon,
-      trajectory.back().end, final_tangent, trajectory_length_m, segment.kind,
-      speed_profile, current_position, current_velocity, current_velocity_valid, dt_s,
+      trajectory_samples, *control_projection, *current_projection, predicted_position,
+      prediction_horizon, trajectory.back().end, final_tangent, trajectory_length_m,
+      segment.kind, speed_profile, current_position, current_velocity,
+      current_velocity_valid, std::numeric_limits<double>::quiet_NaN(), false, dt_s,
       previous_state, config, projection_smoothing);
 }
 
@@ -686,6 +819,18 @@ VelocitySetpointPlan planVelocitySetpoint(
     const std::span<const TrajectoryPointSample> trajectory_samples,
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
+    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
+  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
+                              current_velocity, current_velocity_valid,
+                              std::numeric_limits<double>::quiet_NaN(), false, dt_s,
+                              previous_state, config);
+}
+
+VelocitySetpointPlan planVelocitySetpoint(
+    const std::span<const TrajectoryPointSample> trajectory_samples,
+    const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
+    const Point2 current_velocity, const bool current_velocity_valid,
+    const double current_altitude_m, const bool altitude_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
   if (!trajectorySamplesAreUsable(trajectory_samples)) {
     return VelocitySetpointPlan{};
@@ -716,11 +861,11 @@ VelocitySetpointPlan planVelocitySetpoint(
                    trajectory_samples[trajectory_samples.size() - 2U].point);
   }
   return planVelocitySetpointFromProjection(
-      smoothed_projection.projection, *current_projection, predicted_position,
-      prediction_horizon, trajectory_samples.back().point, final_tangent,
-      trajectory_samples.back().s_m, segment_kind, speed_profile, current_position,
-      current_velocity, current_velocity_valid, dt_s, previous_state, config,
-      smoothed_projection.diagnostics);
+      trajectory_samples, smoothed_projection.projection, *current_projection,
+      predicted_position, prediction_horizon, trajectory_samples.back().point,
+      final_tangent, trajectory_samples.back().s_m, segment_kind, speed_profile,
+      current_position, current_velocity, current_velocity_valid, current_altitude_m,
+      altitude_valid, dt_s, previous_state, config, smoothed_projection.diagnostics);
 }
 
 } // namespace drone_city_nav

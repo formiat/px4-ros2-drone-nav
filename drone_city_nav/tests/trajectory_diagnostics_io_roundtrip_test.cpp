@@ -72,6 +72,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(vertical0.entry_s_m, 42.5);
   EXPECT_DOUBLE_EQ(vertical0.exit_s_m, 48.75);
   EXPECT_DOUBLE_EQ(vertical0.approach_start_s_m, 30.0);
+  EXPECT_DOUBLE_EQ(vertical0.gate_hold_start_s_m, 38.0);
   EXPECT_DOUBLE_EQ(vertical0.exit_end_s_m, 62.0);
   EXPECT_DOUBLE_EQ(vertical0.gate_z_m, 10.5);
   EXPECT_EQ(vertical0.reason, "profiled");

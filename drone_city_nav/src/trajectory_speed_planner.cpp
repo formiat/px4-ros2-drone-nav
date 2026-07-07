@@ -380,6 +380,8 @@ speedConstraintTypeName(const SpeedConstraintType constraint_type) noexcept {
       return "arc";
     case SpeedConstraintType::kVerticalProfile:
       return "vertical_profile";
+    case SpeedConstraintType::kVerticalTrackability:
+      return "vertical_trackability";
     case SpeedConstraintType::kGoal:
       return "goal";
   }
@@ -393,11 +395,11 @@ void populateTrajectoryVerticalSpeedConstraints(
     return;
   }
   const double max_vz = sanitizedPositive(
-      config.vertical_profile_max_vertical_speed_mps, 2.5, 1.0e-6, 100.0);
+      config.vertical_profile_max_vertical_speed_mps, 3.2, 1.0e-6, 100.0);
   const double max_accel = sanitizedPositive(
-      config.vertical_profile_max_vertical_accel_mps2, 2.0, 1.0e-6, 100.0);
+      config.vertical_profile_max_vertical_accel_mps2, 3.0, 1.0e-6, 100.0);
   const double max_jerk = sanitizedPositive(
-      config.vertical_profile_max_vertical_jerk_mps3, 6.0, 1.0e-6, 1000.0);
+      config.vertical_profile_max_vertical_jerk_mps3, 9.0, 1.0e-6, 1000.0);
 
   std::vector<double> slopes(samples.size(), 0.0);
   for (std::size_t i = 0U; i < samples.size(); ++i) {
@@ -672,6 +674,30 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
     plan.limiting_allowed_speed_now_mps = lookahead_sample.profiled_limit_mps;
     plan.limiting_curve_radius_m = lookahead_sample.radius_m;
     plan.limiting_curvature_1pm = lookahead_sample.curvature_1pm;
+  }
+  plan.vertical_trackability_speed_cap_active =
+      query.vertical_trackability_speed_cap_active &&
+      std::isfinite(query.vertical_trackability_speed_limit_mps);
+  plan.vertical_trackability_speed_limit_mps =
+      query.vertical_trackability_speed_limit_mps;
+  plan.vertical_trackability_constraint_distance_m =
+      query.vertical_trackability_constraint_distance_m;
+  plan.vertical_trackability_altitude_error_m =
+      query.vertical_trackability_altitude_error_m;
+  if (plan.vertical_trackability_speed_cap_active) {
+    const double trackability_limit =
+        std::clamp(query.vertical_trackability_speed_limit_mps, 0.0, cruise_speed);
+    if (trackability_limit + 1.0e-9 < plan.speed_after_lookahead_mps) {
+      plan.speed_after_lookahead_mps = trackability_limit;
+      plan.constraint_type = SpeedConstraintType::kVerticalTrackability;
+      plan.constraint_index = 0U;
+      plan.limiting_constraint_distance_m =
+          query.vertical_trackability_constraint_distance_m;
+      plan.limiting_constraint_speed_mps = trackability_limit;
+      plan.limiting_allowed_speed_now_mps = trackability_limit;
+      plan.limiting_curve_radius_m = std::numeric_limits<double>::quiet_NaN();
+      plan.limiting_curvature_1pm = 0.0;
+    }
   }
   const double previous_speed =
       sanitizedNonNegative(query.previous_command_speed_mps, current_speed);

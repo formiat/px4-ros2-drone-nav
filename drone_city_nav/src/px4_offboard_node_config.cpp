@@ -115,10 +115,18 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.terminal_stuck_speed_mps = boundedFiniteDouble(
       config.velocity_follower.terminal_stuck_speed_mps, 0.5, 0.0, 100.0);
   config.velocity_follower.final_acceptance_radius_m = config.acceptance_radius_m;
+  config.velocity_follower.vertical_trackability_altitude_tolerance_m =
+      boundedFiniteDouble(
+          config.velocity_follower.vertical_trackability_altitude_tolerance_m, 0.4, 0.0,
+          100.0);
+  config.velocity_follower.vertical_trackability_response_time_s = boundedFiniteDouble(
+      config.velocity_follower.vertical_trackability_response_time_s, 0.4, 0.0, 10.0);
+  config.velocity_follower.vertical_trackability_min_speed_mps = boundedFiniteDouble(
+      config.velocity_follower.vertical_trackability_min_speed_mps, 1.0, 0.0, 100.0);
   config.altitude_hold_kp =
       boundedFiniteDouble(config.altitude_hold_kp, 0.5, 0.0, 10.0);
   config.max_vertical_speed_mps =
-      boundedFiniteDouble(config.max_vertical_speed_mps, 2.0, 0.0, 20.0);
+      boundedFiniteDouble(config.max_vertical_speed_mps, 4.0, 0.0, 20.0);
   const VerticalFollowerConfig default_vertical_follower{};
   if (config.vertical_follower.altitude_feedback_kp_1ps ==
       default_vertical_follower.altitude_feedback_kp_1ps) {
@@ -131,6 +139,11 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.vertical_follower = sanitizeVerticalFollowerConfig(config.vertical_follower);
   config.altitude_hold_kp = config.vertical_follower.altitude_feedback_kp_1ps;
   config.max_vertical_speed_mps = config.vertical_follower.max_vertical_speed_mps;
+  config.velocity_follower.vertical_profile_max_vertical_speed_mps =
+      std::min(config.velocity_follower.vertical_profile_max_vertical_speed_mps,
+               config.vertical_follower.max_vertical_speed_mps);
+  config.velocity_follower.vertical_trackability_max_vertical_speed_mps =
+      config.vertical_follower.max_vertical_speed_mps;
 }
 
 [[nodiscard]] Px4OffboardNodeConfig loadPx4OffboardNodeConfig(rclcpp::Node& node) {
@@ -181,18 +194,27 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       std::max(requested_speed_profile_lookahead_max_m,
                config.velocity_follower.speed_profile_lookahead_min_m);
   config.velocity_follower.vertical_profile_max_vertical_speed_mps = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 2.5),
+      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 3.2),
       0.0, 100.0);
   config.velocity_follower.vertical_profile_max_vertical_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 2.0),
+      node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 3.0),
       0.0, 100.0);
   config.velocity_follower.vertical_profile_max_vertical_jerk_mps3 = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_jerk_mps3", 6.0),
+      node.declare_parameter<double>("vertical_profile_max_vertical_jerk_mps3", 9.0),
       0.0, 1000.0);
   config.velocity_follower.vertical_profile_max_climb_angle_rad =
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
-                     "vertical_profile_max_climb_angle_deg", 12.0)),
+                     "vertical_profile_max_climb_angle_deg", 20.0)),
                  0.0, std::numbers::pi / 2.0);
+  config.velocity_follower.vertical_trackability_altitude_tolerance_m = std::clamp(
+      node.declare_parameter<double>("vertical_trackability_altitude_tolerance_m", 0.4),
+      0.0, 100.0);
+  config.velocity_follower.vertical_trackability_response_time_s = std::clamp(
+      node.declare_parameter<double>("vertical_trackability_response_time_s", 0.4), 0.0,
+      10.0);
+  config.velocity_follower.vertical_trackability_min_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_trackability_min_speed_mps", 1.0), 0.0,
+      100.0);
   config.velocity_follower.cross_track_gain =
       std::clamp(node.declare_parameter<double>("cross_track_gain", 0.5), 0.0, 10.0);
   config.velocity_follower.cross_track_derivative_gain = std::clamp(
@@ -316,7 +338,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.altitude_hold_kp =
       std::clamp(node.declare_parameter<double>("altitude_hold_kp", 0.5), 0.0, 10.0);
   config.max_vertical_speed_mps = std::clamp(
-      node.declare_parameter<double>("max_vertical_speed_mps", 2.0), 0.0, 20.0);
+      node.declare_parameter<double>("max_vertical_speed_mps", 4.0), 0.0, 20.0);
   config.vertical_follower.altitude_feedback_kp_1ps =
       std::clamp(node.declare_parameter<double>("altitude_feedback_kp_1ps",
                                                 config.altitude_hold_kp),
@@ -326,16 +348,21 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                                                 config.max_vertical_speed_mps),
                  0.0, 20.0);
   config.vertical_follower.max_vertical_accel_mps2 = std::clamp(
-      node.declare_parameter<double>("vertical_setpoint_max_accel_mps2", 2.0), 0.0,
+      node.declare_parameter<double>("vertical_setpoint_max_accel_mps2", 3.5), 0.0,
       100.0);
-  config.vertical_follower.max_vertical_jerk_mps3 =
-      std::clamp(node.declare_parameter<double>("vertical_setpoint_max_jerk_mps3", 6.0),
-                 0.0, 1000.0);
+  config.vertical_follower.max_vertical_jerk_mps3 = std::clamp(
+      node.declare_parameter<double>("vertical_setpoint_max_jerk_mps3", 10.0), 0.0,
+      1000.0);
   config.vertical_follower.target_vz_feedforward_scale = std::clamp(
       node.declare_parameter<double>("vertical_target_vz_feedforward_scale", 1.0), 0.0,
       10.0);
   config.altitude_hold_kp = config.vertical_follower.altitude_feedback_kp_1ps;
   config.max_vertical_speed_mps = config.vertical_follower.max_vertical_speed_mps;
+  config.velocity_follower.vertical_profile_max_vertical_speed_mps =
+      std::min(config.velocity_follower.vertical_profile_max_vertical_speed_mps,
+               config.vertical_follower.max_vertical_speed_mps);
+  config.velocity_follower.vertical_trackability_max_vertical_speed_mps =
+      config.vertical_follower.max_vertical_speed_mps;
   config.telemetry_log_period_ns = secondsToNanoseconds(std::clamp(
       node.declare_parameter<double>("telemetry_log_period_s", 0.5), 0.1, 60.0));
   config.flight_blackbox_enabled = node.declare_parameter<bool>(

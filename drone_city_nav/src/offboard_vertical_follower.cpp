@@ -52,11 +52,11 @@ sanitizeVerticalFollowerConfig(VerticalFollowerConfig config) noexcept {
   config.altitude_feedback_kp_1ps =
       boundedFiniteDouble(config.altitude_feedback_kp_1ps, 0.5, 0.0, 10.0);
   config.max_vertical_speed_mps =
-      boundedFiniteDouble(config.max_vertical_speed_mps, 2.0, 0.0, 100.0);
+      boundedFiniteDouble(config.max_vertical_speed_mps, 4.0, 0.0, 100.0);
   config.max_vertical_accel_mps2 =
-      boundedFiniteDouble(config.max_vertical_accel_mps2, 2.0, 0.0, 100.0);
+      boundedFiniteDouble(config.max_vertical_accel_mps2, 3.5, 0.0, 100.0);
   config.max_vertical_jerk_mps3 =
-      boundedFiniteDouble(config.max_vertical_jerk_mps3, 6.0, 0.0, 1000.0);
+      boundedFiniteDouble(config.max_vertical_jerk_mps3, 10.0, 0.0, 1000.0);
   config.target_vz_feedforward_scale =
       boundedFiniteDouble(config.target_vz_feedforward_scale, 1.0, 0.0, 10.0);
   return config;

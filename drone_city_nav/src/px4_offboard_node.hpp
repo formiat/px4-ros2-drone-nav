@@ -323,7 +323,7 @@ private:
   double acceptance_radius_m_{1.5};
   double diagnostic_turn_preview_distance_m_{32.0};
   double altitude_hold_kp_{0.5};
-  double max_vertical_speed_mps_{2.0};
+  double max_vertical_speed_mps_{4.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};

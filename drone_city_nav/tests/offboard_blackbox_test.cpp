@@ -72,6 +72,10 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.velocity_plan.final_command_speed_mps = 11.0;
   record.velocity_plan.profile_speed_limit_mps = 13.0;
   record.velocity_plan.limiting_constraint_type = SpeedConstraintType::kArc;
+  record.velocity_plan.vertical_trackability_speed_cap_active = true;
+  record.velocity_plan.vertical_trackability_speed_limit_mps = 6.5;
+  record.velocity_plan.vertical_trackability_constraint_distance_m = 9.25;
+  record.velocity_plan.vertical_trackability_altitude_error_m = -1.5;
   record.velocity_plan.trajectory_segment_kind = TrajectorySegmentKind::kArc;
   record.velocity_plan.trajectory_curvature_1pm = 0.1;
   record.velocity_plan.trajectory_arc_radius_m = 10.0;
@@ -409,6 +413,10 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"path_frame_lateral_smoothing_applied\":true");
   expectJsonField(json, "\"smoother_lateral_response_accel_mps2\":3.125");
   expectJsonField(json, "\"speed_limit_reason\":\"trajectory_profile\"");
+  expectJsonField(json, "\"vertical_trackability_speed_cap_active\":true");
+  expectJsonField(json, "\"vertical_trackability_speed_limit_mps\":6.5");
+  expectJsonField(json, "\"vertical_trackability_constraint_distance_m\":9.25");
+  expectJsonField(json, "\"vertical_trackability_altitude_error_m\":-1.5");
   expectJsonField(json, "\"terminal_capture_active\":true");
   expectJsonField(json, "\"terminal_goal_distance_m\":3.5");
   expectJsonField(json, "\"terminal_signed_along_track_distance_m\":3.25");

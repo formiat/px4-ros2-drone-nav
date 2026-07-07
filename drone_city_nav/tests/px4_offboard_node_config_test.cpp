@@ -88,6 +88,12 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
       std::numeric_limits<double>::quiet_NaN();
   config.velocity_follower.terminal_stuck_speed_mps =
       std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.vertical_trackability_altitude_tolerance_m =
+      std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.vertical_trackability_response_time_s =
+      std::numeric_limits<double>::quiet_NaN();
+  config.velocity_follower.vertical_trackability_min_speed_mps =
+      std::numeric_limits<double>::quiet_NaN();
   config.altitude_hold_kp = 0.8;
   config.max_vertical_speed_mps = 3.0;
   config.vertical_follower.max_vertical_accel_mps2 =
@@ -124,13 +130,19 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(
       config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 3.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_stuck_speed_mps, 0.5);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_altitude_tolerance_m,
+                   0.4);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_response_time_s, 0.4);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_min_speed_mps, 1.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.final_acceptance_radius_m, 1.5);
   EXPECT_DOUBLE_EQ(config.altitude_hold_kp, 0.8);
   EXPECT_DOUBLE_EQ(config.max_vertical_speed_mps, 3.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.altitude_feedback_kp_1ps, 0.8);
   EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_speed_mps, 3.0);
-  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_accel_mps2, 2.0);
-  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_jerk_mps3, 6.0);
+  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_accel_mps2, 3.5);
+  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_jerk_mps3, 10.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.vertical_trackability_max_vertical_speed_mps, 3.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.target_vz_feedforward_scale, 1.0);
 }
 
@@ -144,13 +156,19 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 2.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_vertical_speed_mps,
-                   2.5);
+                   3.2);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_vertical_accel_mps2,
-                   2.0);
+                   3.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_vertical_jerk_mps3,
-                   6.0);
+                   9.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_climb_angle_rad,
-                   12.0 * std::numbers::pi / 180.0);
+                   20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_altitude_tolerance_m,
+                   0.4);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_response_time_s, 0.4);
+  EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_min_speed_mps, 1.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.vertical_trackability_max_vertical_speed_mps, 4.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_derivative_gain, 0.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_start_m, 0.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cross_track_p_gain_schedule_full_m, 2.5);
@@ -196,9 +214,9 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
       config.velocity_follower.terminal_position_capture_max_entry_speed_mps, 3.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.terminal_stuck_speed_mps, 0.5);
   EXPECT_DOUBLE_EQ(config.vertical_follower.altitude_feedback_kp_1ps, 0.5);
-  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_speed_mps, 2.0);
-  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_accel_mps2, 2.0);
-  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_jerk_mps3, 6.0);
+  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_speed_mps, 4.0);
+  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_accel_mps2, 3.5);
+  EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_jerk_mps3, 10.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.target_vz_feedforward_scale, 1.0);
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
@@ -345,6 +363,8 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_speed_mps, 20.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_accel_mps2, 0.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.max_vertical_jerk_mps3, 1000.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.vertical_trackability_max_vertical_speed_mps, 20.0);
   EXPECT_DOUBLE_EQ(config.vertical_follower.target_vz_feedforward_scale, 10.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);

@@ -114,6 +114,7 @@ void Px4OffboardNode::logTelemetry() {
       "final_command_speed=%.2f accel_limited_speed=%.2f "
       "limiting_constraint[type=%s index=%zu distance=%.2f speed=%.2f "
       "allowed=%.2f curve_radius=%.2f] "
+      "vertical_trackability[active=%s limit=%.2f distance=%.2f z_error=%.2f] "
       "final_stop_distance=%.2f final_stop_braking_distance=%.2f "
       "velocity_delta=%.2f trajectory_cross_track=%.2f "
       "cross_track_lateral_velocity=%.2f "
@@ -204,6 +205,10 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.limiting_constraint_speed_mps,
       last_velocity_plan_.limiting_allowed_speed_now_mps,
       last_velocity_plan_.limiting_curve_radius_m,
+      last_velocity_plan_.vertical_trackability_speed_cap_active ? "true" : "false",
+      last_velocity_plan_.vertical_trackability_speed_limit_mps,
+      last_velocity_plan_.vertical_trackability_constraint_distance_m,
+      last_velocity_plan_.vertical_trackability_altitude_error_m,
       last_velocity_plan_.final_stop.distance_to_stop_m,
       last_velocity_plan_.final_stop.braking_distance_m,
       last_velocity_plan_.velocity_delta_mps,

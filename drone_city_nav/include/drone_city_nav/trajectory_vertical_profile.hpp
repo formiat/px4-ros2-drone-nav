@@ -15,10 +15,14 @@ namespace drone_city_nav {
 struct VerticalProfileConfig {
   bool enabled{true};
   double gate_clearance_margin_m{0.5};
-  double max_vertical_speed_mps{2.5};
-  double max_vertical_accel_mps2{2.0};
-  double max_vertical_jerk_mps3{6.0};
-  double max_climb_angle_rad{0.20943951023931953};
+  double max_vertical_speed_mps{3.2};
+  double max_vertical_accel_mps2{3.0};
+  double max_vertical_jerk_mps3{9.0};
+  double max_climb_angle_rad{0.3490658503988659};
+  double pre_gate_hold_time_s{1.0};
+  double pre_gate_hold_min_distance_m{15.0};
+  double pre_gate_hold_max_distance_m{80.0};
+  double nominal_horizontal_speed_mps{12.0};
   double min_transition_distance_m{6.0};
   double max_transition_distance_m{80.0};
   std::size_t max_diagnostics{8U};
@@ -30,6 +34,7 @@ struct VerticalProfilePassageDiagnostic {
   double entry_s_m{0.0};
   double exit_s_m{0.0};
   double approach_start_s_m{0.0};
+  double gate_hold_start_s_m{0.0};
   double exit_end_s_m{0.0};
   double gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   double min_z_m{std::numeric_limits<double>::quiet_NaN()};

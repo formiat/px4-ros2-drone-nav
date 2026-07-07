@@ -15,6 +15,7 @@ enum class SpeedConstraintType {
   kNone,
   kArc,
   kVerticalProfile,
+  kVerticalTrackability,
   kGoal,
 };
 
@@ -63,6 +64,13 @@ struct ScalarSpeedQuery {
   double previous_command_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double dt_s{std::numeric_limits<double>::quiet_NaN()};
+  bool vertical_trackability_speed_cap_active{false};
+  double vertical_trackability_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_constraint_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_altitude_error_m{
+      std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct ScalarSpeedPlan {
@@ -83,6 +91,13 @@ struct ScalarSpeedPlan {
   double limiting_constraint_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double limiting_allowed_speed_now_mps{std::numeric_limits<double>::quiet_NaN()};
   double limiting_curvature_1pm{0.0};
+  bool vertical_trackability_speed_cap_active{false};
+  double vertical_trackability_speed_limit_mps{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_constraint_distance_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double vertical_trackability_altitude_error_m{
+      std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] const char*

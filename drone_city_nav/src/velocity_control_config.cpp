@@ -45,7 +45,7 @@ std::uint64_t speedProfileConstructionConfigFingerprint(
 std::uint64_t
 runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 7U> values{
+  const std::array<double, 11U> values{
       config.cruise_speed_mps,
       config.speed_profile_decel_mps2,
       config.setpoint_forward_accel_mps2,
@@ -53,6 +53,10 @@ runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexce
       config.speed_profile_lookahead_time_s,
       config.speed_profile_lookahead_min_m,
       config.speed_profile_lookahead_max_m,
+      config.vertical_trackability_max_vertical_speed_mps,
+      config.vertical_trackability_altitude_tolerance_m,
+      config.vertical_trackability_response_time_s,
+      config.vertical_trackability_min_speed_mps,
   };
   for (const double value : values) {
     mixDouble(hash, value);

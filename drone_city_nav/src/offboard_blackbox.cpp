@@ -345,6 +345,17 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.limiting_allowed_speed_now_mps);
   stream << ",\"limiting_curve_radius_m\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.limiting_curve_radius_m);
+  stream << ",\"vertical_trackability_speed_cap_active\":";
+  writeBlackboxJsonBool(stream, velocity_plan.vertical_trackability_speed_cap_active);
+  stream << ",\"vertical_trackability_speed_limit_mps\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.vertical_trackability_speed_limit_mps);
+  stream << ",\"vertical_trackability_constraint_distance_m\":";
+  writeBlackboxJsonNumberOrNull(
+      stream, velocity_plan.vertical_trackability_constraint_distance_m);
+  stream << ",\"vertical_trackability_altitude_error_m\":";
+  writeBlackboxJsonNumberOrNull(stream,
+                                velocity_plan.vertical_trackability_altitude_error_m);
   stream << ",\"final_stop_distance_m\":";
   writeBlackboxJsonNumberOrNull(stream, velocity_plan.final_stop.distance_to_stop_m);
   stream << ",\"final_stop_braking_distance_m\":";

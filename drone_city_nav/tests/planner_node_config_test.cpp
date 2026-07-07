@@ -78,14 +78,22 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
-                   2.5);
+                   3.2);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_accel_mps2,
-                   2.0);
+                   3.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_jerk_mps3,
-                   6.0);
+                   9.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_climb_angle_rad,
+                   20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.pre_gate_hold_time_s,
+                   1.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.pre_gate_hold_min_distance_m, 15.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.pre_gate_hold_max_distance_m, 80.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
-      2.5);
+      3.2);
   EXPECT_TRUE(config.trajectory_planner.passage_insertion.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
@@ -345,6 +353,9 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"vertical_profile_max_climb_angle_deg", 15.0},
        rclcpp::Parameter{"vertical_profile_min_transition_distance_m", 12.0},
        rclcpp::Parameter{"vertical_profile_max_transition_distance_m", 55.0},
+       rclcpp::Parameter{"vertical_profile_pre_gate_hold_time_s", 2.0},
+       rclcpp::Parameter{"vertical_profile_pre_gate_hold_min_distance_m", 18.0},
+       rclcpp::Parameter{"vertical_profile_pre_gate_hold_max_distance_m", 65.0},
        rclcpp::Parameter{"vertical_profile_max_diagnostics", 4},
        rclcpp::Parameter{"passage_insertion_enabled", true},
        rclcpp::Parameter{"passage_insertion_sample_step_m", 0.75},
@@ -416,6 +427,12 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                    12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_transition_distance_m,
                    55.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.pre_gate_hold_time_s,
+                   2.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.pre_gate_hold_min_distance_m, 18.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.pre_gate_hold_max_distance_m, 65.0);
   EXPECT_EQ(config.trajectory_planner.vertical_profile.max_diagnostics, 4U);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
@@ -524,6 +541,21 @@ TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {
 
   EXPECT_EQ(bounds.width_cells, kMaxGridAxisCells);
   EXPECT_LE(cell_count, kMaxGridCellCount);
+}
+
+TEST_F(PlannerNodeConfigTest, CapsVerticalProfileSpeedByRuntimeSetpointLimit) {
+  const auto node =
+      makeNode("planner_node_config_vertical_runtime_cap",
+               {rclcpp::Parameter{"vertical_profile_max_vertical_speed_mps", 3.5},
+                rclcpp::Parameter{"vertical_setpoint_max_speed_mps", 2.0}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
+                   2.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
+      2.0);
 }
 
 } // namespace drone_city_nav

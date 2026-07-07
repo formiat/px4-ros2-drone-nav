@@ -173,6 +173,34 @@ TEST(TrajectorySpeedPlanner, ScalarAccelerationIgnoresLateralTurnLimit) {
   EXPECT_NEAR(plan.accel_limited_speed_mps, 5.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, VerticalTrackabilityCapLimitsScalarSpeed) {
+  VelocityFollowerConfig config = testConfig();
+  config.cruise_speed_mps = 20.0;
+  config.speed_profile_decel_mps2 = 100.0;
+  config.setpoint_forward_decel_mps2 = 100.0;
+
+  const ScalarSpeedPlan plan = planScalarSpeed(
+      unconstrainedProfile(),
+      ScalarSpeedQuery{.trajectory_s_m = 0.0,
+                       .previous_command_speed_mps = 12.0,
+                       .current_speed_mps = 12.0,
+                       .dt_s = 1.0,
+                       .vertical_trackability_speed_cap_active = true,
+                       .vertical_trackability_speed_limit_mps = 5.0,
+                       .vertical_trackability_constraint_distance_m = 7.5,
+                       .vertical_trackability_altitude_error_m = -2.0},
+      config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.constraint_type, SpeedConstraintType::kVerticalTrackability);
+  EXPECT_NEAR(plan.speed_after_lookahead_mps, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, 5.0, 1.0e-9);
+  EXPECT_TRUE(plan.vertical_trackability_speed_cap_active);
+  EXPECT_NEAR(plan.vertical_trackability_speed_limit_mps, 5.0, 1.0e-9);
+  EXPECT_NEAR(plan.vertical_trackability_constraint_distance_m, 7.5, 1.0e-9);
+  EXPECT_NEAR(plan.vertical_trackability_altitude_error_m, -2.0, 1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, TopConstraintsAreUniqueAndFlagIsolatedSpikes) {
   TrajectorySpeedProfile profile{};
   profile.valid = true;
