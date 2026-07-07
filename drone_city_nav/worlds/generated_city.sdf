@@ -569,9 +569,9 @@
         <visual name="visual"><geometry><box><size>8.00 6.00 7.50</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_lintel">
-        <pose>0.00 0.00 22.00 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>8.00 6.00 20.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>8.00 6.00 20.00</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
+        <pose>0.00 0.00 21.25 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>8.00 6.00 21.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.00 6.00 21.50</size></box></geometry><material><diffuse>0.30 0.35 0.43 1</diffuse></material></visual>
       </link>
     </model>
 
