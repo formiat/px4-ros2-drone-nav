@@ -7,12 +7,12 @@ frame_id map
 # still see free space at the opening and the executable trajectory layer owns
 # the 3D passage validation/profile.
 structure building_with_passage_01 58.343 158.926 40.0 24.0 0.0 32.0
-opening building_with_passage_01 low_5m_opening 58.343 158.926 5.0 0.0415 0.9991 5.0 5.0 24.0 2.5 7.5 18.0 18.0
+opening building_with_passage_01 low_5m_opening 58.343 158.926 5.0 0.0415 0.9991 7.0 7.0 24.0 1.5 8.5 18.0 18.0
 structure building_with_passage_02 59.060 273.648 40.0 24.0 0.0 32.0
-opening building_with_passage_02 low_10m_opening 59.060 273.648 10.0 -0.1843 0.9829 5.0 5.0 24.0 7.5 12.5 18.0 18.0
+opening building_with_passage_02 low_10m_opening 59.060 273.648 10.0 -0.1843 0.9829 7.0 7.0 24.0 6.5 13.5 18.0 18.0
 structure building_with_passage_03 77.329 322.572 24.0 40.0 0.0 32.0
-opening building_with_passage_03 mid_15m_opening 77.329 322.572 15.0 0.9900 0.1406 5.0 5.0 24.0 12.5 17.5 18.0 18.0
+opening building_with_passage_03 mid_15m_opening 77.329 322.572 15.0 0.9900 0.1406 7.0 7.0 24.0 11.5 18.5 18.0 18.0
 structure building_with_passage_04 132.191 323.443 24.0 40.0 0.0 32.0
-opening building_with_passage_04 high_20m_opening 132.191 323.443 20.0 0.9974 0.0678 5.0 5.0 24.0 17.5 22.5 18.0 18.0
+opening building_with_passage_04 high_20m_opening 132.191 323.443 20.0 0.9974 0.0678 7.0 7.0 24.0 16.5 23.5 18.0 18.0
 structure building_with_passage_05 212.230 340.872 40.0 40.0 0.0 32.0
-opening building_with_passage_05 high_25m_opening 212.230 340.872 25.0 0.5196 0.8542 5.0 5.0 24.0 22.5 27.5 18.0 18.0
+opening building_with_passage_05 high_25m_opening 212.230 340.872 25.0 0.5196 0.8542 7.0 7.0 24.0 21.5 28.5 18.0 18.0
