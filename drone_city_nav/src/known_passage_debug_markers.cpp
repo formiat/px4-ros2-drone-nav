@@ -55,8 +55,8 @@ void setYaw(visualization_msgs::msg::Marker& marker, const double yaw_rad) {
 
 void appendEdge(visualization_msgs::msg::Marker& marker, const Point3& from,
                 const Point3& to) {
-  marker.points.push_back(markerPoint(from));
-  marker.points.push_back(markerPoint(to));
+  marker.points.push_back(gazeboAlignedRvizMarkerPoint(from));
+  marker.points.push_back(gazeboAlignedRvizMarkerPoint(to));
 }
 
 void appendOpeningBox(visualization_msgs::msg::Marker& marker,
@@ -94,7 +94,7 @@ void appendOpeningBox(visualization_msgs::msg::Marker& marker,
                  visualization_msgs::msg::Marker::CUBE);
   marker.pose.position.x = center_xy.x;
   marker.pose.position.y = center_xy.y;
-  marker.pose.position.z = center_z_m;
+  marker.pose.position.z = gazeboAlignedRvizZ(center_z_m);
   setYaw(marker, markerYawForOpening(opening));
   marker.scale.x = std::max(depth_m, kMinimumStructurePartM);
   marker.scale.y = std::max(lateral_width_m, kMinimumStructurePartM);
@@ -172,7 +172,7 @@ makeGateCenterMarker(const std_msgs::msg::Header& header, const PassageOpening& 
   visualization_msgs::msg::Marker marker =
       makeMarker(header, "known_passage_gate_center", marker_id,
                  visualization_msgs::msg::Marker::SPHERE);
-  marker.pose.position = markerPoint(opening.center);
+  marker.pose.position = gazeboAlignedRvizMarkerPoint(opening.center);
   marker.scale.x = 0.9;
   marker.scale.y = 0.9;
   marker.scale.z = 0.9;
@@ -200,13 +200,13 @@ makeArrowMarker(const std_msgs::msg::Header& header, const PassageOpening& openi
   if (exit_arrow) {
     const Point2 arrow_end =
         add(exit, scale(opening.normal_xy, opening.exit_distance_m));
-    marker.points.push_back(markerPoint(exit, z_m));
-    marker.points.push_back(markerPoint(arrow_end, z_m));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(exit, z_m));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(arrow_end, z_m));
   } else {
     const Point2 arrow_start =
         add(entry, scale(opening.normal_xy, -opening.approach_distance_m));
-    marker.points.push_back(markerPoint(arrow_start, z_m));
-    marker.points.push_back(markerPoint(entry, z_m));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(arrow_start, z_m));
+    marker.points.push_back(gazeboAlignedRvizMarkerPoint(entry, z_m));
   }
   return marker;
 }

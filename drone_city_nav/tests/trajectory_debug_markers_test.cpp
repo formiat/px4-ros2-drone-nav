@@ -57,12 +57,12 @@ TEST(TrajectoryDebugMarkers, BuildsSpeedAndCurvatureColorMaps) {
   EXPECT_EQ(markers.markers[0].colors.size(), markers.markers[0].points.size());
   EXPECT_EQ(markers.markers[1].colors.size(), markers.markers[1].points.size());
   EXPECT_EQ(markers.markers[2].colors.size(), markers.markers[2].points.size());
-  EXPECT_DOUBLE_EQ(markers.markers[0].points[0].z, 10.04);
-  EXPECT_DOUBLE_EQ(markers.markers[0].points[1].z, 11.04);
-  EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, 10.08);
-  EXPECT_DOUBLE_EQ(markers.markers[1].points[1].z, 11.08);
-  EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, 10.12);
-  EXPECT_DOUBLE_EQ(markers.markers[2].points[1].z, 11.12);
+  EXPECT_DOUBLE_EQ(markers.markers[0].points[0].z, -10.04);
+  EXPECT_DOUBLE_EQ(markers.markers[0].points[1].z, -11.04);
+  EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, -10.08);
+  EXPECT_DOUBLE_EQ(markers.markers[1].points[1].z, -11.08);
+  EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, -10.12);
+  EXPECT_DOUBLE_EQ(markers.markers[2].points[1].z, -11.12);
 }
 
 TEST(TrajectoryDebugMarkers, EmptyTrajectoryDeletesPreviousMarkers) {

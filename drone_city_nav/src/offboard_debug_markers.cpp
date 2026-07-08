@@ -40,11 +40,13 @@ buildDroneDebugMarkers(const std_msgs::msg::Header& header,
     return markers;
   }
 
-  position.pose.position = markerPoint(state.position, state.altitude_m);
+  position.pose.position =
+      gazeboAlignedRvizMarkerPoint(state.position, state.altitude_m);
   const Point2 heading_end{state.position.x + std::cos(state.heading_rad) * 4.0,
                            state.position.y + std::sin(state.heading_rad) * 4.0};
-  heading.points.push_back(markerPoint(state.position, state.altitude_m));
-  heading.points.push_back(markerPoint(heading_end, state.altitude_m));
+  heading.points.push_back(
+      gazeboAlignedRvizMarkerPoint(state.position, state.altitude_m));
+  heading.points.push_back(gazeboAlignedRvizMarkerPoint(heading_end, state.altitude_m));
   markers.markers.push_back(position);
   markers.markers.push_back(heading);
   return markers;

@@ -16,6 +16,27 @@ geometry_msgs::msg::Point markerPoint(const Point2& point, const double z_m) {
   return markerPoint(Point3{point.x, point.y, z_m});
 }
 
+double gazeboAlignedRvizZ(const double map_z_m) noexcept {
+  // This sign flip is intentional and applies only to RViz/debug output. The
+  // RViz config uses the legacy `gazebo_map` fixed frame and the
+  // `gazebo_aligned_map_tf` transform, which deliberately swaps X/Y for visual
+  // alignment with Gazebo. A proper TF rotation that swaps the horizontal axes
+  // also maps map Z to negative gazebo_map Z, so positive map altitudes would be
+  // displayed below the ground. We compensate visual Z here instead of changing
+  // planner/control data. Do not remove this as a "negative altitude bug" unless
+  // the Gazebo/RViz frame convention is migrated end-to-end.
+  return -map_z_m;
+}
+
+geometry_msgs::msg::Point gazeboAlignedRvizMarkerPoint(const Point3& point) {
+  return markerPoint(Point3{point.x, point.y, gazeboAlignedRvizZ(point.z)});
+}
+
+geometry_msgs::msg::Point gazeboAlignedRvizMarkerPoint(const Point2& point,
+                                                       const double z_m) {
+  return gazeboAlignedRvizMarkerPoint(Point3{point.x, point.y, z_m});
+}
+
 std_msgs::msg::ColorRGBA rgba(const float red, const float green, const float blue,
                               const float alpha) {
   std_msgs::msg::ColorRGBA color;

@@ -15,6 +15,14 @@ namespace drone_city_nav {
 
 [[nodiscard]] geometry_msgs::msg::Point markerPoint(const Point2& point, double z_m);
 
+[[nodiscard]] double gazeboAlignedRvizZ(double map_z_m) noexcept;
+
+[[nodiscard]] geometry_msgs::msg::Point
+gazeboAlignedRvizMarkerPoint(const Point3& point);
+
+[[nodiscard]] geometry_msgs::msg::Point
+gazeboAlignedRvizMarkerPoint(const Point2& point, double z_m);
+
 [[nodiscard]] std_msgs::msg::ColorRGBA rgba(float red, float green, float blue,
                                             float alpha);
 

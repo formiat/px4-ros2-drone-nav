@@ -1,5 +1,7 @@
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 
+#include "drone_city_nav/visualization_marker_helpers.hpp"
+
 #include <sensor_msgs/msg/point_field.hpp>
 
 #include <cmath>
@@ -88,7 +90,8 @@ buildLidarDebugPointCloud(const std::span<const Point2> points, const double z_m
   for (std::size_t i = 0U; i < points.size(); ++i) {
     const float x = static_cast<float>(points[i].x);
     const float y = static_cast<float>(points[i].y);
-    const float z = std::isfinite(z_m) ? static_cast<float>(z_m) : 0.0F;
+    const float z =
+        std::isfinite(z_m) ? static_cast<float>(gazeboAlignedRvizZ(z_m)) : 0.0F;
     const std::size_t offset = i * static_cast<std::size_t>(cloud.point_step);
     std::memcpy(&cloud.data[offset], &x, sizeof(float));
     std::memcpy(&cloud.data[offset + 4U], &y, sizeof(float));

@@ -60,10 +60,10 @@ TEST(StaticMapDebug, PointCloudContainsOnlyOccupiedCells) {
   ASSERT_EQ(cloud.data.size(), 24U);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 0U), 1.5F);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 4U), 0.5F);
-  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), 0.25F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -0.25F);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 12U), 2.5F);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 16U), 1.5F);
-  EXPECT_FLOAT_EQ(readFloat(cloud.data, 20U), 0.25F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 20U), -0.25F);
 }
 
 TEST(StaticMapDebug, PointCloudFieldsAreXyzFloat32) {
@@ -114,7 +114,7 @@ TEST(StaticMapDebug, BuildingMarkersUseRectanglesAsVolumes) {
   EXPECT_EQ(marker.type, visualization_msgs::msg::Marker::CUBE);
   EXPECT_DOUBLE_EQ(marker.pose.position.x, 4.0);
   EXPECT_DOUBLE_EQ(marker.pose.position.y, 5.0);
-  EXPECT_DOUBLE_EQ(marker.pose.position.z, 10.0);
+  EXPECT_DOUBLE_EQ(marker.pose.position.z, -10.0);
   EXPECT_DOUBLE_EQ(marker.scale.x, 6.0);
   EXPECT_DOUBLE_EQ(marker.scale.y, 8.0);
   EXPECT_DOUBLE_EQ(marker.scale.z, 20.0);

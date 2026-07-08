@@ -1,3 +1,5 @@
+#include "drone_city_nav/visualization_marker_helpers.hpp"
+
 #include <limits>
 #include <utility>
 
@@ -11,6 +13,16 @@ configFingerprintMismatch(const std::uint64_t runtime_fingerprint,
                           const std::uint64_t planning_fingerprint) noexcept {
   return runtime_fingerprint != 0U && planning_fingerprint != 0U &&
          runtime_fingerprint != planning_fingerprint;
+}
+
+[[nodiscard]] nav_msgs::msg::Path
+pathToGazeboAlignedRvizDebugPath(const std::span<const TrajectoryPointSample> samples,
+                                 const std_msgs::msg::Header& header) {
+  nav_msgs::msg::Path path = pathToRos(samples, header);
+  for (auto& pose : path.poses) {
+    pose.pose.position.z = gazeboAlignedRvizZ(pose.pose.position.z);
+  }
+  return path;
 }
 
 } // namespace
@@ -33,7 +45,7 @@ void Px4OffboardNode::publishFinalTrajectoryDebug() {
   }
   last_final_trajectory_debug_samples_ = final_trajectory_samples_.size();
   final_trajectory_pub_->publish(
-      pathToRos(final_trajectory_samples_, makeDebugHeader()));
+      pathToGazeboAlignedRvizDebugPath(final_trajectory_samples_, makeDebugHeader()));
 }
 
 void Px4OffboardNode::publishOffboardDebugMarkers() {

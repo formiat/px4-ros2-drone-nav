@@ -77,13 +77,13 @@ TEST(OffboardDebugMarkers, BuildsDroneAndTrajectoryMarkers) {
   EXPECT_EQ(markers.markers[0].action, visualization_msgs::msg::Marker::ADD);
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.x, 2.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 3.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, 18.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, -18.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.z, markers.markers[0].scale.x);
   EXPECT_EQ(markers.markers[1].ns, "drone_heading");
   EXPECT_EQ(markers.markers[1].points.size(), 2U);
-  EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, 18.0);
+  EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, -18.0);
   EXPECT_EQ(markers.markers[2].ns, "final_trajectory_speed_colormap");
-  EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, 12.04);
+  EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, -12.04);
 }
 
 } // namespace drone_city_nav

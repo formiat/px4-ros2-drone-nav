@@ -61,7 +61,8 @@ sensor_msgs::msg::PointCloud2 staticMapPointCloud(const OccupancyGrid2D& grid,
       cloud.data.resize(offset + static_cast<std::size_t>(cloud.point_step));
       std::memcpy(&cloud.data[offset], &point_x, sizeof(float));
       std::memcpy(&cloud.data[offset + 4U], &point_y, sizeof(float));
-      std::memcpy(&cloud.data[offset + 8U], &config.point_z_m, sizeof(float));
+      const float point_z = static_cast<float>(gazeboAlignedRvizZ(config.point_z_m));
+      std::memcpy(&cloud.data[offset + 8U], &point_z, sizeof(float));
       ++cloud.width;
     }
   }
@@ -100,7 +101,7 @@ staticMapBuildingMarkers(const StaticCityMap& map, const StaticMapDebugConfig& c
                    visualization_msgs::msg::Marker::CUBE);
     marker.pose.position.x = rect.center.x;
     marker.pose.position.y = rect.center.y;
-    marker.pose.position.z = rect.height_m / 2.0;
+    marker.pose.position.z = gazeboAlignedRvizZ(rect.height_m / 2.0);
     marker.scale.x = std::max(rect.size_x_m, kMinimumMarkerDimensionM);
     marker.scale.y = std::max(rect.size_y_m, kMinimumMarkerDimensionM);
     marker.scale.z = std::max(rect.height_m, kMinimumMarkerDimensionM);

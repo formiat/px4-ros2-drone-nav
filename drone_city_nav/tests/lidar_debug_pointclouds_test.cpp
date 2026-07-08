@@ -80,5 +80,16 @@ TEST(LidarDebugPointcloudsTest, BuildsPointCloud2WithXyzFloatLayout) {
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 20U), 0.0F);
 }
 
+TEST(LidarDebugPointcloudsTest, CompensatesZForGazeboAlignedRvizFrame) {
+  builtin_interfaces::msg::Time stamp;
+  const std::vector<Point2> points{Point2{1.5, -2.0}};
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildLidarDebugPointCloud(points, 2.5, stamp, "map");
+
+  ASSERT_EQ(cloud.data.size(), 12U);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -2.5F);
+}
+
 } // namespace
 } // namespace drone_city_nav

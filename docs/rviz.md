@@ -32,6 +32,11 @@ generated city as it is visually inspected in Gazebo. If this transform is ever
 removed, the Gazebo world convention, static map coordinates, and debug overlays
 must be migrated together.
 
+Because that transform maps positive `map` altitude to negative `gazebo_map` Z,
+3D debug publishers intentionally compensate visual Z before publishing RViz
+markers/point clouds/debug paths. That compensation is visualization-only and
+must not be applied to the control path consumed by offboard flight logic.
+
 ## Important Layers
 
 - Static map: raw static obstacle source from the `.map2d` file.

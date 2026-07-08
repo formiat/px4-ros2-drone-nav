@@ -53,7 +53,7 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_EQ(markers.markers[0].header.frame_id, "map");
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.x, 10.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 17.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, 12.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, -12.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.x, 2.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.y, 2.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.z, 24.0);
@@ -70,18 +70,18 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   ASSERT_EQ(frame.points.size(), 24U);
   EXPECT_DOUBLE_EQ(frame.points[0].x, 9.0);
   EXPECT_DOUBLE_EQ(frame.points[0].y, 18.0);
-  EXPECT_DOUBLE_EQ(frame.points[0].z, 6.0);
+  EXPECT_DOUBLE_EQ(frame.points[0].z, -6.0);
   EXPECT_DOUBLE_EQ(frame.points[1].x, 9.0);
   EXPECT_DOUBLE_EQ(frame.points[1].y, 22.0);
-  EXPECT_DOUBLE_EQ(frame.points[1].z, 6.0);
-  EXPECT_DOUBLE_EQ(frame.points[8].z, 10.0);
+  EXPECT_DOUBLE_EQ(frame.points[1].z, -6.0);
+  EXPECT_DOUBLE_EQ(frame.points[8].z, -10.0);
 
   const visualization_msgs::msg::Marker& center = markers.markers[5];
   EXPECT_EQ(center.ns, "known_passage_gate_center");
   EXPECT_EQ(center.type, visualization_msgs::msg::Marker::SPHERE);
   EXPECT_DOUBLE_EQ(center.pose.position.x, 10.0);
   EXPECT_DOUBLE_EQ(center.pose.position.y, 20.0);
-  EXPECT_DOUBLE_EQ(center.pose.position.z, 8.0);
+  EXPECT_DOUBLE_EQ(center.pose.position.z, -8.0);
 
   const visualization_msgs::msg::Marker& approach = markers.markers[6];
   EXPECT_EQ(approach.ns, "known_passage_approach");
@@ -90,7 +90,7 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_DOUBLE_EQ(approach.points[0].x, 4.0);
   EXPECT_DOUBLE_EQ(approach.points[1].x, 9.0);
   EXPECT_DOUBLE_EQ(approach.points[0].y, 20.0);
-  EXPECT_DOUBLE_EQ(approach.points[1].z, 8.0);
+  EXPECT_DOUBLE_EQ(approach.points[1].z, -8.0);
 
   const visualization_msgs::msg::Marker& exit = markers.markers[7];
   EXPECT_EQ(exit.ns, "known_passage_exit");
@@ -98,7 +98,7 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_DOUBLE_EQ(exit.points[0].x, 11.0);
   EXPECT_DOUBLE_EQ(exit.points[1].x, 18.0);
   EXPECT_DOUBLE_EQ(exit.points[0].y, 20.0);
-  EXPECT_DOUBLE_EQ(exit.points[1].z, 8.0);
+  EXPECT_DOUBLE_EQ(exit.points[1].z, -8.0);
 }
 
 TEST(KnownPassageDebugMarkers, EmptyMapDeletesPreviousMarkers) {

@@ -119,18 +119,24 @@ visualization_msgs::msg::MarkerArray buildTrajectoryDebugMarkers(
     const std_msgs::msg::ColorRGBA altitude_color =
         altitudeColor(current.z_m, min_z, max_z);
 
-    speed_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.04));
-    speed_marker.points.push_back(markerPoint(current.point, current.z_m + 0.04));
+    speed_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(previous.point, previous.z_m + 0.04));
+    speed_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(current.point, current.z_m + 0.04));
     speed_marker.colors.push_back(speed_color);
     speed_marker.colors.push_back(speed_color);
 
-    curvature_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.08));
-    curvature_marker.points.push_back(markerPoint(current.point, current.z_m + 0.08));
+    curvature_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(previous.point, previous.z_m + 0.08));
+    curvature_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(current.point, current.z_m + 0.08));
     curvature_marker.colors.push_back(curvature_color);
     curvature_marker.colors.push_back(curvature_color);
 
-    altitude_marker.points.push_back(markerPoint(previous.point, previous.z_m + 0.12));
-    altitude_marker.points.push_back(markerPoint(current.point, current.z_m + 0.12));
+    altitude_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(previous.point, previous.z_m + 0.12));
+    altitude_marker.points.push_back(
+        gazeboAlignedRvizMarkerPoint(current.point, current.z_m + 0.12));
     altitude_marker.colors.push_back(altitude_color);
     altitude_marker.colors.push_back(altitude_color);
   }
