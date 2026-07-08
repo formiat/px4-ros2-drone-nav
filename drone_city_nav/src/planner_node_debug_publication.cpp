@@ -21,12 +21,21 @@ void PlannerNode::publishStaticMapDebug(const OccupancyGrid2D& grid,
                                     static_cast<float>(kGroundDebugZ)};
   static_map_pub_->publish(staticMapGridMessage(grid, config));
   static_map_points_pub_->publish(staticMapPointCloud(grid, config));
+  if (static_map_debug_.has_value()) {
+    static_building_markers_pub_->publish(
+        staticMapBuildingMarkers(*static_map_debug_, config));
+  } else {
+    static_building_markers_pub_->publish(
+        staticMapBuildingDeleteMarkers(config.header));
+  }
   if (log_publication) {
     RCLCPP_INFO(get_logger(),
                 "Published static map grid: cells=%zu occupied=%zu "
-                "points_topic='%s' republish_period=%.2fs",
+                "points_topic='%s' building_markers_topic='%s' "
+                "republish_period=%.2fs",
                 grid.cellCount(), static_map_occupied_cells_,
                 static_map_points_pub_->get_topic_name(),
+                static_building_markers_pub_->get_topic_name(),
                 static_map_debug_publish_period_s_);
   }
 }

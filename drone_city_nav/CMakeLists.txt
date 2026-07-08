@@ -567,7 +567,8 @@ if(BUILD_TESTING)
   ament_add_gtest(static_map_debug_test tests/static_map_debug_test.cpp)
   target_compile_features(static_map_debug_test PRIVATE cxx_std_20)
   target_link_libraries(static_map_debug_test drone_city_nav_ros_adapters)
-  ament_target_dependencies(static_map_debug_test nav_msgs sensor_msgs std_msgs)
+  ament_target_dependencies(static_map_debug_test nav_msgs sensor_msgs std_msgs
+                            visualization_msgs)
   enable_project_warnings(static_map_debug_test)
 
   ament_add_gtest(lidar_debug_pointclouds_test

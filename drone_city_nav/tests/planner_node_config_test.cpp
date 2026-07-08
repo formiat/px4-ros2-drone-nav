@@ -114,6 +114,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 8U);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 8U);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
+  EXPECT_EQ(config.topics.static_building_markers,
+            "/drone_city_nav/static_building_markers");
   EXPECT_EQ(config.topics.known_passage_markers,
             "/drone_city_nav/known_passage_markers");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
@@ -368,6 +370,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"passage_insertion_min_inserted_radius_m", 18.0},
        rclcpp::Parameter{"passage_insertion_max_candidates", 5},
        rclcpp::Parameter{"passage_insertion_max_diagnostics", 6},
+       rclcpp::Parameter{"static_building_markers_topic", "/custom/static_buildings"},
        rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
        rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
@@ -456,6 +459,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                    18.0);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 5U);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 6U);
+  EXPECT_EQ(config.topics.static_building_markers, "/custom/static_buildings");
   EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);

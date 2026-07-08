@@ -115,6 +115,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("known_passage_markers_topic: "
                       "/drone_city_nav/known_passage_markers"),
             std::string::npos);
+  EXPECT_NE(yaml.find("static_building_markers_topic: "
+                      "/drone_city_nav/static_building_markers"),
+            std::string::npos);
   EXPECT_NE(yaml.find("known_passage_debug_publish_period_s: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_gain: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("cross_track_derivative_gain: 0.5"), std::string::npos);

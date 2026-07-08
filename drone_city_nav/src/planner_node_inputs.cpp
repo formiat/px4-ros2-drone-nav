@@ -167,12 +167,17 @@ void PlannerNode::loadConfiguredStaticMap() {
   static_map_resolved_path_ = result.resolved_path;
 
   if (result.status == StaticMapSourceStatus::kDisabled) {
+    static_grid_.reset();
+    static_map_debug_.reset();
+    static_map_rectangles_ = 0U;
+    static_map_occupied_cells_ = 0U;
     RCLCPP_INFO(get_logger(), "Static city map source is disabled");
     return;
   }
 
   if (result.status == StaticMapSourceStatus::kLoadFailed || !result.grid.has_value()) {
     static_grid_.reset();
+    static_map_debug_.reset();
     static_map_rectangles_ = 0U;
     static_map_occupied_cells_ = 0U;
     RCLCPP_ERROR(get_logger(), "Failed to load static city map: path='%s' error='%s'",
@@ -188,6 +193,7 @@ void PlannerNode::loadConfiguredStaticMap() {
                 result.map_frame_id.c_str(), frame_id_.c_str());
   }
   static_grid_ = std::move(result.grid);
+  static_map_debug_ = std::move(result.map);
   static_map_rectangles_ = result.rectangles;
   static_map_occupied_cells_ = result.occupied_cells;
   RCLCPP_INFO(get_logger(),

@@ -157,36 +157,6 @@ def generate_launch_description():
         ],
     )
 
-    # RViz uses the mission map frame, while Gazebo's visual world keeps its own
-    # axis convention; this fixed rotation aligns the debug overlays for viewing.
-    gazebo_aligned_map_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="gazebo_aligned_map_tf",
-        output="screen",
-        condition=IfCondition(enable_rviz),
-        arguments=[
-            "--x",
-            "0.0",
-            "--y",
-            "0.0",
-            "--z",
-            "0.0",
-            "--qx",
-            "0.7071067811865476",
-            "--qy",
-            "0.7071067811865476",
-            "--qz",
-            "0.0",
-            "--qw",
-            "0.0",
-            "--frame-id",
-            "gazebo_map",
-            "--child-frame-id",
-            "map",
-        ],
-    )
-
     rviz = Node(
         package="rviz2",
         executable="rviz2",
@@ -270,7 +240,6 @@ def generate_launch_description():
             px4_offboard,
             mission_monitor,
             lidar_debug,
-            gazebo_aligned_map_tf,
             rviz,
         ]
     )

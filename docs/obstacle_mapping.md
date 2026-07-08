@@ -94,6 +94,7 @@ Useful visualization topics:
 
 - `/drone_city_nav/static_map_grid`
 - `/drone_city_nav/static_map_points`
+- `/drone_city_nav/static_building_markers`
 - `/drone_city_nav/obstacle_memory_grid`
 - `/drone_city_nav/prohibited_grid`
 - `/drone_city_nav/lidar_debug_points`

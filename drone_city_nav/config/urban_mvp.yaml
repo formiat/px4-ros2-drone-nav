@@ -49,6 +49,7 @@ planner_node:
     prohibited_grid_topic: /drone_city_nav/prohibited_grid
     static_map_grid_topic: /drone_city_nav/static_map_grid
     static_map_points_topic: /drone_city_nav/static_map_points
+    static_building_markers_topic: /drone_city_nav/static_building_markers
     static_map_debug_publish_period_s: 1.0
     known_passage_markers_topic: /drone_city_nav/known_passage_markers
     known_passage_debug_publish_period_s: 1.0

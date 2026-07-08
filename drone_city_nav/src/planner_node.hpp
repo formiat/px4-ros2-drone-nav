@@ -301,6 +301,7 @@ private:
 
   std::optional<OccupancyGrid2D> memory_grid_;
   std::optional<OccupancyGrid2D> static_grid_;
+  std::optional<StaticCityMap> static_map_debug_;
   std::optional<KnownPassageMap> known_passages_;
   PlanningGridBuilder planning_grid_builder_;
   PlannerCore planner_core_;
@@ -399,6 +400,8 @@ private:
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+      static_building_markers_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       known_passage_markers_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;

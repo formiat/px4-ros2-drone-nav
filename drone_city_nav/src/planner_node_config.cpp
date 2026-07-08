@@ -493,6 +493,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "static_map_grid_topic", "/drone_city_nav/static_map_grid");
   config.topics.static_map_points = node.declare_parameter<std::string>(
       "static_map_points_topic", "/drone_city_nav/static_map_points");
+  config.topics.static_building_markers = node.declare_parameter<std::string>(
+      "static_building_markers_topic", "/drone_city_nav/static_building_markers");
   config.topics.known_passage_markers = node.declare_parameter<std::string>(
       "known_passage_markers_topic", "/drone_city_nav/known_passage_markers");
   config.timing.static_map_debug_publish_period_s = std::clamp(

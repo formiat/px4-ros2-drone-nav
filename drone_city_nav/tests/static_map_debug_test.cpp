@@ -97,4 +97,40 @@ TEST(StaticMapDebug, EmptyMapPublishesValidEmptyPointCloud) {
   EXPECT_TRUE(cloud.data.empty());
 }
 
+TEST(StaticMapDebug, BuildingMarkersUseRectanglesAsVolumes) {
+  StaticCityMap map;
+  map.frame_id = "map";
+  map.rectangles.push_back(
+      StaticCityMapRect{"building_a", Point2{4.0, 5.0}, 6.0, 8.0, 20.0});
+
+  StaticMapDebugConfig config{makeHeader(), 0.05F, 0.62F};
+  const visualization_msgs::msg::MarkerArray markers =
+      staticMapBuildingMarkers(map, config);
+
+  ASSERT_EQ(markers.markers.size(), 1U);
+  const visualization_msgs::msg::Marker& marker = markers.markers.front();
+  EXPECT_EQ(marker.header.frame_id, "map");
+  EXPECT_EQ(marker.ns, "static_building");
+  EXPECT_EQ(marker.type, visualization_msgs::msg::Marker::CUBE);
+  EXPECT_DOUBLE_EQ(marker.pose.position.x, 4.0);
+  EXPECT_DOUBLE_EQ(marker.pose.position.y, 5.0);
+  EXPECT_DOUBLE_EQ(marker.pose.position.z, 10.0);
+  EXPECT_DOUBLE_EQ(marker.scale.x, 6.0);
+  EXPECT_DOUBLE_EQ(marker.scale.y, 8.0);
+  EXPECT_DOUBLE_EQ(marker.scale.z, 20.0);
+  EXPECT_FLOAT_EQ(marker.color.a, 0.62F);
+}
+
+TEST(StaticMapDebug, EmptyBuildingMapDeletesPreviousMarkers) {
+  StaticCityMap map;
+  map.frame_id = "map";
+
+  const visualization_msgs::msg::MarkerArray markers =
+      staticMapBuildingMarkers(map, StaticMapDebugConfig{makeHeader(), 0.05F});
+
+  ASSERT_EQ(markers.markers.size(), 1U);
+  EXPECT_EQ(markers.markers.front().ns, "static_building");
+  EXPECT_EQ(markers.markers.front().action, visualization_msgs::msg::Marker::DELETEALL);
+}
+
 } // namespace drone_city_nav

@@ -142,6 +142,7 @@ The planner publishes:
 - `/drone_city_nav/path_id`
 - `/drone_city_nav/trajectory_diagnostics`
 - `/drone_city_nav/current_waypoint`
+- `/drone_city_nav/static_building_markers`
 - `/drone_city_nav/known_passage_markers`
 
 The offboard node publishes:

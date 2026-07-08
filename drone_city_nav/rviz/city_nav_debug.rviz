@@ -13,7 +13,7 @@ Visualization Manager:
       Name: Ground Grid
       Plane: XY
       Plane Cell Count: 40
-      Reference Frame: gazebo_map
+      Reference Frame: map
     - Alpha: 0.75
       Class: rviz_default_plugins/Map
       Color Scheme: map
@@ -44,6 +44,13 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/static_map_points
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Static Building Volumes
+      Namespaces:
+        static_building: true
+      Topic:
+        Value: /drone_city_nav/static_building_markers
     - Alpha: 1
       Class: rviz_default_plugins/Path
       Color: 0; 220; 255
@@ -148,7 +155,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 20; 24; 28
-    Fixed Frame: gazebo_map
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -163,9 +170,9 @@ Visualization Manager:
         X: 45
         Y: 75
         Z: 0
-      Name: Top Down Gazebo Aligned
+      Name: Top Down Map
       Pitch: 1.5707
-      Target Frame: gazebo_map
+      Target Frame: map
       Yaw: 0
     Saved: ~
 Window Geometry:

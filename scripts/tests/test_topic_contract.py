@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -105,6 +106,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("/drone_city_nav/prohibited_grid", text)
         self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
         self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
+        self.assertIn("/drone_city_nav/static_building_markers", text)
         self.assertIn("/drone_city_nav/known_passage_markers", text)
         self.assertNotIn("/drone_city_nav/obstacle_memory_inflated_grid", text)
         self.assertNotIn("/drone_city_nav/occupancy_grid", text)
@@ -122,8 +124,33 @@ class TopicContractTest(unittest.TestCase):
             "known_passage_markers_topic: /drone_city_nav/known_passage_markers",
             yaml_text,
         )
+        self.assertIn(
+            "static_building_markers_topic: /drone_city_nav/static_building_markers",
+            yaml_text,
+        )
+        self.assertIn("/drone_city_nav/static_building_markers", rviz_text)
+        self.assertIn("/drone_city_nav/static_building_markers", bag_text)
         self.assertIn("/drone_city_nav/known_passage_markers", rviz_text)
         self.assertIn("/drone_city_nav/known_passage_markers", bag_text)
+
+    def test_known_passage_annotations_have_physical_world_models(self) -> None:
+        passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
+        sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
+
+        structure_ids = sorted(
+            set(
+                re.findall(
+                    r"^structure\s+(test_passage_gate_\d+)\s", passage_text, re.M
+                )
+            )
+        )
+        self.assertGreater(len(structure_ids), 0)
+        for structure_id in structure_ids:
+            suffix = structure_id.rsplit("_", maxsplit=1)[-1]
+            with self.subTest(structure_id=structure_id):
+                self.assertIn(
+                    f'<model name="known_passage_test_gate_{suffix}">', sdf_text
+                )
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [

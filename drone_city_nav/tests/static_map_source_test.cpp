@@ -121,6 +121,14 @@ TEST(StaticMapSource, LoadsAndRasterizesValidMap) {
   EXPECT_TRUE(result.frame_matches);
   EXPECT_EQ(result.map_frame_id, "map");
   EXPECT_EQ(result.rectangles, 1U);
+  if (!result.map.has_value()) {
+    ADD_FAILURE() << "expected static map source to preserve source rectangles";
+    return;
+  }
+  const StaticCityMap& loaded_map = *result.map;
+  EXPECT_EQ(loaded_map.rectangles.size(), 1U);
+  EXPECT_EQ(loaded_map.rectangles.front().id, "building_a");
+  EXPECT_DOUBLE_EQ(loaded_map.rectangles.front().height_m, 8.0);
   ASSERT_TRUE(result.grid.has_value());
   if (!result.grid.has_value()) {
     return;

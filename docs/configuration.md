@@ -43,6 +43,9 @@ Obstacle/grid:
 - `planning_clearance_m`
 - `use_static_map`
 - `static_map_path`
+- `static_map_grid_topic`
+- `static_map_points_topic`
+- `static_building_markers_topic`
 - lidar overlay and memory input settings.
 
 Known passages:
@@ -76,6 +79,11 @@ Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
 known structure footprint through an allowed opening volume, and drive a narrow
 sensor policy during active passage traversal.
+
+Known passage structures are not encoded into the 2D static obstacle map as hard
+blocking cells. The 2D planner must be able to route through the footprint when
+a valid 3D opening is annotated; RViz shows those volumes through
+`/drone_city_nav/known_passage_markers` instead.
 
 The validation layer does not reject trajectories by itself. The sensor policy
 does not detect passages and does not modify static map cells. It only filters
@@ -264,6 +272,7 @@ configuration drift.
 - `final_trajectory_debug_topic`
 - `final_trajectory_debug_sample_step_m`
 - `offboard_debug_marker_topic`
+- `static_building_markers_topic`
 - `known_passage_markers_topic`
 - `known_passage_debug_publish_period_s`
 - `diagnostic_turn_preview_distance_m`

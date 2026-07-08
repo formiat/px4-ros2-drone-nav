@@ -47,18 +47,24 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   const visualization_msgs::msg::MarkerArray markers =
       buildKnownPassageDebugMarkers(testHeader(), testMap());
 
-  ASSERT_EQ(markers.markers.size(), 5U);
+  ASSERT_EQ(markers.markers.size(), 8U);
   EXPECT_EQ(markers.markers[0].ns, "known_passage_structure");
   EXPECT_EQ(markers.markers[0].type, visualization_msgs::msg::Marker::CUBE);
   EXPECT_EQ(markers.markers[0].header.frame_id, "map");
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.x, 10.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 20.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 17.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, 12.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].scale.x, 12.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].scale.y, 8.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].scale.x, 2.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].scale.y, 2.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.z, 24.0);
+  EXPECT_GT(markers.markers[0].color.a, 0.5F);
 
-  const visualization_msgs::msg::Marker& frame = markers.markers[1];
+  EXPECT_EQ(markers.markers[1].ns, "known_passage_structure");
+  EXPECT_DOUBLE_EQ(markers.markers[1].pose.position.y, 23.0);
+  EXPECT_DOUBLE_EQ(markers.markers[2].scale.z, 6.0);
+  EXPECT_DOUBLE_EQ(markers.markers[3].scale.z, 14.0);
+
+  const visualization_msgs::msg::Marker& frame = markers.markers[4];
   EXPECT_EQ(frame.ns, "known_passage_opening_frame");
   EXPECT_EQ(frame.type, visualization_msgs::msg::Marker::LINE_LIST);
   ASSERT_EQ(frame.points.size(), 24U);
@@ -70,14 +76,14 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_DOUBLE_EQ(frame.points[1].z, 6.0);
   EXPECT_DOUBLE_EQ(frame.points[8].z, 10.0);
 
-  const visualization_msgs::msg::Marker& center = markers.markers[2];
+  const visualization_msgs::msg::Marker& center = markers.markers[5];
   EXPECT_EQ(center.ns, "known_passage_gate_center");
   EXPECT_EQ(center.type, visualization_msgs::msg::Marker::SPHERE);
   EXPECT_DOUBLE_EQ(center.pose.position.x, 10.0);
   EXPECT_DOUBLE_EQ(center.pose.position.y, 20.0);
   EXPECT_DOUBLE_EQ(center.pose.position.z, 8.0);
 
-  const visualization_msgs::msg::Marker& approach = markers.markers[3];
+  const visualization_msgs::msg::Marker& approach = markers.markers[6];
   EXPECT_EQ(approach.ns, "known_passage_approach");
   EXPECT_EQ(approach.type, visualization_msgs::msg::Marker::ARROW);
   ASSERT_EQ(approach.points.size(), 2U);
@@ -86,7 +92,7 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_DOUBLE_EQ(approach.points[0].y, 20.0);
   EXPECT_DOUBLE_EQ(approach.points[1].z, 8.0);
 
-  const visualization_msgs::msg::Marker& exit = markers.markers[4];
+  const visualization_msgs::msg::Marker& exit = markers.markers[7];
   EXPECT_EQ(exit.ns, "known_passage_exit");
   ASSERT_EQ(exit.points.size(), 2U);
   EXPECT_DOUBLE_EQ(exit.points[0].x, 11.0);

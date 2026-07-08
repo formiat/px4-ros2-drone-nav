@@ -107,8 +107,8 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 - Stale Gazebo or PX4 processes can keep ports/resources busy. Use
   `./scripts/stop_sim.sh`.
 - GUI display forwarding can fail on restrictive X11/Wayland setups.
-- Gazebo visual coordinates and RViz map coordinates require the fixed
-  `gazebo_aligned_map_tf` transform from the launch file.
+- RViz navigation debug uses the `map` frame directly. Do not add an
+  axis-flipping Gazebo-to-map transform for navigation overlays.
 - Multiple simultaneous Gazebo instances are not supported by the standard
   workflow.
 
@@ -144,7 +144,7 @@ When editing a world, verify:
 - map origin relative to PX4 local origin;
 - grid bounds cover the full mission;
 - spawn and goal are inside navigable area;
-- RViz static map overlays the visible city.
+- RViz static map and static building volume markers overlay the visible city.
 
 The static map should remain raw. Do not pre-inflate buildings in the map to
 "help" the planner. Inflation and planning clearance are planner parameters.

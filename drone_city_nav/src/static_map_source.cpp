@@ -1,7 +1,6 @@
 #include "drone_city_nav/static_map_source.hpp"
 
 #include "drone_city_nav/planner_core.hpp"
-#include "drone_city_nav/static_city_map.hpp"
 
 #include <exception>
 
@@ -51,12 +50,14 @@ StaticMapSourceResult loadStaticMapSource(const StaticMapSourceConfig& config) {
     result.frame_matches = static_map.frame_id == config.expected_frame_id;
     result.rectangles = static_map.rectangles.size();
     result.grid = rasterizeStaticCityMap(static_map, config.min_blocking_height_m);
+    result.map = static_map;
     const GridStats stats = collectGridStats(*result.grid);
     result.occupied_cells = stats.occupied_cells;
     result.status = StaticMapSourceStatus::kLoaded;
   } catch (const std::exception& error) {
     result.status = StaticMapSourceStatus::kLoadFailed;
     result.error_message = error.what();
+    result.map.reset();
     result.grid.reset();
     result.rectangles = 0U;
     result.occupied_cells = 0U;

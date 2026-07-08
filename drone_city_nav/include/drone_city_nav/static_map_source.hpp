@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/static_city_map.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -26,6 +27,7 @@ struct StaticMapSourceConfig {
 struct StaticMapSourceResult {
   StaticMapSourceStatus status{StaticMapSourceStatus::kDisabled};
   std::filesystem::path resolved_path;
+  std::optional<StaticCityMap> map;
   std::optional<OccupancyGrid2D> grid;
   std::string map_frame_id;
   std::size_t rectangles{0U};

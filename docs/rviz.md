@@ -22,13 +22,16 @@ drone_city_nav/rviz/city_nav_debug.rviz
 
 ## Frames
 
-Navigation debug data uses the `map` frame. Gazebo visualization uses its own
-visual world convention, so the launch file publishes a fixed transform from
-`gazebo_map` to `map` when RViz is enabled.
+Navigation debug data uses the `map` frame directly. The default RViz config
+uses `map` as its fixed frame so 3D trajectories, passage markers, buildings,
+and drone altitude are displayed with the same Z direction as the planner and
+offboard nodes.
 
 ## Important Layers
 
 - Static map: raw static obstacle source from the `.map2d` file.
+- Static building volumes: semi-transparent 3D CUBE markers built from the
+  `.map2d` rectangle heights on `/drone_city_nav/static_building_markers`.
 - Prohibited grid: inflated hard-safety planner output on
   `/drone_city_nav/prohibited_grid`.
 - Raw memory: uninflated obstacle memory evidence.
@@ -65,7 +68,7 @@ The RViz `Known Passages` display subscribes to:
 
 Marker namespaces:
 
-- `known_passage_structure`: transparent volume of the annotated structure.
+- `known_passage_structure`: visible physical wall pieces around each opening.
 - `known_passage_opening_frame`: wireframe box for the traversable opening.
 - `known_passage_gate_center`: center point of the gate.
 - `known_passage_approach`: approach direction into the opening.
