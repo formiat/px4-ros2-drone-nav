@@ -60,6 +60,18 @@ If the image is missing or needs to be refreshed:
 Common workflow scripts also use the container entrypoint and can build or use
 the configured image depending on the local setup.
 
+The container entrypoint sources the supported ROS and `px4_msgs` setup files
+automatically:
+
+```text
+/opt/ros/${ROS_DISTRO}/setup.bash
+/opt/px4_msgs_ws/install/setup.bash
+```
+
+You should not need to source these files manually. Use `ROS_SETUP_FILE` or
+`PX4_MSGS_SETUP_FILE` only when deliberately testing a non-standard container
+or dependency install.
+
 ## First Sanity Check
 
 From the repository root:

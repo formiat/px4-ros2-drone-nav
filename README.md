@@ -45,6 +45,12 @@ make sim-gui
 make sim-headless
 ```
 
+The shared container entrypoint sources the supported ROS 2 and PX4 message
+workspaces automatically before running any command. Do not manually source ROS
+or `px4_msgs` setup files for the normal workflow. For a custom image or
+external dependency checkout, override `ROS_SETUP_FILE` or `PX4_MSGS_SETUP_FILE`
+instead of editing the scripts.
+
 Build the ROS package:
 
 ```bash
@@ -193,6 +199,10 @@ Project dependencies are managed through:
 - ROS 2 and Gazebo system packages in `docker/Dockerfile`.
 - `px4_msgs` built into `/opt/px4_msgs_ws` by the dev image.
 - PX4 Autopilot cloned by `scripts/setup_px4_autopilot.sh` into `external/`.
+
+The wrapper scripts source `/opt/ros/${ROS_DISTRO}/setup.bash` and
+`/opt/px4_msgs_ws/install/setup.bash` inside the container before invoking
+`make`, `colcon`, or simulation commands.
 
 Do not vendor new dependencies without documenting why they cannot be provided
 by ROS, system packages, or a clearly pinned external checkout.

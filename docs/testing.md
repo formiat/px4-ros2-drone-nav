@@ -21,6 +21,10 @@ make quality
 make format
 ```
 
+The dev shell and host wrapper scripts use the same container entrypoint. That
+entrypoint sources ROS 2 and `px4_msgs` automatically, so test commands should
+not require manual setup-file sourcing.
+
 ## Unit Tests
 
 C++ tests are registered through CMake and run with:

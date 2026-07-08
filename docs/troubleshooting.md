@@ -12,6 +12,25 @@ Check:
 - container image availability;
 - host display access for GUI runs.
 
+## Build Cannot Find `px4_msgs`
+
+Use the repository wrappers:
+
+```bash
+./scripts/build.sh
+./scripts/test.sh
+```
+
+They start the dev container and source `/opt/px4_msgs_ws/install/setup.bash`
+automatically. If `px4_msgs` is still missing, rebuild or refresh the dev image:
+
+```bash
+./scripts/build_dev_image.sh
+```
+
+Only set `PX4_MSGS_SETUP_FILE` manually when intentionally using a custom
+container image or external `px4_msgs` install.
+
 ## Drone Takes Off And Hovers
 
 Check:

@@ -17,6 +17,18 @@ Run these from the repository root:
 
 Use `./scripts/dev_shell.sh` when an interactive container shell is needed.
 
+All host scripts go through `scripts/container_run.sh`. The container runner
+sources the supported ROS 2 setup and the container-built `px4_msgs` setup
+before running the requested command. Normal builds do not require manual
+`source /opt/ros/...` or `source /opt/px4_msgs_ws/...` steps.
+
+If you intentionally use a custom image or external dependency install, set:
+
+```bash
+ROS_SETUP_FILE=/path/to/ros/setup.bash
+PX4_MSGS_SETUP_FILE=/path/to/px4_msgs/setup.bash
+```
+
 ## Commands Inside The Dev Shell
 
 Inside `./scripts/dev_shell.sh`, use:
