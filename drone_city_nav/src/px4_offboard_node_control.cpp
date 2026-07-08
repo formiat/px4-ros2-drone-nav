@@ -109,13 +109,8 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
   const bool hold_position = (velocity_cruise_requested || shouldHoldPosition()) &&
                              !terminal_position_capture_requested;
   const Point2 target = selectCommandTarget(desired_target, hold_position);
-  const bool terminal_altitude_valid =
-      terminal_position_capture_requested &&
-      trajectorySamplesAreUsable(final_trajectory_samples_) &&
-      std::isfinite(final_trajectory_samples_.back().z_m);
-  const double position_target_altitude_m = terminal_position_capture_requested
-                                                ? finalTrajectoryGoalAltitudeM()
-                                                : cruise_altitude_m_;
+  const double position_target_altitude_m =
+      positionSetpointAltitudeM(terminal_position_capture_requested);
   commanded_target_ = target;
   commanded_target_valid_ = local_position_valid_;
   last_published_target_ = target;
@@ -128,7 +123,8 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
                            static_cast<double>(msg.yaw));
   resetVelocityDiagnostics();
   last_target_altitude_m_ = position_target_altitude_m;
-  last_trajectory_altitude_target_valid_ = terminal_altitude_valid;
+  last_trajectory_altitude_target_valid_ =
+      positionSetpointAltitudeValid(terminal_position_capture_requested);
   last_altitude_error_m_ = altitude_valid_
                                ? position_target_altitude_m - current_altitude_m_
                                : std::numeric_limits<double>::quiet_NaN();
@@ -185,6 +181,11 @@ Px4OffboardNode::computeTerminalCaptureState() const {
 
 void Px4OffboardNode::updateTerminalCaptureState() {
   terminal_capture_state_ = computeTerminalCaptureState();
+  if (terminal_capture_state_.position_capture_latched) {
+    latchTerminalPositionCaptureAltitude(terminal_capture_state_.reason);
+  } else if (!final_goal_hold_active_) {
+    clearTerminalPositionCaptureAltitude();
+  }
   terminal_position_capture_latched_ = terminal_capture_state_.position_capture_latched;
   last_terminal_position_capture_active_ =
       terminal_capture_state_.position_capture_active;
@@ -260,6 +261,7 @@ void Px4OffboardNode::updateFinalGoalHold() {
 
   final_goal_hold_active_ = true;
   final_goal_hold_target_ = trajectory_goal_;
+  latchTerminalPositionCaptureAltitude("final_goal_hold");
   no_path_hold_target_valid_ = false;
   resetVelocityDiagnostics();
   RCLCPP_INFO(get_logger(),

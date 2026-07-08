@@ -1,15 +1,55 @@
 #include <cmath>
+#include <limits>
 
 #include "px4_offboard_node.hpp"
 
 namespace drone_city_nav {
 
-double Px4OffboardNode::finalTrajectoryGoalAltitudeM() const {
-  if (trajectorySamplesAreUsable(final_trajectory_samples_) &&
-      std::isfinite(final_trajectory_samples_.back().z_m)) {
-    return final_trajectory_samples_.back().z_m;
+void Px4OffboardNode::clearTerminalPositionCaptureAltitude() {
+  terminal_position_capture_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
+  terminal_position_capture_altitude_valid_ = false;
+}
+
+void Px4OffboardNode::latchTerminalPositionCaptureAltitude(const char* reason) {
+  if (terminal_position_capture_altitude_valid_) {
+    return;
   }
-  return cruise_altitude_m_;
+
+  if (altitude_valid_ && std::isfinite(current_altitude_m_)) {
+    terminal_position_capture_altitude_m_ = current_altitude_m_;
+    terminal_position_capture_altitude_valid_ = true;
+    RCLCPP_INFO(get_logger(),
+                "Terminal position capture altitude latched: reason=%s "
+                "altitude=%.2f",
+                reason != nullptr ? reason : "unknown",
+                terminal_position_capture_altitude_m_);
+    return;
+  }
+
+  terminal_position_capture_altitude_m_ = initial_altitude_m_;
+  terminal_position_capture_altitude_valid_ = false;
+  RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Terminal position capture altitude is not available; using initial altitude "
+      "as a temporary position-setpoint fallback: reason=%s initial_altitude=%.2f",
+      reason != nullptr ? reason : "unknown", initial_altitude_m_);
+}
+
+double Px4OffboardNode::positionSetpointAltitudeM(
+    const bool terminal_position_capture_requested) const {
+  const bool terminal_altitude_mode =
+      terminal_position_capture_requested || final_goal_hold_active_;
+  if (terminal_altitude_mode && std::isfinite(terminal_position_capture_altitude_m_)) {
+    return terminal_position_capture_altitude_m_;
+  }
+  return initial_altitude_m_;
+}
+
+bool Px4OffboardNode::positionSetpointAltitudeValid(
+    const bool terminal_position_capture_requested) const {
+  const bool terminal_altitude_mode =
+      terminal_position_capture_requested || final_goal_hold_active_;
+  return terminal_altitude_mode ? terminal_position_capture_altitude_valid_ : true;
 }
 
 VerticalSetpointPlan Px4OffboardNode::planVerticalSetpointForCurrentTrajectory(

@@ -54,7 +54,7 @@ TEST(Px4OffboardNodeConfig, BoundsScalarHelpers) {
 
 TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   Px4OffboardNodeConfig config;
-  config.cruise_altitude_m = 12.0;
+  config.initial_altitude_m = 12.0;
   config.min_navigation_altitude_m = 100.0;
   config.takeoff_hover_s = -5.0;
   config.acceptance_radius_m = std::numeric_limits<double>::infinity();
@@ -151,7 +151,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
 
   const Px4OffboardNodeConfig config = loadPx4OffboardNodeConfig(*node);
 
-  EXPECT_DOUBLE_EQ(config.cruise_altitude_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.initial_altitude_m, 12.0);
   EXPECT_DOUBLE_EQ(config.acceptance_radius_m, 1.5);
   EXPECT_DOUBLE_EQ(config.velocity_follower.cruise_speed_mps, 12.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 2.0);

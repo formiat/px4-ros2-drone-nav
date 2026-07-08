@@ -36,7 +36,7 @@ namespace {
 
 void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.min_navigation_altitude_m = std::clamp(config.min_navigation_altitude_m, 0.0,
-                                                std::abs(config.cruise_altitude_m));
+                                                std::abs(config.initial_altitude_m));
   config.takeoff_hover_s = std::clamp(config.takeoff_hover_s, 0.0, 30.0);
   config.acceptance_radius_m =
       boundedFiniteDouble(config.acceptance_radius_m, 1.5, 0.0, 100.0);
@@ -148,8 +148,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
 
 [[nodiscard]] Px4OffboardNodeConfig loadPx4OffboardNodeConfig(rclcpp::Node& node) {
   Px4OffboardNodeConfig config{};
-  config.cruise_altitude_m =
-      node.declare_parameter<double>("cruise_altitude_m", config.cruise_altitude_m);
+  config.initial_altitude_m =
+      node.declare_parameter<double>("initial_altitude_m", config.initial_altitude_m);
   config.min_navigation_altitude_m = node.declare_parameter<double>(
       "min_navigation_altitude_m", config.min_navigation_altitude_m);
   config.takeoff_hover_s =

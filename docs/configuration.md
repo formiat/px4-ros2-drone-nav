@@ -27,14 +27,15 @@ Mission and map:
 
 - `start_x_m`, `start_y_m`
 - `goal_x_m`, `goal_y_m`
-- `cruise_altitude_m`
+- `initial_altitude_m`
 - `px4_local_origin_x_m`, `px4_local_origin_y_m`
 - planning grid resolution, size, and origin.
 
-`cruise_altitude_m` is also the default `z_m` assigned to executable
-trajectory samples. This makes ROS paths, RViz markers, and trajectory dumps
-3D-aware while the runtime vertical controller still holds the same cruise
-altitude.
+`initial_altitude_m` is the startup altitude seed. Before the vehicle has a
+valid airborne altitude, it initializes executable trajectory `z_m` samples and
+acts as a conservative position-hold fallback. After takeoff, route publication
+uses the current vehicle altitude, passage traversal can change altitude, and
+terminal position capture holds the current altitude latched at terminal entry.
 
 Obstacle/grid:
 

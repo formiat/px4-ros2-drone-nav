@@ -337,10 +337,12 @@ class OffboardTelemetryContractTest(unittest.TestCase):
             self.offboard_text,
         )
         self.assertIn("planVerticalSetpointForCurrentTrajectory(", self.offboard_text)
-        self.assertIn("finalTrajectoryGoalAltitudeM(", self.offboard_text)
+        self.assertIn("latchTerminalPositionCaptureAltitude(", self.offboard_text)
+        self.assertIn("positionSetpointAltitudeM(", self.offboard_text)
+        self.assertNotIn("finalTrajectoryGoalAltitudeM(", self.offboard_text)
         self.assertIn("planVerticalSetpoint(", self.offboard_text)
         self.assertIn("trajectoryVerticalTargetAtS(", self.offboard_text)
-        self.assertIn("cruise_altitude_m_", self.offboard_text)
+        self.assertIn("initial_altitude_m_", self.offboard_text)
 
     def test_corridor_samples_are_planner_owned(self) -> None:
         self.assertIn("result.corridor_samples = corridor.samples", self.trajectory_planner_text)

@@ -32,7 +32,7 @@ buildOffboardControlMode(std::uint64_t timestamp_us, OffboardSetpointMode mode);
 
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildPositionTrajectorySetpoint(std::uint64_t timestamp_us, Point2 local_target,
-                                double cruise_altitude_m, double yaw_rad);
+                                double target_altitude_m, double yaw_rad);
 
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildVelocityTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,

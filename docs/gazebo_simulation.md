@@ -52,7 +52,7 @@ The default configuration uses:
 
 - start: `(54.0, 54.0)`
 - goal: `(216.0, 378.0)`
-- cruise altitude: `18.0 m`
+- initial altitude: `18.0 m`
 - PX4 local origin: `(54.0, 54.0)`
 
 These values are configured in `drone_city_nav/config/urban_mvp.yaml` for the

@@ -50,9 +50,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.start.y, 0.0);
   EXPECT_DOUBLE_EQ(config.goal.x, 85.0);
   EXPECT_DOUBLE_EQ(config.goal.y, 0.0);
-  EXPECT_DOUBLE_EQ(config.cruise_altitude_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.initial_altitude_m, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.initial_altitude_m,
-                   config.cruise_altitude_m);
+                   config.initial_altitude_m);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);

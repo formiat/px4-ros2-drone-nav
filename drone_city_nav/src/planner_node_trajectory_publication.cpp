@@ -84,7 +84,7 @@ TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude()
       altitude_valid_ && std::isfinite(current_altitude_m_) &&
       (has_accepted_trajectory || current_altitude_m_ > 1.0);
   config.initial_altitude_m =
-      airborne_altitude_valid ? current_altitude_m_ : cruise_altitude_m_;
+      airborne_altitude_valid ? current_altitude_m_ : initial_altitude_m_;
   return config;
 }
 

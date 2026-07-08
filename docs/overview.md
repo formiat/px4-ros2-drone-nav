@@ -72,9 +72,10 @@ This project is not currently intended to provide:
 
 The planner still performs XY obstacle avoidance and trajectory shaping in a
 2D navigation representation. Executable trajectory samples now also carry
-`z_m`, currently initialized from `cruise_altitude_m`, so RViz paths, markers,
-and dumps can represent the trajectory in 3D. Runtime vertical control still
-holds the configured cruise altitude in this stage.
+`z_m`, seeded from `initial_altitude_m` before takeoff and from current vehicle
+altitude after takeoff, so RViz paths, markers, and dumps can represent the
+trajectory in 3D. Known-passage vertical profiling can change that altitude, and
+terminal position capture holds the current altitude latched at terminal entry.
 
 Known 3D passages are loaded as annotations. Passage structures, openings, gate
 centers, approach arrows, and exit arrows are published for RViz/debugging. The

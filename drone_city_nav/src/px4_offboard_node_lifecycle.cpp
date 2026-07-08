@@ -3,7 +3,7 @@
 namespace drone_city_nav {
 
 void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
-  cruise_altitude_m_ = config.cruise_altitude_m;
+  initial_altitude_m_ = config.initial_altitude_m;
   min_navigation_altitude_m_ = config.min_navigation_altitude_m;
   takeoff_hover_s_ = config.takeoff_hover_s;
   acceptance_radius_m_ = config.acceptance_radius_m;
@@ -133,7 +133,7 @@ Px4OffboardNode::Px4OffboardNode()
       "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
       "flight_blackbox=%s flight_blackbox_path='%s' "
       "max_pose_staleness=%.2fs command_resend_period=%.2fs",
-      cruise_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
+      initial_altitude_m_, acceptance_radius_m_, auto_arm_ ? "true" : "false",
       auto_offboard_ ? "true" : "false", min_navigation_altitude_m_, takeoff_hover_s_,
       diagnostic_turn_preview_distance_m_, velocity_follower_config_.cruise_speed_mps,
       velocity_follower_config_.min_turn_speed_mps,

@@ -196,8 +196,8 @@ PlannerNode::PlannerNode()
               lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
   RCLCPP_INFO(get_logger(),
               "Planner path policy: stable_path_reuse=always "
-              "stable_goal_tolerance=%.2fm default_trajectory_altitude=%.2fm",
-              stable_path_goal_tolerance_m_, cruise_altitude_m_);
+              "stable_goal_tolerance=%.2fm initial_trajectory_altitude=%.2fm",
+              stable_path_goal_tolerance_m_, initial_altitude_m_);
   RCLCPP_INFO(get_logger(),
               "Planner path preference: astar_heuristic_weight=%.2f "
               "astar_turn_weight=%.2f "
@@ -216,7 +216,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   frame_id_ = config.frame_id;
   start_ = config.start;
   goal_ = config.goal;
-  cruise_altitude_m_ = config.cruise_altitude_m;
+  initial_altitude_m_ = config.initial_altitude_m;
   inflation_radius_m_ = config.inflation_radius_m;
   planning_clearance_m_ = config.planning_clearance_m;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;

@@ -128,10 +128,11 @@ profile diagnostics are planning diagnostics; offboard rebuilds the runtime
 profile for actual control.
 
 Trajectory sample length, curvature, projection, and speed profile are still
-computed in XY. Each executable sample also carries `z_m`. In the current 3D
-representation foundation stage, the planner assigns this altitude from
-`cruise_altitude_m`; it is used by ROS path publication, RViz, dumps, and
-diagnostics, not by vertical maneuver control.
+computed in XY. Each executable sample also carries `z_m`. Before takeoff this
+altitude is seeded from `initial_altitude_m`; after takeoff it is seeded from the
+current vehicle altitude and can be modified by known-passage vertical
+profiling. The same samples are used by ROS path publication, RViz, dumps,
+diagnostics, and runtime vertical maneuver control.
 
 ## 11. Publication
 

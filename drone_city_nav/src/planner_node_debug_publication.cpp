@@ -95,7 +95,7 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   const std::uint64_t path_stamp_ns = stampNanoseconds(header.stamp);
   const nav_msgs::msg::Path path =
       pathToRos(std::span<const Point2>{points.data(), points.size()}, header,
-                cruise_altitude_m_);
+                initial_altitude_m_);
 
   std_msgs::msg::UInt64 path_id_msg;
   path_id_msg.data = path_id;

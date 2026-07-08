@@ -211,7 +211,15 @@ private:
 
   [[nodiscard]] double consumeVelocityPlanDtS();
 
-  [[nodiscard]] double finalTrajectoryGoalAltitudeM() const;
+  void clearTerminalPositionCaptureAltitude();
+
+  void latchTerminalPositionCaptureAltitude(const char* reason);
+
+  [[nodiscard]] double
+  positionSetpointAltitudeM(bool terminal_position_capture_requested) const;
+
+  [[nodiscard]] bool
+  positionSetpointAltitudeValid(bool terminal_position_capture_requested) const;
 
   [[nodiscard]] VerticalSetpointPlan
   planVerticalSetpointForCurrentTrajectory(const VelocitySetpointPlan& velocity_plan,
@@ -317,7 +325,7 @@ private:
   Point2 px4_local_origin_{};
   double current_heading_rad_{0.0};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
-  double cruise_altitude_m_{12.0};
+  double initial_altitude_m_{12.0};
   double min_navigation_altitude_m_{0.0};
   double takeoff_hover_s_{2.0};
   double acceptance_radius_m_{1.5};
@@ -334,6 +342,8 @@ private:
   double last_velocity_setpoint_speed_mps_{0.0};
   double last_vertical_velocity_setpoint_mps_{0.0};
   double last_target_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_position_capture_altitude_m_{
+      std::numeric_limits<double>::quiet_NaN()};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
@@ -369,6 +379,7 @@ private:
   bool final_goal_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
   bool terminal_position_capture_latched_{false};
+  bool terminal_position_capture_altitude_valid_{false};
   bool commanded_target_valid_{false};
   bool last_published_target_valid_{false};
   bool last_trajectory_altitude_target_valid_{false};

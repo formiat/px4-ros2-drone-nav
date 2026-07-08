@@ -32,7 +32,7 @@ struct Px4OffboardNodeTopics {
 };
 
 struct Px4OffboardNodeConfig {
-  double cruise_altitude_m{12.0};
+  double initial_altitude_m{12.0};
   double min_navigation_altitude_m{0.0};
   double takeoff_hover_s{2.0};
   double acceptance_radius_m{1.5};

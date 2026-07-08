@@ -60,7 +60,7 @@ struct PlannerNodeConfig {
   std::string frame_id{"map"};
   Point2 start{};
   Point2 goal{85.0, 0.0};
-  double cruise_altitude_m{12.0};
+  double initial_altitude_m{12.0};
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
 
