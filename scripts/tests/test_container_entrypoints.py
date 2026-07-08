@@ -71,7 +71,21 @@ class ContainerEntrypointTest(unittest.TestCase):
 
         self.assertIn("docker run", text)
         self.assertIn("--volume \"${repo_root}:/workspace:rw\"", text)
-        self.assertIn('bash -lc "${container_command}" bash "$@"', text)
+        self.assertIn('bash -c "${container_command}" bash "$@"', text)
+
+    def test_container_runner_sources_ros_and_px4_msgs_setups(self) -> None:
+        text = self.read_script("container_run.sh")
+
+        self.assertIn("ROS_SETUP_FILE", text)
+        self.assertIn("PX4_MSGS_SETUP_FILE", text)
+        self.assertIn(
+            'source_setup_file "${ROS_SETUP_FILE:-/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash}"',
+            text,
+        )
+        self.assertIn(
+            'source_setup_file "${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"',
+            text,
+        )
 
 
 if __name__ == "__main__":

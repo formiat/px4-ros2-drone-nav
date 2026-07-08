@@ -57,6 +57,8 @@ optional_env_vars=(
   PX4_LOG_FILE
   PX4_MODEL_TARGET
   PX4_PARAM_DELAY_S
+  PX4_MSGS_SETUP_FILE
+  ROS_SETUP_FILE
   ROS_LOG_FILE
   SIM_START_X_M
   SIM_START_YAW_RAD
@@ -74,11 +76,32 @@ for env_name in "${optional_env_vars[@]}"; do
   fi
 done
 
+container_command='
+set -euo pipefail
+
+source_setup_file() {
+  local setup_file="$1"
+  if [[ ! -f "${setup_file}" ]]; then
+    return 0
+  fi
+
+  set +u
+  source "${setup_file}"
+  set -u
+}
+
+mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}"
+chmod 700 "${XDG_RUNTIME_DIR}"
+
+source_setup_file "${ROS_SETUP_FILE:-/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash}"
+source_setup_file "${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"
+
 if [[ "$#" -eq 0 ]]; then
-  container_command='mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}" && chmod 700 "${XDG_RUNTIME_DIR}" && exec bash -l'
-else
-  container_command='mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}" && chmod 700 "${XDG_RUNTIME_DIR}" && exec "$@"'
+  exec bash -i
 fi
+
+exec "$@"
+'
 
 docker run --rm "${tty_args[@]}" \
   --privileged \
@@ -90,4 +113,4 @@ docker run --rm "${tty_args[@]}" \
   --volume /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --workdir /workspace \
   "${image_name}" \
-  bash -lc "${container_command}" bash "$@"
+  bash -c "${container_command}" bash "$@"
