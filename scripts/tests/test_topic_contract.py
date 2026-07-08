@@ -152,6 +152,20 @@ class TopicContractTest(unittest.TestCase):
                     f'<model name="known_passage_test_gate_{suffix}">', sdf_text
                 )
 
+    def test_known_passage_openings_cover_wide_altitude_range(self) -> None:
+        passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
+
+        center_z_values = sorted(
+            float(match)
+            for match in re.findall(
+                r"^opening\s+\S+\s+\S+\s+[-+0-9.]+\s+[-+0-9.]+\s+([-+0-9.]+)\s",
+                passage_text,
+                re.M,
+            )
+        )
+
+        self.assertEqual(center_z_values, [5.0, 10.0, 15.0, 20.0, 25.0])
+
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [
             "drone_city_nav/config/urban_mvp.yaml",
