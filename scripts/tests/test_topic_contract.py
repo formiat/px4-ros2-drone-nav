@@ -149,35 +149,49 @@ class TopicContractTest(unittest.TestCase):
     def test_known_passage_annotations_have_physical_world_models(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
+        static_map_text = read("drone_city_nav/worlds/generated_city.map2d")
 
         structure_ids = sorted(
             set(
                 re.findall(
-                    r"^structure\s+(test_passage_gate_\d+)\s", passage_text, re.M
+                    r"^structure\s+(building_with_passage_\d+)\s",
+                    passage_text,
+                    re.M,
                 )
             )
         )
         self.assertGreater(len(structure_ids), 0)
         for structure_id in structure_ids:
-            suffix = structure_id.rsplit("_", maxsplit=1)[-1]
             with self.subTest(structure_id=structure_id):
-                self.assertIn(
-                    f'<model name="known_passage_test_gate_{suffix}">', sdf_text
-                )
+                self.assertIn(f'<model name="{structure_id}">', sdf_text)
+                self.assertNotIn(structure_id, static_map_text)
+        self.assertNotIn("known_passage_test_gate", passage_text)
+        self.assertNotIn("known_passage_test_gate", sdf_text)
 
     def test_known_passage_openings_cover_wide_altitude_range(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
 
-        center_z_values = sorted(
-            float(match)
-            for match in re.findall(
-                r"^opening\s+\S+\s+\S+\s+[-+0-9.]+\s+[-+0-9.]+\s+([-+0-9.]+)\s",
+        opening_values = sorted(
+            (float(center_z), float(width), float(height))
+            for center_z, width, height in re.findall(
+                r"^opening\s+\S+\s+\S+\s+[-+0-9.]+\s+[-+0-9.]+"
+                r"\s+([-+0-9.]+)\s+[-+0-9.]+\s+[-+0-9.]+"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s",
                 passage_text,
                 re.M,
             )
         )
 
-        self.assertEqual(center_z_values, [5.0, 10.0, 15.0, 20.0, 25.0])
+        self.assertEqual(
+            opening_values,
+            [
+                (5.0, 5.0, 5.0),
+                (10.0, 5.0, 5.0),
+                (15.0, 5.0, 5.0),
+                (20.0, 5.0, 5.0),
+                (25.0, 5.0, 5.0),
+            ],
+        )
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
         checked_paths = [

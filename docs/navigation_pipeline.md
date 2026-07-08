@@ -109,7 +109,7 @@ vertical profile and speed profile construction.
 The stage is enabled by default. It only targets known-passage validation spans
 where the current XY trajectory intersects a known structure
 but misses the opening corridor. It builds a local smooth XY segment through
-the opening gate, stitches it back into the original trajectory, recomputes
+the opening, stitches it back into the original trajectory, recomputes
 sample stationing/tangent/curvature, and accepts the result only if:
 
 - the full stitched trajectory remains traversable on the prohibited grid;
@@ -154,12 +154,13 @@ The accepted trajectory is matched to diagnostics by `path_stamp_ns`.
 The `/drone_city_nav/path` and `/drone_city_nav/final_trajectory_path` messages
 carry per-sample altitude in `pose.position.z`.
 
-Known passage markers are RViz/debug artifacts. Structure volumes, opening
-frames, gate centers, approach arrows, and exit arrows help verify annotation
-geometry. The same annotations feed the no-over-building validator and the
-passage traversal sensor policy. A validation violation is diagnostic-only; it
-does not cancel path publication by itself. Sensor policy decisions are applied
-only to dynamic obstacle evidence during an active known passage traversal.
+Known passage markers are RViz/debug artifacts. Architectural structure volumes,
+opening frames, opening centers, approach arrows, and exit arrows help verify
+annotation geometry. The same annotations feed the no-over-building validator
+and the passage traversal sensor policy. A validation violation is
+diagnostic-only; it does not cancel path publication by itself. Sensor policy
+decisions are applied only to dynamic obstacle evidence during an active known
+passage traversal.
 
 ## Pipeline Contracts
 

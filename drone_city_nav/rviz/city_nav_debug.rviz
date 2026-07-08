@@ -77,8 +77,8 @@ Visualization Manager:
       Namespaces:
         known_passage_approach: true
         known_passage_exit: true
-        known_passage_gate_center: true
         known_passage_opening_frame: true
+        known_passage_opening_center: true
         known_passage_structure: true
       Topic:
         Value: /drone_city_nav/known_passage_markers

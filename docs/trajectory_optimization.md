@@ -92,8 +92,8 @@ the local shape while preserving traversability.
 Local passage insertion is not part of the global smoothness optimizer. It is an
 optional geometry repair stage for known annotated passages. If the final XY
 trajectory intersects a known structure footprint but misses the opening
-corridor, the stage may build a local Hermite/Bezier-style segment through the
-opening gate and stitch it into the trajectory.
+corridor, the stage may build a local Hermite/Bezier-style segment through that
+opening and stitch it into the trajectory.
 
 The stage is intentionally conservative:
 

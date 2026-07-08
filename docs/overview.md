@@ -77,15 +77,15 @@ altitude after takeoff, so RViz paths, markers, and dumps can represent the
 trajectory in 3D. Known-passage vertical profiling can change that altitude, and
 terminal position capture holds the current altitude latched at terminal entry.
 
-Known 3D passages are loaded as annotations. Passage structures, openings, gate
-centers, approach arrows, and exit arrows are published for RViz/debugging. The
-planner validates whether the final trajectory crosses a known structure
-footprint through an allowed opening volume. During active traversal of a
-matched passage span, a narrow sensor policy can ignore dynamic expected-wall
-returns around the opening while preserving opening-corridor blockers. This
-policy does not detect passages, does not filter static map cells, and does not
-change A*, corridor construction, trajectory geometry, speed profile, or
-offboard control.
+Known 3D passages are loaded as annotations. Architectural passage structures,
+opening frames, opening centers, approach arrows, and exit arrows are published
+for RViz/debugging. The planner validates whether the final trajectory crosses a
+known structure footprint through an allowed opening volume. During active
+traversal of a matched passage span, a narrow sensor policy can ignore dynamic
+expected-wall returns around the opening while preserving opening-corridor
+blockers. This policy does not detect passages, does not filter static map
+cells, and does not change A*, corridor construction, trajectory geometry, speed
+profile, or offboard control.
 
 ## Important Terms
 

@@ -135,15 +135,23 @@ or arming rather than planner geometry.
 
 ## World And Static Map Consistency
 
-The `.sdf` world and `.map2d` static map must describe the same obstacle
-layout. Gazebo uses the world for rendering and collision. The planner uses the
-static map as raw obstacle evidence. If they drift apart, RViz can show a
-planner-valid route through a building, or the planner can avoid empty space.
+For ordinary buildings, the `.sdf` world and `.map2d` static map must describe
+the same obstacle layout. Gazebo uses the world for rendering and collision. The
+planner uses the static map as raw obstacle evidence. If they drift apart, RViz
+can show a planner-valid route through a building, or the planner can avoid
+empty space.
+
+Known architectural passage buildings are the deliberate exception: they exist
+physically in `generated_city.sdf`, but they are intentionally absent from
+`generated_city.map2d` so 2D A* can route through the opening footprint. Their
+3D geometry is represented by `known_passages.passages3d`, and the executable
+trajectory layer validates/profiles the actual opening traversal.
 
 When editing a world, verify:
 
-- building positions and sizes in Gazebo;
-- matching static map cells;
+- ordinary building positions and sizes in Gazebo;
+- matching static map cells for ordinary buildings;
+- known architectural passage buildings stay out of `generated_city.map2d`;
 - map origin relative to PX4 local origin;
 - grid bounds cover the full mission;
 - spawn and goal are inside navigable area;

@@ -77,7 +77,7 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_DOUBLE_EQ(frame.points[8].z, -10.0);
 
   const visualization_msgs::msg::Marker& center = markers.markers[5];
-  EXPECT_EQ(center.ns, "known_passage_gate_center");
+  EXPECT_EQ(center.ns, "known_passage_opening_center");
   EXPECT_EQ(center.type, visualization_msgs::msg::Marker::SPHERE);
   EXPECT_DOUBLE_EQ(center.pose.position.x, 10.0);
   EXPECT_DOUBLE_EQ(center.pose.position.y, 20.0);

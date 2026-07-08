@@ -78,9 +78,10 @@ The RViz `Known Passages` display subscribes to:
 
 Marker namespaces:
 
-- `known_passage_structure`: visible physical wall pieces around each opening.
+- `known_passage_structure`: visible architectural building pieces around each
+  opening.
 - `known_passage_opening_frame`: wireframe box for the traversable opening.
-- `known_passage_gate_center`: center point of the gate.
+- `known_passage_opening_center`: center point of the traversable opening.
 - `known_passage_approach`: approach direction into the opening.
 - `known_passage_exit`: exit direction after the opening.
 

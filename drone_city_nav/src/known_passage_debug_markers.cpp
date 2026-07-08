@@ -167,10 +167,10 @@ makeOpeningFrameMarker(const std_msgs::msg::Header& header,
 }
 
 [[nodiscard]] visualization_msgs::msg::Marker
-makeGateCenterMarker(const std_msgs::msg::Header& header, const PassageOpening& opening,
-                     const int marker_id) {
+makeOpeningCenterMarker(const std_msgs::msg::Header& header,
+                        const PassageOpening& opening, const int marker_id) {
   visualization_msgs::msg::Marker marker =
-      makeMarker(header, "known_passage_gate_center", marker_id,
+      makeMarker(header, "known_passage_opening_center", marker_id,
                  visualization_msgs::msg::Marker::SPHERE);
   marker.pose.position = gazeboAlignedRvizMarkerPoint(opening.center);
   marker.scale.x = 0.9;
@@ -236,7 +236,7 @@ buildKnownPassageDebugMarkers(const std_msgs::msg::Header& header,
     for (const PassageOpening& opening : structure.openings) {
       appendStructurePhysicalMarkers(markers, header, structure, opening, marker_id);
       markers.markers.push_back(makeOpeningFrameMarker(header, opening, marker_id++));
-      markers.markers.push_back(makeGateCenterMarker(header, opening, marker_id++));
+      markers.markers.push_back(makeOpeningCenterMarker(header, opening, marker_id++));
       markers.markers.push_back(makeArrowMarker(header, opening, marker_id++, false));
       markers.markers.push_back(makeArrowMarker(header, opening, marker_id++, true));
     }

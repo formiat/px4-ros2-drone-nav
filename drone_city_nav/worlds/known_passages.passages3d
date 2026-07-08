@@ -1,17 +1,18 @@
 drone_city_nav_known_passages_v1
 frame_id map
 
-# Test passages across the first long northbound corridor. These structures are
-# Gazebo-only obstacles: they are intentionally not present in generated_city.map2d
-# so the 2D route can remain unchanged while the executable trajectory validates
-# and profiles known 3D openings.
-structure test_passage_gate_01 58.343 158.926 25.0 8.0 0.0 32.0
-opening test_passage_gate_01 low_5m_window 58.343 158.926 5.0 0.0415 0.9991 8.0 3.0 6.0 3.5 6.5 18.0 18.0
-structure test_passage_gate_02 59.060 273.648 25.0 11.0 0.0 32.0
-opening test_passage_gate_02 low_10m_window 59.060 273.648 10.0 -0.1843 0.9829 8.0 3.0 6.0 8.5 11.5 18.0 18.0
-structure test_passage_gate_03 77.329 322.572 10.0 25.0 0.0 32.0
-opening test_passage_gate_03 mid_15m_window 77.329 322.572 15.0 0.9900 0.1406 8.0 3.0 6.0 13.5 16.5 18.0 18.0
-structure test_passage_gate_04 132.191 323.443 8.0 25.0 0.0 32.0
-opening test_passage_gate_04 high_20m_window 132.191 323.443 20.0 0.9974 0.0678 8.0 3.0 6.0 18.5 21.5 18.0 18.0
-structure test_passage_gate_05 212.230 340.872 25.0 19.0 0.0 32.0
-opening test_passage_gate_05 high_25m_window 212.230 340.872 25.0 0.5196 0.8542 8.0 3.0 6.0 23.5 26.5 18.0 18.0
+# Architectural passage buildings across the first long northbound corridor.
+# These are real Gazebo obstacles with through-building openings, but they are
+# intentionally not present in generated_city.map2d. The 2D A* planner should
+# still see free space at the opening and the executable trajectory layer owns
+# the 3D passage validation/profile.
+structure building_with_passage_01 58.343 158.926 40.0 24.0 0.0 32.0
+opening building_with_passage_01 low_5m_opening 58.343 158.926 5.0 0.0415 0.9991 5.0 5.0 24.0 2.5 7.5 18.0 18.0
+structure building_with_passage_02 59.060 273.648 40.0 24.0 0.0 32.0
+opening building_with_passage_02 low_10m_opening 59.060 273.648 10.0 -0.1843 0.9829 5.0 5.0 24.0 7.5 12.5 18.0 18.0
+structure building_with_passage_03 77.329 322.572 24.0 40.0 0.0 32.0
+opening building_with_passage_03 mid_15m_opening 77.329 322.572 15.0 0.9900 0.1406 5.0 5.0 24.0 12.5 17.5 18.0 18.0
+structure building_with_passage_04 132.191 323.443 24.0 40.0 0.0 32.0
+opening building_with_passage_04 high_20m_opening 132.191 323.443 20.0 0.9974 0.0678 5.0 5.0 24.0 17.5 22.5 18.0 18.0
+structure building_with_passage_05 212.230 340.872 40.0 40.0 0.0 32.0
+opening building_with_passage_05 high_25m_opening 212.230 340.872 25.0 0.5196 0.8542 5.0 5.0 24.0 22.5 27.5 18.0 18.0

@@ -328,8 +328,13 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         )
 
     def test_final_trajectory_debug_path_uses_sample_altitude(self) -> None:
+        self.assertIn("pathToGazeboAlignedRvizDebugPath(", self.offboard_text)
         self.assertIn(
-            "pathToRos(final_trajectory_samples_",
+            "pathToRos(samples, header)",
+            self.offboard_text,
+        )
+        self.assertIn(
+            "gazeboAlignedRvizZ(pose.pose.position.z)",
             self.offboard_text,
         )
         self.assertNotIn(
