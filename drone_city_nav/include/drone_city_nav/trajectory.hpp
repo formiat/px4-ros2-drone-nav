@@ -63,6 +63,10 @@ struct TrajectoryPointSample {
   double vertical_accel_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   double vertical_jerk_limit_mps{std::numeric_limits<double>::quiet_NaN()};
   bool vertical_constraint_active{false};
+  bool vertical_hard_window_active{false};
+  double vertical_safe_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_safe_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   double left_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double right_bound_m{std::numeric_limits<double>::quiet_NaN()};
   double lateral_offset_m{std::numeric_limits<double>::quiet_NaN()};
@@ -75,6 +79,10 @@ struct TrajectoryVerticalTarget {
   double z_m{std::numeric_limits<double>::quiet_NaN()};
   double vertical_slope_dz_ds{0.0};
   bool vertical_constraint_active{false};
+  bool vertical_hard_window_active{false};
+  double vertical_safe_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_safe_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_gate_z_m{std::numeric_limits<double>::quiet_NaN()};
   std::string vertical_profile_passage_id;
 };
 

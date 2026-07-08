@@ -17,6 +17,10 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
   sample.lateral_offset_m = -0.5;
   sample.vertical_slope_dz_ds = 0.2;
   sample.vertical_constraint_active = true;
+  sample.vertical_hard_window_active = true;
+  sample.vertical_safe_min_z_m = 8.0;
+  sample.vertical_safe_max_z_m = 10.0;
+  sample.vertical_gate_z_m = 9.0;
   sample.vertical_profile_passage_id = "window_01";
 
   TrajectorySpeedSample speed_sample{};
@@ -46,6 +50,10 @@ TEST(TrajectoryDiagnosticsIo, CsvHeaderAndRowContainProfiledTiming) {
                                 "vertical_jerk_limit_mps",
                                 "vertical_constraint_active",
                                 "vertical_profile_passage_id",
+                                "vertical_hard_window_active",
+                                "vertical_safe_min_z_m",
+                                "vertical_safe_max_z_m",
+                                "vertical_gate_z_m",
                                 "speed_geometric_limit_mps",
                                 "speed_profiled_limit_mps",
                                 "speed_reason",

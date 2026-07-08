@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -94,6 +95,32 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
          1000.0;
 }
 
+void clearVerticalProfileMetadata(TrajectoryPointSample& sample) {
+  sample.vertical_profile_passage_id.clear();
+  sample.vertical_hard_window_active = false;
+  sample.vertical_safe_min_z_m = std::numeric_limits<double>::quiet_NaN();
+  sample.vertical_safe_max_z_m = std::numeric_limits<double>::quiet_NaN();
+  sample.vertical_gate_z_m = std::numeric_limits<double>::quiet_NaN();
+}
+
+[[nodiscard]] double
+diagnosticSafeMinZ(const VerticalProfilePassageDiagnostic& diagnostic) noexcept {
+  return std::isfinite(diagnostic.safe_min_z_m) ? diagnostic.safe_min_z_m
+                                                : diagnostic.min_z_m;
+}
+
+[[nodiscard]] double
+diagnosticSafeMaxZ(const VerticalProfilePassageDiagnostic& diagnostic) noexcept {
+  return std::isfinite(diagnostic.safe_max_z_m) ? diagnostic.safe_max_z_m
+                                                : diagnostic.max_z_m;
+}
+
+[[nodiscard]] bool stationWithinInclusive(const double s_m, const double start_s_m,
+                                          const double end_s_m) noexcept {
+  return std::isfinite(s_m) && std::isfinite(start_s_m) && std::isfinite(end_s_m) &&
+         s_m + kTinyDistanceM >= start_s_m && s_m <= end_s_m + kTinyDistanceM;
+}
+
 void mergePlannerDiagnosticsIntoTrajectoryStats(
     TrajectoryPlannerStats& output_stats,
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics) {
@@ -119,6 +146,48 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   output_stats.known_passage_validation = diagnostics.stats.known_passage_validation;
   output_stats.vertical_profile = diagnostics.stats.vertical_profile;
   output_stats.passage_insertion = diagnostics.stats.passage_insertion;
+}
+
+bool applyPlannerVerticalProfileMetadata(const std::span<TrajectoryPointSample> samples,
+                                         const VerticalProfileStats& vertical_profile) {
+  if (samples.empty() || vertical_profile.diagnostics.empty()) {
+    return false;
+  }
+
+  for (TrajectoryPointSample& sample : samples) {
+    clearVerticalProfileMetadata(sample);
+  }
+
+  bool applied = false;
+  for (const VerticalProfilePassageDiagnostic& diagnostic :
+       vertical_profile.diagnostics) {
+    if (!diagnostic.valid || diagnostic.opening_id.empty()) {
+      continue;
+    }
+    const double safe_min_z_m = diagnosticSafeMinZ(diagnostic);
+    const double safe_max_z_m = diagnosticSafeMaxZ(diagnostic);
+    const bool safe_interval_valid = std::isfinite(safe_min_z_m) &&
+                                     std::isfinite(safe_max_z_m) &&
+                                     safe_max_z_m >= safe_min_z_m;
+    for (TrajectoryPointSample& sample : samples) {
+      if (stationWithinInclusive(sample.s_m, diagnostic.approach_start_s_m,
+                                 diagnostic.exit_s_m)) {
+        sample.vertical_profile_passage_id = diagnostic.opening_id;
+        applied = true;
+      }
+      if (safe_interval_valid &&
+          stationWithinInclusive(sample.s_m, diagnostic.gate_hold_start_s_m,
+                                 diagnostic.exit_s_m)) {
+        sample.vertical_profile_passage_id = diagnostic.opening_id;
+        sample.vertical_hard_window_active = true;
+        sample.vertical_safe_min_z_m = safe_min_z_m;
+        sample.vertical_safe_max_z_m = safe_max_z_m;
+        sample.vertical_gate_z_m = diagnostic.gate_z_m;
+        applied = true;
+      }
+    }
+  }
+  return applied;
 }
 
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
@@ -197,8 +266,18 @@ buildOffboardTrajectoryState(const std::span<const Point2> path_points,
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(const std::span<const TrajectoryPointSample> path_samples,
                              const VelocityFollowerConfig& velocity_config) {
+  return buildOffboardTrajectoryState(path_samples, velocity_config, nullptr);
+}
+
+[[nodiscard]] OffboardTrajectoryState
+buildOffboardTrajectoryState(const std::span<const TrajectoryPointSample> path_samples,
+                             const VelocityFollowerConfig& velocity_config,
+                             const TrajectoryPlannerStats* const planner_stats) {
   OffboardTrajectoryState state;
   state.samples.assign(path_samples.begin(), path_samples.end());
+  if (planner_stats != nullptr) {
+    applyPlannerVerticalProfileMetadata(state.samples, planner_stats->vertical_profile);
+  }
   populateTrajectoryVerticalSpeedConstraints(state.samples, velocity_config);
   state.trajectory = lineTrajectoryFromSamples(state.samples);
   const auto speed_profile_started_at = std::chrono::steady_clock::now();

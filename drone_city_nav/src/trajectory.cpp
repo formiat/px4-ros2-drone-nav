@@ -57,6 +57,37 @@ constexpr double kTwoPi = 2.0 * std::numbers::pi;
   return std::clamp(value, 0.0, 1.0);
 }
 
+[[nodiscard]] double firstFinite(const double preferred,
+                                 const double fallback) noexcept {
+  return std::isfinite(preferred) ? preferred : fallback;
+}
+
+[[nodiscard]] double combinedSafeMinZ(const TrajectoryPointSample& start,
+                                      const TrajectoryPointSample& end,
+                                      const TrajectoryPointSample& nearest) noexcept {
+  if (start.vertical_hard_window_active && end.vertical_hard_window_active &&
+      std::isfinite(start.vertical_safe_min_z_m) &&
+      std::isfinite(end.vertical_safe_min_z_m)) {
+    return std::max(start.vertical_safe_min_z_m, end.vertical_safe_min_z_m);
+  }
+  return firstFinite(
+      nearest.vertical_safe_min_z_m,
+      firstFinite(start.vertical_safe_min_z_m, end.vertical_safe_min_z_m));
+}
+
+[[nodiscard]] double combinedSafeMaxZ(const TrajectoryPointSample& start,
+                                      const TrajectoryPointSample& end,
+                                      const TrajectoryPointSample& nearest) noexcept {
+  if (start.vertical_hard_window_active && end.vertical_hard_window_active &&
+      std::isfinite(start.vertical_safe_max_z_m) &&
+      std::isfinite(end.vertical_safe_max_z_m)) {
+    return std::min(start.vertical_safe_max_z_m, end.vertical_safe_max_z_m);
+  }
+  return firstFinite(
+      nearest.vertical_safe_max_z_m,
+      firstFinite(start.vertical_safe_max_z_m, end.vertical_safe_max_z_m));
+}
+
 [[nodiscard]] double segmentEndS(const TrajectorySegment& segment) noexcept {
   return segment.s_start_m + std::max(0.0, segment.length_m);
 }
@@ -351,6 +382,13 @@ trajectoryVerticalTargetAtS(const std::span<const TrajectoryPointSample> samples
         start.vertical_slope_dz_ds * (1.0 - t) + end.vertical_slope_dz_ds * t;
     target.vertical_constraint_active =
         start.vertical_constraint_active || end.vertical_constraint_active;
+    target.vertical_hard_window_active =
+        start.vertical_hard_window_active || end.vertical_hard_window_active;
+    target.vertical_safe_min_z_m = combinedSafeMinZ(start, end, nearest);
+    target.vertical_safe_max_z_m = combinedSafeMaxZ(start, end, nearest);
+    target.vertical_gate_z_m =
+        firstFinite(nearest.vertical_gate_z_m,
+                    firstFinite(start.vertical_gate_z_m, end.vertical_gate_z_m));
     if (!nearest.vertical_profile_passage_id.empty()) {
       target.vertical_profile_passage_id = nearest.vertical_profile_passage_id;
     } else if (!start.vertical_profile_passage_id.empty()) {
@@ -366,6 +404,10 @@ trajectoryVerticalTargetAtS(const std::span<const TrajectoryPointSample> samples
   target.z_m = samples.back().z_m;
   target.vertical_slope_dz_ds = samples.back().vertical_slope_dz_ds;
   target.vertical_constraint_active = samples.back().vertical_constraint_active;
+  target.vertical_hard_window_active = samples.back().vertical_hard_window_active;
+  target.vertical_safe_min_z_m = samples.back().vertical_safe_min_z_m;
+  target.vertical_safe_max_z_m = samples.back().vertical_safe_max_z_m;
+  target.vertical_gate_z_m = samples.back().vertical_gate_z_m;
   target.vertical_profile_passage_id = samples.back().vertical_profile_passage_id;
   return target;
 }

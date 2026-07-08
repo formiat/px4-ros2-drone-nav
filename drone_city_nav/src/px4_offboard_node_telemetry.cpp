@@ -131,7 +131,8 @@ void Px4OffboardNode::logTelemetry() {
       "altitude[target_z=%.2f actual_z=%.2f z_error=%.2f target_vz=%.2f "
       "feedback_vz=%.2f desired_vz=%.2f commanded_vz=%.2f "
       "commanded_vz_ned=%.2f trajectory_target_valid=%s passage_mode=%s "
-      "passage_id=%s slope=%.4f constraint=%s reason=%s] "
+      "passage_id=%s slope=%.4f constraint=%s hard_window=%s "
+      "safe=[%.2f, %.2f] gate_z=%.2f safe_error=%.2f reason=%s] "
       "tangent=(%.2f, %.2f) projection=(%.2f, %.2f) "
       "trajectory[valid=%s s=%.2f segment=%zu type=%s curvature=%.4f "
       "arc_radius=%.2f lines=%zu arcs=%zu length=%.2f samples=%zu "
@@ -247,10 +248,14 @@ void Px4OffboardNode::logTelemetry() {
       last_vertical_plan_.passage_mode ? "true" : "false",
       last_vertical_plan_.passage_id.c_str(), last_vertical_plan_.vertical_slope_dz_ds,
       last_vertical_plan_.vertical_constraint_active ? "true" : "false",
-      last_vertical_plan_.reason.c_str(), last_velocity_plan_.path_tangent.x,
-      last_velocity_plan_.path_tangent.y, last_velocity_plan_.projection.x,
-      last_velocity_plan_.projection.y, trajectory_valid_ ? "true" : "false",
-      last_velocity_plan_.trajectory_s_m, last_velocity_plan_.trajectory_segment_index,
+      last_vertical_plan_.vertical_hard_window_active ? "true" : "false",
+      last_vertical_plan_.vertical_safe_min_z_m,
+      last_vertical_plan_.vertical_safe_max_z_m, last_vertical_plan_.vertical_gate_z_m,
+      last_vertical_plan_.vertical_safe_error_m, last_vertical_plan_.reason.c_str(),
+      last_velocity_plan_.path_tangent.x, last_velocity_plan_.path_tangent.y,
+      last_velocity_plan_.projection.x, last_velocity_plan_.projection.y,
+      trajectory_valid_ ? "true" : "false", last_velocity_plan_.trajectory_s_m,
+      last_velocity_plan_.trajectory_segment_index,
       trajectorySegmentKindName(last_velocity_plan_.trajectory_segment_kind),
       last_velocity_plan_.trajectory_curvature_1pm,
       last_velocity_plan_.trajectory_arc_radius_m,

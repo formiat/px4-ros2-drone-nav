@@ -39,6 +39,11 @@ struct VerticalSetpointPlan {
   double vertical_accel_mps2{std::numeric_limits<double>::quiet_NaN()};
   double vertical_jerk_mps3{std::numeric_limits<double>::quiet_NaN()};
   bool vertical_constraint_active{false};
+  bool vertical_hard_window_active{false};
+  double vertical_safe_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_safe_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_gate_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double vertical_safe_error_m{std::numeric_limits<double>::quiet_NaN()};
   std::string passage_id;
   std::string reason;
 };

@@ -863,7 +863,8 @@ void Px4OffboardNode::logControlSummary() {
       "altitude[target_z=%.2f actual_z=%.2f z_error=%.2f target_vz=%.2f "
       "feedback_vz=%.2f desired_vz=%.2f commanded_vz=%.2f "
       "commanded_vz_ned=%.2f trajectory_target_valid=%s passage_mode=%s "
-      "passage_id=%s slope=%.4f constraint=%s reason=%s] "
+      "passage_id=%s slope=%.4f constraint=%s hard_window=%s "
+      "safe=[%.2f, %.2f] gate_z=%.2f safe_error=%.2f reason=%s] "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
       "prohibited_grid_clearance=%.2f",
@@ -980,7 +981,11 @@ void Px4OffboardNode::logControlSummary() {
       last_vertical_plan_.passage_mode ? "true" : "false",
       last_vertical_plan_.passage_id.c_str(), last_vertical_plan_.vertical_slope_dz_ds,
       last_vertical_plan_.vertical_constraint_active ? "true" : "false",
-      last_vertical_plan_.reason.c_str(), upcoming_turn.valid ? "true" : "false",
+      last_vertical_plan_.vertical_hard_window_active ? "true" : "false",
+      last_vertical_plan_.vertical_safe_min_z_m,
+      last_vertical_plan_.vertical_safe_max_z_m, last_vertical_plan_.vertical_gate_z_m,
+      last_vertical_plan_.vertical_safe_error_m, last_vertical_plan_.reason.c_str(),
+      upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false", prohibited_grid_clearance_m);

@@ -81,6 +81,21 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   }
   accepted_planner_path_id_ = diagnostics.planner_path_id;
   accepted_planner_path_id_seen_ = true;
+  const bool vertical_metadata_applied = applyPlannerVerticalProfileMetadata(
+      final_trajectory_samples_, diagnostics.stats.vertical_profile);
+  if (vertical_metadata_applied &&
+      trajectorySamplesAreUsable(final_trajectory_samples_)) {
+    populateTrajectoryVerticalSpeedConstraints(final_trajectory_samples_,
+                                               velocity_follower_config_);
+    trajectory_speed_profile_ = buildTrajectorySpeedProfile(final_trajectory_samples_,
+                                                            velocity_follower_config_);
+    last_trajectory_metrics_ = trajectoryMetrics(trajectory_);
+    last_trajectory_shape_diagnostics_ =
+        computeTrajectoryShapeDiagnostics(final_trajectory_samples_);
+    last_trajectory_planner_stats_ = buildReceivedTrajectoryPlannerStats(
+        path_points_, final_trajectory_samples_, trajectory_, last_trajectory_metrics_,
+        trajectory_speed_profile_, velocity_follower_config_, trajectory_valid_);
+  }
   if (configFingerprintMismatch(
           last_trajectory_planner_stats_.speed_profile_construction_config_fingerprint,
           diagnostics.stats.speed_profile_construction_config_fingerprint)) {
@@ -315,8 +330,14 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     return;
   }
 
-  const OffboardTrajectoryState candidate_state =
-      buildOffboardTrajectoryState(candidate_path_samples, velocity_follower_config_);
+  const TrajectoryPlannerStats* candidate_planner_stats = nullptr;
+  if (latest_trajectory_diagnostics_.has_value() &&
+      trajectoryDiagnosticsMatchesPath(*latest_trajectory_diagnostics_,
+                                       candidate_path_stamp_ns, false, 0U)) {
+    candidate_planner_stats = &latest_trajectory_diagnostics_->stats;
+  }
+  const OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
+      candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
   if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
                                             candidate_path_stamp_ns,
                                             candidate_path_points.size())) {

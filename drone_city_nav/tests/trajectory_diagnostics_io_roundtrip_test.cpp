@@ -75,6 +75,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(vertical0.gate_hold_start_s_m, 38.0);
   EXPECT_DOUBLE_EQ(vertical0.exit_end_s_m, 62.0);
   EXPECT_DOUBLE_EQ(vertical0.gate_z_m, 10.5);
+  EXPECT_DOUBLE_EQ(vertical0.safe_min_z_m, 8.5);
+  EXPECT_DOUBLE_EQ(vertical0.safe_max_z_m, 11.5);
   EXPECT_DOUBLE_EQ(vertical0.transition_required_m, 24.0);
   EXPECT_DOUBLE_EQ(vertical0.transition_available_m, 30.0);
   EXPECT_DOUBLE_EQ(vertical0.desired_gate_hold_m, 15.0);

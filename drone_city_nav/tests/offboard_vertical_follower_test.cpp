@@ -136,4 +136,31 @@ TEST(OffboardVerticalFollower, PassageModeUsesVerticalConstraintMetadata) {
   EXPECT_EQ(plan.passage_id, "arch_main");
 }
 
+TEST(OffboardVerticalFollower, HardWindowOutsideSafeIntervalForcesCorrection) {
+  std::vector<TrajectoryPointSample> samples = rampSamples();
+  for (TrajectoryPointSample& sample : samples) {
+    sample.z_m = 10.0;
+    sample.vertical_slope_dz_ds = 0.0;
+  }
+  samples[1].vertical_hard_window_active = true;
+  samples[1].vertical_safe_min_z_m = 8.0;
+  samples[1].vertical_safe_max_z_m = 10.0;
+  samples[1].vertical_gate_z_m = 9.0;
+  samples[1].vertical_profile_passage_id = "low_window";
+  VerticalFollowerConfig config;
+  config.max_vertical_speed_mps = 4.0;
+
+  const VerticalSetpointPlan plan = planVerticalSetpoint(
+      samples, 10.0, 10.0, 10.8, true, 0.1, VerticalFollowerState{}, config);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_TRUE(plan.passage_mode);
+  EXPECT_TRUE(plan.vertical_hard_window_active);
+  EXPECT_DOUBLE_EQ(plan.vertical_safe_min_z_m, 8.0);
+  EXPECT_DOUBLE_EQ(plan.vertical_safe_max_z_m, 10.0);
+  EXPECT_NEAR(plan.vertical_safe_error_m, -0.8, 1.0e-9);
+  EXPECT_LT(plan.feedback_vz_mps, -1.0);
+  EXPECT_EQ(plan.reason, "hard_window_correction");
+}
+
 } // namespace drone_city_nav

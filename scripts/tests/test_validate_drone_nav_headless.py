@@ -150,6 +150,29 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
         self.assertTrue(result.ok, result.errors)
         self.assertIn("OK: planner publishes a path", result.messages)
 
+    def test_source_modes_treat_always_as_enabled(self) -> None:
+        ros_log = (
+            make_ros_log()
+            .replace("memory=true", "memory=always")
+            .replace("current_lidar=true", "current_lidar=always")
+        )
+
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertIn("OK: memory source value is logged", result.messages)
+        self.assertIn("OK: current lidar source value is logged", result.messages)
+
     def test_current_lidar_expected_fails_without_planner_scan(self) -> None:
         ros_log = make_ros_log(current_lidar=False).replace(
             "current_lidar=false", "current_lidar=true"

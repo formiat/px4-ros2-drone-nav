@@ -45,6 +45,9 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
     TrajectoryPlannerStats& output_stats,
     const TrajectoryPlannerDiagnosticsEnvelope& diagnostics);
 
+bool applyPlannerVerticalProfileMetadata(std::span<TrajectoryPointSample> samples,
+                                         const VerticalProfileStats& vertical_profile);
+
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
     std::span<const Point2> route_points,
     std::span<const TrajectoryPointSample> samples,
@@ -59,6 +62,11 @@ buildOffboardTrajectoryState(std::span<const Point2> path_points,
 [[nodiscard]] OffboardTrajectoryState
 buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples,
                              const VelocityFollowerConfig& velocity_config);
+
+[[nodiscard]] OffboardTrajectoryState
+buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples,
+                             const VelocityFollowerConfig& velocity_config,
+                             const TrajectoryPlannerStats* planner_stats);
 
 [[nodiscard]] TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
     std::span<const TrajectoryPointSample> current_samples,

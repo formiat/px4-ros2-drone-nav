@@ -139,6 +139,11 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.vertical_plan.vertical_accel_mps2 = 0.4;
   record.vertical_plan.vertical_jerk_mps3 = 2.0;
   record.vertical_plan.vertical_constraint_active = true;
+  record.vertical_plan.vertical_hard_window_active = true;
+  record.vertical_plan.vertical_safe_min_z_m = 10.0;
+  record.vertical_plan.vertical_safe_max_z_m = 12.0;
+  record.vertical_plan.vertical_gate_z_m = 11.0;
+  record.vertical_plan.vertical_safe_error_m = -0.3;
   record.vertical_plan.passage_mode = true;
   record.vertical_plan.passage_id = "arch_\"main\\north";
   record.vertical_plan.reason = "trajectory";
@@ -390,6 +395,11 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"commanded_vz_ned_mps\":-0.6");
   expectJsonField(json, "\"vertical_slope_dz_ds\":0.07");
   expectJsonField(json, "\"vertical_constraint_active\":true");
+  expectJsonField(json, "\"vertical_hard_window_active\":true");
+  expectJsonField(json, "\"vertical_safe_min_z_m\":10");
+  expectJsonField(json, "\"vertical_safe_max_z_m\":12");
+  expectJsonField(json, "\"vertical_gate_z_m\":11");
+  expectJsonField(json, "\"vertical_safe_error_m\":-0.3");
   expectJsonField(json, "\"passage_mode\":true");
   expectJsonField(json, "\"passage_id\":\"arch_\\\"main\\\\north\"");
   expectJsonField(json, "\"reason\":\"trajectory\"");

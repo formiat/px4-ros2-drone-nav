@@ -72,6 +72,16 @@ def parse_bool(value: str | None) -> bool | None:
     return None
 
 
+def source_value_pattern(source_name: str, expected_value: bool) -> str:
+    enabled_values = r"(?:true|always|enabled|on)"
+    disabled_values = r"(?:false|never|disabled|off)"
+    expected_pattern = enabled_values if expected_value else disabled_values
+    return (
+        rf"Planner obstacle sources: .*{re.escape(source_name)}="
+        rf"{expected_pattern}\b"
+    )
+
+
 def require_source_value(
     result: ValidationResult,
     label: str,
@@ -83,12 +93,7 @@ def require_source_value(
         result.skip(label, "source value comes from custom params file")
         return
 
-    expected_text = "true" if expected_value else "false"
-    result.require(
-        label,
-        ros_log,
-        rf"Planner obstacle sources: .*{re.escape(source_name)}={expected_text}",
-    )
+    result.require(label, ros_log, source_value_pattern(source_name, expected_value))
 
 
 def validate_logs(

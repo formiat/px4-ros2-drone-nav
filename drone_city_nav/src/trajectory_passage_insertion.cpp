@@ -346,6 +346,10 @@ minRadiusInRange(const std::span<const TrajectoryPointSample> samples,
     sample.vertical_accel_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_jerk_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_constraint_active = false;
+    sample.vertical_hard_window_active = false;
+    sample.vertical_safe_min_z_m = std::numeric_limits<double>::quiet_NaN();
+    sample.vertical_safe_max_z_m = std::numeric_limits<double>::quiet_NaN();
+    sample.vertical_gate_z_m = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_profile_passage_id.clear();
   }
   return stitched;

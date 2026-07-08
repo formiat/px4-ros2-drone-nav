@@ -64,6 +64,16 @@ struct ProfileWindow {
   return 0.5 * (opening.min_z_m + opening.max_z_m);
 }
 
+[[nodiscard]] double safeOpeningMinZ(const PassageOpening& opening,
+                                     const VerticalProfileConfig& config) noexcept {
+  return opening.min_z_m + std::max(0.0, config.gate_clearance_margin_m);
+}
+
+[[nodiscard]] double safeOpeningMaxZ(const PassageOpening& opening,
+                                     const VerticalProfileConfig& config) noexcept {
+  return opening.max_z_m - std::max(0.0, config.gate_clearance_margin_m);
+}
+
 [[nodiscard]] double
 transitionDistanceForAltitudeDelta(const double dz_m, const double requested_distance_m,
                                    const VerticalProfileConfig& config,
@@ -102,6 +112,10 @@ void resetVerticalMetadata(std::span<TrajectoryPointSample> samples,
     sample.vertical_accel_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_jerk_limit_mps = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_constraint_active = false;
+    sample.vertical_hard_window_active = false;
+    sample.vertical_safe_min_z_m = std::numeric_limits<double>::quiet_NaN();
+    sample.vertical_safe_max_z_m = std::numeric_limits<double>::quiet_NaN();
+    sample.vertical_gate_z_m = std::numeric_limits<double>::quiet_NaN();
     sample.vertical_profile_passage_id.clear();
   }
 }
@@ -203,6 +217,7 @@ void computeVerticalDerivatives(std::span<TrajectoryPointSample> samples,
 
   for (TrajectoryPointSample& sample : samples) {
     sample.vertical_constraint_active =
+        sample.vertical_hard_window_active ||
         std::isfinite(sample.vertical_speed_limit_mps) ||
         std::isfinite(sample.vertical_accel_limit_mps) ||
         std::isfinite(sample.vertical_jerk_limit_mps);
@@ -220,7 +235,7 @@ profileWithinClimbAngle(std::span<const TrajectoryPointSample> samples,
 
 [[nodiscard]] VerticalProfilePassageDiagnostic
 diagnosticFromWindow(const ProfileWindow& window, const char* const reason,
-                     const bool valid) {
+                     const VerticalProfileConfig& config, const bool valid) {
   return VerticalProfilePassageDiagnostic{
       .structure_id = window.match.structure_id,
       .opening_id = window.match.opening_id,
@@ -232,6 +247,8 @@ diagnosticFromWindow(const ProfileWindow& window, const char* const reason,
       .gate_z_m = window.gate_z_m,
       .min_z_m = window.match.opening.min_z_m,
       .max_z_m = window.match.opening.max_z_m,
+      .safe_min_z_m = safeOpeningMinZ(window.match.opening, config),
+      .safe_max_z_m = safeOpeningMaxZ(window.match.opening, config),
       .transition_required_m = window.transition_required_m,
       .transition_available_m = window.transition_available_m,
       .desired_gate_hold_m = window.desired_gate_hold_m,
@@ -264,12 +281,14 @@ rejectOverlappingInfeasibleWindows(std::span<const ProfileWindow> windows,
       }
       conflict_found = true;
       stats.infeasible_count += 2U;
-      appendDiagnostic(
-          stats, config,
-          diagnosticFromWindow(windows[i], "overlapping_infeasible_windows", false));
-      appendDiagnostic(
-          stats, config,
-          diagnosticFromWindow(windows[j], "overlapping_infeasible_windows", false));
+      appendDiagnostic(stats, config,
+                       diagnosticFromWindow(windows[i],
+                                            "overlapping_infeasible_windows", config,
+                                            false));
+      appendDiagnostic(stats, config,
+                       diagnosticFromWindow(windows[j],
+                                            "overlapping_infeasible_windows", config,
+                                            false));
     }
   }
   return conflict_found;
@@ -381,6 +400,8 @@ VerticalProfileResult applyVerticalProfile(
                            .gate_z_m = gate_z,
                            .min_z_m = match.opening.min_z_m,
                            .max_z_m = match.opening.max_z_m,
+                           .safe_min_z_m = safeOpeningMinZ(match.opening, config),
+                           .safe_max_z_m = safeOpeningMaxZ(match.opening, config),
                            .transition_required_m = transition_distance_required,
                            .transition_available_m = available_before_entry_s,
                            .desired_gate_hold_m = pre_gate_hold_distance,
@@ -444,6 +465,8 @@ VerticalProfileResult applyVerticalProfile(
 
     const ProfileWindow& window = windows[window_index];
     const KnownPassageTraversalMatch& match = window.match;
+    const double safe_min_z_m = safeOpeningMinZ(match.opening, config);
+    const double safe_max_z_m = safeOpeningMaxZ(match.opening, config);
     if (sample.s_m < window.approach_start_s_m) {
       sample.z_m = sample_altitude_m;
       continue;
@@ -456,6 +479,10 @@ VerticalProfileResult applyVerticalProfile(
     } else if (sample.s_m <= match.exit_s_m) {
       sample.z_m = window.gate_z_m;
       sample.vertical_profile_passage_id = match.opening_id;
+      sample.vertical_hard_window_active = true;
+      sample.vertical_safe_min_z_m = safe_min_z_m;
+      sample.vertical_safe_max_z_m = safe_max_z_m;
+      sample.vertical_gate_z_m = window.gate_z_m;
     } else {
       sample_altitude_m = window.gate_z_m;
       sample.z_m = sample_altitude_m;
@@ -466,7 +493,7 @@ VerticalProfileResult applyVerticalProfile(
     ++result.stats.passages_profiled;
     result.stats.active = true;
     appendDiagnostic(result.stats, config,
-                     diagnosticFromWindow(window, "profiled", true));
+                     diagnosticFromWindow(window, "profiled", config, true));
   }
 
   computeVerticalDerivatives(samples, config, result.stats);

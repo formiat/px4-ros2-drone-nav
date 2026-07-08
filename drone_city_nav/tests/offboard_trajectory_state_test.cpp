@@ -101,6 +101,43 @@ TEST(OffboardTrajectoryState, RebuildsVerticalSpeedConstraintsFromPathAltitude) 
   EXPECT_NEAR(speed_sample.geometric_limit_mps, 2.0, 1.0e-9);
 }
 
+TEST(OffboardTrajectoryState, AppliesPlannerVerticalProfileHardWindowMetadata) {
+  nav_msgs::msg::Path path;
+  path.poses = {makePose(0.0, 0.0, 18.0), makePose(10.0, 0.0, 10.0),
+                makePose(20.0, 0.0, 10.0), makePose(30.0, 0.0, 10.0)};
+  TrajectoryPlannerStats planner_stats;
+  planner_stats.vertical_profile.diagnostics.push_back(VerticalProfilePassageDiagnostic{
+      .structure_id = "arch_01",
+      .opening_id = "low_window",
+      .entry_s_m = 12.0,
+      .exit_s_m = 20.0,
+      .approach_start_s_m = 4.0,
+      .gate_hold_start_s_m = 10.0,
+      .exit_end_s_m = 20.0,
+      .gate_z_m = 10.0,
+      .min_z_m = 7.5,
+      .max_z_m = 10.5,
+      .safe_min_z_m = 8.0,
+      .safe_max_z_m = 10.0,
+      .reason = "profiled",
+      .valid = true,
+  });
+
+  const std::vector<TrajectoryPointSample> samples = pathSamplesFromMessage(path);
+  const OffboardTrajectoryState state =
+      buildOffboardTrajectoryState(samples, VelocityFollowerConfig{}, &planner_stats);
+
+  ASSERT_TRUE(state.valid);
+  ASSERT_EQ(state.samples.size(), 4U);
+  EXPECT_TRUE(state.samples[1].vertical_hard_window_active);
+  EXPECT_TRUE(state.samples[1].vertical_constraint_active);
+  EXPECT_EQ(state.samples[1].vertical_profile_passage_id, "low_window");
+  EXPECT_DOUBLE_EQ(state.samples[1].vertical_safe_min_z_m, 8.0);
+  EXPECT_DOUBLE_EQ(state.samples[1].vertical_safe_max_z_m, 10.0);
+  EXPECT_DOUBLE_EQ(state.samples[1].vertical_gate_z_m, 10.0);
+  EXPECT_FALSE(state.samples[3].vertical_hard_window_active);
+}
+
 TEST(OffboardTrajectoryState, RejectsNonFiniteAltitudeBeforeStalePoseReset) {
   nav_msgs::msg::Path invalid_path = makePath();
   invalid_path.poses[1].pose.position.z = std::numeric_limits<double>::quiet_NaN();

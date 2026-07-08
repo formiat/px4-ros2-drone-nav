@@ -190,6 +190,10 @@ TEST(Trajectory, VerticalTargetInterpolatesAltitudeSlopeAndPassageMetadata) {
   samples[1].z_m = 12.0;
   samples[1].vertical_slope_dz_ds = 0.3;
   samples[1].vertical_constraint_active = true;
+  samples[1].vertical_hard_window_active = true;
+  samples[1].vertical_safe_min_z_m = 9.0;
+  samples[1].vertical_safe_max_z_m = 13.0;
+  samples[1].vertical_gate_z_m = 11.0;
   samples[1].vertical_profile_passage_id = "arch_main";
   samples[2].z_m = 20.0;
   samples[2].vertical_slope_dz_ds = 0.5;
@@ -201,6 +205,10 @@ TEST(Trajectory, VerticalTargetInterpolatesAltitudeSlopeAndPassageMetadata) {
   EXPECT_NEAR(target.z_m, 11.0, 1.0e-9);
   EXPECT_NEAR(target.vertical_slope_dz_ds, 0.2, 1.0e-9);
   EXPECT_TRUE(target.vertical_constraint_active);
+  EXPECT_TRUE(target.vertical_hard_window_active);
+  EXPECT_DOUBLE_EQ(target.vertical_safe_min_z_m, 9.0);
+  EXPECT_DOUBLE_EQ(target.vertical_safe_max_z_m, 13.0);
+  EXPECT_DOUBLE_EQ(target.vertical_gate_z_m, 11.0);
   EXPECT_EQ(target.vertical_profile_passage_id, "arch_main");
 }
 

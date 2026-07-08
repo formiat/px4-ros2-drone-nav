@@ -187,6 +187,13 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfil
     return sample.vertical_constraint_active &&
            sample.vertical_profile_passage_id == "window";
   }));
+  EXPECT_TRUE(std::ranges::any_of(samples, [](const TrajectoryPointSample& sample) {
+    return sample.vertical_hard_window_active &&
+           sample.vertical_profile_passage_id == "window" &&
+           std::abs(sample.vertical_safe_min_z_m - 8.5) <= 1.0e-9 &&
+           std::abs(sample.vertical_safe_max_z_m - 11.5) <= 1.0e-9 &&
+           std::abs(sample.vertical_gate_z_m - 10.0) <= 1.0e-9;
+  }));
 }
 
 TEST(TrajectoryVerticalProfile, DefaultClimbAngleAccountsForSmootherstepPeakSlope) {

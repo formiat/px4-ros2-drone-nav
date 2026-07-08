@@ -160,6 +160,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     parseJsonDouble(json, prefix + "gate_z_m", diagnostic.gate_z_m);
     parseJsonDouble(json, prefix + "min_z_m", diagnostic.min_z_m);
     parseJsonDouble(json, prefix + "max_z_m", diagnostic.max_z_m);
+    parseJsonDouble(json, prefix + "safe_min_z_m", diagnostic.safe_min_z_m);
+    parseJsonDouble(json, prefix + "safe_max_z_m", diagnostic.safe_max_z_m);
     parseJsonDouble(json, prefix + "transition_required_m",
                     diagnostic.transition_required_m);
     parseJsonDouble(json, prefix + "transition_available_m",

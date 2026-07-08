@@ -447,6 +447,11 @@ void populateTrajectoryVerticalSpeedConstraints(
       samples[i].vertical_constraint_active = true;
     }
   }
+
+  for (TrajectoryPointSample& sample : samples) {
+    sample.vertical_constraint_active =
+        sample.vertical_constraint_active || sample.vertical_hard_window_active;
+  }
 }
 
 double distanceFromTrajectorySToEnd(const std::span<const TrajectorySegment> trajectory,

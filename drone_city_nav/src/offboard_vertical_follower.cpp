@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr double kMinDtS = 0.001;
 constexpr double kMaxDtS = 1.0;
+constexpr double kHardWindowCorrectionTimeS = 0.5;
+constexpr double kHardWindowMinCorrectionSpeedMps = 1.0;
 
 [[nodiscard]] double boundedFiniteDouble(const double value, const double fallback,
                                          const double min_value,
@@ -27,6 +30,36 @@ constexpr double kMaxDtS = 1.0;
     return 0.0;
   }
   return std::max(0.0, scalar_speed_mps);
+}
+
+[[nodiscard]] double safeWindowErrorM(const double altitude_m,
+                                      const TrajectoryVerticalTarget& target) noexcept {
+  if (!target.vertical_hard_window_active ||
+      !std::isfinite(target.vertical_safe_min_z_m) ||
+      !std::isfinite(target.vertical_safe_max_z_m) ||
+      target.vertical_safe_max_z_m < target.vertical_safe_min_z_m) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  if (altitude_m < target.vertical_safe_min_z_m) {
+    return target.vertical_safe_min_z_m - altitude_m;
+  }
+  if (altitude_m > target.vertical_safe_max_z_m) {
+    return target.vertical_safe_max_z_m - altitude_m;
+  }
+  return 0.0;
+}
+
+[[nodiscard]] double
+hardWindowFeedbackVzMps(const double safe_error_m,
+                        const VerticalFollowerConfig& config) noexcept {
+  if (!std::isfinite(safe_error_m) || std::abs(safe_error_m) <= 1.0e-9) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double correction_speed_mps =
+      std::clamp(std::max(kHardWindowMinCorrectionSpeedMps,
+                          std::abs(safe_error_m) / kHardWindowCorrectionTimeS),
+                 0.0, config.max_vertical_speed_mps);
+  return std::copysign(correction_speed_mps, safe_error_m);
 }
 
 [[nodiscard]] double
@@ -94,8 +127,14 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
   plan.z_error_m = plan.target_z_m - current_altitude_m;
   plan.vertical_slope_dz_ds = target.vertical_slope_dz_ds;
   plan.vertical_constraint_active = target.vertical_constraint_active;
+  plan.vertical_hard_window_active = target.vertical_hard_window_active;
+  plan.vertical_safe_min_z_m = target.vertical_safe_min_z_m;
+  plan.vertical_safe_max_z_m = target.vertical_safe_max_z_m;
+  plan.vertical_gate_z_m = target.vertical_gate_z_m;
+  plan.vertical_safe_error_m = safeWindowErrorM(current_altitude_m, target);
   plan.passage_id = target.vertical_profile_passage_id;
-  plan.passage_mode = plan.vertical_constraint_active || !plan.passage_id.empty();
+  plan.passage_mode = plan.vertical_constraint_active ||
+                      plan.vertical_hard_window_active || !plan.passage_id.empty();
   plan.target_vz_mps = target.vertical_slope_dz_ds * plan.scalar_speed_mps *
                        config.target_vz_feedforward_scale;
 
@@ -111,6 +150,13 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
   plan.feedback_vz_mps =
       std::clamp(plan.z_error_m * config.altitude_feedback_kp_1ps,
                  -config.max_vertical_speed_mps, config.max_vertical_speed_mps);
+  const double hard_window_feedback_vz_mps =
+      hardWindowFeedbackVzMps(plan.vertical_safe_error_m, config);
+  if (std::isfinite(hard_window_feedback_vz_mps) &&
+      std::abs(hard_window_feedback_vz_mps) > std::abs(plan.feedback_vz_mps)) {
+    plan.feedback_vz_mps = hard_window_feedback_vz_mps;
+    plan.reason = "hard_window_correction";
+  }
   plan.desired_vz_mps =
       std::clamp(plan.target_vz_mps + plan.feedback_vz_mps,
                  -config.max_vertical_speed_mps, config.max_vertical_speed_mps);
