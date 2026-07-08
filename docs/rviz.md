@@ -22,10 +22,15 @@ drone_city_nav/rviz/city_nav_debug.rviz
 
 ## Frames
 
-Navigation debug data uses the `map` frame directly. The default RViz config
-uses `map` as its fixed frame so 3D trajectories, passage markers, buildings,
-and drone altitude are displayed with the same Z direction as the planner and
-offboard nodes.
+Navigation debug messages are published in the planning/control `map` frame, but
+the default RViz config intentionally uses `gazebo_map` as its fixed frame. The
+launch file publishes `gazebo_aligned_map_tf`, a fixed compatibility transform
+that swaps the horizontal X/Y axes and flips Z for visualization. This is not a
+bug and should not be removed casually: it exists so the static map, 3D building
+markers, known passage markers, trajectory, and drone marker line up with the
+generated city as it is visually inspected in Gazebo. If this transform is ever
+removed, the Gazebo world convention, static map coordinates, and debug overlays
+must be migrated together.
 
 ## Important Layers
 

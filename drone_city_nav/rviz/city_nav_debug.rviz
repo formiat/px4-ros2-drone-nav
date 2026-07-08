@@ -13,7 +13,7 @@ Visualization Manager:
       Name: Ground Grid
       Plane: XY
       Plane Cell Count: 40
-      Reference Frame: map
+      Reference Frame: gazebo_map
     - Alpha: 0.75
       Class: rviz_default_plugins/Map
       Color Scheme: map
@@ -155,7 +155,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 20; 24; 28
-    Fixed Frame: map
+    Fixed Frame: gazebo_map
     Frame Rate: 30
   Name: root
   Tools:
@@ -170,9 +170,9 @@ Visualization Manager:
         X: 45
         Y: 75
         Z: 0
-      Name: Top Down Map
+      Name: Top Down Gazebo Aligned
       Pitch: 1.5707
-      Target Frame: map
+      Target Frame: gazebo_map
       Yaw: 0
     Saved: ~
 Window Geometry:

@@ -157,6 +157,46 @@ def generate_launch_description():
         ],
     )
 
+    # This transform is intentional and must not be "fixed" by changing RViz back
+    # to the raw navigation map frame. The generated Gazebo world and the
+    # navigation stack historically use different visual conventions: the
+    # navigation map is the authoritative planning/control frame, while the RViz
+    # debug view is aligned to the way the city is presented in Gazebo. The
+    # quaternion below applies the legacy Gazebo-aligned visualization mapping
+    # that swaps the horizontal X/Y axes and flips Z for RViz overlays. That looks
+    # unusual in isolation, especially now that we publish 3D buildings and
+    # passage markers, but it is a deliberate compatibility shim for matching the
+    # visual world that operators inspect in Gazebo. Do not remove this transform
+    # or change the RViz fixed frame to "map" unless the Gazebo world convention,
+    # static map coordinates, and all debug overlays are migrated together.
+    gazebo_aligned_map_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="gazebo_aligned_map_tf",
+        output="screen",
+        condition=IfCondition(enable_rviz),
+        arguments=[
+            "--x",
+            "0.0",
+            "--y",
+            "0.0",
+            "--z",
+            "0.0",
+            "--qx",
+            "0.7071067811865476",
+            "--qy",
+            "0.7071067811865476",
+            "--qz",
+            "0.0",
+            "--qw",
+            "0.0",
+            "--frame-id",
+            "gazebo_map",
+            "--child-frame-id",
+            "map",
+        ],
+    )
+
     rviz = Node(
         package="rviz2",
         executable="rviz2",
@@ -240,6 +280,7 @@ def generate_launch_description():
             px4_offboard,
             mission_monitor,
             lidar_debug,
+            gazebo_aligned_map_tf,
             rviz,
         ]
     )

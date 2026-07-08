@@ -133,6 +133,19 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("/drone_city_nav/known_passage_markers", rviz_text)
         self.assertIn("/drone_city_nav/known_passage_markers", bag_text)
 
+    def test_rviz_uses_gazebo_aligned_map_transform(self) -> None:
+        launch_text = read("drone_city_nav/launch/city_nav.launch.py")
+        rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")
+
+        self.assertIn("gazebo_aligned_map_tf", launch_text)
+        self.assertIn("static_transform_publisher", launch_text)
+        self.assertIn('"gazebo_map"', launch_text)
+        self.assertIn('"map"', launch_text)
+        self.assertIn("This transform is intentional", launch_text)
+        self.assertIn("Fixed Frame: gazebo_map", rviz_text)
+        self.assertIn("Reference Frame: gazebo_map", rviz_text)
+        self.assertIn("Target Frame: gazebo_map", rviz_text)
+
     def test_known_passage_annotations_have_physical_world_models(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
