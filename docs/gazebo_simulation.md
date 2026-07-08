@@ -9,7 +9,6 @@ navigation stack is not tied to a city scenario.
 World and map assets live under `drone_city_nav/worlds/`:
 
 - `generated_city.sdf`
-- `generated_city_mixed_heights.sdf`
 - `generated_city.map2d`
 
 The `.sdf` world describes the simulator scene. The `.map2d` file is the static
