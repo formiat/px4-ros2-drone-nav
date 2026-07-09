@@ -231,7 +231,7 @@ toOpeningWorldPoint(const Point3S& point) noexcept {
     clearance_m = std::min(knownPassageOpeningLateralClearanceM(first, *frame),
                            knownPassageOpeningLateralClearanceM(second, *frame));
   }
-  if (!ignore_altitude && clearance_m + kTinyDistanceM < config.clearance_margin_m) {
+  if (clearance_m + kTinyDistanceM < config.clearance_margin_m) {
     return std::nullopt;
   }
 
@@ -249,6 +249,13 @@ void mergeOpeningMatch(std::optional<OpeningMatch>& best_match,
        candidate.clearance_m > best_match->clearance_m)) {
     best_match = candidate;
   }
+}
+
+[[nodiscard]] double
+requiredOpeningOverlapM(const PassageOpening& opening,
+                        const KnownPassageValidationConfig& config) noexcept {
+  return std::max(config.min_opening_overlap_m,
+                  opening.depth_m * config.min_opening_depth_fraction);
 }
 
 [[nodiscard]] double
@@ -312,8 +319,8 @@ findBestOpeningMatch(std::span<const TrajectoryPointSample> samples,
           .clearance_m = min_clearance_m,
       };
     }
-    if (opening_match.has_value() &&
-        opening_match->overlap_m + kTinyDistanceM >= config.min_opening_overlap_m) {
+    if (opening_match.has_value() && opening_match->overlap_m + kTinyDistanceM >=
+                                         requiredOpeningOverlapM(opening, config)) {
       mergeOpeningMatch(best_match, *opening_match);
     }
   }

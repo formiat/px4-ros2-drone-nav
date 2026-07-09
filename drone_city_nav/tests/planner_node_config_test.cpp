@@ -65,7 +65,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
             "worlds/known_passages.passages3d");
   EXPECT_TRUE(config.known_passage_validation.enabled);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.5);
-  EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 0.75);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.5);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
   EXPECT_TRUE(config.passage_traversal_sensor_policy.enabled);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 3.0);
@@ -221,6 +222,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 5000},
        rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", -1.0},
+       rclcpp::Parameter{"known_passage_validation_min_opening_depth_fraction", 5.0},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 5000},
        rclcpp::Parameter{"passage_traversal_activation_margin_m", -1.0},
@@ -294,6 +296,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
             1U);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 1.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 0.0);
@@ -345,6 +348,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"known_passages_path", "worlds/custom.passages3d"},
        rclcpp::Parameter{"known_passage_validation_enabled", false},
        rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", 1.25},
+       rclcpp::Parameter{"known_passage_validation_min_opening_depth_fraction", 0.5},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 0.75},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 3},
        rclcpp::Parameter{"vertical_profile_enabled", false},
@@ -413,6 +417,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_EQ(config.known_passages.configured_path.string(), "worlds/custom.passages3d");
   EXPECT_FALSE(config.known_passage_validation.enabled);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 1.25);
+  EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 0.5);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.75);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 3U);
   EXPECT_FALSE(config.trajectory_planner.vertical_profile.enabled);

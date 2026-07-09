@@ -1,3 +1,6 @@
+#include "drone_city_nav/known_passage_geometry.hpp"
+#include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <px4_msgs/msg/vehicle_local_position.hpp>
@@ -6,21 +9,37 @@
 #include <std_msgs/msg/bool.hpp>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <exception>
+#include <filesystem>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace drone_city_nav {
 namespace {
 
-struct BuildingFootprint {
+struct BuildingVolume {
+  std::string id;
+  std::string source{"configured"};
   Point2 center{};
-  double size_x_m{0.0};
-  double size_y_m{0.0};
-  double height_m{std::numeric_limits<double>::infinity()};
+  Point2 normal_xy{1.0, 0.0};
+  Point2 lateral_xy{0.0, 1.0};
+  double depth_m{0.0};
+  double width_m{0.0};
+  double min_z_m{0.0};
+  double max_z_m{std::numeric_limits<double>::infinity()};
+};
+
+struct MonitoredOpening {
+  std::string id;
+  PassageOpening opening{};
+  KnownPassageOpeningFrame frame{};
+  bool seen{false};
 };
 
 [[nodiscard]] double
@@ -33,41 +52,63 @@ speed2D(const px4_msgs::msg::VehicleLocalPosition& position) noexcept {
 }
 
 [[nodiscard]] double clearanceToFootprint(const Point2 point,
-                                          const BuildingFootprint& building) {
-  const double half_x = building.size_x_m * 0.5;
-  const double half_y = building.size_y_m * 0.5;
-  const double dx_inside = half_x - std::abs(point.x - building.center.x);
-  const double dy_inside = half_y - std::abs(point.y - building.center.y);
+                                          const BuildingVolume& building) {
+  const double dx_world = point.x - building.center.x;
+  const double dy_world = point.y - building.center.y;
+  const double local_depth_m =
+      dx_world * building.normal_xy.x + dy_world * building.normal_xy.y;
+  const double local_width_m =
+      dx_world * building.lateral_xy.x + dy_world * building.lateral_xy.y;
+  const double half_depth_m = building.depth_m * 0.5;
+  const double half_width_m = building.width_m * 0.5;
+  const double dx_inside = half_depth_m - std::abs(local_depth_m);
+  const double dy_inside = half_width_m - std::abs(local_width_m);
   if (dx_inside >= 0.0 && dy_inside >= 0.0) {
     // Negative clearance means the drone footprint is horizontally inside the
     // building footprint; positive clearance is distance outside it.
     return -std::min(dx_inside, dy_inside);
   }
 
-  const double dx = std::max(std::abs(point.x - building.center.x) - half_x, 0.0);
-  const double dy = std::max(std::abs(point.y - building.center.y) - half_y, 0.0);
+  const double dx = std::max(std::abs(local_depth_m) - half_depth_m, 0.0);
+  const double dy = std::max(std::abs(local_width_m) - half_width_m, 0.0);
   return std::hypot(dx, dy);
 }
 
-[[nodiscard]] std::vector<BuildingFootprint>
+[[nodiscard]] BuildingVolume makeAxisAlignedBuilding(
+    const std::string& id, const Point2 center, const double size_x_m,
+    const double size_y_m,
+    const double height_m = std::numeric_limits<double>::infinity()) {
+  return BuildingVolume{.id = id,
+                        .source = "configured",
+                        .center = center,
+                        .normal_xy = Point2{1.0, 0.0},
+                        .lateral_xy = Point2{0.0, 1.0},
+                        .depth_m = size_x_m,
+                        .width_m = size_y_m,
+                        .min_z_m = 0.0,
+                        .max_z_m = height_m};
+}
+
+[[nodiscard]] std::vector<BuildingVolume>
 parseBuildings(const std::vector<double>& values) {
-  std::vector<BuildingFootprint> buildings;
+  std::vector<BuildingVolume> buildings;
   buildings.reserve(values.size() / 4U);
   for (std::size_t i = 0U; i + 3U < values.size(); i += 4U) {
-    buildings.push_back(BuildingFootprint{Point2{values[i], values[i + 1U]},
-                                          values[i + 2U], values[i + 3U]});
+    buildings.push_back(makeAxisAlignedBuilding(
+        "building_footprint_" + std::to_string(i / 4U),
+        Point2{values[i], values[i + 1U]}, values[i + 2U], values[i + 3U]));
   }
   return buildings;
 }
 
-[[nodiscard]] std::vector<BuildingFootprint>
+[[nodiscard]] std::vector<BuildingVolume>
 parseBuildingVolumes(const std::vector<double>& values) {
-  std::vector<BuildingFootprint> buildings;
+  std::vector<BuildingVolume> buildings;
   buildings.reserve(values.size() / 5U);
   for (std::size_t i = 0U; i + 4U < values.size(); i += 5U) {
-    buildings.push_back(BuildingFootprint{Point2{values[i], values[i + 1U]},
-                                          values[i + 2U], values[i + 3U],
-                                          values[i + 4U]});
+    buildings.push_back(makeAxisAlignedBuilding(
+        "building_volume_" + std::to_string(i / 5U), Point2{values[i], values[i + 1U]},
+        values[i + 2U], values[i + 3U], values[i + 4U]));
   }
   return buildings;
 }
@@ -81,15 +122,39 @@ parseBuildingVolumes(const std::vector<double>& values) {
   return -static_cast<double>(position.z);
 }
 
-void applyUniformBuildingHeight(std::vector<BuildingFootprint>& buildings,
+void applyUniformBuildingHeight(std::vector<BuildingVolume>& buildings,
                                 const double uniform_height_m) {
   if (!(uniform_height_m > 0.0)) {
     return;
   }
 
-  for (BuildingFootprint& building : buildings) {
-    building.height_m = uniform_height_m;
+  for (BuildingVolume& building : buildings) {
+    building.min_z_m = 0.0;
+    building.max_z_m = uniform_height_m;
   }
+}
+
+[[nodiscard]] std::filesystem::path packageShareDirectory() {
+  try {
+    return ament_index_cpp::get_package_share_directory("drone_city_nav");
+  } catch (const std::exception&) {
+    return {};
+  }
+}
+
+[[nodiscard]] BuildingVolume
+makeKnownPassageBuildingVolume(const KnownPassageSolidVolume& volume) {
+  return BuildingVolume{
+      .id = volume.structure_id + "/" + volume.opening_id + "/" + volume.part_id,
+      .source = "known_passage",
+      .center = volume.center,
+      .normal_xy = volume.normal_xy,
+      .lateral_xy = volume.lateral_xy,
+      .depth_m = volume.depth_m,
+      .width_m = volume.width_m,
+      .min_z_m = volume.min_z_m,
+      .max_z_m = volume.max_z_m,
+  };
 }
 
 } // namespace
@@ -120,7 +185,7 @@ public:
     const std::vector<double> building_volume_values =
         declare_parameter<std::vector<double>>("building_volumes",
                                                std::vector<double>{});
-    const std::vector<BuildingFootprint> volume_buildings =
+    const std::vector<BuildingVolume> volume_buildings =
         parseBuildingVolumes(building_volume_values);
     if (building_volume_values.size() % 5U != 0U) {
       RCLCPP_WARN(get_logger(), "Ignoring trailing building volume values: count=%zu",
@@ -152,6 +217,55 @@ public:
     uniform_building_height_m_ =
         declare_parameter<double>("uniform_building_height_m", 0.0);
     applyUniformBuildingHeight(buildings_, uniform_building_height_m_);
+    const std::size_t configured_building_count = buildings_.size();
+
+    const bool known_passages_enabled =
+        declare_parameter<bool>("known_passages_enabled", true);
+    const std::string known_passages_path = declare_parameter<std::string>(
+        "known_passages_path", "worlds/known_passages.passages3d");
+    KnownPassageSourceConfig known_passage_config{};
+    known_passage_config.enabled = known_passages_enabled;
+    known_passage_config.configured_path = known_passages_path;
+    known_passage_config.package_share_directory = packageShareDirectory();
+    known_passage_config.expected_frame_id = "map";
+    const KnownPassageSourceResult known_passage_source =
+        loadKnownPassageMapSource(known_passage_config);
+    std::size_t known_passage_solid_count = 0U;
+    if (known_passage_source.map.has_value() && known_passage_source.frame_matches) {
+      const std::vector<KnownPassageSolidVolume> passage_volumes =
+          knownPassageSolidVolumes(*known_passage_source.map);
+      known_passage_solid_count = passage_volumes.size();
+      buildings_.reserve(buildings_.size() + passage_volumes.size());
+      for (const KnownPassageSolidVolume& volume : passage_volumes) {
+        buildings_.push_back(makeKnownPassageBuildingVolume(volume));
+      }
+      for (const PassageStructure& structure : known_passage_source.map->structures) {
+        for (const PassageOpening& opening : structure.openings) {
+          const std::optional<KnownPassageOpeningFrame> frame =
+              knownPassageOpeningFrame(opening);
+          if (!frame.has_value()) {
+            continue;
+          }
+          monitored_openings_.push_back(MonitoredOpening{
+              .id = structure.id + "/" + opening.id,
+              .opening = opening,
+              .frame = *frame,
+          });
+        }
+      }
+    } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
+      RCLCPP_WARN(get_logger(),
+                  "Mission monitor known passages load failed: path='%s' error='%s'",
+                  known_passage_source.resolved_path.string().c_str(),
+                  known_passage_source.error_message.c_str());
+    } else if (known_passage_source.map.has_value() &&
+               !known_passage_source.frame_matches) {
+      RCLCPP_WARN(get_logger(),
+                  "Mission monitor ignored known passages with unexpected frame: "
+                  "path='%s' frame='%s' expected='map'",
+                  known_passage_source.resolved_path.string().c_str(),
+                  known_passage_source.map->frame_id.c_str());
+    }
 
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
@@ -179,17 +293,22 @@ public:
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this]() { logSummary(); });
 
-    RCLCPP_INFO(get_logger(),
-                "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
-                "spawn_tolerance=%.2fm goal_radius=%.2fm building_source=%s "
-                "buildings=%zu clearance=%.2fm "
-                "vertical_clearance=%.2fm uniform_building_height=%.2fm "
-                "crash_detection=%s emergency_stop_topic='%s'",
-                start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
-                goal_radius_m_, building_source.c_str(), buildings_.size(),
-                building_clearance_m_, vertical_clearance_m_,
-                uniform_building_height_m_, crash_detection_enabled_ ? "true" : "false",
-                emergency_stop_topic.c_str());
+    RCLCPP_INFO(
+        get_logger(),
+        "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
+        "spawn_tolerance=%.2fm goal_radius=%.2fm building_source=%s "
+        "buildings=%zu configured_buildings=%zu "
+        "known_passage_structures=%zu known_passage_solids=%zu "
+        "known_passage_status=%s known_passages_path='%s' clearance=%.2fm "
+        "vertical_clearance=%.2fm uniform_building_height=%.2fm "
+        "crash_detection=%s emergency_stop_topic='%s'",
+        start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_, goal_radius_m_,
+        building_source.c_str(), buildings_.size(), configured_building_count,
+        known_passage_source.structures, known_passage_solid_count,
+        knownPassageSourceStatusName(known_passage_source.status),
+        known_passage_source.resolved_path.string().c_str(), building_clearance_m_,
+        vertical_clearance_m_, uniform_building_height_m_,
+        crash_detection_enabled_ ? "true" : "false", emergency_stop_topic.c_str());
   }
 
 private:
@@ -244,6 +363,7 @@ private:
     }
 
     updateBuildingClearance(position, current_altitude_m);
+    updateKnownPassageMetrics(position, current_altitude_m);
     if (collision_detected_) {
       reportFailure("building clearance violation");
       return;
@@ -294,9 +414,10 @@ private:
   }
 
   void updateBuildingClearance(const Point2 position, const double altitude_m) {
-    for (const BuildingFootprint& building : buildings_) {
+    for (const BuildingVolume& building : buildings_) {
       if (std::isfinite(altitude_m) &&
-          altitude_m > building.height_m + vertical_clearance_m_) {
+          (altitude_m < building.min_z_m - vertical_clearance_m_ ||
+           altitude_m > building.max_z_m + vertical_clearance_m_)) {
         continue;
       }
 
@@ -306,11 +427,42 @@ private:
         collision_detected_ = true;
         RCLCPP_ERROR(get_logger(),
                      "MISSION_CHECK collision_risk=true position=(%.2f, %.2f) "
-                     "altitude=%.2f building_center=(%.2f, %.2f) "
-                     "building_height=%.2f clearance=%.2f required=%.2f",
-                     position.x, position.y, altitude_m, building.center.x,
-                     building.center.y, building.height_m, clearance_m,
-                     building_clearance_m_);
+                     "altitude=%.2f building_id='%s' building_source='%s' "
+                     "building_center=(%.2f, %.2f) building_z=[%.2f, %.2f] "
+                     "building_size=[depth=%.2f width=%.2f] "
+                     "clearance=%.2f required=%.2f",
+                     position.x, position.y, altitude_m, building.id.c_str(),
+                     building.source.c_str(), building.center.x, building.center.y,
+                     building.min_z_m, building.max_z_m, building.depth_m,
+                     building.width_m, clearance_m, building_clearance_m_);
+      }
+    }
+  }
+
+  void updateKnownPassageMetrics(const Point2 position, const double altitude_m) {
+    if (!std::isfinite(altitude_m)) {
+      return;
+    }
+
+    for (MonitoredOpening& monitored : monitored_openings_) {
+      const KnownPassageOpeningLocalPoint local = knownPassageOpeningLocalPoint(
+          KnownPassageOpeningWorldPoint{
+              .point = position, .z_m = altitude_m, .s_m = 0.0},
+          monitored.frame);
+      const double margin_m = knownPassageOpeningSignedVolumeMarginM(
+          local, monitored.opening, monitored.frame);
+      if (margin_m < 0.0) {
+        continue;
+      }
+
+      min_actual_passage_margin_m_ = std::min(min_actual_passage_margin_m_, margin_m);
+      if (!monitored.seen) {
+        monitored.seen = true;
+        ++actual_passage_openings_seen_;
+        RCLCPP_INFO(get_logger(),
+                    "MISSION_CHECK actual_passage_opening_seen=true id='%s' "
+                    "position=(%.2f, %.2f) altitude=%.2f margin=%.2f",
+                    monitored.id.c_str(), position.x, position.y, altitude_m, margin_m);
       }
     }
   }
@@ -331,11 +483,13 @@ private:
                 "max_distance_from_start=%.2f min_goal_distance=%.2f "
                 "min_building_clearance=%.2f final_position=(%.2f, %.2f) "
                 "final_altitude=%.2f final_speed=%.2f max_observed_speed=%.2f "
-                "mean_observed_speed=%.2f",
+                "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
+                "known_passage_openings=%zu min_actual_passage_margin=%.2f",
                 spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
                 min_building_clearance_m_, latest_position_.x, latest_position_.y,
                 latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
-                meanObservedSpeedMps());
+                meanObservedSpeedMps(), actual_passage_openings_seen_,
+                monitored_openings_.size(), min_actual_passage_margin_m_);
   }
 
   void reportFailure(const std::string& reason) {
@@ -346,11 +500,14 @@ private:
                  "max_distance_from_start=%.2f min_goal_distance=%.2f "
                  "min_building_clearance=%.2f latest_position=(%.2f, %.2f) "
                  "latest_altitude=%.2f latest_speed=%.2f max_observed_speed=%.2f "
-                 "mean_observed_speed=%.2f",
+                 "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
+                 "known_passage_openings=%zu min_actual_passage_margin=%.2f",
                  reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
                  min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
                  latest_position_.y, latest_altitude_m_, latest_speed_mps_,
-                 max_observed_speed_mps_, meanObservedSpeedMps());
+                 max_observed_speed_mps_, meanObservedSpeedMps(),
+                 actual_passage_openings_seen_, monitored_openings_.size(),
+                 min_actual_passage_margin_m_);
   }
 
   void publishEmergencyStop(const std::string& reason) {
@@ -373,13 +530,15 @@ private:
         "position=(%.2f, %.2f) altitude=%.2f speed=%.2f "
         "max_observed_speed=%.2f mean_observed_speed=%.2f "
         "distance_to_start=%.2f distance_to_goal=%.2f max_distance_from_start=%.2f "
-        "min_building_clearance=%.2f",
+        "min_building_clearance=%.2f actual_passage_openings_seen=%zu/%zu "
+        "min_actual_passage_margin=%.2f",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
         armed_seen ? "true" : "false", latest_position_.x, latest_position_.y,
         latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
         meanObservedSpeedMps(), distance(latest_position_, start_),
         distance(latest_position_, goal_), max_distance_from_start_m_,
-        min_building_clearance_m_);
+        min_building_clearance_m_, actual_passage_openings_seen_,
+        monitored_openings_.size(), min_actual_passage_margin_m_);
   }
 
   [[nodiscard]] double meanObservedSpeedMps() const noexcept {
@@ -389,7 +548,8 @@ private:
     return speed_sum_mps_ / static_cast<double>(speed_sample_count_);
   }
 
-  std::vector<BuildingFootprint> buildings_;
+  std::vector<BuildingVolume> buildings_;
+  std::vector<MonitoredOpening> monitored_openings_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   Point2 start_{};
   Point2 goal_{};
@@ -408,12 +568,14 @@ private:
   double max_distance_from_start_m_{0.0};
   double min_goal_distance_m_{std::numeric_limits<double>::infinity()};
   double min_building_clearance_m_{std::numeric_limits<double>::infinity()};
+  double min_actual_passage_margin_m_{std::numeric_limits<double>::infinity()};
   double latest_speed_mps_{std::numeric_limits<double>::infinity()};
   double latest_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double max_altitude_m_{0.0};
   double max_observed_speed_mps_{0.0};
   double speed_sum_mps_{0.0};
   std::size_t speed_sample_count_{0U};
+  std::size_t actual_passage_openings_seen_{0U};
   bool latest_position_valid_{false};
   bool vehicle_status_valid_{false};
   bool spawn_checked_{false};

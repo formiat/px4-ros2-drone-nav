@@ -166,10 +166,12 @@ PlannerNode::PlannerNode()
       fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
       fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
   RCLCPP_INFO(get_logger(),
-              "Known passage validation: mode=shadow enabled=%s "
-              "min_opening_overlap=%.2fm clearance_margin=%.2fm max_diagnostics=%zu",
+              "Known passage validation: mode=planning_sanity enabled=%s "
+              "min_opening_overlap=%.2fm min_depth_fraction=%.2f "
+              "clearance_margin=%.2fm max_diagnostics=%zu",
               known_passage_validation_config_.enabled ? "true" : "false",
               known_passage_validation_config_.min_opening_overlap_m,
+              known_passage_validation_config_.min_opening_depth_fraction,
               known_passage_validation_config_.clearance_margin_m,
               known_passage_validation_config_.max_diagnostics);
   RCLCPP_INFO(get_logger(),

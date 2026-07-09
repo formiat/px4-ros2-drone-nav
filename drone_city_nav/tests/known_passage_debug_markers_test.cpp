@@ -52,15 +52,15 @@ TEST(KnownPassageDebugMarkers, BuildsStructureOpeningCenterAndDirectionMarkers) 
   EXPECT_EQ(markers.markers[0].type, visualization_msgs::msg::Marker::CUBE);
   EXPECT_EQ(markers.markers[0].header.frame_id, "map");
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.x, 10.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 17.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.y, 16.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].pose.position.z, -12.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.x, 2.0);
-  EXPECT_DOUBLE_EQ(markers.markers[0].scale.y, 2.0);
+  EXPECT_DOUBLE_EQ(markers.markers[0].scale.y, 4.0);
   EXPECT_DOUBLE_EQ(markers.markers[0].scale.z, 24.0);
   EXPECT_GT(markers.markers[0].color.a, 0.5F);
 
   EXPECT_EQ(markers.markers[1].ns, "known_passage_structure");
-  EXPECT_DOUBLE_EQ(markers.markers[1].pose.position.y, 23.0);
+  EXPECT_DOUBLE_EQ(markers.markers[1].pose.position.y, 24.0);
   EXPECT_DOUBLE_EQ(markers.markers[2].scale.z, 6.0);
   EXPECT_DOUBLE_EQ(markers.markers[3].scale.z, 14.0);
 

@@ -1,5 +1,6 @@
 #include "drone_city_nav/known_passage_debug_markers.hpp"
 
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
 #include <visualization_msgs/msg/marker.hpp>
@@ -32,8 +33,8 @@ constexpr double kMinimumStructurePartM = 0.001;
   return Point2{-opening.normal_xy.y, opening.normal_xy.x};
 }
 
-[[nodiscard]] double markerYawForOpening(const PassageOpening& opening) noexcept {
-  return std::atan2(opening.normal_xy.y, opening.normal_xy.x);
+[[nodiscard]] double markerYawForNormal(const Point2 normal) noexcept {
+  return std::atan2(normal.y, normal.x);
 }
 
 void setYaw(visualization_msgs::msg::Marker& marker, const double yaw_rad) {
@@ -85,73 +86,29 @@ void appendOpeningBox(visualization_msgs::msg::Marker& marker,
   appendEdge(marker, corners[3], corners[7]);
 }
 
-[[nodiscard]] visualization_msgs::msg::Marker makeStructurePartMarker(
-    const std_msgs::msg::Header& header, const PassageOpening& opening,
-    const int marker_id, const Point2& center_xy, const double center_z_m,
-    const double depth_m, const double lateral_width_m, const double height_m) {
+[[nodiscard]] visualization_msgs::msg::Marker
+makeStructurePartMarker(const std_msgs::msg::Header& header,
+                        const KnownPassageSolidVolume& volume, const int marker_id) {
   visualization_msgs::msg::Marker marker =
       makeMarker(header, "known_passage_structure", marker_id,
                  visualization_msgs::msg::Marker::CUBE);
-  marker.pose.position.x = center_xy.x;
-  marker.pose.position.y = center_xy.y;
-  marker.pose.position.z = gazeboAlignedRvizZ(center_z_m);
-  setYaw(marker, markerYawForOpening(opening));
-  marker.scale.x = std::max(depth_m, kMinimumStructurePartM);
-  marker.scale.y = std::max(lateral_width_m, kMinimumStructurePartM);
-  marker.scale.z = std::max(height_m, kMinimumStructurePartM);
+  marker.pose.position.x = volume.center.x;
+  marker.pose.position.y = volume.center.y;
+  marker.pose.position.z = gazeboAlignedRvizZ((volume.min_z_m + volume.max_z_m) / 2.0);
+  setYaw(marker, markerYawForNormal(volume.normal_xy));
+  marker.scale.x = std::max(volume.depth_m, kMinimumStructurePartM);
+  marker.scale.y = std::max(volume.width_m, kMinimumStructurePartM);
+  marker.scale.z = std::max(volume.max_z_m - volume.min_z_m, kMinimumStructurePartM);
   marker.color = rgba(0.20F, 0.70F, 1.0F, kStructureAlpha);
   return marker;
 }
 
-void appendStructurePart(visualization_msgs::msg::MarkerArray& markers,
-                         const std_msgs::msg::Header& header,
-                         const PassageOpening& opening, int& marker_id,
-                         const Point2& center_xy, const double center_z_m,
-                         const double depth_m, const double lateral_width_m,
-                         const double height_m) {
-  if (depth_m <= 0.0 || lateral_width_m <= 0.0 || height_m <= 0.0) {
-    return;
-  }
-  markers.markers.push_back(makeStructurePartMarker(header, opening, marker_id++,
-                                                    center_xy, center_z_m, depth_m,
-                                                    lateral_width_m, height_m));
-}
-
 void appendStructurePhysicalMarkers(visualization_msgs::msg::MarkerArray& markers,
                                     const std_msgs::msg::Header& header,
-                                    const PassageStructure& structure,
-                                    const PassageOpening& opening, int& marker_id) {
-  const Point2 center = openingCenter2D(opening);
-  const Point2 lateral = openingLateral(opening);
-  const double structure_lateral_width = (std::abs(lateral.x) * structure.size_x_m) +
-                                         (std::abs(lateral.y) * structure.size_y_m);
-  const double side_width_m =
-      std::max(0.0, (structure_lateral_width - opening.width_m) / 2.0);
-  const double structure_height_m =
-      std::max(0.0, structure.z_max_m - structure.z_min_m);
-  const double structure_center_z = (structure.z_min_m + structure.z_max_m) / 2.0;
-
-  if (side_width_m > 0.0 && structure_height_m > 0.0) {
-    const double side_center_offset_m = (opening.width_m / 2.0) + (side_width_m / 2.0);
-    appendStructurePart(markers, header, opening, marker_id,
-                        add(center, scale(lateral, -side_center_offset_m)),
-                        structure_center_z, opening.depth_m, side_width_m,
-                        structure_height_m);
-    appendStructurePart(markers, header, opening, marker_id,
-                        add(center, scale(lateral, side_center_offset_m)),
-                        structure_center_z, opening.depth_m, side_width_m,
-                        structure_height_m);
+                                    const PassageStructure& structure, int& marker_id) {
+  for (const KnownPassageSolidVolume& volume : knownPassageSolidVolumes(structure)) {
+    markers.markers.push_back(makeStructurePartMarker(header, volume, marker_id++));
   }
-
-  const double lower_height_m = std::max(0.0, opening.min_z_m - structure.z_min_m);
-  appendStructurePart(markers, header, opening, marker_id, center,
-                      structure.z_min_m + (lower_height_m / 2.0), opening.depth_m,
-                      opening.width_m, lower_height_m);
-
-  const double upper_height_m = std::max(0.0, structure.z_max_m - opening.max_z_m);
-  appendStructurePart(markers, header, opening, marker_id, center,
-                      opening.max_z_m + (upper_height_m / 2.0), opening.depth_m,
-                      opening.width_m, upper_height_m);
 }
 
 [[nodiscard]] visualization_msgs::msg::Marker
@@ -233,8 +190,8 @@ buildKnownPassageDebugMarkers(const std_msgs::msg::Header& header,
   visualization_msgs::msg::MarkerArray markers;
   int marker_id = 0;
   for (const PassageStructure& structure : map.structures) {
+    appendStructurePhysicalMarkers(markers, header, structure, marker_id);
     for (const PassageOpening& opening : structure.openings) {
-      appendStructurePhysicalMarkers(markers, header, structure, opening, marker_id);
       markers.markers.push_back(makeOpeningFrameMarker(header, opening, marker_id++));
       markers.markers.push_back(makeOpeningCenterMarker(header, opening, marker_id++));
       markers.markers.push_back(makeArrowMarker(header, opening, marker_id++, false));

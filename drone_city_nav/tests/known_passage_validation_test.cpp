@@ -180,6 +180,38 @@ TEST(KnownPassageValidation, OpeningVolumeMatchIsValid) {
   EXPECT_NEAR(span.clearance_m, 2.0, 1.0e-6);
 }
 
+TEST(KnownPassageValidation, RejectsOpeningMatchWithLowDepthOverlap) {
+  const KnownPassageMap map = makeMap();
+  const std::vector<TrajectoryPointSample> samples =
+      makeLineSamples(Point2{-8.0, 0.0}, Point2{0.0, 0.0}, 10.0);
+  KnownPassageValidationConfig config{};
+  config.min_opening_depth_fraction = 0.75;
+
+  const KnownPassageValidationSummary summary = validate(samples, &map, config);
+
+  EXPECT_FALSE(summary.valid);
+  EXPECT_EQ(summary.violations, 1U);
+  ASSERT_EQ(summary.diagnostics.size(), 1U);
+  EXPECT_EQ(summary.diagnostics.front().reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
+}
+
+TEST(KnownPassageValidation, RejectsOpeningMatchWithLowClearance) {
+  const KnownPassageMap map = makeMap();
+  const std::vector<TrajectoryPointSample> samples =
+      makeLineSamples(Point2{-8.0, 1.75}, Point2{8.0, 1.75}, 10.0);
+  KnownPassageValidationConfig config{};
+  config.clearance_margin_m = 0.5;
+
+  const KnownPassageValidationSummary summary = validate(samples, &map, config);
+
+  EXPECT_FALSE(summary.valid);
+  EXPECT_EQ(summary.violations, 1U);
+  ASSERT_EQ(summary.diagnostics.size(), 1U);
+  EXPECT_EQ(summary.diagnostics.front().reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
+}
+
 TEST(KnownPassageValidation, OpeningVolumeMissesByAltitude) {
   const KnownPassageMap map = makeMap();
   const std::vector<TrajectoryPointSample> samples =

@@ -81,7 +81,8 @@ planner_node:
     known_passages_path: worlds/known_passages.passages3d
     known_passage_validation_enabled: true
     known_passage_validation_min_opening_overlap_m: 0.5
-    known_passage_validation_clearance_margin_m: 0.0
+    known_passage_validation_min_opening_depth_fraction: 0.75
+    known_passage_validation_clearance_margin_m: 0.5
     known_passage_validation_max_diagnostics: 8
     passage_traversal_sensor_policy_enabled: true
     passage_traversal_activation_margin_m: 3.0
@@ -355,6 +356,8 @@ mission_monitor_node:
     stop_hold_s: 2.0
     building_clearance_m: 0.5
     vertical_clearance_m: 1.0
+    known_passages_enabled: true
+    known_passages_path: worlds/known_passages.passages3d
     uniform_building_height_m: 28.0
     crash_detection_enabled: true
     crash_min_airborne_altitude_m: 6.0

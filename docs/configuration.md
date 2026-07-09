@@ -56,6 +56,7 @@ Known passages:
 - `known_passage_debug_publish_period_s`
 - `known_passage_validation_enabled`
 - `known_passage_validation_min_opening_overlap_m`
+- `known_passage_validation_min_opening_depth_fraction`
 - `known_passage_validation_clearance_margin_m`
 - `known_passage_validation_max_diagnostics`
 - `passage_traversal_sensor_policy_enabled`
@@ -103,17 +104,20 @@ The parser rejects unknown keywords, duplicate ids, invalid dimensions,
 non-finite values, openings outside their structure footprint, and opening z
 ranges outside the structure z range.
 
-The validation layer applies a diagnostics-only no-over-building rule:
+The validation layer applies a planning sanity contract for known passages:
 
 - no structure footprint intersection is valid;
 - structure footprint intersection through a matching opening volume is valid;
 - structure footprint intersection without a matching opening is reported as a
   violation with `structure_without_opening` or `opening_volume_miss`;
-- `known_passage_validation_min_opening_overlap_m` controls the minimum station
-  overlap required to count an opening match;
-- `known_passage_validation_clearance_margin_m` is an active shadow-validation
-  threshold: an opening match is rejected as `opening_volume_miss` when its
-  lateral/vertical clearance is below this margin;
+- `known_passage_validation_min_opening_overlap_m` controls the absolute
+  minimum station overlap required to count an opening match.
+- `known_passage_validation_min_opening_depth_fraction` requires the trajectory
+  to cover a configured fraction of the opening depth before a span is treated
+  as a confident opening match.
+- `known_passage_validation_clearance_margin_m` rejects an opening match as
+  `opening_volume_miss` when its lateral/vertical clearance is below this
+  margin.
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
 - `passage_traversal_activation_margin_m` expands the active station interval
   around a matched passage span.
@@ -139,6 +143,12 @@ The validation layer applies a diagnostics-only no-over-building rule:
   `0` disables this radius gate.
 - `passage_insertion_max_candidates` and `passage_insertion_max_diagnostics`
   bound CPU work and log volume.
+
+`mission_monitor_node` also reads `known_passages_enabled` and
+`known_passages_path`. When enabled, it converts each annotated architectural
+passage into ordinary solid building volumes around the opening. The opening
+itself remains free space; mission failure still comes from collision with
+solid volumes, not from a special "passed passage id" rule.
 
 ## A* Parameters
 

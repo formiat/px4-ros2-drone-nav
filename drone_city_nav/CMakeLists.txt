@@ -42,6 +42,7 @@ add_library(
   src/known_passage_map.cpp
   src/known_passage_geometry.cpp
   src/known_passage_matching.cpp
+  src/known_passage_solid_volumes.cpp
   src/known_passage_validation.cpp
   src/lidar_debug_renderer.cpp
   src/lidar_debug_snapshot_pipeline.cpp
@@ -193,6 +194,7 @@ target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
 target_link_libraries(mission_monitor_node drone_city_nav_core)
 ament_target_dependencies(
   mission_monitor_node
+  ament_index_cpp
   px4_msgs
   rclcpp
   std_msgs)
@@ -323,6 +325,12 @@ if(BUILD_TESTING)
   target_compile_features(known_passage_validation_test PRIVATE cxx_std_20)
   target_link_libraries(known_passage_validation_test drone_city_nav_core)
   enable_project_warnings(known_passage_validation_test)
+
+  ament_add_gtest(known_passage_solid_volumes_test
+                  tests/known_passage_solid_volumes_test.cpp)
+  target_compile_features(known_passage_solid_volumes_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_solid_volumes_test drone_city_nav_core)
+  enable_project_warnings(known_passage_solid_volumes_test)
 
   ament_add_gtest(trajectory_vertical_profile_test
                   tests/trajectory_vertical_profile_test.cpp)

@@ -77,7 +77,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("known_passage_validation_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("known_passage_validation_min_opening_overlap_m: 0.5"),
             std::string::npos);
-  EXPECT_NE(yaml.find("known_passage_validation_clearance_margin_m: 0.0"),
+  EXPECT_NE(yaml.find("known_passage_validation_min_opening_depth_fraction: 0.75"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_validation_clearance_margin_m: 0.5"),
             std::string::npos);
   EXPECT_NE(yaml.find("known_passage_validation_max_diagnostics: 8"),
             std::string::npos);

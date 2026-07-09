@@ -58,9 +58,13 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "known_passage_validation_min_opening_overlap_m", 0.5),
                  0.0, 1000.0);
+  config.known_passage_validation.min_opening_depth_fraction =
+      std::clamp(node.declare_parameter<double>(
+                     "known_passage_validation_min_opening_depth_fraction", 0.75),
+                 0.0, 1.0);
   config.known_passage_validation.clearance_margin_m =
       std::clamp(node.declare_parameter<double>(
-                     "known_passage_validation_clearance_margin_m", 0.0),
+                     "known_passage_validation_clearance_margin_m", 0.5),
                  0.0, 1000.0);
   config.known_passage_validation.max_diagnostics = static_cast<std::size_t>(
       std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(

@@ -23,6 +23,7 @@ enum class KnownPassageValidationReason {
 struct KnownPassageValidationConfig {
   bool enabled{true};
   double min_opening_overlap_m{0.5};
+  double min_opening_depth_fraction{0.0};
   double clearance_margin_m{0.0};
   std::size_t max_diagnostics{8U};
 };

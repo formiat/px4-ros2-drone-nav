@@ -83,6 +83,12 @@ Known-passage validation fields include:
 Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
 `s`, overlap, clearance, reason, and validity for one capped span.
 
+Mission monitor logs also report `actual_passage_openings_seen`,
+`known_passage_openings`, and `min_actual_passage_margin` in `Mission summary`
+and `MISSION_RESULT` lines. These fields are runtime diagnostics only: ordinary
+building collision volumes still define whether the drone hit a solid part of a
+building, while an opening is just free space between those solid volumes.
+
 Local passage insertion fields include:
 
 - `passage_insertion_enabled`
