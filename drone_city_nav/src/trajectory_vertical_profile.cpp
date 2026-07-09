@@ -336,7 +336,9 @@ VerticalProfileResult applyVerticalProfile(
   valid_matches.reserve(matches.size());
   for (const KnownPassageTraversalMatch& match : matches) {
     if (!match.valid) {
-      ++result.stats.infeasible_count;
+      // A footprint/opening miss is a diagnostics signal, not a vertical-profile
+      // infeasibility. Ordinary building collision volumes remain the runtime
+      // source of truth for solid-vs-free space.
       appendDiagnostic(result.stats, config,
                        VerticalProfilePassageDiagnostic{
                            .structure_id = match.structure_id,

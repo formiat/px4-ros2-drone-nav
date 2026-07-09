@@ -169,7 +169,7 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   }
 }
 
-TEST(TrajectoryPlanner, InvalidKnownPassageValidationRejectsTrajectory) {
+TEST(TrajectoryPlanner, InvalidKnownPassageValidationIsDiagnosticOnly) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
   const KnownPassageMap map = plannerValidationPassageMap();
@@ -182,8 +182,8 @@ TEST(TrajectoryPlanner, InvalidKnownPassageValidationRejectsTrajectory) {
                              &map},
       config);
 
-  EXPECT_FALSE(result.valid);
-  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
+  EXPECT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
   EXPECT_FALSE(result.stats.vertical_profile.active);
   EXPECT_FALSE(result.stats.known_passage_validation.valid);
   EXPECT_EQ(result.stats.known_passage_validation.worst_reason,
@@ -209,9 +209,11 @@ TEST(TrajectoryPlanner, PassageInsertionRepairsKnownPassageBeforeVerticalProfile
       nullptr,
       &map};
   const TrajectoryPlannerResult missed = planOptimizedTrajectory(input, config);
-  ASSERT_FALSE(missed.valid);
+  ASSERT_TRUE(missed.valid);
   EXPECT_FALSE(missed.stats.passage_insertion.applied);
   EXPECT_FALSE(missed.stats.known_passage_validation.valid);
+  EXPECT_EQ(missed.stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
 
   config.passage_insertion.enabled = true;
   config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;

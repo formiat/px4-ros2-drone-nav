@@ -104,7 +104,9 @@ The parser rejects unknown keywords, duplicate ids, invalid dimensions,
 non-finite values, openings outside their structure footprint, and opening z
 ranges outside the structure z range.
 
-The validation layer applies a planning sanity contract for known passages:
+The validation layer reports a diagnostics contract for known passages. It is a
+planner repair/telemetry signal, not a substitute for the ordinary physical
+building collision volumes:
 
 - no structure footprint intersection is valid;
 - structure footprint intersection through a matching opening volume is valid;
