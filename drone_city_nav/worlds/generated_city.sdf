@@ -550,6 +550,22 @@
       </link>
     </model>
 
+    <!--
+      Physical Gazebo-only connector between manhattan_building_37 and
+      manhattan_building_38. This is intentionally a real SDF collision/visual
+      object, not a known-passage annotation and not an RViz marker. Do not add
+      it to generated_city.map2d here: the static 2D planner map is deliberately
+      kept unchanged while we verify the physical 3D world geometry in Gazebo.
+    -->
+    <model name="physical_building_connector_37_38">
+      <static>true</static>
+      <pose>45.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>30.00 24.00 28.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>30.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+      </link>
+    </model>
+
     <model name="building_with_passage_01">
       <static>true</static>
       <pose>-166.66 23.93 0.00 0.00 0.00 -0.0415</pose>
