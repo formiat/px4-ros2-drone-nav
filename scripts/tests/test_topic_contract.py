@@ -230,12 +230,17 @@ class TopicContractTest(unittest.TestCase):
                 gazebo_x, gazebo_y, *_ = (
                     float(value) for value in model_pose.group(1).split()
                 )
-                map_x = gazebo_x + 225.0
-                map_y = gazebo_y + 135.0
+                # The source SDF is written in Gazebo visual coordinates, while
+                # the planner/static map uses the legacy swapped X/Y convention.
+                # Keep known passage annotations in planner map coordinates so
+                # RViz overlays and trajectory planning line up with the real
+                # connector buildings after the gazebo_aligned_map transform.
+                map_x = gazebo_y + 135.0
+                map_y = gazebo_x + 225.0
 
                 self.assertEqual(
                     structure_values[connector_id],
-                    (map_x, map_y, 24.0, 30.0, 0.0, 28.0),
+                    (map_x, map_y, 30.0, 24.0, 0.0, 28.0),
                 )
                 opening_id, opening = opening_values[connector_id]
                 self.assertTrue(opening_id.startswith("connector_"))
@@ -245,8 +250,8 @@ class TopicContractTest(unittest.TestCase):
                         map_x,
                         map_y,
                         18.0,
-                        1.0,
                         0.0,
+                        1.0,
                         30.0,
                         7.0,
                         24.0,
