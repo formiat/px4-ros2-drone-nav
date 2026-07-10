@@ -560,9 +560,9 @@
       deliberately kept unchanged while we verify the physical 3D world geometry
       in Gazebo.
     -->
-    <model name="physical_building_connector_03_11">
+    <model name="physical_building_connector_11_19">
       <static>true</static>
-      <pose>-90.00 -81.00 0.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 -27.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
         <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>
@@ -577,20 +577,6 @@
     <model name="physical_building_connector_04_12">
       <static>true</static>
       <pose>-36.00 -81.00 0.00 0.00 0.00 0.00</pose>
-      <link name="lower_mass">
-        <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 14.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
-      </link>
-      <link name="upper_mass">
-        <pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 6.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 6.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
-      </link>
-    </model>
-    <model name="physical_building_connector_05_13">
-      <static>true</static>
-      <pose>18.00 -81.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
         <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>

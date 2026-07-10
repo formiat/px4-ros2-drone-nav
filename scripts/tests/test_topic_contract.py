@@ -175,9 +175,8 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(
             connector_ids,
             [
-                "physical_building_connector_03_11",
+                "physical_building_connector_11_19",
                 "physical_building_connector_04_12",
-                "physical_building_connector_05_13",
                 "physical_building_connector_06_14",
             ],
         )
@@ -281,7 +280,7 @@ class TopicContractTest(unittest.TestCase):
             sdf_text,
             re.S,
         )
-        self.assertEqual(len(connector_models), 4)
+        self.assertEqual(len(connector_models), 3)
         for connector_id, model_text in connector_models:
             with self.subTest(connector_id=connector_id):
                 lower_match = re.search(
@@ -318,7 +317,7 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertEqual(
             opening_values,
-            [(18.0, 30.0, 7.0, 14.5, 21.5)] * 4,
+            [(18.0, 30.0, 7.0, 14.5, 21.5)] * 3,
         )
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
