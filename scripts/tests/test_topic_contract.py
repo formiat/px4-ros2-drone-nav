@@ -207,6 +207,36 @@ class TopicContractTest(unittest.TestCase):
         }
         self.assertEqual(set(opening_values), set(connector_ids))
 
+        expected_vertical_geometry = {
+            "physical_building_connector_11_19": {
+                "center_z": 5.0,
+                "min_z": 1.5,
+                "max_z": 8.5,
+                "lower_pose_z": 0.75,
+                "lower_size_z": 1.5,
+                "upper_pose_z": 20.25,
+                "upper_size_z": 23.5,
+            },
+            "physical_building_connector_04_12": {
+                "center_z": 15.0,
+                "min_z": 11.5,
+                "max_z": 18.5,
+                "lower_pose_z": 5.75,
+                "lower_size_z": 11.5,
+                "upper_pose_z": 25.25,
+                "upper_size_z": 13.5,
+            },
+            "physical_building_connector_06_14": {
+                "center_z": 25.0,
+                "min_z": 21.5,
+                "max_z": 28.5,
+                "lower_pose_z": 10.75,
+                "lower_size_z": 21.5,
+                "upper_pose_z": 30.25,
+                "upper_size_z": 3.5,
+            },
+        }
+
         for connector_id in connector_ids:
             with self.subTest(connector_id=connector_id):
                 model_match = re.search(
@@ -216,14 +246,29 @@ class TopicContractTest(unittest.TestCase):
                 model_text = model_match.group(1)
                 self.assertIn('<link name="lower_mass">', model_text)
                 self.assertIn('<link name="upper_mass">', model_text)
+                expected_vertical = expected_vertical_geometry[connector_id]
                 self.assertIn(
-                    "<pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>", model_text
+                    (
+                        f"<pose>0.00 0.00 {expected_vertical['lower_pose_z']:.2f} "
+                        "0.00 0.00 0.00</pose>"
+                    ),
+                    model_text,
                 )
                 self.assertIn(
-                    "<pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>", model_text
+                    (
+                        f"<pose>0.00 0.00 {expected_vertical['upper_pose_z']:.2f} "
+                        "0.00 0.00 0.00</pose>"
+                    ),
+                    model_text,
                 )
-                self.assertIn("<size>24.00 30.00 14.50</size>", model_text)
-                self.assertIn("<size>24.00 30.00 6.50</size>", model_text)
+                self.assertIn(
+                    f"<size>24.00 30.00 {expected_vertical['lower_size_z']:.2f}</size>",
+                    model_text,
+                )
+                self.assertIn(
+                    f"<size>24.00 30.00 {expected_vertical['upper_size_z']:.2f}</size>",
+                    model_text,
+                )
                 model_pose = re.search(r"<pose>(.*?)</pose>", model_text)
                 self.assertIsNotNone(model_pose)
                 gazebo_x, gazebo_y, *_ = (
@@ -239,7 +284,7 @@ class TopicContractTest(unittest.TestCase):
 
                 self.assertEqual(
                     structure_values[connector_id],
-                    (map_x, map_y, 30.0, 24.0, 0.0, 28.0),
+                    (map_x, map_y, 30.0, 24.0, 0.0, 32.0),
                 )
                 opening_id, opening = opening_values[connector_id]
                 self.assertTrue(opening_id.startswith("connector_"))
@@ -248,14 +293,14 @@ class TopicContractTest(unittest.TestCase):
                     (
                         map_x,
                         map_y,
-                        18.0,
+                        expected_vertical["center_z"],
                         0.0,
                         1.0,
                         30.0,
                         7.0,
                         24.0,
-                        14.5,
-                        21.5,
+                        expected_vertical["min_z"],
+                        expected_vertical["max_z"],
                         18.0,
                         18.0,
                     ),
@@ -300,7 +345,7 @@ class TopicContractTest(unittest.TestCase):
                     [PASSAGE_UPPER_DIFFUSE],
                 )
 
-    def test_known_passage_openings_match_current_vertical_gap(self) -> None:
+    def test_known_passage_openings_cover_wide_altitude_range(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
 
         opening_values = sorted(
@@ -317,7 +362,11 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertEqual(
             opening_values,
-            [(18.0, 30.0, 7.0, 14.5, 21.5)] * 3,
+            [
+                (5.0, 30.0, 7.0, 1.5, 8.5),
+                (15.0, 30.0, 7.0, 11.5, 18.5),
+                (25.0, 30.0, 7.0, 21.5, 28.5),
+            ],
         )
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:

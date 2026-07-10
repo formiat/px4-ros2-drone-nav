@@ -554,52 +554,53 @@
       Physical Gazebo-only connector buildings across the straight evasive=false
       corridor. Each connector keeps the same XY footprint as the former solid
       bridge, but it is split into lower and upper masses with a 7m vertical
-      opening from z=14.5m to z=21.5m. These are real SDF collision/visual
-      objects, not known-passage annotations and not RViz markers. Do not add
-      them to generated_city.map2d here: the static 2D planner map is
-      deliberately kept unchanged while we verify the physical 3D world geometry
-      in Gazebo.
+      opening. The opening heights intentionally vary from low to high so the
+      drone has to exercise vertical maneuvering. These are real SDF
+      collision/visual objects, not known-passage annotations and not RViz
+      markers. Do not add them to generated_city.map2d here: the static 2D
+      planner map is deliberately kept unchanged while we verify the physical
+      3D world geometry in Gazebo.
     -->
     <model name="physical_building_connector_11_19">
       <static>true</static>
       <pose>-90.00 -27.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
-        <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 14.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
+        <pose>0.00 0.00 0.75 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 1.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 1.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_mass">
-        <pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 6.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 6.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+        <pose>0.00 0.00 20.25 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 23.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
     </model>
     <model name="physical_building_connector_04_12">
       <static>true</static>
       <pose>-36.00 -81.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
-        <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 14.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
+        <pose>0.00 0.00 5.75 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 11.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 11.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_mass">
-        <pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 6.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 6.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+        <pose>0.00 0.00 25.25 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 13.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 13.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
     </model>
     <model name="physical_building_connector_06_14">
       <static>true</static>
       <pose>72.00 -81.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
-        <pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 14.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 14.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
+        <pose>0.00 0.00 10.75 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 21.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 21.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_mass">
-        <pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 6.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 6.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+        <pose>0.00 0.00 30.25 0.00 0.00 0.00</pose>
+        <collision name="collision"><geometry><box><size>24.00 30.00 3.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 30.00 3.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
     </model>
 
