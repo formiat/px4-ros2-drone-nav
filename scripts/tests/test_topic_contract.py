@@ -177,6 +177,23 @@ class TopicContractTest(unittest.TestCase):
                 "physical_building_connector_06_14",
             ],
         )
+        for connector_id in connector_ids:
+            with self.subTest(connector_id=connector_id):
+                model_match = re.search(
+                    rf'<model name="{connector_id}">(.*?)</model>', sdf_text, re.S
+                )
+                self.assertIsNotNone(model_match)
+                model_text = model_match.group(1)
+                self.assertIn('<link name="lower_mass">', model_text)
+                self.assertIn('<link name="upper_mass">', model_text)
+                self.assertIn(
+                    "<pose>0.00 0.00 7.25 0.00 0.00 0.00</pose>", model_text
+                )
+                self.assertIn(
+                    "<pose>0.00 0.00 24.75 0.00 0.00 0.00</pose>", model_text
+                )
+                self.assertIn("<size>24.00 30.00 14.50</size>", model_text)
+                self.assertIn("<size>24.00 30.00 6.50</size>", model_text)
         self.assertNotIn("known_passage_test_gate", passage_text)
         self.assertNotIn("known_passage_test_gate", sdf_text)
 
