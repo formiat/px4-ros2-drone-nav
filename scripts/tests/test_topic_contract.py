@@ -171,12 +171,9 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(
             connector_ids,
             [
-                "physical_building_connector_02_10",
                 "physical_building_connector_03_11",
                 "physical_building_connector_04_12",
                 "physical_building_connector_05_13",
-                "physical_building_connector_06_14",
-                "physical_building_connector_07_15",
                 "physical_building_connector_08_16",
             ],
         )
