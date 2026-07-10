@@ -174,7 +174,7 @@ class TopicContractTest(unittest.TestCase):
                 "physical_building_connector_03_11",
                 "physical_building_connector_04_12",
                 "physical_building_connector_05_13",
-                "physical_building_connector_08_16",
+                "physical_building_connector_06_14",
             ],
         )
         self.assertNotIn("known_passage_test_gate", passage_text)
