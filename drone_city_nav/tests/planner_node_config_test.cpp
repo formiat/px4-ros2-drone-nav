@@ -70,6 +70,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
   EXPECT_TRUE(config.passage_traversal_sensor_policy.enabled);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 3.0);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.lookahead_margin_m, 25.0);
   EXPECT_DOUBLE_EQ(
       config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m, 0.75);
   EXPECT_DOUBLE_EQ(
@@ -78,6 +79,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
+      1.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
                    3.2);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_accel_mps2,
@@ -95,6 +99,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
       3.2);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.known_passage_traversal_speed_limit_mps,
+      10.0);
   EXPECT_TRUE(config.trajectory_planner.passage_insertion.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
@@ -102,7 +109,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_anchor_margin_m,
                    60.0);
   EXPECT_DOUBLE_EQ(
-      config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.0);
+      config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 1.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.repair_clearance_margin_m, 1.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
                    80.0);
   EXPECT_DOUBLE_EQ(
@@ -225,14 +234,18 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"known_passage_validation_min_opening_depth_fraction", 5.0},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 5000},
+       rclcpp::Parameter{"known_passage_traversal_speed_limit_mps", 9999.0},
        rclcpp::Parameter{"passage_traversal_activation_margin_m", -1.0},
+       rclcpp::Parameter{"passage_traversal_lookahead_margin_m", 9999.0},
        rclcpp::Parameter{"passage_traversal_opening_corridor_lateral_margin_m", 9999.0},
        rclcpp::Parameter{"passage_traversal_opening_corridor_depth_margin_m", 9999.0},
        rclcpp::Parameter{"passage_traversal_expected_wall_margin_m", 9999.0},
+       rclcpp::Parameter{"vertical_profile_preferred_gate_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"passage_insertion_sample_step_m", -1.0},
        rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", -1.0},
        rclcpp::Parameter{"passage_insertion_max_anchor_margin_m", -1.0},
        rclcpp::Parameter{"passage_insertion_opening_lateral_target_margin_m", -1.0},
+       rclcpp::Parameter{"passage_insertion_repair_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"passage_insertion_max_lateral_shift_m", 9999.0},
        rclcpp::Parameter{"passage_insertion_max_join_tangent_delta_deg", 9999.0},
        rclcpp::Parameter{"passage_insertion_max_join_curvature_jump_1pm", 9999.0},
@@ -265,6 +278,9 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 1.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.cruise_speed_mps, 100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.speed_profile.min_turn_speed_mps, 100.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.known_passage_traversal_speed_limit_mps,
+      100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.max_radius_m, 1.0);
   EXPECT_EQ(config.trajectory_planner.corridor.parallel_workers, 1024U);
   EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.parallel_workers, 1024U);
@@ -300,12 +316,16 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.activation_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.lookahead_margin_m, 1000.0);
   EXPECT_DOUBLE_EQ(
       config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m, 1000.0);
   EXPECT_DOUBLE_EQ(
       config.passage_traversal_sensor_policy.opening_corridor_depth_margin_m, 1000.0);
   EXPECT_DOUBLE_EQ(config.passage_traversal_sensor_policy.expected_wall_margin_m,
                    1000.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
+      100.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 0.1);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
                    0.0);
@@ -313,6 +333,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    0.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.0);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.repair_clearance_margin_m, 1000.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
                    5000.0);
   EXPECT_DOUBLE_EQ(
@@ -351,8 +373,10 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"known_passage_validation_min_opening_depth_fraction", 0.5},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 0.75},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 3},
+       rclcpp::Parameter{"known_passage_traversal_speed_limit_mps", 8.5},
        rclcpp::Parameter{"vertical_profile_enabled", false},
        rclcpp::Parameter{"vertical_profile_gate_clearance_margin_m", 0.8},
+       rclcpp::Parameter{"vertical_profile_preferred_gate_clearance_margin_m", 1.8},
        rclcpp::Parameter{"vertical_profile_max_vertical_speed_mps", 3.5},
        rclcpp::Parameter{"vertical_profile_max_vertical_accel_mps2", 2.75},
        rclcpp::Parameter{"vertical_profile_max_vertical_jerk_mps3", 9.0},
@@ -368,6 +392,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", 9.0},
        rclcpp::Parameter{"passage_insertion_max_anchor_margin_m", 45.0},
        rclcpp::Parameter{"passage_insertion_opening_lateral_target_margin_m", 0.5},
+       rclcpp::Parameter{"passage_insertion_repair_clearance_margin_m", 1.75},
        rclcpp::Parameter{"passage_insertion_max_lateral_shift_m", 25.0},
        rclcpp::Parameter{"passage_insertion_max_join_tangent_delta_deg", 15.0},
        rclcpp::Parameter{"passage_insertion_max_join_curvature_jump_1pm", 0.12},
@@ -423,6 +448,9 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.8);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
+      1.8);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_speed_mps,
                    3.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_accel_mps2,
@@ -445,6 +473,9 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps,
       3.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.speed_profile.known_passage_traversal_speed_limit_mps,
+      8.5);
   EXPECT_TRUE(config.trajectory_planner.passage_insertion.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.sample_step_m, 0.75);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_anchor_margin_m,
@@ -453,6 +484,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                    45.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m, 0.5);
+  EXPECT_DOUBLE_EQ(
+      config.trajectory_planner.passage_insertion.repair_clearance_margin_m, 1.75);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.max_lateral_shift_m,
                    25.0);
   EXPECT_DOUBLE_EQ(

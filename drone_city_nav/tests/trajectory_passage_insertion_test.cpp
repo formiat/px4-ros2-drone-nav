@@ -231,6 +231,34 @@ TEST(TrajectoryPassageInsertion, AlreadyValidOpeningTraversalReturnsNoopSamples)
   expectSamePoints(result.samples, samples);
 }
 
+TEST(TrajectoryPassageInsertion, RepairsValidButLowClearanceOpeningTraversal) {
+  const OccupancyGrid2D grid = makeGrid();
+  const KnownPassageMap map = makeMap();
+  const std::vector<TrajectoryPointSample> samples = makeLineSamples(1.4);
+  KnownPassageValidationConfig validation_config{};
+  validation_config.clearance_margin_m = 0.0;
+  const KnownPassageValidationSummary before =
+      validateKnownPassageTraversal(samples, &map, validation_config);
+  ASSERT_TRUE(before.valid);
+  ASSERT_EQ(before.diagnostics.size(), 1U);
+  EXPECT_LT(before.diagnostics.front().clearance_m, 1.5);
+
+  PassageInsertionConfig config = insertionConfig();
+  config.opening_lateral_target_margin_m = 1.5;
+  config.repair_clearance_margin_m = 1.5;
+  const PassageInsertionResult result =
+      insertLocalPassageSegments(samples, grid, &map, validation_config, config, 10.0);
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_TRUE(result.applied);
+  ASSERT_FALSE(result.stats.diagnostics.empty());
+  EXPECT_EQ(result.stats.final_reason, PassageInsertionRejectReason::kNone);
+  EXPECT_LT(result.stats.diagnostics.front().lateral_miss_after_m,
+            result.stats.diagnostics.front().lateral_miss_before_m);
+  expectEndpointsPreserved(result.samples, samples);
+  expectMonotonicStations(result.samples);
+}
+
 TEST(TrajectoryPassageInsertion, InsertsLocalSegmentThroughKnownOpening) {
   const OccupancyGrid2D grid = makeGrid();
   const KnownPassageMap map = makeMap();

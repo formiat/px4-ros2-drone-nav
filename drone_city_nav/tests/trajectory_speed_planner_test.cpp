@@ -296,6 +296,37 @@ TEST(TrajectorySpeedPlanner, VerticalProfileCapsSpeedAndTopConstraintSource) {
   EXPECT_NEAR(constraints.front().speed_limit_mps, 2.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, KnownPassageHardWindowCapsSpeedWithoutVerticalSlope) {
+  VelocityFollowerConfig config = testConfig();
+  config.cruise_speed_mps = 20.0;
+  config.known_passage_traversal_speed_limit_mps = 9.0;
+  config.speed_profile_decel_mps2 = 100.0;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 5U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.z_m = 10.0;
+    sample.vertical_hard_window_active = i >= 1U && i <= 3U;
+    samples.push_back(sample);
+  }
+
+  const TrajectorySpeedProfile profile = buildTrajectorySpeedProfile(samples, config);
+
+  ASSERT_TRUE(profile.valid);
+  const TrajectorySpeedSample passage = speedProfileSampleAtS(profile, 10.0);
+  EXPECT_NEAR(passage.geometric_limit_mps, 9.0, 1.0e-9);
+  EXPECT_NEAR(passage.vertical_speed_limit_mps, 9.0, 1.0e-9);
+
+  const std::vector<SpeedProfileConstraintDiagnostic> constraints =
+      topSpeedProfileConstraints(profile, 3U);
+  ASSERT_FALSE(constraints.empty());
+  EXPECT_EQ(constraints.front().source, SpeedConstraintType::kVerticalProfile);
+  EXPECT_NEAR(constraints.front().speed_limit_mps, 9.0, 1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, SpeedProfileSampleInterpolatesBetweenSamples) {
   const TrajectorySpeedSample sample = speedProfileSampleAtS(simpleProfile(), 4.0);
 

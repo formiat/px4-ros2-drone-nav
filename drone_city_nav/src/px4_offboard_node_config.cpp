@@ -49,6 +49,11 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.min_turn_speed_mps =
       std::clamp(config.velocity_follower.min_turn_speed_mps, 0.0,
                  config.velocity_follower.cruise_speed_mps);
+  config.velocity_follower.known_passage_traversal_speed_limit_mps =
+      boundedFiniteDouble(
+          config.velocity_follower.known_passage_traversal_speed_limit_mps,
+          std::min(10.0, config.velocity_follower.cruise_speed_mps), 0.0,
+          config.velocity_follower.cruise_speed_mps);
   config.velocity_follower.speed_profile_lookahead_max_m =
       std::max(config.velocity_follower.speed_profile_lookahead_max_m,
                config.velocity_follower.speed_profile_lookahead_min_m);
@@ -169,6 +174,9 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.velocity_follower.min_turn_speed_mps =
       std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
                  config.velocity_follower.cruise_speed_mps);
+  config.velocity_follower.known_passage_traversal_speed_limit_mps = std::clamp(
+      node.declare_parameter<double>("known_passage_traversal_speed_limit_mps", 10.0),
+      0.0, config.velocity_follower.cruise_speed_mps);
   config.velocity_follower.speed_profile_accel_mps2 = std::clamp(
       node.declare_parameter<double>("speed_profile_accel_mps2", 7.0), 0.0, 100.0);
   config.velocity_follower.setpoint_forward_accel_mps2 = std::clamp(

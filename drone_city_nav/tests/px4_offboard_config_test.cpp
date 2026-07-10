@@ -83,8 +83,11 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("known_passage_validation_max_diagnostics: 8"),
             std::string::npos);
+  EXPECT_NE(yaml.find("passage_traversal_lookahead_margin_m: 25.0"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_preferred_gate_clearance_margin_m: 2.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_max_vertical_speed_mps: 3.2"),
             std::string::npos);
@@ -97,6 +100,10 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("vertical_profile_pre_gate_hold_min_distance_m: 15.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_pre_gate_hold_max_distance_m: 80.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("passage_insertion_repair_clearance_margin_m: 2.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("known_passage_traversal_speed_limit_mps: 10.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_sample_step_m: 1.0"), std::string::npos);

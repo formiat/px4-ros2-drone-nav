@@ -33,6 +33,7 @@ enum class PassageAwareReuseAction {
 struct PassageTraversalSensorPolicyConfig {
   bool enabled{true};
   double activation_margin_m{3.0};
+  double lookahead_margin_m{25.0};
   double opening_corridor_lateral_margin_m{0.75};
   double opening_corridor_depth_margin_m{1.0};
   double expected_wall_margin_m{0.5};

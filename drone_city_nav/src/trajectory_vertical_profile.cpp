@@ -53,13 +53,21 @@ struct ProfileWindow {
 [[nodiscard]] double targetGateAltitude(const PassageOpening& opening,
                                         const VerticalProfileConfig& config,
                                         const double reference_altitude_m) noexcept {
-  const double min_z = opening.min_z_m + std::max(0.0, config.gate_clearance_margin_m);
-  const double max_z = opening.max_z_m - std::max(0.0, config.gate_clearance_margin_m);
-  if (max_z >= min_z) {
-    if (reference_altitude_m >= min_z && reference_altitude_m <= max_z) {
+  const double hard_margin_m = std::max(0.0, config.gate_clearance_margin_m);
+  const double preferred_margin_m =
+      std::max(hard_margin_m, config.preferred_gate_clearance_margin_m);
+  const double hard_min_z = opening.min_z_m + hard_margin_m;
+  const double hard_max_z = opening.max_z_m - hard_margin_m;
+  const double preferred_min_z = opening.min_z_m + preferred_margin_m;
+  const double preferred_max_z = opening.max_z_m - preferred_margin_m;
+  if (preferred_max_z >= preferred_min_z) {
+    return std::clamp(reference_altitude_m, preferred_min_z, preferred_max_z);
+  }
+  if (hard_max_z >= hard_min_z) {
+    if (reference_altitude_m >= hard_min_z && reference_altitude_m <= hard_max_z) {
       return reference_altitude_m;
     }
-    return 0.5 * (min_z + max_z);
+    return 0.5 * (hard_min_z + hard_max_z);
   }
   return 0.5 * (opening.min_z_m + opening.max_z_m);
 }

@@ -69,6 +69,13 @@ sanitizeConfig(const PassageInsertionConfig& input) noexcept {
                      ? config.opening_lateral_target_margin_m
                      : 0.0,
                  0.0, 1000.0);
+  config.repair_clearance_margin_m =
+      std::clamp(std::isfinite(config.repair_clearance_margin_m)
+                     ? config.repair_clearance_margin_m
+                     : config.opening_lateral_target_margin_m,
+                 0.0, 1000.0);
+  config.opening_lateral_target_margin_m = std::max(
+      config.opening_lateral_target_margin_m, config.repair_clearance_margin_m);
   config.max_lateral_shift_m = std::clamp(
       std::isfinite(config.max_lateral_shift_m) ? config.max_lateral_shift_m : 80.0,
       0.0, 5000.0);
@@ -192,6 +199,26 @@ pathTraversable(const OccupancyGrid2D& grid,
 countInvalidMatches(const std::vector<KnownPassageTraversalMatch>& matches) noexcept {
   return static_cast<std::size_t>(std::ranges::count_if(
       matches, [](const KnownPassageTraversalMatch& match) { return !match.valid; }));
+}
+
+[[nodiscard]] bool
+needsPassageInsertionRepair(const KnownPassageTraversalMatch& match,
+                            const PassageInsertionConfig& config) noexcept {
+  if (!match.valid) {
+    return match.reason == KnownPassageValidationReason::kOpeningVolumeMiss ||
+           match.reason == KnownPassageValidationReason::kStructureWithoutOpening;
+  }
+  return config.repair_clearance_margin_m > 0.0 && std::isfinite(match.clearance_m) &&
+         match.clearance_m + kTinyDistanceM < config.repair_clearance_margin_m;
+}
+
+[[nodiscard]] std::size_t
+countRepairCandidates(const std::vector<KnownPassageTraversalMatch>& matches,
+                      const PassageInsertionConfig& config) noexcept {
+  return static_cast<std::size_t>(std::ranges::count_if(
+      matches, [&config](const KnownPassageTraversalMatch& match) {
+        return needsPassageInsertionRepair(match, config);
+      }));
 }
 
 [[nodiscard]] double
@@ -467,7 +494,12 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
       findKnownPassageTraversalMatches(evaluation.samples, map, validation_config,
                                        true);
   const std::size_t after_violations = countInvalidMatches(after_matches);
-  if (!(after_violations < before_violations)) {
+  const bool invalid_matches_improved = after_violations < before_violations;
+  const bool low_clearance_improved =
+      before_violations == 0U && after_violations == 0U &&
+      evaluation.diagnostic.lateral_miss_after_m + kTinyDistanceM <
+          evaluation.diagnostic.lateral_miss_before_m;
+  if (!invalid_matches_improved && !low_clearance_improved) {
     evaluation.reason = PassageInsertionRejectReason::kValidationNotImproved;
     return evaluation;
   }
@@ -555,7 +587,8 @@ PassageInsertionResult insertLocalPassageSegments(
   const std::vector<KnownPassageTraversalMatch> before_matches =
       findKnownPassageTraversalMatches(samples, *map, validation_config, true);
   const std::size_t before_violations = countInvalidMatches(before_matches);
-  if (before_violations == 0U) {
+  const std::size_t repair_candidates = countRepairCandidates(before_matches, config);
+  if (repair_candidates == 0U) {
     result.stats.final_reason = PassageInsertionRejectReason::kNoRepairNeeded;
     return result;
   }
@@ -566,16 +599,20 @@ PassageInsertionResult insertLocalPassageSegments(
 
   std::optional<CandidateEvaluation> best;
   for (const KnownPassageTraversalMatch& match : before_matches) {
-    if (match.valid ||
-        (match.reason != KnownPassageValidationReason::kOpeningVolumeMiss &&
-         match.reason != KnownPassageValidationReason::kStructureWithoutOpening)) {
+    if (!needsPassageInsertionRepair(match, config)) {
       continue;
     }
     const PassageStructure* const structure = findStructure(*map, match.structure_id);
     if (structure == nullptr || structure->openings.empty()) {
       continue;
     }
-    for (const PassageOpening& opening : structure->openings) {
+    std::vector<PassageOpening> candidate_openings;
+    if (match.valid) {
+      candidate_openings.push_back(match.opening);
+    } else {
+      candidate_openings = structure->openings;
+    }
+    for (const PassageOpening& opening : candidate_openings) {
       if (result.stats.candidates >= config.max_candidates) {
         result.stats.final_reason = PassageInsertionRejectReason::kTooManyCandidates;
         break;

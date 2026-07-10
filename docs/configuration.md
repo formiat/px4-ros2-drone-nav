@@ -61,14 +61,18 @@ Known passages:
 - `known_passage_validation_max_diagnostics`
 - `passage_traversal_sensor_policy_enabled`
 - `passage_traversal_activation_margin_m`
+- `passage_traversal_lookahead_margin_m`
 - `passage_traversal_opening_corridor_lateral_margin_m`
 - `passage_traversal_opening_corridor_depth_margin_m`
 - `passage_traversal_expected_wall_margin_m`
+- `vertical_profile_preferred_gate_clearance_margin_m`
+- `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
 - `passage_insertion_sample_step_m`
 - `passage_insertion_min_anchor_margin_m`
 - `passage_insertion_max_anchor_margin_m`
 - `passage_insertion_opening_lateral_target_margin_m`
+- `passage_insertion_repair_clearance_margin_m`
 - `passage_insertion_max_lateral_shift_m`
 - `passage_insertion_max_join_tangent_delta_deg`
 - `passage_insertion_max_join_curvature_jump_1pm`
@@ -122,12 +126,19 @@ building collision volumes:
   margin.
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
 - `passage_traversal_activation_margin_m` expands the active station interval
-  around a matched passage span.
+  around a matched passage span, while
+  `passage_traversal_lookahead_margin_m` activates expected-wall filtering before
+  the vehicle reaches the opening entry plane.
 - `passage_traversal_opening_corridor_lateral_margin_m` and
   `passage_traversal_opening_corridor_depth_margin_m` define the protected
   opening corridor where obstacles remain emergency blockers.
 - `passage_traversal_expected_wall_margin_m` expands the known structure
   footprint used for expected-wall filtering.
+- `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
+  altitude inside a preferred safe band when possible. It clamps to the nearest
+  preferred boundary instead of forcing the opening center.
+- `known_passage_traversal_speed_limit_mps` caps speed inside known-passage hard
+  altitude windows.
 - `passage_insertion_enabled` controls the optional local XY repair stage. It
   is enabled by default so annotated passages can locally align XY trajectory
   geometry before vertical profiling.
@@ -137,6 +148,8 @@ building collision volumes:
   missed opening span.
 - `passage_insertion_opening_lateral_target_margin_m` keeps the repaired path
   away from the opening side edges.
+- `passage_insertion_repair_clearance_margin_m` also repairs already-valid
+  opening traversals when their lateral clearance is below the preferred margin.
 - `passage_insertion_max_lateral_shift_m` rejects repairs that would require a
   large local shift.
 - `passage_insertion_max_join_tangent_delta_deg` and

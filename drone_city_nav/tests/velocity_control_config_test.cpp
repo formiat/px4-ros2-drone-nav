@@ -36,6 +36,15 @@ TEST(VelocityControlConfig, ConstructionFingerprintTracksVerticalProfileCaps) {
   EXPECT_NE(speedProfileConstructionConfigFingerprint(config), construction);
 }
 
+TEST(VelocityControlConfig, ConstructionFingerprintTracksKnownPassageSpeedCap) {
+  VelocityFollowerConfig config{};
+  const std::uint64_t construction = speedProfileConstructionConfigFingerprint(config);
+
+  config.known_passage_traversal_speed_limit_mps -= 1.0;
+
+  EXPECT_NE(speedProfileConstructionConfigFingerprint(config), construction);
+}
+
 TEST(VelocityControlConfig, RuntimeSpeedPolicyTracksVerticalTrackability) {
   VelocityFollowerConfig config{};
   const std::uint64_t construction = speedProfileConstructionConfigFingerprint(config);

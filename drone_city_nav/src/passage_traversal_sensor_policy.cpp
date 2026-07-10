@@ -234,7 +234,8 @@ ActivePassageTraversal findActivePassageTraversal(
       continue;
     }
     const double activation_start_s_m =
-        std::max(0.0, match.entry_s_m - config.activation_margin_m);
+        std::max(0.0, match.entry_s_m - std::max(config.activation_margin_m,
+                                                 config.lookahead_margin_m));
     const double activation_end_s_m = match.exit_s_m + config.activation_margin_m;
     if (projection.s_m < activation_start_s_m || projection.s_m > activation_end_s_m) {
       continue;

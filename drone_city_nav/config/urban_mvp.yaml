@@ -86,11 +86,13 @@ planner_node:
     known_passage_validation_max_diagnostics: 8
     passage_traversal_sensor_policy_enabled: true
     passage_traversal_activation_margin_m: 3.0
+    passage_traversal_lookahead_margin_m: 25.0
     passage_traversal_opening_corridor_lateral_margin_m: 0.75
     passage_traversal_opening_corridor_depth_margin_m: 1.0
     passage_traversal_expected_wall_margin_m: 0.5
     vertical_profile_enabled: true
     vertical_profile_gate_clearance_margin_m: 0.5
+    vertical_profile_preferred_gate_clearance_margin_m: 2.0
     vertical_setpoint_max_speed_mps: 4.0
     vertical_profile_max_vertical_speed_mps: 3.2
     vertical_profile_max_vertical_accel_mps2: 3.0
@@ -106,7 +108,8 @@ planner_node:
     passage_insertion_sample_step_m: 1.0
     passage_insertion_min_anchor_margin_m: 8.0
     passage_insertion_max_anchor_margin_m: 60.0
-    passage_insertion_opening_lateral_target_margin_m: 0.0
+    passage_insertion_opening_lateral_target_margin_m: 2.0
+    passage_insertion_repair_clearance_margin_m: 2.0
     passage_insertion_max_lateral_shift_m: 80.0
     passage_insertion_max_join_tangent_delta_deg: 20.0
     passage_insertion_max_join_curvature_jump_1pm: 0.08
@@ -142,6 +145,7 @@ planner_node:
     path_prohibited_intersection_check_period_s: 0.5
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
+    known_passage_traversal_speed_limit_mps: 10.0
     speed_profile_accel_mps2: 7.0
     turn_speed_lateral_accel_mps2: 5.0
     speed_profile_decel_mps2: 2.0
@@ -217,6 +221,7 @@ px4_offboard_node:
     diagnostic_turn_preview_distance_m: 90.0
     cruise_speed_mps: 22.0
     min_turn_speed_mps: 1.5
+    known_passage_traversal_speed_limit_mps: 10.0
     speed_profile_accel_mps2: 7.0
     setpoint_forward_accel_mps2: 7.0
     setpoint_forward_decel_mps2: 20.0

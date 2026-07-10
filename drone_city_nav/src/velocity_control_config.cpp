@@ -24,9 +24,10 @@ void mixDouble(std::uint64_t& hash, const double value) noexcept {
 std::uint64_t speedProfileConstructionConfigFingerprint(
     const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 10U> values{
+  const std::array<double, 11U> values{
       config.cruise_speed_mps,
       config.min_turn_speed_mps,
+      config.known_passage_traversal_speed_limit_mps,
       config.speed_profile_accel_mps2,
       config.speed_profile_decel_mps2,
       config.turn_speed_lateral_accel_mps2,

@@ -174,9 +174,9 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfil
   ASSERT_EQ(result.stats.diagnostics.size(), 1U);
   EXPECT_LT(result.stats.diagnostics.front().gate_hold_start_s_m,
             result.stats.diagnostics.front().entry_s_m);
-  EXPECT_NEAR(result.stats.min_z_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(result.stats.min_z_m, 10.5, 1.0e-9);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.5);
 
   const KnownPassageValidationSummary validation =
       validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
@@ -192,7 +192,7 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfil
            sample.vertical_profile_passage_id == "window" &&
            std::abs(sample.vertical_safe_min_z_m - 8.5) <= 1.0e-9 &&
            std::abs(sample.vertical_safe_max_z_m - 11.5) <= 1.0e-9 &&
-           std::abs(sample.vertical_gate_z_m - 10.0) <= 1.0e-9;
+           std::abs(sample.vertical_gate_z_m - 10.5) <= 1.0e-9;
   }));
 }
 
@@ -208,12 +208,12 @@ TEST(TrajectoryVerticalProfile, DefaultClimbAngleAccountsForSmootherstepPeakSlop
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.active);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
-  EXPECT_NEAR(result.stats.min_z_m, 10.0, 1.0e-9);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.5);
+  EXPECT_NEAR(result.stats.min_z_m, 10.5, 1.0e-9);
   EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
 }
 
-TEST(TrajectoryVerticalProfile, GateAltitudeTargetsOpeningCenterOutsideMargin) {
+TEST(TrajectoryVerticalProfile, GateAltitudeClampsToNearestPreferredBoundary) {
   KnownPassageMap map = makeMap();
   std::vector<TrajectoryPointSample> samples =
       makeSamplesRange(-140.0, 140.0, 2.0, 4.0);
@@ -224,10 +224,28 @@ TEST(TrajectoryVerticalProfile, GateAltitudeTargetsOpeningCenterOutsideMargin) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.stats.active);
-  EXPECT_NEAR(result.stats.max_z_m, 10.0, 1.0e-9);
+  EXPECT_NEAR(result.stats.max_z_m, 9.5, 1.0e-9);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 4.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 9.5);
   EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
+}
+
+TEST(TrajectoryVerticalProfile, GateAltitudeClampsToPreferredBandWithoutCentering) {
+  KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-140.0, 140.0, 2.0, 18.0);
+  VerticalProfileConfig config{};
+  config.gate_clearance_margin_m = 0.5;
+  config.preferred_gate_clearance_margin_m = 1.5;
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 11.8);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.active);
+  ASSERT_FALSE(result.stats.diagnostics.empty());
+  EXPECT_DOUBLE_EQ(result.stats.diagnostics.front().gate_z_m, 10.5);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.5);
 }
 
 TEST(TrajectoryVerticalProfile, OverlappingIncompatibleWindowsAreRejected) {
@@ -274,7 +292,7 @@ TEST(TrajectoryVerticalProfile, OverlappingCompatibleWindowsShareCarriedAltitude
   EXPECT_TRUE(validation.valid);
   EXPECT_EQ(validation.opening_matches, 2U);
   EXPECT_DOUBLE_EQ(samples.front().z_m, 18.0);
-  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.0);
+  EXPECT_DOUBLE_EQ(samples.back().z_m, 10.5);
 }
 
 TEST(TrajectoryVerticalProfile,

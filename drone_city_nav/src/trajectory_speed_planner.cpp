@@ -400,6 +400,11 @@ void populateTrajectoryVerticalSpeedConstraints(
       config.vertical_profile_max_vertical_accel_mps2, 3.0, 1.0e-6, 100.0);
   const double max_jerk = sanitizedPositive(
       config.vertical_profile_max_vertical_jerk_mps3, 9.0, 1.0e-6, 1000.0);
+  const double passage_speed_limit_mps =
+      std::clamp(std::isfinite(config.known_passage_traversal_speed_limit_mps)
+                     ? config.known_passage_traversal_speed_limit_mps
+                     : 0.0,
+                 0.0, sanitizedCruiseSpeed(config));
 
   std::vector<double> slopes(samples.size(), 0.0);
   for (std::size_t i = 0U; i < samples.size(); ++i) {
@@ -449,6 +454,12 @@ void populateTrajectoryVerticalSpeedConstraints(
   }
 
   for (TrajectoryPointSample& sample : samples) {
+    if (sample.vertical_hard_window_active && passage_speed_limit_mps > 0.0) {
+      sample.vertical_speed_limit_mps =
+          std::isfinite(sample.vertical_speed_limit_mps)
+              ? std::min(sample.vertical_speed_limit_mps, passage_speed_limit_mps)
+              : passage_speed_limit_mps;
+    }
     sample.vertical_constraint_active =
         sample.vertical_constraint_active || sample.vertical_hard_window_active;
   }

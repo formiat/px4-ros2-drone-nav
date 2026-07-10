@@ -173,6 +173,26 @@ TEST(PassageTraversalSensorPolicy, ExpectedWallCellsAreIgnoredDuringActiveTraver
   EXPECT_FALSE(occupiedAt(current_lidar, Point2{10.2, 4.2}));
 }
 
+TEST(PassageTraversalSensorPolicy, ExpectedWallCellsAreIgnoredBeforeOpeningEntry) {
+  const KnownPassageMap map = makePassageMap();
+  const std::vector<TrajectoryPointSample> samples = makeTrajectorySamples();
+  OccupancyGrid2D current_lidar = makeGrid();
+  setOccupiedAt(current_lidar, Point2{10.2, 4.2});
+
+  PassageTraversalSensorPolicyInput input =
+      makeInput(map, samples, Point2{4.0, 0.0}, nullptr, &current_lidar);
+  input.config.activation_margin_m = 3.0;
+  input.config.lookahead_margin_m = 8.0;
+
+  const PassageTraversalSensorPolicyResult result =
+      applyPassageTraversalSensorPolicy(input);
+
+  EXPECT_TRUE(result.stats.passage_traversal_active);
+  EXPECT_EQ(result.stats.lidar_policy, PassageLidarPolicy::kIgnoreExpectedWalls);
+  EXPECT_EQ(result.stats.current_lidar_expected_wall_cells, 1U);
+  EXPECT_FALSE(occupiedAt(current_lidar, Point2{10.2, 4.2}));
+}
+
 TEST(PassageTraversalSensorPolicy, OpeningCorridorBlockerRemainsOccupiedAndEmergency) {
   const KnownPassageMap map = makePassageMap();
   const std::vector<TrajectoryPointSample> samples = makeTrajectorySamples();

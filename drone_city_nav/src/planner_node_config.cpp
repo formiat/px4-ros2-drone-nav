@@ -75,6 +75,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.passage_traversal_sensor_policy.activation_margin_m = std::clamp(
       node.declare_parameter<double>("passage_traversal_activation_margin_m", 3.0), 0.0,
       1000.0);
+  config.passage_traversal_sensor_policy.lookahead_margin_m = std::clamp(
+      node.declare_parameter<double>("passage_traversal_lookahead_margin_m", 25.0), 0.0,
+      1000.0);
   config.passage_traversal_sensor_policy.opening_corridor_lateral_margin_m =
       std::clamp(node.declare_parameter<double>(
                      "passage_traversal_opening_corridor_lateral_margin_m", 0.75),
@@ -92,6 +95,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.vertical_profile.gate_clearance_margin_m = std::clamp(
       node.declare_parameter<double>("vertical_profile_gate_clearance_margin_m", 0.5),
       0.0, 100.0);
+  config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m =
+      std::max(
+          config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
+          std::clamp(node.declare_parameter<double>(
+                         "vertical_profile_preferred_gate_clearance_margin_m", 1.5),
+                     0.0, 100.0));
   const double runtime_vertical_setpoint_max_speed_mps =
       std::clamp(node.declare_parameter<double>("vertical_setpoint_max_speed_mps", 4.0),
                  0.0, 20.0);
@@ -153,7 +162,11 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                           0.0, 5000.0));
   config.trajectory_planner.passage_insertion.opening_lateral_target_margin_m =
       std::clamp(node.declare_parameter<double>(
-                     "passage_insertion_opening_lateral_target_margin_m", 0.0),
+                     "passage_insertion_opening_lateral_target_margin_m", 1.5),
+                 0.0, 1000.0);
+  config.trajectory_planner.passage_insertion.repair_clearance_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "passage_insertion_repair_clearance_margin_m", 1.5),
                  0.0, 1000.0);
   config.trajectory_planner.passage_insertion.max_lateral_shift_m = std::clamp(
       node.declare_parameter<double>("passage_insertion_max_lateral_shift_m", 80.0),
@@ -273,6 +286,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.speed_profile.min_turn_speed_mps =
       std::clamp(node.declare_parameter<double>("min_turn_speed_mps", 2.0), 0.0,
                  config.trajectory_planner.speed_profile.cruise_speed_mps);
+  config.trajectory_planner.speed_profile.known_passage_traversal_speed_limit_mps =
+      std::clamp(node.declare_parameter<double>(
+                     "known_passage_traversal_speed_limit_mps", 10.0),
+                 0.0, config.trajectory_planner.speed_profile.cruise_speed_mps);
   config.trajectory_planner.speed_profile.speed_profile_accel_mps2 = std::clamp(
       node.declare_parameter<double>("speed_profile_accel_mps2", 7.0), 0.0, 100.0);
   config.trajectory_planner.speed_profile.setpoint_forward_accel_mps2 =
