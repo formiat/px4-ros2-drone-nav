@@ -10,6 +10,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+BUILDING_DIFFUSE = "0.48 0.50 0.53 1"
+PASSAGE_LOWER_DIFFUSE = "0.56 0.49 0.43 1"
+PASSAGE_UPPER_DIFFUSE = "0.43 0.47 0.55 1"
+
 NODE_RUNTIME_SOURCE_PATHS = (
     "drone_city_nav/src/planner_node.cpp",
     "drone_city_nav/src/planner_node.hpp",
@@ -196,6 +200,45 @@ class TopicContractTest(unittest.TestCase):
                 self.assertIn("<size>24.00 30.00 6.50</size>", model_text)
         self.assertNotIn("known_passage_test_gate", passage_text)
         self.assertNotIn("known_passage_test_gate", sdf_text)
+
+    def test_city_building_passage_colors_are_normalized(self) -> None:
+        sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
+
+        building_models = re.findall(
+            r'<model name="(manhattan_building_\d+)">(.*?)</model>', sdf_text, re.S
+        )
+        self.assertEqual(len(building_models), 40)
+        for building_id, model_text in building_models:
+            with self.subTest(building_id=building_id):
+                self.assertEqual(
+                    re.findall(r"<diffuse>(.*?)</diffuse>", model_text),
+                    [BUILDING_DIFFUSE],
+                )
+
+        connector_models = re.findall(
+            r'<model name="(physical_building_connector_\d+_\d+)">(.*?)</model>',
+            sdf_text,
+            re.S,
+        )
+        self.assertEqual(len(connector_models), 4)
+        for connector_id, model_text in connector_models:
+            with self.subTest(connector_id=connector_id):
+                lower_match = re.search(
+                    r'<link name="lower_mass">(.*?)</link>', model_text, re.S
+                )
+                upper_match = re.search(
+                    r'<link name="upper_mass">(.*?)</link>', model_text, re.S
+                )
+                self.assertIsNotNone(lower_match)
+                self.assertIsNotNone(upper_match)
+                self.assertEqual(
+                    re.findall(r"<diffuse>(.*?)</diffuse>", lower_match.group(1)),
+                    [PASSAGE_LOWER_DIFFUSE],
+                )
+                self.assertEqual(
+                    re.findall(r"<diffuse>(.*?)</diffuse>", upper_match.group(1)),
+                    [PASSAGE_UPPER_DIFFUSE],
+                )
 
     def test_known_passage_openings_cover_wide_altitude_range(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
