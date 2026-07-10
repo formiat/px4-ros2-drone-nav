@@ -165,7 +165,21 @@ class TopicContractTest(unittest.TestCase):
             with self.subTest(structure_id=structure_id):
                 self.assertNotIn(f'<model name="{structure_id}">', sdf_text)
                 self.assertNotIn(structure_id, static_map_text)
-        self.assertIn('<model name="physical_building_connector_01_02">', sdf_text)
+        connector_ids = re.findall(
+            r'<model name="(physical_building_connector_\d+_\d+)">', sdf_text
+        )
+        self.assertEqual(
+            connector_ids,
+            [
+                "physical_building_connector_02_10",
+                "physical_building_connector_03_11",
+                "physical_building_connector_04_12",
+                "physical_building_connector_05_13",
+                "physical_building_connector_06_14",
+                "physical_building_connector_07_15",
+                "physical_building_connector_08_16",
+            ],
+        )
         self.assertNotIn("known_passage_test_gate", passage_text)
         self.assertNotIn("known_passage_test_gate", sdf_text)
 
