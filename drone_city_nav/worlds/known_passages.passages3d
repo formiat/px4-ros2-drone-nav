@@ -1,18 +1,16 @@
 drone_city_nav_known_passages_v1
 frame_id map
 
-# Architectural passage buildings across the first long northbound corridor.
-# These are real Gazebo obstacles with through-building openings, but they are
-# intentionally not present in generated_city.map2d. The 2D A* planner should
-# still see free space at the opening and the executable trajectory layer owns
-# the 3D passage validation/profile.
-structure building_with_passage_01 58.343 158.926 40.0 24.0 0.0 32.0
-opening building_with_passage_01 low_5m_opening 58.343 158.926 5.0 0.0415 0.9991 7.0 7.0 24.0 1.5 8.5 18.0 18.0
-structure building_with_passage_02 59.060 273.648 40.0 24.0 0.0 32.0
-opening building_with_passage_02 low_10m_opening 59.060 273.648 10.0 -0.1843 0.9829 7.0 7.0 24.0 6.5 13.5 18.0 18.0
-structure building_with_passage_03 77.329 322.572 24.0 40.0 0.0 32.0
-opening building_with_passage_03 mid_15m_opening 77.329 322.572 15.0 0.9900 0.1406 7.0 7.0 24.0 11.5 18.5 18.0 18.0
-structure building_with_passage_04 132.191 323.443 24.0 40.0 0.0 32.0
-opening building_with_passage_04 high_20m_opening 132.191 323.443 20.0 0.9974 0.0678 7.0 7.0 24.0 16.5 23.5 18.0 18.0
-structure building_with_passage_05 212.230 340.872 40.0 40.0 0.0 32.0
-opening building_with_passage_05 high_25m_opening 212.230 340.872 25.0 0.5196 0.8542 7.0 7.0 24.0 21.5 28.5 18.0 18.0
+# Architectural passage annotations for the real physical connector buildings in
+# generated_city.sdf. Keep this file synchronized with the
+# physical_building_connector_* models: the static 2D map intentionally remains
+# unchanged so A* still sees the corridor as free space, while this layer tells
+# the executable trajectory stack where the 3D openings are.
+structure physical_building_connector_03_11 135.000 54.000 24.0 30.0 0.0 28.0
+opening physical_building_connector_03_11 connector_03_11_opening 135.000 54.000 18.0 1.0 0.0 30.0 7.0 24.0 14.5 21.5 18.0 18.0
+structure physical_building_connector_04_12 189.000 54.000 24.0 30.0 0.0 28.0
+opening physical_building_connector_04_12 connector_04_12_opening 189.000 54.000 18.0 1.0 0.0 30.0 7.0 24.0 14.5 21.5 18.0 18.0
+structure physical_building_connector_05_13 243.000 54.000 24.0 30.0 0.0 28.0
+opening physical_building_connector_05_13 connector_05_13_opening 243.000 54.000 18.0 1.0 0.0 30.0 7.0 24.0 14.5 21.5 18.0 18.0
+structure physical_building_connector_06_14 297.000 54.000 24.0 30.0 0.0 28.0
+opening physical_building_connector_06_14 connector_06_14_opening 297.000 54.000 18.0 1.0 0.0 30.0 7.0 24.0 14.5 21.5 18.0 18.0

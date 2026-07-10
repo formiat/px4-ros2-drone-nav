@@ -150,25 +150,25 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("Reference Frame: gazebo_map", rviz_text)
         self.assertIn("Target Frame: gazebo_map", rviz_text)
 
-    def test_known_passage_annotations_are_not_legacy_physical_models(self) -> None:
+    def test_known_passage_annotations_are_not_legacy_or_static_map_obstacles(
+        self,
+    ) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
         static_map_text = read("drone_city_nav/worlds/generated_city.map2d")
 
-        structure_ids = sorted(
-            set(
-                re.findall(
-                    r"^structure\s+(building_with_passage_\d+)\s",
-                    passage_text,
-                    re.M,
-                )
-            )
-        )
-        self.assertGreater(len(structure_ids), 0)
-        for structure_id in structure_ids:
+        self.assertNotIn("building_with_passage", passage_text)
+        self.assertNotIn("known_passage_test_gate", passage_text)
+        self.assertNotIn("known_passage_test_gate", sdf_text)
+
+        for structure_id in re.findall(r"^structure\s+(\S+)\s", passage_text, re.M):
             with self.subTest(structure_id=structure_id):
-                self.assertNotIn(f'<model name="{structure_id}">', sdf_text)
                 self.assertNotIn(structure_id, static_map_text)
+
+    def test_known_passage_annotations_match_physical_connectors(self) -> None:
+        passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
+        sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
+
         connector_ids = re.findall(
             r'<model name="(physical_building_connector_\d+_\d+)">', sdf_text
         )
@@ -181,6 +181,33 @@ class TopicContractTest(unittest.TestCase):
                 "physical_building_connector_06_14",
             ],
         )
+
+        structure_values = {
+            structure_id: tuple(float(value) for value in values)
+            for structure_id, *values in re.findall(
+                r"^structure\s+(\S+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)$",
+                passage_text,
+                re.M,
+            )
+        }
+        self.assertEqual(set(structure_values), set(connector_ids))
+
+        opening_values = {
+            structure_id: (opening_id, tuple(float(value) for value in values))
+            for structure_id, opening_id, *values in re.findall(
+                r"^opening\s+(\S+)\s+(\S+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s+([-+0-9.]+)"
+                r"\s+([-+0-9.]+)$",
+                passage_text,
+                re.M,
+            )
+        }
+        self.assertEqual(set(opening_values), set(connector_ids))
+
         for connector_id in connector_ids:
             with self.subTest(connector_id=connector_id):
                 model_match = re.search(
@@ -198,8 +225,37 @@ class TopicContractTest(unittest.TestCase):
                 )
                 self.assertIn("<size>24.00 30.00 14.50</size>", model_text)
                 self.assertIn("<size>24.00 30.00 6.50</size>", model_text)
-        self.assertNotIn("known_passage_test_gate", passage_text)
-        self.assertNotIn("known_passage_test_gate", sdf_text)
+                model_pose = re.search(r"<pose>(.*?)</pose>", model_text)
+                self.assertIsNotNone(model_pose)
+                gazebo_x, gazebo_y, *_ = (
+                    float(value) for value in model_pose.group(1).split()
+                )
+                map_x = gazebo_x + 225.0
+                map_y = gazebo_y + 135.0
+
+                self.assertEqual(
+                    structure_values[connector_id],
+                    (map_x, map_y, 24.0, 30.0, 0.0, 28.0),
+                )
+                opening_id, opening = opening_values[connector_id]
+                self.assertTrue(opening_id.startswith("connector_"))
+                self.assertEqual(
+                    opening,
+                    (
+                        map_x,
+                        map_y,
+                        18.0,
+                        1.0,
+                        0.0,
+                        30.0,
+                        7.0,
+                        24.0,
+                        14.5,
+                        21.5,
+                        18.0,
+                        18.0,
+                    ),
+                )
 
     def test_city_building_passage_colors_are_normalized(self) -> None:
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
@@ -240,14 +296,15 @@ class TopicContractTest(unittest.TestCase):
                     [PASSAGE_UPPER_DIFFUSE],
                 )
 
-    def test_known_passage_openings_cover_wide_altitude_range(self) -> None:
+    def test_known_passage_openings_match_current_vertical_gap(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
 
         opening_values = sorted(
-            (float(center_z), float(width), float(height))
-            for center_z, width, height in re.findall(
+            (float(center_z), float(width), float(height), float(min_z), float(max_z))
+            for center_z, width, height, min_z, max_z in re.findall(
                 r"^opening\s+\S+\s+\S+\s+[-+0-9.]+\s+[-+0-9.]+"
                 r"\s+([-+0-9.]+)\s+[-+0-9.]+\s+[-+0-9.]+"
+                r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s+[-+0-9.]+"
                 r"\s+([-+0-9.]+)\s+([-+0-9.]+)\s",
                 passage_text,
                 re.M,
@@ -256,13 +313,7 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertEqual(
             opening_values,
-            [
-                (5.0, 7.0, 7.0),
-                (10.0, 7.0, 7.0),
-                (15.0, 7.0, 7.0),
-                (20.0, 7.0, 7.0),
-                (25.0, 7.0, 7.0),
-            ],
+            [(18.0, 30.0, 7.0, 14.5, 21.5)] * 4,
         )
 
     def test_lidar_hit_depth_preprocessing_is_removed(self) -> None:
