@@ -146,7 +146,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("Reference Frame: gazebo_map", rviz_text)
         self.assertIn("Target Frame: gazebo_map", rviz_text)
 
-    def test_known_passage_annotations_have_physical_world_models(self) -> None:
+    def test_known_passage_annotations_are_not_legacy_physical_models(self) -> None:
         passage_text = read("drone_city_nav/worlds/known_passages.passages3d")
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
         static_map_text = read("drone_city_nav/worlds/generated_city.map2d")
@@ -163,8 +163,9 @@ class TopicContractTest(unittest.TestCase):
         self.assertGreater(len(structure_ids), 0)
         for structure_id in structure_ids:
             with self.subTest(structure_id=structure_id):
-                self.assertIn(f'<model name="{structure_id}">', sdf_text)
+                self.assertNotIn(f'<model name="{structure_id}">', sdf_text)
                 self.assertNotIn(structure_id, static_map_text)
+        self.assertIn('<model name="physical_building_connector_01_02">', sdf_text)
         self.assertNotIn("known_passage_test_gate", passage_text)
         self.assertNotIn("known_passage_test_gate", sdf_text)
 
