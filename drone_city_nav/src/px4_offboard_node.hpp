@@ -22,6 +22,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/offboard_control_mode.hpp>
@@ -57,6 +58,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tf2_ros/transform_broadcaster.h>
 #include <vector>
 
 namespace drone_city_nav {
@@ -129,6 +131,8 @@ private:
   void publishFinalTrajectoryDebug();
 
   void publishOffboardDebugMarkers();
+
+  void publishRvizDroneFollowTransform();
 
   void clearFinalTrajectory();
 
@@ -335,6 +339,7 @@ private:
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};
+  bool rviz_drone_follow_tf_enabled_{true};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_target_delta_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_commanded_target_distance_m_{std::numeric_limits<double>::quiet_NaN()};
@@ -420,6 +425,8 @@ private:
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::string final_trajectory_debug_topic_{"/drone_city_nav/final_trajectory_path"};
   std::string offboard_debug_marker_topic_{"/drone_city_nav/offboard_debug_markers"};
+  std::string rviz_drone_follow_parent_frame_{"gazebo_map"};
+  std::string rviz_drone_follow_frame_{"drone_follow"};
   std::string last_velocity_smoother_reset_reason_{"none"};
   std::string last_terminal_position_capture_reason_{"none"};
   std::ofstream flight_blackbox_stream_;
@@ -447,6 +454,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr final_trajectory_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       offboard_debug_marker_pub_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> rviz_drone_follow_tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr timer_;
   double last_terminal_position_capture_goal_distance_m_{
       std::numeric_limits<double>::quiet_NaN()};

@@ -61,6 +61,30 @@ void Px4OffboardNode::publishOffboardDebugMarkers() {
   offboard_debug_marker_pub_->publish(markers);
 }
 
+void Px4OffboardNode::publishRvizDroneFollowTransform() {
+  if (!rviz_drone_follow_tf_enabled_ || !rviz_drone_follow_tf_broadcaster_) {
+    return;
+  }
+  if (!localPositionFresh() || !altitude_valid_ ||
+      !std::isfinite(current_altitude_m_)) {
+    return;
+  }
+
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.stamp = get_clock()->now();
+  transform.header.frame_id = rviz_drone_follow_parent_frame_;
+  transform.child_frame_id = rviz_drone_follow_frame_;
+  // This is a visualization-only frame published directly in gazebo_map. The
+  // legacy RViz map transform intentionally swaps X/Y and flips Z; publishing the
+  // follow target in gazebo_map keeps the camera aligned with the operator-facing
+  // Gazebo view without changing the navigation/control map frame.
+  transform.transform.translation.x = current_position_.y;
+  transform.transform.translation.y = current_position_.x;
+  transform.transform.translation.z = current_altitude_m_;
+  transform.transform.rotation.w = 1.0;
+  rviz_drone_follow_tf_broadcaster_->sendTransform(transform);
+}
+
 void Px4OffboardNode::clearFinalTrajectory() {
   trajectory_.clear();
   final_trajectory_samples_.clear();

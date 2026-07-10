@@ -53,6 +53,9 @@ struct Px4OffboardNodeConfig {
   Point2 mission_goal{85.0, 0.0};
   double hold_x_m{0.0};
   double hold_y_m{0.0};
+  bool rviz_drone_follow_tf_enabled{true};
+  std::string rviz_drone_follow_parent_frame{"gazebo_map"};
+  std::string rviz_drone_follow_frame{"drone_follow"};
   std::uint8_t target_system{1U};
   std::uint8_t target_component{1U};
   std::uint8_t source_system{1U};

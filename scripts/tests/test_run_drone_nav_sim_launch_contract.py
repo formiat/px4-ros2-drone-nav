@@ -81,6 +81,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
 
+    def test_rviz_follow_camera_defaults_on_and_can_be_disabled(self) -> None:
+        self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA:-true", self.text)
+        self.assertIn("city_nav_debug.rviz", self.text)
+        self.assertIn("city_nav_debug_top_down.rviz", self.text)
+        self.assertIn("rviz_drone_follow_tf_enabled:=", self.text)
+        self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA", self.container_text)
+
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
         self.assertIn('executable="px4_offboard_node"', self.launch_text)
         self.assertIn("px4_offboard,", self.launch_text)

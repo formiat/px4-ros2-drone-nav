@@ -140,6 +140,7 @@ class TopicContractTest(unittest.TestCase):
     def test_rviz_uses_gazebo_aligned_map_transform(self) -> None:
         launch_text = read("drone_city_nav/launch/city_nav.launch.py")
         rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")
+        top_down_rviz_text = read("drone_city_nav/rviz/city_nav_debug_top_down.rviz")
 
         self.assertIn("gazebo_aligned_map_tf", launch_text)
         self.assertIn("static_transform_publisher", launch_text)
@@ -148,7 +149,23 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("This transform is intentional", launch_text)
         self.assertIn("Fixed Frame: gazebo_map", rviz_text)
         self.assertIn("Reference Frame: gazebo_map", rviz_text)
-        self.assertIn("Target Frame: gazebo_map", rviz_text)
+        self.assertIn("Target Frame: drone_follow", rviz_text)
+        self.assertIn("rviz_drone_follow_tf_enabled", launch_text)
+        self.assertIn("Target Frame: gazebo_map", top_down_rviz_text)
+
+    def test_rviz_follow_frame_is_visualization_only_and_opt_out_by_env(
+        self,
+    ) -> None:
+        launch_text = read("drone_city_nav/launch/city_nav.launch.py")
+        runner_text = read("scripts/run_drone_nav_sim.sh")
+        offboard_text = read("drone_city_nav/src/px4_offboard_node_trajectory.cpp")
+        rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")
+
+        self.assertIn("drone_follow", rviz_text)
+        self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA:-true", runner_text)
+        self.assertIn("city_nav_debug_top_down.rviz", runner_text)
+        self.assertIn("rviz_drone_follow_tf_enabled", launch_text)
+        self.assertIn("visualization-only frame", offboard_text)
 
     def test_known_passage_annotations_are_not_legacy_or_static_map_obstacles(
         self,

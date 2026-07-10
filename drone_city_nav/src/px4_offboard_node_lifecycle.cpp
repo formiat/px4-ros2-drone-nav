@@ -30,6 +30,9 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   mission_goal_ = config.mission_goal;
   hold_x_m_ = config.hold_x_m;
   hold_y_m_ = config.hold_y_m;
+  rviz_drone_follow_tf_enabled_ = config.rviz_drone_follow_tf_enabled;
+  rviz_drone_follow_parent_frame_ = config.rviz_drone_follow_parent_frame;
+  rviz_drone_follow_frame_ = config.rviz_drone_follow_frame;
   target_system_ = config.target_system;
   target_component_ = config.target_component;
   source_system_ = config.source_system;
@@ -90,6 +93,10 @@ Px4OffboardNode::Px4OffboardNode()
       final_trajectory_debug_topic_, rclcpp::QoS{1}.transient_local());
   offboard_debug_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       offboard_debug_marker_topic_, rclcpp::QoS{1}.transient_local());
+  if (rviz_drone_follow_tf_enabled_) {
+    rviz_drone_follow_tf_broadcaster_ =
+        std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  }
 
   timer_ = create_wall_timer(kControllerPeriod, [this]() { onTimer(); });
   last_command_time_ = now() - rclcpp::Duration::from_seconds(command_resend_period_s_);
@@ -129,6 +136,7 @@ Px4OffboardNode::Px4OffboardNode()
       "executable_trajectory[source=planner_final_path final_topic='%s' "
       "debug_sample_step=%.2fm "
       "marker_topic='%s'] "
+      "rviz_drone_follow_tf[enabled=%s parent='%s' frame='%s'] "
       "mission_goal=(%.1f, %.1f) "
       "px4_local_origin=(%.1f, %.1f) telemetry_log_period=%.2fs "
       "flight_blackbox=%s flight_blackbox_path='%s' "
@@ -182,8 +190,10 @@ Px4OffboardNode::Px4OffboardNode()
       vertical_follower_config_.max_vertical_jerk_mps3,
       vertical_follower_config_.target_vz_feedforward_scale,
       final_trajectory_debug_topic_.c_str(), final_trajectory_debug_sample_step_m_,
-      offboard_debug_marker_topic_.c_str(), mission_goal_.x, mission_goal_.y,
-      px4_local_origin_.x, px4_local_origin_.y,
+      offboard_debug_marker_topic_.c_str(),
+      rviz_drone_follow_tf_enabled_ ? "true" : "false",
+      rviz_drone_follow_parent_frame_.c_str(), rviz_drone_follow_frame_.c_str(),
+      mission_goal_.x, mission_goal_.y, px4_local_origin_.x, px4_local_origin_.y,
       static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
       flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);

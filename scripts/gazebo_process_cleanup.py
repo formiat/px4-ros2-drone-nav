@@ -149,7 +149,11 @@ def is_project_micro_xrce_agent(cmd: str) -> bool:
 def is_project_rviz_process(cmd: str, markers: list[str]) -> bool:
     if "rviz2" not in cmd:
         return False
-    return "city_nav_debug.rviz" in cmd or command_has_marker(cmd, markers)
+    return (
+        "city_nav_debug.rviz" in cmd
+        or "city_nav_debug_top_down.rviz" in cmd
+        or command_has_marker(cmd, markers)
+    )
 
 
 def is_conflicting_simulation_process(cmd: str, markers: list[str]) -> bool:

@@ -99,6 +99,7 @@ The GUI launch asks the Gazebo `CameraTracking` GUI plugin to follow
 `x500_lidar_2d_0`. Useful environment variables:
 
 - `ENABLE_GZ_GUI_FOLLOW_CAMERA=false`
+- `ENABLE_RVIZ_FOLLOW_CAMERA=false`
 - `GZ_GUI_FOLLOW_TARGET=<model>`
 - `GZ_GUI_FOLLOW_OFFSET="-12 0 6"`
 

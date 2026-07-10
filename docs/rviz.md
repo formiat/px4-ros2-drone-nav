@@ -20,6 +20,22 @@ Default config:
 drone_city_nav/rviz/city_nav_debug.rviz
 ```
 
+The default config follows the drone through the visualization-only
+`drone_follow` TF frame. The GUI runner enables this by default. Use:
+
+```bash
+ENABLE_RVIZ_FOLLOW_CAMERA=false ./scripts/sim_gui.sh
+```
+
+to open the top-down fallback layout from:
+
+```text
+drone_city_nav/rviz/city_nav_debug_top_down.rviz
+```
+
+The follow frame is for RViz camera targeting only; it is not consumed by the
+planner, controller, or mission monitor.
+
 ## Frames
 
 Navigation debug messages are published in the planning/control `map` frame, but

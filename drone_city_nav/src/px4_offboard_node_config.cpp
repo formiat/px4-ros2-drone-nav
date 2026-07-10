@@ -374,6 +374,18 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.auto_arm = node.declare_parameter<bool>("auto_arm", config.auto_arm);
   config.auto_offboard =
       node.declare_parameter<bool>("auto_offboard", config.auto_offboard);
+  config.rviz_drone_follow_tf_enabled = node.declare_parameter<bool>(
+      "rviz_drone_follow_tf_enabled", config.rviz_drone_follow_tf_enabled);
+  config.rviz_drone_follow_parent_frame = node.declare_parameter<std::string>(
+      "rviz_drone_follow_parent_frame", config.rviz_drone_follow_parent_frame);
+  if (config.rviz_drone_follow_parent_frame.empty()) {
+    config.rviz_drone_follow_parent_frame = "gazebo_map";
+  }
+  config.rviz_drone_follow_frame = node.declare_parameter<std::string>(
+      "rviz_drone_follow_frame", config.rviz_drone_follow_frame);
+  if (config.rviz_drone_follow_frame.empty()) {
+    config.rviz_drone_follow_frame = "drone_follow";
+  }
   const double requested_command_resend_period_s = node.declare_parameter<double>(
       "command_resend_period_s", config.command_resend_period_s);
   config.command_resend_period_s =

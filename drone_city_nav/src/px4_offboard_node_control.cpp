@@ -3,6 +3,8 @@
 namespace drone_city_nav {
 
 void Px4OffboardNode::onTimer() {
+  publishRvizDroneFollowTransform();
+
   if (emergency_stop_requested_) {
     handleEmergencyStop();
     return;

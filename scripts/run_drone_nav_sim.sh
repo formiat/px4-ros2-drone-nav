@@ -45,6 +45,10 @@ normalize_bool() {
   esac
 }
 
+bool_is_true() {
+  [[ "$1" == "true" || "$1" == "1" ]]
+}
+
 px4_dir="${PX4_AUTOPILOT_DIR:-${repo_root}/external/PX4-Autopilot}"
 px4_build_dir="${px4_dir}/build/px4_sitl_default"
 ros_distro="${ROS_DISTRO:-jazzy}"
@@ -105,6 +109,18 @@ fi
 enable_gazebo_gui_follow_camera="$(
   normalize_bool "${ENABLE_GZ_GUI_FOLLOW_CAMERA:-true}"
 )"
+enable_rviz_follow_camera="$(
+  normalize_bool "${ENABLE_RVIZ_FOLLOW_CAMERA:-true}"
+)"
+if bool_is_true "${enable_rviz_follow_camera}"; then
+  rviz_config_file="${RVIZ_CONFIG_FILE:-${repo_root}/drone_city_nav/rviz/city_nav_debug.rviz}"
+else
+  rviz_config_file="${RVIZ_CONFIG_FILE:-${repo_root}/drone_city_nav/rviz/city_nav_debug_top_down.rviz}"
+fi
+rviz_drone_follow_tf_enabled="${enable_rviz_follow_camera}"
+if ! bool_is_true "${enable_rviz}"; then
+  rviz_drone_follow_tf_enabled="false"
+fi
 gazebo_gui_follow_target="${GZ_GUI_FOLLOW_TARGET:-x500_lidar_2d_0}"
 gazebo_gui_follow_offset="${GZ_GUI_FOLLOW_OFFSET:--12 0 6}"
 gazebo_gui_follow_wait_s="${GZ_GUI_FOLLOW_WAIT_S:-60}"
@@ -168,10 +184,6 @@ if [[ "${params_are_default}" == "true" ]]; then
 fi
 expected_obstacle_memory="true"
 expected_current_lidar="true"
-
-bool_is_true() {
-  [[ "$1" == "true" || "$1" == "1" ]]
-}
 
 clean_stale_gazebo_processes() {
   if ! bool_is_true "${clean_stale_gazebo_processes_enabled}"; then
@@ -362,6 +374,7 @@ echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
 echo "Lidar debug dir: ${lidar_debug_dir} (enabled=${enable_lidar_debug})"
 echo "RViz debug view: enabled=${enable_rviz}"
+echo "RViz follow camera: enabled=${enable_rviz_follow_camera} tf=${rviz_drone_follow_tf_enabled} config=${rviz_config_file}"
 echo "Gazebo GUI follow camera: enabled=${enable_gazebo_gui_follow_camera} target=${gazebo_gui_follow_target} offset='${gazebo_gui_follow_offset}'"
 echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
@@ -493,6 +506,8 @@ ros_launch_args=(
   enable_mission_monitor:=true
   enable_lidar_debug:="${enable_lidar_debug}"
   enable_rviz:="${enable_rviz}"
+  rviz_config:="${rviz_config_file}"
+  rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")

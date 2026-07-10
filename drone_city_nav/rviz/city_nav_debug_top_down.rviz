@@ -165,26 +165,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 70
+      Distance: 170
       Focal Point:
-        X: 0
-        Y: 0
+        X: 45
+        Y: 75
         Z: 0
-      Name: Drone Follow
-      Pitch: 0.95
-      Target Frame: drone_follow
-      Yaw: 0.65
-    Saved:
-      - Class: rviz_default_plugins/Orbit
-        Distance: 170
-        Focal Point:
-          X: 45
-          Y: 75
-          Z: 0
-        Name: Top Down Gazebo Aligned
-        Pitch: 1.5707
-        Target Frame: gazebo_map
-        Yaw: 0
+      Name: Top Down Gazebo Aligned
+      Pitch: 1.5707
+      Target Frame: gazebo_map
+      Yaw: 0
+    Saved: ~
 Window Geometry:
   Height: 900
   Width: 1400

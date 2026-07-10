@@ -76,7 +76,7 @@ container_has_simulation_processes() {
   combined_text="${inspect_text}"$'\n'"${top_text}"
 
   grep -Eiq \
-    'gz[[:space:]]+sim|MicroXRCEAgent|PX4-Autopilot|px4_sitl|ros2[[:space:]]+launch[[:space:]]+drone_city_nav[[:space:]]+city_nav\.launch\.py|run_drone_nav_sim\.sh|make[",[:space:]]+sim-(gui|headless)|sim-(gui|headless)|rviz2.*city_nav_debug\.rviz|/drone_city_nav/(lidar_debug_node|mission_monitor_node|obstacle_memory_node|planner_node|px4_offboard_node)' \
+    'gz[[:space:]]+sim|MicroXRCEAgent|PX4-Autopilot|px4_sitl|ros2[[:space:]]+launch[[:space:]]+drone_city_nav[[:space:]]+city_nav\.launch\.py|run_drone_nav_sim\.sh|make[",[:space:]]+sim-(gui|headless)|sim-(gui|headless)|rviz2.*city_nav_debug(_top_down)?\.rviz|/drone_city_nav/(lidar_debug_node|mission_monitor_node|obstacle_memory_node|planner_node|px4_offboard_node)' \
     <<< "${combined_text}"
 }
 

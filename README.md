@@ -115,6 +115,12 @@ follow the PX4-spawned drone model `x500_lidar_2d_0`. Disable this with
 config path and unpauses the simulation separately through Gazebo world
 control.
 
+By default, RViz also opens in a follow-camera debug view that targets the
+visualization-only `drone_follow` TF frame. Disable that behavior with
+`ENABLE_RVIZ_FOLLOW_CAMERA=false`; the runner will then open the top-down RViz
+layout instead. This switch only changes RViz visualization and does not affect
+navigation or offboard control.
+
 After a GUI run, validate deterministic Gazebo launch diagnostics:
 
 ```bash

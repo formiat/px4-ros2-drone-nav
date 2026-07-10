@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def optional_bool_override(context, launch_config, argument_name):
@@ -53,6 +54,9 @@ def generate_launch_description():
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
     enable_rviz = LaunchConfiguration("enable_rviz")
+    rviz_drone_follow_tf_enabled = LaunchConfiguration(
+        "rviz_drone_follow_tf_enabled"
+    )
     use_static_map = LaunchConfiguration("use_static_map")
     static_map_path = LaunchConfiguration("static_map_path")
     evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
@@ -131,7 +135,14 @@ def generate_launch_description():
         executable="px4_offboard_node",
         name="px4_offboard_node",
         output="screen",
-        parameters=[params_file],
+        parameters=[
+            params_file,
+            {
+                "rviz_drone_follow_tf_enabled": ParameterValue(
+                    rviz_drone_follow_tf_enabled, value_type=bool
+                ),
+            },
+        ],
     )
 
     mission_monitor = Node(
@@ -221,7 +232,18 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "rviz_config",
                 default_value=str(default_rviz_config),
-                description="RViz config for scan, occupancy grid, and path debug.",
+                description=(
+                    "RViz config for scan, occupancy grid, trajectory, and camera "
+                    "debug."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "rviz_drone_follow_tf_enabled",
+                default_value="true",
+                description=(
+                    "Publish the RViz-only drone_follow TF target used by the "
+                    "default follow-camera debug view."
+                ),
             ),
             DeclareLaunchArgument(
                 "enable_gazebo_bridge",
