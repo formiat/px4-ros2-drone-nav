@@ -6,8 +6,8 @@ frame_id map
 # physical_building_connector_* models: the static 2D map intentionally remains
 # unchanged so A* still sees the corridor as free space, while this layer tells
 # the executable trajectory stack where the 3D openings are.
-structure physical_building_connector_11_19 108.000 135.000 30.0 24.0 0.0 32.0
-opening physical_building_connector_11_19 connector_11_19_opening 108.000 135.000 5.0 0.0 1.0 30.0 7.0 24.0 1.5 8.5 18.0 18.0
+structure physical_building_connector_23_24 135.000 378.000 24.0 30.0 0.0 32.0
+opening physical_building_connector_23_24 connector_23_24_opening 135.000 378.000 5.0 1.0 0.0 30.0 7.0 24.0 1.5 8.5 18.0 18.0
 structure physical_building_connector_04_12 54.000 189.000 30.0 24.0 0.0 32.0
 opening physical_building_connector_04_12 connector_04_12_opening 54.000 189.000 15.0 0.0 1.0 30.0 7.0 24.0 11.5 18.5 18.0 18.0
 structure physical_building_connector_06_14 54.000 297.000 30.0 24.0 0.0 32.0

@@ -561,18 +561,18 @@
       planner map is deliberately kept unchanged while we verify the physical
       3D world geometry in Gazebo.
     -->
-    <model name="physical_building_connector_11_19">
+    <model name="physical_building_connector_23_24">
       <static>true</static>
-      <pose>-90.00 -27.00 0.00 0.00 0.00 0.00</pose>
+      <pose>153.00 0.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
         <pose>0.00 0.00 0.75 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 1.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 1.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>30.00 24.00 1.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>30.00 24.00 1.50</size></box></geometry><material><diffuse>0.56 0.49 0.43 1</diffuse></material></visual>
       </link>
       <link name="upper_mass">
         <pose>0.00 0.00 20.25 0.00 0.00 0.00</pose>
-        <collision name="collision"><geometry><box><size>24.00 30.00 23.50</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 30.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>30.00 24.00 23.50</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>30.00 24.00 23.50</size></box></geometry><material><diffuse>0.43 0.47 0.55 1</diffuse></material></visual>
       </link>
     </model>
     <model name="physical_building_connector_04_12">

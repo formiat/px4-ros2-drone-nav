@@ -175,7 +175,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(
             connector_ids,
             [
-                "physical_building_connector_11_19",
+                "physical_building_connector_23_24",
                 "physical_building_connector_04_12",
                 "physical_building_connector_06_14",
             ],
@@ -208,7 +208,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(set(opening_values), set(connector_ids))
 
         expected_vertical_geometry = {
-            "physical_building_connector_11_19": {
+            "physical_building_connector_23_24": {
                 "center_z": 5.0,
                 "min_z": 1.5,
                 "max_z": 8.5,
@@ -216,6 +216,12 @@ class TopicContractTest(unittest.TestCase):
                 "lower_size_z": 1.5,
                 "upper_pose_z": 20.25,
                 "upper_size_z": 23.5,
+                "sdf_size_x": 30.0,
+                "sdf_size_y": 24.0,
+                "structure_size_x": 24.0,
+                "structure_size_y": 30.0,
+                "normal_x": 1.0,
+                "normal_y": 0.0,
             },
             "physical_building_connector_04_12": {
                 "center_z": 15.0,
@@ -225,6 +231,12 @@ class TopicContractTest(unittest.TestCase):
                 "lower_size_z": 11.5,
                 "upper_pose_z": 25.25,
                 "upper_size_z": 13.5,
+                "sdf_size_x": 24.0,
+                "sdf_size_y": 30.0,
+                "structure_size_x": 30.0,
+                "structure_size_y": 24.0,
+                "normal_x": 0.0,
+                "normal_y": 1.0,
             },
             "physical_building_connector_06_14": {
                 "center_z": 25.0,
@@ -234,6 +246,12 @@ class TopicContractTest(unittest.TestCase):
                 "lower_size_z": 21.5,
                 "upper_pose_z": 30.25,
                 "upper_size_z": 3.5,
+                "sdf_size_x": 24.0,
+                "sdf_size_y": 30.0,
+                "structure_size_x": 30.0,
+                "structure_size_y": 24.0,
+                "normal_x": 0.0,
+                "normal_y": 1.0,
             },
         }
 
@@ -262,11 +280,19 @@ class TopicContractTest(unittest.TestCase):
                     model_text,
                 )
                 self.assertIn(
-                    f"<size>24.00 30.00 {expected_vertical['lower_size_z']:.2f}</size>",
+                    (
+                        f"<size>{expected_vertical['sdf_size_x']:.2f} "
+                        f"{expected_vertical['sdf_size_y']:.2f} "
+                        f"{expected_vertical['lower_size_z']:.2f}</size>"
+                    ),
                     model_text,
                 )
                 self.assertIn(
-                    f"<size>24.00 30.00 {expected_vertical['upper_size_z']:.2f}</size>",
+                    (
+                        f"<size>{expected_vertical['sdf_size_x']:.2f} "
+                        f"{expected_vertical['sdf_size_y']:.2f} "
+                        f"{expected_vertical['upper_size_z']:.2f}</size>"
+                    ),
                     model_text,
                 )
                 model_pose = re.search(r"<pose>(.*?)</pose>", model_text)
@@ -284,7 +310,14 @@ class TopicContractTest(unittest.TestCase):
 
                 self.assertEqual(
                     structure_values[connector_id],
-                    (map_x, map_y, 30.0, 24.0, 0.0, 32.0),
+                    (
+                        map_x,
+                        map_y,
+                        expected_vertical["structure_size_x"],
+                        expected_vertical["structure_size_y"],
+                        0.0,
+                        32.0,
+                    ),
                 )
                 opening_id, opening = opening_values[connector_id]
                 self.assertTrue(opening_id.startswith("connector_"))
@@ -294,8 +327,8 @@ class TopicContractTest(unittest.TestCase):
                         map_x,
                         map_y,
                         expected_vertical["center_z"],
-                        0.0,
-                        1.0,
+                        expected_vertical["normal_x"],
+                        expected_vertical["normal_y"],
                         30.0,
                         7.0,
                         24.0,
