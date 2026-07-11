@@ -192,7 +192,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(
             connector_ids,
             [
-                "physical_building_connector_23_24",
+                "physical_building_connector_22_23",
                 "physical_building_connector_04_12",
                 "physical_building_connector_06_14",
             ],
@@ -225,7 +225,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(set(opening_values), set(connector_ids))
 
         expected_vertical_geometry = {
-            "physical_building_connector_23_24": {
+            "physical_building_connector_22_23": {
                 "center_z": 5.0,
                 "min_z": 1.5,
                 "max_z": 8.5,
@@ -356,8 +356,10 @@ class TopicContractTest(unittest.TestCase):
                     ),
                 )
 
-    def test_city_building_passage_colors_are_normalized(self) -> None:
+    def test_city_building_passage_geometry_and_colors_are_normalized(self) -> None:
         sdf_text = read("drone_city_nav/worlds/generated_city.sdf")
+        static_map_text = read("drone_city_nav/worlds/generated_city.map2d")
+        config_text = read("drone_city_nav/config/urban_mvp.yaml")
 
         building_models = re.findall(
             r'<model name="(manhattan_building_\d+)">(.*?)</model>', sdf_text, re.S
@@ -365,10 +367,28 @@ class TopicContractTest(unittest.TestCase):
         self.assertEqual(len(building_models), 40)
         for building_id, model_text in building_models:
             with self.subTest(building_id=building_id):
+                pose_match = re.search(r"<pose>(.*?)</pose>", model_text)
+                self.assertIsNotNone(pose_match)
+                self.assertEqual(float(pose_match.group(1).split()[2]), 16.0)
+                self.assertEqual(
+                    re.findall(r"<size>(.*?)</size>", model_text),
+                    ["24.00 24.00 32.00", "24.00 24.00 32.00"],
+                )
                 self.assertEqual(
                     re.findall(r"<diffuse>(.*?)</diffuse>", model_text),
                     [BUILDING_DIFFUSE],
                 )
+
+        static_building_heights = [
+            float(height)
+            for height in re.findall(
+                r"^rect\s+building_\d+\s+(?:[-+0-9.]+\s+){4}([-+0-9.]+)$",
+                static_map_text,
+                re.M,
+            )
+        ]
+        self.assertEqual(static_building_heights, [32.0] * 40)
+        self.assertIn("uniform_building_height_m: 32.0", config_text)
 
         connector_models = re.findall(
             r'<model name="(physical_building_connector_\d+_\d+)">(.*?)</model>',
@@ -393,6 +413,21 @@ class TopicContractTest(unittest.TestCase):
                 self.assertEqual(
                     re.findall(r"<diffuse>(.*?)</diffuse>", upper_match.group(1)),
                     [PASSAGE_UPPER_DIFFUSE],
+                )
+
+                upper_pose_match = re.search(
+                    r"<pose>0\.00 0\.00 ([-+0-9.]+) ", upper_match.group(1)
+                )
+                upper_size_match = re.search(
+                    r"<size>[-+0-9.]+ [-+0-9.]+ ([-+0-9.]+)</size>",
+                    upper_match.group(1),
+                )
+                self.assertIsNotNone(upper_pose_match)
+                self.assertIsNotNone(upper_size_match)
+                self.assertEqual(
+                    float(upper_pose_match.group(1))
+                    + 0.5 * float(upper_size_match.group(1)),
+                    32.0,
                 )
 
     def test_known_passage_openings_cover_wide_altitude_range(self) -> None:

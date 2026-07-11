@@ -231,322 +231,322 @@
 
     <model name="manhattan_building_01">
       <static>true</static>
-      <pose>-198.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-198.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_02">
       <static>true</static>
-      <pose>-144.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-144.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_03">
       <static>true</static>
-      <pose>-90.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_04">
       <static>true</static>
-      <pose>-36.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-36.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_05">
       <static>true</static>
-      <pose>18.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>18.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_06">
       <static>true</static>
-      <pose>72.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>72.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_07">
       <static>true</static>
-      <pose>126.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>126.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_08">
       <static>true</static>
-      <pose>180.00 -108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>180.00 -108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_09">
       <static>true</static>
-      <pose>-198.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-198.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_10">
       <static>true</static>
-      <pose>-144.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-144.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_11">
       <static>true</static>
-      <pose>-90.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_12">
       <static>true</static>
-      <pose>-36.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-36.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_13">
       <static>true</static>
-      <pose>18.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>18.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_14">
       <static>true</static>
-      <pose>72.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>72.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_15">
       <static>true</static>
-      <pose>126.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>126.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_16">
       <static>true</static>
-      <pose>180.00 -54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>180.00 -54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_17">
       <static>true</static>
-      <pose>-198.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-198.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_18">
       <static>true</static>
-      <pose>-144.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-144.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_19">
       <static>true</static>
-      <pose>-90.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_20">
       <static>true</static>
-      <pose>-36.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-36.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_21">
       <static>true</static>
-      <pose>18.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>18.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_22">
       <static>true</static>
-      <pose>72.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>72.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_23">
       <static>true</static>
-      <pose>126.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>126.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_24">
       <static>true</static>
-      <pose>180.00 0.00 14.00 0.00 0.00 0.00</pose>
+      <pose>180.00 0.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_25">
       <static>true</static>
-      <pose>-198.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-198.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_26">
       <static>true</static>
-      <pose>-144.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-144.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_27">
       <static>true</static>
-      <pose>-90.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_28">
       <static>true</static>
-      <pose>-36.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-36.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_29">
       <static>true</static>
-      <pose>18.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>18.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_30">
       <static>true</static>
-      <pose>72.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>72.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_31">
       <static>true</static>
-      <pose>126.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>126.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_32">
       <static>true</static>
-      <pose>180.00 54.00 14.00 0.00 0.00 0.00</pose>
+      <pose>180.00 54.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_33">
       <static>true</static>
-      <pose>-198.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-198.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_34">
       <static>true</static>
-      <pose>-144.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-144.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_35">
       <static>true</static>
-      <pose>-90.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-90.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_36">
       <static>true</static>
-      <pose>-36.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>-36.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_37">
       <static>true</static>
-      <pose>18.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>18.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_38">
       <static>true</static>
-      <pose>72.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>72.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_39">
       <static>true</static>
-      <pose>126.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>126.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
     <model name="manhattan_building_40">
       <static>true</static>
-      <pose>180.00 108.00 14.00 0.00 0.00 0.00</pose>
+      <pose>180.00 108.00 16.00 0.00 0.00 0.00</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>24.00 24.00 28.00</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>24.00 24.00 28.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>24.00 24.00 32.00</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>24.00 24.00 32.00</size></box></geometry><material><diffuse>0.48 0.50 0.53 1</diffuse></material></visual>
       </link>
     </model>
 
@@ -561,9 +561,9 @@
       planner map is deliberately kept unchanged while we verify the physical
       3D world geometry in Gazebo.
     -->
-    <model name="physical_building_connector_23_24">
+    <model name="physical_building_connector_22_23">
       <static>true</static>
-      <pose>153.00 0.00 0.00 0.00 0.00 0.00</pose>
+      <pose>99.00 0.00 0.00 0.00 0.00 0.00</pose>
       <link name="lower_mass">
         <pose>0.00 0.00 0.75 0.00 0.00 0.00</pose>
         <collision name="collision"><geometry><box><size>30.00 24.00 1.50</size></box></geometry></collision>
