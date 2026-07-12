@@ -18,11 +18,12 @@ built, the planner validates whether it crosses any known structure footprint
 through an allowed opening volume and reports the result in logs and trajectory
 diagnostics.
 
-Known passages also feed a narrow traversal sensor policy. While the current
-executable trajectory is inside an active known passage span, dynamic lidar and
-memory hits that match expected walls around the opening can be ignored before
-inflation. A dynamic hit inside the opening corridor is not ignored and remains
-an emergency blocker. Static map cells are never filtered by this policy.
+Known passages also provide physical-solid geometry to the always-on 3D lidar
+classifier. Before current lidar or accumulated memory records a new hit, the
+classifier suppresses only a confident range match to a known physical mass.
+Closer hits, hits through a free opening, and boundary or ambiguous hits are
+retained. The classifier is independent of trajectory/proximity, never filters
+static-map cells, and does not alter A* route preferences.
 
 Raw sources are merged before inflation. Raw sources must not contain safety
 inflation.
@@ -157,10 +158,10 @@ carry per-sample altitude in `pose.position.z`.
 Known passage markers are RViz/debug artifacts. Architectural structure volumes,
 opening frames, opening centers, approach arrows, and exit arrows help verify
 annotation geometry. The same annotations feed the no-over-building validator
-and the passage traversal sensor policy. A validation violation is
-diagnostic-only; it does not cancel path publication by itself. Sensor policy
-decisions are applied only to dynamic obstacle evidence during an active known
-passage traversal.
+and the always-on known-static lidar classifier. A validation violation is
+diagnostic-only; it does not cancel path publication by itself. Classifier
+decisions apply only to new dynamic lidar evidence and are not tied to an active
+trajectory passage span.
 
 ## Pipeline Contracts
 

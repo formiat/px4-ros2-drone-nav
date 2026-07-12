@@ -81,10 +81,11 @@ data is stale/invalid.
 
 Known passages are pre-annotated 3D passages. The system loads, logs,
 visualizes, and validates them against the published trajectory. During active
-known passage traversal, the same annotations can filter dynamic expected-wall
-lidar/memory evidence before inflation. They do not change the route,
-trajectory optimizer, speed profile, or controller, and validation failures do
-not reject the path by themselves.
+The same annotations define known physical solids for the always-on 3D lidar
+classifier before dynamic evidence is recorded. Confident matching solid hits
+are suppressed; closer, free-opening, and ambiguous hits are preserved. The
+annotations do not change the route, trajectory optimizer, speed profile, or
+controller, and validation failures do not reject the path by themselves.
 
 The RViz `Known Passages` display subscribes to:
 

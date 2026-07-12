@@ -85,18 +85,20 @@ fail-open.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
-known structure footprint through an allowed opening volume, and drive a narrow
-sensor policy during active passage traversal.
+known structure footprint through an allowed opening volume, and provide the
+known-solid geometry for the lidar classifier.
 
 Known passage structures are not encoded into the 2D static obstacle map as hard
 blocking cells. The 2D planner must be able to route through the footprint when
 a valid 3D opening is annotated; RViz shows those volumes through
 `/drone_city_nav/known_passage_markers` instead.
 
-The validation layer does not reject trajectories by itself. The sensor policy
-does not detect passages and does not modify static map cells. It only filters
-dynamic current-lidar/memory working copies while the current executable
-trajectory is inside an active known passage span.
+The validation layer does not reject trajectories by itself. The lidar
+classifier does not detect passages, does not modify static map cells, and does
+not create a trajectory-dependent working copy of lidar or memory data. It
+suppresses only a new hit whose measured range confidently matches a known
+physical solid. Closer hits, hits through the free opening, and boundary or
+otherwise ambiguous hits remain dynamic obstacle evidence.
 
 The default file format is line-based and versioned:
 
@@ -128,15 +130,11 @@ building collision volumes:
   `opening_volume_miss` when its lateral/vertical clearance is below this
   margin.
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
-- `passage_traversal_activation_margin_m` expands the active station interval
-  around a matched passage span, while
-  `passage_traversal_lookahead_margin_m` activates expected-wall filtering before
-  the vehicle reaches the opening entry plane.
-- `passage_traversal_opening_corridor_lateral_margin_m` and
-  `passage_traversal_opening_corridor_depth_margin_m` define the protected
-  opening corridor where obstacles remain emergency blockers.
-- `passage_traversal_expected_wall_margin_m` expands the known structure
-  footprint used for expected-wall filtering.
+- `known_static_lidar_hit_range_tolerance_m` controls the maximum range delta
+  for suppressing a confident hit on a known `left`, `right`, `lower`, or
+  `upper` physical mass. It must have the same effective value in planner and
+  obstacle-memory node configuration. A hit closer than the expected solid, a
+  hit through the opening, or a geometrically ambiguous hit is retained.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.

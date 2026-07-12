@@ -45,6 +45,25 @@ def read(relative_path: str) -> str:
 
 
 class TopicContractTest(unittest.TestCase):
+    def test_docs_do_not_describe_removed_passage_sensor_policy(self) -> None:
+        forbidden_terms = (
+            "passage_traversal_sensor_policy",
+            "passage_traversal_activation_margin",
+            "passage_traversal_lookahead_margin",
+            "passage_traversal_opening_corridor",
+            "passage_traversal_expected_wall_margin",
+            "passage_sensor_policy",
+            "ignore_expected_walls",
+            "emergency_blocker",
+            "expected-wall",
+        )
+
+        for path in sorted((REPO_ROOT / "docs").glob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            for term in forbidden_terms:
+                with self.subTest(path=path, term=term):
+                    self.assertNotIn(term, text)
+
     def test_known_static_lidar_classifier_config_replaces_proximity_policy(
         self,
     ) -> None:

@@ -80,12 +80,13 @@ terminal position capture holds the current altitude latched at terminal entry.
 Known 3D passages are loaded as annotations. Architectural passage structures,
 opening frames, opening centers, approach arrows, and exit arrows are published
 for RViz/debugging. The planner validates whether the final trajectory crosses a
-known structure footprint through an allowed opening volume. During active
-traversal of a matched passage span, a narrow sensor policy can ignore dynamic
-expected-wall returns around the opening while preserving opening-corridor
-blockers. This policy does not detect passages, does not filter static map
-cells, and does not change A*, corridor construction, trajectory geometry, speed
-profile, or offboard control.
+known structure footprint through an allowed opening volume. The same
+annotations also define known physical solids for the always-on 3D
+lidar classifier. It suppresses only a confident range match to a known solid;
+closer hits, free-opening hits, and boundary or ambiguous hits remain dynamic
+obstacles. The classifier does not detect passages, filter static-map cells, or
+change A*, corridor construction, trajectory geometry, speed profile, or
+offboard control.
 
 ## Important Terms
 
@@ -100,7 +101,8 @@ profile, or offboard control.
   Its geometry and speed profile are currently XY-owned, while `z_m` is a
   representation/debug altitude for RViz and diagnostics.
 - Known passage: a pre-annotated 3D passage structure and opening that can be
-  visualized, validated, and used by the active traversal sensor policy.
+  visualized, validated, and used as known-solid geometry by the lidar
+  classifier.
 - Trajectory optimizer: the post-corridor optimizer that improves smoothness
   and radius while staying inside the valid corridor.
 - Terminal capture: the final control state sequence that slows down, enters

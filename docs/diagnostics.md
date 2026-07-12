@@ -161,8 +161,8 @@ For planner quality:
 - replan count.
 - known-passage validation result if the trajectory intersects an annotated
   structure footprint.
-- passage traversal sensor policy state when flying through an annotated
-  opening.
+- known-static lidar ignored/unexpected/ambiguous counters and first matched
+  physical-solid identity.
 
 ## Last Run Analysis Checklist
 

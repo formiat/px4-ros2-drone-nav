@@ -35,10 +35,12 @@ Important parameters:
 - `range_hit_epsilon_m`
 - lidar pose latency and attitude compensation settings.
 
-During active known passage traversal, the planner applies a sensor policy to a
-working copy of the current lidar overlay before inflation. Expected wall hits
-around the annotated opening may be cleared from that working copy. Hits inside
-the opening corridor are preserved as emergency blockers.
+Before a current lidar hit is written into the overlay, the always-on 3D known
+static classifier compares its map-frame ray and measured range with the known
+passage-building solids. A confident matching physical-solid hit is suppressed.
+A closer hit, a hit through a free opening, and a boundary or otherwise
+ambiguous hit remains in the overlay. This decision is independent of the
+current trajectory and distance to a passage.
 
 ## Obstacle Memory
 
@@ -139,8 +141,11 @@ recently observed obstacles available after they leave the instantaneous scan.
 Memory is especially important when the drone turns away from an obstacle but
 the planner still needs to avoid it.
 
-The known passage sensor policy can also filter a temporary copy of obstacle
-memory during active traversal. It never mutates the permanent memory grid.
+The same known-static classifier is applied before a hit changes obstacle-memory
+scores. It suppresses only new confident physical-solid hits; it does not remove
+older cells selectively or create a temporary memory copy. When classifier
+geometry is installed or changed, obstacle memory is reset because a legacy 2D
+cell has no recorded hit altitude/provenance.
 
 These sources are complementary:
 
@@ -149,11 +154,11 @@ These sources are complementary:
 - memory gives temporal continuity;
 - inflation turns merged evidence into safety space.
 
-The passage traversal sensor policy is deliberately narrow. It only runs when
-the accepted executable trajectory is inside a known passage span, only filters
-dynamic current-lidar/memory working copies, and never filters the static map.
-This keeps static world geometry authoritative while preventing expected wall
-returns around a known opening from causing a full replan.
+Known-passage geometry is used consistently by both lidar ingestion paths. The
+classifier never filters static-map cells and never changes A* route selection.
+It only prevents known physical masses from becoming new dynamic evidence; a
+real object before a wall or inside an opening still follows normal prohibited
+grid and replan behavior.
 
 ## Inflation And Distance Fields
 
@@ -208,8 +213,8 @@ For an unexpected replan, inspect:
 4. Did planning clearance get mistaken for hard prohibited space?
 5. Did pose or attitude compensation shift the lidar overlay?
 6. Did obstacle memory keep an old obstacle longer than expected?
-7. Was passage traversal active, and did the policy ignore only expected wall
-   evidence?
+7. Did the known-static classifier suppress only confident physical-solid hits,
+   while retaining closer, opening, or ambiguous hits?
 8. Did the planner retain the previous trajectory while rebuilding?
 
 Answering these questions usually separates a real obstacle from a mapping
