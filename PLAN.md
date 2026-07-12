@@ -121,15 +121,28 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
      `classify()`.
    - Реализовать slab ray intersection в локальных OBB-координатах
      `(normal, lateral, z-up)` для всех volumes и выбирать ближайший
-     неотрицательный expected range.
+     неотрицательный expected range. Intersection result должен отдельно хранить
+     `t_enter/t_exit`, entry point, entering face и признак уверенного пересечения
+     внутренности face.
+   - Ввести отдельные internal geometric epsilon для slab/face ties и near-parallel
+     direction. Не использовать для этого пользовательский range tolerance:
+     range tolerance описывает погрешность измеренной дальности, geometric epsilon
+     — только численную/топологическую неоднозначность ray/OBB.
+   - Tangential/grazing intersection, несколько одновременно entering faces
+     (edge/corner), `t_exit - t_enter` в epsilon-зоне, near-parallel incidence и
+     entry point в epsilon-зоне границы face должны давать `ambiguous`. Для
+     `expected_static` разрешено только уверенное пересечение внутренности ровно
+     одной face. Если ближайшее пересечение ambiguous, нельзя пропускать его и
+     выбирать более дальний confident volume: весь hit сохраняется fail-open.
    - Материализуемый результат: pure API с результатом
      `expected_static / unexpected / ambiguous`, expected range, range delta,
-     part kind и bounded structure/opening/part identity.
+     part kind, geometric confidence и bounded structure/opening/part identity.
 
      ```cpp
      if (!pose_3d_valid || !ray_valid || volumes.empty()) return ambiguous;
      expected = nearestSolidIntersection(ray, volumes);
      if (!expected) return unexpected;
+     if (!expected.confident_face_interior) return ambiguous;
      if (measured < expected.range - tolerance) return unexpected;
      if (abs(measured - expected.range) <= tolerance) return expected_static;
      return ambiguous;
@@ -166,6 +179,10 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
      overlay. Добавить тот же tolerance parameter в planner namespace YAML и
      config parser; script/config test должен подтверждать равенство двух
      node-specific значений.
+   - Оба nodes должны логировать resolved known-passage path, volume count и
+     effective tolerance в одном стабильном формате. Headless validator сравнивает
+     effective values, чтобы runtime override drift обнаруживался, а не только
+     предотвращался статическим YAML test.
    - Материализуемый результат: current lidar и accumulated memory принимают
      решение одной функцией, на одной геометрии и с одним tolerance.
 
@@ -208,16 +225,36 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
      axis-aligned и rotated OBB, upper/lower/left/right, no intersection,
      exact-within-tolerance, closer unexpected hit, farther ambiguous hit,
      invalid altitude/direction и origin-inside-volume fail-open edge case.
+     Отдельно проверить уверенное попадание во внутренность face и fail-open
+     `ambiguous` для face-boundary/edge/corner grazing, near-parallel ray,
+     epsilon-zone и точек по обе стороны каждой boundary. Эти tests используют
+     geometric epsilon независимо от range tolerance.
    - `lidar_projection_test.cpp`: map-frame origin/direction/end-point invariants
      при разных roll/pitch/yaw и mount RPY.
-   - `obstacle_memory_test.cpp`: expected upper/lower не занимают cell, free ray
-     обновляется, closer object занимает cell, opening hit сохраняется, reset
-     удаляет старые scores.
-   - `current_lidar_overlay_test.cpp`: те же classifier decisions дают те же
-     counters и grid result, включая rotated passage.
-   - Regression fixture для `connector_22_23`: origin около высоты `13.8 m`, луч
-     к `upper_mass` не появляется ни в current lidar grid, ни в memory/prohibited
-     input; объект перед upper и объект внутри opening остаются.
+   - Добавить parameterized component fixture (новый отдельный test либо общая
+     fixture для `obstacle_memory_test.cpp` и `current_lidar_overlay_test.cpp`),
+     который для `upper/lower/left/right` и нескольких roll/pitch/yaw + mount RPY
+     пропускает реальный beam через `projectLidarBeam()` и общий classifier, затем
+     подаёт тот же scan/pose/config в `ObstacleMemoryGrid::integrateScan()` и
+     `overlayCurrentLidarHits()`. Для expected static cases обе ingestion paths
+     обязаны дать одинаковые classification counters и отсутствие occupied cell;
+     closer/opening/ambiguous cases обязаны одинаково сохранить occupancy.
+     Раздельные projection/classifier unit tests остаются, но не заменяют эту
+     композиционную матрицу.
+   - `obstacle_memory_test.cpp` дополнительно проверяет free-ray update для
+     suppressed expected hit и reset старых scores; `current_lidar_overlay_test.cpp`
+     проверяет overlay applied/preserved counters.
+   - Добавить прямой `connector_22_23` integration test через
+     `PlanningGridBuilder` (предпочтительно отдельный
+     `known_static_lidar_planning_grid_integration_test.cpp`): построить raw
+     current-lidar и memory sources через реальные ingestion APIs, вызвать
+     `PlanningGridBuilder::build()` с runtime inflation и assert-ить конечный
+     `PlanningGridBuildResult::grid`. Луч с origin около `z=13.8 m` в
+     `upper_mass` не должен давать occupied/prohibited cell после merge и
+     inflation; closer blocker и blocker внутри opening должны остаться raw
+     occupied и стать prohibited в `result.grid`. Дополнительно проверить
+     `planning_grid`, но не считать это заменой assertion на runtime prohibited
+     grid.
    - Обновить `planner_node_config_test.cpp`, `px4_offboard_config_test.cpp` и
      script contracts: новые параметры присутствуют и согласованы, удалённые
      параметры отсутствуют.
@@ -264,6 +301,9 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
 ### Категория 1 — без рефакторинга
 
 - Pure unit tests ray/OBB intersection и classification truth table.
+- Отдельные face-interior, face-boundary, edge, corner, tangential/near-parallel и
+  epsilon-both-sides tests; geometric ambiguity всегда fail-open и не зависит от
+  range tolerance.
 - `LidarBeamProjection` frame/sign invariants.
 - Geometry part-kind tests для `knownPassageSolidVolumes()`.
 - Цель: локализовать математические ошибки без ROS и grid side effects.
@@ -272,9 +312,14 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
 
 - Component tests `ObstacleMemoryGrid` и current lidar overlay с одним shared
   classifier fixture.
+- Parameterized composition matrix
+  `projectLidarBeam -> classifier -> memory/current overlay` для всех part kinds,
+  нескольких attitude и mount RPY; обе ingestion paths должны дать идентичное
+  occupancy решение.
 - Config/load failure/reset tests и удаление old policy contracts.
-- Planning-grid regression: ignored known static hit не становится raw occupied
-  source; closer/ambiguous hit становится.
+- `connector_22_23` PlanningGridBuilder regression: ignored upper hit отсутствует
+  именно в финальном `PlanningGridBuildResult::grid` после dynamic merge и runtime
+  inflation; closer/opening blockers присутствуют и становятся prohibited.
 - Цель: доказать одинаковое поведение двух ingestion paths и fail-open policy.
 
 ### Категория 3 — тяжёлый рефакторинг/integration
@@ -296,6 +341,9 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
   параметр, counters по part и headless regression на реальные scan/pose latency.
 - **Ошибка знака Z или frame conversion даст систематическую misclassification.**
   Митигация: явный map-frame ray contract и invariant tests при roll/pitch/yaw.
+- **Grazing hit на face/edge/corner может быть ошибочно принят за уверенное
+  попадание в known solid.** Митигация: отдельный geometric ambiguity epsilon,
+  strict face-interior contract, ambiguous=keep и boundary tests по обе стороны.
 - **Known passage annotation может разойтись с SDF.** Митигация: существующий
   single geometry file contract/script tests, range mismatch => ambiguous/keep,
   fail-open при load/frame error.
@@ -349,3 +397,13 @@ MISSION_CHECK=1 SMOKE_DURATION_S=120 ./scripts/sim_headless.sh
    - Подтверждение: `rg` не находит old API/config/log fields, а full quality и
      headless regression проходят.
 
+6. **Какие epsilon использовать для geometric ambiguity?**
+   - Recommended decision: завести малые internal linear/angular epsilon только
+     для floating-point slab ties/parallel checks; не делать их alias параметра
+     `known_static_lidar_hit_range_tolerance_m` и не расширять ими physical solid.
+   - Rationale: numerical topology и sensor range uncertainty имеют разные
+     смыслы; их смешивание позволит range tolerance превратить edge/corner в
+     уверенное expected-static попадание.
+   - Подтверждение: parameterized boundary tests остаются `ambiguous` при разных
+     range tolerance, а confident face-interior case меняет решение только по
+     measured-vs-expected range delta.
