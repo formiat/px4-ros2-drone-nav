@@ -199,8 +199,8 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         evaluatePassageAwareProhibitedIntersectionAction(
             planning_result.passage_sensor_policy);
     ++prohibited_replans_;
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
+    RCLCPP_WARN(
+        get_logger(),
         "Current path intersects newly available prohibited obstacle data; "
         "running A* from current pose: reason=%s "
         "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
