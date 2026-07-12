@@ -99,6 +99,28 @@ namespace {
   return map;
 }
 
+[[nodiscard]] KnownPassageMap makeHighToLowSequentialPassagesMap() {
+  PassageOpening high = makeOpening(21.5, 28.5);
+  high.id = "high_window";
+  high.approach_distance_m = 18.0;
+  high.exit_distance_m = 18.0;
+  PassageOpening low = makeOpening(1.5, 8.5);
+  low.id = "low_window";
+  low.approach_distance_m = 18.0;
+  low.exit_distance_m = 18.0;
+
+  PassageStructure high_structure = makeStructure("high_arch", 0.0, std::move(high));
+  high_structure.z_max_m = 32.0;
+  PassageStructure low_structure = makeStructure("low_arch", 78.0, std::move(low));
+  low_structure.z_max_m = 32.0;
+
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(std::move(high_structure));
+  map.structures.push_back(std::move(low_structure));
+  return map;
+}
+
 [[nodiscard]] std::vector<TrajectoryPointSample>
 makeSamplesRange(const double start_x_m, const double end_x_m, const double step_m,
                  const double z_m) {
@@ -300,6 +322,7 @@ TEST(TrajectoryVerticalProfile,
   KnownPassageMap map = makeCloseSequentialPassagesMap();
   std::vector<TrajectoryPointSample> samples = makeSamplesRange(-20.0, 90.0, 1.0, 14.0);
   VerticalProfileConfig config{};
+  config.max_climb_angle_rad = 20.0 * std::numbers::pi / 180.0;
   config.pre_gate_hold_time_s = 1.0;
   config.pre_gate_hold_min_distance_m = 22.0;
   config.pre_gate_hold_max_distance_m = 22.0;
@@ -324,6 +347,33 @@ TEST(TrajectoryVerticalProfile,
       validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
   EXPECT_TRUE(validation.valid);
   EXPECT_EQ(validation.opening_matches, 2U);
+}
+
+TEST(TrajectoryVerticalProfile, SteeperDefaultProfilesHighToLowSequentialPassages) {
+  KnownPassageMap map = makeHighToLowSequentialPassagesMap();
+  std::vector<TrajectoryPointSample> samples =
+      makeSamplesRange(-20.0, 110.0, 1.0, 23.5);
+  VerticalProfileConfig config{};
+  config.gate_clearance_margin_m = 0.5;
+  config.preferred_gate_clearance_margin_m = 2.0;
+  config.pre_gate_hold_min_distance_m = 22.0;
+  config.pre_gate_hold_max_distance_m = 22.0;
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 23.5);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.stats.active);
+  EXPECT_EQ(result.stats.passages_matched, 2U);
+  EXPECT_EQ(result.stats.passages_profiled, 2U);
+  ASSERT_EQ(result.stats.diagnostics.size(), 2U);
+  const VerticalProfilePassageDiagnostic& low = result.stats.diagnostics.back();
+  EXPECT_EQ(low.opening_id, "low_window");
+  EXPECT_NEAR(low.gate_z_m, 6.5, 1.0e-9);
+  EXPECT_LT(low.transition_required_m, low.transition_available_m);
+  EXPECT_NEAR(low.actual_gate_hold_m, 22.0, 1.0e-9);
+  EXPECT_NEAR(samples.back().z_m, 6.5, 1.0e-9);
+  EXPECT_LE(result.stats.max_abs_dz_ds, std::tan(config.max_climb_angle_rad) + 1.0e-9);
 }
 
 TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {

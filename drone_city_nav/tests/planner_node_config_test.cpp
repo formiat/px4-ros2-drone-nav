@@ -89,7 +89,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_vertical_jerk_mps3,
                    9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.max_climb_angle_rad,
-                   20.0 * std::numbers::pi / 180.0);
+                   35.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.pre_gate_hold_time_s,
                    1.0);
   EXPECT_DOUBLE_EQ(

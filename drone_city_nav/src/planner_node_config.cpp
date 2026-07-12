@@ -118,7 +118,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       0.0, 1000.0);
   config.trajectory_planner.vertical_profile.max_climb_angle_rad =
       std::clamp(
-          node.declare_parameter<double>("vertical_profile_max_climb_angle_deg", 20.0),
+          node.declare_parameter<double>("vertical_profile_max_climb_angle_deg", 35.0),
           0.0, 89.0) *
       std::numbers::pi / 180.0;
   config.trajectory_planner.vertical_profile.min_transition_distance_m = std::clamp(

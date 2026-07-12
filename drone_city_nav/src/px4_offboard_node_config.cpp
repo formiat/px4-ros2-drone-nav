@@ -212,7 +212,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       0.0, 1000.0);
   config.velocity_follower.vertical_profile_max_climb_angle_rad =
       std::clamp(radiansFromDegrees(node.declare_parameter<double>(
-                     "vertical_profile_max_climb_angle_deg", 20.0)),
+                     "vertical_profile_max_climb_angle_deg", 35.0)),
                  0.0, std::numbers::pi / 2.0);
   config.velocity_follower.vertical_trackability_altitude_tolerance_m = std::clamp(
       node.declare_parameter<double>("vertical_trackability_altitude_tolerance_m", 0.4),

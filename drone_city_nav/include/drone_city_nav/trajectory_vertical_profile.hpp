@@ -19,7 +19,7 @@ struct VerticalProfileConfig {
   double max_vertical_speed_mps{3.2};
   double max_vertical_accel_mps2{3.0};
   double max_vertical_jerk_mps3{9.0};
-  double max_climb_angle_rad{0.3490658503988659};
+  double max_climb_angle_rad{0.6108652381980153};
   double pre_gate_hold_time_s{1.0};
   double pre_gate_hold_min_distance_m{15.0};
   double pre_gate_hold_max_distance_m{80.0};

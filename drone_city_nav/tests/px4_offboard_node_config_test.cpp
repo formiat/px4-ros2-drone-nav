@@ -164,7 +164,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_vertical_jerk_mps3,
                    9.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_climb_angle_rad,
-                   20.0 * std::numbers::pi / 180.0);
+                   35.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_altitude_tolerance_m,
                    0.4);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_trackability_response_time_s, 0.4);

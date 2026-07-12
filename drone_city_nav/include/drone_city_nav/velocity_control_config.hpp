@@ -13,7 +13,7 @@ struct VelocityFollowerConfig {
   double vertical_profile_max_vertical_speed_mps{3.2};
   double vertical_profile_max_vertical_accel_mps2{3.0};
   double vertical_profile_max_vertical_jerk_mps3{9.0};
-  double vertical_profile_max_climb_angle_rad{0.3490658503988659};
+  double vertical_profile_max_climb_angle_rad{0.6108652381980153};
   double known_passage_traversal_speed_limit_mps{10.0};
   double vertical_trackability_max_vertical_speed_mps{4.0};
   double vertical_trackability_altitude_tolerance_m{0.4};
