@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
@@ -27,6 +28,7 @@ struct CurrentLidarOverlayStats {
   std::size_t overlay_occupied_cells_applied{0U};
   std::size_t overlay_occupied_cells_preserved{0U};
   std::size_t outside_hits{0U};
+  KnownStaticLidarHitStats known_static_lidar{};
 };
 
 [[nodiscard]] std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid,
@@ -35,6 +37,7 @@ struct CurrentLidarOverlayStats {
 [[nodiscard]] CurrentLidarOverlayStats
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
-                        const LidarProjectionConfig& projection_config);
+                        const LidarProjectionConfig& projection_config,
+                        const KnownStaticLidarHitClassifier* classifier = nullptr);
 
 } // namespace drone_city_nav

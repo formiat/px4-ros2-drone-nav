@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
@@ -52,6 +53,7 @@ struct ObstacleMemoryStats {
   std::size_t outside_hit_endpoints{0U};
   std::size_t free_cells_updated{0U};
   std::size_t occupied_cells_updated{0U};
+  KnownStaticLidarHitStats known_static_lidar{};
 };
 
 struct GridCellCounts {
@@ -65,9 +67,12 @@ class ObstacleMemoryGrid {
 public:
   explicit ObstacleMemoryGrid(const GridBounds& bounds);
 
-  [[nodiscard]] ObstacleMemoryStats integrateScan(const Pose2& pose,
-                                                  const LaserScan2DView& scan,
-                                                  const ObstacleMemoryConfig& config);
+  [[nodiscard]] ObstacleMemoryStats
+  integrateScan(const Pose2& pose, const LaserScan2DView& scan,
+                const ObstacleMemoryConfig& config,
+                const KnownStaticLidarHitClassifier* classifier = nullptr);
+
+  void reset();
 
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
   [[nodiscard]] GridCellCounts countRawCells() const;

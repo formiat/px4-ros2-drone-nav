@@ -39,6 +39,22 @@ TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
   EXPECT_NEAR(projection.body_frd_direction.x, 1.0, 1.0e-9);
   EXPECT_NEAR(projection.body_frd_direction.y, 0.0, 1.0e-9);
   EXPECT_NEAR(norm(projection.ned_direction), 1.0, 1.0e-9);
+  EXPECT_NEAR(norm(projection.ray_direction_map), 1.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.x, 5.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.y, 6.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.z, 18.0, 1.0e-9);
+  EXPECT_NEAR(projection.endpoint_map_m.x,
+              projection.ray_origin_map_m.x +
+                  projection.used_range_m * projection.ray_direction_map.x,
+              1.0e-9);
+  EXPECT_NEAR(projection.endpoint_map_m.y,
+              projection.ray_origin_map_m.y +
+                  projection.used_range_m * projection.ray_direction_map.y,
+              1.0e-9);
+  EXPECT_NEAR(projection.endpoint_map_m.z,
+              projection.ray_origin_map_m.z +
+                  projection.used_range_m * projection.ray_direction_map.z,
+              1.0e-9);
 }
 
 TEST(LidarProjection, ConfiguredMountYawReorientsLevelBeam) {

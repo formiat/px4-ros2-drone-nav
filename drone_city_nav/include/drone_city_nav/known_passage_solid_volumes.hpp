@@ -7,10 +7,21 @@
 
 namespace drone_city_nav {
 
+enum class KnownPassageSolidPartKind {
+  kLeft,
+  kRight,
+  kLower,
+  kUpper,
+};
+
+[[nodiscard]] const char*
+knownPassageSolidPartKindName(KnownPassageSolidPartKind kind) noexcept;
+
 struct KnownPassageSolidVolume {
   std::string structure_id;
   std::string opening_id;
   std::string part_id;
+  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
   Point2 center{};
   Point2 normal_xy{1.0, 0.0};
   Point2 lateral_xy{0.0, 1.0};

@@ -35,6 +35,18 @@ def make_ros_log(
     lines = [
         "[planner_node]: First valid PX4 local position: x=0.0 y=0.0 z=0.0",
         (
+            "[obstacle_memory_node]: Known static lidar classifier: "
+            "node=obstacle_memory status=ready "
+            "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
+            "volumes=12 tolerance=0.500m"
+        ),
+        (
+            "[planner_node]: Known static lidar classifier: node=planner "
+            "status=ready "
+            "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
+            "volumes=12 tolerance=0.500m"
+        ),
+        (
             "[planner_node]: Planner obstacle sources: "
             f"static={str(static_map).lower()} "
             f"memory={str(memory).lower()} "
@@ -70,7 +82,10 @@ def make_ros_log(
             [
                 "[obstacle_memory_node]: First lidar scan: beams=720",
                 "[planner_node]: First obstacle memory grid: size=230x350",
-                "[obstacle_memory_node]: Obstacle memory update: hits=42",
+                (
+                    "[obstacle_memory_node]: Obstacle memory update: hits=42 "
+                    "known_static[ignored=3 unexpected=39 ambiguous=0]"
+                ),
             ]
         )
     else:
@@ -97,7 +112,10 @@ def make_ros_log(
     lines.append("[planner_node]: LIDAR_DEBUG snapshot=snapshot_000001")
 
     if mission_success:
-        lines.append("[mission_monitor_node]: MISSION_RESULT success=true")
+        lines.append(
+            "[mission_monitor_node]: MISSION_RESULT success=true "
+            "actual_passage_openings_seen=3 known_passage_openings=3"
+        )
     else:
         lines.append("[mission_monitor_node]: MISSION_RESULT success=false")
 
@@ -105,6 +123,33 @@ def make_ros_log(
 
 
 class DroneNavHeadlessValidatorTest(unittest.TestCase):
+    def test_classifier_effective_config_mismatch_fails(self) -> None:
+        ros_log = make_ros_log().replace(
+            "node=planner status=ready "
+            "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
+            "volumes=12 tolerance=0.500m",
+            "node=planner status=ready "
+            "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
+            "volumes=12 tolerance=0.750m",
+        )
+
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: known-static classifier effective configs match", result.errors
+        )
+
     def test_active_lidar_stable_path_reuse_passes_without_used_summary(self) -> None:
         result = validator.validate_logs(
             ros_log=make_ros_log(current_lidar_used_summary=False),

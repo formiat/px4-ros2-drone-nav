@@ -5,6 +5,7 @@
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/known_passage_debug_markers.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -303,6 +304,7 @@ private:
   std::optional<OccupancyGrid2D> static_grid_;
   std::optional<StaticCityMap> static_map_debug_;
   std::optional<KnownPassageMap> known_passages_;
+  std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   PlanningGridBuilder planning_grid_builder_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
@@ -348,7 +350,7 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double known_passage_debug_publish_period_s_{1.0};
   KnownPassageValidationConfig known_passage_validation_config_{};
-  PassageTraversalSensorPolicyConfig passage_traversal_sensor_policy_config_{};
+  double known_static_lidar_hit_range_tolerance_m_{0.5};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_scan_pose_lag_s_{0.0};

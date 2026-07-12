@@ -45,6 +45,22 @@ def read(relative_path: str) -> str:
 
 
 class TopicContractTest(unittest.TestCase):
+    def test_known_static_lidar_classifier_config_replaces_proximity_policy(
+        self,
+    ) -> None:
+        yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
+        tolerances = re.findall(
+            r"^\s+known_static_lidar_hit_range_tolerance_m:\s*([0-9.]+)\s*$",
+            yaml_text,
+            re.M,
+        )
+
+        self.assertEqual(tolerances, ["0.5", "0.5"])
+        self.assertNotIn("passage_traversal_sensor_policy", yaml_text)
+        self.assertNotIn("passage_traversal_activation_margin", yaml_text)
+        self.assertNotIn("passage_traversal_lookahead_margin", yaml_text)
+        self.assertNotIn("passage_traversal_expected_wall_margin", yaml_text)
+
     def test_runtime_files_do_not_reference_removed_inflated_memory_topic(self) -> None:
         checked_paths = [
             "drone_city_nav/config/urban_mvp.yaml",

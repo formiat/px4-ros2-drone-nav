@@ -1,0 +1,84 @@
+#pragma once
+
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
+#include "drone_city_nav/types.hpp"
+
+#include <cstddef>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace drone_city_nav {
+
+enum class KnownStaticLidarHitClassification {
+  kExpectedStatic,
+  kUnexpected,
+  kAmbiguous,
+};
+
+struct KnownStaticLidarHitClassifierConfig {
+  double range_tolerance_m{0.5};
+};
+
+struct KnownStaticLidarHitResult {
+  KnownStaticLidarHitClassification classification{
+      KnownStaticLidarHitClassification::kAmbiguous};
+  double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
+  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
+  std::string_view structure_id;
+  std::string_view opening_id;
+  std::string_view part_id;
+  bool volume_matched{false};
+  bool confident_face_interior{false};
+};
+
+struct KnownStaticLidarHitDiagnostic {
+  bool available{false};
+  std::string structure_id;
+  std::string opening_id;
+  std::string part_id;
+  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct KnownStaticLidarPartCounters {
+  std::size_t left{0U};
+  std::size_t right{0U};
+  std::size_t lower{0U};
+  std::size_t upper{0U};
+};
+
+struct KnownStaticLidarHitStats {
+  std::size_t expected_static_hits_ignored{0U};
+  std::size_t unexpected_hits_kept{0U};
+  std::size_t ambiguous_hits_kept{0U};
+  KnownStaticLidarPartCounters expected_static_by_part{};
+  KnownStaticLidarHitDiagnostic first_ignored;
+  KnownStaticLidarHitDiagnostic first_ambiguous;
+};
+
+class KnownStaticLidarHitClassifier {
+public:
+  KnownStaticLidarHitClassifier(std::vector<KnownPassageSolidVolume> volumes,
+                                KnownStaticLidarHitClassifierConfig config = {});
+
+  [[nodiscard]] KnownStaticLidarHitResult
+  classify(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
+           double measured_range_m) const noexcept;
+
+  [[nodiscard]] std::size_t volumeCount() const noexcept;
+  [[nodiscard]] double rangeToleranceM() const noexcept;
+
+private:
+  std::vector<KnownPassageSolidVolume> volumes_;
+  KnownStaticLidarHitClassifierConfig config_{};
+};
+
+void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,
+                               KnownStaticLidarHitStats& stats);
+
+[[nodiscard]] const char* knownStaticLidarHitClassificationName(
+    KnownStaticLidarHitClassification classification) noexcept;
+
+} // namespace drone_city_nav

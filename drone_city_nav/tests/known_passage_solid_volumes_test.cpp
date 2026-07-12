@@ -65,6 +65,7 @@ TEST(KnownPassageSolidVolumes, BuildsPhysicalOpeningFrameParts) {
 
   EXPECT_EQ(left->structure_id, "building_with_passage");
   EXPECT_EQ(left->opening_id, "main");
+  EXPECT_EQ(left->part_kind, KnownPassageSolidPartKind::kLeft);
   EXPECT_DOUBLE_EQ(left->depth_m, 24.0);
   EXPECT_DOUBLE_EQ(left->width_m, 16.5);
   EXPECT_DOUBLE_EQ(left->center.x, 10.0);
@@ -73,6 +74,7 @@ TEST(KnownPassageSolidVolumes, BuildsPhysicalOpeningFrameParts) {
   EXPECT_DOUBLE_EQ(left->max_z_m, 32.0);
 
   EXPECT_DOUBLE_EQ(right->depth_m, 24.0);
+  EXPECT_EQ(right->part_kind, KnownPassageSolidPartKind::kRight);
   EXPECT_DOUBLE_EQ(right->width_m, 16.5);
   EXPECT_DOUBLE_EQ(right->center.x, 10.0);
   EXPECT_DOUBLE_EQ(right->center.y, 31.75);
@@ -80,6 +82,7 @@ TEST(KnownPassageSolidVolumes, BuildsPhysicalOpeningFrameParts) {
   EXPECT_DOUBLE_EQ(right->max_z_m, 32.0);
 
   EXPECT_DOUBLE_EQ(lower->depth_m, 24.0);
+  EXPECT_EQ(lower->part_kind, KnownPassageSolidPartKind::kLower);
   EXPECT_DOUBLE_EQ(lower->width_m, 7.0);
   EXPECT_DOUBLE_EQ(lower->center.x, 10.0);
   EXPECT_DOUBLE_EQ(lower->center.y, 20.0);
@@ -87,6 +90,7 @@ TEST(KnownPassageSolidVolumes, BuildsPhysicalOpeningFrameParts) {
   EXPECT_DOUBLE_EQ(lower->max_z_m, 1.5);
 
   EXPECT_DOUBLE_EQ(upper->depth_m, 24.0);
+  EXPECT_EQ(upper->part_kind, KnownPassageSolidPartKind::kUpper);
   EXPECT_DOUBLE_EQ(upper->width_m, 7.0);
   EXPECT_DOUBLE_EQ(upper->center.x, 10.0);
   EXPECT_DOUBLE_EQ(upper->center.y, 20.0);

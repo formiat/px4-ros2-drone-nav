@@ -108,7 +108,8 @@ ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
 
 ObstacleMemoryStats
 ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan,
-                                  const ObstacleMemoryConfig& config) {
+                                  const ObstacleMemoryConfig& config,
+                                  const KnownStaticLidarHitClassifier* classifier) {
   ObstacleMemoryStats stats{};
   if (!finitePose(pose) || !validMemoryConfig(config) ||
       !std::isfinite(scan.angle_increment_rad) || scan.angle_increment_rad == 0.0 ||
@@ -193,6 +194,17 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       continue;
     }
 
+    if (classifier != nullptr) {
+      const KnownStaticLidarHitResult classification =
+          classifier->classify(projection.ray_origin_map_m,
+                               projection.ray_direction_map, projection.used_range_m);
+      recordKnownStaticLidarHit(classification, stats.known_static_lidar);
+      if (classification.classification ==
+          KnownStaticLidarHitClassification::kExpectedStatic) {
+        continue;
+      }
+    }
+
     const GridIndex endpoint_grid_cell =
         endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
     applyHit(endpoint_grid_cell, config);
@@ -200,6 +212,11 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
   }
 
   return stats;
+}
+
+void ObstacleMemoryGrid::reset() {
+  raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
+  std::fill(scores_.begin(), scores_.end(), 0);
 }
 
 const OccupancyGrid2D& ObstacleMemoryGrid::rawGrid() const noexcept {

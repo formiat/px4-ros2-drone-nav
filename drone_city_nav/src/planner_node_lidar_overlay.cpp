@@ -81,13 +81,19 @@ PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
                         static_cast<double>(last_scan_.range_min), scan_range_max,
                         static_cast<double>(last_scan_.angle_min),
                         static_cast<double>(last_scan_.angle_increment)},
-          last_scan_projection_pose_, currentLidarProjectionConfig());
+          last_scan_projection_pose_, currentLidarProjectionConfig(),
+          known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
+                                                     : nullptr);
   stats.used = overlay_stats.used;
   stats.processed_beams = overlay_stats.processed_beams;
   stats.hit_beams = overlay_stats.hit_beams;
   stats.altitude_rejected_beams = overlay_stats.altitude_rejected_beams;
   stats.occupied_cells = overlay_stats.occupied_cells;
   stats.outside_hits = overlay_stats.outside_hits;
+  stats.overlay_occupied_cells_applied = overlay_stats.overlay_occupied_cells_applied;
+  stats.overlay_occupied_cells_preserved =
+      overlay_stats.overlay_occupied_cells_preserved;
+  stats.known_static_lidar = overlay_stats.known_static_lidar;
   return stats;
 }
 

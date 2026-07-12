@@ -194,8 +194,14 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 
   if (pose.altitude_valid && std::isfinite(pose.altitude_m + config.lidar_z_offset_m)) {
     const double origin_altitude_m = pose.altitude_m + config.lidar_z_offset_m;
+    projection.ray_origin_map_m =
+        Point3{pose.position.x, pose.position.y, origin_altitude_m};
+    projection.ray_direction_map =
+        Point3{world_direction.x, world_direction.y, -world_direction.z};
     projection.endpoint_altitude_m =
         origin_altitude_m - projection.used_range_m * world_direction.z;
+    projection.endpoint_map_m = Point3{projection.endpoint.x, projection.endpoint.y,
+                                       projection.endpoint_altitude_m};
     if (!altitudeInRange(projection.endpoint_altitude_m, config)) {
       projection.status = LidarBeamProjectionStatus::kAltitudeRejected;
       return projection;

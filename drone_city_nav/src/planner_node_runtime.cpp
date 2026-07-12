@@ -115,9 +115,7 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
     const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
     const PlanningGridBuildResult& planning_result) const {
   const OccupancyGrid2D* memory_source_grid = nullptr;
-  if (planning_result.filtered_memory_grid) {
-    memory_source_grid = &*planning_result.filtered_memory_grid;
-  } else if (memory_grid_) {
+  if (memory_grid_) {
     memory_source_grid = &*memory_grid_;
   }
   const std::array<RawSourceProbe, 3U> sources{
@@ -195,46 +193,28 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             : std::string{"raw_sources[exact=unknown nearest=unknown "
                           "nearest_distance=nanm nearest_cell=(-1, -1) "
                           "nearest_center=(nan, nan) search_radius=nanm]"};
-    const PassageAwareReuseAction passage_replan_action =
-        evaluatePassageAwareProhibitedIntersectionAction(
-            planning_result.passage_sensor_policy);
     ++prohibited_replans_;
-    RCLCPP_WARN(
-        get_logger(),
-        "Current path intersects newly available prohibited obstacle data; "
-        "running A* from current pose: reason=%s "
-        "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-        "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
-        "blocker[cell=(%d, %d) center=(%.2f, %.2f) occupied=%s inflated=%s "
-        "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
-        "path_distance=%.2fm segment_start_prohibited=%s "
-        "segment_end_prohibited=%s] passage_sensor_policy["
-        "passage_traversal_active=%s lidar_policy=%s "
-        "ignored_expected_obstacle_count=%zu emergency_blocker_count=%zu "
-        "structure=%s opening=%s active_s=%.2f replan_action=%s] %s",
-        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
-        decision.deviation_m, decision.prohibited_segment_index, prohibited_start.x,
-        prohibited_start.y, prohibited_end.x, prohibited_end.y, intersection.cell.x,
-        intersection.cell.y, intersection.cell_center.x, intersection.cell_center.y,
-        intersection.occupied ? "true" : "false",
-        intersection.inflated ? "true" : "false", intersection.line_cell_index,
-        intersection.line_cell_count, intersection.segment_t,
-        intersection.segment_distance_m, intersection.path_distance_m,
-        intersection.segment_start_prohibited ? "true" : "false",
-        intersection.segment_end_prohibited ? "true" : "false",
-        planning_result.passage_sensor_policy.passage_traversal_active ? "true"
-                                                                       : "false",
-        passageLidarPolicyName(planning_result.passage_sensor_policy.lidar_policy),
-        planning_result.passage_sensor_policy.ignored_expected_obstacle_count,
-        planning_result.passage_sensor_policy.emergency_blocker_count,
-        planning_result.passage_sensor_policy.active_structure_id.empty()
-            ? "<none>"
-            : planning_result.passage_sensor_policy.active_structure_id.c_str(),
-        planning_result.passage_sensor_policy.active_opening_id.empty()
-            ? "<none>"
-            : planning_result.passage_sensor_policy.active_opening_id.c_str(),
-        planning_result.passage_sensor_policy.active_s_m,
-        passageAwareReuseActionName(passage_replan_action), source_diagnostic.c_str());
+    RCLCPP_WARN(get_logger(),
+                "Current path intersects newly available prohibited obstacle data; "
+                "running A* from current pose: reason=%s "
+                "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
+                "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
+                "blocker[cell=(%d, %d) center=(%.2f, %.2f) occupied=%s inflated=%s "
+                "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
+                "path_distance=%.2fm segment_start_prohibited=%s "
+                "segment_end_prohibited=%s] %s",
+                stablePathDecisionReasonName(decision.reason),
+                decision.remaining_path.size(), decision.deviation_m,
+                decision.prohibited_segment_index, prohibited_start.x,
+                prohibited_start.y, prohibited_end.x, prohibited_end.y,
+                intersection.cell.x, intersection.cell.y, intersection.cell_center.x,
+                intersection.cell_center.y, intersection.occupied ? "true" : "false",
+                intersection.inflated ? "true" : "false", intersection.line_cell_index,
+                intersection.line_cell_count, intersection.segment_t,
+                intersection.segment_distance_m, intersection.path_distance_m,
+                intersection.segment_start_prohibited ? "true" : "false",
+                intersection.segment_end_prohibited ? "true" : "false",
+                source_diagnostic.c_str());
     return false;
   }
 

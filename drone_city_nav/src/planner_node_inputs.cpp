@@ -209,16 +209,29 @@ void PlannerNode::loadConfiguredStaticMap() {
 }
 
 void PlannerNode::loadConfiguredKnownPassages() {
+  known_static_lidar_classifier_.reset();
   const KnownPassageSourceResult result = loadKnownPassageMapSource(
       KnownPassageSourceConfig{use_known_passages_, known_passages_path_param_,
                                staticMapPackageShareDirectory(), frame_id_});
   known_passages_resolved_path_ = result.resolved_path;
+  const auto log_classifier = [this]() {
+    RCLCPP_INFO(get_logger(),
+                "Known static lidar classifier: node=planner status=%s path='%s' "
+                "volumes=%zu tolerance=%.3fm",
+                known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
+                known_passages_resolved_path_.string().c_str(),
+                known_static_lidar_classifier_.has_value()
+                    ? known_static_lidar_classifier_->volumeCount()
+                    : 0U,
+                known_static_lidar_hit_range_tolerance_m_);
+  };
 
   if (result.status == KnownPassageSourceStatus::kDisabled) {
     known_passages_.reset();
     known_passage_structures_ = 0U;
     known_passage_openings_ = 0U;
     RCLCPP_INFO(get_logger(), "Known passage map source is disabled");
+    log_classifier();
     publishKnownPassageDebug(true);
     return;
   }
@@ -233,6 +246,7 @@ void PlannerNode::loadConfiguredKnownPassages() {
                  known_passages_resolved_path_.string().c_str(),
                  knownPassageSourceStatusName(result.status),
                  result.error_message.c_str());
+    log_classifier();
     publishKnownPassageDebug(true);
     return;
   }
@@ -247,6 +261,15 @@ void PlannerNode::loadConfiguredKnownPassages() {
   known_passages_ = result.map;
   known_passage_structures_ = result.structures;
   known_passage_openings_ = result.openings;
+  if (result.frame_matches) {
+    std::vector<KnownPassageSolidVolume> volumes =
+        knownPassageSolidVolumes(*known_passages_);
+    if (!volumes.empty()) {
+      known_static_lidar_classifier_.emplace(
+          std::move(volumes), KnownStaticLidarHitClassifierConfig{
+                                  known_static_lidar_hit_range_tolerance_m_});
+    }
+  }
   RCLCPP_INFO(get_logger(),
               "Known passage map loaded: path='%s' status=%s frame='%s' "
               "structures=%zu openings=%zu markers_topic='%s'",
@@ -256,6 +279,7 @@ void PlannerNode::loadConfiguredKnownPassages() {
               known_passage_openings_,
               known_passage_markers_pub_ ? known_passage_markers_pub_->get_topic_name()
                                          : "<unavailable>");
+  log_classifier();
   publishKnownPassageDebug(true);
 }
 
@@ -279,8 +303,6 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
   sources.memory_grid = memory_grid_ ? &*memory_grid_ : nullptr;
 
   std::optional<OccupancyGrid2D> current_lidar_grid;
-  std::optional<OccupancyGrid2D> filtered_memory_grid;
-  PassageTraversalSensorPolicyStats passage_sensor_policy_stats{};
   if (const std::optional<GridBounds> bounds =
           selectPlanningGridBounds(config, sources);
       bounds.has_value()) {
@@ -288,32 +310,9 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
     sources.current_lidar = overlayCurrentLidarHits(*current_lidar_grid, now_ns);
     sources.current_lidar_grid = &*current_lidar_grid;
   }
-  PassageTraversalSensorPolicyResult policy_result =
-      applyPassageTraversalSensorPolicy(PassageTraversalSensorPolicyInput{
-          .config = passage_traversal_sensor_policy_config_,
-          .validation_config = known_passage_validation_config_,
-          .known_passage_map = known_passages_ ? &*known_passages_ : nullptr,
-          .trajectory_samples =
-              std::span<const TrajectoryPointSample>{
-                  last_valid_trajectory_samples_.data(),
-                  last_valid_trajectory_samples_.size()},
-          .current_position = current_pose_.position,
-          .memory_grid = sources.memory_grid,
-          .current_lidar_grid = current_lidar_grid ? &*current_lidar_grid : nullptr,
-      });
-  passage_sensor_policy_stats = policy_result.stats;
-  if (policy_result.filtered_memory_grid.has_value()) {
-    filtered_memory_grid = std::move(policy_result.filtered_memory_grid);
-    sources.memory_grid = &*filtered_memory_grid;
-  }
-
   PlanningGridBuildResult result = planning_grid_builder_.build(config, sources);
-  result.passage_sensor_policy = std::move(passage_sensor_policy_stats);
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
-  }
-  if (filtered_memory_grid.has_value()) {
-    result.filtered_memory_grid = std::move(filtered_memory_grid);
   }
   if (result.memory.enabled && !result.memory.seen) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -428,8 +427,6 @@ void PlannerNode::checkCurrentPathAndPublish() {
     return;
   }
   const GridStats prohibited_grid_stats = collectGridStats(prohibited_grid);
-  const PassageTraversalSensorPolicyStats& passage_policy =
-      planning_result->passage_sensor_policy;
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
@@ -449,12 +446,11 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
       "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
       "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
-      "overlay_preserved=%zu outside=%zu] "
-      "passage_sensor_policy[passage_traversal_active=%s lidar_policy=%s "
-      "ignored_expected_obstacle_count=%zu emergency_blocker_count=%zu "
-      "structure=%s opening=%s active_s=%.2f current_lidar_checked=%zu "
-      "memory_checked=%zu current_lidar_expected_wall=%zu "
-      "memory_expected_wall=%zu] "
+      "overlay_preserved=%zu outside=%zu "
+      "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
+      "parts[left=%zu right=%zu lower=%zu upper=%zu] "
+      "first_ignored=%s/%s/%s delta=%.3f "
+      "first_ambiguous=%s/%s/%s delta=%.3f]] "
       "source=planning_clearance astar_status=%s heuristic_weight=%.2f expanded=%zu "
       "cost=%.2f raw_path=%zu smoothed_path=%zu "
       "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
@@ -514,20 +510,39 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->current_lidar.overlay_occupied_cells_applied,
       planning_result->current_lidar.overlay_occupied_cells_preserved,
       planning_result->current_lidar.outside_hits,
-      passage_policy.passage_traversal_active ? "true" : "false",
-      passageLidarPolicyName(passage_policy.lidar_policy),
-      passage_policy.ignored_expected_obstacle_count,
-      passage_policy.emergency_blocker_count,
-      passage_policy.active_structure_id.empty()
-          ? "<none>"
-          : passage_policy.active_structure_id.c_str(),
-      passage_policy.active_opening_id.empty()
-          ? "<none>"
-          : passage_policy.active_opening_id.c_str(),
-      passage_policy.active_s_m, passage_policy.current_lidar_cells_checked,
-      passage_policy.memory_cells_checked,
-      passage_policy.current_lidar_expected_wall_cells,
-      passage_policy.memory_expected_wall_cells,
+      planning_result->current_lidar.known_static_lidar.expected_static_hits_ignored,
+      planning_result->current_lidar.known_static_lidar.unexpected_hits_kept,
+      planning_result->current_lidar.known_static_lidar.ambiguous_hits_kept,
+      planning_result->current_lidar.known_static_lidar.expected_static_by_part.left,
+      planning_result->current_lidar.known_static_lidar.expected_static_by_part.right,
+      planning_result->current_lidar.known_static_lidar.expected_static_by_part.lower,
+      planning_result->current_lidar.known_static_lidar.expected_static_by_part.upper,
+      planning_result->current_lidar.known_static_lidar.first_ignored.available
+          ? planning_result->current_lidar.known_static_lidar.first_ignored.structure_id
+                .c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ignored.available
+          ? planning_result->current_lidar.known_static_lidar.first_ignored.opening_id
+                .c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ignored.available
+          ? planning_result->current_lidar.known_static_lidar.first_ignored.part_id
+                .c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ignored.range_delta_m,
+      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
+          ? planning_result->current_lidar.known_static_lidar.first_ambiguous
+                .structure_id.c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
+          ? planning_result->current_lidar.known_static_lidar.first_ambiguous.opening_id
+                .c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
+          ? planning_result->current_lidar.known_static_lidar.first_ambiguous.part_id
+                .c_str()
+          : "<none>",
+      planning_result->current_lidar.known_static_lidar.first_ambiguous.range_delta_m,
       astarStatusName(path_result->astar.status),
       planning_astar_config.heuristic_weight, path_result->astar.expanded_cells,
       path_result->astar.total_cost, path_result->raw_path_metrics.points,

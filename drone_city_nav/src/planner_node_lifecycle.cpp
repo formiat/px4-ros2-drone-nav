@@ -175,15 +175,6 @@ PlannerNode::PlannerNode()
               known_passage_validation_config_.clearance_margin_m,
               known_passage_validation_config_.max_diagnostics);
   RCLCPP_INFO(get_logger(),
-              "Passage traversal sensor policy: enabled=%s activation_margin=%.2fm "
-              "opening_corridor_margin[lateral=%.2fm depth=%.2fm] "
-              "expected_wall_margin=%.2fm",
-              passage_traversal_sensor_policy_config_.enabled ? "true" : "false",
-              passage_traversal_sensor_policy_config_.activation_margin_m,
-              passage_traversal_sensor_policy_config_.opening_corridor_lateral_margin_m,
-              passage_traversal_sensor_policy_config_.opening_corridor_depth_margin_m,
-              passage_traversal_sensor_policy_config_.expected_wall_margin_m);
-  RCLCPP_INFO(get_logger(),
               "Planner lidar overlay: enabled=always topic='%s' max_range=%.2f "
               "max_staleness=%.2fs yaw_source=%s compensate_attitude=%s "
               "motion_compensation=%s pose_latency=%.3fs "
@@ -233,7 +224,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   use_known_passages_ = config.known_passages.enabled;
   known_passages_path_param_ = config.known_passages.configured_path.string();
   known_passage_validation_config_ = config.known_passage_validation;
-  passage_traversal_sensor_policy_config_ = config.passage_traversal_sensor_policy;
+  known_static_lidar_hit_range_tolerance_m_ =
+      config.known_static_lidar_hit_range_tolerance_m;
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
   max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;

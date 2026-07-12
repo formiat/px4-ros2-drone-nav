@@ -59,12 +59,7 @@ Known passages:
 - `known_passage_validation_min_opening_depth_fraction`
 - `known_passage_validation_clearance_margin_m`
 - `known_passage_validation_max_diagnostics`
-- `passage_traversal_sensor_policy_enabled`
-- `passage_traversal_activation_margin_m`
-- `passage_traversal_lookahead_margin_m`
-- `passage_traversal_opening_corridor_lateral_margin_m`
-- `passage_traversal_opening_corridor_depth_margin_m`
-- `passage_traversal_expected_wall_margin_m`
+- `known_static_lidar_hit_range_tolerance_m`
 - `vertical_profile_preferred_gate_clearance_margin_m`
 - `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
@@ -79,6 +74,14 @@ Known passages:
 - `passage_insertion_min_inserted_radius_m`
 - `passage_insertion_max_candidates`
 - `passage_insertion_max_diagnostics`
+
+`known_static_lidar_hit_range_tolerance_m` is configured identically for the
+planner and obstacle-memory nodes. The always-on 3D classifier compares each
+measured hit range with the nearest known passage-building solid. Confident hits
+on known `left`, `right`, `lower`, or `upper` masses are excluded from the
+dynamic obstacle layer. Closer, opening-volume, boundary, and otherwise
+ambiguous hits remain obstacles. Missing geometry or invalid 3D pose is
+fail-open.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a

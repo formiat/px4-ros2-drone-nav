@@ -19,7 +19,8 @@ std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoin
 CurrentLidarOverlayStats
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
-                        const LidarProjectionConfig& projection_config) {
+                        const LidarProjectionConfig& projection_config,
+                        const KnownStaticLidarHitClassifier* classifier) {
   CurrentLidarOverlayStats stats{};
   stats.used = true;
 
@@ -49,6 +50,16 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     }
 
     ++stats.hit_beams;
+    if (classifier != nullptr) {
+      const KnownStaticLidarHitResult classification =
+          classifier->classify(projection.ray_origin_map_m,
+                               projection.ray_direction_map, projection.used_range_m);
+      recordKnownStaticLidarHit(classification, stats.known_static_lidar);
+      if (classification.classification ==
+          KnownStaticLidarHitClassification::kExpectedStatic) {
+        continue;
+      }
+    }
     const std::size_t occupied_cells =
         markCurrentLidarObstacle(current_lidar_grid, projection.endpoint);
     if (occupied_cells == 0U) {

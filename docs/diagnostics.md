@@ -109,21 +109,18 @@ and curvature metrics, rejection reason, and whether the candidate was accepted.
 These fields are intended for headless debugging when a known-passage XY repair
 is possible but not selected.
 
-Passage traversal sensor policy fields appear in planner summary and prohibited
-intersection logs:
+The obstacle-memory update and planner summary report the always-on 3D known
+static lidar classifier:
 
-- `passage_traversal_active`
-- `lidar_policy`
-- `ignored_expected_obstacle_count`
-- `emergency_blocker_count`
-- active structure/opening ids;
-- active trajectory `s`;
-- current-lidar and memory checked/ignored counts.
+- `expected_static_hits_ignored` / `ignored`;
+- `unexpected_hits_kept` / `unexpected`;
+- `ambiguous_hits_kept` / `ambiguous`;
+- ignored hit counts for `left`, `right`, `lower`, and `upper` masses;
+- the first ignored structure/opening/part identity and range delta.
 
-`lidar_policy=ignore_expected_walls` means dynamic expected-wall evidence was
-filtered during active known passage traversal. `lidar_policy=emergency_blocker`
-means an obstacle was preserved inside the opening corridor and normal
-prohibited/replan handling remains active.
+The classifier is independent of the active trajectory and drone proximity to
+an opening. Unexpected and ambiguous hits continue through normal prohibited
+grid and replan handling.
 
 ## Replan Diagnostics
 

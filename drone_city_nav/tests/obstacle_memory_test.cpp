@@ -335,6 +335,22 @@ TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
   EXPECT_FALSE(memory.rawGrid().isProhibited(GridIndex{8, 5}));
 }
 
+TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> ranges{4.0F};
+  ASSERT_EQ(memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {})
+                .occupied_cells_updated,
+            1U);
+  ASSERT_EQ(memory.countRawCells().occupied_cells, 1U);
+
+  memory.reset();
+
+  const GridCellCounts counts = memory.countRawCells();
+  EXPECT_EQ(counts.occupied_cells, 0U);
+  EXPECT_EQ(counts.free_cells, 0U);
+  EXPECT_EQ(counts.unknown_cells, memory.rawGrid().cellCount());
+}
+
 TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{5.0F};

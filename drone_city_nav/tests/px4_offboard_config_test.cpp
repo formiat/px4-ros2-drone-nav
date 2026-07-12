@@ -83,7 +83,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("known_passage_validation_max_diagnostics: 8"),
             std::string::npos);
-  EXPECT_NE(yaml.find("passage_traversal_lookahead_margin_m: 25.0"), std::string::npos);
+  EXPECT_NE(yaml.find("known_static_lidar_hit_range_tolerance_m: 0.5"),
+            std::string::npos);
+  EXPECT_EQ(yaml.find("passage_traversal_sensor_policy"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),
             std::string::npos);

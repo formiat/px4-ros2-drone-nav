@@ -3,7 +3,6 @@
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
-#include "drone_city_nav/passage_traversal_sensor_policy.hpp"
 #include "drone_city_nav/planner_core.hpp"
 
 #include <cstddef>
@@ -70,11 +69,9 @@ struct PlanningGridBuildResult {
   std::optional<OccupancyGrid2D> grid;
   std::optional<OccupancyGrid2D> planning_grid;
   std::optional<OccupancyGrid2D> current_lidar_grid;
-  std::optional<OccupancyGrid2D> filtered_memory_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};
   CurrentLidarOverlayStats current_lidar{};
-  PassageTraversalSensorPolicyStats passage_sensor_policy{};
   PlanningGridCacheStats cache{};
 };
 

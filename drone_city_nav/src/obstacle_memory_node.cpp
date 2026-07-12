@@ -1,4 +1,7 @@
 #include "drone_city_nav/grid_config.hpp"
+#include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
+#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -11,12 +14,18 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <exception>
+#include <filesystem>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -96,6 +105,62 @@ public:
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
+
+    const bool known_passages_enabled =
+        declare_parameter<bool>("known_passages_enabled", true);
+    const std::string known_passages_path = declare_parameter<std::string>(
+        "known_passages_path", "worlds/known_passages.passages3d");
+    known_static_lidar_hit_range_tolerance_m_ = std::clamp(
+        declare_parameter<double>("known_static_lidar_hit_range_tolerance_m", 0.5), 0.0,
+        100.0);
+    std::filesystem::path package_share_directory;
+    try {
+      package_share_directory =
+          ament_index_cpp::get_package_share_directory("drone_city_nav");
+    } catch (const std::exception& error) {
+      RCLCPP_ERROR(get_logger(),
+                   "Known passage package share lookup failed; classifier is "
+                   "fail-open: error='%s'",
+                   error.what());
+    }
+    const KnownPassageSourceResult known_passage_source = loadKnownPassageMapSource(
+        KnownPassageSourceConfig{known_passages_enabled, known_passages_path,
+                                 package_share_directory, frame_id_});
+    known_passages_resolved_path_ = known_passage_source.resolved_path;
+    if (known_passage_source.status == KnownPassageSourceStatus::kLoaded &&
+        known_passage_source.map.has_value() && known_passage_source.frame_matches) {
+      std::vector<KnownPassageSolidVolume> volumes =
+          knownPassageSolidVolumes(*known_passage_source.map);
+      if (!volumes.empty()) {
+        known_static_lidar_classifier_.emplace(
+            std::move(volumes), KnownStaticLidarHitClassifierConfig{
+                                    known_static_lidar_hit_range_tolerance_m_});
+        memory_->reset();
+      }
+    } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
+      RCLCPP_ERROR(get_logger(),
+                   "Known passage map load failed; classifier is fail-open: "
+                   "path='%s' error='%s'",
+                   known_passages_resolved_path_.string().c_str(),
+                   known_passage_source.error_message.c_str());
+    } else if (known_passage_source.map.has_value() &&
+               !known_passage_source.frame_matches) {
+      RCLCPP_ERROR(get_logger(),
+                   "Known passage frame mismatch; classifier is fail-open: "
+                   "path='%s' map_frame='%s' expected_frame='%s'",
+                   known_passages_resolved_path_.string().c_str(),
+                   known_passage_source.map->frame_id.c_str(), frame_id_.c_str());
+    }
+    RCLCPP_INFO(
+        get_logger(),
+        "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
+        "volumes=%zu tolerance=%.3fm",
+        known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
+        known_passages_resolved_path_.string().c_str(),
+        known_static_lidar_classifier_.has_value()
+            ? known_static_lidar_classifier_->volumeCount()
+            : 0U,
+        known_static_lidar_hit_range_tolerance_m_);
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -288,8 +353,10 @@ private:
     scan_view.lidar_mount_roll_rad = lidar_mount_roll_rad_;
     scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
     scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
-    const ObstacleMemoryStats stats =
-        memory_->integrateScan(scan_pose, scan_view, memory_config_);
+    const ObstacleMemoryStats stats = memory_->integrateScan(
+        scan_pose, scan_view, memory_config_,
+        known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
+                                                   : nullptr);
 
     if (!scan_seen_) {
       scan_seen_ = true;
@@ -313,7 +380,12 @@ private:
         "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
-        "occupied_updates=%zu raw[occupied=%zu free=%zu unknown=%zu]",
+        "occupied_updates=%zu "
+        "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
+        "parts[left=%zu right=%zu lower=%zu upper=%zu] "
+        "first_ignored=%s/%s/%s delta=%.3f "
+        "first_ambiguous=%s/%s/%s delta=%.3f] "
+        "raw[occupied=%zu free=%zu unknown=%zu]",
         current_pose_.pose.position.x, current_pose_.pose.position.y,
         current_pose_.altitude_m, current_pose_.pose.yaw_rad, scan_pose.position.x,
         scan_pose.position.y, motion_compensation.pose_lag_s,
@@ -323,8 +395,35 @@ private:
         attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
         stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
         stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated, raw_counts.occupied_cells, raw_counts.free_cells,
-        raw_counts.unknown_cells);
+        stats.occupied_cells_updated,
+        stats.known_static_lidar.expected_static_hits_ignored,
+        stats.known_static_lidar.unexpected_hits_kept,
+        stats.known_static_lidar.ambiguous_hits_kept,
+        stats.known_static_lidar.expected_static_by_part.left,
+        stats.known_static_lidar.expected_static_by_part.right,
+        stats.known_static_lidar.expected_static_by_part.lower,
+        stats.known_static_lidar.expected_static_by_part.upper,
+        stats.known_static_lidar.first_ignored.available
+            ? stats.known_static_lidar.first_ignored.structure_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ignored.available
+            ? stats.known_static_lidar.first_ignored.opening_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ignored.available
+            ? stats.known_static_lidar.first_ignored.part_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ignored.range_delta_m,
+        stats.known_static_lidar.first_ambiguous.available
+            ? stats.known_static_lidar.first_ambiguous.structure_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ambiguous.available
+            ? stats.known_static_lidar.first_ambiguous.opening_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ambiguous.available
+            ? stats.known_static_lidar.first_ambiguous.part_id.c_str()
+            : "<none>",
+        stats.known_static_lidar.first_ambiguous.range_delta_m,
+        raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
   }
 
   void logFirstPose(const char* source_name) {
@@ -393,6 +492,7 @@ private:
   }
 
   std::unique_ptr<ObstacleMemoryGrid> memory_;
+  std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   ObstacleMemoryConfig memory_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
   NavigationPose2D current_pose_{};
@@ -400,6 +500,8 @@ private:
   Point2 current_velocity_{};
 
   std::string frame_id_{"map"};
+  std::filesystem::path known_passages_resolved_path_;
+  double known_static_lidar_hit_range_tolerance_m_{0.5};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

@@ -27,8 +27,9 @@ structureLateralWidthM(const PassageStructure& structure) noexcept {
 void appendVolume(std::vector<KnownPassageSolidVolume>& volumes,
                   const PassageStructure& structure, const PassageOpening& opening,
                   const KnownPassageOpeningFrame& frame, const char* part_id,
-                  const Point2 center, const double depth_m, const double width_m,
-                  const double min_z_m, const double max_z_m) {
+                  const KnownPassageSolidPartKind part_kind, const Point2 center,
+                  const double depth_m, const double width_m, const double min_z_m,
+                  const double max_z_m) {
   if (!(depth_m > 0.0) || !(width_m > 0.0) || !(max_z_m > min_z_m)) {
     return;
   }
@@ -37,6 +38,7 @@ void appendVolume(std::vector<KnownPassageSolidVolume>& volumes,
       .structure_id = structure.id,
       .opening_id = opening.id,
       .part_id = part_id,
+      .part_kind = part_kind,
       .center = center,
       .normal_xy = frame.normal,
       .lateral_xy = frame.lateral,
@@ -60,18 +62,37 @@ void appendOpeningVolumes(std::vector<KnownPassageSolidVolume>& volumes,
   const double side_width_m = (lateral_width_m - opening.width_m) / 2.0;
   const double side_center_offset_m = (opening.width_m / 2.0) + (side_width_m / 2.0);
   appendVolume(volumes, structure, opening, *frame, "left_mass",
+               KnownPassageSolidPartKind::kLeft,
                add(frame->center, scale(frame->lateral, -side_center_offset_m)),
                opening.depth_m, side_width_m, structure.z_min_m, structure.z_max_m);
   appendVolume(volumes, structure, opening, *frame, "right_mass",
+               KnownPassageSolidPartKind::kRight,
                add(frame->center, scale(frame->lateral, side_center_offset_m)),
                opening.depth_m, side_width_m, structure.z_min_m, structure.z_max_m);
-  appendVolume(volumes, structure, opening, *frame, "lower_mass", frame->center,
-               opening.depth_m, opening.width_m, structure.z_min_m, opening.min_z_m);
-  appendVolume(volumes, structure, opening, *frame, "upper_mass", frame->center,
-               opening.depth_m, opening.width_m, opening.max_z_m, structure.z_max_m);
+  appendVolume(volumes, structure, opening, *frame, "lower_mass",
+               KnownPassageSolidPartKind::kLower, frame->center, opening.depth_m,
+               opening.width_m, structure.z_min_m, opening.min_z_m);
+  appendVolume(volumes, structure, opening, *frame, "upper_mass",
+               KnownPassageSolidPartKind::kUpper, frame->center, opening.depth_m,
+               opening.width_m, opening.max_z_m, structure.z_max_m);
 }
 
 } // namespace
+
+const char*
+knownPassageSolidPartKindName(const KnownPassageSolidPartKind kind) noexcept {
+  switch (kind) {
+    case KnownPassageSolidPartKind::kLeft:
+      return "left";
+    case KnownPassageSolidPartKind::kRight:
+      return "right";
+    case KnownPassageSolidPartKind::kLower:
+      return "lower";
+    case KnownPassageSolidPartKind::kUpper:
+      return "upper";
+  }
+  return "unknown";
+}
 
 std::vector<KnownPassageSolidVolume>
 knownPassageSolidVolumes(const PassageStructure& structure) {

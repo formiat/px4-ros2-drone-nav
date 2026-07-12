@@ -105,10 +105,10 @@ If the known passage source is disabled, empty, or fails to load, the planner
 publishes delete markers so stale passage objects disappear from RViz.
 
 RViz currently shows the annotated volumes and final trajectory, but it does
-not highlight matched, violated, or sensor-policy-filtered trajectory spans. Use
-trajectory diagnostics JSON and planner logs to inspect
+not highlight individual lidar hits suppressed by the known-static classifier.
+Use trajectory diagnostics JSON and planner/obstacle-memory logs to inspect
 `known_passage_validation[...]`, `known_passage_diagN_*`, and
-`passage_sensor_policy[...]` details.
+`known_static[...]` details.
 
 ## Reading The Colors
 

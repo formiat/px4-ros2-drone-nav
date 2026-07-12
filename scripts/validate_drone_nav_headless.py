@@ -96,6 +96,35 @@ def require_source_value(
     result.require(label, ros_log, source_value_pattern(source_name, expected_value))
 
 
+def validate_known_static_classifier_contract(
+    result: ValidationResult, ros_log: str
+) -> None:
+    matches = re.findall(
+        r"Known static lidar classifier: node=(obstacle_memory|planner) "
+        r"status=(\S+) path='([^']*)' volumes=(\d+) tolerance=([0-9.]+)m",
+        ros_log,
+    )
+    by_node = {
+        node: (status, path, int(volumes), float(tolerance))
+        for node, status, path, volumes, tolerance in matches
+    }
+    if "obstacle_memory" not in by_node or "planner" not in by_node:
+        result.fail("known-static classifier effective config is logged by both nodes")
+        return
+    result.ok_message("known-static classifier effective config is logged by both nodes")
+
+    obstacle_memory = by_node["obstacle_memory"]
+    planner = by_node["planner"]
+    if obstacle_memory[0] != "ready" or planner[0] != "ready":
+        result.fail("known-static classifier is ready in both nodes")
+    else:
+        result.ok_message("known-static classifier is ready in both nodes")
+    if obstacle_memory[1:] != planner[1:]:
+        result.fail("known-static classifier effective configs match")
+    else:
+        result.ok_message("known-static classifier effective configs match")
+
+
 def validate_logs(
     *,
     ros_log: str,
@@ -103,6 +132,9 @@ def validate_logs(
     options: ValidationOptions,
 ) -> ValidationResult:
     result = ValidationResult()
+
+    if options.expected_memory is True and options.expected_current_lidar is True:
+        validate_known_static_classifier_contract(result, ros_log)
 
     result.require("Gazebo world is ready", px4_log, r"Gazebo world is ready")
     result.require(
@@ -285,6 +317,27 @@ def validate_logs(
                 ros_log,
                 r"MISSION_RESULT success=true",
             )
+            passage_counts = re.search(
+                r"MISSION_RESULT success=true.*actual_passage_openings_seen=(\d+) "
+                r"known_passage_openings=(\d+)",
+                ros_log,
+            )
+            if passage_counts is None:
+                result.fail("mission result reports passage opening counts")
+            elif passage_counts.group(1) != passage_counts.group(2):
+                result.fail("all known passage openings are observed")
+            else:
+                result.ok_message("mission result reports passage opening counts")
+                result.ok_message("all known passage openings are observed")
+            if (
+                options.expected_memory is True
+                or options.expected_current_lidar is True
+            ):
+                result.require(
+                    "known-static classifier ignores physical passage masses",
+                    ros_log,
+                    r"known_static\[ignored=[1-9][0-9]*",
+                )
 
     if CRITICAL_PX4_PATTERN.search(px4_log):
         if not options.allow_mission_failure:
