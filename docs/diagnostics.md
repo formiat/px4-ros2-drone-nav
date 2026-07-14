@@ -84,10 +84,20 @@ Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
 `s`, overlap, clearance, reason, and validity for one capped span.
 
 Mission monitor logs also report `actual_passage_openings_seen`,
-`known_passage_openings`, and `min_actual_passage_margin` in `Mission summary`
-and `MISSION_RESULT` lines. These fields are runtime diagnostics only: ordinary
-building collision volumes still define whether the drone hit a solid part of a
-building, while an opening is just free space between those solid volumes.
+`known_passage_openings`, `min_actual_passage_clearance`, and
+`min_actual_passage_volume_margin` in `Mission summary` and `MISSION_RESULT`
+lines. The clearance metric is the minimum of lateral and vertical clearance
+while the actual vehicle position is inside an opening. The volume margin also
+includes depth to the entry/exit plane, so it is expected to approach zero for
+a normal traversal and must not be interpreted as wall clearance.
+
+At mission completion, one `actual_passage_opening_metrics` line is emitted per
+annotated opening. It contains the opening id, whether it was seen, the number
+of actual samples inside it, and independent minimum lateral, vertical,
+geometric, and volume margins. These fields are runtime diagnostics only:
+ordinary building collision volumes still define whether the drone hit a solid
+part of a building, while an opening is just free space between those solid
+volumes.
 
 Local passage insertion fields include:
 

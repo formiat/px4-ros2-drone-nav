@@ -39,6 +39,11 @@ struct MonitoredOpening {
   std::string id;
   PassageOpening opening{};
   KnownPassageOpeningFrame frame{};
+  double min_lateral_clearance_m{std::numeric_limits<double>::infinity()};
+  double min_vertical_clearance_m{std::numeric_limits<double>::infinity()};
+  double min_geometric_clearance_m{std::numeric_limits<double>::infinity()};
+  double min_volume_margin_m{std::numeric_limits<double>::infinity()};
+  std::size_t samples_inside{0U};
   bool seen{false};
 };
 
@@ -455,15 +460,52 @@ private:
         continue;
       }
 
-      min_actual_passage_margin_m_ = std::min(min_actual_passage_margin_m_, margin_m);
+      const double lateral_clearance_m =
+          knownPassageOpeningLateralClearanceM(local, monitored.frame);
+      const double vertical_clearance_m =
+          knownPassageOpeningVerticalClearanceM(local, monitored.opening);
+      const double geometric_clearance_m =
+          std::min(lateral_clearance_m, vertical_clearance_m);
+      const double depth_margin_m = monitored.frame.half_depth_m - std::abs(local.u_m);
+      ++monitored.samples_inside;
+      monitored.min_lateral_clearance_m =
+          std::min(monitored.min_lateral_clearance_m, lateral_clearance_m);
+      monitored.min_vertical_clearance_m =
+          std::min(monitored.min_vertical_clearance_m, vertical_clearance_m);
+      monitored.min_geometric_clearance_m =
+          std::min(monitored.min_geometric_clearance_m, geometric_clearance_m);
+      monitored.min_volume_margin_m = std::min(monitored.min_volume_margin_m, margin_m);
+      min_actual_passage_clearance_m_ =
+          std::min(min_actual_passage_clearance_m_, geometric_clearance_m);
+      min_actual_passage_volume_margin_m_ =
+          std::min(min_actual_passage_volume_margin_m_, margin_m);
       if (!monitored.seen) {
         monitored.seen = true;
         ++actual_passage_openings_seen_;
         RCLCPP_INFO(get_logger(),
                     "MISSION_CHECK actual_passage_opening_seen=true id='%s' "
-                    "position=(%.2f, %.2f) altitude=%.2f margin=%.2f",
-                    monitored.id.c_str(), position.x, position.y, altitude_m, margin_m);
+                    "position=(%.2f, %.2f) altitude=%.2f local=(depth=%.2f "
+                    "lateral=%.2f) depth_margin=%.2f lateral_clearance=%.2f "
+                    "vertical_clearance=%.2f geometric_clearance=%.2f "
+                    "volume_margin=%.2f",
+                    monitored.id.c_str(), position.x, position.y, altitude_m, local.u_m,
+                    local.v_m, depth_margin_m, lateral_clearance_m,
+                    vertical_clearance_m, geometric_clearance_m, margin_m);
       }
+    }
+  }
+
+  void logKnownPassageMetrics() const {
+    for (const MonitoredOpening& monitored : monitored_openings_) {
+      RCLCPP_INFO(get_logger(),
+                  "MISSION_CHECK actual_passage_opening_metrics id='%s' seen=%s "
+                  "samples_inside=%zu "
+                  "min_lateral_clearance=%.2f min_vertical_clearance=%.2f "
+                  "min_geometric_clearance=%.2f min_volume_margin=%.2f",
+                  monitored.id.c_str(), monitored.seen ? "true" : "false",
+                  monitored.samples_inside, monitored.min_lateral_clearance_m,
+                  monitored.min_vertical_clearance_m,
+                  monitored.min_geometric_clearance_m, monitored.min_volume_margin_m);
     }
   }
 
@@ -478,36 +520,41 @@ private:
 
   void reportSuccess() {
     result_reported_ = true;
+    logKnownPassageMetrics();
     RCLCPP_INFO(get_logger(),
                 "MISSION_RESULT success=true spawn_distance=%.2f "
                 "max_distance_from_start=%.2f min_goal_distance=%.2f "
                 "min_building_clearance=%.2f final_position=(%.2f, %.2f) "
                 "final_altitude=%.2f final_speed=%.2f max_observed_speed=%.2f "
                 "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
-                "known_passage_openings=%zu min_actual_passage_margin=%.2f",
+                "known_passage_openings=%zu min_actual_passage_clearance=%.2f "
+                "min_actual_passage_volume_margin=%.2f",
                 spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
                 min_building_clearance_m_, latest_position_.x, latest_position_.y,
                 latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
                 meanObservedSpeedMps(), actual_passage_openings_seen_,
-                monitored_openings_.size(), min_actual_passage_margin_m_);
+                monitored_openings_.size(), min_actual_passage_clearance_m_,
+                min_actual_passage_volume_margin_m_);
   }
 
   void reportFailure(const std::string& reason) {
     result_reported_ = true;
     publishEmergencyStop(reason);
+    logKnownPassageMetrics();
     RCLCPP_ERROR(get_logger(),
                  "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
                  "max_distance_from_start=%.2f min_goal_distance=%.2f "
                  "min_building_clearance=%.2f latest_position=(%.2f, %.2f) "
                  "latest_altitude=%.2f latest_speed=%.2f max_observed_speed=%.2f "
                  "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
-                 "known_passage_openings=%zu min_actual_passage_margin=%.2f",
+                 "known_passage_openings=%zu min_actual_passage_clearance=%.2f "
+                 "min_actual_passage_volume_margin=%.2f",
                  reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
                  min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
                  latest_position_.y, latest_altitude_m_, latest_speed_mps_,
                  max_observed_speed_mps_, meanObservedSpeedMps(),
                  actual_passage_openings_seen_, monitored_openings_.size(),
-                 min_actual_passage_margin_m_);
+                 min_actual_passage_clearance_m_, min_actual_passage_volume_margin_m_);
   }
 
   void publishEmergencyStop(const std::string& reason) {
@@ -531,14 +578,15 @@ private:
         "max_observed_speed=%.2f mean_observed_speed=%.2f "
         "distance_to_start=%.2f distance_to_goal=%.2f max_distance_from_start=%.2f "
         "min_building_clearance=%.2f actual_passage_openings_seen=%zu/%zu "
-        "min_actual_passage_margin=%.2f",
+        "min_actual_passage_clearance=%.2f min_actual_passage_volume_margin=%.2f",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
         armed_seen ? "true" : "false", latest_position_.x, latest_position_.y,
         latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
         meanObservedSpeedMps(), distance(latest_position_, start_),
         distance(latest_position_, goal_), max_distance_from_start_m_,
         min_building_clearance_m_, actual_passage_openings_seen_,
-        monitored_openings_.size(), min_actual_passage_margin_m_);
+        monitored_openings_.size(), min_actual_passage_clearance_m_,
+        min_actual_passage_volume_margin_m_);
   }
 
   [[nodiscard]] double meanObservedSpeedMps() const noexcept {
@@ -568,7 +616,8 @@ private:
   double max_distance_from_start_m_{0.0};
   double min_goal_distance_m_{std::numeric_limits<double>::infinity()};
   double min_building_clearance_m_{std::numeric_limits<double>::infinity()};
-  double min_actual_passage_margin_m_{std::numeric_limits<double>::infinity()};
+  double min_actual_passage_clearance_m_{std::numeric_limits<double>::infinity()};
+  double min_actual_passage_volume_margin_m_{std::numeric_limits<double>::infinity()};
   double latest_speed_mps_{std::numeric_limits<double>::infinity()};
   double latest_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double max_altitude_m_{0.0};
