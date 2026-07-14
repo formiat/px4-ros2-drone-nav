@@ -241,6 +241,7 @@ Key pages:
 - `docs/gazebo_simulation.md`
 - `docs/architecture.md`
 - `docs/navigation_pipeline.md`
+- `docs/known_passages.md`
 - `docs/trajectory_optimization.md`
 - `docs/drone_control.md`
 - `docs/terminal_capture.md`

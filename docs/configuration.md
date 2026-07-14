@@ -90,6 +90,9 @@ publish RViz markers, validate whether the final executable trajectory crosses a
 known structure footprint through an allowed opening volume, and provide the
 known-solid geometry for the lidar classifier.
 
+See `known_passages.md` for the complete physical-world, trajectory, runtime,
+and diagnostic contract.
+
 Known passage structures are not encoded into the 2D static obstacle map as hard
 blocking cells. The 2D planner must be able to route through the footprint when
 a valid 3D opening is annotated; RViz shows those volumes through

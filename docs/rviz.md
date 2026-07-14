@@ -84,8 +84,10 @@ visualizes, and validates them against the published trajectory. During active
 The same annotations define known physical solids for the always-on 3D lidar
 classifier before dynamic evidence is recorded. Confident matching solid hits
 are suppressed; closer, free-opening, and ambiguous hits are preserved. The
-annotations do not change the route, trajectory optimizer, speed profile, or
-controller, and validation failures do not reject the path by themselves.
+classifier itself does not change A* route preference or static-map cells.
+Separate known-passage stages can locally repair final XY geometry, add a
+vertical profile, and cap traversal speed. Validation failures remain
+diagnostic/repair input and do not reject a path by themselves.
 
 The RViz `Known Passages` display subscribes to:
 

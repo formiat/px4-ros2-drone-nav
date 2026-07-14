@@ -71,11 +71,12 @@ This project is not currently intended to provide:
 - support for arbitrary simulator versions outside the repository container.
 
 The planner still performs XY obstacle avoidance and trajectory shaping in a
-2D navigation representation. Executable trajectory samples now also carry
-`z_m`, seeded from `initial_altitude_m` before takeoff and from current vehicle
-altitude after takeoff, so RViz paths, markers, and dumps can represent the
-trajectory in 3D. Known-passage vertical profiling can change that altitude, and
-terminal position capture holds the current altitude latched at terminal entry.
+2D navigation representation. Executable trajectory samples also carry `z_m`,
+seeded from `initial_altitude_m` before takeoff and from current vehicle
+altitude after takeoff. Known-passage local XY repair and vertical profiling
+can modify the final executable trajectory; passage windows can also constrain
+runtime speed. Terminal position capture holds the current altitude latched at
+terminal entry.
 
 Known 3D passages are loaded as annotations. Architectural passage structures,
 opening frames, opening centers, approach arrows, and exit arrows are published
@@ -85,8 +86,9 @@ annotations also define known physical solids for the always-on 3D
 lidar classifier. It suppresses only a confident range match to a known solid;
 closer hits, free-opening hits, and boundary or ambiguous hits remain dynamic
 obstacles. The classifier does not detect passages, filter static-map cells, or
-change A*, corridor construction, trajectory geometry, speed profile, or
-offboard control.
+change A* route preferences. The separate annotated-passage stages can locally
+repair final XY geometry, add a vertical profile, and constrain speed while an
+opening is traversed.
 
 ## Important Terms
 
@@ -98,8 +100,9 @@ offboard control.
   paths and trajectories. Entering the planning-clearance margin is not itself
   a replan reason.
 - Executable trajectory: the accepted path that the offboard controller tracks.
-  Its geometry and speed profile are currently XY-owned, while `z_m` is a
-  representation/debug altitude for RViz and diagnostics.
+  Its global routing and curvature profile are XY-owned; each sample also
+  carries `z_m`, and known passages can add local XY repair, vertical
+  constraints, and a passage traversal speed cap.
 - Known passage: a pre-annotated 3D passage structure and opening that can be
   visualized, validated, and used as known-solid geometry by the lidar
   classifier.
@@ -116,6 +119,8 @@ offboard control.
 - `rviz.md` explains visualization layers.
 - `architecture.md` explains nodes and data flow.
 - `navigation_pipeline.md` explains planner stages.
+- `known_passages.md` explains physical openings, annotations, lidar filtering,
+  passage insertion, vertical profiling, and their diagnostics.
 - `trajectory_optimization.md` explains smoothing and optimization.
 - `drone_control.md` explains offboard trajectory following.
 - `terminal_capture.md` explains final-goal behavior.

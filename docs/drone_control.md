@@ -30,6 +30,16 @@ trajectory vertical profile when one is present. During terminal position
 capture, the position setpoint keeps the current altitude latched at terminal
 entry instead of returning to a configured cruise altitude.
 
+For a known architectural passage, the executable trajectory can contain an
+upcoming hard altitude window and a selected gate altitude. The vertical
+follower tracks that smooth profile through `vz`; vertical speed, acceleration,
+jerk, and climb-angle limits still apply. The horizontal speed policy caps
+known-passage traversal speed, and vertical trackability can temporarily reduce
+horizontal speed when the actual altitude cannot reach the hard window in time.
+This is a runtime safeguard; the planner is responsible for starting the
+vertical transition early and holding the target altitude before entry. See
+`known_passages.md` for the full passage contract.
+
 The controller uses a predicted position:
 
 ```text

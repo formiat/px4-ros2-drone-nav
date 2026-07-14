@@ -148,6 +148,11 @@ physically in `generated_city.sdf`, but they are intentionally absent from
 3D geometry is represented by `known_passages.passages3d`, and the executable
 trajectory layer validates/profiles the actual opening traversal.
 
+The SDF and annotation file are separate but coupled artifacts. Update both in
+the same change, keep passage structures out of `.map2d`, and run the passage
+contract test. `known_passages.md` describes the exact physical, planning,
+lidar, and collision semantics.
+
 When editing a world, verify:
 
 - ordinary building positions and sizes in Gazebo;

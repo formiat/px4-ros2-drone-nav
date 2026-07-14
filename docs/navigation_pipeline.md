@@ -18,6 +18,9 @@ built, the planner validates whether it crosses any known structure footprint
 through an allowed opening volume and reports the result in logs and trajectory
 diagnostics.
 
+See `known_passages.md` for the physical-world, lidar, local XY repair, and
+vertical-profile contracts for these annotations.
+
 Known passages also provide physical-solid geometry to the always-on 3D lidar
 classifier. Before current lidar or accumulated memory records a new hit, the
 classifier suppresses only a confident range match to a known physical mass.
@@ -107,10 +110,11 @@ Local passage insertion is an optional repair stage for known 3D passages. It
 runs after optimizer, turn smoothing, and isolated geometry cleanup, but before
 vertical profile and speed profile construction.
 
-The stage is enabled by default. It only targets known-passage validation spans
-where the current XY trajectory intersects a known structure
-but misses the opening corridor. It builds a local smooth XY segment through
-the opening, stitches it back into the original trajectory, recomputes
+The stage is enabled by default. It targets known-passage spans where the
+current XY trajectory intersects a known structure but misses the opening
+corridor, and can also repair a matched traversal with less than the configured
+preferred lateral margin. It builds a local smooth XY segment through the
+opening, stitches it back into the original trajectory, recomputes
 sample stationing/tangent/curvature, and accepts the result only if:
 
 - the full stitched trajectory remains traversable on the prohibited grid;

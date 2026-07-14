@@ -42,6 +42,12 @@ A closer hit, a hit through a free opening, and a boundary or otherwise
 ambiguous hit remains in the overlay. This decision is independent of the
 current trajectory and distance to a passage.
 
+The same decision is applied before a hit changes obstacle-memory scores. It is
+range-based rather than a blanket spatial exclusion around an opening, so an
+unknown object in front of a known wall or inside free opening space remains
+obstacle evidence. `known_passages.md` documents the 3D ray construction,
+asymmetric tolerances, and memory-reset behavior when known geometry changes.
+
 ## Obstacle Memory
 
 `obstacle_memory_node` accumulates scan evidence into
