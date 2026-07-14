@@ -68,13 +68,20 @@ class TopicContractTest(unittest.TestCase):
         self,
     ) -> None:
         yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
-        tolerances = re.findall(
-            r"^\s+known_static_lidar_hit_range_tolerance_m:\s*([0-9.]+)\s*$",
+        closer_tolerances = re.findall(
+            r"^\s+known_static_lidar_hit_closer_range_tolerance_m:\s*([0-9.]+)\s*$",
+            yaml_text,
+            re.M,
+        )
+        farther_tolerances = re.findall(
+            r"^\s+known_static_lidar_hit_farther_range_tolerance_m:\s*([0-9.]+)\s*$",
             yaml_text,
             re.M,
         )
 
-        self.assertEqual(tolerances, ["0.5", "0.5"])
+        self.assertEqual(closer_tolerances, ["0.5", "0.5"])
+        self.assertEqual(farther_tolerances, ["1.5", "1.5"])
+        self.assertNotIn("known_static_lidar_hit_range_tolerance_m", yaml_text)
         self.assertNotIn("passage_traversal_sensor_policy", yaml_text)
         self.assertNotIn("passage_traversal_activation_margin", yaml_text)
         self.assertNotIn("passage_traversal_lookahead_margin", yaml_text)

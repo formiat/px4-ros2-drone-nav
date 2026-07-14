@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -29,6 +30,7 @@ struct CurrentLidarOverlayStats {
   std::size_t overlay_occupied_cells_preserved{0U};
   std::size_t outside_hits{0U};
   KnownStaticLidarHitStats known_static_lidar{};
+  std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
 };
 
 [[nodiscard]] std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid,

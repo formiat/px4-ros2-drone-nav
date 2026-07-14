@@ -68,7 +68,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 0.75);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.5);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
-  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_range_tolerance_m, 0.5);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 0.5);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 1.5);
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);
@@ -228,7 +229,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"known_passage_validation_max_diagnostics", 5000},
        rclcpp::Parameter{"known_passage_traversal_speed_limit_mps", 9999.0},
-       rclcpp::Parameter{"known_static_lidar_hit_range_tolerance_m", 9999.0},
+       rclcpp::Parameter{"known_static_lidar_hit_closer_range_tolerance_m", 9999.0},
+       rclcpp::Parameter{"known_static_lidar_hit_farther_range_tolerance_m", 9999.0},
        rclcpp::Parameter{"vertical_profile_preferred_gate_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"passage_insertion_sample_step_m", -1.0},
        rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", -1.0},
@@ -304,7 +306,8 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 1.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
-  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_range_tolerance_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 100.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
       100.0);

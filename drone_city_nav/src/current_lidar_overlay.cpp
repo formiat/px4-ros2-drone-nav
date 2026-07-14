@@ -5,6 +5,11 @@
 #include <algorithm>
 
 namespace drone_city_nav {
+namespace {
+
+constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
+
+} // namespace
 
 std::size_t markCurrentLidarObstacle(OccupancyGrid2D& grid, const Point2 endpoint) {
   const auto endpoint_cell = grid.worldToCell(endpoint);
@@ -50,6 +55,7 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     }
 
     ++stats.hit_beams;
+    const auto endpoint_cell = current_lidar_grid.worldToCell(projection.endpoint);
     if (classifier != nullptr) {
       const KnownStaticLidarHitResult classification =
           classifier->classify(projection.ray_origin_map_m,
@@ -58,6 +64,18 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
       if (classification.classification ==
           KnownStaticLidarHitClassification::kExpectedStatic) {
         continue;
+      }
+      if (endpoint_cell.has_value() && stats.retained_known_static_hits.size() <
+                                           kMaxRetainedKnownStaticHitDiagnostics) {
+        if (const std::optional<KnownStaticLidarHitProvenance> provenance =
+                makeKnownStaticLidarHitProvenance(
+                    classification,
+                    Point3{projection.endpoint.x, projection.endpoint.y,
+                           projection.endpoint_altitude_m},
+                    endpoint_cell->x, endpoint_cell->y);
+            provenance.has_value()) {
+          stats.retained_known_static_hits.push_back(*provenance);
+        }
       }
     }
     const std::size_t occupied_cells =

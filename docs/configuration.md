@@ -59,7 +59,8 @@ Known passages:
 - `known_passage_validation_min_opening_depth_fraction`
 - `known_passage_validation_clearance_margin_m`
 - `known_passage_validation_max_diagnostics`
-- `known_static_lidar_hit_range_tolerance_m`
+- `known_static_lidar_hit_closer_range_tolerance_m`
+- `known_static_lidar_hit_farther_range_tolerance_m`
 - `vertical_profile_preferred_gate_clearance_margin_m`
 - `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
@@ -75,13 +76,14 @@ Known passages:
 - `passage_insertion_max_candidates`
 - `passage_insertion_max_diagnostics`
 
-`known_static_lidar_hit_range_tolerance_m` is configured identically for the
-planner and obstacle-memory nodes. The always-on 3D classifier compares each
-measured hit range with the nearest known passage-building solid. Confident hits
-on known `left`, `right`, `lower`, or `upper` masses are excluded from the
-dynamic obstacle layer. Closer, opening-volume, boundary, and otherwise
-ambiguous hits remain obstacles. Missing geometry or invalid 3D pose is
-fail-open.
+The closer and farther tolerances are configured identically for the planner
+and obstacle-memory nodes. The always-on 3D classifier compares each measured
+hit range with the nearest known passage-building solid. A hit materially
+closer than the known surface remains obstacle evidence. A later return can
+still match the same known collision surface within the bounded farther
+tolerance, accounting for Gazebo collision/projection disagreement. Opening,
+boundary, and otherwise ambiguous hits remain obstacles. Missing geometry or
+invalid 3D pose is fail-open.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
@@ -130,11 +132,12 @@ building collision volumes:
   `opening_volume_miss` when its lateral/vertical clearance is below this
   margin.
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
-- `known_static_lidar_hit_range_tolerance_m` controls the maximum range delta
-  for suppressing a confident hit on a known `left`, `right`, `lower`, or
-  `upper` physical mass. It must have the same effective value in planner and
-  obstacle-memory node configuration. A hit closer than the expected solid, a
-  hit through the opening, or a geometrically ambiguous hit is retained.
+- `known_static_lidar_hit_closer_range_tolerance_m` bounds how much closer a
+  hit may be before it is retained as an unknown object in front of the known
+  solid.
+- `known_static_lidar_hit_farther_range_tolerance_m` bounds a later return
+  still treated as the known collision surface. It must have the same effective
+  value in planner and obstacle-memory node configuration.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.

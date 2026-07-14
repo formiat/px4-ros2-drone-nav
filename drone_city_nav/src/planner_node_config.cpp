@@ -70,9 +70,14 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
                                    "known_passage_validation_max_diagnostics", 8),
                                0, 100));
-  config.known_static_lidar_hit_range_tolerance_m = std::clamp(
-      node.declare_parameter<double>("known_static_lidar_hit_range_tolerance_m", 0.5),
-      0.0, 100.0);
+  config.known_static_lidar_hit_closer_range_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
+                 0.0, 100.0);
+  config.known_static_lidar_hit_farther_range_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
+                 0.0, 100.0);
   config.trajectory_planner.known_passage_validation = config.known_passage_validation;
   config.trajectory_planner.vertical_profile.enabled =
       node.declare_parameter<bool>("vertical_profile_enabled", true);

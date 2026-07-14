@@ -54,6 +54,7 @@ struct ObstacleMemoryStats {
   std::size_t free_cells_updated{0U};
   std::size_t occupied_cells_updated{0U};
   KnownStaticLidarHitStats known_static_lidar{};
+  std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
 };
 
 struct GridCellCounts {

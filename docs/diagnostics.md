@@ -118,6 +118,12 @@ static lidar classifier:
 - ignored hit counts for `left`, `right`, `lower`, and `upper` masses;
 - the first ignored structure/opening/part identity and range delta.
 
+For retained current-lidar evidence, prohibited-intersection logs additionally
+include a bounded `known_static_hit` record when it is available. It identifies
+the matched structure/opening/part, grid cell, endpoint XYZ, measured range,
+expected range, and signed range delta. Obstacle memory logs the equivalent
+bounded retained-hit diagnostic for cross-process correlation.
+
 The classifier is independent of the active trajectory and drone proximity to
 an opening. Unexpected and ambiguous hits continue through normal prohibited
 grid and replan handling.

@@ -168,8 +168,13 @@ KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
     KnownStaticLidarHitClassifierConfig config)
     : volumes_{std::move(volumes)},
       config_{config} {
-  if (!std::isfinite(config_.range_tolerance_m) || config_.range_tolerance_m < 0.0) {
-    config_.range_tolerance_m = 0.5;
+  if (!std::isfinite(config_.closer_range_tolerance_m) ||
+      config_.closer_range_tolerance_m < 0.0) {
+    config_.closer_range_tolerance_m = 0.5;
+  }
+  if (!std::isfinite(config_.farther_range_tolerance_m) ||
+      config_.farther_range_tolerance_m < 0.0) {
+    config_.farther_range_tolerance_m = 1.5;
   }
 }
 
@@ -215,9 +220,9 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
   if (!nearest->confident_face_interior) {
     return result;
   }
-  if (measured_range_m < nearest->range_m - config_.range_tolerance_m) {
+  if (measured_range_m < nearest->range_m - config_.closer_range_tolerance_m) {
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
-  } else if (std::abs(result.range_delta_m) <= config_.range_tolerance_m) {
+  } else if (measured_range_m <= nearest->range_m + config_.farther_range_tolerance_m) {
     result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
   }
   return result;
@@ -227,8 +232,33 @@ std::size_t KnownStaticLidarHitClassifier::volumeCount() const noexcept {
   return volumes_.size();
 }
 
-double KnownStaticLidarHitClassifier::rangeToleranceM() const noexcept {
-  return config_.range_tolerance_m;
+double KnownStaticLidarHitClassifier::closerRangeToleranceM() const noexcept {
+  return config_.closer_range_tolerance_m;
+}
+
+double KnownStaticLidarHitClassifier::fartherRangeToleranceM() const noexcept {
+  return config_.farther_range_tolerance_m;
+}
+
+std::optional<KnownStaticLidarHitProvenance>
+makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
+                                  const Point3& endpoint_map_m, const int cell_x,
+                                  const int cell_y) {
+  if (!result.volume_matched || !finitePoint3(endpoint_map_m)) {
+    return std::nullopt;
+  }
+  return KnownStaticLidarHitProvenance{
+      .classification = result.classification,
+      .structure_id = std::string{result.structure_id},
+      .opening_id = std::string{result.opening_id},
+      .part_id = std::string{result.part_id},
+      .cell_x = cell_x,
+      .cell_y = cell_y,
+      .endpoint_map_m = endpoint_map_m,
+      .measured_range_m = result.expected_range_m + result.range_delta_m,
+      .expected_range_m = result.expected_range_m,
+      .range_delta_m = result.range_delta_m,
+  };
 }
 
 void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,

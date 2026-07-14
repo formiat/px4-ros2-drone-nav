@@ -9,6 +9,8 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
+
 struct ClippedSegment {
   Point2 end{};
   bool clipped{false};
@@ -202,6 +204,18 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       if (classification.classification ==
           KnownStaticLidarHitClassification::kExpectedStatic) {
         continue;
+      }
+      if (stats.retained_known_static_hits.size() <
+          kMaxRetainedKnownStaticHitDiagnostics) {
+        if (const std::optional<KnownStaticLidarHitProvenance> provenance =
+                makeKnownStaticLidarHitProvenance(
+                    classification,
+                    Point3{projection.endpoint.x, projection.endpoint.y,
+                           projection.endpoint_altitude_m},
+                    endpoint_cell->x, endpoint_cell->y);
+            provenance.has_value()) {
+          stats.retained_known_static_hits.push_back(*provenance);
+        }
       }
     }
 

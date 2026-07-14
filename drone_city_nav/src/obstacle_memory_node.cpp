@@ -110,9 +110,14 @@ public:
         declare_parameter<bool>("known_passages_enabled", true);
     const std::string known_passages_path = declare_parameter<std::string>(
         "known_passages_path", "worlds/known_passages.passages3d");
-    known_static_lidar_hit_range_tolerance_m_ = std::clamp(
-        declare_parameter<double>("known_static_lidar_hit_range_tolerance_m", 0.5), 0.0,
-        100.0);
+    known_static_lidar_hit_closer_range_tolerance_m_ =
+        std::clamp(declare_parameter<double>(
+                       "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
+                   0.0, 100.0);
+    known_static_lidar_hit_farther_range_tolerance_m_ =
+        std::clamp(declare_parameter<double>(
+                       "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
+                   0.0, 100.0);
     std::filesystem::path package_share_directory;
     try {
       package_share_directory =
@@ -133,8 +138,12 @@ public:
           knownPassageSolidVolumes(*known_passage_source.map);
       if (!volumes.empty()) {
         known_static_lidar_classifier_.emplace(
-            std::move(volumes), KnownStaticLidarHitClassifierConfig{
-                                    known_static_lidar_hit_range_tolerance_m_});
+            std::move(volumes),
+            KnownStaticLidarHitClassifierConfig{
+                .closer_range_tolerance_m =
+                    known_static_lidar_hit_closer_range_tolerance_m_,
+                .farther_range_tolerance_m =
+                    known_static_lidar_hit_farther_range_tolerance_m_});
         memory_->reset();
       }
     } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
@@ -154,13 +163,14 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
-        "volumes=%zu tolerance=%.3fm",
+        "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm",
         known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
         known_passages_resolved_path_.string().c_str(),
         known_static_lidar_classifier_.has_value()
             ? known_static_lidar_classifier_->volumeCount()
             : 0U,
-        known_static_lidar_hit_range_tolerance_m_);
+        known_static_lidar_hit_closer_range_tolerance_m_,
+        known_static_lidar_hit_farther_range_tolerance_m_);
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -424,6 +434,22 @@ private:
             : "<none>",
         stats.known_static_lidar.first_ambiguous.range_delta_m,
         raw_counts.occupied_cells, raw_counts.free_cells, raw_counts.unknown_cells);
+    if (!stats.retained_known_static_hits.empty()) {
+      const KnownStaticLidarHitProvenance& provenance =
+          stats.retained_known_static_hits.front();
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Obstacle memory retained known-static lidar hit: classification=%s "
+          "structure=%s opening=%s part=%s cell=(%d, %d) endpoint=(%.2f, %.2f, %.2f) "
+          "measured_range=%.3f expected_range=%.3f delta=%.3f diagnostics=%zu",
+          knownStaticLidarHitClassificationName(provenance.classification),
+          provenance.structure_id.c_str(), provenance.opening_id.c_str(),
+          provenance.part_id.c_str(), provenance.cell_x, provenance.cell_y,
+          provenance.endpoint_map_m.x, provenance.endpoint_map_m.y,
+          provenance.endpoint_map_m.z, provenance.measured_range_m,
+          provenance.expected_range_m, provenance.range_delta_m,
+          stats.retained_known_static_hits.size());
+    }
   }
 
   void logFirstPose(const char* source_name) {
@@ -501,7 +527,8 @@ private:
 
   std::string frame_id_{"map"};
   std::filesystem::path known_passages_resolved_path_;
-  double known_static_lidar_hit_range_tolerance_m_{0.5};
+  double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
+  double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

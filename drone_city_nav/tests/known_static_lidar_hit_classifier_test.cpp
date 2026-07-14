@@ -30,11 +30,14 @@ makeVolume(const KnownPassageSolidPartKind kind = KnownPassageSolidPartKind::kUp
 
 [[nodiscard]] KnownStaticLidarHitClassifier
 makeClassifier(KnownPassageSolidVolume volume = makeVolume(),
-               const double tolerance_m = 0.5) {
+               const double closer_tolerance_m = 0.5,
+               const double farther_tolerance_m = 1.5) {
   std::vector<KnownPassageSolidVolume> volumes;
   volumes.push_back(std::move(volume));
   return KnownStaticLidarHitClassifier{
-      std::move(volumes), KnownStaticLidarHitClassifierConfig{tolerance_m}};
+      std::move(volumes), KnownStaticLidarHitClassifierConfig{
+                              .closer_range_tolerance_m = closer_tolerance_m,
+                              .farther_range_tolerance_m = farther_tolerance_m}};
 }
 
 } // namespace
@@ -67,10 +70,20 @@ TEST(KnownStaticLidarHitClassifier, FartherRangeIsAmbiguousAndRetained) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
   const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 5.0);
+      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.0);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_TRUE(result.volume_matched);
+}
+
+TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherTolerance) {
+  const KnownStaticLidarHitClassifier classifier = makeClassifier();
+
+  const KnownStaticLidarHitResult result =
+      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 5.4);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
+  EXPECT_NEAR(result.range_delta_m, 1.4, 1.0e-9);
 }
 
 TEST(KnownStaticLidarHitClassifier, RayThroughFreeOpeningIsUnexpected) {
@@ -168,8 +181,8 @@ TEST(KnownStaticLidarHitClassifier, InvalidRayFailsOpen) {
 }
 
 TEST(KnownStaticLidarHitClassifier, GeometricAmbiguityDoesNotDependOnRangeTolerance) {
-  const KnownStaticLidarHitClassifier narrow = makeClassifier(makeVolume(), 0.01);
-  const KnownStaticLidarHitClassifier wide = makeClassifier(makeVolume(), 2.0);
+  const KnownStaticLidarHitClassifier narrow = makeClassifier(makeVolume(), 0.01, 0.01);
+  const KnownStaticLidarHitClassifier wide = makeClassifier(makeVolume(), 2.0, 2.0);
 
   const KnownStaticLidarHitResult narrow_result =
       narrow.classify(Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);

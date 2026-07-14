@@ -1,5 +1,6 @@
 #include <array>
 #include <optional>
+#include <ranges>
 
 #include "planner_node.hpp"
 
@@ -92,6 +93,17 @@ nearestRawSource(const std::array<RawSourceProbe, 3U>& sources,
   return nearest;
 }
 
+[[nodiscard]] const KnownStaticLidarHitProvenance*
+findCurrentLidarProvenance(const CurrentLidarOverlayStats& stats,
+                           const GridIndex cell) {
+  const auto iter = std::ranges::find_if(
+      stats.retained_known_static_hits,
+      [cell](const KnownStaticLidarHitProvenance& provenance) {
+        return provenance.cell_x == cell.x && provenance.cell_y == cell.y;
+      });
+  return iter == stats.retained_known_static_hits.end() ? nullptr : &*iter;
+}
+
 } // namespace
 
 void PlannerNode::invalidateCurrentPose() {
@@ -150,6 +162,25 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
          << (planning_result.current_lidar.used ? "true" : "false")
          << " current_lidar_fresh="
          << (planning_result.current_lidar.fresh ? "true" : "false") << "]";
+  if (nearest_source.has_value() &&
+      std::string_view{nearest_source->name} == "current_lidar") {
+    if (const KnownStaticLidarHitProvenance* provenance = findCurrentLidarProvenance(
+            planning_result.current_lidar, nearest_source->cell);
+        provenance != nullptr) {
+      stream << " known_static_hit[classification="
+             << knownStaticLidarHitClassificationName(provenance->classification)
+             << " structure=" << provenance->structure_id
+             << " opening=" << provenance->opening_id << " part=" << provenance->part_id
+             << " cell=(" << provenance->cell_x << ", " << provenance->cell_y
+             << ") endpoint=(" << provenance->endpoint_map_m.x << ", "
+             << provenance->endpoint_map_m.y << ", " << provenance->endpoint_map_m.z
+             << ") measured_range=" << provenance->measured_range_m
+             << " expected_range=" << provenance->expected_range_m
+             << " delta=" << provenance->range_delta_m << "]";
+    } else {
+      stream << " known_static_hit[unavailable]";
+    }
+  }
   return stream.str();
 }
 

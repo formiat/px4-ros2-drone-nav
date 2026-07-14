@@ -198,6 +198,47 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
   EXPECT_EQ(overlay_stats.occupied_cells, 1U);
   EXPECT_EQ(memory_stats.known_static_lidar.unexpected_hits_kept, 1U);
   EXPECT_EQ(overlay_stats.known_static_lidar.unexpected_hits_kept, 1U);
+  ASSERT_EQ(memory_stats.retained_known_static_hits.size(), 1U);
+  ASSERT_EQ(overlay_stats.retained_known_static_hits.size(), 1U);
+  EXPECT_EQ(memory_stats.retained_known_static_hits.front().classification,
+            KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(overlay_stats.retained_known_static_hits.front().classification,
+            KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_NEAR(memory_stats.retained_known_static_hits.front().measured_range_m, 4.0,
+              1.0e-6);
+  EXPECT_NEAR(overlay_stats.retained_known_static_hits.front().measured_range_m, 4.0,
+              1.0e-6);
+}
+
+TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths) {
+  const IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0);
+  const LidarBeamProjection expected_projection =
+      projectLidarBeam(test_case.pose, test_case.config, 0.1, 20.0, 0.0, 0.1, 0U, 6.0F);
+  std::vector<KnownPassageSolidVolume> volumes;
+  volumes.push_back(volumeAtRange(expected_projection, test_case.kind, 6.0));
+  const KnownStaticLidarHitClassifier classifier{
+      std::move(volumes),
+      KnownStaticLidarHitClassifierConfig{.closer_range_tolerance_m = 0.5,
+                                          .farther_range_tolerance_m = 1.5}};
+  const std::array<float, 1U> ranges{7.4F};
+  const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
+
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats = memory.integrateScan(
+      Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+      memoryScan(ranges, test_case), ObstacleMemoryConfig{}, &classifier);
+  OccupancyGrid2D overlay_grid{bounds};
+  const CurrentLidarOverlayStats overlay_stats =
+      overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 20.0, 0.0, 0.1},
+                              test_case.pose, test_case.config, &classifier);
+
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+  EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_TRUE(memory_stats.retained_known_static_hits.empty());
+  EXPECT_TRUE(overlay_stats.retained_known_static_hits.empty());
 }
 
 TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedByBothPaths) {

@@ -217,13 +217,14 @@ void PlannerNode::loadConfiguredKnownPassages() {
   const auto log_classifier = [this]() {
     RCLCPP_INFO(get_logger(),
                 "Known static lidar classifier: node=planner status=%s path='%s' "
-                "volumes=%zu tolerance=%.3fm",
+                "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm",
                 known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
                 known_passages_resolved_path_.string().c_str(),
                 known_static_lidar_classifier_.has_value()
                     ? known_static_lidar_classifier_->volumeCount()
                     : 0U,
-                known_static_lidar_hit_range_tolerance_m_);
+                known_static_lidar_hit_closer_range_tolerance_m_,
+                known_static_lidar_hit_farther_range_tolerance_m_);
   };
 
   if (result.status == KnownPassageSourceStatus::kDisabled) {
@@ -266,8 +267,12 @@ void PlannerNode::loadConfiguredKnownPassages() {
         knownPassageSolidVolumes(*known_passages_);
     if (!volumes.empty()) {
       known_static_lidar_classifier_.emplace(
-          std::move(volumes), KnownStaticLidarHitClassifierConfig{
-                                  known_static_lidar_hit_range_tolerance_m_});
+          std::move(volumes),
+          KnownStaticLidarHitClassifierConfig{
+              .closer_range_tolerance_m =
+                  known_static_lidar_hit_closer_range_tolerance_m_,
+              .farther_range_tolerance_m =
+                  known_static_lidar_hit_farther_range_tolerance_m_});
     }
   }
   RCLCPP_INFO(get_logger(),

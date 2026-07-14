@@ -71,7 +71,8 @@ struct PlannerNodeConfig {
   StaticMapSourceConfig static_map{};
   KnownPassageSourceConfig known_passages{};
   KnownPassageValidationConfig known_passage_validation{};
-  double known_static_lidar_hit_range_tolerance_m{0.5};
+  double known_static_lidar_hit_closer_range_tolerance_m{0.5};
+  double known_static_lidar_hit_farther_range_tolerance_m{1.5};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

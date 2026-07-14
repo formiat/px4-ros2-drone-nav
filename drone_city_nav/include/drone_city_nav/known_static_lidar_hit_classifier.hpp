@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,7 +19,12 @@ enum class KnownStaticLidarHitClassification {
 };
 
 struct KnownStaticLidarHitClassifierConfig {
-  double range_tolerance_m{0.5};
+  // Keep a tighter limit for a hit before a known surface so an unknown object
+  // in front of the building remains obstacle evidence.
+  double closer_range_tolerance_m{0.5};
+  // Gazebo collision and projection timing can place a known-surface return
+  // slightly behind its analytic intersection.
+  double farther_range_tolerance_m{1.5};
 };
 
 struct KnownStaticLidarHitResult {
@@ -39,6 +45,20 @@ struct KnownStaticLidarHitDiagnostic {
   std::string structure_id;
   std::string opening_id;
   std::string part_id;
+  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct KnownStaticLidarHitProvenance {
+  KnownStaticLidarHitClassification classification{
+      KnownStaticLidarHitClassification::kAmbiguous};
+  std::string structure_id;
+  std::string opening_id;
+  std::string part_id;
+  int cell_x{-1};
+  int cell_y{-1};
+  Point3 endpoint_map_m{};
+  double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
+  double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
@@ -68,7 +88,8 @@ public:
            double measured_range_m) const noexcept;
 
   [[nodiscard]] std::size_t volumeCount() const noexcept;
-  [[nodiscard]] double rangeToleranceM() const noexcept;
+  [[nodiscard]] double closerRangeToleranceM() const noexcept;
+  [[nodiscard]] double fartherRangeToleranceM() const noexcept;
 
 private:
   std::vector<KnownPassageSolidVolume> volumes_;
@@ -77,6 +98,10 @@ private:
 
 void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,
                                KnownStaticLidarHitStats& stats);
+
+[[nodiscard]] std::optional<KnownStaticLidarHitProvenance>
+makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
+                                  const Point3& endpoint_map_m, int cell_x, int cell_y);
 
 [[nodiscard]] const char* knownStaticLidarHitClassificationName(
     KnownStaticLidarHitClassification classification) noexcept;
