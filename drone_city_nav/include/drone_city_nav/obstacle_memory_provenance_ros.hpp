@@ -126,8 +126,8 @@ public:
   insert(MemoryProvenanceSnapshot snapshot);
 
   [[nodiscard]] std::vector<MemoryProvenanceAuditOutcome>
-  terminate(const MemoryGridSnapshotIdentity& identity,
-            MemoryProvenanceUnavailableReason reason);
+  observeUnavailable(const MemoryGridSnapshotIdentity& identity,
+                     MemoryProvenanceUnavailableReason reason);
 
   [[nodiscard]] MemoryProvenanceAuditResult
   audit(const nav_msgs::msg::OccupancyGrid& grid, std::optional<GridIndex> cell,
@@ -146,8 +146,13 @@ private:
     GridIndex cell{};
     std::shared_ptr<const std::vector<std::size_t>> occupied_cells;
     std::size_t newer_snapshot_count{0U};
-    std::optional<MemoryGridSnapshotIdentity> last_newer_snapshot_identity;
+    std::int64_t latest_newer_stamp_ns{0};
   };
+
+  [[nodiscard]] std::vector<MemoryProvenanceAuditOutcome>
+  observeIdentity(const MemoryGridSnapshotIdentity& identity,
+                  const MemoryProvenanceSnapshot* snapshot,
+                  MemoryProvenanceUnavailableReason exact_unavailable_reason);
 
   std::size_t pending_capacity_{256U};
   std::size_t retention_horizon_{kMemoryProvenanceTransportDepth};

@@ -38,8 +38,9 @@ void PlannerNode::onMemoryProvenance(const msg::ObstacleMemoryProvenance& messag
     latest_memory_provenance_error_ = parsed.reason;
     if (const auto identity = memoryProvenanceMessageIdentity(message);
         identity.has_value()) {
-      logAuditOutcomes(get_logger(), memory_provenance_audit_tracker_.terminate(
-                                         *identity, parsed.reason));
+      logAuditOutcomes(get_logger(),
+                       memory_provenance_audit_tracker_.observeUnavailable(
+                           *identity, parsed.reason));
     }
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,

@@ -503,12 +503,67 @@ TEST(ObstacleMemoryProvenanceRos,
   ASSERT_TRUE(identity.has_value());
 
   const std::vector<MemoryProvenanceAuditOutcome> outcomes =
-      tracker.terminate(identity.value(), parsed.reason); // NOLINT
+      tracker.observeUnavailable(identity.value(), parsed.reason); // NOLINT
   ASSERT_EQ(outcomes.size(), 1U);
   EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
   EXPECT_EQ(outcomes.front().reason, MemoryProvenanceUnavailableReason::kMalformed);
   EXPECT_EQ(outcomes.front().diagnostic,
             "memory_provenance[status=unavailable reason=malformed]");
+  EXPECT_EQ(tracker.pendingAuditCount(), 0U);
+}
+
+TEST(ObstacleMemoryProvenanceRos,
+     MalformedNewerIdentitiesAdvanceHorizonWithoutDuplicateOrOutOfOrderCredit) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  MemoryProvenanceAuditTracker tracker{4U, 256U, 2U};
+  const MemoryProvenanceAuditResult pending = tracker.audit(grid, GridIndex{2, 0});
+  ASSERT_TRUE(pending.pending_audit_id.has_value());
+
+  const auto malformedIdentityAt = [](const std::int32_t sec,
+                                      const std::uint32_t nanosec) {
+    nav_msgs::msg::OccupancyGrid newer_grid = makeGrid();
+    newer_grid.header.stamp.sec = sec;
+    newer_grid.header.stamp.nanosec = nanosec;
+    newer_grid.info.map_load_time = newer_grid.header.stamp;
+    msg::ObstacleMemoryProvenance message =
+        makeObstacleMemoryProvenanceMessage(newer_grid, makeProvenance());
+    message.cells.front().accepted_hit_count = 0U;
+    const MemoryProvenanceParseResult parsed =
+        parseObstacleMemoryProvenanceMessage(message);
+    EXPECT_FALSE(parsed.snapshot.has_value());
+    EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kMalformed);
+    return memoryProvenanceMessageIdentity(message);
+  };
+
+  const std::optional<MemoryGridSnapshotIdentity> newer = malformedIdentityAt(13, 0U);
+  ASSERT_TRUE(newer.has_value());
+  EXPECT_TRUE(tracker
+                  .observeUnavailable(newer.value(), // NOLINT
+                                      MemoryProvenanceUnavailableReason::kMalformed)
+                  .empty());
+  EXPECT_TRUE(tracker
+                  .observeUnavailable(newer.value(), // NOLINT
+                                      MemoryProvenanceUnavailableReason::kMalformed)
+                  .empty());
+
+  const std::optional<MemoryGridSnapshotIdentity> out_of_order =
+      malformedIdentityAt(12, 500U);
+  ASSERT_TRUE(out_of_order.has_value());
+  EXPECT_TRUE(tracker
+                  .observeUnavailable(out_of_order.value(), // NOLINT
+                                      MemoryProvenanceUnavailableReason::kMalformed)
+                  .empty());
+  EXPECT_EQ(tracker.pendingAuditCount(), 1U);
+
+  const std::optional<MemoryGridSnapshotIdentity> horizon = malformedIdentityAt(14, 0U);
+  ASSERT_TRUE(horizon.has_value());
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes =
+      tracker.observeUnavailable(horizon.value(), // NOLINT
+                                 MemoryProvenanceUnavailableReason::kMalformed);
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().reason,
+            MemoryProvenanceUnavailableReason::kHistoryExpired);
   EXPECT_EQ(tracker.pendingAuditCount(), 0U);
 }
 

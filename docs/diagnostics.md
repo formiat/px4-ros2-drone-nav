@@ -152,8 +152,9 @@ snapshot arrives on its independent ROS topic, the planner emits an unthrottled
 `audit_id` and the full cell record. Repeated replans against the same snapshot
 and cell reuse one pending audit id. A malformed message with the exact identity
 terminates that id as `status=unavailable reason=malformed`. If the exact message
-is lost, receiving 32 distinct newer provenance snapshots exhausts the reliable
-transport retention horizon and terminates the id with
+is lost, receiving 32 strictly newer identity-bearing provenance messages,
+including malformed payloads, exhausts the reliable transport retention horizon
+and terminates the id with
 `reason=history_expired`. Planning never waits for either outcome. Pending queue
 capacity eviction is also reported explicitly as `status=evicted`.
 

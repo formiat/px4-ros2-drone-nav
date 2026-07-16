@@ -64,41 +64,54 @@ MemoryProvenanceAuditTracker::MemoryProvenanceAuditTracker(
 
 std::vector<MemoryProvenanceAuditOutcome>
 MemoryProvenanceAuditTracker::insert(MemoryProvenanceSnapshot snapshot) {
+  std::vector<MemoryProvenanceAuditOutcome> outcomes =
+      observeIdentity(snapshot.identity, &snapshot,
+                      MemoryProvenanceUnavailableReason::kContentMismatch);
+  cache_.insert(std::move(snapshot));
+  return outcomes;
+}
+
+std::vector<MemoryProvenanceAuditOutcome>
+MemoryProvenanceAuditTracker::observeUnavailable(
+    const MemoryGridSnapshotIdentity& identity,
+    const MemoryProvenanceUnavailableReason reason) {
+  return observeIdentity(identity, nullptr, reason);
+}
+
+std::vector<MemoryProvenanceAuditOutcome> MemoryProvenanceAuditTracker::observeIdentity(
+    const MemoryGridSnapshotIdentity& identity,
+    const MemoryProvenanceSnapshot* const snapshot,
+    const MemoryProvenanceUnavailableReason exact_unavailable_reason) {
   std::vector<MemoryProvenanceAuditOutcome> outcomes;
   auto pending = pending_audits_.begin();
   while (pending != pending_audits_.end()) {
-    if (identitiesEqual(pending->identity, snapshot.identity)) {
-      if (pending->occupied_cells != nullptr &&
-          snapshotMatchesOccupiedCells(snapshot, *pending->occupied_cells)) {
+    if (identitiesEqual(pending->identity, identity)) {
+      if (snapshot != nullptr && pending->occupied_cells != nullptr &&
+          snapshotMatchesOccupiedCells(*snapshot, *pending->occupied_cells)) {
         outcomes.push_back(MemoryProvenanceAuditOutcome{
             .audit_id = pending->audit_id,
-            .identity = snapshot.identity,
+            .identity = identity,
             .cell = pending->cell,
             .reason = MemoryProvenanceUnavailableReason::kNone,
             .diagnostic = formatMemoryProvenanceDiagnostic(
-                MemoryProvenanceMatchResult{&snapshot,
+                MemoryProvenanceMatchResult{snapshot,
                                             MemoryProvenanceUnavailableReason::kNone},
                 pending->cell),
         });
       } else {
-        outcomes.push_back(makeUnavailableOutcome(
-            pending->audit_id, pending->identity, pending->cell,
-            MemoryProvenanceUnavailableReason::kContentMismatch));
+        outcomes.push_back(makeUnavailableOutcome(pending->audit_id, pending->identity,
+                                                  pending->cell,
+                                                  exact_unavailable_reason));
       }
       pending = pending_audits_.erase(pending);
       continue;
     }
 
-    const bool newer_identity = snapshot.identity.stamp_valid &&
-                                pending->identity.stamp_valid &&
-                                snapshot.identity.stamp_ns > pending->identity.stamp_ns;
-    const bool distinct_newer_identity =
-        newer_identity &&
-        (!pending->last_newer_snapshot_identity.has_value() ||
-         !identitiesEqual(pending->last_newer_snapshot_identity.value(), // NOLINT
-                          snapshot.identity));
-    if (distinct_newer_identity) {
-      pending->last_newer_snapshot_identity = snapshot.identity;
+    const bool advances_horizon = identity.stamp_valid &&
+                                  pending->identity.stamp_valid &&
+                                  identity.stamp_ns > pending->latest_newer_stamp_ns;
+    if (advances_horizon) {
+      pending->latest_newer_stamp_ns = identity.stamp_ns;
       ++pending->newer_snapshot_count;
     }
     if (pending->newer_snapshot_count < retention_horizon_) {
@@ -108,24 +121,6 @@ MemoryProvenanceAuditTracker::insert(MemoryProvenanceSnapshot snapshot) {
     outcomes.push_back(
         makeUnavailableOutcome(pending->audit_id, pending->identity, pending->cell,
                                MemoryProvenanceUnavailableReason::kHistoryExpired));
-    pending = pending_audits_.erase(pending);
-  }
-  cache_.insert(std::move(snapshot));
-  return outcomes;
-}
-
-std::vector<MemoryProvenanceAuditOutcome> MemoryProvenanceAuditTracker::terminate(
-    const MemoryGridSnapshotIdentity& identity,
-    const MemoryProvenanceUnavailableReason reason) {
-  std::vector<MemoryProvenanceAuditOutcome> outcomes;
-  auto pending = pending_audits_.begin();
-  while (pending != pending_audits_.end()) {
-    if (!identitiesEqual(pending->identity, identity)) {
-      ++pending;
-      continue;
-    }
-    outcomes.push_back(makeUnavailableOutcome(pending->audit_id, pending->identity,
-                                              pending->cell, reason));
     pending = pending_audits_.erase(pending);
   }
   return outcomes;
@@ -190,7 +185,7 @@ MemoryProvenanceAuditResult MemoryProvenanceAuditTracker::audit(
         .cell = *cell,
         .occupied_cells = std::move(occupied_cells),
         .newer_snapshot_count = 0U,
-        .last_newer_snapshot_identity = std::nullopt,
+        .latest_newer_stamp_ns = identity.stamp_ns,
     });
     result.pending_audit_id = audit_id;
   }

@@ -136,9 +136,10 @@ provenance topics; planning was not delayed. A matched outcome contains endpoint
 XYZ, attitude, measured/expected ranges, delta, and selected ingestion surface.
 An unavailable outcome explains why exact correlation became impossible:
 `malformed`, `content_mismatch`, or `history_expired` after 32 distinct newer
-snapshots. `status=evicted reason=capacity_evicted` is a separate bounded-queue
-failure. None of these unavailable outcomes proves anything about the blocker
-surface.
+message identities. Malformed messages advance this horizon when their identity
+is valid; duplicates and out-of-order identities do not. `status=evicted
+reason=capacity_evicted` is a separate bounded-queue failure. None of these
+unavailable outcomes proves anything about the blocker surface.
 
 ## A* Does Not Find A Path
 
