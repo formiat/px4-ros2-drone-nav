@@ -111,6 +111,23 @@ Check:
 
 Use lidar debug snapshots and the static map analyzer script.
 
+If downward lidar returns cause false replans, inspect both
+`Obstacle memory lidar decisions` and `Planner current lidar decisions`:
+
+- `expected_ground` should rise when the tilted lidar sees the physical ground;
+- `closer_retained` means a return was materially before the expected ground or
+  known static surface and was intentionally kept;
+- `ground_unavailable` indicates invalid ground configuration, missing altitude,
+  or missing attitude required by compensated 3D projection;
+- `non_ground_altitude_rejected` identifies the legacy altitude gate rather than
+  ground rejection.
+
+Compare the bounded sample's measured range, expected range, endpoint Z, and
+ray direction. Do not add a global tilt cutoff to hide the symptom: ordinary
+high-speed flight can use the same roll/pitch angles. Verify that
+`ground_lidar_altitude_m` matches the physical ground surface and that both
+nodes log the same effective tolerances.
+
 ## A* Does Not Find A Path
 
 Check:

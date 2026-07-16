@@ -78,14 +78,51 @@ class TopicContractTest(unittest.TestCase):
             yaml_text,
             re.M,
         )
+        ground_enabled = re.findall(
+            r"^\s+ground_lidar_rejection_enabled:\s*(true|false)\s*$",
+            yaml_text,
+            re.M,
+        )
+        ground_altitudes = re.findall(
+            r"^\s+ground_lidar_altitude_m:\s*([-0-9.]+)\s*$", yaml_text, re.M
+        )
+        ground_closer = re.findall(
+            r"^\s+ground_lidar_closer_range_tolerance_m:\s*([0-9.]+)\s*$",
+            yaml_text,
+            re.M,
+        )
+        ground_farther = re.findall(
+            r"^\s+ground_lidar_farther_range_tolerance_m:\s*([0-9.]+)\s*$",
+            yaml_text,
+            re.M,
+        )
 
         self.assertEqual(closer_tolerances, ["0.5", "0.5"])
         self.assertEqual(farther_tolerances, ["1.5", "1.5"])
+        self.assertEqual(ground_enabled, ["true", "true"])
+        self.assertEqual(ground_altitudes, ["0.05", "0.05"])
+        self.assertEqual(ground_closer, ["0.5", "0.5"])
+        self.assertEqual(ground_farther, ["1.5", "1.5"])
+        self.assertNotIn("lidar_mapping_tilt_cutoff", yaml_text)
         self.assertNotIn("known_static_lidar_hit_range_tolerance_m", yaml_text)
         self.assertNotIn("passage_traversal_sensor_policy", yaml_text)
         self.assertNotIn("passage_traversal_activation_margin", yaml_text)
         self.assertNotIn("passage_traversal_lookahead_margin", yaml_text)
         self.assertNotIn("passage_traversal_expected_wall_margin", yaml_text)
+
+    def test_ground_rejection_has_one_shared_formula_and_no_tilt_cutoff(self) -> None:
+        source_paths = sorted((REPO_ROOT / "drone_city_nav" / "src").glob("*.cpp"))
+        source_text = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+
+        self.assertEqual(
+            source_text.count("(config.ground_altitude_m - origin.z) / direction.z"),
+            1,
+        )
+        self.assertNotRegex(
+            source_text,
+            r"tilt.{0,40}(suspend|disable|ignore)|"
+            r"(suspend|disable|ignore).{0,40}tilt",
+        )
 
     def test_runtime_files_do_not_reference_removed_inflated_memory_topic(self) -> None:
         checked_paths = [

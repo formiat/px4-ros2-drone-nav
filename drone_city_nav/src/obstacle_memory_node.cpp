@@ -153,6 +153,14 @@ public:
         std::clamp(declare_parameter<double>(
                        "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
                    0.0, 100.0);
+    ground_lidar_rejection_config_.enabled =
+        declare_parameter<bool>("ground_lidar_rejection_enabled", true);
+    ground_lidar_rejection_config_.ground_altitude_m =
+        declare_parameter<double>("ground_lidar_altitude_m", 0.05);
+    ground_lidar_rejection_config_.closer_range_tolerance_m =
+        declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
+    ground_lidar_rejection_config_.farther_range_tolerance_m =
+        declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
     std::filesystem::path package_share_directory;
     try {
       package_share_directory =
@@ -207,6 +215,37 @@ public:
             : 0U,
         known_static_lidar_hit_closer_range_tolerance_m_,
         known_static_lidar_hit_farther_range_tolerance_m_);
+    const bool ground_config_valid =
+        std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
+        std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
+        ground_lidar_rejection_config_.closer_range_tolerance_m >= 0.0 &&
+        std::isfinite(ground_lidar_rejection_config_.farther_range_tolerance_m) &&
+        ground_lidar_rejection_config_.farther_range_tolerance_m >= 0.0 &&
+        std::isfinite(memory_config_.max_lidar_range_m) &&
+        memory_config_.max_lidar_range_m > 0.0;
+    const char* ground_status = "ready";
+    if (!ground_lidar_rejection_config_.enabled) {
+      ground_status = "disabled";
+    } else if (!ground_config_valid) {
+      ground_status = "unavailable";
+    }
+    if (ground_lidar_rejection_config_.enabled && !ground_config_valid) {
+      RCLCPP_WARN(
+          get_logger(),
+          "Ground lidar classifier: node=obstacle_memory status=%s "
+          "ground_altitude=%.3fm closer_tolerance=%.3fm farther_tolerance=%.3fm",
+          ground_status, ground_lidar_rejection_config_.ground_altitude_m,
+          ground_lidar_rejection_config_.closer_range_tolerance_m,
+          ground_lidar_rejection_config_.farther_range_tolerance_m);
+    } else {
+      RCLCPP_INFO(
+          get_logger(),
+          "Ground lidar classifier: node=obstacle_memory status=%s "
+          "ground_altitude=%.3fm closer_tolerance=%.3fm farther_tolerance=%.3fm",
+          ground_status, ground_lidar_rejection_config_.ground_altitude_m,
+          ground_lidar_rejection_config_.closer_range_tolerance_m,
+          ground_lidar_rejection_config_.farther_range_tolerance_m);
+    }
 
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
@@ -413,7 +452,8 @@ private:
     const ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
         known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
-                                                   : nullptr);
+                                                   : nullptr,
+        &ground_lidar_rejection_config_);
 
     for (const ObstacleMemoryOccupiedTransition& transition :
          stats.occupied_transitions) {
@@ -557,6 +597,44 @@ private:
           provenance.expected_range_m, provenance.range_delta_m,
           stats.retained_known_static_hits.size());
     }
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Obstacle memory lidar decisions: expected_ground=%zu closer_retained=%zu "
+        "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
+        "non_ground_altitude_rejected=%zu diagnostics=%zu",
+        stats.ingestion_decisions.expected_ground_suppressed,
+        stats.ingestion_decisions.closer_obstacles_retained,
+        stats.ingestion_decisions.ambiguous_ground_suppressed,
+        stats.ingestion_decisions.ground_classification_unavailable,
+        stats.ingestion_decisions.ground_classification_disabled,
+        stats.ingestion_decisions.non_ground_altitude_rejected,
+        stats.ingestion_decisions.diagnostics.size());
+    if (!stats.ingestion_decisions.diagnostics.empty()) {
+      const LidarIngestionDecisionDiagnostic& diagnostic =
+          stats.ingestion_decisions.diagnostics.front();
+      const LidarBeamObservation& observation = diagnostic.observation;
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Obstacle memory lidar decision sample: reason=%s surface=%s beam=%zu "
+          "endpoint=(%.3f, %.3f, %.3f) measured=%.3f expected=%.3f delta=%.3f "
+          "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
+          "source_attitude=(valid=%s roll=%.3f pitch=%.3f tilt=%.3f)",
+          lidarIngestionReasonName(diagnostic.reason),
+          lidarExpectedSurfaceKindName(diagnostic.expected_surface),
+          observation.beam_index, observation.projection.endpoint_map_m.x,
+          observation.projection.endpoint_map_m.y,
+          observation.projection.endpoint_map_m.z, observation.measured_range_m,
+          diagnostic.expected_range_m, diagnostic.range_delta_m,
+          observation.projection.ray_origin_map_m.x,
+          observation.projection.ray_origin_map_m.y,
+          observation.projection.ray_origin_map_m.z,
+          observation.projection.ray_direction_map.x,
+          observation.projection.ray_direction_map.y,
+          observation.projection.ray_direction_map.z,
+          observation.source_attitude_valid ? "true" : "false",
+          observation.source_roll_rad, observation.source_pitch_rad,
+          observation.source_tilt_rad);
+    }
   }
 
   void logFirstPose(const char* source_name) {
@@ -646,6 +724,7 @@ private:
   std::optional<KnownPassageMap> known_passage_map_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   ObstacleMemoryConfig memory_config_{};
+  GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};
   NavigationPose2D current_pose_{};
   AttitudeEuler current_attitude_{};

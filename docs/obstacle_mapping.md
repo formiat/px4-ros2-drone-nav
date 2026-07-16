@@ -106,6 +106,52 @@ Lidar projection can account for:
 The same concepts appear in obstacle memory, planner current lidar overlay, and
 lidar debug configuration.
 
+## Per-Beam Expected-Surface Rejection
+
+Obstacle memory and the planner current-lidar overlay share one immutable
+`LidarBeamObservation` and one ingestion decision before either path changes a
+grid. The decision compares the measured range with the nearest expected 3D
+surface along the map-frame ray. Providers currently include known passage
+solids and the configured flat ground plane.
+
+Ground rejection is range based, not endpoint-distance based and not a global
+vehicle-tilt cutoff. A fast level-flight attitude therefore does not disable
+lidar mapping. For a downward ray, the expected flat-ground range is computed
+from the ray origin, ray direction, and `ground_lidar_altitude_m`:
+
+```text
+expected_ground_range =
+    (ground_altitude - ray_origin.z) / ray_direction.z
+```
+
+The resulting policy is asymmetric:
+
+- a hit clearly before every nearest expected surface remains unknown-obstacle
+  evidence;
+- a return consistent with the ground is suppressed;
+- a ground-facing return beyond the allowed farther tolerance is ambiguous and
+  is also suppressed fail-safe;
+- a ground-facing no-return beam whose finite sensor range reaches the ground
+  is suppressed;
+- expected or ambiguous ground beams perform neither endpoint-hit integration
+  nor 2D free-space clearing.
+
+The last rule is essential. A downward 3D ray passes through air before reaching
+the ground, but its XY projection does not prove that the same cells are free at
+the executable trajectory altitude.
+
+Provider failures are isolated. Disabling ground rejection is reported as
+`disabled`; invalid ground parameters or missing required 3D attitude geometry
+are reported as `unavailable`. In either case known-static classification still
+runs. When multiple expected surfaces have effectively equal nearest ranges, a
+hit is retained only if it is clearly before every tied candidate; otherwise no
+grid update is applied.
+
+The projected-altitude filter remains a final non-mutating veto. Ground and
+known-static classification happens first for diagnostics, including beams
+whose endpoint is below `min_projected_lidar_altitude_m`, but an
+`altitude_rejected` beam still cannot mutate either grid.
+
 ## Raw, Prohibited, And Planning Clearance
 
 Raw obstacles are direct evidence. The planner merges raw sources and produces:
@@ -194,6 +240,12 @@ classifier never filters static-map cells and never changes A* route selection.
 It only prevents known physical masses from becoming new dynamic evidence; a
 real object before a wall or inside an opening still follows normal prohibited
 grid and replan behavior.
+
+The ground provider follows the same shared decision path but does not add a 3D
+planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells
+carry sparse diagnostic 3D provenance from the observation that created and
+last confirmed the cell; rejected ground observations are kept only in bounded
+counters/log samples and never become obstacle-memory provenance.
 
 ## Inflation And Distance Fields
 

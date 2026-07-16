@@ -575,6 +575,45 @@ void PlannerNode::checkCurrentPathAndPublish() {
       path_result->prohibited_clearance_field_cache_hit ? "true" : "false",
       path_result->raw_path_clearance_duration_ms,
       path_result->smoothed_path_clearance_duration_ms);
+  const LidarIngestionDecisionStats& lidar_decisions =
+      planning_result->current_lidar.ingestion_decisions;
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Planner current lidar decisions: expected_ground=%zu closer_retained=%zu "
+      "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
+      "non_ground_altitude_rejected=%zu diagnostics=%zu",
+      lidar_decisions.expected_ground_suppressed,
+      lidar_decisions.closer_obstacles_retained,
+      lidar_decisions.ambiguous_ground_suppressed,
+      lidar_decisions.ground_classification_unavailable,
+      lidar_decisions.ground_classification_disabled,
+      lidar_decisions.non_ground_altitude_rejected, lidar_decisions.diagnostics.size());
+  if (!lidar_decisions.diagnostics.empty()) {
+    const LidarIngestionDecisionDiagnostic& diagnostic =
+        lidar_decisions.diagnostics.front();
+    const LidarBeamObservation& observation = diagnostic.observation;
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Planner current lidar decision sample: reason=%s surface=%s beam=%zu "
+        "endpoint=(%.3f, %.3f, %.3f) measured=%.3f expected=%.3f delta=%.3f "
+        "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
+        "source_attitude=(valid=%s roll=%.3f pitch=%.3f tilt=%.3f)",
+        lidarIngestionReasonName(diagnostic.reason),
+        lidarExpectedSurfaceKindName(diagnostic.expected_surface),
+        observation.beam_index, observation.projection.endpoint_map_m.x,
+        observation.projection.endpoint_map_m.y,
+        observation.projection.endpoint_map_m.z, observation.measured_range_m,
+        diagnostic.expected_range_m, diagnostic.range_delta_m,
+        observation.projection.ray_origin_map_m.x,
+        observation.projection.ray_origin_map_m.y,
+        observation.projection.ray_origin_map_m.z,
+        observation.projection.ray_direction_map.x,
+        observation.projection.ray_direction_map.y,
+        observation.projection.ray_direction_map.z,
+        observation.source_attitude_valid ? "true" : "false",
+        observation.source_roll_rad, observation.source_pitch_rad,
+        observation.source_tilt_rad);
+  }
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Path smoothing diagnostics: input_points=%zu output_points=%zu "

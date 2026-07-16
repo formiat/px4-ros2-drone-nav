@@ -357,6 +357,7 @@ private:
   double static_map_debug_publish_period_s_{1.0};
   double known_passage_debug_publish_period_s_{1.0};
   KnownPassageValidationConfig known_passage_validation_config_{};
+  GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};

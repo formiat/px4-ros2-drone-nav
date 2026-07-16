@@ -194,9 +194,8 @@ For every usable lidar return, both ingestion paths perform the same process:
    roll, pitch, yaw, lidar mount orientation, and lidar offset;
 2. construct known solid volumes from the annotation: `left_mass`,
    `right_mass`, `lower_mass`, and `upper_mass` as applicable;
-3. intersect the ray with the nearest known solid and calculate its expected
-   range;
-4. compare the measured and expected range before writing the hit to either
+3. query the nearest expected known solid and flat-ground intersections;
+4. compare the measured and nearest expected range before writing the hit to either
    the current lidar overlay or accumulated obstacle memory.
 
 The decision is asymmetric:
@@ -219,8 +218,15 @@ that is actually in front of a known wall.
 This classifier operates for every new scan, independent of the active route
 or distance to an opening. It never edits static-map cells, never changes A*
 preferences, and never removes arbitrary cells from obstacle memory. If known
-passage geometry changes, obstacle memory is reset because existing 2D memory
-cells have no retained altitude or beam provenance.
+passage geometry changes, obstacle memory is reset so existing 2D evidence and
+its sparse 3D provenance cannot survive under a different geometry contract.
+
+The flat-ground provider is independent of passage annotations. Expected and
+ambiguous ground-facing beams create neither occupied evidence nor free-space
+clearing. A hit clearly before both a ground and known-solid candidate remains
+an obstacle. If the nearest candidates tie and the hit is not clearly before
+all of them, the decision suppresses all grid mutation rather than selecting an
+arbitrary provider.
 
 ## Collision, Mission Outcome, And Diagnostics
 

@@ -36,6 +36,10 @@ obstacle_memory_node:
     known_passages_path: worlds/known_passages.passages3d
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
+    ground_lidar_rejection_enabled: true
+    ground_lidar_altitude_m: 0.05
+    ground_lidar_closer_range_tolerance_m: 0.5
+    ground_lidar_farther_range_tolerance_m: 1.5
     scan_stride: 1
     hit_weight: 4
     miss_weight: 1
@@ -92,6 +96,10 @@ planner_node:
     known_passage_validation_max_diagnostics: 8
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
+    ground_lidar_rejection_enabled: true
+    ground_lidar_altitude_m: 0.05
+    ground_lidar_closer_range_tolerance_m: 0.5
+    ground_lidar_farther_range_tolerance_m: 1.5
     vertical_profile_enabled: true
     vertical_profile_gate_clearance_margin_m: 0.5
     vertical_profile_preferred_gate_clearance_margin_m: 2.0

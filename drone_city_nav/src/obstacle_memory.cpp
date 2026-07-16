@@ -101,53 +101,6 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
   return counts;
 }
 
-[[nodiscard]] KnownStaticClassificationSnapshot
-makeClassificationSnapshot(const bool classifier_applied,
-                           const KnownStaticLidarHitResult& classification) {
-  return KnownStaticClassificationSnapshot{
-      .classifier_applied = classifier_applied,
-      .classification = classification.classification,
-      .volume_matched = classification.volume_matched,
-      .confident_face_interior = classification.confident_face_interior,
-      .part_kind_valid = classification.volume_matched,
-      .part_kind = classification.part_kind,
-      .structure_id = std::string{classification.structure_id},
-      .opening_id = std::string{classification.opening_id},
-      .part_id = std::string{classification.part_id},
-      .expected_range_m = classification.expected_range_m,
-      .range_delta_m = classification.range_delta_m,
-  };
-}
-
-[[nodiscard]] LidarBeamObservation
-makeBeamObservation(const LaserScan2DView& scan, const std::size_t beam_index,
-                    const LidarBeamProjection& projection) {
-  const LidarBeamTimestamp acquisition_stamp =
-      lidarBeamAcquisitionTimestamp(scan.timing, beam_index);
-  const bool source_attitude_valid = scan.attitude_valid &&
-                                     std::isfinite(scan.roll_rad) &&
-                                     std::isfinite(scan.pitch_rad);
-  return LidarBeamObservation{
-      .beam_index = beam_index,
-      .acquisition_stamp_ns = acquisition_stamp.stamp_ns,
-      .acquisition_stamp_valid = acquisition_stamp.valid,
-      .receive_stamp_ns = scan.timing.receive_stamp_ns,
-      .receive_stamp_valid = scan.timing.receive_stamp_valid,
-      .projection = projection,
-      .measured_range_m = projection.used_range_m,
-      .source_attitude_valid = source_attitude_valid,
-      .source_roll_rad = source_attitude_valid
-                             ? scan.roll_rad
-                             : std::numeric_limits<double>::quiet_NaN(),
-      .source_pitch_rad = source_attitude_valid
-                              ? scan.pitch_rad
-                              : std::numeric_limits<double>::quiet_NaN(),
-      .source_tilt_rad = source_attitude_valid
-                             ? std::hypot(scan.roll_rad, scan.pitch_rad)
-                             : std::numeric_limits<double>::quiet_NaN(),
-  };
-}
-
 [[nodiscard]] MemoryCellProvenance
 makeCellProvenance(const GridIndex cell, const AcceptedObstacleMemoryHit& hit) {
   MemoryCellProvenance provenance{
@@ -189,33 +142,6 @@ void updateCellProvenance(MemoryCellProvenance& provenance,
 
 } // namespace
 
-LidarBeamTimestamp
-lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
-                              const std::size_t beam_index) noexcept {
-  if (!timing.first_beam_stamp_valid || timing.first_beam_stamp_ns <= 0) {
-    return {};
-  }
-  if (beam_index == 0U) {
-    return LidarBeamTimestamp{timing.first_beam_stamp_ns, true};
-  }
-  if (!std::isfinite(timing.time_increment_s) || timing.time_increment_s < 0.0) {
-    return {};
-  }
-
-  constexpr long double kNanosecondsPerSecond = 1.0e9L;
-  const long double offset_ns = static_cast<long double>(beam_index) *
-                                static_cast<long double>(timing.time_increment_s) *
-                                kNanosecondsPerSecond;
-  const long double max_offset =
-      static_cast<long double>(std::numeric_limits<std::int64_t>::max()) -
-      static_cast<long double>(timing.first_beam_stamp_ns);
-  if (!std::isfinite(offset_ns) || offset_ns < 0.0L || offset_ns > max_offset) {
-    return {};
-  }
-  const auto rounded_offset_ns = static_cast<std::int64_t>(std::round(offset_ns));
-  return LidarBeamTimestamp{timing.first_beam_stamp_ns + rounded_offset_ns, true};
-}
-
 ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
     : raw_grid_{bounds},
       scores_(raw_grid_.cellCount(), 0) {
@@ -224,7 +150,8 @@ ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
 ObstacleMemoryStats
 ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan,
                                   const ObstacleMemoryConfig& config,
-                                  const KnownStaticLidarHitClassifier* classifier) {
+                                  const KnownStaticLidarHitClassifier* classifier,
+                                  const GroundLidarRejectionConfig* ground_config) {
   ObstacleMemoryStats stats{};
   if (!finitePose(pose) || !validMemoryConfig(config) ||
       !std::isfinite(scan.angle_increment_rad) || scan.angle_increment_rad == 0.0 ||
@@ -258,12 +185,24 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     const LidarBeamProjection projection = projectLidarBeam(
         projection_pose, projection_config, scan.range_min_m, scan_range_max,
         scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
+    if (projection.status != LidarBeamProjectionStatus::kAccepted &&
+        projection.status != LidarBeamProjectionStatus::kAltitudeRejected) {
+      ++stats.invalid_ranges;
+      continue;
+    }
+    const LidarBeamObservation observation = makeLidarBeamObservation(
+        scan.timing, i, projection, scan_range_max, projection_pose, projection_config);
+    const LidarIngestionDecision decision =
+        evaluateLidarIngestion(observation, classifier, ground_config);
+    const bool altitude_rejected =
+        projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
+    recordLidarIngestionDecision(observation, decision, altitude_rejected,
+                                 stats.ingestion_decisions);
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
     }
-    if (projection.status != LidarBeamProjectionStatus::kAccepted) {
-      ++stats.invalid_ranges;
+    if (decision.action == LidarIngestionAction::kSuppressAllUpdates) {
       continue;
     }
 
@@ -301,7 +240,12 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       ++stats.free_cells_updated;
     }
 
-    if (!projection.hit) {
+    if (decision.action == LidarIngestionAction::kIntegrateFreeOnly ||
+        !projection.hit) {
+      if (decision.known_static_result_available) {
+        recordKnownStaticLidarHit(decision.known_static_result,
+                                  stats.known_static_lidar);
+      }
       continue;
     }
     if (!endpoint_cell.has_value()) {
@@ -311,17 +255,10 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     const GridIndex endpoint_grid_cell =
         endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
 
-    KnownStaticLidarHitResult classification{};
-    const bool classifier_applied = classifier != nullptr;
+    const bool classifier_applied = decision.known_static_result_available;
+    const KnownStaticLidarHitResult classification = decision.known_static_result;
     if (classifier_applied) {
-      classification =
-          classifier->classify(projection.ray_origin_map_m,
-                               projection.ray_direction_map, projection.used_range_m);
       recordKnownStaticLidarHit(classification, stats.known_static_lidar);
-      if (classification.classification ==
-          KnownStaticLidarHitClassification::kExpectedStatic) {
-        continue;
-      }
       if (stats.retained_known_static_hits.size() <
           kMaxRetainedKnownStaticHitDiagnostics) {
         if (const std::optional<KnownStaticLidarHitProvenance> provenance =
@@ -337,8 +274,9 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     }
 
     const AcceptedObstacleMemoryHit accepted_hit{
-        .beam = makeBeamObservation(scan, i, projection),
-        .known_static = makeClassificationSnapshot(classifier_applied, classification),
+        .beam = observation,
+        .known_static =
+            makeKnownStaticClassificationSnapshot(classifier_applied, classification),
     };
     const std::optional<ObstacleMemoryOccupiedTransition> transition =
         applyAcceptedHit(endpoint_grid_cell, accepted_hit, config);

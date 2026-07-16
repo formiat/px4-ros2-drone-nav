@@ -25,7 +25,8 @@ CurrentLidarOverlayStats
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
-                        const KnownStaticLidarHitClassifier* classifier) {
+                        const KnownStaticLidarHitClassifier* classifier,
+                        const GroundLidarRejectionConfig* ground_config) {
   CurrentLidarOverlayStats stats{};
   stats.used = true;
 
@@ -46,25 +47,36 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     const LidarBeamProjection projection = projectLidarBeam(
         projection_pose, projection_config, scan.range_min_m, scan_range_max,
         scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
+    if (projection.status != LidarBeamProjectionStatus::kAccepted &&
+        projection.status != LidarBeamProjectionStatus::kAltitudeRejected) {
+      continue;
+    }
+    const LidarBeamObservation observation = makeLidarBeamObservation(
+        scan.timing, i, projection, scan_range_max, projection_pose, projection_config);
+    const LidarIngestionDecision decision =
+        evaluateLidarIngestion(observation, classifier, ground_config);
+    const bool altitude_rejected =
+        projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
+    recordLidarIngestionDecision(observation, decision, altitude_rejected,
+                                 stats.ingestion_decisions);
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
     }
-    if (projection.status != LidarBeamProjectionStatus::kAccepted || !projection.hit) {
+    if (!projection.hit ||
+        decision.action != LidarIngestionAction::kIntegrateFreeAndHit) {
+      if (decision.known_static_result_available) {
+        recordKnownStaticLidarHit(decision.known_static_result,
+                                  stats.known_static_lidar);
+      }
       continue;
     }
 
     ++stats.hit_beams;
     const auto endpoint_cell = current_lidar_grid.worldToCell(projection.endpoint);
-    if (classifier != nullptr) {
-      const KnownStaticLidarHitResult classification =
-          classifier->classify(projection.ray_origin_map_m,
-                               projection.ray_direction_map, projection.used_range_m);
+    if (decision.known_static_result_available) {
+      const KnownStaticLidarHitResult& classification = decision.known_static_result;
       recordKnownStaticLidarHit(classification, stats.known_static_lidar);
-      if (classification.classification ==
-          KnownStaticLidarHitClassification::kExpectedStatic) {
-        continue;
-      }
       if (endpoint_cell.has_value() && stats.retained_known_static_hits.size() <
                                            kMaxRetainedKnownStaticHitDiagnostics) {
         if (const std::optional<KnownStaticLidarHitProvenance> provenance =

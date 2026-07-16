@@ -1,6 +1,7 @@
 #pragma once
 
-#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
+#include "drone_city_nav/lidar_beam_observation.hpp"
+#include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
@@ -16,6 +17,7 @@ struct LidarScanView {
   double range_max_m{0.0};
   double angle_min_rad{0.0};
   double angle_increment_rad{0.0};
+  LaserScanTiming timing{};
 };
 
 struct CurrentLidarOverlayStats {
@@ -30,6 +32,7 @@ struct CurrentLidarOverlayStats {
   std::size_t overlay_occupied_cells_preserved{0U};
   std::size_t outside_hits{0U};
   KnownStaticLidarHitStats known_static_lidar{};
+  LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
 };
 
@@ -40,6 +43,7 @@ struct CurrentLidarOverlayStats {
 overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
-                        const KnownStaticLidarHitClassifier* classifier = nullptr);
+                        const KnownStaticLidarHitClassifier* classifier = nullptr,
+                        const GroundLidarRejectionConfig* ground_config = nullptr);
 
 } // namespace drone_city_nav

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <exception>
 #include <iomanip>
 #include <limits>
@@ -72,18 +73,33 @@ PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
   if (!(scan_range_max > 0.0) || last_scan_.angle_increment == 0.0F) {
     return stats;
   }
+  const std::uint64_t scan_stamp_ns = stampNanoseconds(last_scan_.header.stamp);
+  const bool scan_stamp_valid =
+      scan_stamp_ns > 0U &&
+      scan_stamp_ns <=
+          static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
 
   const CurrentLidarOverlayStats overlay_stats =
       drone_city_nav::overlayCurrentLidarHits(
           grid,
-          LidarScanView{std::span<const float>{last_scan_.ranges.data(),
-                                               last_scan_.ranges.size()},
-                        static_cast<double>(last_scan_.range_min), scan_range_max,
-                        static_cast<double>(last_scan_.angle_min),
-                        static_cast<double>(last_scan_.angle_increment)},
+          LidarScanView{
+              std::span<const float>{last_scan_.ranges.data(),
+                                     last_scan_.ranges.size()},
+              static_cast<double>(last_scan_.range_min), scan_range_max,
+              static_cast<double>(last_scan_.angle_min),
+              static_cast<double>(last_scan_.angle_increment),
+              LaserScanTiming{
+                  .first_beam_stamp_ns =
+                      scan_stamp_valid ? static_cast<std::int64_t>(scan_stamp_ns) : 0,
+                  .first_beam_stamp_valid = scan_stamp_valid,
+                  .time_increment_s = static_cast<double>(last_scan_.time_increment),
+                  .receive_stamp_ns = last_scan_update_ns_,
+                  .receive_stamp_valid = last_scan_update_ns_ > 0,
+              }},
           last_scan_projection_pose_, currentLidarProjectionConfig(),
           known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
-                                                     : nullptr);
+                                                     : nullptr,
+          &ground_lidar_rejection_config_);
   stats.used = overlay_stats.used;
   stats.processed_beams = overlay_stats.processed_beams;
   stats.hit_beams = overlay_stats.hit_beams;
@@ -94,6 +110,8 @@ PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
   stats.overlay_occupied_cells_preserved =
       overlay_stats.overlay_occupied_cells_preserved;
   stats.known_static_lidar = overlay_stats.known_static_lidar;
+  stats.ingestion_decisions = overlay_stats.ingestion_decisions;
+  stats.retained_known_static_hits = overlay_stats.retained_known_static_hits;
   return stats;
 }
 

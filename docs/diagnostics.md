@@ -153,6 +153,25 @@ the matched structure/opening/part, grid cell, endpoint XYZ, measured range,
 expected range, and signed range delta. Obstacle memory logs the equivalent
 bounded retained-hit diagnostic for cross-process correlation.
 
+Both lidar ingestion paths publish throttled summaries of the shared decision:
+
+- `expected_ground`: expected ground beams suppressed without hit or free
+  updates;
+- `closer_retained`: obstacle returns clearly before the nearest expected
+  surface;
+- `ambiguous_ground`: ambiguous ground or tied-surface beams suppressed;
+- `ground_unavailable`: beams for which configured ground classification could
+  not run because required geometry/configuration was invalid;
+- `ground_disabled`: beams processed while ground rejection was intentionally
+  disabled;
+- `non_ground_altitude_rejected`: projected-altitude vetoes not explained by a
+  ground candidate.
+
+The bounded `lidar decision sample` log includes reason, expected-surface kind,
+beam index, endpoint XYZ, measured/expected ranges and delta, ray origin and
+direction, and source roll/pitch/tilt. These samples diagnose ground rejection
+without storing rejected observations in obstacle-memory provenance.
+
 The classifier is independent of the active trajectory and drone proximity to
 an opening. Unexpected and ambiguous hits continue through normal prohibited
 grid and replan handling.

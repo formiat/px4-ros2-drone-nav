@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
@@ -74,6 +75,7 @@ struct PlannerNodeConfig {
   KnownPassageValidationConfig known_passage_validation{};
   double known_static_lidar_hit_closer_range_tolerance_m{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m{1.5};
+  GroundLidarRejectionConfig ground_lidar_rejection{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

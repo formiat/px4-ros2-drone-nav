@@ -69,6 +69,10 @@ Known passages:
 - `known_passage_validation_max_diagnostics`
 - `known_static_lidar_hit_closer_range_tolerance_m`
 - `known_static_lidar_hit_farther_range_tolerance_m`
+- `ground_lidar_rejection_enabled`
+- `ground_lidar_altitude_m`
+- `ground_lidar_closer_range_tolerance_m`
+- `ground_lidar_farther_range_tolerance_m`
 - `vertical_profile_preferred_gate_clearance_margin_m`
 - `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
@@ -149,6 +153,24 @@ building collision volumes:
 - `known_static_lidar_hit_farther_range_tolerance_m` bounds a later return
   still treated as the known collision surface. It must have the same effective
   value in planner and obstacle-memory node configuration.
+- `ground_lidar_rejection_enabled` enables the always-on, per-beam flat-ground
+  provider. It does not suspend mapping based on vehicle tilt.
+- `ground_lidar_altitude_m` is the map-frame Z of the expected flat ground. The
+  generated city default is `0.05` m, matching the top of the physical ground
+  collision box.
+- `ground_lidar_closer_range_tolerance_m` is the strict allowance before the
+  expected ground range. A hit closer by more than this value remains unknown
+  obstacle evidence.
+- `ground_lidar_farther_range_tolerance_m` is the bounded allowance behind the
+  analytic ground intersection. A farther ground-facing return is ambiguous and
+  performs no hit or free-space update.
+
+All four ground parameters have identical defaults in `obstacle_memory_node`
+and `planner_node`: enabled, ground Z `0.05` m, closer tolerance `0.5` m, and
+farther tolerance `1.5` m. Headless validation requires the effective logged
+configuration to match. A deliberately disabled provider is reported as
+`disabled`; invalid numeric configuration is `unavailable` and does not disable
+the independent known-static provider.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.

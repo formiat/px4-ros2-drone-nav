@@ -190,31 +190,19 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
       volumes_.empty()) {
     return result;
   }
-
-  std::optional<SolidIntersection> nearest;
-  for (const KnownPassageSolidVolume& volume : volumes_) {
-    const std::optional<SolidIntersection> candidate =
-        intersectSolid(ray_origin_map_m, ray_direction_map, volume);
-    if (!candidate.has_value()) {
-      continue;
-    }
-    if (!nearest.has_value() || candidate->range_m < nearest->range_m) {
-      nearest = candidate;
-    }
-  }
-
+  const std::optional<KnownStaticExpectedSurface> nearest = nearestExpectedSurface(
+      ray_origin_map_m, ray_direction_map, std::numeric_limits<double>::infinity());
   if (!nearest.has_value()) {
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
     return result;
   }
 
-  const KnownPassageSolidVolume& volume = *nearest->volume;
   result.expected_range_m = nearest->range_m;
   result.range_delta_m = measured_range_m - nearest->range_m;
-  result.part_kind = volume.part_kind;
-  result.structure_id = volume.structure_id;
-  result.opening_id = volume.opening_id;
-  result.part_id = volume.part_id;
+  result.part_kind = nearest->part_kind;
+  result.structure_id = nearest->structure_id;
+  result.opening_id = nearest->opening_id;
+  result.part_id = nearest->part_id;
   result.volume_matched = true;
   result.confident_face_interior = nearest->confident_face_interior;
   if (!nearest->confident_face_interior) {
@@ -226,6 +214,42 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
     result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
   }
   return result;
+}
+
+std::optional<KnownStaticExpectedSurface>
+KnownStaticLidarHitClassifier::nearestExpectedSurface(
+    const Point3& ray_origin_map_m, const Point3& ray_direction_map,
+    const double max_range_m) const noexcept {
+  const double direction_norm_sq = squaredNorm(ray_direction_map);
+  if (!finitePoint3(ray_origin_map_m) || !finitePoint3(ray_direction_map) ||
+      !(max_range_m >= 0.0) || !std::isfinite(direction_norm_sq) ||
+      std::abs(direction_norm_sq - 1.0) > 1.0e-6 || volumes_.empty()) {
+    return std::nullopt;
+  }
+
+  std::optional<SolidIntersection> nearest;
+  for (const KnownPassageSolidVolume& volume : volumes_) {
+    const std::optional<SolidIntersection> candidate =
+        intersectSolid(ray_origin_map_m, ray_direction_map, volume);
+    if (!candidate.has_value() || candidate->range_m > max_range_m) {
+      continue;
+    }
+    if (!nearest.has_value() || candidate->range_m < nearest->range_m) {
+      nearest = candidate;
+    }
+  }
+  if (!nearest.has_value()) {
+    return std::nullopt;
+  }
+  const KnownPassageSolidVolume& volume = *nearest->volume;
+  return KnownStaticExpectedSurface{
+      .range_m = nearest->range_m,
+      .part_kind = volume.part_kind,
+      .structure_id = volume.structure_id,
+      .opening_id = volume.opening_id,
+      .part_id = volume.part_id,
+      .confident_face_interior = nearest->confident_face_interior,
+  };
 }
 
 std::size_t KnownStaticLidarHitClassifier::volumeCount() const noexcept {

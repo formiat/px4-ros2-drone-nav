@@ -1,6 +1,7 @@
 #pragma once
 
-#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
+#include "drone_city_nav/lidar_beam_observation.hpp"
+#include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
@@ -14,14 +15,6 @@
 #include <vector>
 
 namespace drone_city_nav {
-
-struct LaserScanTiming {
-  std::int64_t first_beam_stamp_ns{0};
-  bool first_beam_stamp_valid{false};
-  double time_increment_s{0.0};
-  std::int64_t receive_stamp_ns{0};
-  bool receive_stamp_valid{false};
-};
 
 struct LaserScan2DView {
   std::span<const float> ranges{};
@@ -57,44 +50,6 @@ struct ObstacleMemoryConfig {
   int free_score{-1};
 };
 
-struct LidarBeamTimestamp {
-  std::int64_t stamp_ns{0};
-  bool valid{false};
-};
-
-[[nodiscard]] LidarBeamTimestamp
-lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
-                              std::size_t beam_index) noexcept;
-
-struct KnownStaticClassificationSnapshot {
-  bool classifier_applied{false};
-  KnownStaticLidarHitClassification classification{
-      KnownStaticLidarHitClassification::kAmbiguous};
-  bool volume_matched{false};
-  bool confident_face_interior{false};
-  bool part_kind_valid{false};
-  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
-  std::string structure_id;
-  std::string opening_id;
-  std::string part_id;
-  double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
-  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
-};
-
-struct LidarBeamObservation {
-  std::size_t beam_index{0U};
-  std::int64_t acquisition_stamp_ns{0};
-  bool acquisition_stamp_valid{false};
-  std::int64_t receive_stamp_ns{0};
-  bool receive_stamp_valid{false};
-  LidarBeamProjection projection{};
-  double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
-  bool source_attitude_valid{false};
-  double source_roll_rad{std::numeric_limits<double>::quiet_NaN()};
-  double source_pitch_rad{std::numeric_limits<double>::quiet_NaN()};
-  double source_tilt_rad{std::numeric_limits<double>::quiet_NaN()};
-};
-
 struct AcceptedObstacleMemoryHit {
   LidarBeamObservation beam;
   KnownStaticClassificationSnapshot known_static;
@@ -126,6 +81,7 @@ struct ObstacleMemoryStats {
   std::size_t occupied_cells_updated{0U};
   std::size_t newly_occupied_cells{0U};
   KnownStaticLidarHitStats known_static_lidar{};
+  LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
   std::vector<ObstacleMemoryOccupiedTransition> occupied_transitions;
 };
@@ -144,7 +100,8 @@ public:
   [[nodiscard]] ObstacleMemoryStats
   integrateScan(const Pose2& pose, const LaserScan2DView& scan,
                 const ObstacleMemoryConfig& config,
-                const KnownStaticLidarHitClassifier* classifier = nullptr);
+                const KnownStaticLidarHitClassifier* classifier = nullptr,
+                const GroundLidarRejectionConfig* ground_config = nullptr);
 
   void reset();
 

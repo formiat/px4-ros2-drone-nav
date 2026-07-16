@@ -40,6 +40,15 @@ struct KnownStaticLidarHitResult {
   bool confident_face_interior{false};
 };
 
+struct KnownStaticExpectedSurface {
+  double range_m{std::numeric_limits<double>::quiet_NaN()};
+  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
+  std::string_view structure_id;
+  std::string_view opening_id;
+  std::string_view part_id;
+  bool confident_face_interior{false};
+};
+
 struct KnownStaticLidarHitDiagnostic {
   bool available{false};
   std::string structure_id;
@@ -86,6 +95,11 @@ public:
   [[nodiscard]] KnownStaticLidarHitResult
   classify(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
            double measured_range_m) const noexcept;
+
+  [[nodiscard]] std::optional<KnownStaticExpectedSurface>
+  nearestExpectedSurface(const Point3& ray_origin_map_m,
+                         const Point3& ray_direction_map,
+                         double max_range_m) const noexcept;
 
   [[nodiscard]] std::size_t volumeCount() const noexcept;
   [[nodiscard]] double closerRangeToleranceM() const noexcept;

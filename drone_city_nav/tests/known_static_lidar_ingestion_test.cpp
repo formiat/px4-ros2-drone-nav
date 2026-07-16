@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -223,6 +224,46 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
   EXPECT_NEAR(trigger.beam.measured_range_m, 4.0, 1.0e-6);
   EXPECT_NEAR(trigger.known_static.expected_range_m, 6.0, 1.0e-6);
   EXPECT_NEAR(trigger.known_static.range_delta_m, -2.0, 1.0e-6);
+}
+
+TEST(KnownStaticLidarIngestion,
+     InvalidGroundProviderPreservesExpectedKnownStaticSuppression) {
+  const IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  constexpr float kMeasuredRangeM = 6.0F;
+  const LidarBeamProjection projection = projectLidarBeam(
+      test_case.pose, test_case.config, 0.1, 20.0, 0.0, 0.1, 0U, kMeasuredRangeM);
+  std::vector<KnownPassageSolidVolume> volumes;
+  volumes.push_back(volumeAtRange(projection, test_case.kind, kMeasuredRangeM));
+  const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
+  const std::optional<KnownStaticExpectedSurface> nearest =
+      classifier.nearestExpectedSurface(projection.ray_origin_map_m,
+                                        projection.ray_direction_map, 20.0);
+  ASSERT_TRUE(nearest.has_value());
+  const KnownStaticExpectedSurface& expected_surface =
+      *nearest; // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_NEAR(expected_surface.range_m, kMeasuredRangeM, 1.0e-6);
+  GroundLidarRejectionConfig invalid_ground{};
+  invalid_ground.farther_range_tolerance_m = -1.0;
+  const std::array<float, 1U> ranges{kMeasuredRangeM};
+  const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
+
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats =
+      memory.integrateScan(Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+                           memoryScan(ranges, test_case), ObstacleMemoryConfig{},
+                           &classifier, &invalid_ground);
+  OccupancyGrid2D overlay_grid{bounds};
+  const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+      overlay_grid, LidarScanView{ranges, 0.1, 20.0, 0.0, 0.1}, test_case.pose,
+      test_case.config, &classifier, &invalid_ground);
+
+  EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.ground_classification_unavailable, 1U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.ground_classification_unavailable, 1U);
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 0U);
 }
 
 TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths) {

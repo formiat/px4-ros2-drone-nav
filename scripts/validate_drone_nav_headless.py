@@ -101,12 +101,13 @@ def validate_known_static_classifier_contract(
 ) -> None:
     matches = re.findall(
         r"Known static lidar classifier: node=(obstacle_memory|planner) "
-        r"status=(\S+) path='([^']*)' volumes=(\d+) tolerance=([0-9.]+)m",
+        r"status=(\S+) path='([^']*)' volumes=(\d+) "
+        r"closer_tolerance=([0-9.]+)m farther_tolerance=([0-9.]+)m",
         ros_log,
     )
     by_node = {
-        node: (status, path, int(volumes), float(tolerance))
-        for node, status, path, volumes, tolerance in matches
+        node: (status, path, int(volumes), float(closer), float(farther))
+        for node, status, path, volumes, closer, farther in matches
     }
     if "obstacle_memory" not in by_node or "planner" not in by_node:
         result.fail("known-static classifier effective config is logged by both nodes")
@@ -123,6 +124,29 @@ def validate_known_static_classifier_contract(
         result.fail("known-static classifier effective configs match")
     else:
         result.ok_message("known-static classifier effective configs match")
+
+    ground_matches = re.findall(
+        r"Ground lidar classifier: node=(obstacle_memory|planner) "
+        r"status=(\S+) ground_altitude=([-0-9.]+)m "
+        r"closer_tolerance=([0-9.]+)m farther_tolerance=([0-9.]+)m",
+        ros_log,
+    )
+    ground_by_node = {
+        node: (status, float(altitude), float(closer), float(farther))
+        for node, status, altitude, closer, farther in ground_matches
+    }
+    if "obstacle_memory" not in ground_by_node or "planner" not in ground_by_node:
+        result.fail("ground classifier effective config is logged by both nodes")
+        return
+    result.ok_message("ground classifier effective config is logged by both nodes")
+    if any(config[0] != "ready" for config in ground_by_node.values()):
+        result.fail("ground classifier is ready in both nodes")
+    else:
+        result.ok_message("ground classifier is ready in both nodes")
+    if ground_by_node["obstacle_memory"] != ground_by_node["planner"]:
+        result.fail("ground classifier effective configs match")
+    else:
+        result.ok_message("ground classifier effective configs match")
 
 
 def validate_logs(

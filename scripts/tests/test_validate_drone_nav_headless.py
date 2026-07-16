@@ -38,13 +38,23 @@ def make_ros_log(
             "[obstacle_memory_node]: Known static lidar classifier: "
             "node=obstacle_memory status=ready "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 tolerance=0.500m"
+            "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m"
         ),
         (
             "[planner_node]: Known static lidar classifier: node=planner "
             "status=ready "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 tolerance=0.500m"
+            "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m"
+        ),
+        (
+            "[obstacle_memory_node]: Ground lidar classifier: "
+            "node=obstacle_memory status=ready ground_altitude=0.050m "
+            "closer_tolerance=0.500m farther_tolerance=1.500m"
+        ),
+        (
+            "[planner_node]: Ground lidar classifier: node=planner status=ready "
+            "ground_altitude=0.050m closer_tolerance=0.500m "
+            "farther_tolerance=1.500m"
         ),
         (
             "[planner_node]: Planner obstacle sources: "
@@ -127,10 +137,10 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
         ros_log = make_ros_log().replace(
             "node=planner status=ready "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 tolerance=0.500m",
+            "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m",
             "node=planner status=ready "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 tolerance=0.750m",
+            "volumes=12 closer_tolerance=0.750m farther_tolerance=1.500m",
         )
 
         result = validator.validate_logs(
@@ -149,6 +159,70 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
         self.assertIn(
             "FAIL: known-static classifier effective configs match", result.errors
         )
+
+    def test_missing_ground_classifier_config_fails(self) -> None:
+        ros_log = "\n".join(
+            line
+            for line in make_ros_log().splitlines()
+            if "Ground lidar classifier: node=planner" not in line
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: ground classifier effective config is logged by both nodes",
+            result.errors,
+        )
+
+    def test_ground_classifier_config_mismatch_fails(self) -> None:
+        ros_log = make_ros_log().replace(
+            "node=planner status=ready ground_altitude=0.050m",
+            "node=planner status=ready ground_altitude=0.150m",
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("FAIL: ground classifier effective configs match", result.errors)
+
+    def test_ground_classifier_unavailable_status_fails(self) -> None:
+        ros_log = make_ros_log().replace(
+            "node=planner status=ready ground_altitude=0.050m",
+            "node=planner status=unavailable ground_altitude=0.050m",
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("FAIL: ground classifier is ready in both nodes", result.errors)
 
     def test_active_lidar_stable_path_reuse_passes_without_used_summary(self) -> None:
         result = validator.validate_logs(

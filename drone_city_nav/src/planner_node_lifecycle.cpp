@@ -196,6 +196,34 @@ PlannerNode::PlannerNode()
               lidar_z_offset_m_, min_projected_lidar_altitude_m_,
               max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
               lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+  const bool ground_config_valid =
+      std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
+      std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
+      ground_lidar_rejection_config_.closer_range_tolerance_m >= 0.0 &&
+      std::isfinite(ground_lidar_rejection_config_.farther_range_tolerance_m) &&
+      ground_lidar_rejection_config_.farther_range_tolerance_m >= 0.0 &&
+      std::isfinite(max_lidar_range_m_) && max_lidar_range_m_ > 0.0;
+  const char* ground_status = "ready";
+  if (!ground_lidar_rejection_config_.enabled) {
+    ground_status = "disabled";
+  } else if (!ground_config_valid) {
+    ground_status = "unavailable";
+  }
+  if (ground_lidar_rejection_config_.enabled && !ground_config_valid) {
+    RCLCPP_WARN(get_logger(),
+                "Ground lidar classifier: node=planner status=%s ground_altitude=%.3fm "
+                "closer_tolerance=%.3fm farther_tolerance=%.3fm",
+                ground_status, ground_lidar_rejection_config_.ground_altitude_m,
+                ground_lidar_rejection_config_.closer_range_tolerance_m,
+                ground_lidar_rejection_config_.farther_range_tolerance_m);
+  } else {
+    RCLCPP_INFO(get_logger(),
+                "Ground lidar classifier: node=planner status=%s ground_altitude=%.3fm "
+                "closer_tolerance=%.3fm farther_tolerance=%.3fm",
+                ground_status, ground_lidar_rejection_config_.ground_altitude_m,
+                ground_lidar_rejection_config_.closer_range_tolerance_m,
+                ground_lidar_rejection_config_.farther_range_tolerance_m);
+  }
   RCLCPP_INFO(get_logger(),
               "Planner path policy: stable_path_reuse=always "
               "stable_goal_tolerance=%.2fm initial_trajectory_altitude=%.2fm",
@@ -235,6 +263,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
       config.known_static_lidar_hit_closer_range_tolerance_m;
   known_static_lidar_hit_farther_range_tolerance_m_ =
       config.known_static_lidar_hit_farther_range_tolerance_m;
+  ground_lidar_rejection_config_ = config.ground_lidar_rejection;
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;
   max_lidar_range_m_ = config.lidar_projection.max_lidar_range_m;
