@@ -187,6 +187,10 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
           observation.projection.ray_direction_map, observation.measured_range_m);
       decision.known_static_result_available = true;
       decision.reason = knownStaticReason(decision.known_static_result.classification);
+      if (decision.known_static_result.classification ==
+          KnownStaticLidarHitClassification::kExpectedStatic) {
+        decision.action = LidarIngestionAction::kIntegrateFreeOnly;
+      }
     }
     return decision;
   }

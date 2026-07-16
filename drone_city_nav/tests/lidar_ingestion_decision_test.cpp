@@ -216,6 +216,23 @@ TEST(LidarIngestionDecision, InvalidGroundDoesNotDisableKnownStaticProvider) {
             KnownStaticLidarHitClassification::kExpectedStatic);
 }
 
+TEST(LidarIngestionDecision,
+     FallbackClassificationSuppressesExpectedStaticBeyondEffectiveRange) {
+  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
+  LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+  beam.effective_max_range_m = 4.99;
+
+  const LidarIngestionDecision decision =
+      evaluateLidarIngestion(beam, &classifier, nullptr);
+
+  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kNone);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedKnownStatic);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeOnly);
+  ASSERT_TRUE(decision.known_static_result_available);
+  EXPECT_EQ(decision.known_static_result.classification,
+            KnownStaticLidarHitClassification::kExpectedStatic);
+}
+
 TEST(LidarIngestionDecision, MissingRequiredAttitudeMakesGroundUnavailable) {
   LidarBeamObservation beam = observation(Point3{0.6, 0.0, -0.8}, 12.44);
   beam.source_attitude_valid = false;
