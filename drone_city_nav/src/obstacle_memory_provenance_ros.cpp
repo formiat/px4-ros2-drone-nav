@@ -373,7 +373,14 @@ observationToMessage(const AcceptedObstacleMemoryHit& hit) {
 }
 
 [[nodiscard]] std::optional<AcceptedObstacleMemoryHit>
-observationFromMessage(const msg::ObstacleMemoryHitObservation& message) {
+observationFromMessage(const msg::ObstacleMemoryHitObservation& message,
+                       std::string* validation_error = nullptr) {
+  const auto fail = [validation_error](const char* reason) {
+    if (validation_error != nullptr) {
+      *validation_error = reason;
+    }
+    return std::optional<AcceptedObstacleMemoryHit>{};
+  };
   const auto classification = classificationFromMessage(message.classification);
   const auto part_kind = partKindFromMessage(message.known_part);
   const auto ingestion_action = ingestionActionFromMessage(message.ingestion_action);
@@ -408,29 +415,59 @@ observationFromMessage(const msg::ObstacleMemoryHitObservation& message) {
           ingestion_reason.value_or(LidarIngestionReason::kClassificationUnavailable),
           ingestion_surface.value_or(LidarExpectedSurfaceKind::kNone),
           message.ingestion_expected_range_m, message.ingestion_range_delta_m);
-  if (!classification.has_value() || !part_kind.has_value() ||
-      !ingestion_decision_valid ||
-      message.beam_index > std::numeric_limits<std::size_t>::max() ||
-      !finitePoint(message.ray_origin_map_m) ||
-      !finiteVector(message.ray_direction_map) ||
-      !std::isfinite(message.measured_range_m) || !(message.measured_range_m > 0.0) ||
-      !std::isfinite(message.endpoint_map_m.x) ||
+  if (!classification.has_value()) {
+    return fail("classification");
+  }
+  if (!part_kind.has_value()) {
+    return fail("known_part");
+  }
+  if (!ingestion_decision_valid) {
+    return fail("ingestion_decision");
+  }
+  if (message.beam_index > std::numeric_limits<std::size_t>::max()) {
+    return fail("beam_index");
+  }
+  if (!finitePoint(message.ray_origin_map_m)) {
+    return fail("ray_origin");
+  }
+  if (!finiteVector(message.ray_direction_map)) {
+    return fail("ray_direction");
+  }
+  if (!std::isfinite(message.measured_range_m) || !(message.measured_range_m > 0.0)) {
+    return fail("measured_range");
+  }
+  if (!std::isfinite(message.endpoint_map_m.x) ||
       !std::isfinite(message.endpoint_map_m.y) ||
       (message.endpoint_xyz_valid ? !std::isfinite(message.endpoint_map_m.z)
-                                  : !std::isnan(message.endpoint_map_m.z)) ||
-      !source_attitude_values_valid || !applied_attitude_values_valid ||
-      (message.acquisition_stamp_valid && !acquisition_stamp.has_value()) ||
-      (!message.acquisition_stamp_valid && !acquisition_stamp_zero) ||
-      (message.receive_stamp_valid && !receive_stamp.has_value()) ||
-      (!message.receive_stamp_valid && !receive_stamp_zero) ||
-      (message.known_part_valid && !message.classifier_applied) ||
-      (!message.classifier_applied &&
-       (message.volume_matched || message.confident_face_interior ||
-        !message.structure_id.empty() || !message.opening_id.empty() ||
-        !message.part_id.empty())) ||
-      (message.classifier_applied &&
-       *classification == KnownStaticLidarHitClassification::kExpectedStatic)) {
-    return std::nullopt;
+                                  : !std::isnan(message.endpoint_map_m.z))) {
+    return fail("endpoint");
+  }
+  if (!source_attitude_values_valid) {
+    return fail("source_attitude");
+  }
+  if (!applied_attitude_values_valid) {
+    return fail("applied_attitude");
+  }
+  if ((message.acquisition_stamp_valid && !acquisition_stamp.has_value()) ||
+      (!message.acquisition_stamp_valid && !acquisition_stamp_zero)) {
+    return fail("acquisition_stamp");
+  }
+  if ((message.receive_stamp_valid && !receive_stamp.has_value()) ||
+      (!message.receive_stamp_valid && !receive_stamp_zero)) {
+    return fail("receive_stamp");
+  }
+  if (message.known_part_valid && !message.classifier_applied) {
+    return fail("known_part_without_classifier");
+  }
+  if (!message.classifier_applied &&
+      (message.volume_matched || message.confident_face_interior ||
+       !message.structure_id.empty() || !message.opening_id.empty() ||
+       !message.part_id.empty())) {
+    return fail("classifier_metadata_without_classifier");
+  }
+  if (message.classifier_applied &&
+      *classification == KnownStaticLidarHitClassification::kExpectedStatic) {
+    return fail("accepted_expected_static");
   }
 
   AcceptedObstacleMemoryHit hit;
@@ -703,14 +740,20 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
       result.detail = "endpoint_z_range index=" + std::to_string(message_index);
       return result;
     }
-    const auto trigger = observationFromMessage(cell.occupancy_trigger);
-    const auto last = observationFromMessage(cell.last_hit);
+    std::string trigger_error;
+    std::string last_error;
+    const auto trigger = observationFromMessage(cell.occupancy_trigger, &trigger_error);
+    const auto last = observationFromMessage(cell.last_hit, &last_error);
     if (!trigger.has_value()) {
-      result.detail = "occupancy_trigger index=" + std::to_string(message_index);
+      result.detail = "occupancy_trigger index=" + std::to_string(message_index) +
+                      " cell=(" + std::to_string(cell.cell_x) + "," +
+                      std::to_string(cell.cell_y) + ") field=" + trigger_error;
       return result;
     }
     if (!last.has_value()) {
-      result.detail = "last_hit index=" + std::to_string(message_index);
+      result.detail = "last_hit index=" + std::to_string(message_index) + " cell=(" +
+                      std::to_string(cell.cell_x) + "," + std::to_string(cell.cell_y) +
+                      ") field=" + last_error;
       return result;
     }
     const std::size_t index = static_cast<std::size_t>(cell.cell_y) *
