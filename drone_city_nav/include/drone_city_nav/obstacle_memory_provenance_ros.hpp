@@ -34,6 +34,8 @@ enum class MemoryProvenanceUnavailableReason {
   kContentMismatch,
   kCellMissing,
   kMalformed,
+  kHistoryExpired,
+  kCapacityEvicted,
 };
 
 struct MemoryGridSnapshotIdentity {
@@ -67,6 +69,9 @@ struct MemoryProvenanceMatchResult {
 
 [[nodiscard]] MemoryGridSnapshotIdentity
 memoryGridSnapshotIdentity(const nav_msgs::msg::OccupancyGrid& grid);
+
+[[nodiscard]] std::optional<MemoryGridSnapshotIdentity>
+memoryProvenanceMessageIdentity(const msg::ObstacleMemoryProvenance& message);
 
 [[nodiscard]] msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
     const nav_msgs::msg::OccupancyGrid& grid,
@@ -103,20 +108,26 @@ struct MemoryProvenanceAuditResult {
   std::optional<std::uint64_t> evicted_audit_id;
 };
 
-struct MemoryProvenanceAuditEnrichment {
+struct MemoryProvenanceAuditOutcome {
   std::uint64_t audit_id{0U};
   MemoryGridSnapshotIdentity identity;
   GridIndex cell{};
+  MemoryProvenanceUnavailableReason reason{MemoryProvenanceUnavailableReason::kNone};
   std::string diagnostic;
 };
 
 class MemoryProvenanceAuditTracker {
 public:
-  explicit MemoryProvenanceAuditTracker(std::size_t cache_capacity = 4U,
-                                        std::size_t pending_capacity = 256U);
+  explicit MemoryProvenanceAuditTracker(
+      std::size_t cache_capacity = 4U, std::size_t pending_capacity = 256U,
+      std::size_t retention_horizon = kMemoryProvenanceTransportDepth);
 
-  [[nodiscard]] std::vector<MemoryProvenanceAuditEnrichment>
+  [[nodiscard]] std::vector<MemoryProvenanceAuditOutcome>
   insert(MemoryProvenanceSnapshot snapshot);
+
+  [[nodiscard]] std::vector<MemoryProvenanceAuditOutcome>
+  terminate(const MemoryGridSnapshotIdentity& identity,
+            MemoryProvenanceUnavailableReason reason);
 
   [[nodiscard]] MemoryProvenanceAuditResult
   audit(const nav_msgs::msg::OccupancyGrid& grid, std::optional<GridIndex> cell,
@@ -134,9 +145,12 @@ private:
     MemoryGridSnapshotIdentity identity;
     GridIndex cell{};
     std::shared_ptr<const std::vector<std::size_t>> occupied_cells;
+    std::size_t newer_snapshot_count{0U};
+    std::optional<MemoryGridSnapshotIdentity> last_newer_snapshot_identity;
   };
 
   std::size_t pending_capacity_{256U};
+  std::size_t retention_horizon_{kMemoryProvenanceTransportDepth};
   std::uint64_t next_audit_id_{1U};
   MemoryProvenanceCache cache_;
   std::deque<PendingAudit> pending_audits_;

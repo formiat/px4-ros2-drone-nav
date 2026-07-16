@@ -182,14 +182,15 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
   if (!ground_candidate.has_value() && !known_candidate.has_value()) {
     if (known_static_classifier != nullptr && observation.projection.hit &&
         std::isfinite(observation.measured_range_m)) {
-      decision.known_static_result = known_static_classifier->classify(
-          observation.projection.ray_origin_map_m,
-          observation.projection.ray_direction_map, observation.measured_range_m);
-      decision.known_static_result_available = true;
-      decision.reason = knownStaticReason(decision.known_static_result.classification);
-      if (decision.known_static_result.classification ==
+      const KnownStaticLidarHitResult fallback_result =
+          known_static_classifier->classify(observation.projection.ray_origin_map_m,
+                                            observation.projection.ray_direction_map,
+                                            observation.measured_range_m);
+      if (fallback_result.classification !=
           KnownStaticLidarHitClassification::kExpectedStatic) {
-        decision.action = LidarIngestionAction::kIntegrateFreeOnly;
+        decision.known_static_result = fallback_result;
+        decision.known_static_result_available = true;
+        decision.reason = knownStaticReason(fallback_result.classification);
       }
     }
     return decision;

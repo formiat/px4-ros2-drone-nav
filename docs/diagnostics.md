@@ -148,12 +148,14 @@ the companion message has not arrived yet, the replan log reports
 grid_hash=... cell=(...)]`. Planning continues immediately from the 2D grid;
 diagnostics never delay or veto the safety replan. When the exact provenance
 snapshot arrives on its independent ROS topic, the planner emits an unthrottled
-`Memory blocker provenance enrichment` event with the same `audit_id` and the
-full `status=matched` cell record. Repeated replans against the same snapshot
-and cell reuse one pending audit id. This makes both ROS callback orders
-auditable without weakening exact stamp, frame, geometry, content, or cell
-matching. Malformed snapshots remain rejected and a bounded pending queue logs
-an explicit audit eviction if its capacity is ever exhausted.
+`Memory blocker provenance terminal: status=matched` event with the same
+`audit_id` and the full cell record. Repeated replans against the same snapshot
+and cell reuse one pending audit id. A malformed message with the exact identity
+terminates that id as `status=unavailable reason=malformed`. If the exact message
+is lost, receiving 32 distinct newer provenance snapshots exhausts the reliable
+transport retention horizon and terminates the id with
+`reason=history_expired`. Planning never waits for either outcome. Pending queue
+capacity eviction is also reported explicitly as `status=evicted`.
 
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies

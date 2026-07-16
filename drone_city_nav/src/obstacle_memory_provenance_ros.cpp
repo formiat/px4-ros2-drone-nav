@@ -522,30 +522,6 @@ endpointMatchesCell(const MemoryCellProvenance& record,
   });
 }
 
-[[nodiscard]] std::vector<std::size_t>
-occupiedCellIndices(const nav_msgs::msg::OccupancyGrid& grid,
-                    const std::uint64_t occupied_cell_count) {
-  std::vector<std::size_t> occupied;
-  occupied.reserve(static_cast<std::size_t>(occupied_cell_count));
-  for (std::size_t index = 0U; index < grid.data.size(); ++index) {
-    if (grid.data[index] == 100) {
-      occupied.push_back(index);
-    }
-  }
-  return occupied;
-}
-
-[[nodiscard]] bool
-snapshotMatchesOccupiedCells(const MemoryProvenanceSnapshot& snapshot,
-                             const std::vector<std::size_t>& occupied_cells) {
-  if (snapshot.cells.size() != occupied_cells.size()) {
-    return false;
-  }
-  return std::ranges::all_of(occupied_cells, [&snapshot](const std::size_t index) {
-    return snapshot.cells.contains(index);
-  });
-}
-
 void appendHit(std::ostringstream& stream, const char* label,
                const AcceptedObstacleMemoryHit& hit) {
   stream << ' ' << label << "_endpoint=(" << hit.beam.projection.endpoint_map_m.x << ','
@@ -599,6 +575,23 @@ memoryGridSnapshotIdentity(const nav_msgs::msg::OccupancyGrid& grid) {
   identity.occupied_cell_count = static_cast<std::uint64_t>(
       std::count(grid.data.begin(), grid.data.end(), static_cast<std::int8_t>(100)));
   return identity;
+}
+
+std::optional<MemoryGridSnapshotIdentity>
+memoryProvenanceMessageIdentity(const msg::ObstacleMemoryProvenance& message) {
+  const auto stamp_ns = checkedStampNanoseconds(message.header.stamp);
+  if (!stamp_ns.has_value() || message.header.frame_id.empty() ||
+      !validGridInfo(message.grid_info)) {
+    return std::nullopt;
+  }
+  return MemoryGridSnapshotIdentity{
+      .stamp_ns = *stamp_ns,
+      .stamp_valid = true,
+      .frame_id = message.header.frame_id,
+      .grid_info = message.grid_info,
+      .raw_grid_data_hash = message.raw_grid_data_hash,
+      .occupied_cell_count = message.occupied_cell_count,
+  };
 }
 
 msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
@@ -811,124 +804,6 @@ MemoryProvenanceCache::match(const nav_msgs::msg::OccupancyGrid& grid,
   return MemoryProvenanceMatchResult{nullptr, reason};
 }
 
-MemoryProvenanceAuditTracker::MemoryProvenanceAuditTracker(
-    const std::size_t cache_capacity, const std::size_t pending_capacity)
-    : pending_capacity_{std::max<std::size_t>(1U, pending_capacity)},
-      cache_{cache_capacity} {
-}
-
-std::vector<MemoryProvenanceAuditEnrichment>
-MemoryProvenanceAuditTracker::insert(MemoryProvenanceSnapshot snapshot) {
-  std::vector<MemoryProvenanceAuditEnrichment> enrichments;
-  auto pending = pending_audits_.begin();
-  while (pending != pending_audits_.end()) {
-    if (!identitiesEqual(pending->identity, snapshot.identity) ||
-        pending->occupied_cells == nullptr ||
-        !snapshotMatchesOccupiedCells(snapshot, *pending->occupied_cells)) {
-      ++pending;
-      continue;
-    }
-    enrichments.push_back(MemoryProvenanceAuditEnrichment{
-        pending->audit_id, snapshot.identity, pending->cell,
-        formatMemoryProvenanceDiagnostic(
-            MemoryProvenanceMatchResult{&snapshot,
-                                        MemoryProvenanceUnavailableReason::kNone},
-            pending->cell)});
-    pending = pending_audits_.erase(pending);
-  }
-  cache_.insert(std::move(snapshot));
-  return enrichments;
-}
-
-MemoryProvenanceAuditResult MemoryProvenanceAuditTracker::audit(
-    const nav_msgs::msg::OccupancyGrid& grid, const std::optional<GridIndex> cell,
-    const MemoryProvenanceUnavailableReason unavailable_override) {
-  MemoryProvenanceAuditResult result;
-  if (!cell.has_value()) {
-    result.diagnostic = "memory_provenance[status=not_applicable]";
-    return result;
-  }
-
-  const MemoryGridSnapshotIdentity identity = memoryGridSnapshotIdentity(grid);
-  MemoryProvenanceMatchResult match = cache_.match(grid, identity);
-  if (match.snapshot != nullptr) {
-    result.diagnostic = formatMemoryProvenanceDiagnostic(match, cell);
-    return result;
-  }
-  if (match.reason == MemoryProvenanceUnavailableReason::kNotReceived &&
-      unavailable_override != MemoryProvenanceUnavailableReason::kNone) {
-    match.reason = unavailable_override;
-  }
-
-  if (!identity.stamp_valid) {
-    result.diagnostic = formatMemoryProvenanceDiagnostic(match, cell);
-    return result;
-  }
-
-  const auto existing =
-      std::find_if(pending_audits_.begin(), pending_audits_.end(),
-                   [&identity, &cell](const PendingAudit& pending) {
-                     return identitiesEqual(pending.identity, identity) &&
-                            pending.cell.x == cell->x && pending.cell.y == cell->y;
-                   });
-  if (existing != pending_audits_.end()) {
-    result.pending_audit_id = existing->audit_id;
-  } else {
-    if (pending_audits_.size() >= pending_capacity_) {
-      result.evicted_audit_id = pending_audits_.front().audit_id;
-      pending_audits_.pop_front();
-    }
-    const std::uint64_t audit_id = next_audit_id_++;
-    if (next_audit_id_ == 0U) {
-      next_audit_id_ = 1U;
-    }
-    const auto same_snapshot =
-        std::find_if(pending_audits_.begin(), pending_audits_.end(),
-                     [&identity](const PendingAudit& pending) {
-                       return identitiesEqual(pending.identity, identity);
-                     });
-    std::shared_ptr<const std::vector<std::size_t>> occupied_cells;
-    if (same_snapshot != pending_audits_.end()) {
-      occupied_cells = same_snapshot->occupied_cells;
-    } else {
-      occupied_cells = std::make_shared<const std::vector<std::size_t>>(
-          occupiedCellIndices(grid, identity.occupied_cell_count));
-    }
-    pending_audits_.push_back(
-        PendingAudit{audit_id, identity, *cell, std::move(occupied_cells)});
-    result.pending_audit_id = audit_id;
-  }
-
-  std::ostringstream stream;
-  stream << "memory_provenance[status=pending audit_id="
-         << result.pending_audit_id.value_or(0U)
-         << " reason=" << memoryProvenanceUnavailableReasonName(match.reason)
-         << " snapshot_stamp_ns=" << identity.stamp_ns
-         << " grid_hash=" << identity.raw_grid_data_hash
-         << " occupied=" << identity.occupied_cell_count << " cell=(" << cell->x << ','
-         << cell->y << ")]";
-  if (result.evicted_audit_id.has_value()) {
-    stream << " memory_provenance_audit_evicted[audit_id="
-           << result.evicted_audit_id.value_or(0U) << " reason=capacity]";
-  }
-  result.diagnostic = stream.str();
-  return result;
-}
-
-void MemoryProvenanceAuditTracker::clear() noexcept {
-  cache_.clear();
-  pending_audits_.clear();
-  next_audit_id_ = 1U;
-}
-
-std::size_t MemoryProvenanceAuditTracker::cachedSnapshotCount() const noexcept {
-  return cache_.size();
-}
-
-std::size_t MemoryProvenanceAuditTracker::pendingAuditCount() const noexcept {
-  return pending_audits_.size();
-}
-
 const char* memoryProvenanceUnavailableReasonName(
     const MemoryProvenanceUnavailableReason reason) noexcept {
   switch (reason) {
@@ -952,6 +827,10 @@ const char* memoryProvenanceUnavailableReasonName(
       return "cell_missing";
     case MemoryProvenanceUnavailableReason::kMalformed:
       return "malformed";
+    case MemoryProvenanceUnavailableReason::kHistoryExpired:
+      return "history_expired";
+    case MemoryProvenanceUnavailableReason::kCapacityEvicted:
+      return "capacity_evicted";
   }
   return "unknown";
 }

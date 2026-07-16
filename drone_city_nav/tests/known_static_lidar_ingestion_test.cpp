@@ -86,7 +86,7 @@ volumeAtRange(const LidarBeamProjection& projection,
   scan.angle_min_rad = 0.0;
   scan.angle_increment_rad = 0.1;
   scan.range_min_m = 0.1;
-  scan.range_max_m = 20.0;
+  scan.range_max_m = test_case.config.max_lidar_range_m;
   scan.origin_altitude_m = test_case.pose.altitude_m;
   scan.roll_rad = test_case.pose.roll_rad;
   scan.pitch_rad = test_case.pose.pitch_rad;
@@ -224,6 +224,55 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
   EXPECT_NEAR(trigger.beam.measured_range_m, 4.0, 1.0e-6);
   EXPECT_NEAR(trigger.known_static.expected_range_m, 6.0, 1.0e-6);
   EXPECT_NEAR(trigger.known_static.range_delta_m, -2.0, 1.0e-6);
+}
+
+TEST(KnownStaticLidarIngestion,
+     SurfaceBeyondEffectiveRangeDoesNotSuppressUnknownObstacleInEitherPath) {
+  IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  test_case.config.max_lidar_range_m = 35.0;
+  test_case.config.range_hit_epsilon_m = 0.05;
+  constexpr float kMeasuredRangeM = 34.94F;
+  constexpr double kKnownSurfaceRangeM = 35.1;
+  const LidarBeamProjection projection = projectLidarBeam(
+      test_case.pose, test_case.config, 0.1, 35.0, 0.0, 0.1, 0U, kMeasuredRangeM);
+  ASSERT_TRUE(projection.hit);
+  std::vector<KnownPassageSolidVolume> volumes;
+  volumes.push_back(volumeAtRange(projection, test_case.kind, kKnownSurfaceRangeM));
+  const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
+  EXPECT_FALSE(classifier
+                   .nearestExpectedSurface(projection.ray_origin_map_m,
+                                           projection.ray_direction_map, 35.0)
+                   .has_value());
+
+  const std::array<float, 1U> ranges{kMeasuredRangeM};
+  const GridBounds bounds{-5.0, -5.0, 0.5, 100, 40};
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats = memory.integrateScan(
+      Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+      memoryScan(ranges, test_case), ObstacleMemoryConfig{}, &classifier);
+  OccupancyGrid2D overlay_grid{bounds};
+  const CurrentLidarOverlayStats overlay_stats =
+      overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 35.0, 0.0, 0.1},
+                              test_case.pose, test_case.config, &classifier);
+
+  const std::optional<GridIndex> endpoint_cell =
+      overlay_grid.worldToCell(projection.endpoint);
+  ASSERT_TRUE(endpoint_cell.has_value());
+  const GridIndex accepted_cell =
+      endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(memory.rawGrid().isOccupied(accepted_cell));
+  EXPECT_TRUE(overlay_grid.isOccupied(accepted_cell));
+  EXPECT_EQ(memory_stats.occupied_cells_updated, 1U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 1U);
+  EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 0U);
+  EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 0U);
+  ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
+  EXPECT_FALSE(memory_stats.occupied_transitions.front()
+                   .provenance.occupancy_trigger.known_static.classifier_applied);
+  ASSERT_EQ(overlay_stats.accepted_hits.size(), 1U);
+  EXPECT_EQ(overlay_stats.accepted_hits.front().ingestion_decision.reason,
+            LidarIngestionReason::kNoExpectedSurface);
 }
 
 TEST(KnownStaticLidarIngestion,

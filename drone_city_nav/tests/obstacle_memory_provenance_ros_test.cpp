@@ -342,9 +342,9 @@ TEST(ObstacleMemoryProvenanceRos,
   ASSERT_TRUE(parsed.snapshot.has_value());
 
   MemoryProvenanceAuditTracker tracker;
-  const std::vector<MemoryProvenanceAuditEnrichment> enrichments = tracker.insert(
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes = tracker.insert(
       parsed.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_TRUE(enrichments.empty());
+  EXPECT_TRUE(outcomes.empty());
 
   const MemoryProvenanceAuditResult audit = tracker.audit(grid, GridIndex{2, 0});
   EXPECT_FALSE(audit.pending_audit_id.has_value());
@@ -373,13 +373,14 @@ TEST(ObstacleMemoryProvenanceRos,
   EXPECT_EQ(repeated.pending_audit_id, first.pending_audit_id);
   EXPECT_EQ(tracker.pendingAuditCount(), 1U);
 
-  const std::vector<MemoryProvenanceAuditEnrichment> enrichments = tracker.insert(
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes = tracker.insert(
       parsed.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
-  ASSERT_EQ(enrichments.size(), 1U);
-  EXPECT_EQ(enrichments.front().audit_id, first.pending_audit_id.value_or(0U));
-  EXPECT_EQ(enrichments.front().cell, (GridIndex{2, 0}));
-  EXPECT_NE(enrichments.front().diagnostic.find("status=matched"), std::string::npos);
-  EXPECT_NE(enrichments.front().diagnostic.find("trigger_ingestion_surface=ground"),
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, first.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().reason, MemoryProvenanceUnavailableReason::kNone);
+  EXPECT_EQ(outcomes.front().cell, (GridIndex{2, 0}));
+  EXPECT_NE(outcomes.front().diagnostic.find("status=matched"), std::string::npos);
+  EXPECT_NE(outcomes.front().diagnostic.find("trigger_ingestion_surface=ground"),
             std::string::npos);
   EXPECT_EQ(tracker.pendingAuditCount(), 0U);
 }
@@ -408,12 +409,13 @@ TEST(ObstacleMemoryProvenanceRos,
   ASSERT_TRUE(pending.pending_audit_id.has_value());
   EXPECT_NE(pending.diagnostic.find("reason=stamp_mismatch"), std::string::npos);
 
-  const std::vector<MemoryProvenanceAuditEnrichment> enrichments = tracker.insert(
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes = tracker.insert(
       current_snapshot.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
-  ASSERT_EQ(enrichments.size(), 1U);
-  EXPECT_EQ(enrichments.front().audit_id, pending.pending_audit_id.value_or(0U));
-  EXPECT_EQ(enrichments.front().identity.stamp_ns, 13'000'000'034LL);
-  EXPECT_NE(enrichments.front().diagnostic.find("status=matched"), std::string::npos);
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().identity.stamp_ns, 13'000'000'034LL);
+  EXPECT_EQ(outcomes.front().reason, MemoryProvenanceUnavailableReason::kNone);
+  EXPECT_NE(outcomes.front().diagnostic.find("status=matched"), std::string::npos);
 
   const MemoryProvenanceAuditResult immediate =
       tracker.audit(current_grid, GridIndex{2, 0});
@@ -421,8 +423,7 @@ TEST(ObstacleMemoryProvenanceRos,
   EXPECT_NE(immediate.diagnostic.find("status=matched"), std::string::npos);
 }
 
-TEST(ObstacleMemoryProvenanceRos,
-     AuditTrackerDoesNotEnrichFromIdentityOnlyContentMismatch) {
+TEST(ObstacleMemoryProvenanceRos, AuditTrackerTerminatesExactIdentityContentMismatch) {
   const nav_msgs::msg::OccupancyGrid grid = makeGrid();
   const MemoryProvenanceParseResult parsed = parseObstacleMemoryProvenanceMessage(
       makeObstacleMemoryProvenanceMessage(grid, makeProvenance()));
@@ -437,14 +438,78 @@ TEST(ObstacleMemoryProvenanceRos,
   MemoryProvenanceAuditTracker tracker;
   const MemoryProvenanceAuditResult pending = tracker.audit(grid, GridIndex{2, 0});
   ASSERT_TRUE(pending.pending_audit_id.has_value());
-  EXPECT_TRUE(tracker.insert(std::move(mismatched)).empty());
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes =
+      tracker.insert(std::move(mismatched));
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().reason,
+            MemoryProvenanceUnavailableReason::kContentMismatch);
+  EXPECT_EQ(outcomes.front().diagnostic,
+            "memory_provenance[status=unavailable reason=content_mismatch]");
+  EXPECT_EQ(tracker.pendingAuditCount(), 0U);
+}
+
+TEST(ObstacleMemoryProvenanceRos,
+     AuditTrackerExpiresLostExactSnapshotAfterRetentionHorizon) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  MemoryProvenanceAuditTracker tracker{4U, 256U, 2U};
+  const MemoryProvenanceAuditResult pending = tracker.audit(grid, GridIndex{2, 0});
+  ASSERT_TRUE(pending.pending_audit_id.has_value());
+
+  nav_msgs::msg::OccupancyGrid newer_grid = grid;
+  newer_grid.header.stamp.sec = 13;
+  newer_grid.info.map_load_time = newer_grid.header.stamp;
+  MemoryProvenanceParseResult newer = parseObstacleMemoryProvenanceMessage(
+      makeObstacleMemoryProvenanceMessage(newer_grid, makeProvenance()));
+  ASSERT_TRUE(newer.snapshot.has_value());
+  EXPECT_TRUE(tracker
+                  .insert(std::move(newer.snapshot.value())) // NOLINT
+                  .empty());
   EXPECT_EQ(tracker.pendingAuditCount(), 1U);
 
-  const std::vector<MemoryProvenanceAuditEnrichment> enrichments = tracker.insert(
-      parsed.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
-  ASSERT_EQ(enrichments.size(), 1U);
-  EXPECT_EQ(enrichments.front().audit_id, pending.pending_audit_id.value_or(0U));
-  EXPECT_NE(enrichments.front().diagnostic.find("status=matched"), std::string::npos);
+  newer_grid.header.stamp.sec = 14;
+  newer_grid.info.map_load_time = newer_grid.header.stamp;
+  newer = parseObstacleMemoryProvenanceMessage(
+      makeObstacleMemoryProvenanceMessage(newer_grid, makeProvenance()));
+  ASSERT_TRUE(newer.snapshot.has_value());
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes =
+      tracker.insert(std::move(newer.snapshot.value())); // NOLINT
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().reason,
+            MemoryProvenanceUnavailableReason::kHistoryExpired);
+  EXPECT_EQ(outcomes.front().diagnostic,
+            "memory_provenance[status=unavailable reason=history_expired]");
+  EXPECT_EQ(tracker.pendingAuditCount(), 0U);
+}
+
+TEST(ObstacleMemoryProvenanceRos,
+     AuditTrackerTerminatesMalformedSnapshotWithExactIdentity) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  MemoryProvenanceAuditTracker tracker;
+  const MemoryProvenanceAuditResult pending = tracker.audit(grid, GridIndex{2, 0});
+  ASSERT_TRUE(pending.pending_audit_id.has_value());
+
+  msg::ObstacleMemoryProvenance message =
+      makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  ASSERT_FALSE(message.cells.empty());
+  message.cells.front().accepted_hit_count = 0U;
+  const MemoryProvenanceParseResult parsed =
+      parseObstacleMemoryProvenanceMessage(message);
+  EXPECT_FALSE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kMalformed);
+  const std::optional<MemoryGridSnapshotIdentity> identity =
+      memoryProvenanceMessageIdentity(message);
+  ASSERT_TRUE(identity.has_value());
+
+  const std::vector<MemoryProvenanceAuditOutcome> outcomes =
+      tracker.terminate(identity.value(), parsed.reason); // NOLINT
+  ASSERT_EQ(outcomes.size(), 1U);
+  EXPECT_EQ(outcomes.front().audit_id, pending.pending_audit_id.value_or(0U));
+  EXPECT_EQ(outcomes.front().reason, MemoryProvenanceUnavailableReason::kMalformed);
+  EXPECT_EQ(outcomes.front().diagnostic,
+            "memory_provenance[status=unavailable reason=malformed]");
+  EXPECT_EQ(tracker.pendingAuditCount(), 0U);
 }
 
 } // namespace drone_city_nav

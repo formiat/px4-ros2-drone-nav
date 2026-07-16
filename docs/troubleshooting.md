@@ -130,14 +130,15 @@ nodes log the same effective tolerances.
 
 If a prohibited replan initially reports
 `memory_provenance[status=pending audit_id=...]`, search forward for
-`Memory blocker provenance enrichment` with the same `audit_id`. This is the
+`Memory blocker provenance terminal` with the same `audit_id`. This is the
 normal grid-first callback order across the independent memory grid and
-provenance topics; planning was not delayed. The enrichment must contain
-`status=matched`, endpoint XYZ, attitude, measured/expected ranges, delta, and
-selected ingestion surface. A pending id with no later enrichment, a
-`cell_missing` enrichment, or `memory_provenance_audit_evicted` indicates a
-diagnostics transport/correlation defect and should not be treated as proof
-about the blocker surface.
+provenance topics; planning was not delayed. A matched outcome contains endpoint
+XYZ, attitude, measured/expected ranges, delta, and selected ingestion surface.
+An unavailable outcome explains why exact correlation became impossible:
+`malformed`, `content_mismatch`, or `history_expired` after 32 distinct newer
+snapshots. `status=evicted reason=capacity_evicted` is a separate bounded-queue
+failure. None of these unavailable outcomes proves anything about the blocker
+surface.
 
 ## A* Does Not Find A Path
 

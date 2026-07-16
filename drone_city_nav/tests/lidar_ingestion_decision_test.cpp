@@ -217,20 +217,23 @@ TEST(LidarIngestionDecision, InvalidGroundDoesNotDisableKnownStaticProvider) {
 }
 
 TEST(LidarIngestionDecision,
-     FallbackClassificationSuppressesExpectedStaticBeyondEffectiveRange) {
-  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
-  LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
-  beam.effective_max_range_m = 4.99;
+     KnownStaticSurfaceBeyondEffectiveRangeDoesNotSuppressValidHit) {
+  constexpr double kMeasuredRangeM = 34.94;
+  constexpr double kEffectiveMaxRangeM = 35.0;
+  constexpr double kKnownSurfaceRangeM = 35.1;
+  const Point3 direction{1.0, 0.0, 0.0};
+  const KnownStaticLidarHitClassifier classifier =
+      knownSurfaceAtRange(direction, kKnownSurfaceRangeM);
+  LidarBeamObservation beam = observation(direction, kMeasuredRangeM);
+  beam.effective_max_range_m = kEffectiveMaxRangeM;
 
   const LidarIngestionDecision decision =
       evaluateLidarIngestion(beam, &classifier, nullptr);
 
   EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kNone);
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedKnownStatic);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeOnly);
-  ASSERT_TRUE(decision.known_static_result_available);
-  EXPECT_EQ(decision.known_static_result.classification,
-            KnownStaticLidarHitClassification::kExpectedStatic);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_FALSE(decision.known_static_result_available);
 }
 
 TEST(LidarIngestionDecision, MissingRequiredAttitudeMakesGroundUnavailable) {

@@ -119,6 +119,7 @@ enable_project_warnings(drone_city_nav_core)
 add_library(
   drone_city_nav_ros_adapters
   src/lidar_debug_node_config.cpp
+  src/memory_provenance_audit_tracker.cpp
   src/offboard_debug_markers.cpp
   src/offboard_trajectory_state.cpp
   src/obstacle_memory_provenance_ros.cpp

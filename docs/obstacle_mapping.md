@@ -114,6 +114,11 @@ grid. The decision compares the measured range with the nearest expected 3D
 surface along the map-frame ray. Providers currently include known passage
 solids and the configured flat ground plane.
 
+Only surfaces reachable within the beam's effective sensor range participate in
+the decision. If no provider has such a candidate, a valid measured hit remains
+ordinary `free_and_hit` evidence even when an unbounded diagnostic ray query
+could find known geometry farther away.
+
 Ground rejection is range based, not endpoint-distance based and not a global
 vehicle-tilt cutoff. A fast level-flight attitude therefore does not disable
 lidar mapping. For a downward ray, the expected flat-ground range is computed
