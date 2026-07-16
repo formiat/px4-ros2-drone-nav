@@ -21,7 +21,7 @@ PlannerNode::PlannerNode()
       });
   memory_provenance_sub_ = create_subscription<msg::ObstacleMemoryProvenance>(
       config.topics.obstacle_memory_provenance,
-      rclcpp::QoS{1}.reliable().transient_local(),
+      rclcpp::QoS{kMemoryProvenanceTransportDepth}.reliable().transient_local(),
       [this](const msg::ObstacleMemoryProvenance::SharedPtr msg) {
         onMemoryProvenance(*msg);
       });

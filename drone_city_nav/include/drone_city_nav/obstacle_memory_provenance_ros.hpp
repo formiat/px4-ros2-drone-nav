@@ -17,6 +17,12 @@
 
 namespace drone_city_nav {
 
+// Grid and provenance are published on separate ROS topics. Retain enough reliable
+// provenance history to cover planner callbacks that are temporarily occupied by a
+// trajectory rebuild; depth one can discard the exact snapshot needed for a later
+// blocker audit before the planner has a chance to consume it.
+inline constexpr std::size_t kMemoryProvenanceTransportDepth = 32U;
+
 enum class MemoryProvenanceUnavailableReason {
   kNone,
   kNotApplicable,

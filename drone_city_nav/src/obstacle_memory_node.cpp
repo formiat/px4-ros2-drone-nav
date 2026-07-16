@@ -278,7 +278,7 @@ public:
     provenance_pub_ = create_publisher<msg::ObstacleMemoryProvenance>(
         declare_parameter<std::string>("obstacle_memory_provenance_topic",
                                        "/drone_city_nav/obstacle_memory_provenance"),
-        rclcpp::QoS{1}.reliable().transient_local());
+        rclcpp::QoS{kMemoryProvenanceTransportDepth}.reliable().transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
