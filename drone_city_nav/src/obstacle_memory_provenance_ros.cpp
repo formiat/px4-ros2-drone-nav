@@ -652,10 +652,21 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
   MemoryProvenanceParseResult result;
   if (message.schema_version != msg::ObstacleMemoryProvenance::CURRENT_SCHEMA_VERSION) {
     result.reason = MemoryProvenanceUnavailableReason::kSchemaInvalid;
+    result.detail = "schema_version";
     return result;
   }
-  if (!validGridInfo(message.grid_info) || message.header.frame_id.empty() ||
-      message.cells.size() != message.occupied_cell_count) {
+  if (!validGridInfo(message.grid_info)) {
+    result.detail = "grid_info";
+    return result;
+  }
+  if (message.header.frame_id.empty()) {
+    result.detail = "frame_id";
+    return result;
+  }
+  if (message.cells.size() != message.occupied_cell_count) {
+    result.detail =
+        "cell_count expected=" + std::to_string(message.occupied_cell_count) +
+        " actual=" + std::to_string(message.cells.size());
     return result;
   }
 
@@ -668,23 +679,38 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
   snapshot.identity.raw_grid_data_hash = message.raw_grid_data_hash;
   snapshot.identity.occupied_cell_count = message.occupied_cell_count;
   if (!snapshot.identity.stamp_valid) {
+    result.detail = "header_stamp";
     return result;
   }
 
-  for (const msg::ObstacleMemoryCellProvenance& cell : message.cells) {
+  for (std::size_t message_index = 0U; message_index < message.cells.size();
+       ++message_index) {
+    const msg::ObstacleMemoryCellProvenance& cell = message.cells[message_index];
     if (cell.cell_x < 0 || cell.cell_y < 0 ||
         cell.cell_x >= static_cast<std::int32_t>(message.grid_info.width) ||
-        cell.cell_y >= static_cast<std::int32_t>(message.grid_info.height) ||
-        cell.accepted_hit_count == 0U ||
-        (cell.endpoint_z_range_valid &&
-         (!std::isfinite(cell.min_endpoint_z_m) ||
-          !std::isfinite(cell.max_endpoint_z_m) ||
-          cell.min_endpoint_z_m > cell.max_endpoint_z_m))) {
+        cell.cell_y >= static_cast<std::int32_t>(message.grid_info.height)) {
+      result.detail = "cell_bounds index=" + std::to_string(message_index);
+      return result;
+    }
+    if (cell.accepted_hit_count == 0U) {
+      result.detail = "accepted_hit_count index=" + std::to_string(message_index);
+      return result;
+    }
+    if (cell.endpoint_z_range_valid &&
+        (!std::isfinite(cell.min_endpoint_z_m) ||
+         !std::isfinite(cell.max_endpoint_z_m) ||
+         cell.min_endpoint_z_m > cell.max_endpoint_z_m)) {
+      result.detail = "endpoint_z_range index=" + std::to_string(message_index);
       return result;
     }
     const auto trigger = observationFromMessage(cell.occupancy_trigger);
     const auto last = observationFromMessage(cell.last_hit);
-    if (!trigger.has_value() || !last.has_value()) {
+    if (!trigger.has_value()) {
+      result.detail = "occupancy_trigger index=" + std::to_string(message_index);
+      return result;
+    }
+    if (!last.has_value()) {
+      result.detail = "last_hit index=" + std::to_string(message_index);
       return result;
     }
     const std::size_t index = static_cast<std::size_t>(cell.cell_y) *
@@ -699,14 +725,19 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
       record.max_endpoint_z_m = cell.max_endpoint_z_m;
     }
     record.accepted_hit_count = cell.accepted_hit_count;
-    if (!endpointMatchesCell(record, message.grid_info) ||
-        !snapshot.cells.emplace(index, std::move(record)).second) {
+    if (!endpointMatchesCell(record, message.grid_info)) {
+      result.detail = "endpoint_cell index=" + std::to_string(message_index);
+      return result;
+    }
+    if (!snapshot.cells.emplace(index, std::move(record)).second) {
+      result.detail = "duplicate_cell index=" + std::to_string(message_index);
       return result;
     }
   }
 
   result.snapshot = std::move(snapshot);
   result.reason = MemoryProvenanceUnavailableReason::kNone;
+  result.detail = "ok";
   return result;
 }
 

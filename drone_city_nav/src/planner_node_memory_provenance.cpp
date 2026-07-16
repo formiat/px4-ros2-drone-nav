@@ -8,8 +8,8 @@ void PlannerNode::onMemoryProvenance(const msg::ObstacleMemoryProvenance& messag
     latest_memory_provenance_error_ = parsed.reason;
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Ignoring invalid obstacle memory provenance snapshot: reason=%s",
-        memoryProvenanceUnavailableReasonName(parsed.reason));
+        "Ignoring invalid obstacle memory provenance snapshot: reason=%s detail=%s",
+        memoryProvenanceUnavailableReasonName(parsed.reason), parsed.detail.c_str());
     return;
   }
 

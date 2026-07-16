@@ -48,6 +48,7 @@ struct MemoryProvenanceParseResult {
   std::optional<MemoryProvenanceSnapshot> snapshot;
   MemoryProvenanceUnavailableReason reason{
       MemoryProvenanceUnavailableReason::kMalformed};
+  std::string detail{"unclassified"};
 };
 
 struct MemoryProvenanceMatchResult {
