@@ -422,7 +422,25 @@ observationFromMessage(const msg::ObstacleMemoryHitObservation& message,
     return fail("known_part");
   }
   if (!ingestion_decision_valid) {
-    return fail("ingestion_decision");
+    std::ostringstream detail;
+    detail << "ingestion_decision[action="
+           << (ingestion_action.has_value()
+                   ? lidarIngestionActionName(*ingestion_action)
+                   : "invalid")
+           << " reason="
+           << (ingestion_reason.has_value()
+                   ? lidarIngestionReasonName(*ingestion_reason)
+                   : "invalid")
+           << " surface="
+           << (ingestion_surface.has_value()
+                   ? lidarExpectedSurfaceKindName(*ingestion_surface)
+                   : "invalid")
+           << " expected_range=" << message.ingestion_expected_range_m
+           << " delta=" << message.ingestion_range_delta_m << ']';
+    if (validation_error != nullptr) {
+      *validation_error = detail.str();
+    }
+    return std::nullopt;
   }
   if (message.beam_index > std::numeric_limits<std::size_t>::max()) {
     return fail("beam_index");
