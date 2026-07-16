@@ -187,6 +187,7 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertIn("/drone_city_nav/obstacle_memory_grid", text)
         self.assertIn("/drone_city_nav/obstacle_memory_provenance", text)
+        self.assertIn("/drone_city_nav/obstacle_memory_snapshot", text)
         self.assertIn("/drone_city_nav/prohibited_grid", text)
         self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
         self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
@@ -201,8 +202,21 @@ class TopicContractTest(unittest.TestCase):
                 "obstacle_memory_provenance_topic: "
                 "/drone_city_nav/obstacle_memory_provenance"
             ),
+            1,
+        )
+        self.assertEqual(
+            yaml_text.count(
+                "obstacle_memory_snapshot_topic: "
+                "/drone_city_nav/obstacle_memory_snapshot"
+            ),
             2,
         )
+
+        planner_lifecycle = read("drone_city_nav/src/planner_node_lifecycle.cpp")
+        self.assertIn("memory_snapshot_sub_", planner_lifecycle)
+        self.assertIn("ObstacleMemorySnapshot", planner_lifecycle)
+        self.assertNotIn("memory_provenance_sub_", planner_lifecycle)
+        self.assertNotIn("memory_grid_sub_", planner_lifecycle)
 
     def test_known_passage_marker_contract_is_wired_for_debugging(self) -> None:
         yaml_text = read("drone_city_nav/config/urban_mvp.yaml")

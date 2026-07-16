@@ -21,6 +21,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryHitObservation.msg"
   "msg/ObstacleMemoryCellProvenance.msg"
   "msg/ObstacleMemoryProvenance.msg"
+  "msg/ObstacleMemorySnapshot.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)

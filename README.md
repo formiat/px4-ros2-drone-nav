@@ -163,7 +163,7 @@ current lidar hit overlay. Source toggles and map format details are documented
 in `docs/obstacle_mapping.md` and `docs/configuration.md`.
 
 Obstacle topics follow a strict raw/prohibited/debug contract. Raw sources such
-as `/drone_city_nav/obstacle_memory_grid` must contain only direct obstacle
+as the grid carried by `/drone_city_nav/obstacle_memory_snapshot` must contain only direct obstacle
 evidence and must never include safety inflation. The planner overlays all raw
 sources, inflates that merged grid once, and publishes the final planning output
 as `/drone_city_nav/prohibited_grid`. Debug topics such as lidar point clouds or

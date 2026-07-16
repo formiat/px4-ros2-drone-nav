@@ -10,7 +10,9 @@ world assets, and Docker tooling around it.
 - subscribes to lidar scans and PX4 pose/attitude;
 - projects scan hits into the map frame;
 - maintains an occupancy-style memory grid;
-- publishes `/drone_city_nav/obstacle_memory_grid`.
+- publishes the raw debug grid and provenance topics;
+- publishes `/drone_city_nav/obstacle_memory_snapshot`, an atomic grid/provenance
+  pair used by the planner.
 
 `planner_node`
 
@@ -53,7 +55,7 @@ world assets, and Docker tooling around it.
 Gazebo lidar
   -> /scan
   -> obstacle_memory_node
-  -> /drone_city_nav/obstacle_memory_grid
+  -> /drone_city_nav/obstacle_memory_snapshot
 
 /scan + memory + static map + PX4 pose
   -> planner_node

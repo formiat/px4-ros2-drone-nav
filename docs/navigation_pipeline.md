@@ -8,7 +8,8 @@ accepted executable trajectory.
 The planner can use:
 
 - static map cells from `generated_city.map2d`;
-- accumulated obstacle memory from `/drone_city_nav/obstacle_memory_grid`;
+- accumulated obstacle memory from the atomic
+  `/drone_city_nav/obstacle_memory_snapshot` runtime artifact;
 - current lidar scan overlay from `/scan`.
 
 The planner can also load known 3D passage annotations from

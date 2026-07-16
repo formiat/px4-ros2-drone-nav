@@ -128,18 +128,17 @@ high-speed flight can use the same roll/pitch angles. Verify that
 `ground_lidar_altitude_m` matches the physical ground surface and that both
 nodes log the same effective tolerances.
 
-If a prohibited replan initially reports
-`memory_provenance[status=pending audit_id=...]`, search forward for
-`Memory blocker provenance terminal` with the same `audit_id`. This is the
-normal grid-first callback order across the independent memory grid and
-provenance topics; planning was not delayed. A matched outcome contains endpoint
-XYZ, attitude, measured/expected ranges, delta, and selected ingestion surface.
-An unavailable outcome explains why exact correlation became impossible:
-`malformed`, `content_mismatch`, or `history_expired` after 32 distinct newer
-message identities. Malformed messages advance this horizon when their identity
-is valid; duplicates and out-of-order identities do not. `status=evicted
-reason=capacity_evicted` is a separate bounded-queue failure. None of these
-unavailable outcomes proves anything about the blocker surface.
+Every memory-sourced prohibited replan should report
+`memory_provenance[status=matched ...]` on the same log line. The atomic
+`/drone_city_nav/obstacle_memory_snapshot` subscription does not accept a grid
+without its exact provenance. The matched record contains endpoint XYZ,
+attitude, measured/expected ranges, delta, and selected ingestion surface.
+
+If a memory blocker reports `not_received`, `cell_missing`, `pending`, or
+`history_expired`, treat it as an invariant failure rather than normal callback
+ordering. Check for `Ignoring invalid atomic obstacle memory snapshot`, compare
+the nested grid/provenance identity, and verify that the planner subscribes to
+the atomic snapshot topic rather than the standalone debug topics.
 
 ## A* Does Not Find A Path
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/msg/obstacle_memory_provenance.hpp"
+#include "drone_city_nav/msg/obstacle_memory_snapshot.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -77,11 +78,20 @@ memoryProvenanceMessageIdentity(const msg::ObstacleMemoryProvenance& message);
     const nav_msgs::msg::OccupancyGrid& grid,
     const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance);
 
+[[nodiscard]] msg::ObstacleMemorySnapshot makeObstacleMemorySnapshotMessage(
+    const nav_msgs::msg::OccupancyGrid& grid,
+    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance);
+
 [[nodiscard]] std::size_t
 serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message);
 
 [[nodiscard]] MemoryProvenanceParseResult
 parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& message);
+
+// The planner consumes this atomic pair. A snapshot is accepted only when the
+// nested provenance describes the exact grid carried by the same ROS message.
+[[nodiscard]] MemoryProvenanceParseResult
+parseObstacleMemorySnapshotMessage(const msg::ObstacleMemorySnapshot& message);
 
 class MemoryProvenanceCache {
 public:

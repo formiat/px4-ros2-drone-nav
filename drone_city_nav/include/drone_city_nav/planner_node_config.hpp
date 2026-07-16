@@ -16,8 +16,7 @@
 namespace drone_city_nav {
 
 struct PlannerTopics {
-  std::string obstacle_memory_grid{"/drone_city_nav/obstacle_memory_grid"};
-  std::string obstacle_memory_provenance{"/drone_city_nav/obstacle_memory_provenance"};
+  std::string obstacle_memory_snapshot{"/drone_city_nav/obstacle_memory_snapshot"};
   std::string lidar{"/scan"};
   std::string local_position{"/fmu/out/vehicle_local_position"};
   std::string attitude{"/fmu/out/vehicle_attitude"};

@@ -6,6 +6,7 @@ obstacle_memory_node:
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
+    obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     grid_resolution_m: 0.5
     grid_width_m: 345.0
     grid_height_m: 525.0
@@ -54,8 +55,7 @@ planner_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     lidar_topic: /scan
-    obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
-    obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
+    obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     prohibited_grid_topic: /drone_city_nav/prohibited_grid
     static_map_grid_topic: /drone_city_nav/static_map_grid
     static_map_points_topic: /drone_city_nav/static_map_points

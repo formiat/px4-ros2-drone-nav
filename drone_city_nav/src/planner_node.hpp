@@ -132,9 +132,9 @@ private:
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
-  void onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg);
+  [[nodiscard]] bool applyMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg);
 
-  void onMemoryProvenance(const msg::ObstacleMemoryProvenance& message);
+  void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
@@ -305,10 +305,7 @@ private:
   void logPlannerCountersThrottled();
 
   std::optional<OccupancyGrid2D> memory_grid_;
-  std::optional<nav_msgs::msg::OccupancyGrid> memory_grid_message_;
-  MemoryProvenanceAuditTracker memory_provenance_audit_tracker_{4U, 256U};
-  MemoryProvenanceUnavailableReason latest_memory_provenance_error_{
-      MemoryProvenanceUnavailableReason::kNotReceived};
+  std::optional<MemoryProvenanceSnapshot> memory_provenance_snapshot_;
   std::optional<OccupancyGrid2D> static_grid_;
   std::optional<StaticCityMap> static_map_debug_;
   std::optional<KnownPassageMap> known_passages_;
@@ -404,8 +401,7 @@ private:
   std::optional<TrajectoryRefinementRequest> queued_refinement_;
   TrajectoryRefinementScheduler refinement_scheduler_;
 
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
-  rclcpp::Subscription<msg::ObstacleMemoryProvenance>::SharedPtr memory_provenance_sub_;
+  rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

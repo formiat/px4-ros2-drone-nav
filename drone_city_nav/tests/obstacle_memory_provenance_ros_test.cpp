@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cmath>
+#include <deque>
 #include <limits>
 
 namespace drone_city_nav {
@@ -112,6 +113,75 @@ TEST(ObstacleMemoryProvenanceRos, RoundTripsPersistentRecordWithoutNarrowing) {
   ASSERT_TRUE(record.max_endpoint_z_m.has_value());
   EXPECT_DOUBLE_EQ(record.min_endpoint_z_m.value_or(0.0), 17.0);
   EXPECT_DOUBLE_EQ(record.max_endpoint_z_m.value_or(0.0), 19.0);
+}
+
+TEST(ObstacleMemoryProvenanceRos, AtomicSnapshotRequiresExactGridProvenancePair) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  msg::ObstacleMemorySnapshot message =
+      makeObstacleMemorySnapshotMessage(grid, makeProvenance());
+
+  MemoryProvenanceParseResult parsed = parseObstacleMemorySnapshotMessage(message);
+  ASSERT_TRUE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kNone);
+
+  ++message.grid.header.stamp.nanosec;
+  parsed = parseObstacleMemorySnapshotMessage(message);
+  EXPECT_FALSE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kStampMismatch);
+
+  message = makeObstacleMemorySnapshotMessage(grid, makeProvenance());
+  message.grid.data.at(2U) = 0;
+  parsed = parseObstacleMemorySnapshotMessage(message);
+  EXPECT_FALSE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kContentMismatch);
+}
+
+TEST(ObstacleMemoryProvenanceRos,
+     AtomicSnapshotKeepsCurrentAuditExactWhileCallbackBacklogIsDelayed) {
+  nav_msgs::msg::OccupancyGrid current_grid = makeGrid();
+  MemoryProvenanceParseResult current = parseObstacleMemorySnapshotMessage(
+      makeObstacleMemorySnapshotMessage(current_grid, makeProvenance()));
+  ASSERT_TRUE(current.snapshot.has_value());
+  MemoryProvenanceSnapshot current_provenance =
+      std::move(current.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
+
+  // Model a reliable KeepLast(1) subscription while the single-threaded planner
+  // is busy: future publications replace one another, but cannot separate the
+  // grid currently used by planning from its provenance.
+  std::deque<msg::ObstacleMemorySnapshot> callback_backlog;
+  for (std::int32_t sec = 13; sec < 77; ++sec) {
+    nav_msgs::msg::OccupancyGrid newer_grid = makeGrid();
+    newer_grid.header.stamp.sec = sec;
+    newer_grid.info.map_load_time = newer_grid.header.stamp;
+    callback_backlog.clear();
+    callback_backlog.push_back(
+        makeObstacleMemorySnapshotMessage(newer_grid, makeProvenance()));
+  }
+
+  const std::string before_callback = formatMemoryProvenanceDiagnostic(
+      MemoryProvenanceMatchResult{&current_provenance,
+                                  MemoryProvenanceUnavailableReason::kNone},
+      GridIndex{2, 0});
+  EXPECT_NE(before_callback.find("status=matched"), std::string::npos);
+  EXPECT_NE(before_callback.find("trigger_endpoint=(12.5,20.5,17)"), std::string::npos);
+  EXPECT_NE(before_callback.find("trigger_ingestion_surface=ground"),
+            std::string::npos);
+
+  ASSERT_EQ(callback_backlog.size(), 1U);
+  const msg::ObstacleMemorySnapshot& delivered = callback_backlog.front();
+  MemoryProvenanceParseResult latest = parseObstacleMemorySnapshotMessage(delivered);
+  ASSERT_TRUE(latest.snapshot.has_value());
+  current_grid = delivered.grid;
+  current_provenance =
+      std::move(latest.snapshot.value()); // NOLINT(bugprone-unchecked-optional-access)
+
+  EXPECT_EQ(current_provenance.identity.stamp_ns,
+            memoryGridSnapshotIdentity(current_grid).stamp_ns);
+  const std::string after_callback = formatMemoryProvenanceDiagnostic(
+      MemoryProvenanceMatchResult{&current_provenance,
+                                  MemoryProvenanceUnavailableReason::kNone},
+      GridIndex{2, 0});
+  EXPECT_NE(after_callback.find("status=matched"), std::string::npos);
 }
 
 TEST(ObstacleMemoryProvenanceRos, SupportsEmptySnapshotWithGridIdentity) {

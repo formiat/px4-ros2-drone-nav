@@ -59,7 +59,7 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
   }
 }
 
-void PlannerNode::onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
+bool PlannerNode::applyMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
   RawOccupancyGridFromRosResult converted = rawOccupancyGridFromRos(
       msg, RawOccupancyGridFromRosConfig{memory_occupied_value_, memory_free_value_});
   if (!converted.grid.has_value()) {
@@ -73,11 +73,10 @@ void PlannerNode::onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Ignoring invalid obstacle memory grid metadata");
     }
-    return;
+    return false;
   }
 
   memory_grid_ = std::move(*converted.grid);
-  memory_grid_message_ = msg;
   if (converted.intermediate_value_cells > 0U) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -95,6 +94,7 @@ void PlannerNode::onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
                 memory_grid_->resolution(), memory_grid_->originX(),
                 memory_grid_->originY());
   }
+  return true;
 }
 
 void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {

@@ -141,22 +141,18 @@ occupied cell do not emit another transition event.
 Persistent correlation no longer depends on finding that earlier event in the
 same log. `/drone_city_nav/obstacle_memory_provenance` stores the occupancy
 trigger, latest accepted hit, endpoint Z range, and hit count for every active
-occupied cell. The planner enriches memory-sourced prohibited-replan logs with
-`memory_provenance[status=matched ...]` after exact grid snapshot matching. If
-the companion message has not arrived yet, the replan log reports
-`memory_provenance[status=pending audit_id=... reason=... snapshot_stamp_ns=...
-grid_hash=... cell=(...)]`. Planning continues immediately from the 2D grid;
-diagnostics never delay or veto the safety replan. When the exact provenance
-snapshot arrives on its independent ROS topic, the planner emits an unthrottled
-`Memory blocker provenance terminal: status=matched` event with the same
-`audit_id` and the full cell record. Repeated replans against the same snapshot
-and cell reuse one pending audit id. A malformed message with the exact identity
-terminates that id as `status=unavailable reason=malformed`. If the exact message
-is lost, receiving 32 strictly newer identity-bearing provenance messages,
-including malformed payloads, exhausts the reliable transport retention horizon
-and terminates the id with
-`reason=history_expired`. Planning never waits for either outcome. Pending queue
-capacity eviction is also reported explicitly as `status=evicted`.
+occupied cell as a standalone diagnostics topic. Runtime planning consumes
+`/drone_city_nav/obstacle_memory_snapshot`, which carries that provenance and the
+raw grid atomically in one ROS message.
+
+The planner validates the complete pair before replacing its current memory
+state. A memory-sourced prohibited-replan log therefore emits
+`memory_provenance[status=matched ...]` immediately, including endpoint XYZ,
+attitude, measured/expected range, delta, selected surface, and hit history. A
+subscriber backlog may replace old queued messages under KeepLast(1), but every
+delivered grid remains bound to its own provenance. If the nested pair is
+malformed or inconsistent, the entire update is ignored and the previous valid
+snapshot remains authoritative; planning never accepts an unauditable grid.
 
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies

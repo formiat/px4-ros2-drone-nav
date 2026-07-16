@@ -14,16 +14,11 @@ PlannerNode::PlannerNode()
   }
 
   const auto sensor_qos = rclcpp::SensorDataQoS{};
-  memory_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      config.topics.obstacle_memory_grid, rclcpp::QoS{1}.transient_local(),
-      [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        onMemoryGrid(*msg);
-      });
-  memory_provenance_sub_ = create_subscription<msg::ObstacleMemoryProvenance>(
-      config.topics.obstacle_memory_provenance,
-      rclcpp::QoS{kMemoryProvenanceTransportDepth}.reliable().transient_local(),
-      [this](const msg::ObstacleMemoryProvenance::SharedPtr msg) {
-        onMemoryProvenance(*msg);
+  memory_snapshot_sub_ = create_subscription<msg::ObstacleMemorySnapshot>(
+      config.topics.obstacle_memory_snapshot,
+      rclcpp::QoS{1}.reliable().transient_local(),
+      [this](const msg::ObstacleMemorySnapshot::SharedPtr msg) {
+        onMemorySnapshot(*msg);
       });
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
@@ -82,10 +77,9 @@ PlannerNode::PlannerNode()
               start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_,
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_);
   RCLCPP_INFO(get_logger(),
-              "Planner subscriptions: obstacle_memory_grid='%s' "
-              "obstacle_memory_provenance='%s' local_position='%s' attitude='%s'",
-              config.topics.obstacle_memory_grid.c_str(),
-              config.topics.obstacle_memory_provenance.c_str(),
+              "Planner subscriptions: obstacle_memory_snapshot='%s' "
+              "local_position='%s' attitude='%s'",
+              config.topics.obstacle_memory_snapshot.c_str(),
               config.topics.local_position.c_str(), config.topics.attitude.c_str());
   RCLCPP_INFO(get_logger(), "Planner publications: path='%s' path_id='%s'",
               config.topics.path.c_str(), config.topics.path_id.c_str());

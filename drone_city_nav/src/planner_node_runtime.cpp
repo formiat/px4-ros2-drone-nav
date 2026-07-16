@@ -208,15 +208,13 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
     memory_provenance_cell = nearest_source->cell;
   }
 
-  MemoryProvenanceAuditResult provenance_audit;
-  if (memory_grid_message_.has_value()) {
-    provenance_audit = memory_provenance_audit_tracker_.audit(
-        *memory_grid_message_, memory_provenance_cell, latest_memory_provenance_error_);
-  } else {
-    provenance_audit.diagnostic =
-        formatMemoryProvenanceDiagnostic({}, memory_provenance_cell);
-  }
-  stream << ' ' << provenance_audit.diagnostic;
+  const MemoryProvenanceMatchResult provenance_match =
+      memory_provenance_snapshot_.has_value()
+          ? MemoryProvenanceMatchResult{&*memory_provenance_snapshot_,
+                                        MemoryProvenanceUnavailableReason::kNone}
+          : MemoryProvenanceMatchResult{};
+  stream << ' '
+         << formatMemoryProvenanceDiagnostic(provenance_match, memory_provenance_cell);
   return stream.str();
 }
 

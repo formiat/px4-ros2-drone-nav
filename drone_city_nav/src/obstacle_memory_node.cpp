@@ -279,6 +279,10 @@ public:
         declare_parameter<std::string>("obstacle_memory_provenance_topic",
                                        "/drone_city_nav/obstacle_memory_provenance"),
         rclcpp::QoS{kMemoryProvenanceTransportDepth}.reliable().transient_local());
+    snapshot_pub_ = create_publisher<msg::ObstacleMemorySnapshot>(
+        declare_parameter<std::string>("obstacle_memory_snapshot_topic",
+                                       "/drone_city_nav/obstacle_memory_snapshot"),
+        rclcpp::QoS{1}.reliable().transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
@@ -666,6 +670,10 @@ private:
         makeOccupancyGridMessage(memory_->rawGrid(), stamp);
     const msg::ObstacleMemoryProvenance provenance_message =
         makeObstacleMemoryProvenanceMessage(grid_message, memory_->activeProvenance());
+    msg::ObstacleMemorySnapshot snapshot_message;
+    snapshot_message.grid = grid_message;
+    snapshot_message.provenance = provenance_message;
+    snapshot_pub_->publish(snapshot_message);
     raw_grid_pub_->publish(grid_message);
     provenance_pub_->publish(provenance_message);
 
@@ -747,6 +755,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
   rclcpp::Publisher<msg::ObstacleMemoryProvenance>::SharedPtr provenance_pub_;
+  rclcpp::Publisher<msg::ObstacleMemorySnapshot>::SharedPtr snapshot_pub_;
 };
 
 } // namespace drone_city_nav

@@ -498,10 +498,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       Point2{node.declare_parameter<double>("initial_x_m", 0.0),
              node.declare_parameter<double>("initial_y_m", 0.0)};
 
-  config.topics.obstacle_memory_grid = node.declare_parameter<std::string>(
-      "obstacle_memory_grid_topic", "/drone_city_nav/obstacle_memory_grid");
-  config.topics.obstacle_memory_provenance = node.declare_parameter<std::string>(
-      "obstacle_memory_provenance_topic", "/drone_city_nav/obstacle_memory_provenance");
+  config.topics.obstacle_memory_snapshot = node.declare_parameter<std::string>(
+      "obstacle_memory_snapshot_topic", "/drone_city_nav/obstacle_memory_snapshot");
   config.topics.lidar = node.declare_parameter<std::string>("lidar_topic", "/scan");
   config.topics.local_position = node.declare_parameter<std::string>(
       "px4_local_position_topic", "/fmu/out/vehicle_local_position");

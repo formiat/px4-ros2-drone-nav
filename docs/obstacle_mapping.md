@@ -73,14 +73,17 @@ Every active occupied memory cell also owns sparse 3D diagnostic provenance:
 the hit that first made the cell occupied, the latest accepted hit, the observed
 minimum/maximum endpoint Z, and the accepted-hit count. This metadata never
 participates in scoring, inflation, A*, or trajectory control. It is published
-on `/drone_city_nav/obstacle_memory_provenance` alongside the authoritative 2D
-grid. Both messages use one publication stamp and identical grid metadata.
+on `/drone_city_nav/obstacle_memory_provenance` for standalone diagnostics. The
+planner receives the same data through the authoritative atomic
+`/drone_city_nav/obstacle_memory_snapshot` message, which carries the raw grid
+and provenance together.
 
-The planner accepts provenance only when stamp, frame, complete map metadata,
-raw row-major grid hash, occupied count, and every record agree exactly with the
-accepted memory grid. It keeps four recent snapshots to tolerate cross-topic
-delivery order. Missing, late, or malformed provenance only produces an
-explicit diagnostic status; it never blocks planning.
+The planner replaces its current memory state only when stamp, frame, complete
+map metadata, raw row-major grid hash, occupied count, and every provenance
+record agree exactly inside that one message. Callback backlog may drop an old
+snapshot, but it cannot deliver its grid without its provenance or vice versa.
+An invalid atomic pair is ignored as a whole, leaving the previous valid pair in
+use. Planning never waits for a later diagnostics callback.
 
 The throttled producer summary reports `serialized_bytes`, measured from the
 actual ROS CDR serialization buffer. This includes variable-length cell and
@@ -185,6 +188,7 @@ Useful visualization topics:
 - `/drone_city_nav/static_building_markers`
 - `/drone_city_nav/obstacle_memory_grid`
 - `/drone_city_nav/obstacle_memory_provenance`
+- `/drone_city_nav/obstacle_memory_snapshot`
 - `/drone_city_nav/prohibited_grid`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/remembered_lidar_points`

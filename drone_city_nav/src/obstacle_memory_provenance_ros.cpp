@@ -632,6 +632,15 @@ msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
   return message;
 }
 
+msg::ObstacleMemorySnapshot makeObstacleMemorySnapshotMessage(
+    const nav_msgs::msg::OccupancyGrid& grid,
+    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance) {
+  msg::ObstacleMemorySnapshot message;
+  message.grid = grid;
+  message.provenance = makeObstacleMemoryProvenanceMessage(grid, provenance);
+  return message;
+}
+
 std::size_t
 serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message) {
   rclcpp::Serialization<msg::ObstacleMemoryProvenance> serialization;
@@ -735,6 +744,47 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
   result.snapshot = std::move(snapshot);
   result.reason = MemoryProvenanceUnavailableReason::kNone;
   result.detail = "ok";
+  return result;
+}
+
+MemoryProvenanceParseResult
+parseObstacleMemorySnapshotMessage(const msg::ObstacleMemorySnapshot& message) {
+  MemoryProvenanceParseResult result =
+      parseObstacleMemoryProvenanceMessage(message.provenance);
+  if (!result.snapshot.has_value()) {
+    return result;
+  }
+
+  const MemoryGridSnapshotIdentity grid_identity =
+      memoryGridSnapshotIdentity(message.grid);
+  const MemoryGridSnapshotIdentity& provenance_identity = result.snapshot->identity;
+  if (!grid_identity.stamp_valid || !provenance_identity.stamp_valid ||
+      grid_identity.stamp_ns != provenance_identity.stamp_ns) {
+    result.snapshot.reset();
+    result.reason = MemoryProvenanceUnavailableReason::kStampMismatch;
+    result.detail = "snapshot_grid_stamp";
+    return result;
+  }
+  if (grid_identity.frame_id != provenance_identity.frame_id) {
+    result.snapshot.reset();
+    result.reason = MemoryProvenanceUnavailableReason::kFrameMismatch;
+    result.detail = "snapshot_grid_frame";
+    return result;
+  }
+  if (!sameGridInfo(grid_identity.grid_info, provenance_identity.grid_info)) {
+    result.snapshot.reset();
+    result.reason = MemoryProvenanceUnavailableReason::kGeometryMismatch;
+    result.detail = "snapshot_grid_geometry";
+    return result;
+  }
+  if (grid_identity.raw_grid_data_hash != provenance_identity.raw_grid_data_hash ||
+      grid_identity.occupied_cell_count != provenance_identity.occupied_cell_count ||
+      !snapshotMatchesGrid(*result.snapshot, message.grid)) {
+    result.snapshot.reset();
+    result.reason = MemoryProvenanceUnavailableReason::kContentMismatch;
+    result.detail = "snapshot_grid_content";
+    return result;
+  }
   return result;
 }
 
