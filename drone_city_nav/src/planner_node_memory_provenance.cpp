@@ -13,8 +13,21 @@ void PlannerNode::onMemoryProvenance(const msg::ObstacleMemoryProvenance& messag
     return;
   }
 
-  memory_provenance_cache_.insert(std::move(*parsed.snapshot));
+  const std::vector<MemoryProvenanceAuditEnrichment> enrichments =
+      memory_provenance_audit_tracker_.insert(std::move(*parsed.snapshot));
   latest_memory_provenance_error_ = MemoryProvenanceUnavailableReason::kNone;
+  for (const MemoryProvenanceAuditEnrichment& enrichment : enrichments) {
+    RCLCPP_INFO(
+        get_logger(),
+        "Memory blocker provenance enrichment: audit_id=%llu "
+        "snapshot_stamp_ns=%lld grid_hash=%llu occupied=%llu cell=(%d,%d) "
+        "%s",
+        static_cast<unsigned long long>(enrichment.audit_id),
+        static_cast<long long>(enrichment.identity.stamp_ns),
+        static_cast<unsigned long long>(enrichment.identity.raw_grid_data_hash),
+        static_cast<unsigned long long>(enrichment.identity.occupied_cell_count),
+        enrichment.cell.x, enrichment.cell.y, enrichment.diagnostic.c_str());
+  }
 }
 
 } // namespace drone_city_nav

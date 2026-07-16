@@ -143,9 +143,17 @@ same log. `/drone_city_nav/obstacle_memory_provenance` stores the occupancy
 trigger, latest accepted hit, endpoint Z range, and hit count for every active
 occupied cell. The planner enriches memory-sourced prohibited-replan logs with
 `memory_provenance[status=matched ...]` after exact grid snapshot matching. If
-the companion message is missing, late, malformed, or refers to another grid,
-the log reports `status=unavailable` and a concrete reason while planning
-continues from the 2D grid unchanged.
+the companion message has not arrived yet, the replan log reports
+`memory_provenance[status=pending audit_id=... reason=... snapshot_stamp_ns=...
+grid_hash=... cell=(...)]`. Planning continues immediately from the 2D grid;
+diagnostics never delay or veto the safety replan. When the exact provenance
+snapshot arrives on its independent ROS topic, the planner emits an unthrottled
+`Memory blocker provenance enrichment` event with the same `audit_id` and the
+full `status=matched` cell record. Repeated replans against the same snapshot
+and cell reuse one pending audit id. This makes both ROS callback orders
+auditable without weakening exact stamp, frame, geometry, content, or cell
+matching. Malformed snapshots remain rejected and a bounded pending queue logs
+an explicit audit eviction if its capacity is ever exhausted.
 
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies

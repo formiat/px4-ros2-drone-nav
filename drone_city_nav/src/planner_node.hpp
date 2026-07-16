@@ -287,9 +287,10 @@ private:
 
   [[nodiscard]] double scanAgeSeconds(const std::int64_t now_ns) const;
 
-  [[nodiscard]] std::string describeProhibitedIntersectionSource(
-      const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
-      const PlanningGridBuildResult& planning_result) const;
+  [[nodiscard]] std::string
+  describeProhibitedIntersectionSource(const OccupancyGrid2D& grid,
+                                       const PathProhibitedIntersection& intersection,
+                                       const PlanningGridBuildResult& planning_result);
 
   bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid,
                                    const PlanningGridBuildResult& planning_result);
@@ -305,7 +306,7 @@ private:
 
   std::optional<OccupancyGrid2D> memory_grid_;
   std::optional<nav_msgs::msg::OccupancyGrid> memory_grid_message_;
-  MemoryProvenanceCache memory_provenance_cache_{4U};
+  MemoryProvenanceAuditTracker memory_provenance_audit_tracker_{4U, 256U};
   MemoryProvenanceUnavailableReason latest_memory_provenance_error_{
       MemoryProvenanceUnavailableReason::kNotReceived};
   std::optional<OccupancyGrid2D> static_grid_;

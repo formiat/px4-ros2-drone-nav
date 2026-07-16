@@ -125,7 +125,7 @@ void PlannerNode::invalidateCurrentPose() {
 
 std::string PlannerNode::describeProhibitedIntersectionSource(
     const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
-    const PlanningGridBuildResult& planning_result) const {
+    const PlanningGridBuildResult& planning_result) {
   const OccupancyGrid2D* memory_source_grid = nullptr;
   if (memory_grid_) {
     memory_source_grid = &*memory_grid_;
@@ -208,17 +208,15 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
     memory_provenance_cell = nearest_source->cell;
   }
 
-  MemoryProvenanceMatchResult provenance_match;
+  MemoryProvenanceAuditResult provenance_audit;
   if (memory_grid_message_.has_value()) {
-    provenance_match = memory_provenance_cache_.match(*memory_grid_message_);
-    if (provenance_match.snapshot == nullptr &&
-        provenance_match.reason == MemoryProvenanceUnavailableReason::kNotReceived &&
-        latest_memory_provenance_error_ != MemoryProvenanceUnavailableReason::kNone) {
-      provenance_match.reason = latest_memory_provenance_error_;
-    }
+    provenance_audit = memory_provenance_audit_tracker_.audit(
+        *memory_grid_message_, memory_provenance_cell, latest_memory_provenance_error_);
+  } else {
+    provenance_audit.diagnostic =
+        formatMemoryProvenanceDiagnostic({}, memory_provenance_cell);
   }
-  stream << ' '
-         << formatMemoryProvenanceDiagnostic(provenance_match, memory_provenance_cell);
+  stream << ' ' << provenance_audit.diagnostic;
   return stream.str();
 }
 
