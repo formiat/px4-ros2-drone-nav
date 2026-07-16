@@ -287,6 +287,11 @@ private:
 
   [[nodiscard]] double scanAgeSeconds(const std::int64_t now_ns) const;
 
+  void logMemorySnapshotTransportSummary(std::int64_t now_ns);
+
+  [[nodiscard]] std::string
+  memorySnapshotTransportDiagnostic(std::int64_t now_ns) const;
+
   [[nodiscard]] std::string
   describeProhibitedIntersectionSource(const OccupancyGrid2D& grid,
                                        const PathProhibitedIntersection& intersection,
@@ -364,6 +369,16 @@ private:
   double last_scan_pose_latency_s_{0.0};
   double last_scan_motion_shift_m_{0.0};
   double lidar_pose_latency_s_{0.05};
+  double memory_snapshot_diagnostic_period_s_{5.0};
+  double memory_snapshot_max_age_ms_{250.0};
+  double memory_snapshot_max_callback_time_ms_{100.0};
+  double memory_snapshot_min_apply_rate_hz_{5.0};
+  double last_memory_snapshot_age_ms_{std::numeric_limits<double>::quiet_NaN()};
+  double last_memory_snapshot_callback_ms_{std::numeric_limits<double>::quiet_NaN()};
+  double last_memory_snapshot_interval_ms_{std::numeric_limits<double>::quiet_NaN()};
+  double last_memory_snapshot_apply_rate_hz_{0.0};
+  double memory_snapshot_max_age_since_report_ms_{0.0};
+  double memory_snapshot_max_callback_since_report_ms_{0.0};
   Point2 last_scan_motion_shift_{};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
@@ -375,6 +390,9 @@ private:
   std::int64_t max_current_lidar_staleness_ns_{750'000'000};
   std::int64_t last_pose_update_ns_{0};
   std::int64_t last_scan_update_ns_{0};
+  std::int64_t last_memory_snapshot_receive_ns_{0};
+  std::int64_t last_memory_snapshot_stamp_ns_{0};
+  std::int64_t last_memory_snapshot_diagnostic_ns_{0};
   int memory_occupied_value_{100};
   int memory_free_value_{0};
   std::size_t last_logged_path_size_{std::numeric_limits<std::size_t>::max()};
@@ -390,6 +408,17 @@ private:
   std::uint64_t non_empty_path_publications_{0U};
   std::uint64_t hold_path_publications_{0U};
   std::uint64_t computed_path_publications_{0U};
+  std::uint64_t memory_snapshot_received_{0U};
+  std::uint64_t memory_snapshot_applied_{0U};
+  std::uint64_t memory_snapshot_rejected_{0U};
+  std::uint64_t memory_snapshot_sequence_gaps_{0U};
+  std::uint64_t memory_snapshot_out_of_order_{0U};
+  std::uint64_t last_memory_snapshot_received_sequence_{0U};
+  std::uint64_t last_memory_snapshot_applied_sequence_{0U};
+  std::uint64_t last_memory_snapshot_received_producer_instance_id_{0U};
+  std::uint64_t last_memory_snapshot_applied_producer_instance_id_{0U};
+  std::uint64_t memory_snapshot_producer_restarts_{0U};
+  std::uint64_t memory_snapshot_applied_at_last_diagnostic_{0U};
   std::uint64_t next_path_id_{1U};
   std::uint64_t last_published_path_id_{0U};
   std::uint64_t trajectory_generation_{0U};

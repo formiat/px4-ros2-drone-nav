@@ -154,6 +154,27 @@ delivered grid remains bound to its own provenance. If the nested pair is
 malformed or inconsistent, the entire update is ignored and the previous valid
 snapshot remains authoritative; planning never accepts an unauditable grid.
 
+The atomic transport is observable independently from mapping behavior. Every
+producer publication logs `sequence`, grid stamp, publication interval,
+assembly time, occupied/provenance record counts, and whether the standalone
+debug topics were also published. The periodic `Obstacle memory snapshot
+budget` record reports the full serialized atomic-message size, standalone
+provenance size, grid cells, effective publish rate, and configured budget
+status.
+
+The planner logs every applied snapshot with the same sequence and stamp plus
+transport age, callback processing time, callback interval, producer assembly
+time, cumulative sequence replacements, and rejects. Periodic `Planner memory
+snapshot budget` records report effective apply rate and maximum age/callback
+time for the interval. Every prohibited-replan diagnostic includes
+`memory_snapshot_transport[...]`, so the exact memory input active at a safety
+event can be checked for freshness without correlating a throttled summary.
+
+Standalone `/obstacle_memory_grid` and `/obstacle_memory_provenance` remain
+debug/RViz/bag outputs, but are rate-limited independently. They are not planner
+inputs and their lower cadence cannot change runtime planning. The authoritative
+atomic snapshot continues to publish on every accepted memory scan update.
+
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies
 the matched structure/opening/part, grid cell, endpoint XYZ, measured range,

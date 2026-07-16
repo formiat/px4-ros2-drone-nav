@@ -175,6 +175,21 @@ inflation_radius_m: 1.0
 planning_clearance_m: 3.0
 ```
 
+## Atomic Memory Transport
+
+Runtime planning receives a single `ObstacleMemorySnapshot` containing the raw
+2D grid and exact sparse provenance. A monotonically increasing producer
+sequence and the grid stamp make delivery and replacement observable. The
+planner rejects zero, duplicate, or out-of-order sequences and retains its last
+valid state when nested grid/provenance validation fails.
+
+The authoritative atomic snapshot is published after every accepted memory
+scan update. Standalone grid/provenance topics are diagnostics-only and default
+to a 1 Hz cadence to avoid duplicate serialization and transient-local history
+cost. The provenance debug publisher uses KeepLast(1); exact runtime history is
+carried by the currently applied atomic snapshot rather than a retained queue of
+large standalone messages.
+
 The prohibited grid is published for validation and visualization. Planning
 clearance affects route/trajectory construction and should not be interpreted
 as a hard runtime failure by itself.

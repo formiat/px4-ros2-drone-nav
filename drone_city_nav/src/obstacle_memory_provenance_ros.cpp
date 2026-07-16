@@ -634,8 +634,11 @@ msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
 
 msg::ObstacleMemorySnapshot makeObstacleMemorySnapshotMessage(
     const nav_msgs::msg::OccupancyGrid& grid,
-    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance) {
+    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance,
+    const std::uint64_t sequence, const std::uint64_t producer_instance_id) {
   msg::ObstacleMemorySnapshot message;
+  message.producer_instance_id = producer_instance_id;
+  message.sequence = sequence;
   message.grid = grid;
   message.provenance = makeObstacleMemoryProvenanceMessage(grid, provenance);
   return message;
@@ -644,6 +647,14 @@ msg::ObstacleMemorySnapshot makeObstacleMemorySnapshotMessage(
 std::size_t
 serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message) {
   rclcpp::Serialization<msg::ObstacleMemoryProvenance> serialization;
+  rclcpp::SerializedMessage serialized_message;
+  serialization.serialize_message(&message, &serialized_message);
+  return serialized_message.get_rcl_serialized_message().buffer_length;
+}
+
+std::size_t
+serializedObstacleMemorySnapshotSize(const msg::ObstacleMemorySnapshot& message) {
+  rclcpp::Serialization<msg::ObstacleMemorySnapshot> serialization;
   rclcpp::SerializedMessage serialized_message;
   serialization.serialize_message(&message, &serialized_message);
   return serialized_message.get_rcl_serialized_message().buffer_length;

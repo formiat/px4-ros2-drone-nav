@@ -120,6 +120,10 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.obstacle_memory_snapshot,
             "/drone_city_nav/obstacle_memory_snapshot");
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 5.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 250.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_callback_time_ms, 100.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 5.0);
   EXPECT_EQ(config.topics.static_building_markers,
             "/drone_city_nav/static_building_markers");
   EXPECT_EQ(config.topics.known_passage_markers,
@@ -544,6 +548,10 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   const auto node = makeNode(
       "planner_node_config_topic_contract",
       {rclcpp::Parameter{"obstacle_memory_snapshot_topic", "/custom/memory_snapshot"},
+       rclcpp::Parameter{"obstacle_memory_snapshot_diagnostic_period_s", 2.0},
+       rclcpp::Parameter{"obstacle_memory_snapshot_max_age_ms", 150.0},
+       rclcpp::Parameter{"obstacle_memory_snapshot_max_callback_time_ms", 75.0},
+       rclcpp::Parameter{"obstacle_memory_snapshot_min_apply_rate_hz", 8.0},
        rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
        rclcpp::Parameter{"trajectory_diagnostics_topic",
                          "/custom/trajectory_diagnostics"},
@@ -554,6 +562,10 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
 
   EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
   EXPECT_EQ(config.topics.obstacle_memory_snapshot, "/custom/memory_snapshot");
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 2.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 150.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_callback_time_ms, 75.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 8.0);
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);

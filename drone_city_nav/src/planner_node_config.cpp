@@ -500,6 +500,20 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.topics.obstacle_memory_snapshot = node.declare_parameter<std::string>(
       "obstacle_memory_snapshot_topic", "/drone_city_nav/obstacle_memory_snapshot");
+  config.memory_snapshot_transport.diagnostic_period_s =
+      std::clamp(node.declare_parameter<double>(
+                     "obstacle_memory_snapshot_diagnostic_period_s", 5.0),
+                 0.1, 60.0);
+  config.memory_snapshot_transport.max_age_ms = std::clamp(
+      node.declare_parameter<double>("obstacle_memory_snapshot_max_age_ms", 250.0), 1.0,
+      60'000.0);
+  config.memory_snapshot_transport.max_callback_time_ms =
+      std::clamp(node.declare_parameter<double>(
+                     "obstacle_memory_snapshot_max_callback_time_ms", 100.0),
+                 0.1, 10'000.0);
+  config.memory_snapshot_transport.min_apply_rate_hz = std::clamp(
+      node.declare_parameter<double>("obstacle_memory_snapshot_min_apply_rate_hz", 5.0),
+      0.0, 1000.0);
   config.topics.lidar = node.declare_parameter<std::string>("lidar_topic", "/scan");
   config.topics.local_position = node.declare_parameter<std::string>(
       "px4_local_position_topic", "/fmu/out/vehicle_local_position");

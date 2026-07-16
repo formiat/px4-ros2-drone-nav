@@ -118,7 +118,10 @@ TEST(ObstacleMemoryProvenanceRos, RoundTripsPersistentRecordWithoutNarrowing) {
 TEST(ObstacleMemoryProvenanceRos, AtomicSnapshotRequiresExactGridProvenancePair) {
   const nav_msgs::msg::OccupancyGrid grid = makeGrid();
   msg::ObstacleMemorySnapshot message =
-      makeObstacleMemorySnapshotMessage(grid, makeProvenance());
+      makeObstacleMemorySnapshotMessage(grid, makeProvenance(), 17U, 23U);
+
+  EXPECT_EQ(message.producer_instance_id, 23U);
+  EXPECT_EQ(message.sequence, 17U);
 
   MemoryProvenanceParseResult parsed = parseObstacleMemorySnapshotMessage(message);
   ASSERT_TRUE(parsed.snapshot.has_value());
@@ -310,6 +313,11 @@ TEST(ObstacleMemoryProvenanceRos, SerializedSizeIncludesStringsAndCells) {
 
   EXPECT_GE(longer_strings_size, base_size + 2048U);
   EXPECT_GT(additional_cell_size, longer_strings_size);
+
+  const msg::ObstacleMemorySnapshot snapshot =
+      makeObstacleMemorySnapshotMessage(grid, makeProvenance(), 1U);
+  EXPECT_GT(serializedObstacleMemorySnapshotSize(snapshot), base_size);
+  EXPECT_GT(serializedObstacleMemorySnapshotSize(snapshot), grid.data.size());
 }
 
 TEST(ObstacleMemoryProvenanceRos, CacheRequiresExactSnapshotIdentityAndContent) {

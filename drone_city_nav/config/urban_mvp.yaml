@@ -7,6 +7,11 @@ obstacle_memory_node:
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
+    obstacle_memory_debug_publish_period_s: 1.0
+    obstacle_memory_snapshot_diagnostic_period_s: 5.0
+    obstacle_memory_snapshot_max_serialized_bytes: 4500000
+    obstacle_memory_snapshot_max_assembly_time_ms: 100.0
+    obstacle_memory_snapshot_max_publish_interval_ms: 250.0
     grid_resolution_m: 0.5
     grid_width_m: 345.0
     grid_height_m: 525.0
@@ -56,6 +61,10 @@ planner_node:
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     lidar_topic: /scan
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
+    obstacle_memory_snapshot_diagnostic_period_s: 5.0
+    obstacle_memory_snapshot_max_age_ms: 250.0
+    obstacle_memory_snapshot_max_callback_time_ms: 100.0
+    obstacle_memory_snapshot_min_apply_rate_hz: 5.0
     prohibited_grid_topic: /drone_city_nav/prohibited_grid
     static_map_grid_topic: /drone_city_nav/static_map_grid
     static_map_points_topic: /drone_city_nav/static_map_points

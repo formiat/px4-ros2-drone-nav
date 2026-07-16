@@ -161,6 +161,24 @@ public:
         declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
     ground_lidar_rejection_config_.farther_range_tolerance_m =
         declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
+    snapshot_debug_publish_period_s_ = std::clamp(
+        declare_parameter<double>("obstacle_memory_debug_publish_period_s", 1.0), 0.0,
+        60.0);
+    snapshot_diagnostic_period_s_ = std::clamp(
+        declare_parameter<double>("obstacle_memory_snapshot_diagnostic_period_s", 5.0),
+        0.1, 60.0);
+    snapshot_max_serialized_bytes_ = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        declare_parameter<std::int64_t>("obstacle_memory_snapshot_max_serialized_bytes",
+                                        4'500'000),
+        1, 100'000'000));
+    snapshot_max_assembly_time_ms_ =
+        std::clamp(declare_parameter<double>(
+                       "obstacle_memory_snapshot_max_assembly_time_ms", 100.0),
+                   0.1, 10'000.0);
+    snapshot_max_publish_interval_ms_ =
+        std::clamp(declare_parameter<double>(
+                       "obstacle_memory_snapshot_max_publish_interval_ms", 250.0),
+                   1.0, 60'000.0);
     std::filesystem::path package_share_directory;
     try {
       package_share_directory =
@@ -278,7 +296,7 @@ public:
     provenance_pub_ = create_publisher<msg::ObstacleMemoryProvenance>(
         declare_parameter<std::string>("obstacle_memory_provenance_topic",
                                        "/drone_city_nav/obstacle_memory_provenance"),
-        rclcpp::QoS{kMemoryProvenanceTransportDepth}.reliable().transient_local());
+        rclcpp::QoS{1}.reliable().transient_local());
     snapshot_pub_ = create_publisher<msg::ObstacleMemorySnapshot>(
         declare_parameter<std::string>("obstacle_memory_snapshot_topic",
                                        "/drone_city_nav/obstacle_memory_snapshot"),
@@ -322,6 +340,13 @@ public:
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
                 lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+    RCLCPP_INFO(get_logger(),
+                "Obstacle memory snapshot transport: debug_period=%.2fs "
+                "diagnostic_period=%.2fs budgets[serialized_bytes=%zu assembly=%.1fms "
+                "publish_interval=%.1fms]",
+                snapshot_debug_publish_period_s_, snapshot_diagnostic_period_s_,
+                snapshot_max_serialized_bytes_, snapshot_max_assembly_time_ms_,
+                snapshot_max_publish_interval_ms_);
   }
 
 private:
@@ -665,17 +690,116 @@ private:
   }
 
   void publishMemorySnapshot() {
+    const auto assembly_started = std::chrono::steady_clock::now();
     const rclcpp::Time stamp = now();
+    const std::int64_t stamp_ns = stamp.nanoseconds();
+    if (snapshot_producer_instance_id_ == 0U) {
+      snapshot_producer_instance_id_ =
+          static_cast<std::uint64_t>(std::max<std::int64_t>(1, stamp_ns));
+    }
     const nav_msgs::msg::OccupancyGrid grid_message =
         makeOccupancyGridMessage(memory_->rawGrid(), stamp);
-    const msg::ObstacleMemoryProvenance provenance_message =
-        makeObstacleMemoryProvenanceMessage(grid_message, memory_->activeProvenance());
-    msg::ObstacleMemorySnapshot snapshot_message;
-    snapshot_message.grid = grid_message;
-    snapshot_message.provenance = provenance_message;
+    ++snapshot_sequence_;
+    msg::ObstacleMemorySnapshot snapshot_message = makeObstacleMemorySnapshotMessage(
+        grid_message, memory_->activeProvenance(), snapshot_sequence_,
+        snapshot_producer_instance_id_);
+    const auto assembly_duration = std::chrono::steady_clock::now() - assembly_started;
+    snapshot_message.producer_assembly_duration_ns =
+        static_cast<std::uint64_t>(std::max<std::int64_t>(
+            0, std::chrono::duration_cast<std::chrono::nanoseconds>(assembly_duration)
+                   .count()));
+    const double assembly_ms =
+        static_cast<double>(snapshot_message.producer_assembly_duration_ns) / 1.0e6;
+    const double publish_interval_ms =
+        last_snapshot_publish_stamp_ns_ > 0 &&
+                stamp_ns > last_snapshot_publish_stamp_ns_
+            ? static_cast<double>(stamp_ns - last_snapshot_publish_stamp_ns_) / 1.0e6
+            : 0.0;
+    last_snapshot_publish_stamp_ns_ = stamp_ns;
+    ++snapshot_publications_;
+    snapshot_max_assembly_since_report_ms_ =
+        std::max(snapshot_max_assembly_since_report_ms_, assembly_ms);
+    snapshot_max_publish_interval_since_report_ms_ =
+        std::max(snapshot_max_publish_interval_since_report_ms_, publish_interval_ms);
     snapshot_pub_->publish(snapshot_message);
-    raw_grid_pub_->publish(grid_message);
-    provenance_pub_->publish(provenance_message);
+
+    const bool publish_debug =
+        snapshot_debug_publish_period_s_ <= 0.0 || last_debug_publish_stamp_ns_ <= 0 ||
+        stamp_ns - last_debug_publish_stamp_ns_ >=
+            static_cast<std::int64_t>(snapshot_debug_publish_period_s_ * 1.0e9);
+    if (publish_debug) {
+      raw_grid_pub_->publish(snapshot_message.grid);
+      provenance_pub_->publish(snapshot_message.provenance);
+      last_debug_publish_stamp_ns_ = stamp_ns;
+      ++snapshot_debug_publications_;
+    }
+
+    RCLCPP_INFO(
+        get_logger(),
+        "Obstacle memory snapshot published: producer_instance=%" PRIu64
+        " sequence=%" PRIu64 " stamp_ns=%" PRId64 " interval_ms=%.3f assembly_ms=%.3f "
+        "occupied=%zu records=%zu debug_published=%s",
+        snapshot_message.producer_instance_id, snapshot_message.sequence, stamp_ns,
+        publish_interval_ms, assembly_ms, memory_->countRawCells().occupied_cells,
+        snapshot_message.provenance.cells.size(), publish_debug ? "true" : "false");
+
+    const bool report_transport =
+        last_snapshot_diagnostic_stamp_ns_ <= 0 ||
+        stamp_ns - last_snapshot_diagnostic_stamp_ns_ >=
+            static_cast<std::int64_t>(snapshot_diagnostic_period_s_ * 1.0e9);
+    if (report_transport) {
+      const std::size_t snapshot_bytes =
+          serializedObstacleMemorySnapshotSize(snapshot_message);
+      const std::size_t provenance_bytes =
+          serializedObstacleMemoryProvenanceSize(snapshot_message.provenance);
+      const bool within_budget =
+          snapshot_bytes <= snapshot_max_serialized_bytes_ &&
+          snapshot_max_assembly_since_report_ms_ <= snapshot_max_assembly_time_ms_ &&
+          snapshot_max_publish_interval_since_report_ms_ <=
+              snapshot_max_publish_interval_ms_;
+      const double report_elapsed_s =
+          last_snapshot_diagnostic_stamp_ns_ > 0 &&
+                  stamp_ns > last_snapshot_diagnostic_stamp_ns_
+              ? static_cast<double>(stamp_ns - last_snapshot_diagnostic_stamp_ns_) /
+                    1.0e9
+              : 0.0;
+      const std::uint64_t report_publications =
+          snapshot_publications_ - snapshot_publications_at_last_diagnostic_;
+      const double publish_rate_hz =
+          report_elapsed_s > 0.0
+              ? static_cast<double>(report_publications) / report_elapsed_s
+              : 0.0;
+      const char* status = within_budget ? "within_budget" : "exceeded";
+      if (within_budget) {
+        RCLCPP_INFO(
+            get_logger(),
+            "Obstacle memory snapshot budget: status=%s sequence=%" PRIu64
+            " full_serialized_bytes=%zu provenance_serialized_bytes=%zu "
+            "grid_cells=%zu max_assembly_ms=%.3f max_publish_interval_ms=%.3f "
+            "publish_rate_hz=%.3f publications=%" PRIu64 " debug_publications=%" PRIu64,
+            status, snapshot_message.sequence, snapshot_bytes, provenance_bytes,
+            snapshot_message.grid.data.size(), snapshot_max_assembly_since_report_ms_,
+            snapshot_max_publish_interval_since_report_ms_, publish_rate_hz,
+            snapshot_publications_, snapshot_debug_publications_);
+      } else {
+        RCLCPP_WARN(
+            get_logger(),
+            "Obstacle memory snapshot budget: status=%s sequence=%" PRIu64
+            " full_serialized_bytes=%zu max_serialized_bytes=%zu "
+            "observed_max_assembly_ms=%.3f assembly_budget_ms=%.3f "
+            "observed_max_publish_interval_ms=%.3f publish_interval_budget_ms=%.3f "
+            "publish_rate_hz=%.3f",
+            status, snapshot_message.sequence, snapshot_bytes,
+            snapshot_max_serialized_bytes_, snapshot_max_assembly_since_report_ms_,
+            snapshot_max_assembly_time_ms_,
+            snapshot_max_publish_interval_since_report_ms_,
+            snapshot_max_publish_interval_ms_, publish_rate_hz);
+      }
+      last_snapshot_diagnostic_stamp_ns_ = stamp_ns;
+      snapshot_publications_at_last_diagnostic_ = snapshot_publications_;
+      snapshot_max_assembly_since_report_ms_ = 0.0;
+      snapshot_max_publish_interval_since_report_ms_ = 0.0;
+    }
 
     const std::size_t invalid_z_count = static_cast<std::size_t>(
         std::count_if(memory_->activeProvenance().begin(),
@@ -686,9 +810,9 @@ private:
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory provenance snapshot: occupied=%zu records=%zu "
-        "invalid_z=%zu serialized_bytes=%zu",
-        memory_->countRawCells().occupied_cells, provenance_message.cells.size(),
-        invalid_z_count, serializedObstacleMemoryProvenanceSize(provenance_message));
+        "invalid_z=%zu",
+        memory_->countRawCells().occupied_cells,
+        snapshot_message.provenance.cells.size(), invalid_z_count);
   }
 
   [[nodiscard]] nav_msgs::msg::OccupancyGrid
@@ -741,6 +865,21 @@ private:
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   double lidar_pose_latency_s_{0.05};
+  double snapshot_debug_publish_period_s_{1.0};
+  double snapshot_diagnostic_period_s_{5.0};
+  double snapshot_max_assembly_time_ms_{100.0};
+  double snapshot_max_publish_interval_ms_{250.0};
+  double snapshot_max_assembly_since_report_ms_{0.0};
+  double snapshot_max_publish_interval_since_report_ms_{0.0};
+  std::size_t snapshot_max_serialized_bytes_{4'500'000U};
+  std::uint64_t snapshot_sequence_{0U};
+  std::uint64_t snapshot_producer_instance_id_{0U};
+  std::uint64_t snapshot_publications_{0U};
+  std::uint64_t snapshot_debug_publications_{0U};
+  std::uint64_t snapshot_publications_at_last_diagnostic_{0U};
+  std::int64_t last_snapshot_publish_stamp_ns_{0};
+  std::int64_t last_debug_publish_stamp_ns_{0};
+  std::int64_t last_snapshot_diagnostic_stamp_ns_{0};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
   bool compensate_lidar_attitude_{true};

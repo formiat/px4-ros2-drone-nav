@@ -76,6 +76,14 @@ Known passages:
 - `ground_lidar_altitude_m`
 - `ground_lidar_closer_range_tolerance_m`
 - `ground_lidar_farther_range_tolerance_m`
+- `obstacle_memory_debug_publish_period_s`
+- `obstacle_memory_snapshot_diagnostic_period_s`
+- `obstacle_memory_snapshot_max_serialized_bytes`
+- `obstacle_memory_snapshot_max_assembly_time_ms`
+- `obstacle_memory_snapshot_max_publish_interval_ms`
+- `obstacle_memory_snapshot_max_age_ms`
+- `obstacle_memory_snapshot_max_callback_time_ms`
+- `obstacle_memory_snapshot_min_apply_rate_hz`
 - `vertical_profile_preferred_gate_clearance_margin_m`
 - `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
@@ -174,6 +182,22 @@ farther tolerance `1.5` m. Headless validation requires the effective logged
 configuration to match. A deliberately disabled provider is reported as
 `disabled`; invalid numeric configuration is `unavailable` and does not disable
 the independent known-static provider.
+- `obstacle_memory_debug_publish_period_s` limits only the standalone raw-grid
+  and provenance debug topics. `0` publishes them with every atomic update;
+  the default `1.0 s` avoids tripling the large per-scan transport payload.
+- `obstacle_memory_snapshot_diagnostic_period_s` controls producer and planner
+  transport-budget summaries; per-publication/apply identity logs remain
+  available for exact event correlation.
+- `obstacle_memory_snapshot_max_serialized_bytes` and
+  `obstacle_memory_snapshot_max_assembly_time_ms` are producer warning budgets
+  for the complete atomic message and its construction cost.
+- `obstacle_memory_snapshot_max_publish_interval_ms` warns when authoritative
+  producer cadence falls below its operational budget.
+- `obstacle_memory_snapshot_max_age_ms`,
+  `obstacle_memory_snapshot_max_callback_time_ms`, and
+  `obstacle_memory_snapshot_min_apply_rate_hz` are planner warning budgets for
+  delivered snapshot freshness, callback processing, and effective apply rate.
+  They are diagnostic budgets, not rejection thresholds.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.

@@ -18,10 +18,8 @@
 
 namespace drone_city_nav {
 
-// Grid and provenance are published on separate ROS topics. Retain enough reliable
-// provenance history to cover planner callbacks that are temporarily occupied by a
-// trajectory rebuild; depth one can discard the exact snapshot needed for a later
-// blocker audit before the planner has a chance to consume it.
+// Retained for the standalone audit tracker utility. Runtime planning consumes the
+// atomic ObstacleMemorySnapshot and no longer depends on separate topic history.
 inline constexpr std::size_t kMemoryProvenanceTransportDepth = 32U;
 
 enum class MemoryProvenanceUnavailableReason {
@@ -80,10 +78,14 @@ memoryProvenanceMessageIdentity(const msg::ObstacleMemoryProvenance& message);
 
 [[nodiscard]] msg::ObstacleMemorySnapshot makeObstacleMemorySnapshotMessage(
     const nav_msgs::msg::OccupancyGrid& grid,
-    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance);
+    const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance,
+    std::uint64_t sequence = 0U, std::uint64_t producer_instance_id = 1U);
 
 [[nodiscard]] std::size_t
 serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message);
+
+[[nodiscard]] std::size_t
+serializedObstacleMemorySnapshotSize(const msg::ObstacleMemorySnapshot& message);
 
 [[nodiscard]] MemoryProvenanceParseResult
 parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& message);

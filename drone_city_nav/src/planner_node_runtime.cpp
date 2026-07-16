@@ -213,7 +213,8 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
           ? MemoryProvenanceMatchResult{&*memory_provenance_snapshot_,
                                         MemoryProvenanceUnavailableReason::kNone}
           : MemoryProvenanceMatchResult{};
-  stream << ' '
+  stream << ' ' << memorySnapshotTransportDiagnostic(get_clock()->now().nanoseconds())
+         << ' '
          << formatMemoryProvenanceDiagnostic(provenance_match, memory_provenance_cell);
   return stream.str();
 }

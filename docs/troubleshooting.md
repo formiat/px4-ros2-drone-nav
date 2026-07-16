@@ -140,6 +140,16 @@ ordering. Check for `Ignoring invalid atomic obstacle memory snapshot`, compare
 the nested grid/provenance identity, and verify that the planner subscribes to
 the atomic snapshot topic rather than the standalone debug topics.
 
+For a suspected transport-induced replan or clearance failure, inspect the
+`memory_snapshot_transport[...]` block on that exact replan line. Its sequence,
+stamp, current age, callback age/time, apply rate, replacements, and rejects
+describe the authoritative planner input at the event. Cross-check that
+sequence against `Obstacle memory snapshot published` and `Planner memory
+snapshot applied`. A sequence gap is a KeepLast(1) replacement while the
+planner callback was busy; a reject means the delivered atomic pair was not
+applied. Budget warnings identify oversized messages, slow assembly, stale
+delivery, slow parsing/apply, or inadequate effective apply rate.
+
 ## A* Does Not Find A Path
 
 Check:

@@ -1,2 +1,5 @@
+uint64 producer_instance_id
+uint64 sequence
+uint64 producer_assembly_duration_ns
 nav_msgs/OccupancyGrid grid
 drone_city_nav/ObstacleMemoryProvenance provenance

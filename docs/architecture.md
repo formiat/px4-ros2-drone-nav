@@ -13,6 +13,10 @@ world assets, and Docker tooling around it.
 - publishes the raw debug grid and provenance topics;
 - publishes `/drone_city_nav/obstacle_memory_snapshot`, an atomic grid/provenance
   pair used by the planner.
+- assigns every atomic artifact a monotonic sequence and reports full transport
+  size, assembly cadence, planner age/apply cadence, replacements, and rejects;
+- rate-limits the duplicate standalone grid/provenance debug topics independently
+  from the per-update authoritative snapshot.
 
 `planner_node`
 
