@@ -3,11 +3,32 @@
 #include "drone_city_nav/grid_overlay.hpp"
 
 #include <algorithm>
+#include <sstream>
 
 namespace drone_city_nav {
 namespace {
 
 constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
+
+void recordAcceptedHit(const GridIndex cell, const LidarBeamObservation& observation,
+                       const LidarIngestionDecision& decision,
+                       CurrentLidarOverlayStats& stats) {
+  const auto existing =
+      std::find_if(stats.accepted_hits.begin(), stats.accepted_hits.end(),
+                   [cell](const CurrentLidarAcceptedHitProvenance& provenance) {
+                     return provenance.cell.x == cell.x && provenance.cell.y == cell.y;
+                   });
+  const CurrentLidarAcceptedHitProvenance provenance{
+      .cell = cell,
+      .observation = observation,
+      .ingestion_decision = makeLidarIngestionDecisionSnapshot(decision),
+  };
+  if (existing == stats.accepted_hits.end()) {
+    stats.accepted_hits.push_back(provenance);
+  } else {
+    *existing = provenance;
+  }
+}
 
 } // namespace
 
@@ -74,6 +95,9 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
 
     ++stats.hit_beams;
     const auto endpoint_cell = current_lidar_grid.worldToCell(projection.endpoint);
+    if (endpoint_cell.has_value()) {
+      recordAcceptedHit(*endpoint_cell, observation, decision, stats);
+    }
     if (decision.known_static_result_available) {
       const KnownStaticLidarHitResult& classification = decision.known_static_result;
       recordKnownStaticLidarHit(classification, stats.known_static_lidar);
@@ -105,6 +129,55 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
   stats.overlay_occupied_cells_applied = overlay_stats.occupied_cells_applied;
   stats.overlay_occupied_cells_preserved = overlay_stats.occupied_cells_preserved;
   return stats;
+}
+
+const CurrentLidarAcceptedHitProvenance*
+findCurrentLidarAcceptedHitProvenance(const CurrentLidarOverlayStats& stats,
+                                      const GridIndex cell) noexcept {
+  const auto iter =
+      std::find_if(stats.accepted_hits.begin(), stats.accepted_hits.end(),
+                   [cell](const CurrentLidarAcceptedHitProvenance& provenance) {
+                     return provenance.cell.x == cell.x && provenance.cell.y == cell.y;
+                   });
+  return iter == stats.accepted_hits.end() ? nullptr : &*iter;
+}
+
+std::string
+formatCurrentLidarAcceptedHitDiagnostic(const CurrentLidarOverlayStats& stats,
+                                        const GridIndex cell) {
+  const CurrentLidarAcceptedHitProvenance* provenance =
+      findCurrentLidarAcceptedHitProvenance(stats, cell);
+  if (provenance == nullptr) {
+    return "current_lidar_hit[unavailable]";
+  }
+
+  const LidarBeamObservation& observation = provenance->observation;
+  const LidarBeamProjection& projection = observation.projection;
+  const LidarIngestionDecisionSnapshot& decision = provenance->ingestion_decision;
+  std::ostringstream stream;
+  stream << "current_lidar_hit[cell=(" << provenance->cell.x << ", "
+         << provenance->cell.y << ") beam=" << observation.beam_index
+         << " action=" << lidarIngestionActionName(decision.action)
+         << " reason=" << lidarIngestionReasonName(decision.reason)
+         << " surface=" << lidarExpectedSurfaceKindName(decision.expected_surface)
+         << " endpoint=(" << projection.endpoint_map_m.x << ", "
+         << projection.endpoint_map_m.y << ", " << projection.endpoint_map_m.z
+         << ") measured_range=" << observation.measured_range_m
+         << " expected_range=" << decision.expected_range_m
+         << " delta=" << decision.range_delta_m << " ray_origin=("
+         << projection.ray_origin_map_m.x << ", " << projection.ray_origin_map_m.y
+         << ", " << projection.ray_origin_map_m.z << ") ray_dir=("
+         << projection.ray_direction_map.x << ", " << projection.ray_direction_map.y
+         << ", " << projection.ray_direction_map.z << ") source_attitude=(valid="
+         << (observation.source_attitude_valid ? "true" : "false")
+         << " roll=" << observation.source_roll_rad
+         << " pitch=" << observation.source_pitch_rad
+         << " tilt=" << observation.source_tilt_rad << ") applied_attitude=(applied="
+         << (projection.attitude_compensation_applied ? "true" : "false")
+         << " roll=" << projection.applied_roll_rad
+         << " pitch=" << projection.applied_pitch_rad
+         << " tilt=" << projection.applied_tilt_rad << ")]";
+  return stream.str();
 }
 
 } // namespace drone_city_nav

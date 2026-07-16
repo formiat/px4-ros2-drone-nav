@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -18,6 +19,12 @@ struct LidarScanView {
   double angle_min_rad{0.0};
   double angle_increment_rad{0.0};
   LaserScanTiming timing{};
+};
+
+struct CurrentLidarAcceptedHitProvenance {
+  GridIndex cell{};
+  LidarBeamObservation observation{};
+  LidarIngestionDecisionSnapshot ingestion_decision{};
 };
 
 struct CurrentLidarOverlayStats {
@@ -33,6 +40,7 @@ struct CurrentLidarOverlayStats {
   std::size_t outside_hits{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   LidarIngestionDecisionStats ingestion_decisions{};
+  std::vector<CurrentLidarAcceptedHitProvenance> accepted_hits;
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
 };
 
@@ -45,5 +53,13 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionConfig& projection_config,
                         const KnownStaticLidarHitClassifier* classifier = nullptr,
                         const GroundLidarRejectionConfig* ground_config = nullptr);
+
+[[nodiscard]] const CurrentLidarAcceptedHitProvenance*
+findCurrentLidarAcceptedHitProvenance(const CurrentLidarOverlayStats& stats,
+                                      GridIndex cell) noexcept;
+
+[[nodiscard]] std::string
+formatCurrentLidarAcceptedHitDiagnostic(const CurrentLidarOverlayStats& stats,
+                                        GridIndex cell);
 
 } // namespace drone_city_nav

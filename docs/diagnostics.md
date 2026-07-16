@@ -153,6 +153,14 @@ the matched structure/opening/part, grid cell, endpoint XYZ, measured range,
 expected range, and signed range delta. Obstacle memory logs the equivalent
 bounded retained-hit diagnostic for cross-process correlation.
 
+Every occupied current-lidar overlay cell also retains one accepted-hit record
+for the lifetime of that scan. If such a cell is the exact or nearest raw source
+of a prohibited-path blocker, the replan log emits `current_lidar_hit` with the
+cell, ingestion action/reason/selected surface, measured/expected range and
+delta, endpoint XYZ, map-frame ray, and source/applied attitude. This record is
+independent of known-static matching, so a closer-than-ground blocker remains
+auditable even when no known building surface was involved.
+
 Both lidar ingestion paths publish throttled summaries of the shared decision.
 Each diagnostic class has an independent bounded sample budget, so a frequent
 class cannot hide a rarer closer obstacle, ambiguous beam, unavailable

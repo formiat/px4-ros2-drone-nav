@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cmath>
+#include <string>
 
 namespace drone_city_nav {
 namespace {
@@ -150,6 +151,32 @@ TEST(GroundLidarIngestion, CloserObstacleIsRetainedByMemoryAndOverlay) {
   EXPECT_LT(persisted_decision.range_delta_m, -0.5);
   EXPECT_EQ(overlay_stats.ingestion_decisions.closer_obstacles_retained, 1U);
   EXPECT_EQ(overlay_stats.occupied_cells, 1U);
+  ASSERT_EQ(overlay_stats.accepted_hits.size(), 1U);
+  const CurrentLidarAcceptedHitProvenance& accepted_hit =
+      overlay_stats.accepted_hits.front();
+  EXPECT_TRUE(overlay.isOccupied(accepted_hit.cell));
+  EXPECT_EQ(accepted_hit.ingestion_decision.action,
+            LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(accepted_hit.ingestion_decision.reason,
+            LidarIngestionReason::kObstacleBeforeExpectedSurface);
+  EXPECT_EQ(accepted_hit.ingestion_decision.expected_surface,
+            LidarExpectedSurfaceKind::kGround);
+  const std::string blocker_diagnostic =
+      formatCurrentLidarAcceptedHitDiagnostic(overlay_stats, accepted_hit.cell);
+  EXPECT_NE(blocker_diagnostic.find("action=integrate_free_and_hit"),
+            std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("reason=obstacle_before_expected_surface"),
+            std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("surface=ground"), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("measured_range="), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("expected_range="), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("delta="), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("endpoint=("), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("ray_origin=("), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("ray_dir=("), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("source_attitude=(valid=true"), std::string::npos);
+  EXPECT_NE(blocker_diagnostic.find("applied_attitude=(applied=true"),
+            std::string::npos);
 }
 
 TEST(GroundLidarIngestion, GroundClassificationPrecedesAltitudeVeto) {

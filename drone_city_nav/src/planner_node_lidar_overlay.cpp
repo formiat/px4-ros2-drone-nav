@@ -111,6 +111,7 @@ PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
       overlay_stats.overlay_occupied_cells_preserved;
   stats.known_static_lidar = overlay_stats.known_static_lidar;
   stats.ingestion_decisions = overlay_stats.ingestion_decisions;
+  stats.accepted_hits = overlay_stats.accepted_hits;
   stats.retained_known_static_hits = overlay_stats.retained_known_static_hits;
   return stats;
 }

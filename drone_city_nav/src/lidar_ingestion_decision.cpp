@@ -392,7 +392,21 @@ std::string formatLidarIngestionRepresentativeDiagnostics(
            << observation.projection.endpoint_map_m.z
            << ") measured=" << observation.measured_range_m
            << " expected=" << diagnostic.expected_range_m
-           << " delta=" << diagnostic.range_delta_m;
+           << " delta=" << diagnostic.range_delta_m << " ray_origin=("
+           << observation.projection.ray_origin_map_m.x << ','
+           << observation.projection.ray_origin_map_m.y << ','
+           << observation.projection.ray_origin_map_m.z << ") ray_dir=("
+           << observation.projection.ray_direction_map.x << ','
+           << observation.projection.ray_direction_map.y << ','
+           << observation.projection.ray_direction_map.z << ") source_attitude=(valid="
+           << (observation.source_attitude_valid ? "true" : "false")
+           << " roll=" << observation.source_roll_rad
+           << " pitch=" << observation.source_pitch_rad
+           << " tilt=" << observation.source_tilt_rad << ") applied_attitude=(applied="
+           << (observation.projection.attitude_compensation_applied ? "true" : "false")
+           << " roll=" << observation.projection.applied_roll_rad
+           << " pitch=" << observation.projection.applied_pitch_rad
+           << " tilt=" << observation.projection.applied_tilt_rad << ')';
   }
   return stream.str();
 }

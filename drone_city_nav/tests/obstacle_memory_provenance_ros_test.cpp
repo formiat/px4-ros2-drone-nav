@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -188,6 +189,34 @@ TEST(ObstacleMemoryProvenanceRos, RejectsSchemaDuplicateAndExpectedStaticRecords
   message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
   message.cells.front().occupancy_trigger.ingestion_expected_range_m =
       std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  constexpr std::array<std::uint8_t, 4U> impossible_accepted_reasons{
+      msg::ObstacleMemoryHitObservation::INGESTION_REASON_EXPECTED_KNOWN_STATIC,
+      msg::ObstacleMemoryHitObservation::INGESTION_REASON_EXPECTED_GROUND,
+      msg::ObstacleMemoryHitObservation::INGESTION_REASON_AMBIGUOUS_GROUND,
+      msg::ObstacleMemoryHitObservation::INGESTION_REASON_TIED_EXPECTED_SURFACES,
+  };
+  for (const std::uint8_t reason : impossible_accepted_reasons) {
+    message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+    message.cells.front().occupancy_trigger.ingestion_reason = reason;
+    EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+  }
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_expected_surface =
+      msg::ObstacleMemoryHitObservation::EXPECTED_SURFACE_NONE;
+  message.cells.front().occupancy_trigger.ingestion_expected_range_m =
+      std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_range_delta_m = 1.0;
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_reason =
+      msg::ObstacleMemoryHitObservation::INGESTION_REASON_NO_EXPECTED_SURFACE;
   EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
 }
 

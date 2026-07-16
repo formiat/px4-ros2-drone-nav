@@ -283,8 +283,41 @@ expectedSurfaceFromMessage(const std::uint8_t value) noexcept {
   }
 }
 
-[[nodiscard]] bool finiteOrNan(const double value) noexcept {
-  return std::isfinite(value) || std::isnan(value);
+[[nodiscard]] bool validAcceptedIngestionDecision(
+    const LidarIngestionAction action, const LidarIngestionReason reason,
+    const LidarExpectedSurfaceKind surface, const double expected_range_m,
+    const double range_delta_m) noexcept {
+  if (action != LidarIngestionAction::kIntegrateFreeAndHit) {
+    return false;
+  }
+
+  const bool no_expected_surface = surface == LidarExpectedSurfaceKind::kNone &&
+                                   std::isnan(expected_range_m) &&
+                                   std::isnan(range_delta_m);
+  const bool known_static_surface = surface == LidarExpectedSurfaceKind::kKnownStatic &&
+                                    std::isfinite(expected_range_m) &&
+                                    expected_range_m > 0.0 &&
+                                    std::isfinite(range_delta_m);
+  const bool ground_surface = surface == LidarExpectedSurfaceKind::kGround &&
+                              std::isfinite(expected_range_m) &&
+                              expected_range_m > 0.0 && std::isfinite(range_delta_m);
+
+  switch (reason) {
+    case LidarIngestionReason::kNoExpectedSurface:
+    case LidarIngestionReason::kClassificationUnavailable:
+      return no_expected_surface;
+    case LidarIngestionReason::kObstacleBeforeExpectedSurface:
+      return (known_static_surface || ground_surface) && range_delta_m < 0.0;
+    case LidarIngestionReason::kUnexpectedKnownStatic:
+    case LidarIngestionReason::kAmbiguousKnownStatic:
+      return no_expected_surface || known_static_surface;
+    case LidarIngestionReason::kExpectedKnownStatic:
+    case LidarIngestionReason::kExpectedGround:
+    case LidarIngestionReason::kAmbiguousGround:
+    case LidarIngestionReason::kTiedExpectedSurfaces:
+      return false;
+  }
+  return false;
 }
 
 [[nodiscard]] msg::ObstacleMemoryHitObservation
@@ -367,16 +400,16 @@ observationFromMessage(const msg::ObstacleMemoryHitObservation& message) {
                 std::isfinite(message.applied_tilt_rad)
           : message.applied_roll_rad == 0.0 && message.applied_pitch_rad == 0.0 &&
                 message.applied_tilt_rad == 0.0;
+  const bool ingestion_decision_valid =
+      ingestion_action.has_value() && ingestion_reason.has_value() &&
+      ingestion_surface.has_value() &&
+      validAcceptedIngestionDecision(
+          ingestion_action.value_or(LidarIngestionAction::kSuppressAllUpdates),
+          ingestion_reason.value_or(LidarIngestionReason::kClassificationUnavailable),
+          ingestion_surface.value_or(LidarExpectedSurfaceKind::kNone),
+          message.ingestion_expected_range_m, message.ingestion_range_delta_m);
   if (!classification.has_value() || !part_kind.has_value() ||
-      !ingestion_action.has_value() || !ingestion_reason.has_value() ||
-      !ingestion_surface.has_value() ||
-      *ingestion_action != LidarIngestionAction::kIntegrateFreeAndHit ||
-      !finiteOrNan(message.ingestion_expected_range_m) ||
-      !finiteOrNan(message.ingestion_range_delta_m) ||
-      (*ingestion_surface == LidarExpectedSurfaceKind::kNone
-           ? !std::isnan(message.ingestion_expected_range_m)
-           : !std::isfinite(message.ingestion_expected_range_m) ||
-                 !(message.ingestion_expected_range_m > 0.0)) ||
+      !ingestion_decision_valid ||
       message.beam_index > std::numeric_limits<std::size_t>::max() ||
       !finitePoint(message.ray_origin_map_m) ||
       !finiteVector(message.ray_direction_map) ||

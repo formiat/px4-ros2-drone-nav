@@ -31,15 +31,29 @@ namespace {
                          origin.z + measured_range_m * direction.z},
               .endpoint_xyz_valid = true,
               .attitude_compensation_applied = true,
+              .applied_roll_rad = 0.1,
+              .applied_pitch_rad = 0.2,
+              .applied_tilt_rad = 0.3,
           },
       .measured_range_m = measured_range_m,
       .effective_max_range_m = 30.0,
       .attitude_compensation_required = true,
       .source_attitude_valid = true,
-      .source_roll_rad = 0.0,
-      .source_pitch_rad = 0.0,
-      .source_tilt_rad = 0.0,
+      .source_roll_rad = 0.1,
+      .source_pitch_rad = 0.2,
+      .source_tilt_rad = 0.3,
   };
+}
+
+[[nodiscard]] std::size_t countOccurrences(const std::string& text,
+                                           const std::string& needle) {
+  std::size_t count = 0U;
+  std::size_t offset = 0U;
+  while ((offset = text.find(needle, offset)) != std::string::npos) {
+    ++count;
+    offset += needle.size();
+  }
+  return count;
 }
 
 [[nodiscard]] KnownStaticLidarHitClassifier horizontalKnownSurface() {
@@ -321,9 +335,18 @@ TEST(LidarIngestionDecision, DiagnosticClassesHaveIndependentBounds) {
   const LidarIngestionRepresentativeDiagnostics representatives =
       representativeLidarIngestionDiagnostics(stats);
   EXPECT_EQ(representatives.count, 4U);
-  EXPECT_NE(formatLidarIngestionRepresentativeDiagnostics(stats).find(
-                "class=classification_unavailable reason=expected_known_static"),
-            std::string::npos);
+  const std::string formatted = formatLidarIngestionRepresentativeDiagnostics(stats);
+  EXPECT_NE(
+      formatted.find("class=classification_unavailable reason=expected_known_static"),
+      std::string::npos);
+  EXPECT_EQ(countOccurrences(formatted, "ray_origin=("), representatives.count);
+  EXPECT_EQ(countOccurrences(formatted, "ray_dir=("), representatives.count);
+  EXPECT_EQ(countOccurrences(formatted, "source_attitude=(valid=true"),
+            representatives.count);
+  EXPECT_EQ(countOccurrences(formatted, "applied_attitude=(applied=true"),
+            representatives.count);
+  EXPECT_EQ(countOccurrences(formatted, "roll=0.1 pitch=0.2 tilt=0.3"),
+            representatives.count * 2U);
 }
 
 } // namespace drone_city_nav

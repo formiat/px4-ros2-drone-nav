@@ -162,10 +162,24 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
          << (planning_result.current_lidar.used ? "true" : "false")
          << " current_lidar_fresh="
          << (planning_result.current_lidar.fresh ? "true" : "false") << "]";
-  if (nearest_source.has_value() &&
-      std::string_view{nearest_source->name} == "current_lidar") {
+  std::optional<GridIndex> current_lidar_provenance_cell;
+  const bool exact_current_lidar = std::any_of(
+      exact_sources.begin(), exact_sources.end(), [](const char* source_name) {
+        return std::string_view{source_name} == "current_lidar";
+      });
+  if (exact_current_lidar && planning_result.current_lidar_grid.has_value()) {
+    current_lidar_provenance_cell = planning_result.current_lidar_grid->worldToCell(
+        grid.cellCenter(intersection.cell));
+  } else if (nearest_source.has_value() &&
+             std::string_view{nearest_source->name} == "current_lidar") {
+    current_lidar_provenance_cell = nearest_source->cell;
+  }
+  if (current_lidar_provenance_cell.has_value()) {
+    stream << ' '
+           << formatCurrentLidarAcceptedHitDiagnostic(planning_result.current_lidar,
+                                                      *current_lidar_provenance_cell);
     if (const KnownStaticLidarHitProvenance* provenance = findCurrentLidarProvenance(
-            planning_result.current_lidar, nearest_source->cell);
+            planning_result.current_lidar, *current_lidar_provenance_cell);
         provenance != nullptr) {
       stream << " known_static_hit[classification="
              << knownStaticLidarHitClassificationName(provenance->classification)
