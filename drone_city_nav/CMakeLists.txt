@@ -373,6 +373,10 @@ if(BUILD_TESTING)
                         drone_city_nav_ros_adapters ${cpp_typesupport_target})
   ament_target_dependencies(obstacle_memory_provenance_ros_test geometry_msgs nav_msgs
                             std_msgs)
+  set_tests_properties(
+    obstacle_memory_provenance_ros_test
+    PROPERTIES ENVIRONMENT
+               "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
   enable_project_warnings(obstacle_memory_provenance_ros_test)
 
   ament_add_gtest(trajectory_test tests/trajectory_test.cpp)

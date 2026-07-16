@@ -63,6 +63,9 @@ memoryGridSnapshotIdentity(const nav_msgs::msg::OccupancyGrid& grid);
     const nav_msgs::msg::OccupancyGrid& grid,
     const std::unordered_map<std::size_t, MemoryCellProvenance>& provenance);
 
+[[nodiscard]] std::size_t
+serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message);
+
 [[nodiscard]] MemoryProvenanceParseResult
 parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& message);
 

@@ -3,6 +3,9 @@
 #include "drone_city_nav/msg/obstacle_memory_cell_provenance.hpp"
 #include "drone_city_nav/msg/obstacle_memory_hit_observation.hpp"
 
+#include <rclcpp/serialization.hpp>
+#include <rclcpp/serialized_message.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -22,6 +25,19 @@ constexpr std::int64_t kNanosecondsPerSecond = 1'000'000'000LL;
 
 [[nodiscard]] bool finiteVector(const geometry_msgs::msg::Vector3& vector) noexcept {
   return std::isfinite(vector.x) && std::isfinite(vector.y) && std::isfinite(vector.z);
+}
+
+[[nodiscard]] std::optional<int> finiteFloorToInt(const double value) noexcept {
+  if (!std::isfinite(value)) {
+    return std::nullopt;
+  }
+  const double floored = std::floor(value);
+  if (!std::isfinite(floored) ||
+      floored < static_cast<double>(std::numeric_limits<int>::min()) ||
+      floored > static_cast<double>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+  return static_cast<int>(floored);
 }
 
 [[nodiscard]] std::optional<std::int64_t>
@@ -296,14 +312,14 @@ endpointMatchesCell(const MemoryCellProvenance& record,
                     const nav_msgs::msg::MapMetaData& info) noexcept {
   const auto matches = [&info, &record](const AcceptedObstacleMemoryHit& hit) {
     const Point2 endpoint = hit.beam.projection.endpoint;
-    if (!std::isfinite(endpoint.x) || !std::isfinite(endpoint.y)) {
+    const auto cell_x = finiteFloorToInt((endpoint.x - info.origin.position.x) /
+                                         static_cast<double>(info.resolution));
+    const auto cell_y = finiteFloorToInt((endpoint.y - info.origin.position.y) /
+                                         static_cast<double>(info.resolution));
+    if (!cell_x.has_value() || !cell_y.has_value()) {
       return false;
     }
-    const int cell_x = static_cast<int>(std::floor(
-        (endpoint.x - info.origin.position.x) / static_cast<double>(info.resolution)));
-    const int cell_y = static_cast<int>(std::floor(
-        (endpoint.y - info.origin.position.y) / static_cast<double>(info.resolution)));
-    return cell_x == record.cell.x && cell_y == record.cell.y;
+    return *cell_x == record.cell.x && *cell_y == record.cell.y;
   };
   return matches(record.occupancy_trigger) && matches(record.last_hit);
 }
@@ -410,6 +426,14 @@ msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
     message.cells.push_back(std::move(cell));
   }
   return message;
+}
+
+std::size_t
+serializedObstacleMemoryProvenanceSize(const msg::ObstacleMemoryProvenance& message) {
+  rclcpp::Serialization<msg::ObstacleMemoryProvenance> serialization;
+  rclcpp::SerializedMessage serialized_message;
+  serialization.serialize_message(&message, &serialized_message);
+  return serialized_message.get_rcl_serialized_message().buffer_length;
 }
 
 MemoryProvenanceParseResult

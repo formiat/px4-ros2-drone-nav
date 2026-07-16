@@ -610,15 +610,12 @@ private:
                         return !item.second.min_endpoint_z_m.has_value() ||
                                !item.second.max_endpoint_z_m.has_value();
                       }));
-    const std::size_t estimated_bytes =
-        sizeof(provenance_message) +
-        provenance_message.cells.size() * sizeof(msg::ObstacleMemoryCellProvenance);
     RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Obstacle memory provenance snapshot: occupied=%zu records=%zu "
-        "invalid_z=%zu estimated_bytes=%zu",
+        "invalid_z=%zu serialized_bytes=%zu",
         memory_->countRawCells().occupied_cells, provenance_message.cells.size(),
-        invalid_z_count, estimated_bytes);
+        invalid_z_count, serializedObstacleMemoryProvenanceSize(provenance_message));
   }
 
   [[nodiscard]] nav_msgs::msg::OccupancyGrid

@@ -156,6 +156,32 @@ TEST(ObstacleMemoryProvenanceRos, RejectsSchemaDuplicateAndExpectedStaticRecords
   message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
   message.cells.front().last_hit.endpoint_map_m.x += 1.0;
   EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().last_hit.endpoint_map_m.x = std::numeric_limits<double>::max();
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+}
+
+TEST(ObstacleMemoryProvenanceRos, SerializedSizeIncludesStringsAndCells) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  const msg::ObstacleMemoryProvenance base =
+      makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  msg::ObstacleMemoryProvenance longer_strings = base;
+  longer_strings.cells.front().occupancy_trigger.structure_id.append(2048U, 'x');
+  const msg::ObstacleMemoryProvenance additional_cell = [&longer_strings]() {
+    msg::ObstacleMemoryProvenance message = longer_strings;
+    message.cells.push_back(message.cells.front());
+    return message;
+  }();
+
+  const std::size_t base_size = serializedObstacleMemoryProvenanceSize(base);
+  const std::size_t longer_strings_size =
+      serializedObstacleMemoryProvenanceSize(longer_strings);
+  const std::size_t additional_cell_size =
+      serializedObstacleMemoryProvenanceSize(additional_cell);
+
+  EXPECT_GE(longer_strings_size, base_size + 2048U);
+  EXPECT_GT(additional_cell_size, longer_strings_size);
 }
 
 TEST(ObstacleMemoryProvenanceRos, CacheRequiresExactSnapshotIdentityAndContent) {

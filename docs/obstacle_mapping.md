@@ -82,6 +82,10 @@ accepted memory grid. It keeps four recent snapshots to tolerate cross-topic
 delivery order. Missing, late, or malformed provenance only produces an
 explicit diagnostic status; it never blocks planning.
 
+The throttled producer summary reports `serialized_bytes`, measured from the
+actual ROS CDR serialization buffer. This includes variable-length cell and
+string payloads and is intended for monitoring DDS bandwidth growth.
+
 Beam acquisition time is derived from the scan stamp and `time_increment`.
 Receive time is stored separately and is never substituted for a missing sensor
 stamp. The recorded attitude is the attitude actually used by the projection;
