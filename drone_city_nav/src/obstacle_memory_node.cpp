@@ -30,6 +30,8 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr double kPassageMemoryDiagnosticMarginM{2.0};
+
 [[nodiscard]] std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid,
                                             const GridIndex cell) {
   if (grid.isOccupied(cell)) {
@@ -39,6 +41,25 @@ namespace {
     return static_cast<std::int8_t>(0);
   }
   return static_cast<std::int8_t>(-1);
+}
+
+[[nodiscard]] const PassageStructure*
+passageStructureNearPoint(const std::optional<KnownPassageMap>& map,
+                          const Point2 point) noexcept {
+  if (!map.has_value()) {
+    return nullptr;
+  }
+  for (const PassageStructure& structure : map->structures) {
+    const double half_x = structure.size_x_m / 2.0;
+    const double half_y = structure.size_y_m / 2.0;
+    if (std::abs(point.x - structure.center.x) <=
+            half_x + kPassageMemoryDiagnosticMarginM &&
+        std::abs(point.y - structure.center.y) <=
+            half_y + kPassageMemoryDiagnosticMarginM) {
+      return &structure;
+    }
+  }
+  return nullptr;
 }
 
 } // namespace
@@ -134,8 +155,9 @@ public:
     known_passages_resolved_path_ = known_passage_source.resolved_path;
     if (known_passage_source.status == KnownPassageSourceStatus::kLoaded &&
         known_passage_source.map.has_value() && known_passage_source.frame_matches) {
+      known_passage_map_ = *known_passage_source.map;
       std::vector<KnownPassageSolidVolume> volumes =
-          knownPassageSolidVolumes(*known_passage_source.map);
+          knownPassageSolidVolumes(*known_passage_map_);
       if (!volumes.empty()) {
         known_static_lidar_classifier_.emplace(
             std::move(volumes),
@@ -368,6 +390,45 @@ private:
         known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
                                                    : nullptr);
 
+    for (const ObstacleMemoryOccupiedTransition& transition :
+         stats.occupied_transitions) {
+      const PassageStructure* structure = passageStructureNearPoint(
+          known_passage_map_,
+          Point2{transition.endpoint_map_m.x, transition.endpoint_map_m.y});
+      if (structure == nullptr) {
+        continue;
+      }
+      RCLCPP_INFO(
+          get_logger(),
+          "PASSAGE_MEMORY_HIT transition=occupied structure=%s beam=%zu "
+          "cell=(%d, %d) endpoint=(%.3f, %.3f, %.3f) range=%.3f "
+          "score=%d->%d pose=(%.3f, %.3f, %.3f) scan_pose=(%.3f, %.3f) "
+          "attitude=(roll=%.3f pitch=%.3f tilt=%.3f) "
+          "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
+          "classifier_applied=%s classification=%s volume_matched=%s "
+          "confident_face=%s known_structure=%s opening=%s part=%s "
+          "expected_range=%.3f delta=%.3f",
+          structure->id.c_str(), transition.beam_index, transition.cell.x,
+          transition.cell.y, transition.endpoint_map_m.x, transition.endpoint_map_m.y,
+          transition.endpoint_map_m.z, transition.measured_range_m,
+          transition.score_before, transition.score_after,
+          current_pose_.pose.position.x, current_pose_.pose.position.y,
+          current_pose_.altitude_m, scan_pose.position.x, scan_pose.position.y,
+          current_attitude_.roll_rad, current_attitude_.pitch_rad,
+          std::hypot(current_attitude_.roll_rad, current_attitude_.pitch_rad),
+          transition.ray_origin_map_m.x, transition.ray_origin_map_m.y,
+          transition.ray_origin_map_m.z, transition.ray_direction_map.x,
+          transition.ray_direction_map.y, transition.ray_direction_map.z,
+          transition.classifier_applied ? "true" : "false",
+          knownStaticLidarHitClassificationName(transition.classification),
+          transition.volume_matched ? "true" : "false",
+          transition.confident_face_interior ? "true" : "false",
+          transition.structure_id.empty() ? "<none>" : transition.structure_id.c_str(),
+          transition.opening_id.empty() ? "<none>" : transition.opening_id.c_str(),
+          transition.part_id.empty() ? "<none>" : transition.part_id.c_str(),
+          transition.expected_range_m, transition.range_delta_m);
+    }
+
     if (!scan_seen_) {
       scan_seen_ = true;
       RCLCPP_INFO(
@@ -390,7 +451,7 @@ private:
         "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
         "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
-        "occupied_updates=%zu "
+        "occupied_updates=%zu newly_occupied=%zu "
         "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
         "parts[left=%zu right=%zu lower=%zu upper=%zu] "
         "first_ignored=%s/%s/%s delta=%.3f "
@@ -405,7 +466,7 @@ private:
         attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
         stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
         stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated,
+        stats.occupied_cells_updated, stats.newly_occupied_cells,
         stats.known_static_lidar.expected_static_hits_ignored,
         stats.known_static_lidar.unexpected_hits_kept,
         stats.known_static_lidar.ambiguous_hits_kept,
@@ -518,6 +579,7 @@ private:
   }
 
   std::unique_ptr<ObstacleMemoryGrid> memory_;
+  std::optional<KnownPassageMap> known_passage_map_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   ObstacleMemoryConfig memory_config_{};
   Px4LocalPoseConfig px4_local_pose_config_{};

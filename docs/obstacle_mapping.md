@@ -64,6 +64,11 @@ Memory uses hit/miss scoring:
 
 Mapping starts only above `min_mapping_altitude_m`.
 
+For passage debugging, every first transition of a nearby memory cell to
+occupied is logged as `PASSAGE_MEMORY_HIT` with endpoint XYZ, beam/range,
+attitude, score transition, and known-static classification. The event is
+diagnostic only and does not alter hit scoring or filtering.
+
 ## Motion Compensation
 
 Lidar projection can account for:

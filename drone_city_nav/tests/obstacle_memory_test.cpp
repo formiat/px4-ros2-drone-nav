@@ -178,6 +178,19 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
       memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {});
 
   EXPECT_EQ(stats.processed_beams, 1U);
+  ASSERT_EQ(stats.newly_occupied_cells, 1U);
+  ASSERT_EQ(stats.occupied_transitions.size(), 1U);
+  const ObstacleMemoryOccupiedTransition& transition =
+      stats.occupied_transitions.front();
+  EXPECT_EQ(transition.beam_index, 0U);
+  EXPECT_EQ(transition.cell, (GridIndex{9, 5}));
+  EXPECT_NEAR(transition.endpoint_map_m.x, 9.5, 1.0e-9);
+  EXPECT_NEAR(transition.endpoint_map_m.y, 5.5, 1.0e-9);
+  EXPECT_TRUE(std::isnan(transition.endpoint_map_m.z));
+  EXPECT_NEAR(transition.measured_range_m, 4.0, 1.0e-9);
+  EXPECT_EQ(transition.score_before, 0);
+  EXPECT_EQ(transition.score_after, 4);
+  EXPECT_FALSE(transition.classifier_applied);
   EXPECT_EQ(stats.hit_beams, 1U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
 }
@@ -263,6 +276,21 @@ TEST(ObstacleMemoryGrid, PersistentObstacleSurvivesOneFreeMiss) {
 
   EXPECT_EQ(miss_stats.processed_beams, 1U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
+}
+
+TEST(ObstacleMemoryGrid, RepeatedHitDoesNotReportAnotherOccupiedTransition) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> hit_ranges{4.0F};
+
+  const ObstacleMemoryStats first =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), {});
+  const ObstacleMemoryStats second =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), {});
+
+  ASSERT_EQ(first.newly_occupied_cells, 1U);
+  ASSERT_EQ(first.occupied_transitions.size(), 1U);
+  EXPECT_EQ(second.newly_occupied_cells, 0U);
+  EXPECT_TRUE(second.occupied_transitions.empty());
 }
 
 TEST(ObstacleMemoryGrid, InvalidRangeAndInvalidPoseDoNotChangeMap) {

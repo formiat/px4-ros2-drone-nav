@@ -208,6 +208,18 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
               1.0e-6);
   EXPECT_NEAR(overlay_stats.retained_known_static_hits.front().measured_range_m, 4.0,
               1.0e-6);
+  ASSERT_EQ(memory_stats.newly_occupied_cells, 1U);
+  ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
+  const ObstacleMemoryOccupiedTransition& transition =
+      memory_stats.occupied_transitions.front();
+  EXPECT_TRUE(transition.classifier_applied);
+  EXPECT_TRUE(transition.volume_matched);
+  EXPECT_TRUE(transition.confident_face_interior);
+  EXPECT_EQ(transition.classification, KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(transition.part_id, "upper_mass");
+  EXPECT_NEAR(transition.measured_range_m, 4.0, 1.0e-6);
+  EXPECT_NEAR(transition.expected_range_m, 6.0, 1.0e-6);
+  EXPECT_NEAR(transition.range_delta_m, -2.0, 1.0e-6);
 }
 
 TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths) {
@@ -239,6 +251,8 @@ TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths
   EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
   EXPECT_TRUE(memory_stats.retained_known_static_hits.empty());
   EXPECT_TRUE(overlay_stats.retained_known_static_hits.empty());
+  EXPECT_EQ(memory_stats.newly_occupied_cells, 0U);
+  EXPECT_TRUE(memory_stats.occupied_transitions.empty());
 }
 
 TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedByBothPaths) {

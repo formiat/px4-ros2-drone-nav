@@ -195,9 +195,13 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       ++stats.outside_hit_endpoints;
       continue;
     }
+    const GridIndex endpoint_grid_cell =
+        endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
 
-    if (classifier != nullptr) {
-      const KnownStaticLidarHitResult classification =
+    KnownStaticLidarHitResult classification{};
+    const bool classifier_applied = classifier != nullptr;
+    if (classifier_applied) {
+      classification =
           classifier->classify(projection.ray_origin_map_m,
                                projection.ray_direction_map, projection.used_range_m);
       recordKnownStaticLidarHit(classification, stats.known_static_lidar);
@@ -212,17 +216,41 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
                     classification,
                     Point3{projection.endpoint.x, projection.endpoint.y,
                            projection.endpoint_altitude_m},
-                    endpoint_cell->x, endpoint_cell->y);
+                    endpoint_grid_cell.x, endpoint_grid_cell.y);
             provenance.has_value()) {
           stats.retained_known_static_hits.push_back(*provenance);
         }
       }
     }
 
-    const GridIndex endpoint_grid_cell =
-        endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
+    const std::size_t endpoint_index = raw_grid_.linearIndex(endpoint_grid_cell);
+    const int score_before = scores_.at(endpoint_index);
+    const bool occupied_before = raw_grid_.isOccupied(endpoint_grid_cell);
     applyHit(endpoint_grid_cell, config);
     ++stats.occupied_cells_updated;
+    if (!occupied_before && raw_grid_.isOccupied(endpoint_grid_cell)) {
+      ++stats.newly_occupied_cells;
+      stats.occupied_transitions.push_back(ObstacleMemoryOccupiedTransition{
+          .beam_index = i,
+          .cell = endpoint_grid_cell,
+          .ray_origin_map_m = projection.ray_origin_map_m,
+          .ray_direction_map = projection.ray_direction_map,
+          .endpoint_map_m = Point3{projection.endpoint.x, projection.endpoint.y,
+                                   projection.endpoint_altitude_m},
+          .measured_range_m = projection.used_range_m,
+          .score_before = score_before,
+          .score_after = scores_.at(endpoint_index),
+          .classifier_applied = classifier_applied,
+          .classification = classification.classification,
+          .volume_matched = classification.volume_matched,
+          .confident_face_interior = classification.confident_face_interior,
+          .structure_id = std::string{classification.structure_id},
+          .opening_id = std::string{classification.opening_id},
+          .part_id = std::string{classification.part_id},
+          .expected_range_m = classification.expected_range_m,
+          .range_delta_m = classification.range_delta_m,
+      });
+    }
   }
 
   return stats;

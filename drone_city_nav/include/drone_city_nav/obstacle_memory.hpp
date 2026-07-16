@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <limits>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -44,6 +45,27 @@ struct ObstacleMemoryConfig {
   int free_score{-1};
 };
 
+struct ObstacleMemoryOccupiedTransition {
+  std::size_t beam_index{0U};
+  GridIndex cell{};
+  Point3 ray_origin_map_m{};
+  Point3 ray_direction_map{};
+  Point3 endpoint_map_m{};
+  double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
+  int score_before{0};
+  int score_after{0};
+  bool classifier_applied{false};
+  KnownStaticLidarHitClassification classification{
+      KnownStaticLidarHitClassification::kAmbiguous};
+  bool volume_matched{false};
+  bool confident_face_interior{false};
+  std::string structure_id;
+  std::string opening_id;
+  std::string part_id;
+  double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
+  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct ObstacleMemoryStats {
   std::size_t processed_beams{0U};
   std::size_t hit_beams{0U};
@@ -53,8 +75,10 @@ struct ObstacleMemoryStats {
   std::size_t outside_hit_endpoints{0U};
   std::size_t free_cells_updated{0U};
   std::size_t occupied_cells_updated{0U};
+  std::size_t newly_occupied_cells{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
+  std::vector<ObstacleMemoryOccupiedTransition> occupied_transitions;
 };
 
 struct GridCellCounts {

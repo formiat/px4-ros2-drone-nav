@@ -128,6 +128,16 @@ static lidar classifier:
 - ignored hit counts for `left`, `right`, `lower`, and `upper` masses;
 - the first ignored structure/opening/part identity and range delta.
 
+When a raw obstacle-memory cell inside or within 2 m of a known passage
+structure first transitions to occupied, `obstacle_memory_node` emits an
+unthrottled `PASSAGE_MEMORY_HIT` event. It records the exact memory cell, lidar
+beam index, projected endpoint XYZ, measured range, score transition, vehicle
+pose and attitude, map-frame ray, and known-static classifier result. Match the
+event's cell with `raw_sources nearest_cell` in a later prohibited-replan log to
+identify the original 3D hit even though `/drone_city_nav/obstacle_memory_grid`
+itself is intentionally a 2D raw-evidence grid. Repeated hits on an already
+occupied cell do not emit another transition event.
+
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies
 the matched structure/opening/part, grid cell, endpoint XYZ, measured range,
