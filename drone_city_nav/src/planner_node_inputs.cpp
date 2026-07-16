@@ -588,31 +588,12 @@ void PlannerNode::checkCurrentPathAndPublish() {
       lidar_decisions.ground_classification_unavailable,
       lidar_decisions.ground_classification_disabled,
       lidar_decisions.non_ground_altitude_rejected, lidar_decisions.diagnostics.size());
-  if (!lidar_decisions.diagnostics.empty()) {
-    const LidarIngestionDecisionDiagnostic& diagnostic =
-        lidar_decisions.diagnostics.front();
-    const LidarBeamObservation& observation = diagnostic.observation;
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Planner current lidar decision sample: reason=%s surface=%s beam=%zu "
-        "endpoint=(%.3f, %.3f, %.3f) measured=%.3f expected=%.3f delta=%.3f "
-        "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
-        "source_attitude=(valid=%s roll=%.3f pitch=%.3f tilt=%.3f)",
-        lidarIngestionReasonName(diagnostic.reason),
-        lidarExpectedSurfaceKindName(diagnostic.expected_surface),
-        observation.beam_index, observation.projection.endpoint_map_m.x,
-        observation.projection.endpoint_map_m.y,
-        observation.projection.endpoint_map_m.z, observation.measured_range_m,
-        diagnostic.expected_range_m, diagnostic.range_delta_m,
-        observation.projection.ray_origin_map_m.x,
-        observation.projection.ray_origin_map_m.y,
-        observation.projection.ray_origin_map_m.z,
-        observation.projection.ray_direction_map.x,
-        observation.projection.ray_direction_map.y,
-        observation.projection.ray_direction_map.z,
-        observation.source_attitude_valid ? "true" : "false",
-        observation.source_roll_rad, observation.source_pitch_rad,
-        observation.source_tilt_rad);
+  const std::string lidar_decision_samples =
+      formatLidarIngestionRepresentativeDiagnostics(lidar_decisions);
+  if (!lidar_decision_samples.empty()) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "Planner current lidar decision samples: %s",
+                         lidar_decision_samples.c_str());
   }
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,

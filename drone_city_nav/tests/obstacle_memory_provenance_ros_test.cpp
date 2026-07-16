@@ -60,6 +60,13 @@ namespace {
   hit.known_static.part_id = "upper_mass";
   hit.known_static.expected_range_m = 3.0;
   hit.known_static.range_delta_m = -1.0;
+  hit.ingestion_decision = LidarIngestionDecisionSnapshot{
+      .action = LidarIngestionAction::kIntegrateFreeAndHit,
+      .reason = LidarIngestionReason::kObstacleBeforeExpectedSurface,
+      .expected_surface = LidarExpectedSurfaceKind::kGround,
+      .expected_range_m = 4.0,
+      .range_delta_m = -2.0,
+  };
   return hit;
 }
 
@@ -92,6 +99,14 @@ TEST(ObstacleMemoryProvenanceRos, RoundTripsPersistentRecordWithoutNarrowing) {
   EXPECT_EQ(record.accepted_hit_count, std::numeric_limits<std::uint64_t>::max());
   EXPECT_EQ(record.occupancy_trigger.beam.acquisition_stamp_ns, 1'000'000'000LL);
   EXPECT_EQ(record.last_hit.known_static.part_id, "upper_mass");
+  EXPECT_EQ(record.occupancy_trigger.ingestion_decision.action,
+            LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(record.occupancy_trigger.ingestion_decision.reason,
+            LidarIngestionReason::kObstacleBeforeExpectedSurface);
+  EXPECT_EQ(record.occupancy_trigger.ingestion_decision.expected_surface,
+            LidarExpectedSurfaceKind::kGround);
+  EXPECT_DOUBLE_EQ(record.occupancy_trigger.ingestion_decision.expected_range_m, 4.0);
+  EXPECT_DOUBLE_EQ(record.occupancy_trigger.ingestion_decision.range_delta_m, -2.0);
   ASSERT_TRUE(record.min_endpoint_z_m.has_value());
   ASSERT_TRUE(record.max_endpoint_z_m.has_value());
   EXPECT_DOUBLE_EQ(record.min_endpoint_z_m.value_or(0.0), 17.0);
@@ -159,6 +174,20 @@ TEST(ObstacleMemoryProvenanceRos, RejectsSchemaDuplicateAndExpectedStaticRecords
 
   message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
   message.cells.front().last_hit.endpoint_map_m.x = std::numeric_limits<double>::max();
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_action = 255U;
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_action =
+      msg::ObstacleMemoryHitObservation::INGESTION_ACTION_SUPPRESS_ALL;
+  EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger.ingestion_expected_range_m =
+      std::numeric_limits<double>::quiet_NaN();
   EXPECT_FALSE(parseObstacleMemoryProvenanceMessage(message).snapshot.has_value());
 }
 
@@ -244,6 +273,9 @@ TEST(ObstacleMemoryProvenanceRos, FormatterDistinguishesMatchedAndUnavailable) {
       formatMemoryProvenanceDiagnostic(cache.match(grid), GridIndex{2, 0});
   EXPECT_NE(matched.find("status=matched"), std::string::npos);
   EXPECT_NE(matched.find("accepted_hits=18446744073709551615"), std::string::npos);
+  EXPECT_NE(matched.find("trigger_ingestion_reason=obstacle_before_expected_surface"),
+            std::string::npos);
+  EXPECT_NE(matched.find("trigger_ingestion_surface=ground"), std::string::npos);
   EXPECT_EQ(formatMemoryProvenanceDiagnostic({}, std::nullopt),
             "memory_provenance[status=not_applicable]");
   EXPECT_EQ(formatMemoryProvenanceDiagnostic({}, GridIndex{2, 0}),

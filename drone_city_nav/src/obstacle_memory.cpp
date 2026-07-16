@@ -277,6 +277,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
         .beam = observation,
         .known_static =
             makeKnownStaticClassificationSnapshot(classifier_applied, classification),
+        .ingestion_decision = makeLidarIngestionDecisionSnapshot(decision),
     };
     const std::optional<ObstacleMemoryOccupiedTransition> transition =
         applyAcceptedHit(endpoint_grid_cell, accepted_hit, config);

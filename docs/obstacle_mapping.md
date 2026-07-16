@@ -132,7 +132,8 @@ The resulting policy is asymmetric:
 - a ground-facing return beyond the allowed farther tolerance is ambiguous and
   is also suppressed fail-safe;
 - a ground-facing no-return beam whose finite sensor range reaches the ground
-  is suppressed;
+  is suppressed without free-space clearing, but remains classified as
+  `ambiguous_ground` because no measured return confirms the ground surface;
 - expected or ambiguous ground beams perform neither endpoint-hit integration
   nor 2D free-space clearing.
 

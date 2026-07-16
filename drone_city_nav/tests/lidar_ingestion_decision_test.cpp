@@ -2,8 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace drone_city_nav {
@@ -136,7 +138,23 @@ TEST(LidarIngestionDecision, SuppressesDownwardNoReturnThatReachesGround) {
       evaluateLidarIngestion(observation(direction, 30.0, false), nullptr, &ground);
 
   EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedGround);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kAmbiguousGround);
+}
+
+TEST(LidarIngestionDecision, RejectsGroundIntersectionAtRayOrigin) {
+  const Point3 direction{0.6, 0.0, -0.8};
+  LidarBeamObservation beam = observation(direction, 1.0);
+  beam.projection.ray_origin_map_m.z = 0.05;
+  beam.projection.endpoint_map_m.z = 0.05 + direction.z;
+  beam.projection.endpoint_altitude_m = beam.projection.endpoint_map_m.z;
+  const GroundLidarRejectionConfig ground{};
+
+  const LidarIngestionDecision decision =
+      evaluateLidarIngestion(beam, nullptr, &ground);
+
+  EXPECT_FALSE(decision.ground_candidate_considered);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
 }
 
 TEST(LidarIngestionDecision, LeavesUpwardBeamOnLegacyPath) {
@@ -243,6 +261,69 @@ TEST(LidarIngestionDecision, ClearlyCloserHitWinsBeforeTiedExpectedSurfaces) {
 
   EXPECT_EQ(decision.reason, LidarIngestionReason::kObstacleBeforeExpectedSurface);
   EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+}
+
+TEST(LidarIngestionDecision, TiedGroundAltitudeRejectionIsNotCountedAsNonGround) {
+  const Point3 direction{0.6, 0.0, -0.8};
+  constexpr double kExpectedGroundRangeM = 12.4375;
+  const KnownStaticLidarHitClassifier classifier =
+      knownSurfaceAtRange(direction, kExpectedGroundRangeM);
+  const GroundLidarRejectionConfig ground{};
+  const LidarBeamObservation beam = observation(direction, kExpectedGroundRangeM);
+  const LidarIngestionDecision decision =
+      evaluateLidarIngestion(beam, &classifier, &ground);
+  LidarIngestionDecisionStats stats;
+
+  recordLidarIngestionDecision(beam, decision, true, stats);
+
+  EXPECT_EQ(stats.ambiguous_ground_suppressed, 1U);
+  EXPECT_EQ(stats.non_ground_altitude_rejected, 0U);
+}
+
+TEST(LidarIngestionDecision, DiagnosticClassesHaveIndependentBounds) {
+  const Point3 direction{0.6, 0.0, -0.8};
+  const GroundLidarRejectionConfig ground{};
+  const LidarBeamObservation expected_beam = observation(direction, 12.44);
+  const LidarIngestionDecision expected =
+      evaluateLidarIngestion(expected_beam, nullptr, &ground);
+  LidarIngestionDecisionStats stats;
+  for (std::size_t i = 0U; i < 32U; ++i) {
+    recordLidarIngestionDecision(expected_beam, expected, false, stats);
+  }
+
+  const LidarBeamObservation closer_beam = observation(direction, 9.0);
+  recordLidarIngestionDecision(
+      closer_beam, evaluateLidarIngestion(closer_beam, nullptr, &ground), false, stats);
+  const LidarBeamObservation ambiguous_beam = observation(direction, 30.0, false);
+  recordLidarIngestionDecision(ambiguous_beam,
+                               evaluateLidarIngestion(ambiguous_beam, nullptr, &ground),
+                               false, stats);
+
+  GroundLidarRejectionConfig invalid_ground{};
+  invalid_ground.ground_altitude_m = std::numeric_limits<double>::quiet_NaN();
+  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
+  const LidarBeamObservation known_beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+  const LidarIngestionDecision known_decision =
+      evaluateLidarIngestion(known_beam, &classifier, &invalid_ground);
+  recordLidarIngestionDecision(known_beam, known_decision, false, stats);
+
+  const auto count_class = [&stats](const LidarIngestionDiagnosticClass target) {
+    return std::count_if(stats.diagnostics.begin(), stats.diagnostics.end(),
+                         [target](const LidarIngestionDecisionDiagnostic& diagnostic) {
+                           return diagnostic.diagnostic_class == target;
+                         });
+  };
+  EXPECT_EQ(count_class(LidarIngestionDiagnosticClass::kExpectedGround), 4);
+  EXPECT_EQ(count_class(LidarIngestionDiagnosticClass::kCloserObstacle), 1);
+  EXPECT_EQ(count_class(LidarIngestionDiagnosticClass::kAmbiguousGround), 1);
+  EXPECT_EQ(count_class(LidarIngestionDiagnosticClass::kClassificationUnavailable), 1);
+
+  const LidarIngestionRepresentativeDiagnostics representatives =
+      representativeLidarIngestionDiagnostics(stats);
+  EXPECT_EQ(representatives.count, 4U);
+  EXPECT_NE(formatLidarIngestionRepresentativeDiagnostics(stats).find(
+                "class=classification_unavailable reason=expected_known_static"),
+            std::string::npos);
 }
 
 } // namespace drone_city_nav

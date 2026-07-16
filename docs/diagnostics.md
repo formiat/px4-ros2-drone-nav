@@ -153,7 +153,11 @@ the matched structure/opening/part, grid cell, endpoint XYZ, measured range,
 expected range, and signed range delta. Obstacle memory logs the equivalent
 bounded retained-hit diagnostic for cross-process correlation.
 
-Both lidar ingestion paths publish throttled summaries of the shared decision:
+Both lidar ingestion paths publish throttled summaries of the shared decision.
+Each diagnostic class has an independent bounded sample budget, so a frequent
+class cannot hide a rarer closer obstacle, ambiguous beam, unavailable
+classifier, or altitude rejection. The memory and planner logs include one
+representative sample for every class observed in the reporting interval:
 
 - `expected_ground`: expected ground beams suppressed without hit or free
   updates;
@@ -167,10 +171,15 @@ Both lidar ingestion paths publish throttled summaries of the shared decision:
 - `non_ground_altitude_rejected`: projected-altitude vetoes not explained by a
   ground candidate.
 
-The bounded `lidar decision sample` log includes reason, expected-surface kind,
-beam index, endpoint XYZ, measured/expected ranges and delta, ray origin and
-direction, and source roll/pitch/tilt. These samples diagnose ground rejection
-without storing rejected observations in obstacle-memory provenance.
+The bounded `lidar decision samples` log includes reason, expected-surface kind,
+beam index, endpoint XYZ, measured/expected ranges and delta, and provider
+status. Rejected observations remain aggregate/sample diagnostics only.
+
+Accepted obstacle-memory hits persist the compact ingestion decision that
+admitted the hit: action, reason, selected expected surface, expected range, and
+range delta. `ObstacleMemoryProvenance` schema version 2 carries this snapshot
+with both the occupancy trigger and last accepted hit. The planner only applies
+it after the existing exact stamp, frame, grid geometry, and grid-content match.
 
 The classifier is independent of the active trajectory and drone proximity to
 an opening. Unexpected and ambiguous hits continue through normal prohibited

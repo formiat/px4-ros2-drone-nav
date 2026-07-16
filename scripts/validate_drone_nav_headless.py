@@ -149,6 +149,18 @@ def validate_known_static_classifier_contract(
         result.ok_message("ground classifier effective configs match")
 
 
+def require_lidar_decision_summary(
+    result: ValidationResult, label: str, prefix: str, ros_log: str
+) -> None:
+    result.require(
+        label,
+        ros_log,
+        rf"{re.escape(prefix)}: expected_ground=\d+ closer_retained=\d+ "
+        r"ambiguous_ground=\d+ ground_unavailable=\d+ ground_disabled=\d+ "
+        r"non_ground_altitude_rejected=\d+ diagnostics=\d+",
+    )
+
+
 def validate_logs(
     *,
     ros_log: str,
@@ -204,6 +216,12 @@ def validate_logs(
             "obstacle memory is available to planner",
             ros_log,
             r"First obstacle memory grid|memory\[enabled=true .*has_memory=true",
+        )
+        require_lidar_decision_summary(
+            result,
+            "obstacle memory lidar decision summary is logged",
+            "Obstacle memory lidar decisions",
+            ros_log,
         )
     elif options.expected_memory is False:
         result.require(
@@ -277,6 +295,12 @@ def validate_logs(
             "current lidar is available to planner",
             ros_log,
             r"First planner lidar scan|current_lidar\[enabled=true used=true",
+        )
+        require_lidar_decision_summary(
+            result,
+            "planner current lidar decision summary is logged",
+            "Planner current lidar decisions",
+            ros_log,
         )
     elif options.expected_current_lidar is False:
         result.require(

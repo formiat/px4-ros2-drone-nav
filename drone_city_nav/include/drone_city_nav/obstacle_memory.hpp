@@ -53,6 +53,7 @@ struct ObstacleMemoryConfig {
 struct AcceptedObstacleMemoryHit {
   LidarBeamObservation beam;
   KnownStaticClassificationSnapshot known_static;
+  LidarIngestionDecisionSnapshot ingestion_decision;
 };
 
 struct MemoryCellProvenance {

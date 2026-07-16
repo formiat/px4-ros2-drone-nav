@@ -139,6 +139,15 @@ TEST(GroundLidarIngestion, CloserObstacleIsRetainedByMemoryAndOverlay) {
 
   EXPECT_EQ(memory_stats.ingestion_decisions.closer_obstacles_retained, 1U);
   EXPECT_EQ(memory.countRawCells().occupied_cells, 1U);
+  ASSERT_EQ(memory.activeProvenance().size(), 1U);
+  const LidarIngestionDecisionSnapshot& persisted_decision =
+      memory.activeProvenance().begin()->second.occupancy_trigger.ingestion_decision;
+  EXPECT_EQ(persisted_decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(persisted_decision.reason,
+            LidarIngestionReason::kObstacleBeforeExpectedSurface);
+  EXPECT_EQ(persisted_decision.expected_surface, LidarExpectedSurfaceKind::kGround);
+  EXPECT_TRUE(std::isfinite(persisted_decision.expected_range_m));
+  EXPECT_LT(persisted_decision.range_delta_m, -0.5);
   EXPECT_EQ(overlay_stats.ingestion_decisions.closer_obstacles_retained, 1U);
   EXPECT_EQ(overlay_stats.occupied_cells, 1U);
 }
@@ -166,11 +175,13 @@ TEST(GroundLidarIngestion, GroundClassificationPrecedesAltitudeVeto) {
       overlay, overlayScan(ranges), downwardPose(), config, nullptr, &ground);
 
   EXPECT_EQ(memory_stats.altitude_rejected_beams, 1U);
-  EXPECT_EQ(memory_stats.ingestion_decisions.expected_ground_suppressed, 1U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.expected_ground_suppressed, 0U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.ambiguous_ground_suppressed, 1U);
   EXPECT_EQ(memory_stats.ingestion_decisions.non_ground_altitude_rejected, 0U);
   EXPECT_EQ(memory_stats.free_cells_updated, 0U);
   EXPECT_EQ(overlay_stats.altitude_rejected_beams, 1U);
-  EXPECT_EQ(overlay_stats.ingestion_decisions.expected_ground_suppressed, 1U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.expected_ground_suppressed, 0U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.ambiguous_ground_suppressed, 1U);
   EXPECT_EQ(overlay_stats.ingestion_decisions.non_ground_altitude_rejected, 0U);
 }
 

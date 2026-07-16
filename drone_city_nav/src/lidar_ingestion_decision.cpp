@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
+#include <utility>
 
 namespace drone_city_nav {
 namespace {
@@ -10,7 +12,7 @@ constexpr double kDirectionNormTolerance = 1.0e-6;
 constexpr double kDirectionZEpsilon = 1.0e-9;
 constexpr double kRangeTieToleranceM = 1.0e-6;
 constexpr double kRangeComparisonEpsilonM = 1.0e-9;
-constexpr std::size_t kMaxDecisionDiagnostics = 16U;
+constexpr std::size_t kMaxDecisionDiagnosticsPerClass = 4U;
 
 struct SurfaceCandidate {
   LidarExpectedSurfaceKind kind{LidarExpectedSurfaceKind::kNone};
@@ -64,7 +66,7 @@ groundIntersectionRange(const LidarBeamObservation& observation,
     return std::nullopt;
   }
   const double range_m = (config.ground_altitude_m - origin.z) / direction.z;
-  if (!std::isfinite(range_m) || range_m < 0.0 ||
+  if (!std::isfinite(range_m) || range_m <= 0.0 ||
       range_m > observation.effective_max_range_m) {
     return std::nullopt;
   }
@@ -82,6 +84,44 @@ knownStaticReason(const KnownStaticLidarHitClassification classification) noexce
       return LidarIngestionReason::kAmbiguousKnownStatic;
   }
   return LidarIngestionReason::kClassificationUnavailable;
+}
+
+[[nodiscard]] std::size_t
+diagnosticClassIndex(const LidarIngestionDiagnosticClass diagnostic_class) noexcept {
+  return static_cast<std::size_t>(diagnostic_class);
+}
+
+void appendDiagnostic(const LidarBeamObservation& observation,
+                      const LidarIngestionDecision& decision,
+                      const LidarIngestionDiagnosticClass diagnostic_class,
+                      LidarIngestionDecisionStats& stats) {
+  const std::size_t existing = static_cast<std::size_t>(std::count_if(
+      stats.diagnostics.begin(), stats.diagnostics.end(),
+      [diagnostic_class](const LidarIngestionDecisionDiagnostic& diagnostic) {
+        return diagnostic.diagnostic_class == diagnostic_class;
+      }));
+  if (existing >= kMaxDecisionDiagnosticsPerClass) {
+    return;
+  }
+  LidarIngestionDecisionDiagnostic diagnostic{
+      .observation = observation,
+      .diagnostic_class = diagnostic_class,
+      .reason = decision.reason,
+      .expected_surface = decision.expected_surface,
+      .ground_provider = decision.ground_provider,
+      .known_static_provider = decision.known_static_provider,
+      .expected_range_m = decision.expected_range_m,
+      .range_delta_m = decision.range_delta_m,
+      .structure_id = {},
+      .opening_id = {},
+      .part_id = {},
+  };
+  if (decision.known_static_result_available) {
+    diagnostic.structure_id = decision.known_static_result.structure_id;
+    diagnostic.opening_id = decision.known_static_result.opening_id;
+    diagnostic.part_id = decision.known_static_result.part_id;
+  }
+  stats.diagnostics.push_back(std::move(diagnostic));
 }
 
 } // namespace
@@ -240,7 +280,7 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
   decision.expected_range_m = selected_ground.range_m;
   decision.action = LidarIngestionAction::kSuppressAllUpdates;
   if (!measured_hit) {
-    decision.reason = LidarIngestionReason::kExpectedGround;
+    decision.reason = LidarIngestionReason::kAmbiguousGround;
     return decision;
   }
   decision.range_delta_m = observation.measured_range_m - selected_ground.range_m;
@@ -254,61 +294,107 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
   return decision;
 }
 
+LidarIngestionDecisionSnapshot
+makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept {
+  return LidarIngestionDecisionSnapshot{
+      .action = decision.action,
+      .reason = decision.reason,
+      .expected_surface = decision.expected_surface,
+      .expected_range_m = decision.expected_range_m,
+      .range_delta_m = decision.range_delta_m,
+  };
+}
+
 void recordLidarIngestionDecision(const LidarBeamObservation& observation,
                                   const LidarIngestionDecision& decision,
                                   const bool altitude_rejected,
                                   LidarIngestionDecisionStats& stats) {
   if (decision.ground_provider == LidarExpectedSurfaceProviderStatus::kUnavailable) {
     ++stats.ground_classification_unavailable;
+    appendDiagnostic(observation, decision,
+                     LidarIngestionDiagnosticClass::kClassificationUnavailable, stats);
   } else if (decision.ground_provider ==
              LidarExpectedSurfaceProviderStatus::kDisabled) {
     ++stats.ground_classification_disabled;
+    appendDiagnostic(observation, decision,
+                     LidarIngestionDiagnosticClass::kClassificationDisabled, stats);
   }
   switch (decision.reason) {
     case LidarIngestionReason::kExpectedGround:
       ++stats.expected_ground_suppressed;
+      appendDiagnostic(observation, decision,
+                       LidarIngestionDiagnosticClass::kExpectedGround, stats);
       break;
     case LidarIngestionReason::kObstacleBeforeExpectedSurface:
       if (!altitude_rejected) {
         ++stats.closer_obstacles_retained;
+        appendDiagnostic(observation, decision,
+                         LidarIngestionDiagnosticClass::kCloserObstacle, stats);
       }
       break;
     case LidarIngestionReason::kAmbiguousGround:
     case LidarIngestionReason::kTiedExpectedSurfaces:
       ++stats.ambiguous_ground_suppressed;
+      appendDiagnostic(observation, decision,
+                       LidarIngestionDiagnosticClass::kAmbiguousGround, stats);
       break;
     default:
       break;
   }
-  if (altitude_rejected &&
-      decision.expected_surface != LidarExpectedSurfaceKind::kGround) {
+  const bool ground_explained =
+      decision.expected_surface == LidarExpectedSurfaceKind::kGround ||
+      decision.expected_surface == LidarExpectedSurfaceKind::kTied;
+  if (altitude_rejected && !ground_explained) {
     ++stats.non_ground_altitude_rejected;
+    appendDiagnostic(observation, decision,
+                     LidarIngestionDiagnosticClass::kNonGroundAltitudeRejected, stats);
   }
-  const bool diagnostic_reason =
-      decision.reason == LidarIngestionReason::kExpectedGround ||
-      decision.reason == LidarIngestionReason::kObstacleBeforeExpectedSurface ||
-      decision.reason == LidarIngestionReason::kAmbiguousGround ||
-      decision.reason == LidarIngestionReason::kTiedExpectedSurfaces ||
-      decision.reason == LidarIngestionReason::kClassificationUnavailable;
-  if (!diagnostic_reason || stats.diagnostics.size() >= kMaxDecisionDiagnostics) {
-    return;
+}
+
+LidarIngestionRepresentativeDiagnostics representativeLidarIngestionDiagnostics(
+    const LidarIngestionDecisionStats& stats) noexcept {
+  LidarIngestionRepresentativeDiagnostics representatives;
+  std::array<bool, static_cast<std::size_t>(LidarIngestionDiagnosticClass::kCount)>
+      seen{};
+  for (const LidarIngestionDecisionDiagnostic& diagnostic : stats.diagnostics) {
+    const std::size_t index = diagnosticClassIndex(diagnostic.diagnostic_class);
+    if (index >= seen.size() || seen.at(index)) {
+      continue;
+    }
+    seen.at(index) = true;
+    representatives.samples.at(representatives.count) = &diagnostic;
+    ++representatives.count;
   }
-  LidarIngestionDecisionDiagnostic diagnostic{
-      .observation = observation,
-      .reason = decision.reason,
-      .expected_surface = decision.expected_surface,
-      .expected_range_m = decision.expected_range_m,
-      .range_delta_m = decision.range_delta_m,
-      .structure_id = {},
-      .opening_id = {},
-      .part_id = {},
-  };
-  if (decision.known_static_result_available) {
-    diagnostic.structure_id = decision.known_static_result.structure_id;
-    diagnostic.opening_id = decision.known_static_result.opening_id;
-    diagnostic.part_id = decision.known_static_result.part_id;
+  return representatives;
+}
+
+std::string formatLidarIngestionRepresentativeDiagnostics(
+    const LidarIngestionDecisionStats& stats) {
+  const LidarIngestionRepresentativeDiagnostics representatives =
+      representativeLidarIngestionDiagnostics(stats);
+  std::ostringstream stream;
+  for (std::size_t i = 0U; i < representatives.count; ++i) {
+    const LidarIngestionDecisionDiagnostic& diagnostic = *representatives.samples.at(i);
+    const LidarBeamObservation& observation = diagnostic.observation;
+    if (i != 0U) {
+      stream << "; ";
+    }
+    stream << "class=" << lidarIngestionDiagnosticClassName(diagnostic.diagnostic_class)
+           << " reason=" << lidarIngestionReasonName(diagnostic.reason)
+           << " surface=" << lidarExpectedSurfaceKindName(diagnostic.expected_surface)
+           << " ground_provider="
+           << lidarExpectedSurfaceProviderStatusName(diagnostic.ground_provider)
+           << " known_provider="
+           << lidarExpectedSurfaceProviderStatusName(diagnostic.known_static_provider)
+           << " beam=" << observation.beam_index << " endpoint=("
+           << observation.projection.endpoint_map_m.x << ','
+           << observation.projection.endpoint_map_m.y << ','
+           << observation.projection.endpoint_map_m.z
+           << ") measured=" << observation.measured_range_m
+           << " expected=" << diagnostic.expected_range_m
+           << " delta=" << diagnostic.range_delta_m;
   }
-  stats.diagnostics.push_back(std::move(diagnostic));
+  return stream.str();
 }
 
 const char* lidarIngestionReasonName(const LidarIngestionReason reason) noexcept {
@@ -331,6 +417,39 @@ const char* lidarIngestionReasonName(const LidarIngestionReason reason) noexcept
       return "tied_expected_surfaces";
     case LidarIngestionReason::kClassificationUnavailable:
       return "classification_unavailable";
+  }
+  return "unknown";
+}
+
+const char* lidarIngestionActionName(const LidarIngestionAction action) noexcept {
+  switch (action) {
+    case LidarIngestionAction::kIntegrateFreeAndHit:
+      return "integrate_free_and_hit";
+    case LidarIngestionAction::kIntegrateFreeOnly:
+      return "integrate_free_only";
+    case LidarIngestionAction::kSuppressAllUpdates:
+      return "suppress_all_updates";
+  }
+  return "unknown";
+}
+
+const char* lidarIngestionDiagnosticClassName(
+    const LidarIngestionDiagnosticClass diagnostic_class) noexcept {
+  switch (diagnostic_class) {
+    case LidarIngestionDiagnosticClass::kExpectedGround:
+      return "expected_ground";
+    case LidarIngestionDiagnosticClass::kCloserObstacle:
+      return "closer_obstacle";
+    case LidarIngestionDiagnosticClass::kAmbiguousGround:
+      return "ambiguous_ground";
+    case LidarIngestionDiagnosticClass::kClassificationUnavailable:
+      return "classification_unavailable";
+    case LidarIngestionDiagnosticClass::kClassificationDisabled:
+      return "classification_disabled";
+    case LidarIngestionDiagnosticClass::kNonGroundAltitudeRejected:
+      return "non_ground_altitude_rejected";
+    case LidarIngestionDiagnosticClass::kCount:
+      break;
   }
   return "unknown";
 }

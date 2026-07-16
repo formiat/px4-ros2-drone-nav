@@ -461,6 +461,7 @@ private:
       const AcceptedObstacleMemoryHit& trigger = provenance.occupancy_trigger;
       const LidarBeamObservation& observation = trigger.beam;
       const KnownStaticClassificationSnapshot& classification = trigger.known_static;
+      const LidarIngestionDecisionSnapshot& ingestion = trigger.ingestion_decision;
       const PassageStructure* structure = passageStructureNearPoint(
           known_passage_map_, Point2{observation.projection.endpoint_map_m.x,
                                      observation.projection.endpoint_map_m.y});
@@ -479,7 +480,8 @@ private:
           "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
           "classifier_applied=%s classification=%s volume_matched=%s "
           "confident_face=%s known_structure=%s opening=%s part=%s "
-          "expected_range=%.3f delta=%.3f",
+          "expected_range=%.3f delta=%.3f "
+          "ingestion[action=%s reason=%s surface=%s expected_range=%.3f delta=%.3f]",
           structure->id.c_str(), observation.beam_index, provenance.cell.x,
           provenance.cell.y, observation.projection.endpoint_map_m.x,
           observation.projection.endpoint_map_m.y,
@@ -512,7 +514,11 @@ private:
           classification.opening_id.empty() ? "<none>"
                                             : classification.opening_id.c_str(),
           classification.part_id.empty() ? "<none>" : classification.part_id.c_str(),
-          classification.expected_range_m, classification.range_delta_m);
+          classification.expected_range_m, classification.range_delta_m,
+          lidarIngestionActionName(ingestion.action),
+          lidarIngestionReasonName(ingestion.reason),
+          lidarExpectedSurfaceKindName(ingestion.expected_surface),
+          ingestion.expected_range_m, ingestion.range_delta_m);
     }
 
     if (!scan_seen_) {
@@ -609,31 +615,12 @@ private:
         stats.ingestion_decisions.ground_classification_disabled,
         stats.ingestion_decisions.non_ground_altitude_rejected,
         stats.ingestion_decisions.diagnostics.size());
-    if (!stats.ingestion_decisions.diagnostics.empty()) {
-      const LidarIngestionDecisionDiagnostic& diagnostic =
-          stats.ingestion_decisions.diagnostics.front();
-      const LidarBeamObservation& observation = diagnostic.observation;
-      RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Obstacle memory lidar decision sample: reason=%s surface=%s beam=%zu "
-          "endpoint=(%.3f, %.3f, %.3f) measured=%.3f expected=%.3f delta=%.3f "
-          "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
-          "source_attitude=(valid=%s roll=%.3f pitch=%.3f tilt=%.3f)",
-          lidarIngestionReasonName(diagnostic.reason),
-          lidarExpectedSurfaceKindName(diagnostic.expected_surface),
-          observation.beam_index, observation.projection.endpoint_map_m.x,
-          observation.projection.endpoint_map_m.y,
-          observation.projection.endpoint_map_m.z, observation.measured_range_m,
-          diagnostic.expected_range_m, diagnostic.range_delta_m,
-          observation.projection.ray_origin_map_m.x,
-          observation.projection.ray_origin_map_m.y,
-          observation.projection.ray_origin_map_m.z,
-          observation.projection.ray_direction_map.x,
-          observation.projection.ray_direction_map.y,
-          observation.projection.ray_direction_map.z,
-          observation.source_attitude_valid ? "true" : "false",
-          observation.source_roll_rad, observation.source_pitch_rad,
-          observation.source_tilt_rad);
+    const std::string decision_samples =
+        formatLidarIngestionRepresentativeDiagnostics(stats.ingestion_decisions);
+    if (!decision_samples.empty()) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Obstacle memory lidar decision samples: %s",
+                           decision_samples.c_str());
     }
   }
 

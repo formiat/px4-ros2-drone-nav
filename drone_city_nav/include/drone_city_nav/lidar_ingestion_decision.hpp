@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/lidar_beam_observation.hpp"
 
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -48,6 +49,16 @@ enum class LidarIngestionReason {
   kClassificationUnavailable,
 };
 
+enum class LidarIngestionDiagnosticClass {
+  kExpectedGround,
+  kCloserObstacle,
+  kAmbiguousGround,
+  kClassificationUnavailable,
+  kClassificationDisabled,
+  kNonGroundAltitudeRejected,
+  kCount,
+};
+
 struct LidarIngestionDecision {
   LidarIngestionAction action{LidarIngestionAction::kSuppressAllUpdates};
   LidarIngestionReason reason{LidarIngestionReason::kClassificationUnavailable};
@@ -63,10 +74,24 @@ struct LidarIngestionDecision {
   KnownStaticLidarHitResult known_static_result{};
 };
 
-struct LidarIngestionDecisionDiagnostic {
-  LidarBeamObservation observation;
+struct LidarIngestionDecisionSnapshot {
+  LidarIngestionAction action{LidarIngestionAction::kSuppressAllUpdates};
   LidarIngestionReason reason{LidarIngestionReason::kClassificationUnavailable};
   LidarExpectedSurfaceKind expected_surface{LidarExpectedSurfaceKind::kNone};
+  double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
+  double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct LidarIngestionDecisionDiagnostic {
+  LidarBeamObservation observation;
+  LidarIngestionDiagnosticClass diagnostic_class{
+      LidarIngestionDiagnosticClass::kClassificationUnavailable};
+  LidarIngestionReason reason{LidarIngestionReason::kClassificationUnavailable};
+  LidarExpectedSurfaceKind expected_surface{LidarExpectedSurfaceKind::kNone};
+  LidarExpectedSurfaceProviderStatus ground_provider{
+      LidarExpectedSurfaceProviderStatus::kDisabled};
+  LidarExpectedSurfaceProviderStatus known_static_provider{
+      LidarExpectedSurfaceProviderStatus::kDisabled};
   double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
   std::string structure_id;
@@ -84,18 +109,41 @@ struct LidarIngestionDecisionStats {
   std::vector<LidarIngestionDecisionDiagnostic> diagnostics;
 };
 
+struct LidarIngestionRepresentativeDiagnostics {
+  std::array<const LidarIngestionDecisionDiagnostic*,
+             static_cast<std::size_t>(LidarIngestionDiagnosticClass::kCount)>
+      samples{};
+  std::size_t count{0U};
+};
+
 [[nodiscard]] LidarIngestionDecision
 evaluateLidarIngestion(const LidarBeamObservation& observation,
                        const KnownStaticLidarHitClassifier* known_static_classifier,
                        const GroundLidarRejectionConfig* ground_config) noexcept;
+
+[[nodiscard]] LidarIngestionDecisionSnapshot
+makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept;
 
 void recordLidarIngestionDecision(const LidarBeamObservation& observation,
                                   const LidarIngestionDecision& decision,
                                   bool altitude_rejected,
                                   LidarIngestionDecisionStats& stats);
 
+[[nodiscard]] LidarIngestionRepresentativeDiagnostics
+representativeLidarIngestionDiagnostics(
+    const LidarIngestionDecisionStats& stats) noexcept;
+
+[[nodiscard]] std::string
+formatLidarIngestionRepresentativeDiagnostics(const LidarIngestionDecisionStats& stats);
+
 [[nodiscard]] const char*
 lidarIngestionReasonName(LidarIngestionReason reason) noexcept;
+
+[[nodiscard]] const char*
+lidarIngestionActionName(LidarIngestionAction action) noexcept;
+
+[[nodiscard]] const char* lidarIngestionDiagnosticClassName(
+    LidarIngestionDiagnosticClass diagnostic_class) noexcept;
 
 [[nodiscard]] const char*
 lidarExpectedSurfaceKindName(LidarExpectedSurfaceKind kind) noexcept;

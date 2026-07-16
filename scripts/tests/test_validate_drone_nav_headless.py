@@ -96,6 +96,12 @@ def make_ros_log(
                     "[obstacle_memory_node]: Obstacle memory update: hits=42 "
                     "known_static[ignored=3 unexpected=39 ambiguous=0]"
                 ),
+                (
+                    "[obstacle_memory_node]: Obstacle memory lidar decisions: "
+                    "expected_ground=3 closer_retained=2 ambiguous_ground=1 "
+                    "ground_unavailable=0 ground_disabled=0 "
+                    "non_ground_altitude_rejected=4 diagnostics=10"
+                ),
             ]
         )
     else:
@@ -108,6 +114,12 @@ def make_ros_log(
 
     if current_lidar:
         lines.append("[planner_node]: First planner lidar scan: beams=720")
+        lines.append(
+            "[planner_node]: Planner current lidar decisions: "
+            "expected_ground=5 closer_retained=1 ambiguous_ground=2 "
+            "ground_unavailable=0 ground_disabled=0 "
+            "non_ground_altitude_rejected=3 diagnostics=11"
+        )
         if current_lidar_used_summary:
             lines.append(
                 "[planner_node]: Planning summary: "
@@ -223,6 +235,52 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("FAIL: ground classifier is ready in both nodes", result.errors)
+
+    def test_missing_obstacle_memory_decision_summary_fails(self) -> None:
+        ros_log = "\n".join(
+            line
+            for line in make_ros_log().splitlines()
+            if "Obstacle memory lidar decisions:" not in line
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: obstacle memory lidar decision summary is logged", result.errors
+        )
+
+    def test_missing_planner_decision_summary_fails(self) -> None:
+        ros_log = "\n".join(
+            line
+            for line in make_ros_log().splitlines()
+            if "Planner current lidar decisions:" not in line
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: planner current lidar decision summary is logged", result.errors
+        )
 
     def test_active_lidar_stable_path_reuse_passes_without_used_summary(self) -> None:
         result = validator.validate_logs(
