@@ -383,8 +383,9 @@ private:
   double last_scan_motion_shift_m_{0.0};
   double lidar_pose_latency_s_{0.05};
   double memory_snapshot_diagnostic_period_s_{5.0};
-  double memory_snapshot_max_age_ms_{250.0};
+  double memory_snapshot_max_age_ms_{350.0};
   double memory_snapshot_max_callback_time_ms_{100.0};
+  double memory_snapshot_max_apply_delay_ms_{300.0};
   double memory_snapshot_min_apply_rate_hz_{1.0};
   double last_memory_snapshot_age_ms_{std::numeric_limits<double>::quiet_NaN()};
   double last_memory_snapshot_receive_age_ms_{std::numeric_limits<double>::quiet_NaN()};

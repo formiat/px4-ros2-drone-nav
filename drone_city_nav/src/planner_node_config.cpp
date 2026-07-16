@@ -505,12 +505,16 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                      "obstacle_memory_snapshot_diagnostic_period_s", 5.0),
                  0.1, 60.0);
   config.memory_snapshot_transport.max_age_ms = std::clamp(
-      node.declare_parameter<double>("obstacle_memory_snapshot_max_age_ms", 250.0), 1.0,
+      node.declare_parameter<double>("obstacle_memory_snapshot_max_age_ms", 350.0), 1.0,
       60'000.0);
   config.memory_snapshot_transport.max_callback_time_ms =
       std::clamp(node.declare_parameter<double>(
                      "obstacle_memory_snapshot_max_callback_time_ms", 100.0),
                  0.1, 10'000.0);
+  config.memory_snapshot_transport.max_apply_delay_ms =
+      std::clamp(node.declare_parameter<double>(
+                     "obstacle_memory_snapshot_max_apply_delay_ms", 300.0),
+                 0.1, 60'000.0);
   config.memory_snapshot_transport.min_apply_rate_hz = std::clamp(
       node.declare_parameter<double>("obstacle_memory_snapshot_min_apply_rate_hz", 1.0),
       0.0, 1000.0);

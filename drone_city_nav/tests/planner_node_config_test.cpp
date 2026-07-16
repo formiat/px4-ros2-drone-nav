@@ -121,8 +121,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.obstacle_memory_snapshot,
             "/drone_city_nav/obstacle_memory_snapshot");
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 5.0);
-  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 250.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 350.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_callback_time_ms, 100.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_apply_delay_ms, 300.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 1.0);
   EXPECT_EQ(config.topics.static_building_markers,
             "/drone_city_nav/static_building_markers");
@@ -551,6 +552,7 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
        rclcpp::Parameter{"obstacle_memory_snapshot_diagnostic_period_s", 2.0},
        rclcpp::Parameter{"obstacle_memory_snapshot_max_age_ms", 150.0},
        rclcpp::Parameter{"obstacle_memory_snapshot_max_callback_time_ms", 75.0},
+       rclcpp::Parameter{"obstacle_memory_snapshot_max_apply_delay_ms", 125.0},
        rclcpp::Parameter{"obstacle_memory_snapshot_min_apply_rate_hz", 8.0},
        rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
        rclcpp::Parameter{"trajectory_diagnostics_topic",
@@ -565,6 +567,7 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 2.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 150.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_callback_time_ms, 75.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_apply_delay_ms, 125.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 8.0);
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);

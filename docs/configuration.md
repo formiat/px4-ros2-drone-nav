@@ -83,6 +83,7 @@ Known passages:
 - `obstacle_memory_snapshot_max_publish_interval_ms`
 - `obstacle_memory_snapshot_max_age_ms`
 - `obstacle_memory_snapshot_max_callback_time_ms`
+- `obstacle_memory_snapshot_max_apply_delay_ms`
 - `obstacle_memory_snapshot_min_apply_rate_hz`
 - `vertical_profile_preferred_gate_clearance_margin_m`
 - `known_passage_traversal_speed_limit_mps`
@@ -194,13 +195,15 @@ the independent known-static provider.
 - `obstacle_memory_snapshot_max_publish_interval_ms` warns when authoritative
   producer cadence falls below its operational budget.
 - `obstacle_memory_snapshot_max_age_ms`,
-  `obstacle_memory_snapshot_max_callback_time_ms`, and
+  `obstacle_memory_snapshot_max_callback_time_ms`,
+  `obstacle_memory_snapshot_max_apply_delay_ms`, and
   `obstacle_memory_snapshot_min_apply_rate_hz` are planner warning budgets for
-  snapshot freshness when adopted, callback parsing, and effective adoption by
-  the 0.5 s planning timer. The default apply-rate budget is `1.0 Hz`; it is
-  intentionally lower than producer cadence because planning adopts only the
-  newest parsed snapshot, not every intermediate publication. These are
-  diagnostic budgets, not rejection thresholds.
+  snapshot freshness when adopted, callback parsing, parsed-to-active delay,
+  and effective adoption by the 0.5 s planning timer. The defaults are 350 ms
+  apply age, 100 ms callback time, 300 ms apply delay, and 1.0 Hz apply rate.
+  Apply rate is intentionally lower than producer cadence because planning
+  adopts only the newest parsed snapshot, not every intermediate publication.
+  These are diagnostic budgets, not rejection thresholds.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.

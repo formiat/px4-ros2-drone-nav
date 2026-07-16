@@ -88,10 +88,11 @@ PlannerNode::PlannerNode()
               config.topics.local_position.c_str(), config.topics.attitude.c_str());
   RCLCPP_INFO(get_logger(),
               "Planner memory snapshot transport budgets: diagnostic_period=%.2fs "
-              "max_age=%.1fms max_callback=%.1fms min_apply_rate=%.1fHz",
+              "max_age=%.1fms max_callback=%.1fms max_apply_delay=%.1fms "
+              "min_apply_rate=%.1fHz",
               memory_snapshot_diagnostic_period_s_, memory_snapshot_max_age_ms_,
               memory_snapshot_max_callback_time_ms_,
-              memory_snapshot_min_apply_rate_hz_);
+              memory_snapshot_max_apply_delay_ms_, memory_snapshot_min_apply_rate_hz_);
   RCLCPP_INFO(get_logger(), "Planner publications: path='%s' path_id='%s'",
               config.topics.path.c_str(), config.topics.path_id.c_str());
   RCLCPP_INFO(get_logger(),
@@ -263,6 +264,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   memory_snapshot_max_age_ms_ = config.memory_snapshot_transport.max_age_ms;
   memory_snapshot_max_callback_time_ms_ =
       config.memory_snapshot_transport.max_callback_time_ms;
+  memory_snapshot_max_apply_delay_ms_ =
+      config.memory_snapshot_transport.max_apply_delay_ms;
   memory_snapshot_min_apply_rate_hz_ =
       config.memory_snapshot_transport.min_apply_rate_hz;
   use_static_map_ = config.static_map.enabled;

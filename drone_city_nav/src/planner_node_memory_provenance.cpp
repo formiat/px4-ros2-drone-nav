@@ -218,6 +218,15 @@ void PlannerNode::applyPendingMemorySnapshot(const std::int64_t now_ns) {
 
 void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
   std::scoped_lock lock{memory_snapshot_mutex_};
+  if (memory_snapshot_received_ == 0U || memory_snapshot_applied_ == 0U) {
+    last_memory_snapshot_diagnostic_ns_ = now_ns;
+    memory_snapshot_applied_at_last_diagnostic_ = memory_snapshot_applied_;
+    memory_snapshot_received_at_last_diagnostic_ = memory_snapshot_received_;
+    memory_snapshot_max_age_since_report_ms_ = 0.0;
+    memory_snapshot_max_callback_since_report_ms_ = 0.0;
+    memory_snapshot_max_apply_delay_since_report_ms_ = 0.0;
+    return;
+  }
   if (last_memory_snapshot_diagnostic_ns_ <= 0) {
     last_memory_snapshot_diagnostic_ns_ = now_ns;
     memory_snapshot_applied_at_last_diagnostic_ = memory_snapshot_applied_;
@@ -244,6 +253,8 @@ void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
       memory_snapshot_max_age_since_report_ms_ <= memory_snapshot_max_age_ms_ &&
       memory_snapshot_max_callback_since_report_ms_ <=
           memory_snapshot_max_callback_time_ms_ &&
+      memory_snapshot_max_apply_delay_since_report_ms_ <=
+          memory_snapshot_max_apply_delay_ms_ &&
       last_memory_snapshot_apply_rate_hz_ >= memory_snapshot_min_apply_rate_hz_;
   const char* status = within_budget ? "within_budget" : "exceeded";
   if (within_budget) {
@@ -254,7 +265,8 @@ void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
                 " rejected=%" PRIu64 " out_of_order=%" PRIu64
                 " receive_rate_hz=%.3f apply_rate_hz=%.3f min_apply_rate_hz=%.3f "
                 "max_apply_age_ms=%.3f age_budget_ms=%.3f max_callback_ms=%.3f "
-                "callback_budget_ms=%.3f max_apply_delay_ms=%.3f",
+                "callback_budget_ms=%.3f max_apply_delay_ms=%.3f "
+                "apply_delay_budget_ms=%.3f",
                 status, last_memory_snapshot_applied_producer_instance_id_,
                 last_memory_snapshot_applied_sequence_, memory_snapshot_received_,
                 memory_snapshot_applied_, memory_snapshot_pending_replacements_,
@@ -264,7 +276,8 @@ void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
                 memory_snapshot_max_age_since_report_ms_, memory_snapshot_max_age_ms_,
                 memory_snapshot_max_callback_since_report_ms_,
                 memory_snapshot_max_callback_time_ms_,
-                memory_snapshot_max_apply_delay_since_report_ms_);
+                memory_snapshot_max_apply_delay_since_report_ms_,
+                memory_snapshot_max_apply_delay_ms_);
   } else {
     RCLCPP_WARN(get_logger(),
                 "Planner memory snapshot budget: status=%s producer_instance=%" PRIu64
@@ -273,7 +286,8 @@ void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
                 " rejected=%" PRIu64 " out_of_order=%" PRIu64
                 " receive_rate_hz=%.3f apply_rate_hz=%.3f min_apply_rate_hz=%.3f "
                 "max_apply_age_ms=%.3f age_budget_ms=%.3f max_callback_ms=%.3f "
-                "callback_budget_ms=%.3f max_apply_delay_ms=%.3f",
+                "callback_budget_ms=%.3f max_apply_delay_ms=%.3f "
+                "apply_delay_budget_ms=%.3f",
                 status, last_memory_snapshot_applied_producer_instance_id_,
                 last_memory_snapshot_applied_sequence_, memory_snapshot_received_,
                 memory_snapshot_applied_, memory_snapshot_pending_replacements_,
@@ -283,7 +297,8 @@ void PlannerNode::logMemorySnapshotTransportSummary(const std::int64_t now_ns) {
                 memory_snapshot_max_age_since_report_ms_, memory_snapshot_max_age_ms_,
                 memory_snapshot_max_callback_since_report_ms_,
                 memory_snapshot_max_callback_time_ms_,
-                memory_snapshot_max_apply_delay_since_report_ms_);
+                memory_snapshot_max_apply_delay_since_report_ms_,
+                memory_snapshot_max_apply_delay_ms_);
   }
   last_memory_snapshot_diagnostic_ns_ = now_ns;
   memory_snapshot_applied_at_last_diagnostic_ = memory_snapshot_applied_;

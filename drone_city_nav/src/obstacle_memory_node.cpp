@@ -177,7 +177,7 @@ public:
                    0.1, 10'000.0);
     snapshot_max_publish_interval_ms_ =
         std::clamp(declare_parameter<double>(
-                       "obstacle_memory_snapshot_max_publish_interval_ms", 250.0),
+                       "obstacle_memory_snapshot_max_publish_interval_ms", 400.0),
                    1.0, 60'000.0);
     std::filesystem::path package_share_directory;
     try {
@@ -868,7 +868,7 @@ private:
   double snapshot_debug_publish_period_s_{1.0};
   double snapshot_diagnostic_period_s_{5.0};
   double snapshot_max_assembly_time_ms_{100.0};
-  double snapshot_max_publish_interval_ms_{250.0};
+  double snapshot_max_publish_interval_ms_{400.0};
   double snapshot_max_assembly_since_report_ms_{0.0};
   double snapshot_max_publish_interval_since_report_ms_{0.0};
   std::size_t snapshot_max_serialized_bytes_{4'500'000U};
