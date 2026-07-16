@@ -69,6 +69,25 @@ occupied is logged as `PASSAGE_MEMORY_HIT` with endpoint XYZ, beam/range,
 attitude, score transition, and known-static classification. The event is
 diagnostic only and does not alter hit scoring or filtering.
 
+Every active occupied memory cell also owns sparse 3D diagnostic provenance:
+the hit that first made the cell occupied, the latest accepted hit, the observed
+minimum/maximum endpoint Z, and the accepted-hit count. This metadata never
+participates in scoring, inflation, A*, or trajectory control. It is published
+on `/drone_city_nav/obstacle_memory_provenance` alongside the authoritative 2D
+grid. Both messages use one publication stamp and identical grid metadata.
+
+The planner accepts provenance only when stamp, frame, complete map metadata,
+raw row-major grid hash, occupied count, and every record agree exactly with the
+accepted memory grid. It keeps four recent snapshots to tolerate cross-topic
+delivery order. Missing, late, or malformed provenance only produces an
+explicit diagnostic status; it never blocks planning.
+
+Beam acquisition time is derived from the scan stamp and `time_increment`.
+Receive time is stored separately and is never substituted for a missing sensor
+stamp. The recorded attitude is the attitude actually used by the projection;
+the current implementation does not interpolate vehicle pose independently for
+every beam timestamp.
+
 ## Motion Compensation
 
 Lidar projection can account for:
@@ -109,6 +128,7 @@ Useful visualization topics:
 - `/drone_city_nav/static_map_points`
 - `/drone_city_nav/static_building_markers`
 - `/drone_city_nav/obstacle_memory_grid`
+- `/drone_city_nav/obstacle_memory_provenance`
 - `/drone_city_nav/prohibited_grid`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/remembered_lidar_points`
@@ -155,8 +175,8 @@ the planner still needs to avoid it.
 The same known-static classifier is applied before a hit changes obstacle-memory
 scores. It suppresses only new confident physical-solid hits; it does not remove
 older cells selectively or create a temporary memory copy. When classifier
-geometry is installed or changed, obstacle memory is reset because a legacy 2D
-cell has no recorded hit altitude/provenance.
+geometry is installed or changed, obstacle memory and its associated provenance
+are reset together so no cell survives under a different geometry contract.
 
 These sources are complementary:
 

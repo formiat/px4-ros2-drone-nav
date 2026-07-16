@@ -6,6 +6,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
+#include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
@@ -16,6 +17,7 @@
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <exception>
@@ -31,6 +33,18 @@ namespace drone_city_nav {
 namespace {
 
 constexpr double kPassageMemoryDiagnosticMarginM{2.0};
+constexpr std::int64_t kNanosecondsPerSecond{1'000'000'000};
+
+[[nodiscard]] std::optional<std::int64_t>
+validRosStampNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
+  if (stamp.sec < 0 ||
+      stamp.nanosec >= static_cast<std::uint32_t>(kNanosecondsPerSecond) ||
+      (stamp.sec == 0 && stamp.nanosec == 0U)) {
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(stamp.sec) * kNanosecondsPerSecond +
+         static_cast<std::int64_t>(stamp.nanosec);
+}
 
 [[nodiscard]] std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid,
                                             const GridIndex cell) {
@@ -222,6 +236,10 @@ public:
         declare_parameter<std::string>("obstacle_memory_grid_topic",
                                        "/drone_city_nav/obstacle_memory_grid"),
         rclcpp::QoS{1}.transient_local());
+    provenance_pub_ = create_publisher<msg::ObstacleMemoryProvenance>(
+        declare_parameter<std::string>("obstacle_memory_provenance_topic",
+                                       "/drone_city_nav/obstacle_memory_provenance"),
+        rclcpp::QoS{1}.reliable().transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
@@ -385,6 +403,13 @@ private:
     scan_view.lidar_mount_roll_rad = lidar_mount_roll_rad_;
     scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
     scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
+    const std::optional<std::int64_t> scan_stamp_ns =
+        validRosStampNanoseconds(scan.header.stamp);
+    scan_view.timing.first_beam_stamp_ns = scan_stamp_ns.value_or(0);
+    scan_view.timing.first_beam_stamp_valid = scan_stamp_ns.has_value();
+    scan_view.timing.time_increment_s = static_cast<double>(scan.time_increment);
+    scan_view.timing.receive_stamp_ns = now_ns;
+    scan_view.timing.receive_stamp_valid = now_ns > 0;
     const ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
         known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
@@ -392,9 +417,13 @@ private:
 
     for (const ObstacleMemoryOccupiedTransition& transition :
          stats.occupied_transitions) {
+      const MemoryCellProvenance& provenance = transition.provenance;
+      const AcceptedObstacleMemoryHit& trigger = provenance.occupancy_trigger;
+      const LidarBeamObservation& observation = trigger.beam;
+      const KnownStaticClassificationSnapshot& classification = trigger.known_static;
       const PassageStructure* structure = passageStructureNearPoint(
-          known_passage_map_,
-          Point2{transition.endpoint_map_m.x, transition.endpoint_map_m.y});
+          known_passage_map_, Point2{observation.projection.endpoint_map_m.x,
+                                     observation.projection.endpoint_map_m.y});
       if (structure == nullptr) {
         continue;
       }
@@ -403,30 +432,47 @@ private:
           "PASSAGE_MEMORY_HIT transition=occupied structure=%s beam=%zu "
           "cell=(%d, %d) endpoint=(%.3f, %.3f, %.3f) range=%.3f "
           "score=%d->%d pose=(%.3f, %.3f, %.3f) scan_pose=(%.3f, %.3f) "
-          "attitude=(roll=%.3f pitch=%.3f tilt=%.3f) "
+          "source_attitude=(valid=%s roll=%.3f pitch=%.3f tilt=%.3f) "
+          "applied_attitude=(applied=%s roll=%.3f pitch=%.3f tilt=%.3f) "
+          "acquisition_stamp_ns=%" PRId64 " acquisition_stamp_valid=%s "
+          "receive_stamp_ns=%" PRId64 " receive_stamp_valid=%s "
           "ray_origin=(%.3f, %.3f, %.3f) ray_dir=(%.5f, %.5f, %.5f) "
           "classifier_applied=%s classification=%s volume_matched=%s "
           "confident_face=%s known_structure=%s opening=%s part=%s "
           "expected_range=%.3f delta=%.3f",
-          structure->id.c_str(), transition.beam_index, transition.cell.x,
-          transition.cell.y, transition.endpoint_map_m.x, transition.endpoint_map_m.y,
-          transition.endpoint_map_m.z, transition.measured_range_m,
+          structure->id.c_str(), observation.beam_index, provenance.cell.x,
+          provenance.cell.y, observation.projection.endpoint_map_m.x,
+          observation.projection.endpoint_map_m.y,
+          observation.projection.endpoint_map_m.z, observation.measured_range_m,
           transition.score_before, transition.score_after,
           current_pose_.pose.position.x, current_pose_.pose.position.y,
           current_pose_.altitude_m, scan_pose.position.x, scan_pose.position.y,
-          current_attitude_.roll_rad, current_attitude_.pitch_rad,
-          std::hypot(current_attitude_.roll_rad, current_attitude_.pitch_rad),
-          transition.ray_origin_map_m.x, transition.ray_origin_map_m.y,
-          transition.ray_origin_map_m.z, transition.ray_direction_map.x,
-          transition.ray_direction_map.y, transition.ray_direction_map.z,
-          transition.classifier_applied ? "true" : "false",
-          knownStaticLidarHitClassificationName(transition.classification),
-          transition.volume_matched ? "true" : "false",
-          transition.confident_face_interior ? "true" : "false",
-          transition.structure_id.empty() ? "<none>" : transition.structure_id.c_str(),
-          transition.opening_id.empty() ? "<none>" : transition.opening_id.c_str(),
-          transition.part_id.empty() ? "<none>" : transition.part_id.c_str(),
-          transition.expected_range_m, transition.range_delta_m);
+          observation.source_attitude_valid ? "true" : "false",
+          observation.source_roll_rad, observation.source_pitch_rad,
+          observation.source_tilt_rad,
+          observation.projection.attitude_compensation_applied ? "true" : "false",
+          observation.projection.applied_roll_rad,
+          observation.projection.applied_pitch_rad,
+          observation.projection.applied_tilt_rad, observation.acquisition_stamp_ns,
+          observation.acquisition_stamp_valid ? "true" : "false",
+          observation.receive_stamp_ns,
+          observation.receive_stamp_valid ? "true" : "false",
+          observation.projection.ray_origin_map_m.x,
+          observation.projection.ray_origin_map_m.y,
+          observation.projection.ray_origin_map_m.z,
+          observation.projection.ray_direction_map.x,
+          observation.projection.ray_direction_map.y,
+          observation.projection.ray_direction_map.z,
+          classification.classifier_applied ? "true" : "false",
+          knownStaticLidarHitClassificationName(classification.classification),
+          classification.volume_matched ? "true" : "false",
+          classification.confident_face_interior ? "true" : "false",
+          classification.structure_id.empty() ? "<none>"
+                                              : classification.structure_id.c_str(),
+          classification.opening_id.empty() ? "<none>"
+                                            : classification.opening_id.c_str(),
+          classification.part_id.empty() ? "<none>" : classification.part_id.c_str(),
+          classification.expected_range_m, classification.range_delta_m);
     }
 
     if (!scan_seen_) {
@@ -441,7 +487,7 @@ private:
           attitude_valid_ ? "true" : "false");
     }
 
-    publishMemoryGrid();
+    publishMemorySnapshot();
 
     const GridCellCounts raw_counts = memory_->countRawCells();
     RCLCPP_INFO_THROTTLE(
@@ -549,9 +595,30 @@ private:
     return 0.0;
   }
 
-  void publishMemoryGrid() {
+  void publishMemorySnapshot() {
     const rclcpp::Time stamp = now();
-    raw_grid_pub_->publish(makeOccupancyGridMessage(memory_->rawGrid(), stamp));
+    const nav_msgs::msg::OccupancyGrid grid_message =
+        makeOccupancyGridMessage(memory_->rawGrid(), stamp);
+    const msg::ObstacleMemoryProvenance provenance_message =
+        makeObstacleMemoryProvenanceMessage(grid_message, memory_->activeProvenance());
+    raw_grid_pub_->publish(grid_message);
+    provenance_pub_->publish(provenance_message);
+
+    const std::size_t invalid_z_count = static_cast<std::size_t>(
+        std::count_if(memory_->activeProvenance().begin(),
+                      memory_->activeProvenance().end(), [](const auto& item) {
+                        return !item.second.min_endpoint_z_m.has_value() ||
+                               !item.second.max_endpoint_z_m.has_value();
+                      }));
+    const std::size_t estimated_bytes =
+        sizeof(provenance_message) +
+        provenance_message.cells.size() * sizeof(msg::ObstacleMemoryCellProvenance);
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Obstacle memory provenance snapshot: occupied=%zu records=%zu "
+        "invalid_z=%zu estimated_bytes=%zu",
+        memory_->countRawCells().occupied_cells, provenance_message.cells.size(),
+        invalid_z_count, estimated_bytes);
   }
 
   [[nodiscard]] nav_msgs::msg::OccupancyGrid
@@ -616,6 +683,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
+  rclcpp::Publisher<msg::ObstacleMemoryProvenance>::SharedPtr provenance_pub_;
 };
 
 } // namespace drone_city_nav

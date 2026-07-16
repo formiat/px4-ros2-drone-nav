@@ -1,0 +1,8 @@
+uint32 CURRENT_SCHEMA_VERSION=1
+
+std_msgs/Header header
+uint32 schema_version
+nav_msgs/MapMetaData grid_info
+uint64 raw_grid_data_hash
+uint64 occupied_cell_count
+drone_city_nav/ObstacleMemoryCellProvenance[] cells

@@ -57,6 +57,11 @@ struct LidarBeamProjection {
   Point3 ray_origin_map_m{};
   Point3 ray_direction_map{};
   Point3 endpoint_map_m{};
+  bool endpoint_xyz_valid{false};
+  bool attitude_compensation_applied{false};
+  double applied_roll_rad{0.0};
+  double applied_pitch_rad{0.0};
+  double applied_tilt_rad{0.0};
 };
 
 [[nodiscard]] std::optional<AttitudeEuler>

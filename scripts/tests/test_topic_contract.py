@@ -149,6 +149,7 @@ class TopicContractTest(unittest.TestCase):
         text = read("scripts/record_debug_bag.sh")
 
         self.assertIn("/drone_city_nav/obstacle_memory_grid", text)
+        self.assertIn("/drone_city_nav/obstacle_memory_provenance", text)
         self.assertIn("/drone_city_nav/prohibited_grid", text)
         self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
         self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
@@ -156,6 +157,15 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("/drone_city_nav/known_passage_markers", text)
         self.assertNotIn("/drone_city_nav/obstacle_memory_inflated_grid", text)
         self.assertNotIn("/drone_city_nav/occupancy_grid", text)
+
+        yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
+        self.assertEqual(
+            yaml_text.count(
+                "obstacle_memory_provenance_topic: "
+                "/drone_city_nav/obstacle_memory_provenance"
+            ),
+            2,
+        )
 
     def test_known_passage_marker_contract_is_wired_for_debugging(self) -> None:
         yaml_text = read("drone_city_nav/config/urban_mvp.yaml")

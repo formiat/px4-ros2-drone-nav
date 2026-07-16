@@ -181,6 +181,30 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
       stream << " known_static_hit[unavailable]";
     }
   }
+  std::optional<GridIndex> memory_provenance_cell;
+  const bool exact_memory = std::any_of(
+      exact_sources.begin(), exact_sources.end(), [](const char* source_name) {
+        return std::string_view{source_name} == "memory";
+      });
+  if (exact_memory && memory_grid_.has_value()) {
+    memory_provenance_cell =
+        memory_grid_->worldToCell(grid.cellCenter(intersection.cell));
+  } else if (nearest_source.has_value() &&
+             std::string_view{nearest_source->name} == "memory") {
+    memory_provenance_cell = nearest_source->cell;
+  }
+
+  MemoryProvenanceMatchResult provenance_match;
+  if (memory_grid_message_.has_value()) {
+    provenance_match = memory_provenance_cache_.match(*memory_grid_message_);
+    if (provenance_match.snapshot == nullptr &&
+        provenance_match.reason == MemoryProvenanceUnavailableReason::kNotReceived &&
+        latest_memory_provenance_error_ != MemoryProvenanceUnavailableReason::kNone) {
+      provenance_match.reason = latest_memory_provenance_error_;
+    }
+  }
+  stream << ' '
+         << formatMemoryProvenanceDiagnostic(provenance_match, memory_provenance_cell);
   return stream.str();
 }
 

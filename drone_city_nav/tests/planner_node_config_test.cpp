@@ -118,6 +118,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 8U);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 8U);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
+  EXPECT_EQ(config.topics.obstacle_memory_provenance,
+            "/drone_city_nav/obstacle_memory_provenance");
   EXPECT_EQ(config.topics.static_building_markers,
             "/drone_city_nav/static_building_markers");
   EXPECT_EQ(config.topics.known_passage_markers,
@@ -541,7 +543,9 @@ TEST_F(PlannerNodeConfigTest, AllowsAsyncRefinementDisableContract) {
 TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   const auto node =
       makeNode("planner_node_config_topic_contract",
-               {rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
+               {rclcpp::Parameter{"obstacle_memory_provenance_topic",
+                                  "/custom/memory_provenance"},
+                rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
                 rclcpp::Parameter{"trajectory_diagnostics_topic",
                                   "/custom/trajectory_diagnostics"},
                 rclcpp::Parameter{"memory_occupied_value", 100},
@@ -550,6 +554,7 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
   EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
+  EXPECT_EQ(config.topics.obstacle_memory_provenance, "/custom/memory_provenance");
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);

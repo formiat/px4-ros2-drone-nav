@@ -1,0 +1,8 @@
+int32 cell_x
+int32 cell_y
+drone_city_nav/ObstacleMemoryHitObservation occupancy_trigger
+drone_city_nav/ObstacleMemoryHitObservation last_hit
+bool endpoint_z_range_valid
+float64 min_endpoint_z_m
+float64 max_endpoint_z_m
+uint64 accepted_hit_count

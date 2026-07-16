@@ -55,6 +55,10 @@ TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
               projection.ray_origin_map_m.z +
                   projection.used_range_m * projection.ray_direction_map.z,
               1.0e-9);
+  EXPECT_TRUE(projection.endpoint_xyz_valid);
+  EXPECT_TRUE(projection.attitude_compensation_applied);
+  EXPECT_NEAR(projection.applied_roll_rad, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_pitch_rad, 0.0, 1.0e-9);
 }
 
 TEST(LidarProjection, ConfiguredMountYawReorientsLevelBeam) {
@@ -117,6 +121,24 @@ TEST(LidarProjection, InvalidAttitudeFallsBackToLevelProjection) {
   EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
   EXPECT_NEAR(projection.endpoint.x, 10.0, 1.0e-6);
   EXPECT_NEAR(projection.endpoint.y, 0.0, 1.0e-6);
+  EXPECT_NEAR(projection.endpoint_altitude_m, 18.0, 1.0e-6);
+  EXPECT_FALSE(projection.attitude_compensation_applied);
+  EXPECT_NEAR(projection.applied_roll_rad, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_pitch_rad, 0.0, 1.0e-9);
+}
+
+TEST(LidarProjection, DisabledCompensationReportsLevelAppliedAttitude) {
+  const LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.4, -0.3, true, true};
+  LidarProjectionConfig config{};
+  config.compensate_attitude = false;
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_FALSE(projection.attitude_compensation_applied);
+  EXPECT_NEAR(projection.applied_roll_rad, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_pitch_rad, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_tilt_rad, 0.0, 1.0e-9);
   EXPECT_NEAR(projection.endpoint_altitude_m, 18.0, 1.0e-6);
 }
 

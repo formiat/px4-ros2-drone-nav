@@ -101,7 +101,120 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
   return counts;
 }
 
+[[nodiscard]] KnownStaticClassificationSnapshot
+makeClassificationSnapshot(const bool classifier_applied,
+                           const KnownStaticLidarHitResult& classification) {
+  return KnownStaticClassificationSnapshot{
+      .classifier_applied = classifier_applied,
+      .classification = classification.classification,
+      .volume_matched = classification.volume_matched,
+      .confident_face_interior = classification.confident_face_interior,
+      .part_kind_valid = classification.volume_matched,
+      .part_kind = classification.part_kind,
+      .structure_id = std::string{classification.structure_id},
+      .opening_id = std::string{classification.opening_id},
+      .part_id = std::string{classification.part_id},
+      .expected_range_m = classification.expected_range_m,
+      .range_delta_m = classification.range_delta_m,
+  };
+}
+
+[[nodiscard]] LidarBeamObservation
+makeBeamObservation(const LaserScan2DView& scan, const std::size_t beam_index,
+                    const LidarBeamProjection& projection) {
+  const LidarBeamTimestamp acquisition_stamp =
+      lidarBeamAcquisitionTimestamp(scan.timing, beam_index);
+  const bool source_attitude_valid = scan.attitude_valid &&
+                                     std::isfinite(scan.roll_rad) &&
+                                     std::isfinite(scan.pitch_rad);
+  return LidarBeamObservation{
+      .beam_index = beam_index,
+      .acquisition_stamp_ns = acquisition_stamp.stamp_ns,
+      .acquisition_stamp_valid = acquisition_stamp.valid,
+      .receive_stamp_ns = scan.timing.receive_stamp_ns,
+      .receive_stamp_valid = scan.timing.receive_stamp_valid,
+      .projection = projection,
+      .measured_range_m = projection.used_range_m,
+      .source_attitude_valid = source_attitude_valid,
+      .source_roll_rad = source_attitude_valid
+                             ? scan.roll_rad
+                             : std::numeric_limits<double>::quiet_NaN(),
+      .source_pitch_rad = source_attitude_valid
+                              ? scan.pitch_rad
+                              : std::numeric_limits<double>::quiet_NaN(),
+      .source_tilt_rad = source_attitude_valid
+                             ? std::hypot(scan.roll_rad, scan.pitch_rad)
+                             : std::numeric_limits<double>::quiet_NaN(),
+  };
+}
+
+[[nodiscard]] MemoryCellProvenance
+makeCellProvenance(const GridIndex cell, const AcceptedObstacleMemoryHit& hit) {
+  MemoryCellProvenance provenance{
+      .cell = cell,
+      .occupancy_trigger = hit,
+      .last_hit = hit,
+      .min_endpoint_z_m = std::nullopt,
+      .max_endpoint_z_m = std::nullopt,
+      .accepted_hit_count = 1U,
+  };
+  if (hit.beam.projection.endpoint_xyz_valid &&
+      std::isfinite(hit.beam.projection.endpoint_map_m.z)) {
+    provenance.min_endpoint_z_m = hit.beam.projection.endpoint_map_m.z;
+    provenance.max_endpoint_z_m = hit.beam.projection.endpoint_map_m.z;
+  }
+  return provenance;
+}
+
+void updateCellProvenance(MemoryCellProvenance& provenance,
+                          const AcceptedObstacleMemoryHit& hit) {
+  provenance.last_hit = hit;
+  if (provenance.accepted_hit_count < std::numeric_limits<std::uint64_t>::max()) {
+    ++provenance.accepted_hit_count;
+  }
+  if (!hit.beam.projection.endpoint_xyz_valid ||
+      !std::isfinite(hit.beam.projection.endpoint_map_m.z)) {
+    return;
+  }
+  const double endpoint_z_m = hit.beam.projection.endpoint_map_m.z;
+  provenance.min_endpoint_z_m =
+      provenance.min_endpoint_z_m.has_value()
+          ? std::min(*provenance.min_endpoint_z_m, endpoint_z_m)
+          : endpoint_z_m;
+  provenance.max_endpoint_z_m =
+      provenance.max_endpoint_z_m.has_value()
+          ? std::max(*provenance.max_endpoint_z_m, endpoint_z_m)
+          : endpoint_z_m;
+}
+
 } // namespace
+
+LidarBeamTimestamp
+lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
+                              const std::size_t beam_index) noexcept {
+  if (!timing.first_beam_stamp_valid || timing.first_beam_stamp_ns <= 0) {
+    return {};
+  }
+  if (beam_index == 0U) {
+    return LidarBeamTimestamp{timing.first_beam_stamp_ns, true};
+  }
+  if (!std::isfinite(timing.time_increment_s) || timing.time_increment_s < 0.0) {
+    return {};
+  }
+
+  constexpr long double kNanosecondsPerSecond = 1.0e9L;
+  const long double offset_ns = static_cast<long double>(beam_index) *
+                                static_cast<long double>(timing.time_increment_s) *
+                                kNanosecondsPerSecond;
+  const long double max_offset =
+      static_cast<long double>(std::numeric_limits<std::int64_t>::max()) -
+      static_cast<long double>(timing.first_beam_stamp_ns);
+  if (!std::isfinite(offset_ns) || offset_ns < 0.0L || offset_ns > max_offset) {
+    return {};
+  }
+  const auto rounded_offset_ns = static_cast<std::int64_t>(std::round(offset_ns));
+  return LidarBeamTimestamp{timing.first_beam_stamp_ns + rounded_offset_ns, true};
+}
 
 ObstacleMemoryGrid::ObstacleMemoryGrid(const GridBounds& bounds)
     : raw_grid_{bounds},
@@ -223,33 +336,16 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       }
     }
 
-    const std::size_t endpoint_index = raw_grid_.linearIndex(endpoint_grid_cell);
-    const int score_before = scores_.at(endpoint_index);
-    const bool occupied_before = raw_grid_.isOccupied(endpoint_grid_cell);
-    applyHit(endpoint_grid_cell, config);
+    const AcceptedObstacleMemoryHit accepted_hit{
+        .beam = makeBeamObservation(scan, i, projection),
+        .known_static = makeClassificationSnapshot(classifier_applied, classification),
+    };
+    const std::optional<ObstacleMemoryOccupiedTransition> transition =
+        applyAcceptedHit(endpoint_grid_cell, accepted_hit, config);
     ++stats.occupied_cells_updated;
-    if (!occupied_before && raw_grid_.isOccupied(endpoint_grid_cell)) {
+    if (transition.has_value()) {
       ++stats.newly_occupied_cells;
-      stats.occupied_transitions.push_back(ObstacleMemoryOccupiedTransition{
-          .beam_index = i,
-          .cell = endpoint_grid_cell,
-          .ray_origin_map_m = projection.ray_origin_map_m,
-          .ray_direction_map = projection.ray_direction_map,
-          .endpoint_map_m = Point3{projection.endpoint.x, projection.endpoint.y,
-                                   projection.endpoint_altitude_m},
-          .measured_range_m = projection.used_range_m,
-          .score_before = score_before,
-          .score_after = scores_.at(endpoint_index),
-          .classifier_applied = classifier_applied,
-          .classification = classification.classification,
-          .volume_matched = classification.volume_matched,
-          .confident_face_interior = classification.confident_face_interior,
-          .structure_id = std::string{classification.structure_id},
-          .opening_id = std::string{classification.opening_id},
-          .part_id = std::string{classification.part_id},
-          .expected_range_m = classification.expected_range_m,
-          .range_delta_m = classification.range_delta_m,
-      });
+      stats.occupied_transitions.push_back(*transition);
     }
   }
 
@@ -259,10 +355,16 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
 void ObstacleMemoryGrid::reset() {
   raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
   std::fill(scores_.begin(), scores_.end(), 0);
+  active_provenance_.clear();
 }
 
 const OccupancyGrid2D& ObstacleMemoryGrid::rawGrid() const noexcept {
   return raw_grid_;
+}
+
+const std::unordered_map<std::size_t, MemoryCellProvenance>&
+ObstacleMemoryGrid::activeProvenance() const noexcept {
+  return active_provenance_;
 }
 
 GridCellCounts ObstacleMemoryGrid::countRawCells() const {
@@ -280,15 +382,38 @@ void ObstacleMemoryGrid::applyMiss(const GridIndex cell,
   syncCellState(cell, config);
 }
 
-void ObstacleMemoryGrid::applyHit(const GridIndex cell,
-                                  const ObstacleMemoryConfig& config) {
+std::optional<ObstacleMemoryOccupiedTransition>
+ObstacleMemoryGrid::applyAcceptedHit(const GridIndex cell,
+                                     const AcceptedObstacleMemoryHit& hit,
+                                     const ObstacleMemoryConfig& config) {
   if (!raw_grid_.contains(cell)) {
-    return;
+    return std::nullopt;
   }
   const std::size_t index = raw_grid_.linearIndex(cell);
+  const int score_before = scores_[index];
+  const bool occupied_before = raw_grid_.isOccupied(cell);
   scores_[index] = std::clamp(scores_[index] + config.hit_weight, config.min_score,
                               config.max_score);
   syncCellState(cell, config);
+  if (!raw_grid_.isOccupied(cell)) {
+    return std::nullopt;
+  }
+
+  auto provenance = active_provenance_.find(index);
+  if (!occupied_before || provenance == active_provenance_.end()) {
+    provenance =
+        active_provenance_.insert_or_assign(index, makeCellProvenance(cell, hit)).first;
+  } else {
+    updateCellProvenance(provenance->second, hit);
+  }
+  if (occupied_before) {
+    return std::nullopt;
+  }
+  return ObstacleMemoryOccupiedTransition{
+      .score_before = score_before,
+      .score_after = scores_[index],
+      .provenance = provenance->second,
+  };
 }
 
 void ObstacleMemoryGrid::syncCellState(const GridIndex cell,
@@ -298,6 +423,7 @@ void ObstacleMemoryGrid::syncCellState(const GridIndex cell,
     raw_grid_.setOccupied(cell);
     return;
   }
+  active_provenance_.erase(raw_grid_.linearIndex(cell));
   if (score <= config.free_score) {
     raw_grid_.setFree(cell);
     return;

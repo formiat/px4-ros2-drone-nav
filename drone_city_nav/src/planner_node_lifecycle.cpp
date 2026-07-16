@@ -19,6 +19,12 @@ PlannerNode::PlannerNode()
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         onMemoryGrid(*msg);
       });
+  memory_provenance_sub_ = create_subscription<msg::ObstacleMemoryProvenance>(
+      config.topics.obstacle_memory_provenance,
+      rclcpp::QoS{1}.reliable().transient_local(),
+      [this](const msg::ObstacleMemoryProvenance::SharedPtr msg) {
+        onMemoryProvenance(*msg);
+      });
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
@@ -76,9 +82,10 @@ PlannerNode::PlannerNode()
               start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_,
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_);
   RCLCPP_INFO(get_logger(),
-              "Planner subscriptions: obstacle_memory_grid='%s' local_position='%s' "
-              "attitude='%s'",
+              "Planner subscriptions: obstacle_memory_grid='%s' "
+              "obstacle_memory_provenance='%s' local_position='%s' attitude='%s'",
               config.topics.obstacle_memory_grid.c_str(),
+              config.topics.obstacle_memory_provenance.c_str(),
               config.topics.local_position.c_str(), config.topics.attitude.c_str());
   RCLCPP_INFO(get_logger(), "Planner publications: path='%s' path_id='%s'",
               config.topics.path.c_str(), config.topics.path_id.c_str());

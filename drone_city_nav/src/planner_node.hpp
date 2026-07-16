@@ -9,6 +9,7 @@
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
+#include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planner_diagnostics_format.hpp"
@@ -132,6 +133,8 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
   void onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg);
+
+  void onMemoryProvenance(const msg::ObstacleMemoryProvenance& message);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
@@ -301,6 +304,10 @@ private:
   void logPlannerCountersThrottled();
 
   std::optional<OccupancyGrid2D> memory_grid_;
+  std::optional<nav_msgs::msg::OccupancyGrid> memory_grid_message_;
+  MemoryProvenanceCache memory_provenance_cache_{4U};
+  MemoryProvenanceUnavailableReason latest_memory_provenance_error_{
+      MemoryProvenanceUnavailableReason::kNotReceived};
   std::optional<OccupancyGrid2D> static_grid_;
   std::optional<StaticCityMap> static_map_debug_;
   std::optional<KnownPassageMap> known_passages_;
@@ -396,6 +403,7 @@ private:
   TrajectoryRefinementScheduler refinement_scheduler_;
 
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr memory_grid_sub_;
+  rclcpp::Subscription<msg::ObstacleMemoryProvenance>::SharedPtr memory_provenance_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

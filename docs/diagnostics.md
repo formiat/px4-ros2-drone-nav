@@ -138,6 +138,15 @@ identify the original 3D hit even though `/drone_city_nav/obstacle_memory_grid`
 itself is intentionally a 2D raw-evidence grid. Repeated hits on an already
 occupied cell do not emit another transition event.
 
+Persistent correlation no longer depends on finding that earlier event in the
+same log. `/drone_city_nav/obstacle_memory_provenance` stores the occupancy
+trigger, latest accepted hit, endpoint Z range, and hit count for every active
+occupied cell. The planner enriches memory-sourced prohibited-replan logs with
+`memory_provenance[status=matched ...]` after exact grid snapshot matching. If
+the companion message is missing, late, malformed, or refers to another grid,
+the log reports `status=unavailable` and a concrete reason while planning
+continues from the 2D grid unchanged.
+
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies
 the matched structure/opening/part, grid cell, endpoint XYZ, measured range,

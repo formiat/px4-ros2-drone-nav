@@ -156,6 +156,7 @@ TEST_P(KnownStaticLidarIngestionTest,
   EXPECT_FALSE(overlay_grid.isOccupied(endpoint_grid_cell));
   EXPECT_GT(memory_stats.free_cells_updated, 0U);
   EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_TRUE(memory.activeProvenance().empty());
   EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
   EXPECT_EQ(partCount(memory_stats.known_static_lidar.expected_static_by_part,
                       test_case.kind),
@@ -212,14 +213,16 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
   ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
   const ObstacleMemoryOccupiedTransition& transition =
       memory_stats.occupied_transitions.front();
-  EXPECT_TRUE(transition.classifier_applied);
-  EXPECT_TRUE(transition.volume_matched);
-  EXPECT_TRUE(transition.confident_face_interior);
-  EXPECT_EQ(transition.classification, KnownStaticLidarHitClassification::kUnexpected);
-  EXPECT_EQ(transition.part_id, "upper_mass");
-  EXPECT_NEAR(transition.measured_range_m, 4.0, 1.0e-6);
-  EXPECT_NEAR(transition.expected_range_m, 6.0, 1.0e-6);
-  EXPECT_NEAR(transition.range_delta_m, -2.0, 1.0e-6);
+  const AcceptedObstacleMemoryHit& trigger = transition.provenance.occupancy_trigger;
+  EXPECT_TRUE(trigger.known_static.classifier_applied);
+  EXPECT_TRUE(trigger.known_static.volume_matched);
+  EXPECT_TRUE(trigger.known_static.confident_face_interior);
+  EXPECT_EQ(trigger.known_static.classification,
+            KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(trigger.known_static.part_id, "upper_mass");
+  EXPECT_NEAR(trigger.beam.measured_range_m, 4.0, 1.0e-6);
+  EXPECT_NEAR(trigger.known_static.expected_range_m, 6.0, 1.0e-6);
+  EXPECT_NEAR(trigger.known_static.range_delta_m, -2.0, 1.0e-6);
 }
 
 TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths) {

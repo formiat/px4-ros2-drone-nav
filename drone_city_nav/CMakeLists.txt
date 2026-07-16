@@ -1,18 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
-project(drone_city_nav VERSION 0.1.0 LANGUAGES CXX)
+project(drone_city_nav VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
+
+rosidl_generate_interfaces(
+  ${PROJECT_NAME}
+  "msg/ObstacleMemoryHitObservation.msg"
+  "msg/ObstacleMemoryCellProvenance.msg"
+  "msg/ObstacleMemoryProvenance.msg"
+  DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
+                              rosidl_typesupport_cpp)
 
 function(enable_project_warnings target_name)
   target_compile_options(
@@ -108,6 +119,7 @@ add_library(
   src/lidar_debug_node_config.cpp
   src/offboard_debug_markers.cpp
   src/offboard_trajectory_state.cpp
+  src/obstacle_memory_provenance_ros.cpp
   src/planner_node_config.cpp
   src/px4_offboard_node_config.cpp
   src/px4_offboard_setpoint_io.cpp
@@ -120,6 +132,7 @@ add_library(
   src/visualization_marker_helpers.cpp)
 target_compile_features(drone_city_nav_ros_adapters PUBLIC cxx_std_20)
 target_link_libraries(drone_city_nav_ros_adapters drone_city_nav_core)
+target_link_libraries(drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   drone_city_nav_ros_adapters
   geometry_msgs
@@ -136,6 +149,7 @@ add_executable(
   src/planner_node.cpp
   src/planner_node_inputs.cpp
   src/planner_node_lifecycle.cpp
+  src/planner_node_memory_provenance.cpp
   src/planner_node_publish.cpp
   src/planner_node_trajectory_publication.cpp
   src/planner_node_refinement.cpp
@@ -160,7 +174,8 @@ enable_project_warnings(planner_node)
 
 add_executable(obstacle_memory_node src/obstacle_memory_node.cpp)
 target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
-target_link_libraries(obstacle_memory_node drone_city_nav_core)
+target_link_libraries(obstacle_memory_node drone_city_nav_core
+                      drone_city_nav_ros_adapters ${cpp_typesupport_target})
 ament_target_dependencies(
   obstacle_memory_node
   ament_index_cpp
@@ -350,6 +365,15 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_test)
+
+  ament_add_gtest(obstacle_memory_provenance_ros_test
+                  tests/obstacle_memory_provenance_ros_test.cpp)
+  target_compile_features(obstacle_memory_provenance_ros_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_memory_provenance_ros_test
+                        drone_city_nav_ros_adapters ${cpp_typesupport_target})
+  ament_target_dependencies(obstacle_memory_provenance_ros_test geometry_msgs nav_msgs
+                            std_msgs)
+  enable_project_warnings(obstacle_memory_provenance_ros_test)
 
   ament_add_gtest(trajectory_test tests/trajectory_test.cpp)
   target_compile_features(trajectory_test PRIVATE cxx_std_20)
@@ -606,4 +630,5 @@ endif()
 
 ament_export_include_directories(include)
 ament_export_targets(drone_city_nav_targets HAS_LIBRARY_TARGET)
+ament_export_dependencies(rosidl_default_runtime)
 ament_package()

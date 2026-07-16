@@ -77,6 +77,7 @@ void PlannerNode::onMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
   }
 
   memory_grid_ = std::move(*converted.grid);
+  memory_grid_message_ = msg;
   if (converted.intermediate_value_cells > 0U) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,

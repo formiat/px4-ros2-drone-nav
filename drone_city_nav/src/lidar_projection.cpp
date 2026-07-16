@@ -66,16 +66,15 @@ mountedLidarDirection(const Point3& lidar_direction,
                     config.lidar_mount_pitch_rad, config.lidar_mount_yaw_rad);
 }
 
-[[nodiscard]] Point3
-projectDirectionToNed(const Point3& lidar_direction, const LidarProjectionPose& pose,
-                      const LidarProjectionConfig& config) noexcept {
+[[nodiscard]] Point3 projectDirectionToNed(const Point3& lidar_direction,
+                                           const LidarProjectionPose& pose,
+                                           const LidarProjectionConfig& config,
+                                           const double applied_roll_rad,
+                                           const double applied_pitch_rad) noexcept {
   const Point3 body_frd_direction =
       lidarFluToBodyFrd(mountedLidarDirection(lidar_direction, config));
-  const double roll_rad =
-      config.compensate_attitude && pose.attitude_valid ? pose.roll_rad : 0.0;
-  const double pitch_rad =
-      config.compensate_attitude && pose.attitude_valid ? pose.pitch_rad : 0.0;
-  return normalizeOrZero(rotateRzyx(body_frd_direction, roll_rad, pitch_rad,
+  return normalizeOrZero(rotateRzyx(body_frd_direction, applied_roll_rad,
+                                    applied_pitch_rad,
                                     pose.yaw_rad + config.scan_yaw_offset_rad));
 }
 
@@ -170,11 +169,20 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 
   const double beam_angle_rad =
       angle_min_rad + static_cast<double>(beam_index) * angle_increment_rad;
+  projection.attitude_compensation_applied =
+      config.compensate_attitude && pose.attitude_valid;
+  projection.applied_roll_rad =
+      projection.attitude_compensation_applied ? pose.roll_rad : 0.0;
+  projection.applied_pitch_rad =
+      projection.attitude_compensation_applied ? pose.pitch_rad : 0.0;
+  projection.applied_tilt_rad =
+      std::hypot(projection.applied_roll_rad, projection.applied_pitch_rad);
   projection.lidar_direction = scanDirectionInLidarFluFrame(beam_angle_rad);
   projection.body_frd_direction = normalizeOrZero(
       lidarFluToBodyFrd(mountedLidarDirection(projection.lidar_direction, config)));
   projection.ned_direction =
-      projectDirectionToNed(projection.lidar_direction, pose, config);
+      projectDirectionToNed(projection.lidar_direction, pose, config,
+                            projection.applied_roll_rad, projection.applied_pitch_rad);
 
   if (!lidarRawRangeUsable(raw_range, scan_range_min_m)) {
     projection.status = LidarBeamProjectionStatus::kInvalidRange;
@@ -202,6 +210,7 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
         origin_altitude_m - projection.used_range_m * world_direction.z;
     projection.endpoint_map_m = Point3{projection.endpoint.x, projection.endpoint.y,
                                        projection.endpoint_altitude_m};
+    projection.endpoint_xyz_valid = true;
     if (!altitudeInRange(projection.endpoint_altitude_m, config)) {
       projection.status = LidarBeamProjectionStatus::kAltitudeRejected;
       return projection;

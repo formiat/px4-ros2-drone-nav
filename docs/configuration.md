@@ -41,12 +41,20 @@ Obstacle/grid:
 
 - `inflation_radius_m`
 - `planning_clearance_m`
+- `obstacle_memory_grid_topic`
+- `obstacle_memory_provenance_topic`
 - `use_static_map`
 - `static_map_path`
 - `static_map_grid_topic`
 - `static_map_points_topic`
 - `static_building_markers_topic`
 - lidar overlay and memory input settings.
+
+`obstacle_memory_provenance_topic` is a diagnostics-only typed companion to
+the raw 2D memory grid. The producer publishes both with one stamp; the planner
+requires exact stamp/frame/geometry/content matching before using provenance in
+logs. It is not an obstacle source and changing or disabling this topic must not
+change A*, trajectory generation, or flight control.
 
 Known passages:
 

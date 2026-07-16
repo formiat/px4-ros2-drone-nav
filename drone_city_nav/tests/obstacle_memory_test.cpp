@@ -32,6 +32,11 @@ constexpr std::int64_t kFreshStampNs = 1'500'000'000LL;
   return scan;
 }
 
+[[nodiscard]] const MemoryCellProvenance& provenanceAt(const ObstacleMemoryGrid& memory,
+                                                       const GridIndex cell) {
+  return memory.activeProvenance().at(memory.rawGrid().linearIndex(cell));
+}
+
 } // namespace
 
 TEST(NavigationPose, Px4LocalPoseRequiresValidHeadingWhenConfigured) {
@@ -182,15 +187,22 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ASSERT_EQ(stats.occupied_transitions.size(), 1U);
   const ObstacleMemoryOccupiedTransition& transition =
       stats.occupied_transitions.front();
-  EXPECT_EQ(transition.beam_index, 0U);
-  EXPECT_EQ(transition.cell, (GridIndex{9, 5}));
-  EXPECT_NEAR(transition.endpoint_map_m.x, 9.5, 1.0e-9);
-  EXPECT_NEAR(transition.endpoint_map_m.y, 5.5, 1.0e-9);
-  EXPECT_TRUE(std::isnan(transition.endpoint_map_m.z));
-  EXPECT_NEAR(transition.measured_range_m, 4.0, 1.0e-9);
+  const MemoryCellProvenance& provenance = transition.provenance;
+  const LidarBeamObservation& trigger = provenance.occupancy_trigger.beam;
+  EXPECT_EQ(trigger.beam_index, 0U);
+  EXPECT_EQ(provenance.cell, (GridIndex{9, 5}));
+  EXPECT_NEAR(trigger.projection.endpoint.x, 9.5, 1.0e-9);
+  EXPECT_NEAR(trigger.projection.endpoint.y, 5.5, 1.0e-9);
+  EXPECT_FALSE(trigger.projection.endpoint_xyz_valid);
+  EXPECT_FALSE(trigger.source_attitude_valid);
+  EXPECT_TRUE(std::isnan(trigger.source_roll_rad));
+  EXPECT_FALSE(trigger.acquisition_stamp_valid);
+  EXPECT_FALSE(trigger.receive_stamp_valid);
+  EXPECT_NEAR(trigger.measured_range_m, 4.0, 1.0e-9);
   EXPECT_EQ(transition.score_before, 0);
   EXPECT_EQ(transition.score_after, 4);
-  EXPECT_FALSE(transition.classifier_applied);
+  EXPECT_FALSE(provenance.occupancy_trigger.known_static.classifier_applied);
+  EXPECT_EQ(memory.activeProvenance().size(), 1U);
   EXPECT_EQ(stats.hit_beams, 1U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
 }
@@ -291,6 +303,85 @@ TEST(ObstacleMemoryGrid, RepeatedHitDoesNotReportAnotherOccupiedTransition) {
   ASSERT_EQ(first.occupied_transitions.size(), 1U);
   EXPECT_EQ(second.newly_occupied_cells, 0U);
   EXPECT_TRUE(second.occupied_transitions.empty());
+  EXPECT_EQ(provenanceAt(memory, GridIndex{9, 5}).accepted_hit_count, 2U);
+}
+
+TEST(ObstacleMemoryGrid, ProvenancePreservesTriggerAndTracksLatestHeight) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> hit_ranges{4.0F};
+  LaserScan2DView first_scan = makeScan(hit_ranges);
+  first_scan.origin_altitude_m = 10.0;
+  first_scan.altitude_valid = true;
+  first_scan.attitude_valid = true;
+  first_scan.timing = LaserScanTiming{1'000'000'000, true, 0.01, 1'100'000'000, true};
+  LaserScan2DView second_scan = first_scan;
+  second_scan.origin_altitude_m = 12.0;
+  second_scan.timing = LaserScanTiming{2'000'000'000, true, 0.01, 2'100'000'000, true};
+
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_scan, {});
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, second_scan, {});
+
+  const MemoryCellProvenance& provenance = provenanceAt(memory, GridIndex{9, 5});
+  EXPECT_EQ(provenance.accepted_hit_count, 2U);
+  EXPECT_EQ(provenance.occupancy_trigger.beam.acquisition_stamp_ns, 1'000'000'000);
+  EXPECT_EQ(provenance.last_hit.beam.acquisition_stamp_ns, 2'000'000'000);
+  ASSERT_TRUE(provenance.min_endpoint_z_m.has_value());
+  ASSERT_TRUE(provenance.max_endpoint_z_m.has_value());
+  EXPECT_NEAR(provenance.min_endpoint_z_m.value_or(0.0), 10.0, 1.0e-9);
+  EXPECT_NEAR(provenance.max_endpoint_z_m.value_or(0.0), 12.0, 1.0e-9);
+}
+
+TEST(ObstacleMemoryGrid, ProvenanceIsRemovedAndRecreatedWithOccupiedLifecycle) {
+  ObstacleMemoryGrid memory = makeMemory();
+  const std::vector<float> hit_ranges{4.0F};
+  const std::vector<float> miss_ranges{std::numeric_limits<float>::infinity()};
+  LaserScan2DView first_hit = makeScan(hit_ranges);
+  first_hit.timing = LaserScanTiming{1'000'000'000, true, 0.0, 1'100'000'000, true};
+  LaserScan2DView second_hit = first_hit;
+  second_hit.timing = LaserScanTiming{3'000'000'000, true, 0.0, 3'100'000'000, true};
+
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_hit, {});
+  ASSERT_EQ(memory.activeProvenance().size(), 1U);
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(miss_ranges), {});
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(miss_ranges), {});
+  EXPECT_FALSE(memory.rawGrid().isOccupied(GridIndex{9, 5}));
+  EXPECT_TRUE(memory.activeProvenance().empty());
+
+  const ObstacleMemoryStats reentry =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, second_hit, {});
+
+  ASSERT_EQ(reentry.newly_occupied_cells, 1U);
+  const MemoryCellProvenance& provenance = provenanceAt(memory, GridIndex{9, 5});
+  EXPECT_EQ(provenance.accepted_hit_count, 1U);
+  EXPECT_EQ(provenance.occupancy_trigger.beam.acquisition_stamp_ns, 3'000'000'000);
+}
+
+TEST(ObstacleMemoryGrid, BeamTimestampRejectsInvalidInputsWithoutUsingReceiveTime) {
+  EXPECT_EQ(lidarBeamAcquisitionTimestamp(LaserScanTiming{}, 0U).valid, false);
+  EXPECT_EQ(
+      lidarBeamAcquisitionTimestamp(
+          LaserScanTiming{1'000'000'000, true, std::numeric_limits<double>::quiet_NaN(),
+                          9'000'000'000, true},
+          1U)
+          .valid,
+      false);
+  EXPECT_EQ(lidarBeamAcquisitionTimestamp(
+                LaserScanTiming{1'000'000'000, true, -0.1, 9'000'000'000, true}, 1U)
+                .valid,
+            false);
+  const LidarBeamTimestamp zero_increment = lidarBeamAcquisitionTimestamp(
+      LaserScanTiming{1'000'000'000, true, 0.0, 9'000'000'000, true}, 4U);
+  EXPECT_TRUE(zero_increment.valid);
+  EXPECT_EQ(zero_increment.stamp_ns, 1'000'000'000);
+  const LidarBeamTimestamp offset = lidarBeamAcquisitionTimestamp(
+      LaserScanTiming{1'000'000'000, true, 0.01, 9'000'000'000, true}, 4U);
+  EXPECT_TRUE(offset.valid);
+  EXPECT_EQ(offset.stamp_ns, 1'040'000'000);
+  EXPECT_FALSE(lidarBeamAcquisitionTimestamp(
+                   LaserScanTiming{std::numeric_limits<std::int64_t>::max() - 5, true,
+                                   1.0e-8, 0, false},
+                   1U)
+                   .valid);
 }
 
 TEST(ObstacleMemoryGrid, InvalidRangeAndInvalidPoseDoNotChangeMap) {
@@ -377,6 +468,7 @@ TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
   EXPECT_EQ(counts.occupied_cells, 0U);
   EXPECT_EQ(counts.free_cells, 0U);
   EXPECT_EQ(counts.unknown_cells, memory.rawGrid().cellCount());
+  EXPECT_TRUE(memory.activeProvenance().empty());
 }
 
 TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {

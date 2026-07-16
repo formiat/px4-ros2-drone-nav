@@ -5,12 +5,23 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace drone_city_nav {
+
+struct LaserScanTiming {
+  std::int64_t first_beam_stamp_ns{0};
+  bool first_beam_stamp_valid{false};
+  double time_increment_s{0.0};
+  std::int64_t receive_stamp_ns{0};
+  bool receive_stamp_valid{false};
+};
 
 struct LaserScan2DView {
   std::span<const float> ranges{};
@@ -31,6 +42,7 @@ struct LaserScan2DView {
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
+  LaserScanTiming timing{};
 };
 
 struct ObstacleMemoryConfig {
@@ -45,25 +57,62 @@ struct ObstacleMemoryConfig {
   int free_score{-1};
 };
 
-struct ObstacleMemoryOccupiedTransition {
-  std::size_t beam_index{0U};
-  GridIndex cell{};
-  Point3 ray_origin_map_m{};
-  Point3 ray_direction_map{};
-  Point3 endpoint_map_m{};
-  double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
-  int score_before{0};
-  int score_after{0};
+struct LidarBeamTimestamp {
+  std::int64_t stamp_ns{0};
+  bool valid{false};
+};
+
+[[nodiscard]] LidarBeamTimestamp
+lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
+                              std::size_t beam_index) noexcept;
+
+struct KnownStaticClassificationSnapshot {
   bool classifier_applied{false};
   KnownStaticLidarHitClassification classification{
       KnownStaticLidarHitClassification::kAmbiguous};
   bool volume_matched{false};
   bool confident_face_interior{false};
+  bool part_kind_valid{false};
+  KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
   std::string structure_id;
   std::string opening_id;
   std::string part_id;
   double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct LidarBeamObservation {
+  std::size_t beam_index{0U};
+  std::int64_t acquisition_stamp_ns{0};
+  bool acquisition_stamp_valid{false};
+  std::int64_t receive_stamp_ns{0};
+  bool receive_stamp_valid{false};
+  LidarBeamProjection projection{};
+  double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
+  bool source_attitude_valid{false};
+  double source_roll_rad{std::numeric_limits<double>::quiet_NaN()};
+  double source_pitch_rad{std::numeric_limits<double>::quiet_NaN()};
+  double source_tilt_rad{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct AcceptedObstacleMemoryHit {
+  LidarBeamObservation beam;
+  KnownStaticClassificationSnapshot known_static;
+};
+
+struct MemoryCellProvenance {
+  GridIndex cell{};
+  AcceptedObstacleMemoryHit occupancy_trigger;
+  AcceptedObstacleMemoryHit last_hit;
+  std::optional<double> min_endpoint_z_m;
+  std::optional<double> max_endpoint_z_m;
+  std::uint64_t accepted_hit_count{0U};
+};
+
+struct ObstacleMemoryOccupiedTransition {
+  int score_before{0};
+  int score_after{0};
+  MemoryCellProvenance provenance;
 };
 
 struct ObstacleMemoryStats {
@@ -100,15 +149,20 @@ public:
   void reset();
 
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
+  [[nodiscard]] const std::unordered_map<std::size_t, MemoryCellProvenance>&
+  activeProvenance() const noexcept;
   [[nodiscard]] GridCellCounts countRawCells() const;
 
 private:
   void applyMiss(GridIndex cell, const ObstacleMemoryConfig& config);
-  void applyHit(GridIndex cell, const ObstacleMemoryConfig& config);
+  [[nodiscard]] std::optional<ObstacleMemoryOccupiedTransition>
+  applyAcceptedHit(GridIndex cell, const AcceptedObstacleMemoryHit& hit,
+                   const ObstacleMemoryConfig& config);
   void syncCellState(GridIndex cell, const ObstacleMemoryConfig& config);
 
   OccupancyGrid2D raw_grid_;
   std::vector<int> scores_;
+  std::unordered_map<std::size_t, MemoryCellProvenance> active_provenance_;
 };
 
 } // namespace drone_city_nav
