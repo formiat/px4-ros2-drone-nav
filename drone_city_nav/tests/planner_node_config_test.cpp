@@ -123,7 +123,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 5.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 250.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_callback_time_ms, 100.0);
-  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 5.0);
+  EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 1.0);
   EXPECT_EQ(config.topics.static_building_markers,
             "/drone_city_nav/static_building_markers");
   EXPECT_EQ(config.topics.known_passage_markers,

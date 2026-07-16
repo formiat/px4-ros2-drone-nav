@@ -21,6 +21,9 @@ world assets, and Docker tooling around it.
 `planner_node`
 
 - consumes static map, current lidar overlay, and obstacle memory;
+- receives and parses atomic memory snapshots in a dedicated callback group;
+- keeps only the newest parsed snapshot while planning is busy, then atomically
+  adopts that grid/provenance pair before the next planning-grid build;
 - builds the prohibited planning grid;
 - runs A* rough routing;
 - builds a corridor;

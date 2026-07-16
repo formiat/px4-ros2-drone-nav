@@ -55,7 +55,7 @@ struct PlannerMemorySnapshotTransportConfig {
   double diagnostic_period_s{5.0};
   double max_age_ms{250.0};
   double max_callback_time_ms{100.0};
-  double min_apply_rate_hz{5.0};
+  double min_apply_rate_hz{1.0};
 };
 
 struct PlannerCurrentLidarConfig {

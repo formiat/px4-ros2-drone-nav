@@ -14,12 +14,17 @@ PlannerNode::PlannerNode()
   }
 
   const auto sensor_qos = rclcpp::SensorDataQoS{};
+  memory_snapshot_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions memory_snapshot_options;
+  memory_snapshot_options.callback_group = memory_snapshot_callback_group_;
   memory_snapshot_sub_ = create_subscription<msg::ObstacleMemorySnapshot>(
       config.topics.obstacle_memory_snapshot,
       rclcpp::QoS{1}.reliable().transient_local(),
       [this](const msg::ObstacleMemorySnapshot::SharedPtr msg) {
-        onMemorySnapshot(*msg);
-      });
+        onMemorySnapshot(msg);
+      },
+      memory_snapshot_options);
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });

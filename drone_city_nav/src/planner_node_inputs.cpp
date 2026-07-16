@@ -59,44 +59,6 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
   }
 }
 
-bool PlannerNode::applyMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg) {
-  RawOccupancyGridFromRosResult converted = rawOccupancyGridFromRos(
-      msg, RawOccupancyGridFromRosConfig{memory_occupied_value_, memory_free_value_});
-  if (!converted.grid.has_value()) {
-    if (converted.error == OccupancyGridFromRosError::kMismatchedDataSize) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Ignoring obstacle memory grid with mismatched data size: expected=%zu "
-          "got=%zu",
-          converted.expected_data_size, converted.actual_data_size);
-    } else {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                           "Ignoring invalid obstacle memory grid metadata");
-    }
-    return false;
-  }
-
-  memory_grid_ = std::move(*converted.grid);
-  if (converted.intermediate_value_cells > 0U) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Ignored intermediate values while reading raw obstacle memory grid: "
-        "intermediate_cells=%zu. Raw memory topics must use only occupied=%d, "
-        "free=%d, or unknown=-1 values.",
-        converted.intermediate_value_cells, memory_occupied_value_, memory_free_value_);
-  }
-  if (!memory_grid_seen_) {
-    memory_grid_seen_ = true;
-    RCLCPP_INFO(get_logger(),
-                "First obstacle memory grid: size=%dx%d resolution=%.2f origin=(%.2f, "
-                "%.2f)",
-                memory_grid_->width(), memory_grid_->height(),
-                memory_grid_->resolution(), memory_grid_->originX(),
-                memory_grid_->originY());
-  }
-  return true;
-}
-
 void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   last_scan_ = msg;
   scan_seen_ = true;
@@ -371,6 +333,7 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
 
 void PlannerNode::checkCurrentPathAndPublish() {
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  applyPendingMemorySnapshot(now_ns);
   const bool pose_fresh =
       timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
   const double pose_age_s = poseAgeSeconds(now_ns);

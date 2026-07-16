@@ -162,13 +162,20 @@ budget` record reports the full serialized atomic-message size, standalone
 provenance size, grid cells, effective publish rate, and configured budget
 status.
 
-The planner logs every applied snapshot with the same sequence and stamp plus
-transport age, callback processing time, callback interval, producer assembly
-time, cumulative sequence replacements, and rejects. Periodic `Planner memory
-snapshot budget` records report effective apply rate and maximum age/callback
-time for the interval. Every prohibited-replan diagnostic includes
-`memory_snapshot_transport[...]`, so the exact memory input active at a safety
-event can be checked for freshness without correlating a throttled summary.
+The planner parses snapshots in a dedicated callback group, independently from
+long A*/optimizer work. The callback keeps only the newest complete parsed pair;
+the planning timer atomically adopts it immediately before building the next
+planning grid. This prevents planner computation from blocking DDS reception
+without allowing an active grid to change during one planning cycle.
+
+Every queued and applied snapshot is logged with the same sequence and stamp.
+Diagnostics distinguish receive age, apply age, callback time, apply delay,
+DDS sequence gaps, and intentional pending replacements. Periodic `Planner
+memory snapshot budget` records report receive/apply rates and maximum
+age/callback/apply delay. Every prohibited-replan diagnostic includes the
+active and pending sequence, so the exact pair used by the current planning
+cycle can be distinguished from a newer pair received while that cycle was
+running.
 
 Standalone `/obstacle_memory_grid` and `/obstacle_memory_provenance` remain
 debug/RViz/bag outputs, but are rate-limited independently. They are not planner

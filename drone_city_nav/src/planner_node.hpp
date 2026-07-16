@@ -49,6 +49,7 @@
 #include <future>
 #include <iomanip>
 #include <limits>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -128,13 +129,25 @@ private:
     TrajectoryPlannerConfig config;
   };
 
+  struct PendingMemorySnapshot {
+    OccupancyGrid2D grid;
+    MemoryProvenanceSnapshot provenance;
+    std::uint64_t producer_instance_id{0U};
+    std::uint64_t sequence{0U};
+    std::uint64_t producer_assembly_duration_ns{0U};
+    std::int64_t stamp_ns{0};
+    std::int64_t receive_ns{0};
+    double receive_age_ms{std::numeric_limits<double>::quiet_NaN()};
+    double callback_ms{std::numeric_limits<double>::quiet_NaN()};
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
-  [[nodiscard]] bool applyMemoryGrid(const nav_msgs::msg::OccupancyGrid& msg);
+  void onMemorySnapshot(msg::ObstacleMemorySnapshot::ConstSharedPtr message);
 
-  void onMemorySnapshot(const msg::ObstacleMemorySnapshot& message);
+  void applyPendingMemorySnapshot(std::int64_t now_ns);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
@@ -372,13 +385,17 @@ private:
   double memory_snapshot_diagnostic_period_s_{5.0};
   double memory_snapshot_max_age_ms_{250.0};
   double memory_snapshot_max_callback_time_ms_{100.0};
-  double memory_snapshot_min_apply_rate_hz_{5.0};
+  double memory_snapshot_min_apply_rate_hz_{1.0};
   double last_memory_snapshot_age_ms_{std::numeric_limits<double>::quiet_NaN()};
+  double last_memory_snapshot_receive_age_ms_{std::numeric_limits<double>::quiet_NaN()};
   double last_memory_snapshot_callback_ms_{std::numeric_limits<double>::quiet_NaN()};
   double last_memory_snapshot_interval_ms_{std::numeric_limits<double>::quiet_NaN()};
+  double last_memory_snapshot_apply_delay_ms_{std::numeric_limits<double>::quiet_NaN()};
   double last_memory_snapshot_apply_rate_hz_{0.0};
+  double last_memory_snapshot_receive_rate_hz_{0.0};
   double memory_snapshot_max_age_since_report_ms_{0.0};
   double memory_snapshot_max_callback_since_report_ms_{0.0};
+  double memory_snapshot_max_apply_delay_since_report_ms_{0.0};
   Point2 last_scan_motion_shift_{};
   double lidar_z_offset_m_{0.0};
   double lidar_mount_roll_rad_{0.0};
@@ -412,6 +429,7 @@ private:
   std::uint64_t memory_snapshot_applied_{0U};
   std::uint64_t memory_snapshot_rejected_{0U};
   std::uint64_t memory_snapshot_sequence_gaps_{0U};
+  std::uint64_t memory_snapshot_pending_replacements_{0U};
   std::uint64_t memory_snapshot_out_of_order_{0U};
   std::uint64_t last_memory_snapshot_received_sequence_{0U};
   std::uint64_t last_memory_snapshot_applied_sequence_{0U};
@@ -419,6 +437,7 @@ private:
   std::uint64_t last_memory_snapshot_applied_producer_instance_id_{0U};
   std::uint64_t memory_snapshot_producer_restarts_{0U};
   std::uint64_t memory_snapshot_applied_at_last_diagnostic_{0U};
+  std::uint64_t memory_snapshot_received_at_last_diagnostic_{0U};
   std::uint64_t next_path_id_{1U};
   std::uint64_t last_published_path_id_{0U};
   std::uint64_t trajectory_generation_{0U};
@@ -428,8 +447,12 @@ private:
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<PendingTrajectoryRefinement> pending_refinement_;
   std::optional<TrajectoryRefinementRequest> queued_refinement_;
+  std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
   TrajectoryRefinementScheduler refinement_scheduler_;
 
+  mutable std::mutex memory_snapshot_mutex_;
+
+  rclcpp::CallbackGroup::SharedPtr memory_snapshot_callback_group_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr

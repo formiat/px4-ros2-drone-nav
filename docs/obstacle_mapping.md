@@ -190,6 +190,12 @@ cost. The provenance debug publisher uses KeepLast(1); exact runtime history is
 carried by the currently applied atomic snapshot rather than a retained queue of
 large standalone messages.
 
+The planner's snapshot callback runs separately from planning work. It fully
+validates and parses each delivered atomic pair, retains only the newest parsed
+pair, and records both DDS sequence gaps and replacements in that pending slot.
+At the start of each planning check, the pair is moved into the active planner
+state. The active pair remains immutable for the rest of that planning cycle.
+
 The prohibited grid is published for validation and visualization. Planning
 clearance affects route/trajectory construction and should not be interpreted
 as a hard runtime failure by itself.

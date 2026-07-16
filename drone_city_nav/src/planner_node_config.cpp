@@ -512,7 +512,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                      "obstacle_memory_snapshot_max_callback_time_ms", 100.0),
                  0.1, 10'000.0);
   config.memory_snapshot_transport.min_apply_rate_hz = std::clamp(
-      node.declare_parameter<double>("obstacle_memory_snapshot_min_apply_rate_hz", 5.0),
+      node.declare_parameter<double>("obstacle_memory_snapshot_min_apply_rate_hz", 1.0),
       0.0, 1000.0);
   config.topics.lidar = node.declare_parameter<std::string>("lidar_topic", "/scan");
   config.topics.local_position = node.declare_parameter<std::string>(
