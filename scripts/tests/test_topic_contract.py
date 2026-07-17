@@ -44,6 +44,20 @@ def read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def extract_braced_block(source: str, anchor: str) -> str:
+    anchor_index = source.index(anchor)
+    opening_brace = source.index("{", anchor_index + len(anchor))
+    depth = 0
+    for index in range(opening_brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening_brace + 1 : index]
+    raise AssertionError(f"Unterminated braced block after {anchor!r}")
+
+
 class TopicContractTest(unittest.TestCase):
     def test_docs_do_not_describe_removed_passage_sensor_policy(self) -> None:
         forbidden_terms = (
@@ -190,6 +204,7 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("/drone_city_nav/obstacle_memory_snapshot", text)
         self.assertIn("/drone_city_nav/prohibited_grid", text)
         self.assertIn("/drone_city_nav/raw_memory_obstacle_points", text)
+        self.assertIn("/drone_city_nav/raw_memory_obstacle_points_3d", text)
         self.assertIn("/drone_city_nav/prohibited_obstacle_points", text)
         self.assertIn("/drone_city_nav/static_building_markers", text)
         self.assertIn("/drone_city_nav/known_passage_markers", text)
@@ -225,6 +240,53 @@ class TopicContractTest(unittest.TestCase):
         self.assertIn("Planner memory snapshot applied:", read(
             "drone_city_nav/src/planner_node_memory_provenance.cpp"
         ))
+
+    def test_raw_memory_3d_provenance_pointcloud_contract(self) -> None:
+        topic = "/drone_city_nav/raw_memory_obstacle_points_3d"
+        yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
+        self.assertEqual(
+            yaml_text.count(f"raw_memory_3d_pointcloud_topic: {topic}"), 1
+        )
+
+        for relative_path in (
+            "drone_city_nav/rviz/city_nav_debug.rviz",
+            "drone_city_nav/rviz/city_nav_debug_top_down.rviz",
+        ):
+            with self.subTest(relative_path=relative_path):
+                rviz_text = read(relative_path)
+                display_name_index = rviz_text.index("Name: Raw Memory Hit Origins 3D")
+                display_prefix = rviz_text[
+                    max(0, display_name_index - 300) : display_name_index
+                ]
+                self.assertIn("Enabled: true", display_prefix)
+                self.assertEqual(rviz_text.count(f"Value: {topic}"), 1)
+
+        memory_node = read("drone_city_nav/src/obstacle_memory_node.cpp")
+        self.assertRegex(
+            memory_node,
+            r"(?s)raw_memory_3d_pointcloud_pub_\s*=\s*"
+            r"create_publisher<sensor_msgs::msg::PointCloud2>\(\s*"
+            r"declare_parameter<std::string>\(\s*"
+            r'"raw_memory_3d_pointcloud_topic"\s*,\s*'
+            r'"/drone_city_nav/raw_memory_obstacle_points_3d"\s*\)\s*,\s*'
+            r"rclcpp::QoS\{1\}\.reliable\(\)\.transient_local\(\)\s*\);",
+        )
+        snapshot_body = extract_braced_block(
+            memory_node, "void publishMemorySnapshot()"
+        )
+        debug_body = extract_braced_block(snapshot_body, "if (publish_debug)")
+        publish_call = "raw_memory_3d_pointcloud_pub_->publish("
+        self.assertEqual(memory_node.count(publish_call), 1)
+        self.assertIn(publish_call, debug_body)
+        self.assertIn("buildObstacleMemoryTriggerPointCloud(", debug_body)
+        self.assertIn("memory_->activeProvenance()", debug_body)
+        self.assertIn("snapshot_message.grid.header.stamp", debug_body)
+        self.assertIn("frame_id_", debug_body)
+
+        runtime_inputs = "\n".join(
+            read(relative_path) for relative_path in NODE_RUNTIME_SOURCE_PATHS
+        )
+        self.assertNotIn(topic, runtime_inputs)
 
     def test_known_passage_marker_contract_is_wired_for_debugging(self) -> None:
         yaml_text = read("drone_city_nav/config/urban_mvp.yaml")

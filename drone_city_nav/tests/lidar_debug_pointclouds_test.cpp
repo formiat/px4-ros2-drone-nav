@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <limits>
+#include <unordered_map>
 #include <vector>
 
 namespace drone_city_nav {
@@ -17,6 +18,23 @@ namespace {
   float value{0.0F};
   std::memcpy(&value, &data.at(offset), sizeof(float));
   return value;
+}
+
+[[nodiscard]] MemoryCellProvenance makeProvenance(const Point3 trigger_endpoint,
+                                                  const bool endpoint_xyz_valid) {
+  MemoryCellProvenance provenance;
+  provenance.occupancy_trigger.beam.projection.endpoint_map_m = trigger_endpoint;
+  provenance.occupancy_trigger.beam.projection.endpoint_xyz_valid = endpoint_xyz_valid;
+  provenance.last_hit = provenance.occupancy_trigger;
+  return provenance;
+}
+
+[[nodiscard]] sensor_msgs::msg::PointCloud2
+buildTriggerCloud(const Point3 endpoint, const bool endpoint_xyz_valid = true) {
+  std::unordered_map<std::size_t, MemoryCellProvenance> provenance;
+  provenance.emplace(1U, makeProvenance(endpoint, endpoint_xyz_valid));
+  const builtin_interfaces::msg::Time stamp;
+  return buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
 }
 
 TEST(LidarDebugPointcloudsTest, CollectsOnlyRequestedOccupancyRange) {
@@ -89,6 +107,93 @@ TEST(LidarDebugPointcloudsTest, CompensatesZForGazeboAlignedRvizFrame) {
 
   ASSERT_EQ(cloud.data.size(), 12U);
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -2.5F);
+}
+
+TEST(LidarDebugPointcloudsTest, BuildsSortedCloudFromOccupancyTriggerEndpoints) {
+  builtin_interfaces::msg::Time stamp;
+  stamp.sec = 45;
+  stamp.nanosec = 67U;
+  std::unordered_map<std::size_t, MemoryCellProvenance> provenance;
+  provenance.emplace(9U, makeProvenance(Point3{9.0, 10.0, 11.0}, true));
+  provenance.emplace(2U, makeProvenance(Point3{2.0, 3.0, 4.0}, true));
+  provenance.at(2U).last_hit.beam.projection.endpoint_map_m = Point3{20.0, 30.0, 40.0};
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+
+  EXPECT_EQ(cloud.header.stamp.sec, 45);
+  EXPECT_EQ(cloud.header.stamp.nanosec, 67U);
+  EXPECT_EQ(cloud.header.frame_id, "map");
+  ASSERT_EQ(cloud.width, 2U);
+  ASSERT_EQ(cloud.data.size(), 24U);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 0U), 2.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 4U), 3.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -4.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 12U), 9.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 16U), 10.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 20U), -11.0F);
+}
+
+TEST(LidarDebugPointcloudsTest, OmitsTriggerWhenEndpointXyzIsInvalid) {
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildTriggerCloud(Point3{1.0, 2.0, 3.0}, false);
+
+  EXPECT_EQ(cloud.width, 0U);
+  EXPECT_TRUE(cloud.data.empty());
+}
+
+TEST(LidarDebugPointcloudsTest, OmitsTriggerWhenXIsNotFinite) {
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildTriggerCloud(Point3{std::numeric_limits<double>::quiet_NaN(), 2.0, 3.0});
+
+  EXPECT_EQ(cloud.width, 0U);
+  EXPECT_TRUE(cloud.data.empty());
+}
+
+TEST(LidarDebugPointcloudsTest, OmitsTriggerWhenYIsNotFinite) {
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildTriggerCloud(Point3{1.0, std::numeric_limits<double>::infinity(), 3.0});
+
+  EXPECT_EQ(cloud.width, 0U);
+  EXPECT_TRUE(cloud.data.empty());
+}
+
+TEST(LidarDebugPointcloudsTest, OmitsTriggerWhenZIsNotFinite) {
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildTriggerCloud(Point3{1.0, 2.0, -std::numeric_limits<double>::infinity()});
+
+  EXPECT_EQ(cloud.width, 0U);
+  EXPECT_TRUE(cloud.data.empty());
+}
+
+TEST(LidarDebugPointcloudsTest, BuildsEmptyCloudForEmptyProvenance) {
+  const std::unordered_map<std::size_t, MemoryCellProvenance> provenance;
+  const builtin_interfaces::msg::Time stamp;
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+
+  EXPECT_EQ(cloud.height, 1U);
+  EXPECT_EQ(cloud.width, 0U);
+  EXPECT_EQ(cloud.point_step, 12U);
+  EXPECT_EQ(cloud.row_step, 0U);
+  EXPECT_TRUE(cloud.data.empty());
+}
+
+TEST(LidarDebugPointcloudsTest, EmitsOnePointPerActiveCell) {
+  std::unordered_map<std::size_t, MemoryCellProvenance> provenance;
+  MemoryCellProvenance record = makeProvenance(Point3{1.0, 2.0, 3.0}, true);
+  record.min_endpoint_z_m = -100.0;
+  record.max_endpoint_z_m = 100.0;
+  record.accepted_hit_count = 500U;
+  provenance.emplace(1U, record);
+  const builtin_interfaces::msg::Time stamp;
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildObstacleMemoryTriggerPointCloud(provenance, stamp, "map");
+
+  EXPECT_EQ(cloud.width, 1U);
+  EXPECT_EQ(cloud.data.size(), 12U);
 }
 
 } // namespace

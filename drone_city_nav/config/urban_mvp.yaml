@@ -5,6 +5,7 @@ obstacle_memory_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
+    raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     obstacle_memory_debug_publish_period_s: 1.0

@@ -78,6 +78,16 @@ planner receives the same data through the authoritative atomic
 `/drone_city_nav/obstacle_memory_snapshot` message, which carries the raw grid
 and provenance together.
 
+For RViz, `obstacle_memory_node` also derives
+`/drone_city_nav/raw_memory_obstacle_points_3d` directly from the same active
+provenance at the standalone debug cadence. The cloud contains exactly the
+finite XYZ from each cell's `occupancy_trigger`, not the cell center or
+`last_hit`, and applies only the established visualization Z compensation. It
+contains no inflation and no removed-cell history. The existing
+`/drone_city_nav/raw_memory_obstacle_points` remains a separate ground-plane
+view of active 2D cell centers. Neither visualization cloud is a planner input,
+and the 3D cloud is not a 3D obstacle-memory implementation.
+
 The planner replaces its current memory state only when stamp, frame, complete
 map metadata, raw row-major grid hash, occupied count, and every provenance
 record agree exactly inside that one message. Callback backlog may drop an old
@@ -215,6 +225,7 @@ Useful visualization topics:
 - `/drone_city_nav/remembered_lidar_points`
 - `/drone_city_nav/prohibited_obstacle_points`
 - `/drone_city_nav/raw_memory_obstacle_points`
+- `/drone_city_nav/raw_memory_obstacle_points_3d`
 
 ## Common Problems
 

@@ -2,6 +2,7 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
+#include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
@@ -13,6 +14,7 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -293,6 +295,10 @@ public:
         declare_parameter<std::string>("obstacle_memory_grid_topic",
                                        "/drone_city_nav/obstacle_memory_grid"),
         rclcpp::QoS{1}.transient_local());
+    raw_memory_3d_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+        declare_parameter<std::string>("raw_memory_3d_pointcloud_topic",
+                                       "/drone_city_nav/raw_memory_obstacle_points_3d"),
+        rclcpp::QoS{1}.reliable().transient_local());
     provenance_pub_ = create_publisher<msg::ObstacleMemoryProvenance>(
         declare_parameter<std::string>("obstacle_memory_provenance_topic",
                                        "/drone_city_nav/obstacle_memory_provenance"),
@@ -730,6 +736,8 @@ private:
     if (publish_debug) {
       raw_grid_pub_->publish(snapshot_message.grid);
       provenance_pub_->publish(snapshot_message.provenance);
+      raw_memory_3d_pointcloud_pub_->publish(buildObstacleMemoryTriggerPointCloud(
+          memory_->activeProvenance(), snapshot_message.grid.header.stamp, frame_id_));
       last_debug_publish_stamp_ns_ = stamp_ns;
       ++snapshot_debug_publications_;
     }
@@ -893,6 +901,8 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+      raw_memory_3d_pointcloud_pub_;
   rclcpp::Publisher<msg::ObstacleMemoryProvenance>::SharedPtr provenance_pub_;
   rclcpp::Publisher<msg::ObstacleMemorySnapshot>::SharedPtr snapshot_pub_;
 };

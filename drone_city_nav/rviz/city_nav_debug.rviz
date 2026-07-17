@@ -133,6 +133,20 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/raw_memory_obstacle_points
+    - Alpha: 0.95
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 135; 190
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Raw Memory Hit Origins 3D
+      Position Transformer: XYZ
+      Size (Pixels): 4
+      Size (m): 0.25
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/raw_memory_obstacle_points_3d
     - Alpha: 0.30
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

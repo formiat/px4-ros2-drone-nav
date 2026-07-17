@@ -42,6 +42,7 @@ Obstacle/grid:
 - `inflation_radius_m`
 - `planning_clearance_m`
 - `obstacle_memory_grid_topic`
+- `raw_memory_3d_pointcloud_topic`
 - `obstacle_memory_provenance_topic`
 - `obstacle_memory_snapshot_topic`
 - `use_static_map`
@@ -58,6 +59,13 @@ contains both the authoritative raw 2D grid and its exact provenance. The whole
 message is rejected unless stamp, frame, geometry, grid content, occupied count,
 and provenance records agree. This prevents callback backlog or cross-topic
 delivery order from separating a blocker grid from its diagnostic evidence.
+
+`raw_memory_3d_pointcloud_topic` defaults to
+`/drone_city_nav/raw_memory_obstacle_points_3d`. It is an always-available,
+diagnostics-only PointCloud2 derived from active occupancy-trigger provenance at
+`obstacle_memory_debug_publish_period_s`. It does not replace
+`obstacle_memory_snapshot_topic`, does not affect memory scoring or planning,
+and has no separate enable parameter.
 
 Known passages:
 

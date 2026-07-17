@@ -182,6 +182,15 @@ debug/RViz/bag outputs, but are rate-limited independently. They are not planner
 inputs and their lower cadence cannot change runtime planning. The authoritative
 atomic snapshot continues to publish on every accepted memory scan update.
 
+`/drone_city_nav/raw_memory_obstacle_points_3d` is published in that same
+standalone debug cycle. It contains one exact occupancy-trigger XYZ for every
+active provenance record whose endpoint is valid and finite. It deliberately
+does not contain inflation, historical removed cells, `last_hit`, or the full Z
+range. Compare it with the unchanged ground-plane
+`/drone_city_nav/raw_memory_obstacle_points` layer to see both the 2D cell used
+by planning and the 3D lidar observation that originally occupied it. This
+cloud is visualization-only and must not be used as a planner or control input.
+
 For retained current-lidar evidence, prohibited-intersection logs additionally
 include a bounded `known_static_hit` record when it is available. It identifies
 the matched structure/opening/part, grid cell, endpoint XYZ, measured range,

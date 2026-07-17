@@ -60,7 +60,10 @@ must not be applied to the control path consumed by offboard flight logic.
   `.map2d` rectangle heights on `/drone_city_nav/static_building_markers`.
 - Prohibited grid: inflated hard-safety planner output on
   `/drone_city_nav/prohibited_grid`.
-- Raw memory: uninflated obstacle memory evidence.
+- Raw Memory Cells: uninflated 2D obstacle-memory cell centers on the ground
+  plane.
+- Raw Memory Hit Origins 3D: exact lidar trigger endpoints that first made the
+  corresponding active memory cells occupied.
 - Current lidar hits: current scan projection into the map.
 - Corridor: left/right/free-space bounds around the rough route.
 - Known passages: 3D passage annotations from
@@ -76,6 +79,28 @@ The final trajectory path and trajectory color markers are displayed at the
 sample `z_m` altitude, not on the ground plane. The drone pose marker is a 3D
 sphere at the current PX4 local altitude and is deleted when pose or altitude
 data is stale/invalid.
+
+## Obstacle Memory Layers
+
+The default RViz configuration shows obstacle memory twice for two different
+diagnostic questions:
+
+- `Raw Memory Cells` subscribes to
+  `/drone_city_nav/raw_memory_obstacle_points`. Each point is the center of an
+  active 2D occupied cell at the fixed visualization altitude `z=0.05 m`. This
+  is the planning representation and remains unchanged.
+- `Raw Memory Hit Origins 3D` subscribes to
+  `/drone_city_nav/raw_memory_obstacle_points_3d`. Each point is the exact
+  `occupancy_trigger.endpoint_map_m` observation that first changed the active
+  cell to occupied. Its per-point Z is compensated with the same intentional
+  Gazebo-aligned RViz convention described above.
+
+The 3D layer contains one small point per active provenance record with valid,
+finite XYZ. It does not show inflation, `last_hit`, Z ranges, historical cells,
+or a voxel map. When a memory cell is no longer occupied, both its planning
+point and its 3D trigger point disappear on their next debug update. This layer
+is distinct from `/drone_city_nav/remembered_lidar_points`, which is a separate
+lidar debug accumulator rather than authoritative obstacle memory.
 
 ## Known Passage Markers
 
