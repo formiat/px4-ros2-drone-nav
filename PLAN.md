@@ -36,7 +36,7 @@ replanning, offboard control или mission monitor.
 - `ObstacleMemoryGrid::activeProvenance()` содержит только provenance активных
   occupied-ячеек, а `reset()` и переход ячейки из occupied уже удаляют
   неактуальную provenance (`drone_city_nav/src/obstacle_memory.cpp:104-140,
-  294-305`);
+  294-305, 358-365`);
 - `obstacle_memory_node` владеет grid и provenance одновременно и уже имеет
   отдельный debug cadence через `obstacle_memory_debug_publish_period_s`
   (`drone_city_nav/src/obstacle_memory_node.cpp:692-735`);
@@ -178,20 +178,40 @@ wiring покрывается автоматическими тестами. Ad-
    - happy path: два active provenance record дают две точки с точными trigger
      X/Y и инвертированным для RViz Z;
    - trigger-vs-last: изменение `last_hit` не меняет публикуемую точку;
-   - negative path: invalid/non-finite trigger пропускается, не превращаясь в
-     точку на нуле;
+   - negative path `endpoint_xyz_valid=false`: trigger пропускается, даже если
+     его X/Y/Z finite;
+   - отдельные negative cases с non-finite X, Y и Z: каждый такой trigger
+     пропускается при `endpoint_xyz_valid=true`, не превращаясь в точку на нуле;
    - edge case: пустая provenance даёт корректный `PointCloud2` ширины 0;
    - one-record-per-cell: `min/max Z` и `accepted_hit_count` не размножают точки.
 
-   Обновить `scripts/tests/test_topic_contract.py`, чтобы он проверял default
-   topic в YAML, наличие и enabled-state display в обеих RViz-конфигурациях,
+   Обновить `scripts/tests/test_topic_contract.py`, чтобы он проверял не только
+   default topic в YAML, enabled-state display в обеих RViz-конфигурациях,
    запись topic в debug bag и отсутствие подключения нового topic к planner/
-   offboard inputs. При добавлении отдельного source file зарегистрировать его и
-   существующий test target в `drone_city_nav/CMakeLists.txt`.
+   offboard inputs, но и положительный source-level wiring contract в
+   `obstacle_memory_node.cpp`:
+
+   - parameter declaration содержит default
+     `/drone_city_nav/raw_memory_obstacle_points_3d`;
+   - publisher создаётся с reliable + transient-local QoS;
+   - единственный publish call нового cloud находится внутри существующего
+     `if (publish_debug)` в `publishMemorySnapshot()`, а не в scan callback или
+     безусловной snapshot-ветке;
+   - builder получает `memory_->activeProvenance()`, stamp текущего snapshot и
+     `frame_id_`, поэтому cloud согласован с grid/provenance publication.
+
+   Тест должен извлекать тело `publishMemorySnapshot()` и соответствующий
+   `publish_debug` block (brace-aware helper либо эквивалентная ограниченная
+   проверка), чтобы падать при удалении publisher/publish call или переносе
+   публикации на каждый scan. Полноценный node integration test не добавлять,
+   если для него потребуется новый production seam: существующий source-contract
+   pattern в этом script test закрывает wiring без несоразмерного рефакторинга.
+   При добавлении отдельного source file зарегистрировать его и существующий test
+   target в `drone_city_nav/CMakeLists.txt`.
 
    Материализуемый результат: ошибки выбора `last_hit`, повторная Z-инверсия,
-   потеря topic wiring и случайное включение cloud в control path ловятся без
-   GUI.
+   потеря publisher/QoS/debug-cadence/stamp-frame wiring и случайное включение
+   cloud в control path ловятся без GUI.
 
 5. **Обновить пользовательскую и диагностическую документацию.**
    В `docs/rviz.md` явно разделить `Raw Memory Cells 2D` и
@@ -242,6 +262,13 @@ wiring покрывается автоматическими тестами. Ad-
    ./scripts/dev_shell.sh make test-scripts
    ```
 
+   В частности, `test_topic_contract.py` должен доказать положительный wiring
+   publisher-а в `obstacle_memory_node`: default topic, reliable +
+   transient-local QoS, единственный publish внутри `publish_debug`, общий
+   snapshot stamp и `frame_id_`. Это обязательный acceptance signal, поскольку
+   GUI-прогон запрещён и проверки только YAML/RViz/bag не доказывают runtime
+   публикацию.
+
 4. Перед commit выполнить обязательные проверки:
 
    ```bash
@@ -262,8 +289,9 @@ wiring покрывается автоматическими тестами. Ad-
 ### Категория 1: без рефакторинга
 
 - Дополнить существующий `lidar_debug_pointclouds_test` новым Point3/provenance
-  контрактом.
-- Дополнить `test_topic_contract.py` проверками YAML, RViz и bag wiring.
+  контрактом, включая независимые случаи invalid flag и non-finite X/Y/Z.
+- Дополнить `test_topic_contract.py` проверками YAML, RViz, bag и положительного
+  source wiring publisher/QoS/debug-cadence/stamp-frame в memory node.
 - Это основной рекомендуемый объём: существующий `Point2` API и node boundaries
   сохраняются.
 
