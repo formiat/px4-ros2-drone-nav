@@ -70,6 +70,7 @@ gz_log_file="${GZ_LOG_FILE:-${run_log_dir}/gz_drone_nav.log}"
 gz_gui_log_file="${GZ_GUI_LOG_FILE:-${run_log_dir}/gz_gui_drone_nav.log}"
 gz_scene_diagnostics_dir="${GZ_SCENE_DIAGNOSTICS_DIR:-${run_log_dir}/gazebo_scene_debug}"
 lidar_debug_dir="${LIDAR_DEBUG_DIR:-${run_log_dir}/lidar_debug/${run_id}}"
+lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_memory_hits/${run_id}.jsonl}"
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
@@ -502,6 +503,7 @@ check_headless_run() {
 ros_launch_args=(
   params_file:="${city_nav_params_file}"
   lidar_debug_output_dir:="${lidar_debug_dir}"
+  lidar_memory_hit_dump_path:="${lidar_memory_hit_dump_path}"
   enable_gazebo_bridge:=true
   enable_mission_monitor:=true
   enable_lidar_debug:="${enable_lidar_debug}"
@@ -524,6 +526,7 @@ if [[ -n "${evasive_maneuvering_straight_cost_weight_override}" ]]; then
   )
 fi
 echo "ROS launch log: ${ros_log_file}"
+echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"
 if [[ "${smoke_duration_s}" != "0" ]]; then
   timeout "${smoke_duration_s}" ros2 launch drone_city_nav city_nav.launch.py \
     "${ros_launch_args[@]}" \

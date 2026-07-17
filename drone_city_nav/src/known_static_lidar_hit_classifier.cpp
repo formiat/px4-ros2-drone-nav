@@ -242,12 +242,24 @@ KnownStaticLidarHitClassifier::nearestExpectedSurface(
     return std::nullopt;
   }
   const KnownPassageSolidVolume& volume = *nearest->volume;
+  const Point3 intersection{ray_origin_map_m.x + nearest->range_m * ray_direction_map.x,
+                            ray_origin_map_m.y + nearest->range_m * ray_direction_map.y,
+                            ray_origin_map_m.z +
+                                nearest->range_m * ray_direction_map.z};
   return KnownStaticExpectedSurface{
       .range_m = nearest->range_m,
+      .intersection_map_m = intersection,
       .part_kind = volume.part_kind,
       .structure_id = volume.structure_id,
       .opening_id = volume.opening_id,
       .part_id = volume.part_id,
+      .volume_center = volume.center,
+      .volume_normal_xy = volume.normal_xy,
+      .volume_lateral_xy = volume.lateral_xy,
+      .volume_depth_m = volume.depth_m,
+      .volume_width_m = volume.width_m,
+      .volume_min_z_m = volume.min_z_m,
+      .volume_max_z_m = volume.max_z_m,
       .confident_face_interior = nearest->confident_face_interior,
   };
 }

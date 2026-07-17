@@ -70,6 +70,8 @@ struct LidarIngestionDecision {
   double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
   bool ground_candidate_considered{false};
+  std::optional<double> expected_ground_range_m;
+  std::optional<KnownStaticExpectedSurface> known_static_surface;
   bool known_static_result_available{false};
   KnownStaticLidarHitResult known_static_result{};
 };

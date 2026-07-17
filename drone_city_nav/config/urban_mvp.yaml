@@ -47,6 +47,9 @@ obstacle_memory_node:
     ground_lidar_altitude_m: 0.05
     ground_lidar_closer_range_tolerance_m: 0.5
     ground_lidar_farther_range_tolerance_m: 1.5
+    lidar_memory_hit_dump_enabled: true
+    lidar_memory_hit_dump_path: log/lidar_memory_hits.jsonl
+    lidar_memory_hit_dump_max_records: 10000
     scan_stride: 1
     hit_weight: 4
     miss_weight: 1

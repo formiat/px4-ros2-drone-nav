@@ -69,6 +69,7 @@ struct ObstacleMemoryOccupiedTransition {
   int score_before{0};
   int score_after{0};
   MemoryCellProvenance provenance;
+  LidarIngestionDecision trigger_decision{};
 };
 
 struct ObstacleMemoryStats {
@@ -115,6 +116,7 @@ private:
   void applyMiss(GridIndex cell, const ObstacleMemoryConfig& config);
   [[nodiscard]] std::optional<ObstacleMemoryOccupiedTransition>
   applyAcceptedHit(GridIndex cell, const AcceptedObstacleMemoryHit& hit,
+                   const LidarIngestionDecision& decision,
                    const ObstacleMemoryConfig& config);
   void syncCellState(GridIndex cell, const ObstacleMemoryConfig& config);
 

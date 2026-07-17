@@ -161,6 +161,7 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
         groundIntersectionRange(observation, *ground_config);
     if (range.has_value()) {
       decision.ground_candidate_considered = true;
+      decision.expected_ground_range_m = range;
       ground_candidate = SurfaceCandidate{LidarExpectedSurfaceKind::kGround, *range,
                                           ground_config->closer_range_tolerance_m};
     }
@@ -173,6 +174,7 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
         observation.projection.ray_origin_map_m,
         observation.projection.ray_direction_map, observation.effective_max_range_m);
     if (known_surface.has_value()) {
+      decision.known_static_surface = *known_surface;
       known_candidate = SurfaceCandidate{
           LidarExpectedSurfaceKind::kKnownStatic, known_surface->range_m,
           known_static_classifier->closerRangeToleranceM()};

@@ -72,6 +72,12 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         )
         self.assertNotIn('rm -rf "${lidar_debug_dir}"', self.text)
 
+    def test_memory_hit_diagnostics_use_a_per_run_dump(self) -> None:
+        self.assertIn("LIDAR_MEMORY_HIT_DUMP_PATH", self.text)
+        self.assertIn("lidar_memory_hits/${run_id}.jsonl", self.text)
+        self.assertIn('lidar_memory_hit_dump_path:=', self.text)
+        self.assertIn("lidar_memory_hit_dump_path", self.launch_text)
+
     def test_evasive_maneuvering_can_be_overridden_from_environment(self) -> None:
         self.assertIn("ENABLE_EVASIVE_MANEUVERING", self.text)
         self.assertIn("EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT", self.text)

@@ -138,6 +138,17 @@ identify the original 3D hit even though `/drone_city_nav/obstacle_memory_grid`
 itself is intentionally a 2D raw-evidence grid. Repeated hits on an already
 occupied cell do not emit another transition event.
 
+Every occupied transition is also written to the bounded JSONL dump configured
+by `lidar_memory_hit_dump_*`. The simulator runner assigns a separate file at
+`log/lidar_memory_hits/<run-id>.jsonl` for each run. Each row contains the raw
+beam range/index/acquisition timestamp, callback-time vehicle pose and
+attitude stamps, the map-frame ray origin/direction/endpoint, XY motion
+compensation, ground and known-static expected-surface candidates, the selected
+ingestion decision, and the active cell's endpoint-Z provenance. Use this dump
+to distinguish a range/classification error from pose/attitude timing error.
+It is diagnostic output only: it never feeds memory scoring, planner grids, or
+flight control.
+
 Persistent correlation no longer depends on finding that earlier event in the
 same log. `/drone_city_nav/obstacle_memory_provenance` stores the occupancy
 trigger, latest accepted hit, endpoint Z range, and hit count for every active

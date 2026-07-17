@@ -110,6 +110,8 @@ TEST(LidarIngestionDecision, SuppressesExpectedGroundHitWithoutFreeClearing) {
   EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedGround);
   EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kGround);
   EXPECT_NEAR(decision.expected_range_m, 12.4375, 1.0e-6);
+  ASSERT_TRUE(decision.expected_ground_range_m.has_value());
+  EXPECT_NEAR(decision.expected_ground_range_m.value_or(0.0), 12.4375, 1.0e-6);
 }
 
 TEST(LidarIngestionDecision, RetainsObstacleClearlyBeforeGround) {

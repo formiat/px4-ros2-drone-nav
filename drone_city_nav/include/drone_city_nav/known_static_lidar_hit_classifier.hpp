@@ -42,10 +42,18 @@ struct KnownStaticLidarHitResult {
 
 struct KnownStaticExpectedSurface {
   double range_m{std::numeric_limits<double>::quiet_NaN()};
+  Point3 intersection_map_m{};
   KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
   std::string_view structure_id;
   std::string_view opening_id;
   std::string_view part_id;
+  Point2 volume_center{};
+  Point2 volume_normal_xy{};
+  Point2 volume_lateral_xy{};
+  double volume_depth_m{std::numeric_limits<double>::quiet_NaN()};
+  double volume_width_m{std::numeric_limits<double>::quiet_NaN()};
+  double volume_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double volume_max_z_m{std::numeric_limits<double>::quiet_NaN()};
   bool confident_face_interior{false};
 };
 

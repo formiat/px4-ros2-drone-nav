@@ -84,6 +84,9 @@ Known passages:
 - `ground_lidar_altitude_m`
 - `ground_lidar_closer_range_tolerance_m`
 - `ground_lidar_farther_range_tolerance_m`
+- `lidar_memory_hit_dump_enabled`
+- `lidar_memory_hit_dump_path`
+- `lidar_memory_hit_dump_max_records`
 - `obstacle_memory_debug_publish_period_s`
 - `obstacle_memory_snapshot_diagnostic_period_s`
 - `obstacle_memory_snapshot_max_serialized_bytes`
@@ -184,6 +187,15 @@ building collision volumes:
 - `ground_lidar_farther_range_tolerance_m` is the bounded allowance behind the
   analytic ground intersection. A farther ground-facing return is ambiguous and
   performs no hit or free-space update.
+- `lidar_memory_hit_dump_enabled` writes a JSONL record whenever an XY memory
+  cell first becomes occupied. It is diagnostics-only and does not change
+  memory behavior.
+- `lidar_memory_hit_dump_path` selects the JSONL destination. The simulation
+  runner overrides it with a unique per-run path unless
+  `LIDAR_MEMORY_HIT_DUMP_PATH` is set.
+- `lidar_memory_hit_dump_max_records` bounds the number of first-occupancy
+  records written by one node instance. Once reached, the node emits one warning
+  and keeps mapping normally.
 
 All four ground parameters have identical defaults in `obstacle_memory_node`
 and `planner_node`: enabled, ground Z `0.05` m, closer tolerance `0.5` m, and

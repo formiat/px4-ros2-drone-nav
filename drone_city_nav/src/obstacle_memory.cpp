@@ -280,7 +280,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
         .ingestion_decision = makeLidarIngestionDecisionSnapshot(decision),
     };
     const std::optional<ObstacleMemoryOccupiedTransition> transition =
-        applyAcceptedHit(endpoint_grid_cell, accepted_hit, config);
+        applyAcceptedHit(endpoint_grid_cell, accepted_hit, decision, config);
     ++stats.occupied_cells_updated;
     if (transition.has_value()) {
       ++stats.newly_occupied_cells;
@@ -321,10 +321,9 @@ void ObstacleMemoryGrid::applyMiss(const GridIndex cell,
   syncCellState(cell, config);
 }
 
-std::optional<ObstacleMemoryOccupiedTransition>
-ObstacleMemoryGrid::applyAcceptedHit(const GridIndex cell,
-                                     const AcceptedObstacleMemoryHit& hit,
-                                     const ObstacleMemoryConfig& config) {
+std::optional<ObstacleMemoryOccupiedTransition> ObstacleMemoryGrid::applyAcceptedHit(
+    const GridIndex cell, const AcceptedObstacleMemoryHit& hit,
+    const LidarIngestionDecision& decision, const ObstacleMemoryConfig& config) {
   if (!raw_grid_.contains(cell)) {
     return std::nullopt;
   }
@@ -352,6 +351,7 @@ ObstacleMemoryGrid::applyAcceptedHit(const GridIndex cell,
       .score_before = score_before,
       .score_after = scores_[index],
       .provenance = provenance->second,
+      .trigger_decision = decision,
   };
 }
 

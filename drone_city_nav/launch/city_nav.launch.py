@@ -49,6 +49,7 @@ def generate_launch_description():
 
     params_file = LaunchConfiguration("params_file")
     lidar_debug_output_dir = LaunchConfiguration("lidar_debug_output_dir")
+    lidar_memory_hit_dump_path = LaunchConfiguration("lidar_memory_hit_dump_path")
     rviz_config = LaunchConfiguration("rviz_config")
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
@@ -80,6 +81,15 @@ def generate_launch_description():
 
     def source_nodes(context, *args, **kwargs):
         planner_overrides = {}
+        obstacle_memory_overrides = {}
+
+        memory_hit_dump_path_override = (
+            lidar_memory_hit_dump_path.perform(context).strip()
+        )
+        if memory_hit_dump_path_override:
+            obstacle_memory_overrides["lidar_memory_hit_dump_path"] = (
+                memory_hit_dump_path_override
+            )
 
         static_map_override = optional_bool_override(
             context, use_static_map, "use_static_map"
@@ -112,6 +122,9 @@ def generate_launch_description():
         planner_parameters = [params_file.perform(context)]
         if planner_overrides:
             planner_parameters.append(planner_overrides)
+        obstacle_memory_parameters = [params_file.perform(context)]
+        if obstacle_memory_overrides:
+            obstacle_memory_parameters.append(obstacle_memory_overrides)
 
         return [
             Node(
@@ -119,7 +132,7 @@ def generate_launch_description():
                 executable="obstacle_memory_node",
                 name="obstacle_memory_node",
                 output="screen",
-                parameters=[params_file.perform(context)],
+                parameters=obstacle_memory_parameters,
             ),
             Node(
                 package="drone_city_nav",
@@ -228,6 +241,14 @@ def generate_launch_description():
                 "lidar_debug_output_dir",
                 default_value="log/lidar_debug",
                 description="Directory for lidar debug CSV, JSONL, and PPM files.",
+            ),
+            DeclareLaunchArgument(
+                "lidar_memory_hit_dump_path",
+                default_value="",
+                description=(
+                    "Optional per-run JSONL path for accepted obstacle-memory "
+                    "lidar-hit diagnostics. Leave empty to use params_file."
+                ),
             ),
             DeclareLaunchArgument(
                 "rviz_config",

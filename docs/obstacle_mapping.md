@@ -69,6 +69,14 @@ occupied is logged as `PASSAGE_MEMORY_HIT` with endpoint XYZ, beam/range,
 attitude, score transition, and known-static classification. The event is
 diagnostic only and does not alter hit scoring or filtering.
 
+All first occupied transitions are additionally written to a bounded JSONL dump
+configured by `lidar_memory_hit_dump_enabled`, `lidar_memory_hit_dump_path`,
+and `lidar_memory_hit_dump_max_records`. The default runner supplies a distinct
+`log/lidar_memory_hits/<run-id>.jsonl` file. A row preserves the complete 3D
+ray, scan and callback timestamps, pose/attitude inputs, motion compensation,
+both ground and known-static range candidates, and the decision that retained
+the hit. It is a post-run diagnostic artifact, not a planner input.
+
 Every active occupied memory cell also owns sparse 3D diagnostic provenance:
 the hit that first made the cell occupied, the latest accepted hit, the observed
 minimum/maximum endpoint Z, and the accepted-hit count. This metadata never

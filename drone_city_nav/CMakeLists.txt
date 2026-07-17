@@ -62,6 +62,7 @@ add_library(
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_beam_observation.cpp
   src/lidar_ingestion_decision.cpp
+  src/lidar_memory_hit_diagnostics.cpp
   src/lidar_projection.cpp
   src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
@@ -325,6 +326,12 @@ if(BUILD_TESTING)
   target_compile_features(lidar_ingestion_decision_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_ingestion_decision_test drone_city_nav_core)
   enable_project_warnings(lidar_ingestion_decision_test)
+
+  ament_add_gtest(lidar_memory_hit_diagnostics_test
+                  tests/lidar_memory_hit_diagnostics_test.cpp)
+  target_compile_features(lidar_memory_hit_diagnostics_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_memory_hit_diagnostics_test drone_city_nav_core)
+  enable_project_warnings(lidar_memory_hit_diagnostics_test)
 
   ament_add_gtest(ground_lidar_ingestion_test
                   tests/ground_lidar_ingestion_test.cpp)
