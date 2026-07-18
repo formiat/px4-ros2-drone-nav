@@ -301,7 +301,8 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
   const VelocitySetpointPlan plan = planVelocitySetpoint(
       final_trajectory_samples_, trajectory_speed_profile_, current_position_,
       current_velocity_, current_velocity_valid_, current_altitude_m_, altitude_valid_,
-      dt_s, velocity_follower_state_, velocity_follower_config_);
+      current_vertical_velocity_up_mps_, current_vertical_velocity_valid_, dt_s,
+      velocity_follower_state_, velocity_follower_config_);
   last_velocity_plan_ = plan;
   last_velocity_plan_valid_ = plan.valid;
   if (!plan.valid || plan.final_goal_reached) {
@@ -357,23 +358,6 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
                            static_cast<double>(msg.yaw));
   trajectory_setpoint_pub_->publish(msg);
   return true;
-}
-
-void Px4OffboardNode::resetVelocityDiagnostics() {
-  resetVelocitySmootherState("diagnostics_reset", false);
-  last_velocity_plan_valid_ = false;
-  last_velocity_plan_ = VelocitySetpointPlan{};
-  last_velocity_plan_.reason = VelocitySetpointReason::kHold;
-  last_vertical_plan_valid_ = false;
-  last_vertical_plan_ = VerticalSetpointPlan{};
-  last_velocity_setpoint_ = Point2{};
-  last_velocity_setpoint_speed_mps_ = 0.0;
-  last_vertical_velocity_setpoint_mps_ = 0.0;
-  last_target_altitude_m_ = std::numeric_limits<double>::quiet_NaN();
-  last_altitude_error_m_ = std::numeric_limits<double>::quiet_NaN();
-  last_trajectory_altitude_target_valid_ = false;
-  last_offboard_setpoint_mode_ = OffboardSetpointMode::kPositionHold;
-  last_velocity_plan_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
 }
 
 void Px4OffboardNode::publishVehicleCommand(const std::uint32_t command,

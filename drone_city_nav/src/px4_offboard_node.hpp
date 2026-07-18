@@ -19,6 +19,7 @@
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/trajectory_update_continuity.hpp"
+#include "drone_city_nav/trajectory_vertical_handover.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
@@ -144,7 +145,8 @@ private:
   void updatePlannerStatsForReceivedTrajectory();
 
   void resetVelocitySmootherState(const std::string_view reason,
-                                  const bool count_path_update_reset);
+                                  bool count_path_update_reset,
+                                  bool reset_vertical_smoother = true);
 
   [[nodiscard]] bool receivedFinalTrajectoryIsFreshEnough(
       const OffboardTrajectoryState& state, std::uint64_t candidate_update_id,
@@ -331,7 +333,6 @@ private:
   double acceptance_radius_m_{1.5};
   double diagnostic_turn_preview_distance_m_{32.0};
   double altitude_hold_kp_{0.5};
-  double max_vertical_speed_mps_{4.0};
   double command_resend_period_s_{2.0};
   double hold_x_m_{0.0};
   double hold_y_m_{0.0};

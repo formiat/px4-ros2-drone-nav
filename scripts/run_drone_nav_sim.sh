@@ -163,6 +163,39 @@ if [[ ! -f "${city_nav_params_file}" ]]; then
   exit 1
 fi
 
+read_ros_float_parameter() {
+  local node_name="$1"
+  local parameter_name="$2"
+  python3 - "${city_nav_params_file}" "${node_name}" "${parameter_name}" <<'PY'
+import math
+import sys
+
+import yaml
+
+params_path, node_name, parameter_name = sys.argv[1:]
+with open(params_path, encoding="utf-8") as stream:
+    document = yaml.safe_load(stream)
+try:
+    value = float(document[node_name]["ros__parameters"][parameter_name])
+except (KeyError, TypeError, ValueError) as exc:
+    raise SystemExit(
+        f"Missing numeric ROS parameter {node_name}.{parameter_name} in {params_path}"
+    ) from exc
+if not math.isfinite(value) or value < 0.0:
+    raise SystemExit(
+        f"Invalid ROS parameter {node_name}.{parameter_name}={value} in {params_path}"
+    )
+print(value)
+PY
+}
+
+px4_max_climb_speed_mps="$(
+  read_ros_float_parameter px4_offboard_node vertical_setpoint_max_climb_speed_mps
+)"
+px4_max_descent_speed_mps="$(
+  read_ros_float_parameter px4_offboard_node vertical_setpoint_max_descent_speed_mps
+)"
+
 format_override_value() {
   local value="$1"
   if [[ -n "${value}" ]]; then
@@ -438,6 +471,8 @@ echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_
     sleep "${px4_param_delay_s}"
     echo "param set CBRK_SUPPLY_CHK 894281"
     echo "param set NAV_DLL_ACT 0"
+    echo "param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}"
+    echo "param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}"
     echo "param show MPC_Z_VEL_MAX_DN"
     echo "param show MPC_Z_VEL_MAX_UP"
     while true; do

@@ -16,7 +16,8 @@ struct VerticalProfileConfig {
   bool enabled{true};
   double gate_clearance_margin_m{0.5};
   double preferred_gate_clearance_margin_m{1.5};
-  double max_vertical_speed_mps{3.2};
+  double max_climb_speed_mps{3.2};
+  double max_descent_speed_mps{3.2};
   double max_vertical_accel_mps2{3.0};
   double max_vertical_jerk_mps3{9.0};
   double max_climb_angle_rad{0.6108652381980153};

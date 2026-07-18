@@ -98,15 +98,24 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
           std::clamp(node.declare_parameter<double>(
                          "vertical_profile_preferred_gate_clearance_margin_m", 1.5),
                      0.0, 100.0));
-  const double runtime_vertical_setpoint_max_speed_mps =
-      std::clamp(node.declare_parameter<double>("vertical_setpoint_max_speed_mps", 4.0),
-                 0.0, 20.0);
-  const double requested_vertical_profile_max_speed_mps = std::clamp(
-      node.declare_parameter<double>("vertical_profile_max_vertical_speed_mps", 3.2),
+  const double runtime_vertical_setpoint_max_climb_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_setpoint_max_climb_speed_mps", 4.0), 0.0,
+      20.0);
+  const double runtime_vertical_setpoint_max_descent_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_setpoint_max_descent_speed_mps", 4.0),
+      0.0, 20.0);
+  const double requested_vertical_profile_max_climb_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_climb_speed_mps", 3.2), 0.0,
+      100.0);
+  const double requested_vertical_profile_max_descent_speed_mps = std::clamp(
+      node.declare_parameter<double>("vertical_profile_max_descent_speed_mps", 3.2),
       0.0, 100.0);
-  config.trajectory_planner.vertical_profile.max_vertical_speed_mps =
-      std::min(requested_vertical_profile_max_speed_mps,
-               runtime_vertical_setpoint_max_speed_mps);
+  config.trajectory_planner.vertical_profile.max_climb_speed_mps =
+      std::min(requested_vertical_profile_max_climb_speed_mps,
+               runtime_vertical_setpoint_max_climb_speed_mps);
+  config.trajectory_planner.vertical_profile.max_descent_speed_mps =
+      std::min(requested_vertical_profile_max_descent_speed_mps,
+               runtime_vertical_setpoint_max_descent_speed_mps);
   config.trajectory_planner.vertical_profile.max_vertical_accel_mps2 = std::clamp(
       node.declare_parameter<double>("vertical_profile_max_vertical_accel_mps2", 3.0),
       0.0, 100.0);
@@ -309,8 +318,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.speed_profile.speed_profile_lookahead_max_m =
       std::max(requested_speed_profile_lookahead_max_m,
                config.trajectory_planner.speed_profile.speed_profile_lookahead_min_m);
-  config.trajectory_planner.speed_profile.vertical_profile_max_vertical_speed_mps =
-      config.trajectory_planner.vertical_profile.max_vertical_speed_mps;
+  config.trajectory_planner.speed_profile.vertical_profile_max_climb_speed_mps =
+      config.trajectory_planner.vertical_profile.max_climb_speed_mps;
+  config.trajectory_planner.speed_profile.vertical_profile_max_descent_speed_mps =
+      config.trajectory_planner.vertical_profile.max_descent_speed_mps;
   config.trajectory_planner.speed_profile.vertical_profile_max_vertical_accel_mps2 =
       config.trajectory_planner.vertical_profile.max_vertical_accel_mps2;
   config.trajectory_planner.speed_profile.vertical_profile_max_vertical_jerk_mps3 =

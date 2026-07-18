@@ -86,7 +86,8 @@ TEST(OffboardTrajectoryState, RebuildsVerticalSpeedConstraintsFromPathAltitude) 
                 makePose(10.0, 0.0, 20.0)};
   VelocityFollowerConfig config{};
   config.cruise_speed_mps = 20.0;
-  config.vertical_profile_max_vertical_speed_mps = 2.0;
+  config.vertical_profile_max_climb_speed_mps = 2.0;
+  config.vertical_profile_max_descent_speed_mps = 2.0;
 
   const std::vector<TrajectoryPointSample> samples = pathSamplesFromMessage(path);
   const OffboardTrajectoryState state = buildOffboardTrajectoryState(samples, config);

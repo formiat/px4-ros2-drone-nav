@@ -73,6 +73,8 @@ buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples
     const TrajectorySpeedProfile& current_speed_profile,
     const OffboardTrajectoryState& candidate_state, Point2 current_position,
     Point2 previous_velocity_setpoint, bool previous_velocity_setpoint_valid,
-    bool local_position_fresh);
+    bool local_position_fresh,
+    double current_altitude_m = std::numeric_limits<double>::quiet_NaN(),
+    bool altitude_valid = false);
 
 } // namespace drone_city_nav

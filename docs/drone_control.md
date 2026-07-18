@@ -40,6 +40,22 @@ This is a runtime safeguard; the planner is responsible for starting the
 vertical transition early and holding the target altitude before entry. See
 `known_passages.md` for the full passage contract.
 
+Vertical limits are asymmetric and have explicit owners:
+
+- the planner's `vertical_profile_max_climb_speed_mps` and
+  `vertical_profile_max_descent_speed_mps` describe feasible nominal `z(s)`;
+- offboard `vertical_setpoint_max_climb_speed_mps` and
+  `vertical_setpoint_max_descent_speed_mps` bound the requested `vz`;
+- the simulation runner configures PX4 `MPC_Z_VEL_MAX_UP` and
+  `MPC_Z_VEL_MAX_DN` from those offboard limits.
+
+On a trajectory update, continuity is evaluated in XY and Z. Offboard can keep
+the vertical smoother history while resetting only the horizontal smoother.
+When safe to do so, the new vertical prefix is reanchored to the previously
+followed target and joined to the next hard altitude window. Trajectory-update
+logs report target Z/VZ jumps, hard-window changes, whether vertical smoother
+state was preserved, and the handover stations.
+
 The controller uses a predicted position:
 
 ```text

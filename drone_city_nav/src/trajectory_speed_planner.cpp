@@ -394,8 +394,10 @@ void populateTrajectoryVerticalSpeedConstraints(
   if (samples.size() < 2U) {
     return;
   }
-  const double max_vz = sanitizedPositive(
-      config.vertical_profile_max_vertical_speed_mps, 3.2, 1.0e-6, 100.0);
+  const double max_climb_vz = sanitizedPositive(
+      config.vertical_profile_max_climb_speed_mps, 3.2, 1.0e-6, 100.0);
+  const double max_descent_vz = sanitizedPositive(
+      config.vertical_profile_max_descent_speed_mps, 3.2, 1.0e-6, 100.0);
   const double max_accel = sanitizedPositive(
       config.vertical_profile_max_vertical_accel_mps2, 3.0, 1.0e-6, 100.0);
   const double max_jerk = sanitizedPositive(
@@ -422,7 +424,8 @@ void populateTrajectoryVerticalSpeedConstraints(
     slopes[i] = slope;
     samples[i].vertical_slope_dz_ds = slope;
     if (std::abs(slope) > kTinyDistanceM) {
-      samples[i].vertical_speed_limit_mps = max_vz / std::abs(slope);
+      const double directional_limit_mps = slope > 0.0 ? max_climb_vz : max_descent_vz;
+      samples[i].vertical_speed_limit_mps = directional_limit_mps / std::abs(slope);
       samples[i].vertical_constraint_active = true;
     }
   }

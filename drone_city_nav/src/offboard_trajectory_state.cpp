@@ -304,7 +304,8 @@ TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
     const TrajectorySpeedProfile& current_speed_profile,
     const OffboardTrajectoryState& candidate_state, const Point2 current_position,
     const Point2 previous_velocity_setpoint,
-    const bool previous_velocity_setpoint_valid, const bool local_position_fresh) {
+    const bool previous_velocity_setpoint_valid, const bool local_position_fresh,
+    const double current_altitude_m, const bool altitude_valid) {
   if (!candidate_state.valid || !trajectorySamplesAreUsable(candidate_state.samples) ||
       !candidate_state.speed_profile.valid) {
     TrajectoryContinuityResult result{};
@@ -321,7 +322,9 @@ TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
   return evaluateTrajectoryContinuity(
       current_samples, current_speed_profile, candidate_state.samples,
       candidate_state.speed_profile, current_position, previous_velocity_setpoint,
-      previous_velocity_setpoint_valid);
+      previous_velocity_setpoint_valid, TrajectoryContinuityThresholds{},
+      TrajectoryVerticalContinuityState{.current_altitude_m = current_altitude_m,
+                                        .altitude_valid = altitude_valid});
 }
 
 } // namespace drone_city_nav

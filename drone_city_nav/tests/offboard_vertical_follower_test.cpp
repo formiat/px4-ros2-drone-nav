@@ -70,7 +70,7 @@ TEST(OffboardVerticalFollower, RampProfileAddsTargetVerticalVelocity) {
 TEST(OffboardVerticalFollower, AltitudeFeedbackAddsToFeedforwardAndClamps) {
   VerticalFollowerConfig config;
   config.altitude_feedback_kp_1ps = 1.0;
-  config.max_vertical_speed_mps = 1.25;
+  config.max_climb_speed_mps = 1.25;
   const std::vector<TrajectoryPointSample> samples = rampSamples();
 
   const VerticalSetpointPlan plan = planVerticalSetpoint(
@@ -87,7 +87,8 @@ TEST(OffboardVerticalFollower, AltitudeFeedbackAddsToFeedforwardAndClamps) {
 
 TEST(OffboardVerticalFollower, LimitsVerticalAccelAndJerkAfterFirstCommand) {
   VerticalFollowerConfig config;
-  config.max_vertical_speed_mps = 10.0;
+  config.max_climb_speed_mps = 10.0;
+  config.max_descent_speed_mps = 10.0;
   config.max_vertical_accel_mps2 = 2.0;
   config.max_vertical_jerk_mps3 = 5.0;
   config.altitude_feedback_kp_1ps = 2.0;
@@ -148,7 +149,7 @@ TEST(OffboardVerticalFollower, HardWindowOutsideSafeIntervalForcesCorrection) {
   samples[1].vertical_gate_z_m = 9.0;
   samples[1].vertical_profile_passage_id = "low_window";
   VerticalFollowerConfig config;
-  config.max_vertical_speed_mps = 4.0;
+  config.max_descent_speed_mps = 4.0;
 
   const VerticalSetpointPlan plan = planVerticalSetpoint(
       samples, 10.0, 10.0, 10.8, true, 0.1, VerticalFollowerState{}, config);
@@ -161,6 +162,28 @@ TEST(OffboardVerticalFollower, HardWindowOutsideSafeIntervalForcesCorrection) {
   EXPECT_NEAR(plan.vertical_safe_error_m, -0.8, 1.0e-9);
   EXPECT_LT(plan.feedback_vz_mps, -1.0);
   EXPECT_EQ(plan.reason, "hard_window_correction");
+}
+
+TEST(OffboardVerticalFollower, UsesIndependentClimbAndDescentSpeedLimits) {
+  std::vector<TrajectoryPointSample> samples = rampSamples();
+  for (TrajectoryPointSample& sample : samples) {
+    sample.z_m = 10.0;
+    sample.vertical_slope_dz_ds = 0.0;
+  }
+  VerticalFollowerConfig config;
+  config.altitude_feedback_kp_1ps = 10.0;
+  config.max_climb_speed_mps = 3.0;
+  config.max_descent_speed_mps = 1.5;
+
+  const VerticalSetpointPlan climb = planVerticalSetpoint(
+      samples, 10.0, 0.0, 0.0, true, 0.1, VerticalFollowerState{}, config);
+  const VerticalSetpointPlan descent = planVerticalSetpoint(
+      samples, 10.0, 0.0, 20.0, true, 0.1, VerticalFollowerState{}, config);
+
+  ASSERT_TRUE(climb.valid);
+  ASSERT_TRUE(descent.valid);
+  EXPECT_DOUBLE_EQ(climb.desired_vz_mps, 3.0);
+  EXPECT_DOUBLE_EQ(descent.desired_vz_mps, -1.5);
 }
 
 } // namespace drone_city_nav

@@ -213,9 +213,12 @@ void Px4OffboardNode::updatePlannerStatsForReceivedTrajectory() {
 }
 
 void Px4OffboardNode::resetVelocitySmootherState(const std::string_view reason,
-                                                 const bool count_path_update_reset) {
+                                                 const bool count_path_update_reset,
+                                                 const bool reset_vertical_smoother) {
   velocity_follower_state_ = VelocityFollowerState{};
-  vertical_follower_state_ = VerticalFollowerState{};
+  if (reset_vertical_smoother) {
+    vertical_follower_state_ = VerticalFollowerState{};
+  }
   last_velocity_smoother_reset_reason_ = std::string{reason};
   if (count_path_update_reset) {
     ++path_update_velocity_smoother_reset_count_;
@@ -277,7 +280,8 @@ TrajectoryContinuityResult Px4OffboardNode::evaluateReceivedTrajectoryContinuity
   return evaluateOffboardTrajectoryUpdateContinuity(
       final_trajectory_samples_, trajectory_speed_profile_, state, current_position_,
       velocity_follower_state_.previous_velocity_setpoint,
-      velocity_follower_state_.previous_velocity_setpoint_valid, localPositionFresh());
+      velocity_follower_state_.previous_velocity_setpoint_valid, localPositionFresh(),
+      current_altitude_m_, altitude_valid_);
 }
 
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
@@ -302,7 +306,8 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   if (!trajectory_valid_) {
     resetVelocityDiagnostics();
   } else if (!preserve_velocity_smoother_state) {
-    resetVelocitySmootherState("trajectory_continuity_reset", true);
+    resetVelocitySmootherState("trajectory_continuity_reset", true,
+                               !continuity.preserve_vertical_smoother_state);
   }
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
@@ -340,7 +345,10 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
       "continuity[decision=%s reason=%s projection_jump=%.2f tangent_jump=%.3f "
       "curvature_jump=%.4f speed_limit_jump=%.2f "
-      "tangent_speed_command_jump=%.2f] "
+      "tangent_speed_command_jump=%.2f vertical_target_z_jump=%.2f "
+      "vertical_target_vz_jump=%.2f vertical_hard_window_changed=%s "
+      "vertical_hard_window_unsafe=%s preserve_vertical_smoother=%s "
+      "vertical_handover[applied=%s reason=%s candidate_s=%.2f join_s=%.2f]] "
       "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
       "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
@@ -362,7 +370,14 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       trajectoryContinuityDecisionName(continuity.decision), continuity.reason,
       continuity.projection_jump_m, continuity.tangent_jump_rad,
       continuity.curvature_jump_1pm, continuity.speed_limit_jump_mps,
-      continuity.tangent_speed_command_jump_mps,
+      continuity.tangent_speed_command_jump_mps, continuity.vertical_target_z_jump_m,
+      continuity.vertical_target_vz_jump_mps,
+      continuity.vertical_hard_window_changed ? "true" : "false",
+      continuity.vertical_hard_window_unsafe ? "true" : "false",
+      continuity.preserve_vertical_smoother_state ? "true" : "false",
+      continuity.vertical_handover_applied ? "true" : "false",
+      continuity.vertical_handover_reason, continuity.vertical_handover_candidate_s_m,
+      continuity.vertical_handover_join_s_m,
       last_trajectory_planner_stats_.isolated_curvature_spike_candidates,
       last_trajectory_planner_stats_.isolated_curvature_spikes_smoothed_geometry,
       last_trajectory_planner_stats_.isolated_curvature_spike_max_before_1pm,
@@ -434,16 +449,37 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                                        candidate_path_stamp_ns, false, 0U)) {
     candidate_planner_stats = &latest_trajectory_diagnostics_->stats;
   }
-  const OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
+  OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
       candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
+  VerticalTrajectoryHandoverResult vertical_handover{};
+  if (trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
+      candidate_planner_stats != nullptr && localPositionFresh()) {
+    vertical_handover = reanchorTrajectoryVerticalPrefix(
+        final_trajectory_samples_, candidate_state.samples, current_position_,
+        VerticalTrajectoryHandoverState{
+            .current_altitude_m = current_altitude_m_,
+            .current_vertical_velocity_mps = current_vertical_velocity_up_mps_,
+            .current_horizontal_speed_mps = current_speed_mps_,
+            .altitude_valid = altitude_valid_,
+            .vertical_velocity_valid = current_vertical_velocity_valid_,
+        });
+    if (vertical_handover.applied) {
+      candidate_state = buildOffboardTrajectoryState(
+          candidate_state.samples, velocity_follower_config_, candidate_planner_stats);
+    }
+  }
   if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
                                             candidate_path_stamp_ns,
                                             candidate_path_points.size())) {
     callback_duration.setOutcome("stale_rejected");
     return;
   }
-  const TrajectoryContinuityResult continuity =
+  TrajectoryContinuityResult continuity =
       evaluateReceivedTrajectoryContinuity(candidate_state);
+  continuity.vertical_handover_applied = vertical_handover.applied;
+  continuity.vertical_handover_reason = vertical_handover.reason;
+  continuity.vertical_handover_candidate_s_m = vertical_handover.candidate_s_m;
+  continuity.vertical_handover_join_s_m = vertical_handover.join_s_m;
   if (continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory) {
     callback_duration.setOutcome("continuity_rejected");
     RCLCPP_WARN(
@@ -452,13 +488,21 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
         "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
         " path_stamp_ns=%" PRIu64 " points=%zu projection_jump=%.2f "
         "tangent_jump=%.3f curvature_jump=%.4f speed_limit_jump=%.2f "
-        "tangent_speed_command_jump=%.2f keeping_previous_trajectory=%s",
+        "tangent_speed_command_jump=%.2f vertical_target_z_jump=%.2f "
+        "vertical_target_vz_jump=%.2f vertical_hard_window_changed=%s "
+        "vertical_hard_window_unsafe=%s vertical_handover[applied=%s reason=%s "
+        "candidate_s=%.2f join_s=%.2f] keeping_previous_trajectory=%s",
         continuity.reason, trajectoryContinuityDecisionName(continuity.decision),
         candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
         candidate_path_points.size(), continuity.projection_jump_m,
         continuity.tangent_jump_rad, continuity.curvature_jump_1pm,
         continuity.speed_limit_jump_mps, continuity.tangent_speed_command_jump_mps,
-        trajectory_valid_ ? "true" : "false");
+        continuity.vertical_target_z_jump_m, continuity.vertical_target_vz_jump_mps,
+        continuity.vertical_hard_window_changed ? "true" : "false",
+        continuity.vertical_hard_window_unsafe ? "true" : "false",
+        continuity.vertical_handover_applied ? "true" : "false",
+        continuity.vertical_handover_reason, continuity.vertical_handover_candidate_s_m,
+        continuity.vertical_handover_join_s_m, trajectory_valid_ ? "true" : "false");
     return;
   }
 

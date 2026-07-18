@@ -50,6 +50,30 @@ tangentSpeedCommandAtProjection(const TrajectorySpeedProfile& profile,
   return projection.tangent * speed;
 }
 
+[[nodiscard]] bool finiteSafeWindow(const TrajectoryVerticalTarget& target) noexcept {
+  return target.vertical_hard_window_active &&
+         std::isfinite(target.vertical_safe_min_z_m) &&
+         std::isfinite(target.vertical_safe_max_z_m) &&
+         target.vertical_safe_max_z_m >= target.vertical_safe_min_z_m;
+}
+
+[[nodiscard]] bool hardWindowChanged(const TrajectoryVerticalTarget& old_target,
+                                     const TrajectoryVerticalTarget& new_target) {
+  if (old_target.vertical_hard_window_active !=
+      new_target.vertical_hard_window_active) {
+    return true;
+  }
+  if (!old_target.vertical_hard_window_active) {
+    return false;
+  }
+  return old_target.vertical_profile_passage_id !=
+             new_target.vertical_profile_passage_id ||
+         std::abs(old_target.vertical_safe_min_z_m - new_target.vertical_safe_min_z_m) >
+             kTinyDistanceM ||
+         std::abs(old_target.vertical_safe_max_z_m - new_target.vertical_safe_max_z_m) >
+             kTinyDistanceM;
+}
+
 } // namespace
 
 const char*
@@ -73,7 +97,8 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
                              const Point2 current_position,
                              const Point2 previous_velocity_setpoint,
                              const bool previous_velocity_setpoint_valid,
-                             const TrajectoryContinuityThresholds& thresholds) {
+                             const TrajectoryContinuityThresholds& thresholds,
+                             const TrajectoryVerticalContinuityState& vertical_state) {
   TrajectoryContinuityResult result{};
   if (!trajectorySamplesAreUsable(old_samples) || !old_speed_profile.valid) {
     return result;
@@ -113,15 +138,51 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
   result.tangent_speed_command_jump_mps =
       norm(tangentSpeedCommandAtProjection(new_speed_profile, *new_projection) -
            reference_command);
+  const TrajectoryVerticalTarget old_vertical_target =
+      trajectoryVerticalTargetAtS(old_samples, old_projection->s_m);
+  const TrajectoryVerticalTarget new_vertical_target =
+      trajectoryVerticalTargetAtS(new_samples, new_projection->s_m);
+  if (old_vertical_target.valid && new_vertical_target.valid) {
+    result.vertical_target_z_jump_m =
+        std::abs(new_vertical_target.z_m - old_vertical_target.z_m);
+    const double horizontal_speed_mps = norm(reference_command);
+    result.vertical_target_vz_jump_mps =
+        std::abs((new_vertical_target.vertical_slope_dz_ds -
+                  old_vertical_target.vertical_slope_dz_ds) *
+                 horizontal_speed_mps);
+    result.vertical_hard_window_changed =
+        hardWindowChanged(old_vertical_target, new_vertical_target);
+  }
+  if (vertical_state.altitude_valid &&
+      std::isfinite(vertical_state.current_altitude_m) &&
+      finiteSafeWindow(new_vertical_target)) {
+    const double tolerance_m =
+        std::max(0.0, thresholds.vertical_hard_window_altitude_tolerance_m);
+    result.vertical_hard_window_unsafe =
+        vertical_state.current_altitude_m <
+            new_vertical_target.vertical_safe_min_z_m - tolerance_m ||
+        vertical_state.current_altitude_m >
+            new_vertical_target.vertical_safe_max_z_m + tolerance_m;
+  }
+  result.preserve_vertical_smoother_state =
+      old_vertical_target.valid && new_vertical_target.valid &&
+      std::isfinite(result.vertical_target_z_jump_m) &&
+      result.vertical_target_z_jump_m <= thresholds.preserve_vertical_target_z_jump_m &&
+      std::isfinite(result.vertical_target_vz_jump_mps) &&
+      result.vertical_target_vz_jump_mps <=
+          thresholds.preserve_vertical_target_vz_jump_mps &&
+      !result.vertical_hard_window_changed && !result.vertical_hard_window_unsafe;
 
-  const bool reject = result.projection_jump_m > thresholds.reject_projection_jump_m ||
+  const bool reject = result.vertical_hard_window_unsafe ||
+                      result.projection_jump_m > thresholds.reject_projection_jump_m ||
                       (std::isfinite(result.tangent_jump_rad) &&
                        result.tangent_jump_rad > thresholds.reject_tangent_jump_rad) ||
                       result.tangent_speed_command_jump_mps >
                           thresholds.reject_tangent_speed_command_jump_mps;
   if (reject) {
     result.decision = TrajectoryContinuityDecision::kRejectTrajectory;
-    result.reason = "control_discontinuity";
+    result.reason = result.vertical_hard_window_unsafe ? "vertical_hard_window_unsafe"
+                                                       : "control_discontinuity";
     return result;
   }
 
@@ -133,14 +194,24 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
       (!std::isfinite(result.speed_limit_jump_mps) ||
        result.speed_limit_jump_mps <= thresholds.preserve_speed_limit_jump_mps) &&
       result.tangent_speed_command_jump_mps <=
-          thresholds.preserve_tangent_speed_command_jump_mps;
+          thresholds.preserve_tangent_speed_command_jump_mps &&
+      result.preserve_vertical_smoother_state;
   if (preserve) {
     result.decision = TrajectoryContinuityDecision::kPreserveSmoother;
     result.reason = "compatible";
     return result;
   }
   result.decision = TrajectoryContinuityDecision::kResetSmoother;
-  result.reason = "moderate_discontinuity";
+  const bool vertical_discontinuity =
+      result.vertical_hard_window_changed ||
+      (std::isfinite(result.vertical_target_z_jump_m) &&
+       result.vertical_target_z_jump_m >
+           thresholds.preserve_vertical_target_z_jump_m) ||
+      (std::isfinite(result.vertical_target_vz_jump_mps) &&
+       result.vertical_target_vz_jump_mps >
+           thresholds.preserve_vertical_target_vz_jump_mps);
+  result.reason =
+      vertical_discontinuity ? "vertical_discontinuity" : "moderate_discontinuity";
   return result;
 }
 

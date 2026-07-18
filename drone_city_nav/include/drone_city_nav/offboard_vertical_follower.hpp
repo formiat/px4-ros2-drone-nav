@@ -10,7 +10,8 @@ namespace drone_city_nav {
 
 struct VerticalFollowerConfig {
   double altitude_feedback_kp_1ps{0.5};
-  double max_vertical_speed_mps{4.0};
+  double max_climb_speed_mps{4.0};
+  double max_descent_speed_mps{4.0};
   double max_vertical_accel_mps2{3.5};
   double max_vertical_jerk_mps3{10.0};
   double target_vz_feedforward_scale{1.0};

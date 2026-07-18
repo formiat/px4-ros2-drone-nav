@@ -18,7 +18,6 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
       config.trajectory_update_max_start_cross_track_m;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
   altitude_hold_kp_ = config.vertical_follower.altitude_feedback_kp_1ps;
-  max_vertical_speed_mps_ = config.vertical_follower.max_vertical_speed_mps;
   telemetry_log_period_ns_ = config.telemetry_log_period_ns;
   flight_blackbox_enabled_ = config.flight_blackbox_enabled;
   flight_blackbox_path_ = config.flight_blackbox_path;
@@ -127,7 +126,8 @@ Px4OffboardNode::Px4OffboardNode()
       "max_heading_span=%.1fdeg max_abs_curvature=%.4f] "
       "velocity_jerk[longitudinal=%.2fmps3 lateral=%.2fmps3] "
       "trajectory_update_max_start_cross_track=%.2fm "
-      "vertical_follower[kp=%.2f max_speed=%.2fmps max_accel=%.2fmps2 "
+      "vertical_follower[kp=%.2f max_climb_speed=%.2fmps "
+      "max_descent_speed=%.2fmps max_accel=%.2fmps2 "
       "max_jerk=%.2fmps3 target_vz_ff_scale=%.2f] "
       "executable_trajectory[source=planner_final_path final_topic='%s' "
       "debug_sample_step=%.2fm "
@@ -181,7 +181,8 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.max_lateral_velocity_jerk_mps3,
       trajectory_update_max_start_cross_track_m_,
       vertical_follower_config_.altitude_feedback_kp_1ps,
-      vertical_follower_config_.max_vertical_speed_mps,
+      vertical_follower_config_.max_climb_speed_mps,
+      vertical_follower_config_.max_descent_speed_mps,
       vertical_follower_config_.max_vertical_accel_mps2,
       vertical_follower_config_.max_vertical_jerk_mps3,
       vertical_follower_config_.target_vz_feedforward_scale,

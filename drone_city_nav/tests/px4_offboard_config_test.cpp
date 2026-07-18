@@ -93,7 +93,8 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_preferred_gate_clearance_margin_m: 2.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_max_vertical_speed_mps: 3.2"),
+  EXPECT_NE(yaml.find("vertical_profile_max_climb_speed_mps: 3.2"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_profile_max_descent_speed_mps: 3.2"),
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_max_vertical_accel_mps2: 3.0"),
             std::string::npos);
@@ -121,7 +122,9 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_trackability_response_time_s: 0.4"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_trackability_min_speed_mps: 1.0"), std::string::npos);
-  EXPECT_NE(yaml.find("vertical_setpoint_max_speed_mps: 4.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_setpoint_max_climb_speed_mps: 4.0"), std::string::npos);
+  EXPECT_NE(yaml.find("vertical_setpoint_max_descent_speed_mps: 4.0"),
+            std::string::npos);
   EXPECT_NE(yaml.find("vertical_setpoint_max_accel_mps2: 3.5"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_setpoint_max_jerk_mps3: 10.0"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_target_vz_feedforward_scale: 1.0"), std::string::npos);

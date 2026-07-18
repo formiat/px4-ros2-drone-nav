@@ -101,7 +101,19 @@ Known passages:
 - `obstacle_memory_snapshot_max_callback_time_ms`
 - `obstacle_memory_snapshot_max_apply_delay_ms`
 - `obstacle_memory_snapshot_min_apply_rate_hz`
+- `vertical_setpoint_max_climb_speed_mps`
+- `vertical_setpoint_max_descent_speed_mps`
+- `vertical_setpoint_max_accel_mps2`
+- `vertical_setpoint_max_jerk_mps3`
+- `vertical_profile_max_climb_speed_mps`
+- `vertical_profile_max_descent_speed_mps`
+- `vertical_profile_max_vertical_accel_mps2`
+- `vertical_profile_max_vertical_jerk_mps3`
+- `vertical_profile_max_climb_angle_deg`
 - `vertical_profile_preferred_gate_clearance_margin_m`
+- `vertical_trackability_altitude_tolerance_m`
+- `vertical_trackability_response_time_s`
+- `vertical_trackability_min_speed_mps`
 - `known_passage_traversal_speed_limit_mps`
 - `passage_insertion_enabled`
 - `passage_insertion_sample_step_m`
@@ -232,6 +244,23 @@ the independent known-static provider.
 - `vertical_profile_preferred_gate_clearance_margin_m` keeps the selected gate
   altitude inside a preferred safe band when possible. It clamps to the nearest
   preferred boundary instead of forcing the opening center.
+- `vertical_profile_max_climb_speed_mps` and
+  `vertical_profile_max_descent_speed_mps` are directional nominal limits used
+  while constructing `z(s)` and its horizontal speed constraints. Each planner
+  value is clamped to the corresponding runtime setpoint limit.
+- `vertical_setpoint_max_climb_speed_mps` and
+  `vertical_setpoint_max_descent_speed_mps` bound the offboard vertical command.
+  The simulation runner copies these values into PX4
+  `MPC_Z_VEL_MAX_UP`/`MPC_Z_VEL_MAX_DN` before flight and prints the PX4
+  readback. Keep the planner values lower when control headroom is required.
+- `vertical_setpoint_max_accel_mps2` and
+  `vertical_setpoint_max_jerk_mps3` bound runtime command dynamics. Vertical
+  trackability uses the same acceleration and directional speed limits when it
+  estimates whether the current altitude can reach a hard window.
+- `vertical_trackability_min_speed_mps` is the horizontal fallback speed while
+  the drone is already inside a hard window but still outside its safe altitude
+  interval. The cap remains active until the altitude is safe; it is not relaxed
+  merely because the trajectory projection has passed the window entry plane.
 - `known_passage_traversal_speed_limit_mps` caps speed inside known-passage hard
   altitude windows.
 - `passage_insertion_enabled` controls the optional local XY repair stage. It

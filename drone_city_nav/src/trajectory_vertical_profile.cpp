@@ -158,8 +158,10 @@ void updateAltitudeStats(VerticalProfileStats& stats,
 void computeVerticalDerivatives(std::span<TrajectoryPointSample> samples,
                                 const VerticalProfileConfig& config,
                                 VerticalProfileStats& stats) {
-  const double max_vz =
-      sanitizedPositive(config.max_vertical_speed_mps, 3.2, 1.0e-6, 100.0);
+  const double max_climb_vz =
+      sanitizedPositive(config.max_climb_speed_mps, 3.2, 1.0e-6, 100.0);
+  const double max_descent_vz =
+      sanitizedPositive(config.max_descent_speed_mps, 3.2, 1.0e-6, 100.0);
   const double max_accel =
       sanitizedPositive(config.max_vertical_accel_mps2, 3.0, 1.0e-6, 100.0);
   const double max_jerk =
@@ -178,7 +180,8 @@ void computeVerticalDerivatives(std::span<TrajectoryPointSample> samples,
     samples[i].vertical_slope_dz_ds = slope;
     stats.max_abs_dz_ds = std::max(stats.max_abs_dz_ds, std::abs(slope));
     if (std::abs(slope) > kTinyDistanceM) {
-      samples[i].vertical_speed_limit_mps = max_vz / std::abs(slope);
+      const double directional_limit_mps = slope > 0.0 ? max_climb_vz : max_descent_vz;
+      samples[i].vertical_speed_limit_mps = directional_limit_mps / std::abs(slope);
       stats.min_vertical_speed_cap_mps =
           std::isfinite(stats.min_vertical_speed_cap_mps)
               ? std::min(stats.min_vertical_speed_cap_mps,

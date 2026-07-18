@@ -267,7 +267,8 @@ TEST(TrajectorySpeedPlanner, VerticalProfileCapsSpeedAndTopConstraintSource) {
   VelocityFollowerConfig config = testConfig();
   config.cruise_speed_mps = 20.0;
   config.min_turn_speed_mps = 2.0;
-  config.vertical_profile_max_vertical_speed_mps = 2.0;
+  config.vertical_profile_max_climb_speed_mps = 2.0;
+  config.vertical_profile_max_descent_speed_mps = 2.0;
   config.vertical_profile_max_vertical_accel_mps2 = 100.0;
   config.vertical_profile_max_vertical_jerk_mps3 = 1000.0;
 

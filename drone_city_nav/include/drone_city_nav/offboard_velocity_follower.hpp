@@ -187,6 +187,14 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
     std::span<const TrajectoryPointSample> trajectory_samples,
     const TrajectorySpeedProfile& speed_profile, Point2 current_position,
     Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
+    bool altitude_valid, double current_vertical_velocity_mps,
+    bool vertical_velocity_valid, double dt_s,
+    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
+
+[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
+    std::span<const TrajectoryPointSample> trajectory_samples,
+    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
+    Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
     bool altitude_valid, double dt_s, const VelocityFollowerState& previous_state,
     const VelocityFollowerConfig& config);
 

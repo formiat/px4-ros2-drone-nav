@@ -98,7 +98,24 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('executable="px4_offboard_node"', self.launch_text)
         self.assertIn("px4_offboard,", self.launch_text)
 
-    def test_px4_vertical_velocity_limits_are_logged(self) -> None:
+    def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
+        self.assertIn("read_ros_float_parameter()", self.text)
+        self.assertIn(
+            "vertical_setpoint_max_climb_speed_mps",
+            self.text,
+        )
+        self.assertIn(
+            "vertical_setpoint_max_descent_speed_mps",
+            self.text,
+        )
+        self.assertIn(
+            'param set MPC_Z_VEL_MAX_UP ${px4_max_climb_speed_mps}',
+            self.text,
+        )
+        self.assertIn(
+            'param set MPC_Z_VEL_MAX_DN ${px4_max_descent_speed_mps}',
+            self.text,
+        )
         self.assertIn('param show MPC_Z_VEL_MAX_DN', self.text)
         self.assertIn('param show MPC_Z_VEL_MAX_UP', self.text)
 

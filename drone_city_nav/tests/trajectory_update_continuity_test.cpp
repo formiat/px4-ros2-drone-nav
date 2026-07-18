@@ -67,6 +67,7 @@ TEST(TrajectoryUpdateContinuity, ResetsSmootherForModerateProjectionJump) {
   EXPECT_STREQ(result.reason, "moderate_discontinuity");
   EXPECT_GT(result.projection_jump_m, 3.0);
   EXPECT_LT(result.projection_jump_m, 8.0);
+  EXPECT_TRUE(result.preserve_vertical_smoother_state);
 }
 
 TEST(TrajectoryUpdateContinuity, RejectsLargeProjectionJump) {
@@ -114,6 +115,51 @@ TEST(TrajectoryUpdateContinuity, ResetsWhenNoPreviousTrajectoryExists) {
 
   EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kResetSmoother);
   EXPECT_STREQ(result.reason, "no_previous_trajectory");
+}
+
+TEST(TrajectoryUpdateContinuity, ResetsVerticalSmootherForTargetAltitudeJump) {
+  std::vector<TrajectoryPointSample> old_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  std::vector<TrajectoryPointSample> new_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  assignTrajectorySampleAltitude(old_samples, 10.0);
+  assignTrajectorySampleAltitude(new_samples, 15.0);
+
+  const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
+      old_samples, profileForSamples(old_samples), new_samples,
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{12.0, 0.0}, true);
+
+  EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kResetSmoother);
+  EXPECT_STREQ(result.reason, "vertical_discontinuity");
+  EXPECT_DOUBLE_EQ(result.vertical_target_z_jump_m, 5.0);
+  EXPECT_FALSE(result.preserve_vertical_smoother_state);
+}
+
+TEST(TrajectoryUpdateContinuity, RejectsUnsafeImmediateVerticalHardWindow) {
+  std::vector<TrajectoryPointSample> old_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  std::vector<TrajectoryPointSample> new_samples = old_samples;
+  assignTrajectorySampleAltitude(old_samples, 12.0);
+  assignTrajectorySampleAltitude(new_samples, 8.0);
+  for (TrajectoryPointSample& sample : new_samples) {
+    sample.vertical_hard_window_active = true;
+    sample.vertical_safe_min_z_m = 6.0;
+    sample.vertical_safe_max_z_m = 8.0;
+    sample.vertical_gate_z_m = 7.0;
+    sample.vertical_profile_passage_id = "low_opening";
+  }
+
+  const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
+      old_samples, profileForSamples(old_samples), new_samples,
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{12.0, 0.0}, true,
+      TrajectoryContinuityThresholds{},
+      TrajectoryVerticalContinuityState{.current_altitude_m = 12.0,
+                                        .altitude_valid = true});
+
+  EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kRejectTrajectory);
+  EXPECT_STREQ(result.reason, "vertical_hard_window_unsafe");
+  EXPECT_TRUE(result.vertical_hard_window_unsafe);
+  EXPECT_FALSE(result.preserve_vertical_smoother_state);
 }
 
 } // namespace drone_city_nav

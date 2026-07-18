@@ -160,6 +160,14 @@ angle, minimum/maximum transition distance, and a pre-gate hold distance. A
 profile that cannot complete its transition before the required hold window is
 infeasible and is not accepted as a valid planner result.
 
+Climb and descent limits are directional. The planner uses nominal
+`vertical_profile_max_climb_speed_mps` and
+`vertical_profile_max_descent_speed_mps`; offboard uses the corresponding
+`vertical_setpoint_max_*` limits. The simulator runner applies the offboard
+limits to PX4 `MPC_Z_VEL_MAX_UP` and `MPC_Z_VEL_MAX_DN`, so the planner,
+setpoint follower, and PX4 controller no longer assume different vertical
+capabilities.
+
 The annotation validation itself is diagnostic and repair input only. It reports
 whether a planned span intersects a structure footprint through a sufficiently
 deep, clear opening volume. It is not a collision engine and does not create a
@@ -176,6 +184,22 @@ values and computes both horizontal velocity and `vz`. If the actual altitude
 cannot reach an upcoming hard window in time, vertical trackability temporarily
 adds a lower horizontal speed cap. This is a last-resort tracking constraint,
 not a replacement for the planner's pre-gate transition and hold.
+
+Trackability estimates the minimum travel time from altitude error, current
+vertical velocity, directional PX4/setpoint speed, vertical acceleration, and a
+response-time allowance. Before entry, the remaining distance to the hard
+window determines the cap. Once inside the hard window, an unsafe altitude
+forces `vertical_trackability_min_speed_mps` until the drone enters the safe
+interval; distance to the exit plane cannot prematurely release the cap.
+
+When a replan replaces an executable trajectory, offboard compares both XY and
+vertical continuity. Outside an active hard window it reanchors the new
+vertical prefix to the currently followed vertical target and smoothly joins
+the next hard window. If no hard window remains, it carries the current target
+altitude. Compatible vertical command history is retained even when a moderate
+XY discontinuity requires resetting the horizontal smoother. An immediate new
+hard window that does not contain the actual altitude within tolerance is
+rejected instead of producing a target jump.
 
 The vertical follower is separately bounded by vertical speed, acceleration,
 jerk, and climb-angle parameters. During terminal position capture, altitude is

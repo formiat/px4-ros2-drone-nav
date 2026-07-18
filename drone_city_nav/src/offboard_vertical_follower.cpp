@@ -55,10 +55,12 @@ hardWindowFeedbackVzMps(const double safe_error_m,
   if (!std::isfinite(safe_error_m) || std::abs(safe_error_m) <= 1.0e-9) {
     return std::numeric_limits<double>::quiet_NaN();
   }
+  const double directional_speed_limit_mps =
+      safe_error_m > 0.0 ? config.max_climb_speed_mps : config.max_descent_speed_mps;
   const double correction_speed_mps =
       std::clamp(std::max(kHardWindowMinCorrectionSpeedMps,
                           std::abs(safe_error_m) / kHardWindowCorrectionTimeS),
-                 0.0, config.max_vertical_speed_mps);
+                 0.0, directional_speed_limit_mps);
   return std::copysign(correction_speed_mps, safe_error_m);
 }
 
@@ -84,8 +86,10 @@ VerticalFollowerConfig
 sanitizeVerticalFollowerConfig(VerticalFollowerConfig config) noexcept {
   config.altitude_feedback_kp_1ps =
       boundedFiniteDouble(config.altitude_feedback_kp_1ps, 0.5, 0.0, 10.0);
-  config.max_vertical_speed_mps =
-      boundedFiniteDouble(config.max_vertical_speed_mps, 4.0, 0.0, 100.0);
+  config.max_climb_speed_mps =
+      boundedFiniteDouble(config.max_climb_speed_mps, 4.0, 0.0, 100.0);
+  config.max_descent_speed_mps =
+      boundedFiniteDouble(config.max_descent_speed_mps, 4.0, 0.0, 100.0);
   config.max_vertical_accel_mps2 =
       boundedFiniteDouble(config.max_vertical_accel_mps2, 3.5, 0.0, 100.0);
   config.max_vertical_jerk_mps3 =
@@ -138,7 +142,7 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
   plan.target_vz_mps = target.vertical_slope_dz_ds * plan.scalar_speed_mps *
                        config.target_vz_feedforward_scale;
 
-  if (!(config.max_vertical_speed_mps > 0.0)) {
+  if (!(config.max_climb_speed_mps > 0.0) && !(config.max_descent_speed_mps > 0.0)) {
     plan.reason = "vertical_speed_disabled";
     plan.feedback_vz_mps = 0.0;
     plan.desired_vz_mps = 0.0;
@@ -149,7 +153,7 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
 
   plan.feedback_vz_mps =
       std::clamp(plan.z_error_m * config.altitude_feedback_kp_1ps,
-                 -config.max_vertical_speed_mps, config.max_vertical_speed_mps);
+                 -config.max_descent_speed_mps, config.max_climb_speed_mps);
   const double hard_window_feedback_vz_mps =
       hardWindowFeedbackVzMps(plan.vertical_safe_error_m, config);
   if (std::isfinite(hard_window_feedback_vz_mps) &&
@@ -159,7 +163,7 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
   }
   plan.desired_vz_mps =
       std::clamp(plan.target_vz_mps + plan.feedback_vz_mps,
-                 -config.max_vertical_speed_mps, config.max_vertical_speed_mps);
+                 -config.max_descent_speed_mps, config.max_climb_speed_mps);
 
   if (!previous_state.previous_command_valid ||
       !std::isfinite(previous_state.previous_commanded_vz_mps) ||
@@ -180,9 +184,8 @@ planVerticalSetpoint(const std::span<const TrajectoryPointSample> trajectory_sam
                        config.max_vertical_accel_mps2);
   plan.commanded_vz_mps =
       previous_state.previous_commanded_vz_mps + accel_mps2 * limited_dt_s;
-  plan.commanded_vz_mps =
-      std::clamp(plan.commanded_vz_mps, -config.max_vertical_speed_mps,
-                 config.max_vertical_speed_mps);
+  plan.commanded_vz_mps = std::clamp(
+      plan.commanded_vz_mps, -config.max_descent_speed_mps, config.max_climb_speed_mps);
   plan.commanded_vz_ned_mps = -plan.commanded_vz_mps;
   plan.vertical_accel_mps2 =
       (plan.commanded_vz_mps - previous_state.previous_commanded_vz_mps) / limited_dt_s;

@@ -117,8 +117,10 @@ planner_node:
     vertical_profile_enabled: true
     vertical_profile_gate_clearance_margin_m: 0.5
     vertical_profile_preferred_gate_clearance_margin_m: 2.0
-    vertical_setpoint_max_speed_mps: 4.0
-    vertical_profile_max_vertical_speed_mps: 3.2
+    vertical_setpoint_max_climb_speed_mps: 4.0
+    vertical_setpoint_max_descent_speed_mps: 4.0
+    vertical_profile_max_climb_speed_mps: 3.2
+    vertical_profile_max_descent_speed_mps: 3.2
     vertical_profile_max_vertical_accel_mps2: 3.0
     vertical_profile_max_vertical_jerk_mps3: 9.0
     vertical_profile_max_climb_angle_deg: 35.0
@@ -254,7 +256,8 @@ px4_offboard_node:
     speed_profile_lookahead_time_s: 1.0
     speed_profile_lookahead_min_m: 5.0
     speed_profile_lookahead_max_m: 35.0
-    vertical_profile_max_vertical_speed_mps: 3.2
+    vertical_profile_max_climb_speed_mps: 3.2
+    vertical_profile_max_descent_speed_mps: 3.2
     vertical_profile_max_vertical_accel_mps2: 3.0
     vertical_profile_max_vertical_jerk_mps3: 9.0
     vertical_profile_max_climb_angle_deg: 35.0
@@ -299,9 +302,9 @@ px4_offboard_node:
     final_trajectory_debug_sample_step_m: 1.0
     offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers
     altitude_hold_kp: 0.5
-    max_vertical_speed_mps: 4.0
     altitude_feedback_kp_1ps: 0.5
-    vertical_setpoint_max_speed_mps: 4.0
+    vertical_setpoint_max_climb_speed_mps: 4.0
+    vertical_setpoint_max_descent_speed_mps: 4.0
     vertical_setpoint_max_accel_mps2: 3.5
     vertical_setpoint_max_jerk_mps3: 10.0
     vertical_target_vz_feedforward_scale: 1.0
