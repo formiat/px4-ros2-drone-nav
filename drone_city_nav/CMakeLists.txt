@@ -219,8 +219,7 @@ ament_target_dependencies(
   mission_monitor_node
   ament_index_cpp
   px4_msgs
-  rclcpp
-  std_msgs)
+  rclcpp)
 enable_project_warnings(mission_monitor_node)
 
 add_executable(

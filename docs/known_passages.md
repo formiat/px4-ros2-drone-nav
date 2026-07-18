@@ -233,8 +233,9 @@ arbitrary provider.
 Gazebo SDF collision geometry is the physical source of truth: a vehicle can
 pass through the empty opening but collides with `upper_mass` or `lower_mass`.
 `mission_monitor_node` derives corresponding ordinary solid volumes from the
-annotations for mission diagnostics. It does not use a special "opening id was
-passed" rule to decide success or failure.
+annotations for mission diagnostics. Its clearance estimate cannot command PX4
+or stop the vehicle, and it does not use a special "opening id was passed"
+rule to decide success or failure.
 
 The following diagnostics make passage behavior inspectable:
 

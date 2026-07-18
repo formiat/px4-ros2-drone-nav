@@ -5,11 +5,6 @@ namespace drone_city_nav {
 void Px4OffboardNode::onTimer() {
   publishRvizDroneFollowTransform();
 
-  if (emergency_stop_requested_) {
-    handleEmergencyStop();
-    return;
-  }
-
   updateFinalGoalHold();
   advanceWaypointIfNeeded();
   updateTerminalCaptureState();
@@ -61,17 +56,6 @@ void Px4OffboardNode::onTimer() {
         px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0F);
     last_command_time_ = current_time;
   }
-}
-
-void Px4OffboardNode::handleEmergencyStop() {
-  const rclcpp::Time current_time = now();
-  if ((current_time - last_command_time_).seconds() < command_resend_period_s_) {
-    return;
-  }
-
-  publishVehicleCommand(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM,
-                        0.0F, 21196.0F);
-  last_command_time_ = current_time;
 }
 
 void Px4OffboardNode::publishOffboardControlMode() {

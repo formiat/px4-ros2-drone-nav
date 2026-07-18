@@ -6,7 +6,6 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -276,11 +275,8 @@ public:
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string vehicle_status_topic = declare_parameter<std::string>(
         "px4_vehicle_status_topic", "/fmu/out/vehicle_status");
-    const std::string emergency_stop_topic = declare_parameter<std::string>(
-        "emergency_stop_topic", "/drone_city_nav/emergency_stop");
     const auto px4_qos =
         rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
-    const auto emergency_stop_qos = rclcpp::QoS{1}.reliable().durability_volatile();
 
     local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
         local_position_topic, px4_qos,
@@ -292,8 +288,6 @@ public:
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
           onVehicleStatus(*msg);
         });
-    emergency_stop_pub_ =
-        create_publisher<std_msgs::msg::Bool>(emergency_stop_topic, emergency_stop_qos);
 
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this]() { logSummary(); });
@@ -306,14 +300,14 @@ public:
         "known_passage_structures=%zu known_passage_solids=%zu "
         "known_passage_status=%s known_passages_path='%s' clearance=%.2fm "
         "vertical_clearance=%.2fm uniform_building_height=%.2fm "
-        "crash_detection=%s emergency_stop_topic='%s'",
+        "crash_detection=%s observer_only=true",
         start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_, goal_radius_m_,
         building_source.c_str(), buildings_.size(), configured_building_count,
         known_passage_source.structures, known_passage_solid_count,
         knownPassageSourceStatusName(known_passage_source.status),
         known_passage_source.resolved_path.string().c_str(), building_clearance_m_,
         vertical_clearance_m_, uniform_building_height_m_,
-        crash_detection_enabled_ ? "true" : "false", emergency_stop_topic.c_str());
+        crash_detection_enabled_ ? "true" : "false");
   }
 
 private:
@@ -369,10 +363,6 @@ private:
 
     updateBuildingClearance(position, current_altitude_m);
     updateKnownPassageMetrics(position, current_altitude_m);
-    if (collision_detected_) {
-      reportFailure("building clearance violation");
-      return;
-    }
     updateCrashDetection(current_altitude_m);
     if (crash_detected_) {
       reportFailure("altitude collapse after takeoff");
@@ -428,18 +418,21 @@ private:
 
       const double clearance_m = clearanceToFootprint(position, building);
       min_building_clearance_m_ = std::min(min_building_clearance_m_, clearance_m);
-      if (clearance_m < building_clearance_m_) {
-        collision_detected_ = true;
-        RCLCPP_ERROR(get_logger(),
-                     "MISSION_CHECK collision_risk=true position=(%.2f, %.2f) "
-                     "altitude=%.2f building_id='%s' building_source='%s' "
-                     "building_center=(%.2f, %.2f) building_z=[%.2f, %.2f] "
-                     "building_size=[depth=%.2f width=%.2f] "
-                     "clearance=%.2f required=%.2f",
-                     position.x, position.y, altitude_m, building.id.c_str(),
-                     building.source.c_str(), building.center.x, building.center.y,
-                     building.min_z_m, building.max_z_m, building.depth_m,
-                     building.width_m, clearance_m, building_clearance_m_);
+      if (clearance_m < building_clearance_m_ && !collision_risk_logged_) {
+        collision_risk_logged_ = true;
+        // This geometric approximation is diagnostic only. Gazebo collision
+        // geometry, not the monitor, determines whether the vehicle can fly.
+        RCLCPP_WARN(
+            get_logger(),
+            "MISSION_CHECK building_clearance_warning=true position=(%.2f, %.2f) "
+            "altitude=%.2f building_id='%s' building_source='%s' "
+            "building_center=(%.2f, %.2f) building_z=[%.2f, %.2f] "
+            "building_size=[depth=%.2f width=%.2f] "
+            "clearance=%.2f required=%.2f",
+            position.x, position.y, altitude_m, building.id.c_str(),
+            building.source.c_str(), building.center.x, building.center.y,
+            building.min_z_m, building.max_z_m, building.depth_m, building.width_m,
+            clearance_m, building_clearance_m_);
       }
     }
   }
@@ -539,7 +532,6 @@ private:
 
   void reportFailure(const std::string& reason) {
     result_reported_ = true;
-    publishEmergencyStop(reason);
     logKnownPassageMetrics();
     RCLCPP_ERROR(get_logger(),
                  "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
@@ -555,14 +547,6 @@ private:
                  max_observed_speed_mps_, meanObservedSpeedMps(),
                  actual_passage_openings_seen_, monitored_openings_.size(),
                  min_actual_passage_clearance_m_, min_actual_passage_volume_margin_m_);
-  }
-
-  void publishEmergencyStop(const std::string& reason) {
-    std_msgs::msg::Bool msg;
-    msg.data = true;
-    emergency_stop_pub_->publish(msg);
-    RCLCPP_ERROR(get_logger(), "MISSION_CHECK emergency_stop=true reason='%s'",
-                 reason.c_str());
   }
 
   void logSummary() {
@@ -630,7 +614,7 @@ private:
   bool spawn_checked_{false};
   bool spawn_ok_{false};
   bool movement_ok_{false};
-  bool collision_detected_{false};
+  bool collision_risk_logged_{false};
   bool crash_detected_{false};
   bool goal_stop_started_{false};
   bool result_reported_{false};
@@ -642,7 +626,6 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr emergency_stop_pub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
 };
 

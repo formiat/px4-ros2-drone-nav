@@ -32,7 +32,6 @@
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/u_int64.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -185,13 +184,9 @@ private:
 
   void onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg);
 
-  void onEmergencyStop(const std_msgs::msg::Bool& msg);
-
   void onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg);
 
   void onTimer();
-
-  void handleEmergencyStop();
 
   void publishOffboardControlMode();
 
@@ -376,7 +371,6 @@ private:
   bool local_position_seen_{false};
   bool auto_arm_{true};
   bool auto_offboard_{true};
-  bool emergency_stop_requested_{false};
   bool prohibited_grid_valid_{false};
   bool prohibited_grid_seen_logged_{false};
   bool current_velocity_valid_{false};
@@ -444,7 +438,6 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_stop_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;

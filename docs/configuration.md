@@ -257,8 +257,9 @@ the independent known-static provider.
 `mission_monitor_node` also reads `known_passages_enabled` and
 `known_passages_path`. When enabled, it converts each annotated architectural
 passage into ordinary solid building volumes around the opening. The opening
-itself remains free space; mission failure still comes from collision with
-solid volumes, not from a special "passed passage id" rule.
+itself remains free space. Its geometric clearance estimate is diagnostic only:
+the monitor does not command PX4, and Gazebo collision geometry remains the
+physical source of truth.
 
 ## A* Parameters
 

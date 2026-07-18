@@ -82,22 +82,6 @@ void Px4OffboardNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg) {
   }
 }
 
-void Px4OffboardNode::onEmergencyStop(const std_msgs::msg::Bool& msg) {
-  if (!msg.data || emergency_stop_requested_) {
-    return;
-  }
-
-  emergency_stop_requested_ = true;
-  path_valid_ = false;
-  final_goal_hold_active_ = false;
-  terminal_position_capture_latched_ = false;
-  clearTerminalPositionCaptureAltitude();
-  terminal_capture_state_ = TerminalCaptureState{};
-  RCLCPP_ERROR(get_logger(),
-               "Emergency stop requested; stopping trajectory setpoints and "
-               "sending disarm commands");
-}
-
 void Px4OffboardNode::onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg) {
   if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U ||
       msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||

@@ -49,8 +49,8 @@ world assets, and Docker tooling around it.
 
 `mission_monitor_node`
 
-- simulation-only monitor for mission success, crash detection, and emergency
-  stop publication.
+- simulation-only observer for mission success and crash diagnostics; it does
+  not publish control commands or alter PX4 state.
 
 `scan_bridge`
 

@@ -236,7 +236,6 @@ px4_offboard_node:
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
-    emergency_stop_topic: /drone_city_nav/emergency_stop
     prohibited_grid_topic: /drone_city_nav/prohibited_grid
     initial_altitude_m: 18.0
     min_navigation_altitude_m: 17.0
@@ -392,7 +391,6 @@ mission_monitor_node:
     crash_detection_enabled: true
     crash_min_airborne_altitude_m: 6.0
     crash_altitude_m: 2.5
-    emergency_stop_topic: /drone_city_nav/emergency_stop
     building_volumes:
       - 27.0
       - 27.0

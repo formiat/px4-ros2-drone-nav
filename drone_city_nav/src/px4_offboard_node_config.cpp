@@ -433,8 +433,6 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       "px4_vehicle_attitude_topic", config.topics.px4_vehicle_attitude);
   config.topics.px4_vehicle_status = node.declare_parameter<std::string>(
       "px4_vehicle_status_topic", config.topics.px4_vehicle_status);
-  config.topics.emergency_stop = node.declare_parameter<std::string>(
-      "emergency_stop_topic", config.topics.emergency_stop);
   config.topics.prohibited_grid = node.declare_parameter<std::string>(
       "prohibited_grid_topic", config.topics.prohibited_grid);
   config.topics.offboard_control_mode = node.declare_parameter<std::string>(

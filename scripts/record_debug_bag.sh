@@ -22,6 +22,5 @@ ros2 bag record \
   /drone_city_nav/prohibited_grid \
   /drone_city_nav/path \
   /drone_city_nav/current_waypoint \
-  /drone_city_nav/emergency_stop \
   /fmu/out/vehicle_local_position_v1 \
   /fmu/out/vehicle_status_v1

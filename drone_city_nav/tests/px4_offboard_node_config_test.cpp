@@ -239,7 +239,6 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsCustomTopicsAndBlackboxPath) {
        rclcpp::Parameter{"px4_local_position_topic", "/custom/local_position"},
        rclcpp::Parameter{"px4_vehicle_attitude_topic", "/custom/attitude"},
        rclcpp::Parameter{"px4_vehicle_status_topic", "/custom/status"},
-       rclcpp::Parameter{"emergency_stop_topic", "/custom/estop"},
        rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited"},
        rclcpp::Parameter{"offboard_control_mode_topic", "/custom/offboard_mode"},
        rclcpp::Parameter{"trajectory_setpoint_topic", "/custom/setpoint"},
@@ -257,7 +256,6 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsCustomTopicsAndBlackboxPath) {
   EXPECT_EQ(config.topics.px4_local_position, "/custom/local_position");
   EXPECT_EQ(config.topics.px4_vehicle_attitude, "/custom/attitude");
   EXPECT_EQ(config.topics.px4_vehicle_status, "/custom/status");
-  EXPECT_EQ(config.topics.emergency_stop, "/custom/estop");
   EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited");
   EXPECT_EQ(config.topics.offboard_control_mode, "/custom/offboard_mode");
   EXPECT_EQ(config.topics.trajectory_setpoint, "/custom/setpoint");

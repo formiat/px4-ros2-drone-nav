@@ -47,7 +47,6 @@ Px4OffboardNode::Px4OffboardNode()
 
   const auto px4_qos =
       rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
-  const auto emergency_stop_qos = rclcpp::QoS{1}.reliable().durability_volatile();
   path_sub_ = create_subscription<nav_msgs::msg::Path>(
       topics.path, rclcpp::QoS{1}.reliable(),
       [this](const nav_msgs::msg::Path::SharedPtr msg) { onPath(*msg); });
@@ -74,9 +73,6 @@ Px4OffboardNode::Px4OffboardNode()
       [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
         onVehicleStatus(*msg);
       });
-  emergency_stop_sub_ = create_subscription<std_msgs::msg::Bool>(
-      topics.emergency_stop, emergency_stop_qos,
-      [this](const std_msgs::msg::Bool::SharedPtr msg) { onEmergencyStop(*msg); });
   prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       topics.prohibited_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -199,12 +195,10 @@ Px4OffboardNode::Px4OffboardNode()
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
   RCLCPP_INFO(get_logger(),
               "PX4 offboard subscriptions: path='%s' path_id='%s' local_position='%s' "
-              "attitude='%s' vehicle_status='%s' emergency_stop='%s' "
-              "prohibited_grid='%s'",
+              "attitude='%s' vehicle_status='%s' prohibited_grid='%s'",
               topics.path.c_str(), topics.path_id.c_str(),
               topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
-              topics.px4_vehicle_status.c_str(), topics.emergency_stop.c_str(),
-              topics.prohibited_grid.c_str());
+              topics.px4_vehicle_status.c_str(), topics.prohibited_grid.c_str());
 }
 
 } // namespace drone_city_nav
