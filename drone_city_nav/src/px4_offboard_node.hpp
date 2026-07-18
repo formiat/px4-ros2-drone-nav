@@ -416,6 +416,10 @@ private:
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
+  std::optional<std::chrono::steady_clock::time_point>
+      last_control_timer_callback_wall_time_;
+  std::optional<std::chrono::steady_clock::time_point>
+      last_local_position_callback_wall_time_;
   std::string flight_blackbox_path_{"log/offboard_blackbox.jsonl"};
   std::string final_trajectory_debug_topic_{"/drone_city_nav/final_trajectory_path"};
   std::string offboard_debug_marker_topic_{"/drone_city_nav/offboard_debug_markers"};

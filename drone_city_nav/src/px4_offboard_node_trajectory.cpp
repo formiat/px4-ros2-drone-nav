@@ -8,6 +8,61 @@
 namespace drone_city_nav {
 namespace {
 
+inline constexpr auto kSlowOffboardCallbackThreshold = std::chrono::milliseconds{100};
+
+class ScopedOffboardCallbackDuration final {
+public:
+  ScopedOffboardCallbackDuration(rclcpp::Logger logger,
+                                 const std::string_view callback_name,
+                                 const std::size_t payload_size)
+      : logger_{std::move(logger)},
+        callback_name_{callback_name},
+        payload_size_{payload_size},
+        started_at_{std::chrono::steady_clock::now()} {
+  }
+
+  ScopedOffboardCallbackDuration(const ScopedOffboardCallbackDuration&) = delete;
+  ScopedOffboardCallbackDuration&
+  operator=(const ScopedOffboardCallbackDuration&) = delete;
+  ScopedOffboardCallbackDuration(ScopedOffboardCallbackDuration&&) = delete;
+  ScopedOffboardCallbackDuration& operator=(ScopedOffboardCallbackDuration&&) = delete;
+
+  ~ScopedOffboardCallbackDuration() {
+    const double duration_ms = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - started_at_)
+                                   .count();
+    if (duration_ms < static_cast<double>(kSlowOffboardCallbackThreshold.count())) {
+      return;
+    }
+    RCLCPP_WARN(logger_,
+                "Slow offboard callback: callback=%.*s duration_ms=%.1f "
+                "payload_size=%zu outcome=%.*s planner_path_id=%" PRIu64
+                " path_stamp_ns=%" PRIu64,
+                static_cast<int>(callback_name_.size()), callback_name_.data(),
+                duration_ms, payload_size_, static_cast<int>(outcome_.size()),
+                outcome_.data(), planner_path_id_, path_stamp_ns_);
+  }
+
+  void setOutcome(const std::string_view outcome) noexcept {
+    outcome_ = outcome;
+  }
+
+  void setTrajectoryIdentity(const std::uint64_t planner_path_id,
+                             const std::uint64_t path_stamp_ns) noexcept {
+    planner_path_id_ = planner_path_id;
+    path_stamp_ns_ = path_stamp_ns;
+  }
+
+private:
+  rclcpp::Logger logger_;
+  std::string_view callback_name_;
+  std::size_t payload_size_{0U};
+  std::chrono::steady_clock::time_point started_at_;
+  std::string_view outcome_{"completed"};
+  std::uint64_t planner_path_id_{0U};
+  std::uint64_t path_stamp_ns_{0U};
+};
+
 [[nodiscard]] bool
 configFingerprintMismatch(const std::uint64_t runtime_fingerprint,
                           const std::uint64_t planning_fingerprint) noexcept {
@@ -322,15 +377,20 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
 }
 
 void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
+  ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
+                                                   path.poses.size()};
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
   const std::uint64_t candidate_path_stamp_ns =
       messageStampNanoseconds(path.header.stamp);
+  callback_duration.setTrajectoryIdentity(latest_planner_path_id_,
+                                          candidate_path_stamp_ns);
   std::vector<Point2> candidate_path_points =
       drone_city_nav::pathPointsFromMessage(path);
   std::vector<TrajectoryPointSample> candidate_path_samples =
       drone_city_nav::pathSamplesFromMessage(path);
 
   if (candidate_path_points.empty()) {
+    callback_duration.setOutcome("empty_path");
     received_path_update_id_ = candidate_update_id;
     last_received_path_stamp_ns_ = candidate_path_stamp_ns;
     path_points_ = std::move(candidate_path_points);
@@ -379,11 +439,13 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
                                             candidate_path_stamp_ns,
                                             candidate_path_points.size())) {
+    callback_duration.setOutcome("stale_rejected");
     return;
   }
   const TrajectoryContinuityResult continuity =
       evaluateReceivedTrajectoryContinuity(candidate_state);
   if (continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory) {
+    callback_duration.setOutcome("continuity_rejected");
     RCLCPP_WARN(
         get_logger(),
         "trajectory_update_rejected: reason=%s decision=%s "
@@ -449,6 +511,7 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     last_logged_path_first_ = first;
     last_logged_path_last_ = last;
   }
+  callback_duration.setOutcome("accepted");
 }
 
 void Px4OffboardNode::onPathId(const std_msgs::msg::UInt64& msg) {
@@ -457,9 +520,12 @@ void Px4OffboardNode::onPathId(const std_msgs::msg::UInt64& msg) {
 }
 
 void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) {
+  ScopedOffboardCallbackDuration callback_duration{
+      get_logger(), "trajectory_diagnostics", msg.data.size()};
   const std::optional<TrajectoryPlannerDiagnosticsEnvelope> diagnostics =
       parseTrajectoryPlannerDiagnosticsJson(msg.data);
   if (!diagnostics.has_value()) {
+    callback_duration.setOutcome("malformed");
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Ignoring malformed trajectory diagnostics message: bytes=%zu",
                          msg.data.size());
@@ -468,9 +534,14 @@ void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) 
 
   latest_trajectory_diagnostics_ = diagnostics;
   if (!path_valid_ || !trajectoryDiagnosticsMatchesCurrentPath(*diagnostics)) {
+    callback_duration.setTrajectoryIdentity(diagnostics->planner_path_id,
+                                            diagnostics->path_stamp_ns);
+    callback_duration.setOutcome("not_current_path");
     return;
   }
 
+  callback_duration.setTrajectoryIdentity(diagnostics->planner_path_id,
+                                          diagnostics->path_stamp_ns);
   mergePlannerDiagnosticsIntoCurrentTrajectoryStats(*diagnostics);
   const bool runtime_speed_policy_mismatch = configFingerprintMismatch(
       last_trajectory_planner_stats_.runtime_speed_policy_config_fingerprint,
@@ -492,6 +563,7 @@ void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) 
               diagnostics->stats.trajectory_optimizer.max_abs_offset_m,
               runtime_speed_policy_mismatch ? "true" : "false",
               runtime_velocity_control_mismatch ? "true" : "false");
+  callback_duration.setOutcome("applied");
 }
 
 void Px4OffboardNode::openFlightBlackbox() {

@@ -3,6 +3,30 @@
 namespace drone_city_nav {
 
 void Px4OffboardNode::onTimer() {
+  const auto callback_wall_time = std::chrono::steady_clock::now();
+  if (last_control_timer_callback_wall_time_.has_value()) {
+    const double callback_gap_s =
+        std::chrono::duration<double>(callback_wall_time -
+                                      *last_control_timer_callback_wall_time_)
+            .count();
+    const double max_pose_staleness_s =
+        static_cast<double>(max_pose_staleness_ns_) / 1.0e9;
+    if (max_pose_staleness_s > 0.0 && callback_gap_s > max_pose_staleness_s) {
+      const double local_position_callback_age_s =
+          last_local_position_callback_wall_time_.has_value()
+              ? std::chrono::duration<double>(callback_wall_time -
+                                              *last_local_position_callback_wall_time_)
+                    .count()
+              : std::numeric_limits<double>::infinity();
+      RCLCPP_WARN(get_logger(),
+                  "Offboard timer callback gap: wall_gap_s=%.3f "
+                  "local_position_callback_age_s=%.3f message_pose_age_s=%.3f",
+                  callback_gap_s, local_position_callback_age_s,
+                  localPositionAgeSeconds());
+    }
+  }
+  last_control_timer_callback_wall_time_ = callback_wall_time;
+
   publishRvizDroneFollowTransform();
 
   updateFinalGoalHold();
