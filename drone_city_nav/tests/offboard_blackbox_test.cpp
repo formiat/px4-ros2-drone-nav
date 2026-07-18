@@ -59,6 +59,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   record.current_velocity_valid = true;
   record.current_velocity = Point2{3.0, 4.0};
   record.current_speed_mps = 5.0;
+  record.current_vertical_velocity_valid = true;
+  record.current_vertical_velocity_up_mps = -1.5;
   record.target = Point2{10.0, 11.0};
   record.target_distance_m = 6.0;
   record.last_commanded_target_delta_m = 0.4;
@@ -384,6 +386,8 @@ TEST(OffboardBlackbox, WritesFullRecordJsonLine) {
   expectJsonField(json, "\"x\":1");
   expectJsonField(json, "\"attitude\":{\"valid\":true");
   expectJsonField(json, "\"velocity\":{\"valid\":true");
+  expectJsonField(json, "\"vertical_valid\":true");
+  expectJsonField(json, "\"vertical_up_mps\":-1.5");
   expectJsonField(json, "\"target\":{\"x\":10");
   expectJsonField(json, "\"altitude_control\":{\"target_z_m\":11.5");
   expectJsonField(json, "\"actual_z_m\":11.3");

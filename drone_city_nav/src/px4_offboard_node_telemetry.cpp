@@ -46,6 +46,7 @@ void Px4OffboardNode::logTelemetry() {
       "attitude[valid=%s age_s=%.2f roll=%.3frad pitch=%.3frad yaw=%.3frad "
       "roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f tilt_deg=%.1f] "
       "velocity=(%.2f, %.2f) velocity_valid=%s actual_speed=%.2f "
+      "vertical_velocity_up=%.2f vertical_velocity_valid=%s "
       "target=(%.2f, %.2f) "
       "distance_to_target=%.2f distance_to_path_goal=%.2f "
       "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
@@ -57,8 +58,10 @@ void Px4OffboardNode::logTelemetry() {
       attitude_valid_ ? "true" : "false", attitude_age_s, current_attitude_.roll_rad,
       current_attitude_.pitch_rad, current_attitude_.yaw_rad, roll_deg, pitch_deg,
       attitude_yaw_deg, tilt_deg, current_velocity_.x, current_velocity_.y,
-      current_velocity_valid_ ? "true" : "false", current_speed_mps_, target.x,
-      target.y, target_distance, path_goal_distance, mission_goal_distance,
+      current_velocity_valid_ ? "true" : "false", current_speed_mps_,
+      current_vertical_velocity_up_mps_,
+      current_vertical_velocity_valid_ ? "true" : "false", target.x, target.y,
+      target_distance, path_goal_distance, mission_goal_distance,
       path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
       motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
       prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
@@ -322,6 +325,8 @@ void Px4OffboardNode::writeFlightBlackbox(
       current_velocity_valid_,
       current_velocity_,
       current_speed_mps_,
+      current_vertical_velocity_valid_,
+      current_vertical_velocity_up_mps_,
       target,
       target_distance_m,
       last_commanded_target_delta_m_,

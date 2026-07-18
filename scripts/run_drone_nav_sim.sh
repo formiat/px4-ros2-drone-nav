@@ -438,6 +438,8 @@ echo "PX4 Gazebo spawn pose: ${spawn_x_m},${spawn_y_m},${spawn_z_m},0,0,${spawn_
     sleep "${px4_param_delay_s}"
     echo "param set CBRK_SUPPLY_CHK 894281"
     echo "param set NAV_DLL_ACT 0"
+    echo "param show MPC_Z_VEL_MAX_DN"
+    echo "param show MPC_Z_VEL_MAX_UP"
     while true; do
       sleep 3600
     done

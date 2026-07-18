@@ -105,6 +105,10 @@ void writeOffboardBlackboxRecord(std::ostream& stream,
   writeBlackboxJsonNumberOrNull(stream, record.current_velocity.y);
   stream << ",\"speed_mps\":";
   writeBlackboxJsonNumberOrNull(stream, record.current_speed_mps);
+  stream << ",\"vertical_valid\":";
+  writeBlackboxJsonBool(stream, record.current_vertical_velocity_valid);
+  stream << ",\"vertical_up_mps\":";
+  writeBlackboxJsonNumberOrNull(stream, record.current_vertical_velocity_up_mps);
   stream << "}";
   stream << ",\"target\":{\"x\":";
   writeBlackboxJsonNumberOrNull(stream, record.target.x);

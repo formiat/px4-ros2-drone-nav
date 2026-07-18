@@ -98,6 +98,10 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('executable="px4_offboard_node"', self.launch_text)
         self.assertIn("px4_offboard,", self.launch_text)
 
+    def test_px4_vertical_velocity_limits_are_logged(self) -> None:
+        self.assertIn('param show MPC_Z_VEL_MAX_DN', self.text)
+        self.assertIn('param show MPC_Z_VEL_MAX_UP', self.text)
+
 
 if __name__ == "__main__":
     unittest.main()

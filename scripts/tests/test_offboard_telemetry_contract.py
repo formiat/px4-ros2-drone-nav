@@ -72,6 +72,8 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("roll=%.3frad pitch=%.3frad yaw=%.3frad", self.offboard_text)
         self.assertIn("roll_deg=%.1f pitch_deg=%.1f yaw_deg=%.1f", self.offboard_text)
         self.assertIn("tilt_deg=%.1f", self.offboard_text)
+        self.assertIn("vertical_velocity_up=%.2f", self.offboard_text)
+        self.assertIn("vertical_velocity_valid=%s", self.offboard_text)
 
     def test_telemetry_logs_path_command_and_obstacle_diagnostics(self) -> None:
         self.assertIn("path_id_topic", self.offboard_text)
@@ -168,6 +170,7 @@ class OffboardTelemetryContractTest(unittest.TestCase):
         self.assertIn("flight_blackbox_path", self.offboard_text)
         self.assertIn("offboard_blackbox.jsonl", self.offboard_text)
         self.assertIn("writeFlightBlackbox", self.offboard_text)
+        self.assertIn("vertical_up_mps", self.offboard_text)
         self.assertIn("cross_track_error_m", self.offboard_text)
         self.assertIn("prohibited_grid_clearance_m", self.offboard_text)
         self.assertIn("nearest_prohibited_cell_valid", self.offboard_text)

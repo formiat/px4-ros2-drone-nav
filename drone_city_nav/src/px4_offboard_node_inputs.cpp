@@ -54,6 +54,13 @@ void Px4OffboardNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition&
     current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
     current_velocity_valid_ = false;
   }
+  if (msg.v_z_valid && std::isfinite(msg.vz)) {
+    current_vertical_velocity_up_mps_ = -static_cast<double>(msg.vz);
+    current_vertical_velocity_valid_ = true;
+  } else {
+    current_vertical_velocity_up_mps_ = std::numeric_limits<double>::quiet_NaN();
+    current_vertical_velocity_valid_ = false;
+  }
   if (msg.z_valid && std::isfinite(msg.z)) {
     current_altitude_m_ = -static_cast<double>(msg.z);
     altitude_valid_ = true;

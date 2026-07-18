@@ -60,6 +60,8 @@ struct OffboardBlackboxRecord {
   bool current_velocity_valid{false};
   Point2 current_velocity{};
   double current_speed_mps{0.0};
+  bool current_vertical_velocity_valid{false};
+  double current_vertical_velocity_up_mps{std::numeric_limits<double>::quiet_NaN()};
   Point2 target{};
   double target_distance_m{0.0};
   double last_commanded_target_delta_m{0.0};

@@ -313,6 +313,7 @@ private:
   AttitudeEuler current_attitude_{};
   Point2 current_position_{};
   Point2 current_velocity_{};
+  double current_vertical_velocity_up_mps_{std::numeric_limits<double>::quiet_NaN()};
   Point2 no_path_hold_target_{};
   Point2 final_goal_hold_target_{};
   Point2 takeoff_hold_target_{};
@@ -374,6 +375,7 @@ private:
   bool prohibited_grid_valid_{false};
   bool prohibited_grid_seen_logged_{false};
   bool current_velocity_valid_{false};
+  bool current_vertical_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool final_goal_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
