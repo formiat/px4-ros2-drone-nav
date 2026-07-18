@@ -109,6 +109,20 @@ TEST(LidarDebugPointcloudsTest, CompensatesZForGazeboAlignedRvizFrame) {
   EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -2.5F);
 }
 
+TEST(LidarDebugPointcloudsTest, Builds3dCurrentLidarCloudWithTrueEndpointAltitude) {
+  const builtin_interfaces::msg::Time stamp;
+  const std::vector<Point3> points{Point3{1.5, -2.0, 7.25}};
+
+  const sensor_msgs::msg::PointCloud2 cloud =
+      buildLidarDebugPointCloud(points, stamp, "map");
+
+  ASSERT_EQ(cloud.width, 1U);
+  ASSERT_EQ(cloud.data.size(), 12U);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 0U), 1.5F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 4U), -2.0F);
+  EXPECT_FLOAT_EQ(readFloat(cloud.data, 8U), -7.25F);
+}
+
 TEST(LidarDebugPointcloudsTest, BuildsSortedCloudFromOccupancyTriggerEndpoints) {
   builtin_interfaces::msg::Time stamp;
   stamp.sec = 45;

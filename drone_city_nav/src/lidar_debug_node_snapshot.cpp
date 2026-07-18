@@ -144,6 +144,17 @@ void LidarDebugNode::writeSnapshot() {
                                lidar_mount_yaw_rad_};
 }
 
+[[nodiscard]] LidarProjectionConfig
+LidarDebugNode::rawLidarVisualizationProjectionConfig() const {
+  LidarProjectionConfig config = lidarProjectionConfig();
+  // This is a sensor-view layer, so do not hide ground or building returns
+  // merely because they are outside the altitude envelope used by mapping.
+  config.max_lidar_range_m = static_cast<double>(last_scan_.range_max);
+  config.min_projected_altitude_m = std::numeric_limits<double>::lowest();
+  config.max_projected_altitude_m = std::numeric_limits<double>::max();
+  return config;
+}
+
 [[nodiscard]] LidarBeamProjection
 LidarDebugNode::projectScanBeam(const std::size_t beam_index,
                                 const float raw_range) const {
@@ -179,6 +190,33 @@ LidarDebugNode::collectScanRows(LidarSnapshotStats& stats) const {
       this);
   stats = output.stats;
   return output.rows;
+}
+
+[[nodiscard]] std::vector<Point3> LidarDebugNode::collectRawLidarHitPoints3D() const {
+  std::vector<Point3> points;
+  if (!last_scan_projection_seen_) {
+    return points;
+  }
+  points.reserve(last_scan_.ranges.size());
+  const LidarProjectionPose pose = lidarProjectionPose();
+  const LidarProjectionConfig config = rawLidarVisualizationProjectionConfig();
+  const double range_min_m = static_cast<double>(last_scan_.range_min);
+  const double range_max_m = static_cast<double>(last_scan_.range_max);
+  const double angle_min_rad = static_cast<double>(last_scan_.angle_min);
+  const double angle_increment_rad = static_cast<double>(last_scan_.angle_increment);
+  for (std::size_t beam_index = 0U; beam_index < last_scan_.ranges.size();
+       ++beam_index) {
+    const LidarBeamProjection projection = projectLidarBeam(
+        pose, config, range_min_m, range_max_m, angle_min_rad, angle_increment_rad,
+        beam_index, last_scan_.ranges[beam_index]);
+    if (projection.status == LidarBeamProjectionStatus::kAccepted && projection.hit &&
+        projection.endpoint_xyz_valid && std::isfinite(projection.endpoint_map_m.x) &&
+        std::isfinite(projection.endpoint_map_m.y) &&
+        std::isfinite(projection.endpoint_map_m.z)) {
+      points.push_back(projection.endpoint_map_m);
+    }
+  }
+  return points;
 }
 
 [[nodiscard]] std::optional<GridImageView> LidarDebugNode::gridImageView() const {

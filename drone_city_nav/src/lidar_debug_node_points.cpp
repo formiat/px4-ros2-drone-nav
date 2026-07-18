@@ -196,4 +196,12 @@ void LidarDebugNode::publishPointCloud(
   publisher->publish(cloud);
 }
 
+void LidarDebugNode::publishRawLidarPointCloud(const std::vector<Point3>& points) {
+  if (!raw_lidar_3d_pointcloud_pub_) {
+    return;
+  }
+  raw_lidar_3d_pointcloud_pub_->publish(
+      buildLidarDebugPointCloud(points, last_scan_.header.stamp, "map"));
+}
+
 } // namespace drone_city_nav

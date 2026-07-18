@@ -65,6 +65,7 @@ must not be applied to the control path consumed by offboard flight logic.
 - Raw Memory Hit Origins 3D: exact lidar trigger endpoints that first made the
   corresponding active memory cells occupied.
 - Current lidar hits: current scan projection into the map.
+- Raw lidar returns 3D: current scan returns at their transformed 3D endpoints.
 - Corridor: left/right/free-space bounds around the rough route.
 - Known passages: 3D passage annotations from
   `/drone_city_nav/known_passage_markers`.
@@ -101,6 +102,25 @@ or a voxel map. When a memory cell is no longer occupied, both its planning
 point and its 3D trigger point disappear on their next debug update. This layer
 is distinct from `/drone_city_nav/remembered_lidar_points`, which is a separate
 lidar debug accumulator rather than authoritative obstacle memory.
+
+## Current Lidar Layers
+
+RViz displays the current scan in two complementary layers:
+
+- `Lidar Hit Points` is the existing 2D debug view on the configured ground
+  visualization plane.
+- `Raw Lidar Returns 3D` subscribes to
+  `/drone_city_nav/raw_lidar_hit_points_3d`. It contains every valid physical
+  return from the latest scan at its map-frame XYZ endpoint after pose,
+  attitude, and lidar-mount transformation.
+
+The 3D layer is published directly from each scan with volatile QoS. It does
+not enter obstacle memory, classifier/ground filtering, trajectory planning, or
+the lidar debug accumulator. Mapping-specific projected-altitude limits are
+intentionally disabled for this visualization, so a tilted lidar can show the
+ground or a passage upper/lower mass. An empty scan or unavailable pose publishes
+an empty cloud, clearing the previous 3D scan from RViz. Its Z uses the same
+intentional Gazebo-aligned compensation as other 3D debug layers.
 
 ## Known Passage Markers
 

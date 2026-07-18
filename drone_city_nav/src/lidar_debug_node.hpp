@@ -86,6 +86,8 @@ private:
 
   [[nodiscard]] LidarProjectionConfig lidarProjectionConfig() const;
 
+  [[nodiscard]] LidarProjectionConfig rawLidarVisualizationProjectionConfig() const;
+
   [[nodiscard]] LidarBeamProjection projectScanBeam(const std::size_t beam_index,
                                                     const float raw_range) const;
 
@@ -93,6 +95,8 @@ private:
 
   [[nodiscard]] std::vector<LidarSnapshotCsvRow>
   collectScanRows(LidarSnapshotStats& stats) const;
+
+  [[nodiscard]] std::vector<Point3> collectRawLidarHitPoints3D() const;
 
   [[nodiscard]] std::optional<GridImageView> gridImageView() const;
 
@@ -125,8 +129,11 @@ private:
       const std::vector<Point2>& points, const double z_m,
       const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
 
+  void publishRawLidarPointCloud(const std::vector<Point3>& points);
+
   std::string output_dir_;
   std::string pointcloud_topic_;
+  std::string raw_lidar_3d_pointcloud_topic_;
   std::string remembered_pointcloud_topic_;
   std::string prohibited_pointcloud_topic_;
   std::string raw_memory_pointcloud_topic_;
@@ -220,6 +227,8 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+      raw_lidar_3d_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       remembered_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr

@@ -28,6 +28,7 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   max_logged_hit_points_ = config.max_logged_hit_points;
   max_snapshots_ = config.max_snapshots;
   pointcloud_topic_ = config.topics.pointcloud;
+  raw_lidar_3d_pointcloud_topic_ = config.topics.raw_lidar_3d_pointcloud;
   remembered_pointcloud_topic_ = config.topics.remembered_pointcloud;
   prohibited_pointcloud_topic_ = config.topics.prohibited_pointcloud;
   raw_memory_pointcloud_topic_ = config.topics.raw_memory_pointcloud;
@@ -88,6 +89,8 @@ LidarDebugNode::LidarDebugNode()
       });
   pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
       pointcloud_topic_, rclcpp::QoS{1}.reliable());
+  raw_lidar_3d_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+      raw_lidar_3d_pointcloud_topic_, rclcpp::QoS{1}.reliable());
   remembered_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
       remembered_pointcloud_topic_, rclcpp::QoS{1}.reliable().transient_local());
   prohibited_pointcloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -98,38 +101,39 @@ LidarDebugNode::LidarDebugNode()
   timer_ = create_wall_timer(std::chrono::duration<double>{snapshot_period_s_},
                              [this]() { writeSnapshot(); });
 
-  RCLCPP_INFO(get_logger(),
-              "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
-              "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
-              "memory_grid='%s' path='%s' "
-              "pose='%s' attitude='%s' current_hits='%s' remembered_hits='%s' "
-              "prohibited_points='%s' raw_memory_points='%s' "
-              "hit_memory_resolution=%.2fm "
-              "min_remember_altitude=%.2fm "
-              "max_remembered_hits=%zu "
-              "compensate_attitude=%s lidar_z_offset=%.2f "
-              "projected_altitude_range=[%.2f, %.2f] "
-              "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
-              "motion_compensation=%s pose_latency=%.3fs "
-              "scan_duration_override=%.3fs "
-              "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f, "
-              "raw_memory=%.2f] "
-              "yaw_source=%s initial_heading=%.3f",
-              output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
-              topics.lidar.c_str(), topics.prohibited_grid.c_str(),
-              topics.memory_grid.c_str(), topics.path.c_str(),
-              topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
-              pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
-              prohibited_pointcloud_topic_.c_str(),
-              raw_memory_pointcloud_topic_.c_str(), hit_memory_resolution_m_,
-              min_remember_altitude_m_, max_remembered_hit_points_,
-              compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
-              min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-              lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
-              motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
-              lidar_scan_duration_override_s_, current_pointcloud_z_m_,
-              remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
-              raw_memory_pointcloud_z_m_, yawSourceName(), initial_heading_rad_);
+  RCLCPP_INFO(
+      get_logger(),
+      "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
+      "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
+      "memory_grid='%s' path='%s' "
+      "pose='%s' attitude='%s' current_hits='%s' raw_current_hits_3d='%s' "
+      "remembered_hits='%s' "
+      "prohibited_points='%s' raw_memory_points='%s' "
+      "hit_memory_resolution=%.2fm "
+      "min_remember_altitude=%.2fm "
+      "max_remembered_hits=%zu "
+      "compensate_attitude=%s lidar_z_offset=%.2f "
+      "projected_altitude_range=[%.2f, %.2f] "
+      "lidar_mount_rpy=(%.3f, %.3f, %.3f) "
+      "motion_compensation=%s pose_latency=%.3fs "
+      "scan_duration_override=%.3fs "
+      "pointcloud_z[current=%.2f, remembered=%.2f, prohibited=%.2f, "
+      "raw_memory=%.2f] "
+      "yaw_source=%s initial_heading=%.3f",
+      output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
+      topics.lidar.c_str(), topics.prohibited_grid.c_str(), topics.memory_grid.c_str(),
+      topics.path.c_str(), topics.px4_local_position.c_str(),
+      topics.px4_vehicle_attitude.c_str(), pointcloud_topic_.c_str(),
+      raw_lidar_3d_pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
+      prohibited_pointcloud_topic_.c_str(), raw_memory_pointcloud_topic_.c_str(),
+      hit_memory_resolution_m_, min_remember_altitude_m_, max_remembered_hit_points_,
+      compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
+      min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
+      lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+      motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
+      lidar_scan_duration_override_s_, current_pointcloud_z_m_,
+      remembered_pointcloud_z_m_, prohibited_pointcloud_z_m_,
+      raw_memory_pointcloud_z_m_, yawSourceName(), initial_heading_rad_);
 }
 
 } // namespace drone_city_nav

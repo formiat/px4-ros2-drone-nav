@@ -53,6 +53,7 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   last_scan_stamp_ns_ = toNanoseconds(msg.header.stamp);
 
   if (!pose_seen_) {
+    publishRawLidarPointCloud({});
     return;
   }
 
@@ -88,6 +89,7 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   last_scan_stats_ = stats;
   last_scan_hit_points_ = stats.hit_points;
   last_scan_projection_seen_ = true;
+  publishRawLidarPointCloud(collectRawLidarHitPoints3D());
 
   rememberHitPoints(last_scan_hit_points_);
   publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);

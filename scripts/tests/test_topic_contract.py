@@ -288,6 +288,41 @@ class TopicContractTest(unittest.TestCase):
         )
         self.assertNotIn(topic, runtime_inputs)
 
+    def test_raw_lidar_3d_pointcloud_is_current_scan_debug_only(self) -> None:
+        topic = "/drone_city_nav/raw_lidar_hit_points_3d"
+        yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
+        self.assertEqual(
+            yaml_text.count(f"raw_lidar_3d_pointcloud_topic: {topic}"), 1
+        )
+
+        for relative_path in (
+            "drone_city_nav/rviz/city_nav_debug.rviz",
+            "drone_city_nav/rviz/city_nav_debug_top_down.rviz",
+        ):
+            with self.subTest(relative_path=relative_path):
+                rviz_text = read(relative_path)
+                display_name_index = rviz_text.index("Name: Raw Lidar Returns 3D")
+                display_prefix = rviz_text[
+                    max(0, display_name_index - 300) : display_name_index
+                ]
+                self.assertIn("Enabled: true", display_prefix)
+                self.assertIn("Decay Time: 0", display_prefix)
+                self.assertEqual(rviz_text.count(f"Value: {topic}"), 1)
+
+        debug_node = read("drone_city_nav/src/lidar_debug_node_callbacks.cpp")
+        self.assertIn("publishRawLidarPointCloud(collectRawLidarHitPoints3D())", debug_node)
+        self.assertIn("publishRawLidarPointCloud({})", debug_node)
+        self.assertNotIn("rememberHitPoints(collectRawLidarHitPoints3D())", debug_node)
+
+        lifecycle = read("drone_city_nav/src/lidar_debug_node_lifecycle.cpp")
+        self.assertRegex(
+            lifecycle,
+            r"(?s)raw_lidar_3d_pointcloud_pub_\s*=\s*"
+            r"create_publisher<sensor_msgs::msg::PointCloud2>\(\s*"
+            r"raw_lidar_3d_pointcloud_topic_\s*,\s*"
+            r"rclcpp::QoS\{1\}\.reliable\(\)\s*\);",
+        )
+
     def test_known_passage_marker_contract_is_wired_for_debugging(self) -> None:
         yaml_text = read("drone_city_nav/config/urban_mvp.yaml")
         rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")

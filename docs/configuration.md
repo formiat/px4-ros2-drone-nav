@@ -67,6 +67,11 @@ diagnostics-only PointCloud2 derived from active occupancy-trigger provenance at
 `obstacle_memory_snapshot_topic`, does not affect memory scoring or planning,
 and has no separate enable parameter.
 
+`raw_lidar_3d_pointcloud_topic` defaults to
+`/drone_city_nav/raw_lidar_hit_points_3d`. It is a volatile, current-scan-only
+visualization topic from `lidar_debug_node`; it is not an obstacle-memory,
+planner, or control input.
+
 Known passages:
 
 - `known_passages_enabled`

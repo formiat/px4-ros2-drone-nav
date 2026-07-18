@@ -19,6 +19,7 @@ struct LidarDebugNodeTopics {
   std::string memory_grid{"/drone_city_nav/obstacle_memory_grid"};
   std::string path{"/drone_city_nav/final_trajectory_path"};
   std::string pointcloud{"/drone_city_nav/lidar_debug_points"};
+  std::string raw_lidar_3d_pointcloud{"/drone_city_nav/raw_lidar_hit_points_3d"};
   std::string remembered_pointcloud{"/drone_city_nav/remembered_lidar_points"};
   std::string prohibited_pointcloud{"/drone_city_nav/prohibited_obstacle_points"};
   std::string raw_memory_pointcloud{"/drone_city_nav/raw_memory_obstacle_points"};

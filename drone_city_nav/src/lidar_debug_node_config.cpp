@@ -90,6 +90,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       node.declare_parameter<std::string>("path_topic", config.topics.path);
   config.topics.pointcloud =
       node.declare_parameter<std::string>("pointcloud_topic", config.topics.pointcloud);
+  config.topics.raw_lidar_3d_pointcloud = node.declare_parameter<std::string>(
+      "raw_lidar_3d_pointcloud_topic", config.topics.raw_lidar_3d_pointcloud);
   config.topics.remembered_pointcloud = node.declare_parameter<std::string>(
       "remembered_pointcloud_topic", config.topics.remembered_pointcloud);
   config.topics.prohibited_pointcloud = node.declare_parameter<std::string>(

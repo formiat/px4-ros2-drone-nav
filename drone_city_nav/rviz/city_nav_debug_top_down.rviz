@@ -105,6 +105,20 @@ Visualization Manager:
       Style: Spheres
       Topic:
         Value: /drone_city_nav/lidar_debug_points
+    - Alpha: 0.95
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 60; 220; 220
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Raw Lidar Returns 3D
+      Position Transformer: XYZ
+      Size (Pixels): 4
+      Size (m): 0.20
+      Style: Spheres
+      Topic:
+        Value: /drone_city_nav/raw_lidar_hit_points_3d
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Class: rviz_default_plugins/PointCloud2

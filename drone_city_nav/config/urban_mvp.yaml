@@ -334,6 +334,7 @@ lidar_debug_node:
     memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     path_topic: /drone_city_nav/final_trajectory_path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
+    raw_lidar_3d_pointcloud_topic: /drone_city_nav/raw_lidar_hit_points_3d
     remembered_pointcloud_topic: /drone_city_nav/remembered_lidar_points
     prohibited_pointcloud_topic: /drone_city_nav/prohibited_obstacle_points
     raw_memory_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points
