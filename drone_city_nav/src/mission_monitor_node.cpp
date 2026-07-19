@@ -9,14 +9,17 @@
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace drone_city_nav {
@@ -34,6 +37,38 @@ struct BuildingVolume {
   double max_z_m{std::numeric_limits<double>::infinity()};
 };
 
+enum class PassageVolumeBoundary : std::uint8_t {
+  kDepthEntry,
+  kDepthExit,
+  kLateralNegative,
+  kLateralPositive,
+  kVerticalLower,
+  kVerticalUpper,
+};
+
+struct PassageVolumeMargins {
+  double depth_m{std::numeric_limits<double>::infinity()};
+  double lateral_m{std::numeric_limits<double>::infinity()};
+  double vertical_m{std::numeric_limits<double>::infinity()};
+  double volume_m{std::numeric_limits<double>::infinity()};
+  PassageVolumeBoundary nearest_boundary{PassageVolumeBoundary::kDepthEntry};
+};
+
+struct PassageVolumeMinimumSample {
+  Point2 position{};
+  KnownPassageOpeningLocalPoint local{};
+  PassageVolumeMargins margins{};
+  bool valid{false};
+};
+
+struct PassageVolumeMinimumDiagnostics {
+  const char* opening_id{"none"};
+  const char* boundary{"none"};
+  PassageVolumeMargins margins{};
+  Point2 position{};
+  double altitude_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 struct MonitoredOpening {
   std::string id;
   PassageOpening opening{};
@@ -41,10 +76,57 @@ struct MonitoredOpening {
   double min_lateral_clearance_m{std::numeric_limits<double>::infinity()};
   double min_vertical_clearance_m{std::numeric_limits<double>::infinity()};
   double min_geometric_clearance_m{std::numeric_limits<double>::infinity()};
+  double min_depth_margin_m{std::numeric_limits<double>::infinity()};
   double min_volume_margin_m{std::numeric_limits<double>::infinity()};
+  PassageVolumeMinimumSample min_volume_sample{};
   std::size_t samples_inside{0U};
   bool seen{false};
 };
+
+[[nodiscard]] const char*
+passageVolumeBoundaryName(const PassageVolumeBoundary boundary) noexcept {
+  switch (boundary) {
+    case PassageVolumeBoundary::kDepthEntry:
+      return "depth_entry";
+    case PassageVolumeBoundary::kDepthExit:
+      return "depth_exit";
+    case PassageVolumeBoundary::kLateralNegative:
+      return "lateral_negative";
+    case PassageVolumeBoundary::kLateralPositive:
+      return "lateral_positive";
+    case PassageVolumeBoundary::kVerticalLower:
+      return "vertical_lower";
+    case PassageVolumeBoundary::kVerticalUpper:
+      return "vertical_upper";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] PassageVolumeMargins
+passageVolumeMargins(const KnownPassageOpeningLocalPoint& local,
+                     const PassageOpening& opening,
+                     const KnownPassageOpeningFrame& frame) noexcept {
+  const std::array boundary_margins{
+      std::pair{frame.half_depth_m + local.u_m, PassageVolumeBoundary::kDepthEntry},
+      std::pair{frame.half_depth_m - local.u_m, PassageVolumeBoundary::kDepthExit},
+      std::pair{frame.half_width_m + local.v_m,
+                PassageVolumeBoundary::kLateralNegative},
+      std::pair{frame.half_width_m - local.v_m,
+                PassageVolumeBoundary::kLateralPositive},
+      std::pair{local.z_m - opening.min_z_m, PassageVolumeBoundary::kVerticalLower},
+      std::pair{opening.max_z_m - local.z_m, PassageVolumeBoundary::kVerticalUpper},
+  };
+  const auto* const nearest = std::min_element(
+      boundary_margins.begin(), boundary_margins.end(),
+      [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+  return PassageVolumeMargins{
+      .depth_m = std::min(boundary_margins[0].first, boundary_margins[1].first),
+      .lateral_m = std::min(boundary_margins[2].first, boundary_margins[3].first),
+      .vertical_m = std::min(boundary_margins[4].first, boundary_margins[5].first),
+      .volume_m = nearest->first,
+      .nearest_boundary = nearest->second,
+  };
+}
 
 [[nodiscard]] double
 speed2D(const px4_msgs::msg::VehicleLocalPosition& position) noexcept {
@@ -447,19 +529,18 @@ private:
           KnownPassageOpeningWorldPoint{
               .point = position, .z_m = altitude_m, .s_m = 0.0},
           monitored.frame);
-      const double margin_m = knownPassageOpeningSignedVolumeMarginM(
-          local, monitored.opening, monitored.frame);
+      const PassageVolumeMargins margins =
+          passageVolumeMargins(local, monitored.opening, monitored.frame);
+      const double margin_m = margins.volume_m;
       if (margin_m < 0.0) {
         continue;
       }
 
-      const double lateral_clearance_m =
-          knownPassageOpeningLateralClearanceM(local, monitored.frame);
-      const double vertical_clearance_m =
-          knownPassageOpeningVerticalClearanceM(local, monitored.opening);
+      const double lateral_clearance_m = margins.lateral_m;
+      const double vertical_clearance_m = margins.vertical_m;
       const double geometric_clearance_m =
           std::min(lateral_clearance_m, vertical_clearance_m);
-      const double depth_margin_m = monitored.frame.half_depth_m - std::abs(local.u_m);
+      const double depth_margin_m = margins.depth_m;
       ++monitored.samples_inside;
       monitored.min_lateral_clearance_m =
           std::min(monitored.min_lateral_clearance_m, lateral_clearance_m);
@@ -467,7 +548,17 @@ private:
           std::min(monitored.min_vertical_clearance_m, vertical_clearance_m);
       monitored.min_geometric_clearance_m =
           std::min(monitored.min_geometric_clearance_m, geometric_clearance_m);
-      monitored.min_volume_margin_m = std::min(monitored.min_volume_margin_m, margin_m);
+      monitored.min_depth_margin_m =
+          std::min(monitored.min_depth_margin_m, depth_margin_m);
+      if (margin_m < monitored.min_volume_margin_m) {
+        monitored.min_volume_margin_m = margin_m;
+        monitored.min_volume_sample = PassageVolumeMinimumSample{
+            .position = position,
+            .local = local,
+            .margins = margins,
+            .valid = true,
+        };
+      }
       min_actual_passage_clearance_m_ =
           std::min(min_actual_passage_clearance_m_, geometric_clearance_m);
       min_actual_passage_volume_margin_m_ =
@@ -480,26 +571,76 @@ private:
                     "position=(%.2f, %.2f) altitude=%.2f local=(depth=%.2f "
                     "lateral=%.2f) depth_margin=%.2f lateral_clearance=%.2f "
                     "vertical_clearance=%.2f geometric_clearance=%.2f "
-                    "volume_margin=%.2f",
+                    "volume_margin=%.2f nearest_volume_boundary='%s'",
                     monitored.id.c_str(), position.x, position.y, altitude_m, local.u_m,
                     local.v_m, depth_margin_m, lateral_clearance_m,
-                    vertical_clearance_m, geometric_clearance_m, margin_m);
+                    vertical_clearance_m, geometric_clearance_m, margin_m,
+                    passageVolumeBoundaryName(margins.nearest_boundary));
       }
     }
   }
 
   void logKnownPassageMetrics() const {
     for (const MonitoredOpening& monitored : monitored_openings_) {
-      RCLCPP_INFO(get_logger(),
-                  "MISSION_CHECK actual_passage_opening_metrics id='%s' seen=%s "
-                  "samples_inside=%zu "
-                  "min_lateral_clearance=%.2f min_vertical_clearance=%.2f "
-                  "min_geometric_clearance=%.2f min_volume_margin=%.2f",
-                  monitored.id.c_str(), monitored.seen ? "true" : "false",
-                  monitored.samples_inside, monitored.min_lateral_clearance_m,
-                  monitored.min_vertical_clearance_m,
-                  monitored.min_geometric_clearance_m, monitored.min_volume_margin_m);
+      RCLCPP_INFO(
+          get_logger(),
+          "MISSION_CHECK actual_passage_opening_metrics id='%s' seen=%s "
+          "samples_inside=%zu "
+          "min_lateral_clearance=%.2f min_vertical_clearance=%.2f "
+          "min_depth_margin=%.2f min_geometric_clearance=%.2f "
+          "min_volume_margin=%.2f min_volume_boundary='%s' "
+          "min_volume_components=[depth=%.2f lateral=%.2f vertical=%.2f] "
+          "min_volume_position=(%.2f, %.2f, %.2f) "
+          "min_volume_local=(depth=%.2f lateral=%.2f)",
+          monitored.id.c_str(), monitored.seen ? "true" : "false",
+          monitored.samples_inside, monitored.min_lateral_clearance_m,
+          monitored.min_vertical_clearance_m, monitored.min_depth_margin_m,
+          monitored.min_geometric_clearance_m, monitored.min_volume_margin_m,
+          monitored.min_volume_sample.valid
+              ? passageVolumeBoundaryName(
+                    monitored.min_volume_sample.margins.nearest_boundary)
+              : "none",
+          monitored.min_volume_sample.margins.depth_m,
+          monitored.min_volume_sample.margins.lateral_m,
+          monitored.min_volume_sample.margins.vertical_m,
+          monitored.min_volume_sample.position.x,
+          monitored.min_volume_sample.position.y, monitored.min_volume_sample.local.z_m,
+          monitored.min_volume_sample.local.u_m, monitored.min_volume_sample.local.v_m);
     }
+  }
+
+  [[nodiscard]] PassageVolumeMinimumDiagnostics
+  minimumPassageVolumeDiagnostics() const noexcept {
+    const auto minimum =
+        std::min_element(monitored_openings_.begin(), monitored_openings_.end(),
+                         [](const MonitoredOpening& lhs, const MonitoredOpening& rhs) {
+                           return lhs.min_volume_margin_m < rhs.min_volume_margin_m;
+                         });
+    if (minimum == monitored_openings_.end() || !minimum->min_volume_sample.valid) {
+      const double unavailable = std::numeric_limits<double>::quiet_NaN();
+      return PassageVolumeMinimumDiagnostics{
+          .opening_id = "none",
+          .boundary = "none",
+          .margins =
+              PassageVolumeMargins{
+                  .depth_m = unavailable,
+                  .lateral_m = unavailable,
+                  .vertical_m = unavailable,
+                  .volume_m = unavailable,
+              },
+          .position = Point2{unavailable, unavailable},
+          .altitude_m = unavailable,
+      };
+    }
+
+    return PassageVolumeMinimumDiagnostics{
+        .opening_id = minimum->id.c_str(),
+        .boundary = passageVolumeBoundaryName(
+            minimum->min_volume_sample.margins.nearest_boundary),
+        .margins = minimum->min_volume_sample.margins,
+        .position = minimum->min_volume_sample.position,
+        .altitude_m = minimum->min_volume_sample.local.z_m,
+    };
   }
 
   [[nodiscard]] bool isArmedOrWasArmed() {
@@ -514,6 +655,8 @@ private:
   void reportSuccess() {
     result_reported_ = true;
     logKnownPassageMetrics();
+    const PassageVolumeMinimumDiagnostics volume_minimum =
+        minimumPassageVolumeDiagnostics();
     RCLCPP_INFO(get_logger(),
                 "MISSION_RESULT success=true spawn_distance=%.2f "
                 "max_distance_from_start=%.2f min_goal_distance=%.2f "
@@ -521,18 +664,29 @@ private:
                 "final_altitude=%.2f final_speed=%.2f max_observed_speed=%.2f "
                 "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
                 "known_passage_openings=%zu min_actual_passage_clearance=%.2f "
-                "min_actual_passage_volume_margin=%.2f",
+                "min_actual_passage_volume_margin=%.2f "
+                "min_actual_passage_volume_opening='%s' "
+                "min_actual_passage_volume_boundary='%s' "
+                "min_actual_passage_volume_components=[depth=%.2f lateral=%.2f "
+                "vertical=%.2f] min_actual_passage_volume_position=(%.2f, %.2f, "
+                "%.2f)",
                 spawn_distance_m_, max_distance_from_start_m_, min_goal_distance_m_,
                 min_building_clearance_m_, latest_position_.x, latest_position_.y,
                 latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
                 meanObservedSpeedMps(), actual_passage_openings_seen_,
                 monitored_openings_.size(), min_actual_passage_clearance_m_,
-                min_actual_passage_volume_margin_m_);
+                min_actual_passage_volume_margin_m_, volume_minimum.opening_id,
+                volume_minimum.boundary, volume_minimum.margins.depth_m,
+                volume_minimum.margins.lateral_m, volume_minimum.margins.vertical_m,
+                volume_minimum.position.x, volume_minimum.position.y,
+                volume_minimum.altitude_m);
   }
 
   void reportFailure(const std::string& reason) {
     result_reported_ = true;
     logKnownPassageMetrics();
+    const PassageVolumeMinimumDiagnostics volume_minimum =
+        minimumPassageVolumeDiagnostics();
     RCLCPP_ERROR(get_logger(),
                  "MISSION_RESULT success=false reason='%s' spawn_distance=%.2f "
                  "max_distance_from_start=%.2f min_goal_distance=%.2f "
@@ -540,13 +694,22 @@ private:
                  "latest_altitude=%.2f latest_speed=%.2f max_observed_speed=%.2f "
                  "mean_observed_speed=%.2f actual_passage_openings_seen=%zu "
                  "known_passage_openings=%zu min_actual_passage_clearance=%.2f "
-                 "min_actual_passage_volume_margin=%.2f",
+                 "min_actual_passage_volume_margin=%.2f "
+                 "min_actual_passage_volume_opening='%s' "
+                 "min_actual_passage_volume_boundary='%s' "
+                 "min_actual_passage_volume_components=[depth=%.2f lateral=%.2f "
+                 "vertical=%.2f] min_actual_passage_volume_position=(%.2f, %.2f, "
+                 "%.2f)",
                  reason.c_str(), spawn_distance_m_, max_distance_from_start_m_,
                  min_goal_distance_m_, min_building_clearance_m_, latest_position_.x,
                  latest_position_.y, latest_altitude_m_, latest_speed_mps_,
                  max_observed_speed_mps_, meanObservedSpeedMps(),
                  actual_passage_openings_seen_, monitored_openings_.size(),
-                 min_actual_passage_clearance_m_, min_actual_passage_volume_margin_m_);
+                 min_actual_passage_clearance_m_, min_actual_passage_volume_margin_m_,
+                 volume_minimum.opening_id, volume_minimum.boundary,
+                 volume_minimum.margins.depth_m, volume_minimum.margins.lateral_m,
+                 volume_minimum.margins.vertical_m, volume_minimum.position.x,
+                 volume_minimum.position.y, volume_minimum.altitude_m);
   }
 
   void logSummary() {
@@ -554,6 +717,8 @@ private:
       return;
     }
     const bool armed_seen = isArmedOrWasArmed();
+    const PassageVolumeMinimumDiagnostics volume_minimum =
+        minimumPassageVolumeDiagnostics();
 
     RCLCPP_INFO(
         get_logger(),
@@ -562,7 +727,11 @@ private:
         "max_observed_speed=%.2f mean_observed_speed=%.2f "
         "distance_to_start=%.2f distance_to_goal=%.2f max_distance_from_start=%.2f "
         "min_building_clearance=%.2f actual_passage_openings_seen=%zu/%zu "
-        "min_actual_passage_clearance=%.2f min_actual_passage_volume_margin=%.2f",
+        "min_actual_passage_clearance=%.2f min_actual_passage_volume_margin=%.2f "
+        "min_actual_passage_volume_opening='%s' "
+        "min_actual_passage_volume_boundary='%s' "
+        "min_actual_passage_volume_components=[depth=%.2f lateral=%.2f "
+        "vertical=%.2f] min_actual_passage_volume_position=(%.2f, %.2f, %.2f)",
         spawn_ok_ ? "true" : "false", movement_ok_ ? "true" : "false",
         armed_seen ? "true" : "false", latest_position_.x, latest_position_.y,
         latest_altitude_m_, latest_speed_mps_, max_observed_speed_mps_,
@@ -570,7 +739,11 @@ private:
         distance(latest_position_, goal_), max_distance_from_start_m_,
         min_building_clearance_m_, actual_passage_openings_seen_,
         monitored_openings_.size(), min_actual_passage_clearance_m_,
-        min_actual_passage_volume_margin_m_);
+        min_actual_passage_volume_margin_m_, volume_minimum.opening_id,
+        volume_minimum.boundary, volume_minimum.margins.depth_m,
+        volume_minimum.margins.lateral_m, volume_minimum.margins.vertical_m,
+        volume_minimum.position.x, volume_minimum.position.y,
+        volume_minimum.altitude_m);
   }
 
   [[nodiscard]] double meanObservedSpeedMps() const noexcept {

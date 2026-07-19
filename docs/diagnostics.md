@@ -91,10 +91,28 @@ while the actual vehicle position is inside an opening. The volume margin also
 includes depth to the entry/exit plane, so it is expected to approach zero for
 a normal traversal and must not be interpreted as wall clearance.
 
+The same summary and result lines identify the sample responsible for the
+minimum volume margin using:
+
+- `min_actual_passage_volume_opening`
+- `min_actual_passage_volume_boundary`
+- `min_actual_passage_volume_components=[depth=... lateral=... vertical=...]`
+- `min_actual_passage_volume_position=(x, y, z)`
+
+Boundary names distinguish `depth_entry`, `depth_exit`, `lateral_negative`,
+`lateral_positive`, `vertical_lower`, and `vertical_upper`. Entry and exit are
+defined by the opening normal: entry is the negative-normal plane and exit is
+the positive-normal plane. These fields make a small depth-plane margin
+distinguishable from a small clearance to the lateral or vertical solid
+geometry.
+
 At mission completion, one `actual_passage_opening_metrics` line is emitted per
 annotated opening. It contains the opening id, whether it was seen, the number
-of actual samples inside it, and independent minimum lateral, vertical,
-geometric, and volume margins. These fields are runtime diagnostics only:
+of actual samples inside it, and independent minimum lateral, vertical, depth,
+geometric, and volume margins. It also reports the boundary, world position,
+local depth/lateral coordinates, and all three component margins at the sample
+that produced that opening's minimum volume margin. These fields are runtime
+diagnostics only:
 ordinary building collision volumes still define whether the drone hit a solid
 part of a building, while an opening is just free space between those solid
 volumes.
