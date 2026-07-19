@@ -36,17 +36,20 @@ Important parameters:
 - lidar pose latency and attitude compensation settings.
 
 Before a current lidar hit is written into the overlay, the always-on 3D known
-static classifier compares its map-frame ray and measured range with the known
-passage-building solids. A confident matching physical-solid hit is suppressed.
-A closer hit, a hit through a free opening, and a boundary or otherwise
-ambiguous hit remains in the overlay. This decision is independent of the
-current trajectory and distance to a passage.
+static classifier compares its map-frame ray, measured range, and endpoint XYZ
+with the known passage-building solids and opening volumes. A confident
+physical-solid hit is suppressed. A hit clearly separated from the solid or
+inside a free opening remains in the overlay immediately. A near-surface,
+edge, or otherwise ambiguous known-static hit remains pending and does not
+change the overlay until independent viewpoints resolve its geometry. This
+decision is independent of the current trajectory and distance to a passage.
 
 The same decision is applied before a hit changes obstacle-memory scores. It is
-range-based rather than a blanket spatial exclusion around an opening, so an
-unknown object in front of a known wall or inside free opening space remains
-obstacle evidence. `known_passages.md` documents the 3D ray construction,
-asymmetric tolerances, and memory-reset behavior when known geometry changes.
+not a blanket spatial exclusion around an opening, so an unknown object clearly
+in front of a known wall or anywhere inside free opening space remains obstacle
+evidence. Pending observations perform neither hit integration nor free-space
+clearing. `known_passages.md` documents the 3D ray construction, endpoint
+relations, viewpoint confirmation, and memory-reset behavior.
 
 ## Obstacle Memory
 
@@ -135,10 +138,11 @@ grid. The decision compares the measured range with the nearest expected 3D
 surface along the map-frame ray. Providers currently include known passage
 solids and the configured flat ground plane.
 
-Only surfaces reachable within the beam's effective sensor range participate in
-the decision. If no provider has such a candidate, a valid measured hit remains
-ordinary `free_and_hit` evidence even when an unbounded diagnostic ray query
-could find known geometry farther away.
+Expected ray intersections are bounded by the beam's effective sensor range.
+The measured endpoint is also compared directly with the known 3D volumes, so
+a return within the configured spatial tolerance of a known surface is not
+misclassified merely because the analytic entry plane lies just beyond that
+range.
 
 Ground rejection is range based, not endpoint-distance based and not a global
 vehicle-tilt cutoff. A fast level-flight attitude therefore does not disable
@@ -153,7 +157,7 @@ expected_ground_range =
 The resulting policy is asymmetric:
 
 - a hit clearly before every nearest expected surface remains unknown-obstacle
-  evidence;
+  evidence when its endpoint is spatially detached from known geometry;
 - a return consistent with the ground is suppressed;
 - a ground-facing return beyond the allowed farther tolerance is ambiguous and
   is also suppressed fail-safe;
@@ -351,8 +355,8 @@ For an unexpected replan, inspect:
 4. Did planning clearance get mistaken for hard prohibited space?
 5. Did pose or attitude compensation shift the lidar overlay?
 6. Did obstacle memory keep an old obstacle longer than expected?
-7. Did the known-static classifier suppress only confident physical-solid hits,
-   while retaining closer, opening, or ambiguous hits?
+7. Did the known-static classifier suppress known solids, keep opening/detached
+   obstacles, and leave unresolved static-attached evidence non-mutating?
 8. Did the planner retain the previous trajectory while rebuilding?
 
 Answering these questions usually separates a real obstacle from a mapping

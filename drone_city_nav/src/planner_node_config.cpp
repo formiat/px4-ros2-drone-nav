@@ -84,7 +84,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                  0.0, 100.0);
   config.known_static_lidar_hit_endpoint_volume_tolerance_m =
       std::clamp(node.declare_parameter<double>(
-                     "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.5),
+                     "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
                  0.0, 10.0);
   config.ground_lidar_rejection.enabled =
       node.declare_parameter<bool>("ground_lidar_rejection_enabled", true);
@@ -273,6 +273,18 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
           1'000'000.0 * std::clamp(node.declare_parameter<double>(
                                        "ambiguous_lidar_hit_retention_ms", 2000.0),
                                    1.0, 60'000.0));
+  config.current_lidar.ambiguous_hit_confirmation.endpoint_voxel_size_m = std::clamp(
+      node.declare_parameter<double>("ambiguous_lidar_hit_voxel_size_m", 0.5), 0.1,
+      5.0);
+  config.current_lidar.ambiguous_hit_confirmation.min_viewpoint_translation_m =
+      std::clamp(node.declare_parameter<double>(
+                     "ambiguous_lidar_hit_min_viewpoint_shift_m", 0.5),
+                 0.0, 10.0);
+  config.current_lidar.ambiguous_hit_confirmation.min_viewpoint_direction_change_rad =
+      std::clamp(node.declare_parameter<double>(
+                     "ambiguous_lidar_hit_min_viewpoint_angle_deg", 4.0),
+                 0.0, 180.0) *
+      std::numbers::pi / 180.0;
   config.lidar_projection.compensate_attitude =
       node.declare_parameter<bool>("compensate_lidar_attitude", true);
   config.lidar_projection.lidar_mount_roll_rad =

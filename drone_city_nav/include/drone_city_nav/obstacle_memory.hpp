@@ -111,7 +111,7 @@ public:
                 const GroundLidarRejectionConfig* ground_config = nullptr);
 
   void reset();
-  void configureAmbiguousHitTracking(AmbiguousLidarHitTrackerConfig config);
+  void configureAmbiguousHitTracking(const AmbiguousLidarHitTrackerConfig& config);
 
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
   [[nodiscard]] const std::unordered_map<std::size_t, MemoryCellProvenance>&

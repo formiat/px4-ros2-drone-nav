@@ -46,6 +46,11 @@ void appendVolume(std::vector<KnownPassageSolidVolume>& volumes,
       .width_m = width_m,
       .min_z_m = min_z_m,
       .max_z_m = max_z_m,
+      .opening_center = frame.center,
+      .opening_depth_m = opening.depth_m,
+      .opening_width_m = opening.width_m,
+      .opening_min_z_m = opening.min_z_m,
+      .opening_max_z_m = opening.max_z_m,
   });
 }
 

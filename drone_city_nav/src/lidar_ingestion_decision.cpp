@@ -115,13 +115,53 @@ void appendDiagnostic(const LidarBeamObservation& observation,
       .structure_id = {},
       .opening_id = {},
       .part_id = {},
+      .endpoint_relation = KnownStaticEndpointRelation::kOutside,
+      .endpoint_solid_distance_m = std::numeric_limits<double>::infinity(),
+      .endpoint_opening_margin_m = -std::numeric_limits<double>::infinity(),
+      .distance_before_solid_m = std::numeric_limits<double>::quiet_NaN(),
+      .incidence_angle_rad = std::numeric_limits<double>::quiet_NaN(),
+      .ambiguous_resolution = decision.ambiguous_resolution,
+      .ambiguous_evidence_count = decision.ambiguous_evidence_count,
+      .ambiguous_viewpoint_translation_m = decision.ambiguous_viewpoint_translation_m,
+      .ambiguous_viewpoint_direction_change_rad =
+          decision.ambiguous_viewpoint_direction_change_rad,
   };
   if (decision.known_static_result_available) {
     diagnostic.structure_id = decision.known_static_result.structure_id;
     diagnostic.opening_id = decision.known_static_result.opening_id;
     diagnostic.part_id = decision.known_static_result.part_id;
+    diagnostic.endpoint_relation = decision.known_static_result.endpoint_relation;
+    diagnostic.endpoint_solid_distance_m =
+        decision.known_static_result.endpoint_solid_distance_m;
+    diagnostic.endpoint_opening_margin_m =
+        decision.known_static_result.endpoint_opening_margin_m;
+    diagnostic.distance_before_solid_m =
+        decision.known_static_result.distance_before_solid_m;
+    diagnostic.incidence_angle_rad = decision.known_static_result.incidence_angle_rad;
   }
   stats.diagnostics.push_back(std::move(diagnostic));
+}
+
+void applyKnownStaticResult(LidarIngestionDecision& decision,
+                            const KnownStaticLidarHitResult& result) noexcept {
+  decision.known_static_result = result;
+  decision.known_static_result_available = true;
+  decision.range_delta_m = result.range_delta_m;
+  if (result.endpoint_relation == KnownStaticEndpointRelation::kInsideOpening) {
+    decision.action = LidarIngestionAction::kIntegrateFreeAndHit;
+    decision.reason = LidarIngestionReason::kObstacleInsideOpening;
+    return;
+  }
+  decision.reason = knownStaticReason(result.classification);
+  switch (result.classification) {
+    case KnownStaticLidarHitClassification::kExpectedStatic:
+    case KnownStaticLidarHitClassification::kAmbiguous:
+      decision.action = LidarIngestionAction::kSuppressAllUpdates;
+      return;
+    case KnownStaticLidarHitClassification::kUnexpected:
+      decision.action = LidarIngestionAction::kIntegrateFreeAndHit;
+      return;
+  }
 }
 
 } // namespace
@@ -181,19 +221,28 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
     }
   }
 
+  const bool measured_hit =
+      observation.projection.hit && std::isfinite(observation.measured_range_m);
+  std::optional<KnownStaticLidarHitResult> measured_known_result;
+  if (known_static_classifier != nullptr && measured_hit) {
+    measured_known_result = known_static_classifier->classify(
+        observation.projection.ray_origin_map_m,
+        observation.projection.ray_direction_map, observation.measured_range_m);
+    if (measured_known_result->endpoint_relation ==
+        KnownStaticEndpointRelation::kInsideOpening) {
+      decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+      applyKnownStaticResult(decision, *measured_known_result);
+      return decision;
+    }
+  }
+
   if (!ground_candidate.has_value() && !known_candidate.has_value()) {
-    if (known_static_classifier != nullptr && observation.projection.hit &&
-        std::isfinite(observation.measured_range_m)) {
-      const KnownStaticLidarHitResult fallback_result =
-          known_static_classifier->classify(observation.projection.ray_origin_map_m,
-                                            observation.projection.ray_direction_map,
-                                            observation.measured_range_m);
-      if (fallback_result.classification !=
-          KnownStaticLidarHitClassification::kExpectedStatic) {
-        decision.known_static_result = fallback_result;
-        decision.known_static_result_available = true;
-        decision.reason = knownStaticReason(fallback_result.classification);
-      }
+    if (measured_known_result.has_value() &&
+        (measured_known_result->volume_matched ||
+         measured_known_result->endpoint_relation !=
+             KnownStaticEndpointRelation::kOutside)) {
+      decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+      applyKnownStaticResult(decision, *measured_known_result);
     }
     return decision;
   }
@@ -209,8 +258,6 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
   const bool known_tied =
       known_candidate.has_value() &&
       std::abs(known_candidate->range_m - nearest_range) <= kRangeTieToleranceM;
-  const bool measured_hit =
-      observation.projection.hit && std::isfinite(observation.measured_range_m);
   const bool hit_before_ground =
       !ground_tied || (measured_hit && observation.measured_range_m <
                                            ground_candidate->range_m -
@@ -222,16 +269,22 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
                                               known_candidate->closer_tolerance_m -
                                               kRangeComparisonEpsilonM);
   if (measured_hit && hit_before_ground && hit_before_known) {
+    if (known_tied && measured_known_result.has_value() &&
+        measured_known_result->classification !=
+            KnownStaticLidarHitClassification::kUnexpected) {
+      decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+      decision.expected_range_m = known_candidate->range_m;
+      applyKnownStaticResult(decision, *measured_known_result);
+      return decision;
+    }
     decision.action = LidarIngestionAction::kIntegrateFreeAndHit;
     decision.reason = LidarIngestionReason::kObstacleBeforeExpectedSurface;
     decision.expected_surface = ground_tied ? LidarExpectedSurfaceKind::kGround
                                             : LidarExpectedSurfaceKind::kKnownStatic;
     decision.expected_range_m = nearest_range;
     decision.range_delta_m = observation.measured_range_m - nearest_range;
-    if (known_tied) {
-      decision.known_static_result = known_static_classifier->classify(
-          observation.projection.ray_origin_map_m,
-          observation.projection.ray_direction_map, observation.measured_range_m);
+    if (known_tied && measured_known_result.has_value()) {
+      decision.known_static_result = *measured_known_result;
       decision.known_static_result_available = true;
     }
     return decision;
@@ -268,16 +321,12 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
       decision.action = LidarIngestionAction::kIntegrateFreeOnly;
       return decision;
     }
-    decision.known_static_result = known_static_classifier->classify(
-        observation.projection.ray_origin_map_m,
-        observation.projection.ray_direction_map, observation.measured_range_m);
-    decision.known_static_result_available = true;
-    decision.range_delta_m = decision.known_static_result.range_delta_m;
-    decision.reason = knownStaticReason(decision.known_static_result.classification);
-    decision.action = decision.known_static_result.classification ==
-                              KnownStaticLidarHitClassification::kExpectedStatic
-                          ? LidarIngestionAction::kIntegrateFreeOnly
-                          : LidarIngestionAction::kIntegrateFreeAndHit;
+    if (!measured_known_result.has_value()) {
+      decision.action = LidarIngestionAction::kSuppressAllUpdates;
+      decision.reason = LidarIngestionReason::kClassificationUnavailable;
+      return decision;
+    }
+    applyKnownStaticResult(decision, *measured_known_result);
     return decision;
   }
 
@@ -301,6 +350,65 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
   return decision;
 }
 
+LidarIngestionDecision
+resolveAmbiguousKnownStaticIngestion(const LidarBeamObservation& observation,
+                                     LidarIngestionDecision decision,
+                                     AmbiguousLidarHitTracker* tracker) {
+  if (!decision.known_static_result_available ||
+      decision.reason != LidarIngestionReason::kAmbiguousKnownStatic ||
+      decision.known_static_result.classification !=
+          KnownStaticLidarHitClassification::kAmbiguous) {
+    return decision;
+  }
+  decision.action = LidarIngestionAction::kSuppressAllUpdates;
+  decision.reason = LidarIngestionReason::kAmbiguousKnownStatic;
+  if (tracker == nullptr) {
+    return decision;
+  }
+  std::int64_t scan_stamp_ns = 0;
+  if (observation.scan_stamp_valid) {
+    scan_stamp_ns = observation.scan_stamp_ns;
+  } else if (observation.receive_stamp_valid) {
+    scan_stamp_ns = observation.receive_stamp_ns;
+  }
+  const KnownStaticLidarHitResult& result = decision.known_static_result;
+  const AmbiguousLidarHitConfirmation confirmation =
+      tracker->observe(AmbiguousStaticHitObservation{
+          .structure_id = result.structure_id,
+          .part_id = result.part_id,
+          .endpoint_map_m = observation.projection.endpoint_map_m,
+          .ray_origin_map_m = observation.projection.ray_origin_map_m,
+          .ray_direction_map = observation.projection.ray_direction_map,
+          .endpoint_relation = result.endpoint_relation,
+          .endpoint_solid_distance_m = result.endpoint_solid_distance_m,
+          .distance_before_solid_m = result.distance_before_solid_m,
+          .range_residual_m = result.range_delta_m,
+          .scan_stamp_ns = scan_stamp_ns,
+      });
+  decision.ambiguous_resolution = confirmation.resolution;
+  decision.ambiguous_evidence_count = confirmation.independent_scans;
+  decision.ambiguous_expired_candidates = confirmation.expired_candidates;
+  decision.ambiguous_viewpoint_translation_m = confirmation.viewpoint_translation_m;
+  decision.ambiguous_viewpoint_direction_change_rad =
+      confirmation.viewpoint_direction_change_rad;
+  switch (confirmation.resolution) {
+    case AmbiguousLidarHitResolution::kPending:
+      return decision;
+    case AmbiguousLidarHitResolution::kConfirmedStaticAttached:
+      decision.known_static_result.classification =
+          KnownStaticLidarHitClassification::kExpectedStatic;
+      decision.reason = LidarIngestionReason::kExpectedKnownStatic;
+      return decision;
+    case AmbiguousLidarHitResolution::kConfirmedDetachedObstacle:
+      decision.known_static_result.classification =
+          KnownStaticLidarHitClassification::kUnexpected;
+      decision.action = LidarIngestionAction::kIntegrateFreeAndHit;
+      decision.reason = LidarIngestionReason::kObstacleBeforeExpectedSurface;
+      return decision;
+  }
+  return decision;
+}
+
 LidarIngestionDecisionSnapshot
 makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept {
   return LidarIngestionDecisionSnapshot{
@@ -316,6 +424,10 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
                                   const LidarIngestionDecision& decision,
                                   const bool altitude_rejected,
                                   LidarIngestionDecisionStats& stats) {
+  const bool closer_side_known_static =
+      decision.known_static_result_available &&
+      std::isfinite(decision.known_static_result.distance_before_solid_m) &&
+      decision.known_static_result.distance_before_solid_m > 0.0;
   if (decision.ground_provider == LidarExpectedSurfaceProviderStatus::kUnavailable) {
     ++stats.ground_classification_unavailable;
     appendDiagnostic(observation, decision,
@@ -339,6 +451,18 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
                          LidarIngestionDiagnosticClass::kCloserObstacle, stats);
       }
       break;
+    case LidarIngestionReason::kObstacleInsideOpening:
+      ++stats.opening_obstacles_integrated;
+      appendDiagnostic(observation, decision,
+                       LidarIngestionDiagnosticClass::kOpeningObstacle, stats);
+      break;
+    case LidarIngestionReason::kAmbiguousKnownStatic:
+      if (closer_side_known_static) {
+        ++stats.closer_side_static_pending;
+      }
+      appendDiagnostic(observation, decision,
+                       LidarIngestionDiagnosticClass::kAmbiguousKnownStatic, stats);
+      break;
     case LidarIngestionReason::kAmbiguousGround:
     case LidarIngestionReason::kTiedExpectedSurfaces:
       ++stats.ambiguous_ground_suppressed;
@@ -348,6 +472,20 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
     default:
       break;
   }
+  if (closer_side_known_static &&
+      decision.reason == LidarIngestionReason::kExpectedKnownStatic) {
+    if (decision.ambiguous_resolution ==
+        AmbiguousLidarHitResolution::kConfirmedStaticAttached) {
+      ++stats.closer_side_static_confirmed;
+    } else {
+      ++stats.closer_side_static_suppressed;
+    }
+  }
+  if (decision.ambiguous_resolution ==
+      AmbiguousLidarHitResolution::kConfirmedDetachedObstacle) {
+    ++stats.detached_obstacles_confirmed;
+  }
+  stats.ambiguous_expired += decision.ambiguous_expired_candidates;
   const bool ground_explained =
       decision.expected_surface == LidarExpectedSurfaceKind::kGround ||
       decision.expected_surface == LidarExpectedSurfaceKind::kTied;
@@ -413,7 +551,19 @@ std::string formatLidarIngestionRepresentativeDiagnostics(
            << (observation.projection.attitude_compensation_applied ? "true" : "false")
            << " roll=" << observation.projection.applied_roll_rad
            << " pitch=" << observation.projection.applied_pitch_rad
-           << " tilt=" << observation.projection.applied_tilt_rad << ')';
+           << " tilt=" << observation.projection.applied_tilt_rad << ") pose_aligned="
+           << (observation.timestamp_aligned_pose ? "true" : "false")
+           << " endpoint_relation="
+           << knownStaticEndpointRelationName(diagnostic.endpoint_relation)
+           << " solid_distance=" << diagnostic.endpoint_solid_distance_m
+           << " opening_margin=" << diagnostic.endpoint_opening_margin_m
+           << " distance_before_solid=" << diagnostic.distance_before_solid_m
+           << " incidence_angle=" << diagnostic.incidence_angle_rad
+           << " evidence=" << diagnostic.ambiguous_evidence_count
+           << " viewpoint_translation=" << diagnostic.ambiguous_viewpoint_translation_m
+           << " viewpoint_direction_delta="
+           << diagnostic.ambiguous_viewpoint_direction_change_rad << " resolution="
+           << ambiguousLidarHitResolutionName(diagnostic.ambiguous_resolution);
   }
   return stream.str();
 }
@@ -424,6 +574,8 @@ const char* lidarIngestionReasonName(const LidarIngestionReason reason) noexcept
       return "no_expected_surface";
     case LidarIngestionReason::kObstacleBeforeExpectedSurface:
       return "obstacle_before_expected_surface";
+    case LidarIngestionReason::kObstacleInsideOpening:
+      return "obstacle_inside_opening";
     case LidarIngestionReason::kExpectedKnownStatic:
       return "expected_known_static";
     case LidarIngestionReason::kUnexpectedKnownStatic:
@@ -469,6 +621,10 @@ const char* lidarIngestionDiagnosticClassName(
       return "classification_disabled";
     case LidarIngestionDiagnosticClass::kNonGroundAltitudeRejected:
       return "non_ground_altitude_rejected";
+    case LidarIngestionDiagnosticClass::kAmbiguousKnownStatic:
+      return "ambiguous_known_static";
+    case LidarIngestionDiagnosticClass::kOpeningObstacle:
+      return "opening_obstacle";
     case LidarIngestionDiagnosticClass::kCount:
       break;
   }

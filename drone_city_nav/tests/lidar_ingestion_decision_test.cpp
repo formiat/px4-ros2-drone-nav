@@ -184,6 +184,44 @@ TEST(LidarIngestionDecision, LeavesUpwardBeamOnLegacyPath) {
   EXPECT_FALSE(decision.ground_candidate_considered);
 }
 
+TEST(LidarIngestionDecision, AmbiguousEvidenceCountsScansRatherThanIndividualBeams) {
+  AmbiguousLidarHitTracker tracker;
+  LidarIngestionDecision ambiguous{};
+  ambiguous.action = LidarIngestionAction::kSuppressAllUpdates;
+  ambiguous.reason = LidarIngestionReason::kAmbiguousKnownStatic;
+  ambiguous.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+  ambiguous.known_static_result_available = true;
+  ambiguous.known_static_result.classification =
+      KnownStaticLidarHitClassification::kAmbiguous;
+  ambiguous.known_static_result.endpoint_relation =
+      KnownStaticEndpointRelation::kNearSurface;
+  ambiguous.known_static_result.structure_id = "building";
+  ambiguous.known_static_result.part_id = "upper_mass";
+
+  LidarBeamObservation first_beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+  first_beam.scan_stamp_ns = 100'000'000;
+  first_beam.scan_stamp_valid = true;
+  first_beam.acquisition_stamp_ns = 100'100'000;
+  first_beam.acquisition_stamp_valid = true;
+  const LidarIngestionDecision first =
+      resolveAmbiguousKnownStaticIngestion(first_beam, ambiguous, &tracker);
+  EXPECT_EQ(first.ambiguous_evidence_count, 1U);
+
+  LidarBeamObservation later_beam_same_scan = first_beam;
+  later_beam_same_scan.acquisition_stamp_ns = 100'900'000;
+  later_beam_same_scan.projection.ray_origin_map_m.x = 1.0;
+  later_beam_same_scan.projection.ray_direction_map = Point3{0.0, 1.0, 0.0};
+  const LidarIngestionDecision same_scan =
+      resolveAmbiguousKnownStaticIngestion(later_beam_same_scan, ambiguous, &tracker);
+  EXPECT_EQ(same_scan.ambiguous_evidence_count, 1U);
+
+  LidarBeamObservation next_scan = later_beam_same_scan;
+  next_scan.scan_stamp_ns = 200'000'000;
+  const LidarIngestionDecision second =
+      resolveAmbiguousKnownStaticIngestion(next_scan, ambiguous, &tracker);
+  EXPECT_EQ(second.ambiguous_evidence_count, 2U);
+}
+
 TEST(LidarIngestionDecision, DisabledGroundIsDistinctFromUnavailableGround) {
   const Point3 direction{0.6, 0.0, -0.8};
   GroundLidarRejectionConfig disabled{};
@@ -212,14 +250,43 @@ TEST(LidarIngestionDecision, InvalidGroundDoesNotDisableKnownStaticProvider) {
 
   EXPECT_EQ(decision.ground_provider, LidarExpectedSurfaceProviderStatus::kUnavailable);
   EXPECT_EQ(decision.known_static_provider, LidarExpectedSurfaceProviderStatus::kReady);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeOnly);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
   ASSERT_TRUE(decision.known_static_result_available);
   EXPECT_EQ(decision.known_static_result.classification,
             KnownStaticLidarHitClassification::kExpectedStatic);
 }
 
+TEST(LidarIngestionDecision, CloserSideStaticCountersDistinguishDecisionState) {
+  const KnownStaticLidarHitClassifier classifier = horizontalKnownSurface();
+  const LidarBeamObservation suppressed_beam = observation(Point3{1.0, 0.0, 0.0}, 4.7);
+  const LidarIngestionDecision suppressed =
+      evaluateLidarIngestion(suppressed_beam, &classifier, nullptr);
+  ASSERT_EQ(suppressed.reason, LidarIngestionReason::kExpectedKnownStatic);
+
+  const LidarBeamObservation pending_beam = observation(Point3{1.0, 0.0, 0.0}, 4.34);
+  const LidarIngestionDecision pending =
+      evaluateLidarIngestion(pending_beam, &classifier, nullptr);
+  ASSERT_EQ(pending.reason, LidarIngestionReason::kAmbiguousKnownStatic);
+
+  LidarIngestionDecision confirmed = pending;
+  confirmed.reason = LidarIngestionReason::kExpectedKnownStatic;
+  confirmed.ambiguous_resolution =
+      AmbiguousLidarHitResolution::kConfirmedStaticAttached;
+  confirmed.known_static_result.classification =
+      KnownStaticLidarHitClassification::kExpectedStatic;
+
+  LidarIngestionDecisionStats stats;
+  recordLidarIngestionDecision(suppressed_beam, suppressed, false, stats);
+  recordLidarIngestionDecision(pending_beam, pending, false, stats);
+  recordLidarIngestionDecision(pending_beam, confirmed, false, stats);
+
+  EXPECT_EQ(stats.closer_side_static_suppressed, 1U);
+  EXPECT_EQ(stats.closer_side_static_pending, 1U);
+  EXPECT_EQ(stats.closer_side_static_confirmed, 1U);
+}
+
 TEST(LidarIngestionDecision,
-     KnownStaticSurfaceBeyondEffectiveRangeDoesNotSuppressValidHit) {
+     EndpointNearKnownSurfaceBeyondEffectiveRangeIsStillSuppressed) {
   constexpr double kMeasuredRangeM = 34.94;
   constexpr double kEffectiveMaxRangeM = 35.0;
   constexpr double kKnownSurfaceRangeM = 35.1;
@@ -232,10 +299,10 @@ TEST(LidarIngestionDecision,
   const LidarIngestionDecision decision =
       evaluateLidarIngestion(beam, &classifier, nullptr);
 
-  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kNone);
-  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
-  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
-  EXPECT_FALSE(decision.known_static_result_available);
+  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kKnownStatic);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedKnownStatic);
+  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
+  EXPECT_TRUE(decision.known_static_result_available);
 }
 
 TEST(LidarIngestionDecision, MissingRequiredAttitudeMakesGroundUnavailable) {
@@ -275,7 +342,7 @@ TEST(LidarIngestionDecision, NearestProviderSelectionUsesNearestSurface) {
       evaluateLidarIngestion(observation(direction, 8.0), &nearer_known, &ground);
   EXPECT_EQ(known_decision.expected_surface, LidarExpectedSurfaceKind::kKnownStatic);
   EXPECT_EQ(known_decision.reason, LidarIngestionReason::kExpectedKnownStatic);
-  EXPECT_EQ(known_decision.action, LidarIngestionAction::kIntegrateFreeOnly);
+  EXPECT_EQ(known_decision.action, LidarIngestionAction::kSuppressAllUpdates);
 
   const KnownStaticLidarHitClassifier farther_known =
       knownSurfaceAtRange(direction, 20.0);

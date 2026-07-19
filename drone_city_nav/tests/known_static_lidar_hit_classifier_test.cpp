@@ -25,6 +25,11 @@ makeVolume(const KnownPassageSolidPartKind kind = KnownPassageSolidPartKind::kUp
       .width_m = 4.0,
       .min_z_m = 2.0,
       .max_z_m = 4.0,
+      .opening_center = Point2{5.0, 0.0},
+      .opening_depth_m = 2.0,
+      .opening_width_m = 4.0,
+      .opening_min_z_m = 0.0,
+      .opening_max_z_m = 2.0,
   };
 }
 
@@ -38,7 +43,7 @@ makeClassifier(KnownPassageSolidVolume volume = makeVolume(),
       std::move(volumes), KnownStaticLidarHitClassifierConfig{
                               .closer_range_tolerance_m = closer_tolerance_m,
                               .farther_range_tolerance_m = farther_tolerance_m,
-                              .endpoint_volume_tolerance_m = 0.25}};
+                              .endpoint_volume_tolerance_m = 0.75}};
 }
 
 } // namespace
@@ -67,6 +72,18 @@ TEST(KnownStaticLidarHitClassifier, CloserObjectIsRetained) {
   EXPECT_TRUE(result.volume_matched);
 }
 
+TEST(KnownStaticLidarHitClassifier, CloserEndpointNearSolidIsAmbiguous) {
+  const KnownStaticLidarHitClassifier classifier = makeClassifier();
+
+  const KnownStaticLidarHitResult result =
+      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 3.34);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+  EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kNearSurface);
+  EXPECT_TRUE(result.closer_side_fallback);
+  EXPECT_NEAR(result.endpoint_solid_distance_m, 0.66, 1.0e-9);
+}
+
 TEST(KnownStaticLidarHitClassifier, EndpointInsideSameSolidUsesGeometricFallback) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
@@ -85,7 +102,7 @@ TEST(KnownStaticLidarHitClassifier, EndpointPastSameSolidRemainsAmbiguous) {
       classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.5);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
-  EXPECT_FALSE(result.endpoint_volume_fallback);
+  EXPECT_TRUE(result.endpoint_volume_fallback);
 }
 
 TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherTolerance) {
@@ -96,17 +113,19 @@ TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherToleranc
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_NEAR(result.range_delta_m, 1.4, 1.0e-9);
-  EXPECT_FALSE(result.endpoint_volume_fallback);
+  EXPECT_TRUE(result.endpoint_volume_fallback);
 }
 
 TEST(KnownStaticLidarHitClassifier, RayThroughFreeOpeningIsUnexpected) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
   const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 1.0}, Point3{1.0, 0.0, 0.0}, 4.0);
+      classifier.classify(Point3{0.0, 0.0, 1.0}, Point3{1.0, 0.0, 0.0}, 5.0);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
   EXPECT_FALSE(result.volume_matched);
+  EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kInsideOpening);
+  EXPECT_GT(result.endpoint_opening_margin_m, 0.0);
 }
 
 TEST(KnownStaticLidarHitClassifier, RotatedVolumeUsesItsLocalFrame) {
@@ -148,7 +167,8 @@ TEST(KnownStaticLidarHitClassifier, JustOutsideBoundaryDoesNotMatchSolid) {
   const KnownStaticLidarHitResult result =
       classifier.classify(Point3{0.0, 2.0 + 2.0e-6, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
 
-  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+  EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kNearSurface);
 }
 
 TEST(KnownStaticLidarHitClassifier, EdgeEntryIsAmbiguous) {

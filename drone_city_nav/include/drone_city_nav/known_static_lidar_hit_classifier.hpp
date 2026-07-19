@@ -18,6 +18,13 @@ enum class KnownStaticLidarHitClassification {
   kAmbiguous,
 };
 
+enum class KnownStaticEndpointRelation {
+  kOutside,
+  kNearSurface,
+  kInsideSolid,
+  kInsideOpening,
+};
+
 struct KnownStaticLidarHitClassifierConfig {
   // Keep a tighter limit for a hit before a known surface so an unknown object
   // in front of the building remains obstacle evidence.
@@ -25,7 +32,7 @@ struct KnownStaticLidarHitClassifierConfig {
   // Gazebo collision and projection timing can place a known-surface return
   // slightly behind its analytic intersection.
   double farther_range_tolerance_m{1.5};
-  double endpoint_volume_tolerance_m{0.5};
+  double endpoint_volume_tolerance_m{0.75};
 };
 
 struct KnownStaticLidarHitResult {
@@ -40,6 +47,12 @@ struct KnownStaticLidarHitResult {
   bool volume_matched{false};
   bool confident_face_interior{false};
   bool endpoint_volume_fallback{false};
+  KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
+  double endpoint_solid_distance_m{std::numeric_limits<double>::infinity()};
+  double endpoint_opening_margin_m{-std::numeric_limits<double>::infinity()};
+  double distance_before_solid_m{std::numeric_limits<double>::quiet_NaN()};
+  double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
+  bool closer_side_fallback{false};
 };
 
 struct KnownStaticExpectedSurface {
@@ -57,6 +70,7 @@ struct KnownStaticExpectedSurface {
   double volume_width_m{std::numeric_limits<double>::quiet_NaN()};
   double volume_min_z_m{std::numeric_limits<double>::quiet_NaN()};
   double volume_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
   bool confident_face_interior{false};
 };
 
@@ -132,5 +146,8 @@ makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
 
 [[nodiscard]] const char* knownStaticLidarHitClassificationName(
     KnownStaticLidarHitClassification classification) noexcept;
+
+[[nodiscard]] const char*
+knownStaticEndpointRelationName(KnownStaticEndpointRelation relation) noexcept;
 
 } // namespace drone_city_nav

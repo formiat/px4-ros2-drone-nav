@@ -125,10 +125,11 @@ intentional Gazebo-aligned compensation as other 3D debug layers.
 ## Known Passage Markers
 
 Known passages are pre-annotated 3D passages. The system loads, logs,
-visualizes, and validates them against the published trajectory. During active
-The same annotations define known physical solids for the always-on 3D lidar
+visualizes, and validates them against the published trajectory. The same
+annotations define known physical solids for the always-on 3D lidar
 classifier before dynamic evidence is recorded. Confident matching solid hits
-are suppressed; closer, free-opening, and ambiguous hits are preserved. The
+are suppressed; detached and free-opening hits are preserved, while ambiguous
+static-attached hits remain pending without changing either 2D grid. The
 classifier itself does not change A* route preference or static-map cells.
 Separate known-passage stages can locally repair final XY geometry, add a
 vertical profile, and cap traversal speed. Validation failures remain

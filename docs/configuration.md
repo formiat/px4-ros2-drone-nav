@@ -130,12 +130,18 @@ Known passages:
 
 The closer and farther tolerances are configured identically for the planner
 and obstacle-memory nodes. The always-on 3D classifier compares each measured
-hit range with the nearest known passage-building solid. A hit materially
-closer than the known surface remains obstacle evidence. A later return can
-still match the same known collision surface within the bounded farther
-tolerance, accounting for Gazebo collision/projection disagreement. Opening,
-boundary, and otherwise ambiguous hits remain obstacles. Missing geometry or
-invalid 3D pose is fail-open.
+hit range and endpoint XYZ with the nearest known passage-building solid. A hit
+materially closer and spatially detached from the solid remains immediate
+obstacle evidence. A closer endpoint inside or near the solid becomes
+non-mutating ambiguous evidence instead of an obstacle. Opening hits remain
+immediate obstacles. Missing geometry or invalid 3D pose is fail-open.
+
+`known_static_lidar_hit_endpoint_volume_tolerance_m` controls only the spatial
+near-surface relation; it does not widen the global range tolerance. Ambiguous
+evidence is keyed by structure, part, and endpoint voxel. The
+`ambiguous_lidar_hit_*` parameters configure required independent scans,
+retention, voxel size, minimum viewpoint translation, and minimum direction
+change.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
@@ -153,9 +159,10 @@ a valid 3D opening is annotated; RViz shows those volumes through
 The validation layer does not reject trajectories by itself. The lidar
 classifier does not detect passages, does not modify static map cells, and does
 not create a trajectory-dependent working copy of lidar or memory data. It
-suppresses only a new hit whose measured range confidently matches a known
-physical solid. Closer hits, hits through the free opening, and boundary or
-otherwise ambiguous hits remain dynamic obstacle evidence.
+suppresses a new hit explained by a known physical solid. Hits through the free
+opening and clearly detached hits remain dynamic obstacle evidence. Boundary
+or static-attached ambiguous hits remain pending without changing memory or
+the current-lidar overlay.
 
 The default file format is line-based and versioned:
 

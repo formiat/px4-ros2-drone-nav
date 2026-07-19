@@ -29,6 +29,11 @@ struct KnownPassageSolidVolume {
   double width_m{0.0};
   double min_z_m{0.0};
   double max_z_m{0.0};
+  Point2 opening_center{};
+  double opening_depth_m{0.0};
+  double opening_width_m{0.0};
+  double opening_min_z_m{0.0};
+  double opening_max_z_m{0.0};
 };
 
 [[nodiscard]] std::vector<KnownPassageSolidVolume>

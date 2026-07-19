@@ -114,23 +114,10 @@ public:
                    0.0, 100.0);
     known_static_lidar_hit_endpoint_volume_tolerance_m_ =
         std::clamp(declare_parameter<double>(
-                       "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.5),
+                       "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
                    0.0, 10.0);
-    const AmbiguousLidarHitTrackerConfig ambiguous_hit_confirmation{
-        .required_independent_scans = static_cast<std::size_t>(std::clamp<std::int64_t>(
-            declare_parameter<std::int64_t>(
-                "ambiguous_lidar_hit_required_independent_scans", 3),
-            1, 20)),
-        .max_scan_gap_ns = static_cast<std::int64_t>(
-            1'000'000.0 * std::clamp(declare_parameter<double>(
-                                         "ambiguous_lidar_hit_max_scan_gap_ms", 500.0),
-                                     1.0, 10'000.0)),
-        .retention_ns = static_cast<std::int64_t>(
-            1'000'000.0 * std::clamp(declare_parameter<double>(
-                                         "ambiguous_lidar_hit_retention_ms", 2000.0),
-                                     1.0, 60'000.0)),
-    };
-    memory_->configureAmbiguousHitTracking(ambiguous_hit_confirmation);
+    memory_->configureAmbiguousHitTracking(
+        declareAmbiguousLidarHitTrackerConfig(*this));
     ground_lidar_rejection_config_.enabled =
         declare_parameter<bool>("ground_lidar_rejection_enabled", true);
     ground_lidar_rejection_config_.ground_altitude_m =
@@ -652,13 +639,20 @@ private:
         get_logger(), *get_clock(), 5000,
         "Obstacle memory lidar decisions: expected_ground=%zu closer_retained=%zu "
         "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
-        "non_ground_altitude_rejected=%zu diagnostics=%zu",
+        "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
+        "confirmed=%zu detached=%zu opening=%zu expired=%zu] diagnostics=%zu",
         stats.ingestion_decisions.expected_ground_suppressed,
         stats.ingestion_decisions.closer_obstacles_retained,
         stats.ingestion_decisions.ambiguous_ground_suppressed,
         stats.ingestion_decisions.ground_classification_unavailable,
         stats.ingestion_decisions.ground_classification_disabled,
         stats.ingestion_decisions.non_ground_altitude_rejected,
+        stats.ingestion_decisions.closer_side_static_suppressed,
+        stats.ingestion_decisions.closer_side_static_pending,
+        stats.ingestion_decisions.closer_side_static_confirmed,
+        stats.ingestion_decisions.detached_obstacles_confirmed,
+        stats.ingestion_decisions.opening_obstacles_integrated,
+        stats.ingestion_decisions.ambiguous_expired,
         stats.ingestion_decisions.diagnostics.size());
     const std::string decision_samples =
         formatLidarIngestionRepresentativeDiagnostics(stats.ingestion_decisions);

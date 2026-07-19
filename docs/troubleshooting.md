@@ -115,8 +115,12 @@ If downward lidar returns cause false replans, inspect both
 `Obstacle memory lidar decisions` and `Planner current lidar decisions`:
 
 - `expected_ground` should rise when the tilted lidar sees the physical ground;
-- `closer_retained` means a return was materially before the expected ground or
-  known static surface and was intentionally kept;
+- `closer_retained` means a return was materially before the expected surface
+  and spatially detached enough to be kept;
+- `static[pending=...]` means closer/boundary evidence stayed attached to known
+  geometry and therefore changed neither hit scores nor free space;
+- `static[opening=...]` counts ordinary obstacles integrated inside free
+  opening volume;
 - `ground_unavailable` indicates invalid ground configuration, missing altitude,
   or missing attitude required by compensated 3D projection;
 - `non_ground_altitude_rejected` identifies the legacy altitude gate rather than

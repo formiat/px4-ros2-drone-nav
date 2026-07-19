@@ -11,20 +11,6 @@ namespace {
 
 constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
 
-[[nodiscard]] bool
-ambiguousKnownStaticHit(const LidarIngestionDecision& decision) noexcept {
-  return decision.known_static_result_available &&
-         decision.known_static_result.classification ==
-             KnownStaticLidarHitClassification::kAmbiguous;
-}
-
-[[nodiscard]] std::int64_t scanIdentity(const LaserScanTiming& timing) noexcept {
-  if (timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0) {
-    return timing.first_beam_stamp_ns;
-  }
-  return timing.receive_stamp_valid ? timing.receive_stamp_ns : 0;
-}
-
 struct ClippedSegment {
   Point2 end{};
   bool clipped{false};
@@ -213,37 +199,31 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       continue;
     }
     const LidarBeamObservation observation = makeLidarBeamObservation(
-        scan.timing, i, projection, scan_range_max, projection_pose, projection_config);
-    const LidarIngestionDecision decision =
-        evaluateLidarIngestion(observation, classifier, ground_config);
+        scan.timing, i, projection, scan_range_max, projection_pose, projection_config,
+        aligned_poses_available);
+    const LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+        observation, evaluateLidarIngestion(observation, classifier, ground_config),
+        &ambiguous_hit_tracker_);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,
                                  stats.ingestion_decisions);
+    if (decision.reason == LidarIngestionReason::kAmbiguousKnownStatic) {
+      ++stats.ambiguous_hits_pending_confirmation;
+    } else if (decision.ambiguous_resolution != AmbiguousLidarHitResolution::kPending) {
+      ++stats.ambiguous_hits_confirmed;
+    }
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
     }
     if (decision.action == LidarIngestionAction::kSuppressAllUpdates) {
-      continue;
-    }
-    if (projection.hit && ambiguousKnownStaticHit(decision)) {
-      const std::int64_t scan_stamp_ns = scanIdentity(scan.timing);
-      const std::optional<GridIndex> ambiguous_cell =
-          raw_grid_.worldToCell(projection.endpoint);
-      if (scan_stamp_ns > 0 &&
-          (!ambiguous_cell.has_value() ||
-           !ambiguous_hit_tracker_.observe(*ambiguous_cell, scan_stamp_ns).confirmed)) {
+      if (decision.known_static_result_available) {
         recordKnownStaticLidarHit(decision.known_static_result,
                                   stats.known_static_lidar, false);
-        ++stats.ambiguous_hits_pending_confirmation;
-        continue;
       }
-      if (scan_stamp_ns > 0) {
-        ++stats.ambiguous_hits_confirmed;
-      }
+      continue;
     }
-
     const auto clipped =
         clipSegmentToGrid(raw_grid_, projection_pose.position, projection.endpoint);
     if (!clipped.has_value()) {
@@ -337,7 +317,7 @@ void ObstacleMemoryGrid::reset() {
 }
 
 void ObstacleMemoryGrid::configureAmbiguousHitTracking(
-    const AmbiguousLidarHitTrackerConfig config) {
+    const AmbiguousLidarHitTrackerConfig& config) {
   ambiguous_hit_tracker_.configure(config);
 }
 

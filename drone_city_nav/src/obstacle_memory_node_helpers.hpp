@@ -1,7 +1,10 @@
 #pragma once
 
+#include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
+
+#include <rclcpp/node.hpp>
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <cstdint>
@@ -18,5 +21,8 @@ validRosStampNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept;
 [[nodiscard]] const PassageStructure*
 passageStructureNearPoint(const std::optional<KnownPassageMap>& map, Point2 point,
                           double margin_m) noexcept;
+
+[[nodiscard]] AmbiguousLidarHitTrackerConfig
+declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node);
 
 } // namespace drone_city_nav

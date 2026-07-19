@@ -1,6 +1,8 @@
 #include "obstacle_memory_node_helpers.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace drone_city_nav {
 
@@ -41,6 +43,36 @@ passageStructureNearPoint(const std::optional<KnownPassageMap>& map, const Point
     }
   }
   return nullptr;
+}
+
+AmbiguousLidarHitTrackerConfig
+declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node) {
+  return AmbiguousLidarHitTrackerConfig{
+      .required_independent_scans = static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "ambiguous_lidar_hit_required_independent_scans", 3),
+          1, 20)),
+      .max_scan_gap_ns = static_cast<std::int64_t>(
+          1'000'000.0 * std::clamp(node.declare_parameter<double>(
+                                       "ambiguous_lidar_hit_max_scan_gap_ms", 500.0),
+                                   1.0, 10'000.0)),
+      .retention_ns = static_cast<std::int64_t>(
+          1'000'000.0 * std::clamp(node.declare_parameter<double>(
+                                       "ambiguous_lidar_hit_retention_ms", 2000.0),
+                                   1.0, 60'000.0)),
+      .endpoint_voxel_size_m = std::clamp(
+          node.declare_parameter<double>("ambiguous_lidar_hit_voxel_size_m", 0.5), 0.1,
+          5.0),
+      .min_viewpoint_translation_m =
+          std::clamp(node.declare_parameter<double>(
+                         "ambiguous_lidar_hit_min_viewpoint_shift_m", 0.5),
+                     0.0, 10.0),
+      .min_viewpoint_direction_change_rad =
+          std::clamp(node.declare_parameter<double>(
+                         "ambiguous_lidar_hit_min_viewpoint_angle_deg", 4.0),
+                     0.0, 180.0) *
+          std::numbers::pi / 180.0,
+  };
 }
 
 } // namespace drone_city_nav

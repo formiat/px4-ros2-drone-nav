@@ -148,12 +148,14 @@ TEST(KnownStaticLidarPlanningGridIntegration,
      Connector2223OpeningBlockerRemainsProhibited) {
   const KnownStaticLidarHitClassifier classifier{
       knownPassageSolidVolumes(connector2223())};
-  const GridScenario scenario = ingest(classifier, 5.0, 23.0F);
+  const GridScenario scenario = ingest(classifier, 5.0, 24.0F);
 
   const PlanningGridBuildResult result = buildResult(scenario);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
-  EXPECT_EQ(scenario.current_lidar_stats.known_static_lidar.unexpected_hits_kept, 1U);
+  EXPECT_EQ(
+      scenario.current_lidar_stats.ingestion_decisions.opening_obstacles_integrated,
+      1U);
   EXPECT_EQ(scenario.memory.countRawCells().occupied_cells, 1U);
   expectEndpointProhibited(result, scenario.endpoint, true);
 }

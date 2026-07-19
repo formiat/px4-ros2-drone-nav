@@ -205,6 +205,8 @@ ingestionReasonToMessage(const LidarIngestionReason reason) noexcept {
       return Observation::INGESTION_REASON_NO_EXPECTED_SURFACE;
     case LidarIngestionReason::kObstacleBeforeExpectedSurface:
       return Observation::INGESTION_REASON_OBSTACLE_BEFORE_EXPECTED_SURFACE;
+    case LidarIngestionReason::kObstacleInsideOpening:
+      return Observation::INGESTION_REASON_OBSTACLE_INSIDE_OPENING;
     case LidarIngestionReason::kExpectedKnownStatic:
       return Observation::INGESTION_REASON_EXPECTED_KNOWN_STATIC;
     case LidarIngestionReason::kUnexpectedKnownStatic:
@@ -231,6 +233,8 @@ ingestionReasonFromMessage(const std::uint8_t value) noexcept {
       return LidarIngestionReason::kNoExpectedSurface;
     case Observation::INGESTION_REASON_OBSTACLE_BEFORE_EXPECTED_SURFACE:
       return LidarIngestionReason::kObstacleBeforeExpectedSurface;
+    case Observation::INGESTION_REASON_OBSTACLE_INSIDE_OPENING:
+      return LidarIngestionReason::kObstacleInsideOpening;
     case Observation::INGESTION_REASON_EXPECTED_KNOWN_STATIC:
       return LidarIngestionReason::kExpectedKnownStatic;
     case Observation::INGESTION_REASON_UNEXPECTED_KNOWN_STATIC:
@@ -308,6 +312,8 @@ expectedSurfaceFromMessage(const std::uint8_t value) noexcept {
       return no_expected_surface;
     case LidarIngestionReason::kObstacleBeforeExpectedSurface:
       return (known_static_surface || ground_surface) && range_delta_m < 0.0;
+    case LidarIngestionReason::kObstacleInsideOpening:
+      return surface == LidarExpectedSurfaceKind::kKnownStatic;
     case LidarIngestionReason::kUnexpectedKnownStatic:
     case LidarIngestionReason::kAmbiguousKnownStatic:
       return no_expected_surface || known_static_surface;

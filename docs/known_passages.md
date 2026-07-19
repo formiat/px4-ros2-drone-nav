@@ -219,25 +219,38 @@ For every usable lidar return, both ingestion paths perform the same process:
 2. construct known solid volumes from the annotation: `left_mass`,
    `right_mass`, `lower_mass`, and `upper_mass` as applicable;
 3. query the nearest expected known solid and flat-ground intersections;
-4. compare the measured and nearest expected range before writing the hit to either
-   the current lidar overlay or accumulated obstacle memory.
+4. classify the measured endpoint as outside, near a solid, inside a solid, or
+   inside the free opening volume;
+5. combine the endpoint relation, range residual, and incidence quality before
+   writing the hit to either current lidar or accumulated memory.
 
 The decision is asymmetric:
 
-- a hit more than `known_static_lidar_hit_closer_range_tolerance_m` closer than
-  the expected surface is retained as possible unknown geometry in front of the
-  building;
+- a closer hit spatially detached from the known solid is retained immediately
+  as unknown geometry in front of the building;
+- a closer endpoint inside or within
+  `known_static_lidar_hit_endpoint_volume_tolerance_m` of a solid becomes
+  `ambiguous_known_static` and performs no grid update;
 - a confident face-interior hit no farther than
   `known_static_lidar_hit_farther_range_tolerance_m` behind the expected
   surface is an `expected_static` hit and is suppressed;
-- a grazing/boundary intersection, a hit through an opening, missing geometry,
-  invalid pose, or a return beyond the farther tolerance is ambiguous or
-  unexpected and is retained by fail-open policy.
+- a hit inside the free opening volume is `obstacle_inside_opening` and is
+  integrated immediately;
+- grazing/boundary or contradictory geometry remains pending without hit or
+  free-space clearing; missing geometry or invalid pose remains fail-open.
 
-The defaults are 0.5 m for the stricter closer tolerance and 1.5 m for the
-farther tolerance. The second allowance compensates for bounded SDF collision,
-projection, and simulator timing disagreement without hiding an unknown object
-that is actually in front of a known wall.
+The defaults are 0.5 m for the stricter closer range tolerance, 1.5 m for the
+farther range tolerance, and 0.75 m for spatial endpoint-to-solid tolerance.
+The spatial tolerance does not hide a detached object several metres before a
+wall.
+
+Ambiguous evidence is keyed by structure id, part id, and a 0.5 m endpoint
+voxel. Multiple beams from one scan provide one vote. A later vote also
+requires at least 0.5 m viewpoint translation or 4 degrees of ray-direction
+change. Three consistently solid-attached observations confirm known static;
+three consistently detached observations confirm an obstacle. Mixed evidence
+stays pending and expires. Static-attached and pending classes perform neither
+endpoint-hit integration nor 2D free-space clearing.
 
 This classifier operates for every new scan, independent of the active route
 or distance to an opening. It never edits static-map cells, never changes A*
@@ -269,8 +282,9 @@ The following diagnostics make passage behavior inspectable:
   associated opening id;
 - offboard blackbox: target altitude, vertical command, vertical trackability
   cap, and final scalar speed;
-- lidar/current-overlay and obstacle-memory logs: expected, unexpected, and
-  ambiguous known-static hits;
+- lidar/current-overlay and obstacle-memory logs: endpoint relation, signed
+  solid distance, opening margin, range residual, incidence angle, timestamp
+  alignment, evidence count, viewpoint delta, resolution, and action;
 - prohibited-intersection logs: bounded `known_static_hit` provenance with
   grid cell, endpoint XYZ, measured range, expected range, range delta, and
   matched building part when available.

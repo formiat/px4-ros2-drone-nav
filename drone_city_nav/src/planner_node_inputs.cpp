@@ -603,13 +603,20 @@ void PlannerNode::checkCurrentPathAndPublish() {
       get_logger(), *get_clock(), 5000,
       "Planner current lidar decisions: expected_ground=%zu closer_retained=%zu "
       "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
-      "non_ground_altitude_rejected=%zu diagnostics=%zu",
+      "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
+      "confirmed=%zu detached=%zu opening=%zu expired=%zu] diagnostics=%zu",
       lidar_decisions.expected_ground_suppressed,
       lidar_decisions.closer_obstacles_retained,
       lidar_decisions.ambiguous_ground_suppressed,
       lidar_decisions.ground_classification_unavailable,
       lidar_decisions.ground_classification_disabled,
-      lidar_decisions.non_ground_altitude_rejected, lidar_decisions.diagnostics.size());
+      lidar_decisions.non_ground_altitude_rejected,
+      lidar_decisions.closer_side_static_suppressed,
+      lidar_decisions.closer_side_static_pending,
+      lidar_decisions.closer_side_static_confirmed,
+      lidar_decisions.detached_obstacles_confirmed,
+      lidar_decisions.opening_obstacles_integrated, lidar_decisions.ambiguous_expired,
+      lidar_decisions.diagnostics.size());
   const std::string lidar_decision_samples =
       formatLidarIngestionRepresentativeDiagnostics(lidar_decisions);
   if (!lidar_decision_samples.empty()) {

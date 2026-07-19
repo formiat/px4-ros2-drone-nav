@@ -156,7 +156,7 @@ TEST_P(KnownStaticLidarIngestionTest,
       endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_FALSE(memory.rawGrid().isOccupied(endpoint_grid_cell));
   EXPECT_FALSE(overlay_grid.isOccupied(endpoint_grid_cell));
-  EXPECT_GT(memory_stats.free_cells_updated, 0U);
+  EXPECT_EQ(memory_stats.free_cells_updated, 0U);
   EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 1U);
   EXPECT_TRUE(memory.activeProvenance().empty());
   EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
@@ -228,7 +228,7 @@ TEST(KnownStaticLidarIngestion, CloserObstacleIsRetainedByBothPaths) {
 }
 
 TEST(KnownStaticLidarIngestion,
-     SurfaceBeyondEffectiveRangeDoesNotSuppressUnknownObstacleInEitherPath) {
+     EndpointNearSurfaceBeyondEffectiveRangeIsSuppressedByBothPaths) {
   IngestionCase test_case =
       makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
   test_case.config.max_lidar_range_m = 35.0;
@@ -262,18 +262,14 @@ TEST(KnownStaticLidarIngestion,
   ASSERT_TRUE(endpoint_cell.has_value());
   const GridIndex accepted_cell =
       endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_TRUE(memory.rawGrid().isOccupied(accepted_cell));
-  EXPECT_TRUE(overlay_grid.isOccupied(accepted_cell));
-  EXPECT_EQ(memory_stats.occupied_cells_updated, 1U);
-  EXPECT_EQ(overlay_stats.occupied_cells, 1U);
-  EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 0U);
-  EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 0U);
-  ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
-  EXPECT_FALSE(memory_stats.occupied_transitions.front()
-                   .provenance.occupancy_trigger.known_static.classifier_applied);
-  ASSERT_EQ(overlay_stats.accepted_hits.size(), 1U);
-  EXPECT_EQ(overlay_stats.accepted_hits.front().ingestion_decision.reason,
-            LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_FALSE(memory.rawGrid().isOccupied(accepted_cell));
+  EXPECT_FALSE(overlay_grid.isOccupied(accepted_cell));
+  EXPECT_EQ(memory_stats.occupied_cells_updated, 0U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+  EXPECT_EQ(memory_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_EQ(overlay_stats.known_static_lidar.expected_static_hits_ignored, 1U);
+  EXPECT_TRUE(memory_stats.occupied_transitions.empty());
+  EXPECT_TRUE(overlay_stats.accepted_hits.empty());
 }
 
 TEST(KnownStaticLidarIngestion,
@@ -349,7 +345,7 @@ TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths
   EXPECT_TRUE(memory_stats.occupied_transitions.empty());
 }
 
-TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedWithoutScanTiming) {
+TEST(KnownStaticLidarIngestion, BoundaryAmbiguitySuppressesAllUpdates) {
   const IngestionCase test_case =
       makeCase(KnownPassageSolidPartKind::kRight, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0);
   const LidarBeamProjection projection =
@@ -372,14 +368,15 @@ TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedWithoutScanTiming) {
       overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 20.0, 0.0, 0.1},
                               test_case.pose, test_case.config, &classifier);
 
-  EXPECT_EQ(memory.countRawCells().occupied_cells, 1U);
-  EXPECT_EQ(overlay_stats.occupied_cells, 1U);
-  EXPECT_EQ(memory_stats.known_static_lidar.ambiguous_hits_kept, 1U);
-  EXPECT_EQ(overlay_stats.known_static_lidar.ambiguous_hits_kept, 1U);
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+  EXPECT_EQ(memory_stats.free_cells_updated, 0U);
+  EXPECT_EQ(memory_stats.ambiguous_hits_pending_confirmation, 1U);
+  EXPECT_EQ(overlay_stats.ambiguous_hits_pending_confirmation, 1U);
 }
 
 TEST(KnownStaticLidarIngestion,
-     AmbiguousKnownStaticHitRequiresIndependentScanConfirmation) {
+     StaticAttachedHitRequiresIndependentViewpointsAndNeverBecomesObstacle) {
   const IngestionCase test_case =
       makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
   const LidarBeamProjection expected_projection =
@@ -387,32 +384,73 @@ TEST(KnownStaticLidarIngestion,
   std::vector<KnownPassageSolidVolume> volumes;
   volumes.push_back(volumeAtRange(expected_projection, test_case.kind, 6.0));
   const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
-  const std::array<float, 1U> ranges{8.6F};
   const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
   ObstacleMemoryGrid memory{bounds};
   OccupancyGrid2D overlay_grid{bounds};
   AmbiguousLidarHitTracker overlay_tracker;
 
   for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
-    LaserScan2DView memory_scan = memoryScan(ranges, test_case);
+    const double viewpoint_shift_m = static_cast<double>(scan_index - 1) * 0.6;
+    IngestionCase shifted_case = test_case;
+    shifted_case.pose.position.x -= viewpoint_shift_m;
+    const std::array<float, 1U> ranges{static_cast<float>(5.34 + viewpoint_shift_m)};
+    LaserScan2DView memory_scan = memoryScan(ranges, shifted_case);
     memory_scan.timing.first_beam_stamp_ns = scan_index * 100'000'000;
     memory_scan.timing.first_beam_stamp_valid = true;
-    const ObstacleMemoryStats memory_stats =
-        memory.integrateScan(Pose2{test_case.pose.position, test_case.pose.yaw_rad},
-                             memory_scan, ObstacleMemoryConfig{}, &classifier);
+    const ObstacleMemoryStats memory_stats = memory.integrateScan(
+        Pose2{shifted_case.pose.position, shifted_case.pose.yaw_rad}, memory_scan,
+        ObstacleMemoryConfig{}, &classifier);
 
     LidarScanView overlay_scan{ranges, 0.1, 20.0, 0.0, 0.1};
     overlay_scan.timing = memory_scan.timing;
     const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
-        overlay_grid, overlay_scan, test_case.pose, test_case.config, &classifier,
+        overlay_grid, overlay_scan, shifted_case.pose, shifted_case.config, &classifier,
         nullptr, &overlay_tracker);
 
     const bool expected_confirmed = scan_index == 3;
-    EXPECT_EQ(memory.countRawCells().occupied_cells, expected_confirmed ? 1U : 0U);
-    EXPECT_EQ(overlay_stats.occupied_cells, expected_confirmed ? 1U : 0U);
+    EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+    EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+    EXPECT_EQ(memory_stats.free_cells_updated, 0U);
     EXPECT_EQ(memory_stats.ambiguous_hits_confirmed, expected_confirmed ? 1U : 0U);
     EXPECT_EQ(overlay_stats.ambiguous_hits_confirmed, expected_confirmed ? 1U : 0U);
   }
+}
+
+TEST(KnownStaticLidarIngestion, OpeningObstacleIsIntegratedImmediatelyByBothPaths) {
+  const IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  constexpr float kMeasuredRangeM = 6.0F;
+  const LidarBeamProjection projection = projectLidarBeam(
+      test_case.pose, test_case.config, 0.1, 20.0, 0.0, 0.1, 0U, kMeasuredRangeM);
+  KnownPassageSolidVolume volume =
+      volumeAtRange(projection, KnownPassageSolidPartKind::kUpper, 6.0);
+  volume.min_z_m = projection.endpoint_map_m.z + 3.0;
+  volume.max_z_m = projection.endpoint_map_m.z + 6.0;
+  volume.opening_center = projection.endpoint;
+  volume.opening_depth_m = volume.depth_m;
+  volume.opening_width_m = volume.width_m;
+  volume.opening_min_z_m = projection.endpoint_map_m.z - 1.0;
+  volume.opening_max_z_m = projection.endpoint_map_m.z + 1.0;
+  const KnownStaticLidarHitClassifier classifier{{std::move(volume)}};
+  const std::array<float, 1U> ranges{kMeasuredRangeM};
+  const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
+
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats = memory.integrateScan(
+      Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+      memoryScan(ranges, test_case), ObstacleMemoryConfig{}, &classifier);
+  OccupancyGrid2D overlay_grid{bounds};
+  const CurrentLidarOverlayStats overlay_stats =
+      overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 20.0, 0.0, 0.1},
+                              test_case.pose, test_case.config, &classifier);
+
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 1U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 1U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.opening_obstacles_integrated, 1U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.opening_obstacles_integrated, 1U);
+  ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
+  EXPECT_EQ(memory_stats.occupied_transitions.front().trigger_decision.reason,
+            LidarIngestionReason::kObstacleInsideOpening);
 }
 
 } // namespace drone_city_nav

@@ -44,10 +44,13 @@ struct KnownStaticClassificationSnapshot {
 
 struct LidarBeamObservation {
   std::size_t beam_index{0U};
+  std::int64_t scan_stamp_ns{0};
+  bool scan_stamp_valid{false};
   std::int64_t acquisition_stamp_ns{0};
   bool acquisition_stamp_valid{false};
   std::int64_t receive_stamp_ns{0};
   bool receive_stamp_valid{false};
+  bool timestamp_aligned_pose{false};
   LidarBeamProjection projection{};
   double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
   double effective_max_range_m{std::numeric_limits<double>::quiet_NaN()};
@@ -63,7 +66,8 @@ makeLidarBeamObservation(const LaserScanTiming& timing, std::size_t beam_index,
                          const LidarBeamProjection& projection,
                          double effective_max_range_m,
                          const LidarProjectionPose& source_pose,
-                         const LidarProjectionConfig& projection_config);
+                         const LidarProjectionConfig& projection_config,
+                         bool timestamp_aligned_pose = false);
 
 [[nodiscard]] KnownStaticClassificationSnapshot
 makeKnownStaticClassificationSnapshot(bool classifier_applied,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/lidar_beam_observation.hpp"
 
 #include <array>
@@ -40,6 +41,7 @@ enum class LidarIngestionAction {
 enum class LidarIngestionReason {
   kNoExpectedSurface,
   kObstacleBeforeExpectedSurface,
+  kObstacleInsideOpening,
   kExpectedKnownStatic,
   kUnexpectedKnownStatic,
   kAmbiguousKnownStatic,
@@ -56,6 +58,8 @@ enum class LidarIngestionDiagnosticClass {
   kClassificationUnavailable,
   kClassificationDisabled,
   kNonGroundAltitudeRejected,
+  kAmbiguousKnownStatic,
+  kOpeningObstacle,
   kCount,
 };
 
@@ -74,6 +78,12 @@ struct LidarIngestionDecision {
   std::optional<KnownStaticExpectedSurface> known_static_surface;
   bool known_static_result_available{false};
   KnownStaticLidarHitResult known_static_result{};
+  AmbiguousLidarHitResolution ambiguous_resolution{
+      AmbiguousLidarHitResolution::kPending};
+  std::size_t ambiguous_evidence_count{0U};
+  std::size_t ambiguous_expired_candidates{0U};
+  double ambiguous_viewpoint_translation_m{0.0};
+  double ambiguous_viewpoint_direction_change_rad{0.0};
 };
 
 struct LidarIngestionDecisionSnapshot {
@@ -99,6 +109,16 @@ struct LidarIngestionDecisionDiagnostic {
   std::string structure_id;
   std::string opening_id;
   std::string part_id;
+  KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
+  double endpoint_solid_distance_m{std::numeric_limits<double>::infinity()};
+  double endpoint_opening_margin_m{-std::numeric_limits<double>::infinity()};
+  double distance_before_solid_m{std::numeric_limits<double>::quiet_NaN()};
+  double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
+  AmbiguousLidarHitResolution ambiguous_resolution{
+      AmbiguousLidarHitResolution::kPending};
+  std::size_t ambiguous_evidence_count{0U};
+  double ambiguous_viewpoint_translation_m{0.0};
+  double ambiguous_viewpoint_direction_change_rad{0.0};
 };
 
 struct LidarIngestionDecisionStats {
@@ -108,6 +128,12 @@ struct LidarIngestionDecisionStats {
   std::size_t ground_classification_unavailable{0U};
   std::size_t ground_classification_disabled{0U};
   std::size_t non_ground_altitude_rejected{0U};
+  std::size_t closer_side_static_suppressed{0U};
+  std::size_t closer_side_static_pending{0U};
+  std::size_t closer_side_static_confirmed{0U};
+  std::size_t detached_obstacles_confirmed{0U};
+  std::size_t opening_obstacles_integrated{0U};
+  std::size_t ambiguous_expired{0U};
   std::vector<LidarIngestionDecisionDiagnostic> diagnostics;
 };
 
@@ -122,6 +148,11 @@ struct LidarIngestionRepresentativeDiagnostics {
 evaluateLidarIngestion(const LidarBeamObservation& observation,
                        const KnownStaticLidarHitClassifier* known_static_classifier,
                        const GroundLidarRejectionConfig* ground_config) noexcept;
+
+[[nodiscard]] LidarIngestionDecision
+resolveAmbiguousKnownStaticIngestion(const LidarBeamObservation& observation,
+                                     LidarIngestionDecision decision,
+                                     AmbiguousLidarHitTracker* tracker);
 
 [[nodiscard]] LidarIngestionDecisionSnapshot
 makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept;

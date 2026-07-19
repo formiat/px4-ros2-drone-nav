@@ -125,6 +125,10 @@ static lidar classifier:
 - `expected_static_hits_ignored` / `ignored`;
 - `unexpected_hits_kept` / `unexpected`;
 - `ambiguous_hits_kept` / `ambiguous`;
+- `closer_side_static_suppressed`, `closer_side_static_pending`, and
+  `closer_side_static_confirmed`;
+- `detached_obstacles_confirmed`, `opening_obstacles_integrated`, and
+  `ambiguous_expired`;
 - ignored hit counts for `left`, `right`, `lower`, and `upper` masses;
 - the first ignored structure/opening/part identity and range delta.
 
@@ -233,10 +237,17 @@ representative sample for every class observed in the reporting interval:
   disabled;
 - `non_ground_altitude_rejected`: projected-altitude vetoes not explained by a
   ground candidate.
+- `ambiguous_known_static`: a near/inside-solid or boundary observation held
+  without hit or free-space mutation;
+- `opening_obstacle`: an ordinary unknown obstacle measured inside the free
+  opening volume and integrated immediately.
 
 The bounded `lidar decision samples` log includes reason, expected-surface kind,
-beam index, endpoint XYZ, measured/expected ranges and delta, and provider
-status. Rejected observations remain aggregate/sample diagnostics only.
+beam index, endpoint XYZ, measured/expected ranges, endpoint relation, signed
+solid distance, opening margin, distance before solid, incidence angle,
+timestamp-aligned pose status, evidence count, viewpoint translation/direction
+delta, resolution, and provider status. Suppressed observations remain
+aggregate/sample diagnostics only.
 
 Accepted obstacle-memory hits persist the compact ingestion decision that
 admitted the hit: action, reason, selected expected surface, expected range, and
@@ -245,8 +256,9 @@ with both the occupancy trigger and last accepted hit. The planner only applies
 it after the existing exact stamp, frame, grid geometry, and grid-content match.
 
 The classifier is independent of the active trajectory and drone proximity to
-an opening. Unexpected and ambiguous hits continue through normal prohibited
-grid and replan handling.
+an opening. Opening and detached obstacles continue through normal prohibited
+grid and replan handling; unresolved static-attached evidence does not mutate a
+grid.
 
 ## Replan Diagnostics
 

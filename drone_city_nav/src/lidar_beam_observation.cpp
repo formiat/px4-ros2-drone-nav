@@ -32,12 +32,11 @@ lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
   return LidarBeamTimestamp{timing.first_beam_stamp_ns + rounded_offset_ns, true};
 }
 
-LidarBeamObservation
-makeLidarBeamObservation(const LaserScanTiming& timing, const std::size_t beam_index,
-                         const LidarBeamProjection& projection,
-                         const double effective_max_range_m,
-                         const LidarProjectionPose& source_pose,
-                         const LidarProjectionConfig& projection_config) {
+LidarBeamObservation makeLidarBeamObservation(
+    const LaserScanTiming& timing, const std::size_t beam_index,
+    const LidarBeamProjection& projection, const double effective_max_range_m,
+    const LidarProjectionPose& source_pose,
+    const LidarProjectionConfig& projection_config, const bool timestamp_aligned_pose) {
   const LidarBeamTimestamp acquisition_stamp =
       lidarBeamAcquisitionTimestamp(timing, beam_index);
   const bool source_attitude_valid = source_pose.attitude_valid &&
@@ -45,10 +44,14 @@ makeLidarBeamObservation(const LaserScanTiming& timing, const std::size_t beam_i
                                      std::isfinite(source_pose.pitch_rad);
   return LidarBeamObservation{
       .beam_index = beam_index,
+      .scan_stamp_ns = timing.first_beam_stamp_ns,
+      .scan_stamp_valid =
+          timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0,
       .acquisition_stamp_ns = acquisition_stamp.stamp_ns,
       .acquisition_stamp_valid = acquisition_stamp.valid,
       .receive_stamp_ns = timing.receive_stamp_ns,
       .receive_stamp_valid = timing.receive_stamp_valid,
+      .timestamp_aligned_pose = timestamp_aligned_pose,
       .projection = projection,
       .measured_range_m = projection.used_range_m,
       .effective_max_range_m = effective_max_range_m,

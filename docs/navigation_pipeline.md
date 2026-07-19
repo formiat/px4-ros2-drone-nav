@@ -24,9 +24,10 @@ vertical-profile contracts for these annotations.
 
 Known passages also provide physical-solid geometry to the always-on 3D lidar
 classifier. Before current lidar or accumulated memory records a new hit, the
-classifier suppresses only a confident range match to a known physical mass.
-Closer hits, hits through a free opening, and boundary or ambiguous hits are
-retained. The classifier is independent of trajectory/proximity, never filters
+classifier combines the range match with signed 3D endpoint distance. Hits
+attached to a known mass are suppressed or held as non-mutating pending
+evidence; hits clearly detached in front of a mass and hits inside a free
+opening are retained immediately. The classifier is independent of trajectory/proximity, never filters
 static-map cells, and does not alter A* route preferences.
 
 Raw sources are merged before inflation. Raw sources must not contain safety

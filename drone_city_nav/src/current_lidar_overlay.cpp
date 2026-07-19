@@ -10,20 +10,6 @@ namespace {
 
 constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
 
-[[nodiscard]] bool
-ambiguousKnownStaticHit(const LidarIngestionDecision& decision) noexcept {
-  return decision.known_static_result_available &&
-         decision.known_static_result.classification ==
-             KnownStaticLidarHitClassification::kAmbiguous;
-}
-
-[[nodiscard]] std::int64_t scanIdentity(const LaserScanTiming& timing) noexcept {
-  if (timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0) {
-    return timing.first_beam_stamp_ns;
-  }
-  return timing.receive_stamp_valid ? timing.receive_stamp_ns : 0;
-}
-
 void recordAcceptedHit(const GridIndex cell, const LidarBeamObservation& observation,
                        const LidarIngestionDecision& decision,
                        CurrentLidarOverlayStats& stats) {
@@ -94,14 +80,21 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
         projection.status != LidarBeamProjectionStatus::kAltitudeRejected) {
       continue;
     }
-    const LidarBeamObservation observation = makeLidarBeamObservation(
-        scan.timing, i, projection, scan_range_max, beam_pose, projection_config);
-    const LidarIngestionDecision decision =
-        evaluateLidarIngestion(observation, classifier, ground_config);
+    const LidarBeamObservation observation =
+        makeLidarBeamObservation(scan.timing, i, projection, scan_range_max, beam_pose,
+                                 projection_config, aligned_poses_available);
+    const LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+        observation, evaluateLidarIngestion(observation, classifier, ground_config),
+        ambiguous_hit_tracker);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,
                                  stats.ingestion_decisions);
+    if (decision.reason == LidarIngestionReason::kAmbiguousKnownStatic) {
+      ++stats.ambiguous_hits_pending_confirmation;
+    } else if (decision.ambiguous_resolution != AmbiguousLidarHitResolution::kPending) {
+      ++stats.ambiguous_hits_confirmed;
+    }
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
       ++stats.altitude_rejected_beams;
       continue;
@@ -117,19 +110,6 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
 
     ++stats.hit_beams;
     const auto endpoint_cell = current_lidar_grid.worldToCell(projection.endpoint);
-    const std::int64_t scan_stamp_ns = scanIdentity(scan.timing);
-    if (endpoint_cell.has_value() && ambiguous_hit_tracker != nullptr &&
-        scan_stamp_ns > 0 && ambiguousKnownStaticHit(decision)) {
-      const AmbiguousLidarHitConfirmation confirmation =
-          ambiguous_hit_tracker->observe(*endpoint_cell, scan_stamp_ns);
-      if (!confirmation.confirmed) {
-        recordKnownStaticLidarHit(decision.known_static_result,
-                                  stats.known_static_lidar);
-        ++stats.ambiguous_hits_pending_confirmation;
-        continue;
-      }
-      ++stats.ambiguous_hits_confirmed;
-    }
     if (endpoint_cell.has_value()) {
       recordAcceptedHit(*endpoint_cell, observation, decision, stats);
     }
