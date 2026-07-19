@@ -201,9 +201,11 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     const LidarBeamObservation observation = makeLidarBeamObservation(
         scan.timing, i, projection, scan_range_max, projection_pose, projection_config,
         aligned_poses_available);
-    const LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+    LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
         &ambiguous_hit_tracker_);
+    decision = normalizeAcceptedLidarIngestionDecision(observation, decision,
+                                                       stats.ingestion_decisions);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,

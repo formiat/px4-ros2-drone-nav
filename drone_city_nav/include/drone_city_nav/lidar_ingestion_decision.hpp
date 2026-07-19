@@ -60,6 +60,7 @@ enum class LidarIngestionDiagnosticClass {
   kNonGroundAltitudeRejected,
   kAmbiguousKnownStatic,
   kOpeningObstacle,
+  kInvariantFallback,
   kCount,
 };
 
@@ -92,6 +93,12 @@ struct LidarIngestionDecisionSnapshot {
   LidarExpectedSurfaceKind expected_surface{LidarExpectedSurfaceKind::kNone};
   double expected_range_m{std::numeric_limits<double>::quiet_NaN()};
   double range_delta_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
+enum class LidarIngestionDecisionValidation {
+  kValid,
+  kActionNotAccepted,
+  kInvalidMetadata,
 };
 
 struct LidarIngestionDecisionDiagnostic {
@@ -134,6 +141,7 @@ struct LidarIngestionDecisionStats {
   std::size_t detached_obstacles_confirmed{0U};
   std::size_t opening_obstacles_integrated{0U};
   std::size_t ambiguous_expired{0U};
+  std::size_t invariant_fallbacks{0U};
   std::vector<LidarIngestionDecisionDiagnostic> diagnostics;
 };
 
@@ -156,6 +164,17 @@ resolveAmbiguousKnownStaticIngestion(const LidarBeamObservation& observation,
 
 [[nodiscard]] LidarIngestionDecisionSnapshot
 makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept;
+
+[[nodiscard]] LidarIngestionDecisionValidation validateAcceptedLidarIngestionDecision(
+    const LidarIngestionDecisionSnapshot& decision) noexcept;
+
+[[nodiscard]] LidarIngestionDecisionSnapshot
+conservativeUnknownObstacleDecisionSnapshot() noexcept;
+
+[[nodiscard]] LidarIngestionDecision
+normalizeAcceptedLidarIngestionDecision(const LidarBeamObservation& observation,
+                                        LidarIngestionDecision decision,
+                                        LidarIngestionDecisionStats& stats);
 
 void recordLidarIngestionDecision(const LidarBeamObservation& observation,
                                   const LidarIngestionDecision& decision,

@@ -294,17 +294,27 @@ KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
   }
 }
 
-KnownStaticLidarHitResult
-KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
-                                        const Point3& ray_direction_map,
-                                        const double measured_range_m) const noexcept {
+KnownStaticLidarHitResult KnownStaticLidarHitClassifier::classify(
+    const Point3& ray_origin_map_m, const Point3& ray_direction_map,
+    const double measured_range_m, const double effective_max_range_m) const noexcept {
+  return evaluateBeam(ray_origin_map_m, ray_direction_map, measured_range_m,
+                      effective_max_range_m)
+      .hit_result;
+}
+
+KnownStaticBeamEvaluation KnownStaticLidarHitClassifier::evaluateBeam(
+    const Point3& ray_origin_map_m, const Point3& ray_direction_map,
+    const double measured_range_m, const double effective_max_range_m) const noexcept {
+  KnownStaticBeamEvaluation evaluation{};
   KnownStaticLidarHitResult result{};
   const double direction_norm_sq = squaredNorm(ray_direction_map);
   if (!finitePoint3(ray_origin_map_m) || !finitePoint3(ray_direction_map) ||
       !std::isfinite(measured_range_m) || measured_range_m < 0.0 ||
+      !std::isfinite(effective_max_range_m) || effective_max_range_m <= 0.0 ||
       !std::isfinite(direction_norm_sq) || std::abs(direction_norm_sq - 1.0) > 1.0e-6 ||
       volumes_.empty()) {
-    return result;
+    evaluation.hit_result = result;
+    return evaluation;
   }
   const Point3 measured_endpoint{
       ray_origin_map_m.x + measured_range_m * ray_direction_map.x,
@@ -313,6 +323,7 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
   const EndpointGeometry endpoint_geometry = endpointGeometry(
       measured_endpoint, volumes_, config_.endpoint_volume_tolerance_m);
   result.endpoint_relation = endpoint_geometry.relation;
+  evaluation.endpoint_relation = endpoint_geometry.relation;
   result.endpoint_solid_distance_m = endpoint_geometry.solid_distance_m;
   result.endpoint_opening_margin_m = endpoint_geometry.opening_margin_m;
   if (endpoint_geometry.volume != nullptr) {
@@ -323,11 +334,21 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
   }
   if (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideOpening) {
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
-    return result;
+    evaluation.hit_result = result;
+    return evaluation;
   }
 
-  const std::optional<KnownStaticExpectedSurface> nearest = nearestExpectedSurface(
-      ray_origin_map_m, ray_direction_map, std::numeric_limits<double>::infinity());
+  evaluation.in_range_surface = nearestExpectedSurface(
+      ray_origin_map_m, ray_direction_map, effective_max_range_m);
+  std::optional<KnownStaticExpectedSurface> nearest = evaluation.in_range_surface;
+  if (!nearest.has_value() &&
+      (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideSolid ||
+       endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface)) {
+    evaluation.endpoint_fallback_surface = nearestExpectedSurface(
+        ray_origin_map_m, ray_direction_map,
+        effective_max_range_m + config_.endpoint_volume_tolerance_m);
+    nearest = evaluation.endpoint_fallback_surface;
+  }
   if (!nearest.has_value()) {
     if (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideSolid) {
       result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
@@ -341,7 +362,8 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
     } else {
       result.classification = KnownStaticLidarHitClassification::kUnexpected;
     }
-    return result;
+    evaluation.hit_result = result;
+    return evaluation;
   }
 
   result.expected_range_m = nearest->range_m;
@@ -369,10 +391,12 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
     } else {
       result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
     }
-    return result;
+    evaluation.hit_result = result;
+    return evaluation;
   }
   if (!nearest->confident_face_interior) {
-    return result;
+    evaluation.hit_result = result;
+    return evaluation;
   }
   if (measured_range_m < nearest->range_m - config_.closer_range_tolerance_m) {
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
@@ -388,7 +412,8 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
       result.endpoint_volume_fallback = true;
     }
   }
-  return result;
+  evaluation.hit_result = result;
+  return evaluation;
 }
 
 std::optional<KnownStaticExpectedSurface>

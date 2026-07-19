@@ -640,7 +640,8 @@ private:
         "Obstacle memory lidar decisions: expected_ground=%zu closer_retained=%zu "
         "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
         "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
-        "confirmed=%zu detached=%zu opening=%zu expired=%zu] diagnostics=%zu",
+        "confirmed=%zu detached=%zu opening=%zu expired=%zu] "
+        "invariant_fallbacks=%zu diagnostics=%zu",
         stats.ingestion_decisions.expected_ground_suppressed,
         stats.ingestion_decisions.closer_obstacles_retained,
         stats.ingestion_decisions.ambiguous_ground_suppressed,
@@ -653,9 +654,17 @@ private:
         stats.ingestion_decisions.detached_obstacles_confirmed,
         stats.ingestion_decisions.opening_obstacles_integrated,
         stats.ingestion_decisions.ambiguous_expired,
+        stats.ingestion_decisions.invariant_fallbacks,
         stats.ingestion_decisions.diagnostics.size());
     const std::string decision_samples =
         formatLidarIngestionRepresentativeDiagnostics(stats.ingestion_decisions);
+    if (stats.ingestion_decisions.invariant_fallbacks > 0U) {
+      RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Obstacle memory replaced %zu malformed accepted lidar decisions with "
+          "conservative no-expected-surface metadata: %s",
+          stats.ingestion_decisions.invariant_fallbacks, decision_samples.c_str());
+    }
     if (!decision_samples.empty()) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
                            "Obstacle memory lidar decision samples: %s",

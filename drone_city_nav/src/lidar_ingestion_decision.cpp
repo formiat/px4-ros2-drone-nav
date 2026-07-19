@@ -209,25 +209,29 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
 
   std::optional<SurfaceCandidate> known_candidate;
   std::optional<KnownStaticExpectedSurface> known_surface;
+  std::optional<KnownStaticLidarHitResult> measured_known_result;
+  const bool measured_hit =
+      observation.projection.hit && std::isfinite(observation.measured_range_m);
   if (known_static_classifier != nullptr) {
-    known_surface = known_static_classifier->nearestExpectedSurface(
+    const KnownStaticBeamEvaluation evaluation = known_static_classifier->evaluateBeam(
         observation.projection.ray_origin_map_m,
-        observation.projection.ray_direction_map, observation.effective_max_range_m);
+        observation.projection.ray_direction_map, observation.measured_range_m,
+        observation.effective_max_range_m);
+    known_surface = evaluation.in_range_surface.has_value()
+                        ? evaluation.in_range_surface
+                        : evaluation.endpoint_fallback_surface;
     if (known_surface.has_value()) {
       decision.known_static_surface = *known_surface;
       known_candidate = SurfaceCandidate{
           LidarExpectedSurfaceKind::kKnownStatic, known_surface->range_m,
           known_static_classifier->closerRangeToleranceM()};
     }
+    if (measured_hit) {
+      measured_known_result = evaluation.hit_result;
+    }
   }
 
-  const bool measured_hit =
-      observation.projection.hit && std::isfinite(observation.measured_range_m);
-  std::optional<KnownStaticLidarHitResult> measured_known_result;
-  if (known_static_classifier != nullptr && measured_hit) {
-    measured_known_result = known_static_classifier->classify(
-        observation.projection.ray_origin_map_m,
-        observation.projection.ray_direction_map, observation.measured_range_m);
+  if (measured_known_result.has_value()) {
     if (measured_known_result->endpoint_relation ==
         KnownStaticEndpointRelation::kInsideOpening) {
       decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
@@ -238,9 +242,8 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
 
   if (!ground_candidate.has_value() && !known_candidate.has_value()) {
     if (measured_known_result.has_value() &&
-        (measured_known_result->volume_matched ||
-         measured_known_result->endpoint_relation !=
-             KnownStaticEndpointRelation::kOutside)) {
+        measured_known_result->endpoint_relation !=
+            KnownStaticEndpointRelation::kOutside) {
       decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
       applyKnownStaticResult(decision, *measured_known_result);
     }
@@ -418,6 +421,91 @@ makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexc
       .expected_range_m = decision.expected_range_m,
       .range_delta_m = decision.range_delta_m,
   };
+}
+
+LidarIngestionDecisionValidation validateAcceptedLidarIngestionDecision(
+    const LidarIngestionDecisionSnapshot& decision) noexcept {
+  if (decision.action != LidarIngestionAction::kIntegrateFreeAndHit) {
+    return LidarIngestionDecisionValidation::kActionNotAccepted;
+  }
+
+  const bool no_expected_surface =
+      decision.expected_surface == LidarExpectedSurfaceKind::kNone &&
+      std::isnan(decision.expected_range_m) && std::isnan(decision.range_delta_m);
+  const bool known_static_surface =
+      decision.expected_surface == LidarExpectedSurfaceKind::kKnownStatic &&
+      std::isfinite(decision.expected_range_m) && decision.expected_range_m > 0.0 &&
+      std::isfinite(decision.range_delta_m);
+  const bool ground_surface =
+      decision.expected_surface == LidarExpectedSurfaceKind::kGround &&
+      std::isfinite(decision.expected_range_m) && decision.expected_range_m > 0.0 &&
+      std::isfinite(decision.range_delta_m);
+  const bool opening_surface =
+      decision.expected_surface == LidarExpectedSurfaceKind::kKnownStatic &&
+      ((std::isnan(decision.expected_range_m) && std::isnan(decision.range_delta_m)) ||
+       known_static_surface);
+
+  bool valid = false;
+  switch (decision.reason) {
+    case LidarIngestionReason::kNoExpectedSurface:
+    case LidarIngestionReason::kClassificationUnavailable:
+      valid = no_expected_surface;
+      break;
+    case LidarIngestionReason::kObstacleBeforeExpectedSurface:
+      valid = (known_static_surface || ground_surface) && decision.range_delta_m < 0.0;
+      break;
+    case LidarIngestionReason::kObstacleInsideOpening:
+      valid = opening_surface;
+      break;
+    case LidarIngestionReason::kUnexpectedKnownStatic:
+    case LidarIngestionReason::kAmbiguousKnownStatic:
+      valid = no_expected_surface || known_static_surface;
+      break;
+    case LidarIngestionReason::kExpectedKnownStatic:
+    case LidarIngestionReason::kExpectedGround:
+    case LidarIngestionReason::kAmbiguousGround:
+    case LidarIngestionReason::kTiedExpectedSurfaces:
+      valid = false;
+      break;
+  }
+  return valid ? LidarIngestionDecisionValidation::kValid
+               : LidarIngestionDecisionValidation::kInvalidMetadata;
+}
+
+LidarIngestionDecisionSnapshot conservativeUnknownObstacleDecisionSnapshot() noexcept {
+  return LidarIngestionDecisionSnapshot{
+      .action = LidarIngestionAction::kIntegrateFreeAndHit,
+      .reason = LidarIngestionReason::kNoExpectedSurface,
+      .expected_surface = LidarExpectedSurfaceKind::kNone,
+      .expected_range_m = std::numeric_limits<double>::quiet_NaN(),
+      .range_delta_m = std::numeric_limits<double>::quiet_NaN(),
+  };
+}
+
+LidarIngestionDecision
+normalizeAcceptedLidarIngestionDecision(const LidarBeamObservation& observation,
+                                        LidarIngestionDecision decision,
+                                        LidarIngestionDecisionStats& stats) {
+  if (decision.action != LidarIngestionAction::kIntegrateFreeAndHit ||
+      validateAcceptedLidarIngestionDecision(makeLidarIngestionDecisionSnapshot(
+          decision)) == LidarIngestionDecisionValidation::kValid) {
+    return decision;
+  }
+
+  ++stats.invariant_fallbacks;
+  appendDiagnostic(observation, decision,
+                   LidarIngestionDiagnosticClass::kInvariantFallback, stats);
+  const LidarIngestionDecisionSnapshot fallback =
+      conservativeUnknownObstacleDecisionSnapshot();
+  decision.action = fallback.action;
+  decision.reason = fallback.reason;
+  decision.expected_surface = fallback.expected_surface;
+  decision.expected_range_m = fallback.expected_range_m;
+  decision.range_delta_m = fallback.range_delta_m;
+  decision.known_static_surface.reset();
+  decision.known_static_result_available = false;
+  decision.known_static_result = KnownStaticLidarHitResult{};
+  return decision;
 }
 
 void recordLidarIngestionDecision(const LidarBeamObservation& observation,
@@ -625,6 +713,8 @@ const char* lidarIngestionDiagnosticClassName(
       return "ambiguous_known_static";
     case LidarIngestionDiagnosticClass::kOpeningObstacle:
       return "opening_obstacle";
+    case LidarIngestionDiagnosticClass::kInvariantFallback:
+      return "invariant_fallback";
     case LidarIngestionDiagnosticClass::kCount:
       break;
   }

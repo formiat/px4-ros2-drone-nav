@@ -287,49 +287,17 @@ expectedSurfaceFromMessage(const std::uint8_t value) noexcept {
   }
 }
 
-[[nodiscard]] bool validAcceptedIngestionDecision(
-    const LidarIngestionAction action, const LidarIngestionReason reason,
-    const LidarExpectedSurfaceKind surface, const double expected_range_m,
-    const double range_delta_m) noexcept {
-  if (action != LidarIngestionAction::kIntegrateFreeAndHit) {
-    return false;
-  }
-
-  const bool no_expected_surface = surface == LidarExpectedSurfaceKind::kNone &&
-                                   std::isnan(expected_range_m) &&
-                                   std::isnan(range_delta_m);
-  const bool known_static_surface = surface == LidarExpectedSurfaceKind::kKnownStatic &&
-                                    std::isfinite(expected_range_m) &&
-                                    expected_range_m > 0.0 &&
-                                    std::isfinite(range_delta_m);
-  const bool ground_surface = surface == LidarExpectedSurfaceKind::kGround &&
-                              std::isfinite(expected_range_m) &&
-                              expected_range_m > 0.0 && std::isfinite(range_delta_m);
-
-  switch (reason) {
-    case LidarIngestionReason::kNoExpectedSurface:
-    case LidarIngestionReason::kClassificationUnavailable:
-      return no_expected_surface;
-    case LidarIngestionReason::kObstacleBeforeExpectedSurface:
-      return (known_static_surface || ground_surface) && range_delta_m < 0.0;
-    case LidarIngestionReason::kObstacleInsideOpening:
-      return surface == LidarExpectedSurfaceKind::kKnownStatic;
-    case LidarIngestionReason::kUnexpectedKnownStatic:
-    case LidarIngestionReason::kAmbiguousKnownStatic:
-      return no_expected_surface || known_static_surface;
-    case LidarIngestionReason::kExpectedKnownStatic:
-    case LidarIngestionReason::kExpectedGround:
-    case LidarIngestionReason::kAmbiguousGround:
-    case LidarIngestionReason::kTiedExpectedSurfaces:
-      return false;
-  }
-  return false;
-}
-
 [[nodiscard]] msg::ObstacleMemoryHitObservation
 observationToMessage(const AcceptedObstacleMemoryHit& hit) {
   msg::ObstacleMemoryHitObservation message;
   const LidarBeamObservation& beam = hit.beam;
+  KnownStaticClassificationSnapshot known_static = hit.known_static;
+  LidarIngestionDecisionSnapshot ingestion_decision = hit.ingestion_decision;
+  if (validateAcceptedLidarIngestionDecision(ingestion_decision) !=
+      LidarIngestionDecisionValidation::kValid) {
+    ingestion_decision = conservativeUnknownObstacleDecisionSnapshot();
+    known_static = KnownStaticClassificationSnapshot{};
+  }
   message.beam_index = static_cast<std::uint64_t>(beam.beam_index);
   message.acquisition_stamp =
       stampFromNanoseconds(beam.acquisition_stamp_ns, beam.acquisition_stamp_valid);
@@ -358,23 +326,23 @@ observationToMessage(const AcceptedObstacleMemoryHit& hit) {
   message.applied_roll_rad = beam.projection.applied_roll_rad;
   message.applied_pitch_rad = beam.projection.applied_pitch_rad;
   message.applied_tilt_rad = beam.projection.applied_tilt_rad;
-  message.classifier_applied = hit.known_static.classifier_applied;
-  message.classification = classificationToMessage(hit.known_static.classification);
-  message.volume_matched = hit.known_static.volume_matched;
-  message.confident_face_interior = hit.known_static.confident_face_interior;
-  message.known_part_valid = hit.known_static.part_kind_valid;
-  message.known_part = partKindToMessage(hit.known_static.part_kind);
-  message.structure_id = hit.known_static.structure_id;
-  message.opening_id = hit.known_static.opening_id;
-  message.part_id = hit.known_static.part_id;
-  message.expected_range_m = hit.known_static.expected_range_m;
-  message.range_delta_m = hit.known_static.range_delta_m;
-  message.ingestion_action = ingestionActionToMessage(hit.ingestion_decision.action);
-  message.ingestion_reason = ingestionReasonToMessage(hit.ingestion_decision.reason);
+  message.classifier_applied = known_static.classifier_applied;
+  message.classification = classificationToMessage(known_static.classification);
+  message.volume_matched = known_static.volume_matched;
+  message.confident_face_interior = known_static.confident_face_interior;
+  message.known_part_valid = known_static.part_kind_valid;
+  message.known_part = partKindToMessage(known_static.part_kind);
+  message.structure_id = known_static.structure_id;
+  message.opening_id = known_static.opening_id;
+  message.part_id = known_static.part_id;
+  message.expected_range_m = known_static.expected_range_m;
+  message.range_delta_m = known_static.range_delta_m;
+  message.ingestion_action = ingestionActionToMessage(ingestion_decision.action);
+  message.ingestion_reason = ingestionReasonToMessage(ingestion_decision.reason);
   message.ingestion_expected_surface =
-      expectedSurfaceToMessage(hit.ingestion_decision.expected_surface);
-  message.ingestion_expected_range_m = hit.ingestion_decision.expected_range_m;
-  message.ingestion_range_delta_m = hit.ingestion_decision.range_delta_m;
+      expectedSurfaceToMessage(ingestion_decision.expected_surface);
+  message.ingestion_expected_range_m = ingestion_decision.expected_range_m;
+  message.ingestion_range_delta_m = ingestion_decision.range_delta_m;
   return message;
 }
 
@@ -406,14 +374,19 @@ observationFromMessage(const msg::ObstacleMemoryHitObservation& message) {
                 std::isfinite(message.applied_tilt_rad)
           : message.applied_roll_rad == 0.0 && message.applied_pitch_rad == 0.0 &&
                 message.applied_tilt_rad == 0.0;
+  const LidarIngestionDecisionSnapshot parsed_ingestion_decision{
+      .action = ingestion_action.value_or(LidarIngestionAction::kSuppressAllUpdates),
+      .reason =
+          ingestion_reason.value_or(LidarIngestionReason::kClassificationUnavailable),
+      .expected_surface = ingestion_surface.value_or(LidarExpectedSurfaceKind::kNone),
+      .expected_range_m = message.ingestion_expected_range_m,
+      .range_delta_m = message.ingestion_range_delta_m,
+  };
   const bool ingestion_decision_valid =
       ingestion_action.has_value() && ingestion_reason.has_value() &&
       ingestion_surface.has_value() &&
-      validAcceptedIngestionDecision(
-          ingestion_action.value_or(LidarIngestionAction::kSuppressAllUpdates),
-          ingestion_reason.value_or(LidarIngestionReason::kClassificationUnavailable),
-          ingestion_surface.value_or(LidarExpectedSurfaceKind::kNone),
-          message.ingestion_expected_range_m, message.ingestion_range_delta_m);
+      validateAcceptedLidarIngestionDecision(parsed_ingestion_decision) ==
+          LidarIngestionDecisionValidation::kValid;
   if (!classification.has_value() || !part_kind.has_value() ||
       !ingestion_decision_valid ||
       message.beam_index > std::numeric_limits<std::size_t>::max() ||
@@ -481,13 +454,7 @@ observationFromMessage(const msg::ObstacleMemoryHitObservation& message) {
   hit.known_static.part_id = message.part_id;
   hit.known_static.expected_range_m = message.expected_range_m;
   hit.known_static.range_delta_m = message.range_delta_m;
-  hit.ingestion_decision = LidarIngestionDecisionSnapshot{
-      .action = *ingestion_action,
-      .reason = *ingestion_reason,
-      .expected_surface = *ingestion_surface,
-      .expected_range_m = message.ingestion_expected_range_m,
-      .range_delta_m = message.ingestion_range_delta_m,
-  };
+  hit.ingestion_decision = parsed_ingestion_decision;
   return hit;
 }
 

@@ -273,6 +273,52 @@ TEST(KnownStaticLidarIngestion,
 }
 
 TEST(KnownStaticLidarIngestion,
+     DistantKnownSurfaceDoesNotCorruptAcceptedObstacleMetadata) {
+  IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  test_case.config.max_lidar_range_m = 30.0;
+  constexpr float kMeasuredRangeM = 29.0F;
+  const LidarBeamProjection projection = projectLidarBeam(
+      test_case.pose, test_case.config, 0.1, 30.0, 0.0, 0.1, 0U, kMeasuredRangeM);
+  ASSERT_TRUE(projection.hit);
+  std::vector<KnownPassageSolidVolume> volumes;
+  volumes.push_back(volumeAtRange(projection, test_case.kind, 212.0));
+  const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
+  const std::array<float, 1U> ranges{kMeasuredRangeM};
+  const GridBounds bounds{-5.0, -5.0, 0.5, 80, 40};
+
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats = memory.integrateScan(
+      Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+      memoryScan(ranges, test_case), ObstacleMemoryConfig{}, &classifier);
+  OccupancyGrid2D overlay_grid{bounds};
+  const CurrentLidarOverlayStats overlay_stats =
+      overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 30.0, 0.0, 0.1},
+                              test_case.pose, test_case.config, &classifier);
+
+  ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
+  const LidarIngestionDecisionSnapshot& memory_decision =
+      memory_stats.occupied_transitions.front()
+          .provenance.occupancy_trigger.ingestion_decision;
+  EXPECT_EQ(memory_decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(memory_decision.expected_surface, LidarExpectedSurfaceKind::kNone);
+  EXPECT_TRUE(std::isnan(memory_decision.expected_range_m));
+  EXPECT_TRUE(std::isnan(memory_decision.range_delta_m));
+  EXPECT_FALSE(memory_stats.occupied_transitions.front()
+                   .provenance.occupancy_trigger.known_static.classifier_applied);
+  EXPECT_EQ(memory_stats.ingestion_decisions.invariant_fallbacks, 0U);
+
+  ASSERT_EQ(overlay_stats.accepted_hits.size(), 1U);
+  const LidarIngestionDecisionSnapshot& overlay_decision =
+      overlay_stats.accepted_hits.front().ingestion_decision;
+  EXPECT_EQ(overlay_decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(overlay_decision.expected_surface, LidarExpectedSurfaceKind::kNone);
+  EXPECT_TRUE(std::isnan(overlay_decision.expected_range_m));
+  EXPECT_TRUE(std::isnan(overlay_decision.range_delta_m));
+  EXPECT_EQ(overlay_stats.ingestion_decisions.invariant_fallbacks, 0U);
+}
+
+TEST(KnownStaticLidarIngestion,
      InvalidGroundProviderPreservesExpectedKnownStaticSuppression) {
   const IngestionCase test_case =
       makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);

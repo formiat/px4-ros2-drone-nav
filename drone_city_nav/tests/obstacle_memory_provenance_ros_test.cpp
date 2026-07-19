@@ -140,6 +140,44 @@ TEST(ObstacleMemoryProvenanceRos, AtomicSnapshotRequiresExactGridProvenancePair)
 }
 
 TEST(ObstacleMemoryProvenanceRos,
+     SerializerRepairsMalformedDecisionWithoutDroppingOccupiedCell) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  auto provenance = makeProvenance();
+  MemoryCellProvenance& record = provenance.at(2U);
+  for (AcceptedObstacleMemoryHit* hit : {&record.occupancy_trigger, &record.last_hit}) {
+    hit->ingestion_decision.reason = LidarIngestionReason::kUnexpectedKnownStatic;
+    hit->ingestion_decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+    hit->ingestion_decision.expected_range_m = std::numeric_limits<double>::quiet_NaN();
+    hit->ingestion_decision.range_delta_m = -183.0;
+  }
+
+  const msg::ObstacleMemorySnapshot message =
+      makeObstacleMemorySnapshotMessage(grid, provenance, 119U, 23U);
+  ASSERT_EQ(message.provenance.cells.size(), 1U);
+  const msg::ObstacleMemoryHitObservation& serialized =
+      message.provenance.cells.front().occupancy_trigger;
+  EXPECT_FALSE(serialized.classifier_applied);
+  EXPECT_EQ(serialized.ingestion_reason,
+            msg::ObstacleMemoryHitObservation::INGESTION_REASON_NO_EXPECTED_SURFACE);
+  EXPECT_EQ(serialized.ingestion_expected_surface,
+            msg::ObstacleMemoryHitObservation::EXPECTED_SURFACE_NONE);
+  EXPECT_TRUE(std::isnan(serialized.ingestion_expected_range_m));
+  EXPECT_TRUE(std::isnan(serialized.ingestion_range_delta_m));
+
+  const MemoryProvenanceParseResult parsed =
+      parseObstacleMemorySnapshotMessage(message);
+  ASSERT_TRUE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kNone);
+  const MemoryProvenanceSnapshot& snapshot =
+      parsed.snapshot.value(); // NOLINT(bugprone-unchecked-optional-access)
+  ASSERT_EQ(snapshot.cells.size(), 1U);
+  const AcceptedObstacleMemoryHit& parsed_hit = snapshot.cells.at(2U).occupancy_trigger;
+  EXPECT_EQ(parsed_hit.ingestion_decision.reason,
+            LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_FALSE(parsed_hit.known_static.classifier_applied);
+}
+
+TEST(ObstacleMemoryProvenanceRos,
      AtomicSnapshotKeepsCurrentAuditExactWhileCallbackBacklogIsDelayed) {
   nav_msgs::msg::OccupancyGrid current_grid = makeGrid();
   MemoryProvenanceParseResult current = parseObstacleMemorySnapshotMessage(

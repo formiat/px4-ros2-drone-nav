@@ -11,6 +11,8 @@
 namespace drone_city_nav {
 namespace {
 
+constexpr double kEffectiveMaxRangeM = 20.0;
+
 [[nodiscard]] KnownPassageSolidVolume
 makeVolume(const KnownPassageSolidPartKind kind = KnownPassageSolidPartKind::kUpper) {
   return KnownPassageSolidVolume{
@@ -51,8 +53,8 @@ makeClassifier(KnownPassageSolidVolume volume = makeVolume(),
 TEST(KnownStaticLidarHitClassifier, ConfidentFaceInteriorSuppressesExpectedHit) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.2);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.2, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_TRUE(result.confident_face_interior);
@@ -65,8 +67,8 @@ TEST(KnownStaticLidarHitClassifier, ConfidentFaceInteriorSuppressesExpectedHit) 
 TEST(KnownStaticLidarHitClassifier, CloserObjectIsRetained) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 3.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 3.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
   EXPECT_TRUE(result.volume_matched);
@@ -75,8 +77,8 @@ TEST(KnownStaticLidarHitClassifier, CloserObjectIsRetained) {
 TEST(KnownStaticLidarHitClassifier, CloserEndpointNearSolidIsAmbiguous) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 3.34);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 3.34, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kNearSurface);
@@ -87,8 +89,8 @@ TEST(KnownStaticLidarHitClassifier, CloserEndpointNearSolidIsAmbiguous) {
 TEST(KnownStaticLidarHitClassifier, EndpointInsideSameSolidUsesGeometricFallback) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_TRUE(result.volume_matched);
@@ -98,8 +100,8 @@ TEST(KnownStaticLidarHitClassifier, EndpointInsideSameSolidUsesGeometricFallback
 TEST(KnownStaticLidarHitClassifier, EndpointPastSameSolidRemainsAmbiguous) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.5);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.5, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_TRUE(result.endpoint_volume_fallback);
@@ -108,8 +110,8 @@ TEST(KnownStaticLidarHitClassifier, EndpointPastSameSolidRemainsAmbiguous) {
 TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherTolerance) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 5.4);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 5.4, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_NEAR(result.range_delta_m, 1.4, 1.0e-9);
@@ -119,8 +121,8 @@ TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherToleranc
 TEST(KnownStaticLidarHitClassifier, RayThroughFreeOpeningIsUnexpected) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 1.0}, Point3{1.0, 0.0, 0.0}, 5.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 1.0}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
   EXPECT_FALSE(result.volume_matched);
@@ -135,8 +137,8 @@ TEST(KnownStaticLidarHitClassifier, RotatedVolumeUsesItsLocalFrame) {
   volume.lateral_xy = Point2{-1.0, 0.0};
   const KnownStaticLidarHitClassifier classifier = makeClassifier(std::move(volume));
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{0.0, 1.0, 0.0}, 4.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 3.0}, Point3{0.0, 1.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_EQ(result.part_kind, KnownPassageSolidPartKind::kLeft);
@@ -145,8 +147,8 @@ TEST(KnownStaticLidarHitClassifier, RotatedVolumeUsesItsLocalFrame) {
 TEST(KnownStaticLidarHitClassifier, FaceBoundaryGrazingIsAmbiguous) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_FALSE(result.confident_face_interior);
@@ -155,8 +157,8 @@ TEST(KnownStaticLidarHitClassifier, FaceBoundaryGrazingIsAmbiguous) {
 TEST(KnownStaticLidarHitClassifier, JustInsideBoundaryIsConfident) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 2.0 - 2.0e-6, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 2.0 - 2.0e-6, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
 }
@@ -164,8 +166,8 @@ TEST(KnownStaticLidarHitClassifier, JustInsideBoundaryIsConfident) {
 TEST(KnownStaticLidarHitClassifier, JustOutsideBoundaryDoesNotMatchSolid) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{0.0, 2.0 + 2.0e-6, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 2.0 + 2.0e-6, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kNearSurface);
@@ -177,7 +179,7 @@ TEST(KnownStaticLidarHitClassifier, EdgeEntryIsAmbiguous) {
 
   const KnownStaticLidarHitResult result =
       classifier.classify(Point3{0.0, -6.0, 3.0}, Point3{component, component, 0.0},
-                          4.0 * std::numbers::sqrt2);
+                          4.0 * std::numbers::sqrt2, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_FALSE(result.confident_face_interior);
@@ -189,7 +191,7 @@ TEST(KnownStaticLidarHitClassifier, CornerEntryIsAmbiguous) {
 
   const KnownStaticLidarHitResult result = classifier.classify(
       Point3{0.0, -6.0, -2.0}, Point3{component, component, component},
-      4.0 * std::numbers::sqrt3);
+      4.0 * std::numbers::sqrt3, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
 }
@@ -197,8 +199,8 @@ TEST(KnownStaticLidarHitClassifier, CornerEntryIsAmbiguous) {
 TEST(KnownStaticLidarHitClassifier, OriginInsideSolidIsAmbiguous) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
-  const KnownStaticLidarHitResult result =
-      classifier.classify(Point3{5.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 0.5);
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{5.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 0.5, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
 }
@@ -208,7 +210,7 @@ TEST(KnownStaticLidarHitClassifier, InvalidRayFailsOpen) {
 
   const KnownStaticLidarHitResult result =
       classifier.classify(Point3{0.0, 0.0, std::numeric_limits<double>::quiet_NaN()},
-                          Point3{1.0, 0.0, 0.0}, 4.0);
+                          Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
 }
@@ -217,14 +219,34 @@ TEST(KnownStaticLidarHitClassifier, GeometricAmbiguityDoesNotDependOnRangeTolera
   const KnownStaticLidarHitClassifier narrow = makeClassifier(makeVolume(), 0.01, 0.01);
   const KnownStaticLidarHitClassifier wide = makeClassifier(makeVolume(), 2.0, 2.0);
 
-  const KnownStaticLidarHitResult narrow_result =
-      narrow.classify(Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
-  const KnownStaticLidarHitResult wide_result =
-      wide.classify(Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0);
+  const KnownStaticLidarHitResult narrow_result = narrow.classify(
+      Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
+  const KnownStaticLidarHitResult wide_result = wide.classify(
+      Point3{0.0, 2.0, 3.0}, Point3{1.0, 0.0, 0.0}, 4.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(narrow_result.classification,
             KnownStaticLidarHitClassification::kAmbiguous);
   EXPECT_EQ(wide_result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+}
+
+TEST(KnownStaticLidarHitClassifier,
+     DistantSurfaceOutsideEffectiveRangeDoesNotMatchMeasuredEndpoint) {
+  KnownPassageSolidVolume distant = makeVolume();
+  distant.center = Point2{213.0, 0.0};
+  distant.opening_center = distant.center;
+  const KnownStaticLidarHitClassifier classifier = makeClassifier(std::move(distant));
+
+  const KnownStaticBeamEvaluation evaluation =
+      classifier.evaluateBeam(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 29.0, 30.0);
+
+  EXPECT_FALSE(evaluation.in_range_surface.has_value());
+  EXPECT_FALSE(evaluation.endpoint_fallback_surface.has_value());
+  EXPECT_EQ(evaluation.endpoint_relation, KnownStaticEndpointRelation::kOutside);
+  EXPECT_EQ(evaluation.hit_result.classification,
+            KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_FALSE(evaluation.hit_result.volume_matched);
+  EXPECT_TRUE(std::isnan(evaluation.hit_result.expected_range_m));
+  EXPECT_TRUE(std::isnan(evaluation.hit_result.range_delta_m));
 }
 
 } // namespace drone_city_nav

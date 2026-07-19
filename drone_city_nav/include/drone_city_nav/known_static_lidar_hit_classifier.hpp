@@ -113,6 +113,13 @@ struct KnownStaticLidarHitStats {
   KnownStaticLidarHitDiagnostic first_ambiguous;
 };
 
+struct KnownStaticBeamEvaluation {
+  std::optional<KnownStaticExpectedSurface> in_range_surface;
+  std::optional<KnownStaticExpectedSurface> endpoint_fallback_surface;
+  KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
+  KnownStaticLidarHitResult hit_result{};
+};
+
 class KnownStaticLidarHitClassifier {
 public:
   KnownStaticLidarHitClassifier(std::vector<KnownPassageSolidVolume> volumes,
@@ -120,7 +127,11 @@ public:
 
   [[nodiscard]] KnownStaticLidarHitResult
   classify(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
-           double measured_range_m) const noexcept;
+           double measured_range_m, double effective_max_range_m) const noexcept;
+
+  [[nodiscard]] KnownStaticBeamEvaluation
+  evaluateBeam(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
+               double measured_range_m, double effective_max_range_m) const noexcept;
 
   [[nodiscard]] std::optional<KnownStaticExpectedSurface>
   nearestExpectedSurface(const Point3& ray_origin_map_m,

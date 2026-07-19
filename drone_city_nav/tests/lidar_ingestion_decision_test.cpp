@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -303,6 +304,100 @@ TEST(LidarIngestionDecision,
   EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedKnownStatic);
   EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
   EXPECT_TRUE(decision.known_static_result_available);
+}
+
+TEST(LidarIngestionDecision,
+     DistantKnownSurfaceOutsideLidarRangeIsAnOrdinaryUnknownObstacle) {
+  const Point3 direction{1.0, 0.0, 0.0};
+  const KnownStaticLidarHitClassifier classifier =
+      knownSurfaceAtRange(direction, 212.0);
+  LidarBeamObservation beam = observation(direction, 29.0);
+  beam.effective_max_range_m = 30.0;
+
+  const LidarIngestionDecision decision =
+      evaluateLidarIngestion(beam, &classifier, nullptr);
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(decision.expected_surface, LidarExpectedSurfaceKind::kNone);
+  EXPECT_TRUE(std::isnan(decision.expected_range_m));
+  EXPECT_TRUE(std::isnan(decision.range_delta_m));
+  EXPECT_FALSE(decision.known_static_result_available);
+  EXPECT_EQ(validateAcceptedLidarIngestionDecision(
+                makeLidarIngestionDecisionSnapshot(decision)),
+            LidarIngestionDecisionValidation::kValid);
+}
+
+TEST(LidarIngestionDecision,
+     MalformedAcceptedKnownStaticDecisionFallsBackWithoutDroppingObstacle) {
+  const LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 29.0);
+  LidarIngestionDecision malformed{};
+  malformed.action = LidarIngestionAction::kIntegrateFreeAndHit;
+  malformed.reason = LidarIngestionReason::kUnexpectedKnownStatic;
+  malformed.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+  malformed.expected_range_m = std::numeric_limits<double>::quiet_NaN();
+  malformed.range_delta_m = -183.0;
+  malformed.known_static_result_available = true;
+  malformed.known_static_result.volume_matched = true;
+  malformed.known_static_result.structure_id = "distant_building";
+  LidarIngestionDecisionStats stats;
+
+  const LidarIngestionDecision normalized =
+      normalizeAcceptedLidarIngestionDecision(beam, malformed, stats);
+
+  EXPECT_EQ(normalized.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(normalized.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(normalized.expected_surface, LidarExpectedSurfaceKind::kNone);
+  EXPECT_TRUE(std::isnan(normalized.expected_range_m));
+  EXPECT_TRUE(std::isnan(normalized.range_delta_m));
+  EXPECT_FALSE(normalized.known_static_result_available);
+  EXPECT_EQ(stats.invariant_fallbacks, 1U);
+  ASSERT_EQ(stats.diagnostics.size(), 1U);
+  EXPECT_EQ(stats.diagnostics.front().diagnostic_class,
+            LidarIngestionDiagnosticClass::kInvariantFallback);
+  EXPECT_EQ(stats.diagnostics.front().reason,
+            LidarIngestionReason::kUnexpectedKnownStatic);
+}
+
+TEST(LidarIngestionDecision, AcceptedEvaluatorDecisionsSatisfySharedInvariant) {
+  const Point3 horizontal{1.0, 0.0, 0.0};
+  const Point3 downward{0.6, 0.0, -0.8};
+  const GroundLidarRejectionConfig ground{};
+  const KnownStaticLidarHitClassifier known_surface = horizontalKnownSurface();
+
+  std::vector<KnownPassageSolidVolume> opening_volumes;
+  opening_volumes.push_back(KnownPassageSolidVolume{
+      .structure_id = "opening_building",
+      .opening_id = "opening",
+      .part_id = "upper_mass",
+      .part_kind = KnownPassageSolidPartKind::kUpper,
+      .center = Point2{6.0, 0.0},
+      .normal_xy = Point2{1.0, 0.0},
+      .lateral_xy = Point2{0.0, 1.0},
+      .depth_m = 2.0,
+      .width_m = 4.0,
+      .min_z_m = 12.0,
+      .max_z_m = 16.0,
+      .opening_center = Point2{6.0, 0.0},
+      .opening_depth_m = 2.0,
+      .opening_width_m = 4.0,
+      .opening_min_z_m = 8.0,
+      .opening_max_z_m = 12.0,
+  });
+  const KnownStaticLidarHitClassifier opening_surface{std::move(opening_volumes)};
+
+  const std::array<LidarIngestionDecision, 4U> decisions{
+      evaluateLidarIngestion(observation(horizontal, 8.0), nullptr, nullptr),
+      evaluateLidarIngestion(observation(downward, 9.0), nullptr, &ground),
+      evaluateLidarIngestion(observation(horizontal, 3.0), &known_surface, nullptr),
+      evaluateLidarIngestion(observation(horizontal, 6.0), &opening_surface, nullptr),
+  };
+  for (const LidarIngestionDecision& decision : decisions) {
+    ASSERT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+    EXPECT_EQ(validateAcceptedLidarIngestionDecision(
+                  makeLidarIngestionDecisionSnapshot(decision)),
+              LidarIngestionDecisionValidation::kValid);
+  }
 }
 
 TEST(LidarIngestionDecision, MissingRequiredAttitudeMakesGroundUnavailable) {

@@ -83,9 +83,11 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     const LidarBeamObservation observation =
         makeLidarBeamObservation(scan.timing, i, projection, scan_range_max, beam_pose,
                                  projection_config, aligned_poses_available);
-    const LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+    LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
         ambiguous_hit_tracker);
+    decision = normalizeAcceptedLidarIngestionDecision(observation, decision,
+                                                       stats.ingestion_decisions);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,
