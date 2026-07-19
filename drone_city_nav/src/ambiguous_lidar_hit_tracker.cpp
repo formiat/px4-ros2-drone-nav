@@ -18,7 +18,8 @@ namespace {
 
 [[nodiscard]] bool staticAttached(const KnownStaticEndpointRelation relation) noexcept {
   return relation == KnownStaticEndpointRelation::kInsideSolid ||
-         relation == KnownStaticEndpointRelation::kNearSurface;
+         relation == KnownStaticEndpointRelation::kNearSurface ||
+         relation == KnownStaticEndpointRelation::kInsideOpeningBoundary;
 }
 
 } // namespace
@@ -66,9 +67,17 @@ AmbiguousLidarHitTracker::observe(const AmbiguousStaticHitObservation& observati
     ++evidence.independent_scans;
     if (staticAttached(observation.endpoint_relation)) {
       ++evidence.static_attached_observations;
+      ++evidence.consecutive_static_attached_observations;
+      evidence.consecutive_detached_obstacle_observations = 0U;
     } else {
       ++evidence.detached_obstacle_observations;
+      ++evidence.consecutive_detached_obstacle_observations;
+      evidence.consecutive_static_attached_observations = 0U;
     }
+    evidence.opening_boundary_observed =
+        evidence.opening_boundary_observed ||
+        observation.endpoint_relation ==
+            KnownStaticEndpointRelation::kInsideOpeningBoundary;
     evidence.last_scan_stamp_ns = observation.scan_stamp_ns;
     evidence.last_endpoint_map_m = observation.endpoint_map_m;
     evidence.last_ray_origin_map_m = observation.ray_origin_map_m;
@@ -103,11 +112,11 @@ AmbiguousLidarHitTracker::observe(const AmbiguousStaticHitObservation& observati
   }
 
   AmbiguousLidarHitResolution resolution = AmbiguousLidarHitResolution::kPending;
-  if (evidence.independent_scans >= config_.required_independent_scans &&
-      evidence.static_attached_observations == evidence.independent_scans) {
+  if (evidence.consecutive_static_attached_observations >=
+      config_.required_independent_scans) {
     resolution = AmbiguousLidarHitResolution::kConfirmedStaticAttached;
-  } else if (evidence.independent_scans >= config_.required_independent_scans &&
-             evidence.detached_obstacle_observations == evidence.independent_scans) {
+  } else if (evidence.consecutive_detached_obstacle_observations >=
+             config_.required_independent_scans) {
     resolution = AmbiguousLidarHitResolution::kConfirmedDetachedObstacle;
   }
   return AmbiguousLidarHitConfirmation{
@@ -119,6 +128,7 @@ AmbiguousLidarHitTracker::observe(const AmbiguousStaticHitObservation& observati
       .viewpoint_direction_change_rad = viewpoint_direction_change_rad,
       .resolution = resolution,
       .new_scan_vote = new_scan_vote,
+      .opening_boundary_observed = evidence.opening_boundary_observed,
   };
 }
 

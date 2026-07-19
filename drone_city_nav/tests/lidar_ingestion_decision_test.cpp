@@ -286,6 +286,30 @@ TEST(LidarIngestionDecision, CloserSideStaticCountersDistinguishDecisionState) {
   EXPECT_EQ(stats.closer_side_static_confirmed, 1U);
 }
 
+TEST(LidarIngestionDecision, OpeningBoundaryDetachedResolutionHasDedicatedCounter) {
+  const LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 4.0);
+  LidarIngestionDecision decision{};
+  decision.action = LidarIngestionAction::kIntegrateFreeAndHit;
+  decision.reason = LidarIngestionReason::kObstacleBeforeExpectedSurface;
+  decision.expected_surface = LidarExpectedSurfaceKind::kKnownStatic;
+  decision.expected_range_m = 5.0;
+  decision.range_delta_m = -1.0;
+  decision.known_static_result_available = true;
+  decision.known_static_result.classification =
+      KnownStaticLidarHitClassification::kUnexpected;
+  decision.known_static_result.endpoint_relation =
+      KnownStaticEndpointRelation::kOutside;
+  decision.ambiguous_resolution =
+      AmbiguousLidarHitResolution::kConfirmedDetachedObstacle;
+  decision.ambiguous_opening_boundary_evidence = true;
+  LidarIngestionDecisionStats stats;
+
+  recordLidarIngestionDecision(beam, decision, false, stats);
+
+  EXPECT_EQ(stats.opening_boundary_confirmed_obstacle, 1U);
+  EXPECT_EQ(stats.detached_obstacles_confirmed, 1U);
+}
+
 TEST(LidarIngestionDecision,
      EndpointNearKnownSurfaceBeyondEffectiveRangeIsStillSuppressed) {
   constexpr double kMeasuredRangeM = 34.94;

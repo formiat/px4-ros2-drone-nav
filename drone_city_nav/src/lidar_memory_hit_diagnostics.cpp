@@ -347,6 +347,8 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, context.known_static_farther_range_tolerance_m);
   stream << ",\"known_static_endpoint_volume_tolerance_m\":";
   writeNumberOrNull(stream, context.known_static_endpoint_volume_tolerance_m);
+  stream << ",\"known_static_opening_boundary_tolerance_m\":";
+  writeNumberOrNull(stream, context.known_static_opening_boundary_tolerance_m);
   stream << "},\"decision\":{\"action\":\"" << lidarIngestionActionName(decision.action)
          << "\",\"reason\":\"" << lidarIngestionReasonName(decision.reason)
          << "\",\"selected_surface\":\""

@@ -118,6 +118,9 @@ void appendDiagnostic(const LidarBeamObservation& observation,
       .endpoint_relation = KnownStaticEndpointRelation::kOutside,
       .endpoint_solid_distance_m = std::numeric_limits<double>::infinity(),
       .endpoint_opening_margin_m = -std::numeric_limits<double>::infinity(),
+      .opening_min_z_m = std::numeric_limits<double>::quiet_NaN(),
+      .opening_max_z_m = std::numeric_limits<double>::quiet_NaN(),
+      .opening_boundary_tolerance_m = std::numeric_limits<double>::quiet_NaN(),
       .distance_before_solid_m = std::numeric_limits<double>::quiet_NaN(),
       .incidence_angle_rad = std::numeric_limits<double>::quiet_NaN(),
       .ambiguous_resolution = decision.ambiguous_resolution,
@@ -135,6 +138,10 @@ void appendDiagnostic(const LidarBeamObservation& observation,
         decision.known_static_result.endpoint_solid_distance_m;
     diagnostic.endpoint_opening_margin_m =
         decision.known_static_result.endpoint_opening_margin_m;
+    diagnostic.opening_min_z_m = decision.known_static_result.opening_min_z_m;
+    diagnostic.opening_max_z_m = decision.known_static_result.opening_max_z_m;
+    diagnostic.opening_boundary_tolerance_m =
+        decision.known_static_result.opening_boundary_tolerance_m;
     diagnostic.distance_before_solid_m =
         decision.known_static_result.distance_before_solid_m;
     diagnostic.incidence_angle_rad = decision.known_static_result.incidence_angle_rad;
@@ -394,6 +401,7 @@ resolveAmbiguousKnownStaticIngestion(const LidarBeamObservation& observation,
   decision.ambiguous_viewpoint_translation_m = confirmation.viewpoint_translation_m;
   decision.ambiguous_viewpoint_direction_change_rad =
       confirmation.viewpoint_direction_change_rad;
+  decision.ambiguous_opening_boundary_evidence = confirmation.opening_boundary_observed;
   switch (confirmation.resolution) {
     case AmbiguousLidarHitResolution::kPending:
       return decision;
@@ -516,6 +524,11 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
       decision.known_static_result_available &&
       std::isfinite(decision.known_static_result.distance_before_solid_m) &&
       decision.known_static_result.distance_before_solid_m > 0.0;
+  const bool opening_boundary =
+      decision.known_static_result_available &&
+      (decision.known_static_result.endpoint_relation ==
+           KnownStaticEndpointRelation::kInsideOpeningBoundary ||
+       decision.ambiguous_opening_boundary_evidence);
   if (decision.ground_provider == LidarExpectedSurfaceProviderStatus::kUnavailable) {
     ++stats.ground_classification_unavailable;
     appendDiagnostic(observation, decision,
@@ -540,7 +553,7 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
       }
       break;
     case LidarIngestionReason::kObstacleInsideOpening:
-      ++stats.opening_obstacles_integrated;
+      ++stats.opening_interior_obstacles_integrated;
       appendDiagnostic(observation, decision,
                        LidarIngestionDiagnosticClass::kOpeningObstacle, stats);
       break;
@@ -549,7 +562,10 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
         ++stats.closer_side_static_pending;
       }
       appendDiagnostic(observation, decision,
-                       LidarIngestionDiagnosticClass::kAmbiguousKnownStatic, stats);
+                       opening_boundary
+                           ? LidarIngestionDiagnosticClass::kOpeningBoundary
+                           : LidarIngestionDiagnosticClass::kAmbiguousKnownStatic,
+                       stats);
       break;
     case LidarIngestionReason::kAmbiguousGround:
     case LidarIngestionReason::kTiedExpectedSurfaces:
@@ -572,6 +588,23 @@ void recordLidarIngestionDecision(const LidarBeamObservation& observation,
   if (decision.ambiguous_resolution ==
       AmbiguousLidarHitResolution::kConfirmedDetachedObstacle) {
     ++stats.detached_obstacles_confirmed;
+  }
+  if (opening_boundary) {
+    switch (decision.ambiguous_resolution) {
+      case AmbiguousLidarHitResolution::kPending:
+        ++stats.opening_boundary_pending;
+        break;
+      case AmbiguousLidarHitResolution::kConfirmedStaticAttached:
+        ++stats.opening_boundary_confirmed_static;
+        appendDiagnostic(observation, decision,
+                         LidarIngestionDiagnosticClass::kOpeningBoundary, stats);
+        break;
+      case AmbiguousLidarHitResolution::kConfirmedDetachedObstacle:
+        ++stats.opening_boundary_confirmed_obstacle;
+        appendDiagnostic(observation, decision,
+                         LidarIngestionDiagnosticClass::kOpeningBoundary, stats);
+        break;
+    }
   }
   stats.ambiguous_expired += decision.ambiguous_expired_candidates;
   const bool ground_explained =
@@ -619,6 +652,11 @@ std::string formatLidarIngestionRepresentativeDiagnostics(
            << lidarExpectedSurfaceProviderStatusName(diagnostic.ground_provider)
            << " known_provider="
            << lidarExpectedSurfaceProviderStatusName(diagnostic.known_static_provider)
+           << " structure="
+           << (diagnostic.structure_id.empty() ? "<none>" : diagnostic.structure_id)
+           << " opening="
+           << (diagnostic.opening_id.empty() ? "<none>" : diagnostic.opening_id)
+           << " part=" << (diagnostic.part_id.empty() ? "<none>" : diagnostic.part_id)
            << " beam=" << observation.beam_index << " endpoint=("
            << observation.projection.endpoint_map_m.x << ','
            << observation.projection.endpoint_map_m.y << ','
@@ -645,6 +683,9 @@ std::string formatLidarIngestionRepresentativeDiagnostics(
            << knownStaticEndpointRelationName(diagnostic.endpoint_relation)
            << " solid_distance=" << diagnostic.endpoint_solid_distance_m
            << " opening_margin=" << diagnostic.endpoint_opening_margin_m
+           << " opening_z=[" << diagnostic.opening_min_z_m << ','
+           << diagnostic.opening_max_z_m
+           << "] boundary_tolerance=" << diagnostic.opening_boundary_tolerance_m
            << " distance_before_solid=" << diagnostic.distance_before_solid_m
            << " incidence_angle=" << diagnostic.incidence_angle_rad
            << " evidence=" << diagnostic.ambiguous_evidence_count
@@ -713,6 +754,8 @@ const char* lidarIngestionDiagnosticClassName(
       return "ambiguous_known_static";
     case LidarIngestionDiagnosticClass::kOpeningObstacle:
       return "opening_obstacle";
+    case LidarIngestionDiagnosticClass::kOpeningBoundary:
+      return "opening_boundary";
     case LidarIngestionDiagnosticClass::kInvariantFallback:
       return "invariant_fallback";
     case LidarIngestionDiagnosticClass::kCount:

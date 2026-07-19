@@ -146,6 +146,8 @@ namespace {
               .ground_config = GroundLidarRejectionConfig{},
               .known_static_closer_range_tolerance_m = 0.5,
               .known_static_farther_range_tolerance_m = 1.5,
+              .known_static_endpoint_volume_tolerance_m = 0.75,
+              .known_static_opening_boundary_tolerance_m = 0.15,
           },
   };
 }
@@ -164,6 +166,8 @@ TEST(LidarMemoryHitDiagnostics, JsonIncludesRawBeamAndBothSurfaceCandidates) {
   EXPECT_NE(json.find("\"intersection_map_m\":{\"x\":14"), std::string::npos);
   EXPECT_NE(json.find("\"part\":\"upper\""), std::string::npos);
   EXPECT_NE(json.find("\"selected_surface\":\"known_static\""), std::string::npos);
+  EXPECT_NE(json.find("\"known_static_opening_boundary_tolerance_m\":0.15"),
+            std::string::npos);
   EXPECT_NE(json.find("\"min_endpoint_z_m\":6.5"), std::string::npos);
 }
 

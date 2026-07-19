@@ -127,10 +127,16 @@ static lidar classifier:
 - `ambiguous_hits_kept` / `ambiguous`;
 - `closer_side_static_suppressed`, `closer_side_static_pending`, and
   `closer_side_static_confirmed`;
-- `detached_obstacles_confirmed`, `opening_obstacles_integrated`, and
-  `ambiguous_expired`;
+- `detached_obstacles_confirmed` and `ambiguous_expired`;
+- `opening_boundary_pending`, `opening_boundary_confirmed_static`,
+  `opening_boundary_confirmed_obstacle`, and
+  `opening_interior_obstacles_integrated`;
 - ignored hit counts for `left`, `right`, `lower`, and `upper` masses;
 - the first ignored structure/opening/part identity and range delta.
+
+Bounded opening-boundary samples include endpoint XYZ, opening Z bounds,
+opening margin, nearest solid part, signed solid distance, configured boundary
+tolerance, evidence count, and the final pending/confirmed decision.
 
 When a raw obstacle-memory cell inside or within 2 m of a known passage
 structure first transitions to occupied, `obstacle_memory_node` emits an

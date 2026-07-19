@@ -45,7 +45,23 @@ makeClassifier(KnownPassageSolidVolume volume = makeVolume(),
       std::move(volumes), KnownStaticLidarHitClassifierConfig{
                               .closer_range_tolerance_m = closer_tolerance_m,
                               .farther_range_tolerance_m = farther_tolerance_m,
-                              .endpoint_volume_tolerance_m = 0.75}};
+                              .endpoint_volume_tolerance_m = 0.75,
+                              .opening_boundary_tolerance_m = 0.15}};
+}
+
+[[nodiscard]] KnownStaticLidarHitClassifier highOpeningClassifier() {
+  KnownPassageSolidVolume lower = makeVolume(KnownPassageSolidPartKind::kLower);
+  lower.part_id = "lower_mass";
+  lower.min_z_m = 0.0;
+  lower.max_z_m = 21.5;
+  lower.opening_min_z_m = 21.5;
+  lower.opening_max_z_m = 28.5;
+  KnownPassageSolidVolume upper = lower;
+  upper.part_id = "upper_mass";
+  upper.part_kind = KnownPassageSolidPartKind::kUpper;
+  upper.min_z_m = 28.5;
+  upper.max_z_m = 32.0;
+  return KnownStaticLidarHitClassifier{{std::move(lower), std::move(upper)}};
 }
 
 } // namespace
@@ -247,6 +263,65 @@ TEST(KnownStaticLidarHitClassifier,
   EXPECT_FALSE(evaluation.hit_result.volume_matched);
   EXPECT_TRUE(std::isnan(evaluation.hit_result.expected_range_m));
   EXPECT_TRUE(std::isnan(evaluation.hit_result.range_delta_m));
+}
+
+TEST(KnownStaticLidarHitClassifier,
+     OpeningLowerBoundaryMillimeterReturnsAreStaticAttached) {
+  const KnownStaticLidarHitClassifier classifier = highOpeningClassifier();
+  for (const double altitude_m : {21.5, 21.502, 21.505}) {
+    const KnownStaticLidarHitResult result = classifier.classify(
+        Point3{0.0, 0.0, altitude_m}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
+
+    EXPECT_NE(result.classification, KnownStaticLidarHitClassification::kUnexpected);
+    EXPECT_NE(result.endpoint_relation, KnownStaticEndpointRelation::kInsideOpening);
+    if (altitude_m > 21.5) {
+      EXPECT_EQ(result.endpoint_relation,
+                KnownStaticEndpointRelation::kInsideOpeningBoundary);
+      EXPECT_EQ(result.part_kind, KnownPassageSolidPartKind::kLower);
+      EXPECT_EQ(result.part_id, "lower_mass");
+      EXPECT_NEAR(result.endpoint_solid_distance_m, altitude_m - 21.5, 1.0e-9);
+      EXPECT_NEAR(result.opening_min_z_m, 21.5, 1.0e-9);
+      EXPECT_NEAR(result.opening_max_z_m, 28.5, 1.0e-9);
+      EXPECT_NEAR(result.opening_boundary_tolerance_m, 0.15, 1.0e-9);
+    }
+  }
+}
+
+TEST(KnownStaticLidarHitClassifier, OpeningUpperBoundaryReturnUsesNearestUpperMass) {
+  const KnownStaticLidarHitClassifier classifier = highOpeningClassifier();
+
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 28.498}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+  EXPECT_EQ(result.endpoint_relation,
+            KnownStaticEndpointRelation::kInsideOpeningBoundary);
+  EXPECT_EQ(result.part_kind, KnownPassageSolidPartKind::kUpper);
+  EXPECT_EQ(result.part_id, "upper_mass");
+  EXPECT_NEAR(result.endpoint_solid_distance_m, 0.002, 1.0e-9);
+}
+
+TEST(KnownStaticLidarHitClassifier, OpeningInteriorRemainsImmediateObstacle) {
+  const KnownStaticLidarHitClassifier classifier = highOpeningClassifier();
+
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 21.8}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kInsideOpening);
+  EXPECT_NEAR(result.endpoint_solid_distance_m, 0.3, 1.0e-9);
+}
+
+TEST(KnownStaticLidarHitClassifier, OpeningEntryPlaneDoesNotCreateFalseSolidBoundary) {
+  const KnownStaticLidarHitClassifier classifier = highOpeningClassifier();
+
+  const KnownStaticLidarHitResult result = classifier.classify(
+      Point3{0.0, 0.0, 25.0}, Point3{1.0, 0.0, 0.0}, 4.005, kEffectiveMaxRangeM);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
+  EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kInsideOpening);
+  EXPECT_NEAR(result.endpoint_opening_margin_m, 0.005, 1.0e-9);
+  EXPECT_GT(result.endpoint_solid_distance_m, 3.0);
 }
 
 } // namespace drone_city_nav

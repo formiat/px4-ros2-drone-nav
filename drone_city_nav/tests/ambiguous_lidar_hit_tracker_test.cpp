@@ -41,6 +41,27 @@ TEST(AmbiguousLidarHitTrackerTest,
   EXPECT_EQ(confirmation.static_attached_observations, 3U);
 }
 
+TEST(AmbiguousLidarHitTrackerTest, OpeningBoundaryIsStaticAttachedEvidence) {
+  AmbiguousLidarHitTracker tracker;
+
+  EXPECT_TRUE(
+      tracker
+          .observe(observation(100'000'000, 0.0,
+                               KnownStaticEndpointRelation::kInsideOpeningBoundary))
+          .new_scan_vote);
+  EXPECT_TRUE(
+      tracker
+          .observe(observation(200'000'000, 0.6,
+                               KnownStaticEndpointRelation::kInsideOpeningBoundary))
+          .new_scan_vote);
+  const AmbiguousLidarHitConfirmation confirmation = tracker.observe(observation(
+      300'000'000, 1.2, KnownStaticEndpointRelation::kInsideOpeningBoundary));
+
+  EXPECT_EQ(confirmation.resolution,
+            AmbiguousLidarHitResolution::kConfirmedStaticAttached);
+  EXPECT_EQ(confirmation.static_attached_observations, 3U);
+}
+
 TEST(AmbiguousLidarHitTrackerTest, ConfirmsDetachedClusterAsObstacle) {
   AmbiguousLidarHitTracker tracker;
 
@@ -57,6 +78,32 @@ TEST(AmbiguousLidarHitTrackerTest, ConfirmsDetachedClusterAsObstacle) {
 
   EXPECT_EQ(confirmation.resolution,
             AmbiguousLidarHitResolution::kConfirmedDetachedObstacle);
+  EXPECT_EQ(confirmation.detached_obstacle_observations, 3U);
+}
+
+TEST(AmbiguousLidarHitTrackerTest,
+     OpeningBoundaryCandidateCanResolveAsDetachedObstacle) {
+  AmbiguousLidarHitTracker tracker;
+
+  EXPECT_TRUE(
+      tracker
+          .observe(observation(100'000'000, 0.0,
+                               KnownStaticEndpointRelation::kInsideOpeningBoundary))
+          .new_scan_vote);
+  EXPECT_TRUE(
+      tracker
+          .observe(observation(200'000'000, 0.6, KnownStaticEndpointRelation::kOutside))
+          .new_scan_vote);
+  EXPECT_TRUE(
+      tracker
+          .observe(observation(300'000'000, 1.2, KnownStaticEndpointRelation::kOutside))
+          .new_scan_vote);
+  const AmbiguousLidarHitConfirmation confirmation = tracker.observe(
+      observation(400'000'000, 1.8, KnownStaticEndpointRelation::kOutside));
+
+  EXPECT_EQ(confirmation.resolution,
+            AmbiguousLidarHitResolution::kConfirmedDetachedObstacle);
+  EXPECT_TRUE(confirmation.opening_boundary_observed);
   EXPECT_EQ(confirmation.detached_obstacle_observations, 3U);
 }
 

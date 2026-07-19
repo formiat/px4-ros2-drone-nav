@@ -30,7 +30,8 @@ struct SolidIntersection {
 
 struct EndpointGeometry {
   KnownStaticEndpointRelation relation{KnownStaticEndpointRelation::kOutside};
-  const KnownPassageSolidVolume* volume{nullptr};
+  const KnownPassageSolidVolume* opening_volume{nullptr};
+  const KnownPassageSolidVolume* nearest_solid_volume{nullptr};
   double solid_distance_m{std::numeric_limits<double>::infinity()};
   double opening_margin_m{-std::numeric_limits<double>::infinity()};
 };
@@ -89,17 +90,15 @@ localPoint(const Point3& point, const Point2 center, const Point2 normal,
                        std::abs(local.at(2))});
 }
 
-[[nodiscard]] EndpointGeometry
-endpointGeometry(const Point3& endpoint,
-                 const std::vector<KnownPassageSolidVolume>& volumes,
-                 const double near_tolerance_m) noexcept {
+[[nodiscard]] EndpointGeometry endpointGeometry(
+    const Point3& endpoint, const std::vector<KnownPassageSolidVolume>& volumes,
+    const double near_tolerance_m, const double opening_boundary_tolerance_m) noexcept {
   EndpointGeometry geometry;
-  const KnownPassageSolidVolume* opening_volume = nullptr;
   for (const KnownPassageSolidVolume& volume : volumes) {
     const double opening_margin_m = openingMargin(endpoint, volume);
     if (opening_margin_m > kLinearEpsilonM &&
         opening_margin_m > geometry.opening_margin_m) {
-      opening_volume = &volume;
+      geometry.opening_volume = &volume;
       geometry.opening_margin_m = opening_margin_m;
     }
   }
@@ -109,14 +108,21 @@ endpointGeometry(const Point3& endpoint,
         volume.width_m, volume.min_z_m, volume.max_z_m);
     if (distance_m < geometry.solid_distance_m) {
       geometry.solid_distance_m = distance_m;
-      geometry.volume = &volume;
+      geometry.nearest_solid_volume = &volume;
     }
   }
-  if (opening_volume != nullptr) {
-    geometry.relation = KnownStaticEndpointRelation::kInsideOpening;
-    geometry.volume = opening_volume;
-  } else if (geometry.solid_distance_m <= 0.0) {
+  const bool opening_and_solid_match =
+      geometry.opening_volume != nullptr && geometry.nearest_solid_volume != nullptr &&
+      geometry.opening_volume->structure_id ==
+          geometry.nearest_solid_volume->structure_id &&
+      geometry.opening_volume->opening_id == geometry.nearest_solid_volume->opening_id;
+  if (geometry.solid_distance_m <= 0.0) {
     geometry.relation = KnownStaticEndpointRelation::kInsideSolid;
+  } else if (opening_and_solid_match &&
+             geometry.solid_distance_m <= opening_boundary_tolerance_m) {
+    geometry.relation = KnownStaticEndpointRelation::kInsideOpeningBoundary;
+  } else if (geometry.opening_volume != nullptr) {
+    geometry.relation = KnownStaticEndpointRelation::kInsideOpening;
   } else if (geometry.solid_distance_m <= near_tolerance_m) {
     geometry.relation = KnownStaticEndpointRelation::kNearSurface;
   }
@@ -292,6 +298,10 @@ KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
       config_.endpoint_volume_tolerance_m < 0.0) {
     config_.endpoint_volume_tolerance_m = 0.75;
   }
+  if (!std::isfinite(config_.opening_boundary_tolerance_m) ||
+      config_.opening_boundary_tolerance_m < 0.0) {
+    config_.opening_boundary_tolerance_m = 0.15;
+  }
 }
 
 KnownStaticLidarHitResult KnownStaticLidarHitClassifier::classify(
@@ -320,17 +330,27 @@ KnownStaticBeamEvaluation KnownStaticLidarHitClassifier::evaluateBeam(
       ray_origin_map_m.x + measured_range_m * ray_direction_map.x,
       ray_origin_map_m.y + measured_range_m * ray_direction_map.y,
       ray_origin_map_m.z + measured_range_m * ray_direction_map.z};
-  const EndpointGeometry endpoint_geometry = endpointGeometry(
-      measured_endpoint, volumes_, config_.endpoint_volume_tolerance_m);
+  const EndpointGeometry endpoint_geometry =
+      endpointGeometry(measured_endpoint, volumes_, config_.endpoint_volume_tolerance_m,
+                       config_.opening_boundary_tolerance_m);
   result.endpoint_relation = endpoint_geometry.relation;
   evaluation.endpoint_relation = endpoint_geometry.relation;
   result.endpoint_solid_distance_m = endpoint_geometry.solid_distance_m;
   result.endpoint_opening_margin_m = endpoint_geometry.opening_margin_m;
-  if (endpoint_geometry.volume != nullptr) {
-    result.part_kind = endpoint_geometry.volume->part_kind;
-    result.structure_id = endpoint_geometry.volume->structure_id;
-    result.opening_id = endpoint_geometry.volume->opening_id;
-    result.part_id = endpoint_geometry.volume->part_id;
+  result.opening_boundary_tolerance_m = config_.opening_boundary_tolerance_m;
+  if (endpoint_geometry.opening_volume != nullptr) {
+    result.opening_min_z_m = endpoint_geometry.opening_volume->opening_min_z_m;
+    result.opening_max_z_m = endpoint_geometry.opening_volume->opening_max_z_m;
+  }
+  const KnownPassageSolidVolume* related_volume =
+      endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideOpening
+          ? endpoint_geometry.opening_volume
+          : endpoint_geometry.nearest_solid_volume;
+  if (related_volume != nullptr) {
+    result.part_kind = related_volume->part_kind;
+    result.structure_id = related_volume->structure_id;
+    result.opening_id = related_volume->opening_id;
+    result.part_id = related_volume->part_id;
   }
   if (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideOpening) {
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
@@ -343,7 +363,9 @@ KnownStaticBeamEvaluation KnownStaticLidarHitClassifier::evaluateBeam(
   std::optional<KnownStaticExpectedSurface> nearest = evaluation.in_range_surface;
   if (!nearest.has_value() &&
       (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideSolid ||
-       endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface)) {
+       endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface ||
+       endpoint_geometry.relation ==
+           KnownStaticEndpointRelation::kInsideOpeningBoundary)) {
     evaluation.endpoint_fallback_surface = nearestExpectedSurface(
         ray_origin_map_m, ray_direction_map,
         effective_max_range_m + config_.endpoint_volume_tolerance_m);
@@ -355,7 +377,9 @@ KnownStaticBeamEvaluation KnownStaticLidarHitClassifier::evaluateBeam(
       result.volume_matched = true;
       result.endpoint_volume_fallback = true;
     } else if (endpoint_geometry.relation ==
-               KnownStaticEndpointRelation::kNearSurface) {
+                   KnownStaticEndpointRelation::kNearSurface ||
+               endpoint_geometry.relation ==
+                   KnownStaticEndpointRelation::kInsideOpeningBoundary) {
       result.classification = KnownStaticLidarHitClassification::kAmbiguous;
       result.volume_matched = true;
       result.endpoint_volume_fallback = true;
@@ -368,22 +392,29 @@ KnownStaticBeamEvaluation KnownStaticLidarHitClassifier::evaluateBeam(
 
   result.expected_range_m = nearest->range_m;
   result.range_delta_m = measured_range_m - nearest->range_m;
-  result.part_kind = nearest->part_kind;
-  result.structure_id = nearest->structure_id;
-  result.opening_id = nearest->opening_id;
-  result.part_id = nearest->part_id;
+  if (endpoint_geometry.relation !=
+      KnownStaticEndpointRelation::kInsideOpeningBoundary) {
+    result.part_kind = nearest->part_kind;
+    result.structure_id = nearest->structure_id;
+    result.opening_id = nearest->opening_id;
+    result.part_id = nearest->part_id;
+  }
   result.volume_matched = true;
   result.confident_face_interior = nearest->confident_face_interior;
   result.distance_before_solid_m = nearest->range_m - measured_range_m;
   result.incidence_angle_rad = nearest->incidence_angle_rad;
   if (endpoint_geometry.relation == KnownStaticEndpointRelation::kInsideSolid ||
-      endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface) {
+      endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface ||
+      endpoint_geometry.relation ==
+          KnownStaticEndpointRelation::kInsideOpeningBoundary) {
     result.endpoint_volume_fallback = true;
     const bool closer_outside_tolerance =
         measured_range_m < nearest->range_m - config_.closer_range_tolerance_m;
     const bool farther_outside_tolerance =
         measured_range_m > nearest->range_m + config_.farther_range_tolerance_m;
-    if (closer_outside_tolerance || !nearest->confident_face_interior ||
+    if (endpoint_geometry.relation ==
+            KnownStaticEndpointRelation::kInsideOpeningBoundary ||
+        closer_outside_tolerance || !nearest->confident_face_interior ||
         (endpoint_geometry.relation == KnownStaticEndpointRelation::kNearSurface &&
          farther_outside_tolerance)) {
       result.classification = KnownStaticLidarHitClassification::kAmbiguous;
@@ -482,6 +513,10 @@ double KnownStaticLidarHitClassifier::endpointVolumeToleranceM() const noexcept 
   return config_.endpoint_volume_tolerance_m;
 }
 
+double KnownStaticLidarHitClassifier::openingBoundaryToleranceM() const noexcept {
+  return config_.opening_boundary_tolerance_m;
+}
+
 std::optional<KnownStaticLidarHitProvenance>
 makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
                                   const Point3& endpoint_map_m, const int cell_x,
@@ -548,6 +583,8 @@ knownStaticEndpointRelationName(const KnownStaticEndpointRelation relation) noex
       return "near_surface";
     case KnownStaticEndpointRelation::kInsideSolid:
       return "inside_solid";
+    case KnownStaticEndpointRelation::kInsideOpeningBoundary:
+      return "inside_opening_boundary";
     case KnownStaticEndpointRelation::kInsideOpening:
       return "inside_opening";
   }

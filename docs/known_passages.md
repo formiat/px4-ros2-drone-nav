@@ -219,8 +219,8 @@ For every usable lidar return, both ingestion paths perform the same process:
 2. construct known solid volumes from the annotation: `left_mass`,
    `right_mass`, `lower_mass`, and `upper_mass` as applicable;
 3. query the nearest expected known solid and flat-ground intersections;
-4. classify the measured endpoint as outside, near a solid, inside a solid, or
-   inside the free opening volume;
+4. classify the measured endpoint as outside, near a solid, inside a solid,
+   inside an opening boundary, or inside the free opening interior;
 5. combine the endpoint relation, range residual, and incidence quality before
    writing the hit to either current lidar or accumulated memory.
 
@@ -235,14 +235,19 @@ The decision is asymmetric:
   `known_static_lidar_hit_farther_range_tolerance_m` behind the expected
   surface is an `expected_static` hit and is suppressed;
 - a hit inside the free opening volume is `obstacle_inside_opening` and is
-  integrated immediately;
+  integrated immediately when it is spatially detached from all matching solid
+  masses;
+- a hit inside the opening but no more than
+  `known_static_opening_boundary_tolerance_m` from a lower or upper mass of the
+  same structure becomes non-mutating `ambiguous_known_static` evidence;
 - grazing/boundary or contradictory geometry remains pending without hit or
   free-space clearing; missing geometry or invalid pose remains fail-open.
 
 The defaults are 0.5 m for the stricter closer range tolerance, 1.5 m for the
-farther range tolerance, and 0.75 m for spatial endpoint-to-solid tolerance.
-The spatial tolerance does not hide a detached object several metres before a
-wall.
+farther range tolerance, 0.75 m for general spatial endpoint-to-solid
+tolerance, and 0.15 m for the local opening-boundary tolerance. The boundary
+tolerance is measured against actual solid geometry, not against the opening
+entry or exit plane, and does not hide an object in the opening interior.
 
 Ambiguous evidence is keyed by structure id, part id, and a 0.5 m endpoint
 voxel. Multiple beams from one scan provide one vote. A later vote also

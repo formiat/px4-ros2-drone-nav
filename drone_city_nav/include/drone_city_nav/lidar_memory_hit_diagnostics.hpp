@@ -42,6 +42,7 @@ struct LidarMemoryHitDiagnosticContext {
   double known_static_closer_range_tolerance_m{0.0};
   double known_static_farther_range_tolerance_m{0.0};
   double known_static_endpoint_volume_tolerance_m{0.0};
+  double known_static_opening_boundary_tolerance_m{0.0};
 };
 
 struct LidarMemoryHitDiagnosticRecord {

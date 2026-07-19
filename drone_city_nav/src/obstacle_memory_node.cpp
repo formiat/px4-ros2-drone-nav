@@ -116,6 +116,9 @@ public:
         std::clamp(declare_parameter<double>(
                        "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
                    0.0, 10.0);
+    known_static_opening_boundary_tolerance_m_ = std::clamp(
+        declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.15),
+        0.0, 10.0);
     memory_->configureAmbiguousHitTracking(
         declareAmbiguousLidarHitTrackerConfig(*this));
     ground_lidar_rejection_config_.enabled =
@@ -180,7 +183,9 @@ public:
                 .farther_range_tolerance_m =
                     known_static_lidar_hit_farther_range_tolerance_m_,
                 .endpoint_volume_tolerance_m =
-                    known_static_lidar_hit_endpoint_volume_tolerance_m_});
+                    known_static_lidar_hit_endpoint_volume_tolerance_m_,
+                .opening_boundary_tolerance_m =
+                    known_static_opening_boundary_tolerance_m_});
         memory_->reset();
       }
     } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
@@ -201,7 +206,7 @@ public:
         get_logger(),
         "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
         "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
-        "endpoint_volume_tolerance=%.3fm",
+        "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
         known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
         known_passages_resolved_path_.string().c_str(),
         known_static_lidar_classifier_.has_value()
@@ -209,7 +214,8 @@ public:
             : 0U,
         known_static_lidar_hit_closer_range_tolerance_m_,
         known_static_lidar_hit_farther_range_tolerance_m_,
-        known_static_lidar_hit_endpoint_volume_tolerance_m_);
+        known_static_lidar_hit_endpoint_volume_tolerance_m_,
+        known_static_opening_boundary_tolerance_m_);
     const bool ground_config_valid =
         std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
         std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
@@ -640,7 +646,9 @@ private:
         "Obstacle memory lidar decisions: expected_ground=%zu closer_retained=%zu "
         "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
         "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
-        "confirmed=%zu detached=%zu opening=%zu expired=%zu] "
+        "confirmed=%zu detached=%zu expired=%zu] "
+        "opening[boundary_pending=%zu boundary_static=%zu boundary_obstacle=%zu "
+        "interior_obstacle=%zu] "
         "invariant_fallbacks=%zu diagnostics=%zu",
         stats.ingestion_decisions.expected_ground_suppressed,
         stats.ingestion_decisions.closer_obstacles_retained,
@@ -652,8 +660,11 @@ private:
         stats.ingestion_decisions.closer_side_static_pending,
         stats.ingestion_decisions.closer_side_static_confirmed,
         stats.ingestion_decisions.detached_obstacles_confirmed,
-        stats.ingestion_decisions.opening_obstacles_integrated,
         stats.ingestion_decisions.ambiguous_expired,
+        stats.ingestion_decisions.opening_boundary_pending,
+        stats.ingestion_decisions.opening_boundary_confirmed_static,
+        stats.ingestion_decisions.opening_boundary_confirmed_obstacle,
+        stats.ingestion_decisions.opening_interior_obstacles_integrated,
         stats.ingestion_decisions.invariant_fallbacks,
         stats.ingestion_decisions.diagnostics.size());
     const std::string decision_samples =
@@ -751,6 +762,8 @@ private:
             known_static_lidar_hit_farther_range_tolerance_m_,
         .known_static_endpoint_volume_tolerance_m =
             known_static_lidar_hit_endpoint_volume_tolerance_m_,
+        .known_static_opening_boundary_tolerance_m =
+            known_static_opening_boundary_tolerance_m_,
     };
   }
 
@@ -939,7 +952,8 @@ private:
   std::filesystem::path known_passages_resolved_path_;
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
-  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.5};
+  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};
+  double known_static_opening_boundary_tolerance_m_{0.15};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

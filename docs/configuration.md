@@ -85,6 +85,8 @@ Known passages:
 - `known_passage_validation_max_diagnostics`
 - `known_static_lidar_hit_closer_range_tolerance_m`
 - `known_static_lidar_hit_farther_range_tolerance_m`
+- `known_static_lidar_hit_endpoint_volume_tolerance_m`
+- `known_static_opening_boundary_tolerance_m`
 - `ground_lidar_rejection_enabled`
 - `ground_lidar_altitude_m`
 - `ground_lidar_closer_range_tolerance_m`
@@ -133,12 +135,18 @@ and obstacle-memory nodes. The always-on 3D classifier compares each measured
 hit range and endpoint XYZ with the nearest known passage-building solid. A hit
 materially closer and spatially detached from the solid remains immediate
 obstacle evidence. A closer endpoint inside or near the solid becomes
-non-mutating ambiguous evidence instead of an obstacle. Opening hits remain
-immediate obstacles. Missing geometry or invalid 3D pose is fail-open.
+non-mutating ambiguous evidence instead of an obstacle. Opening-interior hits
+remain immediate obstacles. A hit no more than
+`known_static_opening_boundary_tolerance_m` from the matching lower or upper
+solid is ambiguous static evidence instead of an immediate obstacle. Missing
+geometry or invalid 3D pose is fail-open.
 
 `known_static_lidar_hit_endpoint_volume_tolerance_m` controls only the spatial
-near-surface relation; it does not widen the global range tolerance. Ambiguous
-evidence is keyed by structure, part, and endpoint voxel. The
+near-surface relation; it does not widen the global range tolerance.
+`known_static_opening_boundary_tolerance_m` is a narrower local tolerance used
+only where an endpoint is simultaneously inside an opening and next to a solid
+mass of the same annotated structure. The default is 0.15 m. Ambiguous evidence
+is keyed by structure, part, and endpoint voxel. The
 `ambiguous_lidar_hit_*` parameters configure required independent scans,
 retention, voxel size, minimum viewpoint translation, and minimum direction
 change.

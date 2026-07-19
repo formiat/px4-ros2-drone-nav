@@ -72,6 +72,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 1.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.75);
+  EXPECT_DOUBLE_EQ(config.known_static_opening_boundary_tolerance_m, 0.15);
   EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.required_independent_scans,
             3U);
   EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.max_scan_gap_ns,
@@ -248,6 +249,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"known_passage_traversal_speed_limit_mps", 9999.0},
        rclcpp::Parameter{"known_static_lidar_hit_closer_range_tolerance_m", 9999.0},
        rclcpp::Parameter{"known_static_lidar_hit_farther_range_tolerance_m", 9999.0},
+       rclcpp::Parameter{"known_static_opening_boundary_tolerance_m", 9999.0},
        rclcpp::Parameter{"vertical_profile_preferred_gate_clearance_margin_m", 9999.0},
        rclcpp::Parameter{"passage_insertion_sample_step_m", -1.0},
        rclcpp::Parameter{"passage_insertion_min_anchor_margin_m", -1.0},
@@ -325,6 +327,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 100.0);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 100.0);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.75);
+  EXPECT_DOUBLE_EQ(config.known_static_opening_boundary_tolerance_m, 10.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
       100.0);

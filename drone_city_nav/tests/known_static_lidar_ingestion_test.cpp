@@ -121,6 +121,25 @@ makeCase(const KnownPassageSolidPartKind kind, const double yaw_rad,
   return test_case;
 }
 
+[[nodiscard]] std::vector<KnownPassageSolidVolume>
+openingBoundaryVolumes(const LidarBeamProjection& projection) {
+  KnownPassageSolidVolume lower = volumeAtRange(
+      projection, KnownPassageSolidPartKind::kLower, projection.used_range_m - 1.0);
+  lower.min_z_m = 0.0;
+  lower.max_z_m = projection.endpoint_map_m.z - 0.005;
+  lower.opening_center = projection.endpoint;
+  lower.opening_depth_m = lower.depth_m;
+  lower.opening_width_m = lower.width_m;
+  lower.opening_min_z_m = lower.max_z_m;
+  lower.opening_max_z_m = lower.opening_min_z_m + 7.0;
+  KnownPassageSolidVolume upper = lower;
+  upper.part_id = "upper_mass";
+  upper.part_kind = KnownPassageSolidPartKind::kUpper;
+  upper.min_z_m = lower.opening_max_z_m;
+  upper.max_z_m = upper.min_z_m + 4.0;
+  return {std::move(lower), std::move(upper)};
+}
+
 class KnownStaticLidarIngestionTest : public ::testing::TestWithParam<IngestionCase> {};
 
 } // namespace
@@ -492,11 +511,65 @@ TEST(KnownStaticLidarIngestion, OpeningObstacleIsIntegratedImmediatelyByBothPath
 
   EXPECT_EQ(memory.countRawCells().occupied_cells, 1U);
   EXPECT_EQ(overlay_stats.occupied_cells, 1U);
-  EXPECT_EQ(memory_stats.ingestion_decisions.opening_obstacles_integrated, 1U);
-  EXPECT_EQ(overlay_stats.ingestion_decisions.opening_obstacles_integrated, 1U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.opening_interior_obstacles_integrated, 1U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.opening_interior_obstacles_integrated,
+            1U);
   ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
   EXPECT_EQ(memory_stats.occupied_transitions.front().trigger_decision.reason,
             LidarIngestionReason::kObstacleInsideOpening);
+}
+
+TEST(KnownStaticLidarIngestion,
+     OpeningBoundaryStaysNonMutatingAndConfirmsStaticInBothPaths) {
+  const IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kLower, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  constexpr float kInitialRangeM = 6.25F;
+  const LidarBeamProjection projection = projectLidarBeam(
+      test_case.pose, test_case.config, 0.1, 20.0, 0.0, 0.1, 0U, kInitialRangeM);
+  const KnownStaticLidarHitClassifier classifier{openingBoundaryVolumes(projection)};
+  const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
+  ObstacleMemoryGrid memory{bounds};
+  OccupancyGrid2D overlay_grid{bounds};
+  AmbiguousLidarHitTracker overlay_tracker;
+
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    const double viewpoint_shift_m = static_cast<double>(scan_index - 1) * 0.6;
+    IngestionCase shifted_case = test_case;
+    shifted_case.pose.position.x -= viewpoint_shift_m;
+    const std::array<float, 1U> ranges{
+        static_cast<float>(kInitialRangeM + viewpoint_shift_m)};
+    LaserScan2DView memory_scan = memoryScan(ranges, shifted_case);
+    memory_scan.timing.first_beam_stamp_ns = scan_index * 100'000'000;
+    memory_scan.timing.first_beam_stamp_valid = true;
+    const ObstacleMemoryStats memory_stats = memory.integrateScan(
+        Pose2{shifted_case.pose.position, shifted_case.pose.yaw_rad}, memory_scan,
+        ObstacleMemoryConfig{}, &classifier);
+
+    LidarScanView overlay_scan{ranges, 0.1, 20.0, 0.0, 0.1};
+    overlay_scan.timing = memory_scan.timing;
+    const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+        overlay_grid, overlay_scan, shifted_case.pose, shifted_case.config, &classifier,
+        nullptr, &overlay_tracker);
+
+    EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+    EXPECT_EQ(memory_stats.free_cells_updated, 0U);
+    EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+    if (scan_index < 3) {
+      EXPECT_EQ(memory_stats.ingestion_decisions.opening_boundary_pending, 1U);
+      EXPECT_EQ(overlay_stats.ingestion_decisions.opening_boundary_pending, 1U);
+    } else {
+      EXPECT_EQ(memory_stats.ingestion_decisions.opening_boundary_confirmed_static, 1U);
+      EXPECT_EQ(overlay_stats.ingestion_decisions.opening_boundary_confirmed_static,
+                1U);
+      const std::string diagnostics = formatLidarIngestionRepresentativeDiagnostics(
+          memory_stats.ingestion_decisions);
+      EXPECT_NE(diagnostics.find("endpoint_relation=inside_opening_boundary"),
+                std::string::npos);
+      EXPECT_NE(diagnostics.find("opening_z=[9.995,16.995]"), std::string::npos);
+      EXPECT_NE(diagnostics.find("boundary_tolerance=0.15"), std::string::npos);
+      EXPECT_NE(diagnostics.find("part=lower_mass"), std::string::npos);
+    }
+  }
 }
 
 } // namespace drone_city_nav

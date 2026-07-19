@@ -48,6 +48,7 @@ struct AmbiguousLidarHitConfirmation {
   double viewpoint_direction_change_rad{0.0};
   AmbiguousLidarHitResolution resolution{AmbiguousLidarHitResolution::kPending};
   bool new_scan_vote{false};
+  bool opening_boundary_observed{false};
 };
 
 class AmbiguousLidarHitTracker {
@@ -81,6 +82,9 @@ private:
     std::size_t independent_scans{0U};
     std::size_t static_attached_observations{0U};
     std::size_t detached_obstacle_observations{0U};
+    std::size_t consecutive_static_attached_observations{0U};
+    std::size_t consecutive_detached_obstacle_observations{0U};
+    bool opening_boundary_observed{false};
     Point3 last_endpoint_map_m{};
     Point3 last_ray_origin_map_m{};
     Point3 last_ray_direction_map{};

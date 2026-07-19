@@ -153,9 +153,9 @@ TEST(KnownStaticLidarPlanningGridIntegration,
   const PlanningGridBuildResult result = buildResult(scenario);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
-  EXPECT_EQ(
-      scenario.current_lidar_stats.ingestion_decisions.opening_obstacles_integrated,
-      1U);
+  EXPECT_EQ(scenario.current_lidar_stats.ingestion_decisions
+                .opening_interior_obstacles_integrated,
+            1U);
   EXPECT_EQ(scenario.memory.countRawCells().occupied_cells, 1U);
   expectEndpointProhibited(result, scenario.endpoint, true);
 }

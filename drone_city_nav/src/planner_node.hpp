@@ -354,7 +354,8 @@ private:
   GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
-  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.5};
+  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};
+  double known_static_opening_boundary_tolerance_m_{0.15};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double current_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double last_scan_pose_lag_s_{0.0};

@@ -60,6 +60,7 @@ enum class LidarIngestionDiagnosticClass {
   kNonGroundAltitudeRejected,
   kAmbiguousKnownStatic,
   kOpeningObstacle,
+  kOpeningBoundary,
   kInvariantFallback,
   kCount,
 };
@@ -85,6 +86,7 @@ struct LidarIngestionDecision {
   std::size_t ambiguous_expired_candidates{0U};
   double ambiguous_viewpoint_translation_m{0.0};
   double ambiguous_viewpoint_direction_change_rad{0.0};
+  bool ambiguous_opening_boundary_evidence{false};
 };
 
 struct LidarIngestionDecisionSnapshot {
@@ -119,6 +121,9 @@ struct LidarIngestionDecisionDiagnostic {
   KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
   double endpoint_solid_distance_m{std::numeric_limits<double>::infinity()};
   double endpoint_opening_margin_m{-std::numeric_limits<double>::infinity()};
+  double opening_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double opening_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double opening_boundary_tolerance_m{std::numeric_limits<double>::quiet_NaN()};
   double distance_before_solid_m{std::numeric_limits<double>::quiet_NaN()};
   double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
   AmbiguousLidarHitResolution ambiguous_resolution{
@@ -139,7 +144,10 @@ struct LidarIngestionDecisionStats {
   std::size_t closer_side_static_pending{0U};
   std::size_t closer_side_static_confirmed{0U};
   std::size_t detached_obstacles_confirmed{0U};
-  std::size_t opening_obstacles_integrated{0U};
+  std::size_t opening_boundary_pending{0U};
+  std::size_t opening_boundary_confirmed_static{0U};
+  std::size_t opening_boundary_confirmed_obstacle{0U};
+  std::size_t opening_interior_obstacles_integrated{0U};
   std::size_t ambiguous_expired{0U};
   std::size_t invariant_fallbacks{0U};
   std::vector<LidarIngestionDecisionDiagnostic> diagnostics;

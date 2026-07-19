@@ -221,7 +221,7 @@ void PlannerNode::loadConfiguredKnownPassages() {
     RCLCPP_INFO(get_logger(),
                 "Known static lidar classifier: node=planner status=%s path='%s' "
                 "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
-                "endpoint_volume_tolerance=%.3fm",
+                "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
                 known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
                 known_passages_resolved_path_.string().c_str(),
                 known_static_lidar_classifier_.has_value()
@@ -229,7 +229,8 @@ void PlannerNode::loadConfiguredKnownPassages() {
                     : 0U,
                 known_static_lidar_hit_closer_range_tolerance_m_,
                 known_static_lidar_hit_farther_range_tolerance_m_,
-                known_static_lidar_hit_endpoint_volume_tolerance_m_);
+                known_static_lidar_hit_endpoint_volume_tolerance_m_,
+                known_static_opening_boundary_tolerance_m_);
   };
 
   if (result.status == KnownPassageSourceStatus::kDisabled) {
@@ -279,7 +280,9 @@ void PlannerNode::loadConfiguredKnownPassages() {
               .farther_range_tolerance_m =
                   known_static_lidar_hit_farther_range_tolerance_m_,
               .endpoint_volume_tolerance_m =
-                  known_static_lidar_hit_endpoint_volume_tolerance_m_});
+                  known_static_lidar_hit_endpoint_volume_tolerance_m_,
+              .opening_boundary_tolerance_m =
+                  known_static_opening_boundary_tolerance_m_});
     }
   }
   RCLCPP_INFO(get_logger(),
@@ -604,7 +607,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "Planner current lidar decisions: expected_ground=%zu closer_retained=%zu "
       "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
       "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
-      "confirmed=%zu detached=%zu opening=%zu expired=%zu] "
+      "confirmed=%zu detached=%zu expired=%zu] "
+      "opening[boundary_pending=%zu boundary_static=%zu boundary_obstacle=%zu "
+      "interior_obstacle=%zu] "
       "invariant_fallbacks=%zu diagnostics=%zu",
       lidar_decisions.expected_ground_suppressed,
       lidar_decisions.closer_obstacles_retained,
@@ -615,8 +620,11 @@ void PlannerNode::checkCurrentPathAndPublish() {
       lidar_decisions.closer_side_static_suppressed,
       lidar_decisions.closer_side_static_pending,
       lidar_decisions.closer_side_static_confirmed,
-      lidar_decisions.detached_obstacles_confirmed,
-      lidar_decisions.opening_obstacles_integrated, lidar_decisions.ambiguous_expired,
+      lidar_decisions.detached_obstacles_confirmed, lidar_decisions.ambiguous_expired,
+      lidar_decisions.opening_boundary_pending,
+      lidar_decisions.opening_boundary_confirmed_static,
+      lidar_decisions.opening_boundary_confirmed_obstacle,
+      lidar_decisions.opening_interior_obstacles_integrated,
       lidar_decisions.invariant_fallbacks, lidar_decisions.diagnostics.size());
   const std::string lidar_decision_samples =
       formatLidarIngestionRepresentativeDiagnostics(lidar_decisions);

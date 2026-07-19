@@ -22,6 +22,7 @@ enum class KnownStaticEndpointRelation {
   kOutside,
   kNearSurface,
   kInsideSolid,
+  kInsideOpeningBoundary,
   kInsideOpening,
 };
 
@@ -33,6 +34,7 @@ struct KnownStaticLidarHitClassifierConfig {
   // slightly behind its analytic intersection.
   double farther_range_tolerance_m{1.5};
   double endpoint_volume_tolerance_m{0.75};
+  double opening_boundary_tolerance_m{0.15};
 };
 
 struct KnownStaticLidarHitResult {
@@ -50,6 +52,9 @@ struct KnownStaticLidarHitResult {
   KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
   double endpoint_solid_distance_m{std::numeric_limits<double>::infinity()};
   double endpoint_opening_margin_m{-std::numeric_limits<double>::infinity()};
+  double opening_min_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double opening_max_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double opening_boundary_tolerance_m{std::numeric_limits<double>::quiet_NaN()};
   double distance_before_solid_m{std::numeric_limits<double>::quiet_NaN()};
   double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
   bool closer_side_fallback{false};
@@ -142,6 +147,7 @@ public:
   [[nodiscard]] double closerRangeToleranceM() const noexcept;
   [[nodiscard]] double fartherRangeToleranceM() const noexcept;
   [[nodiscard]] double endpointVolumeToleranceM() const noexcept;
+  [[nodiscard]] double openingBoundaryToleranceM() const noexcept;
 
 private:
   std::vector<KnownPassageSolidVolume> volumes_;

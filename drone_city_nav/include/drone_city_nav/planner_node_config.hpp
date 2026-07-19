@@ -87,6 +87,7 @@ struct PlannerNodeConfig {
   double known_static_lidar_hit_closer_range_tolerance_m{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m{1.5};
   double known_static_lidar_hit_endpoint_volume_tolerance_m{0.75};
+  double known_static_opening_boundary_tolerance_m{0.15};
   GroundLidarRejectionConfig ground_lidar_rejection{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
