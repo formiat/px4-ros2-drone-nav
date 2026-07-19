@@ -283,4 +283,26 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
   EXPECT_TRUE(stats.top_speed_constraints.empty());
 }
 
+TEST(OffboardTrajectoryState, ShiftsVerticalDiagnosticsAfterHorizontalHandover) {
+  VerticalProfileStats vertical_profile;
+  vertical_profile.diagnostics.push_back(VerticalProfilePassageDiagnostic{
+      .entry_s_m = 40.0,
+      .exit_s_m = 50.0,
+      .approach_start_s_m = 25.0,
+      .gate_hold_start_s_m = 35.0,
+      .exit_end_s_m = 55.0,
+  });
+
+  shiftVerticalProfileStations(vertical_profile, -12.5);
+
+  ASSERT_EQ(vertical_profile.diagnostics.size(), 1U);
+  const VerticalProfilePassageDiagnostic& diagnostic =
+      vertical_profile.diagnostics.front();
+  EXPECT_DOUBLE_EQ(diagnostic.entry_s_m, 27.5);
+  EXPECT_DOUBLE_EQ(diagnostic.exit_s_m, 37.5);
+  EXPECT_DOUBLE_EQ(diagnostic.approach_start_s_m, 12.5);
+  EXPECT_DOUBLE_EQ(diagnostic.gate_hold_start_s_m, 22.5);
+  EXPECT_DOUBLE_EQ(diagnostic.exit_end_s_m, 42.5);
+}
+
 } // namespace drone_city_nav

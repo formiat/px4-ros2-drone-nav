@@ -156,6 +156,8 @@ void Px4OffboardNode::clearFinalTrajectory() {
   last_trajectory_route_points_ = 0U;
   accepted_planner_path_id_ = 0U;
   accepted_planner_path_id_seen_ = false;
+  active_horizontal_handover_applied_ = false;
+  active_horizontal_handover_candidate_station_offset_m_ = 0.0;
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
 }
@@ -173,8 +175,13 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   }
   accepted_planner_path_id_ = diagnostics.planner_path_id;
   accepted_planner_path_id_seen_ = true;
-  const bool vertical_metadata_applied = applyPlannerVerticalProfileMetadata(
-      final_trajectory_samples_, diagnostics.stats.vertical_profile);
+  VerticalProfileStats vertical_profile = diagnostics.stats.vertical_profile;
+  if (active_horizontal_handover_applied_) {
+    shiftVerticalProfileStations(
+        vertical_profile, active_horizontal_handover_candidate_station_offset_m_);
+  }
+  const bool vertical_metadata_applied =
+      applyPlannerVerticalProfileMetadata(final_trajectory_samples_, vertical_profile);
   if (vertical_metadata_applied &&
       trajectorySamplesAreUsable(final_trajectory_samples_)) {
     populateTrajectoryVerticalSpeedConstraints(final_trajectory_samples_,
@@ -201,6 +208,7 @@ void Px4OffboardNode::mergePlannerDiagnosticsIntoCurrentTrajectoryStats(
   }
   mergePlannerDiagnosticsIntoTrajectoryStats(last_trajectory_planner_stats_,
                                              diagnostics);
+  last_trajectory_planner_stats_.vertical_profile = std::move(vertical_profile);
 }
 
 void Px4OffboardNode::updatePlannerStatsForReceivedTrajectory() {
@@ -281,14 +289,19 @@ TrajectoryContinuityResult Px4OffboardNode::evaluateReceivedTrajectoryContinuity
       final_trajectory_samples_, trajectory_speed_profile_, state, current_position_,
       velocity_follower_state_.previous_velocity_setpoint,
       velocity_follower_state_.previous_velocity_setpoint_valid, localPositionFresh(),
-      current_altitude_m_, altitude_valid_);
+      current_altitude_m_, altitude_valid_, trajectory_continuity_thresholds_);
 }
 
 void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
     const char* source_label, const OffboardTrajectoryState& state,
     const TrajectoryContinuityResult& continuity) {
   const bool preserve_velocity_smoother_state =
-      continuity.decision == TrajectoryContinuityDecision::kPreserveSmoother;
+      continuity.preserve_horizontal_smoother_state;
+  active_horizontal_handover_applied_ = continuity.horizontal_handover_applied;
+  active_horizontal_handover_candidate_station_offset_m_ =
+      continuity.horizontal_handover_applied
+          ? continuity.horizontal_handover_candidate_station_offset_m
+          : 0.0;
   final_trajectory_samples_ = state.samples;
   trajectory_ = state.trajectory;
   trajectory_speed_profile_ = state.speed_profile;
@@ -308,6 +321,8 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
   } else if (!preserve_velocity_smoother_state) {
     resetVelocitySmootherState("trajectory_continuity_reset", true,
                                !continuity.preserve_vertical_smoother_state);
+  } else if (!continuity.preserve_vertical_smoother_state) {
+    vertical_follower_state_ = VerticalFollowerState{};
   }
   publishFinalTrajectoryDebug();
   publishOffboardDebugMarkers();
@@ -345,10 +360,16 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       "top_speed_constraint[s=%.2f radius=%.2f limit=%.2f source=%s] "
       "continuity[decision=%s reason=%s projection_jump=%.2f tangent_jump=%.3f "
       "curvature_jump=%.4f speed_limit_jump=%.2f "
-      "tangent_speed_command_jump=%.2f vertical_target_z_jump=%.2f "
+      "tangent_speed_command_jump=%.2f reference_speed=%.2f "
+      "preserve_horizontal_smoother=%s vertical_target_z_jump=%.2f "
       "vertical_target_vz_jump=%.2f vertical_hard_window_changed=%s "
       "vertical_hard_window_unsafe=%s preserve_vertical_smoother=%s "
-      "vertical_handover[applied=%s reason=%s candidate_s=%.2f join_s=%.2f]] "
+      "horizontal_handover[applied=%s reason=%s old_join_s=%.2f "
+      "candidate_join_s=%.2f stitched_join_s=%.2f join_distance=%.2f "
+      "max_heading_delta_rad=%.3f max_abs_curvature_1pm=%.4f "
+      "station_offset=%.2f] "
+      "vertical_handover[applied=%s reason=%s "
+      "candidate_s=%.2f join_s=%.2f]] "
       "isolated_spikes[candidates=%zu geometry_smoothed=%zu "
       "max_before=%.4f max_after=%.4f] "
       "shape[segments=%zu segment_len_min=%.2f mean=%.2f max=%.2f "
@@ -370,11 +391,21 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       trajectoryContinuityDecisionName(continuity.decision), continuity.reason,
       continuity.projection_jump_m, continuity.tangent_jump_rad,
       continuity.curvature_jump_1pm, continuity.speed_limit_jump_mps,
-      continuity.tangent_speed_command_jump_mps, continuity.vertical_target_z_jump_m,
-      continuity.vertical_target_vz_jump_mps,
+      continuity.tangent_speed_command_jump_mps, continuity.reference_speed_mps,
+      continuity.preserve_horizontal_smoother_state ? "true" : "false",
+      continuity.vertical_target_z_jump_m, continuity.vertical_target_vz_jump_mps,
       continuity.vertical_hard_window_changed ? "true" : "false",
       continuity.vertical_hard_window_unsafe ? "true" : "false",
       continuity.preserve_vertical_smoother_state ? "true" : "false",
+      continuity.horizontal_handover_applied ? "true" : "false",
+      continuity.horizontal_handover_reason,
+      continuity.horizontal_handover_old_join_s_m,
+      continuity.horizontal_handover_candidate_join_s_m,
+      continuity.horizontal_handover_stitched_join_s_m,
+      continuity.horizontal_handover_join_distance_m,
+      continuity.horizontal_handover_max_heading_delta_rad,
+      continuity.horizontal_handover_max_abs_curvature_1pm,
+      continuity.horizontal_handover_candidate_station_offset_m,
       continuity.vertical_handover_applied ? "true" : "false",
       continuity.vertical_handover_reason, continuity.vertical_handover_candidate_s_m,
       continuity.vertical_handover_join_s_m,
@@ -451,6 +482,33 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   }
   OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
       candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
+  HorizontalTrajectoryHandoverResult horizontal_handover{};
+  if (trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
+      candidate_state.valid && localPositionFresh()) {
+    const TrajectoryContinuityResult raw_continuity =
+        evaluateReceivedTrajectoryContinuity(candidate_state);
+    if (!raw_continuity.preserve_horizontal_smoother_state &&
+        !raw_continuity.vertical_hard_window_unsafe) {
+      std::optional<OccupancyGrid2D> handover_grid;
+      if (prohibitedGridFresh()) {
+        handover_grid = currentProhibitedGrid();
+      }
+      horizontal_handover = buildHorizontalTrajectoryHandover(
+          final_trajectory_samples_, candidate_state.samples,
+          HorizontalTrajectoryHandoverState{
+              .current_position = current_position_,
+              .current_horizontal_speed_mps = current_speed_mps_,
+              .current_position_valid = true,
+              .current_horizontal_speed_valid = current_velocity_valid_,
+          },
+          trajectory_handover_config_,
+          handover_grid.has_value() ? &*handover_grid : nullptr);
+      if (horizontal_handover.applied) {
+        candidate_state = buildOffboardTrajectoryState(horizontal_handover.samples,
+                                                       velocity_follower_config_);
+      }
+    }
+  }
   VerticalTrajectoryHandoverResult vertical_handover{};
   if (trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
       candidate_planner_stats != nullptr && localPositionFresh()) {
@@ -465,7 +523,8 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
         });
     if (vertical_handover.applied) {
       candidate_state = buildOffboardTrajectoryState(
-          candidate_state.samples, velocity_follower_config_, candidate_planner_stats);
+          candidate_state.samples, velocity_follower_config_,
+          horizontal_handover.applied ? nullptr : candidate_planner_stats);
     }
   }
   if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
@@ -480,26 +539,62 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   continuity.vertical_handover_reason = vertical_handover.reason;
   continuity.vertical_handover_candidate_s_m = vertical_handover.candidate_s_m;
   continuity.vertical_handover_join_s_m = vertical_handover.join_s_m;
-  if (continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory) {
-    callback_duration.setOutcome("continuity_rejected");
+  continuity.horizontal_handover_applied = horizontal_handover.applied;
+  continuity.horizontal_handover_reason = horizontal_handover.reason;
+  continuity.horizontal_handover_old_join_s_m = horizontal_handover.old_join_s_m;
+  continuity.horizontal_handover_candidate_join_s_m =
+      horizontal_handover.candidate_join_s_m;
+  continuity.horizontal_handover_stitched_join_s_m =
+      horizontal_handover.stitched_join_s_m;
+  continuity.horizontal_handover_join_distance_m = horizontal_handover.join_distance_m;
+  continuity.horizontal_handover_max_heading_delta_rad =
+      horizontal_handover.max_sample_heading_delta_rad;
+  continuity.horizontal_handover_max_abs_curvature_1pm =
+      horizontal_handover.max_abs_curvature_1pm;
+  continuity.horizontal_handover_candidate_station_offset_m =
+      horizontal_handover.candidate_station_offset_m;
+  const bool continuity_blocks_update =
+      continuity.decision == TrajectoryContinuityDecision::kRejectTrajectory ||
+      continuity.decision == TrajectoryContinuityDecision::kDeferTrajectory;
+  if (continuity_blocks_update) {
+    callback_duration.setOutcome(continuity.decision ==
+                                         TrajectoryContinuityDecision::kDeferTrajectory
+                                     ? "continuity_deferred"
+                                     : "continuity_rejected");
     RCLCPP_WARN(
         get_logger(),
-        "trajectory_update_rejected: reason=%s decision=%s "
+        "trajectory_update_blocked: reason=%s decision=%s "
         "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
         " path_stamp_ns=%" PRIu64 " points=%zu projection_jump=%.2f "
         "tangent_jump=%.3f curvature_jump=%.4f speed_limit_jump=%.2f "
-        "tangent_speed_command_jump=%.2f vertical_target_z_jump=%.2f "
+        "tangent_speed_command_jump=%.2f reference_speed=%.2f "
+        "vertical_target_z_jump=%.2f "
         "vertical_target_vz_jump=%.2f vertical_hard_window_changed=%s "
-        "vertical_hard_window_unsafe=%s vertical_handover[applied=%s reason=%s "
-        "candidate_s=%.2f join_s=%.2f] keeping_previous_trajectory=%s",
+        "vertical_hard_window_unsafe=%s horizontal_handover[applied=%s reason=%s "
+        "old_join_s=%.2f candidate_join_s=%.2f stitched_join_s=%.2f "
+        "join_distance=%.2f max_heading_delta_rad=%.3f "
+        "max_abs_curvature_1pm=%.4f "
+        "station_offset=%.2f] "
+        "vertical_handover[applied=%s reason=%s candidate_s=%.2f join_s=%.2f] "
+        "keeping_previous_trajectory=%s",
         continuity.reason, trajectoryContinuityDecisionName(continuity.decision),
         candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
         candidate_path_points.size(), continuity.projection_jump_m,
         continuity.tangent_jump_rad, continuity.curvature_jump_1pm,
         continuity.speed_limit_jump_mps, continuity.tangent_speed_command_jump_mps,
-        continuity.vertical_target_z_jump_m, continuity.vertical_target_vz_jump_mps,
+        continuity.reference_speed_mps, continuity.vertical_target_z_jump_m,
+        continuity.vertical_target_vz_jump_mps,
         continuity.vertical_hard_window_changed ? "true" : "false",
         continuity.vertical_hard_window_unsafe ? "true" : "false",
+        continuity.horizontal_handover_applied ? "true" : "false",
+        continuity.horizontal_handover_reason,
+        continuity.horizontal_handover_old_join_s_m,
+        continuity.horizontal_handover_candidate_join_s_m,
+        continuity.horizontal_handover_stitched_join_s_m,
+        continuity.horizontal_handover_join_distance_m,
+        continuity.horizontal_handover_max_heading_delta_rad,
+        continuity.horizontal_handover_max_abs_curvature_1pm,
+        continuity.horizontal_handover_candidate_station_offset_m,
         continuity.vertical_handover_applied ? "true" : "false",
         continuity.vertical_handover_reason, continuity.vertical_handover_candidate_s_m,
         continuity.vertical_handover_join_s_m, trajectory_valid_ ? "true" : "false");

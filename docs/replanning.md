@@ -58,7 +58,15 @@ The result can be:
 
 - preserve smoother history;
 - reset smoother history;
+- defer a high-speed update until a safe transition is available;
 - reject candidate trajectory.
+
+Before deferring an XY-discontinuous update, offboard attempts a continuity
+handover. It preserves a speed-dependent prefix of the accepted executable
+trajectory, joins it to a future station on the candidate, rebuilds geometry
+and speed constraints, and validates the complete stitch against the current
+prohibited grid. A failed geometry or grid check never bypasses the continuity
+gate.
 
 ## Diagnostics Matching
 

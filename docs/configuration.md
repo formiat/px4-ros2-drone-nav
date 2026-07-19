@@ -404,6 +404,20 @@ configuration drift.
 - `control_tangent_smoothing_*`
 - `control_curve_smoothing_*`
 - `trajectory_update_max_start_cross_track_m`
+- `trajectory_handover_enabled`
+- `trajectory_handover_require_validation_grid`
+- `trajectory_handover_prefix_time_s`
+- `trajectory_handover_min_prefix_distance_m`
+- `trajectory_handover_max_prefix_distance_m`
+- `trajectory_handover_candidate_lookahead_distance_m`
+- `trajectory_handover_sample_step_m`
+- `trajectory_handover_max_join_distance_m`
+- `trajectory_handover_max_sample_heading_delta_deg`
+- `trajectory_handover_max_abs_curvature_1pm`
+- `trajectory_continuity_defer_min_speed_mps`
+- `trajectory_continuity_defer_projection_jump_m`
+- `trajectory_continuity_defer_tangent_jump_deg`
+- `trajectory_continuity_defer_command_jump_mps`
 
 ## Terminal Capture Parameters
 

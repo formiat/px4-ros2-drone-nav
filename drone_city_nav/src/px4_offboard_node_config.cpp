@@ -46,6 +46,36 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(config.command_resend_period_s, 2.0, 0.05, 60.0);
   config.trajectory_update_max_start_cross_track_m = boundedFiniteDouble(
       config.trajectory_update_max_start_cross_track_m, 8.0, 0.0, 1000.0);
+  config.trajectory_handover.prefix_time_s =
+      boundedFiniteDouble(config.trajectory_handover.prefix_time_s, 0.6, 0.0, 10.0);
+  config.trajectory_handover.min_prefix_distance_m = boundedFiniteDouble(
+      config.trajectory_handover.min_prefix_distance_m, 3.0, 0.0, 100.0);
+  config.trajectory_handover.max_prefix_distance_m =
+      std::max(config.trajectory_handover.min_prefix_distance_m,
+               boundedFiniteDouble(config.trajectory_handover.max_prefix_distance_m,
+                                   10.0, 0.0, 200.0));
+  config.trajectory_handover.candidate_lookahead_distance_m = boundedFiniteDouble(
+      config.trajectory_handover.candidate_lookahead_distance_m, 12.0, 0.1, 200.0);
+  config.trajectory_handover.sample_step_m =
+      boundedFiniteDouble(config.trajectory_handover.sample_step_m, 0.5, 0.1, 10.0);
+  config.trajectory_handover.max_join_distance_m = boundedFiniteDouble(
+      config.trajectory_handover.max_join_distance_m, 15.0, 0.1, 200.0);
+  config.trajectory_handover.max_sample_heading_delta_rad =
+      boundedFiniteDouble(config.trajectory_handover.max_sample_heading_delta_rad,
+                          20.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
+  config.trajectory_handover.max_abs_curvature_1pm = boundedFiniteDouble(
+      config.trajectory_handover.max_abs_curvature_1pm, 0.15, 0.0, 10.0);
+  config.trajectory_continuity.defer_min_reference_speed_mps = boundedFiniteDouble(
+      config.trajectory_continuity.defer_min_reference_speed_mps, 5.0, 0.0, 100.0);
+  config.trajectory_continuity.defer_projection_jump_m = boundedFiniteDouble(
+      config.trajectory_continuity.defer_projection_jump_m, 3.0, 0.0, 1000.0);
+  config.trajectory_continuity.defer_tangent_jump_rad =
+      boundedFiniteDouble(config.trajectory_continuity.defer_tangent_jump_rad,
+                          30.0 * std::numbers::pi / 180.0, 0.0, std::numbers::pi);
+  config.trajectory_continuity.defer_tangent_speed_command_jump_mps =
+      boundedFiniteDouble(
+          config.trajectory_continuity.defer_tangent_speed_command_jump_mps, 8.0, 0.0,
+          100.0);
   config.velocity_follower.min_turn_speed_mps =
       std::clamp(config.velocity_follower.min_turn_speed_mps, 0.0,
                  config.velocity_follower.cruise_speed_mps);
@@ -337,6 +367,48 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<double>("trajectory_update_max_start_cross_track_m",
                                      config.trajectory_update_max_start_cross_track_m),
       0.0, 1000.0);
+  config.trajectory_handover.enabled = node.declare_parameter<bool>(
+      "trajectory_handover_enabled", config.trajectory_handover.enabled);
+  config.trajectory_handover.require_validation_grid =
+      node.declare_parameter<bool>("trajectory_handover_require_validation_grid",
+                                   config.trajectory_handover.require_validation_grid);
+  config.trajectory_handover.prefix_time_s = node.declare_parameter<double>(
+      "trajectory_handover_prefix_time_s", config.trajectory_handover.prefix_time_s);
+  config.trajectory_handover.min_prefix_distance_m =
+      node.declare_parameter<double>("trajectory_handover_min_prefix_distance_m",
+                                     config.trajectory_handover.min_prefix_distance_m);
+  config.trajectory_handover.max_prefix_distance_m =
+      node.declare_parameter<double>("trajectory_handover_max_prefix_distance_m",
+                                     config.trajectory_handover.max_prefix_distance_m);
+  config.trajectory_handover.candidate_lookahead_distance_m =
+      node.declare_parameter<double>(
+          "trajectory_handover_candidate_lookahead_distance_m",
+          config.trajectory_handover.candidate_lookahead_distance_m);
+  config.trajectory_handover.sample_step_m = node.declare_parameter<double>(
+      "trajectory_handover_sample_step_m", config.trajectory_handover.sample_step_m);
+  config.trajectory_handover.max_join_distance_m =
+      node.declare_parameter<double>("trajectory_handover_max_join_distance_m",
+                                     config.trajectory_handover.max_join_distance_m);
+  config.trajectory_handover.max_sample_heading_delta_rad =
+      radiansFromDegrees(node.declare_parameter<double>(
+          "trajectory_handover_max_sample_heading_delta_deg", 20.0));
+  config.trajectory_handover.max_abs_curvature_1pm =
+      node.declare_parameter<double>("trajectory_handover_max_abs_curvature_1pm",
+                                     config.trajectory_handover.max_abs_curvature_1pm);
+  config.trajectory_continuity.defer_min_reference_speed_mps =
+      node.declare_parameter<double>(
+          "trajectory_continuity_defer_min_speed_mps",
+          config.trajectory_continuity.defer_min_reference_speed_mps);
+  config.trajectory_continuity.defer_projection_jump_m = node.declare_parameter<double>(
+      "trajectory_continuity_defer_projection_jump_m",
+      config.trajectory_continuity.defer_projection_jump_m);
+  config.trajectory_continuity.defer_tangent_jump_rad =
+      radiansFromDegrees(node.declare_parameter<double>(
+          "trajectory_continuity_defer_tangent_jump_deg", 30.0));
+  config.trajectory_continuity.defer_tangent_speed_command_jump_mps =
+      node.declare_parameter<double>(
+          "trajectory_continuity_defer_command_jump_mps",
+          config.trajectory_continuity.defer_tangent_speed_command_jump_mps);
 
   config.topics.final_trajectory_debug = node.declare_parameter<std::string>(
       "final_trajectory_debug_topic", config.topics.final_trajectory_debug);

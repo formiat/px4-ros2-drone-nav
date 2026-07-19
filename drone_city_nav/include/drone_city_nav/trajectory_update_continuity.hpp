@@ -12,6 +12,7 @@ namespace drone_city_nav {
 enum class TrajectoryContinuityDecision {
   kPreserveSmoother,
   kResetSmoother,
+  kDeferTrajectory,
   kRejectTrajectory,
 };
 
@@ -24,6 +25,10 @@ struct TrajectoryContinuityThresholds {
   double reject_projection_jump_m{8.0};
   double reject_tangent_jump_rad{1.57};
   double reject_tangent_speed_command_jump_mps{15.0};
+  double defer_min_reference_speed_mps{5.0};
+  double defer_projection_jump_m{3.0};
+  double defer_tangent_jump_rad{0.52};
+  double defer_tangent_speed_command_jump_mps{8.0};
   double preserve_vertical_target_z_jump_m{2.0};
   double preserve_vertical_target_vz_jump_mps{1.5};
   double vertical_hard_window_altitude_tolerance_m{0.4};
@@ -44,11 +49,27 @@ struct TrajectoryContinuityResult {
   double curvature_jump_1pm{std::numeric_limits<double>::quiet_NaN()};
   double speed_limit_jump_mps{std::numeric_limits<double>::quiet_NaN()};
   double tangent_speed_command_jump_mps{std::numeric_limits<double>::quiet_NaN()};
+  double reference_speed_mps{std::numeric_limits<double>::quiet_NaN()};
   double vertical_target_z_jump_m{std::numeric_limits<double>::quiet_NaN()};
   double vertical_target_vz_jump_mps{std::numeric_limits<double>::quiet_NaN()};
   bool vertical_hard_window_changed{false};
   bool vertical_hard_window_unsafe{false};
+  bool preserve_horizontal_smoother_state{false};
   bool preserve_vertical_smoother_state{false};
+  bool horizontal_handover_applied{false};
+  const char* horizontal_handover_reason{"not_evaluated"};
+  double horizontal_handover_old_join_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_candidate_join_s_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_stitched_join_s_m{
+      std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_join_distance_m{std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_max_heading_delta_rad{
+      std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_max_abs_curvature_1pm{
+      std::numeric_limits<double>::quiet_NaN()};
+  double horizontal_handover_candidate_station_offset_m{
+      std::numeric_limits<double>::quiet_NaN()};
   bool vertical_handover_applied{false};
   const char* vertical_handover_reason{"not_evaluated"};
   double vertical_handover_candidate_s_m{std::numeric_limits<double>::quiet_NaN()};

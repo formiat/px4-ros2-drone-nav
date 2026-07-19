@@ -83,6 +83,8 @@ trajectoryContinuityDecisionName(const TrajectoryContinuityDecision decision) no
       return "preserve_smoother";
     case TrajectoryContinuityDecision::kResetSmoother:
       return "reset_smoother";
+    case TrajectoryContinuityDecision::kDeferTrajectory:
+      return "defer_trajectory";
     case TrajectoryContinuityDecision::kRejectTrajectory:
       return "reject_trajectory";
   }
@@ -135,6 +137,7 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
       previous_velocity_setpoint_valid
           ? previous_velocity_setpoint
           : tangentSpeedCommandAtProjection(old_speed_profile, *old_projection);
+  result.reference_speed_mps = norm(reference_command);
   result.tangent_speed_command_jump_mps =
       norm(tangentSpeedCommandAtProjection(new_speed_profile, *new_projection) -
            reference_command);
@@ -145,7 +148,7 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
   if (old_vertical_target.valid && new_vertical_target.valid) {
     result.vertical_target_z_jump_m =
         std::abs(new_vertical_target.z_m - old_vertical_target.z_m);
-    const double horizontal_speed_mps = norm(reference_command);
+    const double horizontal_speed_mps = result.reference_speed_mps;
     result.vertical_target_vz_jump_mps =
         std::abs((new_vertical_target.vertical_slope_dz_ds -
                   old_vertical_target.vertical_slope_dz_ds) *
@@ -173,6 +176,16 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
           thresholds.preserve_vertical_target_vz_jump_mps &&
       !result.vertical_hard_window_changed && !result.vertical_hard_window_unsafe;
 
+  result.preserve_horizontal_smoother_state =
+      result.projection_jump_m <= thresholds.preserve_projection_jump_m &&
+      (!std::isfinite(result.tangent_jump_rad) ||
+       result.tangent_jump_rad <= thresholds.preserve_tangent_jump_rad) &&
+      result.curvature_jump_1pm <= thresholds.preserve_curvature_jump_1pm &&
+      (!std::isfinite(result.speed_limit_jump_mps) ||
+       result.speed_limit_jump_mps <= thresholds.preserve_speed_limit_jump_mps) &&
+      result.tangent_speed_command_jump_mps <=
+          thresholds.preserve_tangent_speed_command_jump_mps;
+
   const bool reject = result.vertical_hard_window_unsafe ||
                       result.projection_jump_m > thresholds.reject_projection_jump_m ||
                       (std::isfinite(result.tangent_jump_rad) &&
@@ -186,19 +199,24 @@ evaluateTrajectoryContinuity(const std::span<const TrajectoryPointSample> old_sa
     return result;
   }
 
-  const bool preserve =
-      result.projection_jump_m <= thresholds.preserve_projection_jump_m &&
-      (!std::isfinite(result.tangent_jump_rad) ||
-       result.tangent_jump_rad <= thresholds.preserve_tangent_jump_rad) &&
-      result.curvature_jump_1pm <= thresholds.preserve_curvature_jump_1pm &&
-      (!std::isfinite(result.speed_limit_jump_mps) ||
-       result.speed_limit_jump_mps <= thresholds.preserve_speed_limit_jump_mps) &&
-      result.tangent_speed_command_jump_mps <=
-          thresholds.preserve_tangent_speed_command_jump_mps &&
-      result.preserve_vertical_smoother_state;
+  const bool preserve = result.preserve_horizontal_smoother_state &&
+                        result.preserve_vertical_smoother_state;
   if (preserve) {
     result.decision = TrajectoryContinuityDecision::kPreserveSmoother;
     result.reason = "compatible";
+    return result;
+  }
+  const bool high_speed_transition_required =
+      std::isfinite(result.reference_speed_mps) &&
+      result.reference_speed_mps >= thresholds.defer_min_reference_speed_mps &&
+      (result.projection_jump_m > thresholds.defer_projection_jump_m ||
+       (std::isfinite(result.tangent_jump_rad) &&
+        result.tangent_jump_rad > thresholds.defer_tangent_jump_rad) ||
+       result.tangent_speed_command_jump_mps >
+           thresholds.defer_tangent_speed_command_jump_mps);
+  if (high_speed_transition_required) {
+    result.decision = TrajectoryContinuityDecision::kDeferTrajectory;
+    result.reason = "transition_required";
     return result;
   }
   result.decision = TrajectoryContinuityDecision::kResetSmoother;

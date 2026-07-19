@@ -16,6 +16,8 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   final_trajectory_debug_sample_step_m_ = config.final_trajectory_debug_sample_step_m;
   trajectory_update_max_start_cross_track_m_ =
       config.trajectory_update_max_start_cross_track_m;
+  trajectory_handover_config_ = config.trajectory_handover;
+  trajectory_continuity_thresholds_ = config.trajectory_continuity;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
   altitude_hold_kp_ = config.vertical_follower.altitude_feedback_kp_1ps;
   telemetry_log_period_ns_ = config.telemetry_log_period_ns;
@@ -194,6 +196,27 @@ Px4OffboardNode::Px4OffboardNode()
       static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
       flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
+  RCLCPP_INFO(
+      get_logger(),
+      "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "
+      "prefix_distance=[%.2f, %.2f]m candidate_lookahead=%.2fm sample_step=%.2fm "
+      "max_join_distance=%.2fm max_heading_delta=%.1fdeg max_curvature=%.3f "
+      "defer[min_speed=%.2fmps projection_jump=%.2fm tangent_jump=%.1fdeg "
+      "command_jump=%.2fmps]",
+      trajectory_handover_config_.enabled ? "true" : "false",
+      trajectory_handover_config_.require_validation_grid ? "true" : "false",
+      trajectory_handover_config_.prefix_time_s,
+      trajectory_handover_config_.min_prefix_distance_m,
+      trajectory_handover_config_.max_prefix_distance_m,
+      trajectory_handover_config_.candidate_lookahead_distance_m,
+      trajectory_handover_config_.sample_step_m,
+      trajectory_handover_config_.max_join_distance_m,
+      radiansToDegrees(trajectory_handover_config_.max_sample_heading_delta_rad),
+      trajectory_handover_config_.max_abs_curvature_1pm,
+      trajectory_continuity_thresholds_.defer_min_reference_speed_mps,
+      trajectory_continuity_thresholds_.defer_projection_jump_m,
+      radiansToDegrees(trajectory_continuity_thresholds_.defer_tangent_jump_rad),
+      trajectory_continuity_thresholds_.defer_tangent_speed_command_jump_mps);
   RCLCPP_INFO(get_logger(),
               "PX4 offboard subscriptions: path='%s' path_id='%s' local_position='%s' "
               "attitude='%s' vehicle_status='%s' prohibited_grid='%s'",

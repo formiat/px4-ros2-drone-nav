@@ -190,6 +190,21 @@ bool applyPlannerVerticalProfileMetadata(const std::span<TrajectoryPointSample> 
   return applied;
 }
 
+void shiftVerticalProfileStations(VerticalProfileStats& vertical_profile,
+                                  const double station_offset_m) {
+  if (!std::isfinite(station_offset_m) ||
+      std::abs(station_offset_m) <= kTinyDistanceM) {
+    return;
+  }
+  for (VerticalProfilePassageDiagnostic& diagnostic : vertical_profile.diagnostics) {
+    diagnostic.entry_s_m += station_offset_m;
+    diagnostic.exit_s_m += station_offset_m;
+    diagnostic.approach_start_s_m += station_offset_m;
+    diagnostic.gate_hold_start_s_m += station_offset_m;
+    diagnostic.exit_end_s_m += station_offset_m;
+  }
+}
+
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
     const std::span<const Point2> route_points,
     const std::span<const TrajectoryPointSample> samples,
@@ -305,7 +320,8 @@ TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
     const OffboardTrajectoryState& candidate_state, const Point2 current_position,
     const Point2 previous_velocity_setpoint,
     const bool previous_velocity_setpoint_valid, const bool local_position_fresh,
-    const double current_altitude_m, const bool altitude_valid) {
+    const double current_altitude_m, const bool altitude_valid,
+    const TrajectoryContinuityThresholds& thresholds) {
   if (!candidate_state.valid || !trajectorySamplesAreUsable(candidate_state.samples) ||
       !candidate_state.speed_profile.valid) {
     TrajectoryContinuityResult result{};
@@ -322,7 +338,7 @@ TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
   return evaluateTrajectoryContinuity(
       current_samples, current_speed_profile, candidate_state.samples,
       candidate_state.speed_profile, current_position, previous_velocity_setpoint,
-      previous_velocity_setpoint_valid, TrajectoryContinuityThresholds{},
+      previous_velocity_setpoint_valid, thresholds,
       TrajectoryVerticalContinuityState{.current_altitude_m = current_altitude_m,
                                         .altitude_valid = altitude_valid});
 }

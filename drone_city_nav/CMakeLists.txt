@@ -101,6 +101,7 @@ add_library(
   src/trajectory_passage_insertion.cpp
   src/trajectory_shape_cleanup.cpp
   src/trajectory_speed_planner.cpp
+  src/trajectory_horizontal_handover.cpp
   src/trajectory_vertical_profile.cpp
   src/trajectory_update_continuity.cpp
   src/trajectory_vertical_handover.cpp
@@ -398,6 +399,12 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_vertical_handover_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_vertical_handover_test drone_city_nav_core)
   enable_project_warnings(trajectory_vertical_handover_test)
+
+  ament_add_gtest(trajectory_horizontal_handover_test
+                  tests/trajectory_horizontal_handover_test.cpp)
+  target_compile_features(trajectory_horizontal_handover_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_horizontal_handover_test drone_city_nav_core)
+  enable_project_warnings(trajectory_horizontal_handover_test)
 
   ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test PRIVATE cxx_std_20)

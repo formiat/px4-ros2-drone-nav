@@ -17,6 +17,7 @@
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
+#include "drone_city_nav/trajectory_horizontal_handover.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/trajectory_update_continuity.hpp"
 #include "drone_city_nav/trajectory_vertical_handover.hpp"
@@ -349,6 +350,8 @@ private:
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
+  HorizontalTrajectoryHandoverConfig trajectory_handover_config_{};
+  TrajectoryContinuityThresholds trajectory_continuity_thresholds_{};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
@@ -390,6 +393,7 @@ private:
   bool last_terminal_position_capture_active_{false};
   bool latest_planner_path_id_seen_{false};
   bool accepted_planner_path_id_seen_{false};
+  bool active_horizontal_handover_applied_{false};
   bool flight_blackbox_enabled_{true};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
@@ -411,6 +415,7 @@ private:
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
+  double active_horizontal_handover_candidate_station_offset_m_{0.0};
   bool last_velocity_plan_valid_{false};
   bool last_vertical_plan_valid_{false};
   bool trajectory_valid_{false};

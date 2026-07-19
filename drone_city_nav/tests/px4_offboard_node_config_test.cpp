@@ -62,6 +62,13 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.command_resend_period_s = 0.0;
   config.trajectory_update_max_start_cross_track_m =
       std::numeric_limits<double>::infinity();
+  config.trajectory_handover.prefix_time_s = std::numeric_limits<double>::quiet_NaN();
+  config.trajectory_handover.min_prefix_distance_m = 12.0;
+  config.trajectory_handover.max_prefix_distance_m = 4.0;
+  config.trajectory_handover.max_sample_heading_delta_rad =
+      std::numeric_limits<double>::infinity();
+  config.trajectory_continuity.defer_min_reference_speed_mps =
+      std::numeric_limits<double>::quiet_NaN();
   config.velocity_follower.cruise_speed_mps = 10.0;
   config.velocity_follower.min_turn_speed_mps = 20.0;
   config.velocity_follower.speed_profile_lookahead_min_m = 8.0;
@@ -112,6 +119,12 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.diagnostic_turn_preview_distance_m, 500.0);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_sample_heading_delta_rad,
+                   20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_min_reference_speed_mps, 5.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 10.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.speed_profile_lookahead_max_m, 8.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.control_tangent_smoothing_back_m, 8.0);
@@ -230,6 +243,23 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
+  EXPECT_TRUE(config.trajectory_handover.enabled);
+  EXPECT_TRUE(config.trajectory_handover.require_validation_grid);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 3.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 10.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.candidate_lookahead_distance_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.sample_step_m, 0.5);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_join_distance_m, 15.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_sample_heading_delta_rad,
+                   20.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_abs_curvature_1pm, 0.15);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_min_reference_speed_mps, 5.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_projection_jump_m, 3.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_tangent_jump_rad,
+                   30.0 * std::numbers::pi / 180.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_tangent_speed_command_jump_mps,
+                   8.0);
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
@@ -315,6 +345,12 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
        rclcpp::Parameter{"vertical_target_vz_feedforward_scale", 20.0},
        rclcpp::Parameter{"final_trajectory_debug_sample_step_m", 100.0},
        rclcpp::Parameter{"trajectory_update_max_start_cross_track_m", 2000.0},
+       rclcpp::Parameter{"trajectory_handover_prefix_time_s", 20.0},
+       rclcpp::Parameter{"trajectory_handover_min_prefix_distance_m", 150.0},
+       rclcpp::Parameter{"trajectory_handover_max_prefix_distance_m", 5.0},
+       rclcpp::Parameter{"trajectory_handover_max_sample_heading_delta_deg", 500.0},
+       rclcpp::Parameter{"trajectory_continuity_defer_min_speed_mps", 200.0},
+       rclcpp::Parameter{"trajectory_continuity_defer_tangent_jump_deg", 500.0},
        rclcpp::Parameter{"telemetry_log_period_s", 0.01},
        rclcpp::Parameter{"command_resend_period_s", 0.0},
        rclcpp::Parameter{"target_system", 999},
@@ -378,6 +414,14 @@ TEST_F(Px4OffboardNodeConfigTest, ClampsLoaderValues) {
   EXPECT_DOUBLE_EQ(config.vertical_follower.target_vz_feedforward_scale, 10.0);
   EXPECT_DOUBLE_EQ(config.final_trajectory_debug_sample_step_m, 20.0);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 1000.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 10.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.max_sample_heading_delta_rad,
+                   std::numbers::pi);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_min_reference_speed_mps, 100.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_continuity.defer_tangent_jump_rad,
+                   std::numbers::pi);
   EXPECT_EQ(config.telemetry_log_period_ns, 100'000'000LL);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_EQ(config.target_system, 255U);

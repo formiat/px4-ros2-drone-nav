@@ -49,12 +49,28 @@ Vertical limits are asymmetric and have explicit owners:
 - the simulation runner configures PX4 `MPC_Z_VEL_MAX_UP` and
   `MPC_Z_VEL_MAX_DN` from those offboard limits.
 
-On a trajectory update, continuity is evaluated in XY and Z. Offboard can keep
-the vertical smoother history while resetting only the horizontal smoother.
-When safe to do so, the new vertical prefix is reanchored to the previously
-followed target and joined to the next hard altitude window. Trajectory-update
-logs report target Z/VZ jumps, hard-window changes, whether vertical smoother
-state was preserved, and the handover stations.
+On a trajectory update, continuity is evaluated in XY and Z. Horizontal and
+vertical smoother ownership is independent: a vertical-only target change does
+not discard horizontal setpoint history.
+
+For an incompatible XY update, offboard predicts a short executable prefix on
+the current trajectory from horizontal speed and `trajectory_handover_prefix_time_s`.
+It then attempts a sampled Hermite bridge from that prefix to an upcoming point
+on the candidate trajectory. The stitched result is accepted only when:
+
+- join distance, per-sample heading delta, and curvature stay within the
+  configured limits;
+- the complete stitched trajectory remains traversable on the fresh prohibited
+  grid;
+- the join does not consume an active or immediately upcoming vertical hard
+  window.
+
+If no safe bridge exists, a direction or command jump at speed is deferred
+instead of switching trajectories after a smoother reset. At low speed,
+moderate updates can still use the reset path. When safe to do so, the new
+vertical prefix is reanchored to the previously followed target and joined to
+the next hard altitude window. Trajectory-update logs report both handovers,
+station offsets, target Z/VZ jumps, and preserved smoother states.
 
 The controller uses a predicted position:
 

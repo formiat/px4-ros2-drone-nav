@@ -61,13 +61,62 @@ TEST(TrajectoryUpdateContinuity, ResetsSmootherForModerateProjectionJump) {
 
   const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
       old_samples, profileForSamples(old_samples), new_samples,
-      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{12.0, 0.0}, true);
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{2.0, 0.0}, true);
 
   EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kResetSmoother);
   EXPECT_STREQ(result.reason, "moderate_discontinuity");
   EXPECT_GT(result.projection_jump_m, 3.0);
   EXPECT_LT(result.projection_jump_m, 8.0);
   EXPECT_TRUE(result.preserve_vertical_smoother_state);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, 2.0);
+}
+
+TEST(TrajectoryUpdateContinuity, DefersModerateProjectionJumpAtSpeed) {
+  const std::vector<TrajectoryPointSample> old_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  const std::vector<TrajectoryPointSample> new_samples =
+      samplesFromPoints({Point2{0.0, 4.0}, Point2{40.0, 4.0}});
+
+  const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
+      old_samples, profileForSamples(old_samples), new_samples,
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{12.0, 0.0}, true);
+
+  EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kDeferTrajectory);
+  EXPECT_STREQ(result.reason, "transition_required");
+  EXPECT_GT(result.projection_jump_m, 3.0);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, 12.0);
+}
+
+TEST(TrajectoryUpdateContinuity, DefersLargeDirectionChangeAtSpeed) {
+  const std::vector<TrajectoryPointSample> old_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  const std::vector<TrajectoryPointSample> new_samples =
+      samplesFromPoints({Point2{8.0, 0.0}, Point2{36.0, 28.0}});
+
+  const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
+      old_samples, profileForSamples(old_samples), new_samples,
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{10.0, 0.0}, true);
+
+  EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kDeferTrajectory);
+  EXPECT_STREQ(result.reason, "transition_required");
+  EXPECT_GT(result.tangent_jump_rad, 0.70);
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, 10.0);
+  EXPECT_FALSE(result.preserve_horizontal_smoother_state);
+}
+
+TEST(TrajectoryUpdateContinuity, AllowsResetForDirectionChangeAtLowSpeed) {
+  const std::vector<TrajectoryPointSample> old_samples =
+      samplesFromPoints({Point2{0.0, 0.0}, Point2{40.0, 0.0}});
+  const std::vector<TrajectoryPointSample> new_samples =
+      samplesFromPoints({Point2{8.0, 0.0}, Point2{36.0, 28.0}});
+
+  const TrajectoryContinuityResult result = evaluateTrajectoryContinuity(
+      old_samples, profileForSamples(old_samples), new_samples,
+      profileForSamples(new_samples), Point2{8.0, 0.0}, Point2{2.0, 0.0}, true);
+
+  EXPECT_EQ(result.decision, TrajectoryContinuityDecision::kResetSmoother);
+  EXPECT_STREQ(result.reason, "moderate_discontinuity");
+  EXPECT_DOUBLE_EQ(result.reference_speed_mps, 2.0);
 }
 
 TEST(TrajectoryUpdateContinuity, RejectsLargeProjectionJump) {

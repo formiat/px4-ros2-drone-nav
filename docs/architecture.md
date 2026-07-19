@@ -172,12 +172,16 @@ Each boundary has a different failure policy:
 - PX4 terminal position capture is preserved as the final precision mode at
   the goal.
 
-The planner is allowed to produce a better trajectory later than the first
-rough route, but publication policy decides when a trajectory is exposed to the
-controller. The current conservative policy is to avoid a visible
-baseline-to-refined switch during flight. If asynchronous refinement is enabled
-again, it needs a safe handover gate that checks projection, tangent,
-curvature, speed-limit, and command discontinuity.
+The planner snapshots the route, grid, clearance field, passage map, and config,
+then builds the complete optimized executable trajectory on one background
+worker. It does not publish a rough baseline. The previously accepted
+trajectory remains active until the worker result passes generation, endpoint,
+and latest-grid validation.
+
+Offboard then owns runtime handover. Compatible updates preserve smoother
+history. Incompatible updates first attempt a grid-validated predicted-prefix
+bridge. A high-speed update that still has excessive projection, tangent, or
+command discontinuity is deferred rather than exposed through an abrupt reset.
 
 ## Ownership Model
 

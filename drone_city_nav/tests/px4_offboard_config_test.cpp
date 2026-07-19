@@ -125,6 +125,12 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_trackability_response_time_s: 0.4"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_trackability_min_speed_mps: 1.0"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_handover_enabled: true"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_handover_prefix_time_s: 0.6"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_handover_max_join_distance_m: 15.0"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_continuity_defer_tangent_jump_deg: 30.0"),
+            std::string::npos);
   EXPECT_NE(yaml.find("vertical_setpoint_max_climb_speed_mps: 4.0"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_setpoint_max_descent_speed_mps: 4.0"),
             std::string::npos);

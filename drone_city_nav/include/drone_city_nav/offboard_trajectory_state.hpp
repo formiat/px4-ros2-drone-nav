@@ -48,6 +48,9 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
 bool applyPlannerVerticalProfileMetadata(std::span<TrajectoryPointSample> samples,
                                          const VerticalProfileStats& vertical_profile);
 
+void shiftVerticalProfileStations(VerticalProfileStats& vertical_profile,
+                                  double station_offset_m);
+
 [[nodiscard]] TrajectoryPlannerStats buildReceivedTrajectoryPlannerStats(
     std::span<const Point2> route_points,
     std::span<const TrajectoryPointSample> samples,
@@ -75,6 +78,6 @@ buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples
     Point2 previous_velocity_setpoint, bool previous_velocity_setpoint_valid,
     bool local_position_fresh,
     double current_altitude_m = std::numeric_limits<double>::quiet_NaN(),
-    bool altitude_valid = false);
+    bool altitude_valid = false, const TrajectoryContinuityThresholds& thresholds = {});
 
 } // namespace drone_city_nav

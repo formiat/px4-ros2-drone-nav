@@ -1,6 +1,8 @@
 #pragma once
 
 #include "drone_city_nav/offboard_vertical_follower.hpp"
+#include "drone_city_nav/trajectory_horizontal_handover.hpp"
+#include "drone_city_nav/trajectory_update_continuity.hpp"
 #include "drone_city_nav/types.hpp"
 #include "drone_city_nav/velocity_control_config.hpp"
 
@@ -41,6 +43,8 @@ struct Px4OffboardNodeConfig {
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   double final_trajectory_debug_sample_step_m{1.0};
   double trajectory_update_max_start_cross_track_m{8.0};
+  HorizontalTrajectoryHandoverConfig trajectory_handover{};
+  TrajectoryContinuityThresholds trajectory_continuity{};
   double altitude_hold_kp{0.5};
   std::int64_t telemetry_log_period_ns{500'000'000};
   bool flight_blackbox_enabled{true};
