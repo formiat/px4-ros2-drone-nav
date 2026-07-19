@@ -108,20 +108,22 @@ The stage is intentionally conservative:
 Diagnostics report candidate counts, rejection reasons, accepted/rejected
 opening ids, lateral miss before/after, and join metrics.
 
-## Baseline And Optimized Trajectories
+## Executable Trajectory Build
 
-The code still has baseline/refined concepts internally:
+The runtime publishes only a complete optimized executable trajectory. It does
+not publish a corridor-derived baseline and replace it with a refined path
+later.
 
-- baseline trajectory: corridor-derived trajectory before full optimization;
-- refined/optimized trajectory: trajectory after optimizer and smoothing.
+By default, `async_trajectory_build_workers` is `1`. The planner snapshots the
+route, prohibited grid, clearance field, known passages, and trajectory config,
+then builds the optimized trajectory on one background worker. The currently
+accepted trajectory remains active until the new result is complete. Before
+publication, the result is checked against the current trajectory generation,
+expected route endpoints, and latest prohibited grid.
 
-The standard configuration publishes the computed optimized executable
-trajectory directly. Async refinement support exists in code, but
-`trajectory_optimizer_async_refinement_workers` is `0` by default.
-
-If async refinement is enabled later, handover must remain continuity-aware:
-projection, tangent, curvature, speed, and command discontinuity must be
-validated before replacing the active trajectory.
+Setting `async_trajectory_build_workers` to `0` is a synchronous fallback. It
+changes scheduling only: the same optimized executable trajectory is built and
+published, with no intermediate baseline in either mode.
 
 ## Timing
 

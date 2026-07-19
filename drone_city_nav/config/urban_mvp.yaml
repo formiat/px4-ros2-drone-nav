@@ -99,6 +99,7 @@ planner_node:
     initial_altitude_m: 18.0
     inflation_radius_m: 1.0
     planning_clearance_m: 3.0
+    async_trajectory_build_workers: 1
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100
     memory_free_value: 0
@@ -221,7 +222,6 @@ planner_node:
     trajectory_optimizer_dp_coarse_offset_step_m: 2.0
     trajectory_optimizer_dp_fine_offset_step_m: 0.75
     trajectory_optimizer_dp_fine_radius_m: 1.5
-    trajectory_optimizer_async_refinement_workers: 0
     turn_smoothing_trigger_heading_delta_deg: 37.0
     turn_smoothing_trigger_min_radius_m: 16.0
     turn_smoothing_trigger_speed_limit_mps: 12.0

@@ -55,6 +55,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    config.initial_altitude_m);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
+  EXPECT_EQ(config.async_trajectory_build_workers, 1U);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 3.0);
   EXPECT_TRUE(config.static_map.enabled);
@@ -197,8 +198,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    0.75);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
                    1.5);
-  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
-            0U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad,
                    37.0 * std::numbers::pi / 180.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.trigger_min_radius_m, 16.0);
@@ -224,6 +223,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 5000.0},
+       rclcpp::Parameter{"async_trajectory_build_workers", 5000},
        rclcpp::Parameter{"lidar_pose_latency_s", 5.0},
        rclcpp::Parameter{"cruise_speed_mps", 5000.0},
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
@@ -241,7 +241,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"trajectory_optimizer_dp_coarse_offset_step_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_offset_step_m", -1.0},
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", -1.0},
-       rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 5000},
        rclcpp::Parameter{"known_passage_validation_min_opening_overlap_m", -1.0},
        rclcpp::Parameter{"known_passage_validation_min_opening_depth_fraction", 5.0},
        rclcpp::Parameter{"known_passage_validation_clearance_margin_m", 9999.0},
@@ -318,8 +317,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
                    0.05);
-  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
-            1U);
+  EXPECT_EQ(config.async_trajectory_build_workers, 1U);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 1.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
@@ -421,7 +419,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"trajectory_optimizer_dp_coarse_offset_step_m", 2.5},
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_offset_step_m", 0.5},
        rclcpp::Parameter{"trajectory_optimizer_dp_fine_radius_m", 2.25},
-       rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 2},
        rclcpp::Parameter{"turn_smoothing_outer_bias_ratio", 0.7},
        rclcpp::Parameter{"turn_smoothing_max_outer_shift_m", 9.0},
        rclcpp::Parameter{"corridor_sample_step_m", 2.0},
@@ -538,8 +535,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
                    0.5);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
                    2.25);
-  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
-            1U);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.outer_bias_ratio, 0.7);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.max_outer_shift_m, 9.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.corridor.sample_step_m, 2.0);
@@ -549,17 +544,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_FALSE(config.current_lidar.motion_compensate_lidar_pose);
   EXPECT_DOUBLE_EQ(config.current_lidar.lidar_pose_latency_s, 0.25);
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
-}
-
-TEST_F(PlannerNodeConfigTest, AllowsAsyncRefinementDisableContract) {
-  const auto node =
-      makeNode("planner_node_config_async_refinement_disabled",
-               {rclcpp::Parameter{"trajectory_optimizer_async_refinement_workers", 0}});
-
-  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
-
-  EXPECT_EQ(config.trajectory_planner.trajectory_optimizer.async_refinement_workers,
-            0U);
 }
 
 TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
@@ -589,6 +573,15 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);
+}
+
+TEST_F(PlannerNodeConfigTest, AllowsAsyncTrajectoryBuildDisableContract) {
+  const auto node = makeNode("planner_node_config_async_trajectory_build_disabled",
+                             {rclcpp::Parameter{"async_trajectory_build_workers", 0}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_EQ(config.async_trajectory_build_workers, 0U);
 }
 
 TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {

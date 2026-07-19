@@ -29,6 +29,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("inflation_radius_m", 1.0), 0.0, 1000.0);
   config.planning_clearance_m = std::clamp(
       node.declare_parameter<double>("planning_clearance_m", 3.0), 0.0, 1000.0);
+  config.async_trajectory_build_workers =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("async_trajectory_build_workers", 1), 0,
+          1));
 
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
@@ -470,11 +474,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m = std::clamp(
       node.declare_parameter<double>("trajectory_optimizer_dp_fine_radius_m", 1.5),
       0.05, 5000.0);
-  config.trajectory_planner.trajectory_optimizer.async_refinement_workers =
-      static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>(
-              "trajectory_optimizer_async_refinement_workers", 0),
-          0, 1));
   config.trajectory_planner.turn_smoothing.trigger_heading_delta_rad = std::clamp(
       node.declare_parameter<double>("turn_smoothing_trigger_heading_delta_deg", 37.0) *
           std::numbers::pi / 180.0,

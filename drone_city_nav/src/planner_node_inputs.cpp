@@ -415,7 +415,16 @@ void PlannerNode::checkCurrentPathAndPublish() {
   OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
   OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
   publishProhibitedGrid(prohibited_grid);
-  if (pollPendingTrajectoryRefinement(prohibited_grid)) {
+  if (pollPendingExecutableTrajectoryBuild(prohibited_grid)) {
+    return;
+  }
+  if (pending_trajectory_build_.has_value()) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Keeping the current trajectory while an executable trajectory build is "
+        "in progress: generation=%" PRIu64 " route_points=%zu",
+        pending_trajectory_build_->generation,
+        pending_trajectory_build_->route_points.size());
     return;
   }
   if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {

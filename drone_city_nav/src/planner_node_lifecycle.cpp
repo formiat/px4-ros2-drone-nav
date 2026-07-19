@@ -120,7 +120,7 @@ PlannerNode::PlannerNode()
       "offset_second=%.2f offset_slope=%.2f max_offset_slope=%.2f/m "
       "parallel=always parallel_workers=%zu "
       "window(pre=%.2fm post=%.2fm heading=%.1fdeg width=%.2fm) "
-      "dp_offset_step=%.2fm async_workers=%zu)] "
+      "dp_offset_step=%.2fm)] "
       "turn_smoothing[trigger_heading=%.1fdeg trigger_radius=%.2fm "
       "trigger_speed=%.2fmps entry=%.2fm exit=%.2fm sample_step=%.2fm outer_bias=%.2f "
       "outer_shift=[%.2f, %.2f] max_passes=%zu]",
@@ -156,7 +156,6 @@ PlannerNode::PlannerNode()
           trajectory_planner_config_.trajectory_optimizer.window_heading_threshold_rad),
       trajectory_planner_config_.trajectory_optimizer.window_width_change_threshold_m,
       trajectory_planner_config_.trajectory_optimizer.dp_offset_step_m,
-      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers,
       radiansToDegrees(
           trajectory_planner_config_.turn_smoothing.trigger_heading_delta_rad),
       trajectory_planner_config_.turn_smoothing.trigger_min_radius_m,
@@ -300,8 +299,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
   astar_config_ = config.planner_core.astar;
   trajectory_planner_config_ = config.trajectory_planner;
-  refinement_scheduler_.configure(
-      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers);
+  async_trajectory_build_workers_ = config.async_trajectory_build_workers;
   initial_heading_rad_ = config.initial_pose.heading_rad;
   px4_local_origin_ = config.initial_pose.px4_local_origin;
   static_map_debug_publish_period_s_ = config.timing.static_map_debug_publish_period_s;

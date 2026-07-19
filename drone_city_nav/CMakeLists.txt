@@ -99,7 +99,6 @@ add_library(
   src/trajectory_diagnostics_io_parser.cpp
   src/trajectory_planner.cpp
   src/trajectory_passage_insertion.cpp
-  src/trajectory_refinement_scheduler.cpp
   src/trajectory_shape_cleanup.cpp
   src/trajectory_speed_planner.cpp
   src/trajectory_vertical_profile.cpp
@@ -530,13 +529,6 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_passage_insertion_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_passage_insertion_test drone_city_nav_core)
   enable_project_warnings(trajectory_passage_insertion_test)
-
-  ament_add_gtest(trajectory_refinement_scheduler_test
-                  tests/trajectory_refinement_scheduler_test.cpp)
-  target_compile_features(trajectory_refinement_scheduler_test PRIVATE cxx_std_20)
-  target_link_libraries(trajectory_refinement_scheduler_test
-                        drone_city_nav_core)
-  enable_project_warnings(trajectory_refinement_scheduler_test)
 
   ament_add_gtest(terminal_capture_state_machine_test
                   tests/terminal_capture_state_machine_test.cpp)

@@ -204,9 +204,16 @@ bool PlannerNode::publishPathFromPathCells(
   }
 
   const std::uint64_t generation = ++trajectory_generation_;
-  const auto started_at = std::chrono::steady_clock::now();
   const TrajectoryPlannerConfig trajectory_config =
       trajectoryPlannerConfigForCurrentAltitude();
+  if (async_trajectory_build_workers_ > 0U) {
+    startAsyncExecutableTrajectoryBuild(
+        route_grid, route_points, generation, source_label, route_clearance_field,
+        route_clearance_field_cache_hit, trajectory_config);
+    return pending_trajectory_build_.has_value();
+  }
+
+  const auto started_at = std::chrono::steady_clock::now();
   const TrajectoryPlannerInput trajectory_input{
       std::span<const Point2>{route_points.data(), route_points.size()},
       &route_grid,
@@ -215,29 +222,15 @@ bool PlannerNode::publishPathFromPathCells(
       std::span<const CorridorSample>{},
       nullptr,
       known_passages_ ? &*known_passages_ : nullptr};
-  const bool async_refinement_enabled =
-      trajectory_planner_config_.trajectory_optimizer.async_refinement_workers > 0U;
   TrajectoryPlannerResult trajectory_result =
-      async_refinement_enabled
-          ? planBaselineTrajectory(trajectory_input, trajectory_config)
-          : planOptimizedTrajectory(trajectory_input, trajectory_config);
+      planOptimizedTrajectory(trajectory_input, trajectory_config);
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
-  std::uint64_t published_path_id = 0U;
-  if (!publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
-                               source_label, duration_ms, &published_path_id)) {
-    return false;
-  }
-  if (async_refinement_enabled) {
-    startAsyncTrajectoryRefinement(route_grid, route_points, generation,
-                                   published_path_id, trajectory_result, source_label,
-                                   route_clearance_field,
-                                   route_clearance_field_cache_hit, trajectory_config);
-  }
-  return true;
+  return publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
+                                 source_label, duration_ms);
 }
 
 bool PlannerNode::keepCurrentPathAfterInvalidReplacement(

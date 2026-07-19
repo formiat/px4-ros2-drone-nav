@@ -343,11 +343,14 @@ Active windows and DP:
 - `trajectory_optimizer_window_*`
 - `trajectory_optimizer_dp_*`
 
-Async refinement:
+Executable trajectory scheduling:
 
-- `trajectory_optimizer_async_refinement_workers`
+- `async_trajectory_build_workers`
 
-Default is `0`, so async refinement is disabled.
+Default is `1`. The planner builds one final optimized trajectory on a
+background worker while the previously accepted trajectory remains active.
+The value is capped at one worker to avoid concurrent stale builds. Set it to
+`0` only when synchronous construction is required for diagnosis.
 
 ## Turn Smoothing Parameters
 

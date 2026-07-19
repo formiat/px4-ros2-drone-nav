@@ -23,7 +23,6 @@
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
-#include "drone_city_nav/trajectory_refinement_scheduler.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -102,32 +101,14 @@ public:
   PlannerNode();
 
 private:
-  struct PendingTrajectoryRefinement {
+  struct PendingExecutableTrajectoryBuild {
     std::uint64_t generation{0U};
-    std::uint64_t baseline_path_id{0U};
     Point2 route_start{};
     Point2 goal{};
-    double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
     std::vector<Point2> route_points;
     std::string source_label;
+    std::chrono::steady_clock::time_point started_at;
     std::future<TrajectoryPlannerResult> future;
-  };
-
-  struct TrajectoryRefinementRequest {
-    std::uint64_t generation{0U};
-    std::uint64_t baseline_path_id{0U};
-    Point2 route_start{};
-    Point2 goal{};
-    double baseline_length_m{std::numeric_limits<double>::quiet_NaN()};
-    std::vector<Point2> route_points;
-    std::string source_label;
-    OccupancyGrid2D grid;
-    std::optional<ClearanceField2D> prohibited_clearance_field;
-    bool prohibited_clearance_field_cache_hit{false};
-    std::vector<CorridorSample> corridor_samples;
-    CorridorStats corridor_stats{};
-    std::optional<KnownPassageMap> known_passages;
-    TrajectoryPlannerConfig config;
   };
 
   struct PendingMemorySnapshot {
@@ -197,20 +178,14 @@ private:
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
                                          const char* invalid_reason) const;
 
-  void startAsyncTrajectoryRefinement(
+  void startAsyncExecutableTrajectoryBuild(
       const OccupancyGrid2D& grid, std::span<const Point2> route_points,
-      std::uint64_t generation, std::uint64_t baseline_path_id,
-      const TrajectoryPlannerResult& baseline, const char* source_label,
+      std::uint64_t generation, const char* source_label,
       const ClearanceField2D* prohibited_clearance_field,
       bool prohibited_clearance_field_cache_hit, const TrajectoryPlannerConfig& config);
 
-  void launchScheduledTrajectoryRefinement(TrajectoryRefinementRequest request);
-
-  void
-  launchQueuedTrajectoryRefinement(std::optional<TrajectoryRefinementJob> expected_job);
-
   [[nodiscard]] bool
-  pollPendingTrajectoryRefinement(const OccupancyGrid2D& validation_grid);
+  pollPendingExecutableTrajectoryBuild(const OccupancyGrid2D& validation_grid);
 
   [[nodiscard]] PublishedPathSafetySummary
   summarizePublishedPathSafety(const OccupancyGrid2D& grid,
@@ -451,10 +426,9 @@ private:
   std::vector<Point2> last_valid_path_points_;
   std::vector<LidarProjectionPose> last_scan_projection_poses_;
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
-  std::optional<PendingTrajectoryRefinement> pending_refinement_;
-  std::optional<TrajectoryRefinementRequest> queued_refinement_;
+  std::optional<PendingExecutableTrajectoryBuild> pending_trajectory_build_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
-  TrajectoryRefinementScheduler refinement_scheduler_;
+  std::size_t async_trajectory_build_workers_{1U};
 
   mutable std::mutex memory_snapshot_mutex_;
 
