@@ -11,6 +11,20 @@ namespace {
 
 constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
 
+[[nodiscard]] bool
+ambiguousKnownStaticHit(const LidarIngestionDecision& decision) noexcept {
+  return decision.known_static_result_available &&
+         decision.known_static_result.classification ==
+             KnownStaticLidarHitClassification::kAmbiguous;
+}
+
+[[nodiscard]] std::int64_t scanIdentity(const LaserScanTiming& timing) noexcept {
+  if (timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0) {
+    return timing.first_beam_stamp_ns;
+  }
+  return timing.receive_stamp_valid ? timing.receive_stamp_ns : 0;
+}
+
 struct ClippedSegment {
   Point2 end{};
   bool clipped{false};
@@ -213,6 +227,22 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     if (decision.action == LidarIngestionAction::kSuppressAllUpdates) {
       continue;
     }
+    if (projection.hit && ambiguousKnownStaticHit(decision)) {
+      const std::int64_t scan_stamp_ns = scanIdentity(scan.timing);
+      const std::optional<GridIndex> ambiguous_cell =
+          raw_grid_.worldToCell(projection.endpoint);
+      if (scan_stamp_ns > 0 &&
+          (!ambiguous_cell.has_value() ||
+           !ambiguous_hit_tracker_.observe(*ambiguous_cell, scan_stamp_ns).confirmed)) {
+        recordKnownStaticLidarHit(decision.known_static_result,
+                                  stats.known_static_lidar, false);
+        ++stats.ambiguous_hits_pending_confirmation;
+        continue;
+      }
+      if (scan_stamp_ns > 0) {
+        ++stats.ambiguous_hits_confirmed;
+      }
+    }
 
     const auto clipped =
         clipSegmentToGrid(raw_grid_, projection_pose.position, projection.endpoint);
@@ -303,6 +333,12 @@ void ObstacleMemoryGrid::reset() {
   raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
   std::fill(scores_.begin(), scores_.end(), 0);
   active_provenance_.clear();
+  ambiguous_hit_tracker_.clear();
+}
+
+void ObstacleMemoryGrid::configureAmbiguousHitTracking(
+    const AmbiguousLidarHitTrackerConfig config) {
+  ambiguous_hit_tracker_.configure(config);
 }
 
 const OccupancyGrid2D& ObstacleMemoryGrid::rawGrid() const noexcept {

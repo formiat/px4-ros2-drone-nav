@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/lidar_beam_observation.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -40,6 +41,8 @@ struct CurrentLidarOverlayStats {
   std::size_t overlay_occupied_cells_preserved{0U};
   std::size_t outside_hits{0U};
   std::size_t timestamp_aligned_beams{0U};
+  std::size_t ambiguous_hits_pending_confirmation{0U};
+  std::size_t ambiguous_hits_confirmed{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<CurrentLidarAcceptedHitProvenance> accepted_hits;
@@ -54,7 +57,8 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
                         const KnownStaticLidarHitClassifier* classifier = nullptr,
-                        const GroundLidarRejectionConfig* ground_config = nullptr);
+                        const GroundLidarRejectionConfig* ground_config = nullptr,
+                        AmbiguousLidarHitTracker* ambiguous_hit_tracker = nullptr);
 
 [[nodiscard]] const CurrentLidarAcceptedHitProvenance*
 findCurrentLidarAcceptedHitProvenance(const CurrentLidarOverlayStats& stats,

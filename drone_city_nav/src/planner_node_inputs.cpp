@@ -210,14 +210,16 @@ void PlannerNode::loadConfiguredKnownPassages() {
   const auto log_classifier = [this]() {
     RCLCPP_INFO(get_logger(),
                 "Known static lidar classifier: node=planner status=%s path='%s' "
-                "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm",
+                "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
+                "endpoint_volume_tolerance=%.3fm",
                 known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
                 known_passages_resolved_path_.string().c_str(),
                 known_static_lidar_classifier_.has_value()
                     ? known_static_lidar_classifier_->volumeCount()
                     : 0U,
                 known_static_lidar_hit_closer_range_tolerance_m_,
-                known_static_lidar_hit_farther_range_tolerance_m_);
+                known_static_lidar_hit_farther_range_tolerance_m_,
+                known_static_lidar_hit_endpoint_volume_tolerance_m_);
   };
 
   if (result.status == KnownPassageSourceStatus::kDisabled) {
@@ -265,7 +267,9 @@ void PlannerNode::loadConfiguredKnownPassages() {
               .closer_range_tolerance_m =
                   known_static_lidar_hit_closer_range_tolerance_m_,
               .farther_range_tolerance_m =
-                  known_static_lidar_hit_farther_range_tolerance_m_});
+                  known_static_lidar_hit_farther_range_tolerance_m_,
+              .endpoint_volume_tolerance_m =
+                  known_static_lidar_hit_endpoint_volume_tolerance_m_});
     }
   }
   RCLCPP_INFO(get_logger(),
@@ -446,7 +450,8 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "current_lidar[enabled=%s used=%s fresh=%s processed=%zu aligned=%zu hits=%zu "
       "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
       "overlay_preserved=%zu outside=%zu "
-      "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
+      "known_static[ignored=%zu endpoint_fallback=%zu unexpected=%zu "
+      "ambiguous=%zu pending=%zu confirmed=%zu "
       "parts[left=%zu right=%zu lower=%zu upper=%zu] "
       "first_ignored=%s/%s/%s delta=%.3f "
       "first_ambiguous=%s/%s/%s delta=%.3f]] "
@@ -511,8 +516,12 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->current_lidar.overlay_occupied_cells_preserved,
       planning_result->current_lidar.outside_hits,
       planning_result->current_lidar.known_static_lidar.expected_static_hits_ignored,
+      planning_result->current_lidar.known_static_lidar
+          .endpoint_volume_fallback_hits_ignored,
       planning_result->current_lidar.known_static_lidar.unexpected_hits_kept,
       planning_result->current_lidar.known_static_lidar.ambiguous_hits_kept,
+      planning_result->current_lidar.ambiguous_hits_pending_confirmation,
+      planning_result->current_lidar.ambiguous_hits_confirmed,
       planning_result->current_lidar.known_static_lidar.expected_static_by_part.left,
       planning_result->current_lidar.known_static_lidar.expected_static_by_part.right,
       planning_result->current_lidar.known_static_lidar.expected_static_by_part.lower,

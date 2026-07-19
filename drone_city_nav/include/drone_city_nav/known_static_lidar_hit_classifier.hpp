@@ -25,6 +25,7 @@ struct KnownStaticLidarHitClassifierConfig {
   // Gazebo collision and projection timing can place a known-surface return
   // slightly behind its analytic intersection.
   double farther_range_tolerance_m{1.5};
+  double endpoint_volume_tolerance_m{0.5};
 };
 
 struct KnownStaticLidarHitResult {
@@ -38,10 +39,12 @@ struct KnownStaticLidarHitResult {
   std::string_view part_id;
   bool volume_matched{false};
   bool confident_face_interior{false};
+  bool endpoint_volume_fallback{false};
 };
 
 struct KnownStaticExpectedSurface {
   double range_m{std::numeric_limits<double>::quiet_NaN()};
+  double exit_range_m{std::numeric_limits<double>::quiet_NaN()};
   Point3 intersection_map_m{};
   KnownPassageSolidPartKind part_kind{KnownPassageSolidPartKind::kLeft};
   std::string_view structure_id;
@@ -88,6 +91,7 @@ struct KnownStaticLidarPartCounters {
 
 struct KnownStaticLidarHitStats {
   std::size_t expected_static_hits_ignored{0U};
+  std::size_t endpoint_volume_fallback_hits_ignored{0U};
   std::size_t unexpected_hits_kept{0U};
   std::size_t ambiguous_hits_kept{0U};
   KnownStaticLidarPartCounters expected_static_by_part{};
@@ -98,7 +102,7 @@ struct KnownStaticLidarHitStats {
 class KnownStaticLidarHitClassifier {
 public:
   KnownStaticLidarHitClassifier(std::vector<KnownPassageSolidVolume> volumes,
-                                KnownStaticLidarHitClassifierConfig config = {});
+                                const KnownStaticLidarHitClassifierConfig& config = {});
 
   [[nodiscard]] KnownStaticLidarHitResult
   classify(const Point3& ray_origin_map_m, const Point3& ray_direction_map,
@@ -112,6 +116,7 @@ public:
   [[nodiscard]] std::size_t volumeCount() const noexcept;
   [[nodiscard]] double closerRangeToleranceM() const noexcept;
   [[nodiscard]] double fartherRangeToleranceM() const noexcept;
+  [[nodiscard]] double endpointVolumeToleranceM() const noexcept;
 
 private:
   std::vector<KnownPassageSolidVolume> volumes_;
@@ -119,7 +124,7 @@ private:
 };
 
 void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,
-                               KnownStaticLidarHitStats& stats);
+                               KnownStaticLidarHitStats& stats, bool retained = true);
 
 [[nodiscard]] std::optional<KnownStaticLidarHitProvenance>
 makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,

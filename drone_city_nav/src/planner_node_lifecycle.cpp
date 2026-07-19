@@ -278,6 +278,10 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
       config.known_static_lidar_hit_closer_range_tolerance_m;
   known_static_lidar_hit_farther_range_tolerance_m_ =
       config.known_static_lidar_hit_farther_range_tolerance_m;
+  known_static_lidar_hit_endpoint_volume_tolerance_m_ =
+      config.known_static_lidar_hit_endpoint_volume_tolerance_m;
+  current_lidar_ambiguous_hit_tracker_.configure(
+      config.current_lidar.ambiguous_hit_confirmation);
   ground_lidar_rejection_config_ = config.ground_lidar_rejection;
   fallback_grid_bounds_ = config.planning_grid_builder.fallback_bounds;
   max_current_lidar_staleness_ns_ = config.timing.max_current_lidar_staleness_ns;

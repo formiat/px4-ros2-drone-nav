@@ -41,6 +41,7 @@ endfunction()
 
 add_library(
   drone_city_nav_core
+  src/ambiguous_lidar_hit_tracker.cpp
   src/astar_planner.cpp
   src/clearance_field.cpp
   src/control_projection_smoothing.cpp
@@ -263,6 +264,12 @@ install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_N
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(ambiguous_lidar_hit_tracker_test
+                  tests/ambiguous_lidar_hit_tracker_test.cpp)
+  target_compile_features(ambiguous_lidar_hit_tracker_test PRIVATE cxx_std_20)
+  target_link_libraries(ambiguous_lidar_hit_tracker_test drone_city_nav_core)
+  enable_project_warnings(ambiguous_lidar_hit_tracker_test)
 
   ament_add_gtest(debug_image_test tests/debug_image_test.cpp)
   target_compile_features(debug_image_test PRIVATE cxx_std_20)

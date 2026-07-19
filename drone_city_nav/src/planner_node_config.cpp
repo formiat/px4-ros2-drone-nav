@@ -78,6 +78,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp(node.declare_parameter<double>(
                      "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
                  0.0, 100.0);
+  config.known_static_lidar_hit_endpoint_volume_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.5),
+                 0.0, 10.0);
   config.ground_lidar_rejection.enabled =
       node.declare_parameter<bool>("ground_lidar_rejection_enabled", true);
   config.ground_lidar_rejection.ground_altitude_m =
@@ -250,6 +254,21 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<bool>("motion_compensate_lidar_pose", true);
   config.current_lidar.lidar_pose_latency_s = std::clamp(
       node.declare_parameter<double>("lidar_pose_latency_s", 0.05), 0.0, 1.0);
+  config.current_lidar.ambiguous_hit_confirmation.required_independent_scans =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "ambiguous_lidar_hit_required_independent_scans", 3),
+          1, 20));
+  config.current_lidar.ambiguous_hit_confirmation.max_scan_gap_ns =
+      static_cast<std::int64_t>(
+          1'000'000.0 * std::clamp(node.declare_parameter<double>(
+                                       "ambiguous_lidar_hit_max_scan_gap_ms", 500.0),
+                                   1.0, 10'000.0));
+  config.current_lidar.ambiguous_hit_confirmation.retention_ns =
+      static_cast<std::int64_t>(
+          1'000'000.0 * std::clamp(node.declare_parameter<double>(
+                                       "ambiguous_lidar_hit_retention_ms", 2000.0),
+                                   1.0, 60'000.0));
   config.lidar_projection.compensate_attitude =
       node.declare_parameter<bool>("compensate_lidar_attitude", true);
   config.lidar_projection.lidar_mount_roll_rad =

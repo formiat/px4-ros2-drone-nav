@@ -37,7 +37,8 @@ makeClassifier(KnownPassageSolidVolume volume = makeVolume(),
   return KnownStaticLidarHitClassifier{
       std::move(volumes), KnownStaticLidarHitClassifierConfig{
                               .closer_range_tolerance_m = closer_tolerance_m,
-                              .farther_range_tolerance_m = farther_tolerance_m}};
+                              .farther_range_tolerance_m = farther_tolerance_m,
+                              .endpoint_volume_tolerance_m = 0.25}};
 }
 
 } // namespace
@@ -66,14 +67,25 @@ TEST(KnownStaticLidarHitClassifier, CloserObjectIsRetained) {
   EXPECT_TRUE(result.volume_matched);
 }
 
-TEST(KnownStaticLidarHitClassifier, FartherRangeIsAmbiguousAndRetained) {
+TEST(KnownStaticLidarHitClassifier, EndpointInsideSameSolidUsesGeometricFallback) {
   const KnownStaticLidarHitClassifier classifier = makeClassifier();
 
   const KnownStaticLidarHitResult result =
       classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.0);
 
-  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_TRUE(result.volume_matched);
+  EXPECT_TRUE(result.endpoint_volume_fallback);
+}
+
+TEST(KnownStaticLidarHitClassifier, EndpointPastSameSolidRemainsAmbiguous) {
+  const KnownStaticLidarHitClassifier classifier = makeClassifier();
+
+  const KnownStaticLidarHitResult result =
+      classifier.classify(Point3{0.0, 0.0, 3.0}, Point3{1.0, 0.0, 0.0}, 6.5);
+
+  EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kAmbiguous);
+  EXPECT_FALSE(result.endpoint_volume_fallback);
 }
 
 TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherTolerance) {
@@ -84,6 +96,7 @@ TEST(KnownStaticLidarHitClassifier, FartherKnownSurfaceReturnUsesFartherToleranc
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kExpectedStatic);
   EXPECT_NEAR(result.range_delta_m, 1.4, 1.0e-9);
+  EXPECT_FALSE(result.endpoint_volume_fallback);
 }
 
 TEST(KnownStaticLidarHitClassifier, RayThroughFreeOpeningIsUnexpected) {

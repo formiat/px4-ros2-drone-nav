@@ -70,6 +70,13 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 1.5);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.5);
+  EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.required_independent_scans,
+            3U);
+  EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.max_scan_gap_ns,
+            500'000'000);
+  EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.retention_ns,
+            2'000'000'000);
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);
@@ -319,6 +326,7 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 100U);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 100.0);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.5);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
       100.0);

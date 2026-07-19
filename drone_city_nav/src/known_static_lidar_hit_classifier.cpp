@@ -23,6 +23,7 @@ struct LocalRay {
 struct SolidIntersection {
   const KnownPassageSolidVolume* volume{nullptr};
   double range_m{0.0};
+  double exit_range_m{0.0};
   bool confident_face_interior{false};
 };
 
@@ -146,7 +147,22 @@ intersectSolid(const Point3& origin, const Point3& direction,
   const bool confident = !origin_inside && positive_thickness &&
                          entering_face_count == 1U && !boundary_parallel &&
                          !entry_near_other_boundary && !near_parallel_entry;
-  return SolidIntersection{&volume, range_m, confident};
+  return SolidIntersection{&volume, range_m, t_exit, confident};
+}
+
+[[nodiscard]] bool endpointInsideSurface(const Point3& endpoint,
+                                         const KnownStaticExpectedSurface& surface,
+                                         const double tolerance_m) noexcept {
+  const Point2 delta{endpoint.x - surface.volume_center.x,
+                     endpoint.y - surface.volume_center.y};
+  const double normal_distance = std::abs(delta.x * surface.volume_normal_xy.x +
+                                          delta.y * surface.volume_normal_xy.y);
+  const double lateral_distance = std::abs(delta.x * surface.volume_lateral_xy.x +
+                                           delta.y * surface.volume_lateral_xy.y);
+  return normal_distance <= surface.volume_depth_m / 2.0 + tolerance_m &&
+         lateral_distance <= surface.volume_width_m / 2.0 + tolerance_m &&
+         endpoint.z >= surface.volume_min_z_m - tolerance_m &&
+         endpoint.z <= surface.volume_max_z_m + tolerance_m;
 }
 
 void assignDiagnostic(const KnownStaticLidarHitResult& result,
@@ -165,7 +181,7 @@ void assignDiagnostic(const KnownStaticLidarHitResult& result,
 
 KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
     std::vector<KnownPassageSolidVolume> volumes,
-    KnownStaticLidarHitClassifierConfig config)
+    const KnownStaticLidarHitClassifierConfig& config)
     : volumes_{std::move(volumes)},
       config_{config} {
   if (!std::isfinite(config_.closer_range_tolerance_m) ||
@@ -175,6 +191,10 @@ KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
   if (!std::isfinite(config_.farther_range_tolerance_m) ||
       config_.farther_range_tolerance_m < 0.0) {
     config_.farther_range_tolerance_m = 1.5;
+  }
+  if (!std::isfinite(config_.endpoint_volume_tolerance_m) ||
+      config_.endpoint_volume_tolerance_m < 0.0) {
+    config_.endpoint_volume_tolerance_m = 0.5;
   }
 }
 
@@ -212,6 +232,19 @@ KnownStaticLidarHitClassifier::classify(const Point3& ray_origin_map_m,
     result.classification = KnownStaticLidarHitClassification::kUnexpected;
   } else if (measured_range_m <= nearest->range_m + config_.farther_range_tolerance_m) {
     result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
+  } else {
+    const Point3 measured_endpoint{
+        ray_origin_map_m.x + measured_range_m * ray_direction_map.x,
+        ray_origin_map_m.y + measured_range_m * ray_direction_map.y,
+        ray_origin_map_m.z + measured_range_m * ray_direction_map.z};
+    const bool before_or_inside_far_face =
+        measured_range_m <= nearest->exit_range_m + config_.endpoint_volume_tolerance_m;
+    if (before_or_inside_far_face &&
+        endpointInsideSurface(measured_endpoint, *nearest,
+                              config_.endpoint_volume_tolerance_m)) {
+      result.classification = KnownStaticLidarHitClassification::kExpectedStatic;
+      result.endpoint_volume_fallback = true;
+    }
   }
   return result;
 }
@@ -248,6 +281,7 @@ KnownStaticLidarHitClassifier::nearestExpectedSurface(
                                 nearest->range_m * ray_direction_map.z};
   return KnownStaticExpectedSurface{
       .range_m = nearest->range_m,
+      .exit_range_m = nearest->exit_range_m,
       .intersection_map_m = intersection,
       .part_kind = volume.part_kind,
       .structure_id = volume.structure_id,
@@ -276,6 +310,10 @@ double KnownStaticLidarHitClassifier::fartherRangeToleranceM() const noexcept {
   return config_.farther_range_tolerance_m;
 }
 
+double KnownStaticLidarHitClassifier::endpointVolumeToleranceM() const noexcept {
+  return config_.endpoint_volume_tolerance_m;
+}
+
 std::optional<KnownStaticLidarHitProvenance>
 makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
                                   const Point3& endpoint_map_m, const int cell_x,
@@ -298,10 +336,13 @@ makeKnownStaticLidarHitProvenance(const KnownStaticLidarHitResult& result,
 }
 
 void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,
-                               KnownStaticLidarHitStats& stats) {
+                               KnownStaticLidarHitStats& stats, const bool retained) {
   switch (result.classification) {
     case KnownStaticLidarHitClassification::kExpectedStatic:
       ++stats.expected_static_hits_ignored;
+      if (result.endpoint_volume_fallback) {
+        ++stats.endpoint_volume_fallback_hits_ignored;
+      }
       incrementPartCounter(result.part_kind, stats.expected_static_by_part);
       assignDiagnostic(result, stats.first_ignored);
       return;
@@ -309,7 +350,9 @@ void recordKnownStaticLidarHit(const KnownStaticLidarHitResult& result,
       ++stats.unexpected_hits_kept;
       return;
     case KnownStaticLidarHitClassification::kAmbiguous:
-      ++stats.ambiguous_hits_kept;
+      if (retained) {
+        ++stats.ambiguous_hits_kept;
+      }
       assignDiagnostic(result, stats.first_ambiguous);
       return;
   }

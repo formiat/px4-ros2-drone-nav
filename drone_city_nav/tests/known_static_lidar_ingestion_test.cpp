@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -348,7 +349,7 @@ TEST(KnownStaticLidarIngestion, FartherKnownSurfaceReturnIsSuppressedByBothPaths
   EXPECT_TRUE(memory_stats.occupied_transitions.empty());
 }
 
-TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedByBothPaths) {
+TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedWithoutScanTiming) {
   const IngestionCase test_case =
       makeCase(KnownPassageSolidPartKind::kRight, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0);
   const LidarBeamProjection projection =
@@ -375,6 +376,43 @@ TEST(KnownStaticLidarIngestion, BoundaryAmbiguityIsRetainedByBothPaths) {
   EXPECT_EQ(overlay_stats.occupied_cells, 1U);
   EXPECT_EQ(memory_stats.known_static_lidar.ambiguous_hits_kept, 1U);
   EXPECT_EQ(overlay_stats.known_static_lidar.ambiguous_hits_kept, 1U);
+}
+
+TEST(KnownStaticLidarIngestion,
+     AmbiguousKnownStaticHitRequiresIndependentScanConfirmation) {
+  const IngestionCase test_case =
+      makeCase(KnownPassageSolidPartKind::kUpper, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  const LidarBeamProjection expected_projection =
+      projectLidarBeam(test_case.pose, test_case.config, 0.1, 20.0, 0.0, 0.1, 0U, 6.0F);
+  std::vector<KnownPassageSolidVolume> volumes;
+  volumes.push_back(volumeAtRange(expected_projection, test_case.kind, 6.0));
+  const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
+  const std::array<float, 1U> ranges{8.6F};
+  const GridBounds bounds{-20.0, -20.0, 0.5, 80, 80};
+  ObstacleMemoryGrid memory{bounds};
+  OccupancyGrid2D overlay_grid{bounds};
+  AmbiguousLidarHitTracker overlay_tracker;
+
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    LaserScan2DView memory_scan = memoryScan(ranges, test_case);
+    memory_scan.timing.first_beam_stamp_ns = scan_index * 100'000'000;
+    memory_scan.timing.first_beam_stamp_valid = true;
+    const ObstacleMemoryStats memory_stats =
+        memory.integrateScan(Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+                             memory_scan, ObstacleMemoryConfig{}, &classifier);
+
+    LidarScanView overlay_scan{ranges, 0.1, 20.0, 0.0, 0.1};
+    overlay_scan.timing = memory_scan.timing;
+    const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+        overlay_grid, overlay_scan, test_case.pose, test_case.config, &classifier,
+        nullptr, &overlay_tracker);
+
+    const bool expected_confirmed = scan_index == 3;
+    EXPECT_EQ(memory.countRawCells().occupied_cells, expected_confirmed ? 1U : 0U);
+    EXPECT_EQ(overlay_stats.occupied_cells, expected_confirmed ? 1U : 0U);
+    EXPECT_EQ(memory_stats.ambiguous_hits_confirmed, expected_confirmed ? 1U : 0U);
+    EXPECT_EQ(overlay_stats.ambiguous_hits_confirmed, expected_confirmed ? 1U : 0U);
+  }
 }
 
 } // namespace drone_city_nav

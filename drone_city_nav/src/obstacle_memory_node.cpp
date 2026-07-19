@@ -37,7 +37,6 @@
 
 namespace drone_city_nav {
 namespace {
-
 constexpr double kPassageMemoryDiagnosticMarginM{2.0};
 } // namespace
 
@@ -51,11 +50,9 @@ public:
     const double height_m = declare_parameter<double>("grid_height_m", 80.0);
     const double origin_x = declare_parameter<double>("grid_origin_x", -20.0);
     const double origin_y = declare_parameter<double>("grid_origin_y", -40.0);
-
     const GridBounds memory_bounds = boundedGridBounds(
         origin_x, origin_y, requested_resolution_m, width_m, height_m);
     memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
-
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
@@ -116,6 +113,25 @@ public:
         std::clamp(declare_parameter<double>(
                        "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
                    0.0, 100.0);
+    known_static_lidar_hit_endpoint_volume_tolerance_m_ =
+        std::clamp(declare_parameter<double>(
+                       "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.5),
+                   0.0, 10.0);
+    const AmbiguousLidarHitTrackerConfig ambiguous_hit_confirmation{
+        .required_independent_scans = static_cast<std::size_t>(std::clamp<std::int64_t>(
+            declare_parameter<std::int64_t>(
+                "ambiguous_lidar_hit_required_independent_scans", 3),
+            1, 20)),
+        .max_scan_gap_ns = static_cast<std::int64_t>(
+            1'000'000.0 * std::clamp(declare_parameter<double>(
+                                         "ambiguous_lidar_hit_max_scan_gap_ms", 500.0),
+                                     1.0, 10'000.0)),
+        .retention_ns = static_cast<std::int64_t>(
+            1'000'000.0 * std::clamp(declare_parameter<double>(
+                                         "ambiguous_lidar_hit_retention_ms", 2000.0),
+                                     1.0, 60'000.0)),
+    };
+    memory_->configureAmbiguousHitTracking(ambiguous_hit_confirmation);
     ground_lidar_rejection_config_.enabled =
         declare_parameter<bool>("ground_lidar_rejection_enabled", true);
     ground_lidar_rejection_config_.ground_altitude_m =
@@ -176,7 +192,9 @@ public:
                 .closer_range_tolerance_m =
                     known_static_lidar_hit_closer_range_tolerance_m_,
                 .farther_range_tolerance_m =
-                    known_static_lidar_hit_farther_range_tolerance_m_});
+                    known_static_lidar_hit_farther_range_tolerance_m_,
+                .endpoint_volume_tolerance_m =
+                    known_static_lidar_hit_endpoint_volume_tolerance_m_});
         memory_->reset();
       }
     } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
@@ -196,14 +214,16 @@ public:
     RCLCPP_INFO(
         get_logger(),
         "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
-        "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm",
+        "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
+        "endpoint_volume_tolerance=%.3fm",
         known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
         known_passages_resolved_path_.string().c_str(),
         known_static_lidar_classifier_.has_value()
             ? known_static_lidar_classifier_->volumeCount()
             : 0U,
         known_static_lidar_hit_closer_range_tolerance_m_,
-        known_static_lidar_hit_farther_range_tolerance_m_);
+        known_static_lidar_hit_farther_range_tolerance_m_,
+        known_static_lidar_hit_endpoint_volume_tolerance_m_);
     const bool ground_config_valid =
         std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
         std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
@@ -564,7 +584,8 @@ private:
         "hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu newly_occupied=%zu "
-        "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
+        "known_static[ignored=%zu endpoint_fallback=%zu unexpected=%zu "
+        "ambiguous=%zu pending=%zu confirmed=%zu "
         "parts[left=%zu right=%zu lower=%zu upper=%zu] "
         "first_ignored=%s/%s/%s delta=%.3f "
         "first_ambiguous=%s/%s/%s delta=%.3f] "
@@ -581,8 +602,10 @@ private:
         stats.free_cells_updated, stats.occupied_cells_updated,
         stats.newly_occupied_cells,
         stats.known_static_lidar.expected_static_hits_ignored,
+        stats.known_static_lidar.endpoint_volume_fallback_hits_ignored,
         stats.known_static_lidar.unexpected_hits_kept,
         stats.known_static_lidar.ambiguous_hits_kept,
+        stats.ambiguous_hits_pending_confirmation, stats.ambiguous_hits_confirmed,
         stats.known_static_lidar.expected_static_by_part.left,
         stats.known_static_lidar.expected_static_by_part.right,
         stats.known_static_lidar.expected_static_by_part.lower,
@@ -722,6 +745,8 @@ private:
             known_static_lidar_hit_closer_range_tolerance_m_,
         .known_static_farther_range_tolerance_m =
             known_static_lidar_hit_farther_range_tolerance_m_,
+        .known_static_endpoint_volume_tolerance_m =
+            known_static_lidar_hit_endpoint_volume_tolerance_m_,
     };
   }
 
@@ -906,11 +931,11 @@ private:
   AttitudeEuler current_attitude_{};
   Point2 current_velocity_{};
   LidarPoseHistory lidar_pose_history_;
-
   std::string frame_id_{"map"};
   std::filesystem::path known_passages_resolved_path_;
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
+  double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.5};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

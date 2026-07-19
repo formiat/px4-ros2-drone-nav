@@ -10,6 +10,20 @@ namespace {
 
 constexpr std::size_t kMaxRetainedKnownStaticHitDiagnostics{16U};
 
+[[nodiscard]] bool
+ambiguousKnownStaticHit(const LidarIngestionDecision& decision) noexcept {
+  return decision.known_static_result_available &&
+         decision.known_static_result.classification ==
+             KnownStaticLidarHitClassification::kAmbiguous;
+}
+
+[[nodiscard]] std::int64_t scanIdentity(const LaserScanTiming& timing) noexcept {
+  if (timing.first_beam_stamp_valid && timing.first_beam_stamp_ns > 0) {
+    return timing.first_beam_stamp_ns;
+  }
+  return timing.receive_stamp_valid ? timing.receive_stamp_ns : 0;
+}
+
 void recordAcceptedHit(const GridIndex cell, const LidarBeamObservation& observation,
                        const LidarIngestionDecision& decision,
                        CurrentLidarOverlayStats& stats) {
@@ -47,7 +61,8 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionPose& projection_pose,
                         const LidarProjectionConfig& projection_config,
                         const KnownStaticLidarHitClassifier* classifier,
-                        const GroundLidarRejectionConfig* ground_config) {
+                        const GroundLidarRejectionConfig* ground_config,
+                        AmbiguousLidarHitTracker* ambiguous_hit_tracker) {
   CurrentLidarOverlayStats stats{};
   stats.used = true;
 
@@ -95,13 +110,26 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
         decision.action != LidarIngestionAction::kIntegrateFreeAndHit) {
       if (decision.known_static_result_available) {
         recordKnownStaticLidarHit(decision.known_static_result,
-                                  stats.known_static_lidar);
+                                  stats.known_static_lidar, false);
       }
       continue;
     }
 
     ++stats.hit_beams;
     const auto endpoint_cell = current_lidar_grid.worldToCell(projection.endpoint);
+    const std::int64_t scan_stamp_ns = scanIdentity(scan.timing);
+    if (endpoint_cell.has_value() && ambiguous_hit_tracker != nullptr &&
+        scan_stamp_ns > 0 && ambiguousKnownStaticHit(decision)) {
+      const AmbiguousLidarHitConfirmation confirmation =
+          ambiguous_hit_tracker->observe(*endpoint_cell, scan_stamp_ns);
+      if (!confirmation.confirmed) {
+        recordKnownStaticLidarHit(decision.known_static_result,
+                                  stats.known_static_lidar);
+        ++stats.ambiguous_hits_pending_confirmation;
+        continue;
+      }
+      ++stats.ambiguous_hits_confirmed;
+    }
     if (endpoint_cell.has_value()) {
       recordAcceptedHit(*endpoint_cell, observation, decision, stats);
     }

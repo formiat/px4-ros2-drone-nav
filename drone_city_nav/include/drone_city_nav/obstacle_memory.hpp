@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/lidar_beam_observation.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -84,6 +85,8 @@ struct ObstacleMemoryStats {
   std::size_t occupied_cells_updated{0U};
   std::size_t newly_occupied_cells{0U};
   std::size_t timestamp_aligned_beams{0U};
+  std::size_t ambiguous_hits_pending_confirmation{0U};
+  std::size_t ambiguous_hits_confirmed{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;
@@ -108,6 +111,7 @@ public:
                 const GroundLidarRejectionConfig* ground_config = nullptr);
 
   void reset();
+  void configureAmbiguousHitTracking(AmbiguousLidarHitTrackerConfig config);
 
   [[nodiscard]] const OccupancyGrid2D& rawGrid() const noexcept;
   [[nodiscard]] const std::unordered_map<std::size_t, MemoryCellProvenance>&
@@ -125,6 +129,7 @@ private:
   OccupancyGrid2D raw_grid_;
   std::vector<int> scores_;
   std::unordered_map<std::size_t, MemoryCellProvenance> active_provenance_;
+  AmbiguousLidarHitTracker ambiguous_hit_tracker_;
 };
 
 } // namespace drone_city_nav

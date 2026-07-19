@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -63,6 +64,7 @@ struct PlannerCurrentLidarConfig {
   bool use_px4_heading_for_scan{true};
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
+  AmbiguousLidarHitTrackerConfig ambiguous_hit_confirmation{};
 };
 
 struct PlannerNodeConfig {
@@ -82,6 +84,7 @@ struct PlannerNodeConfig {
   KnownPassageValidationConfig known_passage_validation{};
   double known_static_lidar_hit_closer_range_tolerance_m{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m{1.5};
+  double known_static_lidar_hit_endpoint_volume_tolerance_m{0.5};
   GroundLidarRejectionConfig ground_lidar_rejection{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
