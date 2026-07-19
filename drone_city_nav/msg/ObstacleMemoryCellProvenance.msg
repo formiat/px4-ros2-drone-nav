@@ -6,3 +6,7 @@ bool endpoint_z_range_valid
 float64 min_endpoint_z_m
 float64 max_endpoint_z_m
 uint64 accepted_hit_count
+int32 occupancy_trigger_score_before
+int32 occupancy_trigger_score_after
+int32 occupied_score_threshold
+uint64 occupancy_trigger_independent_scan_count

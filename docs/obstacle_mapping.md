@@ -69,8 +69,9 @@ Mapping starts only above `min_mapping_altitude_m`.
 
 For passage debugging, every first transition of a nearby memory cell to
 occupied is logged as `PASSAGE_MEMORY_HIT` with endpoint XYZ, beam/range,
-attitude, score transition, and known-static classification. The event is
-diagnostic only and does not alter hit scoring or filtering.
+attitude, score transition, occupied threshold, independent trigger scans, and
+known-static classification. The event is diagnostic only and does not alter
+hit scoring or filtering.
 
 All first occupied transitions are additionally written to a bounded JSONL dump
 configured by `lidar_memory_hit_dump_enabled`, `lidar_memory_hit_dump_path`,
@@ -82,7 +83,9 @@ the hit. It is a post-run diagnostic artifact, not a planner input.
 
 Every active occupied memory cell also owns sparse 3D diagnostic provenance:
 the hit that first made the cell occupied, the latest accepted hit, the observed
-minimum/maximum endpoint Z, and the accepted-hit count. This metadata never
+minimum/maximum endpoint Z, the accepted-hit count, the score transition that
+first crossed the occupied threshold, that threshold, and the number of
+independent scans supporting the trigger decision. This metadata never
 participates in scoring, inflation, A*, or trajectory control. It is published
 on `/drone_city_nav/obstacle_memory_provenance` for standalone diagnostics. The
 planner receives the same data through the authoritative atomic

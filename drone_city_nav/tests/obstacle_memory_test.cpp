@@ -201,6 +201,10 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   EXPECT_NEAR(trigger.measured_range_m, 4.0, 1.0e-9);
   EXPECT_EQ(transition.score_before, 0);
   EXPECT_EQ(transition.score_after, 4);
+  EXPECT_EQ(provenance.occupancy_trigger_score_before, 0);
+  EXPECT_EQ(provenance.occupancy_trigger_score_after, 4);
+  EXPECT_EQ(provenance.occupied_score_threshold, 3);
+  EXPECT_EQ(provenance.occupancy_trigger_independent_scan_count, 1U);
   EXPECT_FALSE(provenance.occupancy_trigger.known_static.classifier_applied);
   EXPECT_EQ(memory.activeProvenance().size(), 1U);
   EXPECT_EQ(stats.hit_beams, 1U);

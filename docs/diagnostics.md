@@ -141,8 +141,9 @@ tolerance, evidence count, and the final pending/confirmed decision.
 When a raw obstacle-memory cell inside or within 2 m of a known passage
 structure first transitions to occupied, `obstacle_memory_node` emits an
 unthrottled `PASSAGE_MEMORY_HIT` event. It records the exact memory cell, lidar
-beam index, projected endpoint XYZ, measured range, score transition, vehicle
-pose and attitude, map-frame ray, and known-static classifier result. Match the
+beam index, projected endpoint XYZ, measured range, score transition, occupied
+threshold, independent trigger scans, vehicle pose and attitude, map-frame ray,
+and known-static classifier result. Match the
 event's cell with `raw_sources nearest_cell` in a later prohibited-replan log to
 identify the original 3D hit even though `/drone_city_nav/obstacle_memory_grid`
 itself is intentionally a 2D raw-evidence grid. Repeated hits on an already
@@ -169,7 +170,9 @@ raw grid atomically in one ROS message.
 The planner validates the complete pair before replacing its current memory
 state. A memory-sourced prohibited-replan log therefore emits
 `memory_provenance[status=matched ...]` immediately, including endpoint XYZ,
-attitude, measured/expected range, delta, selected surface, and hit history. A
+attitude, measured/expected range, delta, selected surface, trigger score before
+and after occupancy, occupied threshold, independent trigger scans, and hit
+history. A
 subscriber backlog may replace old queued messages under KeepLast(1), but every
 delivered grid remains bound to its own provenance. If the nested pair is
 malformed or inconsistent, the entire update is ignored and the previous valid

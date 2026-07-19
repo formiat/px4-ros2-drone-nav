@@ -99,6 +99,8 @@ void writePassageMemoryHitDiagnostic(std::ostream& stream,
          << projection.endpoint_map_m.x << ", " << projection.endpoint_map_m.y << ", "
          << projection.endpoint_map_m.z << ") range=" << observation.measured_range_m
          << " score=" << transition.score_before << "->" << transition.score_after
+         << " occupied_threshold=" << provenance.occupied_score_threshold
+         << " independent_scans=" << provenance.occupancy_trigger_independent_scan_count
          << " pose=(" << vehicle_position_map_m.x << ", " << vehicle_position_map_m.y
          << ", " << vehicle_position_map_m.z << ") scan_pose=(" << scan_pose_map_m.x
          << ", " << scan_pose_map_m.y << ") source_attitude=(valid="
@@ -382,6 +384,14 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   } else {
     stream << "null";
   }
+  stream << ",\"occupancy_trigger_score_before\":"
+         << record.transition.provenance.occupancy_trigger_score_before
+         << ",\"occupancy_trigger_score_after\":"
+         << record.transition.provenance.occupancy_trigger_score_after
+         << ",\"occupied_score_threshold\":"
+         << record.transition.provenance.occupied_score_threshold
+         << ",\"occupancy_trigger_independent_scan_count\":"
+         << record.transition.provenance.occupancy_trigger_independent_scan_count;
   stream << "}}\n";
   stream.flush();
 }

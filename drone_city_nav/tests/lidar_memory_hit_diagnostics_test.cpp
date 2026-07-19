@@ -109,6 +109,10 @@ namespace {
                       .min_endpoint_z_m = 6.5,
                       .max_endpoint_z_m = 8.0,
                       .accepted_hit_count = 3U,
+                      .occupancy_trigger_score_before = 2,
+                      .occupancy_trigger_score_after = 6,
+                      .occupied_score_threshold = 3,
+                      .occupancy_trigger_independent_scan_count = 1U,
                   },
               .trigger_decision = decision,
           },
@@ -169,6 +173,11 @@ TEST(LidarMemoryHitDiagnostics, JsonIncludesRawBeamAndBothSurfaceCandidates) {
   EXPECT_NE(json.find("\"known_static_opening_boundary_tolerance_m\":0.15"),
             std::string::npos);
   EXPECT_NE(json.find("\"min_endpoint_z_m\":6.5"), std::string::npos);
+  EXPECT_NE(json.find("\"occupancy_trigger_score_before\":2"), std::string::npos);
+  EXPECT_NE(json.find("\"occupancy_trigger_score_after\":6"), std::string::npos);
+  EXPECT_NE(json.find("\"occupied_score_threshold\":3"), std::string::npos);
+  EXPECT_NE(json.find("\"occupancy_trigger_independent_scan_count\":1"),
+            std::string::npos);
 }
 
 TEST(LidarMemoryHitDiagnostics, WriterHonorsRecordLimit) {

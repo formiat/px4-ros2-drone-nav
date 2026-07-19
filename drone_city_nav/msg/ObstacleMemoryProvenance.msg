@@ -1,4 +1,4 @@
-uint32 CURRENT_SCHEMA_VERSION=2
+uint32 CURRENT_SCHEMA_VERSION=3
 
 std_msgs/Header header
 uint32 schema_version

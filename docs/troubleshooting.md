@@ -136,7 +136,10 @@ Every memory-sourced prohibited replan should report
 `memory_provenance[status=matched ...]` on the same log line. The atomic
 `/drone_city_nav/obstacle_memory_snapshot` subscription does not accept a grid
 without its exact provenance. The matched record contains endpoint XYZ,
-attitude, measured/expected ranges, delta, and selected ingestion surface.
+attitude, measured/expected ranges, delta, selected ingestion surface,
+`trigger_score`, `occupied_threshold`, `trigger_independent_scans`, and the total
+accepted-hit count. A `trigger_score=0->4 occupied_threshold=3` record with
+`trigger_independent_scans=1` proves that one scan made the cell occupied.
 
 If a memory blocker reports `not_received`, `cell_missing`, `pending`, or
 `history_expired`, treat it as an invariant failure rather than normal callback

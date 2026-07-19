@@ -80,6 +80,10 @@ namespace {
   record.min_endpoint_z_m = 17.0;
   record.max_endpoint_z_m = 19.0;
   record.accepted_hit_count = std::numeric_limits<std::uint64_t>::max();
+  record.occupancy_trigger_score_before = 0;
+  record.occupancy_trigger_score_after = 4;
+  record.occupied_score_threshold = 3;
+  record.occupancy_trigger_independent_scan_count = 1U;
   return {{2U, record}};
 }
 
@@ -99,6 +103,10 @@ TEST(ObstacleMemoryProvenanceRos, RoundTripsPersistentRecordWithoutNarrowing) {
   ASSERT_EQ(snapshot.cells.size(), 1U);
   const MemoryCellProvenance& record = snapshot.cells.at(2U);
   EXPECT_EQ(record.accepted_hit_count, std::numeric_limits<std::uint64_t>::max());
+  EXPECT_EQ(record.occupancy_trigger_score_before, 0);
+  EXPECT_EQ(record.occupancy_trigger_score_after, 4);
+  EXPECT_EQ(record.occupied_score_threshold, 3);
+  EXPECT_EQ(record.occupancy_trigger_independent_scan_count, 1U);
   EXPECT_EQ(record.occupancy_trigger.beam.acquisition_stamp_ns, 1'000'000'000LL);
   EXPECT_EQ(record.last_hit.known_static.part_id, "upper_mass");
   EXPECT_EQ(record.occupancy_trigger.ingestion_decision.action,
@@ -205,6 +213,9 @@ TEST(ObstacleMemoryProvenanceRos,
       GridIndex{2, 0});
   EXPECT_NE(before_callback.find("status=matched"), std::string::npos);
   EXPECT_NE(before_callback.find("trigger_endpoint=(12.5,20.5,17)"), std::string::npos);
+  EXPECT_NE(before_callback.find("trigger_score=0->4 occupied_threshold=3"),
+            std::string::npos);
+  EXPECT_NE(before_callback.find("trigger_independent_scans=1"), std::string::npos);
   EXPECT_NE(before_callback.find("trigger_ingestion_surface=ground"),
             std::string::npos);
 
@@ -626,6 +637,24 @@ TEST(ObstacleMemoryProvenanceRos,
   EXPECT_EQ(outcomes.front().diagnostic,
             "memory_provenance[status=unavailable reason=malformed]");
   EXPECT_EQ(tracker.pendingAuditCount(), 0U);
+}
+
+TEST(ObstacleMemoryProvenanceRos, RejectsMalformedOccupancyTriggerEvidence) {
+  const nav_msgs::msg::OccupancyGrid grid = makeGrid();
+  msg::ObstacleMemoryProvenance message =
+      makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  ASSERT_FALSE(message.cells.empty());
+
+  message.cells.front().occupancy_trigger_independent_scan_count = 0U;
+  MemoryProvenanceParseResult parsed = parseObstacleMemoryProvenanceMessage(message);
+  EXPECT_FALSE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kMalformed);
+
+  message = makeObstacleMemoryProvenanceMessage(grid, makeProvenance());
+  message.cells.front().occupancy_trigger_score_before = 3;
+  parsed = parseObstacleMemoryProvenanceMessage(message);
+  EXPECT_FALSE(parsed.snapshot.has_value());
+  EXPECT_EQ(parsed.reason, MemoryProvenanceUnavailableReason::kMalformed);
 }
 
 TEST(ObstacleMemoryProvenanceRos,

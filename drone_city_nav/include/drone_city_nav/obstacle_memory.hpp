@@ -65,6 +65,10 @@ struct MemoryCellProvenance {
   std::optional<double> min_endpoint_z_m;
   std::optional<double> max_endpoint_z_m;
   std::uint64_t accepted_hit_count{0U};
+  int occupancy_trigger_score_before{0};
+  int occupancy_trigger_score_after{0};
+  int occupied_score_threshold{0};
+  std::uint64_t occupancy_trigger_independent_scan_count{0U};
 };
 
 struct ObstacleMemoryOccupiedTransition {

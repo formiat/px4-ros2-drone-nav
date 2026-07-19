@@ -102,7 +102,13 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
 }
 
 [[nodiscard]] MemoryCellProvenance
-makeCellProvenance(const GridIndex cell, const AcceptedObstacleMemoryHit& hit) {
+makeCellProvenance(const GridIndex cell, const AcceptedObstacleMemoryHit& hit,
+                   const LidarIngestionDecision& decision, const int score_before,
+                   const int score_after, const int occupied_score_threshold) {
+  const std::uint64_t independent_scan_count =
+      decision.ambiguous_evidence_count > 0U
+          ? static_cast<std::uint64_t>(decision.ambiguous_evidence_count)
+          : 1U;
   MemoryCellProvenance provenance{
       .cell = cell,
       .occupancy_trigger = hit,
@@ -110,6 +116,10 @@ makeCellProvenance(const GridIndex cell, const AcceptedObstacleMemoryHit& hit) {
       .min_endpoint_z_m = std::nullopt,
       .max_endpoint_z_m = std::nullopt,
       .accepted_hit_count = 1U,
+      .occupancy_trigger_score_before = score_before,
+      .occupancy_trigger_score_after = score_after,
+      .occupied_score_threshold = occupied_score_threshold,
+      .occupancy_trigger_independent_scan_count = independent_scan_count,
   };
   if (hit.beam.projection.endpoint_xyz_valid &&
       std::isfinite(hit.beam.projection.endpoint_map_m.z)) {
@@ -366,7 +376,11 @@ std::optional<ObstacleMemoryOccupiedTransition> ObstacleMemoryGrid::applyAccepte
   auto provenance = active_provenance_.find(index);
   if (!occupied_before || provenance == active_provenance_.end()) {
     provenance =
-        active_provenance_.insert_or_assign(index, makeCellProvenance(cell, hit)).first;
+        active_provenance_
+            .insert_or_assign(index,
+                              makeCellProvenance(cell, hit, decision, score_before,
+                                                 scores_[index], config.occupied_score))
+            .first;
   } else {
     updateCellProvenance(provenance->second, hit);
   }

@@ -600,6 +600,11 @@ msg::ObstacleMemoryProvenance makeObstacleMemoryProvenanceMessage(
     cell.max_endpoint_z_m =
         record.max_endpoint_z_m.value_or(std::numeric_limits<double>::quiet_NaN());
     cell.accepted_hit_count = record.accepted_hit_count;
+    cell.occupancy_trigger_score_before = record.occupancy_trigger_score_before;
+    cell.occupancy_trigger_score_after = record.occupancy_trigger_score_after;
+    cell.occupied_score_threshold = record.occupied_score_threshold;
+    cell.occupancy_trigger_independent_scan_count =
+        record.occupancy_trigger_independent_scan_count;
     message.cells.push_back(std::move(cell));
   }
   return message;
@@ -682,6 +687,16 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
       result.detail = "accepted_hit_count index=" + std::to_string(message_index);
       return result;
     }
+    if (cell.occupancy_trigger_independent_scan_count == 0U) {
+      result.detail = "occupancy_trigger_independent_scan_count index=" +
+                      std::to_string(message_index);
+      return result;
+    }
+    if (cell.occupancy_trigger_score_before >= cell.occupied_score_threshold ||
+        cell.occupancy_trigger_score_after < cell.occupied_score_threshold) {
+      result.detail = "occupancy_trigger_score index=" + std::to_string(message_index);
+      return result;
+    }
     if (cell.endpoint_z_range_valid &&
         (!std::isfinite(cell.min_endpoint_z_m) ||
          !std::isfinite(cell.max_endpoint_z_m) ||
@@ -715,6 +730,11 @@ parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& messag
       record.max_endpoint_z_m = cell.max_endpoint_z_m;
     }
     record.accepted_hit_count = cell.accepted_hit_count;
+    record.occupancy_trigger_score_before = cell.occupancy_trigger_score_before;
+    record.occupancy_trigger_score_after = cell.occupancy_trigger_score_after;
+    record.occupied_score_threshold = cell.occupied_score_threshold;
+    record.occupancy_trigger_independent_scan_count =
+        cell.occupancy_trigger_independent_scan_count;
     if (!endpointMatchesCell(record, message.grid_info)) {
       result.detail = "endpoint_cell index=" + std::to_string(message_index);
       return result;
@@ -891,7 +911,11 @@ std::string formatMemoryProvenanceDiagnostic(const MemoryProvenanceMatchResult& 
 
   std::ostringstream stream;
   stream << "memory_provenance[status=matched cell=(" << cell->x << ',' << cell->y
-         << ')';
+         << ") trigger_score=" << record->second.occupancy_trigger_score_before << "->"
+         << record->second.occupancy_trigger_score_after
+         << " occupied_threshold=" << record->second.occupied_score_threshold
+         << " trigger_independent_scans="
+         << record->second.occupancy_trigger_independent_scan_count;
   appendHit(stream, "trigger", record->second.occupancy_trigger);
   appendHit(stream, "last", record->second.last_hit);
   stream << " z_range=";
