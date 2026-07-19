@@ -132,7 +132,7 @@ TEST(GroundLidarIngestion, ExpectedGroundDoesNotClearExistingMemoryCell) {
 }
 
 TEST(GroundLidarIngestion, CloserObstacleIsRetainedByMemoryAndOverlay) {
-  const double obstacle_range_m = expectedGroundRange() - 2.0;
+  const double obstacle_range_m = expectedGroundRange() - 3.0;
   ASSERT_GT(obstacle_range_m, 0.1);
   const std::array<float, 1U> ranges{static_cast<float>(obstacle_range_m)};
   const GroundLidarRejectionConfig ground{

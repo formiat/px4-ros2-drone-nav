@@ -108,10 +108,6 @@ groundCandidate(const LidarBeamObservation& observation,
       !groundRelatedDecision(decision)) {
     return std::nullopt;
   }
-  if (decision.reason == LidarIngestionReason::kObstacleBeforeExpectedSurface &&
-      sourceTimestampAligned(observation)) {
-    return std::nullopt;
-  }
   const double endpoint_distance_m =
       std::abs(observation.projection.endpoint_map_m.z - config->ground_altitude_m);
   const bool intrinsically_ambiguous =

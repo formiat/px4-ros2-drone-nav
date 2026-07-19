@@ -284,6 +284,51 @@ TEST(LidarIngestionDecision, LowUnknownEndpointBecomesPendingGroundCandidate) {
   EXPECT_EQ(decision.ambiguous_evidence_count, 1U);
 }
 
+TEST(LidarIngestionDecision, SourceAlignedLowHitBeforeGroundStillRequiresConfirmation) {
+  constexpr double kDirectionZ = -0.35;
+  const Point3 direction{std::sqrt(1.0 - kDirectionZ * kDirectionZ), 0.0, kDirectionZ};
+  constexpr double kMeasuredRangeM = (10.0 - 1.2) / -kDirectionZ;
+  LidarBeamObservation beam = observation(direction, kMeasuredRangeM);
+  beam.scan_stamp_ns = 100'000'000;
+  beam.scan_stamp_valid = true;
+  beam.timestamp_aligned_pose = true;
+  beam.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+  const GroundLidarRejectionConfig ground{};
+  UncertainLidarHitTracker tracker;
+
+  const LidarIngestionDecision evaluated =
+      evaluateLidarIngestion(beam, nullptr, &ground);
+  ASSERT_EQ(evaluated.reason, LidarIngestionReason::kObstacleBeforeExpectedSurface);
+  ASSERT_LT(evaluated.range_delta_m, -3.0);
+  const LidarIngestionDecision decision = resolveUncertainLidarIngestion(
+      beam, evaluated, &ground, LidarIngestionConfidenceConfig{}, &tracker);
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kAmbiguousGround);
+  EXPECT_EQ(decision.uncertain_kind, UncertainLidarHitKind::kGroundCandidate);
+  EXPECT_EQ(decision.uncertain_evidence, UncertainLidarHitEvidence::kDetachedObstacle);
+  EXPECT_EQ(decision.ambiguous_evidence_count, 1U);
+}
+
+TEST(LidarIngestionDecision, SourceAlignedHitAboveGroundBandRemainsImmediate) {
+  constexpr double kDirectionZ = -0.35;
+  const Point3 direction{std::sqrt(1.0 - kDirectionZ * kDirectionZ), 0.0, kDirectionZ};
+  constexpr double kMeasuredRangeM = (10.0 - 2.0) / -kDirectionZ;
+  LidarBeamObservation beam = observation(direction, kMeasuredRangeM);
+  beam.timestamp_aligned_pose = true;
+  beam.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+  const GroundLidarRejectionConfig ground{};
+  UncertainLidarHitTracker tracker;
+
+  const LidarIngestionDecision decision = resolveUncertainLidarIngestion(
+      beam, evaluateLidarIngestion(beam, nullptr, &ground), &ground,
+      LidarIngestionConfidenceConfig{}, &tracker);
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kObstacleBeforeExpectedSurface);
+  EXPECT_EQ(decision.uncertain_kind, UncertainLidarHitKind::kNone);
+}
+
 TEST(LidarIngestionDecision, GroundAttachedClusterConfirmsExpectedSurface) {
   const GroundLidarRejectionConfig ground{};
   UncertainLidarHitTracker tracker;
