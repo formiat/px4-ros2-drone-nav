@@ -100,7 +100,11 @@ def make_ros_log(
                     "[obstacle_memory_node]: Obstacle memory lidar decisions: "
                     "expected_ground=3 closer_retained=2 ambiguous_ground=1 "
                     "ground_unavailable=0 ground_disabled=0 "
-                    "non_ground_altitude_rejected=4 diagnostics=10"
+                    "non_ground_altitude_rejected=4 "
+                    "static[suppressed=7 pending=2 confirmed=1 detached=0 expired=0] "
+                    "opening[boundary_pending=3 boundary_static=1 "
+                    "boundary_obstacle=0 interior_obstacle=4] "
+                    "invariant_fallbacks=0 diagnostics=10"
                 ),
             ]
         )
@@ -118,7 +122,11 @@ def make_ros_log(
             "[planner_node]: Planner current lidar decisions: "
             "expected_ground=5 closer_retained=1 ambiguous_ground=2 "
             "ground_unavailable=0 ground_disabled=0 "
-            "non_ground_altitude_rejected=3 diagnostics=11"
+            "non_ground_altitude_rejected=3 "
+            "static[suppressed=8 pending=1 confirmed=2 detached=0 expired=0] "
+            "opening[boundary_pending=2 boundary_static=1 "
+            "boundary_obstacle=0 interior_obstacle=5] "
+            "invariant_fallbacks=0 diagnostics=11"
         )
         if current_lidar_used_summary:
             lines.append(

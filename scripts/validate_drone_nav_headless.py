@@ -157,7 +157,7 @@ def require_lidar_decision_summary(
         ros_log,
         rf"{re.escape(prefix)}: expected_ground=\d+ closer_retained=\d+ "
         r"ambiguous_ground=\d+ ground_unavailable=\d+ ground_disabled=\d+ "
-        r"non_ground_altitude_rejected=\d+ diagnostics=\d+",
+        r"non_ground_altitude_rejected=\d+[^\n]* diagnostics=\d+",
     )
 
 
