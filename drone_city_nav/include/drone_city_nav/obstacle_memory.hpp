@@ -56,6 +56,7 @@ struct ObstacleMemoryConfig {
   int max_score{12};
   int occupied_score{3};
   int free_score{-1};
+  LidarIngestionConfidenceConfig ingestion_confidence{};
 };
 
 struct AcceptedObstacleMemoryHit {
@@ -139,7 +140,7 @@ private:
   OccupancyGrid2D raw_grid_;
   std::vector<int> scores_;
   std::unordered_map<std::size_t, MemoryCellProvenance> active_provenance_;
-  AmbiguousLidarHitTracker ambiguous_hit_tracker_;
+  UncertainLidarHitTracker uncertain_hit_tracker_;
 };
 
 } // namespace drone_city_nav

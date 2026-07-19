@@ -79,6 +79,15 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
             500'000'000);
   EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.retention_ns,
             2'000'000'000);
+  EXPECT_DOUBLE_EQ(
+      config.ground_lidar_rejection.candidate_endpoint_altitude_tolerance_m, 1.5);
+  EXPECT_DOUBLE_EQ(config.ground_lidar_rejection.attached_endpoint_altitude_tolerance_m,
+                   0.3);
+  EXPECT_TRUE(config.current_lidar.ingestion_confidence.enabled);
+  EXPECT_TRUE(config.current_lidar.ingestion_confidence
+                  .require_source_timestamp_alignment_for_unknown);
+  EXPECT_DOUBLE_EQ(config.current_lidar.ingestion_confidence.reliable_range_margin_m,
+                   0.5);
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
                    0.5);

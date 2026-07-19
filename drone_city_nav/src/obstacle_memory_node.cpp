@@ -135,6 +135,7 @@ public:
         declareAmbiguousLidarHitTrackerConfig(*this));
     ground_lidar_rejection_config_ =
         declareGroundLidarRejectionConfig(*this, memory_config_.max_lidar_range_m);
+    memory_config_.ingestion_confidence = declareLidarIngestionConfidenceConfig(*this);
     lidar_memory_hit_dump_enabled_ =
         declare_parameter<bool>("lidar_memory_hit_dump_enabled", true);
     lidar_memory_hit_dump_path_ = declare_parameter<std::string>(
@@ -599,32 +600,11 @@ private:
           provenance.expected_range_m, provenance.range_delta_m,
           stats.retained_known_static_hits.size());
     }
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Obstacle memory lidar decisions: expected_ground=%zu closer_retained=%zu "
-        "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
-        "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
-        "confirmed=%zu detached=%zu expired=%zu] "
-        "opening[boundary_pending=%zu boundary_static=%zu boundary_obstacle=%zu "
-        "interior_obstacle=%zu] "
-        "invariant_fallbacks=%zu diagnostics=%zu",
-        stats.ingestion_decisions.expected_ground_suppressed,
-        stats.ingestion_decisions.closer_obstacles_retained,
-        stats.ingestion_decisions.ambiguous_ground_suppressed,
-        stats.ingestion_decisions.ground_classification_unavailable,
-        stats.ingestion_decisions.ground_classification_disabled,
-        stats.ingestion_decisions.non_ground_altitude_rejected,
-        stats.ingestion_decisions.closer_side_static_suppressed,
-        stats.ingestion_decisions.closer_side_static_pending,
-        stats.ingestion_decisions.closer_side_static_confirmed,
-        stats.ingestion_decisions.detached_obstacles_confirmed,
-        stats.ingestion_decisions.ambiguous_expired,
-        stats.ingestion_decisions.opening_boundary_pending,
-        stats.ingestion_decisions.opening_boundary_confirmed_static,
-        stats.ingestion_decisions.opening_boundary_confirmed_obstacle,
-        stats.ingestion_decisions.opening_interior_obstacles_integrated,
-        stats.ingestion_decisions.invariant_fallbacks,
-        stats.ingestion_decisions.diagnostics.size());
+    const std::string decision_summary =
+        formatLidarIngestionDecisionStatsSummary(stats.ingestion_decisions);
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "Obstacle memory lidar decisions: %s",
+                         decision_summary.c_str());
     const std::string decision_samples =
         formatLidarIngestionRepresentativeDiagnostics(stats.ingestion_decisions);
     if (stats.ingestion_decisions.invariant_fallbacks > 0U) {

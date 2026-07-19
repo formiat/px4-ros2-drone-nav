@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 
 namespace drone_city_nav {
 namespace {
@@ -16,21 +17,15 @@ namespace {
   return std::acos(std::clamp(dot, -1.0, 1.0));
 }
 
-[[nodiscard]] bool staticAttached(const KnownStaticEndpointRelation relation) noexcept {
-  return relation == KnownStaticEndpointRelation::kInsideSolid ||
-         relation == KnownStaticEndpointRelation::kNearSurface ||
-         relation == KnownStaticEndpointRelation::kInsideOpeningBoundary;
-}
-
 } // namespace
 
-AmbiguousLidarHitTracker::AmbiguousLidarHitTracker(
-    const AmbiguousLidarHitTrackerConfig& config)
+UncertainLidarHitTracker::UncertainLidarHitTracker(
+    const UncertainLidarHitTrackerConfig& config)
     : config_{config} {
   configure(config);
 }
 
-void AmbiguousLidarHitTracker::configure(const AmbiguousLidarHitTrackerConfig& config) {
+void UncertainLidarHitTracker::configure(const UncertainLidarHitTrackerConfig& config) {
   config_ = config;
   config_.required_independent_scans =
       std::max<std::size_t>(1U, config_.required_independent_scans);
@@ -51,46 +46,44 @@ void AmbiguousLidarHitTracker::configure(const AmbiguousLidarHitTrackerConfig& c
   clear();
 }
 
-AmbiguousLidarHitConfirmation
-AmbiguousLidarHitTracker::observe(const AmbiguousStaticHitObservation& observation) {
-  if (observation.scan_stamp_ns <= 0 || observation.structure_id.empty() ||
-      observation.part_id.empty()) {
+UncertainLidarHitConfirmation
+UncertainLidarHitTracker::observe(const UncertainLidarHitObservation& observation) {
+  if (observation.scan_stamp_ns <= 0 ||
+      observation.kind == UncertainLidarHitKind::kNone ||
+      observation.association_id.empty() || observation.part_id.empty()) {
     return {};
   }
-  const std::size_t expired_candidates = prune(observation.scan_stamp_ns);
-  Evidence& evidence = evidence_[keyFor(observation)];
+  const std::size_t expired_candidates = expire(observation.scan_stamp_ns);
+  const Key base_key = baseKeyFor(observation);
+  Evidence& evidence = evidence_[matchingKeyFor(observation, base_key)];
   double viewpoint_translation_m = 0.0;
   double viewpoint_direction_change_rad = 0.0;
   bool new_scan_vote = false;
   const auto add_observation = [&observation, &evidence] {
     const bool first_observation = evidence.independent_scans == 0U;
     ++evidence.independent_scans;
-    if (staticAttached(observation.endpoint_relation)) {
-      ++evidence.static_attached_observations;
-      ++evidence.consecutive_static_attached_observations;
+    if (observation.evidence == UncertainLidarHitEvidence::kExpectedSurfaceAttached) {
+      ++evidence.expected_surface_observations;
+      ++evidence.consecutive_expected_surface_observations;
       evidence.consecutive_detached_obstacle_observations = 0U;
     } else {
       ++evidence.detached_obstacle_observations;
       ++evidence.consecutive_detached_obstacle_observations;
-      evidence.consecutive_static_attached_observations = 0U;
+      evidence.consecutive_expected_surface_observations = 0U;
     }
-    evidence.opening_boundary_observed =
-        evidence.opening_boundary_observed ||
-        observation.endpoint_relation ==
-            KnownStaticEndpointRelation::kInsideOpeningBoundary;
     evidence.last_scan_stamp_ns = observation.scan_stamp_ns;
     evidence.last_endpoint_map_m = observation.endpoint_map_m;
     evidence.last_ray_origin_map_m = observation.ray_origin_map_m;
     evidence.last_ray_direction_map = observation.ray_direction_map;
-    evidence.min_endpoint_solid_distance_m =
-        first_observation ? observation.endpoint_solid_distance_m
-                          : std::min(evidence.min_endpoint_solid_distance_m,
-                                     observation.endpoint_solid_distance_m);
-    evidence.max_endpoint_solid_distance_m =
-        first_observation ? observation.endpoint_solid_distance_m
-                          : std::max(evidence.max_endpoint_solid_distance_m,
-                                     observation.endpoint_solid_distance_m);
-    evidence.last_distance_before_solid_m = observation.distance_before_solid_m;
+    evidence.min_endpoint_surface_distance_m =
+        first_observation ? observation.endpoint_surface_distance_m
+                          : std::min(evidence.min_endpoint_surface_distance_m,
+                                     observation.endpoint_surface_distance_m);
+    evidence.max_endpoint_surface_distance_m =
+        first_observation ? observation.endpoint_surface_distance_m
+                          : std::max(evidence.max_endpoint_surface_distance_m,
+                                     observation.endpoint_surface_distance_m);
+    evidence.last_distance_before_surface_m = observation.distance_before_surface_m;
     evidence.last_range_residual_m = observation.range_residual_m;
   };
   if (evidence.last_scan_stamp_ns == 0 ||
@@ -111,59 +104,30 @@ AmbiguousLidarHitTracker::observe(const AmbiguousStaticHitObservation& observati
     }
   }
 
-  AmbiguousLidarHitResolution resolution = AmbiguousLidarHitResolution::kPending;
-  if (evidence.consecutive_static_attached_observations >=
+  UncertainLidarHitResolution resolution = UncertainLidarHitResolution::kPending;
+  if (evidence.consecutive_expected_surface_observations >=
       config_.required_independent_scans) {
-    resolution = AmbiguousLidarHitResolution::kConfirmedStaticAttached;
+    resolution = UncertainLidarHitResolution::kConfirmedExpectedSurface;
   } else if (evidence.consecutive_detached_obstacle_observations >=
              config_.required_independent_scans) {
-    resolution = AmbiguousLidarHitResolution::kConfirmedDetachedObstacle;
+    resolution = UncertainLidarHitResolution::kConfirmedObstacle;
   }
-  return AmbiguousLidarHitConfirmation{
+  return UncertainLidarHitConfirmation{
       .independent_scans = evidence.independent_scans,
-      .static_attached_observations = evidence.static_attached_observations,
+      .expected_surface_observations = evidence.expected_surface_observations,
       .detached_obstacle_observations = evidence.detached_obstacle_observations,
       .expired_candidates = expired_candidates,
       .viewpoint_translation_m = viewpoint_translation_m,
       .viewpoint_direction_change_rad = viewpoint_direction_change_rad,
       .resolution = resolution,
       .new_scan_vote = new_scan_vote,
-      .opening_boundary_observed = evidence.opening_boundary_observed,
   };
 }
 
-void AmbiguousLidarHitTracker::clear() noexcept {
-  evidence_.clear();
-}
-
-std::size_t AmbiguousLidarHitTracker::candidateCount() const noexcept {
-  return evidence_.size();
-}
-
-std::size_t
-AmbiguousLidarHitTracker::KeyHash::operator()(const Key& key) const noexcept {
-  std::size_t hash = std::hash<std::string>{}(key.structure_id);
-  const auto combine = [&hash](const std::size_t value) {
-    hash ^= value + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
-  };
-  combine(std::hash<std::string>{}(key.part_id));
-  combine(std::hash<int>{}(key.voxel_x));
-  combine(std::hash<int>{}(key.voxel_y));
-  combine(std::hash<int>{}(key.voxel_z));
-  return hash;
-}
-
-AmbiguousLidarHitTracker::Key AmbiguousLidarHitTracker::keyFor(
-    const AmbiguousStaticHitObservation& observation) const {
-  const auto voxel = [this](const double coordinate) {
-    return static_cast<int>(std::floor(coordinate / config_.endpoint_voxel_size_m));
-  };
-  return Key{std::string{observation.structure_id}, std::string{observation.part_id},
-             voxel(observation.endpoint_map_m.x), voxel(observation.endpoint_map_m.y),
-             voxel(observation.endpoint_map_m.z)};
-}
-
-std::size_t AmbiguousLidarHitTracker::prune(const std::int64_t scan_stamp_ns) {
+std::size_t UncertainLidarHitTracker::expire(const std::int64_t scan_stamp_ns) {
+  if (scan_stamp_ns <= 0) {
+    return 0U;
+  }
   const std::size_t before = evidence_.size();
   std::erase_if(evidence_, [this, scan_stamp_ns](const auto& item) {
     return scan_stamp_ns - item.second.last_scan_stamp_ns > config_.retention_ns;
@@ -171,15 +135,103 @@ std::size_t AmbiguousLidarHitTracker::prune(const std::int64_t scan_stamp_ns) {
   return before - evidence_.size();
 }
 
+void UncertainLidarHitTracker::clear() noexcept {
+  evidence_.clear();
+}
+
+std::size_t UncertainLidarHitTracker::candidateCount() const noexcept {
+  return evidence_.size();
+}
+
+std::size_t
+UncertainLidarHitTracker::KeyHash::operator()(const Key& key) const noexcept {
+  std::size_t hash = std::hash<unsigned>{}(static_cast<unsigned>(key.kind));
+  const auto combine = [&hash](const std::size_t value) {
+    hash ^= value + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
+  };
+  combine(std::hash<std::string>{}(key.association_id));
+  combine(std::hash<std::string>{}(key.part_id));
+  combine(std::hash<int>{}(key.voxel_x));
+  combine(std::hash<int>{}(key.voxel_y));
+  combine(std::hash<int>{}(key.voxel_z));
+  return hash;
+}
+
+UncertainLidarHitTracker::Key UncertainLidarHitTracker::baseKeyFor(
+    const UncertainLidarHitObservation& observation) const {
+  const auto voxel = [this](const double coordinate) {
+    return static_cast<int>(std::floor(coordinate / config_.endpoint_voxel_size_m));
+  };
+  return Key{observation.kind,
+             std::string{observation.association_id},
+             std::string{observation.part_id},
+             voxel(observation.endpoint_map_m.x),
+             voxel(observation.endpoint_map_m.y),
+             voxel(observation.endpoint_map_m.z)};
+}
+
+UncertainLidarHitTracker::Key UncertainLidarHitTracker::matchingKeyFor(
+    const UncertainLidarHitObservation& observation, const Key& base_key) const {
+  double best_distance_m = std::numeric_limits<double>::infinity();
+  const Key* best_key = nullptr;
+  for (int dz = -1; dz <= 1; ++dz) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        Key candidate = base_key;
+        candidate.voxel_x += dx;
+        candidate.voxel_y += dy;
+        candidate.voxel_z += dz;
+        const auto found = evidence_.find(candidate);
+        if (found == evidence_.end()) {
+          continue;
+        }
+        const double endpoint_distance_m =
+            distance(observation.endpoint_map_m, found->second.last_endpoint_map_m);
+        if (endpoint_distance_m <= config_.endpoint_voxel_size_m &&
+            endpoint_distance_m < best_distance_m) {
+          best_distance_m = endpoint_distance_m;
+          best_key = &found->first;
+        }
+      }
+    }
+  }
+  return best_key != nullptr ? *best_key : base_key;
+}
+
+const char* uncertainLidarHitKindName(const UncertainLidarHitKind kind) noexcept {
+  switch (kind) {
+    case UncertainLidarHitKind::kNone:
+      return "none";
+    case UncertainLidarHitKind::kKnownStaticBoundary:
+      return "known_static_boundary";
+    case UncertainLidarHitKind::kGroundCandidate:
+      return "ground_candidate";
+    case UncertainLidarHitKind::kProjectionUncertainUnknown:
+      return "projection_uncertain_unknown";
+  }
+  return "unknown";
+}
+
 const char*
-ambiguousLidarHitResolutionName(const AmbiguousLidarHitResolution resolution) noexcept {
+uncertainLidarHitEvidenceName(const UncertainLidarHitEvidence evidence) noexcept {
+  switch (evidence) {
+    case UncertainLidarHitEvidence::kExpectedSurfaceAttached:
+      return "expected_surface_attached";
+    case UncertainLidarHitEvidence::kDetachedObstacle:
+      return "detached_obstacle";
+  }
+  return "unknown";
+}
+
+const char*
+uncertainLidarHitResolutionName(const UncertainLidarHitResolution resolution) noexcept {
   switch (resolution) {
-    case AmbiguousLidarHitResolution::kPending:
+    case UncertainLidarHitResolution::kPending:
       return "pending";
-    case AmbiguousLidarHitResolution::kConfirmedStaticAttached:
-      return "confirmed_static_attached";
-    case AmbiguousLidarHitResolution::kConfirmedDetachedObstacle:
-      return "confirmed_detached_obstacle";
+    case UncertainLidarHitResolution::kConfirmedExpectedSurface:
+      return "confirmed_expected_surface";
+    case UncertainLidarHitResolution::kConfirmedObstacle:
+      return "confirmed_obstacle";
   }
   return "unknown";
 }

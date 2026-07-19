@@ -298,6 +298,14 @@ representative sample for every class observed in the reporting interval:
 - `closer_retained`: obstacle returns clearly before the nearest expected
   surface;
 - `ambiguous_ground`: ambiguous ground or tied-surface beams suppressed;
+- `ground[pending=...]`: low or contradictory returns awaiting independent
+  ground-versus-obstacle confirmation;
+- `ground[surface=...]` / `ground[obstacle=...]`: candidates resolved as the
+  expected ground or as detached obstacles;
+- `projection[pending=...]`: unknown returns held because source-timestamp pose
+  alignment or reliable range-margin requirements were not met;
+- `projection[obstacle=...]`: projection-uncertain clusters accepted after
+  independent scans;
 - `ground_unavailable`: beams for which configured ground classification could
   not run because required geometry/configuration was invalid;
 - `ground_disabled`: beams processed while ground rejection was intentionally

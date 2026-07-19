@@ -17,6 +17,14 @@ struct GroundLidarRejectionConfig {
   double ground_altitude_m{0.05};
   double closer_range_tolerance_m{0.5};
   double farther_range_tolerance_m{1.5};
+  double candidate_endpoint_altitude_tolerance_m{1.5};
+  double attached_endpoint_altitude_tolerance_m{0.3};
+};
+
+struct LidarIngestionConfidenceConfig {
+  bool enabled{true};
+  bool require_source_timestamp_alignment_for_unknown{true};
+  double reliable_range_margin_m{0.5};
 };
 
 enum class LidarExpectedSurfaceProviderStatus {
@@ -47,6 +55,7 @@ enum class LidarIngestionReason {
   kAmbiguousKnownStatic,
   kExpectedGround,
   kAmbiguousGround,
+  kProjectionUncertainUnknown,
   kTiedExpectedSurfaces,
   kClassificationUnavailable,
 };
@@ -61,6 +70,7 @@ enum class LidarIngestionDiagnosticClass {
   kAmbiguousKnownStatic,
   kOpeningObstacle,
   kOpeningBoundary,
+  kProjectionUncertain,
   kInvariantFallback,
   kCount,
 };
@@ -80,8 +90,11 @@ struct LidarIngestionDecision {
   std::optional<KnownStaticExpectedSurface> known_static_surface;
   bool known_static_result_available{false};
   KnownStaticLidarHitResult known_static_result{};
-  AmbiguousLidarHitResolution ambiguous_resolution{
-      AmbiguousLidarHitResolution::kPending};
+  UncertainLidarHitKind uncertain_kind{UncertainLidarHitKind::kNone};
+  UncertainLidarHitEvidence uncertain_evidence{
+      UncertainLidarHitEvidence::kDetachedObstacle};
+  UncertainLidarHitResolution ambiguous_resolution{
+      UncertainLidarHitResolution::kPending};
   std::size_t ambiguous_evidence_count{0U};
   std::size_t ambiguous_expired_candidates{0U};
   double ambiguous_viewpoint_translation_m{0.0};
@@ -126,8 +139,11 @@ struct LidarIngestionDecisionDiagnostic {
   double opening_boundary_tolerance_m{std::numeric_limits<double>::quiet_NaN()};
   double distance_before_solid_m{std::numeric_limits<double>::quiet_NaN()};
   double incidence_angle_rad{std::numeric_limits<double>::quiet_NaN()};
-  AmbiguousLidarHitResolution ambiguous_resolution{
-      AmbiguousLidarHitResolution::kPending};
+  UncertainLidarHitKind uncertain_kind{UncertainLidarHitKind::kNone};
+  UncertainLidarHitEvidence uncertain_evidence{
+      UncertainLidarHitEvidence::kDetachedObstacle};
+  UncertainLidarHitResolution ambiguous_resolution{
+      UncertainLidarHitResolution::kPending};
   std::size_t ambiguous_evidence_count{0U};
   double ambiguous_viewpoint_translation_m{0.0};
   double ambiguous_viewpoint_direction_change_rad{0.0};
@@ -148,6 +164,11 @@ struct LidarIngestionDecisionStats {
   std::size_t opening_boundary_confirmed_static{0U};
   std::size_t opening_boundary_confirmed_obstacle{0U};
   std::size_t opening_interior_obstacles_integrated{0U};
+  std::size_t ground_candidates_pending{0U};
+  std::size_t ground_candidates_confirmed_surface{0U};
+  std::size_t ground_candidates_confirmed_obstacle{0U};
+  std::size_t projection_uncertain_pending{0U};
+  std::size_t projection_uncertain_confirmed_obstacle{0U};
   std::size_t ambiguous_expired{0U};
   std::size_t invariant_fallbacks{0U};
   std::vector<LidarIngestionDecisionDiagnostic> diagnostics;
@@ -166,9 +187,11 @@ evaluateLidarIngestion(const LidarBeamObservation& observation,
                        const GroundLidarRejectionConfig* ground_config) noexcept;
 
 [[nodiscard]] LidarIngestionDecision
-resolveAmbiguousKnownStaticIngestion(const LidarBeamObservation& observation,
-                                     LidarIngestionDecision decision,
-                                     AmbiguousLidarHitTracker* tracker);
+resolveUncertainLidarIngestion(const LidarBeamObservation& observation,
+                               LidarIngestionDecision decision,
+                               const GroundLidarRejectionConfig* ground_config,
+                               const LidarIngestionConfidenceConfig& confidence_config,
+                               UncertainLidarHitTracker* tracker);
 
 [[nodiscard]] LidarIngestionDecisionSnapshot
 makeLidarIngestionDecisionSnapshot(const LidarIngestionDecision& decision) noexcept;
@@ -195,6 +218,9 @@ representativeLidarIngestionDiagnostics(
 
 [[nodiscard]] std::string
 formatLidarIngestionRepresentativeDiagnostics(const LidarIngestionDecisionStats& stats);
+
+[[nodiscard]] std::string
+formatLidarIngestionDecisionStatsSummary(const LidarIngestionDecisionStats& stats);
 
 [[nodiscard]] const char*
 lidarIngestionReasonName(LidarIngestionReason reason) noexcept;

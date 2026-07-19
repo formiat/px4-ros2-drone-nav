@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cmath>
+#include <span>
 #include <string>
 
 namespace drone_city_nav {
@@ -58,6 +59,16 @@ constexpr double kGroundAltitudeM = 0.05;
   return LidarScanView{ranges, 0.1, 30.0, 0.0, 0.1, {}};
 }
 
+void useSourceAlignedPose(LaserScan2DView& scan, const LidarProjectionPose& pose) {
+  scan.beam_projection_poses = std::span<const LidarProjectionPose>{&pose, 1U};
+  scan.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+}
+
+void useSourceAlignedPose(LidarScanView& scan, const LidarProjectionPose& pose) {
+  scan.beam_projection_poses = std::span<const LidarProjectionPose>{&pose, 1U};
+  scan.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+}
+
 } // namespace
 
 TEST(GroundLidarIngestion, ExpectedGroundMutatesNeitherMemoryNorOverlay) {
@@ -98,8 +109,11 @@ TEST(GroundLidarIngestion, ExpectedGroundDoesNotClearExistingMemoryCell) {
   const GridBounds bounds{-5.0, -15.0, 0.5, 80, 60};
   ObstacleMemoryGrid memory{bounds};
   const std::array<float, 1U> seed_range{4.0F};
+  LidarProjectionPose seed_pose = downwardPose();
+  seed_pose.pitch_rad = 0.0;
   LaserScan2DView seed_scan = memoryScan(seed_range);
   seed_scan.pitch_rad = 0.0;
+  useSourceAlignedPose(seed_scan, seed_pose);
   ASSERT_EQ(memory
                 .integrateScan(Pose2{downwardPose().position, 0.0}, seed_scan,
                                ObstacleMemoryConfig{})
@@ -128,15 +142,19 @@ TEST(GroundLidarIngestion, CloserObstacleIsRetainedByMemoryAndOverlay) {
       .farther_range_tolerance_m = 1.5,
   };
   const GridBounds bounds{-5.0, -15.0, 0.5, 80, 60};
+  const LidarProjectionPose pose = downwardPose();
+  LaserScan2DView memory_scan = memoryScan(ranges);
+  useSourceAlignedPose(memory_scan, pose);
 
   ObstacleMemoryGrid memory{bounds};
-  const ObstacleMemoryStats memory_stats = memory.integrateScan(
-      Pose2{downwardPose().position, downwardPose().yaw_rad}, memoryScan(ranges),
-      ObstacleMemoryConfig{}, nullptr, &ground);
+  const ObstacleMemoryStats memory_stats =
+      memory.integrateScan(Pose2{pose.position, pose.yaw_rad}, memory_scan,
+                           ObstacleMemoryConfig{}, nullptr, &ground);
   OccupancyGrid2D overlay{bounds};
-  const CurrentLidarOverlayStats overlay_stats =
-      overlayCurrentLidarHits(overlay, overlayScan(ranges), downwardPose(),
-                              projectionConfig(), nullptr, &ground);
+  LidarScanView overlay_scan = overlayScan(ranges);
+  useSourceAlignedPose(overlay_scan, pose);
+  const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+      overlay, overlay_scan, pose, projectionConfig(), nullptr, &ground);
 
   EXPECT_EQ(memory_stats.ingestion_decisions.closer_obstacles_retained, 1U);
   EXPECT_EQ(memory.countRawCells().occupied_cells, 1U);
@@ -177,6 +195,85 @@ TEST(GroundLidarIngestion, CloserObstacleIsRetainedByMemoryAndOverlay) {
   EXPECT_NE(blocker_diagnostic.find("source_attitude=(valid=true"), std::string::npos);
   EXPECT_NE(blocker_diagnostic.find("applied_attitude=(applied=true"),
             std::string::npos);
+}
+
+TEST(GroundLidarIngestion, LowUncertainEndpointMutatesNeitherMemoryNorCurrentOverlay) {
+  const LidarProjectionPose pose{Point2{2.0, 0.0}, 1.0, 0.0, 0.0, 0.0, true, true};
+  const std::array<float, 1U> ranges{4.0F};
+  const GroundLidarRejectionConfig ground{
+      .enabled = true,
+      .ground_altitude_m = kGroundAltitudeM,
+      .closer_range_tolerance_m = 0.5,
+      .farther_range_tolerance_m = 1.5,
+  };
+  const GridBounds bounds{-5.0, -5.0, 0.5, 40, 20};
+
+  LaserScan2DView memory_scan = memoryScan(ranges);
+  memory_scan.origin_altitude_m = pose.altitude_m;
+  memory_scan.pitch_rad = pose.pitch_rad;
+  useSourceAlignedPose(memory_scan, pose);
+  ObstacleMemoryGrid memory{bounds};
+  const ObstacleMemoryStats memory_stats =
+      memory.integrateScan(Pose2{pose.position, pose.yaw_rad}, memory_scan,
+                           ObstacleMemoryConfig{}, nullptr, &ground);
+
+  LidarScanView overlay_scan = overlayScan(ranges);
+  useSourceAlignedPose(overlay_scan, pose);
+  OccupancyGrid2D overlay{bounds};
+  const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+      overlay, overlay_scan, pose, projectionConfig(), nullptr, &ground);
+
+  EXPECT_EQ(memory_stats.free_cells_updated, 0U);
+  EXPECT_EQ(memory_stats.occupied_cells_updated, 0U);
+  EXPECT_EQ(memory_stats.ingestion_decisions.ground_candidates_pending, 1U);
+  EXPECT_EQ(memory.countRawCells().occupied_cells, 0U);
+  EXPECT_EQ(memory.countRawCells().free_cells, 0U);
+  EXPECT_EQ(overlay_stats.ingestion_decisions.ground_candidates_pending, 1U);
+  EXPECT_EQ(overlay_stats.occupied_cells, 0U);
+}
+
+TEST(GroundLidarIngestion,
+     ProjectionUncertainUnknownRequiresIndependentScansInBothPaths) {
+  const GridBounds bounds{-5.0, -5.0, 0.5, 40, 20};
+  ObstacleMemoryGrid memory{bounds};
+  OccupancyGrid2D overlay{bounds};
+  UncertainLidarHitTracker overlay_tracker;
+
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    const double viewpoint_shift_m = static_cast<double>(scan_index - 1) * 0.6;
+    const LidarProjectionPose pose{
+        Point2{2.0 + viewpoint_shift_m, 0.0}, 8.0, 0.0, 0.0, 0.0, true, true};
+    const std::array<float, 1U> ranges{static_cast<float>(4.0 - viewpoint_shift_m)};
+    LaserScan2DView memory_scan = memoryScan(ranges);
+    memory_scan.origin_altitude_m = pose.altitude_m;
+    memory_scan.pitch_rad = pose.pitch_rad;
+    memory_scan.timing.first_beam_stamp_ns = scan_index * 100'000'000;
+    memory_scan.timing.first_beam_stamp_valid = true;
+    const ObstacleMemoryStats memory_stats = memory.integrateScan(
+        Pose2{pose.position, pose.yaw_rad}, memory_scan, ObstacleMemoryConfig{});
+
+    LidarScanView overlay_scan = overlayScan(ranges);
+    overlay_scan.timing = memory_scan.timing;
+    const CurrentLidarOverlayStats overlay_stats =
+        overlayCurrentLidarHits(overlay, overlay_scan, pose, projectionConfig(),
+                                nullptr, nullptr, &overlay_tracker);
+
+    const bool confirmed = scan_index == 3;
+    EXPECT_EQ(memory_stats.ingestion_decisions.projection_uncertain_pending,
+              confirmed ? 0U : 1U);
+    EXPECT_EQ(overlay_stats.ingestion_decisions.projection_uncertain_pending,
+              confirmed ? 0U : 1U);
+    EXPECT_EQ(memory_stats.ingestion_decisions.projection_uncertain_confirmed_obstacle,
+              confirmed ? 1U : 0U);
+    EXPECT_EQ(overlay_stats.ingestion_decisions.projection_uncertain_confirmed_obstacle,
+              confirmed ? 1U : 0U);
+    EXPECT_EQ(memory.countRawCells().occupied_cells, confirmed ? 1U : 0U);
+    EXPECT_EQ(overlay_stats.occupied_cells, confirmed ? 1U : 0U);
+    if (!confirmed) {
+      EXPECT_EQ(memory_stats.free_cells_updated, 0U);
+      EXPECT_EQ(memory.countRawCells().free_cells, 0U);
+    }
+  }
 }
 
 TEST(GroundLidarIngestion, GroundClassificationPrecedesAltitudeVeto) {

@@ -92,6 +92,17 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("ambiguous_lidar_hit_required_independent_scans: 3"),
             std::string::npos);
+  EXPECT_NE(yaml.find("ground_lidar_candidate_endpoint_altitude_tolerance_m: 1.5"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("ground_lidar_attached_endpoint_altitude_tolerance_m: 0.3"),
+            std::string::npos);
+  EXPECT_NE(yaml.find("lidar_uncertain_hit_confirmation_enabled: true"),
+            std::string::npos);
+  EXPECT_NE(
+      yaml.find("lidar_uncertain_unknown_require_source_timestamp_alignment: true"),
+      std::string::npos);
+  EXPECT_NE(yaml.find("lidar_uncertain_unknown_reliable_range_margin_m: 0.5"),
+            std::string::npos);
   EXPECT_EQ(yaml.find("passage_traversal_sensor_policy"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),

@@ -209,6 +209,23 @@ The last rule is essential. A downward 3D ray passes through air before reaching
 the ground, but its XY projection does not prove that the same cells are free at
 the executable trajectory altitude.
 
+Before either 2D grid is updated, a shared confidence stage separates certain
+obstacles from uncertain candidates. Confident obstacles before an expected
+surface and obstacles inside a free opening are integrated immediately with the
+normal memory hit weight. Known-static boundaries, low contradictory ground
+returns, and unknown returns with uncertain timestamp alignment or range-limit
+geometry remain pending. A pending candidate performs no hit update, no
+free-space clearing, and no current-lidar overlay update.
+
+Candidates are keyed by hypothesis kind, associated surface, and 3D endpoint
+voxel. Multiple beams from one scan provide only one vote. Confirmation requires
+independent scans plus sufficient viewpoint translation or ray-direction change.
+Repeated surface-attached evidence is suppressed; a stable detached cluster is
+integrated as an obstacle. Unconfirmed candidates expire without leaving state
+in either grid. This keeps `hit_weight=4` and fast occupancy transitions for
+accepted obstacles while preventing one geometrically uncertain scan from
+creating a replan blocker.
+
 Provider failures are isolated. Disabling ground rejection is reported as
 `disabled`; invalid ground parameters or missing required 3D attitude geometry
 are reported as `unavailable`. In either case known-static classification still

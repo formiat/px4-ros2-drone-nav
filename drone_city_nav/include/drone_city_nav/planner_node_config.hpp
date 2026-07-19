@@ -67,6 +67,7 @@ struct PlannerCurrentLidarConfig {
   bool motion_compensate_lidar_pose{true};
   double lidar_pose_latency_s{0.05};
   AmbiguousLidarHitTrackerConfig ambiguous_hit_confirmation{};
+  LidarIngestionConfidenceConfig ingestion_confidence{};
 };
 
 struct PlannerNodeConfig {

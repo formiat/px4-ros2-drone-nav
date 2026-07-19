@@ -204,8 +204,8 @@ TEST(LidarIngestionDecision, AmbiguousEvidenceCountsScansRatherThanIndividualBea
   first_beam.scan_stamp_valid = true;
   first_beam.acquisition_stamp_ns = 100'100'000;
   first_beam.acquisition_stamp_valid = true;
-  const LidarIngestionDecision first =
-      resolveAmbiguousKnownStaticIngestion(first_beam, ambiguous, &tracker);
+  const LidarIngestionDecision first = resolveUncertainLidarIngestion(
+      first_beam, ambiguous, nullptr, LidarIngestionConfidenceConfig{}, &tracker);
   EXPECT_EQ(first.ambiguous_evidence_count, 1U);
 
   LidarBeamObservation later_beam_same_scan = first_beam;
@@ -213,14 +213,121 @@ TEST(LidarIngestionDecision, AmbiguousEvidenceCountsScansRatherThanIndividualBea
   later_beam_same_scan.projection.ray_origin_map_m.x = 1.0;
   later_beam_same_scan.projection.ray_direction_map = Point3{0.0, 1.0, 0.0};
   const LidarIngestionDecision same_scan =
-      resolveAmbiguousKnownStaticIngestion(later_beam_same_scan, ambiguous, &tracker);
+      resolveUncertainLidarIngestion(later_beam_same_scan, ambiguous, nullptr,
+                                     LidarIngestionConfidenceConfig{}, &tracker);
   EXPECT_EQ(same_scan.ambiguous_evidence_count, 1U);
 
   LidarBeamObservation next_scan = later_beam_same_scan;
   next_scan.scan_stamp_ns = 200'000'000;
-  const LidarIngestionDecision second =
-      resolveAmbiguousKnownStaticIngestion(next_scan, ambiguous, &tracker);
+  const LidarIngestionDecision second = resolveUncertainLidarIngestion(
+      next_scan, ambiguous, nullptr, LidarIngestionConfidenceConfig{}, &tracker);
   EXPECT_EQ(second.ambiguous_evidence_count, 2U);
+}
+
+TEST(LidarIngestionDecision, SourceAlignedReliableUnknownObstacleRemainsImmediate) {
+  LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+  beam.timestamp_aligned_pose = true;
+  beam.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+  UncertainLidarHitTracker tracker;
+
+  const LidarIngestionDecision decision = resolveUncertainLidarIngestion(
+      beam, evaluateLidarIngestion(beam, nullptr, nullptr), nullptr,
+      LidarIngestionConfidenceConfig{}, &tracker);
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(decision.uncertain_kind, UncertainLidarHitKind::kNone);
+  EXPECT_EQ(tracker.candidateCount(), 0U);
+}
+
+TEST(LidarIngestionDecision, FallbackUnknownObstacleWaitsForIndependentScans) {
+  UncertainLidarHitTracker tracker;
+  LidarIngestionDecision decision{};
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+    beam.scan_stamp_ns = scan_index * 100'000'000;
+    beam.scan_stamp_valid = true;
+    beam.projection.ray_origin_map_m.x = static_cast<double>(scan_index - 1) * 0.6;
+    decision = resolveUncertainLidarIngestion(
+        beam, evaluateLidarIngestion(beam, nullptr, nullptr), nullptr,
+        LidarIngestionConfidenceConfig{}, &tracker);
+
+    EXPECT_EQ(decision.uncertain_kind,
+              UncertainLidarHitKind::kProjectionUncertainUnknown);
+    EXPECT_EQ(decision.ambiguous_evidence_count, static_cast<std::size_t>(scan_index));
+    EXPECT_EQ(decision.action, scan_index == 3
+                                   ? LidarIngestionAction::kIntegrateFreeAndHit
+                                   : LidarIngestionAction::kSuppressAllUpdates);
+  }
+  EXPECT_EQ(decision.ambiguous_resolution,
+            UncertainLidarHitResolution::kConfirmedObstacle);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+}
+
+TEST(LidarIngestionDecision, LowUnknownEndpointBecomesPendingGroundCandidate) {
+  LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+  beam.scan_stamp_ns = 100'000'000;
+  beam.scan_stamp_valid = true;
+  beam.projection.endpoint_map_m.z = 1.0;
+  beam.projection.endpoint_altitude_m = 1.0;
+  const GroundLidarRejectionConfig ground{};
+  UncertainLidarHitTracker tracker;
+
+  const LidarIngestionDecision decision = resolveUncertainLidarIngestion(
+      beam, evaluateLidarIngestion(beam, nullptr, &ground), &ground,
+      LidarIngestionConfidenceConfig{}, &tracker);
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kAmbiguousGround);
+  EXPECT_EQ(decision.uncertain_kind, UncertainLidarHitKind::kGroundCandidate);
+  EXPECT_EQ(decision.uncertain_evidence, UncertainLidarHitEvidence::kDetachedObstacle);
+  EXPECT_EQ(decision.ambiguous_evidence_count, 1U);
+}
+
+TEST(LidarIngestionDecision, GroundAttachedClusterConfirmsExpectedSurface) {
+  const GroundLidarRejectionConfig ground{};
+  UncertainLidarHitTracker tracker;
+  LidarIngestionDecision decision{};
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+    beam.scan_stamp_ns = scan_index * 100'000'000;
+    beam.scan_stamp_valid = true;
+    beam.projection.ray_origin_map_m.x = static_cast<double>(scan_index - 1) * 0.6;
+    beam.projection.endpoint_map_m.z = 0.1;
+    beam.projection.endpoint_altitude_m = 0.1;
+    decision = resolveUncertainLidarIngestion(
+        beam, evaluateLidarIngestion(beam, nullptr, &ground), &ground,
+        LidarIngestionConfidenceConfig{}, &tracker);
+  }
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kSuppressAllUpdates);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kExpectedGround);
+  EXPECT_EQ(decision.ambiguous_resolution,
+            UncertainLidarHitResolution::kConfirmedExpectedSurface);
+}
+
+TEST(LidarIngestionDecision, GroundDetachedClusterConfirmsObstacle) {
+  const GroundLidarRejectionConfig ground{};
+  UncertainLidarHitTracker tracker;
+  LidarIngestionDecision decision{};
+  for (std::int64_t scan_index = 1; scan_index <= 3; ++scan_index) {
+    LidarBeamObservation beam = observation(Point3{1.0, 0.0, 0.0}, 5.0);
+    beam.scan_stamp_ns = scan_index * 100'000'000;
+    beam.scan_stamp_valid = true;
+    beam.timestamp_aligned_pose = true;
+    beam.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
+    beam.projection.ray_origin_map_m.x = static_cast<double>(scan_index - 1) * 0.6;
+    beam.projection.endpoint_map_m.z = 1.0;
+    beam.projection.endpoint_altitude_m = 1.0;
+    decision = resolveUncertainLidarIngestion(
+        beam, evaluateLidarIngestion(beam, nullptr, &ground), &ground,
+        LidarIngestionConfidenceConfig{}, &tracker);
+  }
+
+  EXPECT_EQ(decision.action, LidarIngestionAction::kIntegrateFreeAndHit);
+  EXPECT_EQ(decision.reason, LidarIngestionReason::kNoExpectedSurface);
+  EXPECT_EQ(decision.ambiguous_resolution,
+            UncertainLidarHitResolution::kConfirmedObstacle);
 }
 
 TEST(LidarIngestionDecision, DisabledGroundIsDistinctFromUnavailableGround) {
@@ -272,7 +379,7 @@ TEST(LidarIngestionDecision, CloserSideStaticCountersDistinguishDecisionState) {
   LidarIngestionDecision confirmed = pending;
   confirmed.reason = LidarIngestionReason::kExpectedKnownStatic;
   confirmed.ambiguous_resolution =
-      AmbiguousLidarHitResolution::kConfirmedStaticAttached;
+      UncertainLidarHitResolution::kConfirmedExpectedSurface;
   confirmed.known_static_result.classification =
       KnownStaticLidarHitClassification::kExpectedStatic;
 
@@ -299,8 +406,7 @@ TEST(LidarIngestionDecision, OpeningBoundaryDetachedResolutionHasDedicatedCounte
       KnownStaticLidarHitClassification::kUnexpected;
   decision.known_static_result.endpoint_relation =
       KnownStaticEndpointRelation::kOutside;
-  decision.ambiguous_resolution =
-      AmbiguousLidarHitResolution::kConfirmedDetachedObstacle;
+  decision.ambiguous_resolution = UncertainLidarHitResolution::kConfirmedObstacle;
   decision.ambiguous_opening_boundary_evidence = true;
   LidarIngestionDecisionStats stats;
 
@@ -555,6 +661,21 @@ TEST(LidarIngestionDecision, DiagnosticClassesHaveIndependentBounds) {
             representatives.count);
   EXPECT_EQ(countOccurrences(formatted, "roll=0.1 pitch=0.2 tilt=0.3"),
             representatives.count * 2U);
+}
+
+TEST(LidarIngestionDecision, StatsSummarySeparatesUncertainCandidateKinds) {
+  LidarIngestionDecisionStats stats;
+  stats.ground_candidates_pending = 2U;
+  stats.ground_candidates_confirmed_surface = 3U;
+  stats.ground_candidates_confirmed_obstacle = 4U;
+  stats.projection_uncertain_pending = 5U;
+  stats.projection_uncertain_confirmed_obstacle = 6U;
+
+  const std::string summary = formatLidarIngestionDecisionStatsSummary(stats);
+
+  EXPECT_NE(summary.find("ground[ambiguous=0 pending=2 surface=3 obstacle=4"),
+            std::string::npos);
+  EXPECT_NE(summary.find("projection[pending=5 obstacle=6]"), std::string::npos);
 }
 
 } // namespace drone_city_nav

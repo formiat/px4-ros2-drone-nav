@@ -642,30 +642,11 @@ void PlannerNode::checkCurrentPathAndPublish() {
       path_result->smoothed_path_clearance_duration_ms);
   const LidarIngestionDecisionStats& lidar_decisions =
       planning_result->current_lidar.ingestion_decisions;
-  RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Planner current lidar decisions: expected_ground=%zu closer_retained=%zu "
-      "ambiguous_ground=%zu ground_unavailable=%zu ground_disabled=%zu "
-      "non_ground_altitude_rejected=%zu static[suppressed=%zu pending=%zu "
-      "confirmed=%zu detached=%zu expired=%zu] "
-      "opening[boundary_pending=%zu boundary_static=%zu boundary_obstacle=%zu "
-      "interior_obstacle=%zu] "
-      "invariant_fallbacks=%zu diagnostics=%zu",
-      lidar_decisions.expected_ground_suppressed,
-      lidar_decisions.closer_obstacles_retained,
-      lidar_decisions.ambiguous_ground_suppressed,
-      lidar_decisions.ground_classification_unavailable,
-      lidar_decisions.ground_classification_disabled,
-      lidar_decisions.non_ground_altitude_rejected,
-      lidar_decisions.closer_side_static_suppressed,
-      lidar_decisions.closer_side_static_pending,
-      lidar_decisions.closer_side_static_confirmed,
-      lidar_decisions.detached_obstacles_confirmed, lidar_decisions.ambiguous_expired,
-      lidar_decisions.opening_boundary_pending,
-      lidar_decisions.opening_boundary_confirmed_static,
-      lidar_decisions.opening_boundary_confirmed_obstacle,
-      lidar_decisions.opening_interior_obstacles_integrated,
-      lidar_decisions.invariant_fallbacks, lidar_decisions.diagnostics.size());
+  const std::string lidar_decision_summary =
+      formatLidarIngestionDecisionStatsSummary(lidar_decisions);
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+                       "Planner current lidar decisions: %s",
+                       lidar_decision_summary.c_str());
   const std::string lidar_decision_samples =
       formatLidarIngestionRepresentativeDiagnostics(lidar_decisions);
   if (lidar_decisions.invariant_fallbacks > 0U) {

@@ -20,6 +20,12 @@ constexpr std::int64_t kFreshStampNs = 1'500'000'000LL;
   return ObstacleMemoryGrid{GridBounds{0.0, 0.0, 1.0, 20, 12}};
 }
 
+[[nodiscard]] ObstacleMemoryConfig acceptedHitConfig() {
+  ObstacleMemoryConfig config{};
+  config.ingestion_confidence.enabled = false;
+  return config;
+}
+
 [[nodiscard]] LaserScan2DView makeScan(const std::vector<float>& ranges,
                                        const double angle_min_rad = 0.0,
                                        const double angle_increment_rad = 0.1) {
@@ -179,8 +185,8 @@ TEST(ObstacleMemoryGrid, ScanHitAtYawZeroOccupiesExpectedEndpoint) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
 
-  const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {});
+  const ObstacleMemoryStats stats = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
 
   EXPECT_EQ(stats.processed_beams, 1U);
   ASSERT_EQ(stats.newly_occupied_cells, 1U);
@@ -249,8 +255,9 @@ TEST(ObstacleMemoryGrid, ScanHitRotatesWithYaw) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
 
-  const ObstacleMemoryStats stats = memory.integrateScan(
-      Pose2{Point2{5.5, 5.5}, std::numbers::pi / 2.0}, makeScan(ranges), {});
+  const ObstacleMemoryStats stats =
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, std::numbers::pi / 2.0},
+                           makeScan(ranges), acceptedHitConfig());
 
   EXPECT_EQ(stats.processed_beams, 1U);
   EXPECT_EQ(memory.rawGrid().state(GridIndex{5, 9}), CellState::kOccupied);
@@ -269,7 +276,7 @@ TEST(ObstacleMemoryGrid, TiltedScanUsesPhysicalFrame) {
   scan.max_projected_altitude_m = 40.0;
 
   const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, scan, {});
+      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, scan, acceptedHitConfig());
 
   EXPECT_EQ(stats.processed_beams, 1U);
   EXPECT_EQ(stats.hit_beams, 1U);
@@ -283,8 +290,8 @@ TEST(ObstacleMemoryGrid, PersistentObstacleSurvivesOneFreeMiss) {
   const std::vector<float> hit_ranges{4.0F};
   const std::vector<float> miss_ranges{std::numeric_limits<float>::infinity()};
 
-  const ObstacleMemoryStats hit_stats =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), {});
+  const ObstacleMemoryStats hit_stats = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), acceptedHitConfig());
   EXPECT_EQ(hit_stats.hit_beams, 1U);
   ASSERT_EQ(memory.rawGrid().state(GridIndex{9, 5}), CellState::kOccupied);
   const ObstacleMemoryStats miss_stats =
@@ -298,10 +305,10 @@ TEST(ObstacleMemoryGrid, RepeatedHitDoesNotReportAnotherOccupiedTransition) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> hit_ranges{4.0F};
 
-  const ObstacleMemoryStats first =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), {});
-  const ObstacleMemoryStats second =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), {});
+  const ObstacleMemoryStats first = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), acceptedHitConfig());
+  const ObstacleMemoryStats second = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(hit_ranges), acceptedHitConfig());
 
   ASSERT_EQ(first.newly_occupied_cells, 1U);
   ASSERT_EQ(first.occupied_transitions.size(), 1U);
@@ -322,8 +329,10 @@ TEST(ObstacleMemoryGrid, ProvenancePreservesTriggerAndTracksLatestHeight) {
   second_scan.origin_altitude_m = 12.0;
   second_scan.timing = LaserScanTiming{2'000'000'000, true, 0.01, 2'100'000'000, true};
 
-  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_scan, {});
-  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, second_scan, {});
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_scan,
+                             acceptedHitConfig());
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, second_scan,
+                             acceptedHitConfig());
 
   const MemoryCellProvenance& provenance = provenanceAt(memory, GridIndex{9, 5});
   EXPECT_EQ(provenance.accepted_hit_count, 2U);
@@ -344,15 +353,16 @@ TEST(ObstacleMemoryGrid, ProvenanceIsRemovedAndRecreatedWithOccupiedLifecycle) {
   LaserScan2DView second_hit = first_hit;
   second_hit.timing = LaserScanTiming{3'000'000'000, true, 0.0, 3'100'000'000, true};
 
-  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_hit, {});
+  (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, first_hit,
+                             acceptedHitConfig());
   ASSERT_EQ(memory.activeProvenance().size(), 1U);
   (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(miss_ranges), {});
   (void)memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(miss_ranges), {});
   EXPECT_FALSE(memory.rawGrid().isOccupied(GridIndex{9, 5}));
   EXPECT_TRUE(memory.activeProvenance().empty());
 
-  const ObstacleMemoryStats reentry =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, second_hit, {});
+  const ObstacleMemoryStats reentry = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, second_hit, acceptedHitConfig());
 
   ASSERT_EQ(reentry.newly_occupied_cells, 1U);
   const MemoryCellProvenance& provenance = provenanceAt(memory, GridIndex{9, 5});
@@ -409,6 +419,7 @@ TEST(ObstacleMemoryGrid, InvalidScoreOrderingDoesNotUpdateMap) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
   ObstacleMemoryConfig config{};
+  config.ingestion_confidence.enabled = false;
   config.max_score = 2;
   config.occupied_score = 3;
 
@@ -437,6 +448,7 @@ TEST(ObstacleMemoryGrid, HitOutsideGridClearsInBoundsRayWithoutOccupiedEndpoint)
   scan.range_max_m = 30.0;
   ObstacleMemoryConfig config{};
   config.max_lidar_range_m = 30.0;
+  config.ingestion_confidence.enabled = false;
 
   const ObstacleMemoryStats stats =
       memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, scan, config);
@@ -450,8 +462,8 @@ TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
 
-  const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {});
+  const ObstacleMemoryStats stats = memory.integrateScan(
+      Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
   EXPECT_EQ(stats.hit_beams, 1U);
 
   EXPECT_TRUE(memory.rawGrid().isOccupied(GridIndex{9, 5}));
@@ -461,7 +473,9 @@ TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
 TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{4.0F};
-  ASSERT_EQ(memory.integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges), {})
+  ASSERT_EQ(memory
+                .integrateScan(Pose2{Point2{5.5, 5.5}, 0.0}, makeScan(ranges),
+                               acceptedHitConfig())
                 .occupied_cells_updated,
             1U);
   ASSERT_EQ(memory.countRawCells().occupied_cells, 1U);
@@ -479,8 +493,8 @@ TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
   ObstacleMemoryGrid memory = makeMemory();
   const std::vector<float> ranges{5.0F};
 
-  const ObstacleMemoryStats stats =
-      memory.integrateScan(Pose2{Point2{4.5, 5.5}, 0.0}, makeScan(ranges), {});
+  const ObstacleMemoryStats stats = memory.integrateScan(
+      Pose2{Point2{4.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
   EXPECT_EQ(stats.hit_beams, 1U);
   OccupancyGrid2D planning_grid = memory.rawGrid();
   planning_grid.rebuildInflation(1.1);

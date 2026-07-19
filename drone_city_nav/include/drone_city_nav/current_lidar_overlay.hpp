@@ -60,7 +60,8 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionConfig& projection_config,
                         const KnownStaticLidarHitClassifier* classifier = nullptr,
                         const GroundLidarRejectionConfig* ground_config = nullptr,
-                        AmbiguousLidarHitTracker* ambiguous_hit_tracker = nullptr);
+                        UncertainLidarHitTracker* uncertain_hit_tracker = nullptr,
+                        const LidarIngestionConfidenceConfig& confidence_config = {});
 
 [[nodiscard]] const CurrentLidarAcceptedHitProvenance*
 findCurrentLidarAcceptedHitProvenance(const CurrentLidarOverlayStats& stats,

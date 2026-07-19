@@ -366,6 +366,7 @@ private:
   double known_passage_debug_publish_period_s_{1.0};
   KnownPassageValidationConfig known_passage_validation_config_{};
   GroundLidarRejectionConfig ground_lidar_rejection_config_{};
+  LidarIngestionConfidenceConfig lidar_ingestion_confidence_config_{};
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
   double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};

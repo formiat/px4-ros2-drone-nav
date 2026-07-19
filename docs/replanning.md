@@ -16,8 +16,9 @@ runtime replan reason.
 Known passage geometry is handled before a new lidar hit enters either dynamic
 source. A confident range/geometry match to a known physical solid is
 suppressed. A hit clearly detached from the solid or inside a free opening is
-retained immediately. A boundary or static-attached ambiguous hit performs no
-hit or free-space update until independent 3D viewpoints resolve its geometry.
+retained immediately. A boundary, low ground candidate, or projection-uncertain
+hit performs no hit or free-space update until independent 3D viewpoints
+resolve its geometry.
 This is always active when valid 3D pose and known geometry are
 available, is independent of the current trajectory, and never suppresses a
 static-map cell. Any retained hit that inflates into the current path remains a

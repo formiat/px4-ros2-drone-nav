@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -305,15 +306,24 @@ TEST(KnownStaticLidarIngestion,
   const KnownStaticLidarHitClassifier classifier{std::move(volumes)};
   const std::array<float, 1U> ranges{kMeasuredRangeM};
   const GridBounds bounds{-5.0, -5.0, 0.5, 80, 40};
+  LaserScan2DView memory_scan = memoryScan(ranges, test_case);
+  memory_scan.beam_projection_poses =
+      std::span<const LidarProjectionPose>{&test_case.pose, 1U};
+  memory_scan.projection_pose_source =
+      LidarProjectionPoseSource::kSourceTimestampAligned;
 
   ObstacleMemoryGrid memory{bounds};
-  const ObstacleMemoryStats memory_stats = memory.integrateScan(
-      Pose2{test_case.pose.position, test_case.pose.yaw_rad},
-      memoryScan(ranges, test_case), ObstacleMemoryConfig{}, &classifier);
+  const ObstacleMemoryStats memory_stats =
+      memory.integrateScan(Pose2{test_case.pose.position, test_case.pose.yaw_rad},
+                           memory_scan, ObstacleMemoryConfig{}, &classifier);
   OccupancyGrid2D overlay_grid{bounds};
-  const CurrentLidarOverlayStats overlay_stats =
-      overlayCurrentLidarHits(overlay_grid, LidarScanView{ranges, 0.1, 30.0, 0.0, 0.1},
-                              test_case.pose, test_case.config, &classifier);
+  LidarScanView overlay_scan{ranges, 0.1, 30.0, 0.0, 0.1};
+  overlay_scan.beam_projection_poses =
+      std::span<const LidarProjectionPose>{&test_case.pose, 1U};
+  overlay_scan.projection_pose_source =
+      LidarProjectionPoseSource::kSourceTimestampAligned;
+  const CurrentLidarOverlayStats overlay_stats = overlayCurrentLidarHits(
+      overlay_grid, overlay_scan, test_case.pose, test_case.config, &classifier);
 
   ASSERT_EQ(memory_stats.occupied_transitions.size(), 1U);
   const LidarIngestionDecisionSnapshot& memory_decision =

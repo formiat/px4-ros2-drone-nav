@@ -48,7 +48,8 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
                         const LidarProjectionConfig& projection_config,
                         const KnownStaticLidarHitClassifier* classifier,
                         const GroundLidarRejectionConfig* ground_config,
-                        AmbiguousLidarHitTracker* ambiguous_hit_tracker) {
+                        UncertainLidarHitTracker* uncertain_hit_tracker,
+                        const LidarIngestionConfidenceConfig& confidence_config) {
   CurrentLidarOverlayStats stats{};
   stats.used = true;
 
@@ -83,18 +84,19 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     const LidarBeamObservation observation = makeLidarBeamObservation(
         scan.timing, i, projection, scan_range_max, beam_pose, projection_config,
         aligned_poses_available, scan.projection_pose_source);
-    LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+    LidarIngestionDecision decision = resolveUncertainLidarIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
-        ambiguous_hit_tracker);
+        ground_config, confidence_config, uncertain_hit_tracker);
     decision = normalizeAcceptedLidarIngestionDecision(observation, decision,
                                                        stats.ingestion_decisions);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,
                                  stats.ingestion_decisions);
-    if (decision.reason == LidarIngestionReason::kAmbiguousKnownStatic) {
+    if (decision.uncertain_kind != UncertainLidarHitKind::kNone &&
+        decision.ambiguous_resolution == UncertainLidarHitResolution::kPending) {
       ++stats.ambiguous_hits_pending_confirmation;
-    } else if (decision.ambiguous_resolution != AmbiguousLidarHitResolution::kPending) {
+    } else if (decision.ambiguous_resolution != UncertainLidarHitResolution::kPending) {
       ++stats.ambiguous_hits_confirmed;
     }
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {

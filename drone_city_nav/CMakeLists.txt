@@ -63,6 +63,7 @@ add_library(
   src/lidar_debug_snapshot_pipeline.cpp
   src/lidar_beam_observation.cpp
   src/lidar_ingestion_decision.cpp
+  src/lidar_ingestion_confidence.cpp
   src/lidar_memory_hit_diagnostics.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp

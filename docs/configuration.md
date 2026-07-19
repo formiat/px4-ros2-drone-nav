@@ -91,6 +91,11 @@ Known passages:
 - `ground_lidar_altitude_m`
 - `ground_lidar_closer_range_tolerance_m`
 - `ground_lidar_farther_range_tolerance_m`
+- `ground_lidar_candidate_endpoint_altitude_tolerance_m`
+- `ground_lidar_attached_endpoint_altitude_tolerance_m`
+- `lidar_uncertain_hit_confirmation_enabled`
+- `lidar_uncertain_unknown_require_source_timestamp_alignment`
+- `lidar_uncertain_unknown_reliable_range_margin_m`
 - `lidar_memory_hit_dump_enabled`
 - `lidar_memory_hit_dump_path`
 - `lidar_memory_hit_dump_max_records`
@@ -149,7 +154,10 @@ mass of the same annotated structure. The default is 0.30 m. Ambiguous evidence
 is keyed by structure, part, and endpoint voxel. The
 `ambiguous_lidar_hit_*` parameters configure required independent scans,
 retention, voxel size, minimum viewpoint translation, and minimum direction
-change.
+change. The tracker serves all uncertain pre-grid hypotheses: known-static
+boundaries, low ground candidates, and unknown returns whose projection did not
+use a source-timestamp-aligned pose or lies too close to the effective range
+limit.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
@@ -219,6 +227,18 @@ building collision volumes:
 - `ground_lidar_farther_range_tolerance_m` is the bounded allowance behind the
   analytic ground intersection. A farther ground-facing return is ambiguous and
   performs no hit or free-space update.
+- `ground_lidar_candidate_endpoint_altitude_tolerance_m` bounds the narrow
+  altitude band in which an otherwise unexplained low return is held for
+  geometric confirmation instead of immediately entering the 2D grids.
+- `ground_lidar_attached_endpoint_altitude_tolerance_m` is the inner band used
+  as evidence that repeated returns remain attached to the ground plane.
+- `lidar_uncertain_hit_confirmation_enabled` enables the shared pre-grid
+  confidence policy for obstacle memory and the current-lidar overlay.
+- `lidar_uncertain_unknown_require_source_timestamp_alignment` treats an
+  otherwise unknown hit from a receive-time, extrapolated, or callback-pose
+  fallback as pending until independent scans confirm it.
+- `lidar_uncertain_unknown_reliable_range_margin_m` similarly holds unknown
+  hits within the configured distance of the effective lidar range limit.
 - `lidar_memory_hit_dump_enabled` writes a JSONL record whenever an XY memory
   cell first becomes occupied. It is diagnostics-only and does not change
   memory behavior.
@@ -229,9 +249,12 @@ building collision volumes:
   records written by one node instance. Once reached, the node emits one warning
   and keeps mapping normally.
 
-All four ground parameters have identical defaults in `obstacle_memory_node`
-and `planner_node`: enabled, ground Z `0.05` m, closer tolerance `0.5` m, and
-farther tolerance `1.5` m. Headless validation requires the effective logged
+All six ground parameters have identical defaults in `obstacle_memory_node`
+and `planner_node`: enabled, ground Z `0.05` m, closer tolerance `0.5` m,
+farther tolerance `1.5` m, candidate altitude tolerance `1.5` m, and attached
+altitude tolerance `0.3` m. The uncertainty policy defaults to enabled, requires
+source-timestamp alignment for immediate unknown hits, and reserves `0.5` m at
+the range limit. Headless validation requires the effective logged
 configuration to match. A deliberately disabled provider is reported as
 `disabled`; invalid numeric configuration is `unavailable` and does not disable
 the independent known-static provider.

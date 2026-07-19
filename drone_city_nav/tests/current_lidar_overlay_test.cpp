@@ -22,6 +22,10 @@ namespace {
   return config;
 }
 
+[[nodiscard]] LidarIngestionConfidenceConfig acceptedHitConfidence() {
+  return LidarIngestionConfidenceConfig{.enabled = false};
+}
+
 } // namespace
 
 TEST(CurrentLidarOverlay, AcceptedHitMarksOnlyEndpoint) {
@@ -30,7 +34,8 @@ TEST(CurrentLidarOverlay, AcceptedHitMarksOnlyEndpoint) {
   LidarProjectionConfig config = overlayConfig();
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, nullptr,
+      nullptr, nullptr, acceptedHitConfidence());
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);
@@ -47,7 +52,8 @@ TEST(CurrentLidarOverlay, MaxRangeBeamDoesNotMarkObstacle) {
   LidarProjectionConfig config = overlayConfig();
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, levelPose(), config, nullptr,
+      nullptr, nullptr, acceptedHitConfidence());
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);
@@ -64,7 +70,8 @@ TEST(CurrentLidarOverlay, AltitudeRejectedBeamDoesNotMarkGrid) {
   const LidarProjectionPose pose{Point2{1.5, 0.5}, 5.0, 0.0, 0.0, -0.8, true, true};
 
   const CurrentLidarOverlayStats stats = overlayCurrentLidarHits(
-      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, pose, config);
+      grid, LidarScanView{ranges, 0.1, 10.0, 0.0, 1.0}, pose, config, nullptr, nullptr,
+      nullptr, acceptedHitConfidence());
 
   EXPECT_TRUE(stats.used);
   EXPECT_EQ(stats.processed_beams, 1U);

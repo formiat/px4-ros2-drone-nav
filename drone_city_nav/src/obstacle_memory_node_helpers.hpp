@@ -52,4 +52,7 @@ declareKnownStaticLidarSetup(rclcpp::Node& node, const std::string& frame_id);
 [[nodiscard]] GroundLidarRejectionConfig
 declareGroundLidarRejectionConfig(rclcpp::Node& node, double max_lidar_range_m);
 
+[[nodiscard]] LidarIngestionConfidenceConfig
+declareLidarIngestionConfidenceConfig(rclcpp::Node& node);
+
 } // namespace drone_city_nav

@@ -217,6 +217,8 @@ ingestionReasonToMessage(const LidarIngestionReason reason) noexcept {
       return Observation::INGESTION_REASON_EXPECTED_GROUND;
     case LidarIngestionReason::kAmbiguousGround:
       return Observation::INGESTION_REASON_AMBIGUOUS_GROUND;
+    case LidarIngestionReason::kProjectionUncertainUnknown:
+      return Observation::INGESTION_REASON_CLASSIFICATION_UNAVAILABLE;
     case LidarIngestionReason::kTiedExpectedSurfaces:
       return Observation::INGESTION_REASON_TIED_EXPECTED_SURFACES;
     case LidarIngestionReason::kClassificationUnavailable:

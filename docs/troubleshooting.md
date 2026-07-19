@@ -127,8 +127,12 @@ If downward lidar returns cause false replans, inspect both
   and spatially detached enough to be kept;
 - `static[pending=...]` means closer/boundary evidence stayed attached to known
   geometry and therefore changed neither hit scores nor free space;
-- `static[opening=...]` counts ordinary obstacles integrated inside free
+- `opening[interior_obstacle=...]` counts ordinary obstacles integrated inside free
   opening volume;
+- `ground[pending=...]` identifies low or contradictory returns that are still
+  non-mutating candidates; `surface` and `obstacle` show their resolutions;
+- `projection[pending=...]` identifies unknown returns waiting because the pose
+  source or range margin was uncertain; `obstacle` counts confirmed clusters;
 - `ground_unavailable` indicates invalid ground configuration, missing altitude,
   or missing attitude required by compensated 3D projection;
 - `non_ground_altitude_rejected` identifies the legacy altitude gate rather than

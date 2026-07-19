@@ -220,18 +220,19 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     const LidarBeamObservation observation = makeLidarBeamObservation(
         scan.timing, i, projection, scan_range_max, projection_pose, projection_config,
         aligned_poses_available, scan.projection_pose_source);
-    LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
+    LidarIngestionDecision decision = resolveUncertainLidarIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
-        &ambiguous_hit_tracker_);
+        ground_config, config.ingestion_confidence, &uncertain_hit_tracker_);
     decision = normalizeAcceptedLidarIngestionDecision(observation, decision,
                                                        stats.ingestion_decisions);
     const bool altitude_rejected =
         projection.status == LidarBeamProjectionStatus::kAltitudeRejected;
     recordLidarIngestionDecision(observation, decision, altitude_rejected,
                                  stats.ingestion_decisions);
-    if (decision.reason == LidarIngestionReason::kAmbiguousKnownStatic) {
+    if (decision.uncertain_kind != UncertainLidarHitKind::kNone &&
+        decision.ambiguous_resolution == UncertainLidarHitResolution::kPending) {
       ++stats.ambiguous_hits_pending_confirmation;
-    } else if (decision.ambiguous_resolution != AmbiguousLidarHitResolution::kPending) {
+    } else if (decision.ambiguous_resolution != UncertainLidarHitResolution::kPending) {
       ++stats.ambiguous_hits_confirmed;
     }
     if (projection.status == LidarBeamProjectionStatus::kAltitudeRejected) {
@@ -334,12 +335,12 @@ void ObstacleMemoryGrid::reset() {
   raw_grid_ = OccupancyGrid2D{raw_grid_.bounds()};
   std::fill(scores_.begin(), scores_.end(), 0);
   active_provenance_.clear();
-  ambiguous_hit_tracker_.clear();
+  uncertain_hit_tracker_.clear();
 }
 
 void ObstacleMemoryGrid::configureAmbiguousHitTracking(
     const AmbiguousLidarHitTrackerConfig& config) {
-  ambiguous_hit_tracker_.configure(config);
+  uncertain_hit_tracker_.configure(config);
 }
 
 const OccupancyGrid2D& ObstacleMemoryGrid::rawGrid() const noexcept {

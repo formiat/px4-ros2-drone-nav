@@ -189,11 +189,21 @@ declareGroundLidarRejectionConfig(rclcpp::Node& node, const double max_lidar_ran
       node.declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
   config.farther_range_tolerance_m =
       node.declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
+  config.candidate_endpoint_altitude_tolerance_m = node.declare_parameter<double>(
+      "ground_lidar_candidate_endpoint_altitude_tolerance_m", 1.5);
+  config.attached_endpoint_altitude_tolerance_m = node.declare_parameter<double>(
+      "ground_lidar_attached_endpoint_altitude_tolerance_m", 0.3);
   const bool valid = std::isfinite(config.ground_altitude_m) &&
                      std::isfinite(config.closer_range_tolerance_m) &&
                      config.closer_range_tolerance_m >= 0.0 &&
                      std::isfinite(config.farther_range_tolerance_m) &&
                      config.farther_range_tolerance_m >= 0.0 &&
+                     std::isfinite(config.candidate_endpoint_altitude_tolerance_m) &&
+                     config.candidate_endpoint_altitude_tolerance_m >= 0.0 &&
+                     std::isfinite(config.attached_endpoint_altitude_tolerance_m) &&
+                     config.attached_endpoint_altitude_tolerance_m >= 0.0 &&
+                     config.attached_endpoint_altitude_tolerance_m <=
+                         config.candidate_endpoint_altitude_tolerance_m &&
                      std::isfinite(max_lidar_range_m) && max_lidar_range_m > 0.0;
   const char* status = "disabled";
   if (config.enabled) {
@@ -203,18 +213,38 @@ declareGroundLidarRejectionConfig(rclcpp::Node& node, const double max_lidar_ran
     RCLCPP_WARN(node.get_logger(),
                 "Ground lidar classifier: node=obstacle_memory status=%s "
                 "ground_altitude=%.3fm closer_tolerance=%.3fm "
-                "farther_tolerance=%.3fm",
+                "farther_tolerance=%.3fm candidate_altitude_tolerance=%.3fm "
+                "attached_altitude_tolerance=%.3fm",
                 status, config.ground_altitude_m, config.closer_range_tolerance_m,
-                config.farther_range_tolerance_m);
+                config.farther_range_tolerance_m,
+                config.candidate_endpoint_altitude_tolerance_m,
+                config.attached_endpoint_altitude_tolerance_m);
   } else {
     RCLCPP_INFO(node.get_logger(),
                 "Ground lidar classifier: node=obstacle_memory status=%s "
                 "ground_altitude=%.3fm closer_tolerance=%.3fm "
-                "farther_tolerance=%.3fm",
+                "farther_tolerance=%.3fm candidate_altitude_tolerance=%.3fm "
+                "attached_altitude_tolerance=%.3fm",
                 status, config.ground_altitude_m, config.closer_range_tolerance_m,
-                config.farther_range_tolerance_m);
+                config.farther_range_tolerance_m,
+                config.candidate_endpoint_altitude_tolerance_m,
+                config.attached_endpoint_altitude_tolerance_m);
   }
   return config;
+}
+
+LidarIngestionConfidenceConfig
+declareLidarIngestionConfidenceConfig(rclcpp::Node& node) {
+  return LidarIngestionConfidenceConfig{
+      .enabled = node.declare_parameter<bool>(
+          "lidar_uncertain_hit_confirmation_enabled", true),
+      .require_source_timestamp_alignment_for_unknown = node.declare_parameter<bool>(
+          "lidar_uncertain_unknown_require_source_timestamp_alignment", true),
+      .reliable_range_margin_m =
+          std::clamp(node.declare_parameter<double>(
+                         "lidar_uncertain_unknown_reliable_range_margin_m", 0.5),
+                     0.0, 10.0),
+  };
 }
 
 } // namespace drone_city_nav

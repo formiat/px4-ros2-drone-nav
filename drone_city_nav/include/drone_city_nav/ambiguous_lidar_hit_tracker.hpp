@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <cstddef>
@@ -11,7 +10,7 @@
 
 namespace drone_city_nav {
 
-struct AmbiguousLidarHitTrackerConfig {
+struct UncertainLidarHitTrackerConfig {
   std::size_t required_independent_scans{3U};
   std::int64_t max_scan_gap_ns{500'000'000};
   std::int64_t retention_ns{2'000'000'000};
@@ -20,50 +19,64 @@ struct AmbiguousLidarHitTrackerConfig {
   double min_viewpoint_direction_change_rad{0.0523598776};
 };
 
-enum class AmbiguousLidarHitResolution {
-  kPending,
-  kConfirmedStaticAttached,
-  kConfirmedDetachedObstacle,
+enum class UncertainLidarHitKind : std::uint8_t {
+  kNone,
+  kKnownStaticBoundary,
+  kGroundCandidate,
+  kProjectionUncertainUnknown,
 };
 
-struct AmbiguousStaticHitObservation {
-  std::string_view structure_id;
+enum class UncertainLidarHitEvidence : std::uint8_t {
+  kExpectedSurfaceAttached,
+  kDetachedObstacle,
+};
+
+enum class UncertainLidarHitResolution : std::uint8_t {
+  kPending,
+  kConfirmedExpectedSurface,
+  kConfirmedObstacle,
+};
+
+struct UncertainLidarHitObservation {
+  UncertainLidarHitKind kind{UncertainLidarHitKind::kNone};
+  UncertainLidarHitEvidence evidence{UncertainLidarHitEvidence::kDetachedObstacle};
+  std::string_view association_id;
   std::string_view part_id;
   Point3 endpoint_map_m{};
   Point3 ray_origin_map_m{};
   Point3 ray_direction_map{};
-  KnownStaticEndpointRelation endpoint_relation{KnownStaticEndpointRelation::kOutside};
-  double endpoint_solid_distance_m{0.0};
-  double distance_before_solid_m{0.0};
+  double endpoint_surface_distance_m{0.0};
+  double distance_before_surface_m{0.0};
   double range_residual_m{0.0};
   std::int64_t scan_stamp_ns{0};
 };
 
-struct AmbiguousLidarHitConfirmation {
+struct UncertainLidarHitConfirmation {
   std::size_t independent_scans{0U};
-  std::size_t static_attached_observations{0U};
+  std::size_t expected_surface_observations{0U};
   std::size_t detached_obstacle_observations{0U};
   std::size_t expired_candidates{0U};
   double viewpoint_translation_m{0.0};
   double viewpoint_direction_change_rad{0.0};
-  AmbiguousLidarHitResolution resolution{AmbiguousLidarHitResolution::kPending};
+  UncertainLidarHitResolution resolution{UncertainLidarHitResolution::kPending};
   bool new_scan_vote{false};
-  bool opening_boundary_observed{false};
 };
 
-class AmbiguousLidarHitTracker {
+class UncertainLidarHitTracker {
 public:
-  explicit AmbiguousLidarHitTracker(const AmbiguousLidarHitTrackerConfig& config = {});
+  explicit UncertainLidarHitTracker(const UncertainLidarHitTrackerConfig& config = {});
 
-  void configure(const AmbiguousLidarHitTrackerConfig& config);
-  [[nodiscard]] AmbiguousLidarHitConfirmation
-  observe(const AmbiguousStaticHitObservation& observation);
+  void configure(const UncertainLidarHitTrackerConfig& config);
+  [[nodiscard]] UncertainLidarHitConfirmation
+  observe(const UncertainLidarHitObservation& observation);
+  [[nodiscard]] std::size_t expire(std::int64_t scan_stamp_ns);
   void clear() noexcept;
   [[nodiscard]] std::size_t candidateCount() const noexcept;
 
 private:
   struct Key {
-    std::string structure_id;
+    UncertainLidarHitKind kind{UncertainLidarHitKind::kNone};
+    std::string association_id;
     std::string part_id;
     int voxel_x{0};
     int voxel_y{0};
@@ -80,28 +93,39 @@ private:
     std::int64_t first_scan_stamp_ns{0};
     std::int64_t last_scan_stamp_ns{0};
     std::size_t independent_scans{0U};
-    std::size_t static_attached_observations{0U};
+    std::size_t expected_surface_observations{0U};
     std::size_t detached_obstacle_observations{0U};
-    std::size_t consecutive_static_attached_observations{0U};
+    std::size_t consecutive_expected_surface_observations{0U};
     std::size_t consecutive_detached_obstacle_observations{0U};
-    bool opening_boundary_observed{false};
     Point3 last_endpoint_map_m{};
     Point3 last_ray_origin_map_m{};
     Point3 last_ray_direction_map{};
-    double min_endpoint_solid_distance_m{0.0};
-    double max_endpoint_solid_distance_m{0.0};
-    double last_distance_before_solid_m{0.0};
+    double min_endpoint_surface_distance_m{0.0};
+    double max_endpoint_surface_distance_m{0.0};
+    double last_distance_before_surface_m{0.0};
     double last_range_residual_m{0.0};
   };
 
-  [[nodiscard]] Key keyFor(const AmbiguousStaticHitObservation& observation) const;
-  [[nodiscard]] std::size_t prune(std::int64_t scan_stamp_ns);
+  [[nodiscard]] Key baseKeyFor(const UncertainLidarHitObservation& observation) const;
+  [[nodiscard]] Key matchingKeyFor(const UncertainLidarHitObservation& observation,
+                                   const Key& base_key) const;
 
-  AmbiguousLidarHitTrackerConfig config_{};
+  UncertainLidarHitTrackerConfig config_{};
   std::unordered_map<Key, Evidence, KeyHash> evidence_;
 };
 
+// Keep existing configuration APIs source-compatible while the tracker now
+// handles all pre-grid uncertain lidar hypotheses, not only known-static hits.
+using AmbiguousLidarHitTrackerConfig = UncertainLidarHitTrackerConfig;
+using AmbiguousLidarHitTracker = UncertainLidarHitTracker;
+
 [[nodiscard]] const char*
-ambiguousLidarHitResolutionName(AmbiguousLidarHitResolution resolution) noexcept;
+uncertainLidarHitKindName(UncertainLidarHitKind kind) noexcept;
+
+[[nodiscard]] const char*
+uncertainLidarHitEvidenceName(UncertainLidarHitEvidence evidence) noexcept;
+
+[[nodiscard]] const char*
+uncertainLidarHitResolutionName(UncertainLidarHitResolution resolution) noexcept;
 
 } // namespace drone_city_nav

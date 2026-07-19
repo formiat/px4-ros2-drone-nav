@@ -98,6 +98,23 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
   config.ground_lidar_rejection.farther_range_tolerance_m =
       node.declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
+  config.ground_lidar_rejection.candidate_endpoint_altitude_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "ground_lidar_candidate_endpoint_altitude_tolerance_m", 1.5),
+                 0.0, 100.0);
+  config.ground_lidar_rejection.attached_endpoint_altitude_tolerance_m = std::clamp(
+      node.declare_parameter<double>(
+          "ground_lidar_attached_endpoint_altitude_tolerance_m", 0.3),
+      0.0, config.ground_lidar_rejection.candidate_endpoint_altitude_tolerance_m);
+  config.current_lidar.ingestion_confidence.enabled =
+      node.declare_parameter<bool>("lidar_uncertain_hit_confirmation_enabled", true);
+  config.current_lidar.ingestion_confidence
+      .require_source_timestamp_alignment_for_unknown = node.declare_parameter<bool>(
+      "lidar_uncertain_unknown_require_source_timestamp_alignment", true);
+  config.current_lidar.ingestion_confidence.reliable_range_margin_m =
+      std::clamp(node.declare_parameter<double>(
+                     "lidar_uncertain_unknown_reliable_range_margin_m", 0.5),
+                 0.0, 10.0);
   config.trajectory_planner.known_passage_validation = config.known_passage_validation;
   config.trajectory_planner.vertical_profile.enabled =
       node.declare_parameter<bool>("vertical_profile_enabled", true);

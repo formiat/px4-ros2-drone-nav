@@ -108,7 +108,8 @@ PlannerNode::overlayCurrentLidarHits(OccupancyGrid2D& grid,
           grid, scan_view, last_scan_projection_pose_, currentLidarProjectionConfig(),
           known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
                                                      : nullptr,
-          &ground_lidar_rejection_config_, &current_lidar_ambiguous_hit_tracker_);
+          &ground_lidar_rejection_config_, &current_lidar_ambiguous_hit_tracker_,
+          lidar_ingestion_confidence_config_);
   stats.used = overlay_stats.used;
   stats.processed_beams = overlay_stats.processed_beams;
   stats.hit_beams = overlay_stats.hit_beams;

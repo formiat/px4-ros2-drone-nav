@@ -59,6 +59,11 @@ obstacle_memory_node:
     ground_lidar_altitude_m: 0.05
     ground_lidar_closer_range_tolerance_m: 0.5
     ground_lidar_farther_range_tolerance_m: 1.5
+    ground_lidar_candidate_endpoint_altitude_tolerance_m: 1.5
+    ground_lidar_attached_endpoint_altitude_tolerance_m: 0.3
+    lidar_uncertain_hit_confirmation_enabled: true
+    lidar_uncertain_unknown_require_source_timestamp_alignment: true
+    lidar_uncertain_unknown_reliable_range_margin_m: 0.5
     lidar_memory_hit_dump_enabled: true
     lidar_memory_hit_dump_path: log/lidar_memory_hits.jsonl
     lidar_memory_hit_dump_max_records: 10000
@@ -136,6 +141,11 @@ planner_node:
     ground_lidar_altitude_m: 0.05
     ground_lidar_closer_range_tolerance_m: 0.5
     ground_lidar_farther_range_tolerance_m: 1.5
+    ground_lidar_candidate_endpoint_altitude_tolerance_m: 1.5
+    ground_lidar_attached_endpoint_altitude_tolerance_m: 0.3
+    lidar_uncertain_hit_confirmation_enabled: true
+    lidar_uncertain_unknown_require_source_timestamp_alignment: true
+    lidar_uncertain_unknown_reliable_range_margin_m: 0.5
     vertical_profile_enabled: true
     vertical_profile_gate_clearance_margin_m: 0.5
     vertical_profile_preferred_gate_clearance_margin_m: 2.0
