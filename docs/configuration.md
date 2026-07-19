@@ -145,7 +145,7 @@ geometry or invalid 3D pose is fail-open.
 near-surface relation; it does not widen the global range tolerance.
 `known_static_opening_boundary_tolerance_m` is a narrower local tolerance used
 only where an endpoint is simultaneously inside an opening and next to a solid
-mass of the same annotated structure. The default is 0.15 m. Ambiguous evidence
+mass of the same annotated structure. The default is 0.30 m. Ambiguous evidence
 is keyed by structure, part, and endpoint voxel. The
 `ambiguous_lidar_hit_*` parameters configure required independent scans,
 retention, voxel size, minimum viewpoint translation, and minimum direction

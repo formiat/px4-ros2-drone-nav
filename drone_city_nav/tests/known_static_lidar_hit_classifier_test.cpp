@@ -282,7 +282,7 @@ TEST(KnownStaticLidarHitClassifier,
       EXPECT_NEAR(result.endpoint_solid_distance_m, altitude_m - 21.5, 1.0e-9);
       EXPECT_NEAR(result.opening_min_z_m, 21.5, 1.0e-9);
       EXPECT_NEAR(result.opening_max_z_m, 28.5, 1.0e-9);
-      EXPECT_NEAR(result.opening_boundary_tolerance_m, 0.15, 1.0e-9);
+      EXPECT_NEAR(result.opening_boundary_tolerance_m, 0.30, 1.0e-9);
     }
   }
 }

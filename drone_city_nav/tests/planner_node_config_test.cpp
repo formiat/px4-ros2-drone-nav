@@ -72,7 +72,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 1.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.75);
-  EXPECT_DOUBLE_EQ(config.known_static_opening_boundary_tolerance_m, 0.15);
+  EXPECT_DOUBLE_EQ(config.known_static_opening_boundary_tolerance_m, 0.30);
   EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.required_independent_scans,
             3U);
   EXPECT_EQ(config.current_lidar.ambiguous_hit_confirmation.max_scan_gap_ns,

@@ -87,7 +87,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
                      "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
                  0.0, 10.0);
   config.known_static_opening_boundary_tolerance_m = std::clamp(
-      node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.15),
+      node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.30),
       0.0, 10.0);
   config.ground_lidar_rejection.enabled =
       node.declare_parameter<bool>("ground_lidar_rejection_enabled", true);

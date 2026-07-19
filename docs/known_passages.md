@@ -245,7 +245,7 @@ The decision is asymmetric:
 
 The defaults are 0.5 m for the stricter closer range tolerance, 1.5 m for the
 farther range tolerance, 0.75 m for general spatial endpoint-to-solid
-tolerance, and 0.15 m for the local opening-boundary tolerance. The boundary
+tolerance, and 0.30 m for the local opening-boundary tolerance. The boundary
 tolerance is measured against actual solid geometry, not against the opening
 entry or exit plane, and does not hide an object in the opening interior.
 

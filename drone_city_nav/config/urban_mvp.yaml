@@ -44,7 +44,7 @@ obstacle_memory_node:
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
     known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75
-    known_static_opening_boundary_tolerance_m: 0.15
+    known_static_opening_boundary_tolerance_m: 0.30
     ambiguous_lidar_hit_required_independent_scans: 3
     ambiguous_lidar_hit_max_scan_gap_ms: 500.0
     ambiguous_lidar_hit_retention_ms: 2000.0
@@ -120,7 +120,7 @@ planner_node:
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
     known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75
-    known_static_opening_boundary_tolerance_m: 0.15
+    known_static_opening_boundary_tolerance_m: 0.30
     ambiguous_lidar_hit_required_independent_scans: 3
     ambiguous_lidar_hit_max_scan_gap_ms: 500.0
     ambiguous_lidar_hit_retention_ms: 2000.0

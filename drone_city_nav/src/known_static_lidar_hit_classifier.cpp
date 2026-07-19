@@ -300,7 +300,7 @@ KnownStaticLidarHitClassifier::KnownStaticLidarHitClassifier(
   }
   if (!std::isfinite(config_.opening_boundary_tolerance_m) ||
       config_.opening_boundary_tolerance_m < 0.0) {
-    config_.opening_boundary_tolerance_m = 0.15;
+    config_.opening_boundary_tolerance_m = 0.30;
   }
 }
 
