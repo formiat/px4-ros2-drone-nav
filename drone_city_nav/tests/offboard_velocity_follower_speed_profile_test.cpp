@@ -40,6 +40,60 @@ TEST(OffboardVelocityFollower, StraightTrajectoryReturnsCruiseVelocityAlongTange
   EXPECT_EQ(plan.trajectory_segment_kind, TrajectorySegmentKind::kLine);
 }
 
+TEST(OffboardVelocityFollower, NoStaticPolicyCapsOnlyItsOwnSpeedProfile) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig static_config = testConfig();
+  const TrajectorySpeedProfile static_profile =
+      buildTrajectorySpeedProfile(trajectory, static_config);
+
+  VelocityFollowerConfig no_static_config = static_config;
+  no_static_config.no_static_speed_policy.enabled = true;
+  no_static_config.no_static_speed_policy.max_speed_mps = 10.0;
+  no_static_config.no_static_speed_policy.braking_decel_mps2 = 4.0;
+  const TrajectorySpeedProfile no_static_profile =
+      buildTrajectorySpeedProfile(trajectory, no_static_config);
+
+  EXPECT_NEAR(speedProfileSampleAtS(static_profile, 10.0).profiled_limit_mps, 12.0,
+              1.0e-9);
+  EXPECT_NEAR(speedProfileSampleAtS(no_static_profile, 10.0).profiled_limit_mps, 10.0,
+              1.0e-9);
+}
+
+TEST(OffboardVelocityFollower, NoStaticObservedBoundaryAppliesBrakingSpeedCap) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectory();
+  VelocityFollowerConfig config = testConfig();
+  config.no_static_speed_policy.enabled = true;
+  config.no_static_speed_policy.max_speed_mps = 10.0;
+  config.no_static_speed_policy.braking_decel_mps2 = 4.0;
+  config.no_static_speed_policy.reaction_time_s = 2.0;
+  config.no_static_speed_policy.safety_margin_m = 4.0;
+  const TrajectorySpeedProfile profile =
+      buildTrajectorySpeedProfile(trajectory, config);
+  VelocityFollowerState state{};
+  state.previous_velocity_setpoint = Point2{10.0, 0.0};
+  state.previous_velocity_setpoint_valid = true;
+  state.previous_scalar_speed_command_mps = 10.0;
+  state.previous_scalar_speed_command_valid = true;
+
+  const NoStaticSpeedConstraint constraint{
+      .observation_valid = true,
+      .boundary_distance_m = 22.0,
+      .boundary = NoStaticSpeedBoundary::kUnknown,
+  };
+  const VelocitySetpointPlan plan =
+      planVelocitySetpoint(trajectory, profile, Point2{10.0, 0.0}, Point2{10.0, 0.0},
+                           true, 1.0, state, config, constraint);
+
+  ASSERT_TRUE(plan.valid);
+  EXPECT_EQ(plan.reason, VelocitySetpointReason::kNoStaticObservation);
+  EXPECT_EQ(plan.limiting_constraint_type, SpeedConstraintType::kNoStaticObservation);
+  EXPECT_TRUE(plan.no_static_speed_cap_active);
+  EXPECT_EQ(plan.no_static_boundary, NoStaticSpeedBoundary::kUnknown);
+  EXPECT_NEAR(plan.no_static_boundary_distance_m, 22.0, 1.0e-9);
+  EXPECT_NEAR(plan.no_static_speed_limit_mps, -8.0 + std::sqrt(208.0), 1.0e-9);
+  EXPECT_NEAR(plan.accel_limited_speed_mps, -8.0 + std::sqrt(208.0), 1.0e-9);
+}
+
 TEST(OffboardVelocityFollower, PredictionHorizonProjectsControlAheadOfCurrentPose) {
   const std::vector<TrajectorySegment> trajectory = lineTrajectory();
   VelocityFollowerConfig config = testConfig();

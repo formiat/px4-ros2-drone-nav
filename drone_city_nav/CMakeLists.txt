@@ -204,6 +204,7 @@ add_executable(
   src/px4_offboard_node_control.cpp
   src/px4_offboard_node_inputs.cpp
   src/px4_offboard_node_lifecycle.cpp
+  src/px4_offboard_node_no_static_speed.cpp
   src/px4_offboard_node_telemetry.cpp
   src/px4_offboard_node_trajectory.cpp
   src/px4_offboard_node_vertical.cpp)

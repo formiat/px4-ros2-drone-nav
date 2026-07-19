@@ -78,10 +78,14 @@ enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
 enable_static_map_override=""
+no_static_speed_policy_enabled="false"
 evasive_maneuvering_override=""
 evasive_maneuvering_straight_cost_weight_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
+  if ! bool_is_true "${enable_static_map_override}"; then
+    no_static_speed_policy_enabled="true"
+  fi
 fi
 if [[ -n "${ENABLE_EVASIVE_MANEUVERING+x}" ]]; then
   evasive_maneuvering_override="$(normalize_bool "${ENABLE_EVASIVE_MANEUVERING}")"
@@ -547,6 +551,7 @@ ros_launch_args=(
   enable_rviz:="${enable_rviz}"
   rviz_config:="${rviz_config_file}"
   rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
+  no_static_speed_policy_enabled:="${no_static_speed_policy_enabled}"
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")

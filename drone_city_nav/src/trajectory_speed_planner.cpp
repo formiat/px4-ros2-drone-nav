@@ -20,7 +20,14 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] double sanitizedCruiseSpeed(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
+  const double cruise_speed =
+      sanitizedPositive(config.cruise_speed_mps, 12.0, 0.0, 100.0);
+  if (!config.no_static_speed_policy.enabled) {
+    return cruise_speed;
+  }
+  return std::min(
+      cruise_speed,
+      sanitizedPositive(config.no_static_speed_policy.max_speed_mps, 10.0, 0.0, 100.0));
 }
 
 [[nodiscard]] double sanitizedMinTurnSpeed(const VelocityFollowerConfig& config) {
@@ -46,7 +53,14 @@ effectiveSetpointForwardDecelMps2(const VelocityFollowerConfig& config) {
 
 [[nodiscard]] double
 effectiveSpeedProfileDecelMps2(const VelocityFollowerConfig& config) {
-  return sanitizedPositive(config.speed_profile_decel_mps2, 2.0, 1.0e-6, 100.0);
+  const double configured_decel =
+      sanitizedPositive(config.speed_profile_decel_mps2, 2.0, 1.0e-6, 100.0);
+  if (!config.no_static_speed_policy.enabled) {
+    return configured_decel;
+  }
+  return std::max(configured_decel,
+                  sanitizedPositive(config.no_static_speed_policy.braking_decel_mps2,
+                                    4.0, 1.0e-6, 100.0));
 }
 
 [[nodiscard]] double segmentEndS(const TrajectorySegment& segment) noexcept {
@@ -382,6 +396,8 @@ speedConstraintTypeName(const SpeedConstraintType constraint_type) noexcept {
       return "vertical_profile";
     case SpeedConstraintType::kVerticalTrackability:
       return "vertical_trackability";
+    case SpeedConstraintType::kNoStaticObservation:
+      return "no_static_observation";
     case SpeedConstraintType::kGoal:
       return "goal";
   }
@@ -714,6 +730,24 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
           query.vertical_trackability_constraint_distance_m;
       plan.limiting_constraint_speed_mps = trackability_limit;
       plan.limiting_allowed_speed_now_mps = trackability_limit;
+      plan.limiting_curve_radius_m = std::numeric_limits<double>::quiet_NaN();
+      plan.limiting_curvature_1pm = 0.0;
+    }
+  }
+  plan.no_static_speed_cap_active = query.no_static_speed_cap_active &&
+                                    std::isfinite(query.no_static_speed_limit_mps);
+  plan.no_static_speed_limit_mps = query.no_static_speed_limit_mps;
+  plan.no_static_boundary_distance_m = query.no_static_boundary_distance_m;
+  if (plan.no_static_speed_cap_active) {
+    const double no_static_limit =
+        std::clamp(query.no_static_speed_limit_mps, 0.0, cruise_speed);
+    if (no_static_limit + 1.0e-9 < plan.speed_after_lookahead_mps) {
+      plan.speed_after_lookahead_mps = no_static_limit;
+      plan.constraint_type = SpeedConstraintType::kNoStaticObservation;
+      plan.constraint_index = 0U;
+      plan.limiting_constraint_distance_m = query.no_static_boundary_distance_m;
+      plan.limiting_constraint_speed_mps = no_static_limit;
+      plan.limiting_allowed_speed_now_mps = no_static_limit;
       plan.limiting_curve_radius_m = std::numeric_limits<double>::quiet_NaN();
       plan.limiting_curvature_1pm = 0.0;
     }

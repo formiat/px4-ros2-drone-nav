@@ -41,6 +41,17 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
 
   config.static_map.enabled = node.declare_parameter<bool>("use_static_map", true);
   config.planning_grid_builder.use_static_map = config.static_map.enabled;
+  NoStaticSpeedPolicyConfig& no_static_speed_policy =
+      config.trajectory_planner.speed_profile.no_static_speed_policy;
+  no_static_speed_policy.enabled = !config.static_map.enabled;
+  no_static_speed_policy.max_speed_mps = std::clamp(
+      node.declare_parameter<double>("no_static_max_speed_mps", 10.0), 0.0, 100.0);
+  no_static_speed_policy.braking_decel_mps2 = std::clamp(
+      node.declare_parameter<double>("no_static_braking_decel_mps2", 4.0), 0.0, 100.0);
+  no_static_speed_policy.reaction_time_s = std::clamp(
+      node.declare_parameter<double>("no_static_reaction_time_s", 2.0), 0.0, 30.0);
+  no_static_speed_policy.safety_margin_m = std::clamp(
+      node.declare_parameter<double>("no_static_safety_margin_m", 4.0), 0.0, 1000.0);
   config.static_map.configured_path = node.declare_parameter<std::string>(
       "static_map_path", "worlds/generated_city.map2d");
   config.static_map.expected_frame_id = config.frame_id;

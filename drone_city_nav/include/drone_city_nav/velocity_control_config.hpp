@@ -4,6 +4,16 @@
 
 namespace drone_city_nav {
 
+struct NoStaticSpeedPolicyConfig {
+  // Static-map navigation keeps its established speed policy. This policy is
+  // enabled only when the launch selects lidar-only navigation.
+  bool enabled{false};
+  double max_speed_mps{10.0};
+  double braking_decel_mps2{4.0};
+  double reaction_time_s{2.0};
+  double safety_margin_m{4.0};
+};
+
 struct VelocityFollowerConfig {
   double cruise_speed_mps{12.0};
   double min_turn_speed_mps{2.0};
@@ -62,6 +72,7 @@ struct VelocityFollowerConfig {
   double terminal_capture_braking_margin_m{2.0};
   double terminal_position_capture_max_entry_speed_mps{3.0};
   double terminal_stuck_speed_mps{0.5};
+  NoStaticSpeedPolicyConfig no_static_speed_policy{};
 };
 
 [[nodiscard]] std::uint64_t speedProfileConstructionConfigFingerprint(

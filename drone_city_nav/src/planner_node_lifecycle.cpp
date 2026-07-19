@@ -200,6 +200,17 @@ PlannerNode::PlannerNode()
       known_passages_resolved_path_.string().c_str(), fallback_grid_bounds_.width_cells,
       fallback_grid_bounds_.height_cells, fallback_grid_bounds_.resolution_m,
       fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
+  RCLCPP_INFO(
+      get_logger(),
+      "No-static speed policy: enabled=%s max_speed=%.2fmps braking_decel=%.2fmps2 "
+      "reaction_time=%.2fs safety_margin=%.2fm",
+      trajectory_planner_config_.speed_profile.no_static_speed_policy.enabled ? "true"
+                                                                              : "false",
+      trajectory_planner_config_.speed_profile.no_static_speed_policy.max_speed_mps,
+      trajectory_planner_config_.speed_profile.no_static_speed_policy
+          .braking_decel_mps2,
+      trajectory_planner_config_.speed_profile.no_static_speed_policy.reaction_time_s,
+      trajectory_planner_config_.speed_profile.no_static_speed_policy.safety_margin_m);
   RCLCPP_INFO(get_logger(),
               "Known passage validation: mode=diagnostics enabled=%s "
               "min_opening_overlap=%.2fm min_depth_fraction=%.2f "

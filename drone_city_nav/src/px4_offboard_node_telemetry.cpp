@@ -51,6 +51,7 @@ void Px4OffboardNode::logTelemetry() {
       "distance_to_target=%.2f distance_to_path_goal=%.2f "
       "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
       "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
+      "no_static_speed[enabled=%s active=%s boundary=%s distance=%.2f limit=%.2f] "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
       "final_goal_hold=%s",
       current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
@@ -64,7 +65,13 @@ void Px4OffboardNode::logTelemetry() {
       target_distance, path_goal_distance, mission_goal_distance,
       path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
       motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
-      prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
+      prohibited_grid_clearance_m,
+      velocity_follower_config_.no_static_speed_policy.enabled ? "true" : "false",
+      last_velocity_plan_.no_static_speed_cap_active ? "true" : "false",
+      noStaticSpeedBoundaryName(last_velocity_plan_.no_static_boundary),
+      last_velocity_plan_.no_static_boundary_distance_m,
+      last_velocity_plan_.no_static_speed_limit_mps,
+      upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false");

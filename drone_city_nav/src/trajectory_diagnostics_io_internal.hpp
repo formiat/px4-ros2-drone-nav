@@ -325,6 +325,9 @@ parseSpeedConstraintTypeName(const std::string_view value) {
   if (value == speedConstraintTypeName(SpeedConstraintType::kVerticalTrackability)) {
     return SpeedConstraintType::kVerticalTrackability;
   }
+  if (value == speedConstraintTypeName(SpeedConstraintType::kNoStaticObservation)) {
+    return SpeedConstraintType::kNoStaticObservation;
+  }
   if (value == speedConstraintTypeName(SpeedConstraintType::kGoal)) {
     return SpeedConstraintType::kGoal;
   }

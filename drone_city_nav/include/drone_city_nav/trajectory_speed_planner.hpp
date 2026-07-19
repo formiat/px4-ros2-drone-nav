@@ -16,6 +16,7 @@ enum class SpeedConstraintType {
   kArc,
   kVerticalProfile,
   kVerticalTrackability,
+  kNoStaticObservation,
   kGoal,
 };
 
@@ -71,6 +72,9 @@ struct ScalarSpeedQuery {
       std::numeric_limits<double>::quiet_NaN()};
   double vertical_trackability_altitude_error_m{
       std::numeric_limits<double>::quiet_NaN()};
+  bool no_static_speed_cap_active{false};
+  double no_static_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double no_static_boundary_distance_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct ScalarSpeedPlan {
@@ -98,6 +102,9 @@ struct ScalarSpeedPlan {
       std::numeric_limits<double>::quiet_NaN()};
   double vertical_trackability_altitude_error_m{
       std::numeric_limits<double>::quiet_NaN()};
+  bool no_static_speed_cap_active{false};
+  double no_static_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
+  double no_static_boundary_distance_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
 [[nodiscard]] const char*

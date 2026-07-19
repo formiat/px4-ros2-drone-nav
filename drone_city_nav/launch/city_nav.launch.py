@@ -58,6 +58,9 @@ def generate_launch_description():
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
         "rviz_drone_follow_tf_enabled"
     )
+    no_static_speed_policy_enabled = LaunchConfiguration(
+        "no_static_speed_policy_enabled"
+    )
     use_static_map = LaunchConfiguration("use_static_map")
     static_map_path = LaunchConfiguration("static_map_path")
     evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
@@ -125,7 +128,6 @@ def generate_launch_description():
         obstacle_memory_parameters = [params_file.perform(context)]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
-
         return [
             Node(
                 package="drone_city_nav",
@@ -154,6 +156,9 @@ def generate_launch_description():
                 "use_sim_time": True,
                 "rviz_drone_follow_tf_enabled": ParameterValue(
                     rviz_drone_follow_tf_enabled, value_type=bool
+                ),
+                "no_static_speed_policy_enabled": ParameterValue(
+                    no_static_speed_policy_enabled, value_type=bool
                 ),
             },
         ],
@@ -268,6 +273,14 @@ def generate_launch_description():
                 description=(
                     "Publish the RViz-only drone_follow TF target used by the "
                     "default follow-camera debug view."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "no_static_speed_policy_enabled",
+                default_value="false",
+                description=(
+                    "Enable the conservative lidar-only speed policy. The "
+                    "simulator runner enables it when ENABLE_STATIC_MAP=false."
                 ),
             ),
             DeclareLaunchArgument(
