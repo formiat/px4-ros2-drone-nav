@@ -83,21 +83,39 @@ Known-passage validation fields include:
 Each `known_passage_diagN_*` entry reports structure id, opening id, entry/exit
 `s`, overlap, clearance, reason, and validity for one capped span.
 
-Mission monitor logs also report `actual_passage_openings_seen`,
-`known_passage_openings`, `min_actual_passage_clearance`, and
-`min_actual_passage_volume_margin` in `Mission summary` and `MISSION_RESULT`
-lines. The clearance metric is the minimum of lateral and vertical clearance
-while the actual vehicle position is inside an opening. The volume margin also
-includes depth to the entry/exit plane, so it is expected to approach zero for
-a normal traversal and must not be interpreted as wall clearance.
+Mission monitor logs report two distinct passage counts in `Mission summary`
+and `MISSION_RESULT` lines:
 
-The same summary and result lines identify the sample responsible for the
-minimum volume margin using:
+- `actual_passage_openings_entered` counts openings with at least one actual
+  vehicle-position sample inside the annotated volume;
+- `actual_passage_traversals_completed` counts directed traversals that crossed
+  the entry plane, remained in the lateral/vertical opening cross-section, and
+  crossed the exit plane;
+- `known_passage_openings` is the required annotated-opening count.
 
-- `min_actual_passage_volume_opening`
-- `min_actual_passage_volume_boundary`
-- `min_actual_passage_volume_components=[depth=... lateral=... vertical=...]`
-- `min_actual_passage_volume_position=(x, y, z)`
+The headless validator requires completed traversals, not only entered opening
+volumes. Entry and exit use the opening normal and
+`passage_traversal_hysteresis_m` to reject position noise around either plane.
+
+Safety clearance and volume-boundary proximity are also separate:
+
+- `min_actual_passage_wall_clearance` is the minimum lateral or vertical
+  clearance while the vehicle is inside an opening. It intentionally excludes
+  the non-solid entry and exit planes and is the relevant passage safety metric.
+- `min_actual_passage_boundary_margin` is the minimum over depth, lateral, and
+  vertical boundaries. It is expected to approach zero at a normal entry or
+  exit and must not be interpreted as wall clearance.
+
+The same result line identifies the samples responsible for both minima using:
+
+- `min_actual_passage_wall_opening`
+- `min_actual_passage_wall_boundary`
+- `min_actual_passage_wall_components=[lateral=... vertical=...]`
+- `min_actual_passage_wall_position=(x, y, z)`
+- `min_actual_passage_boundary_opening`
+- `min_actual_passage_boundary`
+- `min_actual_passage_boundary_components=[depth=... lateral=... vertical=...]`
+- `min_actual_passage_boundary_position=(x, y, z)`
 
 Boundary names distinguish `depth_entry`, `depth_exit`, `lateral_negative`,
 `lateral_positive`, `vertical_lower`, and `vertical_upper`. Entry and exit are
@@ -107,12 +125,11 @@ distinguishable from a small clearance to the lateral or vertical solid
 geometry.
 
 At mission completion, one `actual_passage_opening_metrics` line is emitted per
-annotated opening. It contains the opening id, whether it was seen, the number
-of actual samples inside it, and independent minimum lateral, vertical, depth,
-geometric, and volume margins. It also reports the boundary, world position,
-local depth/lateral coordinates, and all three component margins at the sample
-that produced that opening's minimum volume margin. These fields are runtime
-diagnostics only:
+annotated opening. It contains the opening id, `entered`, `entry_crossed`,
+`exit_crossed`, `completed`, the number of actual samples inside it, local depth
+coverage, and independent minimum lateral, vertical, wall-clearance, depth, and
+boundary margins. It also reports the wall and boundary responsible for each
+minimum and their world positions. These fields are runtime diagnostics only:
 ordinary building collision volumes still define whether the drone hit a solid
 part of a building, while an opening is just free space between those solid
 volumes.

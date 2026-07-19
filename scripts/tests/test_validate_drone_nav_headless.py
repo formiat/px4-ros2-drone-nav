@@ -144,7 +144,8 @@ def make_ros_log(
     if mission_success:
         lines.append(
             "[mission_monitor_node]: MISSION_RESULT success=true "
-            "actual_passage_openings_seen=3 known_passage_openings=3"
+            "actual_passage_openings_entered=3 "
+            "actual_passage_traversals_completed=3 known_passage_openings=3"
         )
     else:
         lines.append("[mission_monitor_node]: MISSION_RESULT success=false")
@@ -439,6 +440,50 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("FAIL: mission monitor reported failure", result.errors)
+
+    def test_incomplete_passage_traversal_fails_mission_validation(self) -> None:
+        ros_log = make_ros_log().replace(
+            "actual_passage_traversals_completed=3",
+            "actual_passage_traversals_completed=2",
+        )
+
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: all known passage traversals are completed", result.errors
+        )
+
+    def test_unentered_passage_fails_mission_validation(self) -> None:
+        ros_log = make_ros_log().replace(
+            "actual_passage_openings_entered=3",
+            "actual_passage_openings_entered=2",
+        )
+
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("FAIL: all known passage openings are entered", result.errors)
 
     def test_px4_critical_error_is_allowed_when_flag_is_enabled(self) -> None:
         result = validator.validate_logs(

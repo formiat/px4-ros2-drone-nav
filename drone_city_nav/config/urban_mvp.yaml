@@ -420,6 +420,7 @@ mission_monitor_node:
     vertical_clearance_m: 1.0
     known_passages_enabled: true
     known_passages_path: worlds/known_passages.passages3d
+    passage_traversal_hysteresis_m: 0.25
     uniform_building_height_m: 32.0
     crash_detection_enabled: true
     crash_min_airborne_altitude_m: 6.0

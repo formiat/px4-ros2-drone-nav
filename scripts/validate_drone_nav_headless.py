@@ -366,17 +366,21 @@ def validate_logs(
                 r"MISSION_RESULT success=true",
             )
             passage_counts = re.search(
-                r"MISSION_RESULT success=true.*actual_passage_openings_seen=(\d+) "
+                r"MISSION_RESULT success=true.*actual_passage_openings_entered=(\d+) "
+                r"actual_passage_traversals_completed=(\d+) "
                 r"known_passage_openings=(\d+)",
                 ros_log,
             )
             if passage_counts is None:
-                result.fail("mission result reports passage opening counts")
-            elif passage_counts.group(1) != passage_counts.group(2):
-                result.fail("all known passage openings are observed")
+                result.fail("mission result reports passage traversal counts")
+            elif passage_counts.group(1) != passage_counts.group(3):
+                result.fail("all known passage openings are entered")
+            elif passage_counts.group(2) != passage_counts.group(3):
+                result.fail("all known passage traversals are completed")
             else:
-                result.ok_message("mission result reports passage opening counts")
-                result.ok_message("all known passage openings are observed")
+                result.ok_message("mission result reports passage traversal counts")
+                result.ok_message("all known passage openings are entered")
+                result.ok_message("all known passage traversals are completed")
             if (
                 options.expected_memory is True
                 or options.expected_current_lidar is True

@@ -305,6 +305,12 @@ itself remains free space. Its geometric clearance estimate is diagnostic only:
 the monitor does not command PX4, and Gazebo collision geometry remains the
 physical source of truth.
 
+`passage_traversal_hysteresis_m` controls the distance on each side of the
+annotated entry and exit planes that must be crossed before the monitor records
+a directed traversal. The default `0.25` m prevents position noise at a plane
+from producing repeated or incomplete traversal events. This parameter changes
+diagnostics and headless validation only; it does not change planning or flight.
+
 ## A* Parameters
 
 - `astar_heuristic_weight`

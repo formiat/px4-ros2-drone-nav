@@ -74,6 +74,7 @@ add_library(
   src/offboard_velocity_follower.cpp
   src/obstacle_memory.cpp
   src/occupancy_grid.cpp
+  src/passage_traversal_monitor.cpp
   src/path_smoothing.cpp
   src/planning_grid_builder.cpp
   src/planner_core.cpp
@@ -293,6 +294,12 @@ if(BUILD_TESTING)
   target_compile_features(lidar_debug_snapshot_pipeline_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_debug_snapshot_pipeline_test drone_city_nav_core)
   enable_project_warnings(lidar_debug_snapshot_pipeline_test)
+
+  ament_add_gtest(passage_traversal_monitor_test
+                  tests/passage_traversal_monitor_test.cpp)
+  target_compile_features(passage_traversal_monitor_test PRIVATE cxx_std_20)
+  target_link_libraries(passage_traversal_monitor_test drone_city_nav_core)
+  enable_project_warnings(passage_traversal_monitor_test)
 
   ament_add_gtest(lidar_debug_node_config_test
                   tests/lidar_debug_node_config_test.cpp)
