@@ -58,6 +58,8 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
   }
 
   OccupancyGrid2D current_lidar_grid{grid.bounds()};
+  const bool aligned_poses_available =
+      scan.beam_projection_poses.size() == scan.ranges.size();
   for (std::size_t i = 0U; i < scan.ranges.size(); ++i) {
     const float raw_range = scan.ranges[i];
     if (!lidarRawRangeUsable(raw_range, scan.range_min_m)) {
@@ -65,15 +67,20 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
     }
     ++stats.processed_beams;
 
-    const LidarBeamProjection projection = projectLidarBeam(
-        projection_pose, projection_config, scan.range_min_m, scan_range_max,
-        scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
+    const LidarProjectionPose& beam_pose =
+        aligned_poses_available ? scan.beam_projection_poses[i] : projection_pose;
+    if (aligned_poses_available) {
+      ++stats.timestamp_aligned_beams;
+    }
+    const LidarBeamProjection projection =
+        projectLidarBeam(beam_pose, projection_config, scan.range_min_m, scan_range_max,
+                         scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
     if (projection.status != LidarBeamProjectionStatus::kAccepted &&
         projection.status != LidarBeamProjectionStatus::kAltitudeRejected) {
       continue;
     }
     const LidarBeamObservation observation = makeLidarBeamObservation(
-        scan.timing, i, projection, scan_range_max, projection_pose, projection_config);
+        scan.timing, i, projection, scan_range_max, beam_pose, projection_config);
     const LidarIngestionDecision decision =
         evaluateLidarIngestion(observation, classifier, ground_config);
     const bool altitude_rejected =

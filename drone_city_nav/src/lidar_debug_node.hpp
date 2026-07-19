@@ -6,6 +6,7 @@
 #include "drone_city_nav/lidar_debug_renderer.hpp"
 #include "drone_city_nav/lidar_debug_snapshot_pipeline.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
+#include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
 
@@ -146,6 +147,7 @@ private:
   Point2 px4_local_origin_{};
   Point2 current_velocity_{};
   AttitudeEuler attitude_{};
+  LidarPoseHistory lidar_pose_history_{};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double attitude_tilt_rad_{std::numeric_limits<double>::quiet_NaN()};
@@ -188,6 +190,7 @@ private:
   LidarSnapshotStats last_scan_stats_{};
   std::vector<Point2> last_scan_hit_points_;
   std::vector<Point2> remembered_hit_points_;
+  std::vector<LidarProjectionPose> last_projected_beam_poses_;
   Pose2 last_projected_pose_{};
   Point2 last_projected_velocity_{};
   AttitudeEuler last_projected_attitude_{};

@@ -19,6 +19,7 @@ struct LidarScanView {
   double angle_min_rad{0.0};
   double angle_increment_rad{0.0};
   LaserScanTiming timing{};
+  std::span<const LidarProjectionPose> beam_projection_poses{};
 };
 
 struct CurrentLidarAcceptedHitProvenance {
@@ -38,6 +39,7 @@ struct CurrentLidarOverlayStats {
   std::size_t overlay_occupied_cells_applied{0U};
   std::size_t overlay_occupied_cells_preserved{0U};
   std::size_t outside_hits{0U};
+  std::size_t timestamp_aligned_beams{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<CurrentLidarAcceptedHitProvenance> accepted_hits;

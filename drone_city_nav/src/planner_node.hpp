@@ -7,6 +7,7 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
+#include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
@@ -337,6 +338,7 @@ private:
   Point2 current_velocity_{};
   AttitudeEuler current_attitude_{};
   LidarProjectionPose last_scan_projection_pose_{};
+  LidarPoseHistory lidar_pose_history_{};
   Point2 start_{};
   Point2 goal_{};
   Point2 px4_local_origin_{};
@@ -445,6 +447,7 @@ private:
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
+  std::vector<LidarProjectionPose> last_scan_projection_poses_;
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<PendingTrajectoryRefinement> pending_refinement_;
   std::optional<TrajectoryRefinementRequest> queued_refinement_;

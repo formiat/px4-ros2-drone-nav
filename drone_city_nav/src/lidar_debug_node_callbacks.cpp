@@ -20,6 +20,11 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
     current_altitude_m_ = -static_cast<double>(msg.z);
     altitude_valid_ = true;
   }
+  lidar_pose_history_.addPosition(
+      last_pose_receive_ns_,
+      Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
+      use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
+      altitude_valid_ && (!use_px4_heading_for_scan_ || heading_valid));
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
     current_velocity_ =
         Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -35,6 +40,7 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
 
 void LidarDebugNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
+  lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q);
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;
@@ -83,6 +89,19 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   last_projected_motion_time_offset_s_ = motion_compensation.signed_time_offset_s;
   last_projected_motion_shift_ = motion_compensation.applied_shift;
   last_projected_motion_shift_m_ = motion_compensation.applied_shift_m;
+  const LaserScanTiming timing{
+      .first_beam_stamp_ns = last_scan_stamp_ns_,
+      .first_beam_stamp_valid = last_scan_stamp_ns_ > 0,
+      .time_increment_s = last_projected_scan_time_increment_s_,
+      .receive_stamp_ns = last_scan_receive_ns_,
+      .receive_stamp_valid = last_scan_receive_ns_ > 0,
+  };
+  const std::optional<std::vector<LidarProjectionPose>> aligned =
+      timestampAlignedLidarBeamPoses(lidar_pose_history_, timing, msg.ranges.size(),
+                                     use_px4_heading_for_scan_
+                                         ? std::nullopt
+                                         : std::optional<double>{initial_heading_rad_});
+  last_projected_beam_poses_ = aligned.value_or(std::vector<LidarProjectionPose>{});
 
   LidarSnapshotStats stats{};
   last_scan_rows_ = collectScanRows(stats);

@@ -36,6 +36,7 @@ struct LaserScan2DView {
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
   LaserScanTiming timing{};
+  std::span<const LidarProjectionPose> beam_projection_poses{};
 };
 
 struct ObstacleMemoryConfig {
@@ -82,6 +83,7 @@ struct ObstacleMemoryStats {
   std::size_t free_cells_updated{0U};
   std::size_t occupied_cells_updated{0U};
   std::size_t newly_occupied_cells{0U};
+  std::size_t timestamp_aligned_beams{0U};
   KnownStaticLidarHitStats known_static_lidar{};
   LidarIngestionDecisionStats ingestion_decisions{};
   std::vector<KnownStaticLidarHitProvenance> retained_known_static_hits;

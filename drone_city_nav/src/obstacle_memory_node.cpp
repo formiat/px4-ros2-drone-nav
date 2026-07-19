@@ -5,6 +5,7 @@
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
+#include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
@@ -32,53 +33,12 @@
 #include <utility>
 #include <vector>
 
+#include "obstacle_memory_node_helpers.hpp"
+
 namespace drone_city_nav {
 namespace {
 
 constexpr double kPassageMemoryDiagnosticMarginM{2.0};
-constexpr std::int64_t kNanosecondsPerSecond{1'000'000'000};
-
-[[nodiscard]] std::optional<std::int64_t>
-validRosStampNanoseconds(const builtin_interfaces::msg::Time& stamp) noexcept {
-  if (stamp.sec < 0 ||
-      stamp.nanosec >= static_cast<std::uint32_t>(kNanosecondsPerSecond) ||
-      (stamp.sec == 0 && stamp.nanosec == 0U)) {
-    return std::nullopt;
-  }
-  return static_cast<std::int64_t>(stamp.sec) * kNanosecondsPerSecond +
-         static_cast<std::int64_t>(stamp.nanosec);
-}
-
-[[nodiscard]] std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid,
-                                            const GridIndex cell) {
-  if (grid.isOccupied(cell)) {
-    return static_cast<std::int8_t>(100);
-  }
-  if (grid.state(cell) == CellState::kFree) {
-    return static_cast<std::int8_t>(0);
-  }
-  return static_cast<std::int8_t>(-1);
-}
-
-[[nodiscard]] const PassageStructure*
-passageStructureNearPoint(const std::optional<KnownPassageMap>& map,
-                          const Point2 point) noexcept {
-  if (!map.has_value()) {
-    return nullptr;
-  }
-  for (const PassageStructure& structure : map->structures) {
-    const double half_x = structure.size_x_m / 2.0;
-    const double half_y = structure.size_y_m / 2.0;
-    if (std::abs(point.x - structure.center.x) <=
-            half_x + kPassageMemoryDiagnosticMarginM &&
-        std::abs(point.y - structure.center.y) <=
-            half_y + kPassageMemoryDiagnosticMarginM) {
-      return &structure;
-    }
-  }
-  return nullptr;
-}
-
 } // namespace
 
 class ObstacleMemoryNode final : public rclcpp::Node {
@@ -367,6 +327,7 @@ public:
 
 private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
+    const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
     const auto sample =
         Px4LocalPositionSample{static_cast<double>(msg.x),
                                static_cast<double>(msg.y),
@@ -404,7 +365,13 @@ private:
       return;
     }
 
-    last_pose_update_ns_ = get_clock()->now().nanoseconds();
+    last_pose_update_ns_ = receive_stamp_ns;
+    lidar_pose_history_.addPosition(
+        receive_stamp_ns,
+        Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
+               current_pose_.altitude_m},
+        current_pose_.pose.yaw_rad,
+        current_pose_.yaw_valid && current_pose_.altitude_valid);
     if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
       current_velocity_ =
           Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -418,6 +385,7 @@ private:
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
     last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
+    lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q);
     const std::optional<std::int64_t> sample_stamp_ns =
         px4TimestampNanoseconds(msg.timestamp);
     attitude_sample_stamp_ns_ = sample_stamp_ns.value_or(0);
@@ -499,6 +467,14 @@ private:
     scan_view.timing.time_increment_s = static_cast<double>(scan.time_increment);
     scan_view.timing.receive_stamp_ns = now_ns;
     scan_view.timing.receive_stamp_valid = now_ns > 0;
+    const std::optional<std::vector<LidarProjectionPose>> aligned_beam_poses =
+        timestampAlignedLidarBeamPoses(
+            lidar_pose_history_, scan_view.timing, scan.ranges.size(),
+            use_px4_heading_for_scan_ ? std::nullopt
+                                      : std::optional<double>{initial_heading_rad_});
+    if (aligned_beam_poses.has_value()) {
+      scan_view.beam_projection_poses = *aligned_beam_poses;
+    }
     const ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
         known_static_lidar_classifier_.has_value() ? &*known_static_lidar_classifier_
@@ -548,9 +524,11 @@ private:
                 std::numeric_limits<double>::quiet_NaN()),
             known_candidate_range_m);
       }
-      const PassageStructure* structure = passageStructureNearPoint(
-          known_passage_map_, Point2{observation.projection.endpoint_map_m.x,
-                                     observation.projection.endpoint_map_m.y});
+      const PassageStructure* structure =
+          passageStructureNearPoint(known_passage_map_,
+                                    Point2{observation.projection.endpoint_map_m.x,
+                                           observation.projection.endpoint_map_m.y},
+                                    kPassageMemoryDiagnosticMarginM);
       if (structure == nullptr) {
         continue;
       }
@@ -582,7 +560,8 @@ private:
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
         "scan_pose=(%.2f, %.2f) pose_lag=%.3fs pose_latency=%.3fs "
         "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
-        "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu hits=%zu invalid=%zu "
+        "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu aligned=%zu "
+        "hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu newly_occupied=%zu "
         "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
@@ -596,10 +575,11 @@ private:
         motion_compensation.latency_s, motion_compensation.applied_shift.x,
         motion_compensation.applied_shift.y, motion_compensation.applied_shift_m,
         current_attitude_.roll_rad, current_attitude_.pitch_rad,
-        attitude_valid_ ? "true" : "false", stats.processed_beams, stats.hit_beams,
-        stats.invalid_ranges, stats.altitude_rejected_beams, stats.clipped_rays,
-        stats.outside_hit_endpoints, stats.free_cells_updated,
-        stats.occupied_cells_updated, stats.newly_occupied_cells,
+        attitude_valid_ ? "true" : "false", stats.processed_beams,
+        stats.timestamp_aligned_beams, stats.hit_beams, stats.invalid_ranges,
+        stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
+        stats.free_cells_updated, stats.occupied_cells_updated,
+        stats.newly_occupied_cells,
         stats.known_static_lidar.expected_static_hits_ignored,
         stats.known_static_lidar.unexpected_hits_kept,
         stats.known_static_lidar.ambiguous_hits_kept,
@@ -925,6 +905,7 @@ private:
   NavigationPose2D current_pose_{};
   AttitudeEuler current_attitude_{};
   Point2 current_velocity_{};
+  LidarPoseHistory lidar_pose_history_;
 
   std::string frame_id_{"map"};
   std::filesystem::path known_passages_resolved_path_;

@@ -63,6 +63,7 @@ add_library(
   src/lidar_beam_observation.cpp
   src/lidar_ingestion_decision.cpp
   src/lidar_memory_hit_diagnostics.cpp
+  src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
@@ -179,7 +180,8 @@ ament_target_dependencies(
   visualization_msgs)
 enable_project_warnings(planner_node)
 
-add_executable(obstacle_memory_node src/obstacle_memory_node.cpp)
+add_executable(obstacle_memory_node src/obstacle_memory_node.cpp
+                                    src/obstacle_memory_node_helpers.cpp)
 target_compile_features(obstacle_memory_node PRIVATE cxx_std_20)
 target_link_libraries(obstacle_memory_node drone_city_nav_core
                       drone_city_nav_ros_adapters ${cpp_typesupport_target})
@@ -345,6 +347,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_motion_compensation_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_motion_compensation_test drone_city_nav_core)
   enable_project_warnings(lidar_motion_compensation_test)
+
+  ament_add_gtest(lidar_pose_history_test tests/lidar_pose_history_test.cpp)
+  target_compile_features(lidar_pose_history_test PRIVATE cxx_std_20)
+  target_link_libraries(lidar_pose_history_test drone_city_nav_core)
+  enable_project_warnings(lidar_pose_history_test)
 
   ament_add_gtest(planning_grid_builder_test
                   tests/planning_grid_builder_test.cpp)

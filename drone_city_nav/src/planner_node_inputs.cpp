@@ -5,6 +5,7 @@
 namespace drone_city_nav {
 
 void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
+  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
     invalidateCurrentPose();
     current_velocity_ = Point2{};
@@ -41,7 +42,12 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
     current_velocity_valid_ = false;
   }
   pose_valid_ = true;
-  last_pose_update_ns_ = get_clock()->now().nanoseconds();
+  last_pose_update_ns_ = receive_stamp_ns;
+  lidar_pose_history_.addPosition(
+      receive_stamp_ns,
+      Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
+      use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
+      altitude_valid_ && (!use_px4_heading_for_scan_ || msg.heading_good_for_control));
 
   if (!local_position_seen_) {
     local_position_seen_ = true;
@@ -78,11 +84,33 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     last_scan_pose_latency_s_ = motion_compensation.latency_s;
     last_scan_motion_shift_ = motion_compensation.applied_shift;
     last_scan_motion_shift_m_ = motion_compensation.applied_shift_m;
+    const std::uint64_t scan_stamp = stampNanoseconds(msg.header.stamp);
+    const LaserScanTiming scan_timing{
+        .first_beam_stamp_ns =
+            scan_stamp <=
+                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())
+                ? static_cast<std::int64_t>(scan_stamp)
+                : 0,
+        .first_beam_stamp_valid =
+            scan_stamp > 0U &&
+            scan_stamp <=
+                static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()),
+        .time_increment_s = static_cast<double>(msg.time_increment),
+        .receive_stamp_ns = last_scan_update_ns_,
+        .receive_stamp_valid = last_scan_update_ns_ > 0,
+    };
+    const std::optional<std::vector<LidarProjectionPose>> aligned =
+        timestampAlignedLidarBeamPoses(
+            lidar_pose_history_, scan_timing, msg.ranges.size(),
+            use_px4_heading_for_scan_ ? std::nullopt
+                                      : std::optional<double>{initial_heading_rad_});
+    last_scan_projection_poses_ = aligned.value_or(std::vector<LidarProjectionPose>{});
   } else {
     last_scan_pose_lag_s_ = 0.0;
     last_scan_pose_latency_s_ = 0.0;
     last_scan_motion_shift_ = Point2{};
     last_scan_motion_shift_m_ = 0.0;
+    last_scan_projection_poses_.clear();
   }
   if (!scan_seen_logged_) {
     scan_seen_logged_ = true;
@@ -103,6 +131,8 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
 }
 
 void PlannerNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
+  const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+  lidar_pose_history_.addAttitude(receive_stamp_ns, msg.q);
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;
@@ -413,7 +443,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
       "path='%s'] "
       "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
       "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
-      "current_lidar[enabled=%s used=%s fresh=%s processed=%zu hits=%zu "
+      "current_lidar[enabled=%s used=%s fresh=%s processed=%zu aligned=%zu hits=%zu "
       "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
       "overlay_preserved=%zu outside=%zu "
       "known_static[ignored=%zu unexpected=%zu ambiguous=%zu "
@@ -473,6 +503,7 @@ void PlannerNode::checkCurrentPathAndPublish() {
       planning_result->current_lidar.used ? "true" : "false",
       planning_result->current_lidar.fresh ? "true" : "false",
       planning_result->current_lidar.processed_beams,
+      planning_result->current_lidar.timestamp_aligned_beams,
       planning_result->current_lidar.hit_beams,
       planning_result->current_lidar.altitude_rejected_beams,
       planning_result->current_lidar.occupied_cells,

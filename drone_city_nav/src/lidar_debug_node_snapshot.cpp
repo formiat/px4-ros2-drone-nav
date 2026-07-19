@@ -158,11 +158,14 @@ LidarDebugNode::rawLidarVisualizationProjectionConfig() const {
 [[nodiscard]] LidarBeamProjection
 LidarDebugNode::projectScanBeam(const std::size_t beam_index,
                                 const float raw_range) const {
-  return projectLidarBeam(lidarProjectionPose(), lidarProjectionConfig(),
-                          static_cast<double>(last_scan_.range_min), scanRangeMax(),
-                          static_cast<double>(last_scan_.angle_min),
-                          static_cast<double>(last_scan_.angle_increment), beam_index,
-                          raw_range);
+  const LidarProjectionPose& pose =
+      last_projected_beam_poses_.size() == last_scan_.ranges.size()
+          ? last_projected_beam_poses_[beam_index]
+          : lidarProjectionPose();
+  return projectLidarBeam(
+      pose, lidarProjectionConfig(), static_cast<double>(last_scan_.range_min),
+      scanRangeMax(), static_cast<double>(last_scan_.angle_min),
+      static_cast<double>(last_scan_.angle_increment), beam_index, raw_range);
 }
 
 [[nodiscard]] Point2
@@ -198,7 +201,7 @@ LidarDebugNode::collectScanRows(LidarSnapshotStats& stats) const {
     return points;
   }
   points.reserve(last_scan_.ranges.size());
-  const LidarProjectionPose pose = lidarProjectionPose();
+  const LidarProjectionPose fallback_pose = lidarProjectionPose();
   const LidarProjectionConfig config = rawLidarVisualizationProjectionConfig();
   const double range_min_m = static_cast<double>(last_scan_.range_min);
   const double range_max_m = static_cast<double>(last_scan_.range_max);
@@ -206,6 +209,10 @@ LidarDebugNode::collectScanRows(LidarSnapshotStats& stats) const {
   const double angle_increment_rad = static_cast<double>(last_scan_.angle_increment);
   for (std::size_t beam_index = 0U; beam_index < last_scan_.ranges.size();
        ++beam_index) {
+    const LidarProjectionPose& pose =
+        last_projected_beam_poses_.size() == last_scan_.ranges.size()
+            ? last_projected_beam_poses_[beam_index]
+            : fallback_pose;
     const LidarBeamProjection projection = projectLidarBeam(
         pose, config, range_min_m, range_max_m, angle_min_rad, angle_increment_rad,
         beam_index, last_scan_.ranges[beam_index]);

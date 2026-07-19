@@ -164,7 +164,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     return stats;
   }
 
-  const LidarProjectionPose projection_pose{
+  const LidarProjectionPose fallback_projection_pose{
       pose.position,  scan.origin_altitude_m, pose.yaw_rad,       scan.roll_rad,
       scan.pitch_rad, scan.altitude_valid,    scan.attitude_valid};
   const LidarProjectionConfig projection_config{
@@ -175,6 +175,8 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       scan.lidar_mount_pitch_rad,    scan.lidar_mount_yaw_rad};
 
   const auto stride = static_cast<std::size_t>(std::max(1, config.scan_stride));
+  const bool aligned_poses_available =
+      scan.beam_projection_poses.size() == scan.ranges.size();
   for (std::size_t i = 0U; i < scan.ranges.size(); i += stride) {
     const float raw_range = scan.ranges[i];
     if (!lidarRawRangeUsable(raw_range, scan.range_min_m)) {
@@ -182,6 +184,12 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       continue;
     }
 
+    const LidarProjectionPose& projection_pose = aligned_poses_available
+                                                     ? scan.beam_projection_poses[i]
+                                                     : fallback_projection_pose;
+    if (aligned_poses_available) {
+      ++stats.timestamp_aligned_beams;
+    }
     const LidarBeamProjection projection = projectLidarBeam(
         projection_pose, projection_config, scan.range_min_m, scan_range_max,
         scan.angle_min_rad, scan.angle_increment_rad, i, raw_range);
@@ -207,13 +215,13 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     }
 
     const auto clipped =
-        clipSegmentToGrid(raw_grid_, pose.position, projection.endpoint);
+        clipSegmentToGrid(raw_grid_, projection_pose.position, projection.endpoint);
     if (!clipped.has_value()) {
       ++stats.invalid_ranges;
       continue;
     }
 
-    const auto start_cell = raw_grid_.worldToCell(pose.position);
+    const auto start_cell = raw_grid_.worldToCell(projection_pose.position);
     const auto clipped_end_cell = raw_grid_.worldToCell(clipped->end);
     if (!start_cell.has_value() || !clipped_end_cell.has_value()) {
       ++stats.invalid_ranges;
