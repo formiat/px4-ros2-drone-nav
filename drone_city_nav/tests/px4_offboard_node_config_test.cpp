@@ -249,6 +249,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 10.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.candidate_lookahead_distance_m, 12.0);
+  EXPECT_DOUBLE_EQ(config.trajectory_handover.hard_window_exit_settle_distance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.sample_step_m, 0.5);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.max_join_distance_m, 15.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.max_sample_heading_delta_rad,

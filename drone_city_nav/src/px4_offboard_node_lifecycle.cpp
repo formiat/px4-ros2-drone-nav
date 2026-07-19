@@ -199,7 +199,8 @@ Px4OffboardNode::Px4OffboardNode()
   RCLCPP_INFO(
       get_logger(),
       "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "
-      "prefix_distance=[%.2f, %.2f]m candidate_lookahead=%.2fm sample_step=%.2fm "
+      "prefix_distance=[%.2f, %.2f]m candidate_lookahead=%.2fm "
+      "hard_window_settle=%.2fm sample_step=%.2fm "
       "max_join_distance=%.2fm max_heading_delta=%.1fdeg max_curvature=%.3f "
       "defer[min_speed=%.2fmps projection_jump=%.2fm tangent_jump=%.1fdeg "
       "command_jump=%.2fmps]",
@@ -209,6 +210,7 @@ Px4OffboardNode::Px4OffboardNode()
       trajectory_handover_config_.min_prefix_distance_m,
       trajectory_handover_config_.max_prefix_distance_m,
       trajectory_handover_config_.candidate_lookahead_distance_m,
+      trajectory_handover_config_.hard_window_exit_settle_distance_m,
       trajectory_handover_config_.sample_step_m,
       trajectory_handover_config_.max_join_distance_m,
       radiansToDegrees(trajectory_handover_config_.max_sample_heading_delta_rad),

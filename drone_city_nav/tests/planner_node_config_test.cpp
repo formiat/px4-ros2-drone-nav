@@ -55,7 +55,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    config.initial_altitude_m);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
-  EXPECT_EQ(config.async_trajectory_build_workers, 1U);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 3.0);
   EXPECT_TRUE(config.static_map.enabled);
@@ -233,7 +232,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
        rclcpp::Parameter{"astar_evasive_maneuvering_straight_cost_weight", 5000.0},
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", -2.0},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 5000.0},
-       rclcpp::Parameter{"async_trajectory_build_workers", 5000},
        rclcpp::Parameter{"lidar_pose_latency_s", 5.0},
        rclcpp::Parameter{"cruise_speed_mps", 5000.0},
        rclcpp::Parameter{"min_turn_speed_mps", 5000.0},
@@ -328,7 +326,6 @@ TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {
                    0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.dp_fine_radius_m,
                    0.05);
-  EXPECT_EQ(config.async_trajectory_build_workers, 1U);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_overlap_m, 0.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 1.0);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 1000.0);
@@ -585,15 +582,6 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);
-}
-
-TEST_F(PlannerNodeConfigTest, AllowsAsyncTrajectoryBuildDisableContract) {
-  const auto node = makeNode("planner_node_config_async_trajectory_build_disabled",
-                             {rclcpp::Parameter{"async_trajectory_build_workers", 0}});
-
-  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
-
-  EXPECT_EQ(config.async_trajectory_build_workers, 0U);
 }
 
 TEST_F(PlannerNodeConfigTest, CapsHugePlanningGridFromParameters) {

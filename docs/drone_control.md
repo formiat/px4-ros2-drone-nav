@@ -62,8 +62,10 @@ on the candidate trajectory. The stitched result is accepted only when:
   configured limits;
 - the complete stitched trajectory remains traversable on the fresh prohibited
   grid;
-- the join does not consume an active or immediately upcoming vertical hard
-  window.
+- an active hard-window prefix is copied unchanged through the window exit and
+  a configured settle distance;
+- the Hermite bridge starts only outside active or immediately upcoming hard
+  windows.
 
 If no safe bridge exists, a direction or command jump at speed is deferred
 instead of switching trajectories after a smoother reset. At low speed,

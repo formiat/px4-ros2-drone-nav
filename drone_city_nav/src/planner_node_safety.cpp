@@ -64,15 +64,14 @@ void PlannerNode::logPublishedPathSafety(const OccupancyGrid2D& grid,
               source_label, summary.segments);
 }
 
-[[nodiscard]] bool
-PlannerNode::connectRouteToCurrentPose(const OccupancyGrid2D& grid,
-                                       std::vector<Point2>& path_points,
-                                       const char* source_label) const {
+[[nodiscard]] bool PlannerNode::connectRouteToCurrentPose(
+    const OccupancyGrid2D& grid, std::vector<Point2>& path_points,
+    const char* source_label, const Point2 planning_start) const {
   if (path_points.empty()) {
     return false;
   }
 
-  const Point2 current_position = current_pose_.position;
+  const Point2 current_position = planning_start;
   const Point2 first_path_point = path_points.front();
   const double distance_to_first_m = distance(current_position, first_path_point);
   if (distance_to_first_m < 1.0e-6) {

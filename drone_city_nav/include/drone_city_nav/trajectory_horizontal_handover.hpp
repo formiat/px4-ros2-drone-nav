@@ -17,6 +17,7 @@ struct HorizontalTrajectoryHandoverConfig {
   double min_prefix_distance_m{3.0};
   double max_prefix_distance_m{10.0};
   double candidate_lookahead_distance_m{12.0};
+  double hard_window_exit_settle_distance_m{3.0};
   double sample_step_m{0.5};
   double max_join_distance_m{15.0};
   double trigger_projection_jump_m{3.0};
@@ -50,6 +51,7 @@ struct HorizontalTrajectoryHandoverResult {
   double max_sample_heading_delta_rad{0.0};
   double max_abs_curvature_1pm{0.0};
   std::size_t non_traversable_segment_index{0U};
+  bool hard_window_prefix_preserved{false};
 };
 
 [[nodiscard]] HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(

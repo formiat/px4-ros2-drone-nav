@@ -11,11 +11,24 @@ PlannerNode::PlannerNode()
         Pose2{config.initial_pose.position, config.initial_pose.heading_rad};
     pose_valid_ = true;
     last_pose_update_ns_ = get_clock()->now().nanoseconds();
+    live_navigation_state_.pose = current_pose_;
+    live_navigation_state_.pose_valid = true;
+    live_navigation_state_.stamp_ns = last_pose_update_ns_;
   }
 
   const auto sensor_qos = rclcpp::SensorDataQoS{};
+  pose_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  lidar_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  planner_control_callback_group_ =
+      create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   memory_snapshot_callback_group_ =
       create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions pose_options;
+  pose_options.callback_group = pose_callback_group_;
+  rclcpp::SubscriptionOptions lidar_options;
+  lidar_options.callback_group = lidar_callback_group_;
   rclcpp::SubscriptionOptions memory_snapshot_options;
   memory_snapshot_options.callback_group = memory_snapshot_callback_group_;
   memory_snapshot_sub_ = create_subscription<msg::ObstacleMemorySnapshot>(
@@ -27,22 +40,24 @@ PlannerNode::PlannerNode()
       memory_snapshot_options);
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
-      [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); });
+      [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); },
+      lidar_options);
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       config.topics.local_position, sensor_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
         onLocalPosition(*msg);
-      });
+      },
+      pose_options);
   attitude_sub_ = create_subscription<px4_msgs::msg::VehicleAttitude>(
       config.topics.attitude, sensor_qos,
-      [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
-        onAttitude(*msg);
-      });
+      [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) { onAttitude(*msg); },
+      pose_options);
   timesync_status_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
       config.topics.timesync_status, sensor_qos,
       [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
         onTimesyncStatus(*msg);
-      });
+      },
+      pose_options);
 
   prohibited_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       config.topics.prohibited_grid, rclcpp::QoS{1}.transient_local());
@@ -68,17 +83,19 @@ PlannerNode::PlannerNode()
   if (static_map_debug_publish_period_s_ > 0.0) {
     static_map_debug_timer_ = create_wall_timer(
         std::chrono::duration<double>{static_map_debug_publish_period_s_},
-        [this]() { republishStaticMapDebug(); });
+        [this]() { republishStaticMapDebug(); }, planner_control_callback_group_);
   }
   if (known_passage_debug_publish_period_s_ > 0.0) {
     known_passage_debug_timer_ = create_wall_timer(
         std::chrono::duration<double>{known_passage_debug_publish_period_s_},
-        [this]() { republishKnownPassageDebug(); });
+        [this]() { republishKnownPassageDebug(); }, planner_control_callback_group_);
   }
+  planning_worker_ = std::jthread(
+      [this](const std::stop_token stop_token) { planningWorkerLoop(stop_token); });
   timer_ = create_wall_timer(
       std::chrono::duration<double>{
           std::max(0.05, config.timing.path_prohibited_intersection_check_period_s)},
-      [this]() { checkCurrentPathAndPublish(); });
+      [this]() { checkCurrentPathAndPublish(); }, planner_control_callback_group_);
 
   RCLCPP_INFO(get_logger(),
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
@@ -316,13 +333,17 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
   astar_config_ = config.planner_core.astar;
   trajectory_planner_config_ = config.trajectory_planner;
-  async_trajectory_build_workers_ = config.async_trajectory_build_workers;
   initial_heading_rad_ = config.initial_pose.heading_rad;
   px4_local_origin_ = config.initial_pose.px4_local_origin;
   static_map_debug_publish_period_s_ = config.timing.static_map_debug_publish_period_s;
   known_passage_debug_publish_period_s_ =
       config.timing.known_passage_debug_publish_period_s;
   planner_core_.setConfig(config.planner_core);
+}
+
+PlannerNode::~PlannerNode() {
+  planning_worker_.request_stop();
+  planning_request_cv_.notify_all();
 }
 
 } // namespace drone_city_nav

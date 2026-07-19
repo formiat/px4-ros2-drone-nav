@@ -113,7 +113,6 @@ planner_node:
     initial_altitude_m: 18.0
     inflation_radius_m: 1.0
     planning_clearance_m: 3.0
-    async_trajectory_build_workers: 1
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100
     memory_free_value: 0
@@ -338,6 +337,7 @@ px4_offboard_node:
     trajectory_handover_min_prefix_distance_m: 3.0
     trajectory_handover_max_prefix_distance_m: 10.0
     trajectory_handover_candidate_lookahead_distance_m: 12.0
+    trajectory_handover_hard_window_exit_settle_distance_m: 3.0
     trajectory_handover_sample_step_m: 0.5
     trajectory_handover_max_join_distance_m: 15.0
     trajectory_handover_max_sample_heading_delta_deg: 20.0

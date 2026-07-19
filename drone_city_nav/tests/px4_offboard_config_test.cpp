@@ -53,7 +53,6 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("trajectory_optimizer_dp_fine_offset_step_m: 0.75"),
             std::string::npos);
   EXPECT_NE(yaml.find("trajectory_optimizer_dp_fine_radius_m: 1.5"), std::string::npos);
-  EXPECT_NE(yaml.find("async_trajectory_build_workers: 1"), std::string::npos);
   EXPECT_NE(yaml.find("turn_smoothing_trigger_heading_delta_deg: 37.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("turn_smoothing_trigger_min_radius_m: 16.0"), std::string::npos);
@@ -140,6 +139,8 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("vertical_trackability_min_speed_mps: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_handover_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("trajectory_handover_prefix_time_s: 0.6"), std::string::npos);
+  EXPECT_NE(yaml.find("trajectory_handover_hard_window_exit_settle_distance_m: 3.0"),
+            std::string::npos);
   EXPECT_NE(yaml.find("trajectory_handover_max_join_distance_m: 15.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("trajectory_continuity_defer_tangent_jump_deg: 30.0"),

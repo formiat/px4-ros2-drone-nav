@@ -387,14 +387,9 @@ Active windows and DP:
 - `trajectory_optimizer_window_*`
 - `trajectory_optimizer_dp_*`
 
-Executable trajectory scheduling:
-
-- `async_trajectory_build_workers`
-
-Default is `1`. The planner builds one final optimized trajectory on a
-background worker while the previously accepted trajectory remains active.
-The value is capped at one worker to avoid concurrent stale builds. Set it to
-`0` only when synchronous construction is required for diagnosis.
+Executable trajectory scheduling uses one dedicated latest-wins planning
+worker. It is not configurable because synchronous planning would block pose
+and lidar callbacks and invalidate the trajectory acceptance prediction.
 
 ## Turn Smoothing Parameters
 
@@ -454,6 +449,7 @@ configuration drift.
 - `trajectory_handover_min_prefix_distance_m`
 - `trajectory_handover_max_prefix_distance_m`
 - `trajectory_handover_candidate_lookahead_distance_m`
+- `trajectory_handover_hard_window_exit_settle_distance_m`
 - `trajectory_handover_sample_step_m`
 - `trajectory_handover_max_join_distance_m`
 - `trajectory_handover_max_sample_heading_delta_deg`

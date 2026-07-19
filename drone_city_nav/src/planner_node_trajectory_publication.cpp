@@ -1,9 +1,12 @@
+#include "drone_city_nav/trajectory_horizontal_handover.hpp"
+
 #include <algorithm>
 #include <exception>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "planner_node.hpp"
@@ -90,11 +93,10 @@ TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude()
 }
 
 bool PlannerNode::publishPathFromPathCells(
-    const OccupancyGrid2D& route_grid, const OccupancyGrid2D& runtime_grid,
-    const std::vector<GridIndex>& raw_cells,
+    const OccupancyGrid2D& route_grid, const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
     const ClearanceField2D* route_clearance_field,
-    const bool route_clearance_field_cache_hit) {
+    const bool route_clearance_field_cache_hit, const Point2 planning_start) {
   TrajectoryDeliveryDiagnostics delivery =
       pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
   pending_replan_delivery_.reset();
@@ -116,7 +118,8 @@ bool PlannerNode::publishPathFromPathCells(
     }
 
     std::vector<Point2> path_points = cellsToPoints(route_grid, cells);
-    if (!connectRouteToCurrentPose(route_grid, path_points, source_label)) {
+    if (!connectRouteToCurrentPose(route_grid, path_points, source_label,
+                                   planning_start)) {
       return std::nullopt;
     }
 
@@ -215,9 +218,11 @@ bool PlannerNode::publishPathFromPathCells(
       build_started_stamp_ns > 0 ? static_cast<std::uint64_t>(build_started_stamp_ns)
                                  : 0U;
   delivery.candidate_start_position = route_points.front();
-  delivery.planning_start_position = current_pose_.position;
+  delivery.planning_start_position = planning_start;
   delivery.planning_start_velocity = current_velocity_;
   delivery.planning_start_velocity_valid = current_velocity_valid_;
+  delivery.predicted_publication_position = planning_start;
+  delivery.predicted_publication_position_valid = finite2D(planning_start);
   if (delivery.replan_triggered && delivery.blocker_detected_stamp_ns > 0U &&
       delivery.trajectory_build_started_stamp_ns >=
           delivery.blocker_detected_stamp_ns) {
@@ -241,13 +246,6 @@ bool PlannerNode::publishPathFromPathCells(
               delivery.planning_start_velocity_valid ? "true" : "false");
   const TrajectoryPlannerConfig trajectory_config =
       trajectoryPlannerConfigForCurrentAltitude();
-  if (async_trajectory_build_workers_ > 0U) {
-    startAsyncExecutableTrajectoryBuild(
-        route_grid, route_points, generation, source_label, route_clearance_field,
-        route_clearance_field_cache_hit, trajectory_config, delivery);
-    return pending_trajectory_build_.has_value();
-  }
-
   const auto started_at = std::chrono::steady_clock::now();
   const TrajectoryPlannerInput trajectory_input{
       std::span<const Point2>{route_points.data(), route_points.size()},
@@ -264,8 +262,10 @@ bool PlannerNode::publishPathFromPathCells(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
-  return publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
-                                 source_label, duration_ms, delivery);
+  const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
+  applyNavigationStateSnapshot(fresh_navigation);
+  return publishTrajectoryResult(trajectory_result, route_points, source_label,
+                                 duration_ms, delivery);
 }
 
 bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
@@ -284,11 +284,82 @@ bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
 }
 
 bool PlannerNode::publishTrajectoryResult(
-    const OccupancyGrid2D& validation_grid,
     const TrajectoryPlannerResult& trajectory_result,
     const std::span<const Point2> route_points, const char* source_label,
     const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
     std::uint64_t* published_path_id) {
+  const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
+  const std::int64_t now_ns = get_clock()->now().nanoseconds();
+  if (!fresh_navigation.pose_valid ||
+      !timestampIsFresh(fresh_navigation.stamp_ns, now_ns, max_pose_staleness_ns_)) {
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory candidate discarded before publication: "
+                "reason=fresh_pose_unavailable generation=%" PRIu64,
+                source_label, delivery.generation);
+    requestPlanningCycle();
+    return false;
+  }
+  applyNavigationStateSnapshot(fresh_navigation);
+  applyPendingMemorySnapshot(now_ns);
+  applyLatestLidarInputSnapshot();
+  std::optional<PlanningGridBuildResult> latest_planning_result =
+      buildPlanningGrid(now_ns);
+  if (!latest_planning_result.has_value() ||
+      !latest_planning_result->grid.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory candidate discarded before publication: "
+                "reason=latest_validation_grid_unavailable generation=%" PRIu64,
+                source_label, delivery.generation);
+    requestPlanningCycle();
+    return false;
+  }
+  const OccupancyGrid2D& latest_validation_grid = *latest_planning_result->grid;
+  publishProhibitedGrid(latest_validation_grid);
+
+  if (trajectory_result.valid &&
+      trajectorySamplesAreUsable(last_valid_trajectory_samples_) &&
+      trajectorySamplesAreUsable(trajectory_result.samples)) {
+    const std::optional<TrajectoryProjection> candidate_projection =
+        projectOnTrajectorySamples(trajectory_result.samples,
+                                   fresh_navigation.pose.position);
+    const double candidate_cross_track_m =
+        candidate_projection.has_value() ? std::sqrt(candidate_projection->distance_sq)
+                                         : std::numeric_limits<double>::infinity();
+    if (!(candidate_cross_track_m <= stable_path_goal_tolerance_m_)) {
+      const HorizontalTrajectoryHandoverResult preflight =
+          buildHorizontalTrajectoryHandover(
+              last_valid_trajectory_samples_, trajectory_result.samples,
+              HorizontalTrajectoryHandoverState{
+                  .current_position = fresh_navigation.pose.position,
+                  .current_horizontal_speed_mps = fresh_navigation.speed_mps,
+                  .current_position_valid = true,
+                  .current_horizontal_speed_valid = fresh_navigation.velocity_valid,
+              },
+              HorizontalTrajectoryHandoverConfig{}, &latest_validation_grid);
+      if (!preflight.applied &&
+          std::string_view{preflight.reason} != "already_compatible") {
+        RCLCPP_WARN(get_logger(),
+                    "%s trajectory candidate discarded before publication: "
+                    "reason=handover_not_executable generation=%" PRIu64
+                    " candidate_cross_track_m=%.2f handover_reason=%s "
+                    "actual=(%.2f, %.2f) candidate_start=(%.2f, %.2f)",
+                    source_label, delivery.generation, candidate_cross_track_m,
+                    preflight.reason, fresh_navigation.pose.position.x,
+                    fresh_navigation.pose.position.y,
+                    trajectory_result.samples.front().point.x,
+                    trajectory_result.samples.front().point.y);
+        requestPlanningCycle();
+        return false;
+      }
+      RCLCPP_INFO(get_logger(),
+                  "%s trajectory candidate pre-publication handover accepted: "
+                  "generation=%" PRIu64 " candidate_cross_track_m=%.2f "
+                  "handover_reason=%s old_join_s=%.2f candidate_join_s=%.2f",
+                  source_label, delivery.generation, candidate_cross_track_m,
+                  preflight.reason, preflight.old_join_s_m,
+                  preflight.candidate_join_s_m);
+    }
+  }
   writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
   writeTrajectoryCandidateDumps(trajectory_result, source_label, next_path_id_);
   TrajectoryPlannerStats stats = trajectory_result.stats;
@@ -335,7 +406,7 @@ bool PlannerNode::publishTrajectoryResult(
   std::vector<Point2> trajectory_points =
       trajectorySamplePoints(trajectory_result.samples);
   if (trajectory_points.size() < 2U ||
-      !pathIsTraversable(validation_grid, trajectory_points)) {
+      !pathIsTraversable(latest_validation_grid, trajectory_points)) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory build produced a non-traversable runtime trajectory; "
                 "holding instead of publishing rough A* route: route_points=%zu "
@@ -777,7 +848,7 @@ bool PlannerNode::publishTrajectoryResult(
 
   last_valid_path_points_ = trajectory_points;
   last_valid_trajectory_samples_ = trajectory_result.samples;
-  logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");
+  logPublishedPathSafety(latest_validation_grid, trajectory_points, "final_trajectory");
   const std::uint64_t path_id =
       publishTrajectoryPath(trajectory_result.samples,
                             PathPublicationReason::kComputedPath, &stats, delivery);

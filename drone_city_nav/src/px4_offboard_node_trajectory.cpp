@@ -602,8 +602,6 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
         evaluateReceivedTrajectoryContinuity(candidate_state);
     if (raw_continuity.preserve_horizontal_smoother_state) {
       horizontal_handover.reason = "continuity_already_compatible";
-    } else if (raw_continuity.vertical_hard_window_unsafe) {
-      horizontal_handover.reason = "vertical_hard_window_unsafe";
     } else {
       std::optional<OccupancyGrid2D> handover_grid;
       if (prohibitedGridFresh()) {

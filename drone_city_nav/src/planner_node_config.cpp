@@ -30,11 +30,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("inflation_radius_m", 1.0), 0.0, 1000.0);
   config.planning_clearance_m = std::clamp(
       node.declare_parameter<double>("planning_clearance_m", 3.0), 0.0, 1000.0);
-  config.async_trajectory_build_workers =
-      static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>("async_trajectory_build_workers", 1), 0,
-          1));
-
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(

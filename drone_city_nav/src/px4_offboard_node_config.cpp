@@ -56,6 +56,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                                    10.0, 0.0, 200.0));
   config.trajectory_handover.candidate_lookahead_distance_m = boundedFiniteDouble(
       config.trajectory_handover.candidate_lookahead_distance_m, 12.0, 0.1, 200.0);
+  config.trajectory_handover.hard_window_exit_settle_distance_m = boundedFiniteDouble(
+      config.trajectory_handover.hard_window_exit_settle_distance_m, 3.0, 0.0, 100.0);
   config.trajectory_handover.sample_step_m =
       boundedFiniteDouble(config.trajectory_handover.sample_step_m, 0.5, 0.1, 10.0);
   config.trajectory_handover.max_join_distance_m = boundedFiniteDouble(
@@ -384,6 +386,10 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<double>(
           "trajectory_handover_candidate_lookahead_distance_m",
           config.trajectory_handover.candidate_lookahead_distance_m);
+  config.trajectory_handover.hard_window_exit_settle_distance_m =
+      node.declare_parameter<double>(
+          "trajectory_handover_hard_window_exit_settle_distance_m",
+          config.trajectory_handover.hard_window_exit_settle_distance_m);
   config.trajectory_handover.sample_step_m = node.declare_parameter<double>(
       "trajectory_handover_sample_step_m", config.trajectory_handover.sample_step_m);
   config.trajectory_handover.max_join_distance_m =

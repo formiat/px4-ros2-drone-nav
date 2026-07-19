@@ -46,10 +46,10 @@
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <iomanip>
 #include <limits>
 #include <mutex>
@@ -58,6 +58,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -102,17 +103,35 @@ trajectorySamplePoints(const std::span<const TrajectoryPointSample> samples) {
 class PlannerNode final : public rclcpp::Node {
 public:
   PlannerNode();
+  ~PlannerNode() override;
 
 private:
-  struct PendingExecutableTrajectoryBuild {
-    std::uint64_t generation{0U};
-    Point2 route_start{};
-    Point2 goal{};
-    std::vector<Point2> route_points;
-    std::string source_label;
-    std::chrono::steady_clock::time_point started_at;
-    TrajectoryDeliveryDiagnostics delivery{};
-    std::future<TrajectoryPlannerResult> future;
+  struct NavigationStateSnapshot {
+    Pose2 pose{};
+    Point2 velocity{};
+    AttitudeEuler attitude{};
+    double altitude_m{std::numeric_limits<double>::quiet_NaN()};
+    double speed_mps{std::numeric_limits<double>::quiet_NaN()};
+    std::int64_t stamp_ns{0};
+    bool pose_valid{false};
+    bool altitude_valid{false};
+    bool velocity_valid{false};
+    bool attitude_valid{false};
+  };
+
+  struct LidarInputSnapshot {
+    sensor_msgs::msg::LaserScan scan;
+    LidarProjectionPose projection_pose{};
+    std::vector<LidarProjectionPose> beam_projection_poses;
+    LidarProjectionPoseSource projection_pose_source{
+        LidarProjectionPoseSource::kCallbackPoseFallback};
+    Point2 motion_shift{};
+    double pose_lag_s{0.0};
+    double pose_latency_s{0.0};
+    double motion_shift_m{0.0};
+    std::int64_t update_ns{0};
+    bool seen{false};
+    bool projection_pose_valid{false};
   };
 
   struct PendingMemorySnapshot {
@@ -154,6 +173,21 @@ private:
 
   void checkCurrentPathAndPublish();
 
+  void runPlanningCycle(std::uint64_t request_generation);
+
+  void planningWorkerLoop(std::stop_token stop_token);
+
+  void requestPlanningCycle();
+
+  [[nodiscard]] NavigationStateSnapshot navigationStateSnapshot() const;
+
+  void applyNavigationStateSnapshot(const NavigationStateSnapshot& snapshot);
+
+  void applyLatestLidarInputSnapshot();
+
+  [[nodiscard]] Point2 predictedPlanningStart(const NavigationStateSnapshot& navigation,
+                                              double horizon_s) const;
+
   [[nodiscard]] AStarConfig astarConfigForCurrentVelocity() const;
 
   [[nodiscard]] static bool
@@ -164,18 +198,17 @@ private:
 
   [[nodiscard]] std::optional<PathComputationResult>
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
-                    const AStarConfig& astar_config);
+                    const AStarConfig& astar_config, Point2 planning_start);
 
   bool publishPathFromPathCells(const OccupancyGrid2D& route_grid,
-                                const OccupancyGrid2D& runtime_grid,
                                 const std::vector<GridIndex>& raw_cells,
                                 const std::vector<GridIndex>& smoothed_cells,
                                 const char* source_label,
                                 const ClearanceField2D* route_clearance_field,
-                                bool route_clearance_field_cache_hit);
+                                bool route_clearance_field_cache_hit,
+                                Point2 planning_start);
 
-  bool publishTrajectoryResult(const OccupancyGrid2D& validation_grid,
-                               const TrajectoryPlannerResult& trajectory_result,
+  bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
                                const char* source_label, double duration_ms,
                                TrajectoryDeliveryDiagnostics delivery,
@@ -184,16 +217,6 @@ private:
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
                                          const char* invalid_reason) const;
-
-  void startAsyncExecutableTrajectoryBuild(
-      const OccupancyGrid2D& grid, std::span<const Point2> route_points,
-      std::uint64_t generation, const char* source_label,
-      const ClearanceField2D* prohibited_clearance_field,
-      bool prohibited_clearance_field_cache_hit, const TrajectoryPlannerConfig& config,
-      TrajectoryDeliveryDiagnostics delivery);
-
-  [[nodiscard]] bool
-  pollPendingExecutableTrajectoryBuild(const OccupancyGrid2D& validation_grid);
 
   [[nodiscard]] PublishedPathSafetySummary
   summarizePublishedPathSafety(const OccupancyGrid2D& grid,
@@ -205,7 +228,8 @@ private:
 
   [[nodiscard]] bool connectRouteToCurrentPose(const OccupancyGrid2D& grid,
                                                std::vector<Point2>& path_points,
-                                               const char* source_label) const;
+                                               const char* source_label,
+                                               Point2 planning_start) const;
 
   void logRejectedUnsafeRoute(const OccupancyGrid2D& grid,
                               const std::span<const Point2> path_points,
@@ -445,13 +469,25 @@ private:
   std::vector<Point2> last_valid_path_points_;
   std::vector<LidarProjectionPose> last_scan_projection_poses_;
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
-  std::optional<PendingExecutableTrajectoryBuild> pending_trajectory_build_;
   std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
-  std::size_t async_trajectory_build_workers_{1U};
+  double planning_duration_estimate_s_{1.0};
 
   mutable std::mutex memory_snapshot_mutex_;
+  mutable std::mutex navigation_state_mutex_;
+  mutable std::mutex lidar_input_mutex_;
+  mutable std::mutex lidar_pose_history_mutex_;
+  mutable std::mutex planning_request_mutex_;
+  std::condition_variable_any planning_request_cv_;
+  NavigationStateSnapshot live_navigation_state_{};
+  LidarInputSnapshot live_lidar_input_;
+  std::jthread planning_worker_;
+  std::uint64_t latest_planning_request_generation_{0U};
+  bool planning_request_pending_{false};
 
+  rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr planner_control_callback_group_;
   rclcpp::CallbackGroup::SharedPtr memory_snapshot_callback_group_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;

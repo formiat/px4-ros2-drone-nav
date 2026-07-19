@@ -172,11 +172,12 @@ Each boundary has a different failure policy:
 - PX4 terminal position capture is preserved as the final precision mode at
   the goal.
 
-The planner snapshots the route, grid, clearance field, passage map, and config,
-then builds the complete optimized executable trajectory on one background
-worker. It does not publish a rough baseline. The previously accepted
-trajectory remains active until the worker result passes generation, endpoint,
-and latest-grid validation.
+The planner's pose, lidar, planner-control, and memory callbacks use separate
+callback groups. A dedicated worker snapshots those inputs and builds the grid,
+A* route, smoothed route, and complete optimized executable trajectory. It does
+not publish a rough baseline. The previously accepted trajectory remains active
+until the worker result passes fresh-pose, latest-grid, and handover preflight
+validation.
 
 Offboard then owns runtime handover. Compatible updates preserve smoother
 history. Incompatible updates first attempt a grid-validated predicted-prefix

@@ -114,16 +114,18 @@ The runtime publishes only a complete optimized executable trajectory. It does
 not publish a corridor-derived baseline and replace it with a refined path
 later.
 
-By default, `async_trajectory_build_workers` is `1`. The planner snapshots the
-route, prohibited grid, clearance field, known passages, and trajectory config,
-then builds the optimized trajectory on one background worker. The currently
-accepted trajectory remains active until the new result is complete. Before
-publication, the result is checked against the current trajectory generation,
-expected route endpoints, and latest prohibited grid.
+The planner uses one dedicated latest-wins worker for the complete planning
+transaction: grid construction, current-path inspection, A*, smoothing,
+corridor construction, passage insertion, vertical profile, and speed profile.
+ROS callbacks only update short immutable pose, lidar, and memory snapshots or
+enqueue a worker request. The currently accepted trajectory remains active
+until the new result is complete.
 
-Setting `async_trajectory_build_workers` to `0` is a synchronous fallback. It
-changes scheduling only: the same optimized executable trajectory is built and
-published, with no intermediate baseline in either mode.
+The worker starts A* at a predicted acceptance station on the currently
+executed trajectory. Before publication, it reads a fresh pose and requires the
+candidate to be directly compatible or handover-compatible with the active
+trajectory on the latest validation grid. A stale, unjoinable candidate is
+discarded and replaced by a fresh worker request.
 
 ## Timing
 

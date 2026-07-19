@@ -77,8 +77,6 @@ struct PlannerNodeConfig {
   double initial_altitude_m{12.0};
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
-  std::size_t async_trajectory_build_workers{1U};
-
   PlannerCoreConfig planner_core{};
   TrajectoryPlannerConfig trajectory_planner{};
   PlanningGridBuilderConfig planning_grid_builder{};

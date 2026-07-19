@@ -1,119 +1,127 @@
-#include <exception>
-#include <string>
-#include <utility>
+#include <algorithm>
+#include <cmath>
 
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
+namespace {
 
-void PlannerNode::startAsyncExecutableTrajectoryBuild(
-    const OccupancyGrid2D& grid, const std::span<const Point2> route_points,
-    const std::uint64_t generation, const char* source_label,
-    const ClearanceField2D* prohibited_clearance_field,
-    const bool prohibited_clearance_field_cache_hit,
-    const TrajectoryPlannerConfig& config, TrajectoryDeliveryDiagnostics delivery) {
-  if (async_trajectory_build_workers_ == 0U || route_points.size() < 2U ||
-      pending_trajectory_build_.has_value()) {
-    return;
+constexpr double kMinimumPredictionHorizonS = 0.20;
+constexpr double kMaximumPredictionHorizonS = 2.50;
+
+[[nodiscard]] Point2
+interpolateTrajectoryPoint(const std::span<const TrajectoryPointSample> samples,
+                           const double station_m) {
+  if (!trajectorySamplesAreUsable(samples)) {
+    return {};
   }
-
-  std::vector<Point2> route_snapshot{route_points.begin(), route_points.end()};
-  std::optional<ClearanceField2D> clearance_snapshot =
-      prohibited_clearance_field != nullptr
-          ? std::optional<ClearanceField2D>{*prohibited_clearance_field}
-          : std::nullopt;
-  std::optional<KnownPassageMap> known_passage_snapshot = known_passages_;
-  std::future<TrajectoryPlannerResult> future = std::async(
-      std::launch::async,
-      [grid_snapshot = grid, route = route_snapshot,
-       clearance = std::move(clearance_snapshot),
-       clearance_cache_hit = prohibited_clearance_field_cache_hit,
-       known_passages = std::move(known_passage_snapshot), config]() mutable {
-        const ClearanceField2D* clearance_ptr =
-            clearance.has_value() ? &*clearance : nullptr;
-        TrajectoryPlannerResult result = planOptimizedTrajectoryFromSnapshots(
-            route, grid_snapshot, clearance_ptr, clearance_cache_hit, {}, nullptr,
-            known_passages.has_value() ? &*known_passages : nullptr, config);
-        result.stats.quality = TrajectoryQuality::kRefined;
-        result.stats.trajectory_optimizer.async_refined = true;
-        return result;
-      });
-
-  pending_trajectory_build_ = PendingExecutableTrajectoryBuild{
-      .generation = generation,
-      .route_start = route_snapshot.front(),
-      .goal = route_snapshot.back(),
-      .route_points = std::move(route_snapshot),
-      .source_label = source_label,
-      .started_at = std::chrono::steady_clock::now(),
-      .delivery = delivery,
-      .future = std::move(future),
-  };
-  RCLCPP_INFO(get_logger(),
-              "%s executable trajectory async build started: generation=%" PRIu64
-              " route_points=%zu clearance_snapshot=%s",
-              source_label, generation, pending_trajectory_build_->route_points.size(),
-              prohibited_clearance_field != nullptr ? "true" : "false");
+  const double bounded_station_m = std::clamp(station_m, 0.0, samples.back().s_m);
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const TrajectoryPointSample& start = samples[index];
+    const TrajectoryPointSample& end = samples[index + 1U];
+    if (bounded_station_m > end.s_m && index + 2U < samples.size()) {
+      continue;
+    }
+    const double length_m = end.s_m - start.s_m;
+    const double ratio =
+        length_m > 1.0e-6
+            ? std::clamp((bounded_station_m - start.s_m) / length_m, 0.0, 1.0)
+            : 0.0;
+    return Point2{start.point.x * (1.0 - ratio) + end.point.x * ratio,
+                  start.point.y * (1.0 - ratio) + end.point.y * ratio};
+  }
+  return samples.back().point;
 }
 
-bool PlannerNode::pollPendingExecutableTrajectoryBuild(
-    const OccupancyGrid2D& validation_grid) {
-  if (!pending_trajectory_build_.has_value() ||
-      !pending_trajectory_build_->future.valid() ||
-      pending_trajectory_build_->future.wait_for(std::chrono::seconds{0}) !=
-          std::future_status::ready) {
-    return false;
-  }
+} // namespace
 
-  PendingExecutableTrajectoryBuild pending = std::move(*pending_trajectory_build_);
-  pending_trajectory_build_.reset();
-  TrajectoryPlannerResult result{};
-  try {
-    result = pending.future.get();
-  } catch (const std::exception& error) {
-    RCLCPP_WARN(get_logger(),
-                "%s executable trajectory async build failed: generation=%" PRIu64
-                " error='%s'",
-                pending.source_label.c_str(), pending.generation, error.what());
-    return false;
+void PlannerNode::requestPlanningCycle() {
+  {
+    const std::scoped_lock lock{planning_request_mutex_};
+    ++latest_planning_request_generation_;
+    planning_request_pending_ = true;
   }
+  planning_request_cv_.notify_one();
+}
 
-  const double wall_duration_ms = elapsedMilliseconds(pending.started_at);
-  const std::vector<Point2> result_points = trajectorySamplePoints(result.samples);
-  const TrajectoryRefinementDecision decision =
-      evaluateTrajectoryRefinement(TrajectoryRefinementDecisionInput{
-          .current_generation = trajectory_generation_,
-          .snapshot_generation = pending.generation,
-          .expected_start = pending.route_start,
-          .expected_goal = pending.goal,
-          .endpoint_tolerance_m = stable_path_goal_tolerance_m_,
-          .refined = &result,
-          .refined_points = result_points,
-          .validation_grid = &validation_grid,
-      });
-  if (!decision.accepted) {
-    RCLCPP_WARN(get_logger(),
-                "%s executable trajectory async build rejected: reason=%.*s "
-                "generation=%" PRIu64 " current_generation=%" PRIu64
-                " route_points=%zu result_points=%zu wall_duration_ms=%.1f",
-                pending.source_label.c_str(),
-                static_cast<int>(refinementDecisionReasonName(decision.reason).size()),
-                refinementDecisionReasonName(decision.reason).data(),
-                pending.generation, trajectory_generation_, pending.route_points.size(),
-                result_points.size(), wall_duration_ms);
-    return false;
+void PlannerNode::planningWorkerLoop(const std::stop_token stop_token) {
+  while (!stop_token.stop_requested()) {
+    std::uint64_t generation = 0U;
+    {
+      std::unique_lock lock{planning_request_mutex_};
+      planning_request_cv_.wait(lock, stop_token,
+                                [this]() { return planning_request_pending_; });
+      if (stop_token.stop_requested()) {
+        return;
+      }
+      generation = latest_planning_request_generation_;
+      planning_request_pending_ = false;
+    }
+
+    runPlanningCycle(generation);
   }
+}
 
-  RCLCPP_INFO(get_logger(),
-              "%s executable trajectory async build accepted: generation=%" PRIu64
-              " route_points=%zu result_points=%zu wall_duration_ms=%.1f "
-              "planner_duration_ms=%.1f",
-              pending.source_label.c_str(), pending.generation,
-              pending.route_points.size(), result_points.size(), wall_duration_ms,
-              result.stats.total_duration_ms);
-  return publishTrajectoryResult(validation_grid, result, pending.route_points,
-                                 pending.source_label.c_str(), wall_duration_ms,
-                                 pending.delivery);
+PlannerNode::NavigationStateSnapshot PlannerNode::navigationStateSnapshot() const {
+  const std::scoped_lock lock{navigation_state_mutex_};
+  return live_navigation_state_;
+}
+
+void PlannerNode::applyNavigationStateSnapshot(
+    const NavigationStateSnapshot& snapshot) {
+  current_pose_ = snapshot.pose;
+  current_velocity_ = snapshot.velocity;
+  current_attitude_ = snapshot.attitude;
+  current_altitude_m_ = snapshot.altitude_m;
+  current_speed_mps_ = snapshot.speed_mps;
+  last_pose_update_ns_ = snapshot.stamp_ns;
+  pose_valid_ = snapshot.pose_valid;
+  altitude_valid_ = snapshot.altitude_valid;
+  current_velocity_valid_ = snapshot.velocity_valid;
+  attitude_valid_ = snapshot.attitude_valid;
+}
+
+void PlannerNode::applyLatestLidarInputSnapshot() {
+  const std::scoped_lock lock{lidar_input_mutex_};
+  last_scan_ = live_lidar_input_.scan;
+  last_scan_projection_pose_ = live_lidar_input_.projection_pose;
+  last_scan_projection_poses_ = live_lidar_input_.beam_projection_poses;
+  last_scan_projection_pose_source_ = live_lidar_input_.projection_pose_source;
+  last_scan_motion_shift_ = live_lidar_input_.motion_shift;
+  last_scan_pose_lag_s_ = live_lidar_input_.pose_lag_s;
+  last_scan_pose_latency_s_ = live_lidar_input_.pose_latency_s;
+  last_scan_motion_shift_m_ = live_lidar_input_.motion_shift_m;
+  last_scan_update_ns_ = live_lidar_input_.update_ns;
+  scan_seen_ = live_lidar_input_.seen;
+  last_scan_projection_pose_valid_ = live_lidar_input_.projection_pose_valid;
+}
+
+Point2 PlannerNode::predictedPlanningStart(const NavigationStateSnapshot& navigation,
+                                           const double horizon_s) const {
+  if (!navigation.pose_valid || !finite2D(navigation.pose.position)) {
+    return navigation.pose.position;
+  }
+  const double bounded_horizon_s =
+      std::clamp(horizon_s, kMinimumPredictionHorizonS, kMaximumPredictionHorizonS);
+  if (trajectorySamplesAreUsable(last_valid_trajectory_samples_)) {
+    const std::optional<TrajectoryProjection> projection = projectOnTrajectorySamples(
+        last_valid_trajectory_samples_, navigation.pose.position);
+    if (projection.has_value()) {
+      const double speed_mps =
+          navigation.velocity_valid && std::isfinite(navigation.speed_mps)
+              ? std::max(0.0, navigation.speed_mps)
+              : 0.0;
+      return interpolateTrajectoryPoint(last_valid_trajectory_samples_,
+                                        projection->s_m +
+                                            speed_mps * bounded_horizon_s);
+    }
+  }
+  if (navigation.velocity_valid) {
+    return Point2{
+        navigation.pose.position.x + navigation.velocity.x * bounded_horizon_s,
+        navigation.pose.position.y + navigation.velocity.y * bounded_horizon_s};
+  }
+  return navigation.pose.position;
 }
 
 } // namespace drone_city_nav

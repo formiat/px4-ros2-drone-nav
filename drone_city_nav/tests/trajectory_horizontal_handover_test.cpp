@@ -175,4 +175,61 @@ TEST(TrajectoryHorizontalHandover, PreservesUpcomingHardWindowMetadata) {
   EXPECT_TRUE(std::isfinite(result.candidate_station_offset_m));
 }
 
+TEST(TrajectoryHorizontalHandover, PreservesActiveHardWindowBeforeBridge) {
+  std::vector<TrajectoryPointSample> current =
+      lineSamples(Point2{0.0, 0.0}, Point2{80.0, 0.0}, 8.0);
+  std::vector<TrajectoryPointSample> candidate =
+      lineSamples(Point2{0.0, 4.0}, Point2{80.0, 4.0}, 8.0);
+  for (std::vector<TrajectoryPointSample>* samples : {&current, &candidate}) {
+    for (TrajectoryPointSample& sample : *samples) {
+      if (sample.s_m >= 8.0 && sample.s_m <= 25.0) {
+        sample.vertical_hard_window_active = true;
+        sample.vertical_safe_min_z_m = 7.0;
+        sample.vertical_safe_max_z_m = 9.0;
+        sample.vertical_gate_z_m = 8.0;
+        sample.vertical_profile_passage_id = "opening";
+      }
+    }
+  }
+  const OccupancyGrid2D grid = freeGrid();
+
+  const HorizontalTrajectoryHandoverResult result =
+      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+
+  ASSERT_TRUE(result.applied) << result.reason;
+  EXPECT_TRUE(result.hard_window_prefix_preserved);
+  EXPECT_GE(result.old_join_s_m, 28.0);
+  EXPECT_GE(result.candidate_join_s_m, 28.0);
+  EXPECT_TRUE(std::ranges::any_of(result.samples, [](const auto& sample) {
+    return sample.vertical_hard_window_active &&
+           sample.vertical_profile_passage_id == "opening";
+  }));
+}
+
+TEST(TrajectoryHorizontalHandover, RejectsDifferentActiveHardWindows) {
+  std::vector<TrajectoryPointSample> current =
+      lineSamples(Point2{0.0, 0.0}, Point2{80.0, 0.0}, 8.0);
+  std::vector<TrajectoryPointSample> candidate =
+      lineSamples(Point2{0.0, 4.0}, Point2{80.0, 4.0}, 8.0);
+  for (TrajectoryPointSample& sample : current) {
+    if (sample.s_m >= 8.0 && sample.s_m <= 25.0) {
+      sample.vertical_hard_window_active = true;
+      sample.vertical_profile_passage_id = "opening_a";
+    }
+  }
+  for (TrajectoryPointSample& sample : candidate) {
+    if (sample.s_m >= 8.0 && sample.s_m <= 25.0) {
+      sample.vertical_hard_window_active = true;
+      sample.vertical_profile_passage_id = "opening_b";
+    }
+  }
+  const OccupancyGrid2D grid = freeGrid();
+
+  const HorizontalTrajectoryHandoverResult result =
+      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+
+  EXPECT_FALSE(result.applied);
+  EXPECT_STREQ(result.reason, "hard_window_prefix_not_reconnectable");
+}
+
 } // namespace drone_city_nav

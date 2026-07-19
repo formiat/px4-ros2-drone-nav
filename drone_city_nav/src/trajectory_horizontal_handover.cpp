@@ -108,6 +108,21 @@ firstHardWindowStationAfter(const std::span<const TrajectoryPointSample> samples
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<double>
+hardWindowExitStation(const std::span<const TrajectoryPointSample> samples,
+                      const double s_m) {
+  const TrajectoryVerticalTarget target = trajectoryVerticalTargetAtS(samples, s_m);
+  if (!target.valid || !target.vertical_hard_window_active) {
+    return s_m;
+  }
+  for (const TrajectoryPointSample& sample : samples) {
+    if (sample.s_m > s_m + kTinyDistanceM && !sample.vertical_hard_window_active) {
+      return sample.s_m;
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool
 geometryWithinLimits(const std::span<const TrajectoryPointSample> samples,
                      const HorizontalTrajectoryHandoverConfig& config,
@@ -182,9 +197,13 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
       trajectoryVerticalTargetAtS(current_samples, old_projection->s_m);
   const TrajectoryVerticalTarget candidate_target =
       trajectoryVerticalTargetAtS(candidate_samples, candidate_projection->s_m);
-  if (old_target.vertical_hard_window_active ||
-      candidate_target.vertical_hard_window_active) {
-    result.reason = "hard_window_active";
+  if (old_target.vertical_hard_window_active &&
+      candidate_target.vertical_hard_window_active &&
+      !old_target.vertical_profile_passage_id.empty() &&
+      !candidate_target.vertical_profile_passage_id.empty() &&
+      old_target.vertical_profile_passage_id !=
+          candidate_target.vertical_profile_passage_id) {
+    result.reason = "hard_window_prefix_not_reconnectable";
     return result;
   }
 
@@ -198,13 +217,42 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
                  std::max(config.min_prefix_distance_m, config.max_prefix_distance_m));
   result.old_join_s_m = std::min(current_samples.back().s_m,
                                  old_projection->s_m + result.prefix_distance_m);
+  if (old_target.vertical_hard_window_active) {
+    const std::optional<double> exit_s_m =
+        hardWindowExitStation(current_samples, old_projection->s_m);
+    if (!exit_s_m.has_value()) {
+      result.reason = "hard_window_prefix_not_reconnectable";
+      return result;
+    }
+    result.old_join_s_m =
+        std::min(current_samples.back().s_m,
+                 *exit_s_m + std::max(0.0, config.hard_window_exit_settle_distance_m));
+    result.hard_window_prefix_preserved = true;
+  } else if (const std::optional<double> hard_window_s =
+                 firstHardWindowStationAfter(current_samples, old_projection->s_m);
+             hard_window_s.has_value()) {
+    result.old_join_s_m =
+        std::min(result.old_join_s_m,
+                 *hard_window_s - std::max(config.sample_step_m, kTinyDistanceM));
+  }
   double candidate_join_s_m =
       std::min(candidate_samples.back().s_m, candidate_projection->s_m +
                                                  result.prefix_distance_m +
                                                  config.candidate_lookahead_distance_m);
-  if (const std::optional<double> hard_window_s =
-          firstHardWindowStationAfter(candidate_samples, candidate_projection->s_m);
-      hard_window_s.has_value()) {
+  if (candidate_target.vertical_hard_window_active) {
+    const std::optional<double> exit_s_m =
+        hardWindowExitStation(candidate_samples, candidate_projection->s_m);
+    if (!exit_s_m.has_value()) {
+      result.reason = "hard_window_prefix_not_reconnectable";
+      return result;
+    }
+    candidate_join_s_m =
+        std::min(candidate_samples.back().s_m,
+                 *exit_s_m + std::max(0.0, config.hard_window_exit_settle_distance_m) +
+                     std::max(0.0, config.candidate_lookahead_distance_m));
+  } else if (const std::optional<double> hard_window_s = firstHardWindowStationAfter(
+                 candidate_samples, candidate_projection->s_m);
+             hard_window_s.has_value()) {
     candidate_join_s_m =
         std::min(candidate_join_s_m,
                  *hard_window_s - std::max(config.sample_step_m, kTinyDistanceM));
@@ -239,10 +287,10 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
   }
   appendDistinct(stitched, old_join);
 
-  const double bridge_scale_m =
-      std::max(result.join_distance_m,
-               0.5 * ((result.old_join_s_m - old_projection->s_m) +
-                      (result.candidate_join_s_m - candidate_projection->s_m)));
+  // The Hermite derivatives describe the bridge chord, not the full retained
+  // prefixes. Scaling them by both prefix lengths can overshoot badly when a
+  // protected hard-window prefix is long.
+  const double bridge_scale_m = result.join_distance_m;
   const std::size_t bridge_steps = static_cast<std::size_t>(
       std::max(4.0, std::ceil(std::max(result.join_distance_m, bridge_scale_m) /
                               std::max(config.sample_step_m, 0.1))));

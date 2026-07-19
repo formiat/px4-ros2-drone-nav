@@ -7,10 +7,17 @@ namespace drone_city_nav {
 void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
   if (!msg.xy_valid || !std::isfinite(msg.x) || !std::isfinite(msg.y)) {
-    invalidateCurrentPose();
-    current_velocity_ = Point2{};
-    current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
-    current_velocity_valid_ = false;
+    {
+      const std::scoped_lock lock{navigation_state_mutex_};
+      live_navigation_state_.pose = Pose2{};
+      live_navigation_state_.velocity = Point2{};
+      live_navigation_state_.altitude_m = std::numeric_limits<double>::quiet_NaN();
+      live_navigation_state_.speed_mps = std::numeric_limits<double>::quiet_NaN();
+      live_navigation_state_.stamp_ns = 0;
+      live_navigation_state_.pose_valid = false;
+      live_navigation_state_.altitude_valid = false;
+      live_navigation_state_.velocity_valid = false;
+    }
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "Planner invalidated cached pose after invalid PX4 local position: "
@@ -20,36 +27,46 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
     return;
   }
 
-  current_pose_.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
-                                  static_cast<double>(msg.y) + px4_local_origin_.y};
+  NavigationStateSnapshot navigation = navigationStateSnapshot();
+  navigation.pose.position = Point2{static_cast<double>(msg.x) + px4_local_origin_.x,
+                                    static_cast<double>(msg.y) + px4_local_origin_.y};
   if (msg.heading_good_for_control && std::isfinite(msg.heading)) {
-    current_pose_.yaw_rad = static_cast<double>(msg.heading);
+    navigation.pose.yaw_rad = static_cast<double>(msg.heading);
   }
   if (msg.z_valid && std::isfinite(msg.z)) {
-    current_altitude_m_ = -static_cast<double>(msg.z);
-    altitude_valid_ = true;
+    navigation.altitude_m = -static_cast<double>(msg.z);
+    navigation.altitude_valid = true;
   } else {
-    altitude_valid_ = false;
+    navigation.altitude_valid = false;
   }
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
-    current_velocity_ =
+    navigation.velocity =
         Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
-    current_speed_mps_ = std::hypot(current_velocity_.x, current_velocity_.y);
-    current_velocity_valid_ = true;
+    navigation.speed_mps = std::hypot(navigation.velocity.x, navigation.velocity.y);
+    navigation.velocity_valid = true;
   } else {
-    current_velocity_ = Point2{};
-    current_speed_mps_ = std::numeric_limits<double>::quiet_NaN();
-    current_velocity_valid_ = false;
+    navigation.velocity = Point2{};
+    navigation.speed_mps = std::numeric_limits<double>::quiet_NaN();
+    navigation.velocity_valid = false;
   }
-  pose_valid_ = true;
-  last_pose_update_ns_ = receive_stamp_ns;
-  lidar_pose_history_.addPosition(
-      receive_stamp_ns,
-      Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
-      use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
-      altitude_valid_ && (!use_px4_heading_for_scan_ || msg.heading_good_for_control),
-      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
-      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+  navigation.pose_valid = true;
+  navigation.stamp_ns = receive_stamp_ns;
+  {
+    const std::scoped_lock lock{navigation_state_mutex_};
+    live_navigation_state_ = navigation;
+  }
+  {
+    const std::scoped_lock lock{lidar_pose_history_mutex_};
+    lidar_pose_history_.addPosition(
+        receive_stamp_ns,
+        Point3{navigation.pose.position.x, navigation.pose.position.y,
+               navigation.altitude_m},
+        use_px4_heading_for_scan_ ? navigation.pose.yaw_rad : initial_heading_rad_,
+        navigation.altitude_valid &&
+            (!use_px4_heading_for_scan_ || msg.heading_good_for_control),
+        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
+  }
 
   if (!local_position_seen_) {
     local_position_seen_ = true;
@@ -60,34 +77,42 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
                 "First valid PX4 local position: x=%.2f y=%.2f z=%.2f "
                 "altitude=%.2f yaw=%.2f distance_to_start=%.2f "
                 "distance_to_goal=%.2f",
-                current_pose_.position.x, current_pose_.position.y,
-                static_cast<double>(msg.z), altitude_m, current_pose_.yaw_rad,
-                distance(current_pose_.position, start_),
-                distance(current_pose_.position, goal_));
+                navigation.pose.position.x, navigation.pose.position.y,
+                static_cast<double>(msg.z), altitude_m, navigation.pose.yaw_rad,
+                distance(navigation.pose.position, start_),
+                distance(navigation.pose.position, goal_));
   }
 }
 
 void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
-  last_scan_ = msg;
-  scan_seen_ = true;
-  last_scan_update_ns_ = get_clock()->now().nanoseconds();
-  last_scan_projection_pose_valid_ = pose_valid_;
+  const NavigationStateSnapshot navigation = navigationStateSnapshot();
+  LidarInputSnapshot lidar;
+  lidar.scan = msg;
+  lidar.seen = true;
+  lidar.update_ns = get_clock()->now().nanoseconds();
+  lidar.projection_pose_valid = navigation.pose_valid;
   LidarPoseAlignmentStatus alignment_status =
       LidarPoseAlignmentStatus::kPositionHistoryEmpty;
-  if (last_scan_projection_pose_valid_) {
-    last_scan_projection_pose_ = currentLidarProjectionPose();
+  if (lidar.projection_pose_valid) {
+    lidar.projection_pose = LidarProjectionPose{
+        navigation.pose.position,
+        navigation.altitude_m,
+        use_px4_heading_for_scan_ ? navigation.pose.yaw_rad : initial_heading_rad_,
+        navigation.attitude.roll_rad,
+        navigation.attitude.pitch_rad,
+        navigation.altitude_valid,
+        navigation.attitude_valid};
     const LidarPoseMotionCompensationResult motion_compensation =
-        compensateLidarPoseForLatency(last_scan_projection_pose_.position,
-                                      current_velocity_, motion_compensate_lidar_pose_,
-                                      current_velocity_valid_,
-                                      currentLidarPoseReceiveLagSeconds(
-                                          last_scan_update_ns_, last_pose_update_ns_),
-                                      lidar_pose_latency_s_);
-    last_scan_projection_pose_.position = motion_compensation.position;
-    last_scan_pose_lag_s_ = motion_compensation.pose_lag_s;
-    last_scan_pose_latency_s_ = motion_compensation.latency_s;
-    last_scan_motion_shift_ = motion_compensation.applied_shift;
-    last_scan_motion_shift_m_ = motion_compensation.applied_shift_m;
+        compensateLidarPoseForLatency(
+            lidar.projection_pose.position, navigation.velocity,
+            motion_compensate_lidar_pose_, navigation.velocity_valid,
+            currentLidarPoseReceiveLagSeconds(lidar.update_ns, navigation.stamp_ns),
+            lidar_pose_latency_s_);
+    lidar.projection_pose.position = motion_compensation.position;
+    lidar.pose_lag_s = motion_compensation.pose_lag_s;
+    lidar.pose_latency_s = motion_compensation.latency_s;
+    lidar.motion_shift = motion_compensation.applied_shift;
+    lidar.motion_shift_m = motion_compensation.applied_shift_m;
     const std::uint64_t scan_stamp = stampNanoseconds(msg.header.stamp);
     const LaserScanTiming scan_timing{
         .first_beam_stamp_ns =
@@ -100,35 +125,36 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
             scan_stamp <=
                 static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()),
         .time_increment_s = static_cast<double>(msg.time_increment),
-        .receive_stamp_ns = last_scan_update_ns_,
-        .receive_stamp_valid = last_scan_update_ns_ > 0,
+        .receive_stamp_ns = lidar.update_ns,
+        .receive_stamp_valid = lidar.update_ns > 0,
     };
-    const LidarBeamPoseAlignmentResult alignment =
-        timestampAlignedLidarBeamPosesWithDiagnostics(
-            lidar_pose_history_, scan_timing, msg.ranges.size(),
-            use_px4_heading_for_scan_ ? std::nullopt
-                                      : std::optional<double>{initial_heading_rad_},
-            &px4_ros_time_mapper_);
+    LidarBeamPoseAlignmentResult alignment{};
+    {
+      const std::scoped_lock lock{lidar_pose_history_mutex_};
+      alignment = timestampAlignedLidarBeamPosesWithDiagnostics(
+          lidar_pose_history_, scan_timing, msg.ranges.size(),
+          use_px4_heading_for_scan_ ? std::nullopt
+                                    : std::optional<double>{initial_heading_rad_},
+          &px4_ros_time_mapper_);
+    }
     alignment_status = alignment.status;
-    last_scan_projection_poses_ =
+    lidar.beam_projection_poses =
         alignment.aligned() ? alignment.poses : std::vector<LidarProjectionPose>{};
     if (alignment.sourceAligned()) {
-      last_scan_projection_pose_source_ =
-          LidarProjectionPoseSource::kSourceTimestampAligned;
+      lidar.projection_pose_source = LidarProjectionPoseSource::kSourceTimestampAligned;
     } else if (alignment.aligned()) {
-      last_scan_projection_pose_source_ =
+      lidar.projection_pose_source =
           LidarProjectionPoseSource::kReceiveTimestampAligned;
     } else if (motion_compensation.applied) {
-      last_scan_projection_pose_source_ =
+      lidar.projection_pose_source =
           LidarProjectionPoseSource::kMotionExtrapolatedFallback;
     } else {
-      last_scan_projection_pose_source_ =
-          LidarProjectionPoseSource::kCallbackPoseFallback;
+      lidar.projection_pose_source = LidarProjectionPoseSource::kCallbackPoseFallback;
     }
     const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
         alignment.aligned() ? "Planner lidar 6DoF pose alignment"
                             : "Planner lidar 6DoF pose alignment fallback",
-        alignment, scan_timing, last_scan_update_ns_);
+        alignment, scan_timing, lidar.update_ns);
     if (alignment.aligned()) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
                            alignment_diagnostic.c_str());
@@ -137,13 +163,11 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
                            alignment_diagnostic.c_str());
     }
   } else {
-    last_scan_pose_lag_s_ = 0.0;
-    last_scan_pose_latency_s_ = 0.0;
-    last_scan_motion_shift_ = Point2{};
-    last_scan_motion_shift_m_ = 0.0;
-    last_scan_projection_poses_.clear();
-    last_scan_projection_pose_source_ =
-        LidarProjectionPoseSource::kCallbackPoseFallback;
+    lidar.projection_pose_source = LidarProjectionPoseSource::kCallbackPoseFallback;
+  }
+  {
+    const std::scoped_lock lock{lidar_input_mutex_};
+    live_lidar_input_ = lidar;
   }
   if (!scan_seen_logged_) {
     scan_seen_logged_ = true;
@@ -152,38 +176,45 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
                 "angle=[%.2f, %.2f] projection_pose=%s alignment=%s pose_lag=%.3fs "
                 "pose_latency=%.3fs motion_shift=(%.2f, %.2f) "
                 "motion_shift_m=%.2f",
-                last_scan_.ranges.size(), static_cast<double>(last_scan_.range_min),
-                static_cast<double>(last_scan_.range_max),
-                static_cast<double>(last_scan_.angle_min),
-                static_cast<double>(last_scan_.angle_max),
-                last_scan_projection_pose_valid_ ? "true" : "false",
-                lidarPoseAlignmentStatusName(alignment_status), last_scan_pose_lag_s_,
-                last_scan_pose_latency_s_, last_scan_motion_shift_.x,
-                last_scan_motion_shift_.y, last_scan_motion_shift_m_);
+                lidar.scan.ranges.size(), static_cast<double>(lidar.scan.range_min),
+                static_cast<double>(lidar.scan.range_max),
+                static_cast<double>(lidar.scan.angle_min),
+                static_cast<double>(lidar.scan.angle_max),
+                lidar.projection_pose_valid ? "true" : "false",
+                lidarPoseAlignmentStatusName(alignment_status), lidar.pose_lag_s,
+                lidar.pose_latency_s, lidar.motion_shift.x, lidar.motion_shift.y,
+                lidar.motion_shift_m);
   }
 }
 
 void PlannerNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  lidar_pose_history_.addAttitude(
-      receive_stamp_ns, msg.q,
-      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
-      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
-  const auto euler = quaternionToEuler(msg.q);
-  if (!euler.has_value()) {
-    attitude_valid_ = false;
-    return;
+  {
+    const std::scoped_lock lock{lidar_pose_history_mutex_};
+    lidar_pose_history_.addAttitude(
+        receive_stamp_ns, msg.q,
+        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
   }
-
-  current_attitude_ = *euler;
-  attitude_valid_ = true;
+  const auto euler = quaternionToEuler(msg.q);
+  {
+    const std::scoped_lock lock{navigation_state_mutex_};
+    live_navigation_state_.attitude_valid = euler.has_value();
+    if (euler.has_value()) {
+      live_navigation_state_.attitude = *euler;
+    }
+  }
 }
 
 void PlannerNode::onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) {
-  px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
-                                       msg.round_trip_time,
-                                       get_clock()->now().nanoseconds());
-  const Px4RosTimeMappingDiagnostics diagnostics = px4_ros_time_mapper_.diagnostics();
+  Px4RosTimeMappingDiagnostics diagnostics{};
+  {
+    const std::scoped_lock lock{lidar_pose_history_mutex_};
+    px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
+                                         msg.round_trip_time,
+                                         get_clock()->now().nanoseconds());
+    diagnostics = px4_ros_time_mapper_.diagnostics();
+  }
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planner PX4/ROS clock mapping: ready=%s samples=%zu scale=%.9f "
@@ -419,6 +450,14 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
 }
 
 void PlannerNode::checkCurrentPathAndPublish() {
+  requestPlanningCycle();
+}
+
+void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
+  const auto cycle_started_at = std::chrono::steady_clock::now();
+  const NavigationStateSnapshot navigation = navigationStateSnapshot();
+  applyNavigationStateSnapshot(navigation);
+  applyLatestLidarInputSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   applyPendingMemorySnapshot(now_ns);
   const bool pose_fresh =
@@ -468,25 +507,24 @@ void PlannerNode::checkCurrentPathAndPublish() {
   OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
   OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
   publishProhibitedGrid(prohibited_grid);
-  if (pollPendingExecutableTrajectoryBuild(prohibited_grid)) {
-    return;
-  }
-  if (pending_trajectory_build_.has_value()) {
-    RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Keeping the current trajectory while an executable trajectory build is "
-        "in progress: generation=%" PRIu64 " route_points=%zu",
-        pending_trajectory_build_->generation,
-        pending_trajectory_build_->route_points.size());
-    return;
-  }
   if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
     return;
   }
 
   const AStarConfig planning_astar_config = astarConfigForCurrentVelocity();
-  auto path_result =
-      computePathOnGrid(planning_grid, "planning_clearance", planning_astar_config);
+  const Point2 planning_start =
+      predictedPlanningStart(navigation, planning_duration_estimate_s_);
+  RCLCPP_INFO(get_logger(),
+              "Planning acceptance prediction: request_generation=%" PRIu64
+              " physical_start=(%.2f, %.2f) predicted_start=(%.2f, %.2f) "
+              "horizon_s=%.3f speed_mps=%.2f trajectory_prediction=%s",
+              request_generation, navigation.pose.position.x,
+              navigation.pose.position.y, planning_start.x, planning_start.y,
+              planning_duration_estimate_s_, navigation.speed_mps,
+              trajectorySamplesAreUsable(last_valid_trajectory_samples_) ? "true"
+                                                                         : "false");
+  auto path_result = computePathOnGrid(planning_grid, "planning_clearance",
+                                       planning_astar_config, planning_start);
   if (!path_result.has_value()) {
     publishPlanningFailureHold();
     return;
@@ -699,10 +737,18 @@ void PlannerNode::checkCurrentPathAndPublish() {
                 "raw_points=%zu",
                 path_result->astar.path.size());
   }
-  publishPathFromPathCells(planning_grid, prohibited_grid, path_result->astar.path,
-                           path_result->smoothed_cells, "planning_clearance",
-                           path_result->prohibited_clearance_field,
-                           path_result->prohibited_clearance_field_cache_hit);
+  const bool published = publishPathFromPathCells(
+      planning_grid, path_result->astar.path, path_result->smoothed_cells,
+      "planning_clearance", path_result->prohibited_clearance_field,
+      path_result->prohibited_clearance_field_cache_hit, planning_start);
+  const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
+  planning_duration_estimate_s_ = std::clamp(
+      0.75 * planning_duration_estimate_s_ + 0.25 * cycle_duration_s, 0.20, 2.50);
+  RCLCPP_INFO(get_logger(),
+              "Planning worker cycle complete: request_generation=%" PRIu64
+              " published=%s duration_ms=%.1f next_prediction_horizon_s=%.3f",
+              request_generation, published ? "true" : "false",
+              cycle_duration_s * 1000.0, planning_duration_estimate_s_);
 }
 
 [[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity() const {
@@ -726,15 +772,16 @@ PlannerNode::initialHeadingBiasActive(const AStarConfig& config) noexcept {
 
 [[nodiscard]] std::optional<PathComputationResult>
 PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
-                               const AStarConfig& astar_config) {
-  const auto start_cell = grid.worldToCell(current_pose_.position);
+                               const AStarConfig& astar_config,
+                               const Point2 planning_start) {
+  const auto start_cell = grid.worldToCell(planning_start);
   const auto goal_cell = grid.worldToCell(goal_);
   if (!start_cell.has_value() || !goal_cell.has_value()) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
                           "Start or goal is outside the %s planning grid: "
                           "start=(%.2f, %.2f) goal=(%.2f, %.2f)",
-                          source_label, current_pose_.position.x,
-                          current_pose_.position.y, goal_.x, goal_.y);
+                          source_label, planning_start.x, planning_start.y, goal_.x,
+                          goal_.y);
     return std::nullopt;
   }
   const bool start_prohibited = grid.isProhibited(*start_cell);
@@ -768,7 +815,7 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
       ClearanceSource::kProhibited);
   auto result = planner_core_.computePath(PathComputationInput{
       .grid = &grid,
-      .current_position = current_pose_.position,
+      .current_position = planning_start,
       .goal = goal_,
       .astar = astar_config,
       .prohibited_clearance_field = &prebuilt_clearance_field,

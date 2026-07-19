@@ -29,7 +29,8 @@ void finalizeTrajectoryDeliveryDiagnostics(
         1.0e-6 *
         static_cast<double>(path_stamp_ns - delivery.blocker_detected_stamp_ns);
   }
-  if (delivery.planning_start_velocity_valid &&
+  if (!delivery.predicted_publication_position_valid &&
+      delivery.planning_start_velocity_valid &&
       std::isfinite(delivery.build_start_to_publish_ms)) {
     const double prediction_time_s = delivery.build_start_to_publish_ms * 1.0e-3;
     delivery.predicted_publication_position = Point2{
