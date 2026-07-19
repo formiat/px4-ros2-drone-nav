@@ -10,8 +10,6 @@ struct NoStaticSpeedPolicyConfig {
   bool enabled{false};
   double max_speed_mps{10.0};
   double braking_decel_mps2{4.0};
-  double reaction_time_s{2.0};
-  double safety_margin_m{4.0};
 };
 
 struct VelocityFollowerConfig {

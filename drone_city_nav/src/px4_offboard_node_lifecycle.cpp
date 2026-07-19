@@ -198,13 +198,10 @@ Px4OffboardNode::Px4OffboardNode()
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
   RCLCPP_INFO(
       get_logger(),
-      "No-static speed policy: enabled=%s max_speed=%.2fmps braking_decel=%.2fmps2 "
-      "reaction_time=%.2fs safety_margin=%.2fm",
+      "No-static speed policy: enabled=%s max_speed=%.2fmps braking_decel=%.2fmps2",
       velocity_follower_config_.no_static_speed_policy.enabled ? "true" : "false",
       velocity_follower_config_.no_static_speed_policy.max_speed_mps,
-      velocity_follower_config_.no_static_speed_policy.braking_decel_mps2,
-      velocity_follower_config_.no_static_speed_policy.reaction_time_s,
-      velocity_follower_config_.no_static_speed_policy.safety_margin_m);
+      velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
   RCLCPP_INFO(
       get_logger(),
       "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "

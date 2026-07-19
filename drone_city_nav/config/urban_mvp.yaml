@@ -211,8 +211,6 @@ planner_node:
     speed_profile_decel_mps2: 2.0
     no_static_max_speed_mps: 10.0
     no_static_braking_decel_mps2: 4.0
-    no_static_reaction_time_s: 2.0
-    no_static_safety_margin_m: 4.0
     speed_profile_sample_step_m: 0.5
     speed_profile_lookahead_time_s: 1.0
     speed_profile_lookahead_min_m: 5.0
@@ -292,8 +290,6 @@ px4_offboard_node:
     no_static_speed_policy_enabled: false
     no_static_max_speed_mps: 10.0
     no_static_braking_decel_mps2: 4.0
-    no_static_reaction_time_s: 2.0
-    no_static_safety_margin_m: 4.0
     speed_profile_sample_step_m: 0.5
     speed_profile_lookahead_time_s: 1.0
     speed_profile_lookahead_min_m: 5.0

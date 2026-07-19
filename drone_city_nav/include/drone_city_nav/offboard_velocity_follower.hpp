@@ -18,26 +18,9 @@ enum class VelocitySetpointReason {
   kHold,
   kStraight,
   kTrajectorySpeedProfile,
-  kNoStaticObservation,
   kFinalApproach,
   kTerminalCapture,
 };
-
-enum class NoStaticSpeedBoundary {
-  kDisabled,
-  kProhibited,
-  kUnknown,
-  kStaleGrid,
-};
-
-struct NoStaticSpeedConstraint {
-  bool observation_valid{false};
-  double boundary_distance_m{std::numeric_limits<double>::infinity()};
-  NoStaticSpeedBoundary boundary{NoStaticSpeedBoundary::kDisabled};
-};
-
-[[nodiscard]] const char*
-noStaticSpeedBoundaryName(NoStaticSpeedBoundary boundary) noexcept;
 
 struct VelocityFollowerState {
   Point2 previous_velocity_setpoint{};
@@ -176,10 +159,6 @@ struct VelocitySetpointPlan {
       std::numeric_limits<double>::quiet_NaN()};
   double vertical_trackability_altitude_error_m{
       std::numeric_limits<double>::quiet_NaN()};
-  bool no_static_speed_cap_active{false};
-  double no_static_speed_limit_mps{std::numeric_limits<double>::quiet_NaN()};
-  double no_static_boundary_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  NoStaticSpeedBoundary no_static_boundary{NoStaticSpeedBoundary::kDisabled};
   double trajectory_s_m{std::numeric_limits<double>::quiet_NaN()};
   std::size_t trajectory_segment_index{0U};
   TrajectorySegmentKind trajectory_segment_kind{TrajectorySegmentKind::kLine};
@@ -199,13 +178,6 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
 
 [[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
-    std::span<const TrajectorySegment> trajectory,
-    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
-    Point2 current_velocity, bool current_velocity_valid, double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint);
-
-[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
     std::span<const TrajectoryPointSample> trajectory_samples,
     const TrajectorySpeedProfile& speed_profile, Point2 current_position,
     Point2 current_velocity, bool current_velocity_valid, double dt_s,
@@ -214,26 +186,10 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
 [[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
     std::span<const TrajectoryPointSample> trajectory_samples,
     const TrajectorySpeedProfile& speed_profile, Point2 current_position,
-    Point2 current_velocity, bool current_velocity_valid, double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint);
-
-[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
-    std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
     Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
     bool altitude_valid, double current_vertical_velocity_mps,
     bool vertical_velocity_valid, double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config);
-
-[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
-    std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
-    Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
-    bool altitude_valid, double current_vertical_velocity_mps,
-    bool vertical_velocity_valid, double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint);
 
 [[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
     std::span<const TrajectoryPointSample> trajectory_samples,
@@ -241,13 +197,5 @@ velocitySetpointReasonName(VelocitySetpointReason reason) noexcept;
     Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
     bool altitude_valid, double dt_s, const VelocityFollowerState& previous_state,
     const VelocityFollowerConfig& config);
-
-[[nodiscard]] VelocitySetpointPlan planVelocitySetpoint(
-    std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, Point2 current_position,
-    Point2 current_velocity, bool current_velocity_valid, double current_altitude_m,
-    bool altitude_valid, double dt_s, const VelocityFollowerState& previous_state,
-    const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint);
 
 } // namespace drone_city_nav

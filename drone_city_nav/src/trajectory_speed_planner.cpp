@@ -396,8 +396,6 @@ speedConstraintTypeName(const SpeedConstraintType constraint_type) noexcept {
       return "vertical_profile";
     case SpeedConstraintType::kVerticalTrackability:
       return "vertical_trackability";
-    case SpeedConstraintType::kNoStaticObservation:
-      return "no_static_observation";
     case SpeedConstraintType::kGoal:
       return "goal";
   }
@@ -730,24 +728,6 @@ ScalarSpeedPlan planScalarSpeed(const TrajectorySpeedProfile& profile,
           query.vertical_trackability_constraint_distance_m;
       plan.limiting_constraint_speed_mps = trackability_limit;
       plan.limiting_allowed_speed_now_mps = trackability_limit;
-      plan.limiting_curve_radius_m = std::numeric_limits<double>::quiet_NaN();
-      plan.limiting_curvature_1pm = 0.0;
-    }
-  }
-  plan.no_static_speed_cap_active = query.no_static_speed_cap_active &&
-                                    std::isfinite(query.no_static_speed_limit_mps);
-  plan.no_static_speed_limit_mps = query.no_static_speed_limit_mps;
-  plan.no_static_boundary_distance_m = query.no_static_boundary_distance_m;
-  if (plan.no_static_speed_cap_active) {
-    const double no_static_limit =
-        std::clamp(query.no_static_speed_limit_mps, 0.0, cruise_speed);
-    if (no_static_limit + 1.0e-9 < plan.speed_after_lookahead_mps) {
-      plan.speed_after_lookahead_mps = no_static_limit;
-      plan.constraint_type = SpeedConstraintType::kNoStaticObservation;
-      plan.constraint_index = 0U;
-      plan.limiting_constraint_distance_m = query.no_static_boundary_distance_m;
-      plan.limiting_constraint_speed_mps = no_static_limit;
-      plan.limiting_allowed_speed_now_mps = no_static_limit;
       plan.limiting_curve_radius_m = std::numeric_limits<double>::quiet_NaN();
       plan.limiting_curvature_1pm = 0.0;
     }

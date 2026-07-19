@@ -170,33 +170,6 @@ previousCommandSpeedMps(const VelocityFollowerState& previous_state,
   return current_speed_mps;
 }
 
-[[nodiscard]] double
-noStaticSpeedLimitMps(const VelocityFollowerConfig& config,
-                      const NoStaticSpeedConstraint& constraint) noexcept {
-  if (!config.no_static_speed_policy.enabled) {
-    return std::numeric_limits<double>::infinity();
-  }
-
-  const double maximum_speed =
-      sanitizedPositive(config.no_static_speed_policy.max_speed_mps, 10.0, 0.0, 100.0);
-  if (!constraint.observation_valid || !std::isfinite(constraint.boundary_distance_m)) {
-    return constraint.observation_valid ? maximum_speed : 0.0;
-  }
-
-  const double decel = sanitizedPositive(
-      config.no_static_speed_policy.braking_decel_mps2, 4.0, 1.0e-6, 100.0);
-  const double reaction_time =
-      sanitizedPositive(config.no_static_speed_policy.reaction_time_s, 2.0, 0.0, 30.0);
-  const double safety_margin = sanitizedPositive(
-      config.no_static_speed_policy.safety_margin_m, 4.0, 0.0, 1000.0);
-  const double usable_distance =
-      std::max(0.0, constraint.boundary_distance_m - safety_margin);
-  const double speed =
-      -decel * reaction_time + std::sqrt(decel * decel * reaction_time * reaction_time +
-                                         2.0 * decel * usable_distance);
-  return std::clamp(speed, 0.0, maximum_speed);
-}
-
 } // namespace
 
 const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noexcept {
@@ -209,26 +182,10 @@ const char* velocitySetpointReasonName(const VelocitySetpointReason reason) noex
       return "straight";
     case VelocitySetpointReason::kTrajectorySpeedProfile:
       return "trajectory_profile";
-    case VelocitySetpointReason::kNoStaticObservation:
-      return "no_static_observation";
     case VelocitySetpointReason::kFinalApproach:
       return "final_approach";
     case VelocitySetpointReason::kTerminalCapture:
       return "terminal_capture";
-  }
-  return "unknown";
-}
-
-const char* noStaticSpeedBoundaryName(const NoStaticSpeedBoundary boundary) noexcept {
-  switch (boundary) {
-    case NoStaticSpeedBoundary::kDisabled:
-      return "disabled";
-    case NoStaticSpeedBoundary::kProhibited:
-      return "prohibited";
-    case NoStaticSpeedBoundary::kUnknown:
-      return "unknown";
-    case NoStaticSpeedBoundary::kStaleGrid:
-      return "stale_grid";
   }
   return "unknown";
 }
@@ -281,7 +238,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
     const double current_vertical_velocity_mps, const bool vertical_velocity_valid,
     const double dt_s, const VelocityFollowerState& previous_state,
     const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint,
     const ControlProjectionSmoothingDiagnostics& projection_smoothing) {
   VelocitySetpointPlan plan{};
   if (!finite2D(current_position) || !finite2D(predicted_position) ||
@@ -531,26 +487,21 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
                                           current_altitude_m, altitude_valid,
                                           current_vertical_velocity_mps,
                                           vertical_velocity_valid, config);
-  const double no_static_speed_limit_mps =
-      noStaticSpeedLimitMps(config, no_static_constraint);
   const ScalarSpeedPlan scalar_speed = planScalarSpeed(
       speed_profile,
-      ScalarSpeedQuery{
-          .trajectory_s_m = control_projection.s_m,
-          .previous_command_speed_mps =
-              previousCommandSpeedMps(previous_state, current_speed),
-          .current_speed_mps = current_speed,
-          .dt_s = dt,
-          .vertical_trackability_speed_cap_active = vertical_trackability.active,
-          .vertical_trackability_speed_limit_mps =
-              vertical_trackability.speed_limit_mps,
-          .vertical_trackability_constraint_distance_m =
-              vertical_trackability.constraint_distance_m,
-          .vertical_trackability_altitude_error_m =
-              vertical_trackability.altitude_error_m,
-          .no_static_speed_cap_active = config.no_static_speed_policy.enabled,
-          .no_static_speed_limit_mps = no_static_speed_limit_mps,
-          .no_static_boundary_distance_m = no_static_constraint.boundary_distance_m},
+      ScalarSpeedQuery{.trajectory_s_m = control_projection.s_m,
+                       .previous_command_speed_mps =
+                           previousCommandSpeedMps(previous_state, current_speed),
+                       .current_speed_mps = current_speed,
+                       .dt_s = dt,
+                       .vertical_trackability_speed_cap_active =
+                           vertical_trackability.active,
+                       .vertical_trackability_speed_limit_mps =
+                           vertical_trackability.speed_limit_mps,
+                       .vertical_trackability_constraint_distance_m =
+                           vertical_trackability.constraint_distance_m,
+                       .vertical_trackability_altitude_error_m =
+                           vertical_trackability.altitude_error_m},
       config);
   if (!scalar_speed.valid) {
     return plan;
@@ -595,10 +546,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
        scalar_speed.constraint_type == SpeedConstraintType::kVerticalTrackability) &&
       scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kTrajectorySpeedProfile;
-  } else if (scalar_speed.constraint_type ==
-                 SpeedConstraintType::kNoStaticObservation &&
-             scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
-    plan.reason = VelocitySetpointReason::kNoStaticObservation;
   } else if (scalar_speed.constraint_type == SpeedConstraintType::kGoal &&
              scalar_speed.speed_after_lookahead_mps + 1.0e-6 < cruise_speed) {
     plan.reason = VelocitySetpointReason::kFinalApproach;
@@ -719,10 +666,6 @@ VelocitySetpointPlan planVelocitySetpointFromProjection(
       scalar_speed.vertical_trackability_constraint_distance_m;
   plan.vertical_trackability_altitude_error_m =
       scalar_speed.vertical_trackability_altitude_error_m;
-  plan.no_static_speed_cap_active = scalar_speed.no_static_speed_cap_active;
-  plan.no_static_speed_limit_mps = scalar_speed.no_static_speed_limit_mps;
-  plan.no_static_boundary_distance_m = scalar_speed.no_static_boundary_distance_m;
-  plan.no_static_boundary = no_static_constraint.boundary;
   plan.trajectory_s_m = control_projection.s_m;
   plan.trajectory_segment_index = control_projection.segment_index;
   plan.trajectory_curvature_1pm = control_projection.curvature_1pm;
@@ -754,17 +697,6 @@ VelocitySetpointPlan planVelocitySetpoint(
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
-  return planVelocitySetpoint(trajectory, speed_profile, current_position,
-                              current_velocity, current_velocity_valid, dt_s,
-                              previous_state, config, NoStaticSpeedConstraint{});
-}
-
-VelocitySetpointPlan planVelocitySetpoint(
-    const std::span<const TrajectorySegment> trajectory,
-    const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
-    const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint) {
   if (!trajectoryIsUsable(trajectory)) {
     return VelocitySetpointPlan{};
   }
@@ -794,7 +726,7 @@ VelocitySetpointPlan planVelocitySetpoint(
       segment.kind, speed_profile, current_position, current_velocity,
       current_velocity_valid, std::numeric_limits<double>::quiet_NaN(), false,
       std::numeric_limits<double>::quiet_NaN(), false, dt_s, previous_state, config,
-      no_static_constraint, projection_smoothing);
+      projection_smoothing);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -802,24 +734,10 @@ VelocitySetpointPlan planVelocitySetpoint(
     const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
     const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
-  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
-                              current_velocity, current_velocity_valid,
-                              std::numeric_limits<double>::quiet_NaN(), false,
-                              std::numeric_limits<double>::quiet_NaN(), false, dt_s,
-                              previous_state, config, NoStaticSpeedConstraint{});
-}
-
-VelocitySetpointPlan planVelocitySetpoint(
-    const std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
-    const Point2 current_velocity, const bool current_velocity_valid, const double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint) {
-  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
-                              current_velocity, current_velocity_valid,
-                              std::numeric_limits<double>::quiet_NaN(), false,
-                              std::numeric_limits<double>::quiet_NaN(), false, dt_s,
-                              previous_state, config, no_static_constraint);
+  return planVelocitySetpoint(
+      trajectory_samples, speed_profile, current_position, current_velocity,
+      current_velocity_valid, std::numeric_limits<double>::quiet_NaN(), false,
+      std::numeric_limits<double>::quiet_NaN(), false, dt_s, previous_state, config);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -830,22 +748,6 @@ VelocitySetpointPlan planVelocitySetpoint(
     const double current_vertical_velocity_mps, const bool vertical_velocity_valid,
     const double dt_s, const VelocityFollowerState& previous_state,
     const VelocityFollowerConfig& config) {
-  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
-                              current_velocity, current_velocity_valid,
-                              current_altitude_m, altitude_valid,
-                              current_vertical_velocity_mps, vertical_velocity_valid,
-                              dt_s, previous_state, config, NoStaticSpeedConstraint{});
-}
-
-VelocitySetpointPlan planVelocitySetpoint(
-    const std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
-    const Point2 current_velocity, const bool current_velocity_valid,
-    const double current_altitude_m, const bool altitude_valid,
-    const double current_vertical_velocity_mps, const bool vertical_velocity_valid,
-    const double dt_s, const VelocityFollowerState& previous_state,
-    const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint) {
   if (!trajectorySamplesAreUsable(trajectory_samples)) {
     return VelocitySetpointPlan{};
   }
@@ -880,7 +782,7 @@ VelocitySetpointPlan planVelocitySetpoint(
       final_tangent, trajectory_samples.back().s_m, segment_kind, speed_profile,
       current_position, current_velocity, current_velocity_valid, current_altitude_m,
       altitude_valid, current_vertical_velocity_mps, vertical_velocity_valid, dt_s,
-      previous_state, config, no_static_constraint, smoothed_projection.diagnostics);
+      previous_state, config, smoothed_projection.diagnostics);
 }
 
 VelocitySetpointPlan planVelocitySetpoint(
@@ -889,25 +791,10 @@ VelocitySetpointPlan planVelocitySetpoint(
     const Point2 current_velocity, const bool current_velocity_valid,
     const double current_altitude_m, const bool altitude_valid, const double dt_s,
     const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config) {
-  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
-                              current_velocity, current_velocity_valid,
-                              current_altitude_m, altitude_valid,
-                              std::numeric_limits<double>::quiet_NaN(), false, dt_s,
-                              previous_state, config, NoStaticSpeedConstraint{});
-}
-
-VelocitySetpointPlan planVelocitySetpoint(
-    const std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile, const Point2 current_position,
-    const Point2 current_velocity, const bool current_velocity_valid,
-    const double current_altitude_m, const bool altitude_valid, const double dt_s,
-    const VelocityFollowerState& previous_state, const VelocityFollowerConfig& config,
-    const NoStaticSpeedConstraint& no_static_constraint) {
-  return planVelocitySetpoint(trajectory_samples, speed_profile, current_position,
-                              current_velocity, current_velocity_valid,
-                              current_altitude_m, altitude_valid,
-                              std::numeric_limits<double>::quiet_NaN(), false, dt_s,
-                              previous_state, config, no_static_constraint);
+  return planVelocitySetpoint(
+      trajectory_samples, speed_profile, current_position, current_velocity,
+      current_velocity_valid, current_altitude_m, altitude_valid,
+      std::numeric_limits<double>::quiet_NaN(), false, dt_s, previous_state, config);
 }
 
 } // namespace drone_city_nav

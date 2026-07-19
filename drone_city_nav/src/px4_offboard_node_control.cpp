@@ -298,12 +298,11 @@ bool Px4OffboardNode::publishVelocityTrajectorySetpoint() {
   const Point2 previous_target = last_published_target_;
   const Point2 target = currentTarget();
   const double dt_s = consumeVelocityPlanDtS();
-  const NoStaticSpeedConstraint no_static_constraint = noStaticSpeedConstraint();
   const VelocitySetpointPlan plan = planVelocitySetpoint(
       final_trajectory_samples_, trajectory_speed_profile_, current_position_,
       current_velocity_, current_velocity_valid_, current_altitude_m_, altitude_valid_,
       current_vertical_velocity_up_mps_, current_vertical_velocity_valid_, dt_s,
-      velocity_follower_state_, velocity_follower_config_, no_static_constraint);
+      velocity_follower_state_, velocity_follower_config_);
   last_velocity_plan_ = plan;
   last_velocity_plan_valid_ = plan.valid;
   if (!plan.valid || plan.final_goal_reached) {

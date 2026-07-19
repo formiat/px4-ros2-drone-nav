@@ -273,8 +273,6 @@ private:
 
   [[nodiscard]] std::optional<OccupancyGrid2D> currentProhibitedGrid() const;
 
-  [[nodiscard]] NoStaticSpeedConstraint noStaticSpeedConstraint() const;
-
   [[nodiscard]] double localPositionAgeSeconds() const;
 
   [[nodiscard]] double attitudeAgeSeconds() const;
