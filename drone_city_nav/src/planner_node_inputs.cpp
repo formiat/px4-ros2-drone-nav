@@ -47,7 +47,8 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
       receive_stamp_ns,
       Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
       use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
-      altitude_valid_ && (!use_px4_heading_for_scan_ || msg.heading_good_for_control));
+      altitude_valid_ && (!use_px4_heading_for_scan_ || msg.heading_good_for_control),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp));
 
   if (!local_position_seen_) {
     local_position_seen_ = true;
@@ -109,11 +110,16 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     alignment_status = alignment.status;
     last_scan_projection_poses_ =
         alignment.aligned() ? alignment.poses : std::vector<LidarProjectionPose>{};
-    if (!alignment.aligned()) {
-      const std::string diagnostic = formatLidarPoseAlignmentDiagnostic(
-          "Planner lidar 6DoF pose alignment fallback", alignment, scan_timing,
-          last_scan_update_ns_);
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", diagnostic.c_str());
+    const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
+        alignment.aligned() ? "Planner lidar 6DoF pose alignment"
+                            : "Planner lidar 6DoF pose alignment fallback",
+        alignment, scan_timing, last_scan_update_ns_);
+    if (alignment.aligned()) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                           alignment_diagnostic.c_str());
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                           alignment_diagnostic.c_str());
     }
   } else {
     last_scan_pose_lag_s_ = 0.0;
@@ -142,7 +148,8 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
 
 void PlannerNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  lidar_pose_history_.addAttitude(receive_stamp_ns, msg.q);
+  lidar_pose_history_.addAttitude(receive_stamp_ns, msg.q,
+                                  lidarPoseSourceTimestampNanoseconds(msg.timestamp));
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;

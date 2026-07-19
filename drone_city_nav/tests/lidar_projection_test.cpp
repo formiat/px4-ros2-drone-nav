@@ -40,6 +40,12 @@ TEST(LidarProjection, ExplicitFluToFrdProjectionKeepsLevelForwardBeam) {
   EXPECT_NEAR(projection.body_frd_direction.y, 0.0, 1.0e-9);
   EXPECT_NEAR(norm(projection.ned_direction), 1.0, 1.0e-9);
   EXPECT_NEAR(norm(projection.ray_direction_map), 1.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_before_extrinsic_map_m.x, 5.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_before_extrinsic_map_m.y, 6.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_before_extrinsic_map_m.z, 18.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.y, 0.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.z, 0.0, 1.0e-9);
   EXPECT_NEAR(projection.ray_origin_map_m.x, 5.0, 1.0e-9);
   EXPECT_NEAR(projection.ray_origin_map_m.y, 6.0, 1.0e-9);
   EXPECT_NEAR(projection.ray_origin_map_m.z, 18.0, 1.0e-9);
@@ -93,6 +99,9 @@ TEST(LidarProjection, PitchChangesProjectedAltitude) {
   const LidarBeamProjection projection = project(pose, config, 10.0F);
 
   EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(projection.ray_origin_before_extrinsic_map_m.z, 18.0, 1.0e-9);
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.z, 0.3, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.z, 18.3, 1.0e-9);
   EXPECT_LT(projection.endpoint.x, 10.0);
   EXPECT_LT(projection.endpoint_altitude_m, 18.3);
 }

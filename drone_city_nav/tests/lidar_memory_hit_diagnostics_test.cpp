@@ -18,6 +18,7 @@ namespace {
   observation.acquisition_stamp_valid = true;
   observation.receive_stamp_ns = 123'556'789;
   observation.receive_stamp_valid = true;
+  observation.timestamp_aligned_pose = true;
   observation.measured_range_m = 6.5;
   observation.effective_max_range_m = 35.0;
   observation.source_attitude_valid = true;
@@ -33,6 +34,8 @@ namespace {
       .lidar_direction = Point3{1.0, 0.0, 0.0},
       .body_frd_direction = Point3{1.0, 0.0, 0.0},
       .ned_direction = Point3{1.0, 0.0, 0.0},
+      .ray_origin_before_extrinsic_map_m = Point3{5.0, 6.0, 6.7},
+      .applied_extrinsic_map_m = Point3{0.0, 0.0, 0.3},
       .ray_origin_map_m = Point3{5.0, 6.0, 7.0},
       .ray_direction_map = Point3{1.0, 0.0, 0.0},
       .endpoint_map_m = Point3{11.5, 6.0, 7.0},
@@ -140,6 +143,56 @@ namespace {
                       .signed_time_offset_s = -0.04,
                       .applied = true,
                   },
+              .acquisition_pose_alignment =
+                  LidarPoseSampleResult{
+                      .aligned_pose =
+                          TimestampAlignedLidarPose{
+                              .pose = LidarProjectionPose{Point2{5.0, 6.0}, 6.7, 0.0,
+                                                          0.1, -0.2, true, true},
+                              .requested_stamp_ns = 123'000'000,
+                              .position_timing =
+                                  LidarPoseTemporalAlignment{
+                                      .mode = LidarPoseTemporalMode::kInterpolated,
+                                      .requested_stamp_ns = 123'000'000,
+                                      .from_receive_stamp_ns = 122'900'000,
+                                      .to_receive_stamp_ns = 123'100'000,
+                                      .from_source_stamp_ns = 122'850'000,
+                                      .to_source_stamp_ns = 123'050'000,
+                                      .interpolation_ratio = 0.5,
+                                  },
+                              .attitude_timing =
+                                  LidarPoseTemporalAlignment{
+                                      .mode = LidarPoseTemporalMode::kExtrapolatedAfter,
+                                      .requested_stamp_ns = 123'000'000,
+                                      .from_receive_stamp_ns = 122'950'000,
+                                      .to_receive_stamp_ns = 122'950'000,
+                                      .from_source_stamp_ns = 122'900'000,
+                                      .to_source_stamp_ns = 122'900'000,
+                                      .signed_extrapolation_ns = 50'000,
+                                  },
+                          },
+                      .status = LidarPoseAlignmentStatus::kAligned,
+                      .position_timing =
+                          LidarPoseTemporalAlignment{
+                              .mode = LidarPoseTemporalMode::kInterpolated,
+                              .requested_stamp_ns = 123'000'000,
+                              .from_receive_stamp_ns = 122'900'000,
+                              .to_receive_stamp_ns = 123'100'000,
+                              .from_source_stamp_ns = 122'850'000,
+                              .to_source_stamp_ns = 123'050'000,
+                              .interpolation_ratio = 0.5,
+                          },
+                      .attitude_timing =
+                          LidarPoseTemporalAlignment{
+                              .mode = LidarPoseTemporalMode::kExtrapolatedAfter,
+                              .requested_stamp_ns = 123'000'000,
+                              .from_receive_stamp_ns = 122'950'000,
+                              .to_receive_stamp_ns = 122'950'000,
+                              .from_source_stamp_ns = 122'900'000,
+                              .to_source_stamp_ns = 122'900'000,
+                              .signed_extrapolation_ns = 50'000,
+                          },
+                  },
               .scan_range_min_m = 0.2,
               .scan_range_max_m = 35.0,
               .scan_angle_min_rad = -1.0,
@@ -165,6 +218,17 @@ TEST(LidarMemoryHitDiagnostics, JsonIncludesRawBeamAndBothSurfaceCandidates) {
   const std::string json = stream.str();
   EXPECT_NE(json.find("\"beam_index\":17"), std::string::npos);
   EXPECT_NE(json.find("\"ray_origin_map_m\":{\"x\":5"), std::string::npos);
+  EXPECT_NE(json.find("\"ray_origin_before_extrinsic_map_m\":{\"x\":5"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"applied_extrinsic_map_m\":{\"x\":0,\"y\":0,\"z\":0.3}"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"projection_source\":\"aligned_history\""), std::string::npos);
+  EXPECT_NE(json.find("\"mode\":\"interpolated\""), std::string::npos);
+  EXPECT_NE(json.find("\"mode\":\"extrapolated_after\""), std::string::npos);
+  EXPECT_NE(json.find("\"from_source_stamp_ns\":122850000"), std::string::npos);
+  EXPECT_NE(json.find("\"horizontal_extrinsic_applied\":false"), std::string::npos);
+  EXPECT_NE(json.find("\"frame_chain\":\"lidar_flu->body_frd->ned->map_z_flip\""),
+            std::string::npos);
   EXPECT_NE(json.find("\"endpoint_map_m\":{\"x\":11.5"), std::string::npos);
   EXPECT_NE(json.find("\"ground_range_m\":14"), std::string::npos);
   EXPECT_NE(json.find("\"intersection_map_m\":{\"x\":14"), std::string::npos);

@@ -4,6 +4,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <numbers>
 
 namespace drone_city_nav {
@@ -18,10 +20,11 @@ std::array<float, 4> pitchQuaternion(const double pitch_rad) {
 
 TEST(LidarPoseHistoryTest, InterpolatesXyzYawAndQuaternionAttitude) {
   LidarPoseHistory history;
-  history.addPosition(1'000'000'000, Point3{0.0, 10.0, 20.0}, 3.0, true);
-  history.addPosition(2'000'000'000, Point3{10.0, 20.0, 30.0}, -3.0, true);
-  history.addAttitude(1'000'000'000, pitchQuaternion(0.0));
-  history.addAttitude(2'000'000'000, pitchQuaternion(kPi / 2.0));
+  history.addPosition(1'000'000'000, Point3{0.0, 10.0, 20.0}, 3.0, true, 990'000'000);
+  history.addPosition(2'000'000'000, Point3{10.0, 20.0, 30.0}, -3.0, true,
+                      1'980'000'000);
+  history.addAttitude(1'000'000'000, pitchQuaternion(0.0), 985'000'000);
+  history.addAttitude(2'000'000'000, pitchQuaternion(kPi / 2.0), 1'975'000'000);
 
   const auto sample = history.sample(1'500'000'000);
 
@@ -35,6 +38,15 @@ TEST(LidarPoseHistoryTest, InterpolatesXyzYawAndQuaternionAttitude) {
   EXPECT_NEAR(value.pose.pitch_rad, kPi / 4.0, 1.0e-6);
   EXPECT_TRUE(value.position_interpolated);
   EXPECT_TRUE(value.attitude_interpolated);
+  EXPECT_EQ(value.position_timing.mode, LidarPoseTemporalMode::kInterpolated);
+  EXPECT_EQ(value.position_timing.from_receive_stamp_ns, 1'000'000'000);
+  EXPECT_EQ(value.position_timing.to_receive_stamp_ns, 2'000'000'000);
+  EXPECT_EQ(value.position_timing.from_source_stamp_ns, 990'000'000);
+  EXPECT_EQ(value.position_timing.to_source_stamp_ns, 1'980'000'000);
+  EXPECT_DOUBLE_EQ(value.position_timing.interpolation_ratio, 0.5);
+  EXPECT_EQ(value.attitude_timing.mode, LidarPoseTemporalMode::kInterpolated);
+  EXPECT_EQ(value.attitude_timing.from_source_stamp_ns, 985'000'000);
+  EXPECT_EQ(value.attitude_timing.to_source_stamp_ns, 1'975'000'000);
 }
 
 TEST(LidarPoseHistoryTest, RejectsExtrapolationBeyondConfiguredBound) {
@@ -48,6 +60,30 @@ TEST(LidarPoseHistoryTest, RejectsExtrapolationBeyondConfiguredBound) {
   EXPECT_EQ(result.status, LidarPoseAlignmentStatus::kExtrapolationExceeded);
   EXPECT_EQ(result.position_stamp_error_ns, 60'000'000);
   EXPECT_EQ(result.attitude_stamp_error_ns, 60'000'000);
+  EXPECT_EQ(result.position_timing.mode, LidarPoseTemporalMode::kExtrapolatedAfter);
+  EXPECT_EQ(result.position_timing.signed_extrapolation_ns, 60'000'000);
+}
+
+TEST(LidarPoseHistoryTest, DiagnosesExtrapolationBeforeFirstSample) {
+  LidarPoseHistory history{LidarPoseHistoryConfig{3'000'000'000, 100'000'000}};
+  history.addPosition(1'000'000'000, Point3{1.0, 2.0, 3.0}, 0.0, true, 980'000'000);
+  history.addAttitude(1'000'000'000, pitchQuaternion(0.0), 975'000'000);
+
+  const LidarPoseSampleResult result = history.sampleWithDiagnostics(950'000'000);
+
+  ASSERT_TRUE(result.aligned_pose.has_value());
+  EXPECT_EQ(result.position_timing.mode, LidarPoseTemporalMode::kExtrapolatedBefore);
+  EXPECT_EQ(result.position_timing.signed_extrapolation_ns, -50'000'000);
+  EXPECT_STREQ(lidarPoseTemporalModeName(result.position_timing.mode),
+               "extrapolated_before");
+}
+
+TEST(LidarPoseHistoryTest, ConvertsPx4SourceTimestampSafely) {
+  EXPECT_EQ(lidarPoseSourceTimestampNanoseconds(123U), 123'000);
+  EXPECT_EQ(lidarPoseSourceTimestampNanoseconds(0U), 0);
+  EXPECT_EQ(
+      lidarPoseSourceTimestampNanoseconds(std::numeric_limits<std::uint64_t>::max()),
+      0);
 }
 
 TEST(LidarPoseHistoryTest, RejectsInvalidSamples) {

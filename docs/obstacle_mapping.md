@@ -115,9 +115,12 @@ string payloads and is intended for monitoring DDS bandwidth growth.
 
 Beam acquisition time is derived from the scan stamp and `time_increment`.
 Receive time is stored separately and is never substituted for a missing sensor
-stamp. The recorded attitude is the attitude actually used by the projection;
-the current implementation does not interpolate vehicle pose independently for
-every beam timestamp.
+stamp. Position XYZ and quaternion attitude are sampled independently for every
+beam acquisition timestamp from bounded histories. Those histories are
+currently keyed by ROS callback receive timestamps; PX4 source timestamps are
+retained as diagnostics but are not yet the interpolation key. When either
+history cannot cover the requested timestamp, projection falls back to the
+callback-time pose and emits a bounded 6DoF alignment warning.
 
 ## Motion Compensation
 
@@ -129,6 +132,13 @@ Lidar projection can account for:
 - attitude compensation;
 - lidar mount roll/pitch/yaw offsets;
 - lidar z offset.
+
+The direction transform applies the configured mount orientation. The ray
+origin currently applies only `lidar_z_offset_m` along map Z; body-frame X/Y
+offset and attitude rotation of the origin offset are not yet part of the
+projection. Memory-hit diagnostics log the origin before and after this limited
+extrinsic so that its contribution can be measured before full extrinsic
+support is enabled.
 
 The same concepts appear in obstacle memory, planner current lidar overlay, and
 lidar debug configuration.

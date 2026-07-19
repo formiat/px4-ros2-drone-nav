@@ -24,7 +24,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
       last_pose_receive_ns_,
       Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
       use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
-      altitude_valid_ && (!use_px4_heading_for_scan_ || heading_valid));
+      altitude_valid_ && (!use_px4_heading_for_scan_ || heading_valid),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp));
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
     current_velocity_ =
         Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -40,7 +41,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
 
 void LidarDebugNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
-  lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q);
+  lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q,
+                                  lidarPoseSourceTimestampNanoseconds(msg.timestamp));
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;

@@ -54,6 +54,8 @@ struct LidarBeamProjection {
   Point3 lidar_direction{};
   Point3 body_frd_direction{};
   Point3 ned_direction{};
+  Point3 ray_origin_before_extrinsic_map_m{};
+  Point3 applied_extrinsic_map_m{};
   Point3 ray_origin_map_m{};
   Point3 ray_direction_map{};
   Point3 endpoint_map_m{};

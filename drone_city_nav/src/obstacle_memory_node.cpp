@@ -379,7 +379,8 @@ private:
         Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
                current_pose_.altitude_m},
         current_pose_.pose.yaw_rad,
-        current_pose_.yaw_valid && current_pose_.altitude_valid);
+        current_pose_.yaw_valid && current_pose_.altitude_valid,
+        current_pose_.stamp_ns);
     if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
       current_velocity_ =
           Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -393,7 +394,8 @@ private:
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
     last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
-    lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q);
+    lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q,
+                                    lidarPoseSourceTimestampNanoseconds(msg.timestamp));
     const std::optional<std::int64_t> sample_stamp_ns =
         px4TimestampNanoseconds(msg.timestamp);
     attitude_sample_stamp_ns_ = sample_stamp_ns.value_or(0);
@@ -482,11 +484,17 @@ private:
                                       : std::optional<double>{initial_heading_rad_});
     if (pose_alignment.aligned()) {
       scan_view.beam_projection_poses = pose_alignment.poses;
+    }
+    const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
+        pose_alignment.aligned() ? "Lidar 6DoF pose alignment"
+                                 : "Lidar 6DoF pose alignment fallback",
+        pose_alignment, scan_view.timing, now_ns);
+    if (pose_alignment.aligned()) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                           alignment_diagnostic.c_str());
     } else {
-      const std::string diagnostic =
-          formatLidarPoseAlignmentDiagnostic("Lidar 6DoF pose alignment fallback",
-                                             pose_alignment, scan_view.timing, now_ns);
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", diagnostic.c_str());
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                           alignment_diagnostic.c_str());
     }
     const ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
@@ -496,8 +504,11 @@ private:
 
     for (const ObstacleMemoryOccupiedTransition& transition :
          stats.occupied_transitions) {
+      const MemoryCellProvenance& provenance = transition.provenance;
+      const LidarBeamObservation& observation = provenance.occupancy_trigger.beam;
       const LidarMemoryHitDiagnosticContext diagnostic_context =
-          makeLidarMemoryHitDiagnosticContext(scan, now_ns, motion_compensation);
+          makeLidarMemoryHitDiagnosticContext(scan, now_ns, motion_compensation,
+                                              observation);
       const LidarMemoryHitDumpWriteResult dump_result = lidar_memory_hit_dump_.write(
           LidarMemoryHitDiagnosticRecord{0U, transition, diagnostic_context});
       if (dump_result.status == LidarMemoryHitDumpWriteStatus::kLimitReached &&
@@ -513,8 +524,6 @@ private:
             lidar_memory_hit_dump_.path().string().c_str());
       }
       const std::uint64_t dump_record_index = dump_result.record_index;
-      const MemoryCellProvenance& provenance = transition.provenance;
-      const LidarBeamObservation& observation = provenance.occupancy_trigger.beam;
       if (isRetainedExpectedSurfaceHit(transition.trigger_decision)) {
         const double known_candidate_range_m =
             transition.trigger_decision.known_static_surface.has_value()
@@ -549,7 +558,7 @@ private:
           dump_record_index, structure->id, transition,
           Point3{current_pose_.pose.position.x, current_pose_.pose.position.y,
                  current_pose_.altitude_m},
-          scan_pose.position);
+          scan_pose.position, diagnostic_context);
       RCLCPP_INFO(get_logger(), "%s", passage_diagnostic.c_str());
     }
 
@@ -721,7 +730,8 @@ private:
 
   [[nodiscard]] LidarMemoryHitDiagnosticContext makeLidarMemoryHitDiagnosticContext(
       const sensor_msgs::msg::LaserScan& scan, const std::int64_t callback_stamp_ns,
-      const LidarPoseMotionCompensationResult& motion_compensation) const {
+      const LidarPoseMotionCompensationResult& motion_compensation,
+      const LidarBeamObservation& observation) const {
     return LidarMemoryHitDiagnosticContext{
         .callback_stamp_ns = callback_stamp_ns,
         .pose_sample_stamp_ns = current_pose_.stamp_ns,
@@ -740,6 +750,10 @@ private:
         .horizontal_velocity = current_velocity_,
         .horizontal_velocity_valid = current_velocity_valid_,
         .motion_compensation = motion_compensation,
+        .acquisition_pose_alignment = observation.acquisition_stamp_valid
+                                          ? lidar_pose_history_.sampleWithDiagnostics(
+                                                observation.acquisition_stamp_ns)
+                                          : LidarPoseSampleResult{},
         .scan_range_min_m = static_cast<double>(scan.range_min),
         .scan_range_max_m = static_cast<double>(scan.range_max),
         .scan_angle_min_rad = static_cast<double>(scan.angle_min),

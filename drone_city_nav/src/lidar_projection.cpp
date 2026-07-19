@@ -202,6 +202,12 @@ projectLidarBeam(const LidarProjectionPose& pose, const LidarProjectionConfig& c
 
   if (pose.altitude_valid && std::isfinite(pose.altitude_m + config.lidar_z_offset_m)) {
     const double origin_altitude_m = pose.altitude_m + config.lidar_z_offset_m;
+    projection.ray_origin_before_extrinsic_map_m =
+        Point3{pose.position.x, pose.position.y, pose.altitude_m};
+    // The current projection applies only a map-vertical Z offset. Keeping this
+    // decomposition explicit makes the missing body-frame XY lever arm and
+    // attitude rotation observable without changing projection behavior.
+    projection.applied_extrinsic_map_m = Point3{0.0, 0.0, config.lidar_z_offset_m};
     projection.ray_origin_map_m =
         Point3{pose.position.x, pose.position.y, origin_altitude_m};
     projection.ray_direction_map =

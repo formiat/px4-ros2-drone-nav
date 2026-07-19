@@ -41,6 +41,40 @@ void writePoint3(std::ostream& stream, const Point3& point) {
   stream << '}';
 }
 
+[[nodiscard]] Point3 subtract(const Point3& lhs, const Point3& rhs) noexcept {
+  return Point3{lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z};
+}
+
+[[nodiscard]] double millisecondsBetween(const std::int64_t later_stamp_ns,
+                                         const std::int64_t earlier_stamp_ns) noexcept {
+  if (later_stamp_ns <= 0 || earlier_stamp_ns <= 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return 1.0e-6 * static_cast<double>(later_stamp_ns - earlier_stamp_ns);
+}
+
+void writeTemporalAlignment(std::ostream& stream,
+                            const LidarPoseTemporalAlignment& timing) {
+  stream << "{\"mode\":\"" << lidarPoseTemporalModeName(timing.mode)
+         << "\",\"requested_stamp_ns\":" << timing.requested_stamp_ns
+         << ",\"from_receive_stamp_ns\":" << timing.from_receive_stamp_ns
+         << ",\"to_receive_stamp_ns\":" << timing.to_receive_stamp_ns
+         << ",\"from_source_stamp_ns\":" << timing.from_source_stamp_ns
+         << ",\"to_source_stamp_ns\":" << timing.to_source_stamp_ns
+         << ",\"from_transport_age_ms\":";
+  writeNumberOrNull(stream, millisecondsBetween(timing.from_receive_stamp_ns,
+                                                timing.from_source_stamp_ns));
+  stream << ",\"to_transport_age_ms\":";
+  writeNumberOrNull(stream, millisecondsBetween(timing.to_receive_stamp_ns,
+                                                timing.to_source_stamp_ns));
+  stream << ",\"interpolation_ratio\":";
+  writeNumberOrNull(stream, timing.interpolation_ratio);
+  stream << ",\"signed_extrapolation_age_ms\":";
+  writeNumberOrNull(stream,
+                    1.0e-6 * static_cast<double>(timing.signed_extrapolation_ns));
+  stream << '}';
+}
+
 void writeStamp(std::ostream& stream, const char* name, const std::int64_t stamp_ns,
                 const bool valid) {
   stream << '"' << name << "\":{\"valid\":" << (valid ? "true" : "false")
@@ -84,7 +118,8 @@ void writePassageMemoryHitDiagnostic(std::ostream& stream,
                                      const std::string_view structure_id,
                                      const ObstacleMemoryOccupiedTransition& transition,
                                      const Point3& vehicle_position_map_m,
-                                     const Point2& scan_pose_map_m) {
+                                     const Point2& scan_pose_map_m,
+                                     const LidarMemoryHitDiagnosticContext& context) {
   const MemoryCellProvenance& provenance = transition.provenance;
   const LidarBeamObservation& observation = provenance.occupancy_trigger.beam;
   const KnownStaticClassificationSnapshot& classification =
@@ -92,56 +127,96 @@ void writePassageMemoryHitDiagnostic(std::ostream& stream,
   const LidarIngestionDecisionSnapshot& ingestion =
       provenance.occupancy_trigger.ingestion_decision;
   const LidarBeamProjection& projection = observation.projection;
-  stream << "PASSAGE_MEMORY_HIT transition=occupied dump_record=" << dump_record_index
-         << " structure=" << structure_id << " beam=" << observation.beam_index
-         << " cell=(" << provenance.cell.x << ", " << provenance.cell.y
-         << ") endpoint=(" << std::fixed << std::setprecision(3)
-         << projection.endpoint_map_m.x << ", " << projection.endpoint_map_m.y << ", "
-         << projection.endpoint_map_m.z << ") range=" << observation.measured_range_m
-         << " score=" << transition.score_before << "->" << transition.score_after
-         << " occupied_threshold=" << provenance.occupied_score_threshold
-         << " independent_scans=" << provenance.occupancy_trigger_independent_scan_count
-         << " pose=(" << vehicle_position_map_m.x << ", " << vehicle_position_map_m.y
-         << ", " << vehicle_position_map_m.z << ") scan_pose=(" << scan_pose_map_m.x
-         << ", " << scan_pose_map_m.y << ") source_attitude=(valid="
-         << (observation.source_attitude_valid ? "true" : "false")
-         << " roll=" << observation.source_roll_rad
-         << " pitch=" << observation.source_pitch_rad
-         << " tilt=" << observation.source_tilt_rad << ") applied_attitude=(applied="
-         << (projection.attitude_compensation_applied ? "true" : "false")
-         << " roll=" << projection.applied_roll_rad
-         << " pitch=" << projection.applied_pitch_rad
-         << " tilt=" << projection.applied_tilt_rad
-         << ") acquisition_stamp_ns=" << observation.acquisition_stamp_ns
-         << " acquisition_stamp_valid="
-         << (observation.acquisition_stamp_valid ? "true" : "false")
-         << " receive_stamp_ns=" << observation.receive_stamp_ns
-         << " receive_stamp_valid="
-         << (observation.receive_stamp_valid ? "true" : "false") << " ray_origin=("
-         << projection.ray_origin_map_m.x << ", " << projection.ray_origin_map_m.y
-         << ", " << projection.ray_origin_map_m.z << ") ray_dir=("
-         << std::setprecision(5) << projection.ray_direction_map.x << ", "
-         << projection.ray_direction_map.y << ", " << projection.ray_direction_map.z
-         << ") classifier_applied="
-         << (classification.classifier_applied ? "true" : "false") << " classification="
-         << knownStaticLidarHitClassificationName(classification.classification)
-         << " volume_matched=" << (classification.volume_matched ? "true" : "false")
-         << " confident_face="
-         << (classification.confident_face_interior ? "true" : "false")
-         << " known_structure="
-         << (classification.structure_id.empty() ? "<none>"
-                                                 : classification.structure_id)
-         << " opening="
-         << (classification.opening_id.empty() ? "<none>" : classification.opening_id)
-         << " part="
-         << (classification.part_id.empty() ? "<none>" : classification.part_id)
-         << " expected_range=" << std::setprecision(3)
-         << classification.expected_range_m << " delta=" << classification.range_delta_m
-         << " ingestion[action=" << lidarIngestionActionName(ingestion.action)
-         << " reason=" << lidarIngestionReasonName(ingestion.reason)
-         << " surface=" << lidarExpectedSurfaceKindName(ingestion.expected_surface)
-         << " expected_range=" << ingestion.expected_range_m
-         << " delta=" << ingestion.range_delta_m << ']';
+  const LidarPoseSampleResult& alignment = context.acquisition_pose_alignment;
+  Point3 expected_residual{std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::quiet_NaN()};
+  if (transition.trigger_decision.known_static_surface.has_value()) {
+    expected_residual =
+        subtract(projection.endpoint_map_m,
+                 transition.trigger_decision.known_static_surface->intersection_map_m);
+  }
+  stream
+      << "PASSAGE_MEMORY_HIT transition=occupied dump_record=" << dump_record_index
+      << " structure=" << structure_id << " beam=" << observation.beam_index
+      << " cell=(" << provenance.cell.x << ", " << provenance.cell.y << ") endpoint=("
+      << std::fixed << std::setprecision(3) << projection.endpoint_map_m.x << ", "
+      << projection.endpoint_map_m.y << ", " << projection.endpoint_map_m.z
+      << ") range=" << observation.measured_range_m
+      << " score=" << transition.score_before << "->" << transition.score_after
+      << " occupied_threshold=" << provenance.occupied_score_threshold
+      << " independent_scans=" << provenance.occupancy_trigger_independent_scan_count
+      << " pose=(" << vehicle_position_map_m.x << ", " << vehicle_position_map_m.y
+      << ", " << vehicle_position_map_m.z << ") scan_pose=(" << scan_pose_map_m.x
+      << ", " << scan_pose_map_m.y << ") source_attitude=(valid="
+      << (observation.source_attitude_valid ? "true" : "false")
+      << " roll=" << observation.source_roll_rad
+      << " pitch=" << observation.source_pitch_rad
+      << " tilt=" << observation.source_tilt_rad << ") applied_attitude=(applied="
+      << (projection.attitude_compensation_applied ? "true" : "false")
+      << " roll=" << projection.applied_roll_rad
+      << " pitch=" << projection.applied_pitch_rad
+      << " tilt=" << projection.applied_tilt_rad
+      << ") acquisition_stamp_ns=" << observation.acquisition_stamp_ns
+      << " acquisition_stamp_valid="
+      << (observation.acquisition_stamp_valid ? "true" : "false")
+      << " receive_stamp_ns=" << observation.receive_stamp_ns
+      << " receive_stamp_valid=" << (observation.receive_stamp_valid ? "true" : "false")
+      << " scan_transport_age_ms="
+      << millisecondsBetween(observation.receive_stamp_ns,
+                             observation.acquisition_stamp_ns)
+      << " pose_source="
+      << (observation.timestamp_aligned_pose ? "aligned_history" : "callback_fallback")
+      << " alignment_status=" << lidarPoseAlignmentStatusName(alignment.status)
+      << " position_timing=(mode="
+      << lidarPoseTemporalModeName(alignment.position_timing.mode)
+      << " receive=" << alignment.position_timing.from_receive_stamp_ns << ".."
+      << alignment.position_timing.to_receive_stamp_ns
+      << " source=" << alignment.position_timing.from_source_stamp_ns << ".."
+      << alignment.position_timing.to_source_stamp_ns
+      << " ratio=" << alignment.position_timing.interpolation_ratio
+      << " extrapolation_ms="
+      << 1.0e-6 * static_cast<double>(alignment.position_timing.signed_extrapolation_ns)
+      << ") attitude_timing=(mode="
+      << lidarPoseTemporalModeName(alignment.attitude_timing.mode)
+      << " receive=" << alignment.attitude_timing.from_receive_stamp_ns << ".."
+      << alignment.attitude_timing.to_receive_stamp_ns
+      << " source=" << alignment.attitude_timing.from_source_stamp_ns << ".."
+      << alignment.attitude_timing.to_source_stamp_ns
+      << " ratio=" << alignment.attitude_timing.interpolation_ratio
+      << " extrapolation_ms="
+      << 1.0e-6 * static_cast<double>(alignment.attitude_timing.signed_extrapolation_ns)
+      << ") ray_origin_before_extrinsic=("
+      << projection.ray_origin_before_extrinsic_map_m.x << ", "
+      << projection.ray_origin_before_extrinsic_map_m.y << ", "
+      << projection.ray_origin_before_extrinsic_map_m.z << ") applied_extrinsic_map=("
+      << projection.applied_extrinsic_map_m.x << ", "
+      << projection.applied_extrinsic_map_m.y << ", "
+      << projection.applied_extrinsic_map_m.z << ") ray_origin=("
+      << projection.ray_origin_map_m.x << ", " << projection.ray_origin_map_m.y << ", "
+      << projection.ray_origin_map_m.z << ") ray_dir=(" << std::setprecision(5)
+      << projection.ray_direction_map.x << ", " << projection.ray_direction_map.y
+      << ", " << projection.ray_direction_map.z << ") classifier_applied="
+      << (classification.classifier_applied ? "true" : "false") << " classification="
+      << knownStaticLidarHitClassificationName(classification.classification)
+      << " volume_matched=" << (classification.volume_matched ? "true" : "false")
+      << " confident_face="
+      << (classification.confident_face_interior ? "true" : "false")
+      << " known_structure="
+      << (classification.structure_id.empty() ? "<none>" : classification.structure_id)
+      << " opening="
+      << (classification.opening_id.empty() ? "<none>" : classification.opening_id)
+      << " part="
+      << (classification.part_id.empty() ? "<none>" : classification.part_id)
+      << " expected_range=" << std::setprecision(3) << classification.expected_range_m
+      << " delta=" << classification.range_delta_m
+      << " ingestion[action=" << lidarIngestionActionName(ingestion.action)
+      << " reason=" << lidarIngestionReasonName(ingestion.reason)
+      << " surface=" << lidarExpectedSurfaceKindName(ingestion.expected_surface)
+      << " expected_range=" << ingestion.expected_range_m
+      << " delta=" << ingestion.range_delta_m << "] expected_surface_residual_map=("
+      << expected_residual.x << ", " << expected_residual.y << ", "
+      << expected_residual.z << ')';
 }
 
 } // namespace
@@ -205,10 +280,11 @@ const std::filesystem::path& LidarMemoryHitDumpWriter::path() const noexcept {
 std::string formatPassageMemoryHitDiagnostic(
     const std::uint64_t dump_record_index, const std::string_view structure_id,
     const ObstacleMemoryOccupiedTransition& transition,
-    const Point3& vehicle_position_map_m, const Point2& scan_pose_map_m) {
+    const Point3& vehicle_position_map_m, const Point2& scan_pose_map_m,
+    const LidarMemoryHitDiagnosticContext& context) {
   std::ostringstream stream;
   writePassageMemoryHitDiagnostic(stream, dump_record_index, structure_id, transition,
-                                  vehicle_position_map_m, scan_pose_map_m);
+                                  vehicle_position_map_m, scan_pose_map_m, context);
   return stream.str();
 }
 
@@ -225,11 +301,29 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   const LidarBeamProjection& projection = observation.projection;
   const LidarIngestionDecision& decision = record.transition.trigger_decision;
   const LidarMemoryHitDiagnosticContext& context = record.context;
+  const LidarPoseSampleResult& alignment = context.acquisition_pose_alignment;
   const double beam_angle_rad =
       context.scan_angle_min_rad +
       static_cast<double>(observation.beam_index) * context.scan_angle_increment_rad;
   const double beam_time_offset_s =
       static_cast<double>(observation.beam_index) * context.scan_time_increment_s;
+  const Point3 callback_vehicle_origin{context.vehicle_pose.position.x,
+                                       context.vehicle_pose.position.y,
+                                       context.vehicle_pose.altitude_m};
+  const Point3 motion_compensated_origin{context.motion_compensation.position.x,
+                                         context.motion_compensation.position.y,
+                                         context.vehicle_pose.altitude_m};
+  const Point3 base_origin_vs_callback =
+      subtract(projection.ray_origin_before_extrinsic_map_m, callback_vehicle_origin);
+  const Point3 base_origin_vs_motion_compensated =
+      subtract(projection.ray_origin_before_extrinsic_map_m, motion_compensated_origin);
+  Point3 expected_surface_residual{std::numeric_limits<double>::quiet_NaN(),
+                                   std::numeric_limits<double>::quiet_NaN(),
+                                   std::numeric_limits<double>::quiet_NaN()};
+  if (decision.known_static_surface.has_value()) {
+    expected_surface_residual = subtract(
+        projection.endpoint_map_m, decision.known_static_surface->intersection_map_m);
+  }
 
   stream << std::setprecision(12);
   stream << "{\"record_index\":" << record.record_index
@@ -248,6 +342,12 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, beam_angle_rad);
   stream << ",\"beam_time_offset_s\":";
   writeNumberOrNull(stream, beam_time_offset_s);
+  stream << ",\"receive_minus_acquisition_ms\":";
+  writeNumberOrNull(stream, millisecondsBetween(observation.receive_stamp_ns,
+                                                observation.acquisition_stamp_ns));
+  stream << ",\"callback_minus_acquisition_ms\":";
+  writeNumberOrNull(stream, millisecondsBetween(context.callback_stamp_ns,
+                                                observation.acquisition_stamp_ns));
   stream << ",\"range_min_m\":";
   writeNumberOrNull(stream, context.scan_range_min_m);
   stream << ",\"range_max_m\":";
@@ -294,6 +394,35 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, observation.source_tilt_rad);
   stream << ",\"source_valid\":"
          << (observation.source_attitude_valid ? "true" : "false") << "},";
+  stream << "\"acquisition_pose_alignment\":{\"projection_source\":\""
+         << (observation.timestamp_aligned_pose ? "aligned_history"
+                                                : "callback_fallback")
+         << "\",\"diagnostic_resample_status\":\""
+         << lidarPoseAlignmentStatusName(alignment.status) << "\",\"position_timing\":";
+  writeTemporalAlignment(stream, alignment.position_timing);
+  stream << ",\"attitude_timing\":";
+  writeTemporalAlignment(stream, alignment.attitude_timing);
+  stream << ",\"aligned_pose\":";
+  if (alignment.aligned_pose.has_value()) {
+    const LidarProjectionPose& aligned_pose = alignment.aligned_pose->pose;
+    stream << "{\"position_map_m\":{";
+    stream << "\"x\":";
+    writeNumberOrNull(stream, aligned_pose.position.x);
+    stream << ",\"y\":";
+    writeNumberOrNull(stream, aligned_pose.position.y);
+    stream << ",\"z\":";
+    writeNumberOrNull(stream, aligned_pose.altitude_m);
+    stream << "},\"roll_rad\":";
+    writeNumberOrNull(stream, aligned_pose.roll_rad);
+    stream << ",\"pitch_rad\":";
+    writeNumberOrNull(stream, aligned_pose.pitch_rad);
+    stream << ",\"yaw_rad\":";
+    writeNumberOrNull(stream, aligned_pose.yaw_rad);
+    stream << '}';
+  } else {
+    stream << "null";
+  }
+  stream << "},";
   stream << "\"motion_compensation\":{\"applied\":"
          << (context.motion_compensation.applied ? "true" : "false")
          << ",\"pose_lag_s\":";
@@ -306,7 +435,11 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writePoint2(stream, context.motion_compensation.applied_shift);
   stream << ",\"compensated_position_xy\":";
   writePoint2(stream, context.motion_compensation.position);
-  stream << "},\"projection\":{\"ray_origin_map_m\":";
+  stream << "},\"projection\":{\"ray_origin_before_extrinsic_map_m\":";
+  writePoint3(stream, projection.ray_origin_before_extrinsic_map_m);
+  stream << ",\"applied_extrinsic_map_m\":";
+  writePoint3(stream, projection.applied_extrinsic_map_m);
+  stream << ",\"ray_origin_map_m\":";
   writePoint3(stream, projection.ray_origin_map_m);
   stream << ",\"ray_direction_map\":";
   writePoint3(stream, projection.ray_direction_map);
@@ -329,6 +462,23 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, projection.applied_pitch_rad);
   stream << ",\"applied_tilt_rad\":";
   writeNumberOrNull(stream, projection.applied_tilt_rad);
+  stream << "},\"projection_error_decomposition\":{"
+         << "\"frame_chain\":\"lidar_flu->body_frd->ned->map_z_flip\","
+         << "\"base_origin_vs_callback_pose_map_m\":";
+  writePoint3(stream, base_origin_vs_callback);
+  stream << ",\"base_origin_vs_motion_compensated_pose_map_m\":";
+  writePoint3(stream, base_origin_vs_motion_compensated);
+  stream << ",\"applied_extrinsic_map_m\":";
+  writePoint3(stream, projection.applied_extrinsic_map_m);
+  stream << ",\"horizontal_extrinsic_applied\":"
+         << ((std::abs(projection.applied_extrinsic_map_m.x) > 0.0 ||
+              std::abs(projection.applied_extrinsic_map_m.y) > 0.0)
+                 ? "true"
+                 : "false")
+         << ",\"expected_surface_endpoint_residual_map_m\":";
+  writePoint3(stream, expected_surface_residual);
+  stream << ",\"expected_surface_range_residual_m\":";
+  writeNumberOrNull(stream, decision.range_delta_m);
   stream << "},\"expected_surfaces\":{\"ground_range_m\":";
   if (decision.expected_ground_range_m.has_value()) {
     writeNumberOrNull(stream, *decision.expected_ground_range_m);
@@ -359,7 +509,10 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, decision.expected_range_m);
   stream << ",\"selected_range_delta_m\":";
   writeNumberOrNull(stream, decision.range_delta_m);
-  stream << "},\"projection_config\":{\"lidar_z_offset_m\":";
+  stream << "},\"projection_config\":{\"lidar_origin_model\":\"map_vertical_z_only\","
+         << "\"lidar_body_offset_assumed_m\":{\"x\":0,\"y\":0,\"z\":";
+  writeNumberOrNull(stream, context.projection_config.lidar_z_offset_m);
+  stream << "},\"lidar_z_offset_m\":";
   writeNumberOrNull(stream, context.projection_config.lidar_z_offset_m);
   stream << ",\"scan_yaw_offset_rad\":";
   writeNumberOrNull(stream, context.projection_config.scan_yaw_offset_rad);

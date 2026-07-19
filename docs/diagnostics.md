@@ -173,8 +173,29 @@ by `lidar_memory_hit_dump_*`. The simulator runner assigns a separate file at
 beam range/index/acquisition timestamp, callback-time vehicle pose and
 attitude stamps, the map-frame ray origin/direction/endpoint, XY motion
 compensation, ground and known-static expected-surface candidates, the selected
-ingestion decision, and the active cell's endpoint-Z provenance. Use this dump
-to distinguish a range/classification error from pose/attitude timing error.
+ingestion decision, and the active cell's endpoint-Z provenance.
+
+The `acquisition_pose_alignment` object records whether the projection used
+timestamp-aligned history or callback fallback. Position and attitude are
+reported independently with their PX4 source and ROS receive bracket
+timestamps, interpolation ratio, temporal mode, signed extrapolation age, and
+transport age. The aligned XYZ/RPY pose used for diagnostic replay is included
+when available.
+
+The `projection` object separates `ray_origin_before_extrinsic_map_m`,
+`applied_extrinsic_map_m`, and the final `ray_origin_map_m`.
+`projection_error_decomposition` additionally reports scan transport age,
+aligned-base displacement from callback and legacy motion-compensated poses,
+the frame-conversion chain, whether a horizontal extrinsic was applied, and
+the measured endpoint residual relative to the selected known surface. The
+current origin model is explicitly named `map_vertical_z_only`: it assumes a
+zero horizontal lever arm and applies `lidar_z_offset_m` along map Z without
+body-attitude rotation. These fields let a run distinguish timing, omitted
+extrinsic, frame-conversion, and range/classification contributions before the
+projection model is changed.
+
+Use this dump to distinguish a range/classification error from pose/attitude
+timing or extrinsic error.
 It is diagnostic output only: it never feeds memory scoring, planner grids, or
 flight control.
 

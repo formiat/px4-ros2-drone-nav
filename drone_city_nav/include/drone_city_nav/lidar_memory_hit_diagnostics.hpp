@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_motion_compensation.hpp"
+#include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 
 #include <cstddef>
@@ -31,6 +32,7 @@ struct LidarMemoryHitDiagnosticContext {
   Point2 horizontal_velocity{};
   bool horizontal_velocity_valid{false};
   LidarPoseMotionCompensationResult motion_compensation{};
+  LidarPoseSampleResult acquisition_pose_alignment{};
   double scan_range_min_m{0.0};
   double scan_range_max_m{0.0};
   double scan_angle_min_rad{0.0};
@@ -106,7 +108,8 @@ px4TimestampNanoseconds(std::uint64_t timestamp_us) noexcept;
 [[nodiscard]] std::string formatPassageMemoryHitDiagnostic(
     std::uint64_t dump_record_index, std::string_view structure_id,
     const ObstacleMemoryOccupiedTransition& transition,
-    const Point3& vehicle_position_map_m, const Point2& scan_pose_map_m);
+    const Point3& vehicle_position_map_m, const Point2& scan_pose_map_m,
+    const LidarMemoryHitDiagnosticContext& context);
 
 [[nodiscard]] bool
 isRetainedExpectedSurfaceHit(const LidarIngestionDecision& decision) noexcept;

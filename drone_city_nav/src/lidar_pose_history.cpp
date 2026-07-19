@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <sstream>
@@ -133,6 +134,34 @@ interpolationRatio(const std::int64_t from_stamp_ns, const std::int64_t to_stamp
   return 0;
 }
 
+template<typename Sample>
+[[nodiscard]] LidarPoseTemporalAlignment
+temporalAlignment(const Sample& from, const Sample& to,
+                  const std::int64_t requested_stamp_ns) noexcept {
+  LidarPoseTemporalMode mode = LidarPoseTemporalMode::kExact;
+  std::int64_t signed_extrapolation_ns = 0;
+  if (requested_stamp_ns < from.stamp_ns) {
+    mode = LidarPoseTemporalMode::kExtrapolatedBefore;
+    signed_extrapolation_ns = requested_stamp_ns - from.stamp_ns;
+  } else if (requested_stamp_ns > to.stamp_ns) {
+    mode = LidarPoseTemporalMode::kExtrapolatedAfter;
+    signed_extrapolation_ns = requested_stamp_ns - to.stamp_ns;
+  } else if (from.stamp_ns != to.stamp_ns) {
+    mode = LidarPoseTemporalMode::kInterpolated;
+  }
+  return LidarPoseTemporalAlignment{
+      .mode = mode,
+      .requested_stamp_ns = requested_stamp_ns,
+      .from_receive_stamp_ns = from.stamp_ns,
+      .to_receive_stamp_ns = to.stamp_ns,
+      .from_source_stamp_ns = from.source_stamp_ns,
+      .to_source_stamp_ns = to.source_stamp_ns,
+      .signed_extrapolation_ns = signed_extrapolation_ns,
+      .interpolation_ratio =
+          interpolationRatio(from.stamp_ns, to.stamp_ns, requested_stamp_ns),
+  };
+}
+
 } // namespace
 
 LidarPoseHistory::LidarPoseHistory(LidarPoseHistoryConfig config)
@@ -144,7 +173,8 @@ LidarPoseHistory::LidarPoseHistory(LidarPoseHistoryConfig config)
 
 void LidarPoseHistory::addPosition(const std::int64_t stamp_ns,
                                    const Point3& position_map_m, const double yaw_rad,
-                                   const bool yaw_valid) {
+                                   const bool yaw_valid,
+                                   const std::int64_t source_stamp_ns) {
   if (stamp_ns <= 0 || !finitePoint(position_map_m) || !yaw_valid ||
       !std::isfinite(yaw_rad)) {
     return;
@@ -152,13 +182,14 @@ void LidarPoseHistory::addPosition(const std::int64_t stamp_ns,
   if (!positions_.empty() && stamp_ns < positions_.back().stamp_ns) {
     return;
   }
-  positions_.push_back(
-      PositionSample{stamp_ns, position_map_m, normalizedAngle(yaw_rad)});
+  positions_.push_back(PositionSample{stamp_ns, source_stamp_ns, position_map_m,
+                                      normalizedAngle(yaw_rad)});
   prune(stamp_ns);
 }
 
 void LidarPoseHistory::addAttitude(const std::int64_t stamp_ns,
-                                   const std::array<float, 4>& quaternion) {
+                                   const std::array<float, 4>& quaternion,
+                                   const std::int64_t source_stamp_ns) {
   const std::array<double, 4> converted{
       static_cast<double>(quaternion[0]), static_cast<double>(quaternion[1]),
       static_cast<double>(quaternion[2]), static_cast<double>(quaternion[3])};
@@ -169,7 +200,7 @@ void LidarPoseHistory::addAttitude(const std::int64_t stamp_ns,
   if (!attitudes_.empty() && stamp_ns < attitudes_.back().stamp_ns) {
     return;
   }
-  attitudes_.push_back(AttitudeSample{stamp_ns, normalized});
+  attitudes_.push_back(AttitudeSample{stamp_ns, source_stamp_ns, normalized});
   prune(stamp_ns);
 }
 
@@ -201,6 +232,8 @@ LidarPoseHistory::sampleWithDiagnostics(const std::int64_t stamp_ns) const noexc
   const PositionSample& position_to = positions_[position_to_index];
   const AttitudeSample& attitude_from = attitudes_[attitude_from_index];
   const AttitudeSample& attitude_to = attitudes_[attitude_to_index];
+  result.position_timing = temporalAlignment(position_from, position_to, stamp_ns);
+  result.attitude_timing = temporalAlignment(attitude_from, attitude_to, stamp_ns);
   result.position_stamp_error_ns =
       nearestStampError(stamp_ns, position_from.stamp_ns, position_to.stamp_ns);
   result.attitude_stamp_error_ns =
@@ -243,6 +276,8 @@ LidarPoseHistory::sampleWithDiagnostics(const std::int64_t stamp_ns) const noexc
       .attitude_stamp_error_ns = result.attitude_stamp_error_ns,
       .position_interpolated = position_from_index != position_to_index,
       .attitude_interpolated = attitude_from_index != attitude_to_index,
+      .position_timing = result.position_timing,
+      .attitude_timing = result.attitude_timing,
   };
   result.status = LidarPoseAlignmentStatus::kAligned;
   return result;
@@ -310,6 +345,8 @@ LidarBeamPoseAlignmentResult timestampAlignedLidarBeamPosesWithDiagnostics(
         history.sampleWithDiagnostics(beam_stamp.stamp_ns);
     result.position_stamp_error_ns = sample.position_stamp_error_ns;
     result.attitude_stamp_error_ns = sample.attitude_stamp_error_ns;
+    result.position_timing = sample.position_timing;
+    result.attitude_timing = sample.attitude_timing;
     if (!sample.aligned_pose.has_value()) {
       result.status = sample.status;
       result.failed_beam_index = beam_index;
@@ -350,6 +387,34 @@ lidarPoseAlignmentStatusName(const LidarPoseAlignmentStatus status) noexcept {
   return "unknown";
 }
 
+const char* lidarPoseTemporalModeName(const LidarPoseTemporalMode mode) noexcept {
+  switch (mode) {
+    case LidarPoseTemporalMode::kUnavailable:
+      return "unavailable";
+    case LidarPoseTemporalMode::kExact:
+      return "exact";
+    case LidarPoseTemporalMode::kInterpolated:
+      return "interpolated";
+    case LidarPoseTemporalMode::kExtrapolatedBefore:
+      return "extrapolated_before";
+    case LidarPoseTemporalMode::kExtrapolatedAfter:
+      return "extrapolated_after";
+  }
+  return "unknown";
+}
+
+std::int64_t
+lidarPoseSourceTimestampNanoseconds(const std::uint64_t timestamp_us) noexcept {
+  constexpr std::uint64_t kNanosecondsPerMicrosecond{1000U};
+  const std::uint64_t max_timestamp_us =
+      static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) /
+      kNanosecondsPerMicrosecond;
+  if (timestamp_us == 0U || timestamp_us > max_timestamp_us) {
+    return 0;
+  }
+  return static_cast<std::int64_t>(timestamp_us * kNanosecondsPerMicrosecond);
+}
+
 std::string formatLidarPoseAlignmentDiagnostic(
     const char* const prefix, const LidarBeamPoseAlignmentResult& result,
     const LaserScanTiming& timing, const std::int64_t receive_stamp_ns) {
@@ -357,14 +422,34 @@ std::string formatLidarPoseAlignmentDiagnostic(
   stream << prefix << ": reason=" << lidarPoseAlignmentStatusName(result.status)
          << " failed_beam=" << result.failed_beam_index
          << " scan_stamp_ns=" << timing.first_beam_stamp_ns
+         << " requested_stamp_ns=" << result.requested_stamp_ns
          << " receive_stamp_ns=" << receive_stamp_ns << " clock_delta_ms="
          << 1.0e-6 * static_cast<double>(receive_stamp_ns - timing.first_beam_stamp_ns)
          << " position_samples=" << result.position_sample_count
          << " attitude_samples=" << result.attitude_sample_count
-         << " position_error_ms="
+         << " time_increment_s=" << timing.time_increment_s << " position_error_ms="
          << 1.0e-6 * static_cast<double>(result.position_stamp_error_ns)
          << " attitude_error_ms="
-         << 1.0e-6 * static_cast<double>(result.attitude_stamp_error_ns);
+         << 1.0e-6 * static_cast<double>(result.attitude_stamp_error_ns)
+         << " position_timing[mode="
+         << lidarPoseTemporalModeName(result.position_timing.mode)
+         << " receive=" << result.position_timing.from_receive_stamp_ns << ".."
+         << result.position_timing.to_receive_stamp_ns
+         << " source=" << result.position_timing.from_source_stamp_ns << ".."
+         << result.position_timing.to_source_stamp_ns
+         << " ratio=" << result.position_timing.interpolation_ratio
+         << " extrapolation_ms="
+         << 1.0e-6 * static_cast<double>(result.position_timing.signed_extrapolation_ns)
+         << "] attitude_timing[mode="
+         << lidarPoseTemporalModeName(result.attitude_timing.mode)
+         << " receive=" << result.attitude_timing.from_receive_stamp_ns << ".."
+         << result.attitude_timing.to_receive_stamp_ns
+         << " source=" << result.attitude_timing.from_source_stamp_ns << ".."
+         << result.attitude_timing.to_source_stamp_ns
+         << " ratio=" << result.attitude_timing.interpolation_ratio
+         << " extrapolation_ms="
+         << 1.0e-6 * static_cast<double>(result.attitude_timing.signed_extrapolation_ns)
+         << ']';
   return stream.str();
 }
 
