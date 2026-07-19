@@ -34,6 +34,7 @@ struct HorizontalTrajectoryHandoverState {
 
 struct HorizontalTrajectoryHandoverResult {
   std::vector<TrajectoryPointSample> samples;
+  bool attempted{false};
   bool applied{false};
   const char* reason{"not_applied"};
   double old_projection_s_m{std::numeric_limits<double>::quiet_NaN()};

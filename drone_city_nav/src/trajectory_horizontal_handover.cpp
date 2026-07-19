@@ -138,6 +138,7 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
     const HorizontalTrajectoryHandoverConfig& config,
     const OccupancyGrid2D* const validation_grid) {
   HorizontalTrajectoryHandoverResult result{};
+  result.attempted = true;
   if (!config.enabled) {
     result.reason = "disabled";
     return result;

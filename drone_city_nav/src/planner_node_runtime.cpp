@@ -259,6 +259,20 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             : std::string{"raw_sources[exact=unknown nearest=unknown "
                           "nearest_distance=nanm nearest_cell=(-1, -1) "
                           "nearest_center=(nan, nan) search_radius=nanm]"};
+    const std::int64_t blocker_detected_stamp_ns = get_clock()->now().nanoseconds();
+    const TrajectoryDeliveryDiagnostics delivery{
+        .generation = trajectory_generation_ + 1U,
+        .blocker_detected_stamp_ns =
+            blocker_detected_stamp_ns > 0
+                ? static_cast<std::uint64_t>(blocker_detected_stamp_ns)
+                : 0U,
+        .replan_triggered = true,
+        .blocker_position = intersection.cell_center,
+        .blocker_detection_position = current_pose_.position,
+        .blocker_detection_velocity = current_velocity_,
+        .blocker_detection_velocity_valid = current_velocity_valid_,
+    };
+    pending_replan_delivery_ = delivery;
     ++prohibited_replans_;
     RCLCPP_WARN(get_logger(),
                 "Current path intersects newly available prohibited obstacle data; "
@@ -281,6 +295,16 @@ bool PlannerNode::keepCurrentPathIfStillClear(
                 intersection.segment_start_prohibited ? "true" : "false",
                 intersection.segment_end_prohibited ? "true" : "false",
                 source_diagnostic.c_str());
+    RCLCPP_INFO(
+        get_logger(),
+        "REPLAN_DELIVERY event=blocker_detected generation_hint=%" PRIu64
+        " blocker_stamp_ns=%" PRIu64 " pose=(%.2f, %.2f) "
+        "velocity=(%.2f, %.2f) velocity_valid=%s blocker=(%.2f, %.2f)",
+        delivery.generation, delivery.blocker_detected_stamp_ns,
+        delivery.blocker_detection_position.x, delivery.blocker_detection_position.y,
+        delivery.blocker_detection_velocity.x, delivery.blocker_detection_velocity.y,
+        delivery.blocker_detection_velocity_valid ? "true" : "false",
+        delivery.blocker_position.x, delivery.blocker_position.y);
     return false;
   }
 

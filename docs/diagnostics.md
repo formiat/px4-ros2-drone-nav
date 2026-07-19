@@ -376,6 +376,25 @@ arrive at different times. Prefer stable keys:
 - navigation time for flight metrics;
 - sample index and trajectory `s` coordinate for geometry diagnostics.
 
+For delayed trajectory updates, search for `REPLAN_DELIVERY` and
+`stale_trajectory_rejected`. The trajectory-diagnostics envelope carries:
+
+- blocker detection, trajectory-build start, and path-publication timestamps;
+- planner generation and path identity;
+- blocker, detection, candidate-start, planning-start, predicted-publication, and
+  actual-publication positions;
+- detection and build-start velocity snapshots with validity flags;
+- blocker-to-build, build-to-publish, and blocker-to-publish durations;
+- publication prediction error.
+
+At path receipt, offboard adds publish-to-receive and blocker-to-receive
+durations, actual receive position, a receive-time constant-velocity
+prediction, prediction error, current velocity and speed, and local-pose age.
+A stale rejection additionally includes the full horizontal handover result
+and an explicit non-application reason. If `/path` arrives before its
+diagnostics, the later `diagnostics_received_not_current` event still reports
+the lifecycle timing, so cross-topic ordering does not erase the evidence.
+
 When a log line has no stable key, it is much less useful for post-run
 analysis.
 

@@ -123,6 +123,13 @@ public:
   Px4OffboardNode& operator=(Px4OffboardNode&&) = delete;
 
 private:
+  struct PathReceiptDiagnostic {
+    std::uint64_t path_stamp_ns{0U};
+    std::int64_t receive_stamp_ns{0};
+    Point2 position{};
+    std::size_t point_count{0U};
+  };
+
   [[nodiscard]] OffboardPathFollowerConfig pathFollowerConfig() const;
 
   void applyConfig(const Px4OffboardNodeConfig& config);
@@ -151,7 +158,10 @@ private:
 
   [[nodiscard]] bool receivedFinalTrajectoryIsFreshEnough(
       const OffboardTrajectoryState& state, std::uint64_t candidate_update_id,
-      std::uint64_t candidate_path_stamp_ns, std::size_t candidate_path_points) const;
+      std::uint64_t candidate_path_stamp_ns, std::size_t candidate_path_points,
+      std::int64_t path_receive_stamp_ns,
+      const HorizontalTrajectoryHandoverResult& horizontal_handover,
+      const TrajectoryDeliveryDiagnostics* delivery) const;
 
   [[nodiscard]] TrajectoryContinuityResult
   evaluateReceivedTrajectoryContinuity(const OffboardTrajectoryState& state) const;
@@ -439,6 +449,7 @@ private:
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
+  std::vector<PathReceiptDiagnostic> recent_path_receipts_;
   std::size_t last_final_trajectory_debug_samples_{0U};
   std::size_t last_trajectory_route_points_{0U};
   TerminalCaptureState terminal_capture_state_{};

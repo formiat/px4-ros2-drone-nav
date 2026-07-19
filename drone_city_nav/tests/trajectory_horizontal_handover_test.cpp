@@ -55,6 +55,7 @@ TEST(TrajectoryHorizontalHandover, BuildsTraversablePredictedPrefixBridge) {
   ASSERT_TRUE(result.applied) << result.reason
                               << " heading=" << result.max_sample_heading_delta_rad
                               << " curvature=" << result.max_abs_curvature_1pm;
+  EXPECT_TRUE(result.attempted);
   EXPECT_STREQ(result.reason, "predicted_prefix_bridge");
   EXPECT_NEAR(result.old_projection_s_m, 10.0, 0.1);
   EXPECT_NEAR(result.old_join_s_m, 16.0, 0.1);
@@ -78,6 +79,7 @@ TEST(TrajectoryHorizontalHandover, DoesNotRewriteCompatibleUpdate) {
       buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
 
   EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.attempted);
   EXPECT_STREQ(result.reason, "already_compatible");
 }
 

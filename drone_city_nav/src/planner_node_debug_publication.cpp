@@ -8,6 +8,48 @@
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+void finalizeTrajectoryDeliveryDiagnostics(
+    TrajectoryDeliveryDiagnostics& delivery, const std::uint64_t path_stamp_ns,
+    const Point2 actual_publication_position,
+    const bool actual_publication_position_valid) {
+  delivery.path_published_stamp_ns = path_stamp_ns;
+  delivery.actual_publication_position = actual_publication_position;
+  delivery.actual_publication_position_valid = actual_publication_position_valid;
+  if (delivery.trajectory_build_started_stamp_ns > 0U &&
+      path_stamp_ns >= delivery.trajectory_build_started_stamp_ns) {
+    delivery.build_start_to_publish_ms =
+        1.0e-6 *
+        static_cast<double>(path_stamp_ns - delivery.trajectory_build_started_stamp_ns);
+  }
+  if (delivery.replan_triggered && delivery.blocker_detected_stamp_ns > 0U &&
+      path_stamp_ns >= delivery.blocker_detected_stamp_ns) {
+    delivery.blocker_to_publish_ms =
+        1.0e-6 *
+        static_cast<double>(path_stamp_ns - delivery.blocker_detected_stamp_ns);
+  }
+  if (delivery.planning_start_velocity_valid &&
+      std::isfinite(delivery.build_start_to_publish_ms)) {
+    const double prediction_time_s = delivery.build_start_to_publish_ms * 1.0e-3;
+    delivery.predicted_publication_position = Point2{
+        delivery.planning_start_position.x +
+            delivery.planning_start_velocity.x * prediction_time_s,
+        delivery.planning_start_position.y +
+            delivery.planning_start_velocity.y * prediction_time_s,
+    };
+    delivery.predicted_publication_position_valid =
+        finite2D(delivery.predicted_publication_position);
+  }
+  if (delivery.predicted_publication_position_valid &&
+      delivery.actual_publication_position_valid) {
+    delivery.publication_prediction_error_m = distance(
+        delivery.predicted_publication_position, delivery.actual_publication_position);
+  }
+}
+
+} // namespace
+
 [[nodiscard]] std_msgs::msg::Header PlannerNode::makePlannerHeader() const {
   std_msgs::msg::Header header;
   header.stamp = now();
@@ -110,7 +152,7 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   path_id_msg.data = path_id;
   path_id_pub_->publish(path_id_msg);
   if (trajectory_stats != nullptr && !points.empty()) {
-    publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats);
+    publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats, {});
   }
   path_pub_->publish(path);
   if (!path.poses.empty()) {
@@ -125,7 +167,8 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
 std::uint64_t
 PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> samples,
                                    const PathPublicationReason reason,
-                                   const TrajectoryPlannerStats* trajectory_stats) {
+                                   const TrajectoryPlannerStats* trajectory_stats,
+                                   TrajectoryDeliveryDiagnostics delivery) {
   std::vector<Point2> points = trajectorySamplePoints(samples);
   recordPathPublication(reason, points.empty());
   const std::uint64_t path_id = next_path_id_++;
@@ -140,12 +183,14 @@ PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> 
   const std_msgs::msg::Header header = makePlannerHeader();
   const std::uint64_t path_stamp_ns = stampNanoseconds(header.stamp);
   const nav_msgs::msg::Path path = pathToRos(samples, header);
+  finalizeTrajectoryDeliveryDiagnostics(delivery, path_stamp_ns, current_pose_.position,
+                                        pose_valid_);
 
   std_msgs::msg::UInt64 path_id_msg;
   path_id_msg.data = path_id;
   path_id_pub_->publish(path_id_msg);
   if (trajectory_stats != nullptr && !points.empty()) {
-    publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats);
+    publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats, delivery);
   }
   path_pub_->publish(path);
   if (!path.poses.empty()) {
@@ -153,22 +198,46 @@ PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> 
   }
 
   logPathUpdate(path, metrics, reason, path_id);
+  RCLCPP_INFO(
+      get_logger(),
+      "REPLAN_DELIVERY event=path_published generation=%" PRIu64 " path_id=%" PRIu64
+      " path_stamp_ns=%" PRIu64 " replan_triggered=%s blocker_to_build_ms=%.1f "
+      "build_to_publish_ms=%.1f blocker_to_publish_ms=%.1f "
+      "candidate_start=(%.2f, %.2f) planning_start=(%.2f, %.2f) "
+      "velocity=(%.2f, %.2f) velocity_valid=%s "
+      "predicted_publication=(%.2f, %.2f) predicted_valid=%s "
+      "actual_publication=(%.2f, %.2f) actual_valid=%s prediction_error=%.2f",
+      delivery.generation, path_id, path_stamp_ns,
+      delivery.replan_triggered ? "true" : "false", delivery.blocker_to_build_start_ms,
+      delivery.build_start_to_publish_ms, delivery.blocker_to_publish_ms,
+      delivery.candidate_start_position.x, delivery.candidate_start_position.y,
+      delivery.planning_start_position.x, delivery.planning_start_position.y,
+      delivery.planning_start_velocity.x, delivery.planning_start_velocity.y,
+      delivery.planning_start_velocity_valid ? "true" : "false",
+      delivery.predicted_publication_position.x,
+      delivery.predicted_publication_position.y,
+      delivery.predicted_publication_position_valid ? "true" : "false",
+      delivery.actual_publication_position.x, delivery.actual_publication_position.y,
+      delivery.actual_publication_position_valid ? "true" : "false",
+      delivery.publication_prediction_error_m);
   logPlannerCountersThrottled();
   return path_id;
 }
 
 void PlannerNode::publishTrajectoryDiagnostics(
     const std::uint64_t path_id, const std::uint64_t path_stamp_ns,
-    const TrajectoryPlannerStats& stats) const {
+    const TrajectoryPlannerStats& stats,
+    const TrajectoryDeliveryDiagnostics& delivery) const {
   if (!trajectory_diagnostics_pub_) {
     return;
   }
   std_msgs::msg::String msg;
-  msg.data = trajectoryPlannerDiagnosticsJson(path_id, path_stamp_ns, stats);
+  msg.data = trajectoryPlannerDiagnosticsJson(path_id, path_stamp_ns, stats, delivery);
   trajectory_diagnostics_pub_->publish(msg);
 }
 
 void PlannerNode::publishPlanningFailureHold() {
+  pending_replan_delivery_.reset();
   if (!last_valid_path_points_.empty()) {
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,

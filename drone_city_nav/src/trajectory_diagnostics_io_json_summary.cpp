@@ -53,13 +53,69 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   return stream.str();
 }
 
-std::string trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
-                                             const std::uint64_t path_stamp_ns,
-                                             const TrajectoryPlannerStats& stats) {
+std::string
+trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
+                                 const std::uint64_t path_stamp_ns,
+                                 const TrajectoryPlannerStats& stats,
+                                 const TrajectoryDeliveryDiagnostics& delivery) {
   std::ostringstream stream;
   stream << std::setprecision(9);
   stream << "{\"planner_path_id\":" << planner_path_id;
   appendJsonUint64(stream, "path_stamp_ns", path_stamp_ns);
+  appendJsonUint64(stream, "delivery_generation", delivery.generation);
+  appendJsonBool(stream, "delivery_replan_triggered", delivery.replan_triggered);
+  appendJsonUint64(stream, "delivery_blocker_detected_stamp_ns",
+                   delivery.blocker_detected_stamp_ns);
+  appendJsonUint64(stream, "delivery_trajectory_build_started_stamp_ns",
+                   delivery.trajectory_build_started_stamp_ns);
+  appendJsonUint64(stream, "delivery_path_published_stamp_ns",
+                   delivery.path_published_stamp_ns);
+  appendJsonNumber(stream, "delivery_blocker_x_m", delivery.blocker_position.x);
+  appendJsonNumber(stream, "delivery_blocker_y_m", delivery.blocker_position.y);
+  appendJsonNumber(stream, "delivery_blocker_detection_x_m",
+                   delivery.blocker_detection_position.x);
+  appendJsonNumber(stream, "delivery_blocker_detection_y_m",
+                   delivery.blocker_detection_position.y);
+  appendJsonNumber(stream, "delivery_blocker_detection_vx_mps",
+                   delivery.blocker_detection_velocity.x);
+  appendJsonNumber(stream, "delivery_blocker_detection_vy_mps",
+                   delivery.blocker_detection_velocity.y);
+  appendJsonBool(stream, "delivery_blocker_detection_velocity_valid",
+                 delivery.blocker_detection_velocity_valid);
+  appendJsonNumber(stream, "delivery_candidate_start_x_m",
+                   delivery.candidate_start_position.x);
+  appendJsonNumber(stream, "delivery_candidate_start_y_m",
+                   delivery.candidate_start_position.y);
+  appendJsonNumber(stream, "delivery_planning_start_x_m",
+                   delivery.planning_start_position.x);
+  appendJsonNumber(stream, "delivery_planning_start_y_m",
+                   delivery.planning_start_position.y);
+  appendJsonNumber(stream, "delivery_planning_start_vx_mps",
+                   delivery.planning_start_velocity.x);
+  appendJsonNumber(stream, "delivery_planning_start_vy_mps",
+                   delivery.planning_start_velocity.y);
+  appendJsonBool(stream, "delivery_planning_start_velocity_valid",
+                 delivery.planning_start_velocity_valid);
+  appendJsonNumber(stream, "delivery_predicted_publication_x_m",
+                   delivery.predicted_publication_position.x);
+  appendJsonNumber(stream, "delivery_predicted_publication_y_m",
+                   delivery.predicted_publication_position.y);
+  appendJsonBool(stream, "delivery_predicted_publication_position_valid",
+                 delivery.predicted_publication_position_valid);
+  appendJsonNumber(stream, "delivery_actual_publication_x_m",
+                   delivery.actual_publication_position.x);
+  appendJsonNumber(stream, "delivery_actual_publication_y_m",
+                   delivery.actual_publication_position.y);
+  appendJsonBool(stream, "delivery_actual_publication_position_valid",
+                 delivery.actual_publication_position_valid);
+  appendJsonNumber(stream, "delivery_blocker_to_build_start_ms",
+                   delivery.blocker_to_build_start_ms);
+  appendJsonNumber(stream, "delivery_build_start_to_publish_ms",
+                   delivery.build_start_to_publish_ms);
+  appendJsonNumber(stream, "delivery_blocker_to_publish_ms",
+                   delivery.blocker_to_publish_ms);
+  appendJsonNumber(stream, "delivery_publication_prediction_error_m",
+                   delivery.publication_prediction_error_m);
   stream << ",\"trajectory_status\":\"" << trajectoryPlannerStatusName(stats.status)
          << "\"";
   stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(stats.quality)

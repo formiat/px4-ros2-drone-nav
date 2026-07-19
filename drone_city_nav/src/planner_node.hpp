@@ -108,6 +108,7 @@ private:
     std::vector<Point2> route_points;
     std::string source_label;
     std::chrono::steady_clock::time_point started_at;
+    TrajectoryDeliveryDiagnostics delivery{};
     std::future<TrajectoryPlannerResult> future;
   };
 
@@ -172,6 +173,7 @@ private:
                                const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
                                const char* source_label, double duration_ms,
+                               TrajectoryDeliveryDiagnostics delivery,
                                std::uint64_t* published_path_id = nullptr);
 
   [[nodiscard]] bool
@@ -182,7 +184,8 @@ private:
       const OccupancyGrid2D& grid, std::span<const Point2> route_points,
       std::uint64_t generation, const char* source_label,
       const ClearanceField2D* prohibited_clearance_field,
-      bool prohibited_clearance_field_cache_hit, const TrajectoryPlannerConfig& config);
+      bool prohibited_clearance_field_cache_hit, const TrajectoryPlannerConfig& config,
+      TrajectoryDeliveryDiagnostics delivery);
 
   [[nodiscard]] bool
   pollPendingExecutableTrajectoryBuild(const OccupancyGrid2D& validation_grid);
@@ -235,11 +238,14 @@ private:
   std::uint64_t
   publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
                         PathPublicationReason reason,
-                        const TrajectoryPlannerStats* trajectory_stats = nullptr);
+                        const TrajectoryPlannerStats* trajectory_stats = nullptr,
+                        TrajectoryDeliveryDiagnostics delivery = {});
 
-  void publishTrajectoryDiagnostics(const std::uint64_t path_id,
-                                    const std::uint64_t path_stamp_ns,
-                                    const TrajectoryPlannerStats& stats) const;
+  void
+  publishTrajectoryDiagnostics(const std::uint64_t path_id,
+                               const std::uint64_t path_stamp_ns,
+                               const TrajectoryPlannerStats& stats,
+                               const TrajectoryDeliveryDiagnostics& delivery) const;
 
   [[nodiscard]] static std::filesystem::path corridorSamplesDirectory();
 
@@ -428,6 +434,7 @@ private:
   std::vector<LidarProjectionPose> last_scan_projection_poses_;
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<PendingExecutableTrajectoryBuild> pending_trajectory_build_;
+  std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
   std::size_t async_trajectory_build_workers_{1U};
 

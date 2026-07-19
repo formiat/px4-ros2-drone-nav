@@ -4,6 +4,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "planner_node.hpp"
 
@@ -94,6 +95,10 @@ bool PlannerNode::publishPathFromPathCells(
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
     const ClearanceField2D* route_clearance_field,
     const bool route_clearance_field_cache_hit) {
+  TrajectoryDeliveryDiagnostics delivery =
+      pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
+  pending_replan_delivery_.reset();
+
   struct CandidatePath {
     std::vector<Point2> points;
     const char* source_kind{""};
@@ -204,12 +209,42 @@ bool PlannerNode::publishPathFromPathCells(
   }
 
   const std::uint64_t generation = ++trajectory_generation_;
+  const std::int64_t build_started_stamp_ns = get_clock()->now().nanoseconds();
+  delivery.generation = generation;
+  delivery.trajectory_build_started_stamp_ns =
+      build_started_stamp_ns > 0 ? static_cast<std::uint64_t>(build_started_stamp_ns)
+                                 : 0U;
+  delivery.candidate_start_position = route_points.front();
+  delivery.planning_start_position = current_pose_.position;
+  delivery.planning_start_velocity = current_velocity_;
+  delivery.planning_start_velocity_valid = current_velocity_valid_;
+  if (delivery.replan_triggered && delivery.blocker_detected_stamp_ns > 0U &&
+      delivery.trajectory_build_started_stamp_ns >=
+          delivery.blocker_detected_stamp_ns) {
+    delivery.blocker_to_build_start_ms =
+        1.0e-6 * static_cast<double>(delivery.trajectory_build_started_stamp_ns -
+                                     delivery.blocker_detected_stamp_ns);
+  }
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_DELIVERY event=trajectory_build_started generation=%" PRIu64
+              " replan_triggered=%s blocker_stamp_ns=%" PRIu64
+              " build_stamp_ns=%" PRIu64 " blocker_to_build_ms=%.1f "
+              "candidate_start=(%.2f, %.2f) planning_start=(%.2f, %.2f) "
+              "velocity=(%.2f, %.2f) velocity_valid=%s",
+              delivery.generation, delivery.replan_triggered ? "true" : "false",
+              delivery.blocker_detected_stamp_ns,
+              delivery.trajectory_build_started_stamp_ns,
+              delivery.blocker_to_build_start_ms, delivery.candidate_start_position.x,
+              delivery.candidate_start_position.y, delivery.planning_start_position.x,
+              delivery.planning_start_position.y, delivery.planning_start_velocity.x,
+              delivery.planning_start_velocity.y,
+              delivery.planning_start_velocity_valid ? "true" : "false");
   const TrajectoryPlannerConfig trajectory_config =
       trajectoryPlannerConfigForCurrentAltitude();
   if (async_trajectory_build_workers_ > 0U) {
     startAsyncExecutableTrajectoryBuild(
         route_grid, route_points, generation, source_label, route_clearance_field,
-        route_clearance_field_cache_hit, trajectory_config);
+        route_clearance_field_cache_hit, trajectory_config, delivery);
     return pending_trajectory_build_.has_value();
   }
 
@@ -230,7 +265,7 @@ bool PlannerNode::publishPathFromPathCells(
                               .count()) /
       1000.0;
   return publishTrajectoryResult(runtime_grid, trajectory_result, route_points,
-                                 source_label, duration_ms);
+                                 source_label, duration_ms, delivery);
 }
 
 bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
@@ -252,7 +287,8 @@ bool PlannerNode::publishTrajectoryResult(
     const OccupancyGrid2D& validation_grid,
     const TrajectoryPlannerResult& trajectory_result,
     const std::span<const Point2> route_points, const char* source_label,
-    const double duration_ms, std::uint64_t* published_path_id) {
+    const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
+    std::uint64_t* published_path_id) {
   writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
   writeTrajectoryCandidateDumps(trajectory_result, source_label, next_path_id_);
   TrajectoryPlannerStats stats = trajectory_result.stats;
@@ -742,8 +778,9 @@ bool PlannerNode::publishTrajectoryResult(
   last_valid_path_points_ = trajectory_points;
   last_valid_trajectory_samples_ = trajectory_result.samples;
   logPublishedPathSafety(validation_grid, trajectory_points, "final_trajectory");
-  const std::uint64_t path_id = publishTrajectoryPath(
-      trajectory_result.samples, PathPublicationReason::kComputedPath, &stats);
+  const std::uint64_t path_id =
+      publishTrajectoryPath(trajectory_result.samples,
+                            PathPublicationReason::kComputedPath, &stats, delivery);
   if (published_path_id != nullptr) {
     *published_path_id = path_id;
   }

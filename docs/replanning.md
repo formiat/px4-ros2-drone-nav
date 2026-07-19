@@ -70,6 +70,26 @@ and speed constraints, and validates the complete stitch against the current
 prohibited grid. A failed geometry or grid check never bypasses the continuity
 gate.
 
+Every horizontal handover result records whether the builder was attempted and
+why it was not applied. Reasons cover unavailable or invalid current
+trajectory, invalid candidate, stale local position, an already-compatible
+update, an unsafe vertical hard window, missing validation grid, excessive
+join distance, geometry limits, and a non-traversable stitch. A stale
+trajectory rejection prints this complete result, including projection
+stations, projection and tangent jumps, prefix and join distances, curvature,
+and the rejected grid segment.
+
+Replans caused by a prohibited blocker also emit `REPLAN_DELIVERY` lifecycle
+events. They correlate blocker detection, trajectory-build start, path
+publication, offboard receipt, and late diagnostics receipt by trajectory
+generation, path id, and path timestamp. The planner records pose and velocity
+at detection and build start, predicts the publication position without using
+that prediction for planning, and compares it with the actual publication
+pose. Offboard reports publish-to-receive and blocker-to-receive latency plus
+its actual and independently extrapolated receive positions. These fields are
+diagnostic only; they do not change the A* start, preserve a prefix, or accept
+a candidate that existing continuity checks reject.
+
 ## Diagnostics Matching
 
 Planner diagnostics are matched to the accepted trajectory by `path_stamp_ns`.

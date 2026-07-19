@@ -1,6 +1,10 @@
 #include "drone_city_nav/visualization_marker_helpers.hpp"
 
+#include <algorithm>
+#include <iomanip>
 #include <limits>
+#include <sstream>
+#include <string>
 #include <utility>
 
 #include "px4_offboard_node.hpp"
@@ -68,6 +72,124 @@ configFingerprintMismatch(const std::uint64_t runtime_fingerprint,
                           const std::uint64_t planning_fingerprint) noexcept {
   return runtime_fingerprint != 0U && planning_fingerprint != 0U &&
          runtime_fingerprint != planning_fingerprint;
+}
+
+struct TimestampInterval {
+  std::uint64_t earlier_stamp_ns{0U};
+  std::int64_t later_stamp_ns{0};
+};
+
+[[nodiscard]] double elapsedMilliseconds(const TimestampInterval interval) noexcept {
+  if (interval.later_stamp_ns <= 0 || interval.earlier_stamp_ns == 0U ||
+      static_cast<std::uint64_t>(interval.later_stamp_ns) < interval.earlier_stamp_ns) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return 1.0e-6 *
+         static_cast<double>(static_cast<std::uint64_t>(interval.later_stamp_ns) -
+                             interval.earlier_stamp_ns);
+}
+
+[[nodiscard]] std::string
+formatTrajectoryDeliveryAtReceive(const TrajectoryDeliveryDiagnostics* const delivery,
+                                  const std::uint64_t path_stamp_ns,
+                                  const std::int64_t receive_stamp_ns,
+                                  const Point2 actual_receive_position) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  stream << "delivery[available=" << (delivery != nullptr ? "true" : "false")
+         << " publish_to_receive_ms="
+         << elapsedMilliseconds(TimestampInterval{
+                .earlier_stamp_ns = path_stamp_ns,
+                .later_stamp_ns = receive_stamp_ns,
+            });
+  if (delivery == nullptr) {
+    stream << " actual_receive=(" << actual_receive_position.x << ", "
+           << actual_receive_position.y << ")]";
+    return stream.str();
+  }
+  const double blocker_to_receive_ms =
+      delivery->replan_triggered
+          ? elapsedMilliseconds(TimestampInterval{
+                .earlier_stamp_ns = delivery->blocker_detected_stamp_ns,
+                .later_stamp_ns = receive_stamp_ns,
+            })
+          : std::numeric_limits<double>::quiet_NaN();
+  Point2 predicted_receive_position{};
+  bool predicted_receive_position_valid = false;
+  if (delivery->planning_start_velocity_valid &&
+      delivery->trajectory_build_started_stamp_ns > 0U && receive_stamp_ns > 0 &&
+      static_cast<std::uint64_t>(receive_stamp_ns) >=
+          delivery->trajectory_build_started_stamp_ns) {
+    const double prediction_time_s =
+        1.0e-9 * static_cast<double>(static_cast<std::uint64_t>(receive_stamp_ns) -
+                                     delivery->trajectory_build_started_stamp_ns);
+    predicted_receive_position = Point2{
+        delivery->planning_start_position.x +
+            delivery->planning_start_velocity.x * prediction_time_s,
+        delivery->planning_start_position.y +
+            delivery->planning_start_velocity.y * prediction_time_s,
+    };
+    predicted_receive_position_valid = std::isfinite(predicted_receive_position.x) &&
+                                       std::isfinite(predicted_receive_position.y);
+  }
+  const double predicted_to_receive_error_m =
+      predicted_receive_position_valid
+          ? distance(predicted_receive_position, actual_receive_position)
+          : std::numeric_limits<double>::quiet_NaN();
+  stream << " generation=" << delivery->generation
+         << " replan_triggered=" << (delivery->replan_triggered ? "true" : "false")
+         << " blocker_stamp_ns=" << delivery->blocker_detected_stamp_ns
+         << " build_stamp_ns=" << delivery->trajectory_build_started_stamp_ns
+         << " publish_stamp_ns=" << delivery->path_published_stamp_ns
+         << " blocker_to_build_ms=" << delivery->blocker_to_build_start_ms
+         << " build_to_publish_ms=" << delivery->build_start_to_publish_ms
+         << " blocker_to_publish_ms=" << delivery->blocker_to_publish_ms
+         << " blocker_to_receive_ms=" << blocker_to_receive_ms << " candidate_start=("
+         << delivery->candidate_start_position.x << ", "
+         << delivery->candidate_start_position.y << ") planning_start=("
+         << delivery->planning_start_position.x << ", "
+         << delivery->planning_start_position.y << ")" << " planning_velocity=("
+         << delivery->planning_start_velocity.x << ", "
+         << delivery->planning_start_velocity.y << ")" << " velocity_valid="
+         << (delivery->planning_start_velocity_valid ? "true" : "false")
+         << " predicted_publication=(" << delivery->predicted_publication_position.x
+         << ", " << delivery->predicted_publication_position.y << ")"
+         << " predicted_valid="
+         << (delivery->predicted_publication_position_valid ? "true" : "false")
+         << " planner_actual_publication=(" << delivery->actual_publication_position.x
+         << ", " << delivery->actual_publication_position.y << ")"
+         << " planner_actual_valid="
+         << (delivery->actual_publication_position_valid ? "true" : "false")
+         << " publication_prediction_error=" << delivery->publication_prediction_error_m
+         << " actual_receive=(" << actual_receive_position.x << ", "
+         << actual_receive_position.y << ")" << " predicted_receive=("
+         << predicted_receive_position.x << ", " << predicted_receive_position.y
+         << ") predicted_receive_valid="
+         << (predicted_receive_position_valid ? "true" : "false")
+         << " predicted_to_receive_error=" << predicted_to_receive_error_m << ']';
+  return stream.str();
+}
+
+[[nodiscard]] std::string
+formatHorizontalHandoverDiagnostic(const HorizontalTrajectoryHandoverResult& handover) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(3);
+  stream << "horizontal_handover[attempted=" << (handover.attempted ? "true" : "false")
+         << " applied=" << (handover.applied ? "true" : "false")
+         << " reason=" << handover.reason
+         << " old_projection_s=" << handover.old_projection_s_m
+         << " candidate_projection_s=" << handover.candidate_projection_s_m
+         << " projection_jump=" << handover.projection_jump_m
+         << " tangent_jump=" << handover.tangent_jump_rad
+         << " prefix_distance=" << handover.prefix_distance_m
+         << " old_join_s=" << handover.old_join_s_m
+         << " candidate_join_s=" << handover.candidate_join_s_m
+         << " join_distance=" << handover.join_distance_m
+         << " max_heading_delta=" << handover.max_sample_heading_delta_rad
+         << " max_abs_curvature=" << handover.max_abs_curvature_1pm
+         << " non_traversable_segment=" << handover.non_traversable_segment_index
+         << ']';
+  return stream.str();
 }
 
 [[nodiscard]] nav_msgs::msg::Path
@@ -236,7 +358,9 @@ void Px4OffboardNode::resetVelocitySmootherState(const std::string_view reason,
 bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
     const OffboardTrajectoryState& state, const std::uint64_t candidate_update_id,
     const std::uint64_t candidate_path_stamp_ns,
-    const std::size_t candidate_path_points) const {
+    const std::size_t candidate_path_points, const std::int64_t path_receive_stamp_ns,
+    const HorizontalTrajectoryHandoverResult& horizontal_handover,
+    const TrajectoryDeliveryDiagnostics* const delivery) const {
   if (!state.valid || state.samples.empty() || !localPositionFresh()) {
     return true;
   }
@@ -248,15 +372,24 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(state.samples, current_position_);
+  const std::string delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
+      delivery, candidate_path_stamp_ns, path_receive_stamp_ns, current_position_);
+  const std::string handover_diagnostic =
+      formatHorizontalHandoverDiagnostic(horizontal_handover);
   if (!projection.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "stale_trajectory_rejected: reason=projection_unavailable "
                 "local_path_update_id=%" PRIu64 " planner_path_id=%" PRIu64
                 " path_stamp_ns=%" PRIu64 " points=%zu current=(%.2f, %.2f) "
-                "threshold=%.2f keeping_previous_trajectory=%s",
+                "threshold=%.2f current_velocity=(%.2f, %.2f) speed=%.2f "
+                "pose_age_s=%.3f "
+                "keeping_previous_trajectory=%s %s %s",
                 candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
                 candidate_path_points, current_position_.x, current_position_.y,
-                threshold_m, trajectory_valid_ ? "true" : "false");
+                threshold_m, current_velocity_.x, current_velocity_.y,
+                current_speed_mps_, localPositionAgeSeconds(),
+                trajectory_valid_ ? "true" : "false", delivery_diagnostic.c_str(),
+                handover_diagnostic.c_str());
     return false;
   }
 
@@ -274,12 +407,16 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
               " path_stamp_ns=%" PRIu64 " points=%zu cross_track=%.2f "
               "start_distance=%.2f threshold=%.2f current=(%.2f, %.2f) "
               "projection=(%.2f, %.2f) projection_s=%.2f first=(%.2f, %.2f) "
-              "last=(%.2f, %.2f) keeping_previous_trajectory=%s",
+              "last=(%.2f, %.2f) current_velocity=(%.2f, %.2f) speed=%.2f "
+              "pose_age_s=%.3f "
+              "keeping_previous_trajectory=%s %s %s",
               candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
               candidate_path_points, cross_track_m, start_distance_m, threshold_m,
               current_position_.x, current_position_.y, projection->point.x,
               projection->point.y, projection->s_m, first.x, first.y, last.x, last.y,
-              trajectory_valid_ ? "true" : "false");
+              current_velocity_.x, current_velocity_.y, current_speed_mps_,
+              localPositionAgeSeconds(), trajectory_valid_ ? "true" : "false",
+              delivery_diagnostic.c_str(), handover_diagnostic.c_str());
   return false;
 }
 
@@ -425,9 +562,20 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
 void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
                                                    path.poses.size()};
+  const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
   const std::uint64_t candidate_path_stamp_ns =
       messageStampNanoseconds(path.header.stamp);
+  recent_path_receipts_.push_back(PathReceiptDiagnostic{
+      .path_stamp_ns = candidate_path_stamp_ns,
+      .receive_stamp_ns = path_receive_stamp_ns,
+      .position = current_position_,
+      .point_count = path.poses.size(),
+  });
+  constexpr std::size_t kMaxRecentPathReceipts{8U};
+  if (recent_path_receipts_.size() > kMaxRecentPathReceipts) {
+    recent_path_receipts_.erase(recent_path_receipts_.begin());
+  }
   callback_duration.setTrajectoryIdentity(latest_planner_path_id_,
                                           candidate_path_stamp_ns);
   std::vector<Point2> candidate_path_points =
@@ -474,21 +622,43 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     return;
   }
 
+  const TrajectoryPlannerDiagnosticsEnvelope* candidate_diagnostics = nullptr;
   const TrajectoryPlannerStats* candidate_planner_stats = nullptr;
   if (latest_trajectory_diagnostics_.has_value() &&
       trajectoryDiagnosticsMatchesPath(*latest_trajectory_diagnostics_,
                                        candidate_path_stamp_ns, false, 0U)) {
+    candidate_diagnostics = &*latest_trajectory_diagnostics_;
     candidate_planner_stats = &latest_trajectory_diagnostics_->stats;
   }
+  const std::string path_delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
+      candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery : nullptr,
+      candidate_path_stamp_ns, path_receive_stamp_ns, current_position_);
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_DELIVERY event=path_received local_path_update_id=%" PRIu64
+              " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+              " path_receive_stamp_ns=%" PRId64 " points=%zu %s",
+              candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+              path_receive_stamp_ns, candidate_path_points.size(),
+              path_delivery_diagnostic.c_str());
   OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
       candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
   HorizontalTrajectoryHandoverResult horizontal_handover{};
-  if (trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
-      candidate_state.valid && localPositionFresh()) {
+  if (!trajectory_valid_) {
+    horizontal_handover.reason = "current_trajectory_unavailable";
+  } else if (!trajectorySamplesAreUsable(final_trajectory_samples_)) {
+    horizontal_handover.reason = "current_trajectory_invalid";
+  } else if (!candidate_state.valid) {
+    horizontal_handover.reason = "candidate_trajectory_invalid";
+  } else if (!localPositionFresh()) {
+    horizontal_handover.reason = "local_position_stale";
+  } else {
     const TrajectoryContinuityResult raw_continuity =
         evaluateReceivedTrajectoryContinuity(candidate_state);
-    if (!raw_continuity.preserve_horizontal_smoother_state &&
-        !raw_continuity.vertical_hard_window_unsafe) {
+    if (raw_continuity.preserve_horizontal_smoother_state) {
+      horizontal_handover.reason = "continuity_already_compatible";
+    } else if (raw_continuity.vertical_hard_window_unsafe) {
+      horizontal_handover.reason = "vertical_hard_window_unsafe";
+    } else {
       std::optional<OccupancyGrid2D> handover_grid;
       if (prohibitedGridFresh()) {
         handover_grid = currentProhibitedGrid();
@@ -527,9 +697,11 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
           horizontal_handover.applied ? nullptr : candidate_planner_stats);
     }
   }
-  if (!receivedFinalTrajectoryIsFreshEnough(candidate_state, candidate_update_id,
-                                            candidate_path_stamp_ns,
-                                            candidate_path_points.size())) {
+  if (!receivedFinalTrajectoryIsFreshEnough(
+          candidate_state, candidate_update_id, candidate_path_stamp_ns,
+          candidate_path_points.size(), path_receive_stamp_ns, horizontal_handover,
+          candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery
+                                           : nullptr)) {
     callback_duration.setOutcome("stale_rejected");
     return;
   }
@@ -672,10 +844,46 @@ void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) 
   }
 
   latest_trajectory_diagnostics_ = diagnostics;
+  const auto receipt =
+      std::find_if(recent_path_receipts_.rbegin(), recent_path_receipts_.rend(),
+                   [&diagnostics](const PathReceiptDiagnostic& candidate) {
+                     return candidate.path_stamp_ns == diagnostics->path_stamp_ns;
+                   });
+  if (receipt != recent_path_receipts_.rend()) {
+    const std::int64_t diagnostics_receive_stamp_ns = get_clock()->now().nanoseconds();
+    const std::string correlated_delivery = formatTrajectoryDeliveryAtReceive(
+        &diagnostics->delivery, diagnostics->path_stamp_ns, receipt->receive_stamp_ns,
+        receipt->position);
+    const double diagnostics_after_path_ms =
+        receipt->receive_stamp_ns > 0
+            ? 1.0e-6 * static_cast<double>(diagnostics_receive_stamp_ns -
+                                           receipt->receive_stamp_ns)
+            : std::numeric_limits<double>::quiet_NaN();
+    RCLCPP_INFO(
+        get_logger(),
+        "REPLAN_DELIVERY event=diagnostics_correlated_to_path_receipt "
+        "planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+        " path_receive_stamp_ns=%" PRId64 " diagnostics_receive_stamp_ns=%" PRId64
+        " diagnostics_after_path_ms=%.1f points=%zu %s",
+        diagnostics->planner_path_id, diagnostics->path_stamp_ns,
+        receipt->receive_stamp_ns, diagnostics_receive_stamp_ns,
+        diagnostics_after_path_ms, receipt->point_count, correlated_delivery.c_str());
+  }
   if (!path_valid_ || !trajectoryDiagnosticsMatchesCurrentPath(*diagnostics)) {
     callback_duration.setTrajectoryIdentity(diagnostics->planner_path_id,
                                             diagnostics->path_stamp_ns);
     callback_duration.setOutcome("not_current_path");
+    const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
+    const std::string delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
+        &diagnostics->delivery, diagnostics->path_stamp_ns, receive_stamp_ns,
+        current_position_);
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_DELIVERY event=diagnostics_received_not_current "
+                "planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                " path_valid=%s current_path_stamp_ns=%" PRIu64 " %s",
+                diagnostics->planner_path_id, diagnostics->path_stamp_ns,
+                path_valid_ ? "true" : "false", last_received_path_stamp_ns_,
+                delivery_diagnostic.c_str());
     return;
   }
 

@@ -288,6 +288,61 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonDouble(json, "trajectory_speed_profile_duration_ms",
                   envelope.stats.speed_profile_duration_ms);
 
+  (void)parseJsonUint64(json, "delivery_generation", envelope.delivery.generation);
+  parseJsonBool(json, "delivery_replan_triggered", envelope.delivery.replan_triggered);
+  (void)parseJsonUint64(json, "delivery_blocker_detected_stamp_ns",
+                        envelope.delivery.blocker_detected_stamp_ns);
+  (void)parseJsonUint64(json, "delivery_trajectory_build_started_stamp_ns",
+                        envelope.delivery.trajectory_build_started_stamp_ns);
+  (void)parseJsonUint64(json, "delivery_path_published_stamp_ns",
+                        envelope.delivery.path_published_stamp_ns);
+  parseJsonDouble(json, "delivery_blocker_x_m", envelope.delivery.blocker_position.x);
+  parseJsonDouble(json, "delivery_blocker_y_m", envelope.delivery.blocker_position.y);
+  parseJsonDouble(json, "delivery_blocker_detection_x_m",
+                  envelope.delivery.blocker_detection_position.x);
+  parseJsonDouble(json, "delivery_blocker_detection_y_m",
+                  envelope.delivery.blocker_detection_position.y);
+  parseJsonDouble(json, "delivery_blocker_detection_vx_mps",
+                  envelope.delivery.blocker_detection_velocity.x);
+  parseJsonDouble(json, "delivery_blocker_detection_vy_mps",
+                  envelope.delivery.blocker_detection_velocity.y);
+  parseJsonBool(json, "delivery_blocker_detection_velocity_valid",
+                envelope.delivery.blocker_detection_velocity_valid);
+  parseJsonDouble(json, "delivery_candidate_start_x_m",
+                  envelope.delivery.candidate_start_position.x);
+  parseJsonDouble(json, "delivery_candidate_start_y_m",
+                  envelope.delivery.candidate_start_position.y);
+  parseJsonDouble(json, "delivery_planning_start_x_m",
+                  envelope.delivery.planning_start_position.x);
+  parseJsonDouble(json, "delivery_planning_start_y_m",
+                  envelope.delivery.planning_start_position.y);
+  parseJsonDouble(json, "delivery_planning_start_vx_mps",
+                  envelope.delivery.planning_start_velocity.x);
+  parseJsonDouble(json, "delivery_planning_start_vy_mps",
+                  envelope.delivery.planning_start_velocity.y);
+  parseJsonBool(json, "delivery_planning_start_velocity_valid",
+                envelope.delivery.planning_start_velocity_valid);
+  parseJsonDouble(json, "delivery_predicted_publication_x_m",
+                  envelope.delivery.predicted_publication_position.x);
+  parseJsonDouble(json, "delivery_predicted_publication_y_m",
+                  envelope.delivery.predicted_publication_position.y);
+  parseJsonBool(json, "delivery_predicted_publication_position_valid",
+                envelope.delivery.predicted_publication_position_valid);
+  parseJsonDouble(json, "delivery_actual_publication_x_m",
+                  envelope.delivery.actual_publication_position.x);
+  parseJsonDouble(json, "delivery_actual_publication_y_m",
+                  envelope.delivery.actual_publication_position.y);
+  parseJsonBool(json, "delivery_actual_publication_position_valid",
+                envelope.delivery.actual_publication_position_valid);
+  parseJsonDouble(json, "delivery_blocker_to_build_start_ms",
+                  envelope.delivery.blocker_to_build_start_ms);
+  parseJsonDouble(json, "delivery_build_start_to_publish_ms",
+                  envelope.delivery.build_start_to_publish_ms);
+  parseJsonDouble(json, "delivery_blocker_to_publish_ms",
+                  envelope.delivery.blocker_to_publish_ms);
+  parseJsonDouble(json, "delivery_publication_prediction_error_m",
+                  envelope.delivery.publication_prediction_error_m);
+
   CorridorStats& corridor = envelope.stats.corridor;
   parseJsonSize(json, "corridor_input_points", corridor.input_points);
   parseJsonSize(json, "corridor_samples", corridor.samples);

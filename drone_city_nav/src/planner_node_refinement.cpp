@@ -11,7 +11,7 @@ void PlannerNode::startAsyncExecutableTrajectoryBuild(
     const std::uint64_t generation, const char* source_label,
     const ClearanceField2D* prohibited_clearance_field,
     const bool prohibited_clearance_field_cache_hit,
-    const TrajectoryPlannerConfig& config) {
+    const TrajectoryPlannerConfig& config, TrajectoryDeliveryDiagnostics delivery) {
   if (async_trajectory_build_workers_ == 0U || route_points.size() < 2U ||
       pending_trajectory_build_.has_value()) {
     return;
@@ -46,6 +46,7 @@ void PlannerNode::startAsyncExecutableTrajectoryBuild(
       .route_points = std::move(route_snapshot),
       .source_label = source_label,
       .started_at = std::chrono::steady_clock::now(),
+      .delivery = delivery,
       .future = std::move(future),
   };
   RCLCPP_INFO(get_logger(),
@@ -111,7 +112,8 @@ bool PlannerNode::pollPendingExecutableTrajectoryBuild(
               pending.route_points.size(), result_points.size(), wall_duration_ms,
               result.stats.total_duration_ms);
   return publishTrajectoryResult(validation_grid, result, pending.route_points,
-                                 pending.source_label.c_str(), wall_duration_ms);
+                                 pending.source_label.c_str(), wall_duration_ms,
+                                 pending.delivery);
 }
 
 } // namespace drone_city_nav

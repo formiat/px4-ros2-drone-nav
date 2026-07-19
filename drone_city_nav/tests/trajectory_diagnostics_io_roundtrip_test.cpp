@@ -7,8 +7,31 @@ using trajectory_diagnostics_io_test_helpers::populatedStats;
 TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   const std::uint64_t planner_path_id = 42U;
   const std::uint64_t path_stamp_ns = 1'782'477'871'305'471'587ULL;
+  const TrajectoryDeliveryDiagnostics delivery{
+      .generation = 17U,
+      .blocker_detected_stamp_ns = 1'000'000'000U,
+      .trajectory_build_started_stamp_ns = 1'100'000'000U,
+      .path_published_stamp_ns = 1'900'000'000U,
+      .replan_triggered = true,
+      .blocker_position = Point2{12.5, 30.25},
+      .blocker_detection_position = Point2{5.0, 6.0},
+      .blocker_detection_velocity = Point2{10.0, -2.0},
+      .blocker_detection_velocity_valid = true,
+      .candidate_start_position = Point2{5.5, 6.5},
+      .planning_start_position = Point2{6.0, 7.0},
+      .planning_start_velocity = Point2{11.0, -1.5},
+      .planning_start_velocity_valid = true,
+      .predicted_publication_position = Point2{14.8, 5.8},
+      .predicted_publication_position_valid = true,
+      .actual_publication_position = Point2{14.1, 6.2},
+      .actual_publication_position_valid = true,
+      .blocker_to_build_start_ms = 100.0,
+      .build_start_to_publish_ms = 800.0,
+      .blocker_to_publish_ms = 900.0,
+      .publication_prediction_error_m = 0.806,
+  };
   const std::string json = trajectoryPlannerDiagnosticsJson(
-      planner_path_id, path_stamp_ns, populatedStats());
+      planner_path_id, path_stamp_ns, populatedStats(), delivery);
   EXPECT_NE(json.find("\"trajectory_quality\":\"refined\""), std::string::npos);
 
   const std::optional<TrajectoryPlannerDiagnosticsEnvelope> parsed =
@@ -19,6 +42,28 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       parsed.value_or(TrajectoryPlannerDiagnosticsEnvelope{});
   EXPECT_EQ(parsed_value.planner_path_id, planner_path_id);
   EXPECT_EQ(parsed_value.path_stamp_ns, path_stamp_ns);
+  EXPECT_EQ(parsed_value.delivery.generation, 17U);
+  EXPECT_TRUE(parsed_value.delivery.replan_triggered);
+  EXPECT_EQ(parsed_value.delivery.blocker_detected_stamp_ns, 1'000'000'000U);
+  EXPECT_EQ(parsed_value.delivery.trajectory_build_started_stamp_ns, 1'100'000'000U);
+  EXPECT_EQ(parsed_value.delivery.path_published_stamp_ns, 1'900'000'000U);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_position.x, 12.5);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_detection_position.y, 6.0);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_detection_velocity.x, 10.0);
+  EXPECT_TRUE(parsed_value.delivery.blocker_detection_velocity_valid);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.candidate_start_position.x, 5.5);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.candidate_start_position.y, 6.5);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.planning_start_position.x, 6.0);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.planning_start_velocity.y, -1.5);
+  EXPECT_TRUE(parsed_value.delivery.planning_start_velocity_valid);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.predicted_publication_position.x, 14.8);
+  EXPECT_TRUE(parsed_value.delivery.predicted_publication_position_valid);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.actual_publication_position.y, 6.2);
+  EXPECT_TRUE(parsed_value.delivery.actual_publication_position_valid);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_to_build_start_ms, 100.0);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.build_start_to_publish_ms, 800.0);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_to_publish_ms, 900.0);
+  EXPECT_DOUBLE_EQ(parsed_value.delivery.publication_prediction_error_m, 0.806);
   EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kRefined);
   EXPECT_EQ(parsed_value.stats.samples, 78U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.length_m, 412.25);
