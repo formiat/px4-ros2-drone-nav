@@ -44,6 +44,10 @@ TEST(LidarPoseHistoryTest, RejectsExtrapolationBeyondConfiguredBound) {
 
   EXPECT_TRUE(history.sample(1'040'000'000).has_value());
   EXPECT_FALSE(history.sample(1'060'000'000).has_value());
+  const LidarPoseSampleResult result = history.sampleWithDiagnostics(1'060'000'000);
+  EXPECT_EQ(result.status, LidarPoseAlignmentStatus::kExtrapolationExceeded);
+  EXPECT_EQ(result.position_stamp_error_ns, 60'000'000);
+  EXPECT_EQ(result.attitude_stamp_error_ns, 60'000'000);
 }
 
 TEST(LidarPoseHistoryTest, RejectsInvalidSamples) {
@@ -71,6 +75,33 @@ TEST(LidarPoseHistoryTest, BuildsPoseForEachBeamAcquisitionTime) {
   EXPECT_NEAR(values[1].position.x, 1.0, 1.0e-9);
   EXPECT_NEAR(values[1].altitude_m, 11.0, 1.0e-9);
   EXPECT_NEAR(values[2].pitch_rad, 0.2, 1.0e-6);
+}
+
+TEST(LidarPoseHistoryTest, DiagnosesClockDomainMismatchAtFirstBeam) {
+  LidarPoseHistory history;
+  history.addPosition(1'700'000'000'000'000'000, Point3{0.0, 0.0, 10.0}, 0.0, true);
+  history.addAttitude(1'700'000'000'000'000'000, pitchQuaternion(0.0));
+
+  const LidarBeamPoseAlignmentResult result =
+      timestampAlignedLidarBeamPosesWithDiagnostics(
+          history, LaserScanTiming{18'000'000'000, true, 0.0, 0, false}, 720U);
+
+  EXPECT_EQ(result.status, LidarPoseAlignmentStatus::kExtrapolationExceeded);
+  EXPECT_EQ(result.failed_beam_index, 0U);
+  EXPECT_EQ(result.requested_stamp_ns, 18'000'000'000);
+  EXPECT_GT(result.position_stamp_error_ns, 1'000'000'000'000'000'000);
+  EXPECT_EQ(result.position_sample_count, 1U);
+  EXPECT_EQ(result.attitude_sample_count, 1U);
+}
+
+TEST(LidarPoseHistoryTest, DiagnosesMissingPoseHistory) {
+  LidarPoseHistory history;
+  const LidarBeamPoseAlignmentResult result =
+      timestampAlignedLidarBeamPosesWithDiagnostics(
+          history, LaserScanTiming{1'000'000'000, true, 0.0, 0, false}, 1U);
+
+  EXPECT_EQ(result.status, LidarPoseAlignmentStatus::kPositionHistoryEmpty);
+  EXPECT_STREQ(lidarPoseAlignmentStatusName(result.status), "position_history_empty");
 }
 
 } // namespace

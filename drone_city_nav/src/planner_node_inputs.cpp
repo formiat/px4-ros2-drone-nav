@@ -70,6 +70,8 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
   scan_seen_ = true;
   last_scan_update_ns_ = get_clock()->now().nanoseconds();
   last_scan_projection_pose_valid_ = pose_valid_;
+  LidarPoseAlignmentStatus alignment_status =
+      LidarPoseAlignmentStatus::kPositionHistoryEmpty;
   if (last_scan_projection_pose_valid_) {
     last_scan_projection_pose_ = currentLidarProjectionPose();
     const LidarPoseMotionCompensationResult motion_compensation =
@@ -99,12 +101,20 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
         .receive_stamp_ns = last_scan_update_ns_,
         .receive_stamp_valid = last_scan_update_ns_ > 0,
     };
-    const std::optional<std::vector<LidarProjectionPose>> aligned =
-        timestampAlignedLidarBeamPoses(
+    const LidarBeamPoseAlignmentResult alignment =
+        timestampAlignedLidarBeamPosesWithDiagnostics(
             lidar_pose_history_, scan_timing, msg.ranges.size(),
             use_px4_heading_for_scan_ ? std::nullopt
                                       : std::optional<double>{initial_heading_rad_});
-    last_scan_projection_poses_ = aligned.value_or(std::vector<LidarProjectionPose>{});
+    alignment_status = alignment.status;
+    last_scan_projection_poses_ =
+        alignment.aligned() ? alignment.poses : std::vector<LidarProjectionPose>{};
+    if (!alignment.aligned()) {
+      const std::string diagnostic = formatLidarPoseAlignmentDiagnostic(
+          "Planner lidar 6DoF pose alignment fallback", alignment, scan_timing,
+          last_scan_update_ns_);
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", diagnostic.c_str());
+    }
   } else {
     last_scan_pose_lag_s_ = 0.0;
     last_scan_pose_latency_s_ = 0.0;
@@ -116,7 +126,7 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     scan_seen_logged_ = true;
     RCLCPP_INFO(get_logger(),
                 "First planner lidar scan: beams=%zu range=[%.2f, %.2f] "
-                "angle=[%.2f, %.2f] projection_pose=%s pose_lag=%.3fs "
+                "angle=[%.2f, %.2f] projection_pose=%s alignment=%s pose_lag=%.3fs "
                 "pose_latency=%.3fs motion_shift=(%.2f, %.2f) "
                 "motion_shift_m=%.2f",
                 last_scan_.ranges.size(), static_cast<double>(last_scan_.range_min),
@@ -124,9 +134,9 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
                 static_cast<double>(last_scan_.angle_min),
                 static_cast<double>(last_scan_.angle_max),
                 last_scan_projection_pose_valid_ ? "true" : "false",
-                last_scan_pose_lag_s_, last_scan_pose_latency_s_,
-                last_scan_motion_shift_.x, last_scan_motion_shift_.y,
-                last_scan_motion_shift_m_);
+                lidarPoseAlignmentStatusName(alignment_status), last_scan_pose_lag_s_,
+                last_scan_pose_latency_s_, last_scan_motion_shift_.x,
+                last_scan_motion_shift_.y, last_scan_motion_shift_m_);
   }
 }
 

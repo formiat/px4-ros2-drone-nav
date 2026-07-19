@@ -80,8 +80,8 @@ def generate_launch_description():
     )
 
     def source_nodes(context, *args, **kwargs):
-        planner_overrides = {}
-        obstacle_memory_overrides = {}
+        planner_overrides = {"use_sim_time": True}
+        obstacle_memory_overrides = {"use_sim_time": True}
 
         memory_hit_dump_path_override = (
             lidar_memory_hit_dump_path.perform(context).strip()
@@ -151,6 +151,7 @@ def generate_launch_description():
         parameters=[
             params_file,
             {
+                "use_sim_time": True,
                 "rviz_drone_follow_tf_enabled": ParameterValue(
                     rviz_drone_follow_tf_enabled, value_type=bool
                 ),
@@ -164,7 +165,7 @@ def generate_launch_description():
         name="mission_monitor_node",
         output="screen",
         condition=IfCondition(enable_mission_monitor),
-        parameters=[params_file],
+        parameters=[params_file, {"use_sim_time": True}],
     )
 
     lidar_debug = Node(
@@ -176,6 +177,7 @@ def generate_launch_description():
         parameters=[
             params_file,
             {
+                "use_sim_time": True,
                 "output_dir": lidar_debug_output_dir,
             },
         ],
@@ -219,6 +221,7 @@ def generate_launch_description():
             "--child-frame-id",
             "map",
         ],
+        parameters=[{"use_sim_time": True}],
     )
 
     rviz = Node(
@@ -228,6 +231,7 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(enable_rviz),
         arguments=["-d", rviz_config],
+        parameters=[{"use_sim_time": True}],
     )
 
     return LaunchDescription(

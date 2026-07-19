@@ -98,6 +98,13 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('executable="px4_offboard_node"', self.launch_text)
         self.assertIn("px4_offboard,", self.launch_text)
 
+    def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
+        self.assertIn('planner_overrides = {"use_sim_time": True}', self.launch_text)
+        self.assertIn(
+            'obstacle_memory_overrides = {"use_sim_time": True}', self.launch_text
+        )
+        self.assertGreaterEqual(self.launch_text.count('"use_sim_time": True'), 7)
+
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
         self.assertIn("read_ros_float_parameter()", self.text)
         self.assertIn(

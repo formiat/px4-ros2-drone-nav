@@ -100,7 +100,6 @@ public:
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-
     const bool known_passages_enabled =
         declare_parameter<bool>("known_passages_enabled", true);
     const std::string known_passages_path = declare_parameter<std::string>(
@@ -255,7 +254,6 @@ public:
           ground_lidar_rejection_config_.closer_range_tolerance_m,
           ground_lidar_rejection_config_.farther_range_tolerance_m);
     }
-
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
@@ -272,14 +270,12 @@ public:
       current_pose_.position_valid = true;
       last_pose_update_ns_ = get_clock()->now().nanoseconds();
     }
-
     const std::string lidar_topic =
         declare_parameter<std::string>("lidar_topic", "/scan");
     const std::string local_position_topic = declare_parameter<std::string>(
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
         "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
-
     raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("obstacle_memory_grid_topic",
                                        "/drone_city_nav/obstacle_memory_grid"),
@@ -311,7 +307,6 @@ public:
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
         });
-
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory ready: pose=px4_local_position grid=%dx%d "
                 "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
@@ -487,13 +482,18 @@ private:
     scan_view.timing.time_increment_s = static_cast<double>(scan.time_increment);
     scan_view.timing.receive_stamp_ns = now_ns;
     scan_view.timing.receive_stamp_valid = now_ns > 0;
-    const std::optional<std::vector<LidarProjectionPose>> aligned_beam_poses =
-        timestampAlignedLidarBeamPoses(
+    const LidarBeamPoseAlignmentResult pose_alignment =
+        timestampAlignedLidarBeamPosesWithDiagnostics(
             lidar_pose_history_, scan_view.timing, scan.ranges.size(),
             use_px4_heading_for_scan_ ? std::nullopt
                                       : std::optional<double>{initial_heading_rad_});
-    if (aligned_beam_poses.has_value()) {
-      scan_view.beam_projection_poses = *aligned_beam_poses;
+    if (pose_alignment.aligned()) {
+      scan_view.beam_projection_poses = pose_alignment.poses;
+    } else {
+      const std::string diagnostic =
+          formatLidarPoseAlignmentDiagnostic("Lidar 6DoF pose alignment fallback",
+                                             pose_alignment, scan_view.timing, now_ns);
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s", diagnostic.c_str());
     }
     const ObstacleMemoryStats stats = memory_->integrateScan(
         scan_pose, scan_view, memory_config_,
@@ -580,7 +580,7 @@ private:
         "Obstacle memory update: pose=(%.2f, %.2f, altitude=%.2f, yaw=%.2f) "
         "scan_pose=(%.2f, %.2f) pose_lag=%.3fs pose_latency=%.3fs "
         "motion_shift=(%.2f, %.2f) motion_shift_m=%.2f "
-        "roll=%.3f pitch=%.3f attitude_valid=%s processed=%zu aligned=%zu "
+        "roll=%.3f pitch=%.3f attitude_valid=%s alignment=%s processed=%zu aligned=%zu "
         "hits=%zu invalid=%zu "
         "altitude_rejected=%zu clipped=%zu outside_hits=%zu free_updates=%zu "
         "occupied_updates=%zu newly_occupied=%zu "
@@ -596,7 +596,8 @@ private:
         motion_compensation.latency_s, motion_compensation.applied_shift.x,
         motion_compensation.applied_shift.y, motion_compensation.applied_shift_m,
         current_attitude_.roll_rad, current_attitude_.pitch_rad,
-        attitude_valid_ ? "true" : "false", stats.processed_beams,
+        attitude_valid_ ? "true" : "false",
+        lidarPoseAlignmentStatusName(pose_alignment.status), stats.processed_beams,
         stats.timestamp_aligned_beams, stats.hit_beams, stats.invalid_ranges,
         stats.altitude_rejected_beams, stats.clipped_rays, stats.outside_hit_endpoints,
         stats.free_cells_updated, stats.occupied_cells_updated,
