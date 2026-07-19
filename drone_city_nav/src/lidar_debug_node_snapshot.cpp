@@ -132,16 +132,21 @@ void LidarDebugNode::writeSnapshot() {
 }
 
 [[nodiscard]] LidarProjectionConfig LidarDebugNode::lidarProjectionConfig() const {
-  return LidarProjectionConfig{max_lidar_range_m_,
-                               range_hit_epsilon_m_,
-                               scan_yaw_offset_rad_,
-                               lidar_z_offset_m_,
-                               min_projected_lidar_altitude_m_,
-                               max_projected_lidar_altitude_m_,
-                               compensate_lidar_attitude_,
-                               lidar_mount_roll_rad_,
-                               lidar_mount_pitch_rad_,
-                               lidar_mount_yaw_rad_};
+  return LidarProjectionConfig{
+      .max_lidar_range_m = max_lidar_range_m_,
+      .range_hit_epsilon_m = range_hit_epsilon_m_,
+      .scan_yaw_offset_rad = scan_yaw_offset_rad_,
+      .lidar_z_offset_m = lidar_z_offset_m_,
+      .min_projected_altitude_m = min_projected_lidar_altitude_m_,
+      .max_projected_altitude_m = max_projected_lidar_altitude_m_,
+      .compensate_attitude = compensate_lidar_attitude_,
+      .lidar_mount_roll_rad = lidar_mount_roll_rad_,
+      .lidar_mount_pitch_rad = lidar_mount_pitch_rad_,
+      .lidar_mount_yaw_rad = lidar_mount_yaw_rad_,
+      .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
+      .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
+      .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
+  };
 }
 
 [[nodiscard]] LidarProjectionConfig

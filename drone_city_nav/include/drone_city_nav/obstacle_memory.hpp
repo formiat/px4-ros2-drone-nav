@@ -6,6 +6,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -36,8 +37,13 @@ struct LaserScan2DView {
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
+  bool use_full_lidar_extrinsic{false};
+  Point3 lidar_translation_body_frd_m{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
   LaserScanTiming timing{};
   std::span<const LidarProjectionPose> beam_projection_poses{};
+  LidarProjectionPoseSource projection_pose_source{
+      LidarProjectionPoseSource::kCallbackPoseFallback};
 };
 
 struct ObstacleMemoryConfig {

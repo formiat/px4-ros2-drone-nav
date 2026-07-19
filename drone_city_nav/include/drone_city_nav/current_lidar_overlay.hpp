@@ -21,6 +21,8 @@ struct LidarScanView {
   double angle_increment_rad{0.0};
   LaserScanTiming timing{};
   std::span<const LidarProjectionPose> beam_projection_poses{};
+  LidarProjectionPoseSource projection_pose_source{
+      LidarProjectionPoseSource::kCallbackPoseFallback};
 };
 
 struct CurrentLidarAcceptedHitProvenance {

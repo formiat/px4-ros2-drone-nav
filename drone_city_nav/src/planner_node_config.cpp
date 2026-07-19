@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 namespace drone_city_nav {
 namespace {
@@ -298,10 +299,29 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
   config.lidar_projection.lidar_z_offset_m =
       node.declare_parameter<double>("lidar_z_offset_m", 0.0);
+  config.lidar_projection.use_full_lidar_extrinsic =
+      node.declare_parameter<bool>("use_full_lidar_extrinsic", true);
+  const std::vector<double> lidar_translation =
+      node.declare_parameter<std::vector<double>>(
+          "lidar_extrinsic_translation_body_frd_m", {0.12, 0.0, -0.315});
+  if (lidar_translation.size() == 3U) {
+    config.lidar_projection.lidar_translation_body_frd_m =
+        Point3{lidar_translation[0], lidar_translation[1], lidar_translation[2]};
+  }
+  const std::vector<double> lidar_rotation =
+      node.declare_parameter<std::vector<double>>(
+          "lidar_extrinsic_quaternion_lidar_flu_to_body_frd", {0.0, 1.0, 0.0, 0.0});
+  if (lidar_rotation.size() == 4U) {
+    config.lidar_projection.lidar_flu_to_body_frd_quaternion = {
+        lidar_rotation[0], lidar_rotation[1], lidar_rotation[2], lidar_rotation[3]};
+  }
   config.lidar_projection.min_projected_altitude_m =
       node.declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
   config.lidar_projection.max_projected_altitude_m =
       node.declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
+
+  config.topics.timesync_status = node.declare_parameter<std::string>(
+      "px4_timesync_status_topic", config.topics.timesync_status);
 
   config.planner_core.astar.turn_cost_weight = std::clamp(
       node.declare_parameter<double>("astar_turn_cost_weight", 0.0), 0.0, 1000.0);

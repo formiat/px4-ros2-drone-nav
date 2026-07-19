@@ -18,6 +18,7 @@
 #include "drone_city_nav/planner_path_publication.hpp"
 #include "drone_city_nav/planner_runtime_state.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
+#include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
@@ -27,6 +28,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -39,6 +41,7 @@
 
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <array>
 #include <builtin_interfaces/msg/time.hpp>
 #include <chrono>
 #include <cinttypes>
@@ -135,6 +138,8 @@ private:
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg);
+
+  void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg);
 
   [[nodiscard]] std::filesystem::path staticMapPackageShareDirectory() const;
 
@@ -319,7 +324,10 @@ private:
   Point2 current_velocity_{};
   AttitudeEuler current_attitude_{};
   LidarProjectionPose last_scan_projection_pose_{};
+  LidarProjectionPoseSource last_scan_projection_pose_source_{
+      LidarProjectionPoseSource::kCallbackPoseFallback};
   LidarPoseHistory lidar_pose_history_{};
+  Px4RosTimeMapper px4_ros_time_mapper_{};
   mutable AmbiguousLidarHitTracker current_lidar_ambiguous_hit_tracker_{};
   Point2 start_{};
   Point2 goal_{};
@@ -388,6 +396,9 @@ private:
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};
   double lidar_mount_yaw_rad_{0.0};
+  bool use_full_lidar_extrinsic_{false};
+  Point3 lidar_translation_body_frd_m_{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion_{0.0, 1.0, 0.0, 0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
@@ -446,6 +457,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
+  rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;

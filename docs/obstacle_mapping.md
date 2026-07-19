@@ -116,11 +116,24 @@ string payloads and is intended for monitoring DDS bandwidth growth.
 Beam acquisition time is derived from the scan stamp and `time_increment`.
 Receive time is stored separately and is never substituted for a missing sensor
 stamp. Position XYZ and quaternion attitude are sampled independently for every
-beam acquisition timestamp from bounded histories. Those histories are
-currently keyed by ROS callback receive timestamps; PX4 source timestamps are
-retained as diagnostics but are not yet the interpolation key. When either
-history cannot cover the requested timestamp, projection falls back to the
-callback-time pose and emits a bounded 6DoF alignment warning.
+beam acquisition timestamp from bounded histories. `TimesyncStatus` recovers
+PX4-local acquisition time from the DDS-adjusted `timestamp_sample`, and a
+bounded affine mapper relates PX4-local time to ROS simulation time. The mapper
+uses the lower callback-latency envelope so average executor delay is not baked
+into the clock offset. XYZ is interpolated linearly and the complete body-to-NED
+quaternion is interpolated with SLERP at the same acquisition timestamp.
+
+Projection reports one explicit pose source:
+
+- `source_timestamp_aligned` for PX4 `timestamp_sample` alignment;
+- `receive_timestamp_aligned` while the clock mapper is not ready;
+- `motion_extrapolated_fallback` for the legacy velocity/latency fallback;
+- `callback_pose_fallback` when no temporal compensation is available.
+
+The fixed `lidar_pose_latency_s` shift is used only by the fallback path. It is
+not added to a source-timestamp-aligned pose. If either acquisition history
+cannot cover the requested timestamp, the node logs the exact fallback source,
+bracketing samples, interpolation/extrapolation age, and mapper residual.
 
 ## Motion Compensation
 
@@ -130,15 +143,27 @@ Lidar projection can account for:
 - motion-compensated lidar pose;
 - lidar pose latency;
 - attitude compensation;
-- lidar mount roll/pitch/yaw offsets;
-- lidar z offset.
+- a full rigid body-to-lidar extrinsic.
 
-The direction transform applies the configured mount orientation. The ray
-origin currently applies only `lidar_z_offset_m` along map Z; body-frame X/Y
-offset and attitude rotation of the origin offset are not yet part of the
-projection. Memory-hit diagnostics log the origin before and after this limited
-extrinsic so that its contribution can be measured before full extrinsic
-support is enabled.
+The transform is:
+
+```text
+T_map_lidar(t) = T_map_body(t) * T_body_lidar
+```
+
+The configured translation is expressed in body FRD. The configured quaternion
+rotates lidar FLU vectors into body FRD. For the shipped X500 model the sensor
+center is `(0.12, 0.0, 0.315)` in SDF FLU, represented as
+`[0.12, 0.0, -0.315]` in body FRD; the aligned FLU-to-FRD quaternion is
+`[0.0, 1.0, 0.0, 0.0]` in WXYZ order. Both ray direction and the complete XYZ
+lever arm rotate with the interpolated body quaternion before NED is converted
+to the map Z-up convention.
+
+`lidar_z_offset_m` and mount RPY remain only as a compatibility fallback when
+`use_full_lidar_extrinsic=false`. The normal configuration uses
+`lidar_extrinsic_translation_body_frd_m` and
+`lidar_extrinsic_quaternion_lidar_flu_to_body_frd` in obstacle memory, planner
+current-lidar overlay, and lidar debug alike.
 
 The same concepts appear in obstacle memory, planner current lidar overlay, and
 lidar debug configuration.

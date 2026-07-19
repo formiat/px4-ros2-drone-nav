@@ -673,7 +673,9 @@ std::string formatLidarIngestionRepresentativeDiagnostics(
            << (observation.source_attitude_valid ? "true" : "false")
            << " roll=" << observation.source_roll_rad
            << " pitch=" << observation.source_pitch_rad
-           << " tilt=" << observation.source_tilt_rad << ") applied_attitude=(applied="
+           << " tilt=" << observation.source_tilt_rad << ") projection_pose_source="
+           << lidarProjectionPoseSourceName(observation.projection_pose_source)
+           << " applied_attitude=(applied="
            << (observation.projection.attitude_compensation_applied ? "true" : "false")
            << " roll=" << observation.projection.applied_roll_rad
            << " pitch=" << observation.projection.applied_pitch_rad

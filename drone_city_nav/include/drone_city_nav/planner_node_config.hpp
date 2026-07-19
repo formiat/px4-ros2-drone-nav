@@ -22,6 +22,7 @@ struct PlannerTopics {
   std::string lidar{"/scan"};
   std::string local_position{"/fmu/out/vehicle_local_position"};
   std::string attitude{"/fmu/out/vehicle_attitude"};
+  std::string timesync_status{"/fmu/out/timesync_status"};
   std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
   std::string static_map_grid{"/drone_city_nav/static_map_grid"};
   std::string static_map_points{"/drone_city_nav/static_map_points"};

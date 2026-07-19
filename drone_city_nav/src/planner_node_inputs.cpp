@@ -48,7 +48,8 @@ void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg
       Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
       use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
       altitude_valid_ && (!use_px4_heading_for_scan_ || msg.heading_good_for_control),
-      lidarPoseSourceTimestampNanoseconds(msg.timestamp));
+      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
 
   if (!local_position_seen_) {
     local_position_seen_ = true;
@@ -106,10 +107,24 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
         timestampAlignedLidarBeamPosesWithDiagnostics(
             lidar_pose_history_, scan_timing, msg.ranges.size(),
             use_px4_heading_for_scan_ ? std::nullopt
-                                      : std::optional<double>{initial_heading_rad_});
+                                      : std::optional<double>{initial_heading_rad_},
+            &px4_ros_time_mapper_);
     alignment_status = alignment.status;
     last_scan_projection_poses_ =
         alignment.aligned() ? alignment.poses : std::vector<LidarProjectionPose>{};
+    if (alignment.sourceAligned()) {
+      last_scan_projection_pose_source_ =
+          LidarProjectionPoseSource::kSourceTimestampAligned;
+    } else if (alignment.aligned()) {
+      last_scan_projection_pose_source_ =
+          LidarProjectionPoseSource::kReceiveTimestampAligned;
+    } else if (motion_compensation.applied) {
+      last_scan_projection_pose_source_ =
+          LidarProjectionPoseSource::kMotionExtrapolatedFallback;
+    } else {
+      last_scan_projection_pose_source_ =
+          LidarProjectionPoseSource::kCallbackPoseFallback;
+    }
     const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
         alignment.aligned() ? "Planner lidar 6DoF pose alignment"
                             : "Planner lidar 6DoF pose alignment fallback",
@@ -127,6 +142,8 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
     last_scan_motion_shift_ = Point2{};
     last_scan_motion_shift_m_ = 0.0;
     last_scan_projection_poses_.clear();
+    last_scan_projection_pose_source_ =
+        LidarProjectionPoseSource::kCallbackPoseFallback;
   }
   if (!scan_seen_logged_) {
     scan_seen_logged_ = true;
@@ -148,8 +165,10 @@ void PlannerNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
 
 void PlannerNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
-  lidar_pose_history_.addAttitude(receive_stamp_ns, msg.q,
-                                  lidarPoseSourceTimestampNanoseconds(msg.timestamp));
+  lidar_pose_history_.addAttitude(
+      receive_stamp_ns, msg.q,
+      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;
@@ -158,6 +177,20 @@ void PlannerNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
 
   current_attitude_ = *euler;
   attitude_valid_ = true;
+}
+
+void PlannerNode::onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) {
+  px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
+                                       msg.round_trip_time,
+                                       get_clock()->now().nanoseconds());
+  const Px4RosTimeMappingDiagnostics diagnostics = px4_ros_time_mapper_.diagnostics();
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Planner PX4/ROS clock mapping: ready=%s samples=%zu scale=%.9f "
+      "offset_ms=%.3f max_residual_ms=%.3f estimated_offset_ms=%.3f",
+      diagnostics.ready ? "true" : "false", diagnostics.sample_count, diagnostics.scale,
+      1.0e-6 * diagnostics.offset_ns, 1.0e-6 * diagnostics.max_fit_residual_ns,
+      1.0e-6 * static_cast<double>(diagnostics.latest_estimated_offset_ns));
 }
 
 [[nodiscard]] std::filesystem::path

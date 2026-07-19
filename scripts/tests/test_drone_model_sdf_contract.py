@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
+NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
 
 
 def parse_sdf(path: Path) -> ET.Element:
@@ -61,6 +62,39 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertFalse(
             any(name.startswith("yellow_") for name in visuals),
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
+        )
+
+    def test_lidar_sensor_pose_matches_configured_full_extrinsic(self) -> None:
+        wrapper_root = parse_sdf(WRAPPER_SDF)
+        lidar_root = parse_sdf(LIDAR_SDF)
+        include = next(
+            element
+            for element in wrapper_root.iter("include")
+            if element.findtext("uri") == "model://lidar_2d_v2"
+        )
+        sensor = next(
+            element
+            for element in lidar_root.iter("sensor")
+            if element.attrib.get("name") == "lidar_2d_v2"
+        )
+        include_pose = [float(value) for value in include.findtext("pose", "").split()]
+        sensor_pose = [float(value) for value in sensor.findtext("pose", "").split()]
+
+        self.assertEqual([0.12, 0.0, 0.26], include_pose[:3])
+        self.assertEqual([0.0, 0.0, 0.055], sensor_pose[:3])
+        config_text = NAV_CONFIG.read_text(encoding="utf-8")
+        self.assertEqual(
+            3,
+            config_text.count(
+                "lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]"
+            ),
+        )
+        self.assertEqual(
+            3,
+            config_text.count(
+                "lidar_extrinsic_quaternion_lidar_flu_to_body_frd: "
+                "[0.0, 1.0, 0.0, 0.0]"
+            ),
         )
 
 

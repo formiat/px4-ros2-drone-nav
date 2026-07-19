@@ -106,6 +106,47 @@ TEST(LidarProjection, PitchChangesProjectedAltitude) {
   EXPECT_LT(projection.endpoint_altitude_m, 18.3);
 }
 
+TEST(LidarProjection, FullExtrinsicAppliesHorizontalAndVerticalLeverArm) {
+  LidarProjectionPose pose{Point2{5.0, 6.0}, 18.0, 0.0, 0.0, 0.0, true, true};
+  pose.body_to_ned_quaternion = {1.0, 0.0, 0.0, 0.0};
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config{};
+  config.use_full_lidar_extrinsic = true;
+  config.lidar_translation_body_frd_m = Point3{0.12, 0.0, -0.315};
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  EXPECT_EQ(projection.status, LidarBeamProjectionStatus::kAccepted);
+  EXPECT_NEAR(projection.ray_origin_map_m.x, 5.12, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.y, 6.0, 1.0e-9);
+  EXPECT_NEAR(projection.ray_origin_map_m.z, 18.315, 1.0e-9);
+  EXPECT_NEAR(projection.endpoint_map_m.x, 15.12, 1.0e-6);
+  EXPECT_NEAR(projection.endpoint_map_m.z, 18.315, 1.0e-6);
+}
+
+TEST(LidarProjection, FullExtrinsicRotatesLeverArmWithBodyPitch) {
+  constexpr double pitch_rad{-0.4};
+  LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.0, pitch_rad, true, true};
+  pose.body_to_ned_quaternion = {std::cos(pitch_rad / 2.0), 0.0,
+                                 std::sin(pitch_rad / 2.0), 0.0};
+  pose.body_to_ned_quaternion_valid = true;
+  LidarProjectionConfig config{};
+  config.use_full_lidar_extrinsic = true;
+  config.lidar_translation_body_frd_m = Point3{0.12, 0.0, -0.315};
+  config.lidar_flu_to_body_frd_quaternion = {0.0, 1.0, 0.0, 0.0};
+
+  const LidarBeamProjection projection = project(pose, config, 10.0F);
+
+  const double expected_north_offset =
+      std::cos(pitch_rad) * 0.12 + std::sin(pitch_rad) * -0.315;
+  const double expected_down_offset =
+      -std::sin(pitch_rad) * 0.12 + std::cos(pitch_rad) * -0.315;
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.x, expected_north_offset, 1.0e-9);
+  EXPECT_NEAR(projection.applied_extrinsic_map_m.z, -expected_down_offset, 1.0e-9);
+  EXPECT_GT(projection.ray_origin_map_m.x, 0.12);
+}
+
 TEST(LidarProjection, TiltedProjectionUsesBodyFrdAxes) {
   LidarProjectionPose pose{Point2{0.0, 0.0}, 18.0, 0.0, 0.25, -0.35, true, true};
   LidarProjectionConfig config{};

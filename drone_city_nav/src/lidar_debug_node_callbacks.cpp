@@ -25,7 +25,8 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
       Point3{current_pose_.position.x, current_pose_.position.y, current_altitude_m_},
       use_px4_heading_for_scan_ ? current_pose_.yaw_rad : initial_heading_rad_,
       altitude_valid_ && (!use_px4_heading_for_scan_ || heading_valid),
-      lidarPoseSourceTimestampNanoseconds(msg.timestamp));
+      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
   if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
     current_velocity_ =
         Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -41,8 +42,10 @@ void LidarDebugNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& 
 
 void LidarDebugNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
-  lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q,
-                                  lidarPoseSourceTimestampNanoseconds(msg.timestamp));
+  lidar_pose_history_.addAttitude(
+      last_attitude_receive_ns_, msg.q,
+      px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+      lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
   const auto euler = quaternionToEuler(msg.q);
   if (!euler.has_value()) {
     attitude_valid_ = false;
@@ -52,6 +55,12 @@ void LidarDebugNode::onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
   attitude_ = *euler;
   attitude_tilt_rad_ = std::hypot(attitude_.roll_rad, attitude_.pitch_rad);
   attitude_valid_ = true;
+}
+
+void LidarDebugNode::onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) {
+  px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
+                                       msg.round_trip_time,
+                                       get_clock()->now().nanoseconds());
 }
 
 void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
@@ -98,12 +107,24 @@ void LidarDebugNode::onScan(const sensor_msgs::msg::LaserScan& msg) {
       .receive_stamp_ns = last_scan_receive_ns_,
       .receive_stamp_valid = last_scan_receive_ns_ > 0,
   };
-  const std::optional<std::vector<LidarProjectionPose>> aligned =
-      timestampAlignedLidarBeamPoses(lidar_pose_history_, timing, msg.ranges.size(),
-                                     use_px4_heading_for_scan_
-                                         ? std::nullopt
-                                         : std::optional<double>{initial_heading_rad_});
-  last_projected_beam_poses_ = aligned.value_or(std::vector<LidarProjectionPose>{});
+  last_pose_alignment_ = timestampAlignedLidarBeamPosesWithDiagnostics(
+      lidar_pose_history_, timing, msg.ranges.size(),
+      use_px4_heading_for_scan_ ? std::nullopt
+                                : std::optional<double>{initial_heading_rad_},
+      &px4_ros_time_mapper_);
+  last_projected_beam_poses_ = last_pose_alignment_.aligned()
+                                   ? last_pose_alignment_.poses
+                                   : std::vector<LidarProjectionPose>{};
+  const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
+      "Lidar debug 6DoF pose alignment", last_pose_alignment_, timing,
+      last_scan_receive_ns_);
+  if (last_pose_alignment_.sourceAligned()) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                         alignment_diagnostic.c_str());
+  } else {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "%s",
+                         alignment_diagnostic.c_str());
+  }
 
   LidarSnapshotStats stats{};
   last_scan_rows_ = collectScanRows(stats);

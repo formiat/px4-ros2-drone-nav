@@ -185,6 +185,33 @@ void writeLidarSnapshotSummary(std::ostream& stream,
   stream << ',';
   writeJsonNumberField(stream, "lidar_mount_yaw_rad", record.lidar_mount_yaw_rad);
   stream << ',';
+  stream << "\"use_full_lidar_extrinsic\":"
+         << (record.use_full_lidar_extrinsic ? "true" : "false") << ',';
+  stream << "\"lidar_translation_body_frd_m\":{";
+  writeJsonNumberField(stream, "x", record.lidar_translation_body_frd_m.x);
+  stream << ',';
+  writeJsonNumberField(stream, "y", record.lidar_translation_body_frd_m.y);
+  stream << ',';
+  writeJsonNumberField(stream, "z", record.lidar_translation_body_frd_m.z);
+  stream << "},\"lidar_flu_to_body_frd_quaternion_wxyz\":[";
+  bool first_quaternion_component = true;
+  for (const double component : record.lidar_flu_to_body_frd_quaternion) {
+    if (!first_quaternion_component) {
+      stream << ',';
+    }
+    writeJsonNumberOrNull(stream, component);
+    first_quaternion_component = false;
+  }
+  stream << "],\"pose_alignment_source\":\"" << record.pose_alignment_source
+         << "\",\"clock_mapping\":{\"ready\":"
+         << (record.clock_mapping_ready ? "true" : "false")
+         << ",\"samples\":" << record.clock_mapping_samples << ',';
+  writeJsonNumberField(stream, "scale", record.clock_mapping_scale);
+  stream << ',';
+  writeJsonNumberField(stream, "offset_ns", record.clock_mapping_offset_ns);
+  stream << ',';
+  writeJsonNumberField(stream, "max_residual_ns", record.clock_mapping_max_residual_ns);
+  stream << "},";
   writeJsonNumberField(stream, "min_projected_altitude_m",
                        record.min_projected_altitude_m);
   stream << ',';

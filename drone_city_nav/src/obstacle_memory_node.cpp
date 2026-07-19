@@ -1,6 +1,5 @@
 #include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
-#include "drone_city_nav/known_passage_solid_volumes.hpp"
 #include "drone_city_nav/known_static_lidar_hit_classifier.hpp"
 #include "drone_city_nav/lidar_debug_pointclouds.hpp"
 #include "drone_city_nav/lidar_memory_hit_diagnostics.hpp"
@@ -10,8 +9,10 @@
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
+#include "drone_city_nav/px4_ros_time_mapper.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -19,12 +20,11 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
-#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <array>
 #include <chrono>
 #include <cinttypes>
 #include <cmath>
 #include <cstdint>
-#include <exception>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -96,39 +96,45 @@ public:
     lidar_mount_pitch_rad_ = declare_parameter<double>("lidar_mount_pitch_rad", 0.0);
     lidar_mount_yaw_rad_ = declare_parameter<double>("lidar_mount_yaw_rad", 0.0);
     lidar_z_offset_m_ = declare_parameter<double>("lidar_z_offset_m", 0.0);
+    use_full_lidar_extrinsic_ =
+        declare_parameter<bool>("use_full_lidar_extrinsic", true);
+    const std::vector<double> lidar_translation =
+        declare_parameter<std::vector<double>>("lidar_extrinsic_translation_body_frd_m",
+                                               {0.12, 0.0, -0.315});
+    if (lidar_translation.size() == 3U) {
+      lidar_translation_body_frd_m_ =
+          Point3{lidar_translation[0], lidar_translation[1], lidar_translation[2]};
+    }
+    const std::vector<double> lidar_rotation = declare_parameter<std::vector<double>>(
+        "lidar_extrinsic_quaternion_lidar_flu_to_body_frd", {0.0, 1.0, 0.0, 0.0});
+    if (lidar_rotation.size() == 4U) {
+      lidar_flu_to_body_frd_quaternion_ = {lidar_rotation[0], lidar_rotation[1],
+                                           lidar_rotation[2], lidar_rotation[3]};
+    }
     min_projected_lidar_altitude_m_ =
         declare_parameter<double>("min_projected_lidar_altitude_m", 0.0);
     max_projected_lidar_altitude_m_ =
         declare_parameter<double>("max_projected_lidar_altitude_m", 100000.0);
-    const bool known_passages_enabled =
-        declare_parameter<bool>("known_passages_enabled", true);
-    const std::string known_passages_path = declare_parameter<std::string>(
-        "known_passages_path", "worlds/known_passages.passages3d");
+    KnownStaticLidarSetup known_static_setup =
+        declareKnownStaticLidarSetup(*this, frame_id_);
+    known_passage_map_ = std::move(known_static_setup.passage_map);
+    known_static_lidar_classifier_ = std::move(known_static_setup.classifier);
+    known_passages_resolved_path_ = std::move(known_static_setup.resolved_path);
     known_static_lidar_hit_closer_range_tolerance_m_ =
-        std::clamp(declare_parameter<double>(
-                       "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
-                   0.0, 100.0);
+        known_static_setup.closer_range_tolerance_m;
     known_static_lidar_hit_farther_range_tolerance_m_ =
-        std::clamp(declare_parameter<double>(
-                       "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
-                   0.0, 100.0);
+        known_static_setup.farther_range_tolerance_m;
     known_static_lidar_hit_endpoint_volume_tolerance_m_ =
-        std::clamp(declare_parameter<double>(
-                       "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
-                   0.0, 10.0);
-    known_static_opening_boundary_tolerance_m_ = std::clamp(
-        declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.30),
-        0.0, 10.0);
+        known_static_setup.endpoint_volume_tolerance_m;
+    known_static_opening_boundary_tolerance_m_ =
+        known_static_setup.opening_boundary_tolerance_m;
+    if (known_static_lidar_classifier_.has_value()) {
+      memory_->reset();
+    }
     memory_->configureAmbiguousHitTracking(
         declareAmbiguousLidarHitTrackerConfig(*this));
-    ground_lidar_rejection_config_.enabled =
-        declare_parameter<bool>("ground_lidar_rejection_enabled", true);
-    ground_lidar_rejection_config_.ground_altitude_m =
-        declare_parameter<double>("ground_lidar_altitude_m", 0.05);
-    ground_lidar_rejection_config_.closer_range_tolerance_m =
-        declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
-    ground_lidar_rejection_config_.farther_range_tolerance_m =
-        declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
+    ground_lidar_rejection_config_ =
+        declareGroundLidarRejectionConfig(*this, memory_config_.max_lidar_range_m);
     lidar_memory_hit_dump_enabled_ =
         declare_parameter<bool>("lidar_memory_hit_dump_enabled", true);
     lidar_memory_hit_dump_path_ = declare_parameter<std::string>(
@@ -155,98 +161,6 @@ public:
         std::clamp(declare_parameter<double>(
                        "obstacle_memory_snapshot_max_publish_interval_ms", 400.0),
                    1.0, 60'000.0);
-    std::filesystem::path package_share_directory;
-    try {
-      package_share_directory =
-          ament_index_cpp::get_package_share_directory("drone_city_nav");
-    } catch (const std::exception& error) {
-      RCLCPP_ERROR(get_logger(),
-                   "Known passage package share lookup failed; classifier is "
-                   "fail-open: error='%s'",
-                   error.what());
-    }
-    const KnownPassageSourceResult known_passage_source = loadKnownPassageMapSource(
-        KnownPassageSourceConfig{known_passages_enabled, known_passages_path,
-                                 package_share_directory, frame_id_});
-    known_passages_resolved_path_ = known_passage_source.resolved_path;
-    if (known_passage_source.status == KnownPassageSourceStatus::kLoaded &&
-        known_passage_source.map.has_value() && known_passage_source.frame_matches) {
-      known_passage_map_ = *known_passage_source.map;
-      std::vector<KnownPassageSolidVolume> volumes =
-          knownPassageSolidVolumes(*known_passage_map_);
-      if (!volumes.empty()) {
-        known_static_lidar_classifier_.emplace(
-            std::move(volumes),
-            KnownStaticLidarHitClassifierConfig{
-                .closer_range_tolerance_m =
-                    known_static_lidar_hit_closer_range_tolerance_m_,
-                .farther_range_tolerance_m =
-                    known_static_lidar_hit_farther_range_tolerance_m_,
-                .endpoint_volume_tolerance_m =
-                    known_static_lidar_hit_endpoint_volume_tolerance_m_,
-                .opening_boundary_tolerance_m =
-                    known_static_opening_boundary_tolerance_m_});
-        memory_->reset();
-      }
-    } else if (known_passage_source.status == KnownPassageSourceStatus::kLoadFailed) {
-      RCLCPP_ERROR(get_logger(),
-                   "Known passage map load failed; classifier is fail-open: "
-                   "path='%s' error='%s'",
-                   known_passages_resolved_path_.string().c_str(),
-                   known_passage_source.error_message.c_str());
-    } else if (known_passage_source.map.has_value() &&
-               !known_passage_source.frame_matches) {
-      RCLCPP_ERROR(get_logger(),
-                   "Known passage frame mismatch; classifier is fail-open: "
-                   "path='%s' map_frame='%s' expected_frame='%s'",
-                   known_passages_resolved_path_.string().c_str(),
-                   known_passage_source.map->frame_id.c_str(), frame_id_.c_str());
-    }
-    RCLCPP_INFO(
-        get_logger(),
-        "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
-        "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
-        "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
-        known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
-        known_passages_resolved_path_.string().c_str(),
-        known_static_lidar_classifier_.has_value()
-            ? known_static_lidar_classifier_->volumeCount()
-            : 0U,
-        known_static_lidar_hit_closer_range_tolerance_m_,
-        known_static_lidar_hit_farther_range_tolerance_m_,
-        known_static_lidar_hit_endpoint_volume_tolerance_m_,
-        known_static_opening_boundary_tolerance_m_);
-    const bool ground_config_valid =
-        std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
-        std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
-        ground_lidar_rejection_config_.closer_range_tolerance_m >= 0.0 &&
-        std::isfinite(ground_lidar_rejection_config_.farther_range_tolerance_m) &&
-        ground_lidar_rejection_config_.farther_range_tolerance_m >= 0.0 &&
-        std::isfinite(memory_config_.max_lidar_range_m) &&
-        memory_config_.max_lidar_range_m > 0.0;
-    const char* ground_status = "ready";
-    if (!ground_lidar_rejection_config_.enabled) {
-      ground_status = "disabled";
-    } else if (!ground_config_valid) {
-      ground_status = "unavailable";
-    }
-    if (ground_lidar_rejection_config_.enabled && !ground_config_valid) {
-      RCLCPP_WARN(
-          get_logger(),
-          "Ground lidar classifier: node=obstacle_memory status=%s "
-          "ground_altitude=%.3fm closer_tolerance=%.3fm farther_tolerance=%.3fm",
-          ground_status, ground_lidar_rejection_config_.ground_altitude_m,
-          ground_lidar_rejection_config_.closer_range_tolerance_m,
-          ground_lidar_rejection_config_.farther_range_tolerance_m);
-    } else {
-      RCLCPP_INFO(
-          get_logger(),
-          "Ground lidar classifier: node=obstacle_memory status=%s "
-          "ground_altitude=%.3fm closer_tolerance=%.3fm farther_tolerance=%.3fm",
-          ground_status, ground_lidar_rejection_config_.ground_altitude_m,
-          ground_lidar_rejection_config_.closer_range_tolerance_m,
-          ground_lidar_rejection_config_.farther_range_tolerance_m);
-    }
     const bool use_initial_pose =
         declare_parameter<bool>("use_initial_pose_until_px4", true);
     initial_heading_rad_ = declare_parameter<double>("initial_heading_rad", 0.0);
@@ -269,6 +183,8 @@ public:
         "px4_local_position_topic", "/fmu/out/vehicle_local_position");
     const std::string attitude_topic = declare_parameter<std::string>(
         "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
+    const std::string timesync_status_topic = declare_parameter<std::string>(
+        "px4_timesync_status_topic", "/fmu/out/timesync_status");
     raw_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
         declare_parameter<std::string>("obstacle_memory_grid_topic",
                                        "/drone_city_nav/obstacle_memory_grid"),
@@ -300,13 +216,19 @@ public:
         [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
           onLocalPosition(*msg);
         });
+    timesync_status_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
+        timesync_status_topic, sensor_qos,
+        [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
+          onTimesyncStatus(*msg);
+        });
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory ready: pose=px4_local_position grid=%dx%d "
-                "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s'",
+                "resolution=%.2fm origin=(%.1f, %.1f) lidar='%s' attitude='%s' "
+                "timesync='%s'",
                 memory_->rawGrid().width(), memory_->rawGrid().height(),
                 memory_->rawGrid().resolution(), memory_->rawGrid().originX(),
                 memory_->rawGrid().originY(), lidar_topic.c_str(),
-                attitude_topic.c_str());
+                attitude_topic.c_str(), timesync_status_topic.c_str());
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory config: max_range=%.2f stride=%d "
                 "raw_memory_only=true "
@@ -314,7 +236,8 @@ public:
                 "yaw_source=%s compensate_attitude=%s lidar_z_offset=%.2f "
                 "projected_altitude_range=[%.2f, %.2f] "
                 "motion_compensation=%s pose_latency=%.3fs "
-                "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
+                "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
+                "translation_body_frd=(%.3f, %.3f, %.3f)",
                 memory_config_.max_lidar_range_m, memory_config_.scan_stride,
                 memory_config_.min_score, memory_config_.max_score,
                 memory_config_.free_score, memory_config_.occupied_score,
@@ -322,7 +245,10 @@ public:
                 compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
                 min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
                 motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
-                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+                lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+                use_full_lidar_extrinsic_ ? "true" : "false",
+                lidar_translation_body_frd_m_.x, lidar_translation_body_frd_m_.y,
+                lidar_translation_body_frd_m_.z);
     openLidarMemoryHitDump();
     RCLCPP_INFO(get_logger(),
                 "Obstacle memory snapshot transport: debug_period=%.2fs "
@@ -341,7 +267,7 @@ private:
                                static_cast<double>(msg.y),
                                static_cast<double>(msg.z),
                                static_cast<double>(msg.heading),
-                               static_cast<std::int64_t>(msg.timestamp) * 1000LL,
+                               static_cast<std::int64_t>(msg.timestamp_sample) * 1000LL,
                                msg.xy_valid,
                                msg.z_valid,
                                msg.heading_good_for_control};
@@ -380,7 +306,8 @@ private:
                current_pose_.altitude_m},
         current_pose_.pose.yaw_rad,
         current_pose_.yaw_valid && current_pose_.altitude_valid,
-        current_pose_.stamp_ns);
+        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
     if (msg.v_xy_valid && std::isfinite(msg.vx) && std::isfinite(msg.vy)) {
       current_velocity_ =
           Point2{static_cast<double>(msg.vx), static_cast<double>(msg.vy)};
@@ -394,10 +321,12 @@ private:
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg) {
     last_attitude_receive_ns_ = get_clock()->now().nanoseconds();
-    lidar_pose_history_.addAttitude(last_attitude_receive_ns_, msg.q,
-                                    lidarPoseSourceTimestampNanoseconds(msg.timestamp));
+    lidar_pose_history_.addAttitude(
+        last_attitude_receive_ns_, msg.q,
+        px4_ros_time_mapper_.recoverPx4LocalTimeNs(msg.timestamp_sample).value_or(0),
+        lidarPoseSourceTimestampNanoseconds(msg.timestamp_sample));
     const std::optional<std::int64_t> sample_stamp_ns =
-        px4TimestampNanoseconds(msg.timestamp);
+        px4TimestampNanoseconds(msg.timestamp_sample);
     attitude_sample_stamp_ns_ = sample_stamp_ns.value_or(0);
     attitude_sample_stamp_valid_ = sample_stamp_ns.has_value();
     const auto euler = quaternionToEuler(msg.q);
@@ -408,6 +337,12 @@ private:
 
     current_attitude_ = *euler;
     attitude_valid_ = true;
+  }
+
+  void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg) {
+    px4_ros_time_mapper_.observeTimesync(msg.timestamp, msg.estimated_offset,
+                                         msg.round_trip_time,
+                                         get_clock()->now().nanoseconds());
   }
 
   void onScan(const sensor_msgs::msg::LaserScan& scan) {
@@ -470,6 +405,9 @@ private:
     scan_view.lidar_mount_roll_rad = lidar_mount_roll_rad_;
     scan_view.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
     scan_view.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
+    scan_view.use_full_lidar_extrinsic = use_full_lidar_extrinsic_;
+    scan_view.lidar_translation_body_frd_m = lidar_translation_body_frd_m_;
+    scan_view.lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_;
     const std::optional<std::int64_t> scan_stamp_ns =
         validRosStampNanoseconds(scan.header.stamp);
     scan_view.timing.first_beam_stamp_ns = scan_stamp_ns.value_or(0);
@@ -481,9 +419,20 @@ private:
         timestampAlignedLidarBeamPosesWithDiagnostics(
             lidar_pose_history_, scan_view.timing, scan.ranges.size(),
             use_px4_heading_for_scan_ ? std::nullopt
-                                      : std::optional<double>{initial_heading_rad_});
+                                      : std::optional<double>{initial_heading_rad_},
+            &px4_ros_time_mapper_);
     if (pose_alignment.aligned()) {
       scan_view.beam_projection_poses = pose_alignment.poses;
+    }
+    if (pose_alignment.sourceAligned()) {
+      scan_view.projection_pose_source =
+          LidarProjectionPoseSource::kSourceTimestampAligned;
+    } else if (pose_alignment.aligned()) {
+      scan_view.projection_pose_source =
+          LidarProjectionPoseSource::kReceiveTimestampAligned;
+    } else if (motion_compensation.applied) {
+      scan_view.projection_pose_source =
+          LidarProjectionPoseSource::kMotionExtrapolatedFallback;
     }
     const std::string alignment_diagnostic = formatLidarPoseAlignmentDiagnostic(
         pose_alignment.aligned() ? "Lidar 6DoF pose alignment"
@@ -750,10 +699,8 @@ private:
         .horizontal_velocity = current_velocity_,
         .horizontal_velocity_valid = current_velocity_valid_,
         .motion_compensation = motion_compensation,
-        .acquisition_pose_alignment = observation.acquisition_stamp_valid
-                                          ? lidar_pose_history_.sampleWithDiagnostics(
-                                                observation.acquisition_stamp_ns)
-                                          : LidarPoseSampleResult{},
+        .acquisition_pose_alignment = samplePoseAtRosAcquisition(
+            observation.acquisition_stamp_ns, observation.acquisition_stamp_valid),
         .scan_range_min_m = static_cast<double>(scan.range_min),
         .scan_range_max_m = static_cast<double>(scan.range_max),
         .scan_angle_min_rad = static_cast<double>(scan.angle_min),
@@ -764,11 +711,20 @@ private:
             static_cast<double>(scan.time_increment), scan.ranges.size()),
         .projection_config =
             LidarProjectionConfig{
-                memory_config_.max_lidar_range_m, memory_config_.range_hit_epsilon_m,
-                scan_yaw_offset_rad_, lidar_z_offset_m_,
-                min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
-                compensate_lidar_attitude_, lidar_mount_roll_rad_,
-                lidar_mount_pitch_rad_, lidar_mount_yaw_rad_},
+                .max_lidar_range_m = memory_config_.max_lidar_range_m,
+                .range_hit_epsilon_m = memory_config_.range_hit_epsilon_m,
+                .scan_yaw_offset_rad = scan_yaw_offset_rad_,
+                .lidar_z_offset_m = lidar_z_offset_m_,
+                .min_projected_altitude_m = min_projected_lidar_altitude_m_,
+                .max_projected_altitude_m = max_projected_lidar_altitude_m_,
+                .compensate_attitude = compensate_lidar_attitude_,
+                .lidar_mount_roll_rad = lidar_mount_roll_rad_,
+                .lidar_mount_pitch_rad = lidar_mount_pitch_rad_,
+                .lidar_mount_yaw_rad = lidar_mount_yaw_rad_,
+                .use_full_lidar_extrinsic = use_full_lidar_extrinsic_,
+                .lidar_translation_body_frd_m = lidar_translation_body_frd_m_,
+                .lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_,
+            },
         .ground_config = ground_lidar_rejection_config_,
         .known_static_closer_range_tolerance_m =
             known_static_lidar_hit_closer_range_tolerance_m_,
@@ -779,6 +735,34 @@ private:
         .known_static_opening_boundary_tolerance_m =
             known_static_opening_boundary_tolerance_m_,
     };
+  }
+
+  [[nodiscard]] LidarPoseSampleResult
+  samplePoseAtRosAcquisition(const std::int64_t ros_stamp_ns,
+                             const bool stamp_valid) const noexcept {
+    if (!stamp_valid) {
+      return {};
+    }
+    const auto px4_stamp_ns = px4_ros_time_mapper_.rosToPx4LocalTimeNs(ros_stamp_ns);
+    if (px4_stamp_ns.has_value()) {
+      LidarPoseSampleResult source_result = lidar_pose_history_.sampleWithDiagnostics(
+          *px4_stamp_ns, LidarPoseTimeBasis::kPx4AcquisitionTime);
+      if (source_result.aligned_pose.has_value()) {
+        const auto map_timing = [this](LidarPoseTemporalAlignment& timing) {
+          timing.from_acquisition_ros_stamp_ns =
+              px4_ros_time_mapper_.px4LocalToRosTimeNs(timing.from_acquisition_stamp_ns)
+                  .value_or(0);
+          timing.to_acquisition_ros_stamp_ns =
+              px4_ros_time_mapper_.px4LocalToRosTimeNs(timing.to_acquisition_stamp_ns)
+                  .value_or(0);
+        };
+        map_timing(source_result.position_timing);
+        map_timing(source_result.attitude_timing);
+        return source_result;
+      }
+    }
+    return lidar_pose_history_.sampleWithDiagnostics(ros_stamp_ns,
+                                                     LidarPoseTimeBasis::kReceiveTime);
   }
 
   void openLidarMemoryHitDump() {
@@ -809,7 +793,7 @@ private:
           static_cast<std::uint64_t>(std::max<std::int64_t>(1, stamp_ns));
     }
     const nav_msgs::msg::OccupancyGrid grid_message =
-        makeOccupancyGridMessage(memory_->rawGrid(), stamp);
+        makeObstacleMemoryOccupancyGridMessage(memory_->rawGrid(), stamp, frame_id_);
     ++snapshot_sequence_;
     msg::ObstacleMemorySnapshot snapshot_message = makeObstacleMemorySnapshotMessage(
         grid_message, memory_->activeProvenance(), snapshot_sequence_,
@@ -928,30 +912,6 @@ private:
         snapshot_message.provenance.cells.size(), invalid_z_count);
   }
 
-  [[nodiscard]] nav_msgs::msg::OccupancyGrid
-  makeOccupancyGridMessage(const OccupancyGrid2D& grid,
-                           const rclcpp::Time& stamp) const {
-    nav_msgs::msg::OccupancyGrid msg;
-    msg.header.stamp = stamp;
-    msg.header.frame_id = frame_id_;
-    msg.info.map_load_time = stamp;
-    msg.info.resolution = static_cast<float>(grid.resolution());
-    msg.info.width = static_cast<std::uint32_t>(grid.width());
-    msg.info.height = static_cast<std::uint32_t>(grid.height());
-    msg.info.origin.position.x = grid.originX();
-    msg.info.origin.position.y = grid.originY();
-    msg.info.origin.orientation.w = 1.0;
-    msg.data.assign(grid.cellCount(), static_cast<std::int8_t>(-1));
-
-    for (int y = 0; y < grid.height(); ++y) {
-      for (int x = 0; x < grid.width(); ++x) {
-        const GridIndex cell{x, y};
-        msg.data[grid.linearIndex(cell)] = rawOccupancyValue(grid, cell);
-      }
-    }
-    return msg;
-  }
-
   std::unique_ptr<ObstacleMemoryGrid> memory_;
   std::optional<KnownPassageMap> known_passage_map_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
@@ -962,6 +922,7 @@ private:
   AttitudeEuler current_attitude_{};
   Point2 current_velocity_{};
   LidarPoseHistory lidar_pose_history_;
+  Px4RosTimeMapper px4_ros_time_mapper_;
   std::string frame_id_{"map"};
   std::filesystem::path known_passages_resolved_path_;
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
@@ -979,6 +940,9 @@ private:
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};
   double lidar_mount_yaw_rad_{0.0};
+  bool use_full_lidar_extrinsic_{false};
+  Point3 lidar_translation_body_frd_m_{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion_{0.0, 1.0, 0.0, 0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   double lidar_pose_latency_s_{0.05};
@@ -1014,6 +978,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
+  rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_grid_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_memory_3d_pointcloud_pub_;

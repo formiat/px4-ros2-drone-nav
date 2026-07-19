@@ -4,6 +4,7 @@ obstacle_memory_node:
     lidar_topic: /scan
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
+    px4_timesync_status_topic: /fmu/out/timesync_status
     obstacle_memory_grid_topic: /drone_city_nav/obstacle_memory_grid
     raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
@@ -35,6 +36,9 @@ obstacle_memory_node:
     lidar_mount_pitch_rad: 0.0
     lidar_mount_yaw_rad: 0.0
     lidar_z_offset_m: 0.315
+    use_full_lidar_extrinsic: true
+    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
+    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
     min_projected_lidar_altitude_m: 1.0
     max_projected_lidar_altitude_m: 40.0
     max_lidar_range_m: 35.0
@@ -71,6 +75,7 @@ planner_node:
     frame_id: map
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
+    px4_timesync_status_topic: /fmu/out/timesync_status
     lidar_topic: /scan
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     obstacle_memory_snapshot_diagnostic_period_s: 5.0
@@ -176,6 +181,9 @@ planner_node:
     lidar_mount_pitch_rad: 0.0
     lidar_mount_yaw_rad: 0.0
     lidar_z_offset_m: 0.315
+    use_full_lidar_extrinsic: true
+    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
+    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
     min_projected_lidar_altitude_m: 1.0
     max_projected_lidar_altitude_m: 40.0
     astar_heuristic_weight: 2.0
@@ -391,6 +399,9 @@ lidar_debug_node:
     lidar_mount_pitch_rad: 0.0
     lidar_mount_yaw_rad: 0.0
     lidar_z_offset_m: 0.315
+    use_full_lidar_extrinsic: true
+    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
+    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
     min_projected_lidar_altitude_m: 1.0
     max_projected_lidar_altitude_m: 40.0
     max_lidar_range_m: 35.0
@@ -400,6 +411,7 @@ lidar_debug_node:
     max_snapshots: 0
     px4_local_origin_x_m: 54.0
     px4_local_origin_y_m: 54.0
+    px4_timesync_status_topic: /fmu/out/timesync_status
 
 mission_monitor_node:
   ros__parameters:

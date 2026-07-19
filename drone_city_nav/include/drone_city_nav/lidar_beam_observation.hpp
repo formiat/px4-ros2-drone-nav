@@ -23,6 +23,16 @@ struct LidarBeamTimestamp {
   bool valid{false};
 };
 
+enum class LidarProjectionPoseSource : std::uint8_t {
+  kCallbackPoseFallback,
+  kMotionExtrapolatedFallback,
+  kReceiveTimestampAligned,
+  kSourceTimestampAligned,
+};
+
+[[nodiscard]] const char*
+lidarProjectionPoseSourceName(LidarProjectionPoseSource source) noexcept;
+
 [[nodiscard]] LidarBeamTimestamp
 lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
                               std::size_t beam_index) noexcept;
@@ -51,6 +61,8 @@ struct LidarBeamObservation {
   std::int64_t receive_stamp_ns{0};
   bool receive_stamp_valid{false};
   bool timestamp_aligned_pose{false};
+  LidarProjectionPoseSource projection_pose_source{
+      LidarProjectionPoseSource::kCallbackPoseFallback};
   LidarBeamProjection projection{};
   double measured_range_m{std::numeric_limits<double>::quiet_NaN()};
   double effective_max_range_m{std::numeric_limits<double>::quiet_NaN()};
@@ -61,13 +73,13 @@ struct LidarBeamObservation {
   double source_tilt_rad{std::numeric_limits<double>::quiet_NaN()};
 };
 
-[[nodiscard]] LidarBeamObservation
-makeLidarBeamObservation(const LaserScanTiming& timing, std::size_t beam_index,
-                         const LidarBeamProjection& projection,
-                         double effective_max_range_m,
-                         const LidarProjectionPose& source_pose,
-                         const LidarProjectionConfig& projection_config,
-                         bool timestamp_aligned_pose = false);
+[[nodiscard]] LidarBeamObservation makeLidarBeamObservation(
+    const LaserScanTiming& timing, std::size_t beam_index,
+    const LidarBeamProjection& projection, double effective_max_range_m,
+    const LidarProjectionPose& source_pose,
+    const LidarProjectionConfig& projection_config, bool timestamp_aligned_pose = false,
+    LidarProjectionPoseSource projection_pose_source =
+        LidarProjectionPoseSource::kCallbackPoseFallback);
 
 [[nodiscard]] KnownStaticClassificationSnapshot
 makeKnownStaticClassificationSnapshot(bool classifier_applied,

@@ -1,8 +1,13 @@
 #include "obstacle_memory_node_helpers.hpp"
 
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
+
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <cmath>
+#include <exception>
 #include <numbers>
+#include <utility>
 
 namespace drone_city_nav {
 
@@ -26,6 +31,30 @@ std::int8_t rawOccupancyValue(const OccupancyGrid2D& grid, const GridIndex cell)
     return static_cast<std::int8_t>(0);
   }
   return static_cast<std::int8_t>(-1);
+}
+
+nav_msgs::msg::OccupancyGrid
+makeObstacleMemoryOccupancyGridMessage(const OccupancyGrid2D& grid,
+                                       const rclcpp::Time& stamp,
+                                       const std::string& frame_id) {
+  nav_msgs::msg::OccupancyGrid message;
+  message.header.stamp = stamp;
+  message.header.frame_id = frame_id;
+  message.info.map_load_time = stamp;
+  message.info.resolution = static_cast<float>(grid.resolution());
+  message.info.width = static_cast<std::uint32_t>(grid.width());
+  message.info.height = static_cast<std::uint32_t>(grid.height());
+  message.info.origin.position.x = grid.originX();
+  message.info.origin.position.y = grid.originY();
+  message.info.origin.orientation.w = 1.0;
+  message.data.assign(grid.cellCount(), static_cast<std::int8_t>(-1));
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      const GridIndex cell{x, y};
+      message.data[grid.linearIndex(cell)] = rawOccupancyValue(grid, cell);
+    }
+  }
+  return message;
 }
 
 const PassageStructure*
@@ -73,6 +102,119 @@ declareAmbiguousLidarHitTrackerConfig(rclcpp::Node& node) {
                      0.0, 180.0) *
           std::numbers::pi / 180.0,
   };
+}
+
+KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
+                                                   const std::string& frame_id) {
+  KnownStaticLidarSetup setup;
+  const bool enabled = node.declare_parameter<bool>("known_passages_enabled", true);
+  const std::string source_path = node.declare_parameter<std::string>(
+      "known_passages_path", "worlds/known_passages.passages3d");
+  setup.closer_range_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
+                 0.0, 100.0);
+  setup.farther_range_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_farther_range_tolerance_m", 1.5),
+                 0.0, 100.0);
+  setup.endpoint_volume_tolerance_m =
+      std::clamp(node.declare_parameter<double>(
+                     "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
+                 0.0, 10.0);
+  setup.opening_boundary_tolerance_m = std::clamp(
+      node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.30),
+      0.0, 10.0);
+
+  std::filesystem::path package_share_directory;
+  try {
+    package_share_directory =
+        ament_index_cpp::get_package_share_directory("drone_city_nav");
+  } catch (const std::exception& error) {
+    RCLCPP_ERROR(node.get_logger(),
+                 "Known passage package share lookup failed; classifier is "
+                 "fail-open: error='%s'",
+                 error.what());
+  }
+  const KnownPassageSourceResult source =
+      loadKnownPassageMapSource(KnownPassageSourceConfig{
+          enabled, source_path, package_share_directory, frame_id});
+  setup.resolved_path = source.resolved_path;
+  if (source.status == KnownPassageSourceStatus::kLoaded && source.map.has_value() &&
+      source.frame_matches) {
+    setup.passage_map = *source.map;
+    std::vector<KnownPassageSolidVolume> volumes =
+        knownPassageSolidVolumes(*setup.passage_map);
+    if (!volumes.empty()) {
+      setup.classifier.emplace(
+          std::move(volumes),
+          KnownStaticLidarHitClassifierConfig{
+              .closer_range_tolerance_m = setup.closer_range_tolerance_m,
+              .farther_range_tolerance_m = setup.farther_range_tolerance_m,
+              .endpoint_volume_tolerance_m = setup.endpoint_volume_tolerance_m,
+              .opening_boundary_tolerance_m = setup.opening_boundary_tolerance_m});
+    }
+  } else if (source.status == KnownPassageSourceStatus::kLoadFailed) {
+    RCLCPP_ERROR(node.get_logger(),
+                 "Known passage map load failed; classifier is fail-open: "
+                 "path='%s' error='%s'",
+                 setup.resolved_path.string().c_str(), source.error_message.c_str());
+  } else if (source.map.has_value() && !source.frame_matches) {
+    RCLCPP_ERROR(node.get_logger(),
+                 "Known passage frame mismatch; classifier is fail-open: "
+                 "path='%s' map_frame='%s' expected_frame='%s'",
+                 setup.resolved_path.string().c_str(), source.map->frame_id.c_str(),
+                 frame_id.c_str());
+  }
+
+  RCLCPP_INFO(node.get_logger(),
+              "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
+              "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
+              "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
+              setup.classifier.has_value() ? "ready" : "fail_open",
+              setup.resolved_path.string().c_str(),
+              setup.classifier.has_value() ? setup.classifier->volumeCount() : 0U,
+              setup.closer_range_tolerance_m, setup.farther_range_tolerance_m,
+              setup.endpoint_volume_tolerance_m, setup.opening_boundary_tolerance_m);
+  return setup;
+}
+
+GroundLidarRejectionConfig
+declareGroundLidarRejectionConfig(rclcpp::Node& node, const double max_lidar_range_m) {
+  GroundLidarRejectionConfig config;
+  config.enabled = node.declare_parameter<bool>("ground_lidar_rejection_enabled", true);
+  config.ground_altitude_m =
+      node.declare_parameter<double>("ground_lidar_altitude_m", 0.05);
+  config.closer_range_tolerance_m =
+      node.declare_parameter<double>("ground_lidar_closer_range_tolerance_m", 0.5);
+  config.farther_range_tolerance_m =
+      node.declare_parameter<double>("ground_lidar_farther_range_tolerance_m", 1.5);
+  const bool valid = std::isfinite(config.ground_altitude_m) &&
+                     std::isfinite(config.closer_range_tolerance_m) &&
+                     config.closer_range_tolerance_m >= 0.0 &&
+                     std::isfinite(config.farther_range_tolerance_m) &&
+                     config.farther_range_tolerance_m >= 0.0 &&
+                     std::isfinite(max_lidar_range_m) && max_lidar_range_m > 0.0;
+  const char* status = "disabled";
+  if (config.enabled) {
+    status = valid ? "ready" : "unavailable";
+  }
+  if (config.enabled && !valid) {
+    RCLCPP_WARN(node.get_logger(),
+                "Ground lidar classifier: node=obstacle_memory status=%s "
+                "ground_altitude=%.3fm closer_tolerance=%.3fm "
+                "farther_tolerance=%.3fm",
+                status, config.ground_altitude_m, config.closer_range_tolerance_m,
+                config.farther_range_tolerance_m);
+  } else {
+    RCLCPP_INFO(node.get_logger(),
+                "Ground lidar classifier: node=obstacle_memory status=%s "
+                "ground_altitude=%.3fm closer_tolerance=%.3fm "
+                "farther_tolerance=%.3fm",
+                status, config.ground_altitude_m, config.closer_range_tolerance_m,
+                config.farther_range_tolerance_m);
+  }
+  return config;
 }
 
 } // namespace drone_city_nav

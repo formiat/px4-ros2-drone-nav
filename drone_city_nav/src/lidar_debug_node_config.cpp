@@ -3,6 +3,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <limits>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -67,6 +68,22 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "lidar_mount_pitch_rad", config.lidar_mount_pitch_rad);
   config.lidar_mount_yaw_rad =
       node.declare_parameter<double>("lidar_mount_yaw_rad", config.lidar_mount_yaw_rad);
+  config.use_full_lidar_extrinsic = node.declare_parameter<bool>(
+      "use_full_lidar_extrinsic", config.use_full_lidar_extrinsic);
+  const std::vector<double> lidar_translation =
+      node.declare_parameter<std::vector<double>>(
+          "lidar_extrinsic_translation_body_frd_m", {0.12, 0.0, -0.315});
+  if (lidar_translation.size() == 3U) {
+    config.lidar_translation_body_frd_m =
+        Point3{lidar_translation[0], lidar_translation[1], lidar_translation[2]};
+  }
+  const std::vector<double> lidar_rotation =
+      node.declare_parameter<std::vector<double>>(
+          "lidar_extrinsic_quaternion_lidar_flu_to_body_frd", {0.0, 1.0, 0.0, 0.0});
+  if (lidar_rotation.size() == 4U) {
+    config.lidar_flu_to_body_frd_quaternion = {lidar_rotation[0], lidar_rotation[1],
+                                               lidar_rotation[2], lidar_rotation[3]};
+  }
   config.beam_csv_stride = static_cast<std::size_t>(std::max<std::int64_t>(
       node.declare_parameter<std::int64_t>(
           "beam_csv_stride", static_cast<std::int64_t>(config.beam_csv_stride)),
@@ -119,6 +136,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "px4_local_position_topic", config.topics.px4_local_position);
   config.topics.px4_vehicle_attitude = node.declare_parameter<std::string>(
       "px4_vehicle_attitude_topic", config.topics.px4_vehicle_attitude);
+  config.topics.px4_timesync_status = node.declare_parameter<std::string>(
+      "px4_timesync_status_topic", config.topics.px4_timesync_status);
 
   sanitizeLidarDebugNodeConfig(config);
   return config;

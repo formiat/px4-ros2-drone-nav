@@ -38,6 +38,11 @@ PlannerNode::PlannerNode()
       [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
         onAttitude(*msg);
       });
+  timesync_status_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
+      config.topics.timesync_status, sensor_qos,
+      [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
+        onTimesyncStatus(*msg);
+      });
 
   prohibited_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       config.topics.prohibited_grid, rclcpp::QoS{1}.transient_local());
@@ -83,9 +88,10 @@ PlannerNode::PlannerNode()
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_);
   RCLCPP_INFO(get_logger(),
               "Planner subscriptions: obstacle_memory_snapshot='%s' "
-              "local_position='%s' attitude='%s'",
+              "local_position='%s' attitude='%s' timesync_status='%s'",
               config.topics.obstacle_memory_snapshot.c_str(),
-              config.topics.local_position.c_str(), config.topics.attitude.c_str());
+              config.topics.local_position.c_str(), config.topics.attitude.c_str(),
+              config.topics.timesync_status.c_str());
   RCLCPP_INFO(get_logger(),
               "Planner memory snapshot transport budgets: diagnostic_period=%.2fs "
               "max_age=%.1fms max_callback=%.1fms max_apply_delay=%.1fms "
@@ -192,7 +198,8 @@ PlannerNode::PlannerNode()
               "motion_compensation=%s pose_latency=%.3fs "
               "lidar_z_offset=%.2f "
               "projected_altitude_range=[%.2f, %.2f] "
-              "lidar_mount_rpy=(%.3f, %.3f, %.3f)",
+              "lidar_mount_rpy=(%.3f, %.3f, %.3f) full_extrinsic=%s "
+              "translation_body_frd=(%.3f, %.3f, %.3f)",
               config.topics.lidar.c_str(), max_lidar_range_m_,
               static_cast<double>(max_current_lidar_staleness_ns_) / 1.0e9,
               use_px4_heading_for_scan_ ? "px4_heading" : "initial_map_aligned",
@@ -200,7 +207,10 @@ PlannerNode::PlannerNode()
               motion_compensate_lidar_pose_ ? "true" : "false", lidar_pose_latency_s_,
               lidar_z_offset_m_, min_projected_lidar_altitude_m_,
               max_projected_lidar_altitude_m_, lidar_mount_roll_rad_,
-              lidar_mount_pitch_rad_, lidar_mount_yaw_rad_);
+              lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,
+              use_full_lidar_extrinsic_ ? "true" : "false",
+              lidar_translation_body_frd_m_.x, lidar_translation_body_frd_m_.y,
+              lidar_translation_body_frd_m_.z);
   const bool ground_config_valid =
       std::isfinite(ground_lidar_rejection_config_.ground_altitude_m) &&
       std::isfinite(ground_lidar_rejection_config_.closer_range_tolerance_m) &&
@@ -297,6 +307,10 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   lidar_mount_pitch_rad_ = config.lidar_projection.lidar_mount_pitch_rad;
   lidar_mount_yaw_rad_ = config.lidar_projection.lidar_mount_yaw_rad;
   lidar_z_offset_m_ = config.lidar_projection.lidar_z_offset_m;
+  use_full_lidar_extrinsic_ = config.lidar_projection.use_full_lidar_extrinsic;
+  lidar_translation_body_frd_m_ = config.lidar_projection.lidar_translation_body_frd_m;
+  lidar_flu_to_body_frd_quaternion_ =
+      config.lidar_projection.lidar_flu_to_body_frd_quaternion;
   min_projected_lidar_altitude_m_ = config.lidar_projection.min_projected_altitude_m;
   max_projected_lidar_altitude_m_ = config.lidar_projection.max_projected_altitude_m;
   astar_config_ = config.planner_core.astar;

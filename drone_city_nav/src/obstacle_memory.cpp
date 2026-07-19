@@ -178,11 +178,20 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
       pose.position,  scan.origin_altitude_m, pose.yaw_rad,       scan.roll_rad,
       scan.pitch_rad, scan.altitude_valid,    scan.attitude_valid};
   const LidarProjectionConfig projection_config{
-      config.max_lidar_range_m,      config.range_hit_epsilon_m,
-      scan.scan_yaw_offset_rad,      scan.lidar_z_offset_m,
-      scan.min_projected_altitude_m, scan.max_projected_altitude_m,
-      scan.compensate_attitude,      scan.lidar_mount_roll_rad,
-      scan.lidar_mount_pitch_rad,    scan.lidar_mount_yaw_rad};
+      .max_lidar_range_m = config.max_lidar_range_m,
+      .range_hit_epsilon_m = config.range_hit_epsilon_m,
+      .scan_yaw_offset_rad = scan.scan_yaw_offset_rad,
+      .lidar_z_offset_m = scan.lidar_z_offset_m,
+      .min_projected_altitude_m = scan.min_projected_altitude_m,
+      .max_projected_altitude_m = scan.max_projected_altitude_m,
+      .compensate_attitude = scan.compensate_attitude,
+      .lidar_mount_roll_rad = scan.lidar_mount_roll_rad,
+      .lidar_mount_pitch_rad = scan.lidar_mount_pitch_rad,
+      .lidar_mount_yaw_rad = scan.lidar_mount_yaw_rad,
+      .use_full_lidar_extrinsic = scan.use_full_lidar_extrinsic,
+      .lidar_translation_body_frd_m = scan.lidar_translation_body_frd_m,
+      .lidar_flu_to_body_frd_quaternion = scan.lidar_flu_to_body_frd_quaternion,
+  };
 
   const auto stride = static_cast<std::size_t>(std::max(1, config.scan_stride));
   const bool aligned_poses_available =
@@ -210,7 +219,7 @@ ObstacleMemoryGrid::integrateScan(const Pose2& pose, const LaserScan2DView& scan
     }
     const LidarBeamObservation observation = makeLidarBeamObservation(
         scan.timing, i, projection, scan_range_max, projection_pose, projection_config,
-        aligned_poses_available);
+        aligned_poses_available, scan.projection_pose_source);
     LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
         &ambiguous_hit_tracker_);

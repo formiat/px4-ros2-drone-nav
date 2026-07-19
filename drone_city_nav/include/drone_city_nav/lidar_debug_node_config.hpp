@@ -3,6 +3,7 @@
 #include "drone_city_nav/types.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -25,6 +26,7 @@ struct LidarDebugNodeTopics {
   std::string raw_memory_pointcloud{"/drone_city_nav/raw_memory_obstacle_points"};
   std::string px4_local_position{"/fmu/out/vehicle_local_position_v1"};
   std::string px4_vehicle_attitude{"/fmu/out/vehicle_attitude"};
+  std::string px4_timesync_status{"/fmu/out/timesync_status"};
 };
 
 struct LidarDebugNodeConfig {
@@ -48,6 +50,9 @@ struct LidarDebugNodeConfig {
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
+  bool use_full_lidar_extrinsic{true};
+  Point3 lidar_translation_body_frd_m{0.12, 0.0, -0.315};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
   double hit_memory_resolution_m{0.25};
   double min_remember_altitude_m{0.0};
   double current_pointcloud_z_m{0.05};

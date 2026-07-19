@@ -9,9 +9,11 @@
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/lidar_snapshot_writer.hpp"
+#include "drone_city_nav/px4_ros_time_mapper.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/timesync_status.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -64,6 +66,8 @@ private:
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg);
+
+  void onTimesyncStatus(const px4_msgs::msg::TimesyncStatus& msg);
 
   void onScan(const sensor_msgs::msg::LaserScan& msg);
 
@@ -148,6 +152,7 @@ private:
   Point2 current_velocity_{};
   AttitudeEuler attitude_{};
   LidarPoseHistory lidar_pose_history_{};
+  Px4RosTimeMapper px4_ros_time_mapper_{};
   double current_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double horizontal_speed_mps_{std::numeric_limits<double>::quiet_NaN()};
   double attitude_tilt_rad_{std::numeric_limits<double>::quiet_NaN()};
@@ -165,6 +170,9 @@ private:
   double lidar_mount_roll_rad_{0.0};
   double lidar_mount_pitch_rad_{0.0};
   double lidar_mount_yaw_rad_{0.0};
+  bool use_full_lidar_extrinsic_{false};
+  Point3 lidar_translation_body_frd_m_{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion_{0.0, 1.0, 0.0, 0.0};
   double min_projected_lidar_altitude_m_{0.0};
   double max_projected_lidar_altitude_m_{100000.0};
   double current_pointcloud_z_m_{kGroundDebugZ};
@@ -191,6 +199,7 @@ private:
   std::vector<Point2> last_scan_hit_points_;
   std::vector<Point2> remembered_hit_points_;
   std::vector<LidarProjectionPose> last_projected_beam_poses_;
+  LidarBeamPoseAlignmentResult last_pose_alignment_{};
   Pose2 last_projected_pose_{};
   Point2 last_projected_velocity_{};
   AttitudeEuler last_projected_attitude_{};
@@ -229,6 +238,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
+  rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_lidar_3d_pointcloud_pub_;

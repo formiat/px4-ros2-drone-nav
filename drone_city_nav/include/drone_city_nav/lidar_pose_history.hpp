@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/lidar_beam_observation.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <array>
@@ -27,11 +28,26 @@ enum class LidarPoseTemporalMode : std::uint8_t {
   kExtrapolatedAfter,
 };
 
+enum class LidarPoseTimeBasis : std::uint8_t {
+  kReceiveTime,
+  kPx4AcquisitionTime,
+};
+
+enum class LidarPoseAlignmentSource : std::uint8_t {
+  kUnavailable,
+  kSourceTimestampAligned,
+  kReceiveTimestampAlignedFallback,
+};
+
 struct LidarPoseTemporalAlignment {
   LidarPoseTemporalMode mode{LidarPoseTemporalMode::kUnavailable};
   std::int64_t requested_stamp_ns{0};
   std::int64_t from_receive_stamp_ns{0};
   std::int64_t to_receive_stamp_ns{0};
+  std::int64_t from_acquisition_stamp_ns{0};
+  std::int64_t to_acquisition_stamp_ns{0};
+  std::int64_t from_acquisition_ros_stamp_ns{0};
+  std::int64_t to_acquisition_ros_stamp_ns{0};
   std::int64_t from_source_stamp_ns{0};
   std::int64_t to_source_stamp_ns{0};
   std::int64_t signed_extrapolation_ns{0};
@@ -80,9 +96,15 @@ struct LidarBeamPoseAlignmentResult {
   std::size_t attitude_sample_count{0U};
   LidarPoseTemporalAlignment position_timing{};
   LidarPoseTemporalAlignment attitude_timing{};
+  LidarPoseAlignmentSource source{LidarPoseAlignmentSource::kUnavailable};
+  Px4RosTimeMappingDiagnostics time_mapping{};
 
   [[nodiscard]] bool aligned() const noexcept {
     return status == LidarPoseAlignmentStatus::kAligned;
+  }
+
+  [[nodiscard]] bool sourceAligned() const noexcept {
+    return aligned() && source == LidarPoseAlignmentSource::kSourceTimestampAligned;
   }
 };
 
@@ -91,14 +113,17 @@ public:
   explicit LidarPoseHistory(LidarPoseHistoryConfig config = {});
 
   void addPosition(std::int64_t stamp_ns, const Point3& position_map_m, double yaw_rad,
-                   bool yaw_valid, std::int64_t source_stamp_ns = 0);
+                   bool yaw_valid, std::int64_t acquisition_stamp_ns = 0,
+                   std::int64_t source_stamp_ns = 0);
   void addAttitude(std::int64_t stamp_ns, const std::array<float, 4>& quaternion,
+                   std::int64_t acquisition_stamp_ns = 0,
                    std::int64_t source_stamp_ns = 0);
 
   [[nodiscard]] std::optional<TimestampAlignedLidarPose>
   sample(std::int64_t stamp_ns) const noexcept;
-  [[nodiscard]] LidarPoseSampleResult
-  sampleWithDiagnostics(std::int64_t stamp_ns) const noexcept;
+  [[nodiscard]] LidarPoseSampleResult sampleWithDiagnostics(
+      std::int64_t stamp_ns,
+      LidarPoseTimeBasis time_basis = LidarPoseTimeBasis::kReceiveTime) const noexcept;
 
   void clear() noexcept;
   [[nodiscard]] std::size_t positionSampleCount() const noexcept;
@@ -107,6 +132,7 @@ public:
 private:
   struct PositionSample {
     std::int64_t stamp_ns{0};
+    std::int64_t acquisition_stamp_ns{0};
     std::int64_t source_stamp_ns{0};
     Point3 position_map_m{};
     double yaw_rad{0.0};
@@ -114,6 +140,7 @@ private:
 
   struct AttitudeSample {
     std::int64_t stamp_ns{0};
+    std::int64_t acquisition_stamp_ns{0};
     std::int64_t source_stamp_ns{0};
     std::array<double, 4> quaternion{1.0, 0.0, 0.0, 0.0};
   };
@@ -128,18 +155,23 @@ private:
 [[nodiscard]] std::optional<std::vector<LidarProjectionPose>>
 timestampAlignedLidarBeamPoses(const LidarPoseHistory& history,
                                const LaserScanTiming& timing, std::size_t beam_count,
-                               std::optional<double> fixed_yaw_rad = std::nullopt);
+                               std::optional<double> fixed_yaw_rad = std::nullopt,
+                               const Px4RosTimeMapper* time_mapper = nullptr);
 
 [[nodiscard]] LidarBeamPoseAlignmentResult
 timestampAlignedLidarBeamPosesWithDiagnostics(
     const LidarPoseHistory& history, const LaserScanTiming& timing,
-    std::size_t beam_count, std::optional<double> fixed_yaw_rad = std::nullopt);
+    std::size_t beam_count, std::optional<double> fixed_yaw_rad = std::nullopt,
+    const Px4RosTimeMapper* time_mapper = nullptr);
 
 [[nodiscard]] const char*
 lidarPoseAlignmentStatusName(LidarPoseAlignmentStatus status) noexcept;
 
 [[nodiscard]] const char*
 lidarPoseTemporalModeName(LidarPoseTemporalMode mode) noexcept;
+
+[[nodiscard]] const char*
+lidarPoseAlignmentSourceName(LidarPoseAlignmentSource source) noexcept;
 
 [[nodiscard]] std::int64_t
 lidarPoseSourceTimestampNanoseconds(std::uint64_t timestamp_us) noexcept;

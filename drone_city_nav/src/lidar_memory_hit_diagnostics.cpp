@@ -59,14 +59,19 @@ void writeTemporalAlignment(std::ostream& stream,
          << "\",\"requested_stamp_ns\":" << timing.requested_stamp_ns
          << ",\"from_receive_stamp_ns\":" << timing.from_receive_stamp_ns
          << ",\"to_receive_stamp_ns\":" << timing.to_receive_stamp_ns
+         << ",\"from_acquisition_stamp_ns\":" << timing.from_acquisition_stamp_ns
+         << ",\"to_acquisition_stamp_ns\":" << timing.to_acquisition_stamp_ns
+         << ",\"from_acquisition_ros_stamp_ns\":"
+         << timing.from_acquisition_ros_stamp_ns
+         << ",\"to_acquisition_ros_stamp_ns\":" << timing.to_acquisition_ros_stamp_ns
          << ",\"from_source_stamp_ns\":" << timing.from_source_stamp_ns
          << ",\"to_source_stamp_ns\":" << timing.to_source_stamp_ns
          << ",\"from_transport_age_ms\":";
   writeNumberOrNull(stream, millisecondsBetween(timing.from_receive_stamp_ns,
-                                                timing.from_source_stamp_ns));
+                                                timing.from_acquisition_ros_stamp_ns));
   stream << ",\"to_transport_age_ms\":";
   writeNumberOrNull(stream, millisecondsBetween(timing.to_receive_stamp_ns,
-                                                timing.to_source_stamp_ns));
+                                                timing.to_acquisition_ros_stamp_ns));
   stream << ",\"interpolation_ratio\":";
   writeNumberOrNull(stream, timing.interpolation_ratio);
   stream << ",\"signed_extrapolation_age_ms\":";
@@ -166,7 +171,7 @@ void writePassageMemoryHitDiagnostic(std::ostream& stream,
       << millisecondsBetween(observation.receive_stamp_ns,
                              observation.acquisition_stamp_ns)
       << " pose_source="
-      << (observation.timestamp_aligned_pose ? "aligned_history" : "callback_fallback")
+      << lidarProjectionPoseSourceName(observation.projection_pose_source)
       << " alignment_status=" << lidarPoseAlignmentStatusName(alignment.status)
       << " position_timing=(mode="
       << lidarPoseTemporalModeName(alignment.position_timing.mode)
@@ -395,8 +400,7 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   stream << ",\"source_valid\":"
          << (observation.source_attitude_valid ? "true" : "false") << "},";
   stream << "\"acquisition_pose_alignment\":{\"projection_source\":\""
-         << (observation.timestamp_aligned_pose ? "aligned_history"
-                                                : "callback_fallback")
+         << lidarProjectionPoseSourceName(observation.projection_pose_source)
          << "\",\"diagnostic_resample_status\":\""
          << lidarPoseAlignmentStatusName(alignment.status) << "\",\"position_timing\":";
   writeTemporalAlignment(stream, alignment.position_timing);
@@ -509,10 +513,23 @@ void writeLidarMemoryHitDiagnosticJson(std::ostream& stream,
   writeNumberOrNull(stream, decision.expected_range_m);
   stream << ",\"selected_range_delta_m\":";
   writeNumberOrNull(stream, decision.range_delta_m);
-  stream << "},\"projection_config\":{\"lidar_origin_model\":\"map_vertical_z_only\","
-         << "\"lidar_body_offset_assumed_m\":{\"x\":0,\"y\":0,\"z\":";
-  writeNumberOrNull(stream, context.projection_config.lidar_z_offset_m);
-  stream << "},\"lidar_z_offset_m\":";
+  stream << "},\"projection_config\":{\"lidar_origin_model\":\""
+         << (context.projection_config.use_full_lidar_extrinsic
+                 ? "body_frd_full_extrinsic"
+                 : "legacy_map_vertical_z_only")
+         << "\",\"lidar_translation_body_frd_m\":";
+  writePoint3(stream, context.projection_config.lidar_translation_body_frd_m);
+  stream << ",\"lidar_flu_to_body_frd_quaternion_wxyz\":[";
+  bool first_quaternion_component = true;
+  for (const double component :
+       context.projection_config.lidar_flu_to_body_frd_quaternion) {
+    if (!first_quaternion_component) {
+      stream << ',';
+    }
+    writeNumberOrNull(stream, component);
+    first_quaternion_component = false;
+  }
+  stream << "],\"lidar_z_offset_m\":";
   writeNumberOrNull(stream, context.projection_config.lidar_z_offset_m);
   stream << ",\"scan_yaw_offset_rad\":";
   writeNumberOrNull(stream, context.projection_config.scan_yaw_offset_rad);

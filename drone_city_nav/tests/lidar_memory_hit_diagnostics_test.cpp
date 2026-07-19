@@ -19,6 +19,8 @@ namespace {
   observation.receive_stamp_ns = 123'556'789;
   observation.receive_stamp_valid = true;
   observation.timestamp_aligned_pose = true;
+  observation.projection_pose_source =
+      LidarProjectionPoseSource::kSourceTimestampAligned;
   observation.measured_range_m = 6.5;
   observation.effective_max_range_m = 35.0;
   observation.source_attitude_valid = true;
@@ -222,7 +224,8 @@ TEST(LidarMemoryHitDiagnostics, JsonIncludesRawBeamAndBothSurfaceCandidates) {
             std::string::npos);
   EXPECT_NE(json.find("\"applied_extrinsic_map_m\":{\"x\":0,\"y\":0,\"z\":0.3}"),
             std::string::npos);
-  EXPECT_NE(json.find("\"projection_source\":\"aligned_history\""), std::string::npos);
+  EXPECT_NE(json.find("\"projection_source\":\"source_timestamp_aligned\""),
+            std::string::npos);
   EXPECT_NE(json.find("\"mode\":\"interpolated\""), std::string::npos);
   EXPECT_NE(json.find("\"mode\":\"extrapolated_after\""), std::string::npos);
   EXPECT_NE(json.find("\"from_source_stamp_ns\":122850000"), std::string::npos);

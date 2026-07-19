@@ -80,9 +80,9 @@ overlayCurrentLidarHits(OccupancyGrid2D& grid, const LidarScanView& scan,
         projection.status != LidarBeamProjectionStatus::kAltitudeRejected) {
       continue;
     }
-    const LidarBeamObservation observation =
-        makeLidarBeamObservation(scan.timing, i, projection, scan_range_max, beam_pose,
-                                 projection_config, aligned_poses_available);
+    const LidarBeamObservation observation = makeLidarBeamObservation(
+        scan.timing, i, projection, scan_range_max, beam_pose, projection_config,
+        aligned_poses_available, scan.projection_pose_source);
     LidarIngestionDecision decision = resolveAmbiguousKnownStaticIngestion(
         observation, evaluateLidarIngestion(observation, classifier, ground_config),
         ambiguous_hit_tracker);

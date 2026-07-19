@@ -34,8 +34,9 @@ TEST(LidarPoseHistoryTest, InterpolatesXyzYawAndQuaternionAttitude) {
   EXPECT_NEAR(value.pose.position.x, 5.0, 1.0e-9);
   EXPECT_NEAR(value.pose.position.y, 15.0, 1.0e-9);
   EXPECT_NEAR(value.pose.altitude_m, 25.0, 1.0e-9);
-  EXPECT_NEAR(std::abs(value.pose.yaw_rad), kPi, 1.0e-6);
+  EXPECT_NEAR(value.pose.yaw_rad, 0.0, 1.0e-6);
   EXPECT_NEAR(value.pose.pitch_rad, kPi / 4.0, 1.0e-6);
+  EXPECT_TRUE(value.pose.body_to_ned_quaternion_valid);
   EXPECT_TRUE(value.position_interpolated);
   EXPECT_TRUE(value.attitude_interpolated);
   EXPECT_EQ(value.position_timing.mode, LidarPoseTemporalMode::kInterpolated);
@@ -47,6 +48,31 @@ TEST(LidarPoseHistoryTest, InterpolatesXyzYawAndQuaternionAttitude) {
   EXPECT_EQ(value.attitude_timing.mode, LidarPoseTemporalMode::kInterpolated);
   EXPECT_EQ(value.attitude_timing.from_source_stamp_ns, 985'000'000);
   EXPECT_EQ(value.attitude_timing.to_source_stamp_ns, 1'975'000'000);
+}
+
+TEST(LidarPoseHistoryTest, SamplesPositionAndQuaternionByPx4AcquisitionTime) {
+  LidarPoseHistory history;
+  history.addPosition(10'000'000'000, Point3{0.0, 0.0, 10.0}, 0.0, true, 1'000'000'000,
+                      1'700'001'000'000'000'000);
+  history.addPosition(10'300'000'000, Point3{6.0, 0.0, 16.0}, 0.0, true, 1'200'000'000,
+                      1'700'001'200'000'000'000);
+  history.addAttitude(10'020'000'000, pitchQuaternion(0.0), 1'000'000'000,
+                      1'700'001'000'000'000'000);
+  history.addAttitude(10'320'000'000, pitchQuaternion(0.4), 1'200'000'000,
+                      1'700'001'200'000'000'000);
+
+  const LidarPoseSampleResult result = history.sampleWithDiagnostics(
+      1'100'000'000, LidarPoseTimeBasis::kPx4AcquisitionTime);
+
+  ASSERT_TRUE(result.aligned_pose.has_value());
+  const TimestampAlignedLidarPose& aligned_pose =
+      result.aligned_pose.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_NEAR(aligned_pose.pose.position.x, 3.0, 1.0e-9);
+  EXPECT_NEAR(aligned_pose.pose.altitude_m, 13.0, 1.0e-9);
+  EXPECT_NEAR(aligned_pose.pose.pitch_rad, 0.2, 1.0e-6);
+  EXPECT_EQ(result.position_timing.from_receive_stamp_ns, 10'000'000'000);
+  EXPECT_EQ(result.position_timing.from_acquisition_stamp_ns, 1'000'000'000);
+  EXPECT_EQ(result.position_timing.from_source_stamp_ns, 1'700'001'000'000'000'000);
 }
 
 TEST(LidarPoseHistoryTest, RejectsExtrapolationBeyondConfiguredBound) {

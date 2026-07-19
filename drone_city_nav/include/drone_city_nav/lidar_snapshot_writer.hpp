@@ -3,6 +3,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/types.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -87,6 +88,15 @@ struct LidarSnapshotRecord {
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
+  bool use_full_lidar_extrinsic{false};
+  Point3 lidar_translation_body_frd_m{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
+  std::string pose_alignment_source;
+  std::size_t clock_mapping_samples{0U};
+  bool clock_mapping_ready{false};
+  double clock_mapping_scale{1.0};
+  double clock_mapping_offset_ns{0.0};
+  double clock_mapping_max_residual_ns{0.0};
   double min_projected_altitude_m{0.0};
   double max_projected_altitude_m{0.0};
   bool grid_seen{false};

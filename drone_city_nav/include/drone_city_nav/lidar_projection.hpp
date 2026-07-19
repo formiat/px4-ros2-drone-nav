@@ -23,6 +23,8 @@ struct LidarProjectionPose {
   double pitch_rad{0.0};
   bool altitude_valid{false};
   bool attitude_valid{false};
+  std::array<double, 4> body_to_ned_quaternion{1.0, 0.0, 0.0, 0.0};
+  bool body_to_ned_quaternion_valid{false};
 };
 
 struct LidarProjectionConfig {
@@ -36,6 +38,9 @@ struct LidarProjectionConfig {
   double lidar_mount_roll_rad{0.0};
   double lidar_mount_pitch_rad{0.0};
   double lidar_mount_yaw_rad{0.0};
+  bool use_full_lidar_extrinsic{false};
+  Point3 lidar_translation_body_frd_m{};
+  std::array<double, 4> lidar_flu_to_body_frd_quaternion{0.0, 1.0, 0.0, 0.0};
 };
 
 enum class LidarBeamProjectionStatus {

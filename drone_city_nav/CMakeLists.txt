@@ -66,6 +66,7 @@ add_library(
   src/lidar_memory_hit_diagnostics.cpp
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
+  src/px4_ros_time_mapper.cpp
   src/lidar_snapshot_writer.cpp
   src/navigation_pose.cpp
   src/offboard_blackbox.cpp
@@ -366,6 +367,11 @@ if(BUILD_TESTING)
   target_compile_features(lidar_pose_history_test PRIVATE cxx_std_20)
   target_link_libraries(lidar_pose_history_test drone_city_nav_core)
   enable_project_warnings(lidar_pose_history_test)
+
+  ament_add_gtest(px4_ros_time_mapper_test tests/px4_ros_time_mapper_test.cpp)
+  target_compile_features(px4_ros_time_mapper_test PRIVATE cxx_std_20)
+  target_link_libraries(px4_ros_time_mapper_test drone_city_nav_core)
+  enable_project_warnings(px4_ros_time_mapper_test)
 
   ament_add_gtest(planning_grid_builder_test
                   tests/planning_grid_builder_test.cpp)

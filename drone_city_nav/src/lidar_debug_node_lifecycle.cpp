@@ -24,6 +24,9 @@ void LidarDebugNode::applyConfig(const LidarDebugNodeConfig& config) {
   lidar_mount_roll_rad_ = config.lidar_mount_roll_rad;
   lidar_mount_pitch_rad_ = config.lidar_mount_pitch_rad;
   lidar_mount_yaw_rad_ = config.lidar_mount_yaw_rad;
+  use_full_lidar_extrinsic_ = config.use_full_lidar_extrinsic;
+  lidar_translation_body_frd_m_ = config.lidar_translation_body_frd_m;
+  lidar_flu_to_body_frd_quaternion_ = config.lidar_flu_to_body_frd_quaternion;
   beam_csv_stride_ = config.beam_csv_stride;
   max_logged_hit_points_ = config.max_logged_hit_points;
   max_snapshots_ = config.max_snapshots;
@@ -68,6 +71,11 @@ LidarDebugNode::LidarDebugNode()
       [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
         onAttitude(*msg);
       });
+  timesync_status_sub_ = create_subscription<px4_msgs::msg::TimesyncStatus>(
+      topics.px4_timesync_status, sensor_qos,
+      [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
+        onTimesyncStatus(*msg);
+      });
   prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       topics.prohibited_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
@@ -106,7 +114,8 @@ LidarDebugNode::LidarDebugNode()
       "Lidar debug ready: output_dir='%s' period=%.2fs image=%dpx "
       "fallback_view_radius=%.1fm topics scan='%s' prohibited_grid='%s' "
       "memory_grid='%s' path='%s' "
-      "pose='%s' attitude='%s' current_hits='%s' raw_current_hits_3d='%s' "
+      "pose='%s' attitude='%s' timesync='%s' current_hits='%s' "
+      "raw_current_hits_3d='%s' "
       "remembered_hits='%s' "
       "prohibited_points='%s' raw_memory_points='%s' "
       "hit_memory_resolution=%.2fm "
@@ -123,10 +132,11 @@ LidarDebugNode::LidarDebugNode()
       output_dir_.c_str(), snapshot_period_s_, image_size_px_, view_radius_m_,
       topics.lidar.c_str(), topics.prohibited_grid.c_str(), topics.memory_grid.c_str(),
       topics.path.c_str(), topics.px4_local_position.c_str(),
-      topics.px4_vehicle_attitude.c_str(), pointcloud_topic_.c_str(),
-      raw_lidar_3d_pointcloud_topic_.c_str(), remembered_pointcloud_topic_.c_str(),
-      prohibited_pointcloud_topic_.c_str(), raw_memory_pointcloud_topic_.c_str(),
-      hit_memory_resolution_m_, min_remember_altitude_m_, max_remembered_hit_points_,
+      topics.px4_vehicle_attitude.c_str(), topics.px4_timesync_status.c_str(),
+      pointcloud_topic_.c_str(), raw_lidar_3d_pointcloud_topic_.c_str(),
+      remembered_pointcloud_topic_.c_str(), prohibited_pointcloud_topic_.c_str(),
+      raw_memory_pointcloud_topic_.c_str(), hit_memory_resolution_m_,
+      min_remember_altitude_m_, max_remembered_hit_points_,
       compensate_lidar_attitude_ ? "true" : "false", lidar_z_offset_m_,
       min_projected_lidar_altitude_m_, max_projected_lidar_altitude_m_,
       lidar_mount_roll_rad_, lidar_mount_pitch_rad_, lidar_mount_yaw_rad_,

@@ -171,6 +171,17 @@ void LidarDebugNode::writeSummary(const std::string& prefix,
   record.lidar_mount_roll_rad = lidar_mount_roll_rad_;
   record.lidar_mount_pitch_rad = lidar_mount_pitch_rad_;
   record.lidar_mount_yaw_rad = lidar_mount_yaw_rad_;
+  record.use_full_lidar_extrinsic = use_full_lidar_extrinsic_;
+  record.lidar_translation_body_frd_m = lidar_translation_body_frd_m_;
+  record.lidar_flu_to_body_frd_quaternion = lidar_flu_to_body_frd_quaternion_;
+  record.pose_alignment_source =
+      lidarPoseAlignmentSourceName(last_pose_alignment_.source);
+  const Px4RosTimeMappingDiagnostics time_mapping = px4_ros_time_mapper_.diagnostics();
+  record.clock_mapping_samples = time_mapping.sample_count;
+  record.clock_mapping_ready = time_mapping.ready;
+  record.clock_mapping_scale = time_mapping.scale;
+  record.clock_mapping_offset_ns = time_mapping.offset_ns;
+  record.clock_mapping_max_residual_ns = time_mapping.max_fit_residual_ns;
   record.min_projected_altitude_m = min_projected_lidar_altitude_m_;
   record.max_projected_altitude_m = max_projected_lidar_altitude_m_;
   record.grid_seen = grid_seen_;

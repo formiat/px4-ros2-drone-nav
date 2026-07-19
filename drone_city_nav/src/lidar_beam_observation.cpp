@@ -5,6 +5,21 @@
 
 namespace drone_city_nav {
 
+const char*
+lidarProjectionPoseSourceName(const LidarProjectionPoseSource source) noexcept {
+  switch (source) {
+    case LidarProjectionPoseSource::kCallbackPoseFallback:
+      return "callback_pose_fallback";
+    case LidarProjectionPoseSource::kMotionExtrapolatedFallback:
+      return "motion_extrapolated_fallback";
+    case LidarProjectionPoseSource::kReceiveTimestampAligned:
+      return "receive_timestamp_aligned";
+    case LidarProjectionPoseSource::kSourceTimestampAligned:
+      return "source_timestamp_aligned";
+  }
+  return "unknown";
+}
+
 LidarBeamTimestamp
 lidarBeamAcquisitionTimestamp(const LaserScanTiming& timing,
                               const std::size_t beam_index) noexcept {
@@ -36,7 +51,8 @@ LidarBeamObservation makeLidarBeamObservation(
     const LaserScanTiming& timing, const std::size_t beam_index,
     const LidarBeamProjection& projection, const double effective_max_range_m,
     const LidarProjectionPose& source_pose,
-    const LidarProjectionConfig& projection_config, const bool timestamp_aligned_pose) {
+    const LidarProjectionConfig& projection_config, const bool timestamp_aligned_pose,
+    const LidarProjectionPoseSource projection_pose_source) {
   const LidarBeamTimestamp acquisition_stamp =
       lidarBeamAcquisitionTimestamp(timing, beam_index);
   const bool source_attitude_valid = source_pose.attitude_valid &&
@@ -52,6 +68,7 @@ LidarBeamObservation makeLidarBeamObservation(
       .receive_stamp_ns = timing.receive_stamp_ns,
       .receive_stamp_valid = timing.receive_stamp_valid,
       .timestamp_aligned_pose = timestamp_aligned_pose,
+      .projection_pose_source = projection_pose_source,
       .projection = projection,
       .measured_range_m = projection.used_range_m,
       .effective_max_range_m = effective_max_range_m,

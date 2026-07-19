@@ -109,6 +109,14 @@ Check:
 - `lidar_pose_latency_s`;
 - attitude compensation settings.
 
+In the normal full-extrinsic mode also check:
+
+- `px4_timesync_status_topic` and `source_timestamp_aligned` in alignment logs;
+- clock mapper sample count, scale, offset, and maximum residual;
+- `lidar_extrinsic_translation_body_frd_m`;
+- `lidar_extrinsic_quaternion_lidar_flu_to_body_frd`;
+- whether an event unexpectedly used a receive, motion, or callback fallback.
+
 Use lidar debug snapshots and the static map analyzer script.
 
 If downward lidar returns cause false replans, inspect both
