@@ -388,8 +388,6 @@ bool PlannerNode::publishPathFromPathCells(
   delivery.planning_start_position = planning_start;
   delivery.planning_start_velocity = current_velocity_;
   delivery.planning_start_velocity_valid = current_velocity_valid_;
-  delivery.predicted_publication_position = planning_start;
-  delivery.predicted_publication_position_valid = finite2D(planning_start);
   if (delivery.replan_triggered && delivery.blocker_detected_stamp_ns > 0U &&
       delivery.trajectory_build_started_stamp_ns >=
           delivery.blocker_detected_stamp_ns) {

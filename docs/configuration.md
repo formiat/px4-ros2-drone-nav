@@ -406,7 +406,7 @@ Active windows and DP:
 
 Executable trajectory scheduling uses one dedicated latest-wins planning
 worker. It is not configurable because synchronous planning would block pose
-and lidar callbacks and invalidate the trajectory acceptance prediction.
+and lidar callbacks and prevent fresh-state validation before publication.
 
 ## Turn Smoothing Parameters
 

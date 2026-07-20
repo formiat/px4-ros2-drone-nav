@@ -543,17 +543,13 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
 
   const AStarConfig planning_astar_config = astarConfigForCurrentVelocity();
-  const Point2 planning_start =
-      predictedPlanningStart(navigation, planning_duration_estimate_s_);
-  RCLCPP_INFO(get_logger(),
-              "Planning acceptance prediction: request_generation=%" PRIu64
-              " physical_start=(%.2f, %.2f) predicted_start=(%.2f, %.2f) "
-              "horizon_s=%.3f speed_mps=%.2f trajectory_prediction=%s",
-              request_generation, navigation.pose.position.x,
-              navigation.pose.position.y, planning_start.x, planning_start.y,
-              planning_duration_estimate_s_, navigation.speed_mps,
-              trajectorySamplesAreUsable(last_valid_trajectory_samples_) ? "true"
-                                                                         : "false");
+  const Point2 planning_start = navigation.pose.position;
+  RCLCPP_INFO(
+      get_logger(),
+      "Planning start snapshot: request_generation=%" PRIu64
+      " start=(%.2f, %.2f) pose_stamp_ns=%" PRId64 " speed_mps=%.2f velocity_valid=%s",
+      request_generation, planning_start.x, planning_start.y, navigation.stamp_ns,
+      navigation.speed_mps, navigation.velocity_valid ? "true" : "false");
   std::vector<TrajectoryGridCandidate> grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
       TrajectoryGridCandidate{"runtime_prohibited", &prohibited_grid, nullptr, false},
@@ -801,13 +797,11 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       grid_candidates, astar_grid_index, path_result->astar.path,
       path_result->smoothed_cells, astar_grid_name.c_str(), planning_start);
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
-  planning_duration_estimate_s_ = std::clamp(
-      0.75 * planning_duration_estimate_s_ + 0.25 * cycle_duration_s, 0.20, 2.50);
   RCLCPP_INFO(get_logger(),
               "Planning worker cycle complete: request_generation=%" PRIu64
-              " published=%s duration_ms=%.1f next_prediction_horizon_s=%.3f",
+              " published=%s duration_ms=%.1f",
               request_generation, published ? "true" : "false",
-              cycle_duration_s * 1000.0, planning_duration_estimate_s_);
+              cycle_duration_s * 1000.0);
 }
 
 [[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity() const {

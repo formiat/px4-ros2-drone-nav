@@ -186,9 +186,6 @@ private:
 
   void applyLatestLidarInputSnapshot();
 
-  [[nodiscard]] Point2 predictedPlanningStart(const NavigationStateSnapshot& navigation,
-                                              double horizon_s) const;
-
   [[nodiscard]] AStarConfig astarConfigForCurrentVelocity() const;
 
   [[nodiscard]] static bool
@@ -474,8 +471,6 @@ private:
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
-  double planning_duration_estimate_s_{1.0};
-
   mutable std::mutex memory_snapshot_mutex_;
   mutable std::mutex navigation_state_mutex_;
   mutable std::mutex lidar_input_mutex_;

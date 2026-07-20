@@ -121,9 +121,9 @@ ROS callbacks only update short immutable pose, lidar, and memory snapshots or
 enqueue a worker request. The currently accepted trajectory remains active
 until the new result is complete.
 
-The worker starts A* at a predicted acceptance station on the currently
-executed trajectory. Before publication, it reads a fresh pose and requires the
-candidate to be directly compatible or handover-compatible with the active
+The worker starts A* at the vehicle-position snapshot captured when the
+planning cycle begins. Before publication, it reads a fresh pose and requires
+the candidate to be directly compatible or handover-compatible with the active
 trajectory on the latest validation grid. A stale, unjoinable candidate is
 discarded and replaced by a fresh worker request.
 

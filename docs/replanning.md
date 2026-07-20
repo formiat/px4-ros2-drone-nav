@@ -87,10 +87,12 @@ Replans caused by a prohibited blocker also emit `REPLAN_DELIVERY` lifecycle
 events. They correlate blocker detection, trajectory-build start, path
 publication, offboard receipt, and late diagnostics receipt by trajectory
 generation, path id, and path timestamp. The planner records pose and velocity
-at detection and build start, predicts an acceptance station along the active
-executable trajectory, uses it as the A* start, and compares it with the actual
-publication pose. Offboard reports publish-to-receive and blocker-to-receive
-latency plus its actual and independently extrapolated receive positions.
+at detection and build start and uses the position snapshot taken at the start
+of the planning cycle as the A* start. Before publication it compares a
+diagnostic constant-velocity publication estimate with the fresh actual pose;
+that estimate does not affect planning geometry. Offboard reports
+publish-to-receive and blocker-to-receive latency plus its actual and
+independently extrapolated receive positions.
 
 ## Diagnostics Matching
 
