@@ -27,6 +27,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
   "msg/CrashState.msg"
+  "msg/ReplanBlockerEvent.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -77,6 +78,7 @@ add_library(
   src/navigation_pose.cpp
   src/offboard_blackbox.cpp
   src/offboard_path_follower.cpp
+  src/offboard_trajectory_delivery_diagnostics.cpp
   src/offboard_vertical_follower.cpp
   src/offboard_velocity_follower.cpp
   src/obstacle_memory.cpp
@@ -89,6 +91,7 @@ add_library(
   src/planner_path_publication.cpp
   src/planner_runtime_state.cpp
   src/route_diagnostics.cpp
+  src/safe_trajectory_truncation.cpp
   src/static_city_map.cpp
   src/terminal_capture_state_machine.cpp
   src/trajectory_optimizer.cpp
@@ -184,7 +187,8 @@ add_executable(
   src/planner_node_dumps.cpp
   src/planner_node_runtime.cpp)
 target_compile_features(planner_node PRIVATE cxx_std_20)
-target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters)
+target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters
+                      ${cpp_typesupport_target})
 ament_target_dependencies(
   planner_node
   ament_index_cpp
@@ -216,13 +220,16 @@ add_executable(
   src/px4_offboard_node.cpp
   src/px4_offboard_node_control.cpp
   src/px4_offboard_node_crash.cpp
+  src/px4_offboard_node_diagnostics.cpp
   src/px4_offboard_node_inputs.cpp
   src/px4_offboard_node_lifecycle.cpp
+  src/px4_offboard_node_replan.cpp
   src/px4_offboard_node_telemetry.cpp
   src/px4_offboard_node_trajectory.cpp
   src/px4_offboard_node_vertical.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
-target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters)
+target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters
+                      ${cpp_typesupport_target})
 ament_target_dependencies(
   px4_offboard_node
   geometry_msgs
@@ -448,6 +455,12 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_horizontal_handover_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_horizontal_handover_test drone_city_nav_core)
   enable_project_warnings(trajectory_horizontal_handover_test)
+
+  ament_add_gtest(safe_trajectory_truncation_test
+                  tests/safe_trajectory_truncation_test.cpp)
+  target_compile_features(safe_trajectory_truncation_test PRIVATE cxx_std_20)
+  target_link_libraries(safe_trajectory_truncation_test drone_city_nav_core)
+  enable_project_warnings(safe_trajectory_truncation_test)
 
   ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test PRIVATE cxx_std_20)

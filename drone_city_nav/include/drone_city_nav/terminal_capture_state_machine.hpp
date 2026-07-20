@@ -9,10 +9,12 @@ enum class TerminalFlightState {
   kVelocityTerminalCapture,
   kPositionCapture,
   kFinalHold,
+  kTemporaryReplanHold,
 };
 
 struct TerminalStateMachineInput {
   bool final_goal_hold_active{false};
+  bool temporary_replan_hold_active{false};
   bool no_path_hold_active{false};
   bool prerequisites_valid{false};
   bool previous_position_capture_latched{false};

@@ -3,6 +3,7 @@
 #include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/offboard_blackbox.hpp"
 #include "drone_city_nav/offboard_debug_markers.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
@@ -14,6 +15,7 @@
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/route_diagnostics.hpp"
+#include "drone_city_nav/safe_trajectory_truncation.hpp"
 #include "drone_city_nav/terminal_capture_state_machine.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
@@ -177,6 +179,8 @@ private:
 
   void onTrajectoryDiagnostics(const std_msgs::msg::String& msg);
 
+  void onReplanBlocker(const msg::ReplanBlockerEvent& msg);
+
   void openFlightBlackbox();
 
   [[nodiscard]] std::filesystem::path
@@ -225,6 +229,8 @@ private:
   [[nodiscard]] bool finalPathGoalPassed() const;
 
   void updateFinalGoalHold();
+
+  void updateTemporaryReplanHold();
 
   [[nodiscard]] double consumeVelocityPlanDtS();
 
@@ -334,6 +340,7 @@ private:
   double current_vertical_velocity_up_mps_{std::numeric_limits<double>::quiet_NaN()};
   Point2 no_path_hold_target_{};
   Point2 final_goal_hold_target_{};
+  Point2 temporary_replan_hold_target_{};
   Point2 takeoff_hold_target_{};
   Point2 commanded_target_{};
   Point2 last_published_target_{};
@@ -365,6 +372,7 @@ private:
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
+  double safe_trajectory_truncation_margin_m_{10.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover_config_{};
   TrajectoryContinuityThresholds trajectory_continuity_thresholds_{};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
@@ -397,6 +405,9 @@ private:
   bool current_vertical_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool final_goal_hold_active_{false};
+  bool safe_trajectory_truncation_enabled_{false};
+  bool temporary_replan_truncation_active_{false};
+  bool temporary_replan_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
   bool terminal_position_capture_latched_{false};
   bool terminal_position_capture_altitude_valid_{false};
@@ -468,6 +479,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_sub_;
+  rclcpp::Subscription<msg::ReplanBlockerEvent>::SharedPtr replan_blocker_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;

@@ -628,8 +628,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<std::string>("path_id_topic", "/drone_city_nav/path_id");
   config.topics.trajectory_diagnostics = node.declare_parameter<std::string>(
       "trajectory_diagnostics_topic", "/drone_city_nav/trajectory_diagnostics");
+  config.topics.replan_blocker = node.declare_parameter<std::string>(
+      "replan_blocker_topic", "/drone_city_nav/replan_blocker");
   config.topics.current_waypoint = node.declare_parameter<std::string>(
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
+  config.safe_trajectory_truncation_enabled =
+      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", false);
   config.timing.path_prohibited_intersection_check_period_s =
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);

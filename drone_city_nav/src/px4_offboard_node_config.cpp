@@ -46,6 +46,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       boundedFiniteDouble(config.command_resend_period_s, 2.0, 0.05, 60.0);
   config.trajectory_update_max_start_cross_track_m = boundedFiniteDouble(
       config.trajectory_update_max_start_cross_track_m, 8.0, 0.0, 1000.0);
+  config.safe_trajectory_truncation_margin_m = boundedFiniteDouble(
+      config.safe_trajectory_truncation_margin_m, 10.0, 0.0, 1000.0);
   config.trajectory_handover.prefix_time_s =
       boundedFiniteDouble(config.trajectory_handover.prefix_time_s, 0.6, 0.0, 10.0);
   config.trajectory_handover.min_prefix_distance_m = boundedFiniteDouble(
@@ -377,6 +379,11 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<double>("trajectory_update_max_start_cross_track_m",
                                      config.trajectory_update_max_start_cross_track_m),
       0.0, 1000.0);
+  config.safe_trajectory_truncation_enabled =
+      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", false);
+  config.safe_trajectory_truncation_margin_m = boundedFiniteDouble(
+      node.declare_parameter<double>("safe_trajectory_truncation_margin_m", 10.0), 10.0,
+      0.0, 1000.0);
   config.trajectory_handover.enabled = node.declare_parameter<bool>(
       "trajectory_handover_enabled", config.trajectory_handover.enabled);
   config.trajectory_handover.require_validation_grid =
@@ -522,6 +529,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<std::string>("path_id_topic", config.topics.path_id);
   config.topics.trajectory_diagnostics = node.declare_parameter<std::string>(
       "trajectory_diagnostics_topic", config.topics.trajectory_diagnostics);
+  config.topics.replan_blocker = node.declare_parameter<std::string>(
+      "replan_blocker_topic", config.topics.replan_blocker);
   config.topics.px4_local_position = node.declare_parameter<std::string>(
       "px4_local_position_topic", config.topics.px4_local_position);
   config.topics.px4_vehicle_attitude = node.declare_parameter<std::string>(

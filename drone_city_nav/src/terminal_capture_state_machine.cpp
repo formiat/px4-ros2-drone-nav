@@ -27,6 +27,8 @@ const char* terminalFlightStateName(const TerminalFlightState state) noexcept {
       return "position_capture";
     case TerminalFlightState::kFinalHold:
       return "final_hold";
+    case TerminalFlightState::kTemporaryReplanHold:
+      return "temporary_replan_hold";
   }
   return "unknown";
 }
@@ -49,6 +51,13 @@ evaluateTerminalStateMachine(const TerminalStateMachineInput& input) {
     decision.valid = true;
     decision.state = TerminalFlightState::kFinalHold;
     decision.reason = "final_hold";
+    decision.position_capture_latched = false;
+    return decision;
+  }
+  if (input.temporary_replan_hold_active) {
+    decision.valid = true;
+    decision.state = TerminalFlightState::kTemporaryReplanHold;
+    decision.reason = "temporary_replan_hold";
     decision.position_capture_latched = false;
     return decision;
   }

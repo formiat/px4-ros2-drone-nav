@@ -54,8 +54,9 @@ void Px4OffboardNode::latchTerminalPositionCaptureAltitude(const char* reason) {
 
 double Px4OffboardNode::positionSetpointAltitudeM(
     const bool terminal_position_capture_requested) const {
-  const bool terminal_altitude_mode =
-      terminal_position_capture_requested || final_goal_hold_active_;
+  const bool terminal_altitude_mode = terminal_position_capture_requested ||
+                                      final_goal_hold_active_ ||
+                                      temporary_replan_hold_active_;
   if (terminal_altitude_mode && std::isfinite(terminal_position_capture_altitude_m_)) {
     return terminal_position_capture_altitude_m_;
   }
@@ -64,8 +65,9 @@ double Px4OffboardNode::positionSetpointAltitudeM(
 
 bool Px4OffboardNode::positionSetpointAltitudeValid(
     const bool terminal_position_capture_requested) const {
-  const bool terminal_altitude_mode =
-      terminal_position_capture_requested || final_goal_hold_active_;
+  const bool terminal_altitude_mode = terminal_position_capture_requested ||
+                                      final_goal_hold_active_ ||
+                                      temporary_replan_hold_active_;
   return terminal_altitude_mode ? terminal_position_capture_altitude_valid_ : true;
 }
 

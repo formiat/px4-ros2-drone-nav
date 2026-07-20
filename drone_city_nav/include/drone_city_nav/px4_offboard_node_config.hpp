@@ -21,6 +21,7 @@ struct Px4OffboardNodeTopics {
   std::string path{"/drone_city_nav/path"};
   std::string path_id{"/drone_city_nav/path_id"};
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
+  std::string replan_blocker{"/drone_city_nav/replan_blocker"};
   std::string px4_local_position{"/fmu/out/vehicle_local_position"};
   std::string px4_vehicle_attitude{"/fmu/out/vehicle_attitude"};
   std::string px4_vehicle_status{"/fmu/out/vehicle_status"};
@@ -43,6 +44,8 @@ struct Px4OffboardNodeConfig {
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   double final_trajectory_debug_sample_step_m{1.0};
   double trajectory_update_max_start_cross_track_m{8.0};
+  bool safe_trajectory_truncation_enabled{false};
+  double safe_trajectory_truncation_margin_m{10.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover{};
   TrajectoryContinuityThresholds trajectory_continuity{};
   double altitude_hold_kp{0.5};

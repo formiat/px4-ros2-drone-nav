@@ -274,6 +274,33 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     };
     pending_replan_delivery_ = delivery;
     ++prohibited_replans_;
+    if (safe_trajectory_truncation_enabled_ && replan_blocker_pub_ != nullptr) {
+      msg::ReplanBlockerEvent event;
+      event.header = makePlannerHeader();
+      event.blocked_path_id = last_published_path_id_;
+      event.memory_snapshot_sequence = last_memory_snapshot_applied_sequence_;
+      event.blocker_position.x = intersection.cell_center.x;
+      event.blocker_position.y = intersection.cell_center.y;
+      event.blocker_position.z = 0.0;
+      event.detection_position.x = current_pose_.position.x;
+      event.detection_position.y = current_pose_.position.y;
+      event.detection_position.z = 0.0;
+      event.detection_velocity.x = current_velocity_.x;
+      event.detection_velocity.y = current_velocity_.y;
+      event.detection_velocity.z = 0.0;
+      event.blocker_path_distance_m = intersection.path_distance_m;
+      event.detection_velocity_valid = current_velocity_valid_;
+      event.source = source_diagnostic;
+      replan_blocker_pub_->publish(event);
+      RCLCPP_WARN(
+          get_logger(),
+          "SAFE_TRAJECTORY_TRUNCATION event_published=true blocked_path_id=%" PRIu64
+          " blocker_path_distance=%.2fm blocker=(%.2f, %.2f) "
+          "memory_sequence=%" PRIu64,
+          event.blocked_path_id, event.blocker_path_distance_m,
+          event.blocker_position.x, event.blocker_position.y,
+          event.memory_snapshot_sequence);
+    }
     RCLCPP_WARN(get_logger(),
                 "Current path intersects newly available prohibited obstacle data; "
                 "running A* from current pose: reason=%s "

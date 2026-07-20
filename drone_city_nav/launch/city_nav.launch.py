@@ -105,6 +105,14 @@ def generate_launch_description():
         if static_map_override is not None:
             planner_overrides["use_static_map"] = static_map_override
 
+        no_static_policy_override = optional_bool_override(
+            context, no_static_speed_policy_enabled, "no_static_speed_policy_enabled"
+        )
+        if no_static_policy_override is not None:
+            planner_overrides["safe_trajectory_truncation_enabled"] = (
+                no_static_policy_override
+            )
+
         static_map_path_override = static_map_path.perform(context).strip()
         if static_map_path_override:
             planner_overrides["static_map_path"] = static_map_path_override
@@ -163,6 +171,9 @@ def generate_launch_description():
                     rviz_drone_follow_tf_enabled, value_type=bool
                 ),
                 "no_static_speed_policy_enabled": ParameterValue(
+                    no_static_speed_policy_enabled, value_type=bool
+                ),
+                "safe_trajectory_truncation_enabled": ParameterValue(
                     no_static_speed_policy_enabled, value_type=bool
                 ),
             },

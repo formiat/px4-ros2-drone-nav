@@ -16,6 +16,8 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   final_trajectory_debug_sample_step_m_ = config.final_trajectory_debug_sample_step_m;
   trajectory_update_max_start_cross_track_m_ =
       config.trajectory_update_max_start_cross_track_m;
+  safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
+  safe_trajectory_truncation_margin_m_ = config.safe_trajectory_truncation_margin_m;
   trajectory_handover_config_ = config.trajectory_handover;
   trajectory_continuity_thresholds_ = config.trajectory_continuity;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
@@ -59,6 +61,9 @@ Px4OffboardNode::Px4OffboardNode()
       [this](const std_msgs::msg::String::SharedPtr msg) {
         onTrajectoryDiagnostics(*msg);
       });
+  replan_blocker_sub_ = create_subscription<msg::ReplanBlockerEvent>(
+      topics.replan_blocker, rclcpp::QoS{1}.reliable(),
+      [this](const msg::ReplanBlockerEvent::SharedPtr msg) { onReplanBlocker(*msg); });
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       topics.px4_local_position, px4_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -206,6 +211,10 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.no_static_speed_policy.enabled ? "true" : "false",
       velocity_follower_config_.no_static_speed_policy.max_speed_mps,
       velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
+  RCLCPP_INFO(get_logger(),
+              "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s'",
+              safe_trajectory_truncation_enabled_ ? "true" : "false",
+              safe_trajectory_truncation_margin_m_, topics.replan_blocker.c_str());
   RCLCPP_INFO(
       get_logger(),
       "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "
@@ -231,10 +240,12 @@ Px4OffboardNode::Px4OffboardNode()
       trajectory_continuity_thresholds_.defer_tangent_speed_command_jump_mps);
   RCLCPP_INFO(get_logger(),
               "PX4 offboard subscriptions: path='%s' path_id='%s' local_position='%s' "
-              "attitude='%s' vehicle_status='%s' prohibited_grid='%s'",
+              "attitude='%s' vehicle_status='%s' prohibited_grid='%s' "
+              "replan_blocker='%s'",
               topics.path.c_str(), topics.path_id.c_str(),
               topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
-              topics.px4_vehicle_status.c_str(), topics.prohibited_grid.c_str());
+              topics.px4_vehicle_status.c_str(), topics.prohibited_grid.c_str(),
+              topics.replan_blocker.c_str());
 }
 
 } // namespace drone_city_nav

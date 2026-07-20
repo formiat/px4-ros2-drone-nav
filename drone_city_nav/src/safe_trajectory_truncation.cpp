@@ -1,0 +1,130 @@
+#include "drone_city_nav/safe_trajectory_truncation.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
+
+namespace drone_city_nav {
+namespace {
+
+constexpr double kTinyDistanceM = 1.0e-6;
+constexpr double kMinimumExecutablePrefixM = 0.5;
+
+[[nodiscard]] Point2 interpolate(const Point2 start, const Point2 end,
+                                 const double ratio) noexcept {
+  return Point2{start.x * (1.0 - ratio) + end.x * ratio,
+                start.y * (1.0 - ratio) + end.y * ratio};
+}
+
+[[nodiscard]] Point2 normalized(const Point2 value) noexcept {
+  const double norm = std::hypot(value.x, value.y);
+  return norm > kTinyDistanceM ? Point2{value.x / norm, value.y / norm} : Point2{};
+}
+
+[[nodiscard]] TrajectoryPointSample
+sampleAtS(const std::span<const TrajectoryPointSample> samples, const double s_m) {
+  const double bounded_s_m = std::clamp(s_m, 0.0, samples.back().s_m);
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const TrajectoryPointSample& start = samples[index];
+    const TrajectoryPointSample& end = samples[index + 1U];
+    if (bounded_s_m > end.s_m && index + 2U < samples.size()) {
+      continue;
+    }
+    const double station_delta_m = end.s_m - start.s_m;
+    const double ratio =
+        station_delta_m > kTinyDistanceM
+            ? std::clamp((bounded_s_m - start.s_m) / station_delta_m, 0.0, 1.0)
+            : 0.0;
+    TrajectoryPointSample sample = ratio <= 0.5 ? start : end;
+    sample.s_m = bounded_s_m;
+    sample.point = interpolate(start.point, end.point, ratio);
+    sample.tangent = normalized(interpolate(start.tangent, end.tangent, ratio));
+    sample.curvature_1pm =
+        start.curvature_1pm * (1.0 - ratio) + end.curvature_1pm * ratio;
+    sample.z_m = start.z_m * (1.0 - ratio) + end.z_m * ratio;
+    sample.vertical_slope_dz_ds =
+        start.vertical_slope_dz_ds * (1.0 - ratio) + end.vertical_slope_dz_ds * ratio;
+    return sample;
+  }
+  return samples.back();
+}
+
+void appendDistinct(std::vector<TrajectoryPointSample>& output,
+                    TrajectoryPointSample sample) {
+  if (!output.empty() &&
+      distance(output.back().point, sample.point) <= kTinyDistanceM) {
+    output.back() = std::move(sample);
+    return;
+  }
+  output.push_back(std::move(sample));
+}
+
+void rebaseStations(std::vector<TrajectoryPointSample>& samples) {
+  if (samples.empty()) {
+    return;
+  }
+  samples.front().s_m = 0.0;
+  for (std::size_t index = 1U; index < samples.size(); ++index) {
+    samples[index].s_m = samples[index - 1U].s_m +
+                         distance(samples[index - 1U].point, samples[index].point);
+  }
+}
+
+} // namespace
+
+SafeTrajectoryTruncationResult
+truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> samples,
+                                const SafeTrajectoryTruncationRequest& request) {
+  SafeTrajectoryTruncationResult result{};
+  if (!trajectorySamplesAreUsable(samples)) {
+    result.reason = "trajectory_invalid";
+    return result;
+  }
+  if (!std::isfinite(request.blocker_path_distance_m) ||
+      request.blocker_path_distance_m < 0.0 ||
+      !std::isfinite(request.truncation_margin_m) ||
+      request.truncation_margin_m < 0.0) {
+    result.reason = "request_invalid";
+    return result;
+  }
+
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectorySamples(samples, request.current_position);
+  if (!projection.has_value()) {
+    result.reason = "projection_unavailable";
+    return result;
+  }
+
+  result.current_s_m = projection->s_m;
+  result.blocker_s_m =
+      std::min(samples.back().s_m, projection->s_m + request.blocker_path_distance_m);
+  result.stop_s_m = result.blocker_s_m - request.truncation_margin_m;
+  if (!(result.stop_s_m > result.current_s_m + kMinimumExecutablePrefixM)) {
+    result.applied = true;
+    result.immediate_hold = true;
+    result.reason = "stop_station_not_ahead";
+    return result;
+  }
+
+  appendDistinct(result.samples, sampleAtS(samples, result.current_s_m));
+  for (const TrajectoryPointSample& sample : samples) {
+    if (sample.s_m > result.current_s_m + kTinyDistanceM &&
+        sample.s_m < result.stop_s_m - kTinyDistanceM) {
+      appendDistinct(result.samples, sample);
+    }
+  }
+  appendDistinct(result.samples, sampleAtS(samples, result.stop_s_m));
+  rebaseStations(result.samples);
+  populateTrajectorySampleGeometry(result.samples);
+  if (!trajectorySamplesAreUsable(result.samples)) {
+    result.samples.clear();
+    result.reason = "truncated_trajectory_invalid";
+    return result;
+  }
+
+  result.applied = true;
+  result.reason = "safe_prefix";
+  return result;
+}
+
+} // namespace drone_city_nav

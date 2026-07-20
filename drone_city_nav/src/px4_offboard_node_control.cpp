@@ -35,6 +35,7 @@ void Px4OffboardNode::onTimer() {
   }
 
   updateFinalGoalHold();
+  updateTemporaryReplanHold();
   advanceWaypointIfNeeded();
   updateTerminalCaptureState();
   publishOffboardControlMode();
@@ -160,13 +161,15 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 
 [[nodiscard]] bool Px4OffboardNode::velocityCruiseReady() const {
   return localPositionFresh() && navigationAllowed() && pathFollowingReady() &&
-         !finalPathGoalReached() && !no_path_hold_target_valid_;
+         !finalPathGoalReached() && !no_path_hold_target_valid_ &&
+         !temporary_replan_hold_active_;
 }
 
 [[nodiscard]] Px4OffboardNode::TerminalCaptureState
 Px4OffboardNode::computeTerminalCaptureState() const {
   TerminalStateMachineInput input{};
   input.final_goal_hold_active = final_goal_hold_active_;
+  input.temporary_replan_hold_active = temporary_replan_hold_active_;
   input.no_path_hold_active = no_path_hold_target_valid_;
   input.prerequisites_valid = localPositionFresh() && navigationAllowed() &&
                               pathFollowingReady() && trajectoryGoalReady();
@@ -198,7 +201,7 @@ void Px4OffboardNode::updateTerminalCaptureState() {
   terminal_capture_state_ = computeTerminalCaptureState();
   if (terminal_capture_state_.position_capture_latched) {
     latchTerminalPositionCaptureAltitude(terminal_capture_state_.reason);
-  } else if (!final_goal_hold_active_) {
+  } else if (!final_goal_hold_active_ && !temporary_replan_hold_active_) {
     clearTerminalPositionCaptureAltitude();
   }
   terminal_position_capture_latched_ = terminal_capture_state_.position_capture_latched;
@@ -267,24 +270,6 @@ void Px4OffboardNode::updateTerminalCaptureState() {
   const double final_plane_cross_track_tolerance_m =
       std::max(2.0 * acceptance_radius_m_, 2.0);
   return cross_track_m <= final_plane_cross_track_tolerance_m;
-}
-
-void Px4OffboardNode::updateFinalGoalHold() {
-  if (final_goal_hold_active_ || !finalPathGoalReached()) {
-    return;
-  }
-
-  final_goal_hold_active_ = true;
-  final_goal_hold_target_ = trajectory_goal_;
-  latchTerminalPositionCaptureAltitude("final_goal_hold");
-  no_path_hold_target_valid_ = false;
-  resetVelocityDiagnostics();
-  RCLCPP_INFO(get_logger(),
-              "Final goal hold latched: target=(%.2f, %.2f) current=(%.2f, %.2f) "
-              "distance=%.2f actual_speed=%.2f crossed_final_plane=%s",
-              final_goal_hold_target_.x, final_goal_hold_target_.y, current_position_.x,
-              current_position_.y, distance(current_position_, final_goal_hold_target_),
-              current_speed_mps_, finalPathGoalPassed() ? "true" : "false");
 }
 
 [[nodiscard]] double Px4OffboardNode::consumeVelocityPlanDtS() {
@@ -378,7 +363,8 @@ void Px4OffboardNode::publishVehicleCommand(const std::uint32_t command,
 }
 
 void Px4OffboardNode::advanceWaypointIfNeeded() {
-  if (!pathFollowingReady() || !localPositionFresh() || final_goal_hold_active_) {
+  if (!pathFollowingReady() || !localPositionFresh() || final_goal_hold_active_ ||
+      temporary_replan_hold_active_) {
     return;
   }
   const std::size_t previous_waypoint_index = waypoint_index_;
@@ -413,6 +399,9 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
   if (final_goal_hold_active_) {
     return final_goal_hold_target_;
   }
+  if (temporary_replan_hold_active_) {
+    return temporary_replan_hold_target_;
+  }
 
   if (localPositionFresh() && pathFollowingReady() && !path_points_.empty()) {
     return path_points_[std::min(waypoint_index_, path_points_.size() - 1U)];
@@ -443,7 +432,7 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
         current_position_.x, current_position_.y);
     return current_position_;
   }
-  if (final_goal_hold_active_) {
+  if (final_goal_hold_active_ || temporary_replan_hold_active_) {
     return desired_target;
   }
   if (hold_position) {
@@ -454,8 +443,9 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
 }
 
 [[nodiscard]] bool Px4OffboardNode::shouldHoldPosition() const {
-  return final_goal_hold_active_ || !localPositionFresh() || !navigationAllowed() ||
-         !pathFollowingReady() || finalPathGoalReached();
+  return final_goal_hold_active_ || temporary_replan_hold_active_ ||
+         !localPositionFresh() || !navigationAllowed() || !pathFollowingReady() ||
+         finalPathGoalReached();
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalTrajectoryReady() const {
@@ -503,6 +493,9 @@ Px4OffboardNode::pathSegmentTypeName(const double turn_angle_rad) const {
 Px4OffboardNode::motionPhaseName(const bool hold_position) const noexcept {
   if (final_goal_hold_active_) {
     return "final_goal_hold";
+  }
+  if (temporary_replan_hold_active_) {
+    return "temporary_replan_hold";
   }
   if (no_path_hold_target_valid_) {
     return "hold_no_path";

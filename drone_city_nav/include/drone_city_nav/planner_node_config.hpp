@@ -31,6 +31,7 @@ struct PlannerTopics {
   std::string path{"/drone_city_nav/path"};
   std::string path_id{"/drone_city_nav/path_id"};
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
+  std::string replan_blocker{"/drone_city_nav/replan_blocker"};
   std::string current_waypoint{"/drone_city_nav/current_waypoint"};
 };
 
@@ -89,6 +90,7 @@ struct PlannerNodeConfig {
   double known_static_lidar_hit_endpoint_volume_tolerance_m{0.75};
   double known_static_opening_boundary_tolerance_m{0.30};
   GroundLidarRejectionConfig ground_lidar_rejection{};
+  bool safe_trajectory_truncation_enabled{false};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

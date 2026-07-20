@@ -1,0 +1,9 @@
+std_msgs/Header header
+uint64 blocked_path_id
+uint64 memory_snapshot_sequence
+geometry_msgs/Point blocker_position
+geometry_msgs/Point detection_position
+geometry_msgs/Vector3 detection_velocity
+float64 blocker_path_distance_m
+bool detection_velocity_valid
+string source

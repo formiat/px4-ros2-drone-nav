@@ -9,6 +9,7 @@
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
@@ -363,6 +364,7 @@ private:
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
   bool use_static_map_{true};
+  bool safe_trajectory_truncation_enabled_{false};
   bool use_known_passages_{true};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};
@@ -505,6 +507,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;
+  rclcpp::Publisher<msg::ReplanBlockerEvent>::SharedPtr replan_blocker_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr known_passage_debug_timer_;

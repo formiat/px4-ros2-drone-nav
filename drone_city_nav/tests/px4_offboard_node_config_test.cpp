@@ -62,6 +62,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.command_resend_period_s = 0.0;
   config.trajectory_update_max_start_cross_track_m =
       std::numeric_limits<double>::infinity();
+  config.safe_trajectory_truncation_margin_m = std::numeric_limits<double>::quiet_NaN();
   config.trajectory_handover.prefix_time_s = std::numeric_limits<double>::quiet_NaN();
   config.trajectory_handover.min_prefix_distance_m = 12.0;
   config.trajectory_handover.max_prefix_distance_m = 4.0;
@@ -119,6 +120,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.diagnostic_turn_preview_distance_m, 500.0);
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
+  EXPECT_DOUBLE_EQ(config.safe_trajectory_truncation_margin_m, 10.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 12.0);
@@ -243,6 +245,8 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
+  EXPECT_FALSE(config.safe_trajectory_truncation_enabled);
+  EXPECT_DOUBLE_EQ(config.safe_trajectory_truncation_margin_m, 10.0);
   EXPECT_TRUE(config.trajectory_handover.enabled);
   EXPECT_TRUE(config.trajectory_handover.require_validation_grid);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
@@ -264,6 +268,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
+  EXPECT_EQ(config.topics.replan_blocker, "/drone_city_nav/replan_blocker");
   EXPECT_EQ(config.topics.px4_local_position, "/fmu/out/vehicle_local_position");
   EXPECT_EQ(config.topics.offboard_control_mode, "/fmu/in/offboard_control_mode");
 }

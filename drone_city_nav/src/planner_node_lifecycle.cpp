@@ -75,6 +75,8 @@ PlannerNode::PlannerNode()
                                                          rclcpp::QoS{1}.reliable());
   trajectory_diagnostics_pub_ = create_publisher<std_msgs::msg::String>(
       config.topics.trajectory_diagnostics, rclcpp::QoS{1}.reliable());
+  replan_blocker_pub_ = create_publisher<msg::ReplanBlockerEvent>(
+      config.topics.replan_blocker, rclcpp::QoS{1}.reliable());
   waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
@@ -116,8 +118,12 @@ PlannerNode::PlannerNode()
               memory_snapshot_diagnostic_period_s_, memory_snapshot_max_age_ms_,
               memory_snapshot_max_callback_time_ms_,
               memory_snapshot_max_apply_delay_ms_, memory_snapshot_min_apply_rate_hz_);
-  RCLCPP_INFO(get_logger(), "Planner publications: path='%s' path_id='%s'",
-              config.topics.path.c_str(), config.topics.path_id.c_str());
+  RCLCPP_INFO(get_logger(),
+              "Planner publications: path='%s' path_id='%s' replan_blocker='%s' "
+              "safe_trajectory_truncation=%s",
+              config.topics.path.c_str(), config.topics.path_id.c_str(),
+              config.topics.replan_blocker.c_str(),
+              safe_trajectory_truncation_enabled_ ? "true" : "false");
   RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "
               "runtime_inflation=%.2fm planning_clearance=%.2fm "
@@ -303,6 +309,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   memory_snapshot_min_apply_rate_hz_ =
       config.memory_snapshot_transport.min_apply_rate_hz;
   use_static_map_ = config.static_map.enabled;
+  safe_trajectory_truncation_enabled_ =
+      config.safe_trajectory_truncation_enabled && !use_static_map_;
   static_map_path_param_ = config.static_map.configured_path.string();
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
   use_known_passages_ = config.known_passages.enabled;

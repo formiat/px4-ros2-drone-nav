@@ -19,6 +19,30 @@ cruise
 to go to the final point and hold there, and it is important for stable mission
 completion.
 
+## Temporary Replan Hold
+
+Lidar-only runs can enable `safe_trajectory_truncation_enabled`. When the
+planner finds a prohibited cell on the currently accepted path, it immediately
+publishes `/drone_city_nav/replan_blocker`. Offboard retains only the old
+executable prefix ending `safe_trajectory_truncation_margin_m` before the
+blocker, then uses the same velocity terminal capture and position capture
+states as it does at the mission goal.
+
+The margin is fixed along the executable trajectory; it is deliberately not a
+speed-dependent stopping-distance calculation. If the requested terminal
+station is no longer ahead of the drone, offboard enters
+`temporary_replan_hold` at its current position.
+
+`temporary_replan_hold` differs from `final_hold` only in mission semantics:
+
+- it never marks the mission complete;
+- an empty path after a failed replan preserves the already-safe prefix;
+- the first accepted replacement path clears the temporary state and resumes
+  normal flight.
+
+The launch file enables this feature only with the lidar-only no-static policy.
+Static-map runs retain their existing trajectory behavior.
+
 ## Velocity Terminal Capture
 
 Velocity terminal capture starts before the final point. It computes a

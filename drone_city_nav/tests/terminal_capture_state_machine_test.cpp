@@ -117,6 +117,17 @@ TEST(TerminalCaptureStateMachine, FinalHoldOverridesTerminalCapture) {
   EXPECT_FALSE(decision.position_capture_latched);
 }
 
+TEST(TerminalCaptureStateMachine, TemporaryReplanHoldDoesNotUseFinalHoldState) {
+  TerminalStateMachineInput input = baseInput();
+  input.temporary_replan_hold_active = true;
+
+  const TerminalStateMachineDecision decision = evaluateTerminalStateMachine(input);
+
+  EXPECT_TRUE(decision.valid);
+  EXPECT_EQ(decision.state, TerminalFlightState::kTemporaryReplanHold);
+  EXPECT_STREQ(decision.reason, "temporary_replan_hold");
+}
+
 TEST(TerminalCaptureStateMachine, InvalidPrerequisitesReturnInvalidCruiseDecision) {
   TerminalStateMachineInput input = baseInput();
   input.prerequisites_valid = false;
