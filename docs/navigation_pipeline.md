@@ -41,11 +41,19 @@ defaults:
 ```yaml
 inflation_radius_m: 1.0
 planning_clearance_m: 3.0
+local_inflation_relaxation_radius_m: 3.0
 ```
 
 The prohibited grid is the hard validation grid. The extra planning clearance
 is used to bias planning away from obstacles and does not by itself cause a
 runtime replan.
+
+Before the planner publishes either grid or starts path construction, it
+transiently removes inflated cells whose centers are within
+`local_inflation_relaxation_radius_m` of the current physical vehicle position.
+Raw occupied cells are preserved. The mask is reconstructed from source data on
+every planning cycle, so it does not alter static map, current lidar, or
+accumulated obstacle-memory data.
 
 The published grid is:
 

@@ -24,6 +24,16 @@ struct OccupancyGridFingerprint {
   std::uint64_t inflated_hash{0U};
 };
 
+// Describes a transient planner-side relaxation of an inflation mask. Raw
+// occupied cells are intentionally never modified by this operation.
+struct LocalInflationRelaxationStats {
+  std::size_t cells_considered{0U};
+  std::size_t inflated_cells_cleared{0U};
+  std::size_t occupied_cells_preserved{0U};
+  std::size_t cells_outside_bounds{0U};
+  bool center_inside_bounds{false};
+};
+
 class OccupancyGrid2D {
 public:
   explicit OccupancyGrid2D(const GridBounds& bounds);
@@ -57,6 +67,8 @@ public:
   void rebuildInflation(double radius_m);
   void applyInflationFromDistanceField(const DistanceField2D& field, double radius_m);
   void mergeInflationFrom(const OccupancyGrid2D& source);
+  [[nodiscard]] LocalInflationRelaxationStats
+  clearInflationWithinRadius(Point2 center, double radius_m);
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;

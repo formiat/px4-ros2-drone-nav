@@ -55,6 +55,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    config.initial_altitude_m);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
+  EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 3.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 3.0);
   EXPECT_TRUE(config.static_map.enabled);

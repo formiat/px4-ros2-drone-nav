@@ -102,9 +102,11 @@ PlannerNode::PlannerNode()
   RCLCPP_INFO(get_logger(),
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
               "runtime_inflation=%.2fm planning_clearance=%.2fm "
-              "planning_effective_inflation=%.2fm",
+              "planning_effective_inflation=%.2fm "
+              "local_inflation_relaxation=%.2fm",
               start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_,
-              planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_);
+              planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
+              local_inflation_relaxation_radius_m_);
   RCLCPP_INFO(get_logger(),
               "Planner subscriptions: obstacle_memory_snapshot='%s' "
               "local_position='%s' attitude='%s' timesync_status='%s'",
@@ -127,9 +129,11 @@ PlannerNode::PlannerNode()
   RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "
               "runtime_inflation=%.2fm planning_clearance=%.2fm "
-              "planning_effective_inflation=%.2fm prohibited_output='%s'",
+              "planning_effective_inflation=%.2fm "
+              "local_inflation_relaxation=%.2fm prohibited_output='%s'",
               inflation_radius_m_, planning_clearance_m_,
               inflation_radius_m_ + planning_clearance_m_,
+              local_inflation_relaxation_radius_m_,
               config.topics.prohibited_grid.c_str());
   RCLCPP_INFO(
       get_logger(),
@@ -295,6 +299,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   initial_altitude_m_ = config.initial_altitude_m;
   inflation_radius_m_ = config.inflation_radius_m;
   planning_clearance_m_ = config.planning_clearance_m;
+  local_inflation_relaxation_radius_m_ = config.local_inflation_relaxation_radius_m;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
   memory_occupied_value_ = config.memory_grid.occupied_value;

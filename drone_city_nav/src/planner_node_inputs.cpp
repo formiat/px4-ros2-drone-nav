@@ -506,6 +506,37 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
   OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
   OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
+  // This mask is deliberately transient and applied only after raw occupied cells
+  // have generated inflation. It lets the planner recover from its own clearance
+  // buffer around the actual vehicle without erasing a physical obstacle.
+  const LocalInflationRelaxationStats runtime_relaxation =
+      prohibited_grid.clearInflationWithinRadius(navigation.pose.position,
+                                                 local_inflation_relaxation_radius_m_);
+  const LocalInflationRelaxationStats planning_relaxation =
+      planning_grid.clearInflationWithinRadius(navigation.pose.position,
+                                               local_inflation_relaxation_radius_m_);
+  if (runtime_relaxation.inflated_cells_cleared > 0U ||
+      planning_relaxation.inflated_cells_cleared > 0U ||
+      !runtime_relaxation.center_inside_bounds ||
+      !planning_relaxation.center_inside_bounds) {
+    RCLCPP_INFO(get_logger(),
+                "LOCAL_INFLATION_RELAXATION center=(%.2f,%.2f) radius_m=%.2f "
+                "runtime[inside=%s considered=%zu cleared=%zu occupied_preserved=%zu "
+                "outside=%zu] planning[inside=%s considered=%zu cleared=%zu "
+                "occupied_preserved=%zu outside=%zu]",
+                navigation.pose.position.x, navigation.pose.position.y,
+                local_inflation_relaxation_radius_m_,
+                runtime_relaxation.center_inside_bounds ? "true" : "false",
+                runtime_relaxation.cells_considered,
+                runtime_relaxation.inflated_cells_cleared,
+                runtime_relaxation.occupied_cells_preserved,
+                runtime_relaxation.cells_outside_bounds,
+                planning_relaxation.center_inside_bounds ? "true" : "false",
+                planning_relaxation.cells_considered,
+                planning_relaxation.inflated_cells_cleared,
+                planning_relaxation.occupied_cells_preserved,
+                planning_relaxation.cells_outside_bounds);
+  }
   publishProhibitedGrid(prohibited_grid);
   if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
     return;
@@ -539,6 +570,8 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       "unknown=%zu inflation_radius_m=%.2f] "
       "planning_grid[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
       "unknown=%zu planning_clearance_m=%.2f effective_inflation_m=%.2f] "
+      "local_inflation_relaxation[runtime_cleared=%zu runtime_occupied_preserved=%zu "
+      "planning_cleared=%zu planning_occupied_preserved=%zu radius_m=%.2f] "
       "inflation_owner=planner "
       "static_grid_cache[eligible=%s hit=%s rebuilt=%s "
       "static_distance=%.1fms static_masks=%.1fms dynamic_distance=%.1fms "
@@ -580,6 +613,11 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       path_result->grid_stats.occupied_cells, path_result->grid_stats.inflated_cells,
       path_result->grid_stats.free_cells, path_result->grid_stats.unknown_cells,
       planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
+      runtime_relaxation.inflated_cells_cleared,
+      runtime_relaxation.occupied_cells_preserved,
+      planning_relaxation.inflated_cells_cleared,
+      planning_relaxation.occupied_cells_preserved,
+      local_inflation_relaxation_radius_m_,
       planning_result->cache.static_cache_eligible ? "true" : "false",
       planning_result->cache.static_cache_hit ? "true" : "false",
       planning_result->cache.static_cache_rebuilt ? "true" : "false",

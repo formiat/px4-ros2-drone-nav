@@ -284,6 +284,48 @@ void OccupancyGrid2D::mergeInflationFrom(const OccupancyGrid2D& source) {
   }
 }
 
+LocalInflationRelaxationStats
+OccupancyGrid2D::clearInflationWithinRadius(const Point2 center,
+                                            const double radius_m) {
+  LocalInflationRelaxationStats stats{};
+  const std::optional<GridIndex> center_cell = worldToCell(center);
+  if (!center_cell.has_value()) {
+    return stats;
+  }
+  stats.center_inside_bounds = true;
+  if (!(std::isfinite(radius_m) && radius_m > 0.0)) {
+    return stats;
+  }
+
+  const int radius_cells =
+      std::max(0, static_cast<int>(std::ceil(radius_m / bounds_.resolution_m)));
+  const double radius_sq_m = radius_m * radius_m;
+  for (int y_offset = -radius_cells; y_offset <= radius_cells; ++y_offset) {
+    for (int x_offset = -radius_cells; x_offset <= radius_cells; ++x_offset) {
+      const GridIndex cell{center_cell->x + x_offset, center_cell->y + y_offset};
+      if (!contains(cell)) {
+        ++stats.cells_outside_bounds;
+        continue;
+      }
+      if (squaredDistance(center, cellCenter(cell)) > radius_sq_m) {
+        continue;
+      }
+
+      ++stats.cells_considered;
+      if (isOccupied(cell)) {
+        ++stats.occupied_cells_preserved;
+        continue;
+      }
+      const std::size_t index = linearIndex(cell);
+      if (inflated_[index] != 0U) {
+        inflated_[index] = 0U;
+        ++stats.inflated_cells_cleared;
+      }
+    }
+  }
+  return stats;
+}
+
 std::vector<GridIndex> OccupancyGrid2D::cellsOnLine(const GridIndex start,
                                                     const GridIndex end) const {
   std::vector<GridIndex> cells;

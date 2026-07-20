@@ -92,6 +92,44 @@ TEST(DistanceField2D, CanUseProhibitedCellsAsSources) {
   EXPECT_DOUBLE_EQ(prohibited.distanceAt(GridIndex{4, 2}), 1.0);
 }
 
+TEST(OccupancyGrid2D, ClearsOnlyInflationWithinLocalRelaxationRadius) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{3, 3});
+  grid.rebuildInflation(2.1);
+
+  const LocalInflationRelaxationStats stats =
+      grid.clearInflationWithinRadius(grid.cellCenter(GridIndex{3, 3}), 1.1);
+
+  EXPECT_TRUE(stats.center_inside_bounds);
+  EXPECT_GT(stats.cells_considered, 0U);
+  EXPECT_GT(stats.inflated_cells_cleared, 0U);
+  EXPECT_EQ(stats.occupied_cells_preserved, 1U);
+  EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
+  EXPECT_TRUE(grid.isProhibited(GridIndex{3, 3}));
+  EXPECT_FALSE(grid.isInflated(GridIndex{4, 3}));
+  EXPECT_TRUE(grid.isInflated(GridIndex{5, 3}));
+}
+
+TEST(OccupancyGrid2D, LocalInflationRelaxationLeavesOutOfBoundsCenterUntouched) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{3, 3});
+  grid.rebuildInflation(2.1);
+  const std::vector<std::uint8_t> inflation_before{grid.inflatedCells().begin(),
+                                                   grid.inflatedCells().end()};
+
+  const LocalInflationRelaxationStats stats =
+      grid.clearInflationWithinRadius(Point2{-1.0, -1.0}, 3.0);
+
+  EXPECT_FALSE(stats.center_inside_bounds);
+  EXPECT_EQ(stats.cells_considered, 0U);
+  EXPECT_EQ(stats.inflated_cells_cleared, 0U);
+  ASSERT_EQ(grid.inflatedCells().size(), inflation_before.size());
+  for (std::size_t index = 0U; index < inflation_before.size(); ++index) {
+    EXPECT_EQ(grid.inflatedCells()[index], inflation_before[index])
+        << "index=" << index;
+  }
+}
+
 TEST(DistanceField2D, IgnoresFreeAndUnknownCellsAsOccupiedSources) {
   OccupancyGrid2D grid = makeGrid();
   grid.setFree(GridIndex{2, 2});
