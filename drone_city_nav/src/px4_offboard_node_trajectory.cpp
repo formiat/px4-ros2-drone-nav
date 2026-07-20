@@ -76,9 +76,9 @@ void Px4OffboardNode::publishOffboardDebugMarkers() {
   const DroneDebugMarkerState drone_state{localPositionFresh(), current_position_,
                                           current_altitude_m_, altitude_valid_,
                                           current_heading_rad_};
-  visualization_msgs::msg::MarkerArray markers =
-      buildOffboardDebugMarkers(makeDebugHeader(), drone_state,
-                                final_trajectory_samples_, trajectory_speed_profile_);
+  visualization_msgs::msg::MarkerArray markers = buildOffboardDebugMarkers(
+      makeDebugHeader(), drone_state, final_trajectory_samples_,
+      trajectory_speed_profile_, px4_local_origin_, mission_goal_);
   offboard_debug_marker_pub_->publish(markers);
 }
 

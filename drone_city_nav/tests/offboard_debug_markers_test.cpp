@@ -69,9 +69,10 @@ TEST(OffboardDebugMarkers, DeletesDroneMarkersWhenAltitudeIsInvalid) {
 TEST(OffboardDebugMarkers, BuildsDroneAndTrajectoryMarkers) {
   const DroneDebugMarkerState state{true, Point2{2.0, 3.0}, 18.0, true, 0.0};
   const visualization_msgs::msg::MarkerArray markers =
-      buildOffboardDebugMarkers(testHeader(), state, testSamples(), testSpeedProfile());
+      buildOffboardDebugMarkers(testHeader(), state, testSamples(), testSpeedProfile(),
+                                Point2{-4.0, 5.0}, Point2{8.0, 9.0});
 
-  ASSERT_GE(markers.markers.size(), 4U);
+  ASSERT_GE(markers.markers.size(), 8U);
   EXPECT_EQ(markers.markers[0].ns, "drone_position");
   EXPECT_EQ(markers.markers[0].type, visualization_msgs::msg::Marker::SPHERE);
   EXPECT_EQ(markers.markers[0].action, visualization_msgs::msg::Marker::ADD);
@@ -84,6 +85,10 @@ TEST(OffboardDebugMarkers, BuildsDroneAndTrajectoryMarkers) {
   EXPECT_DOUBLE_EQ(markers.markers[1].points[0].z, -18.0);
   EXPECT_EQ(markers.markers[2].ns, "final_trajectory_speed_colormap");
   EXPECT_DOUBLE_EQ(markers.markers[2].points[0].z, -12.04);
+  EXPECT_EQ(markers.markers[markers.markers.size() - 4U].ns, "mission_start");
+  EXPECT_EQ(markers.markers[markers.markers.size() - 3U].text, "A");
+  EXPECT_EQ(markers.markers[markers.markers.size() - 2U].ns, "mission_goal");
+  EXPECT_EQ(markers.markers.back().text, "B");
 }
 
 } // namespace drone_city_nav

@@ -72,7 +72,8 @@ must not be applied to the control path consumed by offboard flight logic.
 - Final optimized trajectory: executable trajectory published by offboard on
   `/drone_city_nav/final_trajectory_path`.
 - Drone markers: current drone pose, altitude, heading, and offboard debug
-  markers.
+  markers. The same marker array also shows mission point `A` at the PX4 local
+  origin and mission point `B` at the configured final goal.
 - Speed/curvature coloring: path debug colors that help identify slow or tight
   segments.
 

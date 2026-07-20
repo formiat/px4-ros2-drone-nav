@@ -28,6 +28,7 @@ buildDroneDebugMarkers(const std_msgs::msg::Header& header,
 buildOffboardDebugMarkers(const std_msgs::msg::Header& header,
                           const DroneDebugMarkerState& state,
                           std::span<const TrajectoryPointSample> trajectory_samples,
-                          const TrajectorySpeedProfile& speed_profile);
+                          const TrajectorySpeedProfile& speed_profile,
+                          const Point2& mission_start, const Point2& mission_goal);
 
 } // namespace drone_city_nav

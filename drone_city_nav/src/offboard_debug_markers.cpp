@@ -7,9 +7,41 @@
 
 #include <cmath>
 #include <iterator>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace drone_city_nav {
+namespace {
+
+void appendMissionEndpointMarkers(visualization_msgs::msg::MarkerArray& markers,
+                                  const std_msgs::msg::Header& header,
+                                  const Point2& point,
+                                  const std::string_view marker_namespace,
+                                  const std::string_view label,
+                                  const std_msgs::msg::ColorRGBA& color) {
+  constexpr double kPointAltitudeM = 0.5;
+  constexpr double kLabelAltitudeM = 2.5;
+
+  auto point_marker =
+      makeMarker(header, marker_namespace, 0, visualization_msgs::msg::Marker::SPHERE);
+  point_marker.pose.position = gazeboAlignedRvizMarkerPoint(point, kPointAltitudeM);
+  point_marker.scale.x = 2.5;
+  point_marker.scale.y = 2.5;
+  point_marker.scale.z = 2.5;
+  point_marker.color = color;
+  markers.markers.push_back(std::move(point_marker));
+
+  auto label_marker = makeMarker(header, std::string{marker_namespace} + "_label", 0,
+                                 visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
+  label_marker.pose.position = gazeboAlignedRvizMarkerPoint(point, kLabelAltitudeM);
+  label_marker.scale.z = 2.5;
+  label_marker.color = color;
+  label_marker.text = std::string{label};
+  markers.markers.push_back(std::move(label_marker));
+}
+
+} // namespace
 
 [[nodiscard]] visualization_msgs::msg::MarkerArray
 buildDroneDebugMarkers(const std_msgs::msg::Header& header,
@@ -55,13 +87,18 @@ buildDroneDebugMarkers(const std_msgs::msg::Header& header,
 [[nodiscard]] visualization_msgs::msg::MarkerArray buildOffboardDebugMarkers(
     const std_msgs::msg::Header& header, const DroneDebugMarkerState& state,
     const std::span<const TrajectoryPointSample> trajectory_samples,
-    const TrajectorySpeedProfile& speed_profile) {
+    const TrajectorySpeedProfile& speed_profile, const Point2& mission_start,
+    const Point2& mission_goal) {
   visualization_msgs::msg::MarkerArray markers = buildDroneDebugMarkers(header, state);
   visualization_msgs::msg::MarkerArray trajectory_markers =
       buildTrajectoryDebugMarkers(header, trajectory_samples, speed_profile);
   markers.markers.insert(markers.markers.end(),
                          std::make_move_iterator(trajectory_markers.markers.begin()),
                          std::make_move_iterator(trajectory_markers.markers.end()));
+  appendMissionEndpointMarkers(markers, header, mission_start, "mission_start", "A",
+                               rgba(0.16F, 0.75F, 0.36F, 1.0F));
+  appendMissionEndpointMarkers(markers, header, mission_goal, "mission_goal", "B",
+                               rgba(0.88F, 0.24F, 0.24F, 1.0F));
   return markers;
 }
 
