@@ -250,7 +250,7 @@ The current default is:
 ```yaml
 inflation_radius_m: 1.0
 planning_clearance_m: 3.0
-local_inflation_relaxation_radius_m: 3.0
+local_inflation_relaxation_radius_m: 5.0
 ```
 
 The local inflation relaxation is applied only to temporary runtime and planning

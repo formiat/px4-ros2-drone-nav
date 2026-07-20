@@ -41,7 +41,7 @@ defaults:
 ```yaml
 inflation_radius_m: 1.0
 planning_clearance_m: 3.0
-local_inflation_relaxation_radius_m: 3.0
+local_inflation_relaxation_radius_m: 5.0
 ```
 
 The prohibited grid is the hard validation grid. The extra planning clearance

@@ -31,7 +31,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.planning_clearance_m = std::clamp(
       node.declare_parameter<double>("planning_clearance_m", 3.0), 0.0, 1000.0);
   config.local_inflation_relaxation_radius_m = std::clamp(
-      node.declare_parameter<double>("local_inflation_relaxation_radius_m", 3.0), 0.0,
+      node.declare_parameter<double>("local_inflation_relaxation_radius_m", 5.0), 0.0,
       1000.0);
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
