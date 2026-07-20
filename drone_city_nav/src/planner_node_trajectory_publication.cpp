@@ -4,6 +4,7 @@
 #include <exception>
 #include <iomanip>
 #include <limits>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -68,9 +69,9 @@ struct RouteSeedDiagnostics {
 }
 
 void logTrajectoryCorridorDiagnostics(
-    const rclcpp::Logger& logger, const OccupancyGrid2D& grid, const char* source_label,
-    const char* source_kind, const Point2 planning_start,
-    const RouteSeedDiagnostics& route_seed,
+    const rclcpp::Logger& logger, const OccupancyGrid2D& grid,
+    const std::string_view grid_name, const char* source_label, const char* source_kind,
+    const Point2 planning_start, const RouteSeedDiagnostics& route_seed,
     const TrajectoryPlannerResult& trajectory_result) {
   const std::string_view status_name =
       trajectoryPlannerStatusName(trajectory_result.stats.status);
@@ -96,12 +97,14 @@ void logTrajectoryCorridorDiagnostics(
 
   if (critical_sample == nullptr) {
     RCLCPP_WARN(logger,
-                "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s status=%s "
+                "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s grid=%.*s "
+                "status=%s "
                 "valid=%s planning_start=(%.2f,%.2f) start[occupied=%s inflated=%s "
                 "prohibited=%s] grid_seed=(%.2f,%.2f) prefix[distance=%.2f cells=%zu "
                 "prohibited_prefix=%zu reentered_prohibited=%s traversable=%s] "
                 "corridor_samples=0",
-                source_label, source_kind, status_name.data(),
+                source_label, source_kind, static_cast<int>(grid_name.size()),
+                grid_name.data(), status_name.data(),
                 trajectory_result.valid ? "true" : "false", planning_start.x,
                 planning_start.y, route_seed.planning_start_occupied ? "true" : "false",
                 route_seed.planning_start_inflated ? "true" : "false",
@@ -120,7 +123,8 @@ void logTrajectoryCorridorDiagnostics(
       grid.worldToCell(critical_sample->center);
   RCLCPP_WARN(
       logger,
-      "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s status=%s valid=%s "
+      "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s grid=%.*s status=%s "
+      "valid=%s "
       "planning_start=(%.2f,%.2f) start[occupied=%s inflated=%s prohibited=%s] "
       "grid_seed=(%.2f,%.2f) prefix[distance=%.2f cells=%zu prohibited_prefix=%zu "
       "reentered_prohibited=%s traversable=%s] critical[index=%zu s=%.2f "
@@ -128,9 +132,9 @@ void logTrajectoryCorridorDiagnostics(
       "center=(%.2f,%.2f) center_cell=(%d,%d) recovery=%.2f left=%.2f right=%.2f "
       "width=%.2f clearance=%.2f] corridor[route_prohibited=%zu recovered=%zu "
       "unrecoverable=%zu width_min=%.2f]",
-      source_label, source_kind, status_name.data(),
-      trajectory_result.valid ? "true" : "false", planning_start.x, planning_start.y,
-      route_seed.planning_start_occupied ? "true" : "false",
+      source_label, source_kind, static_cast<int>(grid_name.size()), grid_name.data(),
+      status_name.data(), trajectory_result.valid ? "true" : "false", planning_start.x,
+      planning_start.y, route_seed.planning_start_occupied ? "true" : "false",
       route_seed.planning_start_inflated ? "true" : "false",
       route_seed.planning_start_prohibited ? "true" : "false", route_seed.grid_seed.x,
       route_seed.grid_seed.y, route_seed.connection_distance_m,
@@ -225,10 +229,16 @@ TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude()
 }
 
 bool PlannerNode::publishPathFromPathCells(
-    const OccupancyGrid2D& route_grid, const std::vector<GridIndex>& raw_cells,
+    const std::span<const TrajectoryGridCandidate> grid_candidates,
+    const std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
-    const ClearanceField2D* route_clearance_field,
-    const bool route_clearance_field_cache_hit, const Point2 planning_start) {
+    const Point2 planning_start) {
+  if (grid_candidates.empty() || astar_grid_index >= grid_candidates.size() ||
+      grid_candidates[astar_grid_index].grid == nullptr) {
+    publishPath({}, PathPublicationReason::kHoldInvalidPath);
+    return false;
+  }
+  const OccupancyGrid2D& route_geometry_grid = *grid_candidates[astar_grid_index].grid;
   TrajectoryDeliveryDiagnostics delivery =
       pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
   pending_replan_delivery_.reset();
@@ -240,6 +250,7 @@ bool PlannerNode::publishPathFromPathCells(
     std::size_t input_cells{0U};
     std::size_t pre_collapse_points{0U};
     std::size_t collapsed_points{0U};
+    std::size_t grid_index{0U};
     bool collapse_reverted{false};
   };
 
@@ -250,43 +261,55 @@ bool PlannerNode::publishPathFromPathCells(
       return std::nullopt;
     }
 
-    std::vector<Point2> path_points = cellsToPoints(route_grid, cells);
-    const RouteSeedDiagnostics seed_diagnostics =
-        routeSeedDiagnostics(route_grid, planning_start, path_points.front());
-    if (!connectRouteToCurrentPose(route_grid, path_points, source_label,
-                                   planning_start)) {
-      return std::nullopt;
-    }
+    const std::vector<Point2> cell_points = cellsToPoints(route_geometry_grid, cells);
+    for (std::size_t grid_index = 0U; grid_index < grid_candidates.size();
+         ++grid_index) {
+      const TrajectoryGridCandidate& grid_candidate = grid_candidates[grid_index];
+      if (grid_candidate.grid == nullptr ||
+          !haveSameGridGeometry(route_geometry_grid, *grid_candidate.grid)) {
+        continue;
+      }
+      const OccupancyGrid2D& route_grid = *grid_candidate.grid;
+      std::vector<Point2> path_points = cell_points;
+      const RouteSeedDiagnostics seed_diagnostics =
+          routeSeedDiagnostics(route_grid, planning_start, path_points.front());
+      if (!connectRouteToCurrentPose(route_grid, path_points, source_label,
+                                     planning_start)) {
+        continue;
+      }
 
-    const RouteCandidateDecision route_decision =
-        selectRouteCandidate(path_points, kPublishedPathCollinearityToleranceM,
-                             pathTraversableForGrid, &route_grid);
-    if (route_decision.status == RouteCandidateStatus::kRejectedNonTraversable) {
-      logRejectedUnsafeRoute(route_grid, path_points, source_label,
-                             "pre-collapse path contains a non-traversable segment");
-      return std::nullopt;
+      const RouteCandidateDecision route_decision =
+          selectRouteCandidate(path_points, kPublishedPathCollinearityToleranceM,
+                               pathTraversableForGrid, &route_grid);
+      if (route_decision.status == RouteCandidateStatus::kRejectedNonTraversable) {
+        logRejectedUnsafeRoute(route_grid, path_points, source_label,
+                               "pre-collapse path contains a non-traversable segment");
+        continue;
+      }
+      if (route_decision.status == RouteCandidateStatus::kEmptyInput) {
+        continue;
+      }
+      CandidatePath candidate{route_decision.points,
+                              seed_diagnostics,
+                              source_kind,
+                              cells.size(),
+                              route_decision.pre_collapse_points,
+                              route_decision.collapsed_points,
+                              grid_index,
+                              route_decision.collapse_reverted};
+      if (candidate.collapse_reverted) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 3000,
+            "%s path restored pre-collapse waypoints because collinear collapse "
+            "would create a non-traversable segment: source=%s grid=%.*s "
+            "before=%zu collapsed=%zu",
+            source_label, source_kind, static_cast<int>(grid_candidate.name.size()),
+            grid_candidate.name.data(), candidate.pre_collapse_points,
+            candidate.collapsed_points);
+      }
+      return candidate;
     }
-    if (route_decision.status == RouteCandidateStatus::kEmptyInput) {
-      return std::nullopt;
-    }
-    CandidatePath candidate{route_decision.points,
-                            seed_diagnostics,
-                            source_kind,
-                            cells.size(),
-                            route_decision.pre_collapse_points,
-                            route_decision.collapsed_points,
-                            route_decision.collapse_reverted};
-    if (candidate.collapse_reverted) {
-      RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 3000,
-          "%s path restored pre-collapse waypoints because collinear collapse "
-          "would create a non-traversable segment: source=%s before=%zu "
-          "collapsed=%zu",
-          source_label, source_kind, candidate.pre_collapse_points,
-          candidate.collapsed_points);
-    }
-
-    return candidate;
+    return std::nullopt;
   };
 
   const std::vector<GridIndex>* selected_cells = &smoothed_cells;
@@ -327,6 +350,14 @@ bool PlannerNode::publishPathFromPathCells(
   }
 
   const std::vector<Point2> route_points = std::move(candidate->points);
+  const TrajectoryGridCandidate& route_grid_candidate =
+      grid_candidates[candidate->grid_index];
+  const OccupancyGrid2D& route_grid = *route_grid_candidate.grid;
+  const std::string route_grid_name{route_grid_candidate.name};
+  RCLCPP_INFO(
+      get_logger(),
+      "GRID_STAGE_SELECTED stage=route_connection grid=%s attempt=%zu candidates=%zu",
+      route_grid_name.c_str(), candidate->grid_index + 1U, grid_candidates.size());
   RCLCPP_INFO(get_logger(),
               "%s path postprocess: selected_source=%s raw_cells=%zu "
               "smoothed_cells=%zu selected_cells=%zu pre_collapse_points=%zu "
@@ -386,18 +417,43 @@ bool PlannerNode::publishPathFromPathCells(
   const TrajectoryPlannerInput trajectory_input{
       std::span<const Point2>{route_points.data(), route_points.size()},
       &route_grid,
-      route_clearance_field,
-      route_clearance_field_cache_hit,
+      route_grid_candidate.clearance_field,
+      route_grid_candidate.clearance_field_cache_hit,
       std::span<const CorridorSample>{},
       nullptr,
-      known_passages_ ? &*known_passages_ : nullptr};
+      known_passages_ ? &*known_passages_ : nullptr,
+      grid_candidates};
   TrajectoryPlannerResult trajectory_result =
       planOptimizedTrajectory(trajectory_input, trajectory_config);
   if (candidate->seed_diagnostics.planning_start_prohibited ||
       !trajectory_result.valid) {
-    logTrajectoryCorridorDiagnostics(get_logger(), route_grid, source_label,
-                                     candidate->source_kind, planning_start,
-                                     candidate->seed_diagnostics, trajectory_result);
+    const OccupancyGrid2D* diagnostic_grid = &route_grid;
+    std::string_view diagnostic_grid_name = route_grid_candidate.name;
+    bool corridor_grid_selected = false;
+    for (const TrajectoryGridCandidate& grid_candidate : grid_candidates) {
+      if (grid_candidate.grid != nullptr &&
+          grid_candidate.name == trajectory_result.stats.grid_stages.corridor) {
+        diagnostic_grid = grid_candidate.grid;
+        diagnostic_grid_name = grid_candidate.name;
+        corridor_grid_selected = true;
+        break;
+      }
+    }
+    if (!corridor_grid_selected) {
+      for (const TrajectoryGridCandidate& grid_candidate :
+           grid_candidates | std::views::reverse) {
+        if (grid_candidate.grid != nullptr) {
+          diagnostic_grid = grid_candidate.grid;
+          diagnostic_grid_name = grid_candidate.name;
+          break;
+        }
+      }
+    }
+    const RouteSeedDiagnostics diagnostic_seed = routeSeedDiagnostics(
+        *diagnostic_grid, planning_start, candidate->seed_diagnostics.grid_seed);
+    logTrajectoryCorridorDiagnostics(
+        get_logger(), *diagnostic_grid, diagnostic_grid_name, source_label,
+        candidate->source_kind, planning_start, diagnostic_seed, trajectory_result);
   }
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
@@ -406,8 +462,9 @@ bool PlannerNode::publishPathFromPathCells(
       1000.0;
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   applyNavigationStateSnapshot(fresh_navigation);
-  return publishTrajectoryResult(trajectory_result, route_points, source_label,
-                                 duration_ms, delivery);
+  return publishTrajectoryResult(
+      trajectory_result, route_points, source_label, duration_ms, delivery,
+      std::string{grid_candidates[astar_grid_index].name}, route_grid_name);
 }
 
 bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
@@ -429,6 +486,7 @@ bool PlannerNode::publishTrajectoryResult(
     const TrajectoryPlannerResult& trajectory_result,
     const std::span<const Point2> route_points, const char* source_label,
     const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
+    std::string astar_grid_name, std::string route_grid_name,
     std::uint64_t* published_path_id) {
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
@@ -447,7 +505,8 @@ bool PlannerNode::publishTrajectoryResult(
   std::optional<PlanningGridBuildResult> latest_planning_result =
       buildPlanningGrid(now_ns);
   if (!latest_planning_result.has_value() ||
-      !latest_planning_result->grid.has_value()) {
+      !latest_planning_result->grid.has_value() ||
+      !latest_planning_result->planning_grid.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded before publication: "
                 "reason=latest_validation_grid_unavailable generation=%" PRIu64,
@@ -455,9 +514,34 @@ bool PlannerNode::publishTrajectoryResult(
     requestPlanningCycle();
     return false;
   }
-  const OccupancyGrid2D& latest_validation_grid = *latest_planning_result->grid;
-  publishProhibitedGrid(latest_validation_grid);
+  OccupancyGrid2D latest_prohibited_grid = std::move(*latest_planning_result->grid);
+  OccupancyGrid2D latest_planning_grid =
+      std::move(*latest_planning_result->planning_grid);
+  const LocalInflationRelaxationStats latest_runtime_relaxation =
+      latest_prohibited_grid.clearInflationWithinRadius(
+          fresh_navigation.pose.position, local_inflation_relaxation_radius_m_);
+  const LocalInflationRelaxationStats latest_planning_relaxation =
+      latest_planning_grid.clearInflationWithinRadius(
+          fresh_navigation.pose.position, local_inflation_relaxation_radius_m_);
+  publishProhibitedGrid(latest_prohibited_grid);
+  const std::vector<TrajectoryGridCandidate> latest_grid_candidates{
+      TrajectoryGridCandidate{"planning_clearance", &latest_planning_grid, nullptr,
+                              false},
+      TrajectoryGridCandidate{"runtime_prohibited", &latest_prohibited_grid, nullptr,
+                              false},
+  };
+  RCLCPP_INFO(get_logger(),
+              "LOCAL_INFLATION_RELAXATION stage=fresh_validation center=(%.2f,%.2f) "
+              "radius_m=%.2f runtime_cleared=%zu planning_cleared=%zu "
+              "runtime_occupied_preserved=%zu planning_occupied_preserved=%zu",
+              fresh_navigation.pose.position.x, fresh_navigation.pose.position.y,
+              local_inflation_relaxation_radius_m_,
+              latest_runtime_relaxation.inflated_cells_cleared,
+              latest_planning_relaxation.inflated_cells_cleared,
+              latest_runtime_relaxation.occupied_cells_preserved,
+              latest_planning_relaxation.occupied_cells_preserved);
 
+  std::string handover_grid_name{"not_required"};
   if (trajectory_result.valid &&
       trajectorySamplesAreUsable(last_valid_trajectory_samples_) &&
       trajectorySamplesAreUsable(trajectory_result.samples)) {
@@ -468,16 +552,23 @@ bool PlannerNode::publishTrajectoryResult(
         candidate_projection.has_value() ? std::sqrt(candidate_projection->distance_sq)
                                          : std::numeric_limits<double>::infinity();
     if (!(candidate_cross_track_m <= stable_path_goal_tolerance_m_)) {
-      const HorizontalTrajectoryHandoverResult preflight =
-          buildHorizontalTrajectoryHandover(
-              last_valid_trajectory_samples_, trajectory_result.samples,
-              HorizontalTrajectoryHandoverState{
-                  .current_position = fresh_navigation.pose.position,
-                  .current_horizontal_speed_mps = fresh_navigation.speed_mps,
-                  .current_position_valid = true,
-                  .current_horizontal_speed_valid = fresh_navigation.velocity_valid,
-              },
-              HorizontalTrajectoryHandoverConfig{}, &latest_validation_grid);
+      HorizontalTrajectoryHandoverResult preflight{};
+      for (const TrajectoryGridCandidate& candidate : latest_grid_candidates) {
+        preflight = buildHorizontalTrajectoryHandover(
+            last_valid_trajectory_samples_, trajectory_result.samples,
+            HorizontalTrajectoryHandoverState{
+                .current_position = fresh_navigation.pose.position,
+                .current_horizontal_speed_mps = fresh_navigation.speed_mps,
+                .current_position_valid = true,
+                .current_horizontal_speed_valid = fresh_navigation.velocity_valid,
+            },
+            HorizontalTrajectoryHandoverConfig{}, candidate.grid);
+        if (preflight.applied ||
+            std::string_view{preflight.reason} == "already_compatible") {
+          handover_grid_name = std::string{candidate.name};
+          break;
+        }
+      }
       if (!preflight.applied &&
           std::string_view{preflight.reason} != "already_compatible") {
         RCLCPP_WARN(get_logger(),
@@ -496,9 +587,10 @@ bool PlannerNode::publishTrajectoryResult(
       RCLCPP_INFO(get_logger(),
                   "%s trajectory candidate pre-publication handover accepted: "
                   "generation=%" PRIu64 " candidate_cross_track_m=%.2f "
-                  "handover_reason=%s old_join_s=%.2f candidate_join_s=%.2f",
+                  "handover_reason=%s grid=%s old_join_s=%.2f "
+                  "candidate_join_s=%.2f",
                   source_label, delivery.generation, candidate_cross_track_m,
-                  preflight.reason, preflight.old_join_s_m,
+                  preflight.reason, handover_grid_name.c_str(), preflight.old_join_s_m,
                   preflight.candidate_join_s_m);
     }
   }
@@ -519,7 +611,10 @@ bool PlannerNode::publishTrajectoryResult(
         "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
         " width_min=%.2f width_mean=%.2f] "
         "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu] "
-        "vertical_profile[%s]",
+        "vertical_profile[%s] "
+        "grid_attempts[corridor=%s(%zu) optimizer=%s(%zu) "
+        "turn_smoothing=%s(%zu) trajectory_validation=%s(%zu) "
+        "shape_cleanup=%s(%zu) passage_insertion=%s(%zu)]",
         source_label,
         static_cast<int>(trajectoryPlannerStatusName(stats.status).size()),
         trajectoryPlannerStatusName(stats.status).data(), route_points.size(),
@@ -536,7 +631,16 @@ bool PlannerNode::publishTrajectoryResult(
         stats.trajectory_optimizer.iterations,
         stats.trajectory_optimizer.candidate_evaluations,
         stats.trajectory_optimizer.collision_rejections,
-        vertical_profile_summary.c_str());
+        vertical_profile_summary.c_str(), stats.grid_stages.corridor.c_str(),
+        stats.grid_stages.corridor_attempts, stats.grid_stages.optimizer.c_str(),
+        stats.grid_stages.optimizer_attempts, stats.grid_stages.turn_smoothing.c_str(),
+        stats.grid_stages.turn_smoothing_attempts,
+        stats.grid_stages.trajectory_validation.c_str(),
+        stats.grid_stages.trajectory_validation_attempts,
+        stats.grid_stages.shape_cleanup.c_str(),
+        stats.grid_stages.shape_cleanup_attempts,
+        stats.grid_stages.passage_insertion.c_str(),
+        stats.grid_stages.passage_insertion_attempts);
     if (keepCurrentPathAfterInvalidReplacement(source_label,
                                                "trajectory_build_failed")) {
       return false;
@@ -547,8 +651,19 @@ bool PlannerNode::publishTrajectoryResult(
 
   std::vector<Point2> trajectory_points =
       trajectorySamplePoints(trajectory_result.samples);
-  if (trajectory_points.size() < 2U ||
-      !pathIsTraversable(latest_validation_grid, trajectory_points)) {
+  std::string final_validation_grid_name{"none"};
+  const OccupancyGrid2D* final_validation_grid = nullptr;
+  if (trajectory_points.size() >= 2U) {
+    for (const TrajectoryGridCandidate& candidate : latest_grid_candidates) {
+      if (candidate.grid != nullptr &&
+          pathIsTraversable(*candidate.grid, trajectory_points)) {
+        final_validation_grid_name = std::string{candidate.name};
+        final_validation_grid = candidate.grid;
+        break;
+      }
+    }
+  }
+  if (final_validation_grid == nullptr) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory build produced a non-traversable runtime trajectory; "
                 "holding instead of publishing rough A* route: route_points=%zu "
@@ -572,6 +687,22 @@ bool PlannerNode::publishTrajectoryResult(
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
     return false;
   }
+
+  const TrajectoryGridStageSelections& grid_stages = stats.grid_stages;
+  RCLCPP_INFO(
+      get_logger(),
+      "GRID_ATTEMPT_SELECTION astar=%s route_connection=%s "
+      "corridor=%s(%zu) optimizer=%s(%zu) turn_smoothing=%s(%zu) "
+      "trajectory_validation=%s(%zu) shape_cleanup=%s(%zu) "
+      "passage_insertion=%s(%zu) handover=%s final_validation=%s",
+      astar_grid_name.c_str(), route_grid_name.c_str(), grid_stages.corridor.c_str(),
+      grid_stages.corridor_attempts, grid_stages.optimizer.c_str(),
+      grid_stages.optimizer_attempts, grid_stages.turn_smoothing.c_str(),
+      grid_stages.turn_smoothing_attempts, grid_stages.trajectory_validation.c_str(),
+      grid_stages.trajectory_validation_attempts, grid_stages.shape_cleanup.c_str(),
+      grid_stages.shape_cleanup_attempts, grid_stages.passage_insertion.c_str(),
+      grid_stages.passage_insertion_attempts, handover_grid_name.c_str(),
+      final_validation_grid_name.c_str());
 
   stats.known_passage_validation = trajectory_result.stats.known_passage_validation;
   const KnownPassageValidationSummary& passage_validation =
@@ -990,7 +1121,7 @@ bool PlannerNode::publishTrajectoryResult(
 
   last_valid_path_points_ = trajectory_points;
   last_valid_trajectory_samples_ = trajectory_result.samples;
-  logPublishedPathSafety(latest_validation_grid, trajectory_points, "final_trajectory");
+  logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
   const std::uint64_t path_id =
       publishTrajectoryPath(trajectory_result.samples,
                             PathPublicationReason::kComputedPath, &stats, delivery);

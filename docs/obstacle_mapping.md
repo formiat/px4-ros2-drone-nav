@@ -257,6 +257,13 @@ The local inflation relaxation is applied only to temporary runtime and planning
 grid copies around the current physical vehicle position. It never removes raw
 occupied cells from static map, current lidar, or accumulated memory.
 
+Grid-dependent path and trajectory stages try those temporary copies in a fixed
+order: planning clearance first, then runtime prohibited. Each stage performs
+its own ordered attempts and validates its output against the grid for that
+attempt. The final executable trajectory is checked against freshly rebuilt
+copies in the same order before publication. `GRID_ATTEMPT_SELECTION` reports
+where the preferred clearance had to be relaxed.
+
 ## Atomic Memory Transport
 
 Runtime planning receives a single `ObstacleMemorySnapshot` containing the raw

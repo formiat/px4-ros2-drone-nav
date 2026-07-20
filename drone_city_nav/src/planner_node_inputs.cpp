@@ -554,13 +554,35 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
               planning_duration_estimate_s_, navigation.speed_mps,
               trajectorySamplesAreUsable(last_valid_trajectory_samples_) ? "true"
                                                                          : "false");
-  auto path_result = computePathOnGrid(planning_grid, "planning_clearance",
-                                       planning_astar_config, planning_start);
+  std::vector<TrajectoryGridCandidate> grid_candidates{
+      TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
+      TrajectoryGridCandidate{"runtime_prohibited", &prohibited_grid, nullptr, false},
+  };
+  std::optional<PathComputationResult> path_result;
+  std::size_t astar_grid_index = 0U;
+  for (; astar_grid_index < grid_candidates.size(); ++astar_grid_index) {
+    const TrajectoryGridCandidate& candidate = grid_candidates[astar_grid_index];
+    const std::string candidate_name{candidate.name};
+    path_result = computePathOnGrid(*candidate.grid, candidate_name.c_str(),
+                                    planning_astar_config, planning_start);
+    if (path_result.has_value()) {
+      break;
+    }
+  }
   if (!path_result.has_value()) {
     publishPlanningFailureHold();
     return;
   }
+  grid_candidates[astar_grid_index].clearance_field =
+      path_result->prohibited_clearance_field;
+  grid_candidates[astar_grid_index].clearance_field_cache_hit =
+      path_result->prohibited_clearance_field_cache_hit;
+  const std::string astar_grid_name{grid_candidates[astar_grid_index].name};
+  RCLCPP_INFO(get_logger(),
+              "GRID_STAGE_SELECTED stage=astar grid=%s attempt=%zu candidates=%zu",
+              astar_grid_name.c_str(), astar_grid_index + 1U, grid_candidates.size());
   const GridStats prohibited_grid_stats = collectGridStats(prohibited_grid);
+  const GridStats planning_grid_stats = collectGridStats(planning_grid);
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
@@ -588,7 +610,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       "parts[left=%zu right=%zu lower=%zu upper=%zu] "
       "first_ignored=%s/%s/%s delta=%.3f "
       "first_ambiguous=%s/%s/%s delta=%.3f]] "
-      "source=planning_clearance astar_status=%s heuristic_weight=%.2f expanded=%zu "
+      "source=%s astar_status=%s heuristic_weight=%.2f expanded=%zu "
       "cost=%.2f raw_path=%zu smoothed_path=%zu "
       "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
       "weight=%.2f velocity=(%.2f, %.2f)] "
@@ -609,9 +631,9 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       prohibited_grid_stats.occupied_cells, prohibited_grid_stats.inflated_cells,
       prohibited_grid_stats.free_cells, prohibited_grid_stats.unknown_cells,
       inflation_radius_m_,
-      path_result->grid_stats.occupied_cells + path_result->grid_stats.inflated_cells,
-      path_result->grid_stats.occupied_cells, path_result->grid_stats.inflated_cells,
-      path_result->grid_stats.free_cells, path_result->grid_stats.unknown_cells,
+      planning_grid_stats.occupied_cells + planning_grid_stats.inflated_cells,
+      planning_grid_stats.occupied_cells, planning_grid_stats.inflated_cells,
+      planning_grid_stats.free_cells, planning_grid_stats.unknown_cells,
       planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
       runtime_relaxation.inflated_cells_cleared,
       runtime_relaxation.occupied_cells_preserved,
@@ -690,7 +712,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 .c_str()
           : "<none>",
       planning_result->current_lidar.known_static_lidar.first_ambiguous.range_delta_m,
-      astarStatusName(path_result->astar.status),
+      astar_grid_name.c_str(), astarStatusName(path_result->astar.status),
       planning_astar_config.heuristic_weight, path_result->astar.expanded_cells,
       path_result->astar.total_cost, path_result->raw_path_metrics.points,
       path_result->smoothed_path_metrics.points,
@@ -776,9 +798,8 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 path_result->astar.path.size());
   }
   const bool published = publishPathFromPathCells(
-      planning_grid, path_result->astar.path, path_result->smoothed_cells,
-      "planning_clearance", path_result->prohibited_clearance_field,
-      path_result->prohibited_clearance_field_cache_hit, planning_start);
+      grid_candidates, astar_grid_index, path_result->astar.path,
+      path_result->smoothed_cells, astar_grid_name.c_str(), planning_start);
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
   planning_duration_estimate_s_ = std::clamp(
       0.75 * planning_duration_estimate_s_ + 0.25 * cycle_duration_s, 0.20, 2.50);

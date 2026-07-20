@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -44,6 +45,28 @@ struct TrajectoryPlannerConfig {
   PassageInsertionConfig passage_insertion{};
   double debug_sample_step_m{1.0};
   double initial_altitude_m{0.0};
+};
+
+struct TrajectoryGridCandidate {
+  std::string_view name;
+  const OccupancyGrid2D* grid{nullptr};
+  const ClearanceField2D* clearance_field{nullptr};
+  bool clearance_field_cache_hit{false};
+};
+
+struct TrajectoryGridStageSelections {
+  std::string corridor{"none"};
+  std::string optimizer{"none"};
+  std::string turn_smoothing{"none"};
+  std::string trajectory_validation{"none"};
+  std::string shape_cleanup{"none"};
+  std::string passage_insertion{"none"};
+  std::size_t corridor_attempts{0U};
+  std::size_t optimizer_attempts{0U};
+  std::size_t turn_smoothing_attempts{0U};
+  std::size_t trajectory_validation_attempts{0U};
+  std::size_t shape_cleanup_attempts{0U};
+  std::size_t passage_insertion_attempts{0U};
 };
 
 struct TrajectoryPlannerStats {
@@ -82,6 +105,7 @@ struct TrajectoryPlannerStats {
   CorridorStats corridor{};
   TrajectoryOptimizerStats trajectory_optimizer{};
   TurnSmoothingStats turn_smoothing{};
+  TrajectoryGridStageSelections grid_stages{};
 };
 
 struct TrajectoryPlannerInput {
@@ -92,6 +116,7 @@ struct TrajectoryPlannerInput {
   std::span<const CorridorSample> precomputed_corridor_samples;
   const CorridorStats* precomputed_corridor_stats{nullptr};
   const KnownPassageMap* known_passage_map{nullptr};
+  std::span<const TrajectoryGridCandidate> grid_candidates{};
 };
 
 struct TrajectoryPlannerResult {

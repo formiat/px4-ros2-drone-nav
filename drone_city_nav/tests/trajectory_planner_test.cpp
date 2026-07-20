@@ -1,4 +1,5 @@
 #include "drone_city_nav/clearance_field.hpp"
+#include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 
 #include <gtest/gtest.h>
@@ -143,6 +144,45 @@ TEST(TrajectoryPlanner, TrajectoryOptimizerTrajectoryProducesSamplesAndSpeedProf
   for (const TrajectoryPointSample& sample : result.samples) {
     EXPECT_DOUBLE_EQ(sample.z_m, 18.0);
   }
+}
+
+TEST(TrajectoryPlanner, GridDependentStagesFallBackToRuntimeProhibitedGrid) {
+  OccupancyGrid2D runtime_grid = testGrid();
+  for (int x = 5; x <= 35; ++x) {
+    runtime_grid.setOccupied(GridIndex{x, 24});
+    runtime_grid.setOccupied(GridIndex{x, 16});
+  }
+  OccupancyGrid2D planning_grid = runtime_grid;
+  runtime_grid.rebuildInflation(1.0);
+  planning_grid.rebuildInflation(4.0);
+
+  const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
+  const std::vector<TrajectoryGridCandidate> candidates{
+      TrajectoryGridCandidate{"planning_clearance", &planning_grid},
+      TrajectoryGridCandidate{"runtime_prohibited", &runtime_grid},
+  };
+  TrajectoryPlannerInput input{};
+  input.route_points = std::span<const Point2>{route.data(), route.size()};
+  input.prohibited_grid = &planning_grid;
+  input.grid_candidates = candidates;
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(input, testConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.grid_stages.corridor, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.optimizer, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.turn_smoothing, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.trajectory_validation, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.shape_cleanup, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "runtime_prohibited");
+  EXPECT_EQ(result.stats.grid_stages.corridor_attempts, 2U);
+  EXPECT_EQ(result.stats.grid_stages.optimizer_attempts, 2U);
+  EXPECT_EQ(result.stats.grid_stages.turn_smoothing_attempts, 2U);
+  EXPECT_EQ(result.stats.grid_stages.trajectory_validation_attempts, 2U);
+  EXPECT_EQ(result.stats.grid_stages.shape_cleanup_attempts, 2U);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion_attempts, 2U);
+  const std::vector<Point2> result_points = samplePoints(result.samples);
+  EXPECT_TRUE(pathIsTraversable(runtime_grid, result_points));
+  EXPECT_FALSE(pathIsTraversable(planning_grid, result_points));
 }
 
 TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {

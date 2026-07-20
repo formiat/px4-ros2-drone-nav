@@ -201,18 +201,18 @@ private:
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
                     const AStarConfig& astar_config, Point2 planning_start);
 
-  bool publishPathFromPathCells(const OccupancyGrid2D& route_grid,
-                                const std::vector<GridIndex>& raw_cells,
-                                const std::vector<GridIndex>& smoothed_cells,
-                                const char* source_label,
-                                const ClearanceField2D* route_clearance_field,
-                                bool route_clearance_field_cache_hit,
-                                Point2 planning_start);
+  bool
+  publishPathFromPathCells(std::span<const TrajectoryGridCandidate> grid_candidates,
+                           std::size_t astar_grid_index,
+                           const std::vector<GridIndex>& raw_cells,
+                           const std::vector<GridIndex>& smoothed_cells,
+                           const char* source_label, Point2 planning_start);
 
   bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
                                const char* source_label, double duration_ms,
                                TrajectoryDeliveryDiagnostics delivery,
+                               std::string astar_grid_name, std::string route_grid_name,
                                std::uint64_t* published_path_id = nullptr);
 
   [[nodiscard]] bool

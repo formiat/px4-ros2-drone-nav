@@ -48,6 +48,27 @@ The prohibited grid is the hard validation grid. The extra planning clearance
 is used to bias planning away from obstacles and does not by itself cause a
 runtime replan.
 
+Grid-dependent planning stages use an ordered fallback:
+
+```text
+planning_clearance -> runtime_prohibited
+```
+
+Each stage starts again with the stricter planning-clearance grid and uses the
+runtime prohibited grid only if that stage cannot produce a valid result. The
+ordered attempts cover A*, route connection, corridor construction, trajectory
+optimization, turn smoothing, shape cleanup, local passage insertion, handover
+preflight, and final trajectory validation. A stage result is accepted only
+after it is checked against the grid used for that attempt. This permits a
+route with the hard runtime safety margin when the preferred extra clearance is
+too restrictive, without weakening either grid or changing the underlying
+algorithms.
+
+Immediately before publication, final validation rebuilds fresh copies of both
+grids, reapplies local inflation relaxation, and again checks planning clearance
+before runtime prohibited space. The log entry `GRID_ATTEMPT_SELECTION` records
+the selected grid and attempt count for every stage.
+
 Before the planner publishes either grid or starts path construction, it
 transiently removes inflated cells whose centers are within
 `local_inflation_relaxation_radius_m` of the current physical vehicle position.
@@ -81,9 +102,10 @@ trajectory generation.
 
 ## 5. Corridor Construction
 
-The corridor builder samples the route and finds lateral bounds. It uses the
-prohibited/planning grid to avoid invalid space and can reuse clearance fields
-and previous samples when safe.
+The corridor builder samples the route and finds lateral bounds. Its
+orchestration tries the planning-clearance grid first and the runtime prohibited
+grid second. The corridor algorithm itself is unchanged and can reuse clearance
+fields and previous samples when safe.
 
 Important concepts:
 
@@ -172,10 +194,12 @@ carry per-sample altitude in `pose.position.z`.
 Known passage markers are RViz/debug artifacts. Architectural structure volumes,
 opening frames, opening centers, approach arrows, and exit arrows help verify
 annotation geometry. The same annotations feed the no-over-building validator
-and the always-on known-static lidar classifier. A validation violation is
-diagnostic-only; it does not cancel path publication by itself. Classifier
-decisions apply only to new dynamic lidar evidence and are not tied to an active
-trajectory passage span.
+and the always-on known-static lidar classifier. Known-passage validation is a
+planner acceptance guard: a trajectory that intersects an annotated structure
+outside its opening is not published. It is not collision or crash detection;
+physical contacts remain Gazebo's responsibility. Classifier decisions apply
+only to new dynamic lidar evidence and are not tied to an active trajectory
+passage span.
 
 ## Pipeline Contracts
 
