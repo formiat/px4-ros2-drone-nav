@@ -364,7 +364,7 @@ private:
   bool scan_seen_{false};
   bool scan_seen_logged_{false};
   bool use_static_map_{true};
-  bool safe_trajectory_truncation_enabled_{false};
+  bool safe_trajectory_truncation_enabled_{true};
   bool use_known_passages_{true};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};

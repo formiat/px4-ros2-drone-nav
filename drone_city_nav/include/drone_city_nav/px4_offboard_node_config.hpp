@@ -44,7 +44,7 @@ struct Px4OffboardNodeConfig {
   std::int64_t max_pose_staleness_ns{1'000'000'000};
   double final_trajectory_debug_sample_step_m{1.0};
   double trajectory_update_max_start_cross_track_m{8.0};
-  bool safe_trajectory_truncation_enabled{false};
+  bool safe_trajectory_truncation_enabled{true};
   double safe_trajectory_truncation_margin_m{10.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover{};
   TrajectoryContinuityThresholds trajectory_continuity{};

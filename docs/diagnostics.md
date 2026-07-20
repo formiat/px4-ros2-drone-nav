@@ -538,7 +538,7 @@ Do not use terminal position-capture behavior to judge normal lateral control.
 Position capture intentionally changes the setpoint mode. Conversely, a clean
 final hold does not prove the high-speed part of the path was tracked well.
 
-For lidar-only safe trajectory truncation, inspect paired
+For safe trajectory truncation, inspect paired
 `SAFE_TRAJECTORY_TRUNCATION` records. They identify the blocked accepted path,
 the blocker distance, fixed truncation margin, chosen terminal station, and
 whether offboard retained a prefix or had to enter an immediate temporary hold.

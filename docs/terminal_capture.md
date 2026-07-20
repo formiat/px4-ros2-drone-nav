@@ -21,12 +21,12 @@ completion.
 
 ## Temporary Replan Hold
 
-Lidar-only runs can enable `safe_trajectory_truncation_enabled`. When the
-planner finds a prohibited cell on the currently accepted path, it immediately
-publishes `/drone_city_nav/replan_blocker`. Offboard retains only the old
-executable prefix ending `safe_trajectory_truncation_margin_m` before the
-blocker, then uses the same velocity terminal capture and position capture
-states as it does at the mission goal.
+`safe_trajectory_truncation_enabled` is enabled by default for every navigation
+mode. When the planner finds a prohibited cell on the currently accepted path,
+it immediately publishes `/drone_city_nav/replan_blocker`. Offboard retains
+only the old executable prefix ending `safe_trajectory_truncation_margin_m`
+before the blocker, then uses the same velocity terminal capture and position
+capture states as it does at the mission goal.
 
 The margin is fixed along the executable trajectory; it is deliberately not a
 speed-dependent stopping-distance calculation. If the requested terminal
@@ -40,8 +40,8 @@ station is no longer ahead of the drone, offboard enters
 - the first accepted replacement path clears the temporary state and resumes
   normal flight.
 
-The launch file enables this feature only with the lidar-only no-static policy.
-Static-map runs retain their existing trajectory behavior.
+The feature is independent of whether the prohibited cell came from the static
+map, accumulated obstacle memory, or current lidar.
 
 ## Velocity Terminal Capture
 

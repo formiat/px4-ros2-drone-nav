@@ -309,8 +309,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   memory_snapshot_min_apply_rate_hz_ =
       config.memory_snapshot_transport.min_apply_rate_hz;
   use_static_map_ = config.static_map.enabled;
-  safe_trajectory_truncation_enabled_ =
-      config.safe_trajectory_truncation_enabled && !use_static_map_;
+  safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
   static_map_path_param_ = config.static_map.configured_path.string();
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
   use_known_passages_ = config.known_passages.enabled;

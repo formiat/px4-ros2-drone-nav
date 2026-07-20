@@ -90,7 +90,7 @@ struct PlannerNodeConfig {
   double known_static_lidar_hit_endpoint_volume_tolerance_m{0.75};
   double known_static_opening_boundary_tolerance_m{0.30};
   GroundLidarRejectionConfig ground_lidar_rejection{};
-  bool safe_trajectory_truncation_enabled{false};
+  bool safe_trajectory_truncation_enabled{true};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

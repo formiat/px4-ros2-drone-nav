@@ -154,7 +154,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_EQ(config.topics.replan_blocker, "/drone_city_nav/replan_blocker");
-  EXPECT_FALSE(config.safe_trajectory_truncation_enabled);
+  EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 1.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);

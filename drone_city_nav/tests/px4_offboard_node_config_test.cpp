@@ -245,7 +245,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_EQ(config.flight_blackbox_path, "log/offboard_blackbox.jsonl");
   EXPECT_TRUE(config.flight_blackbox_enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
-  EXPECT_FALSE(config.safe_trajectory_truncation_enabled);
+  EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
   EXPECT_DOUBLE_EQ(config.safe_trajectory_truncation_margin_m, 10.0);
   EXPECT_TRUE(config.trajectory_handover.enabled);
   EXPECT_TRUE(config.trajectory_handover.require_validation_grid);

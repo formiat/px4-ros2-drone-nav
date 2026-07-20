@@ -633,7 +633,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.topics.current_waypoint = node.declare_parameter<std::string>(
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
   config.safe_trajectory_truncation_enabled =
-      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", false);
+      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", true);
   config.timing.path_prohibited_intersection_check_period_s =
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);

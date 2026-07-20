@@ -380,7 +380,7 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
                                      config.trajectory_update_max_start_cross_track_m),
       0.0, 1000.0);
   config.safe_trajectory_truncation_enabled =
-      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", false);
+      node.declare_parameter<bool>("safe_trajectory_truncation_enabled", true);
   config.safe_trajectory_truncation_margin_m = boundedFiniteDouble(
       node.declare_parameter<double>("safe_trajectory_truncation_margin_m", 10.0), 10.0,
       0.0, 1000.0);

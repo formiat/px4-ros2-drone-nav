@@ -405,7 +405,7 @@ private:
   bool current_vertical_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
   bool final_goal_hold_active_{false};
-  bool safe_trajectory_truncation_enabled_{false};
+  bool safe_trajectory_truncation_enabled_{true};
   bool temporary_replan_truncation_active_{false};
   bool temporary_replan_hold_active_{false};
   bool takeoff_hold_target_valid_{false};
