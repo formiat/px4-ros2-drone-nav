@@ -20,6 +20,138 @@ namespace {
   return pathIsTraversable(grid, points);
 }
 
+struct RouteSeedDiagnostics {
+  Point2 grid_seed{};
+  double connection_distance_m{0.0};
+  std::size_t connection_cells{0U};
+  std::size_t connection_prohibited_prefix_cells{0U};
+  bool planning_start_occupied{false};
+  bool planning_start_inflated{false};
+  bool planning_start_prohibited{false};
+  bool connection_traversable{false};
+  bool connection_reentered_prohibited{false};
+};
+
+[[nodiscard]] RouteSeedDiagnostics routeSeedDiagnostics(const OccupancyGrid2D& grid,
+                                                        const Point2 planning_start,
+                                                        const Point2 grid_seed) {
+  RouteSeedDiagnostics diagnostics{};
+  diagnostics.grid_seed = grid_seed;
+  diagnostics.connection_distance_m = distance(planning_start, grid_seed);
+  const std::optional<GridIndex> planning_start_cell = grid.worldToCell(planning_start);
+  const std::optional<GridIndex> grid_seed_cell = grid.worldToCell(grid_seed);
+  if (!planning_start_cell.has_value() || !grid_seed_cell.has_value()) {
+    return diagnostics;
+  }
+
+  diagnostics.planning_start_occupied = grid.isOccupied(*planning_start_cell);
+  diagnostics.planning_start_inflated = grid.isInflated(*planning_start_cell);
+  diagnostics.planning_start_prohibited = grid.isProhibited(*planning_start_cell);
+  const std::vector<GridIndex> connection_cells =
+      grid.cellsOnLine(*planning_start_cell, *grid_seed_cell);
+  diagnostics.connection_cells = connection_cells.size();
+  bool reached_free_cell = false;
+  for (const GridIndex cell : connection_cells) {
+    if (grid.isProhibited(cell)) {
+      if (reached_free_cell) {
+        diagnostics.connection_reentered_prohibited = true;
+      } else {
+        ++diagnostics.connection_prohibited_prefix_cells;
+      }
+    } else {
+      reached_free_cell = true;
+    }
+  }
+  diagnostics.connection_traversable =
+      pathSegmentIsTraversable(grid, planning_start, grid_seed);
+  return diagnostics;
+}
+
+void logTrajectoryCorridorDiagnostics(
+    const rclcpp::Logger& logger, const OccupancyGrid2D& grid, const char* source_label,
+    const char* source_kind, const Point2 planning_start,
+    const RouteSeedDiagnostics& route_seed,
+    const TrajectoryPlannerResult& trajectory_result) {
+  const std::string_view status_name =
+      trajectoryPlannerStatusName(trajectory_result.stats.status);
+  const CorridorSample* critical_sample = nullptr;
+  std::size_t critical_index = 0U;
+  bool critical_route_prohibited = false;
+  for (std::size_t index = 0U; index < trajectory_result.corridor_samples.size();
+       ++index) {
+    const CorridorSample& sample = trajectory_result.corridor_samples[index];
+    const std::optional<GridIndex> route_cell = grid.worldToCell(sample.route_center);
+    const bool route_prohibited =
+        !route_cell.has_value() || grid.isProhibited(*route_cell);
+    const double width_m = sample.left_bound_m + sample.right_bound_m;
+    if ((route_prohibited && !critical_route_prohibited) ||
+        (critical_sample == nullptr && !route_prohibited) ||
+        (!critical_route_prohibited && !route_prohibited &&
+         width_m < critical_sample->left_bound_m + critical_sample->right_bound_m)) {
+      critical_sample = &sample;
+      critical_index = index;
+      critical_route_prohibited = route_prohibited;
+    }
+  }
+
+  if (critical_sample == nullptr) {
+    RCLCPP_WARN(logger,
+                "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s status=%s "
+                "valid=%s planning_start=(%.2f,%.2f) start[occupied=%s inflated=%s "
+                "prohibited=%s] grid_seed=(%.2f,%.2f) prefix[distance=%.2f cells=%zu "
+                "prohibited_prefix=%zu reentered_prohibited=%s traversable=%s] "
+                "corridor_samples=0",
+                source_label, source_kind, status_name.data(),
+                trajectory_result.valid ? "true" : "false", planning_start.x,
+                planning_start.y, route_seed.planning_start_occupied ? "true" : "false",
+                route_seed.planning_start_inflated ? "true" : "false",
+                route_seed.planning_start_prohibited ? "true" : "false",
+                route_seed.grid_seed.x, route_seed.grid_seed.y,
+                route_seed.connection_distance_m, route_seed.connection_cells,
+                route_seed.connection_prohibited_prefix_cells,
+                route_seed.connection_reentered_prohibited ? "true" : "false",
+                route_seed.connection_traversable ? "true" : "false");
+    return;
+  }
+
+  const std::optional<GridIndex> route_cell =
+      grid.worldToCell(critical_sample->route_center);
+  const std::optional<GridIndex> center_cell =
+      grid.worldToCell(critical_sample->center);
+  RCLCPP_WARN(
+      logger,
+      "TRAJECTORY_CORRIDOR_DIAGNOSTIC source=%s route_source=%s status=%s valid=%s "
+      "planning_start=(%.2f,%.2f) start[occupied=%s inflated=%s prohibited=%s] "
+      "grid_seed=(%.2f,%.2f) prefix[distance=%.2f cells=%zu prohibited_prefix=%zu "
+      "reentered_prohibited=%s traversable=%s] critical[index=%zu s=%.2f "
+      "route_prohibited=%s route=(%.2f,%.2f) route_cell=(%d,%d) "
+      "center=(%.2f,%.2f) center_cell=(%d,%d) recovery=%.2f left=%.2f right=%.2f "
+      "width=%.2f clearance=%.2f] corridor[route_prohibited=%zu recovered=%zu "
+      "unrecoverable=%zu width_min=%.2f]",
+      source_label, source_kind, status_name.data(),
+      trajectory_result.valid ? "true" : "false", planning_start.x, planning_start.y,
+      route_seed.planning_start_occupied ? "true" : "false",
+      route_seed.planning_start_inflated ? "true" : "false",
+      route_seed.planning_start_prohibited ? "true" : "false", route_seed.grid_seed.x,
+      route_seed.grid_seed.y, route_seed.connection_distance_m,
+      route_seed.connection_cells, route_seed.connection_prohibited_prefix_cells,
+      route_seed.connection_reentered_prohibited ? "true" : "false",
+      route_seed.connection_traversable ? "true" : "false", critical_index,
+      critical_sample->s_m, critical_route_prohibited ? "true" : "false",
+      critical_sample->route_center.x, critical_sample->route_center.y,
+      route_cell.has_value() ? route_cell->x : -1,
+      route_cell.has_value() ? route_cell->y : -1, critical_sample->center.x,
+      critical_sample->center.y, center_cell.has_value() ? center_cell->x : -1,
+      center_cell.has_value() ? center_cell->y : -1, critical_sample->center_recovery_m,
+      critical_sample->left_bound_m, critical_sample->right_bound_m,
+      critical_sample->left_bound_m + critical_sample->right_bound_m,
+      critical_sample->clearance_m,
+      trajectory_result.stats.corridor.route_prohibited_samples,
+      trajectory_result.stats.corridor.center_recovered_samples,
+      trajectory_result.stats.corridor.center_unrecoverable_samples,
+      trajectory_result.stats.corridor.min_width_m);
+}
+
 [[nodiscard]] std::string
 centerlineBlockedSpansSummary(const TrajectoryOptimizerStats& stats) {
   if (stats.centerline_blocked_span_diagnostic_count == 0U) {
@@ -103,6 +235,7 @@ bool PlannerNode::publishPathFromPathCells(
 
   struct CandidatePath {
     std::vector<Point2> points;
+    RouteSeedDiagnostics seed_diagnostics{};
     const char* source_kind{""};
     std::size_t input_cells{0U};
     std::size_t pre_collapse_points{0U};
@@ -118,6 +251,8 @@ bool PlannerNode::publishPathFromPathCells(
     }
 
     std::vector<Point2> path_points = cellsToPoints(route_grid, cells);
+    const RouteSeedDiagnostics seed_diagnostics =
+        routeSeedDiagnostics(route_grid, planning_start, path_points.front());
     if (!connectRouteToCurrentPose(route_grid, path_points, source_label,
                                    planning_start)) {
       return std::nullopt;
@@ -135,6 +270,7 @@ bool PlannerNode::publishPathFromPathCells(
       return std::nullopt;
     }
     CandidatePath candidate{route_decision.points,
+                            seed_diagnostics,
                             source_kind,
                             cells.size(),
                             route_decision.pre_collapse_points,
@@ -257,6 +393,12 @@ bool PlannerNode::publishPathFromPathCells(
       known_passages_ ? &*known_passages_ : nullptr};
   TrajectoryPlannerResult trajectory_result =
       planOptimizedTrajectory(trajectory_input, trajectory_config);
+  if (candidate->seed_diagnostics.planning_start_prohibited ||
+      !trajectory_result.valid) {
+    logTrajectoryCorridorDiagnostics(get_logger(), route_grid, source_label,
+                                     candidate->source_kind, planning_start,
+                                     candidate->seed_diagnostics, trajectory_result);
+  }
   const double duration_ms =
       static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now() - started_at)

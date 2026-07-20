@@ -840,12 +840,43 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
   ++astar_successes_;
   if (result->start_escape_used && result->requested_start_cell.has_value() &&
       result->start_cell.has_value()) {
+    const Point2 escape_point = grid.cellCenter(*result->start_cell);
+    const std::vector<GridIndex> escape_line =
+        grid.cellsOnLine(*result->requested_start_cell, *result->start_cell);
+    std::size_t prohibited_prefix_cells = 0U;
+    bool reached_free_cell = false;
+    bool reentered_prohibited = false;
+    for (const GridIndex cell : escape_line) {
+      if (grid.isProhibited(cell)) {
+        if (reached_free_cell) {
+          reentered_prohibited = true;
+        } else {
+          ++prohibited_prefix_cells;
+        }
+      } else {
+        reached_free_cell = true;
+      }
+    }
     RCLCPP_WARN(get_logger(),
-                "A* recovered from inflated start on %s grid: requested_start=(%d,%d) "
-                "escape_start=(%d,%d) escape_distance=%.2fm",
+                "A_STAR_START_ESCAPE source=%s requested_start=(%d,%d) "
+                "requested_center=(%.2f,%.2f) requested[occupied=%s inflated=%s "
+                "prohibited=%s] escape_start=(%d,%d) escape_center=(%.2f,%.2f) "
+                "escape[occupied=%s inflated=%s prohibited=%s] distance=%.2fm "
+                "prefix[cells=%zu prohibited_prefix=%zu reentered_prohibited=%s "
+                "traversable=%s]",
                 source_label, result->requested_start_cell->x,
-                result->requested_start_cell->y, result->start_cell->x,
-                result->start_cell->y, result->start_escape_distance_m);
+                result->requested_start_cell->y, planning_start.x, planning_start.y,
+                grid.isOccupied(*result->requested_start_cell) ? "true" : "false",
+                grid.isInflated(*result->requested_start_cell) ? "true" : "false",
+                grid.isProhibited(*result->requested_start_cell) ? "true" : "false",
+                result->start_cell->x, result->start_cell->y, escape_point.x,
+                escape_point.y, grid.isOccupied(*result->start_cell) ? "true" : "false",
+                grid.isInflated(*result->start_cell) ? "true" : "false",
+                grid.isProhibited(*result->start_cell) ? "true" : "false",
+                result->start_escape_distance_m, escape_line.size(),
+                prohibited_prefix_cells, reentered_prohibited ? "true" : "false",
+                pathSegmentIsTraversable(grid, planning_start, escape_point) ? "true"
+                                                                             : "false");
   }
   return result;
 }
