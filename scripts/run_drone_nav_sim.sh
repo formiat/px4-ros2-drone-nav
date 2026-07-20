@@ -397,7 +397,8 @@ export PX4_GZ_PLUGINS="${px4_plugins_dir}"
 export PX4_GZ_SERVER_CONFIG="${px4_server_config}"
 export GZ_IP="${GZ_IP:-127.0.0.1}"
 export GZ_SIM_RESOURCE_PATH="${gz_resource_path}"
-export GZ_SIM_SYSTEM_PLUGIN_PATH="${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
+drone_city_nav_plugin_dir="${colcon_install_base}/drone_city_nav/lib"
+export GZ_SIM_SYSTEM_PLUGIN_PATH="${drone_city_nav_plugin_dir}:${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
 formatted_evasive_maneuvering_override="$(

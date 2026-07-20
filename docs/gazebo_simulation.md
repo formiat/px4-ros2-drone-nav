@@ -57,6 +57,12 @@ The default configuration uses:
 These values are configured in `drone_city_nav/config/urban_mvp.yaml` for the
 planner, offboard node, obstacle memory node, and mission monitor.
 
+The X500 wrapper also loads `DroneContactSystem`. The simulation runner prepends
+the package install library directory to `GZ_SIM_SYSTEM_PLUGIN_PATH`, and the ROS
+launch bridges `/drone_city_nav/drone_contacts` from `gz.msgs.Contacts` to
+`ros_gz_interfaces/msg/Contacts`. Do not replace this with a distance or lidar
+heuristic: Gazebo physics contact is the source of truth for a crash.
+
 When changing the scenario, keep these values consistent across nodes.
 
 ## Static Map Generation

@@ -328,6 +328,20 @@ itself remains free space. Its geometric clearance estimate is diagnostic only:
 the monitor does not command PX4, and Gazebo collision geometry remains the
 physical source of truth.
 
+## Physical Collision Parameters
+
+`collision_crash_node` consumes `/drone_city_nav/drone_contacts`, PX4 local
+position, attitude, and status. `airborne_altitude_m` is the one-way takeoff
+gate: contacts are ignored before an armed vehicle reaches that altitude; every
+external physical contact after that point is fatal for the remainder of the
+run. The default is `1.0 m`.
+
+The resulting `/drone_city_nav/crash_state` uses reliable transient-local QoS.
+It is intentionally not configurable as a clearance or impact-force threshold.
+The current simulation contract treats every physical contact after takeoff as
+fatal. Geometric building-clearance parameters in `mission_monitor_node` remain
+diagnostic only.
+
 `passage_traversal_hysteresis_m` controls the distance on each side of the
 annotated entry and exit planes that must be crossed before the monitor records
 a directed traversal. The default `0.25` m prevents position noise at a plane

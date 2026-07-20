@@ -29,6 +29,11 @@ void Px4OffboardNode::onTimer() {
 
   publishRvizDroneFollowTransform();
 
+  if (crashed_) {
+    handleCrashedVehicle();
+    return;
+  }
+
   updateFinalGoalHold();
   advanceWaypointIfNeeded();
   updateTerminalCaptureState();

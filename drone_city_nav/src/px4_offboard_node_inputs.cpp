@@ -103,6 +103,20 @@ void Px4OffboardNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg) {
   vehicle_status_ = msg;
   vehicle_status_valid_ = true;
 
+  if (crashed_ && !crash_disarm_confirmed_ &&
+      msg.arming_state != px4_msgs::msg::VehicleStatus::ARMING_STATE_ARMED) {
+    crash_disarm_confirmed_ = true;
+    const double latency_ms =
+        crash_received_time_.nanoseconds() > 0
+            ? 1.0e-6 * static_cast<double>((now() - crash_received_time_).nanoseconds())
+            : std::numeric_limits<double>::quiet_NaN();
+    RCLCPP_ERROR(get_logger(),
+                 "PHYSICAL_COLLISION disarm_confirmed=true latency_ms=%.1f "
+                 "drone_collision='%s' obstacle_collision='%s'",
+                 latency_ms, crash_drone_collision_.c_str(),
+                 crash_obstacle_collision_.c_str());
+  }
+
   const auto arming_state = static_cast<int>(msg.arming_state);
   const auto nav_state = static_cast<int>(msg.nav_state);
   if (arming_state != last_logged_arming_state_ ||

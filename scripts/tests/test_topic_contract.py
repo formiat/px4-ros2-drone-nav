@@ -59,6 +59,24 @@ def extract_braced_block(source: str, anchor: str) -> str:
 
 
 class TopicContractTest(unittest.TestCase):
+    def test_physical_collision_crash_pipeline_contract(self) -> None:
+        launch_text = read("drone_city_nav/launch/city_nav.launch.py")
+        offboard_header = read("drone_city_nav/src/px4_offboard_node.hpp")
+        offboard_crash = read("drone_city_nav/src/px4_offboard_node_crash.cpp")
+        mission_monitor = read("drone_city_nav/src/mission_monitor_node.cpp")
+        config_text = read("drone_city_nav/config/urban_mvp.yaml")
+
+        self.assertIn("ros_gz_interfaces/msg/Contacts", launch_text)
+        self.assertIn('executable="collision_crash_node"', launch_text)
+        self.assertIn("msg::CrashState", offboard_header)
+        self.assertIn("handleCrashedVehicle", offboard_crash)
+        self.assertIn("21196.0F", offboard_crash)
+        self.assertIn('reportFailure("physical_collision")', mission_monitor)
+        self.assertNotIn("crash_detection=", mission_monitor)
+        self.assertNotIn("crash_detection_enabled", config_text)
+        self.assertNotIn("crash_min_airborne_altitude_m", config_text)
+        self.assertNotIn("crash_altitude_m", config_text)
+
     def test_docs_do_not_describe_removed_passage_sensor_policy(self) -> None:
         forbidden_terms = (
             "passage_traversal_sensor_policy",

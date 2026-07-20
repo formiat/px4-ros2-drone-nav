@@ -46,6 +46,7 @@ def generate_launch_description():
         "/world/generated_city/model/x500_lidar_2d_0/link/link/"
         "sensor/lidar_2d_v2/scan"
     )
+    contacts_gz_topic = "/drone_city_nav/drone_contacts"
 
     params_file = LaunchConfiguration("params_file")
     lidar_debug_output_dir = LaunchConfiguration("lidar_debug_output_dir")
@@ -75,6 +76,10 @@ def generate_launch_description():
         condition=IfCondition(enable_gazebo_bridge),
         arguments=[
             f"{lidar_gz_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
+            (
+                f"{contacts_gz_topic}@ros_gz_interfaces/msg/Contacts"
+                "[gz.msgs.Contacts"
+            ),
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "--ros-args",
             "-r",
@@ -162,6 +167,14 @@ def generate_launch_description():
                 ),
             },
         ],
+    )
+
+    collision_crash = Node(
+        package="drone_city_nav",
+        executable="collision_crash_node",
+        name="collision_crash_node",
+        output="screen",
+        parameters=[params_file, {"use_sim_time": True}],
     )
 
     mission_monitor = Node(
@@ -337,6 +350,7 @@ def generate_launch_description():
             ),
             scan_bridge,
             OpaqueFunction(function=source_nodes),
+            collision_crash,
             px4_offboard,
             mission_monitor,
             lidar_debug,

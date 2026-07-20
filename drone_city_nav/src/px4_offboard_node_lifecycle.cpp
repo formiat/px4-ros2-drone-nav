@@ -74,6 +74,10 @@ Px4OffboardNode::Px4OffboardNode()
       [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
         onVehicleStatus(*msg);
       });
+  crash_state_sub_ = create_subscription<msg::CrashState>(
+      "/drone_city_nav/crash_state",
+      rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
+      [this](const msg::CrashState::SharedPtr msg) { onCrashState(*msg); });
   prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
       topics.prohibited_grid, rclcpp::QoS{1}.transient_local(),
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {

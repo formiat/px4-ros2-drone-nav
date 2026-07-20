@@ -13,6 +13,21 @@ behavior should be debugged from logs and artifacts, not only from RViz.
 - `log/gz_drone_nav.log`
 - `log/gz_gui_drone_nav.log`
 
+## Physical Collision Diagnostics
+
+A fatal contact produces one `PHYSICAL_COLLISION crashed=true` record from
+`collision_crash_node`. It includes both collision names, contact XYZ, altitude,
+speed, and roll/pitch/yaw. The offboard node then logs:
+
+- `offboard_crash_latched=true` with contact-to-offboard delivery latency;
+- `force_disarm_sent=true` while PX4 still needs to be disarmed;
+- `disarm_confirmed=true` with total crash-to-confirmation latency.
+
+The mission monitor emits `MISSION_RESULT success=false
+reason='physical_collision'`. These records originate from Gazebo physics
+contacts. Lidar points, prohibited-grid cells, and negative diagnostic building
+clearance cannot produce this crash state.
+
 ## Offboard Blackbox
 
 `log/offboard_blackbox.jsonl` mirrors runtime telemetry. It includes:

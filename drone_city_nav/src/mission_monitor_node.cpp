@@ -1,6 +1,7 @@
 #include "drone_city_nav/known_passage_geometry.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/known_passage_solid_volumes.hpp"
+#include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/passage_traversal_monitor.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -212,10 +213,6 @@ public:
     stop_hold_s_ = declare_parameter<double>("stop_hold_s", 2.0);
     building_clearance_m_ = declare_parameter<double>("building_clearance_m", 1.0);
     vertical_clearance_m_ = declare_parameter<double>("vertical_clearance_m", 1.0);
-    crash_detection_enabled_ = declare_parameter<bool>("crash_detection_enabled", true);
-    crash_min_airborne_altitude_m_ =
-        declare_parameter<double>("crash_min_airborne_altitude_m", 6.0);
-    crash_altitude_m_ = declare_parameter<double>("crash_altitude_m", 2.5);
     passage_traversal_hysteresis_m_ = std::max(
         0.0, declare_parameter<double>("passage_traversal_hysteresis_m", 0.25));
 
@@ -323,27 +320,40 @@ public:
         [this](const px4_msgs::msg::VehicleStatus::SharedPtr msg) {
           onVehicleStatus(*msg);
         });
+    crash_state_sub_ = create_subscription<msg::CrashState>(
+        "/drone_city_nav/crash_state",
+        rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
+        [this](const msg::CrashState::SharedPtr msg) {
+          if (msg->crashed && !result_reported_) {
+            RCLCPP_ERROR(get_logger(),
+                         "MISSION_CHECK physical_collision=true drone_collision='%s' "
+                         "obstacle_collision='%s' contact=(%.3f, %.3f, %.3f)",
+                         msg->drone_collision.c_str(), msg->obstacle_collision.c_str(),
+                         msg->contact_position.x, msg->contact_position.y,
+                         msg->contact_position.z);
+            reportFailure("physical_collision");
+          }
+        });
 
     summary_timer_ =
         create_wall_timer(std::chrono::seconds{5}, [this]() { logSummary(); });
 
-    RCLCPP_INFO(
-        get_logger(),
-        "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
-        "spawn_tolerance=%.2fm goal_radius=%.2fm building_source=%s "
-        "buildings=%zu configured_buildings=%zu "
-        "known_passage_structures=%zu known_passage_solids=%zu "
-        "known_passage_status=%s known_passages_path='%s' clearance=%.2fm "
-        "vertical_clearance=%.2fm passage_traversal_hysteresis=%.2fm "
-        "uniform_building_height=%.2fm "
-        "crash_detection=%s",
-        start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_, goal_radius_m_,
-        building_source.c_str(), buildings_.size(), configured_building_count,
-        known_passage_source.structures, known_passage_solid_count,
-        knownPassageSourceStatusName(known_passage_source.status),
-        known_passage_source.resolved_path.string().c_str(), building_clearance_m_,
-        vertical_clearance_m_, passage_traversal_hysteresis_m_,
-        uniform_building_height_m_, crash_detection_enabled_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(),
+                "Mission monitor ready: start=(%.2f, %.2f) goal=(%.2f, %.2f) "
+                "spawn_tolerance=%.2fm goal_radius=%.2fm building_source=%s "
+                "buildings=%zu configured_buildings=%zu "
+                "known_passage_structures=%zu known_passage_solids=%zu "
+                "known_passage_status=%s known_passages_path='%s' clearance=%.2fm "
+                "vertical_clearance=%.2fm passage_traversal_hysteresis=%.2fm "
+                "uniform_building_height=%.2fm",
+                start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_,
+                goal_radius_m_, building_source.c_str(), buildings_.size(),
+                configured_building_count, known_passage_source.structures,
+                known_passage_solid_count,
+                knownPassageSourceStatusName(known_passage_source.status),
+                known_passage_source.resolved_path.string().c_str(),
+                building_clearance_m_, vertical_clearance_m_,
+                passage_traversal_hysteresis_m_, uniform_building_height_m_);
   }
 
 private:
@@ -399,12 +409,6 @@ private:
 
     updateBuildingClearance(position, current_altitude_m);
     updateKnownPassageMetrics(position, current_altitude_m);
-    updateCrashDetection(current_altitude_m);
-    if (crash_detected_) {
-      reportFailure("altitude collapse after takeoff");
-      return;
-    }
-
     const double goal_distance = distance(position, goal_);
     min_goal_distance_m_ = std::min(min_goal_distance_m_, goal_distance);
     const bool stopped_at_goal =
@@ -425,22 +429,6 @@ private:
         (current_time - goal_stop_start_time_).seconds() >= stop_hold_s_;
     if (spawn_ok_ && movement_ok_ && goal_stop_held && isArmedOrWasArmed()) {
       reportSuccess();
-    }
-  }
-
-  void updateCrashDetection(const double altitude_m) {
-    if (!crash_detection_enabled_ || !std::isfinite(altitude_m)) {
-      return;
-    }
-
-    max_altitude_m_ = std::max(max_altitude_m_, altitude_m);
-    const bool was_airborne = max_altitude_m_ >= crash_min_airborne_altitude_m_;
-    if (was_airborne && altitude_m <= crash_altitude_m_) {
-      crash_detected_ = true;
-      RCLCPP_ERROR(get_logger(),
-                   "MISSION_CHECK crash_detected=true altitude=%.2f "
-                   "max_altitude=%.2f threshold=%.2f",
-                   altitude_m, max_altitude_m_, crash_altitude_m_);
     }
   }
 
@@ -739,7 +727,6 @@ private:
   double min_actual_passage_boundary_margin_m_{std::numeric_limits<double>::infinity()};
   double latest_speed_mps_{std::numeric_limits<double>::infinity()};
   double latest_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
-  double max_altitude_m_{0.0};
   double max_observed_speed_mps_{0.0};
   double speed_sum_mps_{0.0};
   std::size_t speed_sample_count_{0U};
@@ -751,17 +738,14 @@ private:
   bool spawn_ok_{false};
   bool movement_ok_{false};
   bool collision_risk_logged_{false};
-  bool crash_detected_{false};
   bool goal_stop_started_{false};
   bool result_reported_{false};
   bool armed_seen_{false};
-  bool crash_detection_enabled_{true};
-  double crash_min_airborne_altitude_m_{6.0};
-  double crash_altitude_m_{2.5};
 
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+  rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
   rclcpp::TimerBase::SharedPtr summary_timer_;
 };
 

@@ -7,9 +7,13 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(gz-msgs10 REQUIRED)
+find_package(gz-sim8 REQUIRED)
+find_package(gz-transport13 REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(px4_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(ros_gz_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -22,6 +26,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryCellProvenance.msg"
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
+  "msg/CrashState.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -125,6 +130,14 @@ target_include_directories(
     "$<INSTALL_INTERFACE:include>")
 enable_project_warnings(drone_city_nav_core)
 
+add_library(drone_contact_system SHARED src/drone_contact_system.cpp)
+target_compile_features(drone_contact_system PRIVATE cxx_std_20)
+target_link_libraries(
+  drone_contact_system
+  PRIVATE gz-sim8::gz-sim8 gz-transport13::gz-transport13
+          gz-msgs10::gz-msgs10)
+enable_project_warnings(drone_contact_system)
+
 add_library(
   drone_city_nav_ros_adapters
   src/lidar_debug_node_config.cpp
@@ -202,6 +215,7 @@ add_executable(
   px4_offboard_node
   src/px4_offboard_node.cpp
   src/px4_offboard_node_control.cpp
+  src/px4_offboard_node_crash.cpp
   src/px4_offboard_node_inputs.cpp
   src/px4_offboard_node_lifecycle.cpp
   src/px4_offboard_node_telemetry.cpp
@@ -220,9 +234,22 @@ ament_target_dependencies(
   visualization_msgs)
 enable_project_warnings(px4_offboard_node)
 
+add_executable(collision_crash_node src/collision_crash_node.cpp)
+target_compile_features(collision_crash_node PRIVATE cxx_std_20)
+target_link_libraries(collision_crash_node drone_city_nav_core
+                      ${cpp_typesupport_target})
+ament_target_dependencies(
+  collision_crash_node
+  geometry_msgs
+  px4_msgs
+  rclcpp
+  ros_gz_interfaces)
+enable_project_warnings(collision_crash_node)
+
 add_executable(mission_monitor_node src/mission_monitor_node.cpp)
 target_compile_features(mission_monitor_node PRIVATE cxx_std_20)
-target_link_libraries(mission_monitor_node drone_city_nav_core)
+target_link_libraries(mission_monitor_node drone_city_nav_core
+                      ${cpp_typesupport_target})
 ament_target_dependencies(
   mission_monitor_node
   ament_index_cpp
@@ -252,6 +279,8 @@ install(
   TARGETS
     drone_city_nav_core
     drone_city_nav_ros_adapters
+    drone_contact_system
+    collision_crash_node
     lidar_debug_node
     obstacle_memory_node
     planner_node

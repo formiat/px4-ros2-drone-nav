@@ -49,6 +49,19 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertIn("yellow_ground_projection_beam", visuals)
         self.assertIn("yellow_ground_projection_disc", visuals)
 
+    def test_wrapper_loads_physical_contact_system(self) -> None:
+        root = parse_sdf(WRAPPER_SDF)
+        plugin = next(
+            element
+            for element in root.iter("plugin")
+            if element.attrib.get("name") == "drone_city_nav::DroneContactSystem"
+        )
+
+        self.assertEqual("libdrone_contact_system.so", plugin.attrib["filename"])
+        self.assertEqual(
+            "/drone_city_nav/drone_contacts", plugin.findtext("topic")
+        )
+
     def test_lidar_model_keeps_sensor_and_no_drone_visibility_visuals(self) -> None:
         root = parse_sdf(LIDAR_SDF)
         visuals = element_names(root, "visual")

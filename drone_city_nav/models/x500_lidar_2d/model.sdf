@@ -167,5 +167,9 @@
       <parent>base_link</parent>
       <child>visibility_marker_link</child>
     </joint>
+    <plugin filename="libdrone_contact_system.so"
+            name="drone_city_nav::DroneContactSystem">
+      <topic>/drone_city_nav/drone_contacts</topic>
+    </plugin>
   </model>
 </sdf>

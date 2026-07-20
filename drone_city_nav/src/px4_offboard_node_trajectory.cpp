@@ -506,6 +506,11 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
 }
 
 void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
+  if (crashed_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                         "Ignoring planner path after physical collision");
+    return;
+  }
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
                                                    path.poses.size()};
   const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
@@ -770,11 +775,17 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
 }
 
 void Px4OffboardNode::onPathId(const std_msgs::msg::UInt64& msg) {
+  if (crashed_) {
+    return;
+  }
   latest_planner_path_id_ = msg.data;
   latest_planner_path_id_seen_ = true;
 }
 
 void Px4OffboardNode::onTrajectoryDiagnostics(const std_msgs::msg::String& msg) {
+  if (crashed_) {
+    return;
+  }
   ScopedOffboardCallbackDuration callback_duration{
       get_logger(), "trajectory_diagnostics", msg.data.size()};
   const std::optional<TrajectoryPlannerDiagnosticsEnvelope> diagnostics =

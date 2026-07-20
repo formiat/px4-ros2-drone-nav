@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/offboard_blackbox.hpp"
 #include "drone_city_nav/offboard_debug_markers.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
@@ -196,6 +197,10 @@ private:
   void onAttitude(const px4_msgs::msg::VehicleAttitude& msg);
 
   void onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg);
+
+  void onCrashState(const msg::CrashState& msg);
+
+  void handleCrashedVehicle();
 
   void onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg);
 
@@ -405,6 +410,8 @@ private:
   bool accepted_planner_path_id_seen_{false};
   bool active_horizontal_handover_applied_{false};
   bool flight_blackbox_enabled_{true};
+  bool crashed_{false};
+  bool crash_disarm_confirmed_{false};
   std::uint8_t target_system_{1U};
   std::uint8_t target_component_{1U};
   std::uint8_t source_system_{1U};
@@ -432,6 +439,10 @@ private:
   OffboardSetpointMode last_offboard_setpoint_mode_{
       OffboardSetpointMode::kPositionHold};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time crash_received_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_force_disarm_command_time_{0, 0, RCL_ROS_TIME};
+  std::string crash_drone_collision_;
+  std::string crash_obstacle_collision_;
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
   std::optional<std::chrono::steady_clock::time_point>
@@ -461,6 +472,7 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
+  rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;

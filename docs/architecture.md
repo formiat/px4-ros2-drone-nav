@@ -49,12 +49,22 @@ world assets, and Docker tooling around it.
 
 `mission_monitor_node`
 
-- simulation-only observer for mission success and crash diagnostics; it does
-  not publish control commands or alter PX4 state.
+- simulation-only observer for mission success and physical crash results; it
+  does not publish control commands or alter PX4 state.
+
+`DroneContactSystem` and `collision_crash_node`
+
+- the Gazebo model plugin enables physics contact data on every collision entity
+  belonging to the X500 without adding or enlarging collision geometry;
+- the plugin publishes only external contacts involving the drone;
+- the ROS node ignores contacts before takeoff and latches the first external
+  contact after the vehicle has been airborne as `/drone_city_nav/crash_state`;
+- the transient-local crash state independently drives PX4 force-disarm and a
+  failed mission result.
 
 `scan_bridge`
 
-- Gazebo-to-ROS bridge for the lidar scan and clock.
+- Gazebo-to-ROS bridge for the lidar scan, physical contacts, and clock.
 
 ## Data Flow
 
@@ -80,7 +90,22 @@ executable path + PX4 pose/attitude/status
   -> velocity command
   -> velocity smoother / terminal state machine
   -> PX4 trajectory setpoint
+
+Gazebo physics contact involving X500
+  -> DroneContactSystem
+  -> /drone_city_nav/drone_contacts
+  -> collision_crash_node
+  -> /drone_city_nav/crash_state (reliable, transient local)
+  -> px4_offboard_node force-disarm + mission_monitor_node failure
 ```
+
+Physical collision and obstacle sensing have separate responsibilities. Lidar,
+memory, prohibited cells, and geometric clearance may affect planning or emit
+diagnostics, but they never declare a crash. Only a contact reported by Gazebo
+physics after takeoff latches the crash state. Once latched, offboard stops all
+trajectory setpoints, ignores later paths, disables automatic arming, and repeats
+the PX4 force-disarm command until disarmed status is observed. The model then
+falls and moves according to normal Gazebo physics.
 
 ## Planner vs Offboard Responsibilities
 

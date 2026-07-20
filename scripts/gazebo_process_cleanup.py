@@ -22,6 +22,7 @@ class ProcessInfo:
 
 
 PROJECT_NODE_EXECUTABLES = {
+    "collision_crash_node",
     "lidar_debug_node",
     "mission_monitor_node",
     "obstacle_memory_node",

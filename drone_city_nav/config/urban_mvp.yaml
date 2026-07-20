@@ -380,6 +380,15 @@ px4_offboard_node:
     source_system: 1
     source_component: 1
 
+collision_crash_node:
+  ros__parameters:
+    contacts_topic: /drone_city_nav/drone_contacts
+    crash_state_topic: /drone_city_nav/crash_state
+    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
+    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
+    px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
+    airborne_altitude_m: 1.0
+
 lidar_debug_node:
   ros__parameters:
     lidar_topic: /scan
@@ -449,9 +458,6 @@ mission_monitor_node:
     known_passages_path: worlds/known_passages.passages3d
     passage_traversal_hysteresis_m: 0.25
     uniform_building_height_m: 32.0
-    crash_detection_enabled: true
-    crash_min_airborne_altitude_m: 6.0
-    crash_altitude_m: 2.5
     building_volumes:
       - 27.0
       - 27.0
