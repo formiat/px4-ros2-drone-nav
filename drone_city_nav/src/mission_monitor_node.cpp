@@ -336,7 +336,7 @@ public:
         "known_passage_status=%s known_passages_path='%s' clearance=%.2fm "
         "vertical_clearance=%.2fm passage_traversal_hysteresis=%.2fm "
         "uniform_building_height=%.2fm "
-        "crash_detection=%s observer_only=true",
+        "crash_detection=%s",
         start_.x, start_.y, goal_.x, goal_.y, spawn_tolerance_m_, goal_radius_m_,
         building_source.c_str(), buildings_.size(), configured_building_count,
         known_passage_source.structures, known_passage_solid_count,
