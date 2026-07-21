@@ -74,6 +74,61 @@ verticalProfileDiagnosticsSummary(const VerticalProfileStats& stats) {
   return stream.str();
 }
 
+[[nodiscard]] std::string
+knownPassageValidationDiagnosticsSummary(const KnownPassageValidationSummary& summary) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  stream << "enabled=" << (summary.enabled ? "true" : "false")
+         << " valid=" << (summary.valid ? "true" : "false")
+         << " intersected=" << summary.structures_intersected
+         << " matches=" << summary.opening_matches
+         << " violations=" << summary.violations
+         << " reason=" << knownPassageValidationReasonName(summary.worst_reason);
+  for (std::size_t i = 0U; i < summary.diagnostics.size(); ++i) {
+    const KnownPassageValidationSpan& diagnostic = summary.diagnostics.at(i);
+    stream << " diag" << i << "[structure=" << diagnostic.structure_id << " opening="
+           << (diagnostic.opening_id.empty() ? "<none>" : diagnostic.opening_id)
+           << " s=[" << diagnostic.entry_s_m << ".." << diagnostic.exit_s_m << "]"
+           << " overlap=" << diagnostic.overlap_m
+           << " clearance=" << diagnostic.clearance_m
+           << " reason=" << knownPassageValidationReasonName(diagnostic.reason) << "]";
+  }
+  return stream.str();
+}
+
+[[nodiscard]] std::string
+passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  stream << "enabled=" << (stats.enabled ? "true" : "false")
+         << " applied=" << (stats.applied ? "true" : "false")
+         << " candidates=" << stats.candidates << " inserted=" << stats.inserted_count
+         << " rejected(join=" << stats.rejected_join
+         << " traversability=" << stats.rejected_traversability
+         << " validation=" << stats.rejected_validation
+         << " geometry=" << stats.rejected_geometry << ")"
+         << " dropped=" << stats.diagnostics_dropped
+         << " reason=" << passageInsertionRejectReasonName(stats.final_reason);
+  for (std::size_t i = 0U; i < stats.diagnostics.size(); ++i) {
+    const PassageInsertionDiagnostic& diagnostic = stats.diagnostics.at(i);
+    stream << " diag" << i << "[structure=" << diagnostic.structure_id << " opening="
+           << (diagnostic.opening_id.empty() ? "<none>" : diagnostic.opening_id)
+           << " s=[" << diagnostic.entry_s_m << ".." << diagnostic.exit_s_m << "]"
+           << " anchor=" << diagnostic.anchor_s_m
+           << " reconnect=" << diagnostic.reconnect_s_m
+           << " miss=" << diagnostic.lateral_miss_before_m << "->"
+           << diagnostic.lateral_miss_after_m
+           << " tangent=" << diagnostic.join_tangent_delta_before_rad << ","
+           << diagnostic.join_tangent_delta_after_rad
+           << " curvature=" << diagnostic.join_curvature_jump_before_1pm << ","
+           << diagnostic.join_curvature_jump_after_1pm
+           << " radius=" << diagnostic.min_inserted_radius_m
+           << " reason=" << passageInsertionRejectReasonName(diagnostic.reason)
+           << " accepted=" << (diagnostic.accepted ? "true" : "false") << "]";
+  }
+  return stream.str();
+}
+
 } // namespace
 
 bool PlannerNode::keepCurrentPathAfterInvalidReplacement(
@@ -209,6 +264,10 @@ bool PlannerNode::publishTrajectoryResult(
   if (!trajectory_result.valid) {
     const std::string vertical_profile_summary =
         verticalProfileDiagnosticsSummary(stats.vertical_profile);
+    const std::string passage_validation_summary =
+        knownPassageValidationDiagnosticsSummary(stats.known_passage_validation);
+    const std::string passage_insertion_summary =
+        passageInsertionDiagnosticsSummary(stats.passage_insertion);
     RCLCPP_WARN(
         get_logger(),
         "%s trajectory build failed; rough A* route will not be published as "
@@ -221,6 +280,8 @@ bool PlannerNode::publishTrajectoryResult(
         " width_min=%.2f width_mean=%.2f] "
         "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu] "
         "vertical_profile[%s] "
+        "known_passage_validation[%s] "
+        "passage_insertion_details[%s] "
         "grid_attempts[corridor=%s(%zu) optimizer=%s(%zu) "
         "turn_smoothing=%s(%zu) trajectory_validation=%s(%zu) "
         "shape_cleanup=%s(%zu) passage_insertion=%s(%zu)]",
@@ -240,7 +301,8 @@ bool PlannerNode::publishTrajectoryResult(
         stats.trajectory_optimizer.iterations,
         stats.trajectory_optimizer.candidate_evaluations,
         stats.trajectory_optimizer.collision_rejections,
-        vertical_profile_summary.c_str(), stats.grid_stages.corridor.c_str(),
+        vertical_profile_summary.c_str(), passage_validation_summary.c_str(),
+        passage_insertion_summary.c_str(), stats.grid_stages.corridor.c_str(),
         stats.grid_stages.corridor_attempts, stats.grid_stages.optimizer.c_str(),
         stats.grid_stages.optimizer_attempts, stats.grid_stages.turn_smoothing.c_str(),
         stats.grid_stages.turn_smoothing_attempts,
