@@ -339,7 +339,8 @@ void expectContainsAll(const std::string& text,
   stats.passage_insertion.rejected_geometry = 0U;
   stats.passage_insertion.final_reason = PassageInsertionRejectReason::kNone;
   stats.passage_insertion.diagnostics.push_back(
-      PassageInsertionDiagnostic{.structure_id = "arch_02",
+      PassageInsertionDiagnostic{.grid_name = "planning_clearance",
+                                 .structure_id = "arch_02",
                                  .opening_id = "main",
                                  .anchor_s_m = 70.0,
                                  .entry_s_m = 90.0,

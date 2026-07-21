@@ -240,6 +240,7 @@ private:
                     const AStarConfig& astar_config, Point2 planning_start);
 
   bool publishPathFromPathCells(
+      const PlanningGridBuildResult& planning_result,
       std::span<const TrajectoryGridCandidate> grid_candidates,
       std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
       const std::vector<GridIndex>& smoothed_cells, const char* source_label,
@@ -354,10 +355,9 @@ private:
   [[nodiscard]] std::string
   memorySnapshotTransportDiagnostic(std::int64_t now_ns) const;
 
-  [[nodiscard]] std::string
-  describeProhibitedIntersectionSource(const OccupancyGrid2D& grid,
-                                       const PathProhibitedIntersection& intersection,
-                                       const PlanningGridBuildResult& planning_result);
+  [[nodiscard]] std::string describeProhibitedIntersectionSource(
+      const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
+      const PlanningGridBuildResult& planning_result, double source_search_radius_m);
 
   bool keepCurrentPathIfStillClear(const OccupancyGrid2D& grid,
                                    const PlanningGridBuildResult& planning_result);

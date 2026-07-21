@@ -825,7 +825,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 path_result->astar.path.size());
   }
   const bool published = publishPathFromPathCells(
-      grid_candidates, astar_grid_index, path_result->astar.path,
+      *planning_result, grid_candidates, astar_grid_index, path_result->astar.path,
       path_result->smoothed_cells, astar_grid_name.c_str(), planning_start,
       truncation_replan.has_value() ? &*truncation_replan : nullptr);
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;

@@ -172,6 +172,7 @@ TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude(
 }
 
 bool PlannerNode::publishPathFromPathCells(
+    const PlanningGridBuildResult& planning_result,
     const std::span<const TrajectoryGridCandidate> grid_candidates,
     const std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
@@ -377,6 +378,64 @@ bool PlannerNode::publishPathFromPathCells(
       grid_candidates};
   TrajectoryPlannerResult trajectory_result =
       planOptimizedTrajectory(trajectory_input, trajectory_config);
+  const PassageInsertionStats& insertion_stats =
+      trajectory_result.stats.passage_insertion;
+  for (const PassageInsertionDiagnostic& diagnostic : insertion_stats.diagnostics) {
+    const PassageInsertionBlockedSegmentDiagnostic& blocked =
+        diagnostic.blocked_segment;
+    if (diagnostic.reason != PassageInsertionRejectReason::kNonTraversable ||
+        !blocked.available) {
+      continue;
+    }
+    const TrajectoryGridCandidate* diagnostic_grid_candidate = &route_grid_candidate;
+    for (const TrajectoryGridCandidate& grid_candidate : grid_candidates) {
+      if (grid_candidate.grid != nullptr &&
+          grid_candidate.name == diagnostic.grid_name) {
+        diagnostic_grid_candidate = &grid_candidate;
+        break;
+      }
+    }
+    const OccupancyGrid2D& diagnostic_grid = *diagnostic_grid_candidate->grid;
+    PathProhibitedIntersection intersection{};
+    intersection.segment_index = blocked.segment_index;
+    intersection.line_cell_index = blocked.line_cell_index;
+    intersection.line_cell_count = blocked.line_cell_count;
+    intersection.cell = blocked.blocked_cell;
+    intersection.cell_center = blocked.blocked_cell_center;
+    intersection.path_distance_m = blocked.start_s_m;
+    intersection.occupied = blocked.occupied;
+    intersection.inflated = blocked.inflated;
+    const double source_search_radius_m =
+        inflation_radius_m_ +
+        (diagnostic_grid_candidate->name == "planning_clearance" ? planning_clearance_m_
+                                                                 : 0.0) +
+        std::max(0.0, diagnostic_grid.resolution());
+    const std::string source_diagnostic =
+        blocked.blocked_cell_available
+            ? describeProhibitedIntersectionSource(diagnostic_grid, intersection,
+                                                   planning_result,
+                                                   source_search_radius_m)
+            : std::string{"raw_sources[unavailable reason=outside_grid]"};
+    RCLCPP_WARN(
+        get_logger(),
+        "PASSAGE_INSERTION_BLOCKED_SEGMENT grid=%.*s structure=%s opening=%s "
+        "segment=%zu s=[%.3f..%.3f] endpoints=(%.3f, %.3f)->(%.3f, %.3f) "
+        "start_cell=(%d,%d) start_cell_available=%s end_cell=(%d,%d) "
+        "end_cell_available=%s blocked_cell=(%d,%d) blocked_cell_available=%s "
+        "line_cell=%zu/%zu center=(%.3f, %.3f) occupied=%s inflated=%s %s",
+        static_cast<int>(diagnostic_grid_candidate->name.size()),
+        diagnostic_grid_candidate->name.data(), diagnostic.structure_id.c_str(),
+        diagnostic.opening_id.c_str(), blocked.segment_index, blocked.start_s_m,
+        blocked.end_s_m, blocked.start_point.x, blocked.start_point.y,
+        blocked.end_point.x, blocked.end_point.y, blocked.start_cell.x,
+        blocked.start_cell.y, blocked.start_cell_available ? "true" : "false",
+        blocked.end_cell.x, blocked.end_cell.y,
+        blocked.end_cell_available ? "true" : "false", blocked.blocked_cell.x,
+        blocked.blocked_cell.y, blocked.blocked_cell_available ? "true" : "false",
+        blocked.line_cell_index, blocked.line_cell_count, blocked.blocked_cell_center.x,
+        blocked.blocked_cell_center.y, blocked.occupied ? "true" : "false",
+        blocked.inflated ? "true" : "false", source_diagnostic.c_str());
+  }
   if (candidate->seed_diagnostics.planning_start_prohibited ||
       !trajectory_result.valid) {
     const OccupancyGrid2D* diagnostic_grid = &route_grid;

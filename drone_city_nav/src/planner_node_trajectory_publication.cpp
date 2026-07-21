@@ -111,7 +111,9 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
          << " reason=" << passageInsertionRejectReasonName(stats.final_reason);
   for (std::size_t i = 0U; i < stats.diagnostics.size(); ++i) {
     const PassageInsertionDiagnostic& diagnostic = stats.diagnostics.at(i);
-    stream << " diag" << i << "[structure=" << diagnostic.structure_id << " opening="
+    stream << " diag" << i << "[grid="
+           << (diagnostic.grid_name.empty() ? "<none>" : diagnostic.grid_name)
+           << " structure=" << diagnostic.structure_id << " opening="
            << (diagnostic.opening_id.empty() ? "<none>" : diagnostic.opening_id)
            << " s=[" << diagnostic.entry_s_m << ".." << diagnostic.exit_s_m << "]"
            << " anchor=" << diagnostic.anchor_s_m
@@ -124,7 +126,21 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
            << diagnostic.join_curvature_jump_after_1pm
            << " radius=" << diagnostic.min_inserted_radius_m
            << " reason=" << passageInsertionRejectReasonName(diagnostic.reason)
-           << " accepted=" << (diagnostic.accepted ? "true" : "false") << "]";
+           << " accepted=" << (diagnostic.accepted ? "true" : "false");
+    if (diagnostic.blocked_segment.available) {
+      const PassageInsertionBlockedSegmentDiagnostic& blocked =
+          diagnostic.blocked_segment;
+      stream << " blocked[segment=" << blocked.segment_index << " s=["
+             << blocked.start_s_m << ".." << blocked.end_s_m << "] p=("
+             << blocked.start_point.x << "," << blocked.start_point.y << ")->("
+             << blocked.end_point.x << "," << blocked.end_point.y << ") cell=("
+             << blocked.blocked_cell.x << "," << blocked.blocked_cell.y << ")"
+             << " cell_available="
+             << (blocked.blocked_cell_available ? "true" : "false")
+             << " occupied=" << (blocked.occupied ? "true" : "false")
+             << " inflated=" << (blocked.inflated ? "true" : "false") << "]";
+    }
+    stream << "]";
   }
   return stream.str();
 }

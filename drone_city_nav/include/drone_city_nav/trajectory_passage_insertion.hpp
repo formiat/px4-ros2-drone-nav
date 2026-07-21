@@ -46,7 +46,28 @@ struct PassageInsertionConfig {
   std::size_t max_diagnostics{8U};
 };
 
+struct PassageInsertionBlockedSegmentDiagnostic {
+  bool available{false};
+  std::size_t segment_index{0U};
+  std::size_t line_cell_index{0U};
+  std::size_t line_cell_count{0U};
+  double start_s_m{0.0};
+  double end_s_m{0.0};
+  Point2 start_point{};
+  Point2 end_point{};
+  bool start_cell_available{false};
+  GridIndex start_cell{};
+  bool end_cell_available{false};
+  GridIndex end_cell{};
+  bool blocked_cell_available{false};
+  GridIndex blocked_cell{};
+  Point2 blocked_cell_center{};
+  bool occupied{false};
+  bool inflated{false};
+};
+
 struct PassageInsertionDiagnostic {
+  std::string grid_name;
   std::string structure_id;
   std::string opening_id;
   double anchor_s_m{0.0};
@@ -60,6 +81,7 @@ struct PassageInsertionDiagnostic {
   double join_curvature_jump_before_1pm{0.0};
   double join_curvature_jump_after_1pm{0.0};
   double min_inserted_radius_m{0.0};
+  PassageInsertionBlockedSegmentDiagnostic blocked_segment{};
   PassageInsertionRejectReason reason{PassageInsertionRejectReason::kNone};
   bool accepted{false};
 };

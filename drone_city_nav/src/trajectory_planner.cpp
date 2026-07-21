@@ -606,6 +606,10 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
         result.samples, *candidate.grid, input.known_passage_map,
         config.known_passage_validation, config.passage_insertion,
         config.initial_altitude_m);
+    const std::string candidate_name = gridCandidateName(candidate, index);
+    for (PassageInsertionDiagnostic& diagnostic : attempt.stats.diagnostics) {
+      diagnostic.grid_name = candidate_name;
+    }
     result.stats.passage_insertion = attempt.stats;
     const std::span<const TrajectoryPointSample> attempt_samples =
         attempt.applied ? std::span<const TrajectoryPointSample>{attempt.samples.data(),
@@ -623,7 +627,7 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     if (!accepted) {
       continue;
     }
-    result.stats.grid_stages.passage_insertion = gridCandidateName(candidate, index);
+    result.stats.grid_stages.passage_insertion = candidate_name;
     break;
   }
   result.stats.passage_insertion_duration_ms =

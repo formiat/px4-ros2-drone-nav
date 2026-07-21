@@ -125,7 +125,8 @@ void PlannerNode::invalidateCurrentPose() {
 
 std::string PlannerNode::describeProhibitedIntersectionSource(
     const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
-    const PlanningGridBuildResult& planning_result) {
+    const PlanningGridBuildResult& planning_result,
+    const double source_search_radius_m) {
   const OccupancyGrid2D* memory_source_grid = nullptr;
   if (memory_grid_) {
     memory_source_grid = &*memory_grid_;
@@ -139,7 +140,7 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
 
   const std::vector<const char*> exact_sources =
       exactRawSources(sources, grid, intersection.cell);
-  const double search_radius_m = inflation_radius_m_ + std::max(0.0, grid.resolution());
+  const double search_radius_m = std::max(0.0, source_search_radius_m);
   const std::optional<NearestRawSource> nearest_source =
       nearestRawSource(sources, grid, intersection.cell, search_radius_m);
 
@@ -255,7 +256,9 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         decision.prohibited_intersection.value_or(PathProhibitedIntersection{});
     const std::string source_diagnostic =
         decision.prohibited_intersection.has_value()
-            ? describeProhibitedIntersectionSource(grid, intersection, planning_result)
+            ? describeProhibitedIntersectionSource(grid, intersection, planning_result,
+                                                   inflation_radius_m_ +
+                                                       std::max(0.0, grid.resolution()))
             : std::string{"raw_sources[exact=unknown nearest=unknown "
                           "nearest_distance=nanm nearest_cell=(-1, -1) "
                           "nearest_center=(nan, nan) search_radius=nanm]"};

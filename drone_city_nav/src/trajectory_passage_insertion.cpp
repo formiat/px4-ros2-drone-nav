@@ -169,30 +169,48 @@ sampleAtS(const std::span<const TrajectoryPointSample> samples, const double s_m
   return samples.back();
 }
 
-[[nodiscard]] bool segmentTraversable(const OccupancyGrid2D& grid, const Point2 start,
-                                      const Point2 end) {
-  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
-  const std::optional<GridIndex> end_cell = grid.worldToCell(end);
-  if (!start_cell.has_value() || !end_cell.has_value()) {
-    return false;
-  }
-  return std::ranges::all_of(
-      grid.cellsOnLine(*start_cell, *end_cell),
-      [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
-}
-
-[[nodiscard]] bool
-pathTraversable(const OccupancyGrid2D& grid,
-                const std::span<const TrajectoryPointSample> samples) {
+[[nodiscard]] PassageInsertionBlockedSegmentDiagnostic
+firstNonTraversableSegment(const OccupancyGrid2D& grid,
+                           const std::span<const TrajectoryPointSample> samples) {
   if (samples.size() < 2U) {
-    return false;
+    return PassageInsertionBlockedSegmentDiagnostic{};
   }
   for (std::size_t i = 1U; i < samples.size(); ++i) {
-    if (!segmentTraversable(grid, samples[i - 1U].point, samples[i].point)) {
-      return false;
+    const TrajectoryPointSample& start = samples[i - 1U];
+    const TrajectoryPointSample& end = samples[i];
+    PassageInsertionBlockedSegmentDiagnostic diagnostic{};
+    diagnostic.available = true;
+    diagnostic.segment_index = i - 1U;
+    diagnostic.start_s_m = start.s_m;
+    diagnostic.end_s_m = end.s_m;
+    diagnostic.start_point = start.point;
+    diagnostic.end_point = end.point;
+    const std::optional<GridIndex> start_cell = grid.worldToCell(start.point);
+    const std::optional<GridIndex> end_cell = grid.worldToCell(end.point);
+    diagnostic.start_cell_available = start_cell.has_value();
+    diagnostic.end_cell_available = end_cell.has_value();
+    if (!start_cell.has_value() || !end_cell.has_value()) {
+      return diagnostic;
+    }
+    diagnostic.start_cell = *start_cell;
+    diagnostic.end_cell = *end_cell;
+    const std::vector<GridIndex> line_cells = grid.cellsOnLine(*start_cell, *end_cell);
+    for (std::size_t cell_index = 0U; cell_index < line_cells.size(); ++cell_index) {
+      const GridIndex cell = line_cells[cell_index];
+      if (!grid.isProhibited(cell)) {
+        continue;
+      }
+      diagnostic.line_cell_index = cell_index;
+      diagnostic.line_cell_count = line_cells.size();
+      diagnostic.blocked_cell_available = true;
+      diagnostic.blocked_cell = cell;
+      diagnostic.blocked_cell_center = grid.cellCenter(cell);
+      diagnostic.occupied = grid.isOccupied(cell);
+      diagnostic.inflated = grid.isInflated(cell);
+      return diagnostic;
     }
   }
-  return true;
+  return PassageInsertionBlockedSegmentDiagnostic{};
 }
 
 [[nodiscard]] std::size_t
@@ -444,7 +462,10 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
     evaluation.reason = PassageInsertionRejectReason::kEndpointMismatch;
     return evaluation;
   }
-  if (!pathTraversable(grid, evaluation.samples)) {
+  const PassageInsertionBlockedSegmentDiagnostic blocked_segment =
+      firstNonTraversableSegment(grid, evaluation.samples);
+  if (blocked_segment.available) {
+    evaluation.diagnostic.blocked_segment = blocked_segment;
     evaluation.reason = PassageInsertionRejectReason::kNonTraversable;
     return evaluation;
   }
