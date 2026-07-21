@@ -520,6 +520,10 @@ parsePassageInsertionRejectReasonName(const std::string_view value) {
     return PassageInsertionRejectReason::kNoCandidate;
   }
   if (value == passageInsertionRejectReasonName(
+                   PassageInsertionRejectReason::kRepairIncomplete)) {
+    return PassageInsertionRejectReason::kRepairIncomplete;
+  }
+  if (value == passageInsertionRejectReasonName(
                    PassageInsertionRejectReason::kTooManyCandidates)) {
     return PassageInsertionRejectReason::kTooManyCandidates;
   }
@@ -569,6 +573,10 @@ passageInsertionDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   stream << std::setprecision(9);
   stream << "\"passage_insertion_enabled\":" << (insertion.enabled ? "true" : "false");
   appendJsonBool(stream, "passage_insertion_applied", insertion.applied);
+  appendJsonBool(stream, "passage_insertion_repair_required",
+                 insertion.repair_required);
+  appendJsonBool(stream, "passage_insertion_repair_satisfied",
+                 insertion.repair_satisfied);
   appendJsonSize(stream, "passage_insertion_candidates", insertion.candidates);
   appendJsonSize(stream, "passage_insertion_inserted_count", insertion.inserted_count);
   appendJsonSize(stream, "passage_insertion_rejected_join", insertion.rejected_join);

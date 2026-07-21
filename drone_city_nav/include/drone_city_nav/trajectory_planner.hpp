@@ -69,6 +69,17 @@ struct TrajectoryGridStageSelections {
   std::size_t passage_insertion_attempts{0U};
 };
 
+struct PassageInsertionGridAttempt {
+  std::string grid_name;
+  PassageInsertionRejectReason reason{PassageInsertionRejectReason::kNone};
+  bool valid{false};
+  bool repair_required{false};
+  bool repair_satisfied{false};
+  bool applied{false};
+  bool trajectory_invariants_hold{false};
+  bool accepted{false};
+};
+
 struct TrajectoryPlannerStats {
   std::size_t input_points{0U};
   std::size_t compact_segments{0U};
@@ -94,6 +105,7 @@ struct TrajectoryPlannerStats {
   KnownPassageValidationSummary known_passage_validation{};
   VerticalProfileStats vertical_profile{};
   PassageInsertionStats passage_insertion{};
+  std::vector<PassageInsertionGridAttempt> passage_insertion_grid_attempts;
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double trajectory_optimizer_duration_ms{0.0};

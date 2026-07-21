@@ -616,10 +616,21 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
                                                                  attempt.samples.size()}
                         : std::span<const TrajectoryPointSample>{result.samples.data(),
                                                                  result.samples.size()};
-    const bool accepted =
+    const bool trajectory_invariants_hold =
         attempt.valid && trajectoryStageInvariantsHold(attempt_samples, *candidate.grid,
                                                        input.route_points.front(),
                                                        input.route_points.back());
+    const bool accepted =
+        attempt.valid && attempt.repair_satisfied && trajectory_invariants_hold;
+    result.stats.passage_insertion_grid_attempts.push_back(PassageInsertionGridAttempt{
+        .grid_name = candidate_name,
+        .reason = attempt.stats.final_reason,
+        .valid = attempt.valid,
+        .repair_required = attempt.repair_required,
+        .repair_satisfied = attempt.repair_satisfied,
+        .applied = attempt.applied,
+        .trajectory_invariants_hold = trajectory_invariants_hold,
+        .accepted = accepted});
     if (accepted) {
       passage_samples.assign(attempt_samples.begin(), attempt_samples.end());
     }
@@ -633,7 +644,7 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   result.stats.passage_insertion_duration_ms =
       elapsedMilliseconds(passage_insertion_started_at);
   result.stats.passage_insertion = passage_insertion.stats;
-  if (!passage_insertion.valid) {
+  if (!passage_insertion.valid || passage_samples.empty()) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;

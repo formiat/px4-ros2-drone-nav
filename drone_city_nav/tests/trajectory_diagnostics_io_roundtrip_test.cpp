@@ -140,6 +140,8 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_TRUE(vertical0.valid);
   EXPECT_TRUE(parsed_value.stats.passage_insertion.enabled);
   EXPECT_TRUE(parsed_value.stats.passage_insertion.applied);
+  EXPECT_TRUE(parsed_value.stats.passage_insertion.repair_required);
+  EXPECT_TRUE(parsed_value.stats.passage_insertion.repair_satisfied);
   EXPECT_EQ(parsed_value.stats.passage_insertion.candidates, 3U);
   EXPECT_EQ(parsed_value.stats.passage_insertion.inserted_count, 1U);
   EXPECT_EQ(parsed_value.stats.passage_insertion.rejected_join, 1U);

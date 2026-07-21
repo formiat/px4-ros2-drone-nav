@@ -107,6 +107,14 @@ void appendDiagnostic(PassageInsertionStats& stats,
   stats.diagnostics.push_back(diagnostic);
 }
 
+void setRepairStatus(PassageInsertionResult& result, const bool required,
+                     const bool satisfied) noexcept {
+  result.repair_required = required;
+  result.repair_satisfied = satisfied;
+  result.stats.repair_required = required;
+  result.stats.repair_satisfied = satisfied;
+}
+
 void countReject(PassageInsertionStats& stats,
                  const PassageInsertionRejectReason reason) noexcept {
   switch (reason) {
@@ -552,6 +560,8 @@ passageInsertionRejectReasonName(const PassageInsertionRejectReason reason) noex
       return "no_repair_needed";
     case PassageInsertionRejectReason::kNoCandidate:
       return "no_candidate";
+    case PassageInsertionRejectReason::kRepairIncomplete:
+      return "repair_incomplete";
     case PassageInsertionRejectReason::kTooManyCandidates:
       return "too_many_candidates";
     case PassageInsertionRejectReason::kInvalidOpeningFrame:
@@ -586,6 +596,7 @@ PassageInsertionResult insertLocalPassageSegments(
   result.samples.assign(samples.begin(), samples.end());
   result.stats.enabled = config.enabled;
   result.valid = trajectorySamplesAreUsable(samples);
+  setRepairStatus(result, false, result.valid);
 
   if (!config.enabled) {
     result.stats.final_reason = PassageInsertionRejectReason::kDisabled;
@@ -598,6 +609,7 @@ PassageInsertionResult insertLocalPassageSegments(
   if (!trajectorySamplesAreUsable(samples)) {
     result.stats.final_reason = PassageInsertionRejectReason::kInvalidInput;
     result.valid = false;
+    setRepairStatus(result, false, false);
     return result;
   }
   if (!validation_config.enabled) {
@@ -609,6 +621,7 @@ PassageInsertionResult insertLocalPassageSegments(
       findKnownPassageTraversalMatches(samples, *map, validation_config, true);
   const std::size_t before_violations = countInvalidMatches(before_matches);
   const std::size_t repair_candidates = countRepairCandidates(before_matches, config);
+  setRepairStatus(result, repair_candidates > 0U, repair_candidates == 0U);
   if (repair_candidates == 0U) {
     result.stats.final_reason = PassageInsertionRejectReason::kNoRepairNeeded;
     return result;
@@ -668,7 +681,12 @@ PassageInsertionResult insertLocalPassageSegments(
   result.valid = true;
   result.stats.applied = true;
   result.stats.inserted_count = 1U;
-  result.stats.final_reason = PassageInsertionRejectReason::kNone;
+  const std::vector<KnownPassageTraversalMatch> after_matches =
+      findKnownPassageTraversalMatches(result.samples, *map, validation_config, true);
+  setRepairStatus(result, true, countRepairCandidates(after_matches, config) == 0U);
+  result.stats.final_reason = result.repair_satisfied
+                                  ? PassageInsertionRejectReason::kNone
+                                  : PassageInsertionRejectReason::kRepairIncomplete;
   return result;
 }
 

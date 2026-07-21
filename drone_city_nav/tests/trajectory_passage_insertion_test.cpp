@@ -62,6 +62,32 @@ namespace {
   return map;
 }
 
+[[nodiscard]] PassageStructure makeStructureWithOpening(const std::string& structure_id,
+                                                        const double center_x_m) {
+  PassageOpening opening = makeOpening();
+  opening.id = structure_id + "_opening";
+  opening.structure_id = structure_id;
+  opening.center.x = center_x_m;
+
+  PassageStructure structure{};
+  structure.id = structure_id;
+  structure.center = Point2{center_x_m, 0.0};
+  structure.size_x_m = 10.0;
+  structure.size_y_m = 12.0;
+  structure.z_min_m = 0.0;
+  structure.z_max_m = 20.0;
+  structure.openings.push_back(std::move(opening));
+  return structure;
+}
+
+[[nodiscard]] KnownPassageMap makeTwoRepairPassageMap() {
+  KnownPassageMap map{};
+  map.frame_id = "map";
+  map.structures.push_back(makeStructureWithOpening("left", -10.0));
+  map.structures.push_back(makeStructureWithOpening("right", 10.0));
+  return map;
+}
+
 [[nodiscard]] KnownPassageMap
 makeMapWithOpenings(const std::vector<PassageOpening>& openings) {
   PassageStructure structure{};
@@ -193,6 +219,8 @@ TEST(TrajectoryPassageInsertion, DisabledReturnsNoopSamples) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
+  EXPECT_FALSE(result.repair_required);
+  EXPECT_TRUE(result.repair_satisfied);
   EXPECT_FALSE(result.stats.applied);
   EXPECT_EQ(result.stats.final_reason, PassageInsertionRejectReason::kDisabled);
   expectSamePoints(result.samples, samples);
@@ -251,6 +279,8 @@ TEST(TrajectoryPassageInsertion, RepairsValidButLowClearanceOpeningTraversal) {
 
   ASSERT_TRUE(result.valid);
   ASSERT_TRUE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_TRUE(result.repair_satisfied);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.final_reason, PassageInsertionRejectReason::kNone);
   EXPECT_LT(result.stats.diagnostics.front().lateral_miss_after_m,
@@ -273,6 +303,8 @@ TEST(TrajectoryPassageInsertion, InsertsLocalSegmentThroughKnownOpening) {
 
   ASSERT_TRUE(result.valid);
   ASSERT_TRUE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_TRUE(result.repair_satisfied);
   EXPECT_TRUE(result.stats.applied);
   EXPECT_EQ(result.stats.inserted_count, 1U);
   EXPECT_EQ(result.stats.final_reason, PassageInsertionRejectReason::kNone);
@@ -302,6 +334,8 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateThatCrossesProhibitedGrid) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_FALSE(result.repair_satisfied);
   EXPECT_FALSE(result.stats.applied);
   EXPECT_GT(result.stats.rejected_traversability, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
@@ -332,6 +366,8 @@ TEST(TrajectoryPassageInsertion, CapturesInflationOnlyBlockedSegment) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_FALSE(result.repair_satisfied);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   const PassageInsertionDiagnostic& diagnostic = result.stats.diagnostics.front();
   EXPECT_EQ(diagnostic.reason, PassageInsertionRejectReason::kNonTraversable);
@@ -353,6 +389,8 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnJoinTangentDelta) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_FALSE(result.repair_satisfied);
   EXPECT_GT(result.stats.rejected_join, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,
@@ -372,6 +410,8 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_FALSE(result.repair_satisfied);
   EXPECT_GT(result.stats.rejected_join, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,
@@ -469,6 +509,23 @@ TEST(TrajectoryPassageInsertion,
   EXPECT_TRUE(std::ranges::any_of(result.stats.diagnostics, [](const auto& diagnostic) {
     return diagnostic.reason == PassageInsertionRejectReason::kValidationNotImproved;
   }));
+}
+
+TEST(TrajectoryPassageInsertion, PartialRepairRemainsUnsatisfied) {
+  const OccupancyGrid2D grid = makeGrid();
+  const KnownPassageMap map = makeTwoRepairPassageMap();
+  const std::vector<TrajectoryPointSample> samples = makeLineSamples(4.0);
+  PassageInsertionConfig config = insertionConfig();
+  config.max_candidates = 1U;
+
+  const PassageInsertionResult result = insertLocalPassageSegments(
+      samples, grid, &map, KnownPassageValidationConfig{}, config, 10.0);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.applied);
+  EXPECT_TRUE(result.repair_required);
+  EXPECT_FALSE(result.repair_satisfied);
+  EXPECT_EQ(result.stats.final_reason, PassageInsertionRejectReason::kRepairIncomplete);
 }
 
 } // namespace drone_city_nav

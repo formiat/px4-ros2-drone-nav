@@ -185,6 +185,122 @@ TEST(TrajectoryPlanner, GridDependentStagesFallBackToRuntimeProhibitedGrid) {
   EXPECT_FALSE(pathIsTraversable(planning_grid, result_points));
 }
 
+TEST(TrajectoryPlanner, PassageInsertionFallsBackWhenStrictGridCannotRepair) {
+  OccupancyGrid2D planning_grid = testGrid();
+  const GridIndex blocked_cell{20, 20};
+  planning_grid.setOccupied(blocked_cell);
+  const OccupancyGrid2D runtime_grid = testGrid();
+  const std::vector<Point2> route{{-10.0, 4.0}, {10.0, 4.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::vector<TrajectoryGridCandidate> candidates{
+      TrajectoryGridCandidate{"planning_clearance", &planning_grid},
+      TrajectoryGridCandidate{"runtime_prohibited", &runtime_grid},
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+  config.vertical_profile.enabled = false;
+  config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;
+  config.passage_insertion.max_join_curvature_jump_1pm = 10.0;
+  config.passage_insertion.max_lateral_shift_m = 20.0;
+  TrajectoryPlannerInput input{};
+  input.route_points = std::span<const Point2>{route.data(), route.size()};
+  input.prohibited_grid = &planning_grid;
+  input.known_passage_map = &map;
+  input.grid_candidates = candidates;
+
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "runtime_prohibited");
+  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 2U);
+  const PassageInsertionGridAttempt& strict_attempt =
+      result.stats.passage_insertion_grid_attempts.front();
+  EXPECT_EQ(strict_attempt.grid_name, "planning_clearance");
+  EXPECT_TRUE(strict_attempt.valid);
+  EXPECT_TRUE(strict_attempt.repair_required);
+  EXPECT_FALSE(strict_attempt.repair_satisfied);
+  EXPECT_FALSE(strict_attempt.applied);
+  EXPECT_FALSE(strict_attempt.accepted);
+  const PassageInsertionGridAttempt& runtime_attempt =
+      result.stats.passage_insertion_grid_attempts.back();
+  EXPECT_EQ(runtime_attempt.grid_name, "runtime_prohibited");
+  EXPECT_TRUE(runtime_attempt.valid);
+  EXPECT_TRUE(runtime_attempt.repair_required);
+  EXPECT_TRUE(runtime_attempt.repair_satisfied);
+  EXPECT_TRUE(runtime_attempt.applied);
+  EXPECT_TRUE(runtime_attempt.accepted);
+}
+
+TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsInvalidatesTrajectory) {
+  OccupancyGrid2D planning_grid = testGrid();
+  OccupancyGrid2D runtime_grid = testGrid();
+  const GridIndex blocked_cell{20, 20};
+  planning_grid.setOccupied(blocked_cell);
+  runtime_grid.setOccupied(blocked_cell);
+  const std::vector<Point2> route{{-10.0, 4.0}, {10.0, 4.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::vector<TrajectoryGridCandidate> candidates{
+      TrajectoryGridCandidate{"planning_clearance", &planning_grid},
+      TrajectoryGridCandidate{"runtime_prohibited", &runtime_grid},
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+  config.vertical_profile.enabled = false;
+  config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;
+  config.passage_insertion.max_join_curvature_jump_1pm = 10.0;
+  config.passage_insertion.max_lateral_shift_m = 20.0;
+  TrajectoryPlannerInput input{};
+  input.route_points = std::span<const Point2>{route.data(), route.size()};
+  input.prohibited_grid = &planning_grid;
+  input.known_passage_map = &map;
+  input.grid_candidates = candidates;
+
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "none");
+  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 2U);
+  for (const PassageInsertionGridAttempt& attempt :
+       result.stats.passage_insertion_grid_attempts) {
+    EXPECT_TRUE(attempt.valid);
+    EXPECT_TRUE(attempt.repair_required);
+    EXPECT_FALSE(attempt.repair_satisfied);
+    EXPECT_FALSE(attempt.accepted);
+  }
+}
+
+TEST(TrajectoryPlanner, PassageInsertionSkipsFallbackWhenRepairIsNotRequired) {
+  const OccupancyGrid2D planning_grid = testGrid();
+  const OccupancyGrid2D runtime_grid = testGrid();
+  const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::vector<TrajectoryGridCandidate> candidates{
+      TrajectoryGridCandidate{"planning_clearance", &planning_grid},
+      TrajectoryGridCandidate{"runtime_prohibited", &runtime_grid},
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+  config.vertical_profile.enabled = false;
+  TrajectoryPlannerInput input{};
+  input.route_points = std::span<const Point2>{route.data(), route.size()};
+  input.prohibited_grid = &planning_grid;
+  input.known_passage_map = &map;
+  input.grid_candidates = candidates;
+
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "planning_clearance");
+  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 1U);
+  const PassageInsertionGridAttempt& attempt =
+      result.stats.passage_insertion_grid_attempts.front();
+  EXPECT_FALSE(attempt.repair_required);
+  EXPECT_TRUE(attempt.repair_satisfied);
+  EXPECT_FALSE(attempt.applied);
+  EXPECT_TRUE(attempt.accepted);
+}
+
 TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}};

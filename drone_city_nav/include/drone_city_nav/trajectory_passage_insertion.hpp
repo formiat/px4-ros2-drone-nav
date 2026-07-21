@@ -19,6 +19,7 @@ enum class PassageInsertionRejectReason {
   kInvalidInput,
   kNoRepairNeeded,
   kNoCandidate,
+  kRepairIncomplete,
   kTooManyCandidates,
   kInvalidOpeningFrame,
   kExcessiveLateralShift,
@@ -89,6 +90,8 @@ struct PassageInsertionDiagnostic {
 struct PassageInsertionStats {
   bool enabled{false};
   bool applied{false};
+  bool repair_required{false};
+  bool repair_satisfied{false};
   std::size_t candidates{0U};
   std::size_t inserted_count{0U};
   std::size_t rejected_join{0U};
@@ -104,6 +107,8 @@ struct PassageInsertionResult {
   std::vector<TrajectoryPointSample> samples;
   PassageInsertionStats stats{};
   bool valid{false};
+  bool repair_required{false};
+  bool repair_satisfied{false};
   bool applied{false};
 };
 

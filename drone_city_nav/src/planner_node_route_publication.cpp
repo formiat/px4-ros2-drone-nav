@@ -378,6 +378,26 @@ bool PlannerNode::publishPathFromPathCells(
       grid_candidates};
   TrajectoryPlannerResult trajectory_result =
       planOptimizedTrajectory(trajectory_input, trajectory_config);
+  const std::vector<PassageInsertionGridAttempt>& insertion_grid_attempts =
+      trajectory_result.stats.passage_insertion_grid_attempts;
+  for (std::size_t index = 0U; index < insertion_grid_attempts.size(); ++index) {
+    const PassageInsertionGridAttempt& attempt = insertion_grid_attempts[index];
+    const char* fallback_grid =
+        !attempt.accepted && index + 1U < insertion_grid_attempts.size()
+            ? insertion_grid_attempts[index + 1U].grid_name.c_str()
+            : "none";
+    RCLCPP_INFO(
+        get_logger(),
+        "PASSAGE_INSERTION_GRID_ATTEMPT grid=%s valid=%s repair_required=%s "
+        "repair_satisfied=%s applied=%s trajectory_invariants_hold=%s accepted=%s "
+        "reason=%s fallback=%s",
+        attempt.grid_name.c_str(), attempt.valid ? "true" : "false",
+        attempt.repair_required ? "true" : "false",
+        attempt.repair_satisfied ? "true" : "false", attempt.applied ? "true" : "false",
+        attempt.trajectory_invariants_hold ? "true" : "false",
+        attempt.accepted ? "true" : "false",
+        passageInsertionRejectReasonName(attempt.reason), fallback_grid);
+  }
   const PassageInsertionStats& insertion_stats =
       trajectory_result.stats.passage_insertion;
   for (const PassageInsertionDiagnostic& diagnostic : insertion_stats.diagnostics) {

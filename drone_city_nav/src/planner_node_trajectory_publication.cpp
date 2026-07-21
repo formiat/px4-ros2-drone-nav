@@ -102,6 +102,8 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
   stream << std::fixed << std::setprecision(2);
   stream << "enabled=" << (stats.enabled ? "true" : "false")
          << " applied=" << (stats.applied ? "true" : "false")
+         << " repair_required=" << (stats.repair_required ? "true" : "false")
+         << " repair_satisfied=" << (stats.repair_satisfied ? "true" : "false")
          << " candidates=" << stats.candidates << " inserted=" << stats.inserted_count
          << " rejected(join=" << stats.rejected_join
          << " traversability=" << stats.rejected_traversability
