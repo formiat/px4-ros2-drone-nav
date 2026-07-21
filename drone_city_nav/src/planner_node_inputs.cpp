@@ -565,6 +565,10 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
     return;
   }
 
+  TrajectoryDeliveryDiagnostics replan_delivery =
+      pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
+  pending_replan_delivery_.reset();
+
   const Point2 planning_start =
       truncation_replan.has_value()
           ? Point2{truncation_replan->position.x, truncation_replan->position.y}
@@ -824,15 +828,27 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 "raw_points=%zu",
                 path_result->astar.path.size());
   }
-  const bool published = publishPathFromPathCells(
+  PathPublicationOutcome publication_outcome = publishPathFromPathCells(
       *planning_result, grid_candidates, astar_grid_index, path_result->astar.path,
       path_result->smoothed_cells, astar_grid_name.c_str(), planning_start,
+      replan_delivery, PassageInsertionStartMode::kMovingJoin,
       truncation_replan.has_value() ? &*truncation_replan : nullptr);
+  if (publication_outcome == PathPublicationOutcome::kRetryAfterTerminalHold &&
+      truncation_replan.has_value()) {
+    publication_outcome = publishTerminalHoldRestartSuffix(
+        *planning_result, grid_candidates, planning_start, *truncation_replan,
+        replan_delivery);
+    if (publication_outcome != PathPublicationOutcome::kPublished) {
+      publishPlanningFailureHold();
+    }
+  }
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
   RCLCPP_INFO(get_logger(),
               "Planning worker cycle complete: request_generation=%" PRIu64
               " published=%s duration_ms=%.1f",
-              request_generation, published ? "true" : "false",
+              request_generation,
+              publication_outcome == PathPublicationOutcome::kPublished ? "true"
+                                                                        : "false",
               cycle_duration_s * 1000.0);
 }
 

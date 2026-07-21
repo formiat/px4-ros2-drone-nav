@@ -67,5 +67,16 @@ TEST(TruncationSuffixProtocol, RejectsUnknownDecisionValue) {
   EXPECT_FALSE(truncationSuffixAckDecisionFromValue(99U).has_value());
 }
 
+TEST(TruncationSuffixProtocol, ParsesSuffixActivationModes) {
+  EXPECT_EQ(truncationSuffixActivationModeFromValue(0U),
+            TruncationSuffixActivationMode::kMovingJoin);
+  EXPECT_EQ(truncationSuffixActivationModeFromValue(1U),
+            TruncationSuffixActivationMode::kAfterHold);
+  EXPECT_FALSE(truncationSuffixActivationModeFromValue(2U).has_value());
+  EXPECT_STREQ(
+      truncationSuffixActivationModeName(TruncationSuffixActivationMode::kAfterHold),
+      "after_hold");
+}
+
 } // namespace
 } // namespace drone_city_nav

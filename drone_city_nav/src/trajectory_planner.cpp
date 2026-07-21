@@ -596,6 +596,7 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   const auto passage_insertion_started_at = std::chrono::steady_clock::now();
   PassageInsertionResult passage_insertion{};
   std::vector<TrajectoryPointSample> passage_samples;
+  bool hold_restart_recommended = false;
   for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
     const TrajectoryGridCandidate& candidate = grid_candidates[index];
     ++result.stats.grid_stages.passage_insertion_attempts;
@@ -605,7 +606,9 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     PassageInsertionResult attempt = insertLocalPassageSegments(
         result.samples, *candidate.grid, input.known_passage_map,
         config.known_passage_validation, config.passage_insertion,
-        config.initial_altitude_m);
+        config.initial_altitude_m, input.passage_insertion_start_mode);
+    hold_restart_recommended =
+        hold_restart_recommended || attempt.hold_restart_recommended;
     const std::string candidate_name = gridCandidateName(candidate, index);
     for (PassageInsertionDiagnostic& diagnostic : attempt.stats.diagnostics) {
       diagnostic.grid_name = candidate_name;
@@ -644,6 +647,7 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   result.stats.passage_insertion_duration_ms =
       elapsedMilliseconds(passage_insertion_started_at);
   result.stats.passage_insertion = passage_insertion.stats;
+  result.stats.passage_insertion.hold_restart_recommended = hold_restart_recommended;
   if (!passage_insertion.valid || passage_samples.empty()) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);

@@ -16,6 +16,29 @@ truncationSuffixAckDecisionFromValue(const std::uint8_t value) noexcept {
   }
 }
 
+std::optional<TruncationSuffixActivationMode>
+truncationSuffixActivationModeFromValue(const std::uint8_t value) noexcept {
+  switch (value) {
+    case static_cast<std::uint8_t>(TruncationSuffixActivationMode::kMovingJoin):
+      return TruncationSuffixActivationMode::kMovingJoin;
+    case static_cast<std::uint8_t>(TruncationSuffixActivationMode::kAfterHold):
+      return TruncationSuffixActivationMode::kAfterHold;
+    default:
+      return std::nullopt;
+  }
+}
+
+const char*
+truncationSuffixActivationModeName(const TruncationSuffixActivationMode mode) noexcept {
+  switch (mode) {
+    case TruncationSuffixActivationMode::kMovingJoin:
+      return "moving_join";
+    case TruncationSuffixActivationMode::kAfterHold:
+      return "after_hold";
+  }
+  return "unknown";
+}
+
 const char*
 truncationSuffixAckDecisionName(const TruncationSuffixAckDecision decision) noexcept {
   switch (decision) {

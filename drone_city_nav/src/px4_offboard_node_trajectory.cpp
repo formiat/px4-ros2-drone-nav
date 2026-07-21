@@ -420,6 +420,20 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
   if (!localPositionFresh()) {
     return;
   }
+  const std::optional<TruncationSuffixActivationMode> activation_mode =
+      truncationSuffixActivationModeFromValue(
+          pending_truncation_suffix_->truncation_suffix_activation_mode);
+  if (!activation_mode.has_value()) {
+    msg::ExecutableTrajectory command = std::move(*pending_truncation_suffix_);
+    pending_truncation_suffix_.reset();
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "invalid_activation_mode");
+    return;
+  }
+  if (*activation_mode == TruncationSuffixActivationMode::kAfterHold &&
+      !temporary_replan_hold_active_) {
+    return;
+  }
   const double join_distance_m =
       distance(current_position_, active_truncation_terminal_sample_.point);
   if (join_distance_m > kTruncationSuffixPositionToleranceM) {
@@ -429,11 +443,13 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
   msg::ExecutableTrajectory command = std::move(*pending_truncation_suffix_);
   pending_truncation_suffix_.reset();
   RCLCPP_INFO(get_logger(),
-              "REPLAN_TRUNCATION activating pending suffix: path_id=%" PRIu64
-              " generation=%" PRIu64 " current=(%.2f,%.2f) join=(%.2f,%.2f) "
+              "REPLAN_TRUNCATION suffix_activation=%s activating pending suffix: "
+              "path_id=%" PRIu64 " generation=%" PRIu64
+              " current=(%.2f,%.2f) join=(%.2f,%.2f) "
               "distance=%.3fm",
-              command.path_id, command.truncation_generation, current_position_.x,
-              current_position_.y, active_truncation_terminal_sample_.point.x,
+              truncationSuffixActivationModeName(*activation_mode), command.path_id,
+              command.truncation_generation, current_position_.x, current_position_.y,
+              active_truncation_terminal_sample_.point.x,
               active_truncation_terminal_sample_.point.y, join_distance_m);
   processExecutableTrajectory(command, true);
 }
@@ -551,6 +567,22 @@ void Px4OffboardNode::processExecutableTrajectory(
     return;
   }
 
+  const std::optional<TruncationSuffixActivationMode> truncation_activation_mode =
+      command.truncation_suffix ? truncationSuffixActivationModeFromValue(
+                                      command.truncation_suffix_activation_mode)
+                                : std::optional<TruncationSuffixActivationMode>{};
+  if (command.truncation_suffix && !truncation_activation_mode.has_value()) {
+    callback_duration.setOutcome("truncation_activation_mode_rejected");
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION rejected suffix: reason=invalid_activation_mode "
+                "path_id=%" PRIu64 " generation=%" PRIu64 " value=%u",
+                command.path_id, command.truncation_generation,
+                static_cast<unsigned int>(command.truncation_suffix_activation_mode));
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "invalid_activation_mode");
+    return;
+  }
+
   const TrajectoryPlannerDiagnosticsEnvelope* candidate_diagnostics = nullptr;
   const TrajectoryPlannerStats* candidate_planner_stats = nullptr;
   if (latest_trajectory_diagnostics_.has_value() &&
@@ -591,14 +623,18 @@ void Px4OffboardNode::processExecutableTrajectory(
                 trajectory_continuity_thresholds_.reject_tangent_jump_rad,
             .max_altitude_jump_m = trajectory_continuity_thresholds_
                                        .vertical_hard_window_altitude_tolerance_m,
+            .require_tangent_match = *truncation_activation_mode !=
+                                     TruncationSuffixActivationMode::kAfterHold,
         });
     if (!join_validation.valid) {
       callback_duration.setOutcome("truncation_join_rejected");
       RCLCPP_WARN(
           get_logger(),
-          "REPLAN_TRUNCATION rejected suffix: reason=%s path_id=%" PRIu64
-          " generation=%" PRIu64 " join[position=%.3fm/%.3fm tangent=%.3frad/%.3frad "
+          "REPLAN_TRUNCATION suffix_activation=%s rejected suffix: reason=%s "
+          "path_id=%" PRIu64 " generation=%" PRIu64
+          " join[position=%.3fm/%.3fm tangent=%.3frad/%.3frad "
           "altitude=%.3fm/%.3fm]",
+          truncationSuffixActivationModeName(*truncation_activation_mode),
           join_validation.reason, command.path_id, command.truncation_generation,
           join_validation.position_jump_m, kTruncationSuffixPositionToleranceM,
           join_validation.tangent_jump_rad,
@@ -612,27 +648,38 @@ void Px4OffboardNode::processExecutableTrajectory(
 
     const double current_join_distance_m =
         distance(current_position_, active_truncation_terminal_sample_.point);
-    if (!pending_retry && !temporary_replan_immediate_hold_ &&
-        current_join_distance_m > kTruncationSuffixPositionToleranceM) {
+    const bool wait_for_terminal_hold =
+        *truncation_activation_mode == TruncationSuffixActivationMode::kAfterHold &&
+        !temporary_replan_hold_active_;
+    const bool wait_for_moving_join =
+        *truncation_activation_mode == TruncationSuffixActivationMode::kMovingJoin &&
+        !temporary_replan_immediate_hold_ &&
+        current_join_distance_m > kTruncationSuffixPositionToleranceM;
+    if (!pending_retry && (wait_for_terminal_hold || wait_for_moving_join)) {
       const bool replaced = pending_truncation_suffix_.has_value();
       pending_truncation_suffix_ = command;
       callback_duration.setOutcome("truncation_suffix_pending");
-      RCLCPP_INFO(get_logger(),
-                  "REPLAN_TRUNCATION suffix pending until join point: path_id=%" PRIu64
-                  " generation=%" PRIu64 " current=(%.2f,%.2f) join=(%.2f,%.2f) "
-                  "distance=%.3fm replaced=%s join[position=%.3fm tangent=%.3frad "
-                  "altitude=%.3fm]",
-                  command.path_id, command.truncation_generation, current_position_.x,
-                  current_position_.y, active_truncation_terminal_sample_.point.x,
-                  active_truncation_terminal_sample_.point.y, current_join_distance_m,
-                  replaced ? "true" : "false", join_validation.position_jump_m,
-                  join_validation.tangent_jump_rad, join_validation.altitude_jump_m);
+      RCLCPP_INFO(
+          get_logger(),
+          "REPLAN_TRUNCATION suffix_activation=%s suffix pending: path_id=%" PRIu64
+          " generation=%" PRIu64 " current=(%.2f,%.2f) join=(%.2f,%.2f) "
+          "distance=%.3fm replaced=%s join[position=%.3fm tangent=%.3frad "
+          "altitude=%.3fm]",
+          truncationSuffixActivationModeName(*truncation_activation_mode),
+          command.path_id, command.truncation_generation, current_position_.x,
+          current_position_.y, active_truncation_terminal_sample_.point.x,
+          active_truncation_terminal_sample_.point.y, current_join_distance_m,
+          replaced ? "true" : "false", join_validation.position_jump_m,
+          join_validation.tangent_jump_rad, join_validation.altitude_jump_m);
       publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
-                                 "waiting_for_join_point");
+                                 wait_for_terminal_hold ? "waiting_for_terminal_hold"
+                                                        : "waiting_for_join_point");
       return;
     }
 
-    if (!temporary_replan_immediate_hold_) {
+    if (*truncation_activation_mode == TruncationSuffixActivationMode::kAfterHold) {
+      horizontal_handover.reason = "truncation_after_hold_release";
+    } else if (!temporary_replan_immediate_hold_) {
       const Point2 truncation_point = active_truncation_terminal_sample_.point;
       const TruncatedPrefixStitchResult stitch = stitchTruncatedPrefixWithSuffix(
           final_trajectory_samples_, candidate_state.samples,
@@ -757,9 +804,13 @@ void Px4OffboardNode::processExecutableTrajectory(
   TrajectoryContinuityResult continuity{};
   if (temporary_replan_truncation_active_) {
     continuity.decision = TrajectoryContinuityDecision::kResetSmoother;
-    continuity.reason = temporary_replan_immediate_hold_
-                            ? "truncation_immediate_hold_release"
-                            : "truncation_suffix_join_valid";
+    if (*truncation_activation_mode == TruncationSuffixActivationMode::kAfterHold) {
+      continuity.reason = "truncation_after_hold_release";
+    } else if (temporary_replan_immediate_hold_) {
+      continuity.reason = "truncation_immediate_hold_release";
+    } else {
+      continuity.reason = "truncation_suffix_join_valid";
+    }
   } else {
     continuity = evaluateReceivedTrajectoryContinuity(candidate_state);
   }

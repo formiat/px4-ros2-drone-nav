@@ -5,6 +5,11 @@
 
 namespace drone_city_nav {
 
+enum class TruncationSuffixActivationMode : std::uint8_t {
+  kMovingJoin = 0U,
+  kAfterHold = 1U,
+};
+
 enum class TruncationSuffixAckDecision : std::uint8_t {
   kPending = 0U,
   kAccepted = 1U,
@@ -31,6 +36,12 @@ struct TruncationSuffixAckEvaluation {
 
 [[nodiscard]] std::optional<TruncationSuffixAckDecision>
 truncationSuffixAckDecisionFromValue(std::uint8_t value) noexcept;
+
+[[nodiscard]] std::optional<TruncationSuffixActivationMode>
+truncationSuffixActivationModeFromValue(std::uint8_t value) noexcept;
+
+[[nodiscard]] const char*
+truncationSuffixActivationModeName(TruncationSuffixActivationMode mode) noexcept;
 
 [[nodiscard]] const char*
 truncationSuffixAckDecisionName(TruncationSuffixAckDecision decision) noexcept;

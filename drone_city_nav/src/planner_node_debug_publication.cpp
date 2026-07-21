@@ -206,6 +206,8 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   command.truncation_generation = delivery.truncation_generation;
   command.temporary_prefix_fingerprint = delivery.temporary_prefix_fingerprint;
   command.truncation_suffix = delivery.truncation_suffix;
+  command.truncation_suffix_activation_mode =
+      delivery.truncation_suffix_activation_mode;
   command.path = path;
   executable_trajectory_pub_->publish(command);
   path_pub_->publish(path);

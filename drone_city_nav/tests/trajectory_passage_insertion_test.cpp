@@ -397,6 +397,58 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnJoinTangentDelta) {
             PassageInsertionRejectReason::kJoinTangent);
 }
 
+TEST(TrajectoryPassageInsertion, TerminalHoldRestartRelaxesOnlyInitialJoin) {
+  const OccupancyGrid2D grid = makeGrid();
+  const KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples;
+  for (int x = -10; x <= 2; x += 2) {
+    TrajectoryPointSample sample{};
+    sample.point = Point2{static_cast<double>(x), 4.0};
+    sample.z_m = 10.0;
+    sample.left_bound_m = 10.0;
+    sample.right_bound_m = 10.0;
+    samples.push_back(sample);
+  }
+  for (int x = 4; x <= 20; x += 2) {
+    TrajectoryPointSample sample{};
+    sample.point = Point2{static_cast<double>(x), 0.0};
+    sample.z_m = 10.0;
+    sample.left_bound_m = 10.0;
+    sample.right_bound_m = 10.0;
+    samples.push_back(sample);
+  }
+  populateTrajectorySampleGeometry(samples);
+
+  PassageInsertionConfig config = insertionConfig();
+  config.max_join_tangent_delta_rad = 0.01;
+  config.max_join_curvature_jump_1pm = 10.0;
+  config.max_candidates = 1U;
+
+  const PassageInsertionResult moving =
+      insertLocalPassageSegments(samples, grid, &map, KnownPassageValidationConfig{},
+                                 config, 10.0, PassageInsertionStartMode::kMovingJoin);
+  ASSERT_TRUE(moving.valid);
+  EXPECT_FALSE(moving.applied);
+  EXPECT_TRUE(moving.hold_restart_recommended);
+  ASSERT_FALSE(moving.stats.diagnostics.empty());
+  EXPECT_TRUE(moving.stats.diagnostics.front().start_is_anchor);
+  EXPECT_TRUE(moving.stats.diagnostics.front().initial_join_checked);
+
+  const PassageInsertionResult after_hold = insertLocalPassageSegments(
+      samples, grid, &map, KnownPassageValidationConfig{}, config, 10.0,
+      PassageInsertionStartMode::kTerminalHoldRestart);
+  ASSERT_TRUE(after_hold.valid);
+  EXPECT_TRUE(after_hold.applied);
+  EXPECT_TRUE(after_hold.repair_satisfied);
+  ASSERT_FALSE(after_hold.stats.diagnostics.empty());
+  EXPECT_TRUE(after_hold.stats.diagnostics.front().start_is_anchor);
+  EXPECT_FALSE(after_hold.stats.diagnostics.front().initial_join_checked);
+  EXPECT_TRUE(
+      after_hold.stats.diagnostics.front().initial_join_relaxed_for_hold_restart);
+  EXPECT_TRUE(
+      std::isnan(after_hold.stats.diagnostics.front().join_tangent_delta_before_rad));
+}
+
 TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
   const OccupancyGrid2D grid = makeGrid();
   const KnownPassageMap map = makeMap();
@@ -472,9 +524,9 @@ TEST(TrajectoryPassageInsertion, LimitsDiagnosticsAndReportsRejectedCandidates) 
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.applied);
-  EXPECT_EQ(result.stats.candidates, 2U);
+  EXPECT_EQ(result.stats.candidates, 8U);
   EXPECT_EQ(result.stats.diagnostics.size(), 1U);
-  EXPECT_EQ(result.stats.diagnostics_dropped, 1U);
+  EXPECT_EQ(result.stats.diagnostics_dropped, 7U);
   EXPECT_EQ(result.stats.diagnostics.front().reason,
             PassageInsertionRejectReason::kExcessiveLateralShift);
   EXPECT_FALSE(result.stats.diagnostics.front().accepted);

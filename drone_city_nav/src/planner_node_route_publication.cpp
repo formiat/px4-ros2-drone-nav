@@ -171,21 +171,20 @@ TrajectoryPlannerConfig PlannerNode::trajectoryPlannerConfigForCurrentAltitude(
   return config;
 }
 
-bool PlannerNode::publishPathFromPathCells(
+PlannerNode::PathPublicationOutcome PlannerNode::publishPathFromPathCells(
     const PlanningGridBuildResult& planning_result,
     const std::span<const TrajectoryGridCandidate> grid_candidates,
     const std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
     const std::vector<GridIndex>& smoothed_cells, const char* source_label,
-    const Point2 planning_start, const TruncationReplanState* truncation_replan) {
+    const Point2 planning_start, TrajectoryDeliveryDiagnostics delivery,
+    const PassageInsertionStartMode insertion_start_mode,
+    const TruncationReplanState* const truncation_replan) {
   if (grid_candidates.empty() || astar_grid_index >= grid_candidates.size() ||
       grid_candidates[astar_grid_index].grid == nullptr) {
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
-    return false;
+    return PathPublicationOutcome::kNotPublished;
   }
   const OccupancyGrid2D& route_geometry_grid = *grid_candidates[astar_grid_index].grid;
-  TrajectoryDeliveryDiagnostics delivery =
-      pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
-  pending_replan_delivery_.reset();
   if (truncation_replan != nullptr) {
     delivery.blocked_path_id = truncation_replan->blocked_path_id;
     delivery.truncation_generation = truncation_replan->generation;
@@ -193,6 +192,10 @@ bool PlannerNode::publishPathFromPathCells(
         truncation_replan->temporary_prefix_fingerprint;
     delivery.truncation_suffix = true;
     delivery.truncation_immediate_hold = truncation_replan->immediate_hold;
+    delivery.truncation_suffix_activation_mode = static_cast<std::uint8_t>(
+        insertion_start_mode == PassageInsertionStartMode::kTerminalHoldRestart
+            ? TruncationSuffixActivationMode::kAfterHold
+            : TruncationSuffixActivationMode::kMovingJoin);
   }
 
   struct CandidatePath {
@@ -295,10 +298,10 @@ bool PlannerNode::publishPathFromPathCells(
                 "smoothed_cells=%zu raw_cells=%zu",
                 source_label, smoothed_cells.size(), raw_cells.size());
     if (keepCurrentPathAfterInvalidReplacement(source_label, "route_seed_invalid")) {
-      return false;
+      return PathPublicationOutcome::kNotPublished;
     }
     publishPath({}, PathPublicationReason::kHoldInvalidPath);
-    return false;
+    return PathPublicationOutcome::kNotPublished;
   }
 
   const std::vector<Point2> route_points = std::move(candidate->points);
@@ -375,7 +378,8 @@ bool PlannerNode::publishPathFromPathCells(
       std::span<const CorridorSample>{},
       nullptr,
       known_passages_ ? &*known_passages_ : nullptr,
-      grid_candidates};
+      grid_candidates,
+      insertion_start_mode};
   TrajectoryPlannerResult trajectory_result =
       planOptimizedTrajectory(trajectory_input, trajectory_config);
   const std::vector<PassageInsertionGridAttempt>& insertion_grid_attempts =
@@ -401,6 +405,22 @@ bool PlannerNode::publishPathFromPathCells(
   const PassageInsertionStats& insertion_stats =
       trajectory_result.stats.passage_insertion;
   for (const PassageInsertionDiagnostic& diagnostic : insertion_stats.diagnostics) {
+    RCLCPP_INFO(get_logger(),
+                "PASSAGE_INSERTION_ATTEMPT mode=%s structure=%s opening=%s "
+                "start_is_anchor=%s initial_join_checked=%s reconnect_join_checked=%s "
+                "initial_join_relaxed_for_hold_restart=%s anchor_margin=%.2f "
+                "reconnect_margin=%.2f anchor_s=%.2f reconnect_s=%.2f reason=%s "
+                "accepted=%s",
+                passageInsertionStartModeName(diagnostic.start_mode),
+                diagnostic.structure_id.c_str(), diagnostic.opening_id.c_str(),
+                diagnostic.start_is_anchor ? "true" : "false",
+                diagnostic.initial_join_checked ? "true" : "false",
+                diagnostic.reconnect_join_checked ? "true" : "false",
+                diagnostic.initial_join_relaxed_for_hold_restart ? "true" : "false",
+                diagnostic.anchor_margin_m, diagnostic.reconnect_margin_m,
+                diagnostic.anchor_s_m, diagnostic.reconnect_s_m,
+                passageInsertionRejectReasonName(diagnostic.reason),
+                diagnostic.accepted ? "true" : "false");
     const PassageInsertionBlockedSegmentDiagnostic& blocked =
         diagnostic.blocked_segment;
     if (diagnostic.reason != PassageInsertionRejectReason::kNonTraversable ||
@@ -491,11 +511,69 @@ bool PlannerNode::publishPathFromPathCells(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
+  if (!trajectory_result.valid && truncation_replan != nullptr &&
+      insertion_start_mode == PassageInsertionStartMode::kMovingJoin &&
+      trajectory_result.stats.passage_insertion.hold_restart_recommended) {
+    RCLCPP_WARN(
+        get_logger(),
+        "REPLAN_TRUNCATION suffix_activation=moving_join result=retry_after_hold "
+        "blocked_path_id=%" PRIu64 " generation=%" PRIu64
+        " reason=initial_passage_join_rejected",
+        truncation_replan->blocked_path_id, truncation_replan->generation);
+    return PathPublicationOutcome::kRetryAfterTerminalHold;
+  }
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   applyNavigationStateSnapshot(fresh_navigation);
   return publishTrajectoryResult(
-      trajectory_result, route_points, source_label, duration_ms, delivery,
-      std::string{grid_candidates[astar_grid_index].name}, route_grid_name);
+             trajectory_result, route_points, source_label, duration_ms, delivery,
+             std::string{grid_candidates[astar_grid_index].name}, route_grid_name)
+             ? PathPublicationOutcome::kPublished
+             : PathPublicationOutcome::kNotPublished;
+}
+
+PlannerNode::PathPublicationOutcome PlannerNode::publishTerminalHoldRestartSuffix(
+    const PlanningGridBuildResult& planning_result,
+    const std::span<TrajectoryGridCandidate> grid_candidates,
+    const Point2 planning_start, const TruncationReplanState& truncation_replan,
+    TrajectoryDeliveryDiagnostics delivery) {
+  AStarConfig hold_restart_astar_config = astar_config_;
+  hold_restart_astar_config.initial_heading_bias_enabled = false;
+  hold_restart_astar_config.initial_heading_bias_velocity_x_mps = 0.0;
+  hold_restart_astar_config.initial_heading_bias_velocity_y_mps = 0.0;
+  std::optional<PathComputationResult> path_result;
+  std::size_t astar_grid_index = 0U;
+  for (; astar_grid_index < grid_candidates.size(); ++astar_grid_index) {
+    const TrajectoryGridCandidate& candidate = grid_candidates[astar_grid_index];
+    const std::string candidate_name{candidate.name};
+    path_result = computePathOnGrid(*candidate.grid, candidate_name.c_str(),
+                                    hold_restart_astar_config, planning_start);
+    if (path_result.has_value()) {
+      break;
+    }
+  }
+  if (!path_result.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION suffix_activation=after_hold planning_failed=true "
+                "reason=astar_unavailable blocked_path_id=%" PRIu64
+                " generation=%" PRIu64,
+                truncation_replan.blocked_path_id, truncation_replan.generation);
+    return PathPublicationOutcome::kNotPublished;
+  }
+
+  grid_candidates[astar_grid_index].clearance_field =
+      path_result->prohibited_clearance_field;
+  grid_candidates[astar_grid_index].clearance_field_cache_hit =
+      path_result->prohibited_clearance_field_cache_hit;
+  const std::string grid_name{grid_candidates[astar_grid_index].name};
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_TRUNCATION suffix_activation=after_hold astar_retry=true "
+              "grid=%s blocked_path_id=%" PRIu64 " generation=%" PRIu64,
+              grid_name.c_str(), truncation_replan.blocked_path_id,
+              truncation_replan.generation);
+  return publishPathFromPathCells(
+      planning_result, grid_candidates, astar_grid_index, path_result->astar.path,
+      path_result->smoothed_cells, grid_name.c_str(), planning_start, delivery,
+      PassageInsertionStartMode::kTerminalHoldRestart, &truncation_replan);
 }
 
 } // namespace drone_city_nav

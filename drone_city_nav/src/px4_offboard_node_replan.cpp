@@ -16,9 +16,15 @@ void Px4OffboardNode::publishTruncationSuffixAck(
   ack.decision = static_cast<std::uint8_t>(decision);
   ack.reason = reason;
   truncation_suffix_ack_pub_->publish(ack);
+  const std::optional<TruncationSuffixActivationMode> activation_mode =
+      truncationSuffixActivationModeFromValue(
+          command.truncation_suffix_activation_mode);
   RCLCPP_INFO(get_logger(),
-              "REPLAN_TRUNCATION suffix_ack decision=%s reason=%s path_id=%" PRIu64
-              " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64,
+              "REPLAN_TRUNCATION suffix_activation=%s suffix_ack decision=%s reason=%s "
+              "path_id=%" PRIu64 " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64,
+              activation_mode.has_value()
+                  ? truncationSuffixActivationModeName(*activation_mode)
+                  : "invalid",
               truncationSuffixAckDecisionName(decision), ack.reason.c_str(),
               ack.path_id, ack.truncation_generation, ack.temporary_prefix_fingerprint);
 }

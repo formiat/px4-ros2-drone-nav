@@ -67,6 +67,8 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
   appendJsonBool(stream, "delivery_truncation_suffix", delivery.truncation_suffix);
   appendJsonBool(stream, "delivery_truncation_immediate_hold",
                  delivery.truncation_immediate_hold);
+  appendJsonUint64(stream, "delivery_truncation_suffix_activation_mode",
+                   delivery.truncation_suffix_activation_mode);
   appendJsonUint64(stream, "delivery_blocked_path_id", delivery.blocked_path_id);
   appendJsonUint64(stream, "delivery_truncation_generation",
                    delivery.truncation_generation);

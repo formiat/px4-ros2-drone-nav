@@ -196,7 +196,10 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
   }
 
   std::vector<TrajectoryPointSample> runtime_samples;
-  if (delivery.truncation_immediate_hold) {
+  const bool activation_after_hold =
+      delivery.truncation_suffix_activation_mode ==
+      static_cast<std::uint8_t>(TruncationSuffixActivationMode::kAfterHold);
+  if (delivery.truncation_immediate_hold || activation_after_hold) {
     runtime_samples.assign(samples.begin(), samples.end());
   } else if (!trajectorySamplesAreUsable(last_valid_trajectory_samples_)) {
     RCLCPP_ERROR(get_logger(),
@@ -257,10 +260,13 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     };
   }
   RCLCPP_INFO(get_logger(),
-              "REPLAN_TRUNCATION suffix awaiting ACK=true "
+              "REPLAN_TRUNCATION suffix_activation=%s suffix awaiting ACK=true "
               "blocked_path_id=%" PRIu64 " generation=%" PRIu64
               " prefix_fingerprint=%" PRIu64 " path_id=%" PRIu64
               " attempt=%zu runtime_samples=%zu",
+              truncationSuffixActivationModeName(
+                  activation_after_hold ? TruncationSuffixActivationMode::kAfterHold
+                                        : TruncationSuffixActivationMode::kMovingJoin),
               delivery.blocked_path_id, delivery.truncation_generation,
               delivery.temporary_prefix_fingerprint, path_id, publication_attempt,
               runtime_samples.size());

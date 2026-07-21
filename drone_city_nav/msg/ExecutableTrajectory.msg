@@ -2,4 +2,7 @@ uint64 path_id
 uint64 truncation_generation
 uint64 temporary_prefix_fingerprint
 bool truncation_suffix
+uint8 TRUNCATION_SUFFIX_MOVING_JOIN=0
+uint8 TRUNCATION_SUFFIX_AFTER_HOLD=1
+uint8 truncation_suffix_activation_mode
 nav_msgs/Path path

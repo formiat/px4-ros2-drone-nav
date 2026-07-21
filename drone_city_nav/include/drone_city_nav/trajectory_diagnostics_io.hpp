@@ -26,6 +26,7 @@ struct TrajectoryDeliveryDiagnostics {
   bool replan_triggered{false};
   bool truncation_suffix{false};
   bool truncation_immediate_hold{false};
+  std::uint8_t truncation_suffix_activation_mode{0U};
   Point2 blocker_position{};
   Point2 blocker_detection_position{};
   Point2 blocker_detection_velocity{};

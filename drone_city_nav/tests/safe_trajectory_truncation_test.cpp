@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <vector>
 
 namespace drone_city_nav {
@@ -159,6 +160,26 @@ TEST(SafeTrajectoryTruncation, RejectsSuffixJoinTangentMismatch) {
 
   EXPECT_FALSE(validation.valid);
   EXPECT_STREQ(validation.reason, "tangent_mismatch");
+}
+
+TEST(SafeTrajectoryTruncation, AcceptsAfterHoldSuffixWithoutTangentMatch) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 18.0;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.tangent = Point2{-1.0, 0.0};
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial,
+      TruncationSuffixJoinRequest{.max_position_jump_m = 1.0,
+                                  .max_tangent_jump_rad = 0.01,
+                                  .max_altitude_jump_m = 0.4,
+                                  .require_tangent_match = false});
+
+  EXPECT_TRUE(validation.valid) << validation.reason;
+  EXPECT_STREQ(validation.reason, "join_valid");
+  EXPECT_TRUE(std::isnan(validation.tangent_jump_rad));
 }
 
 TEST(SafeTrajectoryTruncation, RejectsSuffixJoinAltitudeMismatch) {

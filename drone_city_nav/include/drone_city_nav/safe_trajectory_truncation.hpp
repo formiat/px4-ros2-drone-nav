@@ -46,6 +46,7 @@ struct TruncationSuffixJoinRequest {
   double max_position_jump_m{1.0};
   double max_tangent_jump_rad{1.57};
   double max_altitude_jump_m{0.4};
+  bool require_tangent_match{true};
 };
 
 struct TruncationSuffixJoinValidation {

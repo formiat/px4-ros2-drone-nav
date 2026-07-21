@@ -92,6 +92,10 @@ sanitizeConfig(const PassageInsertionConfig& input) noexcept {
   config.min_inserted_radius_m = std::clamp(
       std::isfinite(config.min_inserted_radius_m) ? config.min_inserted_radius_m : 0.0,
       0.0, 100000.0);
+  config.candidate_margin_step_m = std::clamp(
+      std::isfinite(config.candidate_margin_step_m) ? config.candidate_margin_step_m
+                                                    : 8.0,
+      0.1, 1000.0);
   config.max_candidates = std::clamp<std::size_t>(config.max_candidates, 0U, 100U);
   config.max_diagnostics = std::clamp<std::size_t>(config.max_diagnostics, 0U, 100U);
   return config;
@@ -148,6 +152,54 @@ findStructure(const KnownPassageMap& map, const std::string& structure_id) noexc
     }
   }
   return nullptr;
+}
+
+struct CandidateMargins {
+  double anchor_m{0.0};
+  double reconnect_m{0.0};
+};
+
+[[nodiscard]] std::vector<CandidateMargins>
+candidateMargins(const PassageOpening& opening, const PassageInsertionConfig& config) {
+  const double baseline_anchor =
+      std::clamp(std::max(config.min_anchor_margin_m, opening.approach_distance_m),
+                 config.min_anchor_margin_m, config.max_anchor_margin_m);
+  const double baseline_reconnect =
+      std::clamp(std::max(config.min_anchor_margin_m, opening.exit_distance_m),
+                 config.min_anchor_margin_m, config.max_anchor_margin_m);
+  std::vector<CandidateMargins> result;
+  result.reserve(config.max_candidates);
+  const auto append_unique = [&result](const CandidateMargins margins) {
+    const bool duplicate =
+        std::ranges::any_of(result, [&margins](const CandidateMargins existing) {
+          return std::abs(existing.anchor_m - margins.anchor_m) <= kTinyDistanceM &&
+                 std::abs(existing.reconnect_m - margins.reconnect_m) <= kTinyDistanceM;
+        });
+    if (!duplicate) {
+      result.push_back(margins);
+    }
+  };
+  append_unique(CandidateMargins{baseline_anchor, baseline_reconnect});
+
+  for (std::size_t step_index = 1U;; ++step_index) {
+    const double extra_m =
+        config.candidate_margin_step_m * static_cast<double>(step_index);
+    if (extra_m > config.max_anchor_margin_m + kTinyDistanceM) {
+      break;
+    }
+    const double anchor_m =
+        std::min(config.max_anchor_margin_m, baseline_anchor + extra_m);
+    const double reconnect_m =
+        std::min(config.max_anchor_margin_m, baseline_reconnect + extra_m);
+    append_unique(CandidateMargins{anchor_m, baseline_reconnect});
+    append_unique(CandidateMargins{baseline_anchor, reconnect_m});
+    append_unique(CandidateMargins{anchor_m, reconnect_m});
+    if (anchor_m >= config.max_anchor_margin_m - kTinyDistanceM &&
+        reconnect_m >= config.max_anchor_margin_m - kTinyDistanceM) {
+      break;
+    }
+  }
+  return result;
 }
 
 [[nodiscard]] TrajectoryPointSample
@@ -413,20 +465,21 @@ struct CandidateEvaluation {
   PassageInsertionDiagnostic diagnostic{};
   PassageInsertionRejectReason reason{PassageInsertionRejectReason::kNoCandidate};
   bool accepted{false};
-  double score{std::numeric_limits<double>::infinity()};
+  bool hold_restart_recommended{false};
 };
 
-[[nodiscard]] CandidateEvaluation
-evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
-                  const OccupancyGrid2D& grid, const KnownPassageMap& map,
-                  const KnownPassageValidationConfig& validation_config,
-                  const PassageInsertionConfig& config,
-                  const KnownPassageTraversalMatch& match,
-                  const PassageOpening& opening, const std::size_t before_violations,
-                  const double initial_altitude_m) {
+[[nodiscard]] CandidateEvaluation evaluateCandidate(
+    const std::span<const TrajectoryPointSample> original_samples,
+    const OccupancyGrid2D& grid, const KnownPassageMap& map,
+    const KnownPassageValidationConfig& validation_config,
+    const PassageInsertionConfig& config, const KnownPassageTraversalMatch& match,
+    const PassageOpening& opening, const std::size_t before_violations,
+    const double initial_altitude_m, const double pre_margin, const double post_margin,
+    const PassageInsertionStartMode start_mode) {
   CandidateEvaluation evaluation{};
   evaluation.diagnostic.structure_id = match.structure_id;
   evaluation.diagnostic.opening_id = opening.id;
+  evaluation.diagnostic.start_mode = start_mode;
   evaluation.diagnostic.entry_s_m = match.entry_s_m;
   evaluation.diagnostic.exit_s_m = match.exit_s_m;
 
@@ -443,18 +496,22 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
     return evaluation;
   }
 
-  const double pre_margin =
-      std::clamp(std::max(config.min_anchor_margin_m, opening.approach_distance_m),
-                 config.min_anchor_margin_m, config.max_anchor_margin_m);
-  const double post_margin =
-      std::clamp(std::max(config.min_anchor_margin_m, opening.exit_distance_m),
-                 config.min_anchor_margin_m, config.max_anchor_margin_m);
   const double anchor_s_m =
       std::max(original_samples.front().s_m, match.entry_s_m - pre_margin);
   const double reconnect_s_m =
       std::min(original_samples.back().s_m, match.exit_s_m + post_margin);
   evaluation.diagnostic.anchor_s_m = anchor_s_m;
   evaluation.diagnostic.reconnect_s_m = reconnect_s_m;
+  evaluation.diagnostic.anchor_margin_m = pre_margin;
+  evaluation.diagnostic.reconnect_margin_m = post_margin;
+  evaluation.diagnostic.start_is_anchor =
+      std::abs(anchor_s_m - original_samples.front().s_m) <= kTinyDistanceM;
+  evaluation.diagnostic.initial_join_checked =
+      start_mode != PassageInsertionStartMode::kTerminalHoldRestart ||
+      !evaluation.diagnostic.start_is_anchor;
+  evaluation.diagnostic.reconnect_join_checked = true;
+  evaluation.diagnostic.initial_join_relaxed_for_hold_restart =
+      !evaluation.diagnostic.initial_join_checked;
 
   evaluation.samples =
       buildStitchedCandidate(original_samples, opening, *frame, anchor_s_m,
@@ -485,26 +542,46 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
       closestSampleToPoint(evaluation.samples, original_anchor.point);
   const TrajectoryPointSample candidate_reconnect =
       closestSampleToPoint(evaluation.samples, original_reconnect.point);
-  evaluation.diagnostic.join_tangent_delta_before_rad =
-      angleBetween(original_anchor.tangent, candidate_anchor.tangent);
+  if (evaluation.diagnostic.initial_join_checked) {
+    evaluation.diagnostic.join_tangent_delta_before_rad =
+        angleBetween(original_anchor.tangent, candidate_anchor.tangent);
+  }
   evaluation.diagnostic.join_tangent_delta_after_rad =
       angleBetween(original_reconnect.tangent, candidate_reconnect.tangent);
-  if (evaluation.diagnostic.join_tangent_delta_before_rad >
-          config.max_join_tangent_delta_rad ||
+  const bool before_tangent_exceeded =
+      evaluation.diagnostic.initial_join_checked &&
+      evaluation.diagnostic.join_tangent_delta_before_rad >
+          config.max_join_tangent_delta_rad;
+  const bool after_tangent_exceeded =
       evaluation.diagnostic.join_tangent_delta_after_rad >
-          config.max_join_tangent_delta_rad) {
+      config.max_join_tangent_delta_rad;
+  if (start_mode == PassageInsertionStartMode::kMovingJoin &&
+      evaluation.diagnostic.start_is_anchor && before_tangent_exceeded) {
+    evaluation.hold_restart_recommended = true;
+  }
+  if (before_tangent_exceeded || after_tangent_exceeded) {
     evaluation.reason = PassageInsertionRejectReason::kJoinTangent;
     return evaluation;
   }
 
-  evaluation.diagnostic.join_curvature_jump_before_1pm =
-      maxCurvatureJumpNear(evaluation.samples, candidate_anchor.s_m);
+  if (evaluation.diagnostic.initial_join_checked) {
+    evaluation.diagnostic.join_curvature_jump_before_1pm =
+        maxCurvatureJumpNear(evaluation.samples, candidate_anchor.s_m);
+  }
   evaluation.diagnostic.join_curvature_jump_after_1pm =
       maxCurvatureJumpNear(evaluation.samples, candidate_reconnect.s_m);
-  if (evaluation.diagnostic.join_curvature_jump_before_1pm >
-          config.max_join_curvature_jump_1pm ||
+  const bool before_curvature_exceeded =
+      evaluation.diagnostic.initial_join_checked &&
+      evaluation.diagnostic.join_curvature_jump_before_1pm >
+          config.max_join_curvature_jump_1pm;
+  const bool after_curvature_exceeded =
       evaluation.diagnostic.join_curvature_jump_after_1pm >
-          config.max_join_curvature_jump_1pm) {
+      config.max_join_curvature_jump_1pm;
+  if (start_mode == PassageInsertionStartMode::kMovingJoin &&
+      evaluation.diagnostic.start_is_anchor && before_curvature_exceeded) {
+    evaluation.hold_restart_recommended = true;
+  }
+  if (before_curvature_exceeded || after_curvature_exceeded) {
     evaluation.reason = PassageInsertionRejectReason::kJoinCurvature;
     return evaluation;
   }
@@ -535,11 +612,6 @@ evaluateCandidate(const std::span<const TrajectoryPointSample> original_samples,
 
   evaluation.reason = PassageInsertionRejectReason::kNone;
   evaluation.accepted = true;
-  evaluation.score = evaluation.diagnostic.lateral_miss_after_m +
-                     evaluation.diagnostic.join_tangent_delta_before_rad +
-                     evaluation.diagnostic.join_tangent_delta_after_rad +
-                     evaluation.diagnostic.join_curvature_jump_before_1pm * 10.0 +
-                     evaluation.diagnostic.join_curvature_jump_after_1pm * 10.0;
   return evaluation;
 }
 
@@ -590,7 +662,8 @@ PassageInsertionResult insertLocalPassageSegments(
     const std::span<const TrajectoryPointSample> samples, const OccupancyGrid2D& grid,
     const KnownPassageMap* const map,
     const KnownPassageValidationConfig& validation_config,
-    const PassageInsertionConfig& input_config, const double initial_altitude_m) {
+    const PassageInsertionConfig& input_config, const double initial_altitude_m,
+    const PassageInsertionStartMode start_mode) {
   const PassageInsertionConfig config = sanitizeConfig(input_config);
   PassageInsertionResult result{};
   result.samples.assign(samples.begin(), samples.end());
@@ -647,24 +720,41 @@ PassageInsertionResult insertLocalPassageSegments(
       candidate_openings = structure->openings;
     }
     for (const PassageOpening& opening : candidate_openings) {
-      if (result.stats.candidates >= config.max_candidates) {
-        result.stats.final_reason = PassageInsertionRejectReason::kTooManyCandidates;
+      for (const CandidateMargins margins : candidateMargins(opening, config)) {
+        if (result.stats.candidates >= config.max_candidates) {
+          result.stats.final_reason = PassageInsertionRejectReason::kTooManyCandidates;
+          break;
+        }
+        ++result.stats.candidates;
+        CandidateEvaluation evaluation =
+            evaluateCandidate(samples, grid, *map, validation_config, config, match,
+                              opening, before_violations, initial_altitude_m,
+                              margins.anchor_m, margins.reconnect_m, start_mode);
+        result.hold_restart_recommended =
+            result.hold_restart_recommended || evaluation.hold_restart_recommended;
+        result.stats.hold_restart_recommended = result.hold_restart_recommended;
+        evaluation.diagnostic.reason = evaluation.reason;
+        evaluation.diagnostic.accepted = evaluation.accepted;
+        appendDiagnostic(result.stats, config, evaluation.diagnostic);
+        if (!evaluation.accepted) {
+          countReject(result.stats, evaluation.reason);
+          continue;
+        }
+        best = std::move(evaluation);
         break;
       }
-      ++result.stats.candidates;
-      CandidateEvaluation evaluation =
-          evaluateCandidate(samples, grid, *map, validation_config, config, match,
-                            opening, before_violations, initial_altitude_m);
-      evaluation.diagnostic.reason = evaluation.reason;
-      evaluation.diagnostic.accepted = evaluation.accepted;
-      appendDiagnostic(result.stats, config, evaluation.diagnostic);
-      if (!evaluation.accepted) {
-        countReject(result.stats, evaluation.reason);
-        continue;
+      if (best.has_value()) {
+        break;
       }
-      if (!best.has_value() || evaluation.score < best->score) {
-        best = std::move(evaluation);
+      if (result.stats.candidates >= config.max_candidates) {
+        break;
       }
+    }
+    if (best.has_value()) {
+      break;
+    }
+    if (result.stats.candidates >= config.max_candidates) {
+      break;
     }
   }
 
@@ -688,6 +778,17 @@ PassageInsertionResult insertLocalPassageSegments(
                                   ? PassageInsertionRejectReason::kNone
                                   : PassageInsertionRejectReason::kRepairIncomplete;
   return result;
+}
+
+const char*
+passageInsertionStartModeName(const PassageInsertionStartMode mode) noexcept {
+  switch (mode) {
+    case PassageInsertionStartMode::kMovingJoin:
+      return "moving_join";
+    case PassageInsertionStartMode::kTerminalHoldRestart:
+      return "terminal_hold_restart";
+  }
+  return "unknown";
 }
 
 } // namespace drone_city_nav

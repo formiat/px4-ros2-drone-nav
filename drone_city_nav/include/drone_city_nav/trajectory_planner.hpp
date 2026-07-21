@@ -129,6 +129,8 @@ struct TrajectoryPlannerInput {
   const CorridorStats* precomputed_corridor_stats{nullptr};
   const KnownPassageMap* known_passage_map{nullptr};
   std::span<const TrajectoryGridCandidate> grid_candidates{};
+  PassageInsertionStartMode passage_insertion_start_mode{
+      PassageInsertionStartMode::kMovingJoin};
 };
 
 struct TrajectoryPlannerResult {

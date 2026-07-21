@@ -296,6 +296,14 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   parseJsonBool(json, "delivery_replan_triggered", envelope.delivery.replan_triggered);
   parseJsonBool(json, "delivery_truncation_suffix",
                 envelope.delivery.truncation_suffix);
+  std::uint64_t truncation_suffix_activation_mode = 0U;
+  if (parseJsonUint64(json, "delivery_truncation_suffix_activation_mode",
+                      truncation_suffix_activation_mode) &&
+      truncation_suffix_activation_mode <=
+          static_cast<std::uint64_t>(std::numeric_limits<std::uint8_t>::max())) {
+    envelope.delivery.truncation_suffix_activation_mode =
+        static_cast<std::uint8_t>(truncation_suffix_activation_mode);
+  }
   parseJsonBool(json, "delivery_truncation_immediate_hold",
                 envelope.delivery.truncation_immediate_hold);
   (void)parseJsonUint64(json, "delivery_blocked_path_id",

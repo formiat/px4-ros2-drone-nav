@@ -172,6 +172,12 @@ private:
     std::vector<TrajectoryPointSample> trajectory_samples;
   };
 
+  enum class PathPublicationOutcome {
+    kNotPublished,
+    kPublished,
+    kRetryAfterTerminalHold,
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
@@ -239,12 +245,21 @@ private:
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
                     const AStarConfig& astar_config, Point2 planning_start);
 
-  bool publishPathFromPathCells(
+  PathPublicationOutcome publishPathFromPathCells(
       const PlanningGridBuildResult& planning_result,
       std::span<const TrajectoryGridCandidate> grid_candidates,
       std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
       const std::vector<GridIndex>& smoothed_cells, const char* source_label,
-      Point2 planning_start, const TruncationReplanState* truncation_replan = nullptr);
+      Point2 planning_start, TrajectoryDeliveryDiagnostics delivery,
+      PassageInsertionStartMode insertion_start_mode,
+      const TruncationReplanState* truncation_replan = nullptr);
+
+  PathPublicationOutcome
+  publishTerminalHoldRestartSuffix(const PlanningGridBuildResult& planning_result,
+                                   std::span<TrajectoryGridCandidate> grid_candidates,
+                                   Point2 planning_start,
+                                   const TruncationReplanState& truncation_replan,
+                                   TrajectoryDeliveryDiagnostics delivery);
 
   bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
