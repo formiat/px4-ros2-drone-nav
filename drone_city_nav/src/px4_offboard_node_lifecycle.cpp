@@ -68,6 +68,8 @@ Px4OffboardNode::Px4OffboardNode()
       [this](const msg::ReplanBlockerEvent::SharedPtr msg) { onReplanBlocker(*msg); });
   replan_truncation_pub_ = create_publisher<msg::ReplanTruncation>(
       topics.replan_truncation, rclcpp::QoS{1}.reliable());
+  truncation_suffix_ack_pub_ = create_publisher<msg::TruncationSuffixAck>(
+      topics.truncation_suffix_ack, rclcpp::QoS{10}.reliable());
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       topics.px4_local_position, px4_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -217,10 +219,10 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
   RCLCPP_INFO(get_logger(),
               "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s' "
-              "truncation_topic='%s'",
+              "truncation_topic='%s' ack_topic='%s'",
               safe_trajectory_truncation_enabled_ ? "true" : "false",
               safe_trajectory_truncation_margin_m_, topics.replan_blocker.c_str(),
-              topics.replan_truncation.c_str());
+              topics.replan_truncation.c_str(), topics.truncation_suffix_ack.c_str());
   RCLCPP_INFO(
       get_logger(),
       "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "

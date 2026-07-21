@@ -33,6 +33,7 @@ struct PlannerTopics {
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
   std::string replan_blocker{"/drone_city_nav/replan_blocker"};
   std::string replan_truncation{"/drone_city_nav/replan_truncation"};
+  std::string truncation_suffix_ack{"/drone_city_nav/truncation_suffix_ack"};
   std::string executable_trajectory{"/drone_city_nav/executable_trajectory"};
   std::string current_waypoint{"/drone_city_nav/current_waypoint"};
 };

@@ -241,6 +241,12 @@ and temporary-prefix fingerprint. `/drone_city_nav/path` mirrors its geometry
 for RViz, bags, and compatibility, but offboard does not use that debug topic as
 its command source.
 
+For a truncation suffix, command publication and control acceptance are
+different states. Offboard publishes `/drone_city_nav/truncation_suffix_ack`
+with the correlated path id, generation, and prefix fingerprint. Planner keeps
+the previously accepted runtime trajectory until the ACK is `accepted`; a
+`rejected` ACK retains the stable truncation join and triggers a retry.
+
 `/drone_city_nav/trajectory_diagnostics` is a companion artifact. It is matched
 by path timestamp, not by delivery order. This matters because ROS topics are
 not an atomic multi-message transaction. If a path is accepted and diagnostics

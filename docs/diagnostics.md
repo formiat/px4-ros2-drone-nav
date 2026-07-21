@@ -556,6 +556,13 @@ confirmed point is logged as `suffix pending until join point`. Its later
 retained at activation; a zero-length prefix is expected after an immediate
 hold.
 
+Every suffix publication must also have a `suffix_ack` record with the same
+path id, generation, and prefix fingerprint. `pending` means offboard retained
+the candidate but has not activated it. `accepted` is the only decision that
+allows planner runtime checks to adopt the prepared combined trajectory.
+`rejected` logs both the offboard reason and a subsequent planner retry from the
+same confirmed truncation point.
+
 ## Run Comparison Method
 
 When comparing two runs, use the same route and similar simulator conditions if

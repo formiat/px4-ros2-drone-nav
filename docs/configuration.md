@@ -52,6 +52,8 @@ Obstacle/grid:
   atomically carries path id and safe-truncation correlation metadata.
 - `replan_blocker_topic`: planner-to-offboard prohibited-path event.
 - `replan_truncation_topic`: offboard-to-planner confirmed truncation join.
+- `truncation_suffix_ack_topic`: offboard-to-planner pending, accepted, or
+  rejected result for a published truncation suffix.
 - `use_static_map`
 - `static_map_path`
 - `static_map_grid_topic`

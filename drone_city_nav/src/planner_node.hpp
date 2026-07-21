@@ -12,6 +12,7 @@
 #include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/msg/replan_truncation.hpp"
+#include "drone_city_nav/msg/truncation_suffix_ack.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
@@ -28,6 +29,7 @@
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
+#include "drone_city_nav/truncation_suffix_protocol.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -157,8 +159,17 @@ private:
     Point3 position{};
     Point2 tangent{};
     double altitude_m{std::numeric_limits<double>::quiet_NaN()};
+    std::uint64_t published_suffix_path_id{0U};
+    std::size_t publication_attempts{0U};
     bool confirmed{false};
     bool immediate_hold{false};
+    bool awaiting_ack{false};
+  };
+
+  struct PendingTruncationRuntimeTrajectory {
+    TruncationSuffixIdentity identity{};
+    std::vector<Point2> path_points;
+    std::vector<TrajectoryPointSample> trajectory_samples;
   };
 
   void applyConfig(const PlannerNodeConfig& config);
@@ -169,18 +180,18 @@ private:
 
   void onReplanTruncation(const msg::ReplanTruncation& message);
 
+  void onTruncationSuffixAck(const msg::TruncationSuffixAck& message);
+
   [[nodiscard]] std::optional<std::uint64_t>
   beginTruncationReplan(std::uint64_t blocked_path_id);
 
   [[nodiscard]] std::optional<TruncationReplanState> truncationReplanState() const;
 
-  void completeTruncationReplan(std::uint64_t generation);
-
   [[nodiscard]] bool
-  adoptTrajectoryForRuntimeChecks(std::span<const TrajectoryPointSample> samples,
-                                  std::span<const Point2> trajectory_points,
-                                  const TrajectoryDeliveryDiagnostics& delivery,
-                                  const char* source_label);
+  prepareTrajectoryForRuntimeChecks(std::span<const TrajectoryPointSample> samples,
+                                    std::span<const Point2> trajectory_points,
+                                    const TrajectoryDeliveryDiagnostics& delivery,
+                                    const char* source_label, std::uint64_t path_id);
 
   void applyPendingMemorySnapshot(std::int64_t now_ns);
 
@@ -291,11 +302,11 @@ private:
                             PathPublicationReason reason,
                             const TrajectoryPlannerStats* trajectory_stats = nullptr);
 
-  std::uint64_t
-  publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
-                        PathPublicationReason reason,
-                        const TrajectoryPlannerStats* trajectory_stats = nullptr,
-                        TrajectoryDeliveryDiagnostics delivery = {});
+  std::uint64_t publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
+                                      PathPublicationReason reason,
+                                      const TrajectoryPlannerStats* trajectory_stats,
+                                      TrajectoryDeliveryDiagnostics delivery,
+                                      const char* source_label);
 
   void
   publishTrajectoryDiagnostics(const std::uint64_t path_id,
@@ -502,6 +513,8 @@ private:
   std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
   std::optional<TruncationReplanState> truncation_replan_state_;
+  std::optional<PendingTruncationRuntimeTrajectory>
+      pending_truncation_runtime_trajectory_;
   mutable std::mutex memory_snapshot_mutex_;
   mutable std::mutex navigation_state_mutex_;
   mutable std::mutex lidar_input_mutex_;
@@ -521,6 +534,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr memory_snapshot_callback_group_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
   rclcpp::Subscription<msg::ReplanTruncation>::SharedPtr replan_truncation_sub_;
+  rclcpp::Subscription<msg::TruncationSuffixAck>::SharedPtr truncation_suffix_ack_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;

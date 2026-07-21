@@ -35,6 +35,14 @@ builds the replacement suffix from the stable truncation point, not from a
 moving vehicle position. The suffix returns in the atomic executable-trajectory
 command with the same generation and fingerprint.
 
+Publishing the suffix does not complete the planner transaction. The planner
+keeps the old accepted runtime trajectory and the confirmed truncation state
+until offboard reports the suffix result on
+`/drone_city_nav/truncation_suffix_ack`. A pending result keeps the transaction
+open, an accepted result atomically adopts the prepared combined trajectory,
+and a rejected result starts another suffix build from the same truncation
+point.
+
 The margin is fixed along the executable trajectory; it is deliberately not a
 speed-dependent stopping-distance calculation. If the requested terminal
 station is no longer ahead of the drone, offboard enters

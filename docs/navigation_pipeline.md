@@ -187,6 +187,7 @@ The offboard node publishes:
 
 - `/drone_city_nav/final_trajectory_path`
 - `/drone_city_nav/offboard_debug_markers`
+- `/drone_city_nav/truncation_suffix_ack`
 
 The executable command atomically associates path geometry with path id and
 safe-truncation metadata. Diagnostics are still matched by `path_stamp_ns`.

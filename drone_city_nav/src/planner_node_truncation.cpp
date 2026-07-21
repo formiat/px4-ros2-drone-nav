@@ -13,6 +13,7 @@ PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id) {
     return std::nullopt;
   }
   const std::uint64_t generation = next_truncation_generation_++;
+  pending_truncation_runtime_trajectory_.reset();
   truncation_replan_state_ = TruncationReplanState{
       .blocked_path_id = blocked_path_id,
       .generation = generation,
@@ -65,8 +66,11 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
     truncation_replan_state_->altitude_m = message.truncation_altitude_m;
     truncation_replan_state_->temporary_prefix_fingerprint =
         message.temporary_prefix_fingerprint;
+    truncation_replan_state_->published_suffix_path_id = 0U;
     truncation_replan_state_->confirmed = true;
     truncation_replan_state_->immediate_hold = message.immediate_hold;
+    truncation_replan_state_->awaiting_ack = false;
+    pending_truncation_runtime_trajectory_.reset();
   }
 
   RCLCPP_WARN(get_logger(),
@@ -80,58 +84,186 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
   requestPlanningCycle();
 }
 
-void PlannerNode::completeTruncationReplan(const std::uint64_t generation) {
-  std::scoped_lock lock{truncation_replan_mutex_};
-  if (truncation_replan_state_.has_value() &&
-      truncation_replan_state_->generation == generation) {
-    truncation_replan_state_.reset();
+void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message) {
+  const std::optional<TruncationSuffixAckDecision> decision =
+      truncationSuffixAckDecisionFromValue(message.decision);
+  if (!decision.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION ignored suffix ACK: reason=invalid_decision "
+                "path_id=%" PRIu64 " generation=%" PRIu64 " decision=%u",
+                message.path_id, message.truncation_generation,
+                static_cast<unsigned int>(message.decision));
+    return;
   }
+
+  const TruncationSuffixIdentity received{
+      .path_id = message.path_id,
+      .generation = message.truncation_generation,
+      .prefix_fingerprint = message.temporary_prefix_fingerprint,
+  };
+  std::optional<PendingTruncationRuntimeTrajectory> accepted_trajectory;
+  TruncationSuffixAckEvaluation evaluation{};
+  std::size_t publication_attempts = 0U;
+  {
+    std::scoped_lock lock{truncation_replan_mutex_};
+    if (!truncation_replan_state_.has_value() ||
+        !truncation_replan_state_->awaiting_ack) {
+      RCLCPP_WARN(get_logger(),
+                  "REPLAN_TRUNCATION ignored suffix ACK: reason=no_awaiting_suffix "
+                  "path_id=%" PRIu64 " generation=%" PRIu64 " decision=%s",
+                  message.path_id, message.truncation_generation,
+                  truncationSuffixAckDecisionName(*decision));
+      return;
+    }
+    const TruncationSuffixIdentity expected{
+        .path_id = truncation_replan_state_->published_suffix_path_id,
+        .generation = truncation_replan_state_->generation,
+        .prefix_fingerprint = truncation_replan_state_->temporary_prefix_fingerprint,
+    };
+    evaluation = evaluateTruncationSuffixAck(expected, received, *decision);
+    publication_attempts = truncation_replan_state_->publication_attempts;
+    if (evaluation.action == TruncationSuffixAckAction::kAdopt) {
+      if (!pending_truncation_runtime_trajectory_.has_value() ||
+          pending_truncation_runtime_trajectory_->identity.path_id !=
+              expected.path_id ||
+          pending_truncation_runtime_trajectory_->identity.generation !=
+              expected.generation ||
+          pending_truncation_runtime_trajectory_->identity.prefix_fingerprint !=
+              expected.prefix_fingerprint) {
+        evaluation = {TruncationSuffixAckAction::kRetry,
+                      "accepted_runtime_candidate_missing"};
+      } else {
+        accepted_trajectory = std::move(*pending_truncation_runtime_trajectory_);
+        pending_truncation_runtime_trajectory_.reset();
+        truncation_replan_state_.reset();
+      }
+    }
+    if (evaluation.action == TruncationSuffixAckAction::kRetry &&
+        truncation_replan_state_.has_value()) {
+      truncation_replan_state_->awaiting_ack = false;
+      truncation_replan_state_->published_suffix_path_id = 0U;
+      pending_truncation_runtime_trajectory_.reset();
+    }
+  }
+
+  if (evaluation.action == TruncationSuffixAckAction::kIgnore) {
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION ignored suffix ACK: reason=%s path_id=%" PRIu64
+                " generation=%" PRIu64 " decision=%s",
+                evaluation.reason, message.path_id, message.truncation_generation,
+                truncationSuffixAckDecisionName(*decision));
+    return;
+  }
+  if (evaluation.action == TruncationSuffixAckAction::kKeepWaiting) {
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_TRUNCATION suffix ACK pending: path_id=%" PRIu64
+                " generation=%" PRIu64 " reason='%s' attempt=%zu",
+                message.path_id, message.truncation_generation, message.reason.c_str(),
+                publication_attempts);
+    return;
+  }
+  if (evaluation.action == TruncationSuffixAckAction::kAdopt &&
+      accepted_trajectory.has_value()) {
+    last_valid_path_points_ = std::move(accepted_trajectory->path_points);
+    last_valid_trajectory_samples_ = std::move(accepted_trajectory->trajectory_samples);
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_TRUNCATION suffix ACK accepted: path_id=%" PRIu64
+                " generation=%" PRIu64 " reason='%s' attempt=%zu "
+                "runtime_samples=%zu",
+                message.path_id, message.truncation_generation, message.reason.c_str(),
+                publication_attempts, last_valid_trajectory_samples_.size());
+    return;
+  }
+
+  RCLCPP_WARN(get_logger(),
+              "REPLAN_TRUNCATION suffix ACK rejected: path_id=%" PRIu64
+              " generation=%" PRIu64 " reason='%s' protocol_reason=%s attempt=%zu "
+              "action=retry",
+              message.path_id, message.truncation_generation, message.reason.c_str(),
+              evaluation.reason, publication_attempts);
+  requestPlanningCycle();
 }
 
-bool PlannerNode::adoptTrajectoryForRuntimeChecks(
+bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     const std::span<const TrajectoryPointSample> samples,
     const std::span<const Point2> trajectory_points,
-    const TrajectoryDeliveryDiagnostics& delivery, const char* source_label) {
-  if (!delivery.truncation_suffix || delivery.truncation_immediate_hold) {
+    const TrajectoryDeliveryDiagnostics& delivery, const char* source_label,
+    const std::uint64_t path_id) {
+  if (!delivery.truncation_suffix) {
     last_valid_path_points_.assign(trajectory_points.begin(), trajectory_points.end());
     last_valid_trajectory_samples_.assign(samples.begin(), samples.end());
     return true;
   }
-  if (!trajectorySamplesAreUsable(last_valid_trajectory_samples_)) {
+
+  std::vector<TrajectoryPointSample> runtime_samples;
+  if (delivery.truncation_immediate_hold) {
+    runtime_samples.assign(samples.begin(), samples.end());
+  } else if (!trajectorySamplesAreUsable(last_valid_trajectory_samples_)) {
     RCLCPP_ERROR(get_logger(),
                  "%s truncation suffix discarded before publication: "
                  "reason=planner_prefix_unavailable generation=%" PRIu64,
                  source_label, delivery.truncation_generation);
     requestPlanningCycle();
     return false;
+  } else {
+    const TruncatedPrefixStitchResult planner_stitch = stitchTruncatedPrefixWithSuffix(
+        last_valid_trajectory_samples_, samples,
+        TruncatedPrefixStitchRequest{
+            .current_position = last_valid_trajectory_samples_.front().point,
+            .truncation_point = delivery.planning_start_position,
+            .max_join_distance_m = 1.0});
+    if (!planner_stitch.applied) {
+      RCLCPP_ERROR(get_logger(),
+                   "%s truncation suffix discarded before publication: reason=%s "
+                   "blocked_path_id=%" PRIu64 " generation=%" PRIu64
+                   " planning_start=(%.2f,%.2f)",
+                   source_label, planner_stitch.reason, delivery.blocked_path_id,
+                   delivery.truncation_generation, delivery.planning_start_position.x,
+                   delivery.planning_start_position.y);
+      requestPlanningCycle();
+      return false;
+    }
+    runtime_samples = planner_stitch.samples;
   }
-  const TruncatedPrefixStitchResult planner_stitch = stitchTruncatedPrefixWithSuffix(
-      last_valid_trajectory_samples_, samples,
-      TruncatedPrefixStitchRequest{.current_position =
-                                       last_valid_trajectory_samples_.front().point,
-                                   .truncation_point = delivery.planning_start_position,
-                                   .max_join_distance_m = 1.0});
-  if (!planner_stitch.applied) {
-    RCLCPP_ERROR(get_logger(),
-                 "%s truncation suffix discarded before publication: reason=%s "
-                 "blocked_path_id=%" PRIu64 " generation=%" PRIu64
-                 " planning_start=(%.2f,%.2f)",
-                 source_label, planner_stitch.reason, delivery.blocked_path_id,
-                 delivery.truncation_generation, delivery.planning_start_position.x,
-                 delivery.planning_start_position.y);
-    requestPlanningCycle();
-    return false;
+
+  const std::vector<Point2> runtime_points = trajectorySamplePoints(runtime_samples);
+  const TruncationSuffixIdentity identity{
+      .path_id = path_id,
+      .generation = delivery.truncation_generation,
+      .prefix_fingerprint = delivery.temporary_prefix_fingerprint,
+  };
+  std::size_t publication_attempt = 0U;
+  {
+    std::scoped_lock lock{truncation_replan_mutex_};
+    if (!truncation_replan_state_.has_value() || !truncation_replan_state_->confirmed ||
+        truncation_replan_state_->generation != identity.generation ||
+        truncation_replan_state_->temporary_prefix_fingerprint !=
+            identity.prefix_fingerprint ||
+        truncation_replan_state_->awaiting_ack) {
+      RCLCPP_ERROR(get_logger(),
+                   "%s truncation suffix discarded before publication: "
+                   "reason=planner_ack_state_mismatch path_id=%" PRIu64
+                   " generation=%" PRIu64,
+                   source_label, path_id, delivery.truncation_generation);
+      return false;
+    }
+    truncation_replan_state_->published_suffix_path_id = path_id;
+    truncation_replan_state_->awaiting_ack = true;
+    publication_attempt = ++truncation_replan_state_->publication_attempts;
+    pending_truncation_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
+        .identity = identity,
+        .path_points = runtime_points,
+        .trajectory_samples = runtime_samples,
+    };
   }
-  last_valid_trajectory_samples_ = planner_stitch.samples;
-  last_valid_path_points_ = trajectorySamplePoints(last_valid_trajectory_samples_);
-  RCLCPP_INFO(
-      get_logger(),
-      "REPLAN_TRUNCATION planner_prefix_suffix_stitched=true "
-      "blocked_path_id=%" PRIu64 " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64
-      " suffix_station_offset=%.2fm combined_samples=%zu",
-      delivery.blocked_path_id, delivery.truncation_generation,
-      delivery.temporary_prefix_fingerprint, planner_stitch.suffix_station_offset_m,
-      last_valid_trajectory_samples_.size());
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_TRUNCATION suffix awaiting ACK=true "
+              "blocked_path_id=%" PRIu64 " generation=%" PRIu64
+              " prefix_fingerprint=%" PRIu64 " path_id=%" PRIu64
+              " attempt=%zu runtime_samples=%zu",
+              delivery.blocked_path_id, delivery.truncation_generation,
+              delivery.temporary_prefix_fingerprint, path_id, publication_attempt,
+              runtime_samples.size());
   return true;
 }
 

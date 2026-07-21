@@ -533,6 +533,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       "replan_blocker_topic", config.topics.replan_blocker);
   config.topics.replan_truncation = node.declare_parameter<std::string>(
       "replan_truncation_topic", config.topics.replan_truncation);
+  config.topics.truncation_suffix_ack = node.declare_parameter<std::string>(
+      "truncation_suffix_ack_topic", config.topics.truncation_suffix_ack);
   config.topics.executable_trajectory = node.declare_parameter<std::string>(
       "executable_trajectory_topic", config.topics.executable_trajectory);
   config.topics.px4_local_position = node.declare_parameter<std::string>(

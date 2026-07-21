@@ -100,6 +100,7 @@ planner_node:
     trajectory_diagnostics_topic: /drone_city_nav/trajectory_diagnostics
     replan_blocker_topic: /drone_city_nav/replan_blocker
     replan_truncation_topic: /drone_city_nav/replan_truncation
+    truncation_suffix_ack_topic: /drone_city_nav/truncation_suffix_ack
     executable_trajectory_topic: /drone_city_nav/executable_trajectory
     safe_trajectory_truncation_enabled: true
     current_waypoint_topic: /drone_city_nav/current_waypoint
@@ -274,6 +275,7 @@ px4_offboard_node:
     trajectory_diagnostics_topic: /drone_city_nav/trajectory_diagnostics
     replan_blocker_topic: /drone_city_nav/replan_blocker
     replan_truncation_topic: /drone_city_nav/replan_truncation
+    truncation_suffix_ack_topic: /drone_city_nav/truncation_suffix_ack
     executable_trajectory_topic: /drone_city_nav/executable_trajectory
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude

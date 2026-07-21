@@ -29,6 +29,7 @@ rosidl_generate_interfaces(
   "msg/CrashState.msg"
   "msg/ReplanBlockerEvent.msg"
   "msg/ReplanTruncation.msg"
+  "msg/TruncationSuffixAck.msg"
   "msg/ExecutableTrajectory.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
@@ -117,6 +118,7 @@ add_library(
   src/trajectory_horizontal_handover.cpp
   src/trajectory_vertical_profile.cpp
   src/trajectory_update_continuity.cpp
+  src/truncation_suffix_protocol.cpp
   src/trajectory_vertical_handover.cpp
   src/turn_smoothing.cpp
   src/turn_smoothing_geometry.cpp
@@ -465,6 +467,12 @@ if(BUILD_TESTING)
   target_compile_features(safe_trajectory_truncation_test PRIVATE cxx_std_20)
   target_link_libraries(safe_trajectory_truncation_test drone_city_nav_core)
   enable_project_warnings(safe_trajectory_truncation_test)
+
+  ament_add_gtest(truncation_suffix_protocol_test
+                  tests/truncation_suffix_protocol_test.cpp)
+  target_compile_features(truncation_suffix_protocol_test PRIVATE cxx_std_20)
+  target_link_libraries(truncation_suffix_protocol_test drone_city_nav_core)
+  enable_project_warnings(truncation_suffix_protocol_test)
 
   ament_add_gtest(grid_overlay_test tests/grid_overlay_test.cpp)
   target_compile_features(grid_overlay_test PRIVATE cxx_std_20)

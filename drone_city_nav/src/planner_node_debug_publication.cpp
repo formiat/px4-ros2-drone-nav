@@ -169,14 +169,18 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   return path_id;
 }
 
-std::uint64_t
-PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> samples,
-                                   const PathPublicationReason reason,
-                                   const TrajectoryPlannerStats* trajectory_stats,
-                                   TrajectoryDeliveryDiagnostics delivery) {
+std::uint64_t PlannerNode::publishTrajectoryPath(
+    const std::span<const TrajectoryPointSample> samples,
+    const PathPublicationReason reason, const TrajectoryPlannerStats* trajectory_stats,
+    TrajectoryDeliveryDiagnostics delivery, const char* source_label) {
   std::vector<Point2> points = trajectorySamplePoints(samples);
+  const std::uint64_t path_id = next_path_id_;
+  if (!prepareTrajectoryForRuntimeChecks(samples, points, delivery, source_label,
+                                         path_id)) {
+    return 0U;
+  }
+  ++next_path_id_;
   recordPathPublication(reason, points.empty());
-  const std::uint64_t path_id = next_path_id_++;
   last_published_path_id_ = path_id;
 
   if (points.empty()) {

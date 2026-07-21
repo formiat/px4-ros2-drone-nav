@@ -728,14 +728,13 @@ bool PlannerNode::publishTrajectoryResult(
                 radiansToDegrees(diagnostic.heading_delta_after_rad));
   }
 
-  if (!adoptTrajectoryForRuntimeChecks(trajectory_result.samples, trajectory_points,
-                                       delivery, source_label)) {
+  logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
+  const std::uint64_t path_id = publishTrajectoryPath(
+      trajectory_result.samples, PathPublicationReason::kComputedPath, &stats, delivery,
+      source_label);
+  if (path_id == 0U) {
     return false;
   }
-  logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
-  const std::uint64_t path_id =
-      publishTrajectoryPath(trajectory_result.samples,
-                            PathPublicationReason::kComputedPath, &stats, delivery);
   if (published_path_id != nullptr) {
     *published_path_id = path_id;
   }

@@ -6,6 +6,7 @@
 #include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/msg/replan_truncation.hpp"
+#include "drone_city_nav/msg/truncation_suffix_ack.hpp"
 #include "drone_city_nav/offboard_blackbox.hpp"
 #include "drone_city_nav/offboard_debug_markers.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
@@ -26,6 +27,7 @@
 #include "drone_city_nav/trajectory_planner.hpp"
 #include "drone_city_nav/trajectory_update_continuity.hpp"
 #include "drone_city_nav/trajectory_vertical_handover.hpp"
+#include "drone_city_nav/truncation_suffix_protocol.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
@@ -191,6 +193,10 @@ private:
   void publishReplanTruncation(const msg::ReplanBlockerEvent& blocker,
                                const TrajectoryPointSample& terminal_sample,
                                std::uint64_t prefix_fingerprint, bool immediate_hold);
+
+  void publishTruncationSuffixAck(const msg::ExecutableTrajectory& command,
+                                  TruncationSuffixAckDecision decision,
+                                  std::string_view reason);
 
   void openFlightBlackbox();
 
@@ -497,6 +503,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_sub_;
   rclcpp::Subscription<msg::ReplanBlockerEvent>::SharedPtr replan_blocker_sub_;
   rclcpp::Publisher<msg::ReplanTruncation>::SharedPtr replan_truncation_pub_;
+  rclcpp::Publisher<msg::TruncationSuffixAck>::SharedPtr truncation_suffix_ack_pub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;

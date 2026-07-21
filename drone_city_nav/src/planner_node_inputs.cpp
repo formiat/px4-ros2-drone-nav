@@ -553,6 +553,17 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                          truncation_replan->generation);
     return;
   }
+  if (truncation_replan.has_value() && truncation_replan->awaiting_ack) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "REPLAN_TRUNCATION planning_wait=true reason=awaiting_suffix_ack "
+        "blocked_path_id=%" PRIu64 " generation=%" PRIu64 " path_id=%" PRIu64
+        " attempt=%zu",
+        truncation_replan->blocked_path_id, truncation_replan->generation,
+        truncation_replan->published_suffix_path_id,
+        truncation_replan->publication_attempts);
+    return;
+  }
 
   const Point2 planning_start =
       truncation_replan.has_value()
@@ -817,9 +828,6 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       grid_candidates, astar_grid_index, path_result->astar.path,
       path_result->smoothed_cells, astar_grid_name.c_str(), planning_start,
       truncation_replan.has_value() ? &*truncation_replan : nullptr);
-  if (published && truncation_replan.has_value()) {
-    completeTruncationReplan(truncation_replan->generation);
-  }
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
   RCLCPP_INFO(get_logger(),
               "Planning worker cycle complete: request_generation=%" PRIu64

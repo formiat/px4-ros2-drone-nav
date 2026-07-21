@@ -474,6 +474,8 @@ void Px4OffboardNode::processExecutableTrajectory(
   if (candidate_path_points.empty()) {
     if (temporary_replan_truncation_active_) {
       callback_duration.setOutcome("empty_path_preserved_temporary_prefix");
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 "empty_suffix");
       RCLCPP_WARN(get_logger(),
                   "SAFE_TRAJECTORY_TRUNCATION preserving temporary prefix after empty "
                   "replanning result: blocked_path_id=%" PRIu64 " temporary_hold=%s",
@@ -534,6 +536,8 @@ void Px4OffboardNode::processExecutableTrajectory(
           command.path_id, command.truncation_suffix ? "true" : "false",
           command.truncation_generation, active_truncation_generation_,
           command.temporary_prefix_fingerprint, active_temporary_prefix_fingerprint_);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 "contract_mismatch");
       return;
     }
   } else if (command.truncation_suffix) {
@@ -542,6 +546,8 @@ void Px4OffboardNode::processExecutableTrajectory(
                 "REPLAN_TRUNCATION rejected suffix: reason=no_active_prefix "
                 "path_id=%" PRIu64 " generation=%" PRIu64,
                 command.path_id, command.truncation_generation);
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "no_active_prefix");
     return;
   }
 
@@ -573,6 +579,8 @@ void Px4OffboardNode::processExecutableTrajectory(
                   "REPLAN_TRUNCATION rejected suffix: reason=invalid_trajectory "
                   "path_id=%" PRIu64 " generation=%" PRIu64,
                   command.path_id, command.truncation_generation);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 "invalid_trajectory");
       return;
     }
     const TruncationSuffixJoinValidation join_validation = validateTruncationSuffixJoin(
@@ -597,6 +605,8 @@ void Px4OffboardNode::processExecutableTrajectory(
           trajectory_continuity_thresholds_.reject_tangent_jump_rad,
           join_validation.altitude_jump_m,
           trajectory_continuity_thresholds_.vertical_hard_window_altitude_tolerance_m);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 join_validation.reason);
       return;
     }
 
@@ -617,6 +627,8 @@ void Px4OffboardNode::processExecutableTrajectory(
                   active_truncation_terminal_sample_.point.y, current_join_distance_m,
                   replaced ? "true" : "false", join_validation.position_jump_m,
                   join_validation.tangent_jump_rad, join_validation.altitude_jump_m);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
+                                 "waiting_for_join_point");
       return;
     }
 
@@ -637,6 +649,8 @@ void Px4OffboardNode::processExecutableTrajectory(
                     current_position_.x, current_position_.y, truncation_point.x,
                     truncation_point.y, candidate_state.samples.front().point.x,
                     candidate_state.samples.front().point.y);
+        publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                   stitch.reason);
         return;
       }
       candidate_state =
@@ -671,6 +685,8 @@ void Px4OffboardNode::processExecutableTrajectory(
             temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
             candidate_state.samples.front().point.x,
             candidate_state.samples.front().point.y, hold_join_distance_m);
+        publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                   "immediate_hold_join_mismatch");
         return;
       }
       horizontal_handover.reason = "truncation_immediate_hold_release";
@@ -734,6 +750,8 @@ void Px4OffboardNode::processExecutableTrajectory(
           candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery
                                            : nullptr)) {
     callback_duration.setOutcome("stale_rejected");
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "stale_trajectory");
     return;
   }
   TrajectoryContinuityResult continuity{};
@@ -808,6 +826,8 @@ void Px4OffboardNode::processExecutableTrajectory(
         continuity.vertical_handover_applied ? "true" : "false",
         continuity.vertical_handover_reason, continuity.vertical_handover_candidate_s_m,
         continuity.vertical_handover_join_s_m, trajectory_valid_ ? "true" : "false");
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               continuity.reason);
     return;
   }
 
@@ -846,6 +866,8 @@ void Px4OffboardNode::processExecutableTrajectory(
   trajectory_goal_valid_ = true;
   waypoint_index_ = candidate_index;
   applyReceivedFinalTrajectoryPath("path_update", candidate_state, continuity);
+  publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kAccepted,
+                             "trajectory_activated");
   const Point2 first = path_points_.front();
   const Point2 last = path_points_.back();
   const bool path_changed = path_points_.size() != last_logged_path_size_ ||

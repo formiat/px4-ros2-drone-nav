@@ -635,6 +635,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "replan_blocker_topic", "/drone_city_nav/replan_blocker");
   config.topics.replan_truncation = node.declare_parameter<std::string>(
       "replan_truncation_topic", "/drone_city_nav/replan_truncation");
+  config.topics.truncation_suffix_ack = node.declare_parameter<std::string>(
+      "truncation_suffix_ack_topic", "/drone_city_nav/truncation_suffix_ack");
   config.topics.executable_trajectory = node.declare_parameter<std::string>(
       "executable_trajectory_topic", "/drone_city_nav/executable_trajectory");
   config.topics.current_waypoint = node.declare_parameter<std::string>(

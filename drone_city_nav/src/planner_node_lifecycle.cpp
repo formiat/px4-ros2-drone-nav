@@ -44,6 +44,12 @@ PlannerNode::PlannerNode()
       config.topics.replan_truncation, rclcpp::QoS{1}.reliable(),
       [this](const msg::ReplanTruncation::SharedPtr msg) { onReplanTruncation(*msg); },
       replan_truncation_options);
+  truncation_suffix_ack_sub_ = create_subscription<msg::TruncationSuffixAck>(
+      config.topics.truncation_suffix_ack, rclcpp::QoS{10}.reliable(),
+      [this](const msg::TruncationSuffixAck::SharedPtr msg) {
+        onTruncationSuffixAck(*msg);
+      },
+      replan_truncation_options);
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); },
@@ -131,10 +137,11 @@ PlannerNode::PlannerNode()
   RCLCPP_INFO(get_logger(),
               "Planner publications: path='%s' executable_trajectory='%s' "
               "path_id='%s' replan_blocker='%s' replan_truncation='%s' "
-              "safe_trajectory_truncation=%s",
+              "truncation_suffix_ack='%s' safe_trajectory_truncation=%s",
               config.topics.path.c_str(), config.topics.executable_trajectory.c_str(),
               config.topics.path_id.c_str(), config.topics.replan_blocker.c_str(),
               config.topics.replan_truncation.c_str(),
+              config.topics.truncation_suffix_ack.c_str(),
               safe_trajectory_truncation_enabled_ ? "true" : "false");
   RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "

@@ -156,6 +156,8 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_EQ(config.topics.replan_blocker, "/drone_city_nav/replan_blocker");
   EXPECT_EQ(config.topics.replan_truncation, "/drone_city_nav/replan_truncation");
+  EXPECT_EQ(config.topics.truncation_suffix_ack,
+            "/drone_city_nav/truncation_suffix_ack");
   EXPECT_EQ(config.topics.executable_trajectory,
             "/drone_city_nav/executable_trajectory");
   EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
@@ -574,6 +576,7 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
        rclcpp::Parameter{"trajectory_diagnostics_topic",
                          "/custom/trajectory_diagnostics"},
        rclcpp::Parameter{"replan_truncation_topic", "/custom/replan_truncation"},
+       rclcpp::Parameter{"truncation_suffix_ack_topic", "/custom/truncation_ack"},
        rclcpp::Parameter{"executable_trajectory_topic", "/custom/executable"},
        rclcpp::Parameter{"memory_occupied_value", 100},
        rclcpp::Parameter{"memory_free_value", 0}});
@@ -589,6 +592,7 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.min_apply_rate_hz, 8.0);
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/trajectory_diagnostics");
   EXPECT_EQ(config.topics.replan_truncation, "/custom/replan_truncation");
+  EXPECT_EQ(config.topics.truncation_suffix_ack, "/custom/truncation_ack");
   EXPECT_EQ(config.topics.executable_trajectory, "/custom/executable");
   EXPECT_EQ(config.memory_grid.occupied_value, 100);
   EXPECT_EQ(config.memory_grid.free_value, 0);

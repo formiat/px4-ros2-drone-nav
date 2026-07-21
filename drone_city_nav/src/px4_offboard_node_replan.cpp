@@ -2,6 +2,27 @@
 
 namespace drone_city_nav {
 
+void Px4OffboardNode::publishTruncationSuffixAck(
+    const msg::ExecutableTrajectory& command,
+    const TruncationSuffixAckDecision decision, const std::string_view reason) {
+  if (!command.truncation_suffix || !truncation_suffix_ack_pub_) {
+    return;
+  }
+  msg::TruncationSuffixAck ack;
+  ack.header = makeDebugHeader();
+  ack.path_id = command.path_id;
+  ack.truncation_generation = command.truncation_generation;
+  ack.temporary_prefix_fingerprint = command.temporary_prefix_fingerprint;
+  ack.decision = static_cast<std::uint8_t>(decision);
+  ack.reason = reason;
+  truncation_suffix_ack_pub_->publish(ack);
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_TRUNCATION suffix_ack decision=%s reason=%s path_id=%" PRIu64
+              " generation=%" PRIu64 " prefix_fingerprint=%" PRIu64,
+              truncationSuffixAckDecisionName(decision), ack.reason.c_str(),
+              ack.path_id, ack.truncation_generation, ack.temporary_prefix_fingerprint);
+}
+
 void Px4OffboardNode::publishReplanTruncation(
     const msg::ReplanBlockerEvent& blocker,
     const TrajectoryPointSample& terminal_sample,

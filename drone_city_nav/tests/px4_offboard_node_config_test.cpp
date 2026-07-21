@@ -270,6 +270,8 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
             "/drone_city_nav/trajectory_diagnostics");
   EXPECT_EQ(config.topics.replan_blocker, "/drone_city_nav/replan_blocker");
   EXPECT_EQ(config.topics.replan_truncation, "/drone_city_nav/replan_truncation");
+  EXPECT_EQ(config.topics.truncation_suffix_ack,
+            "/drone_city_nav/truncation_suffix_ack");
   EXPECT_EQ(config.topics.executable_trajectory,
             "/drone_city_nav/executable_trajectory");
   EXPECT_EQ(config.topics.px4_local_position, "/fmu/out/vehicle_local_position");
@@ -283,6 +285,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsCustomTopicsAndBlackboxPath) {
        rclcpp::Parameter{"path_id_topic", "/custom/path_id"},
        rclcpp::Parameter{"trajectory_diagnostics_topic", "/custom/diagnostics"},
        rclcpp::Parameter{"replan_truncation_topic", "/custom/truncation"},
+       rclcpp::Parameter{"truncation_suffix_ack_topic", "/custom/truncation_ack"},
        rclcpp::Parameter{"executable_trajectory_topic", "/custom/executable"},
        rclcpp::Parameter{"px4_local_position_topic", "/custom/local_position"},
        rclcpp::Parameter{"px4_vehicle_attitude_topic", "/custom/attitude"},
@@ -302,6 +305,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsCustomTopicsAndBlackboxPath) {
   EXPECT_EQ(config.topics.path_id, "/custom/path_id");
   EXPECT_EQ(config.topics.trajectory_diagnostics, "/custom/diagnostics");
   EXPECT_EQ(config.topics.replan_truncation, "/custom/truncation");
+  EXPECT_EQ(config.topics.truncation_suffix_ack, "/custom/truncation_ack");
   EXPECT_EQ(config.topics.executable_trajectory, "/custom/executable");
   EXPECT_EQ(config.topics.px4_local_position, "/custom/local_position");
   EXPECT_EQ(config.topics.px4_vehicle_attitude, "/custom/attitude");
