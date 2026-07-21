@@ -185,7 +185,8 @@ TEST(TrajectoryPlanner, GridDependentStagesFallBackToRuntimeProhibitedGrid) {
   EXPECT_FALSE(pathIsTraversable(planning_grid, result_points));
 }
 
-TEST(TrajectoryPlanner, PassageInsertionFallsBackWhenStrictGridCannotRepair) {
+TEST(TrajectoryPlanner,
+     PassageInsertionDoesNotBlockBaseTrajectoryWhenStrictGridCannotRepair) {
   OccupancyGrid2D planning_grid = testGrid();
   const GridIndex blocked_cell{20, 20};
   planning_grid.setOccupied(blocked_cell);
@@ -211,8 +212,8 @@ TEST(TrajectoryPlanner, PassageInsertionFallsBackWhenStrictGridCannotRepair) {
   const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
 
   ASSERT_TRUE(result.valid);
-  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "runtime_prohibited");
-  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 2U);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "planning_clearance");
+  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 1U);
   const PassageInsertionGridAttempt& strict_attempt =
       result.stats.passage_insertion_grid_attempts.front();
   EXPECT_EQ(strict_attempt.grid_name, "planning_clearance");
@@ -220,18 +221,10 @@ TEST(TrajectoryPlanner, PassageInsertionFallsBackWhenStrictGridCannotRepair) {
   EXPECT_TRUE(strict_attempt.repair_required);
   EXPECT_FALSE(strict_attempt.repair_satisfied);
   EXPECT_FALSE(strict_attempt.applied);
-  EXPECT_FALSE(strict_attempt.accepted);
-  const PassageInsertionGridAttempt& runtime_attempt =
-      result.stats.passage_insertion_grid_attempts.back();
-  EXPECT_EQ(runtime_attempt.grid_name, "runtime_prohibited");
-  EXPECT_TRUE(runtime_attempt.valid);
-  EXPECT_TRUE(runtime_attempt.repair_required);
-  EXPECT_TRUE(runtime_attempt.repair_satisfied);
-  EXPECT_TRUE(runtime_attempt.applied);
-  EXPECT_TRUE(runtime_attempt.accepted);
+  EXPECT_TRUE(strict_attempt.accepted);
 }
 
-TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsInvalidatesTrajectory) {
+TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsKeepsBaseTrajectory) {
   OccupancyGrid2D planning_grid = testGrid();
   OccupancyGrid2D runtime_grid = testGrid();
   const GridIndex blocked_cell{20, 20};
@@ -257,17 +250,17 @@ TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsInvalidatesTrajectory) 
 
   const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
 
-  EXPECT_FALSE(result.valid);
-  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
-  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "none");
-  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 2U);
-  for (const PassageInsertionGridAttempt& attempt :
-       result.stats.passage_insertion_grid_attempts) {
-    EXPECT_TRUE(attempt.valid);
-    EXPECT_TRUE(attempt.repair_required);
-    EXPECT_FALSE(attempt.repair_satisfied);
-    EXPECT_FALSE(attempt.accepted);
-  }
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_EQ(result.stats.grid_stages.passage_insertion, "planning_clearance");
+  ASSERT_EQ(result.stats.passage_insertion_grid_attempts.size(), 1U);
+  const PassageInsertionGridAttempt& attempt =
+      result.stats.passage_insertion_grid_attempts.front();
+  EXPECT_TRUE(attempt.valid);
+  EXPECT_TRUE(attempt.repair_required);
+  EXPECT_FALSE(attempt.repair_satisfied);
+  EXPECT_FALSE(attempt.applied);
+  EXPECT_TRUE(attempt.accepted);
 }
 
 TEST(TrajectoryPlanner, PassageInsertionSkipsFallbackWhenRepairIsNotRequired) {

@@ -623,8 +623,9 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
         attempt.valid && trajectoryStageInvariantsHold(attempt_samples, *candidate.grid,
                                                        input.route_points.front(),
                                                        input.route_points.back());
-    const bool accepted =
-        attempt.valid && attempt.repair_satisfied && trajectory_invariants_hold;
+    // Passage insertion is best-effort. An unrepaired passage is diagnostic data,
+    // not a reason to suppress an otherwise executable route.
+    const bool accepted = attempt.valid && trajectory_invariants_hold;
     result.stats.passage_insertion_grid_attempts.push_back(PassageInsertionGridAttempt{
         .grid_name = candidate_name,
         .reason = attempt.stats.final_reason,
