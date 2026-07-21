@@ -28,6 +28,8 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemorySnapshot.msg"
   "msg/CrashState.msg"
   "msg/ReplanBlockerEvent.msg"
+  "msg/ReplanTruncation.msg"
+  "msg/ExecutableTrajectory.msg"
   DEPENDENCIES builtin_interfaces geometry_msgs nav_msgs std_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}
                               rosidl_typesupport_cpp)
@@ -180,11 +182,13 @@ add_executable(
   src/planner_node_memory_provenance.cpp
   src/planner_node_publish.cpp
   src/planner_node_trajectory_publication.cpp
+  src/planner_node_route_publication.cpp
   src/planner_node_refinement.cpp
   src/planner_node_safety.cpp
   src/planner_node_lidar_overlay.cpp
   src/planner_node_debug_publication.cpp
   src/planner_node_dumps.cpp
+  src/planner_node_truncation.cpp
   src/planner_node_runtime.cpp)
 target_compile_features(planner_node PRIVATE cxx_std_20)
 target_link_libraries(planner_node drone_city_nav_core drone_city_nav_ros_adapters

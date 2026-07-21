@@ -28,7 +28,8 @@ world assets, and Docker tooling around it.
 - runs A* rough routing;
 - builds a corridor;
 - builds optimized executable trajectories;
-- publishes `/drone_city_nav/path`, `/drone_city_nav/path_id`,
+- publishes the authoritative `/drone_city_nav/executable_trajectory` command,
+  plus `/drone_city_nav/path`, `/drone_city_nav/path_id`,
   `/drone_city_nav/trajectory_diagnostics`, `/drone_city_nav/prohibited_grid`,
   and static-map debug topics.
 
@@ -234,9 +235,11 @@ telemetry is authoritative for what the drone actually tried to fly.
 
 ## Topic And Artifact Contracts
 
-`/drone_city_nav/path` is the executable geometry message. It is intentionally
-small and ROS-native. The offboard node rebuilds samples from it and does not
-assume that diagnostics arrived in the same callback order.
+`/drone_city_nav/executable_trajectory` is the authoritative control command.
+It atomically carries the ROS path, path id, and optional truncation generation
+and temporary-prefix fingerprint. `/drone_city_nav/path` mirrors its geometry
+for RViz, bags, and compatibility, but offboard does not use that debug topic as
+its command source.
 
 `/drone_city_nav/trajectory_diagnostics` is a companion artifact. It is matched
 by path timestamp, not by delivery order. This matters because ROS topics are
@@ -257,10 +260,11 @@ hard collision validation with route preference.
 ## State Ownership During Replanning
 
 When the current trajectory becomes invalid against the latest prohibited grid,
-the planner can start a new build. Until a replacement trajectory is accepted,
-the offboard node should continue using the previous accepted trajectory if it
-is still usable. A failed build must not publish an empty executable path that
-deletes the only valid command source.
+the planner first publishes a blocker event. Offboard truncates the executable
+trajectory and returns a generation-tagged stable join point. The planner builds
+the replacement suffix from that point. Until the suffix is accepted, offboard
+executes the safe prefix or holds at its terminal point. A failed build must not
+delete that command source.
 
 This rule is important during lidar-triggered replans. Lidar can reveal an
 obstacle imperfectly or only partially. The system should respond by building a

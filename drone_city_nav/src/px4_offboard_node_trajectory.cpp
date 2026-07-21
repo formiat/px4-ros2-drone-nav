@@ -403,7 +403,8 @@ void Px4OffboardNode::applyReceivedFinalTrajectoryPath(
       samples_csv_path.c_str());
 }
 
-void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
+void Px4OffboardNode::onExecutableTrajectory(const msg::ExecutableTrajectory& command) {
+  const nav_msgs::msg::Path& path = command.path;
   if (crashed_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Ignoring planner path after physical collision");
@@ -413,6 +414,8 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
                                                    path.poses.size()};
   const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
+  latest_planner_path_id_ = command.path_id;
+  latest_planner_path_id_seen_ = command.path_id != 0U;
   const std::uint64_t candidate_path_stamp_ns =
       messageStampNanoseconds(path.header.stamp);
   recent_path_receipts_.push_back(PathReceiptDiagnostic{
@@ -480,6 +483,32 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
     return;
   }
 
+  if (temporary_replan_truncation_active_) {
+    const bool contract_matches =
+        command.truncation_suffix &&
+        command.truncation_generation == active_truncation_generation_ &&
+        command.temporary_prefix_fingerprint == active_temporary_prefix_fingerprint_;
+    if (!contract_matches) {
+      callback_duration.setOutcome("truncation_contract_rejected");
+      RCLCPP_WARN(
+          get_logger(),
+          "REPLAN_TRUNCATION rejected suffix: reason=contract_mismatch path_id=%" PRIu64
+          " suffix=%s generation=%" PRIu64 "/%" PRIu64 " prefix_fingerprint=%" PRIu64
+          "/%" PRIu64,
+          command.path_id, command.truncation_suffix ? "true" : "false",
+          command.truncation_generation, active_truncation_generation_,
+          command.temporary_prefix_fingerprint, active_temporary_prefix_fingerprint_);
+      return;
+    }
+  } else if (command.truncation_suffix) {
+    callback_duration.setOutcome("stale_truncation_suffix_rejected");
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION rejected suffix: reason=no_active_prefix "
+                "path_id=%" PRIu64 " generation=%" PRIu64,
+                command.path_id, command.truncation_generation);
+    return;
+  }
+
   const TrajectoryPlannerDiagnosticsEnvelope* candidate_diagnostics = nullptr;
   const TrajectoryPlannerStats* candidate_planner_stats = nullptr;
   if (latest_trajectory_diagnostics_.has_value() &&
@@ -502,7 +531,61 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
       candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
   HorizontalTrajectoryHandoverResult horizontal_handover{};
   if (temporary_replan_truncation_active_) {
-    horizontal_handover.reason = "temporary_replan_hold";
+    if (!temporary_replan_immediate_hold_) {
+      const Point2 truncation_point = final_trajectory_samples_.back().point;
+      const TruncatedPrefixStitchResult stitch = stitchTruncatedPrefixWithSuffix(
+          final_trajectory_samples_, candidate_state.samples,
+          TruncatedPrefixStitchRequest{.current_position = current_position_,
+                                       .truncation_point = truncation_point,
+                                       .max_join_distance_m = 1.0});
+      if (!stitch.applied) {
+        callback_duration.setOutcome("truncation_stitch_rejected");
+        RCLCPP_WARN(get_logger(),
+                    "REPLAN_TRUNCATION rejected suffix: reason=%s path_id=%" PRIu64
+                    " generation=%" PRIu64 " current=(%.2f,%.2f) "
+                    "truncation=(%.2f,%.2f) suffix_start=(%.2f,%.2f)",
+                    stitch.reason, command.path_id, command.truncation_generation,
+                    current_position_.x, current_position_.y, truncation_point.x,
+                    truncation_point.y, candidate_state.samples.front().point.x,
+                    candidate_state.samples.front().point.y);
+        return;
+      }
+      candidate_state =
+          buildOffboardTrajectoryState(stitch.samples, velocity_follower_config_);
+      horizontal_handover.attempted = true;
+      horizontal_handover.applied = true;
+      horizontal_handover.reason = "truncation_prefix_stitched";
+      horizontal_handover.old_projection_s_m = stitch.current_s_m;
+      horizontal_handover.old_join_s_m = stitch.prefix_join_s_m;
+      horizontal_handover.candidate_join_s_m = 0.0;
+      horizontal_handover.stitched_join_s_m = stitch.suffix_station_offset_m;
+      horizontal_handover.join_distance_m = stitch.join_distance_m;
+      horizontal_handover.candidate_station_offset_m = stitch.suffix_station_offset_m;
+      RCLCPP_INFO(get_logger(),
+                  "REPLAN_TRUNCATION prefix_suffix_stitched=true path_id=%" PRIu64
+                  " generation=%" PRIu64 " remaining_prefix=%.2fm join_distance=%.3fm "
+                  "combined_samples=%zu",
+                  command.path_id, command.truncation_generation,
+                  stitch.suffix_station_offset_m, stitch.join_distance_m,
+                  candidate_state.samples.size());
+    } else {
+      const double hold_join_distance_m = distance(
+          candidate_state.samples.front().point, temporary_replan_hold_target_);
+      if (hold_join_distance_m > 1.0) {
+        callback_duration.setOutcome("immediate_hold_join_rejected");
+        RCLCPP_WARN(
+            get_logger(),
+            "REPLAN_TRUNCATION rejected suffix: reason=immediate_hold_join_mismatch "
+            "path_id=%" PRIu64 " generation=%" PRIu64
+            " hold=(%.2f,%.2f) suffix_start=(%.2f,%.2f) distance=%.3fm",
+            command.path_id, command.truncation_generation,
+            temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
+            candidate_state.samples.front().point.x,
+            candidate_state.samples.front().point.y, hold_join_distance_m);
+        return;
+      }
+      horizontal_handover.reason = "truncation_immediate_hold_release";
+    }
   } else if (!trajectory_valid_) {
     horizontal_handover.reason = "current_trajectory_unavailable";
   } else if (!trajectorySamplesAreUsable(final_trajectory_samples_)) {
@@ -566,8 +649,12 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   }
   TrajectoryContinuityResult continuity{};
   if (temporary_replan_truncation_active_) {
-    continuity.decision = TrajectoryContinuityDecision::kResetSmoother;
-    continuity.reason = "temporary_replan_hold";
+    if (temporary_replan_immediate_hold_) {
+      continuity.decision = TrajectoryContinuityDecision::kResetSmoother;
+      continuity.reason = "truncation_immediate_hold_release";
+    } else {
+      continuity = evaluateReceivedTrajectoryContinuity(candidate_state);
+    }
   } else {
     continuity = evaluateReceivedTrajectoryContinuity(candidate_state);
   }
@@ -640,22 +727,32 @@ void Px4OffboardNode::onPath(const nav_msgs::msg::Path& path) {
   if (temporary_replan_truncation_active_) {
     RCLCPP_INFO(get_logger(),
                 "SAFE_TRAJECTORY_TRUNCATION cleared by accepted replacement path: "
-                "blocked_path_id=%" PRIu64 " new_planner_path_id=%" PRIu64,
-                accepted_planner_path_id_, latest_planner_path_id_);
+                "blocked_path_id=%" PRIu64 " generation=%" PRIu64
+                " new_planner_path_id=%" PRIu64,
+                accepted_planner_path_id_, active_truncation_generation_,
+                latest_planner_path_id_);
   }
   temporary_replan_truncation_active_ = false;
   temporary_replan_hold_active_ = false;
+  temporary_replan_immediate_hold_ = false;
+  active_truncation_generation_ = 0U;
+  active_temporary_prefix_fingerprint_ = 0U;
   no_path_hold_target_valid_ = false;
+  std::vector<Point2> accepted_path_points;
+  accepted_path_points.reserve(candidate_state.samples.size());
+  for (const TrajectoryPointSample& sample : candidate_state.samples) {
+    accepted_path_points.push_back(sample.point);
+  }
   const std::size_t candidate_index =
-      localPositionFresh() ? drone_city_nav::advanceWaypointIndex(candidate_path_points,
+      localPositionFresh() ? drone_city_nav::advanceWaypointIndex(accepted_path_points,
                                                                   current_position_, 0U,
                                                                   pathFollowerConfig())
                            : 0U;
   received_path_update_id_ = candidate_update_id;
   last_received_path_stamp_ns_ = candidate_path_stamp_ns;
-  accepted_planner_path_id_ = 0U;
-  accepted_planner_path_id_seen_ = false;
-  path_points_ = std::move(candidate_path_points);
+  accepted_planner_path_id_ = command.path_id;
+  accepted_planner_path_id_seen_ = command.path_id != 0U;
+  path_points_ = std::move(accepted_path_points);
   path_valid_ = true;
   trajectory_goal_ = path_points_.back();
   trajectory_goal_valid_ = true;

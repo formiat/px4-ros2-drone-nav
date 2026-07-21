@@ -260,7 +260,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
                           "nearest_distance=nanm nearest_cell=(-1, -1) "
                           "nearest_center=(nan, nan) search_radius=nanm]"};
     const std::int64_t blocker_detected_stamp_ns = get_clock()->now().nanoseconds();
-    const TrajectoryDeliveryDiagnostics delivery{
+    TrajectoryDeliveryDiagnostics delivery{
         .generation = trajectory_generation_ + 1U,
         .blocker_detected_stamp_ns =
             blocker_detected_stamp_ns > 0
@@ -272,44 +272,59 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         .blocker_detection_velocity = current_velocity_,
         .blocker_detection_velocity_valid = current_velocity_valid_,
     };
-    pending_replan_delivery_ = delivery;
     ++prohibited_replans_;
+    bool awaiting_truncation_confirmation = false;
     if (safe_trajectory_truncation_enabled_ && replan_blocker_pub_ != nullptr) {
-      msg::ReplanBlockerEvent event;
-      event.header = makePlannerHeader();
-      event.blocked_path_id = last_published_path_id_;
-      event.memory_snapshot_sequence = last_memory_snapshot_applied_sequence_;
-      event.blocker_position.x = intersection.cell_center.x;
-      event.blocker_position.y = intersection.cell_center.y;
-      event.blocker_position.z = 0.0;
-      event.detection_position.x = current_pose_.position.x;
-      event.detection_position.y = current_pose_.position.y;
-      event.detection_position.z = 0.0;
-      event.detection_velocity.x = current_velocity_.x;
-      event.detection_velocity.y = current_velocity_.y;
-      event.detection_velocity.z = 0.0;
-      event.blocker_path_distance_m = intersection.path_distance_m;
-      event.detection_velocity_valid = current_velocity_valid_;
-      event.source = source_diagnostic;
-      replan_blocker_pub_->publish(event);
-      RCLCPP_WARN(
-          get_logger(),
-          "SAFE_TRAJECTORY_TRUNCATION event_published=true blocked_path_id=%" PRIu64
-          " blocker_path_distance=%.2fm blocker=(%.2f, %.2f) "
-          "memory_sequence=%" PRIu64,
-          event.blocked_path_id, event.blocker_path_distance_m,
-          event.blocker_position.x, event.blocker_position.y,
-          event.memory_snapshot_sequence);
+      const std::optional<std::uint64_t> truncation_generation =
+          beginTruncationReplan(last_published_path_id_);
+      if (truncation_generation.has_value()) {
+        delivery.blocked_path_id = last_published_path_id_;
+        delivery.truncation_generation = *truncation_generation;
+        pending_replan_delivery_ = delivery;
+        msg::ReplanBlockerEvent event;
+        event.header = makePlannerHeader();
+        event.blocked_path_id = last_published_path_id_;
+        event.truncation_generation = *truncation_generation;
+        event.memory_snapshot_sequence = last_memory_snapshot_applied_sequence_;
+        event.blocker_position.x = intersection.cell_center.x;
+        event.blocker_position.y = intersection.cell_center.y;
+        event.blocker_position.z = 0.0;
+        event.detection_position.x = current_pose_.position.x;
+        event.detection_position.y = current_pose_.position.y;
+        event.detection_position.z = 0.0;
+        event.detection_velocity.x = current_velocity_.x;
+        event.detection_velocity.y = current_velocity_.y;
+        event.detection_velocity.z = 0.0;
+        event.blocker_path_distance_m = intersection.path_distance_m;
+        event.detection_velocity_valid = current_velocity_valid_;
+        event.source = source_diagnostic;
+        replan_blocker_pub_->publish(event);
+        awaiting_truncation_confirmation = true;
+        RCLCPP_WARN(
+            get_logger(),
+            "SAFE_TRAJECTORY_TRUNCATION event_published=true blocked_path_id=%" PRIu64
+            " generation=%" PRIu64 " blocker_path_distance=%.2fm blocker=(%.2f, %.2f) "
+            "memory_sequence=%" PRIu64,
+            event.blocked_path_id, event.truncation_generation,
+            event.blocker_path_distance_m, event.blocker_position.x,
+            event.blocker_position.y, event.memory_snapshot_sequence);
+      }
+    }
+    if (!awaiting_truncation_confirmation) {
+      pending_replan_delivery_ = delivery;
     }
     RCLCPP_WARN(get_logger(),
                 "Current path intersects newly available prohibited obstacle data; "
-                "running A* from current pose: reason=%s "
+                "%s: reason=%s "
                 "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
                 "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
                 "blocker[cell=(%d, %d) center=(%.2f, %.2f) occupied=%s inflated=%s "
                 "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
                 "path_distance=%.2fm segment_start_prohibited=%s "
                 "segment_end_prohibited=%s] %s",
+                awaiting_truncation_confirmation
+                    ? "waiting for confirmed truncation planning start"
+                    : "running A* from current pose",
                 stablePathDecisionReasonName(decision.reason),
                 decision.remaining_path.size(), decision.deviation_m,
                 decision.prohibited_segment_index, prohibited_start.x,
@@ -332,7 +347,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         delivery.blocker_detection_velocity.x, delivery.blocker_detection_velocity.y,
         delivery.blocker_detection_velocity_valid ? "true" : "false",
         delivery.blocker_position.x, delivery.blocker_position.y);
-    return false;
+    return awaiting_truncation_confirmation;
   }
 
   last_valid_path_points_ = decision.remaining_path;

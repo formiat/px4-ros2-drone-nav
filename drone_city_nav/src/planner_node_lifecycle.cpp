@@ -38,6 +38,12 @@ PlannerNode::PlannerNode()
         onMemorySnapshot(msg);
       },
       memory_snapshot_options);
+  rclcpp::SubscriptionOptions replan_truncation_options;
+  replan_truncation_options.callback_group = planner_control_callback_group_;
+  replan_truncation_sub_ = create_subscription<msg::ReplanTruncation>(
+      config.topics.replan_truncation, rclcpp::QoS{1}.reliable(),
+      [this](const msg::ReplanTruncation::SharedPtr msg) { onReplanTruncation(*msg); },
+      replan_truncation_options);
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       config.topics.lidar, sensor_qos,
       [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { onScan(*msg); },
@@ -77,6 +83,8 @@ PlannerNode::PlannerNode()
       config.topics.trajectory_diagnostics, rclcpp::QoS{1}.reliable());
   replan_blocker_pub_ = create_publisher<msg::ReplanBlockerEvent>(
       config.topics.replan_blocker, rclcpp::QoS{1}.reliable());
+  executable_trajectory_pub_ = create_publisher<msg::ExecutableTrajectory>(
+      config.topics.executable_trajectory, rclcpp::QoS{1}.reliable());
   waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
 
@@ -121,10 +129,12 @@ PlannerNode::PlannerNode()
               memory_snapshot_max_callback_time_ms_,
               memory_snapshot_max_apply_delay_ms_, memory_snapshot_min_apply_rate_hz_);
   RCLCPP_INFO(get_logger(),
-              "Planner publications: path='%s' path_id='%s' replan_blocker='%s' "
+              "Planner publications: path='%s' executable_trajectory='%s' "
+              "path_id='%s' replan_blocker='%s' replan_truncation='%s' "
               "safe_trajectory_truncation=%s",
-              config.topics.path.c_str(), config.topics.path_id.c_str(),
-              config.topics.replan_blocker.c_str(),
+              config.topics.path.c_str(), config.topics.executable_trajectory.c_str(),
+              config.topics.path_id.c_str(), config.topics.replan_blocker.c_str(),
+              config.topics.replan_truncation.c_str(),
               safe_trajectory_truncation_enabled_ ? "true" : "false");
   RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "

@@ -64,6 +64,14 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
   appendJsonUint64(stream, "path_stamp_ns", path_stamp_ns);
   appendJsonUint64(stream, "delivery_generation", delivery.generation);
   appendJsonBool(stream, "delivery_replan_triggered", delivery.replan_triggered);
+  appendJsonBool(stream, "delivery_truncation_suffix", delivery.truncation_suffix);
+  appendJsonBool(stream, "delivery_truncation_immediate_hold",
+                 delivery.truncation_immediate_hold);
+  appendJsonUint64(stream, "delivery_blocked_path_id", delivery.blocked_path_id);
+  appendJsonUint64(stream, "delivery_truncation_generation",
+                   delivery.truncation_generation);
+  appendJsonUint64(stream, "delivery_temporary_prefix_fingerprint",
+                   delivery.temporary_prefix_fingerprint);
   appendJsonUint64(stream, "delivery_blocker_detected_stamp_ns",
                    delivery.blocker_detected_stamp_ns);
   appendJsonUint64(stream, "delivery_trajectory_build_started_stamp_ns",

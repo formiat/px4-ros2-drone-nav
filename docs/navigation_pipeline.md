@@ -175,6 +175,7 @@ diagnostics, and runtime vertical maneuver control.
 
 The planner publishes:
 
+- `/drone_city_nav/executable_trajectory`
 - `/drone_city_nav/path`
 - `/drone_city_nav/path_id`
 - `/drone_city_nav/trajectory_diagnostics`
@@ -187,9 +188,11 @@ The offboard node publishes:
 - `/drone_city_nav/final_trajectory_path`
 - `/drone_city_nav/offboard_debug_markers`
 
-The accepted trajectory is matched to diagnostics by `path_stamp_ns`.
-The `/drone_city_nav/path` and `/drone_city_nav/final_trajectory_path` messages
-carry per-sample altitude in `pose.position.z`.
+The executable command atomically associates path geometry with path id and
+safe-truncation metadata. Diagnostics are still matched by `path_stamp_ns`.
+The `/drone_city_nav/path` debug mirror and
+`/drone_city_nav/final_trajectory_path` messages carry per-sample altitude in
+`pose.position.z`.
 
 Known passage markers are RViz/debug artifacts. Architectural structure volumes,
 opening frames, opening centers, approach arrows, and exit arrows help verify

@@ -633,6 +633,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "trajectory_diagnostics_topic", "/drone_city_nav/trajectory_diagnostics");
   config.topics.replan_blocker = node.declare_parameter<std::string>(
       "replan_blocker_topic", "/drone_city_nav/replan_blocker");
+  config.topics.replan_truncation = node.declare_parameter<std::string>(
+      "replan_truncation_topic", "/drone_city_nav/replan_truncation");
+  config.topics.executable_trajectory = node.declare_parameter<std::string>(
+      "executable_trajectory_topic", "/drone_city_nav/executable_trajectory");
   config.topics.current_waypoint = node.declare_parameter<std::string>(
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
   config.safe_trajectory_truncation_enabled =

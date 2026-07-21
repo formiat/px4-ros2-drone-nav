@@ -20,7 +20,12 @@ struct TrajectoryDeliveryDiagnostics {
   std::uint64_t blocker_detected_stamp_ns{0U};
   std::uint64_t trajectory_build_started_stamp_ns{0U};
   std::uint64_t path_published_stamp_ns{0U};
+  std::uint64_t blocked_path_id{0U};
+  std::uint64_t truncation_generation{0U};
+  std::uint64_t temporary_prefix_fingerprint{0U};
   bool replan_triggered{false};
+  bool truncation_suffix{false};
+  bool truncation_immediate_hold{false};
   Point2 blocker_position{};
   Point2 blocker_detection_position{};
   Point2 blocker_detection_velocity{};

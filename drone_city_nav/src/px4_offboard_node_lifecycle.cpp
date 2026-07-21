@@ -50,9 +50,11 @@ Px4OffboardNode::Px4OffboardNode()
 
   const auto px4_qos =
       rclcpp::QoS{rclcpp::KeepLast{10}}.best_effort().durability_volatile();
-  path_sub_ = create_subscription<nav_msgs::msg::Path>(
-      topics.path, rclcpp::QoS{1}.reliable(),
-      [this](const nav_msgs::msg::Path::SharedPtr msg) { onPath(*msg); });
+  executable_trajectory_sub_ = create_subscription<msg::ExecutableTrajectory>(
+      topics.executable_trajectory, rclcpp::QoS{1}.reliable(),
+      [this](const msg::ExecutableTrajectory::SharedPtr msg) {
+        onExecutableTrajectory(*msg);
+      });
   path_id_sub_ = create_subscription<std_msgs::msg::UInt64>(
       topics.path_id, rclcpp::QoS{1}.reliable(),
       [this](const std_msgs::msg::UInt64::SharedPtr msg) { onPathId(*msg); });
@@ -64,6 +66,8 @@ Px4OffboardNode::Px4OffboardNode()
   replan_blocker_sub_ = create_subscription<msg::ReplanBlockerEvent>(
       topics.replan_blocker, rclcpp::QoS{1}.reliable(),
       [this](const msg::ReplanBlockerEvent::SharedPtr msg) { onReplanBlocker(*msg); });
+  replan_truncation_pub_ = create_publisher<msg::ReplanTruncation>(
+      topics.replan_truncation, rclcpp::QoS{1}.reliable());
   local_position_sub_ = create_subscription<px4_msgs::msg::VehicleLocalPosition>(
       topics.px4_local_position, px4_qos,
       [this](const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
@@ -212,9 +216,11 @@ Px4OffboardNode::Px4OffboardNode()
       velocity_follower_config_.no_static_speed_policy.max_speed_mps,
       velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
   RCLCPP_INFO(get_logger(),
-              "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s'",
+              "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s' "
+              "truncation_topic='%s'",
               safe_trajectory_truncation_enabled_ ? "true" : "false",
-              safe_trajectory_truncation_margin_m_, topics.replan_blocker.c_str());
+              safe_trajectory_truncation_margin_m_, topics.replan_blocker.c_str(),
+              topics.replan_truncation.c_str());
   RCLCPP_INFO(
       get_logger(),
       "Trajectory handover: enabled=%s require_grid=%s prefix_time=%.2fs "
@@ -239,10 +245,11 @@ Px4OffboardNode::Px4OffboardNode()
       radiansToDegrees(trajectory_continuity_thresholds_.defer_tangent_jump_rad),
       trajectory_continuity_thresholds_.defer_tangent_speed_command_jump_mps);
   RCLCPP_INFO(get_logger(),
-              "PX4 offboard subscriptions: path='%s' path_id='%s' local_position='%s' "
+              "PX4 offboard subscriptions: executable_trajectory='%s' path_id='%s' "
+              "local_position='%s' "
               "attitude='%s' vehicle_status='%s' prohibited_grid='%s' "
               "replan_blocker='%s'",
-              topics.path.c_str(), topics.path_id.c_str(),
+              topics.executable_trajectory.c_str(), topics.path_id.c_str(),
               topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
               topics.px4_vehicle_status.c_str(), topics.prohibited_grid.c_str(),
               topics.replan_blocker.c_str());

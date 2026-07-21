@@ -19,6 +19,9 @@ ros2 bag record \
   /drone_city_nav/obstacle_memory_grid \
   /drone_city_nav/obstacle_memory_provenance \
   /drone_city_nav/obstacle_memory_snapshot \
+  /drone_city_nav/executable_trajectory \
+  /drone_city_nav/replan_blocker \
+  /drone_city_nav/replan_truncation \
   /drone_city_nav/prohibited_grid \
   /drone_city_nav/path \
   /drone_city_nav/current_waypoint \

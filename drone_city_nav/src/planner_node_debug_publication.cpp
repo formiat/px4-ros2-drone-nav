@@ -155,6 +155,10 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   if (trajectory_stats != nullptr && !points.empty()) {
     publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats, {});
   }
+  msg::ExecutableTrajectory command;
+  command.path_id = path_id;
+  command.path = path;
+  executable_trajectory_pub_->publish(command);
   path_pub_->publish(path);
   if (!path.poses.empty()) {
     waypoint_pub_->publish(path.poses.front());
@@ -193,6 +197,13 @@ PlannerNode::publishTrajectoryPath(const std::span<const TrajectoryPointSample> 
   if (trajectory_stats != nullptr && !points.empty()) {
     publishTrajectoryDiagnostics(path_id, path_stamp_ns, *trajectory_stats, delivery);
   }
+  msg::ExecutableTrajectory command;
+  command.path_id = path_id;
+  command.truncation_generation = delivery.truncation_generation;
+  command.temporary_prefix_fingerprint = delivery.temporary_prefix_fingerprint;
+  command.truncation_suffix = delivery.truncation_suffix;
+  command.path = path;
+  executable_trajectory_pub_->publish(command);
   path_pub_->publish(path);
   if (!path.poses.empty()) {
     waypoint_pub_->publish(path.poses.front());
@@ -238,6 +249,12 @@ void PlannerNode::publishTrajectoryDiagnostics(
 }
 
 void PlannerNode::publishPlanningFailureHold() {
+  if (truncationReplanState().has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "REPLAN_TRUNCATION planning_failed=true preserving planner prefix "
+                "and offboard temporary hold while retrying confirmed start");
+    return;
+  }
   pending_replan_delivery_.reset();
   if (!last_valid_path_points_.empty()) {
     RCLCPP_WARN_THROTTLE(

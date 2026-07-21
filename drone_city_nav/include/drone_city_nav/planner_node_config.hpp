@@ -32,6 +32,8 @@ struct PlannerTopics {
   std::string path_id{"/drone_city_nav/path_id"};
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
   std::string replan_blocker{"/drone_city_nav/replan_blocker"};
+  std::string replan_truncation{"/drone_city_nav/replan_truncation"};
+  std::string executable_trajectory{"/drone_city_nav/executable_trajectory"};
   std::string current_waypoint{"/drone_city_nav/current_waypoint"};
 };
 

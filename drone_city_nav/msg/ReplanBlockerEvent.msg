@@ -1,5 +1,6 @@
 std_msgs/Header header
 uint64 blocked_path_id
+uint64 truncation_generation
 uint64 memory_snapshot_sequence
 geometry_msgs/Point blocker_position
 geometry_msgs/Point detection_position

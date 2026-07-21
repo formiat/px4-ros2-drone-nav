@@ -1,0 +1,5 @@
+uint64 path_id
+uint64 truncation_generation
+uint64 temporary_prefix_fingerprint
+bool truncation_suffix
+nav_msgs/Path path

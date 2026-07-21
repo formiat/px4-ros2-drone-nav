@@ -545,6 +545,13 @@ whether offboard retained a prefix or had to enter an immediate temporary hold.
 The event is ignored when its `blocked_path_id` does not match the currently
 accepted trajectory.
 
+`REPLAN_TRUNCATION` records correlate the complete handshake: blocker event,
+offboard confirmation, planner suffix start, and offboard prefix/suffix stitch.
+For every accepted suffix, `blocked_path_id`, `truncation_generation`, and
+`temporary_prefix_fingerprint` must match. `remaining_prefix` shows how much of
+the old executable trajectory remained when the suffix arrived; a zero-length
+prefix is expected after an immediate hold.
+
 ## Run Comparison Method
 
 When comparing two runs, use the same route and similar simulator conditions if

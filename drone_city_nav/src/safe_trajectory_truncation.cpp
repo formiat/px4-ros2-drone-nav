@@ -1,7 +1,9 @@
 #include "drone_city_nav/safe_trajectory_truncation.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <utility>
 
 namespace drone_city_nav {
@@ -9,6 +11,8 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kMinimumExecutablePrefixM = 0.5;
+constexpr std::uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
 [[nodiscard]] Point2 interpolate(const Point2 start, const Point2 end,
                                  const double ratio) noexcept {
@@ -70,6 +74,11 @@ void rebaseStations(std::vector<TrajectoryPointSample>& samples) {
   }
 }
 
+void hashValue(std::uint64_t& hash, const double value) noexcept {
+  hash ^= std::bit_cast<std::uint64_t>(value);
+  hash *= kFnvPrime;
+}
+
 } // namespace
 
 SafeTrajectoryTruncationResult
@@ -124,6 +133,78 @@ truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> sam
 
   result.applied = true;
   result.reason = "safe_prefix";
+  return result;
+}
+
+std::uint64_t trajectoryPrefixFingerprint(
+    const std::span<const TrajectoryPointSample> samples) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  hash ^= static_cast<std::uint64_t>(samples.size());
+  hash *= kFnvPrime;
+  for (const TrajectoryPointSample& sample : samples) {
+    hashValue(hash, sample.point.x);
+    hashValue(hash, sample.point.y);
+    hashValue(hash, sample.z_m);
+    hashValue(hash, sample.s_m);
+  }
+  return hash;
+}
+
+TruncatedPrefixStitchResult
+stitchTruncatedPrefixWithSuffix(const std::span<const TrajectoryPointSample> prefix,
+                                const std::span<const TrajectoryPointSample> suffix,
+                                const TruncatedPrefixStitchRequest& request) {
+  TruncatedPrefixStitchResult result{};
+  if (!trajectorySamplesAreUsable(prefix) || !trajectorySamplesAreUsable(suffix) ||
+      !std::isfinite(request.max_join_distance_m) ||
+      request.max_join_distance_m < 0.0) {
+    result.reason = "invalid_input";
+    return result;
+  }
+  const std::optional<TrajectoryProjection> current_projection =
+      projectOnTrajectorySamples(prefix, request.current_position);
+  const std::optional<TrajectoryProjection> join_projection =
+      projectOnTrajectorySamples(prefix, request.truncation_point);
+  if (!current_projection.has_value() || !join_projection.has_value()) {
+    result.reason = "prefix_projection_unavailable";
+    return result;
+  }
+  result.current_s_m = current_projection->s_m;
+  result.prefix_join_s_m = join_projection->s_m;
+  result.join_distance_m = distance(suffix.front().point, request.truncation_point);
+  const double prefix_join_error_m = std::sqrt(join_projection->distance_sq);
+  if (prefix_join_error_m > request.max_join_distance_m ||
+      result.join_distance_m > request.max_join_distance_m) {
+    result.reason = "join_point_mismatch";
+    return result;
+  }
+  if (result.current_s_m > result.prefix_join_s_m + kMinimumExecutablePrefixM) {
+    result.reason = "truncation_point_passed";
+    return result;
+  }
+
+  appendDistinct(result.samples, sampleAtS(prefix, result.current_s_m));
+  for (const TrajectoryPointSample& sample : prefix) {
+    if (sample.s_m > result.current_s_m + kTinyDistanceM &&
+        sample.s_m < result.prefix_join_s_m - kTinyDistanceM) {
+      appendDistinct(result.samples, sample);
+    }
+  }
+  appendDistinct(result.samples, sampleAtS(prefix, result.prefix_join_s_m));
+  rebaseStations(result.samples);
+  result.suffix_station_offset_m = result.samples.back().s_m;
+  for (const TrajectoryPointSample& sample : suffix) {
+    appendDistinct(result.samples, sample);
+  }
+  rebaseStations(result.samples);
+  populateTrajectorySampleGeometry(result.samples);
+  if (!trajectorySamplesAreUsable(result.samples)) {
+    result.samples.clear();
+    result.reason = "stitched_trajectory_invalid";
+    return result;
+  }
+  result.applied = true;
+  result.reason = "prefix_suffix_stitched";
   return result;
 }
 

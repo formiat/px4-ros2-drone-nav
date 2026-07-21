@@ -538,18 +538,38 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 planning_relaxation.cells_outside_bounds);
   }
   publishProhibitedGrid(prohibited_grid);
-  if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
+  std::optional<TruncationReplanState> truncation_replan = truncationReplanState();
+  if (!truncation_replan.has_value()) {
+    if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
+      return;
+    }
+    truncation_replan = truncationReplanState();
+  }
+  if (truncation_replan.has_value() && !truncation_replan->confirmed) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "REPLAN_TRUNCATION planning_wait=true blocked_path_id=%" PRIu64
+                         " generation=%" PRIu64,
+                         truncation_replan->blocked_path_id,
+                         truncation_replan->generation);
     return;
   }
 
-  const AStarConfig planning_astar_config = astarConfigForCurrentVelocity();
-  const Point2 planning_start = navigation.pose.position;
+  const Point2 planning_start =
+      truncation_replan.has_value()
+          ? Point2{truncation_replan->position.x, truncation_replan->position.y}
+          : navigation.pose.position;
+  const AStarConfig planning_astar_config = astarConfigForCurrentVelocity(
+      truncation_replan.has_value() ? std::optional<Point2>{truncation_replan->tangent}
+                                    : std::nullopt);
   RCLCPP_INFO(
       get_logger(),
       "Planning start snapshot: request_generation=%" PRIu64
-      " start=(%.2f, %.2f) pose_stamp_ns=%" PRId64 " speed_mps=%.2f velocity_valid=%s",
+      " start=(%.2f, %.2f) pose_stamp_ns=%" PRId64
+      " speed_mps=%.2f velocity_valid=%s source=%s truncation_generation=%" PRIu64,
       request_generation, planning_start.x, planning_start.y, navigation.stamp_ns,
-      navigation.speed_mps, navigation.velocity_valid ? "true" : "false");
+      navigation.speed_mps, navigation.velocity_valid ? "true" : "false",
+      truncation_replan.has_value() ? "confirmed_truncation" : "current_pose",
+      truncation_replan.has_value() ? truncation_replan->generation : 0U);
   std::vector<TrajectoryGridCandidate> grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
       TrajectoryGridCandidate{"runtime_prohibited", &prohibited_grid, nullptr, false},
@@ -795,7 +815,11 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
   const bool published = publishPathFromPathCells(
       grid_candidates, astar_grid_index, path_result->astar.path,
-      path_result->smoothed_cells, astar_grid_name.c_str(), planning_start);
+      path_result->smoothed_cells, astar_grid_name.c_str(), planning_start,
+      truncation_replan.has_value() ? &*truncation_replan : nullptr);
+  if (published && truncation_replan.has_value()) {
+    completeTruncationReplan(truncation_replan->generation);
+  }
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
   RCLCPP_INFO(get_logger(),
               "Planning worker cycle complete: request_generation=%" PRIu64
@@ -804,8 +828,21 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
               cycle_duration_s * 1000.0);
 }
 
-[[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity() const {
+[[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity(
+    const std::optional<Point2> initial_tangent) const {
   AStarConfig config = astar_config_;
+  if (initial_tangent.has_value()) {
+    const double tangent_norm = std::hypot(initial_tangent->x, initial_tangent->y);
+    if (std::isfinite(tangent_norm) && tangent_norm > 1.0e-6) {
+      const double bias_speed_mps =
+          std::max(config.initial_heading_bias_min_speed_mps, 1.0);
+      config.initial_heading_bias_velocity_x_mps =
+          initial_tangent->x * bias_speed_mps / tangent_norm;
+      config.initial_heading_bias_velocity_y_mps =
+          initial_tangent->y * bias_speed_mps / tangent_norm;
+      return config;
+    }
+  }
   if (current_velocity_valid_ && std::isfinite(current_speed_mps_) &&
       current_speed_mps_ >= config.initial_heading_bias_min_speed_mps) {
     config.initial_heading_bias_velocity_x_mps = current_velocity_.x;

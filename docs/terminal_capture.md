@@ -28,6 +28,13 @@ only the old executable prefix ending `safe_trajectory_truncation_margin_m`
 before the blocker, then uses the same velocity terminal capture and position
 capture states as it does at the mission goal.
 
+Offboard publishes the confirmed truncation position, tangent, altitude,
+generation, and temporary-prefix fingerprint on
+`/drone_city_nav/replan_truncation`. The planner waits for that confirmation and
+builds the replacement suffix from the stable truncation point, not from a
+moving vehicle position. The suffix returns in the atomic executable-trajectory
+command with the same generation and fingerprint.
+
 The margin is fixed along the executable trajectory; it is deliberately not a
 speed-dependent stopping-distance calculation. If the requested terminal
 station is no longer ahead of the drone, offboard enters
@@ -39,6 +46,12 @@ station is no longer ahead of the drone, offboard enters
 - an empty path after a failed replan preserves the already-safe prefix;
 - the first accepted replacement path clears the temporary state and resumes
   normal flight.
+
+If the replacement arrives before terminal capture, offboard stitches the
+remaining executable prefix to the suffix and rebuilds one speed profile. The
+truncation point is then an ordinary interior join and no longer has terminal
+slowdown semantics. If the vehicle reached the point first, the same suffix
+releases `temporary_replan_hold` from that exact position.
 
 The feature is independent of whether the prohibited cell came from the static
 map, accumulated obstacle memory, or current lidar.

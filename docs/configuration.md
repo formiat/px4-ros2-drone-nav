@@ -48,6 +48,10 @@ Obstacle/grid:
 - `raw_memory_3d_pointcloud_topic`
 - `obstacle_memory_provenance_topic`
 - `obstacle_memory_snapshot_topic`
+- `executable_trajectory_topic`: authoritative planner-to-offboard command;
+  atomically carries path id and safe-truncation correlation metadata.
+- `replan_blocker_topic`: planner-to-offboard prohibited-path event.
+- `replan_truncation_topic`: offboard-to-planner confirmed truncation join.
 - `use_static_map`
 - `static_map_path`
 - `static_map_grid_topic`

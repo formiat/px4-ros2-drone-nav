@@ -12,7 +12,12 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       .blocker_detected_stamp_ns = 1'000'000'000U,
       .trajectory_build_started_stamp_ns = 1'100'000'000U,
       .path_published_stamp_ns = 1'900'000'000U,
+      .blocked_path_id = 41U,
+      .truncation_generation = 9U,
+      .temporary_prefix_fingerprint = 123456U,
       .replan_triggered = true,
+      .truncation_suffix = true,
+      .truncation_immediate_hold = true,
       .blocker_position = Point2{12.5, 30.25},
       .blocker_detection_position = Point2{5.0, 6.0},
       .blocker_detection_velocity = Point2{10.0, -2.0},
@@ -44,6 +49,11 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.path_stamp_ns, path_stamp_ns);
   EXPECT_EQ(parsed_value.delivery.generation, 17U);
   EXPECT_TRUE(parsed_value.delivery.replan_triggered);
+  EXPECT_TRUE(parsed_value.delivery.truncation_suffix);
+  EXPECT_TRUE(parsed_value.delivery.truncation_immediate_hold);
+  EXPECT_EQ(parsed_value.delivery.blocked_path_id, 41U);
+  EXPECT_EQ(parsed_value.delivery.truncation_generation, 9U);
+  EXPECT_EQ(parsed_value.delivery.temporary_prefix_fingerprint, 123456U);
   EXPECT_EQ(parsed_value.delivery.blocker_detected_stamp_ns, 1'000'000'000U);
   EXPECT_EQ(parsed_value.delivery.trajectory_build_started_stamp_ns, 1'100'000'000U);
   EXPECT_EQ(parsed_value.delivery.path_published_stamp_ns, 1'900'000'000U);

@@ -290,6 +290,16 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
 
   (void)parseJsonUint64(json, "delivery_generation", envelope.delivery.generation);
   parseJsonBool(json, "delivery_replan_triggered", envelope.delivery.replan_triggered);
+  parseJsonBool(json, "delivery_truncation_suffix",
+                envelope.delivery.truncation_suffix);
+  parseJsonBool(json, "delivery_truncation_immediate_hold",
+                envelope.delivery.truncation_immediate_hold);
+  (void)parseJsonUint64(json, "delivery_blocked_path_id",
+                        envelope.delivery.blocked_path_id);
+  (void)parseJsonUint64(json, "delivery_truncation_generation",
+                        envelope.delivery.truncation_generation);
+  (void)parseJsonUint64(json, "delivery_temporary_prefix_fingerprint",
+                        envelope.delivery.temporary_prefix_fingerprint);
   (void)parseJsonUint64(json, "delivery_blocker_detected_stamp_ns",
                         envelope.delivery.blocker_detected_stamp_ns);
   (void)parseJsonUint64(json, "delivery_trajectory_build_started_stamp_ns",

@@ -1,0 +1,8 @@
+std_msgs/Header header
+uint64 blocked_path_id
+uint64 truncation_generation
+geometry_msgs/Point truncation_position
+geometry_msgs/Vector3 truncation_tangent
+float64 truncation_altitude_m
+uint64 temporary_prefix_fingerprint
+bool immediate_hold

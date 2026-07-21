@@ -9,7 +9,9 @@
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
+#include "drone_city_nav/msg/replan_truncation.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
@@ -21,6 +23,7 @@
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
+#include "drone_city_nav/safe_trajectory_truncation.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
@@ -147,11 +150,37 @@ private:
     double callback_ms{std::numeric_limits<double>::quiet_NaN()};
   };
 
+  struct TruncationReplanState {
+    std::uint64_t blocked_path_id{0U};
+    std::uint64_t generation{0U};
+    std::uint64_t temporary_prefix_fingerprint{0U};
+    Point3 position{};
+    Point2 tangent{};
+    double altitude_m{std::numeric_limits<double>::quiet_NaN()};
+    bool confirmed{false};
+    bool immediate_hold{false};
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
 
   void onMemorySnapshot(msg::ObstacleMemorySnapshot::ConstSharedPtr message);
+
+  void onReplanTruncation(const msg::ReplanTruncation& message);
+
+  [[nodiscard]] std::optional<std::uint64_t>
+  beginTruncationReplan(std::uint64_t blocked_path_id);
+
+  [[nodiscard]] std::optional<TruncationReplanState> truncationReplanState() const;
+
+  void completeTruncationReplan(std::uint64_t generation);
+
+  [[nodiscard]] bool
+  adoptTrajectoryForRuntimeChecks(std::span<const TrajectoryPointSample> samples,
+                                  std::span<const Point2> trajectory_points,
+                                  const TrajectoryDeliveryDiagnostics& delivery,
+                                  const char* source_label);
 
   void applyPendingMemorySnapshot(std::int64_t now_ns);
 
@@ -186,24 +215,24 @@ private:
 
   void applyLatestLidarInputSnapshot();
 
-  [[nodiscard]] AStarConfig astarConfigForCurrentVelocity() const;
+  [[nodiscard]] AStarConfig astarConfigForCurrentVelocity(
+      std::optional<Point2> initial_tangent = std::nullopt) const;
 
   [[nodiscard]] static bool
   initialHeadingBiasActive(const AStarConfig& config) noexcept;
 
-  [[nodiscard]] TrajectoryPlannerConfig
-  trajectoryPlannerConfigForCurrentAltitude() const;
+  [[nodiscard]] TrajectoryPlannerConfig trajectoryPlannerConfigForCurrentAltitude(
+      std::optional<double> initial_altitude_m = std::nullopt) const;
 
   [[nodiscard]] std::optional<PathComputationResult>
   computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
                     const AStarConfig& astar_config, Point2 planning_start);
 
-  bool
-  publishPathFromPathCells(std::span<const TrajectoryGridCandidate> grid_candidates,
-                           std::size_t astar_grid_index,
-                           const std::vector<GridIndex>& raw_cells,
-                           const std::vector<GridIndex>& smoothed_cells,
-                           const char* source_label, Point2 planning_start);
+  bool publishPathFromPathCells(
+      std::span<const TrajectoryGridCandidate> grid_candidates,
+      std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
+      const std::vector<GridIndex>& smoothed_cells, const char* source_label,
+      Point2 planning_start, const TruncationReplanState* truncation_replan = nullptr);
 
   bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
                                std::span<const Point2> route_points,
@@ -464,6 +493,7 @@ private:
   std::uint64_t next_path_id_{1U};
   std::uint64_t last_published_path_id_{0U};
   std::uint64_t trajectory_generation_{0U};
+  std::uint64_t next_truncation_generation_{1U};
   Point2 last_logged_path_first_{};
   Point2 last_logged_path_last_{};
   std::vector<Point2> last_valid_path_points_;
@@ -471,11 +501,13 @@ private:
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
   std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
+  std::optional<TruncationReplanState> truncation_replan_state_;
   mutable std::mutex memory_snapshot_mutex_;
   mutable std::mutex navigation_state_mutex_;
   mutable std::mutex lidar_input_mutex_;
   mutable std::mutex lidar_pose_history_mutex_;
   mutable std::mutex planning_request_mutex_;
+  mutable std::mutex truncation_replan_mutex_;
   std::condition_variable_any planning_request_cv_;
   NavigationStateSnapshot live_navigation_state_{};
   LidarInputSnapshot live_lidar_input_;
@@ -488,6 +520,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr planner_control_callback_group_;
   rclcpp::CallbackGroup::SharedPtr memory_snapshot_callback_group_;
   rclcpp::Subscription<msg::ObstacleMemorySnapshot>::SharedPtr memory_snapshot_sub_;
+  rclcpp::Subscription<msg::ReplanTruncation>::SharedPtr replan_truncation_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
@@ -504,6 +537,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;
   rclcpp::Publisher<msg::ReplanBlockerEvent>::SharedPtr replan_blocker_pub_;
+  rclcpp::Publisher<msg::ExecutableTrajectory>::SharedPtr executable_trajectory_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_pub_;
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr known_passage_debug_timer_;

@@ -3,7 +3,9 @@
 #include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
+#include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
+#include "drone_city_nav/msg/replan_truncation.hpp"
 #include "drone_city_nav/offboard_blackbox.hpp"
 #include "drone_city_nav/offboard_debug_markers.hpp"
 #include "drone_city_nav/offboard_path_follower.hpp"
@@ -173,13 +175,17 @@ private:
                                         const OffboardTrajectoryState& state,
                                         const TrajectoryContinuityResult& continuity);
 
-  void onPath(const nav_msgs::msg::Path& path);
+  void onExecutableTrajectory(const msg::ExecutableTrajectory& command);
 
   void onPathId(const std_msgs::msg::UInt64& msg);
 
   void onTrajectoryDiagnostics(const std_msgs::msg::String& msg);
 
   void onReplanBlocker(const msg::ReplanBlockerEvent& msg);
+
+  void publishReplanTruncation(const msg::ReplanBlockerEvent& blocker,
+                               const TrajectoryPointSample& terminal_sample,
+                               std::uint64_t prefix_fingerprint, bool immediate_hold);
 
   void openFlightBlackbox();
 
@@ -386,6 +392,8 @@ private:
   std::uint64_t accepted_planner_path_id_{0U};
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
+  std::uint64_t active_truncation_generation_{0U};
+  std::uint64_t active_temporary_prefix_fingerprint_{0U};
   std::uint64_t path_update_velocity_smoother_reset_count_{0U};
   std::size_t waypoint_index_{0U};
   int warmup_setpoints_{20};
@@ -408,6 +416,7 @@ private:
   bool safe_trajectory_truncation_enabled_{true};
   bool temporary_replan_truncation_active_{false};
   bool temporary_replan_hold_active_{false};
+  bool temporary_replan_immediate_hold_{false};
   bool takeoff_hold_target_valid_{false};
   bool terminal_position_capture_latched_{false};
   bool terminal_position_capture_altitude_valid_{false};
@@ -476,10 +485,11 @@ private:
   std::size_t last_trajectory_route_points_{0U};
   TerminalCaptureState terminal_capture_state_{};
 
-  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+  rclcpp::Subscription<msg::ExecutableTrajectory>::SharedPtr executable_trajectory_sub_;
   rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr path_id_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_sub_;
   rclcpp::Subscription<msg::ReplanBlockerEvent>::SharedPtr replan_blocker_sub_;
+  rclcpp::Publisher<msg::ReplanTruncation>::SharedPtr replan_truncation_pub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
