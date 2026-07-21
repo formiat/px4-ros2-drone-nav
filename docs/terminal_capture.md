@@ -47,11 +47,20 @@ station is no longer ahead of the drone, offboard enters
 - the first accepted replacement path clears the temporary state and resumes
   normal flight.
 
-If the replacement arrives before terminal capture, offboard stitches the
-remaining executable prefix to the suffix and rebuilds one speed profile. The
-truncation point is then an ordinary interior join and no longer has terminal
-slowdown semantics. If the vehicle reached the point first, the same suffix
-releases `temporary_replan_hold` from that exact position.
+Offboard validates a replacement against the confirmed join contract before it
+can affect control: generation and fingerprint must match, the suffix must
+start at the truncation position, and its initial XY tangent and altitude must
+be compatible with the retained prefix terminal sample. A valid suffix that
+arrives while the vehicle is farther than the join tolerance is kept pending.
+When the vehicle reaches the truncation point, offboard stitches any remaining
+prefix to the suffix, rebuilds one speed profile, and resumes with reset
+smoother state. If terminal capture completed first, the same pending suffix
+releases `temporary_replan_hold` from that position.
+
+The generic trajectory continuity check remains active for ordinary path
+updates. A truncation suffix uses the stronger fixed-join contract instead; it
+is not discarded because the moving vehicle was far from a future join when
+the suffix first arrived.
 
 The feature is independent of whether the prohibited cell came from the static
 map, accumulated obstacle memory, or current lidar.

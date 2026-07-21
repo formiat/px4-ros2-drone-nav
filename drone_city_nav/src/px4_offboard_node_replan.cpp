@@ -131,6 +131,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   temporary_replan_hold_active_ = false;
   temporary_replan_immediate_hold_ = truncation.immediate_hold;
   active_truncation_generation_ = msg.truncation_generation;
+  pending_truncation_suffix_.reset();
   no_path_hold_target_valid_ = false;
   if (truncation.immediate_hold) {
     temporary_replan_hold_active_ = true;
@@ -144,6 +145,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
     hold_sample.z_m = std::isfinite(current_altitude_m_)
                           ? current_altitude_m_
                           : final_trajectory_samples_.front().z_m;
+    active_truncation_terminal_sample_ = hold_sample;
     const std::array<TrajectoryPointSample, 1U> hold_samples{hold_sample};
     active_temporary_prefix_fingerprint_ = trajectoryPrefixFingerprint(hold_samples);
     if (active_temporary_prefix_fingerprint_ == 0U) {
@@ -194,6 +196,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   if (active_temporary_prefix_fingerprint_ == 0U) {
     active_temporary_prefix_fingerprint_ = 1U;
   }
+  active_truncation_terminal_sample_ = final_trajectory_samples_.back();
   publishReplanTruncation(msg, final_trajectory_samples_.back(),
                           active_temporary_prefix_fingerprint_, false);
   RCLCPP_WARN(

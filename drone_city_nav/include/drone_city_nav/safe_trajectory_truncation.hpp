@@ -42,6 +42,20 @@ struct TruncatedPrefixStitchResult {
   std::vector<TrajectoryPointSample> samples;
 };
 
+struct TruncationSuffixJoinRequest {
+  double max_position_jump_m{1.0};
+  double max_tangent_jump_rad{1.57};
+  double max_altitude_jump_m{0.4};
+};
+
+struct TruncationSuffixJoinValidation {
+  bool valid{false};
+  const char* reason{"not_attempted"};
+  double position_jump_m{std::numeric_limits<double>::quiet_NaN()};
+  double tangent_jump_rad{std::numeric_limits<double>::quiet_NaN()};
+  double altitude_jump_m{std::numeric_limits<double>::quiet_NaN()};
+};
+
 // Keeps only the still-safe prefix of an accepted executable trajectory. The
 // blocker distance is measured from the current projection along that same
 // trajectory; the fixed margin is a policy buffer, not a braking-distance
@@ -62,5 +76,13 @@ trajectoryPrefixFingerprint(std::span<const TrajectoryPointSample> samples) noex
 stitchTruncatedPrefixWithSuffix(std::span<const TrajectoryPointSample> prefix,
                                 std::span<const TrajectoryPointSample> suffix,
                                 const TruncatedPrefixStitchRequest& request);
+
+// Validates the fixed prefix/suffix join contract independently of the drone's
+// current position. Runtime continuity is provided by reaching the confirmed
+// truncation point before activating a validated suffix.
+[[nodiscard]] TruncationSuffixJoinValidation
+validateTruncationSuffixJoin(const TrajectoryPointSample& prefix_terminal,
+                             const TrajectoryPointSample& suffix_initial,
+                             const TruncationSuffixJoinRequest& request) noexcept;
 
 } // namespace drone_city_nav

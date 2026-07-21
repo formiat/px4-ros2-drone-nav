@@ -548,9 +548,13 @@ accepted trajectory.
 `REPLAN_TRUNCATION` records correlate the complete handshake: blocker event,
 offboard confirmation, planner suffix start, and offboard prefix/suffix stitch.
 For every accepted suffix, `blocked_path_id`, `truncation_generation`, and
-`temporary_prefix_fingerprint` must match. `remaining_prefix` shows how much of
-the old executable trajectory remained when the suffix arrived; a zero-length
-prefix is expected after an immediate hold.
+`temporary_prefix_fingerprint` must match. A suffix that passes the position,
+tangent, and altitude join checks but arrives before the vehicle reaches the
+confirmed point is logged as `suffix pending until join point`. Its later
+`activating pending suffix` record reports the actual activation distance.
+`remaining_prefix` then shows how much of the old executable trajectory was
+retained at activation; a zero-length prefix is expected after an immediate
+hold.
 
 ## Run Comparison Method
 

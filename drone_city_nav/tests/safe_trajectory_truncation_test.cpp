@@ -105,4 +105,75 @@ TEST(SafeTrajectoryTruncation, FingerprintChangesWithPrefixGeometry) {
   EXPECT_NE(first_fingerprint, trajectoryPrefixFingerprint(second));
 }
 
+TEST(SafeTrajectoryTruncation, AcceptsCompatibleSuffixJoin) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 18.0;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.point.x += 0.2;
+  suffix_initial.tangent = Point2{0.98, 0.2};
+  suffix_initial.z_m += 0.1;
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial,
+      TruncationSuffixJoinRequest{.max_position_jump_m = 0.5,
+                                  .max_tangent_jump_rad = 0.3,
+                                  .max_altitude_jump_m = 0.2});
+
+  EXPECT_TRUE(validation.valid) << validation.reason;
+  EXPECT_STREQ(validation.reason, "join_valid");
+  EXPECT_NEAR(validation.position_jump_m, 0.2, 1.0e-9);
+  EXPECT_LT(validation.tangent_jump_rad, 0.3);
+  EXPECT_NEAR(validation.altitude_jump_m, 0.1, 1.0e-9);
+}
+
+TEST(SafeTrajectoryTruncation, RejectsSuffixJoinPositionMismatch) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 18.0;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.point.x += 1.1;
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial, TruncationSuffixJoinRequest{});
+
+  EXPECT_FALSE(validation.valid);
+  EXPECT_STREQ(validation.reason, "position_mismatch");
+}
+
+TEST(SafeTrajectoryTruncation, RejectsSuffixJoinTangentMismatch) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 18.0;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.tangent = Point2{-1.0, 0.0};
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial,
+      TruncationSuffixJoinRequest{.max_position_jump_m = 1.0,
+                                  .max_tangent_jump_rad = 1.57,
+                                  .max_altitude_jump_m = 0.4});
+
+  EXPECT_FALSE(validation.valid);
+  EXPECT_STREQ(validation.reason, "tangent_mismatch");
+}
+
+TEST(SafeTrajectoryTruncation, RejectsSuffixJoinAltitudeMismatch) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 18.0;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.z_m = 18.5;
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial, TruncationSuffixJoinRequest{});
+
+  EXPECT_FALSE(validation.valid);
+  EXPECT_STREQ(validation.reason, "altitude_mismatch");
+}
+
 } // namespace drone_city_nav

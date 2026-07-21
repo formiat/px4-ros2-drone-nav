@@ -208,4 +208,52 @@ stitchTruncatedPrefixWithSuffix(const std::span<const TrajectoryPointSample> pre
   return result;
 }
 
+TruncationSuffixJoinValidation
+validateTruncationSuffixJoin(const TrajectoryPointSample& prefix_terminal,
+                             const TrajectoryPointSample& suffix_initial,
+                             const TruncationSuffixJoinRequest& request) noexcept {
+  TruncationSuffixJoinValidation result{};
+  if (!std::isfinite(request.max_position_jump_m) ||
+      request.max_position_jump_m < 0.0 ||
+      !std::isfinite(request.max_tangent_jump_rad) ||
+      request.max_tangent_jump_rad < 0.0 ||
+      !std::isfinite(request.max_altitude_jump_m) ||
+      request.max_altitude_jump_m < 0.0 || !std::isfinite(prefix_terminal.z_m) ||
+      !std::isfinite(suffix_initial.z_m)) {
+    result.reason = "invalid_input";
+    return result;
+  }
+
+  const Point2 prefix_tangent = normalized(prefix_terminal.tangent);
+  const Point2 suffix_tangent = normalized(suffix_initial.tangent);
+  if (std::hypot(prefix_tangent.x, prefix_tangent.y) <= kTinyDistanceM ||
+      std::hypot(suffix_tangent.x, suffix_tangent.y) <= kTinyDistanceM) {
+    result.reason = "invalid_tangent";
+    return result;
+  }
+
+  result.position_jump_m = distance(prefix_terminal.point, suffix_initial.point);
+  const double tangent_dot = std::clamp(prefix_tangent.x * suffix_tangent.x +
+                                            prefix_tangent.y * suffix_tangent.y,
+                                        -1.0, 1.0);
+  result.tangent_jump_rad = std::acos(tangent_dot);
+  result.altitude_jump_m = std::abs(prefix_terminal.z_m - suffix_initial.z_m);
+  if (result.position_jump_m > request.max_position_jump_m) {
+    result.reason = "position_mismatch";
+    return result;
+  }
+  if (result.tangent_jump_rad > request.max_tangent_jump_rad) {
+    result.reason = "tangent_mismatch";
+    return result;
+  }
+  if (result.altitude_jump_m > request.max_altitude_jump_m) {
+    result.reason = "altitude_mismatch";
+    return result;
+  }
+
+  result.valid = true;
+  result.reason = "join_valid";
+  return result;
+}
+
 } // namespace drone_city_nav

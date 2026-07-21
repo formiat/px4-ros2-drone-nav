@@ -35,6 +35,7 @@ void Px4OffboardNode::onTimer() {
   }
 
   updateFinalGoalHold();
+  tryActivatePendingTruncationSuffix();
   updateTemporaryReplanHold();
   advanceWaypointIfNeeded();
   updateTerminalCaptureState();

@@ -177,6 +177,11 @@ private:
 
   void onExecutableTrajectory(const msg::ExecutableTrajectory& command);
 
+  void processExecutableTrajectory(const msg::ExecutableTrajectory& command,
+                                   bool pending_retry);
+
+  void tryActivatePendingTruncationSuffix();
+
   void onPathId(const std_msgs::msg::UInt64& msg);
 
   void onTrajectoryDiagnostics(const std_msgs::msg::String& msg);
@@ -449,6 +454,7 @@ private:
   VerticalSetpointPlan last_vertical_plan_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
+  std::optional<msg::ExecutableTrajectory> pending_truncation_suffix_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
@@ -480,6 +486,7 @@ private:
   std::vector<Point2> path_points_;
   std::vector<TrajectorySegment> trajectory_;
   std::vector<TrajectoryPointSample> final_trajectory_samples_;
+  TrajectoryPointSample active_truncation_terminal_sample_{};
   std::vector<PathReceiptDiagnostic> recent_path_receipts_;
   std::size_t last_final_trajectory_debug_samples_{0U};
   std::size_t last_trajectory_route_points_{0U};
