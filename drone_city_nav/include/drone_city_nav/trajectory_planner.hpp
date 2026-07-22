@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/corridor.hpp"
+#include "drone_city_nav/known_passage_solid_validation.hpp"
 #include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/trajectory_optimizer.hpp"
 #include "drone_city_nav/trajectory_passage_insertion.hpp"
@@ -33,6 +34,7 @@ enum class TrajectoryQuality {
   kUnknown,
   kBaseline,
   kRefined,
+  kDegradedPassage,
 };
 
 struct TrajectoryPlannerConfig {
@@ -103,6 +105,7 @@ struct TrajectoryPlannerStats {
   double isolated_curvature_spike_max_after_1pm{0.0};
   std::vector<SpeedProfileConstraintDiagnostic> top_speed_constraints;
   KnownPassageValidationSummary known_passage_validation{};
+  KnownPassageSolidValidationSummary known_passage_solid_validation{};
   VerticalProfileStats vertical_profile{};
   PassageInsertionStats passage_insertion{};
   std::vector<PassageInsertionGridAttempt> passage_insertion_grid_attempts;

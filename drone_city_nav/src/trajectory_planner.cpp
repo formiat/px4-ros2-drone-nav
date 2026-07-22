@@ -97,7 +97,10 @@ void finalizeResult(TrajectoryPlannerResult& result,
   result.valid = trajectoryIsUsable(result.compact_segments) &&
                  trajectorySamplesAreUsable(result.samples) &&
                  result.speed_profile.valid && result.stats.vertical_profile.valid &&
-                 result.stats.known_passage_validation.valid;
+                 result.stats.known_passage_solid_validation.valid;
+  if (result.valid && !result.stats.known_passage_validation.valid) {
+    result.stats.quality = TrajectoryQuality::kDegradedPassage;
+  }
   if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
   }
@@ -116,6 +119,9 @@ bool applyVerticalProfileStage(TrajectoryPlannerResult& result,
   result.stats.vertical_profile = vertical_profile.stats;
   result.stats.known_passage_validation = validateKnownPassageTraversal(
       result.samples, input.known_passage_map, config.known_passage_validation);
+  result.stats.known_passage_solid_validation =
+      validateTrajectoryAgainstKnownPassageSolids(result.samples,
+                                                  input.known_passage_map);
   if (!vertical_profile.valid) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     return false;
@@ -294,6 +300,8 @@ std::string_view trajectoryQualityName(const TrajectoryQuality quality) noexcept
       return "baseline";
     case TrajectoryQuality::kRefined:
       return "refined";
+    case TrajectoryQuality::kDegradedPassage:
+      return "degraded_passage";
   }
   return "unknown";
 }

@@ -113,6 +113,48 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     parseJsonBool(json, prefix + "valid", diagnostic.valid);
     passage_validation.diagnostics.push_back(diagnostic);
   }
+  KnownPassageSolidValidationSummary& solid_validation =
+      envelope.stats.known_passage_solid_validation;
+  parseJsonBool(json, "known_passage_solid_validation_valid", solid_validation.valid);
+  if (const std::optional<std::string_view> reason =
+          jsonValueForKey(json, "known_passage_solid_validation_reason");
+      reason.has_value()) {
+    solid_validation.reason = parseKnownPassageSolidValidationReasonName(*reason);
+  }
+  parseJsonSize(json, "known_passage_solid_volumes_checked",
+                solid_validation.volumes_checked);
+  parseJsonSize(json, "known_passage_solid_segments_checked",
+                solid_validation.segments_checked);
+  parseJsonSize(json, "known_passage_solid_intersections",
+                solid_validation.intersections);
+  parseJsonBool(json, "known_passage_solid_has_first_intersection",
+                solid_validation.has_first_intersection);
+  if (solid_validation.has_first_intersection) {
+    KnownPassageSolidIntersection& intersection = solid_validation.first_intersection;
+    if (const std::optional<std::string_view> value =
+            jsonValueForKey(json, "known_passage_solid_first_structure_id");
+        value.has_value()) {
+      intersection.structure_id = decodeJsonStringValue(*value);
+    }
+    if (const std::optional<std::string_view> value =
+            jsonValueForKey(json, "known_passage_solid_first_opening_id");
+        value.has_value()) {
+      intersection.opening_id = decodeJsonStringValue(*value);
+    }
+    if (const std::optional<std::string_view> value =
+            jsonValueForKey(json, "known_passage_solid_first_part_id");
+        value.has_value()) {
+      intersection.part_id = decodeJsonStringValue(*value);
+    }
+    parseJsonSize(json, "known_passage_solid_first_segment_index",
+                  intersection.segment_index);
+    parseJsonDouble(json, "known_passage_solid_first_segment_t",
+                    intersection.segment_t);
+    parseJsonDouble(json, "known_passage_solid_first_s_m", intersection.s_m);
+    parseJsonDouble(json, "known_passage_solid_first_x_m", intersection.point.x);
+    parseJsonDouble(json, "known_passage_solid_first_y_m", intersection.point.y);
+    parseJsonDouble(json, "known_passage_solid_first_z_m", intersection.point.z);
+  }
   VerticalProfileStats& vertical_profile = envelope.stats.vertical_profile;
   parseJsonBool(json, "vertical_profile_enabled", vertical_profile.enabled);
   parseJsonBool(json, "vertical_profile_active", vertical_profile.active);

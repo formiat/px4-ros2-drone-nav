@@ -37,6 +37,7 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   appendJsonBool(stream, "corridor_clearance_field_cache_hit",
                  stats.corridor.clearance_field_cache_hit);
   stream << "," << knownPassageValidationDiagnosticsJsonFieldsImpl(stats);
+  stream << "," << knownPassageSolidValidationDiagnosticsJsonFieldsImpl(stats);
   stream << "," << verticalProfileDiagnosticsJsonFieldsImpl(stats);
   stream << "," << passageInsertionDiagnosticsJsonFieldsImpl(stats);
   stream << "," << trajectoryOptimizerDiagnosticsJsonFields(stats);

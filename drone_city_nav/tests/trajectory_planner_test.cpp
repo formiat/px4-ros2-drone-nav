@@ -191,7 +191,7 @@ TEST(TrajectoryPlanner,
   const GridIndex blocked_cell{20, 20};
   planning_grid.setOccupied(blocked_cell);
   const OccupancyGrid2D runtime_grid = testGrid();
-  const std::vector<Point2> route{{-10.0, 4.0}, {10.0, 4.0}};
+  const std::vector<Point2> route{{-10.0, 2.8}, {10.0, 2.8}};
   const KnownPassageMap map = plannerValidationPassageMap();
   const std::vector<TrajectoryGridCandidate> candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid},
@@ -230,7 +230,7 @@ TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsKeepsBaseTrajectory) {
   const GridIndex blocked_cell{20, 20};
   planning_grid.setOccupied(blocked_cell);
   runtime_grid.setOccupied(blocked_cell);
-  const std::vector<Point2> route{{-10.0, 4.0}, {10.0, 4.0}};
+  const std::vector<Point2> route{{-10.0, 2.8}, {10.0, 2.8}};
   const KnownPassageMap map = plannerValidationPassageMap();
   const std::vector<TrajectoryGridCandidate> candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid},
@@ -343,7 +343,7 @@ TEST(TrajectoryPlanner, StartInsideOpeningPublishesPartialTraversal) {
   EXPECT_DOUBLE_EQ(result.samples.front().z_m, 10.0);
 }
 
-TEST(TrajectoryPlanner, InvalidKnownPassageValidationInvalidatesTrajectory) {
+TEST(TrajectoryPlanner, KnownSolidIntersectionInvalidatesTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
   const KnownPassageMap map = plannerValidationPassageMap();
@@ -360,8 +360,35 @@ TEST(TrajectoryPlanner, InvalidKnownPassageValidationInvalidatesTrajectory) {
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
   EXPECT_FALSE(result.stats.vertical_profile.active);
   EXPECT_FALSE(result.stats.known_passage_validation.valid);
+  EXPECT_FALSE(result.stats.known_passage_solid_validation.valid);
+  EXPECT_EQ(result.stats.known_passage_solid_validation.reason,
+            KnownPassageSolidValidationReason::kIntersection);
   EXPECT_EQ(result.stats.known_passage_validation.worst_reason,
             KnownPassageValidationReason::kOpeningVolumeMiss);
+}
+
+TEST(TrajectoryPlanner, PassageQualityFailurePublishesSolidClearTrajectory) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+  config.vertical_profile.enabled = false;
+  config.known_passage_validation.min_opening_overlap_m = 100.0;
+
+  const TrajectoryPlannerResult result = planBaselineTrajectory(
+      TrajectoryPlannerInput{std::span<const Point2>{route.data(), route.size()}, &grid,
+                             nullptr, false, std::span<const CorridorSample>{}, nullptr,
+                             &map},
+      config);
+
+  EXPECT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_EQ(result.stats.quality, TrajectoryQuality::kDegradedPassage);
+  EXPECT_FALSE(result.stats.known_passage_validation.valid);
+  EXPECT_TRUE(result.stats.known_passage_solid_validation.valid);
+  EXPECT_EQ(result.stats.known_passage_solid_validation.reason,
+            KnownPassageSolidValidationReason::kClear);
 }
 
 TEST(TrajectoryPlanner, PassageInsertionRepairsKnownPassageBeforeVerticalProfile) {

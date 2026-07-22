@@ -311,6 +311,9 @@ parseTrajectoryQualityName(const std::string_view value) {
   if (value == trajectoryQualityName(TrajectoryQuality::kRefined)) {
     return TrajectoryQuality::kRefined;
   }
+  if (value == trajectoryQualityName(TrajectoryQuality::kDegradedPassage)) {
+    return TrajectoryQuality::kDegradedPassage;
+  }
   return TrajectoryQuality::kUnknown;
 }
 
@@ -404,6 +407,23 @@ parseKnownPassageValidationReasonName(const std::string_view value) {
   return KnownPassageValidationReason::kNoStructureIntersection;
 }
 
+[[nodiscard]] inline KnownPassageSolidValidationReason
+parseKnownPassageSolidValidationReasonName(const std::string_view value) {
+  if (value == knownPassageSolidValidationReasonName(
+                   KnownPassageSolidValidationReason::kInvalidTrajectory)) {
+    return KnownPassageSolidValidationReason::kInvalidTrajectory;
+  }
+  if (value == knownPassageSolidValidationReasonName(
+                   KnownPassageSolidValidationReason::kClear)) {
+    return KnownPassageSolidValidationReason::kClear;
+  }
+  if (value == knownPassageSolidValidationReasonName(
+                   KnownPassageSolidValidationReason::kIntersection)) {
+    return KnownPassageSolidValidationReason::kIntersection;
+  }
+  return KnownPassageSolidValidationReason::kNoMap;
+}
+
 inline std::string
 knownPassageValidationDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   const KnownPassageValidationSummary& validation = stats.known_passage_validation;
@@ -435,6 +455,44 @@ knownPassageValidationDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& st
     appendJsonBool(stream, prefix + "starts_inside_opening",
                    diagnostic.starts_inside_opening);
     appendJsonBool(stream, prefix + "valid", diagnostic.valid);
+  }
+  return stream.str();
+}
+
+inline std::string knownPassageSolidValidationDiagnosticsJsonFieldsImpl(
+    const TrajectoryPlannerStats& stats) {
+  const KnownPassageSolidValidationSummary& validation =
+      stats.known_passage_solid_validation;
+  std::ostringstream stream;
+  stream << std::setprecision(9);
+  stream << "\"known_passage_solid_validation_valid\":"
+         << (validation.valid ? "true" : "false");
+  appendJsonString(stream, "known_passage_solid_validation_reason",
+                   knownPassageSolidValidationReasonName(validation.reason));
+  appendJsonSize(stream, "known_passage_solid_volumes_checked",
+                 validation.volumes_checked);
+  appendJsonSize(stream, "known_passage_solid_segments_checked",
+                 validation.segments_checked);
+  appendJsonSize(stream, "known_passage_solid_intersections", validation.intersections);
+  appendJsonBool(stream, "known_passage_solid_has_first_intersection",
+                 validation.has_first_intersection);
+  if (validation.has_first_intersection) {
+    const KnownPassageSolidIntersection& intersection = validation.first_intersection;
+    appendJsonString(stream, "known_passage_solid_first_structure_id",
+                     intersection.structure_id);
+    appendJsonString(stream, "known_passage_solid_first_opening_id",
+                     intersection.opening_id);
+    appendJsonString(stream, "known_passage_solid_first_part_id", intersection.part_id);
+    appendJsonString(stream, "known_passage_solid_first_part_kind",
+                     knownPassageSolidPartKindName(intersection.part_kind));
+    appendJsonSize(stream, "known_passage_solid_first_segment_index",
+                   intersection.segment_index);
+    appendJsonNumber(stream, "known_passage_solid_first_segment_t",
+                     intersection.segment_t);
+    appendJsonNumber(stream, "known_passage_solid_first_s_m", intersection.s_m);
+    appendJsonNumber(stream, "known_passage_solid_first_x_m", intersection.point.x);
+    appendJsonNumber(stream, "known_passage_solid_first_y_m", intersection.point.y);
+    appendJsonNumber(stream, "known_passage_solid_first_z_m", intersection.point.z);
   }
   return stream.str();
 }

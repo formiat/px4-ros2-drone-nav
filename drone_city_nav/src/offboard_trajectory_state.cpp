@@ -144,6 +144,8 @@ void mergePlannerDiagnosticsIntoTrajectoryStats(
   output_stats.isolated_curvature_spike_max_after_1pm =
       diagnostics.stats.isolated_curvature_spike_max_after_1pm;
   output_stats.known_passage_validation = diagnostics.stats.known_passage_validation;
+  output_stats.known_passage_solid_validation =
+      diagnostics.stats.known_passage_solid_validation;
   output_stats.vertical_profile = diagnostics.stats.vertical_profile;
   output_stats.passage_insertion = diagnostics.stats.passage_insertion;
 }

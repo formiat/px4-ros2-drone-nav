@@ -66,6 +66,7 @@ add_library(
   src/known_passage_geometry.cpp
   src/known_passage_matching.cpp
   src/known_passage_solid_volumes.cpp
+  src/known_passage_solid_validation.cpp
   src/known_static_lidar_hit_classifier.cpp
   src/known_passage_validation.cpp
   src/lidar_debug_renderer.cpp
@@ -605,6 +606,12 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_planner_test drone_city_nav_core)
   enable_project_warnings(trajectory_planner_test)
+
+  ament_add_gtest(known_passage_solid_validation_test
+                  tests/known_passage_solid_validation_test.cpp)
+  target_compile_features(known_passage_solid_validation_test PRIVATE cxx_std_20)
+  target_link_libraries(known_passage_solid_validation_test drone_city_nav_core)
+  enable_project_warnings(known_passage_solid_validation_test)
 
   ament_add_gtest(trajectory_passage_insertion_test
                   tests/trajectory_passage_insertion_test.cpp)
