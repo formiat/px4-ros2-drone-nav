@@ -443,6 +443,7 @@ VerticalProfileResult applyVerticalProfile(
   windows.reserve(valid_matches.size());
   double carried_altitude_m = effective_initial_altitude_m;
   double transition_available_after_s_m = first_s;
+  bool first_valid_match = true;
   for (const KnownPassageTraversalMatch& match : valid_matches) {
     const double start_z = carried_altitude_m;
     const bool starts_inside = match.starts_inside_opening;
@@ -466,13 +467,20 @@ VerticalProfileResult applyVerticalProfile(
         starts_inside ? first_s
                       : gate_hold_start_s -
                             std::min(transition_distance_required, max_transition);
+    const bool insufficient_available_distance =
+        transition_required &&
+        available_before_entry_s + kTinyDistanceM < transition_distance_required;
     if (transition_distance_required > max_transition + kTinyDistanceM ||
         !(match.exit_s_m >= match.entry_s_m) ||
         (transition_required &&
-         (available_before_entry_s + kTinyDistanceM < transition_distance_required ||
+         (insufficient_available_distance ||
           approach_start_s + kTinyDistanceM < transition_window_start_s ||
           !(match.entry_s_m > approach_start_s + kTinyDistanceM)))) {
       ++result.stats.infeasible_count;
+      if (start_mode == VerticalProfileStartMode::kMoving && first_valid_match &&
+          !starts_inside && insufficient_available_distance) {
+        result.stats.hold_restart_recommended = true;
+      }
       appendDiagnostic(result.stats, config,
                        VerticalProfilePassageDiagnostic{
                            .structure_id = match.structure_id,
@@ -494,6 +502,7 @@ VerticalProfileResult applyVerticalProfile(
                            .reason = "insufficient_transition_distance",
                            .valid = false,
                        });
+      first_valid_match = false;
       continue;
     }
 
@@ -512,6 +521,7 @@ VerticalProfileResult applyVerticalProfile(
     carried_altitude_m = gate_z;
     transition_available_after_s_m =
         std::max(transition_available_after_s_m, match.exit_s_m);
+    first_valid_match = false;
   }
 
   std::ranges::sort(windows, [](const ProfileWindow& lhs, const ProfileWindow& rhs) {

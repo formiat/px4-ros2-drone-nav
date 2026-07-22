@@ -433,12 +433,14 @@ TEST(TrajectoryVerticalProfile, StationaryRestartPreAlignsForFirstPassage) {
       applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0,
                            VerticalProfileStartMode::kMoving);
   EXPECT_FALSE(moving.valid);
+  EXPECT_TRUE(moving.stats.hold_restart_recommended);
 
   const VerticalProfileResult stationary =
       applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0,
                            VerticalProfileStartMode::kStationaryHoldRestart);
 
   ASSERT_TRUE(stationary.valid);
+  EXPECT_FALSE(stationary.stats.hold_restart_recommended);
   EXPECT_TRUE(stationary.stats.pre_alignment_required);
   EXPECT_DOUBLE_EQ(stationary.stats.pre_alignment_start_z_m, 18.0);
   EXPECT_NEAR(stationary.stats.pre_alignment_target_z_m, 10.5, 1.0e-9);

@@ -64,6 +64,7 @@ struct VerticalProfileStats {
   std::size_t passages_matched{0U};
   std::size_t passages_profiled{0U};
   std::size_t infeasible_count{0U};
+  bool hold_restart_recommended{false};
   bool pre_alignment_required{false};
   double pre_alignment_start_z_m{std::numeric_limits<double>::quiet_NaN()};
   double pre_alignment_target_z_m{std::numeric_limits<double>::quiet_NaN()};

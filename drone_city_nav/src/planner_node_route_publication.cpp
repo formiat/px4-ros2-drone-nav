@@ -533,15 +533,21 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishPathFromPathCells(
                               std::chrono::steady_clock::now() - started_at)
                               .count()) /
       1000.0;
+  const bool insertion_requests_hold_restart =
+      trajectory_result.stats.passage_insertion.hold_restart_recommended;
+  const bool vertical_profile_requests_hold_restart =
+      trajectory_result.stats.vertical_profile.hold_restart_recommended;
   if (!trajectory_result.valid && truncation_replan != nullptr &&
       insertion_start_mode == PassageInsertionStartMode::kMovingJoin &&
-      trajectory_result.stats.passage_insertion.hold_restart_recommended) {
+      (insertion_requests_hold_restart || vertical_profile_requests_hold_restart)) {
     RCLCPP_WARN(
         get_logger(),
         "REPLAN_TRUNCATION suffix_activation=moving_join result=retry_after_hold "
-        "blocked_path_id=%" PRIu64 " generation=%" PRIu64
-        " reason=initial_passage_join_rejected",
-        truncation_replan->blocked_path_id, truncation_replan->generation);
+        "blocked_path_id=%" PRIu64 " generation=%" PRIu64 " reason=%s",
+        truncation_replan->blocked_path_id, truncation_replan->generation,
+        vertical_profile_requests_hold_restart
+            ? "initial_vertical_transition_distance_insufficient"
+            : "initial_passage_join_rejected");
     return PathPublicationOutcome::kRetryAfterTerminalHold;
   }
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
