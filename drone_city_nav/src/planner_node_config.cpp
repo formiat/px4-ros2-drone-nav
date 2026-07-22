@@ -36,6 +36,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("inflation_radius_m", 1.0), 0.0, 1000.0);
   config.planning_clearance_m = std::clamp(
       node.declare_parameter<double>("planning_clearance_m", 3.0), 0.0, 1000.0);
+  config.no_static_planning_clearance_m =
+      std::clamp(node.declare_parameter<double>("no_static_planning_clearance_m", 5.0),
+                 0.0, 1000.0);
   config.local_inflation_relaxation_radius_m = std::clamp(
       node.declare_parameter<double>("local_inflation_relaxation_radius_m", 5.0), 0.0,
       1000.0);
@@ -668,7 +671,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);
   config.planning_grid_builder.inflation_radius_m = config.inflation_radius_m;
-  config.planning_grid_builder.planning_clearance_m = config.planning_clearance_m;
+  config.planning_grid_builder.planning_clearance_m =
+      config.static_map.enabled ? config.planning_clearance_m
+                                : config.no_static_planning_clearance_m;
 
   return config;
 }

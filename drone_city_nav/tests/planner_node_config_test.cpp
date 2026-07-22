@@ -55,6 +55,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    config.initial_altitude_m);
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
+  EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 3.0);
@@ -392,6 +393,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"astar_initial_heading_bias_min_speed_mps", 1.25},
        rclcpp::Parameter{"astar_initial_heading_bias_weight", 75.0},
        rclcpp::Parameter{"use_static_map", false},
+       rclcpp::Parameter{"no_static_planning_clearance_m", 6.5},
        rclcpp::Parameter{"known_passages_enabled", false},
        rclcpp::Parameter{"known_passages_path", "worlds/custom.passages3d"},
        rclcpp::Parameter{"known_passage_validation_enabled", false},
@@ -464,6 +466,8 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_DOUBLE_EQ(config.planner_core.clearance_diagnostic_radius_m, 40.0);
   EXPECT_FALSE(config.static_map.enabled);
   EXPECT_FALSE(config.planning_grid_builder.use_static_map);
+  EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 6.5);
+  EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 6.5);
   EXPECT_FALSE(config.known_passages.enabled);
   EXPECT_EQ(config.known_passages.configured_path.string(), "worlds/custom.passages3d");
   EXPECT_FALSE(config.known_passage_validation.enabled);

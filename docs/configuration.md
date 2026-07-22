@@ -41,6 +41,8 @@ Obstacle/grid:
 
 - `inflation_radius_m`
 - `planning_clearance_m`
+- `no_static_planning_clearance_m` (used instead of `planning_clearance_m` when
+  `use_static_map=false`)
 - `local_inflation_relaxation_radius_m`: transiently removes only inflation,
   never raw occupied cells, around the current physical drone position before
   planning and prohibited-grid publication. Set to `0.0` to disable it.

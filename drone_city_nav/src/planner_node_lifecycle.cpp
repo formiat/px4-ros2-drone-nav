@@ -115,10 +115,11 @@ PlannerNode::PlannerNode()
 
   RCLCPP_INFO(get_logger(),
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
-              "runtime_inflation=%.2fm planning_clearance=%.2fm "
+              "map_mode=%s runtime_inflation=%.2fm planning_clearance=%.2fm "
               "planning_effective_inflation=%.2fm "
               "local_inflation_relaxation=%.2fm",
-              start_.x, start_.y, goal_.x, goal_.y, inflation_radius_m_,
+              start_.x, start_.y, goal_.x, goal_.y,
+              use_static_map_ ? "static" : "no_static", inflation_radius_m_,
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
               local_inflation_relaxation_radius_m_);
   RCLCPP_INFO(get_logger(),
@@ -325,7 +326,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   goal_ = config.goal;
   initial_altitude_m_ = config.initial_altitude_m;
   inflation_radius_m_ = config.inflation_radius_m;
-  planning_clearance_m_ = config.planning_clearance_m;
+  planning_clearance_m_ = config.planning_grid_builder.planning_clearance_m;
   local_inflation_relaxation_radius_m_ = config.local_inflation_relaxation_radius_m;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
