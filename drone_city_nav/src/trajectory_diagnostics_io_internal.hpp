@@ -686,6 +686,36 @@ passageInsertionDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
                      diagnostic.join_curvature_jump_after_1pm);
     appendJsonNumber(stream, prefix + "min_inserted_radius_m",
                      diagnostic.min_inserted_radius_m);
+    appendJsonBool(stream, prefix + "solid_validation_checked",
+                   diagnostic.solid_validation_checked);
+    appendJsonBool(stream, prefix + "solid_validation_valid",
+                   diagnostic.solid_validation.valid);
+    appendJsonString(
+        stream, prefix + "solid_validation_reason",
+        knownPassageSolidValidationReasonName(diagnostic.solid_validation.reason));
+    appendJsonSize(stream, prefix + "solid_validation_intersections",
+                   diagnostic.solid_validation.intersections);
+    appendJsonBool(stream, prefix + "solid_has_first_intersection",
+                   diagnostic.solid_validation.has_first_intersection);
+    if (diagnostic.solid_validation.has_first_intersection) {
+      const KnownPassageSolidIntersection& intersection =
+          diagnostic.solid_validation.first_intersection;
+      appendJsonString(stream, prefix + "solid_first_structure_id",
+                       intersection.structure_id);
+      appendJsonString(stream, prefix + "solid_first_opening_id",
+                       intersection.opening_id);
+      appendJsonString(stream, prefix + "solid_first_part_id", intersection.part_id);
+      appendJsonString(stream, prefix + "solid_first_part_kind",
+                       knownPassageSolidPartKindName(intersection.part_kind));
+      appendJsonSize(stream, prefix + "solid_first_segment_index",
+                     intersection.segment_index);
+      appendJsonNumber(stream, prefix + "solid_first_segment_t",
+                       intersection.segment_t);
+      appendJsonNumber(stream, prefix + "solid_first_s_m", intersection.s_m);
+      appendJsonNumber(stream, prefix + "solid_first_x_m", intersection.point.x);
+      appendJsonNumber(stream, prefix + "solid_first_y_m", intersection.point.y);
+      appendJsonNumber(stream, prefix + "solid_first_z_m", intersection.point.z);
+    }
     appendJsonString(stream, prefix + "reason",
                      passageInsertionRejectReasonName(diagnostic.reason));
     appendJsonBool(stream, prefix + "accepted", diagnostic.accepted);

@@ -534,6 +534,9 @@ struct CandidateEvaluation {
     evaluation.reason = PassageInsertionRejectReason::kNonTraversable;
     return evaluation;
   }
+  evaluation.diagnostic.solid_validation_checked = true;
+  evaluation.diagnostic.solid_validation =
+      validateTrajectoryAgainstKnownPassageSolids(evaluation.samples, &map);
 
   const TrajectoryPointSample original_anchor = sampleAtS(original_samples, anchor_s_m);
   const TrajectoryPointSample original_reconnect =

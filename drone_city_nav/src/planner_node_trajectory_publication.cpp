@@ -126,8 +126,20 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
            << diagnostic.join_tangent_delta_after_rad
            << " curvature=" << diagnostic.join_curvature_jump_before_1pm << ","
            << diagnostic.join_curvature_jump_after_1pm
-           << " radius=" << diagnostic.min_inserted_radius_m
-           << " reason=" << passageInsertionRejectReasonName(diagnostic.reason)
+           << " radius=" << diagnostic.min_inserted_radius_m << " solid[checked="
+           << (diagnostic.solid_validation_checked ? "true" : "false")
+           << " valid=" << (diagnostic.solid_validation.valid ? "true" : "false")
+           << " reason="
+           << knownPassageSolidValidationReasonName(diagnostic.solid_validation.reason)
+           << " intersections=" << diagnostic.solid_validation.intersections;
+    if (diagnostic.solid_validation.has_first_intersection) {
+      const KnownPassageSolidIntersection& intersection =
+          diagnostic.solid_validation.first_intersection;
+      stream << " first=" << intersection.structure_id << "/" << intersection.part_id
+             << "@s=" << intersection.s_m << " xyz=(" << intersection.point.x << ","
+             << intersection.point.y << "," << intersection.point.z << ")";
+    }
+    stream << "]" << " reason=" << passageInsertionRejectReasonName(diagnostic.reason)
            << " accepted=" << (diagnostic.accepted ? "true" : "false");
     if (diagnostic.blocked_segment.available) {
       const PassageInsertionBlockedSegmentDiagnostic& blocked =
@@ -143,6 +155,28 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
              << " inflated=" << (blocked.inflated ? "true" : "false") << "]";
     }
     stream << "]";
+  }
+  return stream.str();
+}
+
+[[nodiscard]] std::string knownPassageSolidValidationDiagnosticsSummary(
+    const KnownPassageSolidValidationSummary& summary) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2);
+  stream << "valid=" << (summary.valid ? "true" : "false")
+         << " reason=" << knownPassageSolidValidationReasonName(summary.reason)
+         << " volumes=" << summary.volumes_checked
+         << " segments=" << summary.segments_checked
+         << " intersections=" << summary.intersections;
+  if (summary.has_first_intersection) {
+    const KnownPassageSolidIntersection& intersection = summary.first_intersection;
+    stream << " first[structure=" << intersection.structure_id
+           << " opening=" << intersection.opening_id << " part=" << intersection.part_id
+           << " kind=" << knownPassageSolidPartKindName(intersection.part_kind)
+           << " segment=" << intersection.segment_index
+           << " t=" << intersection.segment_t << " s=" << intersection.s_m << " xyz=("
+           << intersection.point.x << "," << intersection.point.y << ","
+           << intersection.point.z << ")]";
   }
   return stream.str();
 }
@@ -286,6 +320,9 @@ bool PlannerNode::publishTrajectoryResult(
         knownPassageValidationDiagnosticsSummary(stats.known_passage_validation);
     const std::string passage_insertion_summary =
         passageInsertionDiagnosticsSummary(stats.passage_insertion);
+    const std::string solid_validation_summary =
+        knownPassageSolidValidationDiagnosticsSummary(
+            stats.known_passage_solid_validation);
     RCLCPP_WARN(
         get_logger(),
         "%s trajectory build failed; rough A* route will not be published as "
@@ -299,6 +336,7 @@ bool PlannerNode::publishTrajectoryResult(
         "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu] "
         "vertical_profile[%s] "
         "known_passage_validation[%s] "
+        "known_passage_solid_validation[%s] "
         "passage_insertion_details[%s] "
         "grid_attempts[corridor=%s(%zu) optimizer=%s(%zu) "
         "turn_smoothing=%s(%zu) trajectory_validation=%s(%zu) "
@@ -320,9 +358,10 @@ bool PlannerNode::publishTrajectoryResult(
         stats.trajectory_optimizer.candidate_evaluations,
         stats.trajectory_optimizer.collision_rejections,
         vertical_profile_summary.c_str(), passage_validation_summary.c_str(),
-        passage_insertion_summary.c_str(), stats.grid_stages.corridor.c_str(),
-        stats.grid_stages.corridor_attempts, stats.grid_stages.optimizer.c_str(),
-        stats.grid_stages.optimizer_attempts, stats.grid_stages.turn_smoothing.c_str(),
+        solid_validation_summary.c_str(), passage_insertion_summary.c_str(),
+        stats.grid_stages.corridor.c_str(), stats.grid_stages.corridor_attempts,
+        stats.grid_stages.optimizer.c_str(), stats.grid_stages.optimizer_attempts,
+        stats.grid_stages.turn_smoothing.c_str(),
         stats.grid_stages.turn_smoothing_attempts,
         stats.grid_stages.trajectory_validation.c_str(),
         stats.grid_stages.trajectory_validation_attempts,

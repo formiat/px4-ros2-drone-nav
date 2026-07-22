@@ -405,22 +405,44 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishPathFromPathCells(
   const PassageInsertionStats& insertion_stats =
       trajectory_result.stats.passage_insertion;
   for (const PassageInsertionDiagnostic& diagnostic : insertion_stats.diagnostics) {
-    RCLCPP_INFO(get_logger(),
-                "PASSAGE_INSERTION_ATTEMPT mode=%s structure=%s opening=%s "
-                "start_is_anchor=%s initial_join_checked=%s reconnect_join_checked=%s "
-                "initial_join_relaxed_for_hold_restart=%s anchor_margin=%.2f "
-                "reconnect_margin=%.2f anchor_s=%.2f reconnect_s=%.2f reason=%s "
-                "accepted=%s",
-                passageInsertionStartModeName(diagnostic.start_mode),
-                diagnostic.structure_id.c_str(), diagnostic.opening_id.c_str(),
-                diagnostic.start_is_anchor ? "true" : "false",
-                diagnostic.initial_join_checked ? "true" : "false",
-                diagnostic.reconnect_join_checked ? "true" : "false",
-                diagnostic.initial_join_relaxed_for_hold_restart ? "true" : "false",
-                diagnostic.anchor_margin_m, diagnostic.reconnect_margin_m,
-                diagnostic.anchor_s_m, diagnostic.reconnect_s_m,
-                passageInsertionRejectReasonName(diagnostic.reason),
-                diagnostic.accepted ? "true" : "false");
+    RCLCPP_INFO(
+        get_logger(),
+        "PASSAGE_INSERTION_ATTEMPT mode=%s structure=%s opening=%s "
+        "start_is_anchor=%s initial_join_checked=%s reconnect_join_checked=%s "
+        "initial_join_relaxed_for_hold_restart=%s anchor_margin=%.2f "
+        "reconnect_margin=%.2f anchor_s=%.2f reconnect_s=%.2f "
+        "solid[checked=%s valid=%s reason=%s intersections=%zu "
+        "first_part=%s first_s=%.2f first_xyz=(%.2f,%.2f,%.2f)] "
+        "reason=%s accepted=%s",
+        passageInsertionStartModeName(diagnostic.start_mode),
+        diagnostic.structure_id.c_str(), diagnostic.opening_id.c_str(),
+        diagnostic.start_is_anchor ? "true" : "false",
+        diagnostic.initial_join_checked ? "true" : "false",
+        diagnostic.reconnect_join_checked ? "true" : "false",
+        diagnostic.initial_join_relaxed_for_hold_restart ? "true" : "false",
+        diagnostic.anchor_margin_m, diagnostic.reconnect_margin_m,
+        diagnostic.anchor_s_m, diagnostic.reconnect_s_m,
+        diagnostic.solid_validation_checked ? "true" : "false",
+        diagnostic.solid_validation.valid ? "true" : "false",
+        knownPassageSolidValidationReasonName(diagnostic.solid_validation.reason),
+        diagnostic.solid_validation.intersections,
+        diagnostic.solid_validation.has_first_intersection
+            ? diagnostic.solid_validation.first_intersection.part_id.c_str()
+            : "<none>",
+        diagnostic.solid_validation.has_first_intersection
+            ? diagnostic.solid_validation.first_intersection.s_m
+            : std::numeric_limits<double>::quiet_NaN(),
+        diagnostic.solid_validation.has_first_intersection
+            ? diagnostic.solid_validation.first_intersection.point.x
+            : std::numeric_limits<double>::quiet_NaN(),
+        diagnostic.solid_validation.has_first_intersection
+            ? diagnostic.solid_validation.first_intersection.point.y
+            : std::numeric_limits<double>::quiet_NaN(),
+        diagnostic.solid_validation.has_first_intersection
+            ? diagnostic.solid_validation.first_intersection.point.z
+            : std::numeric_limits<double>::quiet_NaN(),
+        passageInsertionRejectReasonName(diagnostic.reason),
+        diagnostic.accepted ? "true" : "false");
     const PassageInsertionBlockedSegmentDiagnostic& blocked =
         diagnostic.blocked_segment;
     if (diagnostic.reason != PassageInsertionRejectReason::kNonTraversable ||

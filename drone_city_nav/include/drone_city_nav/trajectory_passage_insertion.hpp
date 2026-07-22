@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/known_passage_map.hpp"
+#include "drone_city_nav/known_passage_solid_validation.hpp"
 #include "drone_city_nav/known_passage_validation.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
@@ -99,6 +100,8 @@ struct PassageInsertionDiagnostic {
   bool initial_join_checked{true};
   bool reconnect_join_checked{true};
   bool initial_join_relaxed_for_hold_restart{false};
+  bool solid_validation_checked{false};
+  KnownPassageSolidValidationSummary solid_validation{};
   PassageInsertionBlockedSegmentDiagnostic blocked_segment{};
   PassageInsertionRejectReason reason{PassageInsertionRejectReason::kNone};
   bool accepted{false};

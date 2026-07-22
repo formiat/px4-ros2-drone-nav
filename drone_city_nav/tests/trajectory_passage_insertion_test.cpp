@@ -468,6 +468,8 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,
             PassageInsertionRejectReason::kJoinCurvature);
+  EXPECT_TRUE(result.stats.diagnostics.front().solid_validation_checked);
+  EXPECT_GT(result.stats.diagnostics.front().solid_validation.volumes_checked, 0U);
 }
 
 TEST(TrajectoryPassageInsertion, RejectsCandidateBelowMinimumInsertedRadius) {
