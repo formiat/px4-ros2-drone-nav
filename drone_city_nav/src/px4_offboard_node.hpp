@@ -29,6 +29,7 @@
 #include "drone_city_nav/trajectory_vertical_handover.hpp"
 #include "drone_city_nav/truncation_suffix_protocol.hpp"
 #include "drone_city_nav/types.hpp"
+#include "drone_city_nav/vertical_capture_profile.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -183,6 +184,10 @@ private:
                                    bool pending_retry);
 
   void tryActivatePendingTruncationSuffix();
+
+  void updateVerticalPreAlignment();
+
+  void resetVerticalPreAlignment();
 
   void onPathId(const std_msgs::msg::UInt64& msg);
 
@@ -386,6 +391,7 @@ private:
   double last_target_altitude_m_{std::numeric_limits<double>::quiet_NaN()};
   double terminal_position_capture_altitude_m_{
       std::numeric_limits<double>::quiet_NaN()};
+  double vertical_pre_alignment_target_z_m_{std::numeric_limits<double>::quiet_NaN()};
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
@@ -428,6 +434,8 @@ private:
   bool temporary_replan_truncation_active_{false};
   bool temporary_replan_hold_active_{false};
   bool temporary_replan_immediate_hold_{false};
+  bool vertical_pre_alignment_active_{false};
+  bool vertical_pre_alignment_captured_{false};
   bool takeoff_hold_target_valid_{false};
   bool terminal_position_capture_latched_{false};
   bool terminal_position_capture_altitude_valid_{false};
@@ -456,6 +464,7 @@ private:
   VelocityFollowerState velocity_follower_state_{};
   VerticalFollowerConfig vertical_follower_config_{};
   VerticalFollowerState vertical_follower_state_{};
+  VerticalCaptureProfileState vertical_pre_alignment_profile_{};
   VelocitySetpointPlan last_velocity_plan_{};
   VerticalSetpointPlan last_vertical_plan_{};
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
@@ -477,6 +486,8 @@ private:
   std::string crash_obstacle_collision_;
   rclcpp::Time navigation_altitude_reached_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time vertical_pre_alignment_last_update_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time vertical_pre_alignment_stable_since_{0, 0, RCL_ROS_TIME};
   std::optional<std::chrono::steady_clock::time_point>
       last_control_timer_callback_wall_time_;
   std::optional<std::chrono::steady_clock::time_point>

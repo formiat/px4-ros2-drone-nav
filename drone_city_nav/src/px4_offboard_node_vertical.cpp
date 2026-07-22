@@ -5,6 +5,79 @@
 
 namespace drone_city_nav {
 
+void Px4OffboardNode::resetVerticalPreAlignment() {
+  vertical_pre_alignment_active_ = false;
+  vertical_pre_alignment_captured_ = false;
+  vertical_pre_alignment_target_z_m_ = std::numeric_limits<double>::quiet_NaN();
+  vertical_pre_alignment_profile_ = VerticalCaptureProfileState{};
+  vertical_pre_alignment_last_update_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+  vertical_pre_alignment_stable_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+}
+
+void Px4OffboardNode::updateVerticalPreAlignment() {
+  if (!vertical_pre_alignment_active_ || vertical_pre_alignment_captured_ ||
+      !temporary_replan_hold_active_ || !localPositionFresh() || !altitude_valid_) {
+    return;
+  }
+
+  const rclcpp::Time current_time = get_clock()->now();
+  double dt_s = static_cast<double>(kControllerPeriod.count()) / 1000.0;
+  if (vertical_pre_alignment_last_update_time_.nanoseconds() > 0 &&
+      current_time > vertical_pre_alignment_last_update_time_) {
+    dt_s =
+        std::clamp((current_time - vertical_pre_alignment_last_update_time_).seconds(),
+                   0.001, 0.2);
+  }
+  vertical_pre_alignment_last_update_time_ = current_time;
+
+  const VerticalCaptureProfileStep step = advanceVerticalCaptureProfile(
+      vertical_pre_alignment_profile_, current_altitude_m_,
+      current_vertical_velocity_up_mps_, current_vertical_velocity_valid_,
+      vertical_pre_alignment_target_z_m_, dt_s,
+      VerticalCaptureProfileConfig{
+          .max_climb_speed_mps = vertical_follower_config_.max_climb_speed_mps,
+          .max_descent_speed_mps = vertical_follower_config_.max_descent_speed_mps,
+          .max_accel_mps2 = vertical_follower_config_.max_vertical_accel_mps2,
+          .max_jerk_mps3 = vertical_follower_config_.max_vertical_jerk_mps3,
+      });
+  if (!step.valid) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                          "REPLAN_TRUNCATION vertical pre-alignment profile invalid");
+    return;
+  }
+  vertical_pre_alignment_profile_ = step.state;
+  terminal_position_capture_altitude_m_ = step.state.commanded_z_m;
+  terminal_position_capture_altitude_valid_ = true;
+
+  const bool captured =
+      distance(current_position_, temporary_replan_hold_target_) <= 1.0 &&
+      current_velocity_valid_ && std::isfinite(current_speed_mps_) &&
+      current_speed_mps_ <= 0.5 &&
+      std::abs(current_altitude_m_ - vertical_pre_alignment_target_z_m_) <= 0.3 &&
+      current_vertical_velocity_valid_ &&
+      std::abs(current_vertical_velocity_up_mps_) <= 0.3;
+  if (!captured) {
+    vertical_pre_alignment_stable_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    return;
+  }
+  if (vertical_pre_alignment_stable_since_.nanoseconds() == 0) {
+    vertical_pre_alignment_stable_since_ = current_time;
+    return;
+  }
+  if ((current_time - vertical_pre_alignment_stable_since_).seconds() < 0.5) {
+    return;
+  }
+
+  vertical_pre_alignment_captured_ = true;
+  terminal_position_capture_altitude_m_ = vertical_pre_alignment_target_z_m_;
+  RCLCPP_INFO(get_logger(),
+              "REPLAN_TRUNCATION vertical_pre_alignment_captured=true "
+              "target_z=%.2f actual_z=%.2f vertical_speed=%.2f stable_s=%.2f",
+              vertical_pre_alignment_target_z_m_, current_altitude_m_,
+              current_vertical_velocity_up_mps_,
+              (current_time - vertical_pre_alignment_stable_since_).seconds());
+}
+
 void Px4OffboardNode::resetVelocityDiagnostics() {
   resetVelocitySmootherState("diagnostics_reset", false);
   last_velocity_plan_valid_ = false;

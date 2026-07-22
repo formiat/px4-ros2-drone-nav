@@ -108,7 +108,11 @@ bool applyVerticalProfileStage(TrajectoryPlannerResult& result,
                                const TrajectoryPlannerConfig& config) {
   const VerticalProfileResult vertical_profile = applyVerticalProfile(
       result.samples, input.known_passage_map, config.known_passage_validation,
-      config.vertical_profile, config.initial_altitude_m);
+      config.vertical_profile, config.initial_altitude_m,
+      input.passage_insertion_start_mode ==
+              PassageInsertionStartMode::kTerminalHoldRestart
+          ? VerticalProfileStartMode::kStationaryHoldRestart
+          : VerticalProfileStartMode::kMoving);
   result.stats.vertical_profile = vertical_profile.stats;
   result.stats.known_passage_validation = validateKnownPassageTraversal(
       result.samples, input.known_passage_map, config.known_passage_validation);

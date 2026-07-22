@@ -215,9 +215,9 @@ validateTruncationSuffixJoin(const TrajectoryPointSample& prefix_terminal,
   TruncationSuffixJoinValidation result{};
   if (!std::isfinite(request.max_position_jump_m) ||
       request.max_position_jump_m < 0.0 ||
-      !std::isfinite(request.max_altitude_jump_m) ||
-      request.max_altitude_jump_m < 0.0 || !std::isfinite(prefix_terminal.z_m) ||
-      !std::isfinite(suffix_initial.z_m)) {
+      (request.require_altitude_match && (!std::isfinite(request.max_altitude_jump_m) ||
+                                          request.max_altitude_jump_m < 0.0)) ||
+      !std::isfinite(prefix_terminal.z_m) || !std::isfinite(suffix_initial.z_m)) {
     result.reason = "invalid_input";
     return result;
   }
@@ -250,7 +250,8 @@ validateTruncationSuffixJoin(const TrajectoryPointSample& prefix_terminal,
       return result;
     }
   }
-  if (result.altitude_jump_m > request.max_altitude_jump_m) {
+  if (request.require_altitude_match &&
+      result.altitude_jump_m > request.max_altitude_jump_m) {
     result.reason = "altitude_mismatch";
     return result;
   }

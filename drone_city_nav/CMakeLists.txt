@@ -128,6 +128,7 @@ add_library(
   src/velocity_command_planner.cpp
   src/velocity_control_config.cpp
   src/vertical_trackability_speed_cap.cpp
+  src/vertical_capture_profile.cpp
   src/velocity_smoother.cpp)
 target_compile_features(drone_city_nav_core PUBLIC cxx_std_20)
 target_include_directories(
@@ -449,6 +450,12 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_vertical_profile_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_vertical_profile_test drone_city_nav_core)
   enable_project_warnings(trajectory_vertical_profile_test)
+
+  ament_add_gtest(vertical_capture_profile_test
+                  tests/vertical_capture_profile_test.cpp)
+  target_compile_features(vertical_capture_profile_test PRIVATE cxx_std_20)
+  target_link_libraries(vertical_capture_profile_test drone_city_nav_core)
+  enable_project_warnings(vertical_capture_profile_test)
 
   ament_add_gtest(trajectory_vertical_handover_test
                   tests/trajectory_vertical_handover_test.cpp)

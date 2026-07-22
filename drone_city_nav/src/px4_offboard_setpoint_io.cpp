@@ -49,14 +49,19 @@ buildOffboardControlMode(const std::uint64_t timestamp_us,
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildPositionTrajectorySetpoint(const std::uint64_t timestamp_us,
                                 const Point2 local_target,
-                                const double target_altitude_m, const double yaw_rad) {
+                                const double target_altitude_m, const double yaw_rad,
+                                const double vertical_velocity_up_mps) {
   const float nan = std::numeric_limits<float>::quiet_NaN();
   px4_msgs::msg::TrajectorySetpoint msg;
   msg.timestamp = timestamp_us;
   msg.position = std::array<float, 3>{static_cast<float>(local_target.x),
                                       static_cast<float>(local_target.y),
                                       static_cast<float>(-std::abs(target_altitude_m))};
-  msg.velocity = std::array<float, 3>{nan, nan, nan};
+  msg.velocity =
+      std::array<float, 3>{nan, nan,
+                           std::isfinite(vertical_velocity_up_mps)
+                               ? static_cast<float>(-vertical_velocity_up_mps)
+                               : nan};
   msg.acceleration = std::array<float, 3>{nan, nan, nan};
   msg.jerk = std::array<float, 3>{nan, nan, nan};
   msg.yaw = static_cast<float>(yaw_rad);

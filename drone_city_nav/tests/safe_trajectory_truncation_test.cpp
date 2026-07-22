@@ -197,4 +197,24 @@ TEST(SafeTrajectoryTruncation, RejectsSuffixJoinAltitudeMismatch) {
   EXPECT_STREQ(validation.reason, "altitude_mismatch");
 }
 
+TEST(SafeTrajectoryTruncation, AcceptsPreAlignedSuffixWithoutAltitudeMatch) {
+  TrajectoryPointSample prefix_terminal;
+  prefix_terminal.point = Point2{10.0, 20.0};
+  prefix_terminal.tangent = Point2{1.0, 0.0};
+  prefix_terminal.z_m = 23.5;
+  TrajectoryPointSample suffix_initial = prefix_terminal;
+  suffix_initial.z_m = 6.5;
+
+  const TruncationSuffixJoinValidation validation = validateTruncationSuffixJoin(
+      prefix_terminal, suffix_initial,
+      TruncationSuffixJoinRequest{.max_position_jump_m = 1.0,
+                                  .max_tangent_jump_rad = 0.01,
+                                  .max_altitude_jump_m = 0.3,
+                                  .require_tangent_match = false,
+                                  .require_altitude_match = false});
+
+  EXPECT_TRUE(validation.valid) << validation.reason;
+  EXPECT_NEAR(validation.altitude_jump_m, 17.0, 1.0e-9);
+}
+
 } // namespace drone_city_nav

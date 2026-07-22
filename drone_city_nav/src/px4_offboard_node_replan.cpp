@@ -159,6 +159,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   temporary_replan_immediate_hold_ = truncation.immediate_hold;
   active_truncation_generation_ = msg.truncation_generation;
   pending_truncation_suffix_.reset();
+  resetVerticalPreAlignment();
   no_path_hold_target_valid_ = false;
   if (truncation.immediate_hold) {
     temporary_replan_hold_active_ = true;

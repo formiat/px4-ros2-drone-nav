@@ -7,6 +7,7 @@
 #include <px4_msgs/msg/vehicle_command.hpp>
 
 #include <cstdint>
+#include <limits>
 
 namespace drone_city_nav {
 
@@ -30,9 +31,10 @@ struct VehicleCommandEndpoint {
 [[nodiscard]] px4_msgs::msg::OffboardControlMode
 buildOffboardControlMode(std::uint64_t timestamp_us, OffboardSetpointMode mode);
 
-[[nodiscard]] px4_msgs::msg::TrajectorySetpoint
-buildPositionTrajectorySetpoint(std::uint64_t timestamp_us, Point2 local_target,
-                                double target_altitude_m, double yaw_rad);
+[[nodiscard]] px4_msgs::msg::TrajectorySetpoint buildPositionTrajectorySetpoint(
+    std::uint64_t timestamp_us, Point2 local_target, double target_altitude_m,
+    double yaw_rad,
+    double vertical_velocity_up_mps = std::numeric_limits<double>::quiet_NaN());
 
 [[nodiscard]] px4_msgs::msg::TrajectorySetpoint
 buildVelocityTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,

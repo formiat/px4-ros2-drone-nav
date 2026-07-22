@@ -57,6 +57,15 @@ TEST(Px4OffboardSetpointIo, BuildsVelocitySetpointWithoutPosition) {
   EXPECT_FLOAT_EQ(msg.yaw, -1.0F);
 }
 
+TEST(Px4OffboardSetpointIo, AddsVerticalFeedforwardToPositionSetpoint) {
+  const auto msg =
+      buildPositionTrajectorySetpoint(101U, Point2{3.0, -4.0}, 12.5, 1.2, -2.0);
+
+  EXPECT_TRUE(std::isnan(msg.velocity[0]));
+  EXPECT_TRUE(std::isnan(msg.velocity[1]));
+  EXPECT_FLOAT_EQ(msg.velocity[2], 2.0F);
+}
+
 TEST(Px4OffboardSetpointIo, BuildsVehicleCommandEndpoint) {
   const VehicleCommandEndpoint endpoint{2U, 3U, 4U, 5U};
   const auto msg = buildVehicleCommand(

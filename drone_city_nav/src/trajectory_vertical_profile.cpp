@@ -1,6 +1,7 @@
 #include "drone_city_nav/trajectory_vertical_profile.hpp"
 
 #include "drone_city_nav/known_passage_matching.hpp"
+#include "drone_city_nav/known_passage_solid_volumes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -109,6 +110,28 @@ transitionDistanceForAltitudeDelta(const double dz_m, const double requested_dis
                                                80.0, 0.0, 5000.0));
   return std::clamp(std::max(min_distance, nominal_speed * hold_time), min_distance,
                     max_distance);
+}
+
+[[nodiscard]] bool verticalSegmentIntersectsKnownSolid(const Point2 point,
+                                                       const double start_z_m,
+                                                       const double end_z_m,
+                                                       const KnownPassageMap& map) {
+  const double segment_min_z_m = std::min(start_z_m, end_z_m);
+  const double segment_max_z_m = std::max(start_z_m, end_z_m);
+  const std::vector<KnownPassageSolidVolume> volumes = knownPassageSolidVolumes(map);
+  return std::ranges::any_of(volumes, [&](const KnownPassageSolidVolume& volume) {
+    const Point2 offset{point.x - volume.center.x, point.y - volume.center.y};
+    const double depth_coordinate =
+        offset.x * volume.normal_xy.x + offset.y * volume.normal_xy.y;
+    const double lateral_coordinate =
+        offset.x * volume.lateral_xy.x + offset.y * volume.lateral_xy.y;
+    const bool inside_xy =
+        std::abs(depth_coordinate) <= 0.5 * volume.depth_m + kTinyDistanceM &&
+        std::abs(lateral_coordinate) <= 0.5 * volume.width_m + kTinyDistanceM;
+    const bool overlaps_z = segment_max_z_m >= volume.min_z_m - kTinyDistanceM &&
+                            segment_min_z_m <= volume.max_z_m + kTinyDistanceM;
+    return inside_xy && overlaps_z;
+  });
 }
 
 void resetVerticalMetadata(std::span<TrajectoryPointSample> samples,
@@ -314,7 +337,8 @@ const char* verticalProfileStatusName(const bool valid) noexcept {
 VerticalProfileResult applyVerticalProfile(
     const std::span<TrajectoryPointSample> samples, const KnownPassageMap* const map,
     const KnownPassageValidationConfig& validation_config,
-    const VerticalProfileConfig& config, const double initial_altitude_m) {
+    const VerticalProfileConfig& config, const double initial_altitude_m,
+    const VerticalProfileStartMode start_mode) {
   VerticalProfileResult result{};
   result.stats.enabled = config.enabled;
   if (samples.empty() || !std::isfinite(initial_altitude_m) || !config.enabled ||
@@ -373,15 +397,57 @@ VerticalProfileResult applyVerticalProfile(
     return lhs.exit_s_m < rhs.exit_s_m;
   });
 
+  double effective_initial_altitude_m = initial_altitude_m;
+  if (start_mode == VerticalProfileStartMode::kStationaryHoldRestart &&
+      !valid_matches.empty() && !valid_matches.front().starts_inside_opening) {
+    const KnownPassageTraversalMatch& first_match = valid_matches.front();
+    const double gate_z_m =
+        targetGateAltitude(first_match.opening, config, initial_altitude_m);
+    const double required_m =
+        transitionDistanceForAltitudeDelta(std::abs(gate_z_m - initial_altitude_m),
+                                           first_match.opening.approach_distance_m,
+                                           config, min_transition, max_transition);
+    const double available_m = std::max(0.0, first_match.entry_s_m - first_s);
+    if (required_m > available_m + kTinyDistanceM) {
+      result.stats.pre_alignment_start_z_m = initial_altitude_m;
+      result.stats.pre_alignment_target_z_m = gate_z_m;
+      if (verticalSegmentIntersectsKnownSolid(samples.front().point, initial_altitude_m,
+                                              gate_z_m, *map)) {
+        ++result.stats.infeasible_count;
+        appendDiagnostic(
+            result.stats, config,
+            VerticalProfilePassageDiagnostic{
+                .structure_id = first_match.structure_id,
+                .opening_id = first_match.opening_id,
+                .entry_s_m = first_match.entry_s_m,
+                .exit_s_m = first_match.exit_s_m,
+                .gate_z_m = gate_z_m,
+                .min_z_m = first_match.opening.min_z_m,
+                .max_z_m = first_match.opening.max_z_m,
+                .safe_min_z_m = safeOpeningMinZ(first_match.opening, config),
+                .safe_max_z_m = safeOpeningMaxZ(first_match.opening, config),
+                .transition_required_m = required_m,
+                .transition_available_m = available_m,
+                .reason = "vertical_pre_alignment_blocked_by_known_solid",
+                .valid = false,
+            });
+      } else {
+        result.stats.pre_alignment_required = true;
+        effective_initial_altitude_m = gate_z_m;
+        resetVerticalMetadata(samples, effective_initial_altitude_m);
+      }
+    }
+  }
+
   std::vector<ProfileWindow> windows;
   windows.reserve(valid_matches.size());
-  double carried_altitude_m = initial_altitude_m;
+  double carried_altitude_m = effective_initial_altitude_m;
   double transition_available_after_s_m = first_s;
   for (const KnownPassageTraversalMatch& match : valid_matches) {
     const double start_z = carried_altitude_m;
     const bool starts_inside = match.starts_inside_opening;
     const double gate_z = starts_inside
-                              ? initial_altitude_m
+                              ? effective_initial_altitude_m
                               : targetGateAltitude(match.opening, config, start_z);
     const double dz = std::abs(gate_z - start_z);
     const double transition_distance_required = transitionDistanceForAltitudeDelta(
@@ -470,7 +536,7 @@ VerticalProfileResult applyVerticalProfile(
   }
 
   std::size_t window_index = 0U;
-  double sample_altitude_m = initial_altitude_m;
+  double sample_altitude_m = effective_initial_altitude_m;
   for (TrajectoryPointSample& sample : samples) {
     while (window_index < windows.size() &&
            sample.s_m > windows[window_index].exit_end_s_m + kTinyDistanceM) {

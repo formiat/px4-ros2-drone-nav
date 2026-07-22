@@ -5,4 +5,6 @@ bool truncation_suffix
 uint8 TRUNCATION_SUFFIX_MOVING_JOIN=0
 uint8 TRUNCATION_SUFFIX_AFTER_HOLD=1
 uint8 truncation_suffix_activation_mode
+bool vertical_pre_alignment_required
+float64 vertical_pre_alignment_target_z_m
 nav_msgs/Path path

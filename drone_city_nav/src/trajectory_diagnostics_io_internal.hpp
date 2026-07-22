@@ -464,6 +464,12 @@ verticalProfileDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   appendJsonNumber(stream, "vertical_profile_max_abs_d3z_ds3", profile.max_abs_d3z_ds3);
   appendJsonNumber(stream, "vertical_profile_min_vertical_speed_cap_mps",
                    profile.min_vertical_speed_cap_mps);
+  appendJsonBool(stream, "vertical_profile_pre_alignment_required",
+                 profile.pre_alignment_required);
+  appendJsonNumber(stream, "vertical_profile_pre_alignment_start_z_m",
+                   profile.pre_alignment_start_z_m);
+  appendJsonNumber(stream, "vertical_profile_pre_alignment_target_z_m",
+                   profile.pre_alignment_target_z_m);
   appendJsonSize(stream, "vertical_profile_diag_count", profile.diagnostics.size());
   for (std::size_t i = 0U; i < profile.diagnostics.size(); ++i) {
     const VerticalProfilePassageDiagnostic& diagnostic = profile.diagnostics[i];

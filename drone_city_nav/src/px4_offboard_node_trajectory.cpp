@@ -440,6 +440,33 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
     return;
   }
 
+  if (pending_truncation_suffix_->vertical_pre_alignment_required) {
+    if (!vertical_pre_alignment_active_) {
+      vertical_pre_alignment_active_ = true;
+      vertical_pre_alignment_captured_ = false;
+      vertical_pre_alignment_target_z_m_ =
+          pending_truncation_suffix_->vertical_pre_alignment_target_z_m;
+      vertical_pre_alignment_profile_ = VerticalCaptureProfileState{};
+      vertical_pre_alignment_last_update_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+      vertical_pre_alignment_stable_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+      publishTruncationSuffixAck(*pending_truncation_suffix_,
+                                 TruncationSuffixAckDecision::kPending,
+                                 "waiting_for_altitude_capture");
+      RCLCPP_INFO(get_logger(),
+                  "REPLAN_TRUNCATION vertical_pre_alignment_started=true "
+                  "path_id=%" PRIu64 " generation=%" PRIu64
+                  " hold=(%.2f,%.2f) current_z=%.2f target_z=%.2f",
+                  pending_truncation_suffix_->path_id,
+                  pending_truncation_suffix_->truncation_generation,
+                  temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
+                  current_altitude_m_, vertical_pre_alignment_target_z_m_);
+      return;
+    }
+    if (!vertical_pre_alignment_captured_) {
+      return;
+    }
+  }
+
   msg::ExecutableTrajectory command = std::move(*pending_truncation_suffix_);
   pending_truncation_suffix_.reset();
   RCLCPP_INFO(get_logger(),
@@ -615,6 +642,27 @@ void Px4OffboardNode::processExecutableTrajectory(
                                  "invalid_trajectory");
       return;
     }
+    const bool vertical_pre_alignment = command.vertical_pre_alignment_required;
+    const bool vertical_pre_alignment_contract_valid =
+        !vertical_pre_alignment ||
+        (*truncation_activation_mode == TruncationSuffixActivationMode::kAfterHold &&
+         std::isfinite(command.vertical_pre_alignment_target_z_m) &&
+         std::abs(candidate_state.samples.front().z_m -
+                  command.vertical_pre_alignment_target_z_m) <= 0.3);
+    if (!vertical_pre_alignment_contract_valid) {
+      callback_duration.setOutcome("vertical_pre_alignment_contract_rejected");
+      RCLCPP_WARN(get_logger(),
+                  "REPLAN_TRUNCATION rejected suffix: "
+                  "reason=vertical_pre_alignment_contract path_id=%" PRIu64
+                  " generation=%" PRIu64 " required=%s target_z=%.2f first_z=%.2f",
+                  command.path_id, command.truncation_generation,
+                  vertical_pre_alignment ? "true" : "false",
+                  command.vertical_pre_alignment_target_z_m,
+                  candidate_state.samples.front().z_m);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 "vertical_pre_alignment_contract");
+      return;
+    }
     const TruncationSuffixJoinValidation join_validation = validateTruncationSuffixJoin(
         active_truncation_terminal_sample_, candidate_state.samples.front(),
         TruncationSuffixJoinRequest{
@@ -625,6 +673,7 @@ void Px4OffboardNode::processExecutableTrajectory(
                                        .vertical_hard_window_altitude_tolerance_m,
             .require_tangent_match = *truncation_activation_mode !=
                                      TruncationSuffixActivationMode::kAfterHold,
+            .require_altitude_match = !vertical_pre_alignment,
         });
     if (!join_validation.valid) {
       callback_duration.setOutcome("truncation_join_rejected");
@@ -655,8 +704,14 @@ void Px4OffboardNode::processExecutableTrajectory(
         *truncation_activation_mode == TruncationSuffixActivationMode::kMovingJoin &&
         !temporary_replan_immediate_hold_ &&
         current_join_distance_m > kTruncationSuffixPositionToleranceM;
-    if (!pending_retry && (wait_for_terminal_hold || wait_for_moving_join)) {
+    const bool wait_for_vertical_pre_alignment =
+        vertical_pre_alignment && !vertical_pre_alignment_captured_;
+    if (!pending_retry && (wait_for_terminal_hold || wait_for_moving_join ||
+                           wait_for_vertical_pre_alignment)) {
       const bool replaced = pending_truncation_suffix_.has_value();
+      if (replaced) {
+        resetVerticalPreAlignment();
+      }
       pending_truncation_suffix_ = command;
       callback_duration.setOutcome("truncation_suffix_pending");
       RCLCPP_INFO(
@@ -671,9 +726,14 @@ void Px4OffboardNode::processExecutableTrajectory(
           active_truncation_terminal_sample_.point.y, current_join_distance_m,
           replaced ? "true" : "false", join_validation.position_jump_m,
           join_validation.tangent_jump_rad, join_validation.altitude_jump_m);
+      const char* pending_reason = "waiting_for_join_point";
+      if (wait_for_terminal_hold) {
+        pending_reason = "waiting_for_terminal_hold";
+      } else if (wait_for_vertical_pre_alignment) {
+        pending_reason = "waiting_for_altitude_capture";
+      }
       publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
-                                 wait_for_terminal_hold ? "waiting_for_terminal_hold"
-                                                        : "waiting_for_join_point");
+                                 pending_reason);
       return;
     }
 
@@ -896,6 +956,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   active_truncation_generation_ = 0U;
   active_temporary_prefix_fingerprint_ = 0U;
   pending_truncation_suffix_.reset();
+  resetVerticalPreAlignment();
   no_path_hold_target_valid_ = false;
   std::vector<Point2> accepted_path_points;
   accepted_path_points.reserve(candidate_state.samples.size());

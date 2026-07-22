@@ -424,4 +424,25 @@ TEST(TrajectoryVerticalProfile, InfeasibleClimbAngleMarksResultInvalid) {
       }));
 }
 
+TEST(TrajectoryVerticalProfile, StationaryRestartPreAlignsForFirstPassage) {
+  KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples = makeSamplesRange(-12.0, 20.0, 1.0, 18.0);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult moving =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0,
+                           VerticalProfileStartMode::kMoving);
+  EXPECT_FALSE(moving.valid);
+
+  const VerticalProfileResult stationary =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 18.0,
+                           VerticalProfileStartMode::kStationaryHoldRestart);
+
+  ASSERT_TRUE(stationary.valid);
+  EXPECT_TRUE(stationary.stats.pre_alignment_required);
+  EXPECT_DOUBLE_EQ(stationary.stats.pre_alignment_start_z_m, 18.0);
+  EXPECT_NEAR(stationary.stats.pre_alignment_target_z_m, 10.5, 1.0e-9);
+  EXPECT_NEAR(samples.front().z_m, 10.5, 1.0e-9);
+}
+
 } // namespace drone_city_nav

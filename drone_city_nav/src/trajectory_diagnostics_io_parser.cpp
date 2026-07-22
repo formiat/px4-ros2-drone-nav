@@ -134,6 +134,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   vertical_profile.max_abs_d3z_ds3);
   parseJsonDouble(json, "vertical_profile_min_vertical_speed_cap_mps",
                   vertical_profile.min_vertical_speed_cap_mps);
+  parseJsonBool(json, "vertical_profile_pre_alignment_required",
+                vertical_profile.pre_alignment_required);
+  parseJsonDouble(json, "vertical_profile_pre_alignment_start_z_m",
+                  vertical_profile.pre_alignment_start_z_m);
+  parseJsonDouble(json, "vertical_profile_pre_alignment_target_z_m",
+                  vertical_profile.pre_alignment_target_z_m);
   std::size_t vertical_profile_diagnostic_count = 0U;
   parseJsonSize(json, "vertical_profile_diag_count", vertical_profile_diagnostic_count);
   vertical_profile_diagnostic_count =

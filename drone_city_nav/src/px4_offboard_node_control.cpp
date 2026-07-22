@@ -35,8 +35,9 @@ void Px4OffboardNode::onTimer() {
   }
 
   updateFinalGoalHold();
-  tryActivatePendingTruncationSuffix();
   updateTemporaryReplanHold();
+  updateVerticalPreAlignment();
+  tryActivatePendingTruncationSuffix();
   advanceWaypointIfNeeded();
   updateTerminalCaptureState();
   publishOffboardControlMode();
@@ -135,7 +136,9 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 
   const Point2 px4_local_target = mapToPx4Local(target);
   const px4_msgs::msg::TrajectorySetpoint msg = buildPositionTrajectorySetpoint(
-      nowMicros(), px4_local_target, position_target_altitude_m, current_heading_rad_);
+      nowMicros(), px4_local_target, position_target_altitude_m, current_heading_rad_,
+      vertical_pre_alignment_active_ ? vertical_pre_alignment_profile_.commanded_vz_mps
+                                     : std::numeric_limits<double>::quiet_NaN());
   updateCommandDiagnostics(target, previous_target, had_previous_target,
                            static_cast<double>(msg.yaw));
   resetVelocityDiagnostics();

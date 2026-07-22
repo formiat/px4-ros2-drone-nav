@@ -12,6 +12,11 @@
 
 namespace drone_city_nav {
 
+enum class VerticalProfileStartMode {
+  kMoving,
+  kStationaryHoldRestart,
+};
+
 struct VerticalProfileConfig {
   bool enabled{true};
   double gate_clearance_margin_m{0.5};
@@ -59,6 +64,9 @@ struct VerticalProfileStats {
   std::size_t passages_matched{0U};
   std::size_t passages_profiled{0U};
   std::size_t infeasible_count{0U};
+  bool pre_alignment_required{false};
+  double pre_alignment_start_z_m{std::numeric_limits<double>::quiet_NaN()};
+  double pre_alignment_target_z_m{std::numeric_limits<double>::quiet_NaN()};
   double min_z_m{std::numeric_limits<double>::quiet_NaN()};
   double max_z_m{std::numeric_limits<double>::quiet_NaN()};
   double max_abs_dz_ds{0.0};
@@ -75,10 +83,10 @@ struct VerticalProfileResult {
 
 [[nodiscard]] const char* verticalProfileStatusName(bool valid) noexcept;
 
-[[nodiscard]] VerticalProfileResult
-applyVerticalProfile(std::span<TrajectoryPointSample> samples,
-                     const KnownPassageMap* map,
-                     const KnownPassageValidationConfig& validation_config,
-                     const VerticalProfileConfig& config, double initial_altitude_m);
+[[nodiscard]] VerticalProfileResult applyVerticalProfile(
+    std::span<TrajectoryPointSample> samples, const KnownPassageMap* map,
+    const KnownPassageValidationConfig& validation_config,
+    const VerticalProfileConfig& config, double initial_altitude_m,
+    VerticalProfileStartMode start_mode = VerticalProfileStartMode::kMoving);
 
 } // namespace drone_city_nav

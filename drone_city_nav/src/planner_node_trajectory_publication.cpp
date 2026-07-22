@@ -560,7 +560,8 @@ bool PlannerNode::publishTrajectoryResult(
       "clearance=%.2f reason=%s)] "
       "vertical_profile[enabled=%s active=%s applied=%s valid=%s "
       "matched=%zu profiled=%zu infeasible=%zu z=[%.2f,%.2f] "
-      "max_slope=%.4f min_cap=%.2f] "
+      "max_slope=%.4f min_cap=%.2f pre_alignment[required=%s "
+      "start_z=%.2f target_z=%.2f]] "
       "passage_insertion[enabled=%s applied=%s candidates=%zu inserted=%zu "
       "rejected(join=%zu traversability=%zu validation=%zu geometry=%zu) "
       "reason=%s first(structure=%s opening=%s s=[%.2f,%.2f] "
@@ -761,6 +762,9 @@ bool PlannerNode::publishTrajectoryResult(
       stats.vertical_profile.infeasible_count, stats.vertical_profile.min_z_m,
       stats.vertical_profile.max_z_m, stats.vertical_profile.max_abs_dz_ds,
       stats.vertical_profile.min_vertical_speed_cap_mps,
+      stats.vertical_profile.pre_alignment_required ? "true" : "false",
+      stats.vertical_profile.pre_alignment_start_z_m,
+      stats.vertical_profile.pre_alignment_target_z_m,
       stats.passage_insertion.enabled ? "true" : "false",
       stats.passage_insertion.applied ? "true" : "false",
       stats.passage_insertion.candidates, stats.passage_insertion.inserted_count,
