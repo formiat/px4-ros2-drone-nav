@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
 #include <cstdint>
@@ -14,6 +15,8 @@ struct SafeTrajectoryTruncationRequest {
   Point2 current_position{};
   double blocker_path_distance_m{std::numeric_limits<double>::quiet_NaN()};
   double truncation_margin_m{15.0};
+  const OccupancyGrid2D* raw_obstacle_grid{nullptr};
+  double terminal_raw_clearance_m{5.0};
 };
 
 struct SafeTrajectoryTruncationResult {
@@ -22,7 +25,10 @@ struct SafeTrajectoryTruncationResult {
   const char* reason{"not_attempted"};
   double current_s_m{std::numeric_limits<double>::quiet_NaN()};
   double blocker_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double nominal_stop_s_m{std::numeric_limits<double>::quiet_NaN()};
   double stop_s_m{std::numeric_limits<double>::quiet_NaN()};
+  double terminal_raw_clearance_m{std::numeric_limits<double>::quiet_NaN()};
+  bool clearance_adjusted{false};
   std::vector<TrajectoryPointSample> samples;
 };
 
@@ -61,8 +67,11 @@ struct TruncationSuffixJoinValidation {
 // Keeps only the still-safe prefix of an accepted executable trajectory. The
 // blocker distance is measured from the current projection along that same
 // trajectory; the fixed margin is a policy buffer, not a braking-distance
-// calculation. A stop station behind or effectively at the drone becomes an
-// immediate hold instead of creating a reverse trajectory.
+// calculation. When a raw obstacle grid is supplied, the terminal station is
+// moved backward until it has the configured clearance from occupied cells.
+// Inflation does not participate in this selection. A stop station behind or
+// effectively at the drone becomes an immediate hold instead of creating a
+// reverse trajectory.
 [[nodiscard]] SafeTrajectoryTruncationResult
 truncateTrajectoryBeforeBlocker(std::span<const TrajectoryPointSample> samples,
                                 const SafeTrajectoryTruncationRequest& request);

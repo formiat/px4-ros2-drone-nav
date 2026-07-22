@@ -49,6 +49,7 @@ struct Px4OffboardNodeConfig {
   double trajectory_update_max_start_cross_track_m{8.0};
   bool safe_trajectory_truncation_enabled{true};
   double safe_trajectory_truncation_margin_m{15.0};
+  double safe_trajectory_terminal_raw_clearance_m{5.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover{};
   TrajectoryContinuityThresholds trajectory_continuity{};
   double altitude_hold_kp{0.5};

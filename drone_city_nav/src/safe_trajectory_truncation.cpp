@@ -1,5 +1,7 @@
 #include "drone_city_nav/safe_trajectory_truncation.hpp"
 
+#include "drone_city_nav/clearance_field.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -11,6 +13,7 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr double kMinimumExecutablePrefixM = 0.5;
+constexpr double kMaximumClearanceSearchStepM = 0.5;
 constexpr std::uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
@@ -79,6 +82,39 @@ void hashValue(std::uint64_t& hash, const double value) noexcept {
   hash *= kFnvPrime;
 }
 
+[[nodiscard]] std::optional<double>
+selectClearTerminalStation(const std::span<const TrajectoryPointSample> samples,
+                           const OccupancyGrid2D& raw_obstacle_grid,
+                           const double current_s_m, const double nominal_stop_s_m,
+                           const double required_clearance_m,
+                           double& selected_clearance_m) {
+  const ClearanceField2D clearance_field = ClearanceField2D::build(
+      raw_obstacle_grid, required_clearance_m, ClearanceSource::kOccupied);
+  const double step_m = std::min(kMaximumClearanceSearchStepM,
+                                 std::max(0.1, raw_obstacle_grid.resolution()));
+  const double minimum_stop_s_m = current_s_m + kMinimumExecutablePrefixM;
+  const std::size_t search_steps = static_cast<std::size_t>(
+      std::max(0.0, std::ceil((nominal_stop_s_m - minimum_stop_s_m) / step_m)));
+  for (std::size_t step_index = 0U; step_index < search_steps; ++step_index) {
+    const double candidate_s_m =
+        nominal_stop_s_m - static_cast<double>(step_index) * step_m;
+    const TrajectoryPointSample candidate = sampleAtS(samples, candidate_s_m);
+    const std::optional<GridIndex> cell =
+        raw_obstacle_grid.worldToCell(candidate.point);
+    if (!cell.has_value() || raw_obstacle_grid.isOccupied(*cell) ||
+        !clearance_field.contains(*cell)) {
+      continue;
+    }
+    const double clearance_m = clearance_field.distanceAt(*cell);
+    if (clearance_m + kTinyDistanceM < required_clearance_m) {
+      continue;
+    }
+    selected_clearance_m = clearance_m;
+    return candidate_s_m;
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 SafeTrajectoryTruncationResult
@@ -92,7 +128,9 @@ truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> sam
   if (!std::isfinite(request.blocker_path_distance_m) ||
       request.blocker_path_distance_m < 0.0 ||
       !std::isfinite(request.truncation_margin_m) ||
-      request.truncation_margin_m < 0.0) {
+      request.truncation_margin_m < 0.0 ||
+      !std::isfinite(request.terminal_raw_clearance_m) ||
+      request.terminal_raw_clearance_m < 0.0) {
     result.reason = "request_invalid";
     return result;
   }
@@ -107,7 +145,23 @@ truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> sam
   result.current_s_m = projection->s_m;
   result.blocker_s_m =
       std::min(samples.back().s_m, projection->s_m + request.blocker_path_distance_m);
-  result.stop_s_m = result.blocker_s_m - request.truncation_margin_m;
+  result.nominal_stop_s_m = result.blocker_s_m - request.truncation_margin_m;
+  result.stop_s_m = result.nominal_stop_s_m;
+  if (request.raw_obstacle_grid != nullptr && request.terminal_raw_clearance_m > 0.0) {
+    const std::optional<double> clear_stop_s_m = selectClearTerminalStation(
+        samples, *request.raw_obstacle_grid, result.current_s_m,
+        result.nominal_stop_s_m, request.terminal_raw_clearance_m,
+        result.terminal_raw_clearance_m);
+    if (!clear_stop_s_m.has_value()) {
+      result.applied = true;
+      result.immediate_hold = true;
+      result.reason = "no_clear_stop_station_ahead";
+      return result;
+    }
+    result.stop_s_m = *clear_stop_s_m;
+    result.clearance_adjusted =
+        result.stop_s_m + kTinyDistanceM < result.nominal_stop_s_m;
+  }
   if (!(result.stop_s_m > result.current_s_m + kMinimumExecutablePrefixM)) {
     result.applied = true;
     result.immediate_hold = true;

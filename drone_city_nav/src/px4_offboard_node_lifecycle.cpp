@@ -18,6 +18,8 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
       config.trajectory_update_max_start_cross_track_m;
   safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
   safe_trajectory_truncation_margin_m_ = config.safe_trajectory_truncation_margin_m;
+  safe_trajectory_terminal_raw_clearance_m_ =
+      config.safe_trajectory_terminal_raw_clearance_m;
   trajectory_handover_config_ = config.trajectory_handover;
   trajectory_continuity_thresholds_ = config.trajectory_continuity;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;
@@ -220,10 +222,12 @@ Px4OffboardNode::Px4OffboardNode()
               velocity_follower_config_.no_static_speed_policy.passage_speed_limit_mps,
               velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
   RCLCPP_INFO(get_logger(),
-              "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s' "
-              "truncation_topic='%s' ack_topic='%s'",
+              "Safe trajectory truncation: enabled=%s margin=%.2fm "
+              "terminal_raw_clearance=%.2fm blocker_topic='%s' truncation_topic='%s' "
+              "ack_topic='%s'",
               safe_trajectory_truncation_enabled_ ? "true" : "false",
-              safe_trajectory_truncation_margin_m_, topics.replan_blocker.c_str(),
+              safe_trajectory_truncation_margin_m_,
+              safe_trajectory_terminal_raw_clearance_m_, topics.replan_blocker.c_str(),
               topics.replan_truncation.c_str(), topics.truncation_suffix_ack.c_str());
   RCLCPP_INFO(
       get_logger(),

@@ -578,6 +578,44 @@ Px4OffboardNode::currentProhibitedGrid() const {
   return grid;
 }
 
+[[nodiscard]] std::optional<OccupancyGrid2D>
+Px4OffboardNode::currentRawObstacleGrid() const {
+  if (!prohibited_grid_valid_ || !(prohibited_grid_.info.resolution > 0.0F) ||
+      prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U ||
+      prohibited_grid_.info.width >
+          static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+      prohibited_grid_.info.height >
+          static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+    return std::nullopt;
+  }
+
+  const auto width = static_cast<int>(prohibited_grid_.info.width);
+  const auto height = static_cast<int>(prohibited_grid_.info.height);
+  const std::size_t expected_data_size =
+      static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+  if (prohibited_grid_.data.size() != expected_data_size) {
+    return std::nullopt;
+  }
+
+  OccupancyGrid2D grid{GridBounds{
+      prohibited_grid_.info.origin.position.x, prohibited_grid_.info.origin.position.y,
+      static_cast<double>(prohibited_grid_.info.resolution), width, height}};
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      const GridIndex cell{x, y};
+      const std::size_t index =
+          static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+          static_cast<std::size_t>(x);
+      if (prohibited_grid_.data[index] == 100) {
+        grid.setOccupied(cell);
+      } else if (prohibited_grid_.data[index] >= 0) {
+        grid.setFree(cell);
+      }
+    }
+  }
+  return grid;
+}
+
 [[nodiscard]] double Px4OffboardNode::localPositionAgeSeconds() const {
   if (last_local_position_update_ns_ <= 0) {
     return std::numeric_limits<double>::infinity();

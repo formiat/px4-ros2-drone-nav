@@ -306,6 +306,7 @@ private:
   [[nodiscard]] bool localPositionFresh() const;
 
   [[nodiscard]] std::optional<OccupancyGrid2D> currentProhibitedGrid() const;
+  [[nodiscard]] std::optional<OccupancyGrid2D> currentRawObstacleGrid() const;
 
   [[nodiscard]] double localPositionAgeSeconds() const;
 
@@ -397,6 +398,7 @@ private:
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
   double safe_trajectory_truncation_margin_m_{15.0};
+  double safe_trajectory_terminal_raw_clearance_m_{5.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover_config_{};
   TrajectoryContinuityThresholds trajectory_continuity_thresholds_{};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};

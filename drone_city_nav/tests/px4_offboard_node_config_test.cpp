@@ -63,6 +63,8 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   config.trajectory_update_max_start_cross_track_m =
       std::numeric_limits<double>::infinity();
   config.safe_trajectory_truncation_margin_m = std::numeric_limits<double>::quiet_NaN();
+  config.safe_trajectory_terminal_raw_clearance_m =
+      std::numeric_limits<double>::quiet_NaN();
   config.trajectory_handover.prefix_time_s = std::numeric_limits<double>::quiet_NaN();
   config.trajectory_handover.min_prefix_distance_m = 12.0;
   config.trajectory_handover.max_prefix_distance_m = 4.0;
@@ -121,6 +123,7 @@ TEST(Px4OffboardNodeConfig, SanitizesTrajectoryRelatedConfig) {
   EXPECT_DOUBLE_EQ(config.command_resend_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_DOUBLE_EQ(config.safe_trajectory_truncation_margin_m, 15.0);
+  EXPECT_DOUBLE_EQ(config.safe_trajectory_terminal_raw_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.min_prefix_distance_m, 12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.max_prefix_distance_m, 12.0);
@@ -249,6 +252,7 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.trajectory_update_max_start_cross_track_m, 8.0);
   EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
   EXPECT_DOUBLE_EQ(config.safe_trajectory_truncation_margin_m, 15.0);
+  EXPECT_DOUBLE_EQ(config.safe_trajectory_terminal_raw_clearance_m, 5.0);
   EXPECT_TRUE(config.trajectory_handover.enabled);
   EXPECT_TRUE(config.trajectory_handover.require_validation_grid);
   EXPECT_DOUBLE_EQ(config.trajectory_handover.prefix_time_s, 0.6);
