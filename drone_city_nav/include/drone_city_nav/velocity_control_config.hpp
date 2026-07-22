@@ -9,6 +9,7 @@ struct NoStaticSpeedPolicyConfig {
   // enabled only when the launch selects lidar-only navigation.
   bool enabled{false};
   double max_speed_mps{10.0};
+  double passage_speed_limit_mps{5.0};
   double braking_decel_mps2{4.0};
 };
 

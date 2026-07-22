@@ -328,6 +328,40 @@ TEST(TrajectorySpeedPlanner, KnownPassageHardWindowCapsSpeedWithoutVerticalSlope
   EXPECT_NEAR(constraints.front().speed_limit_mps, 9.0, 1.0e-9);
 }
 
+TEST(TrajectorySpeedPlanner, NoStaticPassageUsesDedicatedLowerSpeedLimit) {
+  VelocityFollowerConfig config = testConfig();
+  config.cruise_speed_mps = 20.0;
+  config.known_passage_traversal_speed_limit_mps = 10.0;
+  config.no_static_speed_policy.enabled = true;
+  config.no_static_speed_policy.max_speed_mps = 10.0;
+  config.no_static_speed_policy.passage_speed_limit_mps = 5.0;
+  config.speed_profile_decel_mps2 = 100.0;
+
+  std::vector<TrajectoryPointSample> samples;
+  for (std::size_t i = 0U; i < 5U; ++i) {
+    TrajectoryPointSample sample{};
+    sample.s_m = static_cast<double>(i) * 5.0;
+    sample.point = Point2{sample.s_m, 0.0};
+    sample.tangent = Point2{1.0, 0.0};
+    sample.z_m = 10.0;
+    sample.vertical_hard_window_active = i >= 1U && i <= 3U;
+    samples.push_back(sample);
+  }
+
+  const TrajectorySpeedProfile no_static_profile =
+      buildTrajectorySpeedProfile(samples, config);
+  ASSERT_TRUE(no_static_profile.valid);
+  EXPECT_NEAR(speedProfileSampleAtS(no_static_profile, 10.0).geometric_limit_mps, 5.0,
+              1.0e-9);
+
+  config.no_static_speed_policy.enabled = false;
+  const TrajectorySpeedProfile static_profile =
+      buildTrajectorySpeedProfile(samples, config);
+  ASSERT_TRUE(static_profile.valid);
+  EXPECT_NEAR(speedProfileSampleAtS(static_profile, 10.0).geometric_limit_mps, 10.0,
+              1.0e-9);
+}
+
 TEST(TrajectorySpeedPlanner, SpeedProfileSampleInterpolatesBetweenSamples) {
   const TrajectorySpeedSample sample = speedProfileSampleAtS(simpleProfile(), 4.0);
 

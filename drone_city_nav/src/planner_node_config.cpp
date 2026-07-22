@@ -49,6 +49,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   no_static_speed_policy.enabled = !config.static_map.enabled;
   no_static_speed_policy.max_speed_mps = std::clamp(
       node.declare_parameter<double>("no_static_max_speed_mps", 10.0), 0.0, 100.0);
+  no_static_speed_policy.passage_speed_limit_mps = std::clamp(
+      node.declare_parameter<double>("no_static_passage_speed_limit_mps", 5.0), 0.0,
+      100.0);
   no_static_speed_policy.braking_decel_mps2 = std::clamp(
       node.declare_parameter<double>("no_static_braking_decel_mps2", 4.0), 0.0, 100.0);
   config.static_map.configured_path = node.declare_parameter<std::string>(

@@ -211,6 +211,9 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       node.declare_parameter<bool>("no_static_speed_policy_enabled", false);
   no_static_speed_policy.max_speed_mps = std::clamp(
       node.declare_parameter<double>("no_static_max_speed_mps", 10.0), 0.0, 100.0);
+  no_static_speed_policy.passage_speed_limit_mps = std::clamp(
+      node.declare_parameter<double>("no_static_passage_speed_limit_mps", 5.0), 0.0,
+      100.0);
   no_static_speed_policy.braking_decel_mps2 = std::clamp(
       node.declare_parameter<double>("no_static_braking_decel_mps2", 4.0), 0.0, 100.0);
   config.velocity_follower.min_turn_speed_mps =

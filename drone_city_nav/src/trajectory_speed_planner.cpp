@@ -36,6 +36,19 @@ constexpr double kTinyDistanceM = 1.0e-6;
 }
 
 [[nodiscard]] double
+effectivePassageSpeedLimitMps(const VelocityFollowerConfig& config) {
+  const double configured_limit = sanitizedPositive(
+      config.known_passage_traversal_speed_limit_mps, 10.0, 0.0, 100.0);
+  if (!config.no_static_speed_policy.enabled) {
+    return configured_limit;
+  }
+  return std::min(
+      configured_limit,
+      sanitizedPositive(config.no_static_speed_policy.passage_speed_limit_mps, 5.0, 0.0,
+                        100.0));
+}
+
+[[nodiscard]] double
 effectiveSpeedProfileAccelMps2(const VelocityFollowerConfig& config) {
   return sanitizedPositive(config.speed_profile_accel_mps2, 7.0, 1.0e-6, 100.0);
 }
@@ -417,10 +430,7 @@ void populateTrajectoryVerticalSpeedConstraints(
   const double max_jerk = sanitizedPositive(
       config.vertical_profile_max_vertical_jerk_mps3, 9.0, 1.0e-6, 1000.0);
   const double passage_speed_limit_mps =
-      std::clamp(std::isfinite(config.known_passage_traversal_speed_limit_mps)
-                     ? config.known_passage_traversal_speed_limit_mps
-                     : 0.0,
-                 0.0, sanitizedCruiseSpeed(config));
+      std::min(effectivePassageSpeedLimitMps(config), sanitizedCruiseSpeed(config));
 
   std::vector<double> slopes(samples.size(), 0.0);
   for (std::size_t i = 0U; i < samples.size(); ++i) {

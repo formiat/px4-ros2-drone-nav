@@ -175,6 +175,8 @@ TEST_F(Px4OffboardNodeConfigTest, LoadsDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.velocity_follower.min_turn_speed_mps, 2.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.known_passage_traversal_speed_limit_mps,
                    10.0);
+  EXPECT_DOUBLE_EQ(
+      config.velocity_follower.no_static_speed_policy.passage_speed_limit_mps, 5.0);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_climb_speed_mps, 3.2);
   EXPECT_DOUBLE_EQ(config.velocity_follower.vertical_profile_max_descent_speed_mps,
                    3.2);

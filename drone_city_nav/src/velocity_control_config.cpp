@@ -24,7 +24,7 @@ void mixDouble(std::uint64_t& hash, const double value) noexcept {
 std::uint64_t speedProfileConstructionConfigFingerprint(
     const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 14U> values{
+  const std::array<double, 15U> values{
       config.cruise_speed_mps,
       config.min_turn_speed_mps,
       config.known_passage_traversal_speed_limit_mps,
@@ -38,6 +38,7 @@ std::uint64_t speedProfileConstructionConfigFingerprint(
       config.vertical_profile_max_climb_angle_rad,
       config.speed_profile_sample_step_m,
       config.no_static_speed_policy.max_speed_mps,
+      config.no_static_speed_policy.passage_speed_limit_mps,
       config.no_static_speed_policy.braking_decel_mps2,
   };
   for (const double value : values) {
@@ -50,7 +51,7 @@ std::uint64_t speedProfileConstructionConfigFingerprint(
 std::uint64_t
 runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexcept {
   std::uint64_t hash = kFnvOffsetBasis;
-  const std::array<double, 15U> values{
+  const std::array<double, 16U> values{
       config.cruise_speed_mps,
       config.speed_profile_decel_mps2,
       config.setpoint_forward_accel_mps2,
@@ -65,6 +66,7 @@ runtimeSpeedPolicyConfigFingerprint(const VelocityFollowerConfig& config) noexce
       config.vertical_trackability_response_time_s,
       config.vertical_trackability_min_speed_mps,
       config.no_static_speed_policy.max_speed_mps,
+      config.no_static_speed_policy.passage_speed_limit_mps,
       config.no_static_speed_policy.braking_decel_mps2,
   };
   for (const double value : values) {

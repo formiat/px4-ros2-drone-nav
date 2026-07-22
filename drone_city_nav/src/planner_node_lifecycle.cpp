@@ -229,10 +229,13 @@ PlannerNode::PlannerNode()
       fallback_grid_bounds_.origin_x, fallback_grid_bounds_.origin_y);
   RCLCPP_INFO(
       get_logger(),
-      "No-static speed policy: enabled=%s max_speed=%.2fmps braking_decel=%.2fmps2",
+      "No-static speed policy: enabled=%s max_speed=%.2fmps "
+      "passage_speed_limit=%.2fmps braking_decel=%.2fmps2",
       trajectory_planner_config_.speed_profile.no_static_speed_policy.enabled ? "true"
                                                                               : "false",
       trajectory_planner_config_.speed_profile.no_static_speed_policy.max_speed_mps,
+      trajectory_planner_config_.speed_profile.no_static_speed_policy
+          .passage_speed_limit_mps,
       trajectory_planner_config_.speed_profile.no_static_speed_policy
           .braking_decel_mps2);
   RCLCPP_INFO(get_logger(),

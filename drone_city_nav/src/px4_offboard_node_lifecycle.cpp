@@ -211,12 +211,14 @@ Px4OffboardNode::Px4OffboardNode()
       static_cast<double>(telemetry_log_period_ns_) / 1.0e9,
       flight_blackbox_enabled_ ? "true" : "false", flight_blackbox_path_.c_str(),
       static_cast<double>(max_pose_staleness_ns_) / 1.0e9, command_resend_period_s_);
-  RCLCPP_INFO(
-      get_logger(),
-      "No-static speed policy: enabled=%s max_speed=%.2fmps braking_decel=%.2fmps2",
-      velocity_follower_config_.no_static_speed_policy.enabled ? "true" : "false",
-      velocity_follower_config_.no_static_speed_policy.max_speed_mps,
-      velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
+  RCLCPP_INFO(get_logger(),
+              "No-static speed policy: enabled=%s max_speed=%.2fmps "
+              "passage_speed_limit=%.2fmps braking_decel=%.2fmps2",
+              velocity_follower_config_.no_static_speed_policy.enabled ? "true"
+                                                                       : "false",
+              velocity_follower_config_.no_static_speed_policy.max_speed_mps,
+              velocity_follower_config_.no_static_speed_policy.passage_speed_limit_mps,
+              velocity_follower_config_.no_static_speed_policy.braking_decel_mps2);
   RCLCPP_INFO(get_logger(),
               "Safe trajectory truncation: enabled=%s margin=%.2fm blocker_topic='%s' "
               "truncation_topic='%s' ack_topic='%s'",

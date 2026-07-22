@@ -125,6 +125,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("known_passage_traversal_speed_limit_mps: 10.0"),
             std::string::npos);
+  EXPECT_NE(yaml.find("no_static_passage_speed_limit_mps: 5.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_enabled: true"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_sample_step_m: 1.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_min_anchor_margin_m: 8.0"), std::string::npos);
