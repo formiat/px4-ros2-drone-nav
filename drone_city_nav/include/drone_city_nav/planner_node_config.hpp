@@ -4,6 +4,7 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/path_raw_clearance_monitor.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/static_map_source.hpp"
@@ -95,6 +96,7 @@ struct PlannerNodeConfig {
   double known_static_opening_boundary_tolerance_m{0.30};
   GroundLidarRejectionConfig ground_lidar_rejection{};
   bool safe_trajectory_truncation_enabled{true};
+  PathRawClearanceMonitorConfig path_raw_clearance_monitor{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

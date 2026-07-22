@@ -226,6 +226,12 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     return false;
   }
 
+  if (path_raw_clearance_monitor_path_id_ != last_published_path_id_) {
+    path_raw_clearance_monitor_path_id_ = last_published_path_id_;
+    path_raw_clearance_armed_ = false;
+    path_raw_clearance_triggered_ = false;
+  }
+
   const StablePathDecision decision = planner_core_.evaluateStablePath(
       grid, last_valid_path_points_, current_pose_.position, goal_);
   if (stablePathRuntimeAction(decision.reason) == StablePathRuntimeAction::kRunAStar &&
@@ -351,6 +357,107 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         delivery.blocker_detection_velocity_valid ? "true" : "false",
         delivery.blocker_position.x, delivery.blocker_position.y);
     return awaiting_truncation_confirmation;
+  }
+
+  if (safe_trajectory_truncation_enabled_ && planning_result.raw_grid.has_value() &&
+      !path_raw_clearance_triggered_) {
+    const PathRawClearanceEvaluation clearance =
+        evaluatePathRawClearance(*planning_result.raw_grid, decision.remaining_path,
+                                 path_raw_clearance_monitor_config_);
+    if (clearance.valid && clearance.current_position_arms &&
+        !path_raw_clearance_armed_) {
+      path_raw_clearance_armed_ = true;
+      RCLCPP_INFO(get_logger(),
+                  "PATH_RAW_CLEARANCE armed=true path_id=%" PRIu64
+                  " current_clearance=%.2fm arm_threshold=%.2fm",
+                  last_published_path_id_, clearance.current_clearance_m,
+                  path_raw_clearance_monitor_config_.arm_clearance_m);
+    }
+    if (clearance.valid && path_raw_clearance_armed_ && clearance.violation.detected) {
+      const std::int64_t blocker_detected_stamp_ns = get_clock()->now().nanoseconds();
+      const Point2 blocker_position = clearance.violation.nearest_raw_cell_available
+                                          ? clearance.violation.nearest_raw_cell_center
+                                          : clearance.violation.entry_point;
+      TrajectoryDeliveryDiagnostics delivery{
+          .generation = trajectory_generation_ + 1U,
+          .blocker_detected_stamp_ns =
+              blocker_detected_stamp_ns > 0
+                  ? static_cast<std::uint64_t>(blocker_detected_stamp_ns)
+                  : 0U,
+          .replan_triggered = true,
+          .blocker_position = blocker_position,
+          .blocker_detection_position = current_pose_.position,
+          .blocker_detection_velocity = current_velocity_,
+          .blocker_detection_velocity_valid = current_velocity_valid_,
+      };
+      ++prohibited_replans_;
+      bool awaiting_truncation_confirmation = false;
+      if (replan_blocker_pub_ != nullptr) {
+        const std::optional<std::uint64_t> truncation_generation =
+            beginTruncationReplan(last_published_path_id_);
+        if (truncation_generation.has_value()) {
+          path_raw_clearance_triggered_ = true;
+          delivery.blocked_path_id = last_published_path_id_;
+          delivery.truncation_generation = *truncation_generation;
+          pending_replan_delivery_ = delivery;
+          msg::ReplanBlockerEvent event;
+          event.header = makePlannerHeader();
+          event.blocked_path_id = last_published_path_id_;
+          event.truncation_generation = *truncation_generation;
+          event.memory_snapshot_sequence = last_memory_snapshot_applied_sequence_;
+          event.blocker_position.x = blocker_position.x;
+          event.blocker_position.y = blocker_position.y;
+          event.blocker_position.z = 0.0;
+          event.detection_position.x = current_pose_.position.x;
+          event.detection_position.y = current_pose_.position.y;
+          event.detection_position.z = 0.0;
+          event.detection_velocity.x = current_velocity_.x;
+          event.detection_velocity.y = current_velocity_.y;
+          event.detection_velocity.z = 0.0;
+          event.blocker_path_distance_m = clearance.violation.entry_distance_m;
+          event.detection_velocity_valid = current_velocity_valid_;
+          std::ostringstream source;
+          source << "path_raw_clearance[min=" << clearance.violation.min_clearance_m
+                 << "m trigger="
+                 << path_raw_clearance_monitor_config_.trigger_clearance_m
+                 << "m violation_length=" << clearance.violation.length_m
+                 << "m nearest_cell=(";
+          if (clearance.violation.nearest_raw_cell_available) {
+            source << clearance.violation.nearest_raw_cell.x << ", "
+                   << clearance.violation.nearest_raw_cell.y;
+          } else {
+            source << "-1, -1";
+          }
+          source << ")]";
+          event.source = source.str();
+          replan_blocker_pub_->publish(event);
+          awaiting_truncation_confirmation = true;
+          RCLCPP_WARN(
+              get_logger(),
+              "SAFE_TRAJECTORY_TRUNCATION event_published=true "
+              "trigger=path_raw_clearance path_id=%" PRIu64 " generation=%" PRIu64
+              " current_s=0.00 violation_entry_s=%.2f violation_length=%.2f "
+              "min_raw_clearance=%.2f nearest_raw_cell=(%d,%d) "
+              "distance_to_violation=%.2f clearance_armed=%s memory_sequence=%" PRIu64,
+              event.blocked_path_id, event.truncation_generation,
+              clearance.violation.entry_distance_m, clearance.violation.length_m,
+              clearance.violation.min_clearance_m,
+              clearance.violation.nearest_raw_cell_available
+                  ? clearance.violation.nearest_raw_cell.x
+                  : -1,
+              clearance.violation.nearest_raw_cell_available
+                  ? clearance.violation.nearest_raw_cell.y
+                  : -1,
+              clearance.violation.entry_distance_m,
+              path_raw_clearance_armed_ ? "true" : "false",
+              event.memory_snapshot_sequence);
+        }
+      }
+      if (!awaiting_truncation_confirmation) {
+        pending_replan_delivery_ = delivery;
+      }
+      return awaiting_truncation_confirmation;
+    }
   }
 
   last_valid_path_points_ = decision.remaining_path;

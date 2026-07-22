@@ -157,6 +157,7 @@ buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
       occupied_distance_field, inflation_radius_m + planning_clearance_m);
 
   result.status = PlanningGridStatus::kReady;
+  result.raw_grid = std::move(raw_grid);
   result.grid = std::move(prohibited_grid);
   result.planning_grid = std::move(planning_grid);
   return result;
@@ -315,6 +316,7 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
   }
 
   result.status = PlanningGridStatus::kReady;
+  result.raw_grid = std::move(raw_grid);
   result.grid = std::move(prohibited_grid);
   result.planning_grid = std::move(planning_grid);
   return result;

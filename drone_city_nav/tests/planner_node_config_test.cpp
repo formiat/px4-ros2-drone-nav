@@ -164,6 +164,10 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.executable_trajectory,
             "/drone_city_nav/executable_trajectory");
   EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
+  EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.trigger_clearance_m, 5.0);
+  EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.arm_clearance_m, 5.5);
+  EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.min_violation_length_m, 2.0);
+  EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.sample_step_m, 0.5);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 1.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);
