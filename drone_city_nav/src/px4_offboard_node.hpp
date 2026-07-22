@@ -169,7 +169,8 @@ private:
       std::uint64_t candidate_path_stamp_ns, std::size_t candidate_path_points,
       std::int64_t path_receive_stamp_ns,
       const HorizontalTrajectoryHandoverResult& horizontal_handover,
-      const TrajectoryDeliveryDiagnostics* delivery) const;
+      const TrajectoryDeliveryDiagnostics* delivery,
+      bool delivery_timing_applicable = true) const;
 
   [[nodiscard]] TrajectoryContinuityResult
   evaluateReceivedTrajectoryContinuity(const OffboardTrajectoryState& state) const;

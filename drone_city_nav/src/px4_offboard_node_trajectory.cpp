@@ -206,7 +206,8 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
     const std::uint64_t candidate_path_stamp_ns,
     const std::size_t candidate_path_points, const std::int64_t path_receive_stamp_ns,
     const HorizontalTrajectoryHandoverResult& horizontal_handover,
-    const TrajectoryDeliveryDiagnostics* const delivery) const {
+    const TrajectoryDeliveryDiagnostics* const delivery,
+    const bool delivery_timing_applicable) const {
   if (!state.valid || state.samples.empty() || !localPositionFresh()) {
     return true;
   }
@@ -218,8 +219,12 @@ bool Px4OffboardNode::receivedFinalTrajectoryIsFreshEnough(
 
   const std::optional<TrajectoryProjection> projection =
       projectOnTrajectorySamples(state.samples, current_position_);
-  const std::string delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
-      delivery, candidate_path_stamp_ns, path_receive_stamp_ns, current_position_);
+  const std::string delivery_diagnostic =
+      delivery_timing_applicable
+          ? formatTrajectoryDeliveryAtReceive(delivery, candidate_path_stamp_ns,
+                                              path_receive_stamp_ns, current_position_)
+          : "delivery[available=false event=pending_suffix_activated "
+            "timing_applicable=false]";
   const std::string handover_diagnostic =
       formatHorizontalHandoverDiagnostic(horizontal_handover);
   if (!projection.has_value()) {
@@ -470,13 +475,15 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
   msg::ExecutableTrajectory command = std::move(*pending_truncation_suffix_);
   pending_truncation_suffix_.reset();
   RCLCPP_INFO(get_logger(),
-              "REPLAN_TRUNCATION suffix_activation=%s activating pending suffix: "
-              "path_id=%" PRIu64 " generation=%" PRIu64
-              " current=(%.2f,%.2f) join=(%.2f,%.2f) "
+              "REPLAN_DELIVERY event=pending_suffix_activated suffix_activation=%s "
+              "path_id=%" PRIu64 " generation=%" PRIu64 " path_stamp_ns=%" PRIu64
+              " activation_stamp_ns=%" PRId64 " current=(%.2f,%.2f) join=(%.2f,%.2f) "
               "distance=%.3fm",
               truncationSuffixActivationModeName(*activation_mode), command.path_id,
-              command.truncation_generation, current_position_.x, current_position_.y,
-              active_truncation_terminal_sample_.point.x,
+              command.truncation_generation,
+              messageStampNanoseconds(command.path.header.stamp),
+              get_clock()->now().nanoseconds(), current_position_.x,
+              current_position_.y, active_truncation_terminal_sample_.point.x,
               active_truncation_terminal_sample_.point.y, join_distance_m);
   processExecutableTrajectory(command, true);
 }
@@ -497,15 +504,17 @@ void Px4OffboardNode::processExecutableTrajectory(
   latest_planner_path_id_seen_ = command.path_id != 0U;
   const std::uint64_t candidate_path_stamp_ns =
       messageStampNanoseconds(path.header.stamp);
-  recent_path_receipts_.push_back(PathReceiptDiagnostic{
-      .path_stamp_ns = candidate_path_stamp_ns,
-      .receive_stamp_ns = path_receive_stamp_ns,
-      .position = current_position_,
-      .point_count = path.poses.size(),
-  });
-  constexpr std::size_t kMaxRecentPathReceipts{8U};
-  if (recent_path_receipts_.size() > kMaxRecentPathReceipts) {
-    recent_path_receipts_.erase(recent_path_receipts_.begin());
+  if (!pending_retry) {
+    recent_path_receipts_.push_back(PathReceiptDiagnostic{
+        .path_stamp_ns = candidate_path_stamp_ns,
+        .receive_stamp_ns = path_receive_stamp_ns,
+        .position = current_position_,
+        .point_count = path.poses.size(),
+    });
+    constexpr std::size_t kMaxRecentPathReceipts{8U};
+    if (recent_path_receipts_.size() > kMaxRecentPathReceipts) {
+      recent_path_receipts_.erase(recent_path_receipts_.begin());
+    }
   }
   callback_duration.setTrajectoryIdentity(latest_planner_path_id_,
                                           candidate_path_stamp_ns);
@@ -618,16 +627,19 @@ void Px4OffboardNode::processExecutableTrajectory(
     candidate_diagnostics = &*latest_trajectory_diagnostics_;
     candidate_planner_stats = &latest_trajectory_diagnostics_->stats;
   }
-  const std::string path_delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
-      candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery : nullptr,
-      candidate_path_stamp_ns, path_receive_stamp_ns, current_position_);
-  RCLCPP_INFO(get_logger(),
-              "REPLAN_DELIVERY event=path_received local_path_update_id=%" PRIu64
-              " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
-              " path_receive_stamp_ns=%" PRId64 " points=%zu %s",
-              candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
-              path_receive_stamp_ns, candidate_path_points.size(),
-              path_delivery_diagnostic.c_str());
+  if (!pending_retry) {
+    const std::string path_delivery_diagnostic = formatTrajectoryDeliveryAtReceive(
+        candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery : nullptr,
+        candidate_path_stamp_ns, path_receive_stamp_ns, current_position_);
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_DELIVERY event=%s local_path_update_id=%" PRIu64
+                " planner_path_id=%" PRIu64 " path_stamp_ns=%" PRIu64
+                " path_receive_stamp_ns=%" PRId64 " points=%zu %s",
+                command.truncation_suffix ? "suffix_received" : "path_received",
+                candidate_update_id, latest_planner_path_id_, candidate_path_stamp_ns,
+                path_receive_stamp_ns, candidate_path_points.size(),
+                path_delivery_diagnostic.c_str());
+  }
   OffboardTrajectoryState candidate_state = buildOffboardTrajectoryState(
       candidate_path_samples, velocity_follower_config_, candidate_planner_stats);
   HorizontalTrajectoryHandoverResult horizontal_handover{};
@@ -708,12 +720,24 @@ void Px4OffboardNode::processExecutableTrajectory(
         vertical_pre_alignment && !vertical_pre_alignment_captured_;
     if (!pending_retry && (wait_for_terminal_hold || wait_for_moving_join ||
                            wait_for_vertical_pre_alignment)) {
+      const char* pending_reason = "waiting_for_join_point";
+      if (wait_for_terminal_hold) {
+        pending_reason = "waiting_for_terminal_hold";
+      } else if (wait_for_vertical_pre_alignment) {
+        pending_reason = "waiting_for_altitude_capture";
+      }
       const bool replaced = pending_truncation_suffix_.has_value();
       if (replaced) {
         resetVerticalPreAlignment();
       }
       pending_truncation_suffix_ = command;
       callback_duration.setOutcome("truncation_suffix_pending");
+      RCLCPP_INFO(
+          get_logger(),
+          "REPLAN_DELIVERY event=suffix_pending path_id=%" PRIu64 " generation=%" PRIu64
+          " path_stamp_ns=%" PRIu64 " pending_stamp_ns=%" PRId64 " reason=%s",
+          command.path_id, command.truncation_generation, candidate_path_stamp_ns,
+          get_clock()->now().nanoseconds(), pending_reason);
       RCLCPP_INFO(
           get_logger(),
           "REPLAN_TRUNCATION suffix_activation=%s suffix pending: path_id=%" PRIu64
@@ -726,12 +750,6 @@ void Px4OffboardNode::processExecutableTrajectory(
           active_truncation_terminal_sample_.point.y, current_join_distance_m,
           replaced ? "true" : "false", join_validation.position_jump_m,
           join_validation.tangent_jump_rad, join_validation.altitude_jump_m);
-      const char* pending_reason = "waiting_for_join_point";
-      if (wait_for_terminal_hold) {
-        pending_reason = "waiting_for_terminal_hold";
-      } else if (wait_for_vertical_pre_alignment) {
-        pending_reason = "waiting_for_altitude_capture";
-      }
       publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
                                  pending_reason);
       return;
@@ -854,8 +872,8 @@ void Px4OffboardNode::processExecutableTrajectory(
   if (!receivedFinalTrajectoryIsFreshEnough(
           candidate_state, candidate_update_id, candidate_path_stamp_ns,
           candidate_path_points.size(), path_receive_stamp_ns, horizontal_handover,
-          candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery
-                                           : nullptr)) {
+          candidate_diagnostics != nullptr ? &candidate_diagnostics->delivery : nullptr,
+          !pending_retry)) {
     callback_duration.setOutcome("stale_rejected");
     publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
                                "stale_trajectory");
