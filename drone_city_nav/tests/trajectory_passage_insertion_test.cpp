@@ -377,7 +377,7 @@ TEST(TrajectoryPassageInsertion, CapturesInflationOnlyBlockedSegment) {
   EXPECT_TRUE(diagnostic.blocked_segment.inflated);
 }
 
-TEST(TrajectoryPassageInsertion, RejectsCandidateOnJoinTangentDelta) {
+TEST(TrajectoryPassageInsertion, AcceptsJoinTangentExcessAsDegraded) {
   const OccupancyGrid2D grid = makeGrid();
   const KnownPassageMap map = makeMap();
   const std::vector<TrajectoryPointSample> samples = makeLineSamples(4.0);
@@ -388,9 +388,12 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnJoinTangentDelta) {
       samples, grid, &map, KnownPassageValidationConfig{}, config, 10.0);
 
   ASSERT_TRUE(result.valid);
-  EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.applied);
   EXPECT_TRUE(result.repair_required);
-  EXPECT_FALSE(result.repair_satisfied);
+  EXPECT_TRUE(result.repair_satisfied);
+  EXPECT_EQ(result.quality, PassageInsertionQuality::kDegradedJoin);
+  EXPECT_TRUE(result.physical_constraints_satisfied);
+  EXPECT_FALSE(result.strict_constraints_satisfied);
   EXPECT_GT(result.stats.rejected_join, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,
@@ -428,7 +431,8 @@ TEST(TrajectoryPassageInsertion, TerminalHoldRestartRelaxesOnlyInitialJoin) {
       insertLocalPassageSegments(samples, grid, &map, KnownPassageValidationConfig{},
                                  config, 10.0, PassageInsertionStartMode::kMovingJoin);
   ASSERT_TRUE(moving.valid);
-  EXPECT_FALSE(moving.applied);
+  EXPECT_TRUE(moving.applied);
+  EXPECT_EQ(moving.quality, PassageInsertionQuality::kDegradedJoin);
   EXPECT_TRUE(moving.hold_restart_recommended);
   ASSERT_FALSE(moving.stats.diagnostics.empty());
   EXPECT_TRUE(moving.stats.diagnostics.front().start_is_anchor);
@@ -440,6 +444,7 @@ TEST(TrajectoryPassageInsertion, TerminalHoldRestartRelaxesOnlyInitialJoin) {
   ASSERT_TRUE(after_hold.valid);
   EXPECT_TRUE(after_hold.applied);
   EXPECT_TRUE(after_hold.repair_satisfied);
+  EXPECT_EQ(after_hold.quality, PassageInsertionQuality::kStrict);
   ASSERT_FALSE(after_hold.stats.diagnostics.empty());
   EXPECT_TRUE(after_hold.stats.diagnostics.front().start_is_anchor);
   EXPECT_FALSE(after_hold.stats.diagnostics.front().initial_join_checked);
@@ -449,7 +454,7 @@ TEST(TrajectoryPassageInsertion, TerminalHoldRestartRelaxesOnlyInitialJoin) {
       std::isnan(after_hold.stats.diagnostics.front().join_tangent_delta_before_rad));
 }
 
-TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
+TEST(TrajectoryPassageInsertion, AcceptsCurvatureJumpAsDegraded) {
   const OccupancyGrid2D grid = makeGrid();
   const KnownPassageMap map = makeMap();
   const std::vector<TrajectoryPointSample> samples = makeLineSamples(4.0);
@@ -461,9 +466,12 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
       samples, grid, &map, KnownPassageValidationConfig{}, config, 10.0);
 
   ASSERT_TRUE(result.valid);
-  EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.applied);
   EXPECT_TRUE(result.repair_required);
-  EXPECT_FALSE(result.repair_satisfied);
+  EXPECT_TRUE(result.repair_satisfied);
+  EXPECT_EQ(result.quality, PassageInsertionQuality::kDegradedJoin);
+  EXPECT_TRUE(result.physical_constraints_satisfied);
+  EXPECT_FALSE(result.strict_constraints_satisfied);
   EXPECT_GT(result.stats.rejected_join, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,
@@ -472,7 +480,7 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateOnCurvatureJump) {
   EXPECT_GT(result.stats.diagnostics.front().solid_validation.volumes_checked, 0U);
 }
 
-TEST(TrajectoryPassageInsertion, RejectsCandidateBelowMinimumInsertedRadius) {
+TEST(TrajectoryPassageInsertion, AcceptsRadiusShortfallAsDegraded) {
   const OccupancyGrid2D grid = makeGrid();
   const KnownPassageMap map = makeMap();
   const std::vector<TrajectoryPointSample> samples = makeLineSamples(4.0);
@@ -485,7 +493,11 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateBelowMinimumInsertedRadius) {
       samples, grid, &map, KnownPassageValidationConfig{}, config, 10.0);
 
   ASSERT_TRUE(result.valid);
-  EXPECT_FALSE(result.applied);
+  EXPECT_TRUE(result.applied);
+  EXPECT_TRUE(result.repair_satisfied);
+  EXPECT_EQ(result.quality, PassageInsertionQuality::kDegradedJoin);
+  EXPECT_TRUE(result.physical_constraints_satisfied);
+  EXPECT_FALSE(result.strict_constraints_satisfied);
   EXPECT_GT(result.stats.rejected_join, 0U);
   ASSERT_FALSE(result.stats.diagnostics.empty());
   EXPECT_EQ(result.stats.diagnostics.front().reason,

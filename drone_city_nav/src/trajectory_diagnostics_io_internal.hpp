@@ -636,6 +636,17 @@ parsePassageInsertionRejectReasonName(const std::string_view value) {
   return PassageInsertionRejectReason::kNone;
 }
 
+[[nodiscard]] inline PassageInsertionQuality
+parsePassageInsertionQualityName(const std::string_view value) {
+  if (value == passageInsertionQualityName(PassageInsertionQuality::kStrict)) {
+    return PassageInsertionQuality::kStrict;
+  }
+  if (value == passageInsertionQualityName(PassageInsertionQuality::kDegradedJoin)) {
+    return PassageInsertionQuality::kDegradedJoin;
+  }
+  return PassageInsertionQuality::kNone;
+}
+
 inline std::string
 passageInsertionDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   const PassageInsertionStats& insertion = stats.passage_insertion;
@@ -643,6 +654,12 @@ passageInsertionDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& stats) {
   stream << std::setprecision(9);
   stream << "\"passage_insertion_enabled\":" << (insertion.enabled ? "true" : "false");
   appendJsonBool(stream, "passage_insertion_applied", insertion.applied);
+  appendJsonString(stream, "passage_insertion_quality",
+                   passageInsertionQualityName(insertion.quality));
+  appendJsonBool(stream, "passage_insertion_physical_constraints_satisfied",
+                 insertion.physical_constraints_satisfied);
+  appendJsonBool(stream, "passage_insertion_strict_constraints_satisfied",
+                 insertion.strict_constraints_satisfied);
   appendJsonBool(stream, "passage_insertion_repair_required",
                  insertion.repair_required);
   appendJsonBool(stream, "passage_insertion_repair_satisfied",

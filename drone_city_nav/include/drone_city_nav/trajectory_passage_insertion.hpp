@@ -19,6 +19,15 @@ enum class PassageInsertionStartMode {
   kTerminalHoldRestart,
 };
 
+enum class PassageInsertionQuality {
+  kNone,
+  kStrict,
+  kDegradedJoin,
+};
+
+[[nodiscard]] const char*
+passageInsertionQualityName(PassageInsertionQuality quality) noexcept;
+
 [[nodiscard]] const char*
 passageInsertionStartModeName(PassageInsertionStartMode mode) noexcept;
 
@@ -121,6 +130,9 @@ struct PassageInsertionStats {
   std::size_t rejected_geometry{0U};
   std::size_t diagnostics_dropped{0U};
   PassageInsertionRejectReason final_reason{PassageInsertionRejectReason::kDisabled};
+  PassageInsertionQuality quality{PassageInsertionQuality::kNone};
+  bool physical_constraints_satisfied{false};
+  bool strict_constraints_satisfied{false};
   std::vector<PassageInsertionDiagnostic> diagnostics;
 };
 
@@ -132,6 +144,9 @@ struct PassageInsertionResult {
   bool repair_satisfied{false};
   bool applied{false};
   bool hold_restart_recommended{false};
+  PassageInsertionQuality quality{PassageInsertionQuality::kNone};
+  bool physical_constraints_satisfied{false};
+  bool strict_constraints_satisfied{false};
 };
 
 [[nodiscard]] const char*

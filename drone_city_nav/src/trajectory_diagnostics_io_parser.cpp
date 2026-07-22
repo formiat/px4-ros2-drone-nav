@@ -230,6 +230,15 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   PassageInsertionStats& passage_insertion = envelope.stats.passage_insertion;
   parseJsonBool(json, "passage_insertion_enabled", passage_insertion.enabled);
   parseJsonBool(json, "passage_insertion_applied", passage_insertion.applied);
+  if (const std::optional<std::string_view> quality =
+          jsonValueForKey(json, "passage_insertion_quality");
+      quality.has_value()) {
+    passage_insertion.quality = parsePassageInsertionQualityName(*quality);
+  }
+  parseJsonBool(json, "passage_insertion_physical_constraints_satisfied",
+                passage_insertion.physical_constraints_satisfied);
+  parseJsonBool(json, "passage_insertion_strict_constraints_satisfied",
+                passage_insertion.strict_constraints_satisfied);
   parseJsonBool(json, "passage_insertion_repair_required",
                 passage_insertion.repair_required);
   parseJsonBool(json, "passage_insertion_repair_satisfied",

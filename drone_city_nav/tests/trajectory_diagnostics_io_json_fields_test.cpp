@@ -156,6 +156,12 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"passage_insertion_repair_required\":true"), std::string::npos);
   EXPECT_NE(json.find("\"passage_insertion_repair_satisfied\":true"),
             std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_quality\":\"degraded_join\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_physical_constraints_satisfied\":true"),
+            std::string::npos);
+  EXPECT_NE(json.find("\"passage_insertion_strict_constraints_satisfied\":false"),
+            std::string::npos);
   EXPECT_NE(json.find("\"passage_insertion_candidates\":3"), std::string::npos);
   EXPECT_NE(json.find("\"passage_insertion_inserted_count\":1"), std::string::npos);
   EXPECT_NE(json.find("\"passage_insertion_rejected_join\":1"), std::string::npos);

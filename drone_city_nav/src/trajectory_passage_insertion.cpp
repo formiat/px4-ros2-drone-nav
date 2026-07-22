@@ -9,6 +9,7 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <tuple>
 #include <utility>
 
 namespace drone_city_nav {
@@ -191,8 +192,8 @@ candidateMargins(const PassageOpening& opening, const PassageInsertionConfig& co
         std::min(config.max_anchor_margin_m, baseline_anchor + extra_m);
     const double reconnect_m =
         std::min(config.max_anchor_margin_m, baseline_reconnect + extra_m);
-    append_unique(CandidateMargins{anchor_m, baseline_reconnect});
     append_unique(CandidateMargins{baseline_anchor, reconnect_m});
+    append_unique(CandidateMargins{anchor_m, baseline_reconnect});
     append_unique(CandidateMargins{anchor_m, reconnect_m});
     if (anchor_m >= config.max_anchor_margin_m - kTinyDistanceM &&
         reconnect_m >= config.max_anchor_margin_m - kTinyDistanceM) {
@@ -466,7 +467,28 @@ struct CandidateEvaluation {
   PassageInsertionRejectReason reason{PassageInsertionRejectReason::kNoCandidate};
   bool accepted{false};
   bool hold_restart_recommended{false};
+  bool structurally_valid{false};
+  bool grid_traversable{false};
+  bool passage_geometry_improved{false};
+  bool tangent_within_limit{false};
+  bool curvature_within_limit{false};
+  bool radius_within_limit{false};
+  bool degraded_eligible{false};
+  double tangent_excess_rad{0.0};
+  double curvature_excess_1pm{0.0};
+  double radius_shortfall_m{0.0};
+  double added_length_m{0.0};
 };
+
+[[nodiscard]] bool betterDegradedCandidate(const CandidateEvaluation& candidate,
+                                           const CandidateEvaluation& incumbent) {
+  return std::tie(candidate.diagnostic.lateral_miss_after_m,
+                  candidate.curvature_excess_1pm, candidate.tangent_excess_rad,
+                  candidate.radius_shortfall_m, candidate.added_length_m) <
+         std::tie(incumbent.diagnostic.lateral_miss_after_m,
+                  incumbent.curvature_excess_1pm, incumbent.tangent_excess_rad,
+                  incumbent.radius_shortfall_m, incumbent.added_length_m);
+}
 
 [[nodiscard]] CandidateEvaluation evaluateCandidate(
     const std::span<const TrajectoryPointSample> original_samples,
@@ -527,6 +549,7 @@ struct CandidateEvaluation {
     evaluation.reason = PassageInsertionRejectReason::kEndpointMismatch;
     return evaluation;
   }
+  evaluation.structurally_valid = true;
   const PassageInsertionBlockedSegmentDiagnostic blocked_segment =
       firstNonTraversableSegment(grid, evaluation.samples);
   if (blocked_segment.available) {
@@ -534,6 +557,7 @@ struct CandidateEvaluation {
     evaluation.reason = PassageInsertionRejectReason::kNonTraversable;
     return evaluation;
   }
+  evaluation.grid_traversable = true;
   evaluation.diagnostic.solid_validation_checked = true;
   evaluation.diagnostic.solid_validation =
       validateTrajectoryAgainstKnownPassageSolids(evaluation.samples, &map);
@@ -562,10 +586,15 @@ struct CandidateEvaluation {
       evaluation.diagnostic.start_is_anchor && before_tangent_exceeded) {
     evaluation.hold_restart_recommended = true;
   }
-  if (before_tangent_exceeded || after_tangent_exceeded) {
-    evaluation.reason = PassageInsertionRejectReason::kJoinTangent;
-    return evaluation;
-  }
+  evaluation.tangent_within_limit = !before_tangent_exceeded && !after_tangent_exceeded;
+  evaluation.tangent_excess_rad =
+      std::max(evaluation.diagnostic.initial_join_checked
+                   ? evaluation.diagnostic.join_tangent_delta_before_rad -
+                         config.max_join_tangent_delta_rad
+                   : 0.0,
+               evaluation.diagnostic.join_tangent_delta_after_rad -
+                   config.max_join_tangent_delta_rad);
+  evaluation.tangent_excess_rad = std::max(0.0, evaluation.tangent_excess_rad);
 
   if (evaluation.diagnostic.initial_join_checked) {
     evaluation.diagnostic.join_curvature_jump_before_1pm =
@@ -584,19 +613,27 @@ struct CandidateEvaluation {
       evaluation.diagnostic.start_is_anchor && before_curvature_exceeded) {
     evaluation.hold_restart_recommended = true;
   }
-  if (before_curvature_exceeded || after_curvature_exceeded) {
-    evaluation.reason = PassageInsertionRejectReason::kJoinCurvature;
-    return evaluation;
-  }
+  evaluation.curvature_within_limit =
+      !before_curvature_exceeded && !after_curvature_exceeded;
+  evaluation.curvature_excess_1pm =
+      std::max(evaluation.diagnostic.initial_join_checked
+                   ? evaluation.diagnostic.join_curvature_jump_before_1pm -
+                         config.max_join_curvature_jump_1pm
+                   : 0.0,
+               evaluation.diagnostic.join_curvature_jump_after_1pm -
+                   config.max_join_curvature_jump_1pm);
+  evaluation.curvature_excess_1pm = std::max(0.0, evaluation.curvature_excess_1pm);
 
   evaluation.diagnostic.min_inserted_radius_m =
       minRadiusInRange(evaluation.samples, anchor_s_m, reconnect_s_m);
-  if (config.min_inserted_radius_m > 0.0 &&
-      evaluation.diagnostic.min_inserted_radius_m + kTinyDistanceM <
-          config.min_inserted_radius_m) {
-    evaluation.reason = PassageInsertionRejectReason::kInsertedRadius;
-    return evaluation;
-  }
+  evaluation.radius_within_limit =
+      config.min_inserted_radius_m <= 0.0 ||
+      evaluation.diagnostic.min_inserted_radius_m + kTinyDistanceM >=
+          config.min_inserted_radius_m;
+  evaluation.radius_shortfall_m =
+      evaluation.radius_within_limit
+          ? 0.0
+          : config.min_inserted_radius_m - evaluation.diagnostic.min_inserted_radius_m;
   evaluation.diagnostic.lateral_miss_after_m = spanLateralMissM(
       evaluation.samples, match.entry_s_m, match.exit_s_m, opening, *frame, config);
   const std::vector<KnownPassageTraversalMatch> after_matches =
@@ -612,9 +649,25 @@ struct CandidateEvaluation {
     evaluation.reason = PassageInsertionRejectReason::kValidationNotImproved;
     return evaluation;
   }
+  evaluation.passage_geometry_improved = true;
+  evaluation.added_length_m =
+      std::max(0.0, evaluation.samples.back().s_m - original_samples.back().s_m);
 
-  evaluation.reason = PassageInsertionRejectReason::kNone;
-  evaluation.accepted = true;
+  evaluation.accepted = evaluation.tangent_within_limit &&
+                        evaluation.curvature_within_limit &&
+                        evaluation.radius_within_limit;
+  evaluation.degraded_eligible =
+      evaluation.structurally_valid && evaluation.grid_traversable &&
+      evaluation.passage_geometry_improved && !evaluation.accepted;
+  if (evaluation.accepted) {
+    evaluation.reason = PassageInsertionRejectReason::kNone;
+  } else if (!evaluation.tangent_within_limit) {
+    evaluation.reason = PassageInsertionRejectReason::kJoinTangent;
+  } else if (!evaluation.curvature_within_limit) {
+    evaluation.reason = PassageInsertionRejectReason::kJoinCurvature;
+  } else {
+    evaluation.reason = PassageInsertionRejectReason::kInsertedRadius;
+  }
   return evaluation;
 }
 
@@ -708,6 +761,7 @@ PassageInsertionResult insertLocalPassageSegments(
   }
 
   std::optional<CandidateEvaluation> best;
+  std::optional<CandidateEvaluation> best_degraded;
   for (const KnownPassageTraversalMatch& match : before_matches) {
     if (!needsPassageInsertionRepair(match, config)) {
       continue;
@@ -741,6 +795,11 @@ PassageInsertionResult insertLocalPassageSegments(
         appendDiagnostic(result.stats, config, evaluation.diagnostic);
         if (!evaluation.accepted) {
           countReject(result.stats, evaluation.reason);
+          if (evaluation.degraded_eligible &&
+              (!best_degraded.has_value() ||
+               betterDegradedCandidate(evaluation, *best_degraded))) {
+            best_degraded = std::move(evaluation);
+          }
           continue;
         }
         best = std::move(evaluation);
@@ -761,6 +820,13 @@ PassageInsertionResult insertLocalPassageSegments(
     }
   }
 
+  if (!best.has_value() && best_degraded.has_value()) {
+    best = std::move(best_degraded);
+    result.quality = PassageInsertionQuality::kDegradedJoin;
+  } else if (best.has_value()) {
+    result.quality = PassageInsertionQuality::kStrict;
+  }
+
   if (!best.has_value()) {
     if (result.stats.final_reason == PassageInsertionRejectReason::kDisabled ||
         result.stats.final_reason == PassageInsertionRejectReason::kNone) {
@@ -774,6 +840,12 @@ PassageInsertionResult insertLocalPassageSegments(
   result.valid = true;
   result.stats.applied = true;
   result.stats.inserted_count = 1U;
+  result.stats.quality = result.quality;
+  result.physical_constraints_satisfied = true;
+  result.stats.physical_constraints_satisfied = true;
+  result.strict_constraints_satisfied =
+      result.quality == PassageInsertionQuality::kStrict;
+  result.stats.strict_constraints_satisfied = result.strict_constraints_satisfied;
   const std::vector<KnownPassageTraversalMatch> after_matches =
       findKnownPassageTraversalMatches(result.samples, *map, validation_config, true);
   setRepairStatus(result, true, countRepairCandidates(after_matches, config) == 0U);
@@ -790,6 +862,19 @@ passageInsertionStartModeName(const PassageInsertionStartMode mode) noexcept {
       return "moving_join";
     case PassageInsertionStartMode::kTerminalHoldRestart:
       return "terminal_hold_restart";
+  }
+  return "unknown";
+}
+
+const char*
+passageInsertionQualityName(const PassageInsertionQuality quality) noexcept {
+  switch (quality) {
+    case PassageInsertionQuality::kNone:
+      return "none";
+    case PassageInsertionQuality::kStrict:
+      return "strict";
+    case PassageInsertionQuality::kDegradedJoin:
+      return "degraded_join";
   }
   return "unknown";
 }

@@ -333,6 +333,9 @@ void expectContainsAll(const std::string& text,
   stats.passage_insertion.applied = true;
   stats.passage_insertion.repair_required = true;
   stats.passage_insertion.repair_satisfied = true;
+  stats.passage_insertion.quality = PassageInsertionQuality::kDegradedJoin;
+  stats.passage_insertion.physical_constraints_satisfied = true;
+  stats.passage_insertion.strict_constraints_satisfied = false;
   stats.passage_insertion.candidates = 3U;
   stats.passage_insertion.inserted_count = 1U;
   stats.passage_insertion.rejected_join = 1U;

@@ -98,7 +98,9 @@ void finalizeResult(TrajectoryPlannerResult& result,
                  trajectorySamplesAreUsable(result.samples) &&
                  result.speed_profile.valid && result.stats.vertical_profile.valid &&
                  result.stats.known_passage_solid_validation.valid;
-  if (result.valid && !result.stats.known_passage_validation.valid) {
+  if (result.valid && (!result.stats.known_passage_validation.valid ||
+                       result.stats.passage_insertion.quality ==
+                           PassageInsertionQuality::kDegradedJoin)) {
     result.stats.quality = TrajectoryQuality::kDegradedPassage;
   }
   if (!result.valid && result.stats.status == TrajectoryPlannerStatus::kOk) {

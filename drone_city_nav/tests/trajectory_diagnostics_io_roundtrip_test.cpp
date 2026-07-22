@@ -142,6 +142,10 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_TRUE(parsed_value.stats.passage_insertion.applied);
   EXPECT_TRUE(parsed_value.stats.passage_insertion.repair_required);
   EXPECT_TRUE(parsed_value.stats.passage_insertion.repair_satisfied);
+  EXPECT_EQ(parsed_value.stats.passage_insertion.quality,
+            PassageInsertionQuality::kDegradedJoin);
+  EXPECT_TRUE(parsed_value.stats.passage_insertion.physical_constraints_satisfied);
+  EXPECT_FALSE(parsed_value.stats.passage_insertion.strict_constraints_satisfied);
   EXPECT_EQ(parsed_value.stats.passage_insertion.candidates, 3U);
   EXPECT_EQ(parsed_value.stats.passage_insertion.inserted_count, 1U);
   EXPECT_EQ(parsed_value.stats.passage_insertion.rejected_join, 1U);
