@@ -140,7 +140,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
       config.trajectory_planner.passage_insertion.max_join_curvature_jump_1pm, 0.08);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.passage_insertion.min_inserted_radius_m,
                    0.0);
-  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 8U);
+  EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 24U);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 8U);
   EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
   EXPECT_EQ(config.topics.obstacle_memory_snapshot,

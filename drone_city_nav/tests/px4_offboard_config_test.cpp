@@ -131,7 +131,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
   EXPECT_NE(yaml.find("passage_insertion_min_anchor_margin_m: 8.0"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_max_anchor_margin_m: 60.0"),
             std::string::npos);
-  EXPECT_NE(yaml.find("passage_insertion_max_candidates: 8"), std::string::npos);
+  EXPECT_NE(yaml.find("passage_insertion_max_candidates: 24"), std::string::npos);
   EXPECT_NE(yaml.find("passage_insertion_max_diagnostics: 8"), std::string::npos);
   EXPECT_NE(yaml.find("altitude_feedback_kp_1ps: 0.5"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_trackability_altitude_tolerance_m: 0.4"),

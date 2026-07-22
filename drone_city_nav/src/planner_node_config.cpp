@@ -228,7 +228,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       0.0, 100000.0);
   config.trajectory_planner.passage_insertion.max_candidates =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
-          node.declare_parameter<std::int64_t>("passage_insertion_max_candidates", 8),
+          node.declare_parameter<std::int64_t>("passage_insertion_max_candidates", 24),
           0, 100));
   config.trajectory_planner.passage_insertion.max_diagnostics =
       static_cast<std::size_t>(std::clamp<std::int64_t>(

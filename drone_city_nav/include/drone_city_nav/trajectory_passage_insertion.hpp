@@ -53,7 +53,7 @@ struct PassageInsertionConfig {
   double max_join_curvature_jump_1pm{0.08};
   double min_inserted_radius_m{0.0};
   double candidate_margin_step_m{8.0};
-  std::size_t max_candidates{8U};
+  std::size_t max_candidates{24U};
   std::size_t max_diagnostics{8U};
 };
 

@@ -177,7 +177,7 @@ planner_node:
     passage_insertion_max_join_tangent_delta_deg: 20.0
     passage_insertion_max_join_curvature_jump_1pm: 0.08
     passage_insertion_min_inserted_radius_m: 0.0
-    passage_insertion_max_candidates: 8
+    passage_insertion_max_candidates: 24
     passage_insertion_max_diagnostics: 8
     planning_grid_resolution_m: 0.5
     planning_grid_width_m: 345.0
