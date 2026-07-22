@@ -21,6 +21,7 @@ void appendDiagnostic(KnownPassageValidationSummary& summary,
       .overlap_m = match.overlap_m,
       .clearance_m = match.clearance_m,
       .reason = match.reason,
+      .starts_inside_opening = match.starts_inside_opening,
       .valid = match.valid,
   });
 }
@@ -64,6 +65,8 @@ knownPassageValidationReasonName(const KnownPassageValidationReason reason) noex
       return "no_structure_intersection";
     case KnownPassageValidationReason::kMatchedOpening:
       return "matched_opening";
+    case KnownPassageValidationReason::kPartialFromInside:
+      return "partial_from_inside";
     case KnownPassageValidationReason::kStructureWithoutOpening:
       return "structure_without_opening";
     case KnownPassageValidationReason::kOpeningVolumeMiss:
@@ -100,10 +103,14 @@ validateKnownPassageTraversal(const std::span<const TrajectoryPointSample> sampl
   summary.structures_intersected = countIntersectedStructures(matches);
 
   bool had_match = false;
+  bool had_partial_match = false;
   for (const KnownPassageTraversalMatch& match : matches) {
     appendDiagnostic(summary, config, match);
     if (match.valid) {
       had_match = true;
+      had_partial_match =
+          had_partial_match ||
+          match.reason == KnownPassageValidationReason::kPartialFromInside;
       ++summary.opening_matches;
       continue;
     }
@@ -113,9 +120,13 @@ validateKnownPassageTraversal(const std::span<const TrajectoryPointSample> sampl
   }
 
   if (summary.valid) {
-    summary.worst_reason = had_match
-                               ? KnownPassageValidationReason::kMatchedOpening
-                               : KnownPassageValidationReason::kNoStructureIntersection;
+    summary.worst_reason = KnownPassageValidationReason::kNoStructureIntersection;
+    if (had_match) {
+      summary.worst_reason = KnownPassageValidationReason::kMatchedOpening;
+    }
+    if (had_partial_match) {
+      summary.worst_reason = KnownPassageValidationReason::kPartialFromInside;
+    }
   } else if (matches.empty()) {
     summary.worst_reason = KnownPassageValidationReason::kNoStructureIntersection;
   }

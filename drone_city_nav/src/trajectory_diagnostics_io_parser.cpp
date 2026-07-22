@@ -108,6 +108,8 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
         diagnostic_reason.has_value()) {
       diagnostic.reason = parseKnownPassageValidationReasonName(*diagnostic_reason);
     }
+    parseJsonBool(json, prefix + "starts_inside_opening",
+                  diagnostic.starts_inside_opening);
     parseJsonBool(json, prefix + "valid", diagnostic.valid);
     passage_validation.diagnostics.push_back(diagnostic);
   }

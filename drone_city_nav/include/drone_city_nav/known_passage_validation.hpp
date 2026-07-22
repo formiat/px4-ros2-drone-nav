@@ -16,6 +16,7 @@ enum class KnownPassageValidationReason {
   kInvalidTrajectory,
   kNoStructureIntersection,
   kMatchedOpening,
+  kPartialFromInside,
   kStructureWithoutOpening,
   kOpeningVolumeMiss,
 };
@@ -37,6 +38,7 @@ struct KnownPassageValidationSpan {
   double clearance_m{0.0};
   KnownPassageValidationReason reason{
       KnownPassageValidationReason::kNoStructureIntersection};
+  bool starts_inside_opening{false};
   bool valid{false};
 };
 

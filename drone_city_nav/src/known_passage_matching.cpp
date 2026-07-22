@@ -51,6 +51,41 @@ struct OpeningMatch {
   double clearance_m{std::numeric_limits<double>::quiet_NaN()};
 };
 
+[[nodiscard]] std::optional<OpeningMatch>
+findOpeningContainingStart(const TrajectoryPointSample& sample,
+                           const PassageStructure& structure) {
+  std::optional<OpeningMatch> best_match;
+  for (const PassageOpening& opening : structure.openings) {
+    const std::optional<KnownPassageOpeningFrame> frame =
+        knownPassageOpeningFrame(opening);
+    if (!frame.has_value()) {
+      continue;
+    }
+    const KnownPassageOpeningLocalPoint local = knownPassageOpeningLocalPoint(
+        KnownPassageOpeningWorldPoint{
+            .point = sample.point,
+            .z_m = sample.z_m,
+            .s_m = sample.s_m,
+        },
+        *frame);
+    const double volume_margin_m =
+        knownPassageOpeningSignedVolumeMarginM(local, opening, *frame);
+    if (volume_margin_m < -kTinyDistanceM) {
+      continue;
+    }
+    const double clearance_m =
+        knownPassageOpeningPassageClearanceM(local, opening, *frame);
+    if (!best_match.has_value() || clearance_m > best_match->clearance_m) {
+      best_match = OpeningMatch{
+          .opening = opening,
+          .overlap_m = 0.0,
+          .clearance_m = clearance_m,
+      };
+    }
+  }
+  return best_match;
+}
+
 [[nodiscard]] Rect footprintRect(const PassageStructure& structure) noexcept {
   const double half_x = structure.size_x_m / 2.0;
   const double half_y = structure.size_y_m / 2.0;
@@ -358,6 +393,24 @@ std::vector<KnownPassageTraversalMatch> findKnownPassageTraversalMatches(
       if (structure.openings.empty()) {
         match.reason = KnownPassageValidationReason::kStructureWithoutOpening;
         match.clearance_m = std::numeric_limits<double>::quiet_NaN();
+        matches.push_back(match);
+        continue;
+      }
+
+      const bool span_starts_at_trajectory_start =
+          std::abs(span.entry_s_m - samples.front().s_m) <= kTinyDistanceM;
+      const std::optional<OpeningMatch> start_opening =
+          span_starts_at_trajectory_start
+              ? findOpeningContainingStart(samples.front(), structure)
+              : std::nullopt;
+      if (start_opening.has_value()) {
+        match.opening = start_opening->opening;
+        match.opening_id = start_opening->opening.id;
+        match.overlap_m = std::max(0.0, span.exit_s_m - span.entry_s_m);
+        match.clearance_m = start_opening->clearance_m;
+        match.reason = KnownPassageValidationReason::kPartialFromInside;
+        match.starts_inside_opening = true;
+        match.valid = true;
         matches.push_back(match);
         continue;
       }

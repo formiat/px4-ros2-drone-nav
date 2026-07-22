@@ -21,6 +21,7 @@ struct KnownPassageTraversalMatch {
   double overlap_m{0.0};
   double clearance_m{0.0};
   KnownPassageValidationReason reason;
+  bool starts_inside_opening{false};
   bool valid{false};
 };
 

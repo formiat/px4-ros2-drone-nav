@@ -379,7 +379,10 @@ VerticalProfileResult applyVerticalProfile(
   double transition_available_after_s_m = first_s;
   for (const KnownPassageTraversalMatch& match : valid_matches) {
     const double start_z = carried_altitude_m;
-    const double gate_z = targetGateAltitude(match.opening, config, start_z);
+    const bool starts_inside = match.starts_inside_opening;
+    const double gate_z = starts_inside
+                              ? initial_altitude_m
+                              : targetGateAltitude(match.opening, config, start_z);
     const double dz = std::abs(gate_z - start_z);
     const double transition_distance_required = transitionDistanceForAltitudeDelta(
         dz, match.opening.approach_distance_m, config, min_transition, max_transition);
@@ -391,9 +394,12 @@ VerticalProfileResult applyVerticalProfile(
     const double actual_gate_hold_distance = std::min(
         pre_gate_hold_distance,
         std::max(0.0, available_before_entry_s - transition_distance_required));
-    const double gate_hold_start_s = match.entry_s_m - actual_gate_hold_distance;
+    const double gate_hold_start_s =
+        starts_inside ? first_s : match.entry_s_m - actual_gate_hold_distance;
     const double approach_start_s =
-        gate_hold_start_s - std::min(transition_distance_required, max_transition);
+        starts_inside ? first_s
+                      : gate_hold_start_s -
+                            std::min(transition_distance_required, max_transition);
     if (transition_distance_required > max_transition + kTinyDistanceM ||
         !(match.exit_s_m >= match.entry_s_m) ||
         (transition_required &&
@@ -484,7 +490,7 @@ VerticalProfileResult applyVerticalProfile(
       sample.z_m = sample_altitude_m;
       continue;
     }
-    if (sample.s_m <= window.gate_hold_start_s_m) {
+    if (!match.starts_inside_opening && sample.s_m <= window.gate_hold_start_s_m) {
       sample.z_m =
           interpolateProfile(window.approach_start_s_m, window.gate_hold_start_s_m,
                              window.start_z_m, window.gate_z_m, sample.s_m);

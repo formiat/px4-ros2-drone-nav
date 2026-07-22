@@ -91,6 +91,9 @@ TEST(KnownPassageValidation, ReasonNamesAreStable) {
       knownPassageValidationReasonName(KnownPassageValidationReason::kMatchedOpening),
       "matched_opening");
   EXPECT_STREQ(knownPassageValidationReasonName(
+                   KnownPassageValidationReason::kPartialFromInside),
+               "partial_from_inside");
+  EXPECT_STREQ(knownPassageValidationReasonName(
                    KnownPassageValidationReason::kStructureWithoutOpening),
                "structure_without_opening");
   EXPECT_STREQ(knownPassageValidationReasonName(
@@ -178,6 +181,39 @@ TEST(KnownPassageValidation, OpeningVolumeMatchIsValid) {
   EXPECT_NEAR(span.exit_s_m, 13.0, 1.0e-6);
   EXPECT_NEAR(span.overlap_m, 4.0, 1.0e-6);
   EXPECT_NEAR(span.clearance_m, 2.0, 1.0e-6);
+}
+
+TEST(KnownPassageValidation, StartInsideOpeningAllowsPartialTraversal) {
+  const KnownPassageMap map = makeMap();
+  const std::vector<TrajectoryPointSample> samples =
+      makeLineSamples(Point2{0.0, 0.0}, Point2{8.0, 0.0}, 10.0);
+  KnownPassageValidationConfig config{};
+  config.min_opening_overlap_m = 20.0;
+
+  const KnownPassageValidationSummary summary = validate(samples, &map, config);
+
+  ASSERT_TRUE(summary.valid);
+  EXPECT_EQ(summary.opening_matches, 1U);
+  EXPECT_EQ(summary.worst_reason, KnownPassageValidationReason::kPartialFromInside);
+  ASSERT_EQ(summary.diagnostics.size(), 1U);
+  EXPECT_TRUE(summary.diagnostics.front().starts_inside_opening);
+  EXPECT_EQ(summary.diagnostics.front().opening_id, "main");
+  EXPECT_EQ(summary.diagnostics.front().reason,
+            KnownPassageValidationReason::kPartialFromInside);
+}
+
+TEST(KnownPassageValidation, StartInsideFootprintButOutsideOpeningStillFails) {
+  const KnownPassageMap map = makeMap();
+  const std::vector<TrajectoryPointSample> samples =
+      makeLineSamples(Point2{0.0, 0.0}, Point2{8.0, 0.0}, 15.0);
+
+  const KnownPassageValidationSummary summary = validate(samples, &map);
+
+  EXPECT_FALSE(summary.valid);
+  ASSERT_EQ(summary.diagnostics.size(), 1U);
+  EXPECT_FALSE(summary.diagnostics.front().starts_inside_opening);
+  EXPECT_EQ(summary.diagnostics.front().reason,
+            KnownPassageValidationReason::kOpeningVolumeMiss);
 }
 
 TEST(KnownPassageValidation, RejectsOpeningMatchWithLowDepthOverlap) {

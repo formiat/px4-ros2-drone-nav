@@ -218,6 +218,33 @@ TEST(TrajectoryVerticalProfile, MatchedOpeningBuildsSmoothInitialGateCarryProfil
   }));
 }
 
+TEST(TrajectoryVerticalProfile, StartInsideOpeningKeepsAltitudeThroughExit) {
+  KnownPassageMap map = makeMap();
+  std::vector<TrajectoryPointSample> samples = makeSamplesRange(0.0, 20.0, 1.0, 10.8);
+  VerticalProfileConfig config{};
+
+  const VerticalProfileResult result =
+      applyVerticalProfile(samples, &map, KnownPassageValidationConfig{}, config, 10.8);
+
+  ASSERT_TRUE(result.valid);
+  ASSERT_TRUE(result.stats.active);
+  ASSERT_EQ(result.stats.passages_matched, 1U);
+  ASSERT_EQ(result.stats.passages_profiled, 1U);
+  ASSERT_FALSE(result.stats.diagnostics.empty());
+  EXPECT_EQ(result.stats.diagnostics.front().reason, "profiled");
+  EXPECT_DOUBLE_EQ(result.stats.diagnostics.front().gate_z_m, 10.8);
+  for (const TrajectoryPointSample& sample : samples) {
+    EXPECT_DOUBLE_EQ(sample.z_m, 10.8);
+  }
+  EXPECT_TRUE(samples.front().vertical_hard_window_active);
+  EXPECT_EQ(samples.front().vertical_profile_passage_id, "window");
+
+  const KnownPassageValidationSummary validation =
+      validateKnownPassageTraversal(samples, &map, KnownPassageValidationConfig{});
+  EXPECT_TRUE(validation.valid);
+  EXPECT_EQ(validation.worst_reason, KnownPassageValidationReason::kPartialFromInside);
+}
+
 TEST(TrajectoryVerticalProfile, DefaultClimbAngleAccountsForSmootherstepPeakSlope) {
   KnownPassageMap map = makeMap();
   std::vector<TrajectoryPointSample> samples =

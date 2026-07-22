@@ -318,6 +318,31 @@ TEST(TrajectoryPlanner, BaselineTrajectoryProducesSamplesAndSpeedProfile) {
   }
 }
 
+TEST(TrajectoryPlanner, StartInsideOpeningPublishesPartialTraversal) {
+  const OccupancyGrid2D grid = testGrid();
+  const std::vector<Point2> route{{0.0, 0.0}, {10.0, 0.0}};
+  const KnownPassageMap map = plannerValidationPassageMap();
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+  TrajectoryPlannerInput input{};
+  input.route_points = std::span<const Point2>{route.data(), route.size()};
+  input.prohibited_grid = &grid;
+  input.known_passage_map = &map;
+
+  const TrajectoryPlannerResult result = planOptimizedTrajectory(input, config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
+  EXPECT_EQ(result.stats.known_passage_validation.worst_reason,
+            KnownPassageValidationReason::kPartialFromInside);
+  ASSERT_EQ(result.stats.known_passage_validation.diagnostics.size(), 1U);
+  EXPECT_TRUE(
+      result.stats.known_passage_validation.diagnostics.front().starts_inside_opening);
+  ASSERT_FALSE(result.samples.empty());
+  EXPECT_TRUE(result.samples.front().vertical_hard_window_active);
+  EXPECT_DOUBLE_EQ(result.samples.front().z_m, 10.0);
+}
+
 TEST(TrajectoryPlanner, InvalidKnownPassageValidationInvalidatesTrajectory) {
   const OccupancyGrid2D grid = testGrid();
   const std::vector<Point2> route{{-10.0, 0.0}, {10.0, 0.0}};

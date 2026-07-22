@@ -390,6 +390,10 @@ parseKnownPassageValidationReasonName(const std::string_view value) {
     return KnownPassageValidationReason::kMatchedOpening;
   }
   if (value == knownPassageValidationReasonName(
+                   KnownPassageValidationReason::kPartialFromInside)) {
+    return KnownPassageValidationReason::kPartialFromInside;
+  }
+  if (value == knownPassageValidationReasonName(
                    KnownPassageValidationReason::kStructureWithoutOpening)) {
     return KnownPassageValidationReason::kStructureWithoutOpening;
   }
@@ -428,6 +432,8 @@ knownPassageValidationDiagnosticsJsonFieldsImpl(const TrajectoryPlannerStats& st
     appendJsonNumber(stream, prefix + "clearance_m", diagnostic.clearance_m);
     appendJsonString(stream, prefix + "reason",
                      knownPassageValidationReasonName(diagnostic.reason));
+    appendJsonBool(stream, prefix + "starts_inside_opening",
+                   diagnostic.starts_inside_opening);
     appendJsonBool(stream, prefix + "valid", diagnostic.valid);
   }
   return stream.str();
