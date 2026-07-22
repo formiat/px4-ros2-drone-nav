@@ -349,7 +349,7 @@ px4_offboard_node:
     control_curve_smoothing_max_heading_span_deg: 45.0
     trajectory_update_max_start_cross_track_m: 8.0
     safe_trajectory_truncation_enabled: true
-    safe_trajectory_truncation_margin_m: 10.0
+    safe_trajectory_truncation_margin_m: 15.0
     trajectory_handover_enabled: true
     trajectory_handover_require_validation_grid: true
     trajectory_handover_prefix_time_s: 0.6

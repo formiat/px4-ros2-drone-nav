@@ -396,7 +396,7 @@ private:
   double last_altitude_error_m_{std::numeric_limits<double>::quiet_NaN()};
   double final_trajectory_debug_sample_step_m_{1.0};
   double trajectory_update_max_start_cross_track_m_{8.0};
-  double safe_trajectory_truncation_margin_m_{10.0};
+  double safe_trajectory_truncation_margin_m_{15.0};
   HorizontalTrajectoryHandoverConfig trajectory_handover_config_{};
   TrajectoryContinuityThresholds trajectory_continuity_thresholds_{};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};

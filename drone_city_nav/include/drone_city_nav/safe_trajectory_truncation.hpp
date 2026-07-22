@@ -13,7 +13,7 @@ namespace drone_city_nav {
 struct SafeTrajectoryTruncationRequest {
   Point2 current_position{};
   double blocker_path_distance_m{std::numeric_limits<double>::quiet_NaN()};
-  double truncation_margin_m{10.0};
+  double truncation_margin_m{15.0};
 };
 
 struct SafeTrajectoryTruncationResult {
