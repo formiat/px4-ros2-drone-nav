@@ -41,9 +41,9 @@ truncationSuffixActivationModeName(const TruncationSuffixActivationMode mode) no
 
 TruncationSuffixActivationMode
 resolveTruncationSuffixActivationMode(const TruncationSuffixActivationMode planned_mode,
-                                      const bool temporary_hold_reached) noexcept {
-  return temporary_hold_reached ? TruncationSuffixActivationMode::kAfterHold
-                                : planned_mode;
+                                      const bool temporary_hold_active) noexcept {
+  return temporary_hold_active ? TruncationSuffixActivationMode::kAfterHold
+                               : planned_mode;
 }
 
 const char*

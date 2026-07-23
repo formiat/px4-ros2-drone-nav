@@ -233,6 +233,7 @@ add_executable(
   px4_offboard_node
   src/px4_offboard_node.cpp
   src/px4_offboard_node_control.cpp
+  src/px4_offboard_node_control_state.cpp
   src/px4_offboard_node_crash.cpp
   src/px4_offboard_node_diagnostics.cpp
   src/px4_offboard_node_inputs.cpp
@@ -240,6 +241,7 @@ add_executable(
   src/px4_offboard_node_replan.cpp
   src/px4_offboard_node_telemetry.cpp
   src/px4_offboard_node_trajectory.cpp
+  src/px4_offboard_node_trajectory_io.cpp
   src/px4_offboard_node_vertical.cpp)
 target_compile_features(px4_offboard_node PRIVATE cxx_std_20)
 target_link_libraries(px4_offboard_node drone_city_nav_core drone_city_nav_ros_adapters

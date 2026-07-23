@@ -57,7 +57,7 @@ truncationSuffixActivationModeName(TruncationSuffixActivationMode mode) noexcept
 
 [[nodiscard]] TruncationSuffixActivationMode
 resolveTruncationSuffixActivationMode(TruncationSuffixActivationMode planned_mode,
-                                      bool temporary_hold_reached) noexcept;
+                                      bool temporary_hold_active) noexcept;
 
 [[nodiscard]] const char*
 truncationSuffixAckDecisionName(TruncationSuffixAckDecision decision) noexcept;

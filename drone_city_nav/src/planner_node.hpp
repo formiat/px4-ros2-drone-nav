@@ -171,7 +171,6 @@ private:
     std::size_t publication_attempts{0U};
     bool confirmed{false};
     bool immediate_hold{false};
-    bool temporary_hold_reached{false};
     bool awaiting_ack{false};
     bool repair_context_valid{false};
   };

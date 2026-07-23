@@ -25,10 +25,12 @@ NODE_RUNTIME_SOURCE_PATHS = (
     "drone_city_nav/src/px4_offboard_node.cpp",
     "drone_city_nav/src/px4_offboard_node.hpp",
     "drone_city_nav/src/px4_offboard_node_control.cpp",
+    "drone_city_nav/src/px4_offboard_node_control_state.cpp",
     "drone_city_nav/src/px4_offboard_node_inputs.cpp",
     "drone_city_nav/src/px4_offboard_node_lifecycle.cpp",
     "drone_city_nav/src/px4_offboard_node_telemetry.cpp",
     "drone_city_nav/src/px4_offboard_node_trajectory.cpp",
+    "drone_city_nav/src/px4_offboard_node_trajectory_io.cpp",
     "drone_city_nav/src/lidar_debug_node.cpp",
     "drone_city_nav/src/lidar_debug_node.hpp",
     "drone_city_nav/src/lidar_debug_node_callbacks.cpp",
@@ -387,7 +389,7 @@ class TopicContractTest(unittest.TestCase):
     ) -> None:
         launch_text = read("drone_city_nav/launch/city_nav.launch.py")
         runner_text = read("scripts/run_drone_nav_sim.sh")
-        offboard_text = read("drone_city_nav/src/px4_offboard_node_trajectory.cpp")
+        offboard_text = read("drone_city_nav/src/px4_offboard_node_trajectory_io.cpp")
         rviz_text = read("drone_city_nav/rviz/city_nav_debug.rviz")
 
         self.assertIn("drone_follow", rviz_text)

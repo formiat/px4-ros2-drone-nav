@@ -109,6 +109,18 @@ TEST(TruncationSuffixProtocol, PublishesAfterHoldWhenTemporaryHoldWasReached) {
             TruncationSuffixActivationMode::kAfterHold);
 }
 
+TEST(TruncationSuffixProtocol, ConsumerUpgradesMovingJoinAfterHoldTransition) {
+  const TruncationSuffixActivationMode published_mode =
+      resolveTruncationSuffixActivationMode(TruncationSuffixActivationMode::kMovingJoin,
+                                            false);
+  ASSERT_EQ(published_mode, TruncationSuffixActivationMode::kMovingJoin);
+
+  const TruncationSuffixActivationMode consumed_mode =
+      resolveTruncationSuffixActivationMode(published_mode, true);
+
+  EXPECT_EQ(consumed_mode, TruncationSuffixActivationMode::kAfterHold);
+}
+
 TEST(TruncationSuffixProtocol, AllowsOnlyFirstPublicationWhileAwaitingAck) {
   TruncationSuffixPublicationContext context{
       .generation = kExpected.generation,

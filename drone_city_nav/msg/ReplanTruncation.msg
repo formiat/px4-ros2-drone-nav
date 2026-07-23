@@ -6,4 +6,3 @@ geometry_msgs/Vector3 truncation_tangent
 float64 truncation_altitude_m
 uint64 temporary_prefix_fingerprint
 bool immediate_hold
-bool temporary_hold_reached

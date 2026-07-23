@@ -200,8 +200,7 @@ void PlannerNode::handoffRepairRaceWinner(
                   winner.reconnect_margin_m);
       return std::optional<TruncationSuffixActivationMode>{};
     }
-    return std::optional{resolveTruncationSuffixActivationMode(
-        winner.activation_mode, truncation_replan_state_->temporary_hold_reached)};
+    return std::optional{winner.activation_mode};
   }();
   if (!activation_mode.has_value()) {
     return;
