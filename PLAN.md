@@ -122,6 +122,8 @@ truncation-контракта.
 
    - `drone_city_nav/include/drone_city_nav/planner_core.hpp`
    - `drone_city_nav/src/planner_core.cpp`
+   - `drone_city_nav/include/drone_city_nav/path_raw_clearance_monitor.hpp`
+   - `drone_city_nav/src/path_raw_clearance_monitor.cpp`
    - новый `drone_city_nav/include/drone_city_nav/trajectory_repair.hpp`
 
    Code anchors:
@@ -129,19 +131,53 @@ truncation-контракта.
    - `PathProhibitedIntersection`
    - `firstPathProhibitedIntersection()`
    - `PlannerCore::evaluateStablePath()`
+   - `evaluatePathRawClearance()`
+     (`drone_city_nav/src/path_raw_clearance_monitor.cpp:57`)
+   - `projectOnTrajectorySamples()`
+     (`drone_city_nav/src/trajectory.cpp:562`)
 
    Добавить `BlockedSpan` с абсолютными stations старой executable trajectory,
    индексами/точками входа и выхода и причиной (`prohibited` или
-   `raw_clearance`). Для prohibited grid пройти первый непрерывный конфликтующий
-   участок до первого устойчивого выхода, вместо остановки на первой клетке. Для
-   raw-clearance trigger преобразовать существующие `entry_distance_m` и
-   `length_m` в тот же контракт.
+   `raw_clearance`). Station frame всегда начинается с `samples.front().s_m=0`
+   принятого `ExecutableTrajectoryArtifact`; относительные distances
+   `decision.remaining_path` в этот тип не попадают.
+
+   При принятии нового path сбрасывать progress в `0`, а в каждом runtime check
+   обновлять абсолютный `current_s` через
+   `projectOnTrajectorySamples(artifact.samples, current_pose,
+   previous_current_s)`. Нижняя граница `previous_current_s` делает progress
+   монотонным и не позволяет повторно спроецироваться на пройденную ветвь
+   самопересекающегося пути.
+
+   Реализовать единый scanner состояния первого span над old artifact после
+   `current_s`, но с двумя trigger-specific источниками probes:
+
+   - prohibited adapter проходит все grid cells каждого сегмента тем же
+     `cellsOnLine`/`isProhibited` контрактом, что runtime traversability;
+   - raw-clearance adapter строит `ClearanceField2D` и сэмплирует stations с
+     шагом не больше
+     `min(path_raw_clearance_sample_step_m, 0.5 * grid.resolution())`.
+
+   Первый blocked probe задаёт `first_blocked_s`. После подтверждения raw run
+   минимальной длиной scanner **не возвращается**, а продолжает до первого safe
+   probe. Консервативный `last_blocked_s` равен station первого safe probe после
+   run; если выход до конца artifact не найден, он равен
+   `artifact.samples.back().s_m`. Неподтверждённый короткий raw run
+   сбрасывается, после чего scanner ищет следующий непрерывный run. Для
+   prohibited predicate минимальная длина подтверждения не применяется.
+
+   На границе старого ROS-контракта
+   `ReplanBlockerEvent.blocker_path_distance_m` остаётся относительным и
+   вычисляется явно как `first_blocked_s - current_s`; внутренний
+   `PendingRepairContext` хранит только абсолютные stations. Результат шага:
+   оба trigger-а дают фактический конец первого непрерывного span, а не
+   `min_violation_length_m`.
 
    Добавить `ExecutableTrajectoryArtifact`, который хранит immutable копию
-   принятого `path_id`, полных `TrajectoryPointSample`, mission goal и
-   fingerprint геометрии. Результат шага: оба trigger-а дают единый
-   `[first_blocked_s, last_blocked_s]`, а repair не зависит от мутирующего
-   `last_valid_path_points_`.
+   принятого `path_id`, полных `TrajectoryPointSample`, mission goal,
+   fingerprint геометрии и последний абсолютный `current_s`. Результат шага:
+   оба trigger-а дают единый `[first_blocked_s, last_blocked_s]` в station frame
+   artifact, а repair не зависит от мутирующего `last_valid_path_points_`.
 
 2. **Зафиксировать repair context в момент trigger-а и связать его с
    подтверждённой точкой `A`.**
@@ -170,8 +206,17 @@ truncation-контракта.
      TruncationReplanState truncation;
      BlockedSpan blocked_span;
      ExecutableTrajectoryArtifact old_trajectory;
+     double current_s_m;
      double truncation_s_m;
    };
+   ```
+
+   Проецировать подтверждённую `A` с нижней границей `current_s_m`, хранить её
+   как абсолютный `truncation_s_m` и проверять:
+
+   ```text
+   current_s <= truncation_s < first_blocked_s
+   last_blocked_s >= first_blocked_s
    ```
 
    Если old artifact уже заменён или `A` нельзя однозначно сопоставить с ним,
@@ -203,10 +248,17 @@ truncation-контракта.
    partial_replan_internal_parallel_workers: 1
    ```
 
-   Валидировать возрастающие конечные положительные margins и принудительно
-   ограничить внутренний parallelism значением `1` для corridor и optimizer в
-   каждом race job. Внешняя гонка запускает все 11 jobs сразу, как явно
-   потребовано.
+   Выбрать детерминированную fail-fast policy. Если параметр отсутствует,
+   ROS declaration использует default `10...100`. Явно заданный список должен
+   быть non-empty, состоять только из конечных положительных значений и быть
+   строго возрастающим; NaN/inf, `<=0`, дубликат или нарушение порядка вызывают
+   `std::invalid_argument` при загрузке planner config. Не сортировать, не
+   удалять элементы и не подменять invalid explicit value default-списком,
+   иначе изменятся cardinality/priority race без ведома пользователя.
+
+   `partial_replan_internal_parallel_workers` обязан быть равен `1`; другое
+   явно заданное значение также является config error. Внешняя гонка с
+   default-конфигурацией запускает все 11 jobs сразу, как явно потребовано.
 
    `RepairSnapshot` создавать один раз после подтверждения truncation и
    передавать jobs как `std::shared_ptr<const RepairSnapshot>`. Вместо одного
@@ -221,9 +273,58 @@ truncation-контракта.
    };
    ```
 
+   Материализовать version identity всего composed grid, а не использовать
+   только memory sequence:
+
+   ```cpp
+   struct PlanningGridVersion {
+     std::uint64_t build_revision;
+     std::uint64_t memory_producer_instance_id;
+     std::uint64_t memory_sequence;
+     std::int64_t lidar_update_ns;
+     std::uint64_t config_fingerprint;
+     OccupancyGridFingerprint raw;
+     OccupancyGridFingerprint runtime_prohibited;
+     OccupancyGridFingerprint planning_clearance;
+   };
+
+   struct RepairSnapshot {
+     std::uint64_t generation;
+     std::uint64_t blocked_path_id;
+     PlanningGridVersion grid_version;
+     std::array<RepairGridSnapshot, 2> grids;
+     ExecutableTrajectoryArtifact old_trajectory;
+     double current_s_m;
+     double truncation_s_m;
+     BlockedSpan blocked_span;
+     KnownPassageMap passages;
+     PlannerConfigSnapshot config;
+   };
+
+   struct RepairResult {
+     std::uint64_t generation;
+     std::uint64_t blocked_path_id;
+     PlanningGridVersion source_grid_version;
+     // Candidate trajectory, status and diagnostics.
+   };
+   ```
+
+   `build_revision` выдаётся монотонным node-owned counter после каждой успешно
+   завершённой композиции grid, local inflation relaxation и построения
+   согласованных clearance fields. `memory_*` берутся из последнего
+   применённого atomic snapshot, `lidar_update_ns` — из применённого
+   `LidarInputSnapshot::update_ns`, fingerprints вычисляются уже после local
+   relaxation, а `config_fingerprint` покрывает static-map identity, bounds,
+   inflation и planning-clearance параметры. Для этого вынести подготовку
+   runtime/planning grids из почти предельного
+   `planner_node_inputs.cpp` в новый
+   `drone_city_nav/src/planner_node_grid_snapshot.cpp`.
+
    Snapshot также содержит copied `KnownPassageMap`, config, generation,
    blocked path/fingerprint, old artifact, `A`, `current_s`, `truncation_s` и
-   blocked span. Ни один job не обращается к mutable полям `PlannerNode`.
+   blocked span, а также точный `PlanningGridVersion`. Каждый `RepairResult`
+   копирует эту version identity. Ни один job не обращается к mutable полям
+   `PlannerNode`.
 
 4. **Выделить отменяемый geometry-only trajectory pipeline.**
 
@@ -280,6 +381,13 @@ truncation-контракта.
    ```text
    reconnect_s = blocked_span.last_blocked_s + N
    Bn = sample(old_trajectory, reconnect_s)
+   ```
+
+   Перед запуском соблюдать абсолютный station invariant:
+
+   ```text
+   reconnect_s > max(current_s, truncation_s) + endpoint_tolerance
+   reconnect_s > last_blocked_s
    ```
 
    Candidate не запускать, если `Bn` вышел за конец old trajectory либо
@@ -409,10 +517,19 @@ truncation-контракта.
    - candidate проходит свежий `runtime_prohibited` и mandatory known-solid
      validation.
 
-   Не отвергать candidate только из-за численного изменения grid revision:
+   `RepairResult.grid_version` должен точно совпадать с version исходного
+   immutable snapshot; это доказывает identity job input. Перед публикацией
+   подготовить новый `PlanningGridVersion fresh_version` тем же API. Требовать
+   `fresh_version.build_revision >= result.grid_version.build_revision` и
+   логировать, какие source revisions/fingerprints изменились.
+
+   Не отвергать candidate только из-за того, что fresh build revision больше:
    критической новизной считать изменение, которое фактически инвалидирует
-   prefix или candidate на свежем grid. Это не замораживает гонку при каждом
-   новом lidar snapshot.
+   prefix или candidate на свежем `runtime_prohibited`, меняет known solids
+   либо path/generation/fingerprint. Таким образом version даёт ordering и
+   доказуемую принадлежность результата snapshot, а физическая fresh
+   validation остаётся hard gate и не замораживает гонку при каждом lidar
+   update.
 
    Публиковать ровно один suffix path на generation и затем ждать существующий
    ACK. При `REJECTED` не восстанавливать поздние результаты старой гонки:
@@ -431,13 +548,16 @@ truncation-контракта.
 
    Логировать:
 
-   - race generation, blocked path/fingerprint, span, `A`, grid fingerprints;
+   - race generation, blocked path/fingerprint, absolute
+     `current_s/truncation_s/first_blocked_s/last_blocked_s`, span trigger,
+     `A`, полный `PlanningGridVersion`;
    - для каждого job: kind, reconnect margin, `B`, выбранный grid, durations
      A*/corridor/optimizer/stitch/finalization, activation mode;
    - причины skip/reject: `beyond_goal`, `endpoint_prohibited`,
      `astar_failed`, `non_traversable`, `known_solid_intersection`,
      `stale_generation`, `prefix_invalidated`, `canceled`;
-   - порядок completion, winner kind/margin, blocker-to-winner и
+   - порядок completion, snapshot/fresh build revisions и изменившиеся source
+     revisions/fingerprints, winner kind/margin, blocker-to-winner и
      winner-to-publication latency;
    - aggregate summary, если все partial и full job не дали winner.
 
@@ -473,7 +593,9 @@ truncation-контракта.
     Описать отличие partial repair от safe truncation и full replan, first-valid
     semantics, 11-thread external budget, обязательные hard gates, advisory
     quality, `MOVING_JOIN`/`AFTER_HOLD`, cancellation и поведение при отсутствии
-    winner.
+    winner. В `docs/configuration.md` явно зафиксировать fail-fast semantics
+    reconnect margins: default применяется только при отсутствии параметра, а
+    invalid explicit list останавливает запуск planner node.
 
 ## Verification plan
 
@@ -495,7 +617,7 @@ truncation-контракта.
    ```bash
    ./scripts/dev_shell.sh \
      ctest --test-dir build/drone_city_nav --output-on-failure \
-     -R '^(trajectory_repair_test|repair_race_test|planner_core_test|trajectory_planner_test|trajectory_optimizer_test|safe_trajectory_truncation_test|truncation_suffix_protocol_test|planner_node_config_test)$'
+     -R '^(trajectory_repair_test|repair_race_test|planner_core_test|path_raw_clearance_monitor_test|trajectory_planner_test|trajectory_optimizer_test|safe_trajectory_truncation_test|truncation_suffix_protocol_test|planner_node_config_test)$'
    ```
 
    Он проверяет новый repair/race контракт и существующие границы, которые
@@ -537,13 +659,25 @@ truncation-контракта.
 ### Категория 1: обязательные тесты без дополнительного рефакторинга
 
 1. `planner_core_test`:
-   - одно непрерывное prohibited-пересечение даёт точные first/last stations;
+   - одно непрерывное prohibited-пересечение при `current_s > 0` даёт точные
+     absolute first/last stations old artifact;
    - два раздельных span выбирают первый;
    - конфликт, начинающийся в escape-префиксе, не теряет фактический конец;
-   - raw-clearance entry/length преобразуются в тот же `BlockedSpan`.
+   - progress projection не уменьшается на самопересекающемся пути.
 
-2. `trajectory_repair_test` — B generation:
+2. `path_raw_clearance_monitor_test`:
+   - raw violation длиной существенно больше `min_violation_length_m`
+     продолжается до фактического первого safe probe, а не заканчивается на
+     минимальной длине подтверждения;
+   - короткий неподтверждённый run пропускается и scanner находит следующий
+     длинный run;
+   - span, продолжающийся до mission goal, завершается последней station;
+   - два раздельных длинных run возвращают первый.
+
+3. `trajectory_repair_test` — B generation:
    - создаются `B10...B100` от `last_blocked_s`, а `A` у всех одинаков;
+   - при non-zero `current_s` все запущенные candidates соблюдают
+     `Bn > max(current_s, truncation_s)` и не возвращают дрон назад;
    - `Bn` после mission goal пропускается;
    - `Bn`, запрещённый в planning grid, но свободный в runtime grid, остаётся
      кандидатом;
@@ -553,7 +687,7 @@ truncation-контракта.
    - short candidate отклоняется из-за второго конфликта в old suffix, более
      длинный candidate может обойти оба.
 
-3. `trajectory_repair_test` — stitching/finalization:
+4. `trajectory_repair_test` — stitching/finalization:
    - `A` и `B` совпадают по позиции, duplicate samples удалены, stations строго
      возрастают, NaN/разрывов нет;
    - XY-геометрия old suffix после `B` не меняется;
@@ -564,24 +698,31 @@ truncation-контракта.
      runtime-traversable и solid-clear candidate;
    - moving join и `AFTER_HOLD` получают корректный activation mode.
 
-4. `repair_race_test` с fake jobs/mailbox:
+5. `repair_race_test` с fake jobs/mailbox:
    - первый завершившийся invalid result игнорируется, первый hard-valid
      выигрывает;
    - при одновременном completion winner выбирается атомарно один раз;
    - stale generation/path/fingerprint отклоняются;
+   - каждый result несёт точный snapshot `PlanningGridVersion`;
+   - новая build revision с теми же fingerprints проходит fresh validation;
+   - новая build revision с изменённым lidar source и новым blocker отклоняет
+     только затронутый candidate;
    - candidate, ставший invalid на свежем grid, не закрывает гонку, следующий
      valid result может выиграть;
    - winner вызывает `request_stop()`, optimizer замечает stop между iterations;
    - все partial failures не мешают full job победить;
    - failure всех 11 jobs оставляет temporary hold и публикует aggregate reason.
 
-5. `planner_node_config_test`:
+6. `planner_node_config_test`:
    - default margins равны 10...100;
-   - отрицательные, NaN, дубликаты и неупорядоченные margins отклоняются или
-     нормализуются по документированному контракту;
+   - отрицательные, NaN/inf, дубликаты, пустой и неупорядоченный explicit list
+     приводят к `std::invalid_argument`, не сортируются и не заменяются
+     default-списком;
+   - валидный пользовательский строго возрастающий список сохраняет исходный
+     порядок и задаёт ровно соответствующее число partial jobs;
    - internal workers в race config равны `1`.
 
-6. `truncation_suffix_protocol_test`:
+7. `truncation_suffix_protocol_test`:
    - winner до `A` проходит `MOVING_JOIN`;
    - winner после достижения hold проходит `AFTER_HOLD`;
    - `PENDING`, `ACCEPTED`, `REJECTED` не допускают второй публикации той же
@@ -609,14 +750,17 @@ truncation-контракта.
   finalization API затрагивает shared pipeline. Нельзя копировать существующую
   orchestration в repair module: это создаст расходящиеся правила vertical,
   passage и speed validation.
-- **Blocked-span неоднозначность.** Grid conflict может состоять из нескольких
+- **Blocked-span discretization.** Grid conflict может состоять из нескольких
   соседних/раздельных кластеров. Контракт намеренно берёт первый непрерывный
-  span; последующие пересечения ловит full final validation, после чего более
-  длинный partial или full job остаётся в гонке.
+  span в абсолютной station frame: prohibited использует полный ordered
+  cell traversal, raw-clearance — ограниченный grid-relative sample step и
+  консервативную safe exit station. Последующие пересечения ловит full final
+  validation, после чего более длинный partial или full job остаётся в гонке.
 - **Grid revision churn.** Строгое равенство revision сделает winner почти
-  невозможным при lidar updates. Поэтому freshness определяется повторной
-  фактической проверкой prefix/candidate на свежем grid, а revision используется
-  для диагностики и обнаружения смены контекста.
+  невозможным при lidar updates. `PlanningGridVersion` поэтому разделяет
+  монотонный build ordering, source identity и content fingerprints, а
+  freshness определяется повторной фактической проверкой prefix/candidate на
+  свежем grid.
 - **Join внутри passage.** Автоматический перенос `B` за hard-window может
   необоснованно удлинить repair. Разрешение внутреннего `B` безопасно только при
   full vertical/solid validation stitched trajectory.
@@ -658,13 +802,19 @@ truncation-контракта.
 
 3. **Что означает «grid revision не стала критически новее»?**
 
-   Recommended decision: не вводить произвольный числовой lag threshold.
-   Критической считать revision, на которой fresh `runtime_prohibited` или
-   known-solid validation инвалидирует prefix/candidate, либо изменился
-   blocked path/generation/fingerprint. Иначе непрерывные lidar revisions будут
-   отвергать полезные результаты без геометрической причины. Подтверждение:
-   race test с новой revision, но неизменной проходимостью, и test с новым
-   blocker на candidate.
+   Recommended decision: использовать конкретный `PlanningGridVersion` из шага
+   3. Его `build_revision` — монотонный номер каждой полностью подготовленной
+   композиции, а memory producer/sequence, lidar update timestamp, config hash и
+   три grid fingerprints объясняют изменение содержимого. `RepairSnapshot` и
+   `RepairResult` несут одну и ту же version identity.
+
+   При fresh publication меньшая build revision является internal error,
+   равная означает тот же build, большая требует повторной физической проверки,
+   но не является самостоятельным reject. Критической новая revision становится
+   только если fresh `runtime_prohibited`/known-solid validation инвалидирует
+   prefix или candidate либо изменился blocked path/generation/fingerprint.
+   Подтверждение: race tests с новой revision при одинаковых fingerprints и с
+   новым lidar blocker.
 
 4. **Нужно ли повторно запускать passage insertion после stitching?**
 
