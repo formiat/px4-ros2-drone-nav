@@ -38,6 +38,17 @@ checkedAdjustedTimestampNs(const std::uint64_t adjusted_timestamp_us,
 }
 
 [[nodiscard]] std::optional<std::int64_t>
+checkedOffsetNs(const std::int64_t estimated_offset_us) noexcept {
+  if (estimated_offset_us <
+          std::numeric_limits<std::int64_t>::min() / kNanosecondsPerMicrosecond ||
+      estimated_offset_us >
+          std::numeric_limits<std::int64_t>::max() / kNanosecondsPerMicrosecond) {
+    return std::nullopt;
+  }
+  return estimated_offset_us * kNanosecondsPerMicrosecond;
+}
+
+[[nodiscard]] std::optional<std::int64_t>
 roundedTimestamp(const double value_ns) noexcept {
   if (!std::isfinite(value_ns) || value_ns <= 0.0 ||
       value_ns > static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
@@ -59,36 +70,49 @@ Px4RosTimeMapper::Px4RosTimeMapper(const Px4RosTimeMapperConfig& config)
   }
   config_.max_round_trip_time_ns =
       std::max<std::int64_t>(0, config_.max_round_trip_time_ns);
+  config_.max_clock_step_error_ns =
+      std::max<std::int64_t>(0, config_.max_clock_step_error_ns);
 }
 
 void Px4RosTimeMapper::observeTimesync(const std::uint64_t adjusted_timestamp_us,
                                        const std::int64_t estimated_offset_us,
                                        const std::uint32_t round_trip_time_us,
                                        const std::int64_t ros_receive_stamp_ns) {
-  latest_estimated_offset_us_ = estimated_offset_us;
-  if (estimated_offset_us >=
-          std::numeric_limits<std::int64_t>::min() / kNanosecondsPerMicrosecond &&
-      estimated_offset_us <=
-          std::numeric_limits<std::int64_t>::max() / kNanosecondsPerMicrosecond) {
-    latest_estimated_offset_ns_ = estimated_offset_us * kNanosecondsPerMicrosecond;
-  } else {
-    latest_estimated_offset_ns_ = 0;
-  }
-  offset_available_ = adjusted_timestamp_us > 0U;
   const auto px4_local_stamp_ns =
       checkedAdjustedTimestampNs(adjusted_timestamp_us, estimated_offset_us);
+  const auto estimated_offset_ns = checkedOffsetNs(estimated_offset_us);
   const std::uint64_t round_trip_time_ns =
       static_cast<std::uint64_t>(round_trip_time_us) *
       static_cast<std::uint64_t>(kNanosecondsPerMicrosecond);
-  if (!px4_local_stamp_ns.has_value() || ros_receive_stamp_ns <= 0 ||
+  if (!px4_local_stamp_ns.has_value() || !estimated_offset_ns.has_value() ||
+      ros_receive_stamp_ns <= 0 ||
       round_trip_time_ns > static_cast<std::uint64_t>(config_.max_round_trip_time_ns)) {
+    ++rejected_sample_count_;
     return;
   }
-  if (!samples_.empty() &&
-      (*px4_local_stamp_ns <= samples_.back().px4_local_stamp_ns ||
-       ros_receive_stamp_ns <= samples_.back().ros_receive_stamp_ns)) {
-    return;
+  if (!samples_.empty()) {
+    const Sample& previous = samples_.back();
+    if (*px4_local_stamp_ns <= previous.px4_local_stamp_ns ||
+        ros_receive_stamp_ns <= previous.ros_receive_stamp_ns) {
+      ++rejected_sample_count_;
+      return;
+    }
+    const std::int64_t px4_step_ns = *px4_local_stamp_ns - previous.px4_local_stamp_ns;
+    const std::int64_t ros_step_ns =
+        ros_receive_stamp_ns - previous.ros_receive_stamp_ns;
+    const std::int64_t clock_step_error_ns = px4_step_ns >= ros_step_ns
+                                                 ? px4_step_ns - ros_step_ns
+                                                 : ros_step_ns - px4_step_ns;
+    if (clock_step_error_ns > config_.max_clock_step_error_ns) {
+      ++rejected_sample_count_;
+      ++clock_discontinuity_count_;
+      return;
+    }
   }
+
+  latest_estimated_offset_us_ = estimated_offset_us;
+  latest_estimated_offset_ns_ = *estimated_offset_ns;
+  offset_available_ = true;
   samples_.push_back(Sample{*px4_local_stamp_ns, ros_receive_stamp_ns});
   while (samples_.size() > config_.max_samples) {
     samples_.pop_front();
@@ -129,6 +153,8 @@ Px4RosTimeMappingDiagnostics Px4RosTimeMapper::diagnostics() const noexcept {
   return Px4RosTimeMappingDiagnostics{
       .ready = ready_,
       .sample_count = samples_.size(),
+      .rejected_sample_count = rejected_sample_count_,
+      .clock_discontinuity_count = clock_discontinuity_count_,
       .scale = scale_,
       .offset_ns = offset_ns_,
       .min_observed_latency_ns = min_observed_latency_ns_,
@@ -145,6 +171,8 @@ void Px4RosTimeMapper::clear() noexcept {
   max_fit_residual_ns_ = 0.0;
   latest_estimated_offset_ns_ = 0;
   latest_estimated_offset_us_ = 0;
+  rejected_sample_count_ = 0U;
+  clock_discontinuity_count_ = 0U;
   offset_available_ = false;
   ready_ = false;
 }

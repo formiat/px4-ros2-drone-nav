@@ -18,6 +18,8 @@ namespace drone_city_nav {
 struct LidarPoseHistoryConfig {
   std::int64_t retention_ns{3'000'000'000};
   std::int64_t max_extrapolation_ns{100'000'000};
+  std::int64_t max_interpolation_interval_ns{1'000'000'000};
+  std::int64_t max_clock_step_error_ns{2'000'000'000};
 };
 
 enum class LidarPoseTemporalMode : std::uint8_t {
@@ -73,6 +75,7 @@ enum class LidarPoseAlignmentStatus {
   kPositionHistoryEmpty,
   kAttitudeHistoryEmpty,
   kExtrapolationExceeded,
+  kTimestampDiscontinuity,
   kAttitudeInvalid,
 };
 
@@ -112,10 +115,10 @@ class LidarPoseHistory {
 public:
   explicit LidarPoseHistory(LidarPoseHistoryConfig config = {});
 
-  void addPosition(std::int64_t stamp_ns, const Point3& position_map_m, double yaw_rad,
+  bool addPosition(std::int64_t stamp_ns, const Point3& position_map_m, double yaw_rad,
                    bool yaw_valid, std::int64_t acquisition_stamp_ns = 0,
                    std::int64_t source_stamp_ns = 0);
-  void addAttitude(std::int64_t stamp_ns, const std::array<float, 4>& quaternion,
+  bool addAttitude(std::int64_t stamp_ns, const std::array<float, 4>& quaternion,
                    std::int64_t acquisition_stamp_ns = 0,
                    std::int64_t source_stamp_ns = 0);
 

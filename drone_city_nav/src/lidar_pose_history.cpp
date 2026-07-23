@@ -143,6 +143,26 @@ interpolationRatio(const std::int64_t from_stamp_ns, const std::int64_t to_stamp
   return 0;
 }
 
+[[nodiscard]] bool clockStepsConsistent(
+    const std::int64_t previous_receive_stamp_ns, const std::int64_t receive_stamp_ns,
+    const std::int64_t previous_acquisition_stamp_ns,
+    const std::int64_t acquisition_stamp_ns, const std::int64_t max_error_ns) noexcept {
+  if (previous_acquisition_stamp_ns <= 0 || acquisition_stamp_ns <= 0) {
+    return true;
+  }
+  if (receive_stamp_ns < previous_receive_stamp_ns ||
+      acquisition_stamp_ns < previous_acquisition_stamp_ns) {
+    return false;
+  }
+  const std::int64_t receive_step_ns = receive_stamp_ns - previous_receive_stamp_ns;
+  const std::int64_t acquisition_step_ns =
+      acquisition_stamp_ns - previous_acquisition_stamp_ns;
+  const std::int64_t step_error_ns = receive_step_ns >= acquisition_step_ns
+                                         ? receive_step_ns - acquisition_step_ns
+                                         : acquisition_step_ns - receive_step_ns;
+  return step_error_ns <= max_error_ns;
+}
+
 template<typename Sample>
 [[nodiscard]] LidarPoseTemporalAlignment
 temporalAlignment(const Sample& from, const Sample& to,
@@ -183,33 +203,44 @@ LidarPoseHistory::LidarPoseHistory(LidarPoseHistoryConfig config)
   config_.retention_ns = std::max<std::int64_t>(1, config_.retention_ns);
   config_.max_extrapolation_ns =
       std::clamp<std::int64_t>(config_.max_extrapolation_ns, 0, config_.retention_ns);
+  config_.max_interpolation_interval_ns = std::clamp<std::int64_t>(
+      config_.max_interpolation_interval_ns, 1, config_.retention_ns);
+  config_.max_clock_step_error_ns =
+      std::max<std::int64_t>(0, config_.max_clock_step_error_ns);
 }
 
-void LidarPoseHistory::addPosition(const std::int64_t stamp_ns,
+bool LidarPoseHistory::addPosition(const std::int64_t stamp_ns,
                                    const Point3& position_map_m, const double yaw_rad,
                                    const bool yaw_valid,
                                    const std::int64_t acquisition_stamp_ns,
                                    const std::int64_t source_stamp_ns) {
   if (stamp_ns <= 0 || !finitePoint(position_map_m) || !yaw_valid ||
       !std::isfinite(yaw_rad)) {
-    return;
+    return false;
   }
   if (!positions_.empty() && stamp_ns < positions_.back().stamp_ns) {
-    return;
+    return false;
   }
   if (!positions_.empty() && acquisition_stamp_ns > 0 &&
       positions_.back().acquisition_stamp_ns > 0 &&
       acquisition_stamp_ns < positions_.back().acquisition_stamp_ns) {
-    return;
+    return false;
+  }
+  if (!positions_.empty() &&
+      !clockStepsConsistent(positions_.back().stamp_ns, stamp_ns,
+                            positions_.back().acquisition_stamp_ns,
+                            acquisition_stamp_ns, config_.max_clock_step_error_ns)) {
+    return false;
   }
   positions_.push_back(
       PositionSample{stamp_ns, acquisition_stamp_ns,
                      source_stamp_ns > 0 ? source_stamp_ns : acquisition_stamp_ns,
                      position_map_m, normalizedAngle(yaw_rad)});
   prune(stamp_ns);
+  return true;
 }
 
-void LidarPoseHistory::addAttitude(const std::int64_t stamp_ns,
+bool LidarPoseHistory::addAttitude(const std::int64_t stamp_ns,
                                    const std::array<float, 4>& quaternion,
                                    const std::int64_t acquisition_stamp_ns,
                                    const std::int64_t source_stamp_ns) {
@@ -218,20 +249,27 @@ void LidarPoseHistory::addAttitude(const std::int64_t stamp_ns,
       static_cast<double>(quaternion[2]), static_cast<double>(quaternion[3])};
   const auto normalized = normalizedQuaternion(converted);
   if (stamp_ns <= 0 || !finiteQuaternion(normalized)) {
-    return;
+    return false;
   }
   if (!attitudes_.empty() && stamp_ns < attitudes_.back().stamp_ns) {
-    return;
+    return false;
   }
   if (!attitudes_.empty() && acquisition_stamp_ns > 0 &&
       attitudes_.back().acquisition_stamp_ns > 0 &&
       acquisition_stamp_ns < attitudes_.back().acquisition_stamp_ns) {
-    return;
+    return false;
+  }
+  if (!attitudes_.empty() &&
+      !clockStepsConsistent(attitudes_.back().stamp_ns, stamp_ns,
+                            attitudes_.back().acquisition_stamp_ns,
+                            acquisition_stamp_ns, config_.max_clock_step_error_ns)) {
+    return false;
   }
   attitudes_.push_back(AttitudeSample{
       stamp_ns, acquisition_stamp_ns,
       source_stamp_ns > 0 ? source_stamp_ns : acquisition_stamp_ns, normalized});
   prune(stamp_ns);
+  return true;
 }
 
 std::optional<TimestampAlignedLidarPose>
@@ -278,6 +316,21 @@ LidarPoseSampleResult LidarPoseHistory::sampleWithDiagnostics(
   const std::int64_t position_to_stamp_ns = sampleStamp(position_to, time_basis);
   const std::int64_t attitude_from_stamp_ns = sampleStamp(attitude_from, time_basis);
   const std::int64_t attitude_to_stamp_ns = sampleStamp(attitude_to, time_basis);
+  if (position_to_stamp_ns - position_from_stamp_ns >
+          config_.max_interpolation_interval_ns ||
+      attitude_to_stamp_ns - attitude_from_stamp_ns >
+          config_.max_interpolation_interval_ns ||
+      !clockStepsConsistent(position_from.stamp_ns, position_to.stamp_ns,
+                            position_from.acquisition_stamp_ns,
+                            position_to.acquisition_stamp_ns,
+                            config_.max_clock_step_error_ns) ||
+      !clockStepsConsistent(attitude_from.stamp_ns, attitude_to.stamp_ns,
+                            attitude_from.acquisition_stamp_ns,
+                            attitude_to.acquisition_stamp_ns,
+                            config_.max_clock_step_error_ns)) {
+    result.status = LidarPoseAlignmentStatus::kTimestampDiscontinuity;
+    return result;
+  }
   result.position_stamp_error_ns =
       nearestStampError(stamp_ns, position_from_stamp_ns, position_to_stamp_ns);
   result.attitude_stamp_error_ns =
@@ -481,6 +534,8 @@ lidarPoseAlignmentStatusName(const LidarPoseAlignmentStatus status) noexcept {
       return "attitude_history_empty";
     case LidarPoseAlignmentStatus::kExtrapolationExceeded:
       return "extrapolation_exceeded";
+    case LidarPoseAlignmentStatus::kTimestampDiscontinuity:
+      return "timestamp_discontinuity";
     case LidarPoseAlignmentStatus::kAttitudeInvalid:
       return "attitude_invalid";
   }
@@ -573,6 +628,8 @@ std::string formatLidarPoseAlignmentDiagnostic(
          << 1.0e-6 * static_cast<double>(result.attitude_timing.signed_extrapolation_ns)
          << "] time_mapping[ready=" << (result.time_mapping.ready ? "true" : "false")
          << " samples=" << result.time_mapping.sample_count
+         << " rejected=" << result.time_mapping.rejected_sample_count
+         << " discontinuities=" << result.time_mapping.clock_discontinuity_count
          << " scale=" << result.time_mapping.scale
          << " offset_ms=" << 1.0e-6 * result.time_mapping.offset_ns
          << " max_residual_ms=" << 1.0e-6 * result.time_mapping.max_fit_residual_ns

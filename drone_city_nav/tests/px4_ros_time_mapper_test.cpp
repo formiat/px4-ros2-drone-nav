@@ -46,7 +46,39 @@ TEST(Px4RosTimeMapperTest, RejectsHighRttSamplesAndUnsafeArithmetic) {
 
   EXPECT_FALSE(mapper.ready());
   EXPECT_EQ(mapper.diagnostics().sample_count, 0U);
+  EXPECT_EQ(mapper.diagnostics().rejected_sample_count, 1U);
   EXPECT_FALSE(mapper.recoverPx4LocalTimeNs(0U).has_value());
+}
+
+TEST(Px4RosTimeMapperTest, RejectedOffsetDiscontinuityDoesNotPoisonRecovery) {
+  Px4RosTimeMapper mapper{
+      Px4RosTimeMapperConfig{2U, 16U, 0.999, 1.001, 50'000'000, 500'000'000}};
+  constexpr std::int64_t estimated_offset_us{-1'700'000'000};
+  mapper.observeTimesync(1'701'000'000U, estimated_offset_us, 100U, 1'000'000'000);
+  mapper.observeTimesync(1'701'100'000U, estimated_offset_us, 100U, 1'100'000'000);
+  ASSERT_TRUE(mapper.ready());
+
+  mapper.observeTimesync(1'701'200'000U, 0, 100U, 1'200'000'000);
+
+  const auto recovered = mapper.recoverPx4LocalTimeNs(1'701'250'000U);
+  ASSERT_TRUE(recovered.has_value());
+  EXPECT_EQ(recovered.value_or(0), 1'250'000'000);
+  const Px4RosTimeMappingDiagnostics diagnostics = mapper.diagnostics();
+  EXPECT_EQ(diagnostics.sample_count, 2U);
+  EXPECT_EQ(diagnostics.rejected_sample_count, 1U);
+  EXPECT_EQ(diagnostics.clock_discontinuity_count, 1U);
+  EXPECT_EQ(diagnostics.latest_estimated_offset_ns, estimated_offset_us * 1000);
+}
+
+TEST(Px4RosTimeMapperTest, RejectedHighRttSampleDoesNotReplaceAcceptedOffset) {
+  Px4RosTimeMapper mapper;
+  mapper.observeTimesync(1'701'000'000U, -1'700'000'000, 100U, 1'000'000'000);
+
+  mapper.observeTimesync(1'701'100'000U, 0, 100'000U, 1'100'000'000);
+
+  EXPECT_EQ(mapper.recoverPx4LocalTimeNs(1'701'200'000U),
+            std::optional<std::int64_t>{1'200'000'000});
+  EXPECT_EQ(mapper.diagnostics().latest_estimated_offset_ns, -1'700'000'000'000LL);
 }
 
 } // namespace drone_city_nav

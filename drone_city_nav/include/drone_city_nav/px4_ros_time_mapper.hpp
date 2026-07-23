@@ -13,11 +13,14 @@ struct Px4RosTimeMapperConfig {
   double min_scale{0.999};
   double max_scale{1.001};
   std::int64_t max_round_trip_time_ns{50'000'000};
+  std::int64_t max_clock_step_error_ns{2'000'000'000};
 };
 
 struct Px4RosTimeMappingDiagnostics {
   bool ready{false};
   std::size_t sample_count{0U};
+  std::uint64_t rejected_sample_count{0U};
+  std::uint64_t clock_discontinuity_count{0U};
   double scale{1.0};
   double offset_ns{0.0};
   double min_observed_latency_ns{0.0};
@@ -63,6 +66,8 @@ private:
   double max_fit_residual_ns_{0.0};
   std::int64_t latest_estimated_offset_ns_{0};
   std::int64_t latest_estimated_offset_us_{0};
+  std::uint64_t rejected_sample_count_{0U};
+  std::uint64_t clock_discontinuity_count_{0U};
   bool offset_available_{false};
   bool ready_{false};
 };

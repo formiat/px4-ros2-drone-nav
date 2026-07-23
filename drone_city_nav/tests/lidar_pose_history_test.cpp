@@ -114,10 +114,50 @@ TEST(LidarPoseHistoryTest, ConvertsPx4SourceTimestampSafely) {
 
 TEST(LidarPoseHistoryTest, RejectsInvalidSamples) {
   LidarPoseHistory history;
-  history.addPosition(1'000'000'000, Point3{0.0, 0.0, 1.0}, 0.0, false);
-  history.addAttitude(1'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F});
+  EXPECT_FALSE(history.addPosition(1'000'000'000, Point3{0.0, 0.0, 1.0}, 0.0, false));
+  EXPECT_TRUE(history.addAttitude(1'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}));
 
   EXPECT_FALSE(history.sample(1'000'000'000).has_value());
+}
+
+TEST(LidarPoseHistoryTest, RejectsAcquisitionClockDomainJump) {
+  LidarPoseHistory history{
+      LidarPoseHistoryConfig{3'000'000'000, 100'000'000, 1'000'000'000, 500'000'000}};
+  ASSERT_TRUE(history.addPosition(1'000'000'000, Point3{1.0, 2.0, 3.0}, 0.0, true,
+                                  900'000'000));
+  ASSERT_TRUE(
+      history.addAttitude(1'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}, 900'000'000));
+
+  EXPECT_FALSE(history.addPosition(1'100'000'000, Point3{2.0, 3.0, 4.0}, 0.0, true,
+                                   1'700'000'000'000'000'000LL));
+  EXPECT_FALSE(history.addAttitude(1'100'000'000, {1.0F, 0.0F, 0.0F, 0.0F},
+                                   1'700'000'000'000'000'000LL));
+  EXPECT_EQ(history.positionSampleCount(), 1U);
+  EXPECT_EQ(history.attitudeSampleCount(), 1U);
+
+  EXPECT_TRUE(history.addPosition(1'200'000'000, Point3{3.0, 4.0, 5.0}, 0.0, true,
+                                  1'100'000'000));
+  EXPECT_TRUE(
+      history.addAttitude(1'200'000'000, {1.0F, 0.0F, 0.0F, 0.0F}, 1'100'000'000));
+}
+
+TEST(LidarPoseHistoryTest, RejectsInterpolationAcrossLongTimestampGap) {
+  LidarPoseHistory history{
+      LidarPoseHistoryConfig{5'000'000'000, 100'000'000, 500'000'000, 2'000'000'000}};
+  ASSERT_TRUE(history.addPosition(1'000'000'000, Point3{1.0, 2.0, 3.0}, 0.0, true,
+                                  900'000'000));
+  ASSERT_TRUE(history.addPosition(2'000'000'000, Point3{2.0, 3.0, 4.0}, 0.0, true,
+                                  1'900'000'000));
+  ASSERT_TRUE(
+      history.addAttitude(1'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}, 900'000'000));
+  ASSERT_TRUE(
+      history.addAttitude(2'000'000'000, {1.0F, 0.0F, 0.0F, 0.0F}, 1'900'000'000));
+
+  const LidarPoseSampleResult result = history.sampleWithDiagnostics(
+      1'400'000'000, LidarPoseTimeBasis::kPx4AcquisitionTime);
+
+  EXPECT_EQ(result.status, LidarPoseAlignmentStatus::kTimestampDiscontinuity);
+  EXPECT_FALSE(result.aligned_pose.has_value());
 }
 
 TEST(LidarPoseHistoryTest, BuildsPoseForEachBeamAcquisitionTime) {
