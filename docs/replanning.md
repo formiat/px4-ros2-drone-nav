@@ -109,6 +109,11 @@ containing the accepted trajectory artifact, the absolute blocked span, known
 passages, and prepared planning/runtime grids. Local jobs reconnect at fixed
 stations 10 through 100 metres after the actual blocked-span exit.
 
+Prohibited spans use the same ordered `cellsOnLine` and `isProhibited` traversal
+as runtime path checks, including diagonal segments. Raw-obstacle clearance
+spans remain station-sampled because their contract is a sustained metric run,
+not a discrete prohibited-cell intersection.
+
 Each local job runs A*, corridor construction, optimization, and smoothing only
 from the confirmed truncation point to its reconnect station. It then appends
 the unchanged old suffix and globally rebuilds vertical, passage, and speed
@@ -165,6 +170,12 @@ The winner is handed to the guarded publication path immediately after
 selection. Joining losing jobs happens after this handoff, so a slow loser does
 not delay an already valid suffix. A* and trajectory optimization both observe
 the shared cancellation token.
+
+Offboard reports when the temporary terminal hold is actually reached. The
+publication handoff resolves a moving candidate to `AFTER_HOLD` when that state
+arrives before the winner; otherwise the planned `MOVING_JOIN`/`AFTER_HOLD`
+mode is preserved. This prevents a late winner from retaining moving-prefix
+tangent semantics after the vehicle has already stopped.
 
 The implementation does not need unsafe thread termination. Cooperative
 cancellation or stale-result rejection is enough for correctness. The

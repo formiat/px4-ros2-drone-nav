@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <vector>
 
@@ -85,6 +86,34 @@ TEST(TrajectoryRepair, ProhibitedScannerKeepsExitOfBlockedEscapePrefix) {
   ASSERT_TRUE(span.has_value());
   EXPECT_NEAR(span->first_blocked_s_m, 4.0, 0.26);
   EXPECT_GT(span->last_blocked_s_m, 8.0);
+}
+
+TEST(TrajectoryRepair, ProhibitedScannerVisitsEveryRuntimeLineCell) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 10}};
+  grid.setOccupied(GridIndex{1, 4});
+  const Point2 start{0.058, 0.5074};
+  const Point2 end{1.0859, 7.0699};
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{start, end});
+
+  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+  const std::optional<GridIndex> end_cell = grid.worldToCell(end);
+  ASSERT_TRUE(start_cell.has_value());
+  ASSERT_TRUE(end_cell.has_value());
+  const std::vector<GridIndex> runtime_cells =
+      grid.cellsOnLine(start_cell.value(), end_cell.value());
+  ASSERT_NE(std::ranges::find(runtime_cells, GridIndex{1, 4}), runtime_cells.end());
+
+  const auto span = findFirstProhibitedBlockedSpan(
+      grid, samples, 0.0, BlockedSpanScanConfig{.sample_step_m = 0.5});
+
+  ASSERT_TRUE(span.has_value());
+  const BlockedSpan& blocked = span.value();
+  ASSERT_TRUE(blocked.first_cell_available);
+  ASSERT_TRUE(blocked.last_cell_available);
+  EXPECT_EQ(blocked.first_cell, (GridIndex{1, 4}));
+  EXPECT_EQ(blocked.last_cell, (GridIndex{1, 5}));
+  EXPECT_GT(blocked.last_blocked_s_m, blocked.first_blocked_s_m);
 }
 
 TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {

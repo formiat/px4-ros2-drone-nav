@@ -971,6 +971,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   temporary_replan_truncation_active_ = false;
   temporary_replan_hold_active_ = false;
   temporary_replan_immediate_hold_ = false;
+  active_truncation_blocked_path_id_ = 0U;
   active_truncation_generation_ = 0U;
   active_temporary_prefix_fingerprint_ = 0U;
   pending_truncation_suffix_.reset();

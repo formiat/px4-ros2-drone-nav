@@ -39,6 +39,13 @@ truncationSuffixActivationModeName(const TruncationSuffixActivationMode mode) no
   return "unknown";
 }
 
+TruncationSuffixActivationMode
+resolveTruncationSuffixActivationMode(const TruncationSuffixActivationMode planned_mode,
+                                      const bool temporary_hold_reached) noexcept {
+  return temporary_hold_reached ? TruncationSuffixActivationMode::kAfterHold
+                                : planned_mode;
+}
+
 const char*
 truncationSuffixAckDecisionName(const TruncationSuffixAckDecision decision) noexcept {
   switch (decision) {

@@ -200,6 +200,12 @@ private:
                                const TrajectoryPointSample& terminal_sample,
                                std::uint64_t prefix_fingerprint, bool immediate_hold);
 
+  void publishReplanTruncationState(std::uint64_t blocked_path_id,
+                                    std::uint64_t truncation_generation,
+                                    const TrajectoryPointSample& terminal_sample,
+                                    std::uint64_t prefix_fingerprint,
+                                    bool immediate_hold, bool temporary_hold_reached);
+
   void publishTruncationSuffixAck(const msg::ExecutableTrajectory& command,
                                   TruncationSuffixAckDecision decision,
                                   std::string_view reason);
@@ -412,6 +418,7 @@ private:
   std::uint64_t accepted_planner_path_id_{0U};
   std::uint64_t received_path_update_id_{0U};
   std::uint64_t last_received_path_stamp_ns_{0U};
+  std::uint64_t active_truncation_blocked_path_id_{0U};
   std::uint64_t active_truncation_generation_{0U};
   std::uint64_t active_temporary_prefix_fingerprint_{0U};
   std::uint64_t path_update_velocity_smoother_reset_count_{0U};

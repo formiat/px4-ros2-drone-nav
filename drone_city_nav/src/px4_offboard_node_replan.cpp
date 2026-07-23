@@ -33,10 +33,20 @@ void Px4OffboardNode::publishReplanTruncation(
     const msg::ReplanBlockerEvent& blocker,
     const TrajectoryPointSample& terminal_sample,
     const std::uint64_t prefix_fingerprint, const bool immediate_hold) {
+  publishReplanTruncationState(blocker.blocked_path_id, blocker.truncation_generation,
+                               terminal_sample, prefix_fingerprint, immediate_hold,
+                               immediate_hold);
+}
+
+void Px4OffboardNode::publishReplanTruncationState(
+    const std::uint64_t blocked_path_id, const std::uint64_t truncation_generation,
+    const TrajectoryPointSample& terminal_sample,
+    const std::uint64_t prefix_fingerprint, const bool immediate_hold,
+    const bool temporary_hold_reached) {
   msg::ReplanTruncation confirmation;
   confirmation.header = makeDebugHeader();
-  confirmation.blocked_path_id = blocker.blocked_path_id;
-  confirmation.truncation_generation = blocker.truncation_generation;
+  confirmation.blocked_path_id = blocked_path_id;
+  confirmation.truncation_generation = truncation_generation;
   confirmation.truncation_position.x = terminal_sample.point.x;
   confirmation.truncation_position.y = terminal_sample.point.y;
   confirmation.truncation_position.z = terminal_sample.z_m;
@@ -46,17 +56,18 @@ void Px4OffboardNode::publishReplanTruncation(
   confirmation.truncation_altitude_m = terminal_sample.z_m;
   confirmation.temporary_prefix_fingerprint = prefix_fingerprint;
   confirmation.immediate_hold = immediate_hold;
+  confirmation.temporary_hold_reached = temporary_hold_reached;
   replan_truncation_pub_->publish(confirmation);
-  RCLCPP_WARN(get_logger(),
-              "REPLAN_TRUNCATION confirmation_published=true blocked_path_id=%" PRIu64
-              " generation=%" PRIu64 " point=(%.2f,%.2f,%.2f) tangent=(%.3f,%.3f) "
-              "prefix_fingerprint=%" PRIu64 " immediate_hold=%s",
-              confirmation.blocked_path_id, confirmation.truncation_generation,
-              confirmation.truncation_position.x, confirmation.truncation_position.y,
-              confirmation.truncation_altitude_m, confirmation.truncation_tangent.x,
-              confirmation.truncation_tangent.y,
-              confirmation.temporary_prefix_fingerprint,
-              immediate_hold ? "true" : "false");
+  RCLCPP_WARN(
+      get_logger(),
+      "REPLAN_TRUNCATION confirmation_published=true blocked_path_id=%" PRIu64
+      " generation=%" PRIu64 " point=(%.2f,%.2f,%.2f) tangent=(%.3f,%.3f) "
+      "prefix_fingerprint=%" PRIu64 " immediate_hold=%s temporary_hold_reached=%s",
+      confirmation.blocked_path_id, confirmation.truncation_generation,
+      confirmation.truncation_position.x, confirmation.truncation_position.y,
+      confirmation.truncation_altitude_m, confirmation.truncation_tangent.x,
+      confirmation.truncation_tangent.y, confirmation.temporary_prefix_fingerprint,
+      immediate_hold ? "true" : "false", temporary_hold_reached ? "true" : "false");
 }
 
 void Px4OffboardNode::updateFinalGoalHold() {
@@ -89,6 +100,10 @@ void Px4OffboardNode::updateTemporaryReplanHold() {
   latchTerminalPositionCaptureAltitude("temporary_replan_hold");
   no_path_hold_target_valid_ = false;
   resetVelocityDiagnostics();
+  publishReplanTruncationState(
+      active_truncation_blocked_path_id_, active_truncation_generation_,
+      active_truncation_terminal_sample_, active_temporary_prefix_fingerprint_,
+      temporary_replan_immediate_hold_, true);
   RCLCPP_WARN(
       get_logger(),
       "SAFE_TRAJECTORY_TRUNCATION temporary_hold_latched=true target=(%.2f, %.2f) "
@@ -165,6 +180,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   temporary_replan_truncation_active_ = true;
   temporary_replan_hold_active_ = false;
   temporary_replan_immediate_hold_ = truncation.immediate_hold;
+  active_truncation_blocked_path_id_ = msg.blocked_path_id;
   active_truncation_generation_ = msg.truncation_generation;
   pending_truncation_suffix_.reset();
   resetVerticalPreAlignment();
@@ -207,6 +223,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
       buildOffboardTrajectoryState(truncation.samples, velocity_follower_config_);
   if (!state.valid) {
     temporary_replan_truncation_active_ = false;
+    active_truncation_blocked_path_id_ = 0U;
     active_truncation_generation_ = 0U;
     active_temporary_prefix_fingerprint_ = 0U;
     RCLCPP_ERROR(get_logger(),

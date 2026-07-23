@@ -78,6 +78,37 @@ TEST(TruncationSuffixProtocol, ParsesSuffixActivationModes) {
       "after_hold");
 }
 
+TEST(TruncationSuffixProtocol, PublishesMovingJoinBeforeTemporaryHold) {
+  const TruncationSuffixPublicationContext context{
+      .generation = kExpected.generation,
+      .prefix_fingerprint = kExpected.prefix_fingerprint,
+      .confirmed = true,
+      .awaiting_ack = false,
+  };
+  ASSERT_TRUE(evaluateTruncationSuffixPublication(context, kExpected).allowed);
+
+  EXPECT_EQ(resolveTruncationSuffixActivationMode(
+                TruncationSuffixActivationMode::kMovingJoin, false),
+            TruncationSuffixActivationMode::kMovingJoin);
+}
+
+TEST(TruncationSuffixProtocol, PublishesAfterHoldWhenTemporaryHoldWasReached) {
+  const TruncationSuffixPublicationContext context{
+      .generation = kExpected.generation,
+      .prefix_fingerprint = kExpected.prefix_fingerprint,
+      .confirmed = true,
+      .awaiting_ack = false,
+  };
+  ASSERT_TRUE(evaluateTruncationSuffixPublication(context, kExpected).allowed);
+
+  EXPECT_EQ(resolveTruncationSuffixActivationMode(
+                TruncationSuffixActivationMode::kMovingJoin, true),
+            TruncationSuffixActivationMode::kAfterHold);
+  EXPECT_EQ(resolveTruncationSuffixActivationMode(
+                TruncationSuffixActivationMode::kAfterHold, false),
+            TruncationSuffixActivationMode::kAfterHold);
+}
+
 TEST(TruncationSuffixProtocol, AllowsOnlyFirstPublicationWhileAwaitingAck) {
   TruncationSuffixPublicationContext context{
       .generation = kExpected.generation,

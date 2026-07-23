@@ -55,6 +55,10 @@ truncationSuffixActivationModeFromValue(std::uint8_t value) noexcept;
 [[nodiscard]] const char*
 truncationSuffixActivationModeName(TruncationSuffixActivationMode mode) noexcept;
 
+[[nodiscard]] TruncationSuffixActivationMode
+resolveTruncationSuffixActivationMode(TruncationSuffixActivationMode planned_mode,
+                                      bool temporary_hold_reached) noexcept;
+
 [[nodiscard]] const char*
 truncationSuffixAckDecisionName(TruncationSuffixAckDecision decision) noexcept;
 

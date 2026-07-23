@@ -185,7 +185,7 @@ void PlannerNode::handoffRepairRaceWinner(
     const TruncationReplanState& truncation_replan,
     TrajectoryDeliveryDiagnostics delivery, const std::size_t completion_index,
     const std::size_t jobs_started) {
-  {
+  const std::optional<TruncationSuffixActivationMode> activation_mode = [&]() {
     const std::scoped_lock lock{truncation_replan_mutex_};
     if (!truncation_replan_state_.has_value() ||
         truncation_replan_state_->generation != winner.generation ||
@@ -198,8 +198,13 @@ void PlannerNode::handoffRepairRaceWinner(
                   "generation=%" PRIu64 " kind=%s margin=%.1f",
                   winner.generation, repairJobKindName(winner.kind),
                   winner.reconnect_margin_m);
-      return;
+      return std::optional<TruncationSuffixActivationMode>{};
     }
+    return std::optional{resolveTruncationSuffixActivationMode(
+        winner.activation_mode, truncation_replan_state_->temporary_hold_reached)};
+  }();
+  if (!activation_mode.has_value()) {
+    return;
   }
 
   delivery.generation = ++trajectory_generation_;
@@ -213,7 +218,7 @@ void PlannerNode::handoffRepairRaceWinner(
   delivery.truncation_suffix = true;
   delivery.truncation_immediate_hold = truncation_replan.immediate_hold;
   delivery.truncation_suffix_activation_mode =
-      static_cast<std::uint8_t>(winner.activation_mode);
+      static_cast<std::uint8_t>(*activation_mode);
   delivery.candidate_start_position = winner.trajectory.samples.front().point;
   delivery.planning_start_position = snapshot->anchor.point;
   delivery.planning_start_velocity = current_velocity_;
@@ -225,9 +230,9 @@ void PlannerNode::handoffRepairRaceWinner(
               "snapshot_revision=%" PRIu64 " completion=%zu/%zu",
               winner.generation, repairJobKindName(winner.kind),
               winner.reconnect_margin_m, winner.reconnect_s_m, winner.source_grid_index,
-              truncationSuffixActivationModeName(winner.activation_mode),
-              winner.duration_ms, winner.source_grid_version.build_revision,
-              completion_index, jobs_started);
+              truncationSuffixActivationModeName(*activation_mode), winner.duration_ms,
+              winner.source_grid_version.build_revision, completion_index,
+              jobs_started);
 
   const bool published = publishTrajectoryResult(
       winner.trajectory, winner.route_points, "repair_race", winner.duration_ms,

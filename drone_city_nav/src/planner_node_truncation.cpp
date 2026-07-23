@@ -56,6 +56,7 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
     return;
   }
 
+  bool hold_state_update = false;
   {
     std::scoped_lock lock{truncation_replan_mutex_};
     if (!truncation_replan_state_.has_value() ||
@@ -74,41 +75,77 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
                       : 0U);
       return;
     }
-    truncation_replan_state_->position = position;
-    truncation_replan_state_->tangent = tangent;
-    truncation_replan_state_->altitude_m = message.truncation_altitude_m;
-    truncation_replan_state_->temporary_prefix_fingerprint =
-        message.temporary_prefix_fingerprint;
-    truncation_replan_state_->published_suffix_path_id = 0U;
-    truncation_replan_state_->confirmed = true;
-    truncation_replan_state_->immediate_hold = message.immediate_hold;
-    truncation_replan_state_->awaiting_ack = false;
-    if (truncation_replan_state_->repair_context_valid) {
-      const std::optional<TrajectoryProjection> projection = projectOnTrajectorySamples(
-          truncation_replan_state_->old_trajectory.samples,
-          Point2{position.x, position.y}, truncation_replan_state_->current_s_m);
-      const bool station_valid =
-          projection.has_value() &&
-          projection->s_m + 1.0e-6 >= truncation_replan_state_->current_s_m &&
-          projection->s_m + 1.0e-6 <
-              truncation_replan_state_->blocked_span.first_blocked_s_m;
-      if (station_valid) {
-        truncation_replan_state_->truncation_s_m = projection->s_m;
-      } else {
-        truncation_replan_state_->repair_context_valid = false;
+    if (truncation_replan_state_->confirmed) {
+      const bool contract_matches =
+          truncation_replan_state_->temporary_prefix_fingerprint ==
+              message.temporary_prefix_fingerprint &&
+          distance(Point2{truncation_replan_state_->position.x,
+                          truncation_replan_state_->position.y},
+                   Point2{position.x, position.y}) <= 1.0e-6 &&
+          std::abs(truncation_replan_state_->altitude_m -
+                   message.truncation_altitude_m) <= 1.0e-6;
+      if (!contract_matches || !message.temporary_hold_reached) {
+        RCLCPP_WARN(
+            get_logger(),
+            "REPLAN_TRUNCATION ignored state update: reason=%s blocked_path_id=%" PRIu64
+            " generation=%" PRIu64,
+            contract_matches ? "hold_not_reached" : "contract_mismatch",
+            message.blocked_path_id, message.truncation_generation);
+        return;
       }
+      truncation_replan_state_->temporary_hold_reached = true;
+      hold_state_update = true;
     }
-    pending_truncation_runtime_trajectory_.reset();
+    if (!hold_state_update) {
+      truncation_replan_state_->position = position;
+      truncation_replan_state_->tangent = tangent;
+      truncation_replan_state_->altitude_m = message.truncation_altitude_m;
+      truncation_replan_state_->temporary_prefix_fingerprint =
+          message.temporary_prefix_fingerprint;
+      truncation_replan_state_->published_suffix_path_id = 0U;
+      truncation_replan_state_->confirmed = true;
+      truncation_replan_state_->immediate_hold = message.immediate_hold;
+      truncation_replan_state_->temporary_hold_reached = message.temporary_hold_reached;
+      truncation_replan_state_->awaiting_ack = false;
+      if (truncation_replan_state_->repair_context_valid) {
+        const std::optional<TrajectoryProjection> projection =
+            projectOnTrajectorySamples(truncation_replan_state_->old_trajectory.samples,
+                                       Point2{position.x, position.y},
+                                       truncation_replan_state_->current_s_m);
+        const bool station_valid =
+            projection.has_value() &&
+            projection->s_m + 1.0e-6 >= truncation_replan_state_->current_s_m &&
+            projection->s_m + 1.0e-6 <
+                truncation_replan_state_->blocked_span.first_blocked_s_m;
+        if (station_valid) {
+          truncation_replan_state_->truncation_s_m = projection->s_m;
+        } else {
+          truncation_replan_state_->repair_context_valid = false;
+        }
+      }
+      pending_truncation_runtime_trajectory_.reset();
+    }
   }
 
-  RCLCPP_WARN(get_logger(),
-              "REPLAN_TRUNCATION confirmed=true blocked_path_id=%" PRIu64
-              " generation=%" PRIu64 " start=(%.2f,%.2f,%.2f) tangent=(%.3f,%.3f) "
-              "prefix_fingerprint=%" PRIu64 " immediate_hold=%s",
-              message.blocked_path_id, message.truncation_generation, position.x,
-              position.y, message.truncation_altitude_m, tangent.x, tangent.y,
-              message.temporary_prefix_fingerprint,
-              message.immediate_hold ? "true" : "false");
+  if (hold_state_update) {
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_TRUNCATION temporary_hold_reached=true "
+                "blocked_path_id=%" PRIu64 " generation=%" PRIu64
+                " prefix_fingerprint=%" PRIu64,
+                message.blocked_path_id, message.truncation_generation,
+                message.temporary_prefix_fingerprint);
+    return;
+  }
+
+  RCLCPP_WARN(
+      get_logger(),
+      "REPLAN_TRUNCATION confirmed=true blocked_path_id=%" PRIu64 " generation=%" PRIu64
+      " start=(%.2f,%.2f,%.2f) tangent=(%.3f,%.3f) "
+      "prefix_fingerprint=%" PRIu64 " immediate_hold=%s temporary_hold_reached=%s",
+      message.blocked_path_id, message.truncation_generation, position.x, position.y,
+      message.truncation_altitude_m, tangent.x, tangent.y,
+      message.temporary_prefix_fingerprint, message.immediate_hold ? "true" : "false",
+      message.temporary_hold_reached ? "true" : "false");
   const std::optional<TruncationReplanState> confirmed_state = truncationReplanState();
   if (confirmed_state.has_value()) {
     RCLCPP_INFO(get_logger(),
