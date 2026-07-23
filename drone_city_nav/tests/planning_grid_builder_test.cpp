@@ -103,6 +103,8 @@ TEST(PlanningGridBuilder, MemoryGeometryMismatchIsReportedAndSkipped) {
   PlanningGridSources sources{};
   sources.static_grid = &static_grid;
   sources.memory_grid = &memory_grid;
+  sources.memory_producer_instance_id = 77U;
+  sources.memory_sequence = 91U;
 
   const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
 
@@ -114,6 +116,8 @@ TEST(PlanningGridBuilder, MemoryGeometryMismatchIsReportedAndSkipped) {
   EXPECT_TRUE(result.memory.seen);
   EXPECT_FALSE(result.memory.geometry_matches);
   EXPECT_FALSE(result.memory.used);
+  EXPECT_EQ(result.applied_memory_producer_instance_id, 0U);
+  EXPECT_EQ(result.applied_memory_sequence, 0U);
   EXPECT_TRUE(grid.isOccupied(GridIndex{1, 1}));
   EXPECT_FALSE(grid.isOccupied(GridIndex{4, 4}));
 }
@@ -141,6 +145,7 @@ TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {
   sources.current_lidar.used = true;
   sources.current_lidar.fresh = true;
   sources.current_lidar.occupied_cells = 1U;
+  sources.lidar_update_ns = 12345;
 
   const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
 
@@ -149,7 +154,30 @@ TEST(PlanningGridBuilder, CurrentLidarOverlayWinsAsFreshSource) {
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const OccupancyGrid2D& grid = result.grid.value();
   EXPECT_TRUE(result.current_lidar.used);
+  EXPECT_EQ(result.applied_lidar_update_ns, 12345);
   EXPECT_TRUE(grid.isOccupied(GridIndex{5, 2}));
+}
+
+TEST(PlanningGridBuilder, StaleLidarDoesNotClaimAppliedIdentity) {
+  PlanningGridBuilderConfig config = testConfig();
+  OccupancyGrid2D static_grid{testBounds()};
+  static_grid.setOccupied(GridIndex{1, 1});
+  OccupancyGrid2D current_lidar_grid{testBounds()};
+  current_lidar_grid.setOccupied(GridIndex{5, 2});
+  PlanningGridSources sources{};
+  sources.static_grid = &static_grid;
+  sources.current_lidar_grid = &current_lidar_grid;
+  sources.current_lidar.enabled = true;
+  sources.current_lidar.used = true;
+  sources.current_lidar.fresh = false;
+  sources.lidar_update_ns = 98765;
+
+  const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
+
+  ASSERT_EQ(result.status, PlanningGridStatus::kReady);
+  ASSERT_TRUE(result.raw_grid.has_value());
+  EXPECT_EQ(result.applied_lidar_update_ns, 0);
+  EXPECT_FALSE(result.raw_grid->isOccupied(GridIndex{5, 2}));
 }
 
 TEST(PlanningGridBuilder, SourceUnionInflatesOnceAfterRawObstacleMerge) {
@@ -189,6 +217,8 @@ TEST(PlanningGridBuilder, SourceInflatedCellsAreNotReusedAsRawObstacles) {
   ASSERT_TRUE(memory_grid.isInflated(GridIndex{4, 3}));
   PlanningGridSources sources{};
   sources.memory_grid = &memory_grid;
+  sources.memory_producer_instance_id = 13U;
+  sources.memory_sequence = 29U;
 
   const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
 
@@ -200,6 +230,8 @@ TEST(PlanningGridBuilder, SourceInflatedCellsAreNotReusedAsRawObstacles) {
   EXPECT_FALSE(grid.isOccupied(GridIndex{4, 3}));
   EXPECT_TRUE(grid.isInflated(GridIndex{4, 3}));
   EXPECT_EQ(result.memory.overlay.occupied_cells_applied, 1U);
+  EXPECT_EQ(result.applied_memory_producer_instance_id, 13U);
+  EXPECT_EQ(result.applied_memory_sequence, 29U);
 }
 
 TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {

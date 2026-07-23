@@ -82,4 +82,27 @@ evaluateTruncationSuffixAck(const TruncationSuffixIdentity& expected,
   return {TruncationSuffixAckAction::kIgnore, "invalid_decision"};
 }
 
+TruncationSuffixPublicationEvaluation evaluateTruncationSuffixPublication(
+    const TruncationSuffixPublicationContext& context,
+    const TruncationSuffixIdentity& candidate) noexcept {
+  if (!context.confirmed) {
+    return {false, "not_confirmed"};
+  }
+  if (context.generation == 0U || context.prefix_fingerprint == 0U ||
+      candidate.path_id == 0U || candidate.generation == 0U ||
+      candidate.prefix_fingerprint == 0U) {
+    return {false, "invalid_identity"};
+  }
+  if (candidate.generation != context.generation) {
+    return {false, "generation_mismatch"};
+  }
+  if (candidate.prefix_fingerprint != context.prefix_fingerprint) {
+    return {false, "prefix_fingerprint_mismatch"};
+  }
+  if (context.awaiting_ack) {
+    return {false, "already_awaiting_ack"};
+  }
+  return {true, "allowed"};
+}
+
 } // namespace drone_city_nav

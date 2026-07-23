@@ -387,6 +387,10 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
   sources.static_occupied_cells = static_map_occupied_cells_;
   sources.static_map_path = static_map_resolved_path_.string();
   sources.memory_grid = memory_grid_ ? &*memory_grid_ : nullptr;
+  sources.memory_producer_instance_id =
+      last_memory_snapshot_applied_producer_instance_id_;
+  sources.memory_sequence = last_memory_snapshot_applied_sequence_;
+  sources.lidar_update_ns = last_scan_update_ns_;
 
   std::optional<OccupancyGrid2D> current_lidar_grid;
   if (const std::optional<GridBounds> bounds =

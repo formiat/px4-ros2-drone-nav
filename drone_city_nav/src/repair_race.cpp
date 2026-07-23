@@ -107,6 +107,7 @@ computeRoute(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
         .astar = astarConfig(config, snapshot.anchor, after_hold),
         .prohibited_clearance_field = &grid.clearance,
         .prohibited_clearance_field_cache_hit = true,
+        .stop_token = stop_token,
     });
     if (!path.has_value()) {
       continue;
@@ -336,7 +337,8 @@ bool RepairRaceArbiter::winnerSelected() const noexcept {
 
 RepairRaceOutcome runRepairRace(std::shared_ptr<const RepairSnapshot> snapshot,
                                 const RepairRaceConfig& config,
-                                const RepairAcceptanceValidator& acceptance_validator) {
+                                const RepairAcceptanceValidator& acceptance_validator,
+                                const RepairWinnerHandoff& winner_handoff) {
   RepairRaceOutcome outcome{};
   if (snapshot == nullptr || snapshot->generation == 0U ||
       snapshot->blocked_path_id == 0U || snapshot->grids.empty() ||
@@ -352,21 +354,41 @@ RepairRaceOutcome runRepairRace(std::shared_ptr<const RepairSnapshot> snapshot,
   const std::vector<ReconnectCandidate> reconnects = makeReconnectCandidates(
       snapshot->old_trajectory, snapshot->blocked_span, snapshot->truncation_s_m,
       config.reconnect_margins_m, endpoint_grids);
-  const std::size_t job_count = reconnects.size() + 1U;
+  std::vector<RepairJob> repair_jobs;
+  repair_jobs.reserve(reconnects.size() + 1U);
+  for (const ReconnectCandidate& reconnect : reconnects) {
+    repair_jobs.emplace_back(
+        [snapshot, config, reconnect](const std::stop_token stop_token) {
+          return partialJob(*snapshot, config, reconnect, stop_token);
+        });
+  }
+  repair_jobs.emplace_back([snapshot, config](const std::stop_token stop_token) {
+    return fullJob(*snapshot, config, stop_token);
+  });
+  return runRepairJobs(snapshot, repair_jobs, acceptance_validator, winner_handoff);
+}
+
+RepairRaceOutcome runRepairJobs(std::shared_ptr<const RepairSnapshot> snapshot,
+                                const std::span<const RepairJob> repair_jobs,
+                                const RepairAcceptanceValidator& acceptance_validator,
+                                const RepairWinnerHandoff& winner_handoff) {
+  RepairRaceOutcome outcome{};
+  if (snapshot == nullptr || snapshot->generation == 0U ||
+      snapshot->blocked_path_id == 0U || repair_jobs.empty()) {
+    return outcome;
+  }
+
+  const std::size_t job_count = repair_jobs.size();
   outcome.summary.jobs_started = job_count;
   CompletionMailbox mailbox;
   std::stop_source stop_source;
   std::vector<std::jthread> jobs;
   jobs.reserve(job_count);
-  for (const ReconnectCandidate& reconnect : reconnects) {
-    jobs.emplace_back(
-        [snapshot, &config, reconnect, &mailbox, token = stop_source.get_token()]() {
-          mailbox.push(partialJob(*snapshot, config, reconnect, token));
-        });
+  for (const RepairJob& repair_job : repair_jobs) {
+    jobs.emplace_back([repair_job, &mailbox, token = stop_source.get_token()]() {
+      mailbox.push(repair_job(token));
+    });
   }
-  jobs.emplace_back([snapshot, &config, &mailbox, token = stop_source.get_token()]() {
-    mailbox.push(fullJob(*snapshot, config, token));
-  });
 
   RepairRaceArbiter arbiter{*snapshot};
   for (std::size_t completion = 0U; completion < job_count; ++completion) {
@@ -397,9 +419,65 @@ RepairRaceOutcome runRepairRace(std::shared_ptr<const RepairSnapshot> snapshot,
     }
     stop_source.request_stop();
     outcome.summary.winner_selected = true;
+    if (winner_handoff) {
+      winner_handoff(result, outcome.summary.completions, job_count);
+    }
     outcome.winner = std::move(result);
   }
   return outcome;
+}
+
+RepairFreshValidationResult
+validateRepairResultOnFreshGrid(const RepairFreshValidationInput& input) {
+  if (input.candidate == nullptr || input.fresh_grid_version == nullptr ||
+      input.fresh_runtime_grid == nullptr) {
+    return {false, RepairFreshValidationReason::kInvalidInput};
+  }
+  if (input.fresh_grid_version->build_revision <
+      input.candidate->source_grid_version.build_revision) {
+    return {false, RepairFreshValidationReason::kStaleGridRevision};
+  }
+  if (!input.candidate->trajectory.valid ||
+      !trajectorySamplesAreUsable(input.candidate->trajectory.samples)) {
+    return {false, RepairFreshValidationReason::kInvalidTrajectory};
+  }
+  if (!input.candidate->trajectory.stats.known_passage_solid_validation.valid) {
+    return {false, RepairFreshValidationReason::kKnownSolidIntersection};
+  }
+  std::vector<Point2> candidate_points;
+  candidate_points.reserve(input.candidate->trajectory.samples.size());
+  for (const TrajectoryPointSample& sample : input.candidate->trajectory.samples) {
+    candidate_points.push_back(sample.point);
+  }
+  if (!pathIsTraversable(*input.fresh_runtime_grid, candidate_points)) {
+    return {false, RepairFreshValidationReason::kCandidateBlocked};
+  }
+  if (!input.remaining_prefix.empty() &&
+      !pathIsTraversable(*input.fresh_runtime_grid, input.remaining_prefix)) {
+    return {false, RepairFreshValidationReason::kPrefixBlocked};
+  }
+  return {true, RepairFreshValidationReason::kAccepted};
+}
+
+const char*
+repairFreshValidationReasonName(const RepairFreshValidationReason reason) noexcept {
+  switch (reason) {
+    case RepairFreshValidationReason::kAccepted:
+      return "accepted";
+    case RepairFreshValidationReason::kInvalidInput:
+      return "invalid_input";
+    case RepairFreshValidationReason::kStaleGridRevision:
+      return "stale_grid_revision";
+    case RepairFreshValidationReason::kInvalidTrajectory:
+      return "invalid_trajectory";
+    case RepairFreshValidationReason::kKnownSolidIntersection:
+      return "known_solid_intersection";
+    case RepairFreshValidationReason::kCandidateBlocked:
+      return "candidate_blocked";
+    case RepairFreshValidationReason::kPrefixBlocked:
+      return "prefix_blocked";
+  }
+  return "unknown";
 }
 
 const char* repairJobKindName(const RepairJobKind kind) noexcept {

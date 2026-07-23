@@ -252,6 +252,24 @@ TEST(PlannerNodeConfig, RejectsInvalidPartialReplanMargins) {
       validatePartialReplanConfig(PartialReplanConfig{
           .reconnect_margins_m = {10.0, std::numeric_limits<double>::infinity()}}),
       std::invalid_argument);
+  EXPECT_THROW(validatePartialReplanConfig(
+                   PartialReplanConfig{.reconnect_margins_m = {-1.0, 10.0}}),
+               std::invalid_argument);
+  EXPECT_THROW(
+      validatePartialReplanConfig(PartialReplanConfig{
+          .reconnect_margins_m = {10.0, std::numeric_limits<double>::quiet_NaN()}}),
+      std::invalid_argument);
+}
+
+TEST(PlannerNodeConfig, PreservesValidPartialReplanMargins) {
+  const PartialReplanConfig config{
+      .enabled = true,
+      .reconnect_margins_m = {7.5, 12.0, 41.0},
+      .internal_parallel_workers = 1U,
+  };
+
+  EXPECT_NO_THROW(validatePartialReplanConfig(config));
+  EXPECT_EQ(config.reconnect_margins_m, (std::vector<double>{7.5, 12.0, 41.0}));
 }
 
 TEST(PlannerNodeConfig, RejectsParallelWorkersInsideRepairJobs) {

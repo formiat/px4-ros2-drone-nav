@@ -50,14 +50,7 @@ PlannerNode::preparePlanningGridSnapshot(const PlanningGridBuildResult& build_re
       .relaxation_center = relaxation_center,
       .relaxation_radius_m = local_inflation_relaxation_radius_m_,
       .clearance_max_distance_m = planner_core_.config().clearance_diagnostic_radius_m,
-      .sources =
-          PlanningGridSourceIdentity{
-              .memory_producer_instance_id =
-                  last_memory_snapshot_applied_producer_instance_id_,
-              .memory_sequence = last_memory_snapshot_applied_sequence_,
-              .lidar_update_ns = last_scan_update_ns_,
-              .config_fingerprint = config_fingerprint,
-          },
+      .config_fingerprint = config_fingerprint,
   });
 }
 

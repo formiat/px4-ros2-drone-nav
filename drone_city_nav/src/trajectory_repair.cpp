@@ -151,7 +151,7 @@ std::optional<BlockedSpan> findFirstRawClearanceBlockedSpan(
         const double clearance_m = cell.has_value() && field.contains(*cell)
                                        ? field.distanceAt(*cell)
                                        : std::numeric_limits<double>::quiet_NaN();
-        return std::pair{!std::isfinite(clearance_m) ||
+        return std::pair{std::isnan(clearance_m) ||
                              clearance_m + kTinyDistanceM < trigger_m,
                          clearance_m};
       });

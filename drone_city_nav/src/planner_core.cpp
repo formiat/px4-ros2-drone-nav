@@ -551,8 +551,8 @@ PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_posit
 std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal, const AStarConfig& astar_config) const {
-  return computePath(PathComputationInput{&grid, current_position, goal, astar_config,
-                                          nullptr, false});
+  return computePath(PathComputationInput{
+      &grid, current_position, goal, astar_config, nullptr, false, {}});
 }
 
 std::optional<PathComputationResult>
@@ -588,10 +588,13 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   }
 
   const auto astar_started_at = std::chrono::steady_clock::now();
-  result.astar =
-      planner_.plan(grid, *result.start_cell, *result.goal_cell, input.astar);
+  result.astar = planner_.plan(grid, *result.start_cell, *result.goal_cell, input.astar,
+                               input.stop_token);
   result.astar_duration_ms = elapsedMilliseconds(astar_started_at);
   if (!result.astar.success) {
+    return std::nullopt;
+  }
+  if (input.stop_token.stop_requested()) {
     return std::nullopt;
   }
 

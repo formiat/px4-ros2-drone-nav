@@ -161,6 +161,11 @@ truncation generation, blocked path id, prefix fingerprint, and exact planning
 grid version. The first hard-valid completion wins. Later results are canceled
 cooperatively or ignored as stale.
 
+The winner is handed to the guarded publication path immediately after
+selection. Joining losing jobs happens after this handoff, so a slow loser does
+not delay an already valid suffix. A* and trajectory optimization both observe
+the shared cancellation token.
+
 The implementation does not need unsafe thread termination. Cooperative
 cancellation or stale-result rejection is enough for correctness. The
 controller should only see accepted executable trajectories, not partial repair

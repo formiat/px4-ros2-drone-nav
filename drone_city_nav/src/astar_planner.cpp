@@ -188,13 +188,20 @@ const char* astarStatusName(const AStarStatus status) noexcept {
       return "unreachable";
     case AStarStatus::kStateSpaceTooLarge:
       return "state_space_too_large";
+    case AStarStatus::kCanceled:
+      return "canceled";
   }
   return "unknown";
 }
 
 AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex start,
-                               const GridIndex goal, const AStarConfig& config) const {
+                               const GridIndex goal, const AStarConfig& config,
+                               const std::stop_token stop_token) const {
   AStarResult result{};
+  if (stop_token.stop_requested()) {
+    result.status = AStarStatus::kCanceled;
+    return result;
+  }
   if (!grid.contains(start) || !grid.contains(goal)) {
     result.status = AStarStatus::kInvalidStartOrGoal;
     return result;
@@ -222,6 +229,10 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
                      weightedHeuristic(start, goal, grid.resolution(), config), 0.0});
 
   while (!open.empty()) {
+    if (stop_token.stop_requested()) {
+      result.status = AStarStatus::kCanceled;
+      return result;
+    }
     const OpenNode current = open.top();
     open.pop();
 

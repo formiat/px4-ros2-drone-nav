@@ -45,6 +45,8 @@ void overlayMemorySource(OccupancyGrid2D& raw_grid, PlanningGridBuildResult& res
   if (result.memory.geometry_matches) {
     result.memory.overlay = overlayKnownMemoryCells(raw_grid, *sources.memory_grid);
     result.memory.used = true;
+    result.applied_memory_producer_instance_id = sources.memory_producer_instance_id;
+    result.applied_memory_sequence = sources.memory_sequence;
   }
 }
 
@@ -64,6 +66,7 @@ void overlayMemorySource(OccupancyGrid2D& raw_grid, PlanningGridBuildResult& res
       current_overlay.occupied_cells_applied;
   result.current_lidar.overlay_occupied_cells_preserved =
       current_overlay.occupied_cells_preserved;
+  result.applied_lidar_update_ns = sources.lidar_update_ns;
   return true;
 }
 

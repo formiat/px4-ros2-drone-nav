@@ -78,5 +78,56 @@ TEST(TruncationSuffixProtocol, ParsesSuffixActivationModes) {
       "after_hold");
 }
 
+TEST(TruncationSuffixProtocol, AllowsOnlyFirstPublicationWhileAwaitingAck) {
+  TruncationSuffixPublicationContext context{
+      .generation = kExpected.generation,
+      .prefix_fingerprint = kExpected.prefix_fingerprint,
+      .confirmed = true,
+      .awaiting_ack = false,
+  };
+
+  const TruncationSuffixPublicationEvaluation first =
+      evaluateTruncationSuffixPublication(context, kExpected);
+  ASSERT_TRUE(first.allowed);
+  context.awaiting_ack = true;
+  const TruncationSuffixPublicationEvaluation duplicate =
+      evaluateTruncationSuffixPublication(context, kExpected);
+
+  EXPECT_FALSE(duplicate.allowed);
+  EXPECT_STREQ(duplicate.reason, "already_awaiting_ack");
+}
+
+TEST(TruncationSuffixProtocol, RetryAfterRejectedAckReopensPublicationGate) {
+  const TruncationSuffixAckEvaluation ack = evaluateTruncationSuffixAck(
+      kExpected, kExpected, TruncationSuffixAckDecision::kRejected);
+  ASSERT_EQ(ack.action, TruncationSuffixAckAction::kRetry);
+  const TruncationSuffixPublicationContext retry_context{
+      .generation = kExpected.generation,
+      .prefix_fingerprint = kExpected.prefix_fingerprint,
+      .confirmed = true,
+      .awaiting_ack = false,
+  };
+
+  const TruncationSuffixPublicationEvaluation retry =
+      evaluateTruncationSuffixPublication(retry_context, kExpected);
+
+  EXPECT_TRUE(retry.allowed);
+}
+
+TEST(TruncationSuffixProtocol, RejectsLateResultFromOldGeneration) {
+  const TruncationSuffixPublicationContext context{
+      .generation = kExpected.generation + 1U,
+      .prefix_fingerprint = kExpected.prefix_fingerprint,
+      .confirmed = true,
+      .awaiting_ack = false,
+  };
+
+  const TruncationSuffixPublicationEvaluation result =
+      evaluateTruncationSuffixPublication(context, kExpected);
+
+  EXPECT_FALSE(result.allowed);
+  EXPECT_STREQ(result.reason, "generation_mismatch");
+}
+
 } // namespace
 } // namespace drone_city_nav

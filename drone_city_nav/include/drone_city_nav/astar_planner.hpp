@@ -3,6 +3,7 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 
 #include <cstddef>
+#include <stop_token>
 #include <vector>
 
 namespace drone_city_nav {
@@ -25,6 +26,7 @@ enum class AStarStatus {
   kProhibitedStartOrGoal,
   kUnreachable,
   kStateSpaceTooLarge,
+  kCanceled,
 };
 
 struct AStarResult {
@@ -40,7 +42,8 @@ struct AStarResult {
 class AStarPlanner {
 public:
   [[nodiscard]] AStarResult plan(const OccupancyGrid2D& grid, GridIndex start,
-                                 GridIndex goal, const AStarConfig& config = {}) const;
+                                 GridIndex goal, const AStarConfig& config = {},
+                                 std::stop_token stop_token = {}) const;
 };
 
 } // namespace drone_city_nav

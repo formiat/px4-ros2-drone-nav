@@ -6,9 +6,10 @@
 
 namespace drone_city_nav {
 
-bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& prepared,
-                                         const TruncationReplanState& truncation_replan,
-                                         TrajectoryDeliveryDiagnostics delivery) {
+bool PlannerNode::runConfirmedRepairRace(
+    const PreparedPlanningGridSnapshot& prepared,
+    const TruncationReplanState& truncation_replan,
+    const TrajectoryDeliveryDiagnostics& delivery) {
   if (!partial_replan_config_.enabled || !truncation_replan.repair_context_valid) {
     return false;
   }
@@ -88,15 +89,7 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
     }
     const std::optional<PreparedPlanningGridSnapshot> latest =
         preparePlanningGridSnapshot(*latest_build, navigation.pose.position);
-    if (!latest.has_value() ||
-        latest->version.build_revision < candidate.source_grid_version.build_revision ||
-        !candidate.trajectory.valid ||
-        !candidate.trajectory.stats.known_passage_solid_validation.valid) {
-      return false;
-    }
-    const std::vector<Point2> candidate_points =
-        trajectorySamplePoints(candidate.trajectory.samples);
-    if (!pathIsTraversable(latest->runtime_prohibited_grid, candidate_points)) {
+    if (!latest.has_value()) {
       return false;
     }
 
@@ -119,7 +112,25 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
       }
     }
     prefix_points.push_back(snapshot->anchor.point);
-    return pathIsTraversable(latest->runtime_prohibited_grid, prefix_points);
+    const RepairFreshValidationResult validation =
+        validateRepairResultOnFreshGrid(RepairFreshValidationInput{
+            .candidate = &candidate,
+            .fresh_grid_version = &latest->version,
+            .fresh_runtime_grid = &latest->runtime_prohibited_grid,
+            .remaining_prefix = prefix_points,
+        });
+    if (!validation.valid) {
+      RCLCPP_WARN(get_logger(),
+                  "REPAIR_RACE fresh validation rejected generation=%" PRIu64
+                  " kind=%s margin=%.1f reason=%s source_revision=%" PRIu64
+                  " fresh_revision=%" PRIu64,
+                  candidate.generation, repairJobKindName(candidate.kind),
+                  candidate.reconnect_margin_m,
+                  repairFreshValidationReasonName(validation.reason),
+                  candidate.source_grid_version.build_revision,
+                  latest->version.build_revision);
+    }
+    return validation.valid;
   };
   const RepairRaceOutcome outcome = runRepairRace(
       snapshot,
@@ -130,7 +141,13 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
               trajectoryPlannerConfigForCurrentAltitude(truncation_replan.altitude_m),
           .reconnect_margins_m = partial_replan_config_.reconnect_margins_m,
       },
-      fresh_validator);
+      fresh_validator,
+      [this, snapshot, truncation_replan,
+       delivery](const RepairResult& winner, const std::size_t completion_index,
+                 const std::size_t jobs_started) mutable {
+        handoffRepairRaceWinner(winner, snapshot, truncation_replan, delivery,
+                                completion_index, jobs_started);
+      });
   for (std::size_t index = 0U; index < outcome.completions.size(); ++index) {
     const RepairCompletionDiagnostic& completion = outcome.completions[index];
     RCLCPP_INFO(
@@ -154,8 +171,20 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
                  outcome.summary.canceled_results);
     return true;
   }
+  RCLCPP_INFO(get_logger(),
+              "REPAIR_RACE cleanup completed generation=%" PRIu64
+              " jobs=%zu completions=%zu invalid=%zu canceled=%zu",
+              snapshot->generation, outcome.summary.jobs_started,
+              outcome.summary.completions, outcome.summary.invalid_results,
+              outcome.summary.canceled_results);
+  return true;
+}
 
-  const RepairResult& winner = *outcome.winner;
+void PlannerNode::handoffRepairRaceWinner(
+    const RepairResult& winner, const std::shared_ptr<const RepairSnapshot>& snapshot,
+    const TruncationReplanState& truncation_replan,
+    TrajectoryDeliveryDiagnostics delivery, const std::size_t completion_index,
+    const std::size_t jobs_started) {
   {
     const std::scoped_lock lock{truncation_replan_mutex_};
     if (!truncation_replan_state_.has_value() ||
@@ -169,7 +198,7 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
                   "generation=%" PRIu64 " kind=%s margin=%.1f",
                   winner.generation, repairJobKindName(winner.kind),
                   winner.reconnect_margin_m);
-      return true;
+      return;
     }
   }
 
@@ -198,7 +227,7 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
               winner.reconnect_margin_m, winner.reconnect_s_m, winner.source_grid_index,
               truncationSuffixActivationModeName(winner.activation_mode),
               winner.duration_ms, winner.source_grid_version.build_revision,
-              outcome.summary.completions, outcome.summary.jobs_started);
+              completion_index, jobs_started);
 
   const bool published = publishTrajectoryResult(
       winner.trajectory, winner.route_points, "repair_race", winner.duration_ms,
@@ -211,7 +240,6 @@ bool PlannerNode::runConfirmedRepairRace(const PreparedPlanningGridSnapshot& pre
               " published=%s snapshot_revision=%" PRIu64,
               winner.generation, published ? "true" : "false",
               winner.source_grid_version.build_revision);
-  return true;
 }
 
 } // namespace drone_city_nav

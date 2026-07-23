@@ -293,16 +293,24 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
   std::size_t publication_attempt = 0U;
   {
     std::scoped_lock lock{truncation_replan_mutex_};
-    if (!truncation_replan_state_.has_value() || !truncation_replan_state_->confirmed ||
-        truncation_replan_state_->generation != identity.generation ||
-        truncation_replan_state_->temporary_prefix_fingerprint !=
-            identity.prefix_fingerprint ||
-        truncation_replan_state_->awaiting_ack) {
+    const TruncationSuffixPublicationEvaluation publication =
+        truncation_replan_state_.has_value()
+            ? evaluateTruncationSuffixPublication(
+                  TruncationSuffixPublicationContext{
+                      .generation = truncation_replan_state_->generation,
+                      .prefix_fingerprint =
+                          truncation_replan_state_->temporary_prefix_fingerprint,
+                      .confirmed = truncation_replan_state_->confirmed,
+                      .awaiting_ack = truncation_replan_state_->awaiting_ack,
+                  },
+                  identity)
+            : TruncationSuffixPublicationEvaluation{false, "state_missing"};
+    if (!publication.allowed) {
       RCLCPP_ERROR(get_logger(),
                    "%s truncation suffix discarded before publication: "
-                   "reason=planner_ack_state_mismatch path_id=%" PRIu64
-                   " generation=%" PRIu64,
-                   source_label, path_id, delivery.truncation_generation);
+                   "reason=%s path_id=%" PRIu64 " generation=%" PRIu64,
+                   source_label, publication.reason, path_id,
+                   delivery.truncation_generation);
       return false;
     }
     truncation_replan_state_->published_suffix_path_id = path_id;

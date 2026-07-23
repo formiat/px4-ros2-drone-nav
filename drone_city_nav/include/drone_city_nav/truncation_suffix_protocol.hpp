@@ -34,6 +34,18 @@ struct TruncationSuffixAckEvaluation {
   const char* reason{"not_evaluated"};
 };
 
+struct TruncationSuffixPublicationContext {
+  std::uint64_t generation{0U};
+  std::uint64_t prefix_fingerprint{0U};
+  bool confirmed{false};
+  bool awaiting_ack{false};
+};
+
+struct TruncationSuffixPublicationEvaluation {
+  bool allowed{false};
+  const char* reason{"not_evaluated"};
+};
+
 [[nodiscard]] std::optional<TruncationSuffixAckDecision>
 truncationSuffixAckDecisionFromValue(std::uint8_t value) noexcept;
 
@@ -50,5 +62,9 @@ truncationSuffixAckDecisionName(TruncationSuffixAckDecision decision) noexcept;
 evaluateTruncationSuffixAck(const TruncationSuffixIdentity& expected,
                             const TruncationSuffixIdentity& received,
                             TruncationSuffixAckDecision decision) noexcept;
+
+[[nodiscard]] TruncationSuffixPublicationEvaluation
+evaluateTruncationSuffixPublication(const TruncationSuffixPublicationContext& context,
+                                    const TruncationSuffixIdentity& candidate) noexcept;
 
 } // namespace drone_city_nav

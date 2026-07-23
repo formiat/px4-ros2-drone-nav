@@ -63,10 +63,10 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
 
   PlanningGridVersion version{
       .build_revision = next_revision_,
-      .memory_producer_instance_id = input.sources.memory_producer_instance_id,
-      .memory_sequence = input.sources.memory_sequence,
-      .lidar_update_ns = input.sources.lidar_update_ns,
-      .config_fingerprint = input.sources.config_fingerprint,
+      .memory_producer_instance_id = build.applied_memory_producer_instance_id,
+      .memory_sequence = build.applied_memory_sequence,
+      .lidar_update_ns = build.applied_lidar_update_ns,
+      .config_fingerprint = input.config_fingerprint,
       .raw = raw_grid.prohibitedFingerprint(),
       .runtime_prohibited = runtime_grid.prohibitedFingerprint(),
       .planning_clearance = planning_grid.prohibitedFingerprint(),

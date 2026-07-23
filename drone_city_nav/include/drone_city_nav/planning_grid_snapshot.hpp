@@ -8,13 +8,6 @@
 
 namespace drone_city_nav {
 
-struct PlanningGridSourceIdentity {
-  std::uint64_t memory_producer_instance_id{0U};
-  std::uint64_t memory_sequence{0U};
-  std::int64_t lidar_update_ns{0};
-  std::uint64_t config_fingerprint{0U};
-};
-
 struct PlanningGridVersion {
   std::uint64_t build_revision{0U};
   std::uint64_t memory_producer_instance_id{0U};
@@ -31,7 +24,7 @@ struct PlanningGridPreparationInput {
   Point2 relaxation_center{};
   double relaxation_radius_m{0.0};
   double clearance_max_distance_m{0.0};
-  PlanningGridSourceIdentity sources{};
+  std::uint64_t config_fingerprint{0U};
 };
 
 struct PreparedPlanningGridSnapshot {

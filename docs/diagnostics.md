@@ -573,6 +573,10 @@ reconnect margin, activation mode, selected grid, and duration. A
 jobs. `REPAIR_RACE publication` is emitted only for the selected result; the
 existing suffix ACK remains the authority for runtime adoption.
 
+Memory and lidar identities in the grid version describe only sources applied
+to that build. A stale lidar overlay or a memory grid rejected for geometry
+mismatch keeps the corresponding identity fields at zero.
+
 ## Run Comparison Method
 
 When comparing two runs, use the same route and similar simulator conditions if

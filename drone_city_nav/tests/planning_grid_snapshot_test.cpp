@@ -22,6 +22,9 @@ namespace {
   result.raw_grid = std::move(raw);
   result.grid = std::move(runtime);
   result.planning_grid = std::move(planning);
+  result.applied_memory_producer_instance_id = 17U;
+  result.applied_memory_sequence = 42U;
+  result.applied_lidar_update_ns = 123456;
   return result;
 }
 
@@ -70,13 +73,7 @@ TEST(PlanningGridSnapshot, RevisionAndSourceIdentityMatchSuccessfulBuilds) {
       .relaxation_center = Point2{4.5, 3.5},
       .relaxation_radius_m = 1.1,
       .clearance_max_distance_m = 10.0,
-      .sources =
-          PlanningGridSourceIdentity{
-              .memory_producer_instance_id = 17U,
-              .memory_sequence = 42U,
-              .lidar_update_ns = 123456,
-              .config_fingerprint = 99U,
-          },
+      .config_fingerprint = 99U,
   };
 
   const auto first = builder.prepare(input);
@@ -90,6 +87,27 @@ TEST(PlanningGridSnapshot, RevisionAndSourceIdentityMatchSuccessfulBuilds) {
   EXPECT_EQ(first->version.memory_sequence, 42U);
   EXPECT_EQ(first->version.lidar_update_ns, 123456);
   EXPECT_EQ(first->version.config_fingerprint, 99U);
+}
+
+TEST(PlanningGridSnapshot, UsesOnlyAppliedSourceIdentityFromBuildResult) {
+  PlanningGridSnapshotBuilder builder;
+  PlanningGridBuildResult ready = readyBuild();
+  ready.applied_memory_producer_instance_id = 0U;
+  ready.applied_memory_sequence = 0U;
+  ready.applied_lidar_update_ns = 0;
+
+  const auto prepared = builder.prepare(
+      PlanningGridPreparationInput{.build_result = &ready,
+                                   .relaxation_center = Point2{4.5, 3.5},
+                                   .relaxation_radius_m = 1.1,
+                                   .clearance_max_distance_m = 10.0,
+                                   .config_fingerprint = 55U});
+
+  ASSERT_TRUE(prepared.has_value());
+  EXPECT_EQ(prepared->version.memory_producer_instance_id, 0U);
+  EXPECT_EQ(prepared->version.memory_sequence, 0U);
+  EXPECT_EQ(prepared->version.lidar_update_ns, 0);
+  EXPECT_EQ(prepared->version.config_fingerprint, 55U);
 }
 
 TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {

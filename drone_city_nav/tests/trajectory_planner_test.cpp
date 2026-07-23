@@ -834,4 +834,39 @@ TEST(TrajectoryPlanner, RejectsStitchedTrajectoryThroughKnownSolid) {
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
 }
 
+TEST(TrajectoryPlanner, FinalizedStitchFallsBackToRuntimeGrid) {
+  OccupancyGrid2D planning_grid = testGrid();
+  OccupancyGrid2D runtime_grid = testGrid();
+  const auto blocked_cell = planning_grid.worldToCell(Point2{0.0, 0.0});
+  ASSERT_TRUE(blocked_cell.has_value());
+  planning_grid.setOccupied(*blocked_cell);
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 0.0}, {10.0, 0.0}});
+  const std::array grids{
+      TrajectoryGridCandidate{
+          .name = "planning_clearance",
+          .grid = &planning_grid,
+      },
+      TrajectoryGridCandidate{
+          .name = "runtime_prohibited",
+          .grid = &runtime_grid,
+      },
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.vertical_profile.enabled = false;
+  config.known_passage_validation.enabled = false;
+  config.passage_insertion.enabled = false;
+
+  const TrajectoryPlannerResult result = finalizeStitchedTrajectory(
+      StitchedTrajectoryFinalizationInput{
+          .geometry_samples = samples,
+          .grid_candidates = grids,
+      },
+      config);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_EQ(result.stats.grid_stages.trajectory_validation, "runtime_prohibited");
+  EXPECT_TRUE(result.speed_profile.valid);
+}
+
 } // namespace drone_city_nav

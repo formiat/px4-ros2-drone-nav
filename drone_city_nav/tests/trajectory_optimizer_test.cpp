@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stop_token>
 #include <vector>
 
 namespace drone_city_nav {
@@ -181,6 +182,20 @@ TEST(TrajectoryOptimizer, WideCornerProducesTraversableSmoothLine) {
   EXPECT_GT(result.stats.dp_coarse_states, 0U);
   EXPECT_GT(result.stats.dp_fine_states, 0U);
   EXPECT_TRUE(result.stats.dp_coarse_to_fine_used);
+}
+
+TEST(TrajectoryOptimizer, PreRequestedStopCancelsBeforeIterations) {
+  const OccupancyGrid2D grid = openGrid();
+  std::stop_source stop_source;
+  stop_source.request_stop();
+
+  const TrajectoryOptimizerResult result =
+      optimizeTrajectory(wideLeftTurnCorridor(), grid, testConfig(), speedConfig(),
+                         stop_source.get_token());
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_TRUE(result.stats.canceled);
+  EXPECT_EQ(result.stats.iterations, 0U);
 }
 
 TEST(TrajectoryOptimizer, PenalizesOffsetSpikes) {

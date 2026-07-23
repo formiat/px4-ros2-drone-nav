@@ -12,6 +12,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -94,7 +96,32 @@ struct RepairRaceOutcome {
   std::vector<RepairCompletionDiagnostic> completions;
 };
 
+enum class RepairFreshValidationReason {
+  kAccepted,
+  kInvalidInput,
+  kStaleGridRevision,
+  kInvalidTrajectory,
+  kKnownSolidIntersection,
+  kCandidateBlocked,
+  kPrefixBlocked,
+};
+
+struct RepairFreshValidationInput {
+  const RepairResult* candidate{nullptr};
+  const PlanningGridVersion* fresh_grid_version{nullptr};
+  const OccupancyGrid2D* fresh_runtime_grid{nullptr};
+  std::span<const Point2> remaining_prefix;
+};
+
+struct RepairFreshValidationResult {
+  bool valid{false};
+  RepairFreshValidationReason reason{RepairFreshValidationReason::kInvalidInput};
+};
+
 using RepairAcceptanceValidator = std::function<bool(const RepairResult&)>;
+using RepairJob = std::function<RepairResult(std::stop_token)>;
+using RepairWinnerHandoff =
+    std::function<void(const RepairResult&, std::size_t, std::size_t)>;
 
 class RepairRaceArbiter {
 public:
@@ -115,7 +142,20 @@ private:
 [[nodiscard]] RepairRaceOutcome
 runRepairRace(std::shared_ptr<const RepairSnapshot> snapshot,
               const RepairRaceConfig& config,
-              const RepairAcceptanceValidator& acceptance_validator = {});
+              const RepairAcceptanceValidator& acceptance_validator = {},
+              const RepairWinnerHandoff& winner_handoff = {});
+
+[[nodiscard]] RepairRaceOutcome
+runRepairJobs(std::shared_ptr<const RepairSnapshot> snapshot,
+              std::span<const RepairJob> jobs,
+              const RepairAcceptanceValidator& acceptance_validator = {},
+              const RepairWinnerHandoff& winner_handoff = {});
+
+[[nodiscard]] RepairFreshValidationResult
+validateRepairResultOnFreshGrid(const RepairFreshValidationInput& input);
+
+[[nodiscard]] const char*
+repairFreshValidationReasonName(RepairFreshValidationReason reason) noexcept;
 
 [[nodiscard]] const char* repairJobKindName(RepairJobKind kind) noexcept;
 

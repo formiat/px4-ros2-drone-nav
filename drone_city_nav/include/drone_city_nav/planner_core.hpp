@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <vector>
 
 namespace drone_city_nav {
@@ -78,6 +79,7 @@ struct PathComputationInput {
   AStarConfig astar{};
   const ClearanceField2D* prohibited_clearance_field{nullptr};
   bool prohibited_clearance_field_cache_hit{false};
+  std::stop_token stop_token{};
 };
 
 struct PathProjection2D {

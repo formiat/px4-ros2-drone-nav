@@ -6,6 +6,7 @@
 #include "drone_city_nav/planner_core.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -60,7 +61,10 @@ struct PlanningGridSources {
   std::size_t static_occupied_cells{0U};
   std::string static_map_path;
   const OccupancyGrid2D* memory_grid{nullptr};
+  std::uint64_t memory_producer_instance_id{0U};
+  std::uint64_t memory_sequence{0U};
   const OccupancyGrid2D* current_lidar_grid{nullptr};
+  std::int64_t lidar_update_ns{0};
   CurrentLidarOverlayStats current_lidar{};
 };
 
@@ -74,6 +78,9 @@ struct PlanningGridBuildResult {
   MemorySourceStats memory{};
   CurrentLidarOverlayStats current_lidar{};
   PlanningGridCacheStats cache{};
+  std::uint64_t applied_memory_producer_instance_id{0U};
+  std::uint64_t applied_memory_sequence{0U};
+  std::int64_t applied_lidar_update_ns{0};
 };
 
 class PlanningGridBuilder {

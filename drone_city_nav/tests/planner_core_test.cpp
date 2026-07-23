@@ -183,6 +183,20 @@ TEST(AStarPlanner, ReportsProhibitedStartOrGoal) {
   EXPECT_EQ(result.status, AStarStatus::kProhibitedStartOrGoal);
 }
 
+TEST(AStarPlanner, PreRequestedStopCancelsBeforeSearch) {
+  OccupancyGrid2D grid = makeGrid();
+  std::stop_source stop_source;
+  stop_source.request_stop();
+
+  const AStarResult result = AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{8, 8},
+                                                 {}, stop_source.get_token());
+
+  EXPECT_FALSE(result.success);
+  EXPECT_EQ(result.status, AStarStatus::kCanceled);
+  EXPECT_STREQ(astarStatusName(result.status), "canceled");
+  EXPECT_EQ(result.expanded_cells, 0U);
+}
+
 TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
   OccupancyGrid2D planning_grid = makeGrid();
   OccupancyGrid2D static_grid = makeGrid();

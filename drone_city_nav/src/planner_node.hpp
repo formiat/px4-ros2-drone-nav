@@ -234,7 +234,13 @@ private:
   [[nodiscard]] bool
   runConfirmedRepairRace(const PreparedPlanningGridSnapshot& prepared,
                          const TruncationReplanState& truncation_replan,
-                         TrajectoryDeliveryDiagnostics delivery);
+                         const TrajectoryDeliveryDiagnostics& delivery);
+
+  void handoffRepairRaceWinner(const RepairResult& winner,
+                               const std::shared_ptr<const RepairSnapshot>& snapshot,
+                               const TruncationReplanState& truncation_replan,
+                               TrajectoryDeliveryDiagnostics delivery,
+                               std::size_t completion_index, std::size_t jobs_started);
 
   void checkCurrentPathAndPublish();
 
