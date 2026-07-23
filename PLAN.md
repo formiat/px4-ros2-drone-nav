@@ -124,6 +124,8 @@ truncation-контракта.
    - `drone_city_nav/src/planner_core.cpp`
    - `drone_city_nav/include/drone_city_nav/path_raw_clearance_monitor.hpp`
    - `drone_city_nav/src/path_raw_clearance_monitor.cpp`
+   - `drone_city_nav/include/drone_city_nav/trajectory.hpp`
+   - `drone_city_nav/src/trajectory.cpp`
    - новый `drone_city_nav/include/drone_city_nav/trajectory_repair.hpp`
 
    Code anchors:
@@ -142,12 +144,37 @@ truncation-контракта.
    принятого `ExecutableTrajectoryArtifact`; относительные distances
    `decision.remaining_path` в этот тип не попадают.
 
+   До использования projection в repair progress исправить общий контракт
+   `minimum_s_m` у обоих публичных helper-ов:
+   `projectOnTrajectory()` и `projectOnTrajectorySamples()`. Текущая реализация
+   (`drone_city_nav/src/trajectory.cpp:510` и
+   `drone_city_nav/src/trajectory.cpp:583`) зажимает `t=1` у сегмента,
+   полностью лежащего до lower bound, но всё равно оставляет этот сегмент
+   кандидатом; поэтому возвращаемый `s_m` может быть меньше `minimum_s_m`.
+
+   Новый обязательный invariant при валидной trajectory:
+
+   ```text
+   project(..., minimum_s_m).s_m >=
+       clamp(minimum_s_m, 0, trajectory_length)
+   ```
+
+   Сегменты с `end_s < minimum_s_m` полностью исключать из выбора. Сегмент,
+   содержащий lower bound, участвует только с
+   `t >= (minimum_s_m - start_s) / (end_s - start_s)`; сегмент, заканчивающийся
+   ровно в lower bound, может дать только endpoint с `s_m=minimum_s_m`.
+   Следующие сегменты рассматриваются целиком. При lower bound, равном концу
+   trajectory, возвращать конечную точку. После вычисления candidate добавить
+   defensive invariant/check, но не маскировать ошибку одним
+   `std::max(minimum_s_m, projection.s_m)`, потому что point/tangent должны
+   соответствовать той же station.
+
    При принятии нового path сбрасывать progress в `0`, а в каждом runtime check
-   обновлять абсолютный `current_s` через
+   обновлять абсолютный `current_s` через уже исправленный
    `projectOnTrajectorySamples(artifact.samples, current_pose,
-   previous_current_s)`. Нижняя граница `previous_current_s` делает progress
-   монотонным и не позволяет повторно спроецироваться на пройденную ветвь
-   самопересекающегося пути.
+   previous_current_s)`. Жёсткая нижняя граница `previous_current_s` делает
+   progress монотонным и не позволяет повторно спроецироваться на пройденную
+   ветвь самопересекающегося пути.
 
    Реализовать единый scanner состояния первого span над old artifact после
    `current_s`, но с двумя trigger-specific источниками probes:
@@ -232,6 +259,9 @@ truncation-контракта.
    - `drone_city_nav/include/drone_city_nav/planner_node_config.hpp`
    - `drone_city_nav/src/planner_node_config.cpp`
    - `drone_city_nav/config/urban_mvp.yaml`
+   - новый `drone_city_nav/include/drone_city_nav/planning_grid_snapshot.hpp`
+   - новый `drone_city_nav/src/planning_grid_snapshot.cpp`
+   - новый `drone_city_nav/src/planner_node_grid_snapshot.cpp`
    - новый `drone_city_nav/include/drone_city_nav/repair_race.hpp`
 
    Code anchors:
@@ -309,16 +339,43 @@ truncation-контракта.
    };
    ```
 
-   `build_revision` выдаётся монотонным node-owned counter после каждой успешно
-   завершённой композиции grid, local inflation relaxation и построения
-   согласованных clearance fields. `memory_*` берутся из последнего
-   применённого atomic snapshot, `lidar_update_ns` — из применённого
-   `LidarInputSnapshot::update_ns`, fingerprints вычисляются уже после local
-   relaxation, а `config_fingerprint` покрывает static-map identity, bounds,
-   inflation и planning-clearance параметры. Для этого вынести подготовку
-   runtime/planning grids из почти предельного
-   `planner_node_inputs.cpp` в новый
-   `drone_city_nav/src/planner_node_grid_snapshot.cpp`.
+   Вынести production-подготовку в чистый
+   `PlanningGridSnapshotBuilder` (`planning_grid_snapshot.hpp/.cpp`), а
+   `planner_node_grid_snapshot.cpp` оставить тонким adapter-ом, который
+   собирает source identities из node state. Helper принимает успешный
+   `PlanningGridBuildResult`, центр/radius local inflation relaxation,
+   применённые memory/lidar identities и config fingerprint; возвращает
+   immutable prepared snapshot с raw/runtime/planning grids, двумя clearance
+   fields и `PlanningGridVersion`.
+
+   ```cpp
+   std::optional<PreparedPlanningGridSnapshot>
+   PlanningGridSnapshotBuilder::prepare(
+       const PlanningGridPreparationInput& input);
+   ```
+
+   Порядок внутри helper-а фиксирован:
+
+   ```text
+   validate completed grid build
+   -> copy raw/runtime/planning grids
+   -> clear only inflation in runtime/planning around actual pose
+   -> build clearance fields from final relaxed grids
+   -> fingerprint final raw/runtime/planning grids
+   -> copy applied memory/lidar/config identities
+   -> assign and increment build_revision
+   ```
+
+   Failed/incomplete build, invalid bounds или ошибка подготовки возвращают
+   `nullopt` и **не расходуют revision**. `build_revision` выдаётся
+   node-owned counter-ом helper-а ровно один раз после полностью успешной
+   подготовки. `memory_*` берутся из последнего применённого atomic snapshot,
+   `lidar_update_ns` — из применённого `LidarInputSnapshot::update_ns`,
+   fingerprints runtime/planning вычисляются только после local relaxation, а
+   `config_fingerprint` покрывает static-map identity, bounds, inflation и
+   planning-clearance параметры. Это одновременно даёт production API,
+   который можно напрямую проверить без ROS/Gazebo, и выносит подготовку из
+   почти предельного `planner_node_inputs.cpp`.
 
    Snapshot также содержит copied `KnownPassageMap`, config, generation,
    blocked path/fingerprint, old artifact, `A`, `current_s`, `truncation_s` и
@@ -571,14 +628,17 @@ truncation-контракта.
 
     - новый `drone_city_nav/tests/trajectory_repair_test.cpp`
     - новый `drone_city_nav/tests/repair_race_test.cpp`
+    - новый `drone_city_nav/tests/planning_grid_snapshot_test.cpp`
+    - `drone_city_nav/tests/trajectory_test.cpp`
     - `drone_city_nav/tests/planner_core_test.cpp`
     - `drone_city_nav/tests/truncation_suffix_protocol_test.cpp`
     - `drone_city_nav/tests/planner_node_config_test.cpp`
     - `drone_city_nav/CMakeLists.txt`
 
     Материализуемый результат: детерминированные unit/component tests для
-    span detection, B generation, stitching/finalization, arbiter,
-    cancellation и config; существующий ACK protocol остаётся совместимым.
+    hard-lower-bound projection, prepared grid/version issuance, span detection,
+    B generation, stitching/finalization, arbiter, cancellation и config;
+    существующий ACK protocol остаётся совместимым.
     Конкретная матрица приведена в разделе `Testing strategy`.
 
 11. **Обновить архитектурную документацию и эксплуатационный контракт.**
@@ -617,12 +677,13 @@ truncation-контракта.
    ```bash
    ./scripts/dev_shell.sh \
      ctest --test-dir build/drone_city_nav --output-on-failure \
-     -R '^(trajectory_repair_test|repair_race_test|planner_core_test|path_raw_clearance_monitor_test|trajectory_planner_test|trajectory_optimizer_test|safe_trajectory_truncation_test|truncation_suffix_protocol_test|planner_node_config_test)$'
+     -R '^(trajectory_test|planning_grid_snapshot_test|trajectory_repair_test|repair_race_test|planner_core_test|path_raw_clearance_monitor_test|trajectory_planner_test|trajectory_optimizer_test|safe_trajectory_truncation_test|truncation_suffix_protocol_test|planner_node_config_test)$'
    ```
 
    Он проверяет новый repair/race контракт и существующие границы, которые
-   меняются: span detection, optimizer cancellation, truncation ACK, config и
-   trajectory finalization.
+   меняются: projection lower bound, prepared grid/version issuance, span
+   detection, optimizer cancellation, truncation ACK, config и trajectory
+   finalization.
 
 4. `./scripts/dev_shell.sh make test-scripts`
 
@@ -658,14 +719,42 @@ truncation-контракта.
 
 ### Категория 1: обязательные тесты без дополнительного рефакторинга
 
-1. `planner_core_test`:
+1. `trajectory_test` — жёсткий `minimum_s_m` contract для обоих
+   `projectOnTrajectory*` API:
+   - segment/polyline, ближайший к query, полностью лежит до lower bound:
+     он не участвует, а результат имеет `s_m >= minimum_s_m`;
+   - lower bound лежит внутри segment: `t` зажат снизу и point/tangent
+     соответствуют ровно допустимой station, а не только численно исправленному
+     `s_m`;
+   - segment заканчивается ровно на lower bound и lower bound совпадает с
+     концом trajectory;
+   - self-crossing trajectory: геометрически ближайшая уже пройденная ветвь
+     игнорируется и выбирается допустимая будущая ветвь;
+   - одинаковый invariant проверяется отдельно для
+     `projectOnTrajectory()` и `projectOnTrajectorySamples()`.
+
+2. `planning_grid_snapshot_test` — прямой contract production builder:
+   - incomplete/failed `PlanningGridBuildResult` не создаёт snapshot и не
+     расходует revision; следующий успешный build получает revision `1`;
+   - каждый полностью подготовленный successful build увеличивает revision
+     ровно один раз (`1`, затем `2`), без increment на промежуточной ошибке;
+   - fixture с inflation внутри relaxation radius доказывает, что runtime и
+     planning fingerprints вычислены после снятия inflation, совпадают с
+     возвращёнными final grids и отличаются от pre-relaxation fingerprints;
+   - raw occupied cells сохраняются, а clearance fields соответствуют
+     окончательным relaxed grids;
+   - `memory_producer_instance_id`, `memory_sequence`, `lidar_update_ns` и
+     `config_fingerprint` копируются из фактически применённых source
+     identities без подмены или смешивания версий.
+
+3. `planner_core_test`:
    - одно непрерывное prohibited-пересечение при `current_s > 0` даёт точные
      absolute first/last stations old artifact;
    - два раздельных span выбирают первый;
    - конфликт, начинающийся в escape-префиксе, не теряет фактический конец;
    - progress projection не уменьшается на самопересекающемся пути.
 
-2. `path_raw_clearance_monitor_test`:
+4. `path_raw_clearance_monitor_test`:
    - raw violation длиной существенно больше `min_violation_length_m`
      продолжается до фактического первого safe probe, а не заканчивается на
      минимальной длине подтверждения;
@@ -674,7 +763,7 @@ truncation-контракта.
    - span, продолжающийся до mission goal, завершается последней station;
    - два раздельных длинных run возвращают первый.
 
-3. `trajectory_repair_test` — B generation:
+5. `trajectory_repair_test` — B generation:
    - создаются `B10...B100` от `last_blocked_s`, а `A` у всех одинаков;
    - при non-zero `current_s` все запущенные candidates соблюдают
      `Bn > max(current_s, truncation_s)` и не возвращают дрон назад;
@@ -687,7 +776,7 @@ truncation-контракта.
    - short candidate отклоняется из-за второго конфликта в old suffix, более
      длинный candidate может обойти оба.
 
-4. `trajectory_repair_test` — stitching/finalization:
+6. `trajectory_repair_test` — stitching/finalization:
    - `A` и `B` совпадают по позиции, duplicate samples удалены, stations строго
      возрастают, NaN/разрывов нет;
    - XY-геометрия old suffix после `B` не меняется;
@@ -698,7 +787,7 @@ truncation-контракта.
      runtime-traversable и solid-clear candidate;
    - moving join и `AFTER_HOLD` получают корректный activation mode.
 
-5. `repair_race_test` с fake jobs/mailbox:
+7. `repair_race_test` с fake jobs/mailbox:
    - первый завершившийся invalid result игнорируется, первый hard-valid
      выигрывает;
    - при одновременном completion winner выбирается атомарно один раз;
@@ -713,7 +802,7 @@ truncation-контракта.
    - все partial failures не мешают full job победить;
    - failure всех 11 jobs оставляет temporary hold и публикует aggregate reason.
 
-6. `planner_node_config_test`:
+8. `planner_node_config_test`:
    - default margins равны 10...100;
    - отрицательные, NaN/inf, дубликаты, пустой и неупорядоченный explicit list
      приводят к `std::invalid_argument`, не сортируются и не заменяются
@@ -722,7 +811,7 @@ truncation-контракта.
      порядок и задаёт ровно соответствующее число partial jobs;
    - internal workers в race config равны `1`.
 
-7. `truncation_suffix_protocol_test`:
+9. `truncation_suffix_protocol_test`:
    - winner до `A` проходит `MOVING_JOIN`;
    - winner после достижения hold проходит `AFTER_HOLD`;
    - `PENDING`, `ACCEPTED`, `REJECTED` не допускают второй публикации той же
@@ -756,11 +845,21 @@ truncation-контракта.
   cell traversal, raw-clearance — ограниченный grid-relative sample step и
   консервативную safe exit station. Последующие пересечения ловит full final
   validation, после чего более длинный partial или full job остаётся в гонке.
+- **Projection API behavior.** Исправление `minimum_s_m` меняет поведение обоих
+  общих projection helper-ов для всех consumers: прошедшие сегменты больше не
+  смогут победить только из-за меньшей XY-distance. Это требуемый контракт для
+  монотонного repair progress, но существующие callers должны пройти
+  `trajectory_test` и package regression, особенно на endpoint/self-crossing
+  случаях.
 - **Grid revision churn.** Строгое равенство revision сделает winner почти
   невозможным при lidar updates. `PlanningGridVersion` поэтому разделяет
   монотонный build ordering, source identity и content fingerprints, а
   freshness определяется повторной фактической проверкой prefix/candidate на
   свежем grid.
+- **Достоверность grid identity.** Revision нельзя выдавать до local relaxation
+  и clearance construction, иначе failed build создаст gap, а fingerprints
+  опишут не те grids, на которых работали jobs. Чистый prepared-grid builder и
+  прямой component test закрепляют порядок и applied memory/lidar identities.
 - **Join внутри passage.** Автоматический перенос `B` за hard-window может
   необоснованно удлинить repair. Разрешение внутреннего `B` безопасно только при
   full vertical/solid validation stitched trajectory.
