@@ -28,6 +28,71 @@ TEST(Trajectory, ProjectsPointOnLineSegment) {
   EXPECT_NEAR(projection_value.curvature_1pm, 0.0, 1.0e-9);
 }
 
+TEST(Trajectory, SegmentProjectionEnforcesMinimumStation) {
+  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(
+      std::vector<Point2>{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}});
+
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectory(trajectory, Point2{2.0, 1.0}, 12.0);
+
+  ASSERT_TRUE(projection.has_value());
+  EXPECT_NEAR(projection->s_m, 12.0, 1.0e-9);
+  EXPECT_NEAR(projection->point.x, 12.0, 1.0e-9);
+  EXPECT_NEAR(projection->segment_t, 0.2, 1.0e-9);
+}
+
+TEST(Trajectory, SampleProjectionEnforcesMinimumStation) {
+  const std::vector<TrajectoryPointSample> samples = trajectoryPointSamplesFromPoints(
+      std::vector<Point2>{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}});
+
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectorySamples(samples, Point2{2.0, 1.0}, 12.0);
+
+  ASSERT_TRUE(projection.has_value());
+  EXPECT_NEAR(projection->s_m, 12.0, 1.0e-9);
+  EXPECT_NEAR(projection->point.x, 12.0, 1.0e-9);
+  EXPECT_NEAR(projection->segment_t, 0.2, 1.0e-9);
+}
+
+TEST(Trajectory, ProjectionAtTrajectoryEndReturnsEndpoint) {
+  const std::vector<Point2> points{{0.0, 0.0}, {10.0, 0.0}, {20.0, 0.0}};
+  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(points);
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(points);
+
+  const auto segment_projection =
+      projectOnTrajectory(trajectory, Point2{0.0, 0.0}, 20.0);
+  const auto sample_projection =
+      projectOnTrajectorySamples(samples, Point2{0.0, 0.0}, 20.0);
+
+  ASSERT_TRUE(segment_projection.has_value());
+  ASSERT_TRUE(sample_projection.has_value());
+  EXPECT_NEAR(segment_projection->s_m, 20.0, 1.0e-9);
+  EXPECT_NEAR(segment_projection->point.x, 20.0, 1.0e-9);
+  EXPECT_NEAR(sample_projection->s_m, 20.0, 1.0e-9);
+  EXPECT_NEAR(sample_projection->point.x, 20.0, 1.0e-9);
+}
+
+TEST(Trajectory, ProjectionDoesNotReturnToPassedSelfCrossingBranch) {
+  const std::vector<Point2> points{{0.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {10.0, 0.0}};
+  const std::vector<TrajectorySegment> trajectory = lineTrajectoryFromPoints(points);
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(points);
+  const double minimum_s_m = 20.0;
+
+  const auto segment_projection =
+      projectOnTrajectory(trajectory, Point2{5.0, 5.0}, minimum_s_m);
+  const auto sample_projection =
+      projectOnTrajectorySamples(samples, Point2{5.0, 5.0}, minimum_s_m);
+
+  ASSERT_TRUE(segment_projection.has_value());
+  ASSERT_TRUE(sample_projection.has_value());
+  EXPECT_GE(segment_projection->s_m, minimum_s_m);
+  EXPECT_GE(sample_projection->s_m, minimum_s_m);
+  EXPECT_GT(segment_projection->segment_index, 0U);
+  EXPECT_GT(sample_projection->segment_index, 0U);
+}
+
 TEST(Trajectory, ProjectsPointOnCounterClockwiseArc) {
   std::vector<TrajectorySegment> trajectory{makeArcSegment(
       Point2{1.0, 0.0}, Point2{0.0, 1.0}, Point2{0.0, 0.0}, std::numbers::pi / 2.0)};

@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -75,6 +76,13 @@ struct PlannerCurrentLidarConfig {
   LidarIngestionConfidenceConfig ingestion_confidence{};
 };
 
+struct PartialReplanConfig {
+  bool enabled{true};
+  std::vector<double> reconnect_margins_m{10.0, 20.0, 30.0, 40.0, 50.0,
+                                          60.0, 70.0, 80.0, 90.0, 100.0};
+  std::size_t internal_parallel_workers{1U};
+};
+
 struct PlannerNodeConfig {
   std::string frame_id{"map"};
   Point2 start{};
@@ -98,6 +106,7 @@ struct PlannerNodeConfig {
   GroundLidarRejectionConfig ground_lidar_rejection{};
   bool safe_trajectory_truncation_enabled{true};
   PathRawClearanceMonitorConfig path_raw_clearance_monitor{};
+  PartialReplanConfig partial_replan{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};
@@ -107,5 +116,7 @@ struct PlannerNodeConfig {
 };
 
 [[nodiscard]] PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node);
+
+void validatePartialReplanConfig(const PartialReplanConfig& config);
 
 } // namespace drone_city_nav

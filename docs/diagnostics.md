@@ -563,6 +563,16 @@ allows planner runtime checks to adopt the prepared combined trajectory.
 `rejected` logs both the offboard reason and a subsequent planner retry from the
 same confirmed truncation point.
 
+`REPAIR_CONTEXT` proves that the confirmed truncation point was projected onto
+the same immutable accepted trajectory that produced the blocker span.
+`REPAIR_RACE start` records absolute current, truncation, blocked-entry, and
+blocked-exit stations together with the grid build revision and source
+identities. `REPAIR_RACE winner` records whether a partial or full job won, its
+reconnect margin, activation mode, selected grid, and duration. A
+`winner=none` aggregate separates invalid jobs from cooperatively canceled
+jobs. `REPAIR_RACE publication` is emitted only for the selected result; the
+existing suffix ACK remains the authority for runtime adoption.
+
 ## Run Comparison Method
 
 When comparing two runs, use the same route and similar simulator conditions if

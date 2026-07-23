@@ -541,6 +541,18 @@ Hard inflation is the safety margin around raw obstacle evidence. It defines
 the prohibited grid and can trigger replans when the accepted trajectory
 intersects it.
 
+Partial repair race parameters are:
+
+- `partial_replan_enabled`;
+- `partial_replan_reconnect_margins_m`, defaulting to
+  `[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]`;
+- `partial_replan_internal_parallel_workers`, which must be `1`.
+
+An explicitly configured reconnect list must be non-empty, finite, positive,
+and strictly increasing. Invalid values fail planner configuration instead of
+being sorted, deduplicated, or replaced with defaults. Internal corridor and
+optimizer parallelism is fixed to one worker per external race job.
+
 Planning clearance is extra margin used during planning. It encourages A*,
 corridor construction, and trajectory generation to stay farther away from
 obstacles. It should not be treated as a runtime replan boundary.

@@ -491,30 +491,20 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
         "not ready; keeping the last published path");
     return;
   }
-  if (!planning_result->grid.has_value()) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "Planner grid builder returned no grid despite a ready "
-                         "result; keeping the last published path");
+  std::optional<PreparedPlanningGridSnapshot> prepared =
+      preparePlanningGridSnapshot(*planning_result, navigation.pose.position);
+  if (!prepared.has_value()) {
+    RCLCPP_ERROR(get_logger(),
+                 "Planner could not prepare an immutable grid snapshot from a "
+                 "completed grid build; keeping the last published path");
     return;
   }
-  if (!planning_result->planning_grid.has_value()) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Planner grid builder returned no planning-clearance grid despite a ready "
-        "result; keeping the last published path");
-    return;
-  }
-  OccupancyGrid2D prohibited_grid = std::move(*planning_result->grid);
-  OccupancyGrid2D planning_grid = std::move(*planning_result->planning_grid);
-  // This mask is deliberately transient and applied only after raw occupied cells
-  // have generated inflation. It lets the planner recover from its own clearance
-  // buffer around the actual vehicle without erasing a physical obstacle.
-  const LocalInflationRelaxationStats runtime_relaxation =
-      prohibited_grid.clearInflationWithinRadius(navigation.pose.position,
-                                                 local_inflation_relaxation_radius_m_);
-  const LocalInflationRelaxationStats planning_relaxation =
-      planning_grid.clearInflationWithinRadius(navigation.pose.position,
-                                               local_inflation_relaxation_radius_m_);
+  OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
+  OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
+  const LocalInflationRelaxationStats& runtime_relaxation =
+      prepared->runtime_relaxation;
+  const LocalInflationRelaxationStats& planning_relaxation =
+      prepared->planning_relaxation;
   if (runtime_relaxation.inflated_cells_cleared > 0U ||
       planning_relaxation.inflated_cells_cleared > 0U ||
       !runtime_relaxation.center_inside_bounds ||
@@ -568,6 +558,10 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   TrajectoryDeliveryDiagnostics replan_delivery =
       pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
   pending_replan_delivery_.reset();
+  if (truncation_replan.has_value() &&
+      runConfirmedRepairRace(*prepared, *truncation_replan, replan_delivery)) {
+    return;
+  }
 
   const Point2 planning_start =
       truncation_replan.has_value()

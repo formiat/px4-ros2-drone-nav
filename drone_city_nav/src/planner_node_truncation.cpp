@@ -3,7 +3,8 @@
 namespace drone_city_nav {
 
 std::optional<std::uint64_t>
-PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id) {
+PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id,
+                                   const BlockedSpan& blocked_span) {
   if (blocked_path_id == 0U) {
     return std::nullopt;
   }
@@ -14,9 +15,21 @@ PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id) {
   }
   const std::uint64_t generation = next_truncation_generation_++;
   pending_truncation_runtime_trajectory_.reset();
+  const bool artifact_matches =
+      executable_trajectory_artifact_.path_id == blocked_path_id &&
+      trajectorySamplesAreUsable(executable_trajectory_artifact_.samples) &&
+      std::isfinite(blocked_span.first_blocked_s_m) &&
+      std::isfinite(blocked_span.last_blocked_s_m) &&
+      blocked_span.last_blocked_s_m >= blocked_span.first_blocked_s_m;
   truncation_replan_state_ = TruncationReplanState{
       .blocked_path_id = blocked_path_id,
       .generation = generation,
+      .blocked_span = blocked_span,
+      .old_trajectory = artifact_matches ? executable_trajectory_artifact_
+                                         : ExecutableTrajectoryArtifact{},
+      .current_s_m = artifact_matches ? executable_trajectory_artifact_.current_s_m
+                                      : std::numeric_limits<double>::quiet_NaN(),
+      .repair_context_valid = artifact_matches,
   };
   return generation;
 }
@@ -70,6 +83,21 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
     truncation_replan_state_->confirmed = true;
     truncation_replan_state_->immediate_hold = message.immediate_hold;
     truncation_replan_state_->awaiting_ack = false;
+    if (truncation_replan_state_->repair_context_valid) {
+      const std::optional<TrajectoryProjection> projection = projectOnTrajectorySamples(
+          truncation_replan_state_->old_trajectory.samples,
+          Point2{position.x, position.y}, truncation_replan_state_->current_s_m);
+      const bool station_valid =
+          projection.has_value() &&
+          projection->s_m + 1.0e-6 >= truncation_replan_state_->current_s_m &&
+          projection->s_m + 1.0e-6 <
+              truncation_replan_state_->blocked_span.first_blocked_s_m;
+      if (station_valid) {
+        truncation_replan_state_->truncation_s_m = projection->s_m;
+      } else {
+        truncation_replan_state_->repair_context_valid = false;
+      }
+    }
     pending_truncation_runtime_trajectory_.reset();
   }
 
@@ -81,6 +109,18 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
               position.y, message.truncation_altitude_m, tangent.x, tangent.y,
               message.temporary_prefix_fingerprint,
               message.immediate_hold ? "true" : "false");
+  const std::optional<TruncationReplanState> confirmed_state = truncationReplanState();
+  if (confirmed_state.has_value()) {
+    RCLCPP_INFO(get_logger(),
+                "REPAIR_CONTEXT confirmed=%s current_s=%.2f truncation_s=%.2f "
+                "blocked_span=[%.2f,%.2f] trigger=%s artifact_path_id=%" PRIu64,
+                confirmed_state->repair_context_valid ? "true" : "false",
+                confirmed_state->current_s_m, confirmed_state->truncation_s_m,
+                confirmed_state->blocked_span.first_blocked_s_m,
+                confirmed_state->blocked_span.last_blocked_s_m,
+                blockedSpanTriggerName(confirmed_state->blocked_span.trigger),
+                confirmed_state->old_trajectory.path_id);
+  }
   requestPlanningCycle();
 }
 
@@ -166,6 +206,14 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
       accepted_trajectory.has_value()) {
     last_valid_path_points_ = std::move(accepted_trajectory->path_points);
     last_valid_trajectory_samples_ = std::move(accepted_trajectory->trajectory_samples);
+    executable_trajectory_artifact_ = ExecutableTrajectoryArtifact{
+        .path_id = message.path_id,
+        .geometry_fingerprint =
+            trajectoryPrefixFingerprint(last_valid_trajectory_samples_),
+        .mission_goal = goal_,
+        .samples = last_valid_trajectory_samples_,
+        .current_s_m = 0.0,
+    };
     RCLCPP_INFO(get_logger(),
                 "REPLAN_TRUNCATION suffix ACK accepted: path_id=%" PRIu64
                 " generation=%" PRIu64 " reason='%s' attempt=%zu "
@@ -192,6 +240,13 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
   if (!delivery.truncation_suffix) {
     last_valid_path_points_.assign(trajectory_points.begin(), trajectory_points.end());
     last_valid_trajectory_samples_.assign(samples.begin(), samples.end());
+    executable_trajectory_artifact_ = ExecutableTrajectoryArtifact{
+        .path_id = path_id,
+        .geometry_fingerprint = trajectoryPrefixFingerprint(samples),
+        .mission_goal = goal_,
+        .samples = std::vector<TrajectoryPointSample>{samples.begin(), samples.end()},
+        .current_s_m = 0.0,
+    };
     return true;
   }
 

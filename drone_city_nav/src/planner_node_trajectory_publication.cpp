@@ -206,7 +206,8 @@ bool PlannerNode::publishTrajectoryResult(
     const std::span<const Point2> route_points, const char* source_label,
     const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
     std::string astar_grid_name, std::string route_grid_name,
-    std::uint64_t* published_path_id) {
+    std::uint64_t* published_path_id,
+    const PlanningGridVersion* const source_grid_version) {
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (!fresh_navigation.pose_valid ||
@@ -223,9 +224,7 @@ bool PlannerNode::publishTrajectoryResult(
   applyLatestLidarInputSnapshot();
   std::optional<PlanningGridBuildResult> latest_planning_result =
       buildPlanningGrid(now_ns);
-  if (!latest_planning_result.has_value() ||
-      !latest_planning_result->grid.has_value() ||
-      !latest_planning_result->planning_grid.has_value()) {
+  if (!latest_planning_result.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded before publication: "
                 "reason=latest_validation_grid_unavailable generation=%" PRIu64,
@@ -233,15 +232,34 @@ bool PlannerNode::publishTrajectoryResult(
     requestPlanningCycle();
     return false;
   }
-  OccupancyGrid2D latest_prohibited_grid = std::move(*latest_planning_result->grid);
-  OccupancyGrid2D latest_planning_grid =
-      std::move(*latest_planning_result->planning_grid);
-  const LocalInflationRelaxationStats latest_runtime_relaxation =
-      latest_prohibited_grid.clearInflationWithinRadius(
-          fresh_navigation.pose.position, local_inflation_relaxation_radius_m_);
-  const LocalInflationRelaxationStats latest_planning_relaxation =
-      latest_planning_grid.clearInflationWithinRadius(
-          fresh_navigation.pose.position, local_inflation_relaxation_radius_m_);
+  std::optional<PreparedPlanningGridSnapshot> latest_prepared =
+      preparePlanningGridSnapshot(*latest_planning_result,
+                                  fresh_navigation.pose.position);
+  if (!latest_prepared.has_value()) {
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory candidate discarded before publication: "
+                "reason=latest_prepared_grid_unavailable generation=%" PRIu64,
+                source_label, delivery.generation);
+    requestPlanningCycle();
+    return false;
+  }
+  if (source_grid_version != nullptr &&
+      latest_prepared->version.build_revision < source_grid_version->build_revision) {
+    RCLCPP_ERROR(get_logger(),
+                 "%s trajectory candidate discarded before publication: "
+                 "reason=grid_revision_regressed source_revision=%" PRIu64
+                 " fresh_revision=%" PRIu64,
+                 source_label, source_grid_version->build_revision,
+                 latest_prepared->version.build_revision);
+    requestPlanningCycle();
+    return false;
+  }
+  OccupancyGrid2D& latest_prohibited_grid = latest_prepared->runtime_prohibited_grid;
+  OccupancyGrid2D& latest_planning_grid = latest_prepared->planning_clearance_grid;
+  const LocalInflationRelaxationStats& latest_runtime_relaxation =
+      latest_prepared->runtime_relaxation;
+  const LocalInflationRelaxationStats& latest_planning_relaxation =
+      latest_prepared->planning_relaxation;
   publishProhibitedGrid(latest_prohibited_grid);
   const std::vector<TrajectoryGridCandidate> latest_grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &latest_planning_grid, nullptr,
@@ -259,6 +277,19 @@ bool PlannerNode::publishTrajectoryResult(
               latest_planning_relaxation.inflated_cells_cleared,
               latest_runtime_relaxation.occupied_cells_preserved,
               latest_planning_relaxation.occupied_cells_preserved);
+  if (source_grid_version != nullptr) {
+    RCLCPP_INFO(
+        get_logger(),
+        "REPAIR_RACE fresh_validation source_revision=%" PRIu64
+        " fresh_revision=%" PRIu64 " memory=%" PRIu64 "/%" PRIu64 "->%" PRIu64
+        "/%" PRIu64 " lidar_update_ns=%" PRId64 "->%" PRId64,
+        source_grid_version->build_revision, latest_prepared->version.build_revision,
+        source_grid_version->memory_producer_instance_id,
+        source_grid_version->memory_sequence,
+        latest_prepared->version.memory_producer_instance_id,
+        latest_prepared->version.memory_sequence, source_grid_version->lidar_update_ns,
+        latest_prepared->version.lidar_update_ns);
+  }
 
   std::string handover_grid_name{"not_required"};
   if (!delivery.truncation_suffix && trajectory_result.valid &&

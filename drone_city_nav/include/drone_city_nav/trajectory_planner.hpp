@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -28,6 +29,7 @@ enum class TrajectoryPlannerStatus {
   kCorridorInvalid,
   kTrajectoryOptimizerInvalid,
   kInvalidTrajectory,
+  kCanceled,
 };
 
 enum class TrajectoryQuality {
@@ -134,6 +136,7 @@ struct TrajectoryPlannerInput {
   std::span<const TrajectoryGridCandidate> grid_candidates{};
   PassageInsertionStartMode passage_insertion_start_mode{
       PassageInsertionStartMode::kMovingJoin};
+  std::stop_token stop_token{};
 };
 
 struct TrajectoryPlannerResult {
@@ -144,6 +147,13 @@ struct TrajectoryPlannerResult {
   TrajectorySpeedProfile speed_profile;
   TrajectoryPlannerStats stats{};
   bool valid{false};
+};
+
+struct StitchedTrajectoryFinalizationInput {
+  std::span<const TrajectoryPointSample> geometry_samples;
+  const KnownPassageMap* known_passage_map{nullptr};
+  std::span<const TrajectoryGridCandidate> grid_candidates;
+  PassageInsertionStartMode start_mode{PassageInsertionStartMode::kMovingJoin};
 };
 
 enum class TrajectoryRefinementDecisionReason {
@@ -191,6 +201,10 @@ planBaselineTrajectory(const TrajectoryPlannerInput& input,
 [[nodiscard]] TrajectoryPlannerResult
 planOptimizedTrajectory(const TrajectoryPlannerInput& input,
                         const TrajectoryPlannerConfig& config);
+
+[[nodiscard]] TrajectoryPlannerResult
+finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
+                           const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
     std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,

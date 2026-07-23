@@ -225,6 +225,10 @@ bool PlannerNode::keepCurrentPathIfStillClear(
   if (last_valid_path_points_.size() < 2U) {
     return false;
   }
+  if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
+    (void)updateExecutableTrajectoryProgress(executable_trajectory_artifact_,
+                                             current_pose_.position);
+  }
 
   if (path_raw_clearance_monitor_path_id_ != last_published_path_id_) {
     path_raw_clearance_monitor_path_id_ = last_published_path_id_;
@@ -284,8 +288,29 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     ++prohibited_replans_;
     bool awaiting_truncation_confirmation = false;
     if (safe_trajectory_truncation_enabled_ && replan_blocker_pub_ != nullptr) {
+      std::optional<BlockedSpan> blocked_span;
+      if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
+        blocked_span = findFirstProhibitedBlockedSpan(
+            grid, executable_trajectory_artifact_.samples,
+            executable_trajectory_artifact_.current_s_m);
+      }
+      if (!blocked_span.has_value()) {
+        const double first_s = executable_trajectory_artifact_.current_s_m +
+                               std::max(0.0, intersection.path_distance_m);
+        blocked_span = BlockedSpan{
+            .trigger = BlockedSpanTrigger::kProhibited,
+            .first_blocked_s_m = first_s,
+            .last_blocked_s_m = first_s,
+            .first_point = intersection.cell_center,
+            .last_point = intersection.cell_center,
+            .first_cell = intersection.cell,
+            .last_cell = intersection.cell,
+            .first_cell_available = decision.prohibited_intersection.has_value(),
+            .last_cell_available = decision.prohibited_intersection.has_value(),
+        };
+      }
       const std::optional<std::uint64_t> truncation_generation =
-          beginTruncationReplan(last_published_path_id_);
+          beginTruncationReplan(last_published_path_id_, *blocked_span);
       if (truncation_generation.has_value()) {
         delivery.blocked_path_id = last_published_path_id_;
         delivery.truncation_generation = *truncation_generation;
@@ -304,7 +329,9 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         event.detection_velocity.x = current_velocity_.x;
         event.detection_velocity.y = current_velocity_.y;
         event.detection_velocity.z = 0.0;
-        event.blocker_path_distance_m = intersection.path_distance_m;
+        event.blocker_path_distance_m =
+            std::max(0.0, blocked_span->first_blocked_s_m -
+                              executable_trajectory_artifact_.current_s_m);
         event.detection_velocity_valid = current_velocity_valid_;
         event.source = source_diagnostic;
         replan_blocker_pub_->publish(event);
@@ -393,8 +420,38 @@ bool PlannerNode::keepCurrentPathIfStillClear(
       ++prohibited_replans_;
       bool awaiting_truncation_confirmation = false;
       if (replan_blocker_pub_ != nullptr) {
+        std::optional<BlockedSpan> blocked_span;
+        if (planning_result.raw_grid.has_value() &&
+            executable_trajectory_artifact_.path_id == last_published_path_id_) {
+          blocked_span = findFirstRawClearanceBlockedSpan(
+              *planning_result.raw_grid, executable_trajectory_artifact_.samples,
+              executable_trajectory_artifact_.current_s_m,
+              BlockedSpanScanConfig{
+                  .sample_step_m = path_raw_clearance_monitor_config_.sample_step_m,
+                  .raw_clearance_trigger_m =
+                      path_raw_clearance_monitor_config_.trigger_clearance_m,
+                  .raw_min_violation_length_m =
+                      path_raw_clearance_monitor_config_.min_violation_length_m,
+              });
+        }
+        if (!blocked_span.has_value()) {
+          const double first_s = executable_trajectory_artifact_.current_s_m +
+                                 std::max(0.0, clearance.violation.entry_distance_m);
+          blocked_span = BlockedSpan{
+              .trigger = BlockedSpanTrigger::kRawClearance,
+              .first_blocked_s_m = first_s,
+              .last_blocked_s_m = first_s + clearance.violation.length_m,
+              .first_point = clearance.violation.entry_point,
+              .last_point = clearance.violation.entry_point,
+              .first_cell = clearance.violation.nearest_raw_cell,
+              .last_cell = clearance.violation.nearest_raw_cell,
+              .first_cell_available = clearance.violation.nearest_raw_cell_available,
+              .last_cell_available = clearance.violation.nearest_raw_cell_available,
+              .min_raw_clearance_m = clearance.violation.min_clearance_m,
+          };
+        }
         const std::optional<std::uint64_t> truncation_generation =
-            beginTruncationReplan(last_published_path_id_);
+            beginTruncationReplan(last_published_path_id_, *blocked_span);
         if (truncation_generation.has_value()) {
           path_raw_clearance_triggered_ = true;
           delivery.blocked_path_id = last_published_path_id_;
@@ -414,7 +471,9 @@ bool PlannerNode::keepCurrentPathIfStillClear(
           event.detection_velocity.x = current_velocity_.x;
           event.detection_velocity.y = current_velocity_.y;
           event.detection_velocity.z = 0.0;
-          event.blocker_path_distance_m = clearance.violation.entry_distance_m;
+          event.blocker_path_distance_m =
+              std::max(0.0, blocked_span->first_blocked_s_m -
+                                executable_trajectory_artifact_.current_s_m);
           event.detection_velocity_valid = current_velocity_valid_;
           std::ostringstream source;
           source << "path_raw_clearance[min=" << clearance.violation.min_clearance_m
@@ -440,7 +499,8 @@ bool PlannerNode::keepCurrentPathIfStillClear(
               "min_raw_clearance=%.2f nearest_raw_cell=(%d,%d) "
               "distance_to_violation=%.2f clearance_armed=%s memory_sequence=%" PRIu64,
               event.blocked_path_id, event.truncation_generation,
-              clearance.violation.entry_distance_m, clearance.violation.length_m,
+              blocked_span->first_blocked_s_m,
+              blocked_span->last_blocked_s_m - blocked_span->first_blocked_s_m,
               clearance.violation.min_clearance_m,
               clearance.violation.nearest_raw_cell_available
                   ? clearance.violation.nearest_raw_cell.x
@@ -448,7 +508,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
               clearance.violation.nearest_raw_cell_available
                   ? clearance.violation.nearest_raw_cell.y
                   : -1,
-              clearance.violation.entry_distance_m,
+              event.blocker_path_distance_m,
               path_raw_clearance_armed_ ? "true" : "false",
               event.memory_snapshot_sequence);
         }

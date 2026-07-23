@@ -290,6 +290,8 @@ trajectoryPlannerStatusName(const TrajectoryPlannerStatus status) noexcept {
       return "trajectory_optimizer_invalid";
     case TrajectoryPlannerStatus::kInvalidTrajectory:
       return "invalid_trajectory";
+    case TrajectoryPlannerStatus::kCanceled:
+      return "canceled";
   }
   return "unknown";
 }
@@ -459,6 +461,11 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
+  if (input.stop_token.stop_requested()) {
+    result.stats.status = TrajectoryPlannerStatus::kCanceled;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
   CorridorResult corridor{};
@@ -489,6 +496,11 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
   result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
   result.corridor_samples = corridor.samples;
+  if (input.stop_token.stop_requested()) {
+    result.stats.status = TrajectoryPlannerStatus::kCanceled;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   if (!corridor.valid) {
     result.stats.status = TrajectoryPlannerStatus::kCorridorInvalid;
     result.stats.corridor = corridor.stats;
@@ -504,9 +516,9 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     if (candidate.grid == nullptr) {
       continue;
     }
-    TrajectoryOptimizerResult attempt =
-        optimizeTrajectory(corridor.samples, *candidate.grid,
-                           config.trajectory_optimizer, config.speed_profile);
+    TrajectoryOptimizerResult attempt = optimizeTrajectory(
+        corridor.samples, *candidate.grid, config.trajectory_optimizer,
+        config.speed_profile, input.stop_token);
     result.stats.trajectory_optimizer = attempt.stats;
     optimized_trajectory = std::move(attempt);
     if (!optimized_trajectory.valid) {
@@ -517,6 +529,12 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
   result.stats.trajectory_optimizer_duration_ms =
       elapsedMilliseconds(trajectory_optimizer_started_at);
+  if (input.stop_token.stop_requested() || optimized_trajectory.stats.canceled) {
+    result.stats.status = TrajectoryPlannerStatus::kCanceled;
+    result.stats.trajectory_optimizer = optimized_trajectory.stats;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   if (!optimized_trajectory.valid) {
     result.stats.status = TrajectoryPlannerStatus::kTrajectoryOptimizerInvalid;
     result.stats.corridor = corridor.stats;
@@ -551,6 +569,11 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
   result.stats.turn_smoothing_duration_ms =
       elapsedMilliseconds(turn_smoothing_started_at);
+  if (input.stop_token.stop_requested()) {
+    result.stats.status = TrajectoryPlannerStatus::kCanceled;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   result.stats.turn_smoothing = turn_smoothing.stats;
   if (!turn_smoothing.valid) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
@@ -661,6 +684,11 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
   result.stats.passage_insertion_duration_ms =
       elapsedMilliseconds(passage_insertion_started_at);
+  if (input.stop_token.stop_requested()) {
+    result.stats.status = TrajectoryPlannerStatus::kCanceled;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
   result.stats.passage_insertion = passage_insertion.stats;
   result.stats.passage_insertion.hold_restart_recommended = hold_restart_recommended;
   if (!passage_insertion.valid || passage_samples.empty()) {
@@ -679,6 +707,63 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
   result.stats.speed_profile_duration_ms =
       elapsedMilliseconds(speed_profile_started_at);
+  finalizeResult(result, config);
+  result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+  return result;
+}
+
+TrajectoryPlannerResult
+finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
+                           const TrajectoryPlannerConfig& config) {
+  const auto total_started_at = std::chrono::steady_clock::now();
+  TrajectoryPlannerResult result{};
+  result.stats.quality = TrajectoryQuality::kRefined;
+  result.stats.input_points = input.geometry_samples.size();
+  if (!trajectorySamplesAreUsable(input.geometry_samples) ||
+      input.grid_candidates.empty()) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+
+  result.samples.assign(input.geometry_samples.begin(), input.geometry_samples.end());
+  populateTrajectorySampleGeometry(result.samples);
+  for (std::size_t index = 0U; index < input.grid_candidates.size(); ++index) {
+    const TrajectoryGridCandidate& candidate = input.grid_candidates[index];
+    ++result.stats.grid_stages.trajectory_validation_attempts;
+    if (candidate.grid == nullptr ||
+        !trajectoryStageInvariantsHold(result.samples, *candidate.grid,
+                                       result.samples.front().point,
+                                       result.samples.back().point)) {
+      continue;
+    }
+    result.stats.grid_stages.trajectory_validation =
+        gridCandidateName(candidate, index);
+    break;
+  }
+  if (result.stats.grid_stages.trajectory_validation == "none") {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+
+  result.compact_segments = lineTrajectoryFromSamples(result.samples);
+  const TrajectoryPlannerInput vertical_input{
+      .route_points = {},
+      .precomputed_corridor_samples = {},
+      .known_passage_map = input.known_passage_map,
+      .grid_candidates = input.grid_candidates,
+      .passage_insertion_start_mode = input.start_mode,
+  };
+  if (!applyVerticalProfileStage(result, vertical_input, config)) {
+    result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
+    return result;
+  }
+  const auto speed_started_at = std::chrono::steady_clock::now();
+  result.speed_profile =
+      buildTrajectorySpeedProfile(result.samples, config.speed_profile);
+  result.stats.speed_profile_duration_ms = elapsedMilliseconds(speed_started_at);
+  result.stats.status = TrajectoryPlannerStatus::kOk;
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;

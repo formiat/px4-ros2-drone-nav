@@ -107,6 +107,10 @@ planner_node:
     path_raw_clearance_arm_m: 5.5
     path_raw_clearance_min_violation_length_m: 2.0
     path_raw_clearance_sample_step_m: 0.5
+    partial_replan_enabled: true
+    partial_replan_reconnect_margins_m:
+      [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+    partial_replan_internal_parallel_workers: 1
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 54.0
     start_y_m: 54.0

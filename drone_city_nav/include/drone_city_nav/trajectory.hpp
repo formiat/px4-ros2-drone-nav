@@ -115,6 +115,9 @@ void assignTrajectorySampleAltitude(std::span<TrajectoryPointSample> samples,
 [[nodiscard]] double
 trajectorySampleAltitudeAtS(std::span<const TrajectoryPointSample> samples, double s_m);
 
+[[nodiscard]] TrajectoryPointSample
+trajectorySampleAtS(std::span<const TrajectoryPointSample> samples, double s_m);
+
 [[nodiscard]] TrajectoryVerticalTarget
 trajectoryVerticalTargetAtS(std::span<const TrajectoryPointSample> samples, double s_m);
 

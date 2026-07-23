@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -169,6 +170,11 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.arm_clearance_m, 5.5);
   EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.min_violation_length_m, 2.0);
   EXPECT_DOUBLE_EQ(config.path_raw_clearance_monitor.sample_step_m, 0.5);
+  EXPECT_TRUE(config.partial_replan.enabled);
+  EXPECT_EQ(config.partial_replan.reconnect_margins_m,
+            (std::vector<double>{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0,
+                                 100.0}));
+  EXPECT_EQ(config.partial_replan.internal_parallel_workers, 1U);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.5);
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 1.0);
   EXPECT_DOUBLE_EQ(config.planner_core.astar.heuristic_weight, 1.0);
@@ -230,6 +236,28 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    12.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.entry_distance_m, 45.0);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.turn_smoothing.exit_distance_m, 45.0);
+}
+
+TEST(PlannerNodeConfig, RejectsInvalidPartialReplanMargins) {
+  EXPECT_THROW(
+      validatePartialReplanConfig(PartialReplanConfig{.reconnect_margins_m = {}}),
+      std::invalid_argument);
+  EXPECT_THROW(validatePartialReplanConfig(
+                   PartialReplanConfig{.reconnect_margins_m = {10.0, 10.0}}),
+               std::invalid_argument);
+  EXPECT_THROW(validatePartialReplanConfig(
+                   PartialReplanConfig{.reconnect_margins_m = {20.0, 10.0}}),
+               std::invalid_argument);
+  EXPECT_THROW(
+      validatePartialReplanConfig(PartialReplanConfig{
+          .reconnect_margins_m = {10.0, std::numeric_limits<double>::infinity()}}),
+      std::invalid_argument);
+}
+
+TEST(PlannerNodeConfig, RejectsParallelWorkersInsideRepairJobs) {
+  EXPECT_THROW(
+      validatePartialReplanConfig(PartialReplanConfig{.internal_parallel_workers = 2U}),
+      std::invalid_argument);
 }
 
 TEST_F(PlannerNodeConfigTest, ClampsUnsafeValues) {

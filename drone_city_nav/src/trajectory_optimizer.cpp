@@ -4,11 +4,10 @@ namespace drone_city_nav {
 
 using namespace trajectory_optimizer_detail;
 
-TrajectoryOptimizerResult
-optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
-                   const OccupancyGrid2D& prohibited_grid,
-                   const TrajectoryOptimizerConfig& config,
-                   const VelocityFollowerConfig& speed_config) {
+TrajectoryOptimizerResult optimizeTrajectory(
+    const std::span<const CorridorSample> corridor_samples,
+    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    const VelocityFollowerConfig& speed_config, const std::stop_token stop_token) {
   TrajectoryOptimizerResult result{};
   result.stats.input_samples = corridor_samples.size();
   if (corridor_samples.size() < 2U) {
@@ -64,6 +63,10 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       InitialOffsetSeed::kLeftBiased, InitialOffsetSeed::kRightBiased};
   std::size_t seed_order = 0U;
   for (const InitialOffsetSeed seed : kInitialSeeds) {
+    if (stop_token.stop_requested()) {
+      result.stats.canceled = true;
+      return result;
+    }
     offsetsFromSeed(optimizer_samples, seed, scratch.candidate_offsets);
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(optimizer_samples, scratch.candidate_offsets,
@@ -88,6 +91,10 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
 
   const auto window_eval_started_at = std::chrono::steady_clock::now();
   for (const ActiveWindow& window : active_windows) {
+    if (stop_token.stop_requested()) {
+      result.stats.canceled = true;
+      return result;
+    }
     const std::size_t states_before = result.stats.dp_states;
     const std::size_t transitions_before = result.stats.dp_transitions;
     const double coarse_step =
@@ -161,6 +168,10 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
 
   for (std::size_t iteration = 0U; iteration < max_iterations && step >= min_step;
        ++iteration) {
+    if (stop_token.stop_requested()) {
+      result.stats.canceled = true;
+      return result;
+    }
     if (control_indices.empty()) {
       break;
     }
@@ -263,6 +274,10 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
       config.regularization_iterations, 0U, static_cast<std::size_t>(100U));
   const auto regularization_started_at = std::chrono::steady_clock::now();
   for (std::size_t iteration = 0U; iteration < regularization_iterations; ++iteration) {
+    if (stop_token.stop_requested()) {
+      result.stats.canceled = true;
+      return result;
+    }
     smoothedOffsets(final_offsets, optimizer_samples, scratch.smoothed_offsets);
     const auto points_started_at = std::chrono::steady_clock::now();
     pointsFromOffsets(optimizer_samples, scratch.smoothed_offsets,
@@ -299,6 +314,10 @@ optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
   }
   result.stats.regularization_duration_ms =
       elapsedMilliseconds(regularization_started_at);
+  if (stop_token.stop_requested()) {
+    result.stats.canceled = true;
+    return result;
+  }
   std::size_t final_cache_hits = 0U;
   std::size_t final_cache_misses = 0U;
   const PathEvaluation final_evaluation =

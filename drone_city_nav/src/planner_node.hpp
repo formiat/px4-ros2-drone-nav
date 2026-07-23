@@ -23,13 +23,16 @@
 #include "drone_city_nav/planner_path_publication.hpp"
 #include "drone_city_nav/planner_runtime_state.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
+#include "drone_city_nav/planning_grid_snapshot.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
+#include "drone_city_nav/repair_race.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/safe_trajectory_truncation.hpp"
 #include "drone_city_nav/static_map_debug.hpp"
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
+#include "drone_city_nav/trajectory_repair.hpp"
 #include "drone_city_nav/truncation_suffix_protocol.hpp"
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -160,11 +163,16 @@ private:
     Point3 position{};
     Point2 tangent{};
     double altitude_m{std::numeric_limits<double>::quiet_NaN()};
+    BlockedSpan blocked_span{};
+    ExecutableTrajectoryArtifact old_trajectory{};
+    double current_s_m{std::numeric_limits<double>::quiet_NaN()};
+    double truncation_s_m{std::numeric_limits<double>::quiet_NaN()};
     std::uint64_t published_suffix_path_id{0U};
     std::size_t publication_attempts{0U};
     bool confirmed{false};
     bool immediate_hold{false};
     bool awaiting_ack{false};
+    bool repair_context_valid{false};
   };
 
   struct PendingTruncationRuntimeTrajectory {
@@ -190,7 +198,7 @@ private:
   void onTruncationSuffixAck(const msg::TruncationSuffixAck& message);
 
   [[nodiscard]] std::optional<std::uint64_t>
-  beginTruncationReplan(std::uint64_t blocked_path_id);
+  beginTruncationReplan(std::uint64_t blocked_path_id, const BlockedSpan& blocked_span);
 
   [[nodiscard]] std::optional<TruncationReplanState> truncationReplanState() const;
 
@@ -218,6 +226,15 @@ private:
 
   [[nodiscard]] std::optional<PlanningGridBuildResult>
   buildPlanningGrid(const std::int64_t now_ns);
+
+  [[nodiscard]] std::optional<PreparedPlanningGridSnapshot>
+  preparePlanningGridSnapshot(const PlanningGridBuildResult& build_result,
+                              Point2 relaxation_center);
+
+  [[nodiscard]] bool
+  runConfirmedRepairRace(const PreparedPlanningGridSnapshot& prepared,
+                         const TruncationReplanState& truncation_replan,
+                         TrajectoryDeliveryDiagnostics delivery);
 
   void checkCurrentPathAndPublish();
 
@@ -262,12 +279,14 @@ private:
                                    const TruncationReplanState& truncation_replan,
                                    TrajectoryDeliveryDiagnostics delivery);
 
-  bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
-                               std::span<const Point2> route_points,
-                               const char* source_label, double duration_ms,
-                               TrajectoryDeliveryDiagnostics delivery,
-                               std::string astar_grid_name, std::string route_grid_name,
-                               std::uint64_t* published_path_id = nullptr);
+  bool
+  publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
+                          std::span<const Point2> route_points,
+                          const char* source_label, double duration_ms,
+                          TrajectoryDeliveryDiagnostics delivery,
+                          std::string astar_grid_name, std::string route_grid_name,
+                          std::uint64_t* published_path_id = nullptr,
+                          const PlanningGridVersion* source_grid_version = nullptr);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
@@ -394,6 +413,7 @@ private:
   std::optional<KnownPassageMap> known_passages_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   PlanningGridBuilder planning_grid_builder_;
+  PlanningGridSnapshotBuilder planning_grid_snapshot_builder_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
   TrajectoryPlannerConfig trajectory_planner_config_{};
@@ -419,6 +439,7 @@ private:
   bool use_static_map_{true};
   bool safe_trajectory_truncation_enabled_{true};
   PathRawClearanceMonitorConfig path_raw_clearance_monitor_config_{};
+  PartialReplanConfig partial_replan_config_{};
   std::uint64_t path_raw_clearance_monitor_path_id_{0U};
   bool path_raw_clearance_armed_{false};
   bool path_raw_clearance_triggered_{false};
@@ -530,6 +551,7 @@ private:
   std::vector<Point2> last_valid_path_points_;
   std::vector<LidarProjectionPose> last_scan_projection_poses_;
   std::vector<TrajectoryPointSample> last_valid_trajectory_samples_;
+  ExecutableTrajectoryArtifact executable_trajectory_artifact_{};
   std::optional<TrajectoryDeliveryDiagnostics> pending_replan_delivery_;
   std::optional<PendingMemorySnapshot> pending_memory_snapshot_;
   std::optional<TruncationReplanState> truncation_replan_state_;

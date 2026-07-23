@@ -10,6 +10,7 @@
 #include <limits>
 #include <numbers>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -245,6 +246,7 @@ struct TrajectoryOptimizerStats {
   double max_abs_curvature_1pm{0.0};
   double mean_abs_curvature_1pm{0.0};
   std::vector<TrajectoryOptimizerCandidateDiagnostic> candidate_diagnostics;
+  bool canceled{false};
 };
 
 struct TrajectoryOptimizerWindowMetadata {
@@ -260,10 +262,9 @@ struct TrajectoryOptimizerResult {
   bool valid{false};
 };
 
-[[nodiscard]] TrajectoryOptimizerResult
-optimizeTrajectory(std::span<const CorridorSample> corridor_samples,
-                   const OccupancyGrid2D& prohibited_grid,
-                   const TrajectoryOptimizerConfig& config,
-                   const VelocityFollowerConfig& speed_config);
+[[nodiscard]] TrajectoryOptimizerResult optimizeTrajectory(
+    std::span<const CorridorSample> corridor_samples,
+    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    const VelocityFollowerConfig& speed_config, std::stop_token stop_token = {});
 
 } // namespace drone_city_nav

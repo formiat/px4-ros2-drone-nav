@@ -352,6 +352,42 @@ double trajectorySampleAltitudeAtS(const std::span<const TrajectoryPointSample> 
   return samples.back().z_m;
 }
 
+TrajectoryPointSample
+trajectorySampleAtS(const std::span<const TrajectoryPointSample> samples,
+                    const double s_m) {
+  if (!trajectorySamplesAreUsable(samples)) {
+    return TrajectoryPointSample{};
+  }
+  const double bounded_s_m = std::clamp(std::isfinite(s_m) ? s_m : samples.front().s_m,
+                                        samples.front().s_m, samples.back().s_m);
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const TrajectoryPointSample& start = samples[index];
+    const TrajectoryPointSample& end = samples[index + 1U];
+    if (bounded_s_m > end.s_m && index + 2U < samples.size()) {
+      continue;
+    }
+    const double station_delta_m = end.s_m - start.s_m;
+    const double ratio =
+        station_delta_m > kTinyDistanceM
+            ? std::clamp((bounded_s_m - start.s_m) / station_delta_m, 0.0, 1.0)
+            : 0.0;
+    TrajectoryPointSample sample = ratio <= 0.5 ? start : end;
+    sample.s_m = bounded_s_m;
+    sample.point = start.point * (1.0 - ratio) + end.point * ratio;
+    sample.tangent = normalized(start.tangent * (1.0 - ratio) + end.tangent * ratio);
+    if (!(norm(sample.tangent) > kTinyDistanceM)) {
+      sample.tangent = normalized(end.point - start.point);
+    }
+    sample.curvature_1pm =
+        start.curvature_1pm * (1.0 - ratio) + end.curvature_1pm * ratio;
+    sample.z_m = start.z_m * (1.0 - ratio) + end.z_m * ratio;
+    sample.vertical_slope_dz_ds =
+        start.vertical_slope_dz_ds * (1.0 - ratio) + end.vertical_slope_dz_ds * ratio;
+    return sample;
+  }
+  return samples.back();
+}
+
 TrajectoryVerticalTarget
 trajectoryVerticalTargetAtS(const std::span<const TrajectoryPointSample> samples,
                             const double s_m) {
@@ -507,10 +543,12 @@ projectOnTrajectory(const std::span<const TrajectorySegment> trajectory,
   std::optional<TrajectoryProjection> best;
   for (std::size_t i = 0U; i < trajectory.size(); ++i) {
     const TrajectorySegment& segment = trajectory[i];
+    const double segment_end_s = segmentEndS(segment);
+    if (segment_end_s < min_s) {
+      continue;
+    }
     const double segment_min_t =
-        segmentEndS(segment) <= min_s
-            ? 1.0
-            : std::max(0.0, (min_s - segment.s_start_m) / segment.length_m);
+        std::max(0.0, (min_s - segment.s_start_m) / segment.length_m);
 
     double t = 0.0;
     if (segment.kind == TrajectorySegmentKind::kLine) {
@@ -543,6 +581,9 @@ projectOnTrajectory(const std::span<const TrajectorySegment> trajectory,
       projection.segment_index = i;
       projection.segment_t = t;
       projection.s_m = segment.s_start_m + segment.length_m * t;
+      if (projection.s_m + kTinyDistanceM < min_s) {
+        continue;
+      }
       projection.point = projected;
       projection.tangent = tangentOnSegment(segment, t);
       projection.curvature_1pm =
@@ -580,8 +621,10 @@ projectOnTrajectorySamples(const std::span<const TrajectoryPointSample> samples,
       continue;
     }
 
-    const double segment_min_t =
-        end.s_m <= min_s ? 1.0 : std::max(0.0, (min_s - start.s_m) / station_delta_m);
+    if (end.s_m < min_s) {
+      continue;
+    }
+    const double segment_min_t = std::max(0.0, (min_s - start.s_m) / station_delta_m);
     double t =
         ((point.x - start.point.x) * line.x + (point.y - start.point.y) * line.y) /
         length_sq;
@@ -606,6 +649,9 @@ projectOnTrajectorySamples(const std::span<const TrajectoryPointSample> samples,
     projection.segment_index = i;
     projection.segment_t = t;
     projection.s_m = start.s_m + station_delta_m * t;
+    if (projection.s_m + kTinyDistanceM < min_s) {
+      continue;
+    }
     projection.point = projected;
     projection.tangent = tangent;
     projection.curvature_1pm = start.curvature_1pm * (1.0 - t) + end.curvature_1pm * t;

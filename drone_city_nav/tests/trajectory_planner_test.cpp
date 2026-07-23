@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numbers>
@@ -781,6 +782,56 @@ TEST(TrajectoryPlanner, AcceptsValidRefinedTrajectoryAndPreservesGoalEndpoint) {
   ASSERT_FALSE(refined_points.empty());
   EXPECT_NEAR(distance(refined_points.back(), route.back()), 0.0, 0.5);
   EXPECT_TRUE(refined.stats.trajectory_optimizer.async_refined);
+}
+
+TEST(TrajectoryPlanner, FinalizesStitchedTrajectoryThroughKnownOpening) {
+  const OccupancyGrid2D grid = testGrid();
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 0.0}, {10.0, 0.0}});
+  const std::array grids{TrajectoryGridCandidate{
+      .name = "runtime_prohibited",
+      .grid = &grid,
+  }};
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+
+  const TrajectoryPlannerResult result = finalizeStitchedTrajectory(
+      StitchedTrajectoryFinalizationInput{
+          .geometry_samples = samples,
+          .known_passage_map = &map,
+          .grid_candidates = grids,
+      },
+      config);
+
+  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.speed_profile.valid);
+  EXPECT_TRUE(result.stats.known_passage_solid_validation.valid);
+}
+
+TEST(TrajectoryPlanner, RejectsStitchedTrajectoryThroughKnownSolid) {
+  const OccupancyGrid2D grid = testGrid();
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::vector<TrajectoryPointSample> samples =
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 4.0}, {10.0, 4.0}});
+  const std::array grids{TrajectoryGridCandidate{
+      .name = "runtime_prohibited",
+      .grid = &grid,
+  }};
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+
+  const TrajectoryPlannerResult result = finalizeStitchedTrajectory(
+      StitchedTrajectoryFinalizationInput{
+          .geometry_samples = samples,
+          .known_passage_map = &map,
+          .grid_candidates = grids,
+      },
+      config);
+
+  EXPECT_FALSE(result.valid);
+  EXPECT_FALSE(result.stats.known_passage_solid_validation.valid);
+  EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
 }
 
 } // namespace drone_city_nav

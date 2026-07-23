@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stdexcept>
 #include <vector>
 
 namespace drone_city_nav {
@@ -21,6 +22,25 @@ namespace {
 }
 
 } // namespace
+
+void validatePartialReplanConfig(const PartialReplanConfig& config) {
+  if (config.reconnect_margins_m.empty()) {
+    throw std::invalid_argument{"partial_replan_reconnect_margins_m must not be empty"};
+  }
+  double previous = 0.0;
+  for (const double margin_m : config.reconnect_margins_m) {
+    if (!std::isfinite(margin_m) || margin_m <= 0.0 || margin_m <= previous) {
+      throw std::invalid_argument{
+          "partial_replan_reconnect_margins_m must contain finite, positive, "
+          "strictly increasing values"};
+    }
+    previous = margin_m;
+  }
+  if (config.internal_parallel_workers != 1U) {
+    throw std::invalid_argument{
+        "partial_replan_internal_parallel_workers must equal 1"};
+  }
+}
 
 PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   PlannerNodeConfig config{};
@@ -667,6 +687,22 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.path_raw_clearance_monitor.sample_step_m = boundedFiniteDouble(
       node.declare_parameter<double>("path_raw_clearance_sample_step_m", 0.5), 0.5, 0.1,
       5.0);
+  config.partial_replan.enabled =
+      node.declare_parameter<bool>("partial_replan_enabled", true);
+  config.partial_replan.reconnect_margins_m =
+      node.declare_parameter<std::vector<double>>(
+          "partial_replan_reconnect_margins_m",
+          std::vector<double>{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0,
+                              100.0});
+  const std::int64_t internal_parallel_workers = node.declare_parameter<std::int64_t>(
+      "partial_replan_internal_parallel_workers", 1);
+  if (internal_parallel_workers < 0) {
+    throw std::invalid_argument{
+        "partial_replan_internal_parallel_workers must equal 1"};
+  }
+  config.partial_replan.internal_parallel_workers =
+      static_cast<std::size_t>(internal_parallel_workers);
+  validatePartialReplanConfig(config.partial_replan);
   config.timing.path_prohibited_intersection_check_period_s =
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);

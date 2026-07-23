@@ -64,6 +64,13 @@ route with the hard runtime safety margin when the preferred extra clearance is
 too restrictive, without weakening either grid or changing the underlying
 algorithms.
 
+For a confirmed safe-truncation replan, one prepared immutable copy of these
+two grids is shared by all partial and full race jobs. Local repair replaces
+only the geometry between the confirmed truncation point and a reconnect
+station after the blocked span; the old suffix geometry remains unchanged.
+Vertical, passage, and speed metadata are rebuilt for the complete stitched
+trajectory before publication.
+
 Immediately before publication, final validation rebuilds fresh copies of both
 grids, reapplies local inflation relaxation, and again checks planning clearance
 before runtime prohibited space. The log entry `GRID_ATTEMPT_SELECTION` records

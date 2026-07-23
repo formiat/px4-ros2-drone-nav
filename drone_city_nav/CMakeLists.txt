@@ -91,7 +91,9 @@ add_library(
   src/path_raw_clearance_monitor.cpp
   src/path_smoothing.cpp
   src/planning_grid_builder.cpp
+  src/planning_grid_snapshot.cpp
   src/planner_core.cpp
+  src/repair_race.cpp
   src/planner_diagnostics_format.cpp
   src/planner_path_publication.cpp
   src/planner_runtime_state.cpp
@@ -114,6 +116,7 @@ add_library(
   src/trajectory_diagnostics_io_json_summary.cpp
   src/trajectory_diagnostics_io_parser.cpp
   src/trajectory_planner.cpp
+  src/trajectory_repair.cpp
   src/trajectory_passage_insertion.cpp
   src/trajectory_shape_cleanup.cpp
   src/trajectory_speed_planner.cpp
@@ -183,12 +186,14 @@ add_executable(
   planner_node
   src/planner_node.cpp
   src/planner_node_inputs.cpp
+  src/planner_node_grid_snapshot.cpp
   src/planner_node_lifecycle.cpp
   src/planner_node_memory_provenance.cpp
   src/planner_node_publish.cpp
   src/planner_node_trajectory_publication.cpp
   src/planner_node_route_publication.cpp
   src/planner_node_refinement.cpp
+  src/planner_node_repair.cpp
   src/planner_node_safety.cpp
   src/planner_node_lidar_overlay.cpp
   src/planner_node_debug_publication.cpp
@@ -431,6 +436,12 @@ if(BUILD_TESTING)
   target_link_libraries(planning_grid_builder_test drone_city_nav_core)
   enable_project_warnings(planning_grid_builder_test)
 
+  ament_add_gtest(planning_grid_snapshot_test
+                  tests/planning_grid_snapshot_test.cpp)
+  target_compile_features(planning_grid_snapshot_test PRIVATE cxx_std_20)
+  target_link_libraries(planning_grid_snapshot_test drone_city_nav_core)
+  enable_project_warnings(planning_grid_snapshot_test)
+
   ament_add_gtest(static_city_map_test tests/static_city_map_test.cpp)
   target_compile_features(static_city_map_test PRIVATE cxx_std_20)
   target_link_libraries(static_city_map_test drone_city_nav_core)
@@ -516,6 +527,16 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_test drone_city_nav_core)
   enable_project_warnings(trajectory_test)
+
+  ament_add_gtest(trajectory_repair_test tests/trajectory_repair_test.cpp)
+  target_compile_features(trajectory_repair_test PRIVATE cxx_std_20)
+  target_link_libraries(trajectory_repair_test drone_city_nav_core)
+  enable_project_warnings(trajectory_repair_test)
+
+  ament_add_gtest(repair_race_test tests/repair_race_test.cpp)
+  target_compile_features(repair_race_test PRIVATE cxx_std_20)
+  target_link_libraries(repair_race_test drone_city_nav_core)
+  enable_project_warnings(repair_race_test)
 
   ament_add_gtest(trajectory_diagnostics_test
                   tests/trajectory_diagnostics_test.cpp)

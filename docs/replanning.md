@@ -101,27 +101,27 @@ The accepted planner path id is confirmed from matching diagnostics. This
 avoids relying on cross-topic delivery ordering between `/path_id`,
 `/trajectory_diagnostics`, and `/path`.
 
-## Local Repair Future Work
+## Local Segment Repair
 
-The current production path uses full replanning. A future optimization could
-add local repair:
+After safe truncation is confirmed, production replanning races ten local
+segment repairs against one full replan. All jobs read one immutable snapshot
+containing the accepted trajectory artifact, the absolute blocked span, known
+passages, and prepared planning/runtime grids. Local jobs reconnect at fixed
+stations 10 through 100 metres after the actual blocked-span exit.
 
-- find blocked spans on the current executable trajectory;
-- replan or repair only a local window around the blocked span;
-- stitch prefix + repaired segment + suffix;
-- validate continuity and prohibited-grid safety;
-- run full global replan in parallel as fallback.
-
-Local repair should be introduced only with strong validation and diagnostics,
-because it must not produce unsafe stitching artifacts.
+Each local job runs A*, corridor construction, optimization, and smoothing only
+from the confirmed truncation point to its reconnect station. It then appends
+the unchanged old suffix and globally rebuilds vertical, passage, and speed
+metadata. The first completed hard-valid result wins; invalid completions do
+not close the race. The full job remains an equal production competitor.
 
 ## Replan Decision Philosophy
 
 The system should not treat every obstacle update as a reason to throw away the
 whole plan. Full replanning is robust but expensive, and it can create visible
-trajectory changes even when only a small future span is affected. The current
-safe baseline is full replan with previous-trajectory retention. The future
-direction is to add local repair as a faster candidate path.
+trajectory changes even when only a small future span is affected. Safe
+truncation retains the executable prefix while local and full candidates race,
+so planning latency does not invalidate the confirmed join point.
 
 The planner should distinguish:
 
@@ -142,11 +142,11 @@ planning stack on a shorter window. The sequence is:
 1. project the drone onto the accepted executable trajectory;
 2. find blocked spans against the latest prohibited grid;
 3. choose start and end anchors around the affected span;
-4. expand anchors by speed and curvature so joins happen in stable regions;
+4. generate configured reconnect stations after the blocked-span exit;
 5. run A*, corridor, optimizer, and turn smoothing between anchors;
 6. stitch old prefix, repaired segment, and old suffix;
 7. rebuild the speed profile for the stitched full trajectory;
-8. validate prohibited-grid safety and continuity;
+8. validate runtime prohibited-grid safety and known solid geometry;
 9. publish only if the stitched candidate passes the same acceptance gates as a
    full replan.
 
@@ -156,10 +156,10 @@ retaining and modifying more internal planner state.
 
 ## Parallel Repair And Full Replan
 
-Local repair and full replan can run concurrently if every result is tagged
-with a generation id. The first valid result can be accepted. Later results are
-accepted only if they still match the current generation and pass continuity
-checks. Otherwise they are ignored as stale.
+Local repair and full replan run concurrently and every result carries the
+truncation generation, blocked path id, prefix fingerprint, and exact planning
+grid version. The first hard-valid completion wins. Later results are canceled
+cooperatively or ignored as stale.
 
 The implementation does not need unsafe thread termination. Cooperative
 cancellation or stale-result rejection is enough for correctness. The
@@ -173,13 +173,12 @@ patch that bypasses validation. It must pass:
 
 - finite geometry checks;
 - hard prohibited-grid validation;
-- planning-clearance or corridor-validity policy;
-- tangent continuity at both joins;
-- curvature continuity at both joins;
+- ordered planning-clearance/runtime-prohibited validation;
+- mandatory known-solid non-intersection;
 - maximum segment length checks;
 - speed-profile rebuild;
 - offboard trajectory continuity acceptance.
 
-If any check fails, the repair candidate is rejected and the full replan
-remains the fallback. A local repair that introduces a sharp join can be worse
-than the original obstacle-triggered problem.
+Join tangent and curvature remain quality and speed-profile inputs rather than
+automatic hard rejection. Non-finite geometry, runtime-prohibited
+intersection, broken endpoints, or known-solid intersection are hard rejects.
