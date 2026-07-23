@@ -123,7 +123,7 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
                      "known_static_lidar_hit_endpoint_volume_tolerance_m", 0.75),
                  0.0, 10.0);
   setup.opening_boundary_tolerance_m = std::clamp(
-      node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.30),
+      node.declare_parameter<double>("known_static_opening_boundary_tolerance_m", 0.50),
       0.0, 10.0);
 
   std::filesystem::path package_share_directory;

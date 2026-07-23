@@ -908,7 +908,7 @@ private:
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
   double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};
-  double known_static_opening_boundary_tolerance_m_{0.30};
+  double known_static_opening_boundary_tolerance_m_{0.50};
   double min_mapping_altitude_m_{0.0};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t last_pose_update_ns_{0};

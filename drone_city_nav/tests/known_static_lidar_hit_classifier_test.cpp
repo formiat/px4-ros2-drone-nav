@@ -282,7 +282,7 @@ TEST(KnownStaticLidarHitClassifier,
       EXPECT_NEAR(result.endpoint_solid_distance_m, altitude_m - 21.5, 1.0e-9);
       EXPECT_NEAR(result.opening_min_z_m, 21.5, 1.0e-9);
       EXPECT_NEAR(result.opening_max_z_m, 28.5, 1.0e-9);
-      EXPECT_NEAR(result.opening_boundary_tolerance_m, 0.30, 1.0e-9);
+      EXPECT_NEAR(result.opening_boundary_tolerance_m, 0.50, 1.0e-9);
     }
   }
 }
@@ -305,11 +305,11 @@ TEST(KnownStaticLidarHitClassifier, OpeningInteriorRemainsImmediateObstacle) {
   const KnownStaticLidarHitClassifier classifier = highOpeningClassifier();
 
   const KnownStaticLidarHitResult result = classifier.classify(
-      Point3{0.0, 0.0, 21.8}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
+      Point3{0.0, 0.0, 22.1}, Point3{1.0, 0.0, 0.0}, 5.0, kEffectiveMaxRangeM);
 
   EXPECT_EQ(result.classification, KnownStaticLidarHitClassification::kUnexpected);
   EXPECT_EQ(result.endpoint_relation, KnownStaticEndpointRelation::kInsideOpening);
-  EXPECT_NEAR(result.endpoint_solid_distance_m, 0.3, 1.0e-9);
+  EXPECT_NEAR(result.endpoint_solid_distance_m, 0.6, 1.0e-9);
 }
 
 TEST(KnownStaticLidarHitClassifier, OpeningEntryPlaneDoesNotCreateFalseSolidBoundary) {

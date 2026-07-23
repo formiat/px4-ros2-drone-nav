@@ -34,7 +34,7 @@ struct KnownStaticLidarHitClassifierConfig {
   // slightly behind its analytic intersection.
   double farther_range_tolerance_m{1.5};
   double endpoint_volume_tolerance_m{0.75};
-  double opening_boundary_tolerance_m{0.30};
+  double opening_boundary_tolerance_m{0.50};
 };
 
 struct KnownStaticLidarHitResult {

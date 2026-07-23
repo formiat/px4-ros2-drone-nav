@@ -43,7 +43,7 @@ struct KnownStaticLidarSetup {
   double closer_range_tolerance_m{0.5};
   double farther_range_tolerance_m{1.5};
   double endpoint_volume_tolerance_m{0.75};
-  double opening_boundary_tolerance_m{0.30};
+  double opening_boundary_tolerance_m{0.50};
 };
 
 [[nodiscard]] KnownStaticLidarSetup

@@ -87,7 +87,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_NE(yaml.find("known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75"),
             std::string::npos);
-  EXPECT_NE(yaml.find("known_static_opening_boundary_tolerance_m: 0.30"),
+  EXPECT_NE(yaml.find("known_static_opening_boundary_tolerance_m: 0.50"),
             std::string::npos);
   EXPECT_NE(yaml.find("ambiguous_lidar_hit_required_independent_scans: 3"),
             std::string::npos);

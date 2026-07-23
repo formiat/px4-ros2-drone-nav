@@ -576,7 +576,7 @@ TEST(KnownStaticLidarIngestion,
       EXPECT_NE(diagnostics.find("endpoint_relation=inside_opening_boundary"),
                 std::string::npos);
       EXPECT_NE(diagnostics.find("opening_z=[9.995,16.995]"), std::string::npos);
-      EXPECT_NE(diagnostics.find("boundary_tolerance=0.3"), std::string::npos);
+      EXPECT_NE(diagnostics.find("boundary_tolerance=0.5"), std::string::npos);
       EXPECT_NE(diagnostics.find("part=lower_mass"), std::string::npos);
     }
   }
