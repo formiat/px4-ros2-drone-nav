@@ -2,35 +2,51 @@
 
 namespace drone_city_nav {
 
-void PlannerNode::requestPlanningCycle() {
+void PlannerNode::schedulePlanningCycle(const PlanningWakeReason reason) {
   {
     const std::scoped_lock lock{planning_request_mutex_};
-    ++latest_planning_request_generation_;
-    planning_request_pending_ = true;
+    planning_request_state_.schedule(reason);
   }
   planning_request_cv_.notify_one();
 }
 
-std::uint64_t PlannerNode::latestPlanningRequestGeneration() const {
+void PlannerNode::invalidateAndSchedulePlanningCycle(
+    const PlanningInvalidationReason reason) {
+  {
+    const std::scoped_lock lock{planning_request_mutex_};
+    planning_request_state_.invalidate(reason);
+  }
+  planning_request_cv_.notify_one();
+}
+
+std::uint64_t PlannerNode::latestPlanningInvalidationGeneration() const {
   const std::scoped_lock lock{planning_request_mutex_};
-  return latest_planning_request_generation_;
+  return planning_request_state_.latestInvalidationGeneration();
+}
+
+PlanningInvalidationReason PlannerNode::latestPlanningInvalidationReason() const {
+  const std::scoped_lock lock{planning_request_mutex_};
+  return planning_request_state_.latestInvalidationReason();
 }
 
 void PlannerNode::planningWorkerLoop(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
-    std::uint64_t generation = 0U;
+    PlanningJobIdentity identity{};
     {
       std::unique_lock lock{planning_request_mutex_};
       planning_request_cv_.wait(lock, stop_token,
-                                [this]() { return planning_request_pending_; });
+                                [this]() { return planning_request_state_.pending(); });
       if (stop_token.stop_requested()) {
         return;
       }
-      generation = latest_planning_request_generation_;
-      planning_request_pending_ = false;
+      identity = planning_request_state_.beginCycle();
     }
 
-    runPlanningCycle(generation);
+    runPlanningCycle(identity);
+    {
+      const std::scoped_lock lock{planning_request_mutex_};
+      planning_request_state_.finishCycle();
+    }
   }
 }
 

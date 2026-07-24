@@ -247,12 +247,14 @@ private:
 
   void checkCurrentPathAndPublish();
 
-  void runPlanningCycle(std::uint64_t request_generation);
+  void runPlanningCycle(const PlanningJobIdentity& identity);
 
   void planningWorkerLoop(std::stop_token stop_token);
 
-  void requestPlanningCycle();
-  [[nodiscard]] std::uint64_t latestPlanningRequestGeneration() const;
+  void schedulePlanningCycle(PlanningWakeReason reason);
+  void invalidateAndSchedulePlanningCycle(PlanningInvalidationReason reason);
+  [[nodiscard]] std::uint64_t latestPlanningInvalidationGeneration() const;
+  [[nodiscard]] PlanningInvalidationReason latestPlanningInvalidationReason() const;
 
   [[nodiscard]] NavigationStateSnapshot navigationStateSnapshot() const;
 
@@ -598,8 +600,7 @@ private:
   NavigationStateSnapshot live_navigation_state_{};
   LidarInputSnapshot live_lidar_input_;
   std::jthread planning_worker_;
-  std::uint64_t latest_planning_request_generation_{0U};
-  bool planning_request_pending_{false};
+  PlanningRequestState planning_request_state_;
 
   rclcpp::CallbackGroup::SharedPtr pose_callback_group_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;

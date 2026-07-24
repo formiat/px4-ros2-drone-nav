@@ -209,14 +209,18 @@ bool PlannerNode::publishTrajectoryResult(
     std::uint64_t* published_path_id,
     const PlanningGridVersion* const source_grid_version,
     const TrajectoryEndpointSemantics endpoint_semantics) {
+  const std::uint64_t latest_invalidation_generation =
+      latestPlanningInvalidationGeneration();
   if (std::string_view{source_label} == "no_static_rollout" &&
       !publicationGenerationIsCurrent(delivery.generation,
-                                      latestPlanningRequestGeneration())) {
+                                      latest_invalidation_generation)) {
     RCLCPP_WARN(get_logger(),
-                "%s trajectory candidate discarded before publication: "
-                "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
-                source_label, delivery.generation, latestPlanningRequestGeneration());
-    requestPlanningCycle();
+                "ROLLOUT_REJECT_STALE candidate_generation=%" PRIu64
+                " latest_generation=%" PRIu64 " invalidation_reason=%s "
+                "stage=pre_publication",
+                delivery.generation, latest_invalidation_generation,
+                planningInvalidationReasonName(latestPlanningInvalidationReason()));
+    schedulePlanningCycle(PlanningWakeReason::kStaleRetry);
     return false;
   }
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
@@ -227,7 +231,7 @@ bool PlannerNode::publishTrajectoryResult(
                 "%s trajectory candidate discarded before publication: "
                 "reason=fresh_pose_unavailable generation=%" PRIu64,
                 source_label, delivery.generation);
-    requestPlanningCycle();
+    schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   }
   applyNavigationStateSnapshot(fresh_navigation);
@@ -240,7 +244,7 @@ bool PlannerNode::publishTrajectoryResult(
                 "%s trajectory candidate discarded before publication: "
                 "reason=latest_validation_grid_unavailable generation=%" PRIu64,
                 source_label, delivery.generation);
-    requestPlanningCycle();
+    schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   }
   std::optional<PreparedPlanningGridSnapshot> latest_prepared =
@@ -251,7 +255,7 @@ bool PlannerNode::publishTrajectoryResult(
                 "%s trajectory candidate discarded before publication: "
                 "reason=latest_prepared_grid_unavailable generation=%" PRIu64,
                 source_label, delivery.generation);
-    requestPlanningCycle();
+    schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   }
   if (source_grid_version != nullptr &&
@@ -262,7 +266,7 @@ bool PlannerNode::publishTrajectoryResult(
                  " fresh_revision=%" PRIu64,
                  source_label, source_grid_version->build_revision,
                  latest_prepared->version.build_revision);
-    requestPlanningCycle();
+    schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   }
   OccupancyGrid2D& latest_prohibited_grid = latest_prepared->runtime_prohibited_grid;
@@ -342,7 +346,7 @@ bool PlannerNode::publishTrajectoryResult(
                     fresh_navigation.pose.position.y,
                     trajectory_result.samples.front().point.x,
                     trajectory_result.samples.front().point.y);
-        requestPlanningCycle();
+        schedulePlanningCycle(PlanningWakeReason::kRetry);
         return false;
       }
       RCLCPP_INFO(get_logger(),
@@ -904,7 +908,8 @@ bool PlannerNode::publishTrajectoryResult(
   std::uint64_t path_id = 0U;
   if (generation_guard_required) {
     const std::scoped_lock lock{planning_request_mutex_};
-    latest_generation_at_publication = latest_planning_request_generation_;
+    latest_generation_at_publication =
+        planning_request_state_.latestInvalidationGeneration();
     stale_at_publication_boundary = !publicationGenerationIsCurrent(
         delivery.generation, latest_generation_at_publication);
     if (!stale_at_publication_boundary) {
@@ -919,10 +924,12 @@ bool PlannerNode::publishTrajectoryResult(
   }
   if (stale_at_publication_boundary) {
     RCLCPP_WARN(get_logger(),
-                "%s trajectory candidate discarded at publication boundary: "
-                "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
-                source_label, delivery.generation, latest_generation_at_publication);
-    requestPlanningCycle();
+                "ROLLOUT_REJECT_STALE candidate_generation=%" PRIu64
+                " latest_generation=%" PRIu64 " invalidation_reason=%s "
+                "stage=publication_boundary",
+                delivery.generation, latest_generation_at_publication,
+                planningInvalidationReasonName(latestPlanningInvalidationReason()));
+    schedulePlanningCycle(PlanningWakeReason::kStaleRetry);
     return false;
   }
   if (path_id == 0U) {

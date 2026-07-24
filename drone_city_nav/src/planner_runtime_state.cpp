@@ -2,6 +2,89 @@
 
 namespace drone_city_nav {
 
+void PlanningRequestState::schedule(const PlanningWakeReason reason) noexcept {
+  if (pending_) {
+    ++coalesced_requests_;
+    return;
+  }
+  pending_ = true;
+  pending_wake_reason_ = reason;
+}
+
+void PlanningRequestState::invalidate(
+    const PlanningInvalidationReason reason) noexcept {
+  ++latest_invalidation_generation_;
+  latest_invalidation_reason_ = reason;
+  if (pending_) {
+    ++coalesced_requests_;
+  }
+  pending_ = true;
+  pending_wake_reason_ = PlanningWakeReason::kInvalidation;
+}
+
+bool PlanningRequestState::pending() const noexcept {
+  return pending_;
+}
+
+bool PlanningRequestState::running() const noexcept {
+  return running_;
+}
+
+PlanningJobIdentity PlanningRequestState::beginCycle() noexcept {
+  PlanningJobIdentity identity{
+      .cycle_sequence = ++next_cycle_sequence_,
+      .invalidation_generation = latest_invalidation_generation_,
+      .wake_reason = pending_wake_reason_,
+      .coalesced_requests = coalesced_requests_,
+  };
+  pending_ = false;
+  running_ = true;
+  coalesced_requests_ = 0U;
+  return identity;
+}
+
+void PlanningRequestState::finishCycle() noexcept {
+  running_ = false;
+}
+
+std::uint64_t PlanningRequestState::latestInvalidationGeneration() const noexcept {
+  return latest_invalidation_generation_;
+}
+
+PlanningInvalidationReason
+PlanningRequestState::latestInvalidationReason() const noexcept {
+  return latest_invalidation_reason_;
+}
+
+const char* planningWakeReasonName(const PlanningWakeReason reason) noexcept {
+  switch (reason) {
+    case PlanningWakeReason::kPeriodicTimer:
+      return "periodic_timer";
+    case PlanningWakeReason::kRetry:
+      return "retry";
+    case PlanningWakeReason::kStaleRetry:
+      return "stale_retry";
+    case PlanningWakeReason::kRecoveryGuideReady:
+      return "recovery_guide_ready";
+    case PlanningWakeReason::kInvalidation:
+      return "invalidation";
+  }
+  return "unknown";
+}
+
+const char*
+planningInvalidationReasonName(const PlanningInvalidationReason reason) noexcept {
+  switch (reason) {
+    case PlanningInvalidationReason::kNone:
+      return "none";
+    case PlanningInvalidationReason::kTruncationChanged:
+      return "truncation_changed";
+    case PlanningInvalidationReason::kActivePrefixBlocked:
+      return "active_prefix_blocked";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] double ageSecondsFromStamp(const std::int64_t stamp_ns,
                                          const std::int64_t now_ns) noexcept {
   if (stamp_ns <= 0 || now_ns <= stamp_ns) {

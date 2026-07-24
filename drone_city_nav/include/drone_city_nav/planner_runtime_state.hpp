@@ -9,6 +9,56 @@
 
 namespace drone_city_nav {
 
+enum class PlanningWakeReason {
+  kPeriodicTimer,
+  kRetry,
+  kStaleRetry,
+  kRecoveryGuideReady,
+  kInvalidation,
+};
+
+enum class PlanningInvalidationReason {
+  kNone,
+  kTruncationChanged,
+  kActivePrefixBlocked,
+};
+
+struct PlanningJobIdentity {
+  std::uint64_t cycle_sequence{0U};
+  std::uint64_t invalidation_generation{0U};
+  PlanningWakeReason wake_reason{PlanningWakeReason::kPeriodicTimer};
+  std::uint64_t coalesced_requests{0U};
+};
+
+class PlanningRequestState {
+public:
+  void schedule(PlanningWakeReason reason) noexcept;
+  void invalidate(PlanningInvalidationReason reason) noexcept;
+
+  [[nodiscard]] bool pending() const noexcept;
+  [[nodiscard]] bool running() const noexcept;
+  [[nodiscard]] PlanningJobIdentity beginCycle() noexcept;
+  void finishCycle() noexcept;
+
+  [[nodiscard]] std::uint64_t latestInvalidationGeneration() const noexcept;
+  [[nodiscard]] PlanningInvalidationReason latestInvalidationReason() const noexcept;
+
+private:
+  std::uint64_t next_cycle_sequence_{0U};
+  std::uint64_t latest_invalidation_generation_{1U};
+  std::uint64_t coalesced_requests_{0U};
+  PlanningWakeReason pending_wake_reason_{PlanningWakeReason::kPeriodicTimer};
+  PlanningInvalidationReason latest_invalidation_reason_{
+      PlanningInvalidationReason::kNone};
+  bool pending_{false};
+  bool running_{false};
+};
+
+[[nodiscard]] const char* planningWakeReasonName(PlanningWakeReason reason) noexcept;
+
+[[nodiscard]] const char*
+planningInvalidationReasonName(PlanningInvalidationReason reason) noexcept;
+
 enum class PlannerRuntimeReadinessReason {
   kReady,
   kNoPose,

@@ -128,7 +128,7 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
                 blockedSpanTriggerName(confirmed_state->blocked_span.trigger),
                 confirmed_state->old_trajectory.path_id);
   }
-  requestPlanningCycle();
+  invalidateAndSchedulePlanningCycle(PlanningInvalidationReason::kTruncationChanged);
 }
 
 void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message) {
@@ -236,7 +236,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
               "action=retry",
               message.path_id, message.truncation_generation, message.reason.c_str(),
               evaluation.reason, publication_attempts);
-  requestPlanningCycle();
+  schedulePlanningCycle(PlanningWakeReason::kRetry);
 }
 
 bool PlannerNode::prepareTrajectoryForRuntimeChecks(
@@ -268,7 +268,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
                  "%s truncation suffix discarded before publication: "
                  "reason=planner_prefix_unavailable generation=%" PRIu64,
                  source_label, delivery.truncation_generation);
-    requestPlanningCycle();
+    schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   } else {
     const TruncatedPrefixStitchResult planner_stitch = stitchTruncatedPrefixWithSuffix(
@@ -285,7 +285,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
                    source_label, planner_stitch.reason, delivery.blocked_path_id,
                    delivery.truncation_generation, delivery.planning_start_position.x,
                    delivery.planning_start_position.y);
-      requestPlanningCycle();
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
       return false;
     }
     runtime_samples = planner_stitch.samples;

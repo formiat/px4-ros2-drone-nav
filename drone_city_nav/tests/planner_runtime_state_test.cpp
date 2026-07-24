@@ -79,4 +79,49 @@ TEST(PlannerRuntimeState, RejectsGenerationChangedAtPublicationBoundary) {
   EXPECT_FALSE(publicationGenerationIsCurrent(0U, 0U));
 }
 
+TEST(PlannerRuntimeState, PeriodicRequestsCoalesceWithoutInvalidatingRunningCycle) {
+  PlanningRequestState state;
+  state.schedule(PlanningWakeReason::kPeriodicTimer);
+  const PlanningJobIdentity first = state.beginCycle();
+
+  EXPECT_EQ(first.cycle_sequence, 1U);
+  EXPECT_EQ(first.invalidation_generation, 1U);
+  EXPECT_TRUE(state.running());
+
+  for (int request = 0; request < 10; ++request) {
+    state.schedule(PlanningWakeReason::kPeriodicTimer);
+  }
+
+  EXPECT_EQ(state.latestInvalidationGeneration(), 1U);
+  EXPECT_TRUE(publicationGenerationIsCurrent(first.invalidation_generation,
+                                             state.latestInvalidationGeneration()));
+  state.finishCycle();
+
+  const PlanningJobIdentity second = state.beginCycle();
+  EXPECT_EQ(second.cycle_sequence, 2U);
+  EXPECT_EQ(second.invalidation_generation, 1U);
+  EXPECT_EQ(second.coalesced_requests, 9U);
+  EXPECT_FALSE(state.pending());
+}
+
+TEST(PlannerRuntimeState, InvalidationRejectsOlderCandidateAndSchedulesReplacement) {
+  PlanningRequestState state;
+  state.schedule(PlanningWakeReason::kPeriodicTimer);
+  const PlanningJobIdentity first = state.beginCycle();
+
+  state.invalidate(PlanningInvalidationReason::kTruncationChanged);
+
+  EXPECT_EQ(state.latestInvalidationGeneration(), 2U);
+  EXPECT_EQ(state.latestInvalidationReason(),
+            PlanningInvalidationReason::kTruncationChanged);
+  EXPECT_FALSE(publicationGenerationIsCurrent(first.invalidation_generation,
+                                              state.latestInvalidationGeneration()));
+
+  state.finishCycle();
+  const PlanningJobIdentity replacement = state.beginCycle();
+  EXPECT_EQ(replacement.cycle_sequence, 2U);
+  EXPECT_EQ(replacement.invalidation_generation, 2U);
+  EXPECT_EQ(replacement.wake_reason, PlanningWakeReason::kInvalidation);
+}
+
 } // namespace drone_city_nav

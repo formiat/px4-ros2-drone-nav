@@ -454,14 +454,21 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
 }
 
 void PlannerNode::checkCurrentPathAndPublish() {
-  requestPlanningCycle();
+  schedulePlanningCycle(PlanningWakeReason::kPeriodicTimer);
 }
 
 // The planning transaction intentionally keeps all stage decisions in one worker
 // callback so a generation uses one immutable input snapshot.
 // NOLINTNEXTLINE(readability-function-size)
-void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
+void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   const auto cycle_started_at = std::chrono::steady_clock::now();
+  const std::uint64_t invalidation_generation = identity.invalidation_generation;
+  RCLCPP_INFO(
+      get_logger(),
+      "PLANNING_CYCLE_START cycle_sequence=%" PRIu64 " invalidation_generation=%" PRIu64
+      " wake_reason=%s coalesced_requests=%" PRIu64,
+      identity.cycle_sequence, invalidation_generation,
+      planningWakeReasonName(identity.wake_reason), identity.coalesced_requests);
   const NavigationStateSnapshot navigation = navigationStateSnapshot();
   applyNavigationStateSnapshot(navigation);
   applyLatestLidarInputSnapshot();
@@ -594,11 +601,12 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                                     : std::nullopt);
   RCLCPP_INFO(
       get_logger(),
-      "Planning start snapshot: request_generation=%" PRIu64
-      " start=(%.2f, %.2f) pose_stamp_ns=%" PRId64
+      "Planning start snapshot: cycle_sequence=%" PRIu64
+      " invalidation_generation=%" PRIu64 " start=(%.2f, %.2f) pose_stamp_ns=%" PRId64
       " speed_mps=%.2f velocity_valid=%s source=%s truncation_generation=%" PRIu64,
-      request_generation, planning_start.x, planning_start.y, navigation.stamp_ns,
-      navigation.speed_mps, navigation.velocity_valid ? "true" : "false",
+      identity.cycle_sequence, invalidation_generation, planning_start.x,
+      planning_start.y, navigation.stamp_ns, navigation.speed_mps,
+      navigation.velocity_valid ? "true" : "false",
       truncation_replan.has_value() ? "confirmed_truncation" : "current_pose",
       truncation_replan.has_value() ? truncation_replan->generation : 0U);
   std::vector<TrajectoryGridCandidate> grid_candidates{
@@ -653,7 +661,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
         .raw_grid = &prepared->raw_grid,
         .prohibited_grid = &prohibited_grid,
         .planning_grid = &planning_grid,
-        .generation = request_generation,
+        .generation = invalidation_generation,
         .grid_revision = prepared->version.build_revision,
     });
     ++rollout_cycles_;
@@ -698,7 +706,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
           "status=%.*s generated=%zu raw_rejected=%zu outside_rejected=%zu "
           "dynamic_rejected=%zu mode=%s prefix_m=%.2f suffix_m=%.2f "
           "guide_revision=%" PRIu64 " rollout_ms=%.2f",
-          request_generation, prepared->version.build_revision, finalist_index,
+          invalidation_generation, prepared->version.build_revision, finalist_index,
           rollout.rankedShortlist(rollout_planner_.config().max_finalists).size(),
           rolloutTraversabilityTierName(finalist.tier), finalist.score,
           finalist.progress_m, finalized.valid ? "true" : "false",
@@ -716,12 +724,12 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
         continue;
       }
       validated_candidate_seen = true;
-      const std::uint64_t latest_generation = latestPlanningRequestGeneration();
+      const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
       const std::uint64_t latest_grid_revision =
           planning_grid_snapshot_builder_.nextRevision() - 1U;
       const NoStaticPlannerDecision orchestration =
           no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
-              .generation = request_generation,
+              .generation = invalidation_generation,
               .latest_generation = latest_generation,
               .grid_revision = prepared->version.build_revision,
               .latest_grid_revision = latest_grid_revision,
@@ -736,7 +744,14 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
               .candidate_heading_offset_rad = finalist.heading_offset_rad,
           });
       if (orchestration.action == NoStaticPlannerAction::kRejectStale) {
-        requestPlanningCycle();
+        RCLCPP_WARN(get_logger(),
+                    "ROLLOUT_REJECT_STALE candidate_generation=%" PRIu64
+                    " latest_generation=%" PRIu64 " invalidation_reason=%s "
+                    "cycle_sequence=%" PRIu64,
+                    invalidation_generation, latest_generation,
+                    planningInvalidationReasonName(latestPlanningInvalidationReason()),
+                    identity.cycle_sequence);
+        schedulePlanningCycle(PlanningWakeReason::kStaleRetry);
         return;
       }
       if (orchestration.action == NoStaticPlannerAction::kKeep) {
@@ -756,7 +771,7 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
           distance(finalized.samples.back().point, goal_) <=
           stable_path_goal_tolerance_m_;
       TrajectoryDeliveryDiagnostics rollout_delivery{
-          .generation = request_generation,
+          .generation = invalidation_generation,
       };
       std::uint64_t published_path_id = 0U;
       const std::vector<Point2> route_points =
@@ -783,13 +798,13 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                   "NO_STATIC_ROLLOUT no_validated_candidate=true generation=%" PRIu64
                   " grid_revision=%" PRIu64 " reject=%s candidates=%zu; "
                   "requesting A* recovery",
-                  request_generation, prepared->version.build_revision,
+                  invalidation_generation, prepared->version.build_revision,
                   rolloutRejectReasonName(rollout.reject_reason),
                   rollout.ranked_candidates.size());
       const NoStaticPlannerDecision failure_decision =
           no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
-              .generation = request_generation,
-              .latest_generation = latestPlanningRequestGeneration(),
+              .generation = invalidation_generation,
+              .latest_generation = latestPlanningInvalidationGeneration(),
               .grid_revision = prepared->version.build_revision,
               .latest_grid_revision =
                   planning_grid_snapshot_builder_.nextRevision() - 1U,
@@ -800,7 +815,15 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
               .seconds_since_progress = seconds_since_progress,
           });
       if (failure_decision.action == NoStaticPlannerAction::kRejectStale) {
-        requestPlanningCycle();
+        const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
+        RCLCPP_WARN(get_logger(),
+                    "ROLLOUT_REJECT_STALE candidate_generation=%" PRIu64
+                    " latest_generation=%" PRIu64 " invalidation_reason=%s "
+                    "cycle_sequence=%" PRIu64,
+                    invalidation_generation, latest_generation,
+                    planningInvalidationReasonName(latestPlanningInvalidationReason()),
+                    identity.cycle_sequence);
+        schedulePlanningCycle(PlanningWakeReason::kStaleRetry);
         return;
       }
       if (failure_decision.action != NoStaticPlannerAction::kRequestRecovery) {
@@ -864,9 +887,10 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 "NO_STATIC_ROLLOUT recovery_guide_ready=true generation=%" PRIu64
                 " guide_revision=%" PRIu64 " lookahead=(%.2f,%.2f) "
                 "guide_cells=%zu; A* path is not published",
-                request_generation, no_static_orchestrator_.recoveryGuideRevision(),
-                guide_target.x, guide_target.y, guide_cells.size());
-    requestPlanningCycle();
+                invalidation_generation,
+                no_static_orchestrator_.recoveryGuideRevision(), guide_target.x,
+                guide_target.y, guide_cells.size());
+    schedulePlanningCycle(PlanningWakeReason::kRecoveryGuideReady);
     return;
   }
   grid_candidates[astar_grid_index].clearance_field =
@@ -1109,9 +1133,9 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
   const double cycle_duration_s = elapsedMilliseconds(cycle_started_at) * 1.0e-3;
   RCLCPP_INFO(get_logger(),
-              "Planning worker cycle complete: request_generation=%" PRIu64
-              " published=%s duration_ms=%.1f",
-              request_generation,
+              "Planning worker cycle complete: cycle_sequence=%" PRIu64
+              " invalidation_generation=%" PRIu64 " published=%s duration_ms=%.1f",
+              identity.cycle_sequence, invalidation_generation,
               publication_outcome == PathPublicationOutcome::kPublished ? "true"
                                                                         : "false",
               cycle_duration_s * 1000.0);
