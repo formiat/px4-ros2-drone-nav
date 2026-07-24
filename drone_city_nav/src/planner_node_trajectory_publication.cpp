@@ -208,7 +208,8 @@ bool PlannerNode::publishTrajectoryResult(
     std::string astar_grid_name, std::string route_grid_name,
     std::uint64_t* published_path_id,
     const PlanningGridVersion* const source_grid_version,
-    const TrajectoryEndpointSemantics endpoint_semantics) {
+    const TrajectoryEndpointSemantics endpoint_semantics,
+    TrajectoryPublicationStageTimings* const stage_timings) {
   const std::uint64_t latest_invalidation_generation =
       latestPlanningInvalidationGeneration();
   if (std::string_view{source_label} == "no_static_rollout" &&
@@ -237,8 +238,13 @@ bool PlannerNode::publishTrajectoryResult(
   applyNavigationStateSnapshot(fresh_navigation);
   applyPendingMemorySnapshot(now_ns);
   applyLatestLidarInputSnapshot();
+  const auto fresh_grid_build_started_at = std::chrono::steady_clock::now();
   std::optional<PlanningGridBuildResult> latest_planning_result =
       buildPlanningGrid(now_ns);
+  if (stage_timings != nullptr) {
+    stage_timings->fresh_grid_build_ms =
+        elapsedMilliseconds(fresh_grid_build_started_at);
+  }
   if (!latest_planning_result.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded before publication: "
@@ -247,9 +253,14 @@ bool PlannerNode::publishTrajectoryResult(
     schedulePlanningCycle(PlanningWakeReason::kRetry);
     return false;
   }
+  const auto fresh_grid_prepare_started_at = std::chrono::steady_clock::now();
   std::optional<PreparedPlanningGridSnapshot> latest_prepared =
       preparePlanningGridSnapshot(*latest_planning_result,
                                   fresh_navigation.pose.position);
+  if (stage_timings != nullptr) {
+    stage_timings->fresh_grid_prepare_ms =
+        elapsedMilliseconds(fresh_grid_prepare_started_at);
+  }
   if (!latest_prepared.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded before publication: "
@@ -305,6 +316,8 @@ bool PlannerNode::publishTrajectoryResult(
   }
 
   std::string handover_grid_name{"not_required"};
+  double final_validation_ms = 0.0;
+  const auto handover_validation_started_at = std::chrono::steady_clock::now();
   if (!delivery.truncation_suffix && trajectory_result.valid &&
       trajectorySamplesAreUsable(last_valid_trajectory_samples_) &&
       trajectorySamplesAreUsable(trajectory_result.samples)) {
@@ -344,6 +357,10 @@ bool PlannerNode::publishTrajectoryResult(
                     fresh_navigation.pose.position.y,
                     trajectory_result.samples.front().point.x,
                     trajectory_result.samples.front().point.y);
+        if (stage_timings != nullptr) {
+          stage_timings->final_validation_ms =
+              elapsedMilliseconds(handover_validation_started_at);
+        }
         schedulePlanningCycle(PlanningWakeReason::kRetry);
         return false;
       }
@@ -357,6 +374,7 @@ bool PlannerNode::publishTrajectoryResult(
                   preflight.candidate_join_s_m);
     }
   }
+  final_validation_ms += elapsedMilliseconds(handover_validation_started_at);
   writeCorridorSamplesDump(trajectory_result, source_label, next_path_id_);
   writeTrajectoryCandidateDumps(trajectory_result, source_label, next_path_id_);
   TrajectoryPlannerStats stats = trajectory_result.stats;
@@ -428,6 +446,7 @@ bool PlannerNode::publishTrajectoryResult(
       trajectorySamplePoints(trajectory_result.samples);
   std::string final_validation_grid_name{"none"};
   const OccupancyGrid2D* final_validation_grid = nullptr;
+  const auto grid_validation_started_at = std::chrono::steady_clock::now();
   if (trajectory_points.size() >= 2U) {
     for (const TrajectoryGridCandidate& candidate : latest_grid_candidates) {
       if (candidate.grid != nullptr &&
@@ -437,6 +456,10 @@ bool PlannerNode::publishTrajectoryResult(
         break;
       }
     }
+  }
+  final_validation_ms += elapsedMilliseconds(grid_validation_started_at);
+  if (stage_timings != nullptr) {
+    stage_timings->final_validation_ms = final_validation_ms;
   }
   if (final_validation_grid == nullptr) {
     RCLCPP_WARN(get_logger(),

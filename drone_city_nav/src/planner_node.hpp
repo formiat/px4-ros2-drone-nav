@@ -189,6 +189,15 @@ private:
     kRetryAfterTerminalHold,
   };
 
+  struct TrajectoryPublicationStageTimings {
+    double rollout_generation_ms{std::numeric_limits<double>::quiet_NaN()};
+    double candidate_finalization_ms{std::numeric_limits<double>::quiet_NaN()};
+    double fresh_grid_build_ms{std::numeric_limits<double>::quiet_NaN()};
+    double fresh_grid_prepare_ms{std::numeric_limits<double>::quiet_NaN()};
+    double final_validation_ms{std::numeric_limits<double>::quiet_NaN()};
+    double publication_total_ms{std::numeric_limits<double>::quiet_NaN()};
+  };
+
   void applyConfig(const PlannerNodeConfig& config);
 
   void onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg);
@@ -290,15 +299,17 @@ private:
                                    const TruncationReplanState& truncation_replan,
                                    TrajectoryDeliveryDiagnostics delivery);
 
-  bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
-                               std::span<const Point2> route_points,
-                               const char* source_label, double duration_ms,
-                               TrajectoryDeliveryDiagnostics delivery,
-                               std::string astar_grid_name, std::string route_grid_name,
-                               std::uint64_t* published_path_id = nullptr,
-                               const PlanningGridVersion* source_grid_version = nullptr,
-                               TrajectoryEndpointSemantics endpoint_semantics =
-                                   TrajectoryEndpointSemantics::kMissionGoal);
+  bool
+  publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
+                          std::span<const Point2> route_points,
+                          const char* source_label, double duration_ms,
+                          TrajectoryDeliveryDiagnostics delivery,
+                          std::string astar_grid_name, std::string route_grid_name,
+                          std::uint64_t* published_path_id = nullptr,
+                          const PlanningGridVersion* source_grid_version = nullptr,
+                          TrajectoryEndpointSemantics endpoint_semantics =
+                              TrajectoryEndpointSemantics::kMissionGoal,
+                          TrajectoryPublicationStageTimings* stage_timings = nullptr);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
