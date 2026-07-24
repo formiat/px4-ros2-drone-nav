@@ -897,19 +897,34 @@ bool PlannerNode::publishTrajectoryResult(
   }
 
   logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
-  if (std::string_view{source_label} == "no_static_rollout" &&
-      !publicationGenerationIsCurrent(delivery.generation,
-                                      latestPlanningRequestGeneration())) {
+  const bool generation_guard_required =
+      std::string_view{source_label} == "no_static_rollout";
+  bool stale_at_publication_boundary = false;
+  std::uint64_t latest_generation_at_publication = 0U;
+  std::uint64_t path_id = 0U;
+  if (generation_guard_required) {
+    const std::scoped_lock lock{planning_request_mutex_};
+    latest_generation_at_publication = latest_planning_request_generation_;
+    stale_at_publication_boundary = !publicationGenerationIsCurrent(
+        delivery.generation, latest_generation_at_publication);
+    if (!stale_at_publication_boundary) {
+      path_id = publishTrajectoryPath(trajectory_result.samples,
+                                      PathPublicationReason::kComputedPath, &stats,
+                                      delivery, source_label, endpoint_semantics);
+    }
+  } else {
+    path_id = publishTrajectoryPath(trajectory_result.samples,
+                                    PathPublicationReason::kComputedPath, &stats,
+                                    delivery, source_label, endpoint_semantics);
+  }
+  if (stale_at_publication_boundary) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded at publication boundary: "
                 "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
-                source_label, delivery.generation, latestPlanningRequestGeneration());
+                source_label, delivery.generation, latest_generation_at_publication);
     requestPlanningCycle();
     return false;
   }
-  const std::uint64_t path_id = publishTrajectoryPath(
-      trajectory_result.samples, PathPublicationReason::kComputedPath, &stats, delivery,
-      source_label, endpoint_semantics);
   if (path_id == 0U) {
     return false;
   }
