@@ -55,10 +55,16 @@ Rollout и A* не конкурируют как независимые publishe
   `drone_city_nav/src/px4_offboard_node_trajectory.cpp:415-475,900-930`:
   wire contract, producer и consumer семантики local horizon.
 - `drone_city_nav/src/px4_offboard_node_control.cpp:166-211`,
-  `drone_city_nav/src/terminal_capture_state_machine.cpp`: отсутствие terminal
-  capture на `LOCAL_HORIZON`, сохранение mission-goal/temporary-hold семантик.
+  `drone_city_nav/src/px4_offboard_node_control.cpp:228-243,369-452`,
+  `drone_city_nav/src/px4_offboard_node_replan.cpp:62-99`,
+  `drone_city_nav/src/terminal_capture_state_machine.cpp`: terminal capture,
+  permanent final-goal latch, cruise/hold predicates и bounded local-horizon
+  exhaustion transition.
 - `drone_city_nav/src/planner_node_config.cpp`,
   `drone_city_nav/config/urban_mvp.yaml`: no-static-only rollout/recovery параметры.
+- `drone_city_nav/include/drone_city_nav/px4_offboard_node_config.hpp`,
+  `drone_city_nav/src/px4_offboard_node_config.cpp`: bounded local-horizon buffer и
+  successor timeout.
 - `drone_city_nav/CMakeLists.txt:23-34,70-137,185-202,625-650,652-681,757-767`:
   регистрация message, новых core/node sources и каждого нового/изменённого gtest.
 - Конкретные tests:
@@ -68,7 +74,8 @@ Rollout и A* не конкурируют как независимые publishe
   `tests/known_passage_solid_validation_test.cpp`,
   `tests/terminal_capture_state_machine_test.cpp`,
   `tests/offboard_velocity_follower_terminal_capture_test.cpp`,
-  `tests/planner_node_config_test.cpp`, `tests/ros_conversions_test.cpp`.
+  `tests/planner_node_config_test.cpp`, `tests/px4_offboard_node_config_test.cpp`,
+  `tests/ros_conversions_test.cpp`.
 
 # Implementation steps
 
@@ -177,12 +184,67 @@ Rollout и A* не конкурируют как независимые publishe
    Сохранить active semantics в `px4_offboard_node.hpp:470-515` и передать флаг
    terminal eligibility в `computeTerminalCaptureState()`:
    `px4_offboard_node_control.cpp:172-201` /
-   `terminal_capture_state_machine.cpp`. `LOCAL_HORIZON` запрещает final terminal
-   capture; buffer exhaustion создаёт temporary hold через существующее hold
-   состояние, не mission success. Обновить `terminal_capture_state_machine_test`,
+   `terminal_capture_state_machine.cpp`.
+
+   Отдельно провести semantics через независимый final-goal path:
+
+   - в `px4_offboard_node.hpp:430-475` хранить
+     `active_trajectory_endpoint_semantics_`,
+     `local_horizon_exhaustion_active_` и monotonic timestamp начала low-buffer;
+   - в `px4_offboard_node_control.cpp:228-243` разделить общий геометрический
+     predicate `activeTrajectoryEndpointReached()` и
+     `missionGoalReached()`, который возвращает true только для
+     `MISSION_GOAL`;
+   - в `px4_offboard_node_replan.cpp:62-78` разрешить
+     `updateFinalGoalHold()` устанавливать `final_goal_hold_active_` только при
+     `MISSION_GOAL`; `LOCAL_HORIZON` никогда не меняет permanent latch;
+   - обновить `velocityCruiseReady()` и `shouldHoldPosition()` в
+     `px4_offboard_node_control.cpp:166-169,449-452`, чтобы конец local path сам по
+     себе не трактовался как mission completion;
+   - добавить `updateLocalHorizonExhaustionHold()` в
+     `px4_offboard_node_replan.cpp` и вызывать его в control tick рядом с
+     `updateFinalGoalHold()` (`px4_offboard_node_control.cpp:37-40`).
+
+   Bounded exhaustion contract: offboard вычисляет remaining `s` по active samples.
+   Когда `LOCAL_HORIZON` остаётся без принятого successor, remaining `s` не больше
+   configurable `local_horizon_min_buffer_m` и это состояние непрерывно длится
+   `local_horizon_successor_timeout_s` (recommended `0.5 s`), устанавливается
+   `local_horizon_exhaustion_active_`. С этого момента terminal capture разрешается,
+   terminal target остаётся endpoint текущего local path; после выполнения обычных
+   distance/speed criteria защёлкивается **temporary** hold с отдельной reason
+   `local_horizon_exhausted`. При приёме successor до latch timer/state очищается.
+   При приёме successor после temporary hold он снимает только temporary state и
+   возобновляет cruise. `final_goal_hold_active_` и mission success не меняются.
+   Параметры объявить/валидировать в
+   `include/drone_city_nav/px4_offboard_node_config.hpp`,
+   `src/px4_offboard_node_config.cpp` и `config/urban_mvp.yaml`; обновить
+   `tests/px4_offboard_node_config_test.cpp`.
+
+   ```cpp
+   if (endpoint_semantics == LOCAL_HORIZON &&
+       remaining_s <= local_horizon_min_buffer_m &&
+       successor_missing_for >= local_horizon_successor_timeout_s) {
+     local_horizon_exhaustion_active_ = true; // enables terminal capture
+   }
+   if (local_horizon_exhaustion_active_ && activeTrajectoryEndpointReached()) {
+     latchTemporaryHold("local_horizon_exhausted");
+   }
+   ```
+
+   Вынести чистое transition decision в новый
+   `include/drone_city_nav/local_horizon_execution_state.hpp` /
+   `src/local_horizon_execution_state.cpp`, добавить source и
+   `local_horizon_execution_state_test` в `CMakeLists.txt`. Tests:
+   `LocalHorizonNeverLatchesFinalGoal`,
+   `MissionGoalStillLatchesFinalGoal`,
+   `LowBufferBeforeTimeoutKeepsCruise`,
+   `LowBufferTimeoutEnablesTerminalCapture`,
+   `EndpointCaptureLatchesTemporaryHold`,
+   `SuccessorClearsPendingOrActiveTemporaryHold`.
+   Обновить `terminal_capture_state_machine_test`,
    `offboard_velocity_follower_terminal_capture_test`, `ros_conversions_test` и
-   добавить message round-trip case. Результат: wire contract однозначен для всех
-   producer/consumer paths.
+   message round-trip case. Результат: wire contract однозначен для producer,
+   consumer, terminal capture и permanent/temporary hold paths.
 
 6. **Понизить A* до recovery guide в no-static.**
    В `planner_node_runtime.cpp:239-386` заменить no-static immediate A* trigger на
@@ -228,7 +290,8 @@ Rollout и A* не конкурируют как независимые publishe
    no-static blocker сначала обрабатывается rollout.
    Зарегистрировать **каждый** новый target в `drone_city_nav/CMakeLists.txt`:
    `receding_horizon_trajectory_planner_test` и
-   `no_static_planner_orchestrator_test` link к `drone_city_nav_core`; существующие
+   `no_static_planner_orchestrator_test`, `local_horizon_execution_state_test` link
+   к `drone_city_nav_core`; существующие
    ROS/config/offboard targets расширяются без создания дубликатов. Добавить новые
    production `.cpp` в `drone_city_nav_core` и, только если orchestration останется
    node-owned, `planner_node` source list (`CMakeLists.txt:185-202`). Результат:
