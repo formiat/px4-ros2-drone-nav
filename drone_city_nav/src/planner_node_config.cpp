@@ -156,7 +156,7 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.trajectory_planner.vertical_profile.enabled =
       node.declare_parameter<bool>("vertical_profile_enabled", true);
   config.trajectory_planner.vertical_profile.gate_clearance_margin_m = std::clamp(
-      node.declare_parameter<double>("vertical_profile_gate_clearance_margin_m", 0.5),
+      node.declare_parameter<double>("vertical_profile_gate_clearance_margin_m", 1.0),
       0.0, 100.0);
   config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m =
       std::max(

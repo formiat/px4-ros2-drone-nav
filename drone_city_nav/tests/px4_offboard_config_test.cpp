@@ -104,7 +104,7 @@ TEST(Px4OffboardConfig, DefaultYamlKeepsPlannerOwnedTrajectoryOptimizerParameter
             std::string::npos);
   EXPECT_EQ(yaml.find("passage_traversal_sensor_policy"), std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_enabled: true"), std::string::npos);
-  EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 0.5"),
+  EXPECT_NE(yaml.find("vertical_profile_gate_clearance_margin_m: 1.0"),
             std::string::npos);
   EXPECT_NE(yaml.find("vertical_profile_preferred_gate_clearance_margin_m: 2.0"),
             std::string::npos);

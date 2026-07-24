@@ -105,7 +105,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    0.5);
   EXPECT_TRUE(config.trajectory_planner.vertical_profile.enabled);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.vertical_profile.gate_clearance_margin_m,
-                   0.5);
+                   1.0);
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.vertical_profile.preferred_gate_clearance_margin_m,
       1.5);
