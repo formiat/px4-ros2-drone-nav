@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 namespace drone_city_nav {
 
@@ -36,5 +37,11 @@ evaluateLocalHorizonExecution(const LocalHorizonExecutionInput& input,
 
 [[nodiscard]] const char*
 trajectoryEndpointSemanticsName(TrajectoryEndpointSemantics semantics) noexcept;
+
+[[nodiscard]] std::uint8_t
+trajectoryEndpointSemanticsToWire(TrajectoryEndpointSemantics semantics) noexcept;
+
+[[nodiscard]] std::optional<TrajectoryEndpointSemantics>
+trajectoryEndpointSemanticsFromWire(std::uint8_t value) noexcept;
 
 } // namespace drone_city_nav

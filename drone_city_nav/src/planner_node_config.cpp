@@ -705,6 +705,15 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   validatePartialReplanConfig(config.partial_replan);
   config.no_static_rollout.enabled =
       node.declare_parameter<bool>("no_static_rollout_enabled", true);
+  config.no_static_rollout.cycle_period_s = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_cycle_period_s", 0.2), 0.2,
+      0.05, 2.0);
+  config.no_static_rollout.prefix_duration_s = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_prefix_duration_s", 1.0), 1.0,
+      0.0, 3.0);
+  config.no_static_rollout.recovery_lookahead_m = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_recovery_lookahead_m", 25.0),
+      25.0, 1.0, 100.0);
   config.no_static_rollout.planner.horizon_m = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_horizon_m", 25.0), 25.0, 5.0,
       30.0);
@@ -745,6 +754,21 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("no_static_rollout_max_finalists", 3), 1,
           16));
+  config.no_static_rollout.planner.progress_weight = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_progress_weight", 4.0), 4.0,
+      0.0, 1000.0);
+  config.no_static_rollout.planner.lateral_deviation_weight = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_lateral_weight", 0.08), 0.08,
+      0.0, 1000.0);
+  config.no_static_rollout.planner.heading_change_weight = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_heading_weight", 2.0), 2.0, 0.0,
+      1000.0);
+  config.no_static_rollout.planner.curvature_weight = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_curvature_weight", 8.0), 8.0,
+      0.0, 1000.0);
+  config.no_static_rollout.planner.degraded_tier_penalty = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_degraded_tier_penalty", 100.0),
+      100.0, 0.0, 100000.0);
   config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
@@ -756,6 +780,11 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.no_static_rollout.orchestrator.minimum_score_improvement = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_score_hysteresis", 5.0), 5.0,
       0.0, 10000.0);
+  config.no_static_rollout.orchestrator.direction_switches_before_recovery =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>(
+              "no_static_rollout_direction_switches_before_recovery", 3),
+          1, 100));
   config.timing.path_prohibited_intersection_check_period_s =
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);

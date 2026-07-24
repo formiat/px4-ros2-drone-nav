@@ -59,11 +59,15 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
   EXPECT_TRUE(config.no_static_rollout.enabled);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.2);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 1.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 25.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.horizon_m, 25.0);
   EXPECT_EQ(config.no_static_rollout.planner.heading_samples, 9U);
   EXPECT_EQ(config.no_static_rollout.planner.speed_samples, 3U);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.maximum_speed_mps, 10.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.maximum_acceleration_mps2, 4.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.progress_weight, 4.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 3U);
   EXPECT_EQ(config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery,
             3U);
@@ -698,6 +702,24 @@ TEST_F(PlannerNodeConfigTest, CapsVerticalProfileSpeedByRuntimeSetpointLimit) {
   EXPECT_DOUBLE_EQ(
       config.trajectory_planner.speed_profile.vertical_profile_max_descent_speed_mps,
       1.5);
+}
+
+TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
+  const auto node =
+      makeNode("planner_node_config_rollout_bounds",
+               {rclcpp::Parameter{"no_static_rollout_cycle_period_s", 0.001},
+                rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
+                rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
+                rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
+                rclcpp::Parameter{"no_static_rollout_progress_weight", -1.0}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.05);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 3.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
+  EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 1U);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.progress_weight, 0.0);
 }
 
 } // namespace drone_city_nav

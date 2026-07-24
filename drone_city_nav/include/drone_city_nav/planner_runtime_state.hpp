@@ -44,6 +44,11 @@ enum class StablePathRuntimeAction {
   kRunAStar,
 };
 
+enum class PlannerModePrimaryAction {
+  kAStar,
+  kRollout,
+};
+
 [[nodiscard]] double ageSecondsFromStamp(std::int64_t stamp_ns,
                                          std::int64_t now_ns) noexcept;
 
@@ -55,5 +60,12 @@ evaluatePlannerGridReadiness(const PlanningGridBuildResult& result) noexcept;
 
 [[nodiscard]] StablePathRuntimeAction
 stablePathRuntimeAction(StablePathDecisionReason reason) noexcept;
+
+[[nodiscard]] PlannerModePrimaryAction
+plannerModePrimaryAction(bool use_static_map, bool rollout_enabled) noexcept;
+
+[[nodiscard]] bool
+publicationGenerationIsCurrent(std::uint64_t candidate_generation,
+                               std::uint64_t latest_generation) noexcept;
 
 } // namespace drone_city_nav

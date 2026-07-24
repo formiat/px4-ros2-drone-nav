@@ -87,6 +87,9 @@ struct PartialReplanConfig {
 
 struct NoStaticRolloutConfig {
   bool enabled{true};
+  double cycle_period_s{0.2};
+  double prefix_duration_s{1.0};
+  double recovery_lookahead_m{25.0};
   RolloutPlannerConfig planner{};
   NoStaticPlannerOrchestratorConfig orchestrator{};
 };

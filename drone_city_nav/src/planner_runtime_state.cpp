@@ -60,4 +60,15 @@ stablePathRuntimeAction(const StablePathDecisionReason reason) noexcept {
   return StablePathRuntimeAction::kRunAStar;
 }
 
+PlannerModePrimaryAction plannerModePrimaryAction(const bool use_static_map,
+                                                  const bool rollout_enabled) noexcept {
+  return !use_static_map && rollout_enabled ? PlannerModePrimaryAction::kRollout
+                                            : PlannerModePrimaryAction::kAStar;
+}
+
+bool publicationGenerationIsCurrent(const std::uint64_t candidate_generation,
+                                    const std::uint64_t latest_generation) noexcept {
+  return candidate_generation != 0U && candidate_generation == latest_generation;
+}
+
 } // namespace drone_city_nav

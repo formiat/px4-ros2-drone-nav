@@ -32,4 +32,24 @@ TEST(PlannerDiagnosticsFormat, BuildsBoundedPathPreview) {
   EXPECT_TRUE(pathPreview({}, 2U).empty());
 }
 
+TEST(PlannerDiagnosticsFormat, FormatsRolloutSummaryAndPercentiles) {
+  PlannerCountersSnapshot counters;
+  counters.rollout_cycles = 9U;
+  counters.rollout_candidates = 27U;
+  counters.rollout_publications = 5U;
+  counters.rollout_recovery_requests = 2U;
+  counters.rollout_failures = 1U;
+  counters.rollout_duration_p50_ms = 3.0;
+  counters.rollout_duration_p95_ms = 8.0;
+
+  const std::string summary = plannerCountersSummary(counters);
+
+  EXPECT_NE(summary.find("rollout_cycles=9"), std::string::npos);
+  EXPECT_NE(summary.find("rollout_candidates=27"), std::string::npos);
+  EXPECT_NE(summary.find("rollout_duration_p50_ms=3"), std::string::npos);
+  EXPECT_NE(summary.find("rollout_duration_p95_ms=8"), std::string::npos);
+  EXPECT_DOUBLE_EQ(percentile(std::vector<double>{1.0, 2.0, 3.0, 8.0}, 0.50), 2.0);
+  EXPECT_DOUBLE_EQ(percentile(std::vector<double>{1.0, 2.0, 3.0, 8.0}, 0.95), 8.0);
+}
+
 } // namespace drone_city_nav

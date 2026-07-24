@@ -210,8 +210,8 @@ bool PlannerNode::publishTrajectoryResult(
     const PlanningGridVersion* const source_grid_version,
     const TrajectoryEndpointSemantics endpoint_semantics) {
   if (std::string_view{source_label} == "no_static_rollout" &&
-      delivery.generation != 0U &&
-      delivery.generation != latestPlanningRequestGeneration()) {
+      !publicationGenerationIsCurrent(delivery.generation,
+                                      latestPlanningRequestGeneration())) {
     RCLCPP_WARN(get_logger(),
                 "%s trajectory candidate discarded before publication: "
                 "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
@@ -897,6 +897,16 @@ bool PlannerNode::publishTrajectoryResult(
   }
 
   logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
+  if (std::string_view{source_label} == "no_static_rollout" &&
+      !publicationGenerationIsCurrent(delivery.generation,
+                                      latestPlanningRequestGeneration())) {
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory candidate discarded at publication boundary: "
+                "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
+                source_label, delivery.generation, latestPlanningRequestGeneration());
+    requestPlanningCycle();
+    return false;
+  }
   const std::uint64_t path_id = publishTrajectoryPath(
       trajectory_result.samples, PathPublicationReason::kComputedPath, &stats, delivery,
       source_label, endpoint_semantics);

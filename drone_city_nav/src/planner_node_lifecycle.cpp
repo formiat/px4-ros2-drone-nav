@@ -108,9 +108,12 @@ PlannerNode::PlannerNode()
   }
   planning_worker_ = std::jthread(
       [this](const std::stop_token stop_token) { planningWorkerLoop(stop_token); });
+  const double planning_cycle_period_s =
+      !use_static_map_ && no_static_rollout_enabled_
+          ? no_static_rollout_cycle_period_s_
+          : config.timing.path_prohibited_intersection_check_period_s;
   timer_ = create_wall_timer(
-      std::chrono::duration<double>{
-          std::max(0.05, config.timing.path_prohibited_intersection_check_period_s)},
+      std::chrono::duration<double>{std::max(0.05, planning_cycle_period_s)},
       [this]() { checkCurrentPathAndPublish(); }, planner_control_callback_group_);
 
   RCLCPP_INFO(get_logger(),
@@ -346,6 +349,9 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   path_raw_clearance_monitor_config_ = config.path_raw_clearance_monitor;
   partial_replan_config_ = config.partial_replan;
   no_static_rollout_enabled_ = config.no_static_rollout.enabled;
+  no_static_rollout_cycle_period_s_ = config.no_static_rollout.cycle_period_s;
+  no_static_prefix_duration_s_ = config.no_static_rollout.prefix_duration_s;
+  no_static_recovery_lookahead_m_ = config.no_static_rollout.recovery_lookahead_m;
   rollout_planner_ = RecedingHorizonTrajectoryPlanner{config.no_static_rollout.planner};
   no_static_orchestrator_ =
       NoStaticPlannerOrchestrator{config.no_static_rollout.orchestrator};

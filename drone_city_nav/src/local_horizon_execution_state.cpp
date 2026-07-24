@@ -44,4 +44,18 @@ trajectoryEndpointSemanticsName(const TrajectoryEndpointSemantics semantics) noe
   return "unknown";
 }
 
+std::uint8_t trajectoryEndpointSemanticsToWire(
+    const TrajectoryEndpointSemantics semantics) noexcept {
+  return static_cast<std::uint8_t>(semantics);
+}
+
+std::optional<TrajectoryEndpointSemantics>
+trajectoryEndpointSemanticsFromWire(const std::uint8_t value) noexcept {
+  if (value > trajectoryEndpointSemanticsToWire(
+                  TrajectoryEndpointSemantics::kTemporaryReplanHold)) {
+    return std::nullopt;
+  }
+  return static_cast<TrajectoryEndpointSemantics>(value);
+}
+
 } // namespace drone_city_nav

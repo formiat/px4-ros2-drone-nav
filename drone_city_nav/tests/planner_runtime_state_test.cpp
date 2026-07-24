@@ -67,4 +67,16 @@ TEST(PlannerRuntimeState, MapsStablePathReasonsToRuntimeActions) {
             StablePathRuntimeAction::kRunAStar);
 }
 
+TEST(PlannerRuntimeState, PreservesStaticAStarAndSelectsNoStaticRollout) {
+  EXPECT_EQ(plannerModePrimaryAction(true, true), PlannerModePrimaryAction::kAStar);
+  EXPECT_EQ(plannerModePrimaryAction(false, false), PlannerModePrimaryAction::kAStar);
+  EXPECT_EQ(plannerModePrimaryAction(false, true), PlannerModePrimaryAction::kRollout);
+}
+
+TEST(PlannerRuntimeState, RejectsGenerationChangedAtPublicationBoundary) {
+  EXPECT_TRUE(publicationGenerationIsCurrent(7U, 7U));
+  EXPECT_FALSE(publicationGenerationIsCurrent(7U, 8U));
+  EXPECT_FALSE(publicationGenerationIsCurrent(0U, 0U));
+}
+
 } // namespace drone_city_nav

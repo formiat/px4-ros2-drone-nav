@@ -415,8 +415,9 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
 void Px4OffboardNode::processExecutableTrajectory(
     const msg::ExecutableTrajectory& command, const bool pending_retry) {
   const nav_msgs::msg::Path& path = command.path;
-  if (command.endpoint_semantics >
-      msg::ExecutableTrajectory::ENDPOINT_TEMPORARY_REPLAN_HOLD) {
+  const std::optional<TrajectoryEndpointSemantics> endpoint_semantics =
+      trajectoryEndpointSemanticsFromWire(command.endpoint_semantics);
+  if (!endpoint_semantics.has_value()) {
     RCLCPP_WARN(get_logger(),
                 "Ignoring planner path with invalid endpoint semantics: value=%u "
                 "path_id=%" PRIu64,
@@ -928,8 +929,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   last_received_path_stamp_ns_ = candidate_path_stamp_ns;
   accepted_planner_path_id_ = command.path_id;
   accepted_planner_path_id_seen_ = command.path_id != 0U;
-  active_trajectory_endpoint_semantics_ =
-      static_cast<TrajectoryEndpointSemantics>(command.endpoint_semantics);
+  active_trajectory_endpoint_semantics_ = *endpoint_semantics;
   local_horizon_low_buffer_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
   local_horizon_exhaustion_active_ = false;
   path_points_ = std::move(accepted_path_points);

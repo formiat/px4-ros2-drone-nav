@@ -834,6 +834,70 @@ TEST(TrajectoryPlanner, RejectsStitchedTrajectoryThroughKnownSolid) {
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kInvalidTrajectory);
 }
 
+TEST(TrajectoryPlanner, ShortlistAcceptsSecondPostVerticalValidFinalist) {
+  const OccupancyGrid2D grid = testGrid();
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::array grids{TrajectoryGridCandidate{
+      .name = "runtime_prohibited",
+      .grid = &grid,
+  }};
+  const std::vector candidates{
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 4.0}, {10.0, 4.0}}),
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 0.0}, {10.0, 0.0}}),
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+
+  std::optional<std::size_t> accepted_index;
+  std::size_t index = 0U;
+  for (const std::vector<TrajectoryPointSample>& candidate : candidates) {
+    const TrajectoryPlannerResult result = finalizeStitchedTrajectory(
+        StitchedTrajectoryFinalizationInput{
+            .geometry_samples = candidate,
+            .known_passage_map = &map,
+            .grid_candidates = grids,
+        },
+        config);
+    if (result.valid) {
+      accepted_index = index;
+      break;
+    }
+    ++index;
+  }
+
+  EXPECT_EQ(accepted_index, std::optional<std::size_t>{1U});
+}
+
+TEST(TrajectoryPlanner, ShortlistWithAllSolidInvalidFinalistsHasNoSelection) {
+  const OccupancyGrid2D grid = testGrid();
+  const KnownPassageMap map = plannerValidationPassageMap();
+  const std::array grids{TrajectoryGridCandidate{
+      .name = "runtime_prohibited",
+      .grid = &grid,
+  }};
+  const std::array candidates{
+      trajectoryPointSamplesFromPoints(std::vector<Point2>{{-10.0, 4.0}, {10.0, 4.0}}),
+      trajectoryPointSamplesFromPoints(
+          std::vector<Point2>{{-10.0, -4.0}, {10.0, -4.0}}),
+  };
+  TrajectoryPlannerConfig config = testConfig();
+  config.initial_altitude_m = 10.0;
+
+  bool accepted = false;
+  for (const std::vector<TrajectoryPointSample>& candidate : candidates) {
+    accepted = accepted || finalizeStitchedTrajectory(
+                               StitchedTrajectoryFinalizationInput{
+                                   .geometry_samples = candidate,
+                                   .known_passage_map = &map,
+                                   .grid_candidates = grids,
+                               },
+                               config)
+                               .valid;
+  }
+
+  EXPECT_FALSE(accepted);
+}
+
 TEST(TrajectoryPlanner, FinalizedStitchFallsBackToRuntimeGrid) {
   OccupancyGrid2D planning_grid = testGrid();
   OccupancyGrid2D runtime_grid = testGrid();

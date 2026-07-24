@@ -112,6 +112,9 @@ planner_node:
       [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
     partial_replan_internal_parallel_workers: 1
     no_static_rollout_enabled: true
+    no_static_rollout_cycle_period_s: 0.2
+    no_static_rollout_prefix_duration_s: 1.0
+    no_static_rollout_recovery_lookahead_m: 25.0
     no_static_rollout_horizon_m: 25.0
     no_static_rollout_sample_step_m: 1.0
     no_static_rollout_heading_samples: 9
@@ -124,9 +127,15 @@ planner_node:
     no_static_rollout_max_curvature_1pm: 0.20
     no_static_rollout_max_lateral_acceleration_mps2: 4.0
     no_static_rollout_max_finalists: 3
+    no_static_rollout_progress_weight: 4.0
+    no_static_rollout_lateral_weight: 0.08
+    no_static_rollout_heading_weight: 2.0
+    no_static_rollout_curvature_weight: 8.0
+    no_static_rollout_degraded_tier_penalty: 100.0
     no_static_rollout_failures_before_recovery: 3
     no_static_rollout_progress_timeout_s: 2.0
     no_static_rollout_score_hysteresis: 5.0
+    no_static_rollout_direction_switches_before_recovery: 3
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 54.0
     start_y_m: 54.0

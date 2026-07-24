@@ -347,7 +347,9 @@ private:
 
   std::uint64_t publishPath(const std::vector<Point2>& points,
                             PathPublicationReason reason,
-                            const TrajectoryPlannerStats* trajectory_stats = nullptr);
+                            const TrajectoryPlannerStats* trajectory_stats = nullptr,
+                            TrajectoryEndpointSemantics endpoint_semantics =
+                                TrajectoryEndpointSemantics::kMissionGoal);
 
   std::uint64_t publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
                                       PathPublicationReason reason,
@@ -454,11 +456,13 @@ private:
   PathRawClearanceMonitorConfig path_raw_clearance_monitor_config_{};
   PartialReplanConfig partial_replan_config_{};
   bool no_static_rollout_enabled_{true};
+  double no_static_rollout_cycle_period_s_{0.2};
+  double no_static_prefix_duration_s_{1.0};
+  double no_static_recovery_lookahead_m_{25.0};
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
   NoStaticPlannerOrchestrator no_static_orchestrator_{};
   std::optional<double> active_rollout_score_;
   std::uint64_t active_rollout_path_id_{0U};
-  std::optional<Point2> no_static_recovery_guide_target_;
   double no_static_best_goal_distance_m_{std::numeric_limits<double>::infinity()};
   std::chrono::steady_clock::time_point no_static_last_progress_at_{};
   std::uint64_t path_raw_clearance_monitor_path_id_{0U};
@@ -546,6 +550,12 @@ private:
   std::uint64_t astar_successes_{0U};
   std::uint64_t astar_failures_{0U};
   std::uint64_t prohibited_replans_{0U};
+  std::uint64_t rollout_cycles_{0U};
+  std::uint64_t rollout_candidates_{0U};
+  std::uint64_t rollout_publications_{0U};
+  std::uint64_t rollout_recovery_requests_{0U};
+  std::uint64_t rollout_failures_{0U};
+  std::vector<double> rollout_durations_ms_;
   std::uint64_t path_publications_{0U};
   std::uint64_t non_empty_path_publications_{0U};
   std::uint64_t hold_path_publications_{0U};

@@ -47,4 +47,28 @@ TEST(LocalHorizonExecutionState, SuccessorClearsTemporaryState) {
   EXPECT_FALSE(decision.terminal_capture_enabled);
 }
 
+TEST(LocalHorizonExecutionState, EndpointSemanticsWireRoundTrip) {
+  for (const TrajectoryEndpointSemantics semantics :
+       {TrajectoryEndpointSemantics::kMissionGoal,
+        TrajectoryEndpointSemantics::kLocalHorizon,
+        TrajectoryEndpointSemantics::kTemporaryReplanHold}) {
+    const std::uint8_t wire = trajectoryEndpointSemanticsToWire(semantics);
+    const std::optional<TrajectoryEndpointSemantics> decoded =
+        trajectoryEndpointSemanticsFromWire(wire);
+    EXPECT_EQ(decoded, std::optional<TrajectoryEndpointSemantics>{semantics});
+  }
+  EXPECT_FALSE(trajectoryEndpointSemanticsFromWire(3U).has_value());
+}
+
+TEST(LocalHorizonExecutionState, ExplicitTemporaryHoldNeverCompletesMission) {
+  const LocalHorizonExecutionDecision decision =
+      evaluateLocalHorizonExecution(LocalHorizonExecutionInput{
+          .semantics = TrajectoryEndpointSemantics::kTemporaryReplanHold,
+          .endpoint_captured = true,
+      });
+  EXPECT_TRUE(decision.terminal_capture_enabled);
+  EXPECT_TRUE(decision.latch_temporary_hold);
+  EXPECT_FALSE(decision.mission_goal_eligible);
+}
+
 } // namespace drone_city_nav
