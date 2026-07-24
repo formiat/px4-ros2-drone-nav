@@ -303,10 +303,27 @@ Mandatory local verification после реализации:
 
 1. `./scripts/dev_shell.sh make format` — форматирует только изменённый C++ по
    repository policy.
-2. `./scripts/dev_shell.sh make quality` — общий контракт нужен из-за новых shared
-   headers, ROS message, planner/offboard integration и generated message code;
-   точечный unit target не покрывает эти compile/serialization границы.
-3. `./scripts/dev_shell.sh make test-scripts` — только если меняются headless
+2. `./scripts/dev_shell.sh make build` — материализует новые core/node targets,
+   gtest binaries и generated `ExecutableTrajectory` message до scoped CTest.
+3. Первым test pass запустить только новые и materially changed targets:
+
+   ```bash
+   ./scripts/dev_shell.sh ctest --test-dir build/drone_city_nav \
+     --output-on-failure \
+     -R '^(receding_horizon_trajectory_planner_test|no_static_planner_orchestrator_test|local_horizon_execution_state_test|trajectory_planner_test|known_passage_solid_validation_test|terminal_capture_state_machine_test|offboard_velocity_follower_test|planner_runtime_state_test|planner_diagnostics_format_test|planner_node_config_test|px4_offboard_node_config_test|ros_conversions_test)$'
+   ```
+
+   Этот exact regex локализует failures rollout/scoring, shortlist post-vertical
+   validation, orchestrator/recovery, endpoint/final-hold state, config и ROS
+   conversion contracts. Имена здесь являются CTest target names из implementation
+   step 8, а не отдельным списком тестов, которые ещё нужно написать.
+4. `./scripts/dev_shell.sh make quality` — отдельная широкая cross-component
+   проверка после scoped pass. Она нужна не «на всякий случай», а потому что
+   изменение shared headers и ROS message затрагивает generated interfaces,
+   `drone_city_nav_core`, `drone_city_nav_ros_adapters`, planner/offboard linkage и
+   static-mode consumers, которые один regex unit targets не компилирует и не
+   проверяет целиком.
+5. `./scripts/dev_shell.sh make test-scripts` — только если меняются headless
    validator/scripts; иначе skipped как не относящийся к контракту.
 
 Optional/CI verification:
