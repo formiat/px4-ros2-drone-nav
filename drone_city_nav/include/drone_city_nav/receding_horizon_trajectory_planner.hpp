@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -15,6 +16,11 @@ enum class RolloutRejectReason {
   kInvalidInput,
   kOutsideGrid,
   kNoCandidate,
+};
+
+enum class RolloutGridRejectReason {
+  kOutsideGrid,
+  kProhibited,
 };
 
 struct RolloutPlannerConfig {
@@ -52,7 +58,19 @@ struct RolloutCandidate {
   double heading_offset_rad{0.0};
   double target_speed_mps{0.0};
   double curvature_1pm{0.0};
+  double progress_cost{0.0};
+  double lateral_deviation_cost{0.0};
+  double heading_change_cost{0.0};
+  double curvature_cost{0.0};
   std::size_t deterministic_index{0U};
+};
+
+struct RolloutGridRejectionDiagnostic {
+  RolloutGridRejectReason reason{RolloutGridRejectReason::kProhibited};
+  std::size_t deterministic_index{0U};
+  std::size_t segment_index{0U};
+  Point2 position{};
+  std::optional<GridIndex> cell;
 };
 
 struct RolloutDiagnostics {
@@ -60,6 +78,10 @@ struct RolloutDiagnostics {
   std::size_t grid_rejections{0U};
   std::size_t outside_grid_rejections{0U};
   std::size_t dynamic_limit_rejections{0U};
+  std::size_t acceleration_rejections{0U};
+  std::size_t curvature_rejections{0U};
+  std::size_t lateral_acceleration_rejections{0U};
+  std::optional<RolloutGridRejectionDiagnostic> first_grid_rejection;
 };
 
 struct RolloutResult {
@@ -85,5 +107,7 @@ private:
 };
 
 [[nodiscard]] const char* rolloutRejectReasonName(RolloutRejectReason reason) noexcept;
+[[nodiscard]] const char*
+rolloutGridRejectReasonName(RolloutGridRejectReason reason) noexcept;
 
 } // namespace drone_city_nav

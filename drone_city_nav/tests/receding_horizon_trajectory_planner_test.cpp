@@ -30,9 +30,13 @@ TEST(RecedingHorizonTrajectoryPlanner, SelectsDirectOpenSpaceCandidate) {
                                 .grid = &prohibited});
 
   ASSERT_FALSE(result.ranked_candidates.empty());
-  EXPECT_NEAR(result.ranked_candidates.front().heading_offset_rad, 0.0, 1.0e-9);
-  EXPECT_GT(result.ranked_candidates.front().samples.back().point.x, 0.0);
-  EXPECT_LE(result.ranked_candidates.front().samples.back().point.x, 25.0);
+  const RolloutCandidate& candidate = result.ranked_candidates.front();
+  EXPECT_NEAR(candidate.heading_offset_rad, 0.0, 1.0e-9);
+  EXPECT_GT(candidate.samples.back().point.x, 0.0);
+  EXPECT_LE(candidate.samples.back().point.x, 25.0);
+  EXPECT_DOUBLE_EQ(candidate.score,
+                   candidate.progress_cost + candidate.lateral_deviation_cost +
+                       candidate.heading_change_cost + candidate.curvature_cost);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, RejectsProhibitedCandidates) {
@@ -54,6 +58,12 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsProhibitedCandidates) {
   EXPECT_TRUE(result.ranked_candidates.empty());
   EXPECT_EQ(result.reject_reason, RolloutRejectReason::kNoCandidate);
   EXPECT_GT(result.diagnostics.grid_rejections, 0U);
+  ASSERT_TRUE(result.diagnostics.first_grid_rejection.has_value());
+  const RolloutGridRejectionDiagnostic first_grid_rejection =
+      result.diagnostics.first_grid_rejection.value_or(
+          RolloutGridRejectionDiagnostic{});
+  EXPECT_EQ(first_grid_rejection.reason, RolloutGridRejectReason::kProhibited);
+  EXPECT_TRUE(first_grid_rejection.cell.has_value());
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, UsesDeterministicTieBreak) {
@@ -165,6 +175,11 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsDynamicLimitViolation) {
 
   EXPECT_TRUE(result.ranked_candidates.empty());
   EXPECT_GT(result.diagnostics.dynamic_limit_rejections, 0U);
+  EXPECT_GT(result.diagnostics.curvature_rejections, 0U);
+  EXPECT_EQ(result.diagnostics.dynamic_limit_rejections,
+            result.diagnostics.acceleration_rejections +
+                result.diagnostics.curvature_rejections +
+                result.diagnostics.lateral_acceleration_rejections);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, StopsAtGoalInsideHorizon) {

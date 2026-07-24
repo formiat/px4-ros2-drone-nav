@@ -662,6 +662,26 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     for (std::size_t grid_attempt_index = 0U;
          grid_attempt_index < grid_candidates.size(); ++grid_attempt_index) {
       const TrajectoryGridCandidate& grid_attempt = grid_candidates[grid_attempt_index];
+      RCLCPP_INFO(
+          get_logger(),
+          "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
+          " grid=%s start=(%.2f,%.2f) velocity=(%.2f,%.2f) speed=%.2f "
+          "preferred_target=(%.2f,%.2f) target_distance=%.2f "
+          "active_path=%s active_path_id=%" PRIu64 " active_s=%.2f "
+          "active_remaining=%.2f stable_prefix_m=%.2f "
+          "grid_size=%dx%d resolution=%.2f",
+          invalidation_generation, prepared->version.build_revision,
+          std::string{grid_attempt.name}.c_str(), rollout_start.x, rollout_start.y,
+          rollout_velocity.x, rollout_velocity.y,
+          std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
+          preferred_target.y, distance(rollout_start, preferred_target),
+          active_rollout_path ? "true" : "false", active_rollout_path_id_,
+          active_rollout_path ? executable_trajectory_artifact_.current_s_m : 0.0,
+          active_rollout_path ? executable_trajectory_artifact_.samples.back().s_m -
+                                    executable_trajectory_artifact_.current_s_m
+                              : 0.0,
+          stable_prefix_distance_m, grid_attempt.grid->width(),
+          grid_attempt.grid->height(), grid_attempt.grid->resolution());
       const auto rollout_generation_started_at = std::chrono::steady_clock::now();
       const RolloutResult rollout = rollout_planner_.plan(RolloutInput{
           .position = rollout_start,
@@ -673,6 +693,44 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       });
       const double rollout_generation_ms =
           elapsedMilliseconds(rollout_generation_started_at);
+      const RolloutGridRejectionDiagnostic* first_grid_rejection =
+          rollout.diagnostics.first_grid_rejection.has_value()
+              ? &*rollout.diagnostics.first_grid_rejection
+              : nullptr;
+      RCLCPP_INFO(
+          get_logger(),
+          "ROLLOUT_GENERATION generation=%" PRIu64 " grid_revision=%" PRIu64
+          " generated=%zu accepted=%zu grid_rejected=%zu outside_rejected=%zu "
+          "dynamic_rejected=%zu dynamic_breakdown[acceleration=%zu curvature=%zu "
+          "lateral_acceleration=%zu] first_grid_rejection[reason=%s "
+          "candidate_index=%zu segment=%zu position=(%.2f,%.2f) "
+          "cell=(%d,%d) has_cell=%s] duration_ms=%.2f",
+          invalidation_generation, prepared->version.build_revision,
+          rollout.diagnostics.generated, rollout.ranked_candidates.size(),
+          rollout.diagnostics.grid_rejections,
+          rollout.diagnostics.outside_grid_rejections,
+          rollout.diagnostics.dynamic_limit_rejections,
+          rollout.diagnostics.acceleration_rejections,
+          rollout.diagnostics.curvature_rejections,
+          rollout.diagnostics.lateral_acceleration_rejections,
+          first_grid_rejection != nullptr
+              ? rolloutGridRejectReasonName(first_grid_rejection->reason)
+              : "none",
+          first_grid_rejection != nullptr ? first_grid_rejection->deterministic_index
+                                          : 0U,
+          first_grid_rejection != nullptr ? first_grid_rejection->segment_index : 0U,
+          first_grid_rejection != nullptr ? first_grid_rejection->position.x : 0.0,
+          first_grid_rejection != nullptr ? first_grid_rejection->position.y : 0.0,
+          first_grid_rejection != nullptr && first_grid_rejection->cell.has_value()
+              ? first_grid_rejection->cell->x
+              : -1,
+          first_grid_rejection != nullptr && first_grid_rejection->cell.has_value()
+              ? first_grid_rejection->cell->y
+              : -1,
+          first_grid_rejection != nullptr && first_grid_rejection->cell.has_value()
+              ? "true"
+              : "false",
+          rollout_generation_ms);
       last_rollout_reject = rollout.reject_reason;
       total_rollout_candidates += rollout.ranked_candidates.size();
       rollout_candidates_ += rollout.ranked_candidates.size();
@@ -687,6 +745,25 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                                            executable_trajectory_artifact_.current_s_m,
                                            stable_prefix_distance_m, finalist.samples);
           if (!stitch.valid) {
+            const double expected_join_s_m = std::min(
+                executable_trajectory_artifact_.samples.back().s_m,
+                executable_trajectory_artifact_.current_s_m + stable_prefix_distance_m);
+            const TrajectoryPointSample expected_join = trajectorySampleAtS(
+                executable_trajectory_artifact_.samples, expected_join_s_m);
+            RCLCPP_WARN(
+                get_logger(),
+                "ROLLOUT_STITCH_REJECT generation=%" PRIu64
+                " finalist=%zu candidate_index=%zu current_s=%.2f "
+                "prefix_distance=%.2f expected_join=(%.2f,%.2f) "
+                "successor_start=(%.2f,%.2f) endpoint_error=%.2f",
+                invalidation_generation, finalist_index, finalist.deterministic_index,
+                executable_trajectory_artifact_.current_s_m, stable_prefix_distance_m,
+                expected_join.point.x, expected_join.point.y,
+                finalist.samples.empty() ? 0.0 : finalist.samples.front().point.x,
+                finalist.samples.empty() ? 0.0 : finalist.samples.front().point.y,
+                finalist.samples.empty()
+                    ? std::numeric_limits<double>::infinity()
+                    : distance(expected_join.point, finalist.samples.front().point));
             continue;
           }
           geometry_samples = stitch.samples;
@@ -710,7 +787,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             get_logger(),
             "NO_STATIC_ROLLOUT generation=%" PRIu64 " grid_revision=%" PRIu64
             " grid_attempt=%zu/%zu grid=%s finalist=%zu/%zu score=%.3f "
-            "progress=%.2fm valid=%s status=%.*s generated=%zu "
+            "score_parts[progress=%.3f lateral=%.3f heading=%.3f "
+            "curvature=%.3f] progress=%.2fm candidate_index=%zu samples=%zu "
+            "endpoint=(%.2f,%.2f) heading_offset_rad=%.3f target_speed=%.2f "
+            "curvature_1pm=%.4f valid=%s status=%.*s quality=%.*s "
+            "finalization[vertical_valid=%s passage_valid=%s passage_reason=%s "
+            "solid_valid=%s solid_reason=%s insertion_required=%s "
+            "insertion_satisfied=%s insertion_reason=%s] generated=%zu "
             "grid_rejected=%zu outside_rejected=%zu dynamic_rejected=%zu "
             "mode=%s prefix_m=%.2f suffix_m=%.2f guide_revision=%" PRIu64
             " rollout_generation_ms=%.2f candidate_finalization_ms=%.2f",
@@ -718,10 +801,29 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             grid_attempt_index + 1U, grid_candidates.size(),
             std::string{grid_attempt.name}.c_str(), finalist_index,
             rollout.rankedShortlist(rollout_planner_.config().max_finalists).size(),
-            finalist.score, finalist.progress_m, finalized.valid ? "true" : "false",
+            finalist.score, finalist.progress_cost, finalist.lateral_deviation_cost,
+            finalist.heading_change_cost, finalist.curvature_cost, finalist.progress_m,
+            finalist.deterministic_index, finalist.samples.size(),
+            finalist.samples.empty() ? 0.0 : finalist.samples.back().point.x,
+            finalist.samples.empty() ? 0.0 : finalist.samples.back().point.y,
+            finalist.heading_offset_rad, finalist.target_speed_mps,
+            finalist.curvature_1pm, finalized.valid ? "true" : "false",
             static_cast<int>(
                 trajectoryPlannerStatusName(finalized.stats.status).size()),
             trajectoryPlannerStatusName(finalized.stats.status).data(),
+            static_cast<int>(trajectoryQualityName(finalized.stats.quality).size()),
+            trajectoryQualityName(finalized.stats.quality).data(),
+            finalized.stats.vertical_profile.valid ? "true" : "false",
+            finalized.stats.known_passage_validation.valid ? "true" : "false",
+            knownPassageValidationReasonName(
+                finalized.stats.known_passage_validation.worst_reason),
+            finalized.stats.known_passage_solid_validation.valid ? "true" : "false",
+            knownPassageSolidValidationReasonName(
+                finalized.stats.known_passage_solid_validation.reason),
+            finalized.stats.passage_insertion.repair_required ? "true" : "false",
+            finalized.stats.passage_insertion.repair_satisfied ? "true" : "false",
+            passageInsertionRejectReasonName(
+                finalized.stats.passage_insertion.final_reason),
             rollout.diagnostics.generated, rollout.diagnostics.grid_rejections,
             rollout.diagnostics.outside_grid_rejections,
             rollout.diagnostics.dynamic_limit_rejections,
@@ -753,6 +855,25 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                 .seconds_since_progress = seconds_since_progress,
                 .candidate_heading_offset_rad = finalist.heading_offset_rad,
             });
+        RCLCPP_INFO(
+            get_logger(),
+            "ROLLOUT_DECISION generation=%" PRIu64 " finalist=%zu "
+            "candidate_index=%zu action=%s mode=%s candidate_score=%.3f "
+            "active_score=%.3f active_score_valid=%s seconds_since_progress=%.2f "
+            "active_blocked=%s active_exhausting=%s temporary_hold=%s "
+            "candidate_generation=%" PRIu64 " latest_generation=%" PRIu64
+            " candidate_grid_revision=%" PRIu64 " latest_grid_revision=%" PRIu64,
+            invalidation_generation, finalist_index, finalist.deterministic_index,
+            noStaticPlannerActionName(orchestration.action),
+            noStaticPlannerModeName(orchestration.mode), finalist.score,
+            active_rollout_score_.value_or(0.0),
+            active_rollout_score_.has_value() ? "true" : "false",
+            seconds_since_progress,
+            !current_path_kept && active_rollout_path ? "true" : "false",
+            active_rollout_exhausting ? "true" : "false",
+            !active_rollout_path && last_valid_path_points_.empty() ? "true" : "false",
+            invalidation_generation, latest_generation,
+            prepared->version.build_revision, latest_grid_revision);
         if (orchestration.action == NoStaticPlannerAction::kRejectStale) {
           RCLCPP_WARN(
               get_logger(),

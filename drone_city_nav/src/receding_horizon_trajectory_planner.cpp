@@ -23,6 +23,7 @@ namespace {
 
 [[nodiscard]] bool traversable(const OccupancyGrid2D& grid,
                                std::span<const TrajectoryPointSample> samples,
+                               const std::size_t deterministic_index,
                                RolloutDiagnostics* const diagnostics = nullptr) {
   for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
     const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
@@ -30,13 +31,32 @@ namespace {
     if (!start.has_value() || !end.has_value()) {
       if (diagnostics != nullptr) {
         ++diagnostics->outside_grid_rejections;
+        if (!diagnostics->first_grid_rejection.has_value()) {
+          diagnostics->first_grid_rejection = RolloutGridRejectionDiagnostic{
+              .reason = RolloutGridRejectReason::kOutsideGrid,
+              .deterministic_index = deterministic_index,
+              .segment_index = index,
+              .position =
+                  !start.has_value() ? samples[index].point : samples[index + 1U].point,
+              .cell = std::nullopt,
+          };
+        }
       }
       return false;
     }
-    if (std::ranges::any_of(
-            grid.cellsOnLine(*start, *end),
-            [&grid](const GridIndex cell) { return grid.isProhibited(cell); })) {
-      return false;
+    for (const GridIndex cell : grid.cellsOnLine(*start, *end)) {
+      if (grid.isProhibited(cell)) {
+        if (diagnostics != nullptr && !diagnostics->first_grid_rejection.has_value()) {
+          diagnostics->first_grid_rejection = RolloutGridRejectionDiagnostic{
+              .reason = RolloutGridRejectReason::kProhibited,
+              .deterministic_index = deterministic_index,
+              .segment_index = index,
+              .position = grid.cellCenter(cell),
+              .cell = cell,
+          };
+        }
+        return false;
+      }
     }
   }
   return true;
@@ -118,6 +138,7 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       const double acceleration = (requested_speed - speed) / config_.horizon_time_s;
       if (std::abs(acceleration) > config_.maximum_acceleration_mps2) {
         ++result.diagnostics.dynamic_limit_rejections;
+        ++result.diagnostics.acceleration_rejections;
         continue;
       }
       const double average_speed = 0.5 * (speed + requested_speed);
@@ -126,10 +147,15 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
            std::max(config_.sample_step_m, average_speed * config_.horizon_time_s)});
       const double heading_delta = clampAngle(terminal_heading - initial_heading);
       const double curvature = heading_delta / rollout_length;
-      if (std::abs(curvature) > config_.maximum_curvature_1pm ||
-          requested_speed * requested_speed * std::abs(curvature) >
-              config_.maximum_lateral_acceleration_mps2) {
+      if (std::abs(curvature) > config_.maximum_curvature_1pm) {
         ++result.diagnostics.dynamic_limit_rejections;
+        ++result.diagnostics.curvature_rejections;
+        continue;
+      }
+      if (requested_speed * requested_speed * std::abs(curvature) >
+          config_.maximum_lateral_acceleration_mps2) {
+        ++result.diagnostics.dynamic_limit_rejections;
+        ++result.diagnostics.lateral_acceleration_rejections;
         continue;
       }
       const std::size_t sample_count = std::max<std::size_t>(
@@ -167,18 +193,23 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       }
       populateTrajectorySampleGeometry(candidate.samples);
       ++result.diagnostics.generated;
-      if (!traversable(*input.grid, candidate.samples, &result.diagnostics)) {
+      if (!traversable(*input.grid, candidate.samples, candidate.deterministic_index,
+                       &result.diagnostics)) {
         ++result.diagnostics.grid_rejections;
         continue;
       }
       const double after =
           distance(candidate.samples.back().point, input.preferred_target);
       candidate.progress_m = goal_distance - after;
-      candidate.score =
-          -config_.progress_weight * candidate.progress_m +
-          config_.lateral_deviation_weight * std::abs(offset) * rollout_length +
-          config_.heading_change_weight * std::abs(base_heading_error + offset) +
+      candidate.progress_cost = -config_.progress_weight * candidate.progress_m;
+      candidate.lateral_deviation_cost =
+          config_.lateral_deviation_weight * std::abs(offset) * rollout_length;
+      candidate.heading_change_cost =
+          config_.heading_change_weight * std::abs(base_heading_error + offset);
+      candidate.curvature_cost =
           config_.curvature_weight * std::abs(curvature) * rollout_length;
+      candidate.score = candidate.progress_cost + candidate.lateral_deviation_cost +
+                        candidate.heading_change_cost + candidate.curvature_cost;
       result.ranked_candidates.push_back(std::move(candidate));
     }
   }
@@ -210,6 +241,16 @@ const char* rolloutRejectReasonName(const RolloutRejectReason reason) noexcept {
       return "outside_grid";
     case RolloutRejectReason::kNoCandidate:
       return "no_candidate";
+  }
+  return "unknown";
+}
+
+const char* rolloutGridRejectReasonName(const RolloutGridRejectReason reason) noexcept {
+  switch (reason) {
+    case RolloutGridRejectReason::kOutsideGrid:
+      return "outside_grid";
+    case RolloutGridRejectReason::kProhibited:
+      return "prohibited";
   }
   return "unknown";
 }
