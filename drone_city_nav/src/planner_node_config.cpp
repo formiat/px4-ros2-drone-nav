@@ -703,6 +703,36 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.partial_replan.internal_parallel_workers =
       static_cast<std::size_t>(internal_parallel_workers);
   validatePartialReplanConfig(config.partial_replan);
+  config.no_static_rollout.enabled =
+      node.declare_parameter<bool>("no_static_rollout_enabled", true);
+  config.no_static_rollout.planner.horizon_m = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_horizon_m", 25.0), 25.0, 5.0,
+      30.0);
+  config.no_static_rollout.planner.sample_step_m = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_sample_step_m", 1.0), 1.0, 0.2,
+      5.0);
+  config.no_static_rollout.planner.heading_samples =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("no_static_rollout_heading_samples", 9),
+          1, 63));
+  config.no_static_rollout.planner.max_heading_offset_rad = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_max_heading_offset_rad", 0.9),
+      0.9, 0.0, std::numbers::pi);
+  config.no_static_rollout.planner.max_finalists =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("no_static_rollout_max_finalists", 3), 1,
+          16));
+  config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery =
+      static_cast<std::size_t>(
+          std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                       "no_static_rollout_failures_before_recovery", 3),
+                                   1, 100));
+  config.no_static_rollout.orchestrator.progress_timeout_s = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_progress_timeout_s", 2.0), 2.0,
+      0.1, 60.0);
+  config.no_static_rollout.orchestrator.minimum_score_improvement = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_score_hysteresis", 5.0), 5.0,
+      0.0, 10000.0);
   config.timing.path_prohibited_intersection_check_period_s =
       node.declare_parameter<double>("path_prohibited_intersection_check_period_s",
                                      0.5);

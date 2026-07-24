@@ -345,6 +345,10 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
   path_raw_clearance_monitor_config_ = config.path_raw_clearance_monitor;
   partial_replan_config_ = config.partial_replan;
+  no_static_rollout_enabled_ = config.no_static_rollout.enabled;
+  rollout_planner_ = RecedingHorizonTrajectoryPlanner{config.no_static_rollout.planner};
+  no_static_orchestrator_ =
+      NoStaticPlannerOrchestrator{config.no_static_rollout.orchestrator};
   static_map_path_param_ = config.static_map.configured_path.string();
   static_map_min_blocking_height_m_ = config.static_map.min_blocking_height_m;
   use_known_passages_ = config.known_passages.enabled;

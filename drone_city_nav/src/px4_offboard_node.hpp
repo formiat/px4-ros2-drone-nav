@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/final_trajectory_debug_io.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/local_horizon_execution_state.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
@@ -252,6 +253,7 @@ private:
   [[nodiscard]] bool finalPathGoalPassed() const;
 
   void updateFinalGoalHold();
+  void updateLocalHorizonExhaustionHold();
 
   void updateTemporaryReplanHold();
 
@@ -399,6 +401,7 @@ private:
   double trajectory_update_max_start_cross_track_m_{8.0};
   double safe_trajectory_truncation_margin_m_{15.0};
   double safe_trajectory_terminal_raw_clearance_m_{5.0};
+  LocalHorizonExecutionConfig local_horizon_execution_config_{};
   HorizontalTrajectoryHandoverConfig trajectory_handover_config_{};
   TrajectoryContinuityThresholds trajectory_continuity_thresholds_{};
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
@@ -437,6 +440,7 @@ private:
   bool temporary_replan_truncation_active_{false};
   bool temporary_replan_hold_active_{false};
   bool temporary_replan_immediate_hold_{false};
+  bool local_horizon_exhaustion_active_{false};
   bool vertical_pre_alignment_active_{false};
   bool vertical_pre_alignment_captured_{false};
   bool takeoff_hold_target_valid_{false};
@@ -491,6 +495,9 @@ private:
   rclcpp::Time last_velocity_plan_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time vertical_pre_alignment_last_update_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time vertical_pre_alignment_stable_since_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time local_horizon_low_buffer_since_{0, 0, RCL_ROS_TIME};
+  TrajectoryEndpointSemantics active_trajectory_endpoint_semantics_{
+      TrajectoryEndpointSemantics::kMissionGoal};
   std::optional<std::chrono::steady_clock::time_point>
       last_control_timer_callback_wall_time_;
   std::optional<std::chrono::steady_clock::time_point>

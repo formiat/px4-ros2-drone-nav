@@ -79,7 +79,9 @@ add_library(
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
   src/lidar_snapshot_writer.cpp
+  src/local_horizon_execution_state.cpp
   src/navigation_pose.cpp
+  src/no_static_planner_orchestrator.cpp
   src/offboard_blackbox.cpp
   src/offboard_path_follower.cpp
   src/offboard_trajectory_delivery_diagnostics.cpp
@@ -93,6 +95,7 @@ add_library(
   src/planning_grid_builder.cpp
   src/planning_grid_snapshot.cpp
   src/planner_core.cpp
+  src/receding_horizon_trajectory_planner.cpp
   src/repair_race.cpp
   src/planner_diagnostics_format.cpp
   src/planner_path_publication.cpp
@@ -636,6 +639,24 @@ if(BUILD_TESTING)
   target_compile_features(trajectory_planner_test PRIVATE cxx_std_20)
   target_link_libraries(trajectory_planner_test drone_city_nav_core)
   enable_project_warnings(trajectory_planner_test)
+
+  ament_add_gtest(receding_horizon_trajectory_planner_test
+                  tests/receding_horizon_trajectory_planner_test.cpp)
+  target_compile_features(receding_horizon_trajectory_planner_test PRIVATE cxx_std_20)
+  target_link_libraries(receding_horizon_trajectory_planner_test drone_city_nav_core)
+  enable_project_warnings(receding_horizon_trajectory_planner_test)
+
+  ament_add_gtest(no_static_planner_orchestrator_test
+                  tests/no_static_planner_orchestrator_test.cpp)
+  target_compile_features(no_static_planner_orchestrator_test PRIVATE cxx_std_20)
+  target_link_libraries(no_static_planner_orchestrator_test drone_city_nav_core)
+  enable_project_warnings(no_static_planner_orchestrator_test)
+
+  ament_add_gtest(local_horizon_execution_state_test
+                  tests/local_horizon_execution_state_test.cpp)
+  target_compile_features(local_horizon_execution_state_test PRIVATE cxx_std_20)
+  target_link_libraries(local_horizon_execution_state_test drone_city_nav_core)
+  enable_project_warnings(local_horizon_execution_state_test)
 
   ament_add_gtest(known_passage_solid_validation_test
                   tests/known_passage_solid_validation_test.cpp)

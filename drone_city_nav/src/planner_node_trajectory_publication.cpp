@@ -207,7 +207,8 @@ bool PlannerNode::publishTrajectoryResult(
     const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
     std::string astar_grid_name, std::string route_grid_name,
     std::uint64_t* published_path_id,
-    const PlanningGridVersion* const source_grid_version) {
+    const PlanningGridVersion* const source_grid_version,
+    const TrajectoryEndpointSemantics endpoint_semantics) {
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (!fresh_navigation.pose_valid ||
@@ -888,7 +889,7 @@ bool PlannerNode::publishTrajectoryResult(
   logPublishedPathSafety(*final_validation_grid, trajectory_points, "final_trajectory");
   const std::uint64_t path_id = publishTrajectoryPath(
       trajectory_result.samples, PathPublicationReason::kComputedPath, &stats, delivery,
-      source_label);
+      source_label, endpoint_semantics);
   if (path_id == 0U) {
     return false;
   }

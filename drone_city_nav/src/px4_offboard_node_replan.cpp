@@ -61,6 +61,8 @@ void Px4OffboardNode::publishReplanTruncation(
 
 void Px4OffboardNode::updateFinalGoalHold() {
   if (final_goal_hold_active_ || temporary_replan_truncation_active_ ||
+      active_trajectory_endpoint_semantics_ !=
+          TrajectoryEndpointSemantics::kMissionGoal ||
       !finalPathGoalReached()) {
     return;
   }
@@ -76,6 +78,55 @@ void Px4OffboardNode::updateFinalGoalHold() {
               final_goal_hold_target_.x, final_goal_hold_target_.y, current_position_.x,
               current_position_.y, distance(current_position_, final_goal_hold_target_),
               current_speed_mps_, finalPathGoalPassed() ? "true" : "false");
+}
+
+void Px4OffboardNode::updateLocalHorizonExhaustionHold() {
+  if (active_trajectory_endpoint_semantics_ !=
+          TrajectoryEndpointSemantics::kLocalHorizon ||
+      !trajectorySamplesAreUsable(final_trajectory_samples_) || !localPositionFresh()) {
+    local_horizon_low_buffer_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    local_horizon_exhaustion_active_ = false;
+    return;
+  }
+  const std::optional<TrajectoryProjection> projection =
+      projectOnTrajectorySamples(final_trajectory_samples_, current_position_);
+  if (!projection.has_value()) {
+    return;
+  }
+  const double remaining_s_m =
+      std::max(0.0, final_trajectory_samples_.back().s_m - projection->s_m);
+  const rclcpp::Time now_time = now();
+  if (remaining_s_m > local_horizon_execution_config_.minimum_buffer_m) {
+    local_horizon_low_buffer_since_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    local_horizon_exhaustion_active_ = false;
+    return;
+  }
+  if (local_horizon_low_buffer_since_.nanoseconds() == 0) {
+    local_horizon_low_buffer_since_ = now_time;
+  }
+  const double low_buffer_duration_s =
+      (now_time - local_horizon_low_buffer_since_).seconds();
+  const LocalHorizonExecutionDecision decision = evaluateLocalHorizonExecution(
+      LocalHorizonExecutionInput{
+          .semantics = active_trajectory_endpoint_semantics_,
+          .remaining_s_m = remaining_s_m,
+          .low_buffer_duration_s = low_buffer_duration_s,
+          .endpoint_captured = finalPathGoalReached(),
+      },
+      local_horizon_execution_config_);
+  local_horizon_exhaustion_active_ = decision.terminal_capture_enabled;
+  if (!decision.latch_temporary_hold || temporary_replan_hold_active_) {
+    return;
+  }
+  temporary_replan_hold_active_ = true;
+  temporary_replan_hold_target_ = trajectory_goal_;
+  latchTerminalPositionCaptureAltitude("local_horizon_exhausted");
+  resetVelocityDiagnostics();
+  RCLCPP_WARN(get_logger(),
+              "LOCAL_HORIZON temporary_hold_latched=true remaining_s=%.2f "
+              "low_buffer_duration_s=%.2f target=(%.2f,%.2f)",
+              remaining_s_m, low_buffer_duration_s, trajectory_goal_.x,
+              trajectory_goal_.y);
 }
 
 void Px4OffboardNode::updateTemporaryReplanHold() {

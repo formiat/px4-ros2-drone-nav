@@ -157,6 +157,7 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
   }
   msg::ExecutableTrajectory command;
   command.path_id = path_id;
+  command.endpoint_semantics = msg::ExecutableTrajectory::ENDPOINT_MISSION_GOAL;
   command.path = path;
   executable_trajectory_pub_->publish(command);
   path_pub_->publish(path);
@@ -172,7 +173,8 @@ std::uint64_t PlannerNode::publishPath(const std::vector<Point2>& points,
 std::uint64_t PlannerNode::publishTrajectoryPath(
     const std::span<const TrajectoryPointSample> samples,
     const PathPublicationReason reason, const TrajectoryPlannerStats* trajectory_stats,
-    TrajectoryDeliveryDiagnostics delivery, const char* source_label) {
+    TrajectoryDeliveryDiagnostics delivery, const char* source_label,
+    const TrajectoryEndpointSemantics endpoint_semantics) {
   std::vector<Point2> points = trajectorySamplePoints(samples);
   const std::uint64_t path_id = next_path_id_;
   if (!prepareTrajectoryForRuntimeChecks(samples, points, delivery, source_label,
@@ -206,6 +208,7 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   command.truncation_generation = delivery.truncation_generation;
   command.temporary_prefix_fingerprint = delivery.temporary_prefix_fingerprint;
   command.truncation_suffix = delivery.truncation_suffix;
+  command.endpoint_semantics = static_cast<std::uint8_t>(endpoint_semantics);
   command.truncation_suffix_activation_mode =
       delivery.truncation_suffix_activation_mode;
   if (trajectory_stats != nullptr) {

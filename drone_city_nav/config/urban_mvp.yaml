@@ -111,6 +111,15 @@ planner_node:
     partial_replan_reconnect_margins_m:
       [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
     partial_replan_internal_parallel_workers: 1
+    no_static_rollout_enabled: true
+    no_static_rollout_horizon_m: 25.0
+    no_static_rollout_sample_step_m: 1.0
+    no_static_rollout_heading_samples: 9
+    no_static_rollout_max_heading_offset_rad: 0.9
+    no_static_rollout_max_finalists: 3
+    no_static_rollout_failures_before_recovery: 3
+    no_static_rollout_progress_timeout_s: 2.0
+    no_static_rollout_score_hysteresis: 5.0
     current_waypoint_topic: /drone_city_nav/current_waypoint
     start_x_m: 54.0
     start_y_m: 54.0
@@ -360,6 +369,8 @@ px4_offboard_node:
     safe_trajectory_truncation_enabled: true
     safe_trajectory_truncation_margin_m: 15.0
     safe_trajectory_terminal_raw_clearance_m: 5.0
+    local_horizon_min_buffer_m: 3.0
+    local_horizon_successor_timeout_s: 0.5
     trajectory_handover_enabled: true
     trajectory_handover_require_validation_grid: true
     trajectory_handover_prefix_time_s: 0.6

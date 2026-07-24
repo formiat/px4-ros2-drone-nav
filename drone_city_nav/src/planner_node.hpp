@@ -9,11 +9,13 @@
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/local_horizon_execution_state.hpp"
 #include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/msg/replan_truncation.hpp"
 #include "drone_city_nav/msg/truncation_suffix_ack.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
+#include "drone_city_nav/no_static_planner_orchestrator.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
 #include "drone_city_nav/path_raw_clearance_monitor.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
@@ -25,6 +27,7 @@
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/planning_grid_snapshot.hpp"
 #include "drone_city_nav/px4_ros_time_mapper.hpp"
+#include "drone_city_nav/receding_horizon_trajectory_planner.hpp"
 #include "drone_city_nav/repair_race.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/safe_trajectory_truncation.hpp"
@@ -285,14 +288,15 @@ private:
                                    const TruncationReplanState& truncation_replan,
                                    TrajectoryDeliveryDiagnostics delivery);
 
-  bool
-  publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
-                          std::span<const Point2> route_points,
-                          const char* source_label, double duration_ms,
-                          TrajectoryDeliveryDiagnostics delivery,
-                          std::string astar_grid_name, std::string route_grid_name,
-                          std::uint64_t* published_path_id = nullptr,
-                          const PlanningGridVersion* source_grid_version = nullptr);
+  bool publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
+                               std::span<const Point2> route_points,
+                               const char* source_label, double duration_ms,
+                               TrajectoryDeliveryDiagnostics delivery,
+                               std::string astar_grid_name, std::string route_grid_name,
+                               std::uint64_t* published_path_id = nullptr,
+                               const PlanningGridVersion* source_grid_version = nullptr,
+                               TrajectoryEndpointSemantics endpoint_semantics =
+                                   TrajectoryEndpointSemantics::kMissionGoal);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
@@ -348,7 +352,9 @@ private:
                                       PathPublicationReason reason,
                                       const TrajectoryPlannerStats* trajectory_stats,
                                       TrajectoryDeliveryDiagnostics delivery,
-                                      const char* source_label);
+                                      const char* source_label,
+                                      TrajectoryEndpointSemantics endpoint_semantics =
+                                          TrajectoryEndpointSemantics::kMissionGoal);
 
   void
   publishTrajectoryDiagnostics(const std::uint64_t path_id,
@@ -446,6 +452,10 @@ private:
   bool safe_trajectory_truncation_enabled_{true};
   PathRawClearanceMonitorConfig path_raw_clearance_monitor_config_{};
   PartialReplanConfig partial_replan_config_{};
+  bool no_static_rollout_enabled_{true};
+  RecedingHorizonTrajectoryPlanner rollout_planner_{};
+  NoStaticPlannerOrchestrator no_static_orchestrator_{};
+  std::optional<double> active_rollout_score_;
   std::uint64_t path_raw_clearance_monitor_path_id_{0U};
   bool path_raw_clearance_armed_{false};
   bool path_raw_clearance_triggered_{false};

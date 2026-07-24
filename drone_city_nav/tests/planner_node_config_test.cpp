@@ -58,6 +58,12 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
+  EXPECT_TRUE(config.no_static_rollout.enabled);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.horizon_m, 25.0);
+  EXPECT_EQ(config.no_static_rollout.planner.heading_samples, 9U);
+  EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 3U);
+  EXPECT_EQ(config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery,
+            3U);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_grid_builder.planning_clearance_m, 3.0);
   EXPECT_TRUE(config.static_map.enabled);

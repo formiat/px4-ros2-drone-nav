@@ -20,6 +20,10 @@ void Px4OffboardNode::applyConfig(const Px4OffboardNodeConfig& config) {
   safe_trajectory_truncation_margin_m_ = config.safe_trajectory_truncation_margin_m;
   safe_trajectory_terminal_raw_clearance_m_ =
       config.safe_trajectory_terminal_raw_clearance_m;
+  local_horizon_execution_config_ = LocalHorizonExecutionConfig{
+      .minimum_buffer_m = config.local_horizon_min_buffer_m,
+      .successor_timeout_s = config.local_horizon_successor_timeout_s,
+  };
   trajectory_handover_config_ = config.trajectory_handover;
   trajectory_continuity_thresholds_ = config.trajectory_continuity;
   offboard_debug_marker_topic_ = config.topics.offboard_debug_marker;

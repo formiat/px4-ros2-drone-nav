@@ -34,6 +34,7 @@ void Px4OffboardNode::onTimer() {
     return;
   }
 
+  updateLocalHorizonExhaustionHold();
   updateFinalGoalHold();
   updateTemporaryReplanHold();
   updateVerticalPreAlignment();
@@ -165,8 +166,10 @@ void Px4OffboardNode::publishTrajectorySetpoint() {
 
 [[nodiscard]] bool Px4OffboardNode::velocityCruiseReady() const {
   return localPositionFresh() && navigationAllowed() && pathFollowingReady() &&
-         !finalPathGoalReached() && !no_path_hold_target_valid_ &&
-         !temporary_replan_hold_active_;
+         (!finalPathGoalReached() || (active_trajectory_endpoint_semantics_ ==
+                                          TrajectoryEndpointSemantics::kLocalHorizon &&
+                                      !local_horizon_exhaustion_active_)) &&
+         !no_path_hold_target_valid_ && !temporary_replan_hold_active_;
 }
 
 [[nodiscard]] Px4OffboardNode::TerminalCaptureState
@@ -177,6 +180,11 @@ Px4OffboardNode::computeTerminalCaptureState() const {
   input.no_path_hold_active = no_path_hold_target_valid_;
   input.prerequisites_valid = localPositionFresh() && navigationAllowed() &&
                               pathFollowingReady() && trajectoryGoalReady();
+  if (active_trajectory_endpoint_semantics_ ==
+          TrajectoryEndpointSemantics::kLocalHorizon &&
+      !local_horizon_exhaustion_active_) {
+    input.prerequisites_valid = false;
+  }
   input.previous_position_capture_latched = terminal_position_capture_latched_;
   input.velocity_terminal_capture_active = last_velocity_plan_.terminal_capture_active;
   input.current_speed_mps = current_speed_mps_;
@@ -447,9 +455,13 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
 }
 
 [[nodiscard]] bool Px4OffboardNode::shouldHoldPosition() const {
+  const bool endpoint_requires_hold =
+      finalPathGoalReached() && (active_trajectory_endpoint_semantics_ !=
+                                     TrajectoryEndpointSemantics::kLocalHorizon ||
+                                 local_horizon_exhaustion_active_);
   return final_goal_hold_active_ || temporary_replan_hold_active_ ||
          !localPositionFresh() || !navigationAllowed() || !pathFollowingReady() ||
-         finalPathGoalReached();
+         endpoint_requires_hold;
 }
 
 [[nodiscard]] bool Px4OffboardNode::finalTrajectoryReady() const {

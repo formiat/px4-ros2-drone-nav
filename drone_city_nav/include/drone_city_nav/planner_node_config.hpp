@@ -4,9 +4,11 @@
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/no_static_planner_orchestrator.hpp"
 #include "drone_city_nav/path_raw_clearance_monitor.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
+#include "drone_city_nav/receding_horizon_trajectory_planner.hpp"
 #include "drone_city_nav/static_map_source.hpp"
 #include "drone_city_nav/trajectory_planner.hpp"
 
@@ -83,6 +85,12 @@ struct PartialReplanConfig {
   std::size_t internal_parallel_workers{1U};
 };
 
+struct NoStaticRolloutConfig {
+  bool enabled{true};
+  RolloutPlannerConfig planner{};
+  NoStaticPlannerOrchestratorConfig orchestrator{};
+};
+
 struct PlannerNodeConfig {
   std::string frame_id{"map"};
   Point2 start{};
@@ -107,6 +115,7 @@ struct PlannerNodeConfig {
   bool safe_trajectory_truncation_enabled{true};
   PathRawClearanceMonitorConfig path_raw_clearance_monitor{};
   PartialReplanConfig partial_replan{};
+  NoStaticRolloutConfig no_static_rollout{};
   PlannerTopics topics{};
   PlannerTimingConfig timing{};
   PlannerInitialPoseConfig initial_pose{};

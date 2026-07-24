@@ -50,6 +50,10 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       config.safe_trajectory_truncation_margin_m, 15.0, 0.0, 1000.0);
   config.safe_trajectory_terminal_raw_clearance_m = boundedFiniteDouble(
       config.safe_trajectory_terminal_raw_clearance_m, 5.0, 0.0, 1000.0);
+  config.local_horizon_min_buffer_m =
+      boundedFiniteDouble(config.local_horizon_min_buffer_m, 3.0, 0.0, 1000.0);
+  config.local_horizon_successor_timeout_s =
+      boundedFiniteDouble(config.local_horizon_successor_timeout_s, 0.5, 0.0, 60.0);
   config.trajectory_handover.prefix_time_s =
       boundedFiniteDouble(config.trajectory_handover.prefix_time_s, 0.6, 0.0, 10.0);
   config.trajectory_handover.min_prefix_distance_m = boundedFiniteDouble(
@@ -392,6 +396,12 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.safe_trajectory_terminal_raw_clearance_m = boundedFiniteDouble(
       node.declare_parameter<double>("safe_trajectory_terminal_raw_clearance_m", 5.0),
       5.0, 0.0, 1000.0);
+  config.local_horizon_min_buffer_m = boundedFiniteDouble(
+      node.declare_parameter<double>("local_horizon_min_buffer_m", 3.0), 3.0, 0.0,
+      1000.0);
+  config.local_horizon_successor_timeout_s = boundedFiniteDouble(
+      node.declare_parameter<double>("local_horizon_successor_timeout_s", 0.5), 0.5,
+      0.0, 60.0);
   config.trajectory_handover.enabled = node.declare_parameter<bool>(
       "trajectory_handover_enabled", config.trajectory_handover.enabled);
   config.trajectory_handover.require_validation_grid =

@@ -50,6 +50,8 @@ struct Px4OffboardNodeConfig {
   bool safe_trajectory_truncation_enabled{true};
   double safe_trajectory_truncation_margin_m{15.0};
   double safe_trajectory_terminal_raw_clearance_m{5.0};
+  double local_horizon_min_buffer_m{3.0};
+  double local_horizon_successor_timeout_s{0.5};
   HorizontalTrajectoryHandoverConfig trajectory_handover{};
   TrajectoryContinuityThresholds trajectory_continuity{};
   double altitude_hold_kp{0.5};
