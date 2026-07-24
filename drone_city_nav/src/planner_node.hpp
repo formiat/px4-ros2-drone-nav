@@ -456,6 +456,7 @@ private:
   bool safe_trajectory_truncation_enabled_{true};
   PartialReplanConfig partial_replan_config_{};
   bool no_static_rollout_enabled_{true};
+  bool no_static_astar_recovery_enabled_{false};
   double no_static_rollout_cycle_period_s_{0.2};
   double no_static_prefix_duration_s_{1.0};
   double no_static_recovery_lookahead_m_{25.0};

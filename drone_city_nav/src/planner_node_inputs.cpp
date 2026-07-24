@@ -763,9 +763,16 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           return;
         }
         if (orchestration.action == NoStaticPlannerAction::kRequestRecovery) {
-          ++rollout_recovery_requests_;
-          rollout_recovery_requested = true;
-          break;
+          if (no_static_astar_recovery_enabled_) {
+            ++rollout_recovery_requests_;
+            rollout_recovery_requested = true;
+            break;
+          }
+          RCLCPP_WARN(get_logger(),
+                      "NO_STATIC_ROLLOUT astar_recovery_disabled=true "
+                      "requested_after_valid_candidate=true action=publish_rollout "
+                      "generation=%" PRIu64,
+                      invalidation_generation);
         }
         if (orchestration.action == NoStaticPlannerAction::kHold) {
           publishPath({}, PathPublicationReason::kHoldAfterPlanningFailure, nullptr,
@@ -855,6 +862,17 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       }
       if (failure_decision.action != NoStaticPlannerAction::kRequestRecovery) {
         ++rollout_failures_;
+        return;
+      }
+      if (!no_static_astar_recovery_enabled_) {
+        ++rollout_failures_;
+        no_static_orchestrator_.clearRecoveryGuide();
+        RCLCPP_WARN(get_logger(),
+                    "NO_STATIC_ROLLOUT astar_recovery_disabled=true "
+                    "no_validated_candidate=true action=%s generation=%" PRIu64,
+                    active_rollout_path ? "keep_active_prefix_and_retry"
+                                        : "remain_in_hold_and_retry",
+                    invalidation_generation);
         return;
       }
       ++rollout_recovery_requests_;

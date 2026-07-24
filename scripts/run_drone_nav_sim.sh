@@ -79,6 +79,7 @@ enable_gz_scene_diagnostics="$(
 )"
 enable_static_map_override=""
 no_static_speed_policy_enabled="false"
+no_static_astar_recovery_override=""
 evasive_maneuvering_override=""
 evasive_maneuvering_straight_cost_weight_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
@@ -89,6 +90,11 @@ if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
 fi
 if [[ -n "${ENABLE_EVASIVE_MANEUVERING+x}" ]]; then
   evasive_maneuvering_override="$(normalize_bool "${ENABLE_EVASIVE_MANEUVERING}")"
+fi
+if [[ -n "${ENABLE_NO_STATIC_ASTAR_RECOVERY+x}" ]]; then
+  no_static_astar_recovery_override="$(
+    normalize_bool "${ENABLE_NO_STATIC_ASTAR_RECOVERY}"
+  )"
 fi
 if [[ -n "${EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT+x}" ]]; then
   evasive_maneuvering_straight_cost_weight_override="$(
@@ -419,6 +425,7 @@ echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always current_lidar=always"
+echo "No-static A* recovery override: $(format_override_value "${no_static_astar_recovery_override}")"
 echo "A* evasive maneuvering overrides: enabled=${formatted_evasive_maneuvering_override} straight_cost_weight=${formatted_evasive_maneuvering_weight_override}"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
@@ -556,6 +563,11 @@ ros_launch_args=(
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
+fi
+if [[ -n "${no_static_astar_recovery_override}" ]]; then
+  ros_launch_args+=(
+    no_static_astar_recovery:="${no_static_astar_recovery_override}"
+  )
 fi
 if [[ "${static_city_map_path_override}" == "true" ]]; then
   ros_launch_args+=(static_map_path:="${static_city_map_path}")

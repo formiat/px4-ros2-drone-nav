@@ -108,6 +108,7 @@ planner_node:
       [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
     partial_replan_internal_parallel_workers: 1
     no_static_rollout_enabled: true
+    no_static_astar_recovery_enabled: false
     no_static_rollout_cycle_period_s: 0.2
     no_static_rollout_prefix_duration_s: 1.0
     no_static_rollout_recovery_lookahead_m: 25.0

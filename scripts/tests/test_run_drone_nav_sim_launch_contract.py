@@ -87,6 +87,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
             self.text,
         )
 
+    def test_no_static_astar_recovery_can_be_overridden_from_environment(self) -> None:
+        self.assertIn("ENABLE_NO_STATIC_ASTAR_RECOVERY", self.text)
+        self.assertIn('ros_launch_args+=(\n    no_static_astar_recovery:="', self.text)
+        self.assertIn("no_static_astar_recovery", self.launch_text)
+
     def test_rviz_follow_camera_defaults_on_and_can_be_disabled(self) -> None:
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA:-true", self.text)
         self.assertIn("city_nav_debug.rviz", self.text)

@@ -693,6 +693,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   validatePartialReplanConfig(config.partial_replan);
   config.no_static_rollout.enabled =
       node.declare_parameter<bool>("no_static_rollout_enabled", true);
+  config.no_static_rollout.astar_recovery_enabled =
+      node.declare_parameter<bool>("no_static_astar_recovery_enabled", false);
   config.no_static_rollout.cycle_period_s = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_cycle_period_s", 0.2), 0.2,
       0.05, 2.0);

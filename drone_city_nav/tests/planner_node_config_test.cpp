@@ -59,6 +59,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
   EXPECT_TRUE(config.no_static_rollout.enabled);
+  EXPECT_FALSE(config.no_static_rollout.astar_recovery_enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.2);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 1.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 25.0);
@@ -716,6 +717,16 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 1U);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.progress_weight, 0.0);
+}
+
+TEST_F(PlannerNodeConfigTest, AllowsNoStaticAStarRecoveryOverride) {
+  const auto node =
+      makeNode("planner_node_config_rollout_astar_recovery",
+               {rclcpp::Parameter{"no_static_astar_recovery_enabled", true}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_TRUE(config.no_static_rollout.astar_recovery_enabled);
 }
 
 } // namespace drone_city_nav

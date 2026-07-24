@@ -62,6 +62,7 @@ def generate_launch_description():
     no_static_speed_policy_enabled = LaunchConfiguration(
         "no_static_speed_policy_enabled"
     )
+    no_static_astar_recovery = LaunchConfiguration("no_static_astar_recovery")
     use_static_map = LaunchConfiguration("use_static_map")
     static_map_path = LaunchConfiguration("static_map_path")
     evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
@@ -108,6 +109,14 @@ def generate_launch_description():
         static_map_path_override = static_map_path.perform(context).strip()
         if static_map_path_override:
             planner_overrides["static_map_path"] = static_map_path_override
+
+        no_static_astar_recovery_override = optional_bool_override(
+            context, no_static_astar_recovery, "no_static_astar_recovery"
+        )
+        if no_static_astar_recovery_override is not None:
+            planner_overrides["no_static_astar_recovery_enabled"] = (
+                no_static_astar_recovery_override
+            )
 
         evasive_maneuvering_override = optional_bool_override(
             context, evasive_maneuvering, "evasive_maneuvering"
@@ -294,6 +303,14 @@ def generate_launch_description():
                 description=(
                     "Enable the conservative lidar-only speed policy. The "
                     "simulator runner enables it when ENABLE_STATIC_MAP=false."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "no_static_astar_recovery",
+                default_value="",
+                description=(
+                    "Optional override for no-static A* recovery. Leave empty "
+                    "to use params_file; the default simulation params disable it."
                 ),
             ),
             DeclareLaunchArgument(

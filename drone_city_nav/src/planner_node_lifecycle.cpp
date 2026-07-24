@@ -126,6 +126,10 @@ PlannerNode::PlannerNode()
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
               local_inflation_relaxation_radius_m_);
   RCLCPP_INFO(get_logger(),
+              "Planner mode policy: primary=%s no_static_astar_recovery=%s",
+              use_static_map_ || !no_static_rollout_enabled_ ? "astar" : "rollout",
+              no_static_astar_recovery_enabled_ ? "enabled" : "disabled");
+  RCLCPP_INFO(get_logger(),
               "Planner subscriptions: obstacle_memory_snapshot='%s' "
               "local_position='%s' attitude='%s' timesync_status='%s'",
               config.topics.obstacle_memory_snapshot.c_str(),
@@ -341,6 +345,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
   partial_replan_config_ = config.partial_replan;
   no_static_rollout_enabled_ = config.no_static_rollout.enabled;
+  no_static_astar_recovery_enabled_ = config.no_static_rollout.astar_recovery_enabled;
   no_static_rollout_cycle_period_s_ = config.no_static_rollout.cycle_period_s;
   no_static_prefix_duration_s_ = config.no_static_rollout.prefix_duration_s;
   no_static_recovery_lookahead_m_ = config.no_static_rollout.recovery_lookahead_m;
