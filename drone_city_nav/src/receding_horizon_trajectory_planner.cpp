@@ -42,29 +42,6 @@ namespace {
   return true;
 }
 
-[[nodiscard]] RolloutTraversabilityTier
-classifyTier(const RolloutInput& input,
-             std::span<const TrajectoryPointSample> samples) {
-  if (traversable(*input.planning_grid, samples)) {
-    return RolloutTraversabilityTier::kPlanningClearance;
-  }
-  if (traversable(*input.prohibited_grid, samples)) {
-    return RolloutTraversabilityTier::kRuntimeProhibited;
-  }
-  return RolloutTraversabilityTier::kRuntimeProhibited;
-}
-
-[[nodiscard]] double tierPenalty(const RolloutTraversabilityTier tier,
-                                 const RolloutPlannerConfig& config) noexcept {
-  switch (tier) {
-    case RolloutTraversabilityTier::kPlanningClearance:
-      return 0.0;
-    case RolloutTraversabilityTier::kRuntimeProhibited:
-      return config.degraded_tier_penalty;
-  }
-  return config.degraded_tier_penalty;
-}
-
 } // namespace
 
 std::span<const RolloutCandidate>
@@ -101,8 +78,7 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
   result.generation = input.generation;
   result.grid_revision = input.grid_revision;
   if (!finitePoint(input.position) || !finitePoint(input.velocity) ||
-      !finitePoint(input.preferred_target) || input.prohibited_grid == nullptr ||
-      input.planning_grid == nullptr) {
+      !finitePoint(input.preferred_target) || input.grid == nullptr) {
     result.reject_reason = RolloutRejectReason::kInvalidInput;
     return result;
   }
@@ -191,18 +167,15 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       }
       populateTrajectorySampleGeometry(candidate.samples);
       ++result.diagnostics.generated;
-      if (!traversable(*input.prohibited_grid, candidate.samples,
-                       &result.diagnostics)) {
-        ++result.diagnostics.prohibited_rejections;
+      if (!traversable(*input.grid, candidate.samples, &result.diagnostics)) {
+        ++result.diagnostics.grid_rejections;
         continue;
       }
-      candidate.tier = classifyTier(input, candidate.samples);
       const double after =
           distance(candidate.samples.back().point, input.preferred_target);
       candidate.progress_m = goal_distance - after;
       candidate.score =
-          tierPenalty(candidate.tier, config_) -
-          config_.progress_weight * candidate.progress_m +
+          -config_.progress_weight * candidate.progress_m +
           config_.lateral_deviation_weight * std::abs(offset) * rollout_length +
           config_.heading_change_weight * std::abs(base_heading_error + offset) +
           config_.curvature_weight * std::abs(curvature) * rollout_length;
@@ -227,17 +200,6 @@ const RolloutPlannerConfig& RecedingHorizonTrajectoryPlanner::config() const noe
   return config_;
 }
 
-const char*
-rolloutTraversabilityTierName(const RolloutTraversabilityTier tier) noexcept {
-  switch (tier) {
-    case RolloutTraversabilityTier::kPlanningClearance:
-      return "planning_clearance";
-    case RolloutTraversabilityTier::kRuntimeProhibited:
-      return "runtime_prohibited";
-  }
-  return "unknown";
-}
-
 const char* rolloutRejectReasonName(const RolloutRejectReason reason) noexcept {
   switch (reason) {
     case RolloutRejectReason::kNone:
@@ -246,8 +208,6 @@ const char* rolloutRejectReasonName(const RolloutRejectReason reason) noexcept {
       return "invalid_input";
     case RolloutRejectReason::kOutsideGrid:
       return "outside_grid";
-    case RolloutRejectReason::kRawOccupied:
-      return "raw_occupied";
     case RolloutRejectReason::kNoCandidate:
       return "no_candidate";
   }

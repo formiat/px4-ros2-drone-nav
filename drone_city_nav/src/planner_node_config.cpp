@@ -767,9 +767,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.no_static_rollout.planner.curvature_weight = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_curvature_weight", 8.0), 8.0,
       0.0, 1000.0);
-  config.no_static_rollout.planner.degraded_tier_penalty = boundedFiniteDouble(
-      node.declare_parameter<double>("no_static_rollout_degraded_tier_penalty", 100.0),
-      100.0, 0.0, 100000.0);
   config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery =
       static_cast<std::size_t>(
           std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(

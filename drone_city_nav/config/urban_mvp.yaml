@@ -131,7 +131,6 @@ planner_node:
     no_static_rollout_lateral_weight: 0.08
     no_static_rollout_heading_weight: 2.0
     no_static_rollout_curvature_weight: 8.0
-    no_static_rollout_degraded_tier_penalty: 100.0
     no_static_rollout_failures_before_recovery: 3
     no_static_rollout_progress_timeout_s: 2.0
     no_static_rollout_score_hysteresis: 5.0
