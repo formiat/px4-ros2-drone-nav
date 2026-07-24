@@ -28,7 +28,14 @@ struct RolloutPlannerConfig {
   double horizon_m{25.0};
   double sample_step_m{1.0};
   std::size_t heading_samples{9U};
+  std::size_t speed_samples{3U};
   double max_heading_offset_rad{0.9};
+  double horizon_time_s{3.0};
+  double minimum_speed_mps{2.0};
+  double maximum_speed_mps{10.0};
+  double maximum_acceleration_mps2{4.0};
+  double maximum_curvature_1pm{0.20};
+  double maximum_lateral_acceleration_mps2{4.0};
   std::size_t max_finalists{3U};
   double progress_weight{4.0};
   double lateral_deviation_weight{0.08};
@@ -54,6 +61,8 @@ struct RolloutCandidate {
   double score{0.0};
   double progress_m{0.0};
   double heading_offset_rad{0.0};
+  double target_speed_mps{0.0};
+  double curvature_1pm{0.0};
   std::size_t deterministic_index{0U};
 };
 
@@ -61,6 +70,7 @@ struct RolloutDiagnostics {
   std::size_t generated{0U};
   std::size_t raw_occupied_rejections{0U};
   std::size_t outside_grid_rejections{0U};
+  std::size_t dynamic_limit_rejections{0U};
 };
 
 struct RolloutResult {

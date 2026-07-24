@@ -209,6 +209,16 @@ bool PlannerNode::publishTrajectoryResult(
     std::uint64_t* published_path_id,
     const PlanningGridVersion* const source_grid_version,
     const TrajectoryEndpointSemantics endpoint_semantics) {
+  if (std::string_view{source_label} == "no_static_rollout" &&
+      delivery.generation != 0U &&
+      delivery.generation != latestPlanningRequestGeneration()) {
+    RCLCPP_WARN(get_logger(),
+                "%s trajectory candidate discarded before publication: "
+                "reason=stale_generation candidate=%" PRIu64 " latest=%" PRIu64,
+                source_label, delivery.generation, latestPlanningRequestGeneration());
+    requestPlanningCycle();
+    return false;
+  }
   const NavigationStateSnapshot fresh_navigation = navigationStateSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
   if (!fresh_navigation.pose_valid ||

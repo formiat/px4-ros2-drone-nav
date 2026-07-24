@@ -115,7 +115,14 @@ planner_node:
     no_static_rollout_horizon_m: 25.0
     no_static_rollout_sample_step_m: 1.0
     no_static_rollout_heading_samples: 9
+    no_static_rollout_speed_samples: 3
     no_static_rollout_max_heading_offset_rad: 0.9
+    no_static_rollout_horizon_time_s: 3.0
+    no_static_rollout_min_speed_mps: 2.0
+    no_static_rollout_max_speed_mps: 10.0
+    no_static_rollout_max_acceleration_mps2: 4.0
+    no_static_rollout_max_curvature_1pm: 0.20
+    no_static_rollout_max_lateral_acceleration_mps2: 4.0
     no_static_rollout_max_finalists: 3
     no_static_rollout_failures_before_recovery: 3
     no_static_rollout_progress_timeout_s: 2.0

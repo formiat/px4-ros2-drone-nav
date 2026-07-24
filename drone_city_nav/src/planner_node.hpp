@@ -252,6 +252,7 @@ private:
   void planningWorkerLoop(std::stop_token stop_token);
 
   void requestPlanningCycle();
+  [[nodiscard]] std::uint64_t latestPlanningRequestGeneration() const;
 
   [[nodiscard]] NavigationStateSnapshot navigationStateSnapshot() const;
 
@@ -456,6 +457,10 @@ private:
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
   NoStaticPlannerOrchestrator no_static_orchestrator_{};
   std::optional<double> active_rollout_score_;
+  std::uint64_t active_rollout_path_id_{0U};
+  std::optional<Point2> no_static_recovery_guide_target_;
+  double no_static_best_goal_distance_m_{std::numeric_limits<double>::infinity()};
+  std::chrono::steady_clock::time_point no_static_last_progress_at_{};
   std::uint64_t path_raw_clearance_monitor_path_id_{0U};
   bool path_raw_clearance_armed_{false};
   bool path_raw_clearance_triggered_{false};

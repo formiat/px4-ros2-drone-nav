@@ -11,6 +11,11 @@ void PlannerNode::requestPlanningCycle() {
   planning_request_cv_.notify_one();
 }
 
+std::uint64_t PlannerNode::latestPlanningRequestGeneration() const {
+  const std::scoped_lock lock{planning_request_mutex_};
+  return latest_planning_request_generation_;
+}
+
 void PlannerNode::planningWorkerLoop(const std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     std::uint64_t generation = 0U;

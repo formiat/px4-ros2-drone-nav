@@ -457,6 +457,9 @@ void PlannerNode::checkCurrentPathAndPublish() {
   requestPlanningCycle();
 }
 
+// The planning transaction intentionally keeps all stage decisions in one worker
+// callback so a generation uses one immutable input snapshot.
+// NOLINTNEXTLINE(readability-function-size)
 void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   const auto cycle_started_at = std::chrono::steady_clock::now();
   const NavigationStateSnapshot navigation = navigationStateSnapshot();
@@ -533,8 +536,23 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
   publishProhibitedGrid(prohibited_grid);
   std::optional<TruncationReplanState> truncation_replan = truncationReplanState();
+  bool active_rollout_exhausting = false;
+  const bool active_rollout_path =
+      !use_static_map_ && no_static_rollout_enabled_ &&
+      active_rollout_path_id_ == last_published_path_id_ &&
+      executable_trajectory_artifact_.path_id == last_published_path_id_ &&
+      trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
+  if (active_rollout_path) {
+    (void)updateExecutableTrajectoryProgress(executable_trajectory_artifact_,
+                                             navigation.pose.position);
+    active_rollout_exhausting = executable_trajectory_artifact_.samples.back().s_m -
+                                    executable_trajectory_artifact_.current_s_m <=
+                                0.4 * rollout_planner_.config().horizon_m;
+  }
+  bool current_path_kept = false;
   if (!truncation_replan.has_value()) {
-    if (keepCurrentPathIfStillClear(prohibited_grid, *planning_result)) {
+    current_path_kept = keepCurrentPathIfStillClear(prohibited_grid, *planning_result);
+    if (current_path_kept && !active_rollout_exhausting) {
       return;
     }
     truncation_replan = truncationReplanState();
@@ -589,10 +607,45 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   };
   if (!use_static_map_ && no_static_rollout_enabled_ &&
       !truncation_replan.has_value()) {
+    const double current_goal_distance_m = distance(planning_start, goal_);
+    if (!std::isfinite(no_static_best_goal_distance_m_) ||
+        current_goal_distance_m + 0.5 < no_static_best_goal_distance_m_) {
+      no_static_best_goal_distance_m_ = current_goal_distance_m;
+      no_static_last_progress_at_ = cycle_started_at;
+    }
+    const double seconds_since_progress =
+        no_static_last_progress_at_ == std::chrono::steady_clock::time_point{}
+            ? 0.0
+            : std::chrono::duration<double>(cycle_started_at -
+                                            no_static_last_progress_at_)
+                  .count();
+    if (no_static_recovery_guide_target_.has_value() &&
+        distance(planning_start, *no_static_recovery_guide_target_) <= 2.0) {
+      no_static_recovery_guide_target_.reset();
+      no_static_orchestrator_.setRecoveryGuideAvailable(false);
+    }
+    Point2 rollout_start = planning_start;
+    Point2 rollout_velocity =
+        navigation.velocity_valid ? navigation.velocity : Point2{};
+    double stable_prefix_distance_m = 0.0;
+    if (active_rollout_path) {
+      stable_prefix_distance_m =
+          std::min(5.0, std::max(2.0, 1.5 * navigation.speed_mps));
+      const double join_s_m = std::min(
+          executable_trajectory_artifact_.samples.back().s_m,
+          executable_trajectory_artifact_.current_s_m + stable_prefix_distance_m);
+      const TrajectoryPointSample join =
+          trajectorySampleAtS(executable_trajectory_artifact_.samples, join_s_m);
+      rollout_start = join.point;
+      const double join_speed_mps = std::max(0.0, navigation.speed_mps);
+      rollout_velocity =
+          Point2{join.tangent.x * join_speed_mps, join.tangent.y * join_speed_mps};
+    }
+    const Point2 preferred_target = no_static_recovery_guide_target_.value_or(goal_);
     const RolloutResult rollout = rollout_planner_.plan(RolloutInput{
-        .position = planning_start,
-        .velocity = navigation.velocity_valid ? navigation.velocity : Point2{},
-        .preferred_target = goal_,
+        .position = rollout_start,
+        .velocity = rollout_velocity,
+        .preferred_target = preferred_target,
         .raw_grid = &prepared->raw_grid,
         .prohibited_grid = &prohibited_grid,
         .planning_grid = &planning_grid,
@@ -600,10 +653,21 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
         .grid_revision = prepared->version.build_revision,
     });
     std::size_t finalist_index = 0U;
+    bool validated_candidate_seen = false;
     for (const RolloutCandidate& finalist :
          rollout.rankedShortlist(rollout_planner_.config().max_finalists)) {
       ++finalist_index;
       std::vector<TrajectoryPointSample> geometry_samples = finalist.samples;
+      if (active_rollout_path) {
+        const StablePrefixStitchResult stitch =
+            stitchStableExecutablePrefix(executable_trajectory_artifact_.samples,
+                                         executable_trajectory_artifact_.current_s_m,
+                                         stable_prefix_distance_m, finalist.samples);
+        if (!stitch.valid) {
+          continue;
+        }
+        geometry_samples = stitch.samples;
+      }
       assignTrajectorySampleAltitude(geometry_samples, navigation.altitude_valid
                                                            ? navigation.altitude_m
                                                            : initial_altitude_m_);
@@ -619,7 +683,8 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
           get_logger(),
           "NO_STATIC_ROLLOUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " finalist=%zu/%zu tier=%s score=%.3f progress=%.2fm valid=%s "
-          "status=%.*s generated=%zu raw_rejected=%zu outside_rejected=%zu",
+          "status=%.*s generated=%zu raw_rejected=%zu outside_rejected=%zu "
+          "dynamic_rejected=%zu",
           request_generation, prepared->version.build_revision, finalist_index,
           rollout.rankedShortlist(rollout_planner_.config().max_finalists).size(),
           rolloutTraversabilityTierName(finalist.tier), finalist.score,
@@ -627,21 +692,32 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
           static_cast<int>(trajectoryPlannerStatusName(finalized.stats.status).size()),
           trajectoryPlannerStatusName(finalized.stats.status).data(),
           rollout.diagnostics.generated, rollout.diagnostics.raw_occupied_rejections,
-          rollout.diagnostics.outside_grid_rejections);
+          rollout.diagnostics.outside_grid_rejections,
+          rollout.diagnostics.dynamic_limit_rejections);
       if (!finalized.valid) {
         continue;
       }
+      validated_candidate_seen = true;
+      const std::uint64_t latest_generation = latestPlanningRequestGeneration();
+      const std::uint64_t latest_grid_revision =
+          planning_grid_snapshot_builder_.nextRevision() - 1U;
       const NoStaticPlannerDecision orchestration =
           no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
               .generation = request_generation,
-              .latest_generation = request_generation,
+              .latest_generation = latest_generation,
               .grid_revision = prepared->version.build_revision,
-              .latest_grid_revision = prepared->version.build_revision,
+              .latest_grid_revision = latest_grid_revision,
               .candidate_valid = true,
-              .active_suffix_exhausting = true,
+              .active_suffix_blocked = !current_path_kept && active_rollout_path,
+              .active_suffix_exhausting = active_rollout_exhausting,
               .candidate_score = finalist.score,
               .active_score = active_rollout_score_,
+              .seconds_since_progress = seconds_since_progress,
           });
+      if (orchestration.action == NoStaticPlannerAction::kRejectStale) {
+        requestPlanningCycle();
+        return;
+      }
       if (orchestration.action != NoStaticPlannerAction::kPublish) {
         continue;
       }
@@ -651,18 +727,24 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
       TrajectoryDeliveryDiagnostics rollout_delivery{
           .generation = request_generation,
       };
+      std::uint64_t published_path_id = 0U;
       const std::vector<Point2> route_points =
           trajectorySamplePoints(finalized.samples);
       if (publishTrajectoryResult(
               finalized, route_points, "no_static_rollout",
               elapsedMilliseconds(cycle_started_at), rollout_delivery,
               rolloutTraversabilityTierName(finalist.tier),
-              rolloutTraversabilityTierName(finalist.tier), nullptr, &prepared->version,
+              rolloutTraversabilityTierName(finalist.tier), &published_path_id,
+              &prepared->version,
               reaches_mission_goal ? TrajectoryEndpointSemantics::kMissionGoal
                                    : TrajectoryEndpointSemantics::kLocalHorizon)) {
         active_rollout_score_ = finalist.score;
+        active_rollout_path_id_ = published_path_id;
         return;
       }
+    }
+    if (validated_candidate_seen) {
+      return;
     }
     RCLCPP_WARN(get_logger(),
                 "NO_STATIC_ROLLOUT no_validated_candidate=true generation=%" PRIu64
@@ -671,14 +753,23 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
                 request_generation, prepared->version.build_revision,
                 rolloutRejectReasonName(rollout.reject_reason),
                 rollout.ranked_candidates.size());
-    (void)no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
-        .generation = request_generation,
-        .latest_generation = request_generation,
-        .grid_revision = prepared->version.build_revision,
-        .latest_grid_revision = prepared->version.build_revision,
-        .candidate_valid = false,
-        .active_score = active_rollout_score_,
-    });
+    const NoStaticPlannerDecision failure_decision =
+        no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
+            .generation = request_generation,
+            .latest_generation = latestPlanningRequestGeneration(),
+            .grid_revision = prepared->version.build_revision,
+            .latest_grid_revision = planning_grid_snapshot_builder_.nextRevision() - 1U,
+            .candidate_valid = false,
+            .active_score = active_rollout_score_,
+            .seconds_since_progress = seconds_since_progress,
+        });
+    if (failure_decision.action == NoStaticPlannerAction::kRejectStale) {
+      requestPlanningCycle();
+      return;
+    }
+    if (failure_decision.action != NoStaticPlannerAction::kRequestRecovery) {
+      return;
+    }
   }
   std::optional<PathComputationResult> path_result;
   std::size_t astar_grid_index = 0U;
@@ -693,6 +784,37 @@ void PlannerNode::runPlanningCycle(const std::uint64_t request_generation) {
   }
   if (!path_result.has_value()) {
     publishPlanningFailureHold();
+    return;
+  }
+  if (!use_static_map_ && no_static_rollout_enabled_ &&
+      !truncation_replan.has_value()) {
+    const std::vector<GridIndex>& guide_cells = path_result->smoothed_cells.empty()
+                                                    ? path_result->astar.path
+                                                    : path_result->smoothed_cells;
+    if (guide_cells.empty()) {
+      return;
+    }
+    double accumulated_m = 0.0;
+    Point2 guide_target =
+        grid_candidates[astar_grid_index].grid->cellCenter(guide_cells.back());
+    Point2 previous =
+        grid_candidates[astar_grid_index].grid->cellCenter(guide_cells.front());
+    for (const GridIndex cell : guide_cells) {
+      const Point2 point = grid_candidates[astar_grid_index].grid->cellCenter(cell);
+      accumulated_m += distance(previous, point);
+      previous = point;
+      guide_target = point;
+      if (accumulated_m >= rollout_planner_.config().horizon_m) {
+        break;
+      }
+    }
+    no_static_recovery_guide_target_ = guide_target;
+    no_static_orchestrator_.setRecoveryGuideAvailable(true);
+    RCLCPP_WARN(get_logger(),
+                "NO_STATIC_ROLLOUT recovery_guide_ready=true generation=%" PRIu64
+                " guide=(%.2f,%.2f) guide_cells=%zu; A* path is not published",
+                request_generation, guide_target.x, guide_target.y, guide_cells.size());
+    requestPlanningCycle();
     return;
   }
   grid_candidates[astar_grid_index].clearance_field =

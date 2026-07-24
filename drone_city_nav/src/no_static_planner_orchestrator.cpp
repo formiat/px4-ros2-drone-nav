@@ -4,6 +4,53 @@
 #include <cmath>
 
 namespace drone_city_nav {
+namespace {
+
+void appendDistinct(std::vector<TrajectoryPointSample>& samples,
+                    const TrajectoryPointSample& sample) {
+  if (!samples.empty() && distance(samples.back().point, sample.point) <= 1.0e-6) {
+    samples.back() = sample;
+    return;
+  }
+  samples.push_back(sample);
+}
+
+} // namespace
+
+StablePrefixStitchResult stitchStableExecutablePrefix(
+    const std::span<const TrajectoryPointSample> active_samples,
+    const double current_s_m, const double prefix_distance_m,
+    const std::span<const TrajectoryPointSample> successor_samples,
+    const double endpoint_tolerance_m) {
+  StablePrefixStitchResult result;
+  if (!trajectorySamplesAreUsable(active_samples) ||
+      !trajectorySamplesAreUsable(successor_samples) || !std::isfinite(current_s_m) ||
+      !std::isfinite(prefix_distance_m)) {
+    return result;
+  }
+  result.join_s_m = std::clamp(current_s_m + std::max(0.0, prefix_distance_m),
+                               active_samples.front().s_m, active_samples.back().s_m);
+  const TrajectoryPointSample start = trajectorySampleAtS(active_samples, current_s_m);
+  const TrajectoryPointSample join =
+      trajectorySampleAtS(active_samples, result.join_s_m);
+  if (distance(join.point, successor_samples.front().point) >
+      std::max(0.0, endpoint_tolerance_m)) {
+    return result;
+  }
+  appendDistinct(result.samples, start);
+  for (const TrajectoryPointSample& sample : active_samples) {
+    if (sample.s_m > current_s_m && sample.s_m < result.join_s_m) {
+      appendDistinct(result.samples, sample);
+    }
+  }
+  appendDistinct(result.samples, join);
+  for (std::size_t index = 1U; index < successor_samples.size(); ++index) {
+    appendDistinct(result.samples, successor_samples[index]);
+  }
+  populateTrajectorySampleGeometry(result.samples);
+  result.valid = trajectorySamplesAreUsable(result.samples);
+  return result;
+}
 
 NoStaticPlannerOrchestrator::NoStaticPlannerOrchestrator(
     const NoStaticPlannerOrchestratorConfig& config)

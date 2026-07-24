@@ -24,15 +24,18 @@ namespace {
 [[nodiscard]] bool rawClear(const OccupancyGrid2D& grid,
                             std::span<const TrajectoryPointSample> samples,
                             RolloutDiagnostics& diagnostics) {
-  for (const TrajectoryPointSample& sample : samples) {
-    const std::optional<GridIndex> cell = grid.worldToCell(sample.point);
-    if (!cell.has_value()) {
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
+    const std::optional<GridIndex> end = grid.worldToCell(samples[index + 1U].point);
+    if (!start.has_value() || !end.has_value()) {
       ++diagnostics.outside_grid_rejections;
       return false;
     }
-    if (grid.isOccupied(*cell)) {
-      ++diagnostics.raw_occupied_rejections;
-      return false;
+    for (const GridIndex cell : grid.cellsOnLine(*start, *end)) {
+      if (grid.isOccupied(cell)) {
+        ++diagnostics.raw_occupied_rejections;
+        return false;
+      }
     }
   }
   return true;
@@ -40,10 +43,19 @@ namespace {
 
 [[nodiscard]] bool traversable(const OccupancyGrid2D& grid,
                                std::span<const TrajectoryPointSample> samples) {
-  return std::ranges::all_of(samples, [&grid](const TrajectoryPointSample& sample) {
-    const std::optional<GridIndex> cell = grid.worldToCell(sample.point);
-    return cell.has_value() && !grid.isProhibited(*cell);
-  });
+  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
+    const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
+    const std::optional<GridIndex> end = grid.worldToCell(samples[index + 1U].point);
+    if (!start.has_value() || !end.has_value()) {
+      return false;
+    }
+    if (std::ranges::any_of(
+            grid.cellsOnLine(*start, *end),
+            [&grid](const GridIndex cell) { return grid.isProhibited(cell); })) {
+      return false;
+    }
+  }
+  return true;
 }
 
 [[nodiscard]] RolloutTraversabilityTier
@@ -88,8 +100,17 @@ RecedingHorizonTrajectoryPlanner::RecedingHorizonTrajectoryPlanner(
   if ((config_.heading_samples % 2U) == 0U) {
     ++config_.heading_samples;
   }
+  config_.speed_samples = std::clamp<std::size_t>(config_.speed_samples, 1U, 9U);
   config_.max_heading_offset_rad =
       std::clamp(config_.max_heading_offset_rad, 0.0, std::numbers::pi);
+  config_.horizon_time_s = std::clamp(config_.horizon_time_s, 0.5, 10.0);
+  config_.minimum_speed_mps = std::max(0.1, config_.minimum_speed_mps);
+  config_.maximum_speed_mps =
+      std::max(config_.minimum_speed_mps, config_.maximum_speed_mps);
+  config_.maximum_acceleration_mps2 = std::max(0.1, config_.maximum_acceleration_mps2);
+  config_.maximum_curvature_1pm = std::max(0.0, config_.maximum_curvature_1pm);
+  config_.maximum_lateral_acceleration_mps2 =
+      std::max(0.1, config_.maximum_lateral_acceleration_mps2);
   config_.max_finalists = std::clamp<std::size_t>(config_.max_finalists, 1U, 16U);
 }
 
@@ -116,11 +137,6 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
   const double initial_heading =
       speed > 0.25 ? std::atan2(input.velocity.y, input.velocity.x) : target_heading;
   const double base_heading_error = clampAngle(target_heading - initial_heading);
-  const double rollout_length = std::min(config_.horizon_m, goal_distance);
-  const std::size_t sample_count = std::max<std::size_t>(
-      2U,
-      static_cast<std::size_t>(std::ceil(rollout_length / config_.sample_step_m)) + 1U);
-
   for (std::size_t candidate_index = 0U; candidate_index < config_.heading_samples;
        ++candidate_index) {
     const double normalized =
@@ -131,45 +147,83 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
                1.0);
     const double offset = normalized * config_.max_heading_offset_rad;
     const double terminal_heading = target_heading + offset;
-    RolloutCandidate candidate;
-    candidate.heading_offset_rad = offset;
-    candidate.deterministic_index = candidate_index;
-    candidate.samples.reserve(sample_count);
-    for (std::size_t index = 0U; index < sample_count; ++index) {
-      const double t =
-          static_cast<double>(index) / static_cast<double>(sample_count - 1U);
-      const double smooth_t = t * t * (3.0 - 2.0 * t);
-      const double heading =
-          initial_heading + clampAngle(terminal_heading - initial_heading) * smooth_t;
-      const double s = rollout_length * t;
-      TrajectoryPointSample sample;
-      sample.s_m = s;
-      sample.point = Point2{input.position.x + s * std::cos(heading),
-                            input.position.y + s * std::sin(heading)};
-      sample.tangent = Point2{std::cos(heading), std::sin(heading)};
-      candidate.samples.push_back(std::move(sample));
+    for (std::size_t speed_index = 0U; speed_index < config_.speed_samples;
+         ++speed_index) {
+      const double speed_ratio =
+          config_.speed_samples == 1U
+              ? 1.0
+              : static_cast<double>(speed_index) /
+                    static_cast<double>(config_.speed_samples - 1U);
+      const double requested_speed =
+          config_.minimum_speed_mps +
+          speed_ratio * (config_.maximum_speed_mps - config_.minimum_speed_mps);
+      const double acceleration = (requested_speed - speed) / config_.horizon_time_s;
+      if (std::abs(acceleration) > config_.maximum_acceleration_mps2) {
+        ++result.diagnostics.dynamic_limit_rejections;
+        continue;
+      }
+      const double average_speed = 0.5 * (speed + requested_speed);
+      const double rollout_length = std::min(
+          {config_.horizon_m, goal_distance,
+           std::max(config_.sample_step_m, average_speed * config_.horizon_time_s)});
+      const double heading_delta = clampAngle(terminal_heading - initial_heading);
+      const double curvature = heading_delta / rollout_length;
+      if (std::abs(curvature) > config_.maximum_curvature_1pm ||
+          requested_speed * requested_speed * std::abs(curvature) >
+              config_.maximum_lateral_acceleration_mps2) {
+        ++result.diagnostics.dynamic_limit_rejections;
+        continue;
+      }
+      const std::size_t sample_count = std::max<std::size_t>(
+          2U,
+          static_cast<std::size_t>(std::ceil(rollout_length / config_.sample_step_m)) +
+              1U);
+      RolloutCandidate candidate;
+      candidate.heading_offset_rad = offset;
+      candidate.target_speed_mps = requested_speed;
+      candidate.curvature_1pm = curvature;
+      candidate.deterministic_index =
+          candidate_index * config_.speed_samples + speed_index;
+      candidate.samples.reserve(sample_count);
+      for (std::size_t index = 0U; index < sample_count; ++index) {
+        const double s = rollout_length * static_cast<double>(index) /
+                         static_cast<double>(sample_count - 1U);
+        const double heading = initial_heading + curvature * s;
+        Point2 point{};
+        if (std::abs(curvature) <= 1.0e-9) {
+          point = Point2{input.position.x + s * std::cos(initial_heading),
+                         input.position.y + s * std::sin(initial_heading)};
+        } else {
+          point =
+              Point2{input.position.x +
+                         (std::sin(heading) - std::sin(initial_heading)) / curvature,
+                     input.position.y -
+                         (std::cos(heading) - std::cos(initial_heading)) / curvature};
+        }
+        TrajectoryPointSample sample;
+        sample.s_m = s;
+        sample.point = point;
+        sample.tangent = Point2{std::cos(heading), std::sin(heading)};
+        sample.curvature_1pm = curvature;
+        candidate.samples.push_back(std::move(sample));
+      }
+      populateTrajectorySampleGeometry(candidate.samples);
+      ++result.diagnostics.generated;
+      if (!rawClear(*input.raw_grid, candidate.samples, result.diagnostics)) {
+        continue;
+      }
+      candidate.tier = classifyTier(input, candidate.samples);
+      const double after =
+          distance(candidate.samples.back().point, input.preferred_target);
+      candidate.progress_m = goal_distance - after;
+      candidate.score =
+          tierPenalty(candidate.tier, config_) -
+          config_.progress_weight * candidate.progress_m +
+          config_.lateral_deviation_weight * std::abs(offset) * rollout_length +
+          config_.heading_change_weight * std::abs(base_heading_error + offset) +
+          config_.curvature_weight * std::abs(curvature) * rollout_length;
+      result.ranked_candidates.push_back(std::move(candidate));
     }
-    populateTrajectorySampleGeometry(candidate.samples);
-    ++result.diagnostics.generated;
-    if (!rawClear(*input.raw_grid, candidate.samples, result.diagnostics)) {
-      continue;
-    }
-    candidate.tier = classifyTier(input, candidate.samples);
-    const double before = goal_distance;
-    const double after =
-        distance(candidate.samples.back().point, input.preferred_target);
-    candidate.progress_m = before - after;
-    double curvature_cost = 0.0;
-    for (const TrajectoryPointSample& sample : candidate.samples) {
-      curvature_cost += std::abs(sample.curvature_1pm);
-    }
-    candidate.score =
-        tierPenalty(candidate.tier, config_) -
-        config_.progress_weight * candidate.progress_m +
-        config_.lateral_deviation_weight * std::abs(offset) * rollout_length +
-        config_.heading_change_weight * std::abs(base_heading_error + offset) +
-        config_.curvature_weight * curvature_cost;
-    result.ranked_candidates.push_back(std::move(candidate));
   }
 
   std::ranges::sort(result.ranked_candidates,

@@ -715,9 +715,32 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("no_static_rollout_heading_samples", 9),
           1, 63));
+  config.no_static_rollout.planner.speed_samples =
+      static_cast<std::size_t>(std::clamp<std::int64_t>(
+          node.declare_parameter<std::int64_t>("no_static_rollout_speed_samples", 3), 1,
+          9));
   config.no_static_rollout.planner.max_heading_offset_rad = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_max_heading_offset_rad", 0.9),
       0.9, 0.0, std::numbers::pi);
+  config.no_static_rollout.planner.horizon_time_s = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_horizon_time_s", 3.0), 3.0, 0.5,
+      10.0);
+  config.no_static_rollout.planner.minimum_speed_mps = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_min_speed_mps", 2.0), 2.0, 0.1,
+      10.0);
+  config.no_static_rollout.planner.maximum_speed_mps = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_max_speed_mps", 10.0), 10.0,
+      config.no_static_rollout.planner.minimum_speed_mps, 30.0);
+  config.no_static_rollout.planner.maximum_acceleration_mps2 = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_max_acceleration_mps2", 4.0),
+      4.0, 0.1, 20.0);
+  config.no_static_rollout.planner.maximum_curvature_1pm = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_max_curvature_1pm", 0.20), 0.20,
+      0.0, 2.0);
+  config.no_static_rollout.planner.maximum_lateral_acceleration_mps2 =
+      boundedFiniteDouble(node.declare_parameter<double>(
+                              "no_static_rollout_max_lateral_acceleration_mps2", 4.0),
+                          4.0, 0.1, 30.0);
   config.no_static_rollout.planner.max_finalists =
       static_cast<std::size_t>(std::clamp<std::int64_t>(
           node.declare_parameter<std::int64_t>("no_static_rollout_max_finalists", 3), 1,

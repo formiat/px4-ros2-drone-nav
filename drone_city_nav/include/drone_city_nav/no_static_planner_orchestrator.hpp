@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <vector>
 
 namespace drone_city_nav {
 
@@ -46,6 +48,18 @@ struct NoStaticPlannerDecision {
   NoStaticPlannerAction action{NoStaticPlannerAction::kKeep};
   NoStaticPlannerMode mode{NoStaticPlannerMode::kDirectGoalRollout};
 };
+
+struct StablePrefixStitchResult {
+  bool valid{false};
+  std::vector<TrajectoryPointSample> samples;
+  double join_s_m{0.0};
+};
+
+[[nodiscard]] StablePrefixStitchResult
+stitchStableExecutablePrefix(std::span<const TrajectoryPointSample> active_samples,
+                             double current_s_m, double prefix_distance_m,
+                             std::span<const TrajectoryPointSample> successor_samples,
+                             double endpoint_tolerance_m = 1.0);
 
 class NoStaticPlannerOrchestrator {
 public:

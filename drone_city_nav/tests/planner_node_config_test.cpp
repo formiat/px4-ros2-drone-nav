@@ -61,6 +61,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_TRUE(config.no_static_rollout.enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.horizon_m, 25.0);
   EXPECT_EQ(config.no_static_rollout.planner.heading_samples, 9U);
+  EXPECT_EQ(config.no_static_rollout.planner.speed_samples, 3U);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.maximum_speed_mps, 10.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.maximum_acceleration_mps2, 4.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 3U);
   EXPECT_EQ(config.no_static_rollout.orchestrator.failed_rollout_cycles_before_recovery,
             3U);
