@@ -375,6 +375,8 @@ void PlannerNode::loadConfiguredKnownPassages() {
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
   config.planning_clearance_m = planning_clearance_m_;
+  config.physical_clearance_max_distance_m =
+      planner_core_.config().clearance_diagnostic_radius_m;
   return config;
 }
 
@@ -658,7 +660,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         .position = rollout_start,
         .velocity = rollout_velocity,
         .preferred_target = preferred_target,
-        .raw_grid = &prepared->raw_grid,
         .prohibited_grid = &prohibited_grid,
         .planning_grid = &planning_grid,
         .generation = invalidation_generation,
@@ -703,7 +704,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           get_logger(),
           "NO_STATIC_ROLLOUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " finalist=%zu/%zu tier=%s score=%.3f progress=%.2fm valid=%s "
-          "status=%.*s generated=%zu raw_rejected=%zu outside_rejected=%zu "
+          "status=%.*s generated=%zu prohibited_rejected=%zu outside_rejected=%zu "
           "dynamic_rejected=%zu mode=%s prefix_m=%.2f suffix_m=%.2f "
           "guide_revision=%" PRIu64 " rollout_ms=%.2f",
           invalidation_generation, prepared->version.build_revision, finalist_index,
@@ -712,7 +713,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           finalist.progress_m, finalized.valid ? "true" : "false",
           static_cast<int>(trajectoryPlannerStatusName(finalized.stats.status).size()),
           trajectoryPlannerStatusName(finalized.stats.status).data(),
-          rollout.diagnostics.generated, rollout.diagnostics.raw_occupied_rejections,
+          rollout.diagnostics.generated, rollout.diagnostics.prohibited_rejections,
           rollout.diagnostics.outside_grid_rejections,
           rollout.diagnostics.dynamic_limit_rejections,
           noStaticPlannerModeName(no_static_orchestrator_.mode()),

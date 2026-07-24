@@ -155,14 +155,17 @@ buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
   prohibited_grid.applyInflationFromDistanceField(occupied_distance_field,
                                                   inflation_radius_m);
 
-  OccupancyGrid2D planning_grid = raw_grid;
+  OccupancyGrid2D planning_grid = prohibited_grid;
   planning_grid.applyInflationFromDistanceField(
       occupied_distance_field, inflation_radius_m + planning_clearance_m);
+  ClearanceField2D physical_clearance = ClearanceField2D::build(
+      prohibited_grid, sanitizedNonNegative(config.physical_clearance_max_distance_m),
+      ClearanceSource::kOccupied);
 
   result.status = PlanningGridStatus::kReady;
-  result.raw_grid = std::move(raw_grid);
   result.grid = std::move(prohibited_grid);
   result.planning_grid = std::move(planning_grid);
+  result.physical_clearance = std::move(physical_clearance);
   return result;
 }
 
@@ -257,7 +260,7 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
     static_cache_->prohibited_grid = static_cache_->raw_grid;
     static_cache_->prohibited_grid.applyInflationFromDistanceField(
         static_cache_->occupied_distance_field, inflation_radius_m);
-    static_cache_->planning_grid = static_cache_->raw_grid;
+    static_cache_->planning_grid = static_cache_->prohibited_grid;
     static_cache_->planning_grid.applyInflationFromDistanceField(
         static_cache_->occupied_distance_field,
         inflation_radius_m + planning_clearance_m);
@@ -290,7 +293,7 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
 
   OccupancyGrid2D prohibited_grid = raw_grid;
   prohibited_grid.mergeInflationFrom(static_cache_->prohibited_grid);
-  OccupancyGrid2D planning_grid = raw_grid;
+  OccupancyGrid2D planning_grid = prohibited_grid;
   planning_grid.mergeInflationFrom(static_cache_->planning_grid);
 
   if (result.cache.dynamic_distance_source_cells > 0U) {
@@ -310,7 +313,7 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
                                                             inflation_radius_m);
     prohibited_grid.mergeInflationFrom(dynamic_prohibited_grid);
 
-    OccupancyGrid2D dynamic_planning_grid = dynamic_raw;
+    OccupancyGrid2D dynamic_planning_grid = dynamic_prohibited_grid;
     dynamic_planning_grid.applyInflationFromDistanceField(
         dynamic_distance_field, inflation_radius_m + planning_clearance_m);
     planning_grid.mergeInflationFrom(dynamic_planning_grid);
@@ -318,10 +321,13 @@ PlanningGridBuilder::build(const PlanningGridBuilderConfig& config,
         elapsedMilliseconds(dynamic_inflation_started_at);
   }
 
+  ClearanceField2D physical_clearance = ClearanceField2D::build(
+      prohibited_grid, sanitizedNonNegative(config.physical_clearance_max_distance_m),
+      ClearanceSource::kOccupied);
   result.status = PlanningGridStatus::kReady;
-  result.raw_grid = std::move(raw_grid);
   result.grid = std::move(prohibited_grid);
   result.planning_grid = std::move(planning_grid);
+  result.physical_clearance = std::move(physical_clearance);
   return result;
 }
 

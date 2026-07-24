@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/clearance_field.hpp"
 
 #include <cstddef>
 #include <limits>
@@ -34,7 +34,8 @@ struct PathRawClearanceEvaluation {
 };
 
 [[nodiscard]] PathRawClearanceEvaluation
-evaluatePathRawClearance(const OccupancyGrid2D& raw_grid,
+evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
+                         const ClearanceField2D& physical_clearance,
                          std::span<const Point2> remaining_path,
                          const PathRawClearanceMonitorConfig& config);
 

@@ -65,8 +65,9 @@ updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
     double minimum_s_m, const BlockedSpanScanConfig& config = {});
 
 [[nodiscard]] std::optional<BlockedSpan> findFirstRawClearanceBlockedSpan(
-    const OccupancyGrid2D& raw_grid, std::span<const TrajectoryPointSample> trajectory,
-    double minimum_s_m, const BlockedSpanScanConfig& config = {});
+    const OccupancyGrid2D& prohibited_grid, const ClearanceField2D& physical_clearance,
+    std::span<const TrajectoryPointSample> trajectory, double minimum_s_m,
+    const BlockedSpanScanConfig& config = {});
 
 [[nodiscard]] std::vector<ReconnectCandidate>
 makeReconnectCandidates(const ExecutableTrajectoryArtifact& artifact,

@@ -1,7 +1,5 @@
 #include "drone_city_nav/path_raw_clearance_monitor.hpp"
 
-#include "drone_city_nav/clearance_field.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -55,11 +53,18 @@ void populateNearestRawCell(const OccupancyGrid2D& grid, const GridIndex query,
 } // namespace
 
 PathRawClearanceEvaluation
-evaluatePathRawClearance(const OccupancyGrid2D& raw_grid,
+evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
+                         const ClearanceField2D& physical_clearance,
                          const std::span<const Point2> remaining_path,
                          const PathRawClearanceMonitorConfig& input_config) {
   PathRawClearanceEvaluation result{};
-  if (remaining_path.size() < 2U || !(raw_grid.resolution() > 0.0)) {
+  if (remaining_path.size() < 2U || !(prohibited_grid.resolution() > 0.0) ||
+      physical_clearance.source() != ClearanceSource::kOccupied ||
+      physical_clearance.bounds().origin_x != prohibited_grid.originX() ||
+      physical_clearance.bounds().origin_y != prohibited_grid.originY() ||
+      physical_clearance.bounds().resolution_m != prohibited_grid.resolution() ||
+      physical_clearance.bounds().width_cells != prohibited_grid.width() ||
+      physical_clearance.bounds().height_cells != prohibited_grid.height()) {
     return result;
   }
   const PathRawClearanceMonitorConfig config{
@@ -69,10 +74,8 @@ evaluatePathRawClearance(const OccupancyGrid2D& raw_grid,
       .min_violation_length_m = std::max(0.0, input_config.min_violation_length_m),
       .sample_step_m = std::clamp(input_config.sample_step_m, 0.1, 5.0),
   };
-  const ClearanceField2D field = ClearanceField2D::build(
-      raw_grid, config.arm_clearance_m, ClearanceSource::kOccupied);
   const SampleClearance current =
-      sampleClearance(raw_grid, field, remaining_path.front());
+      sampleClearance(prohibited_grid, physical_clearance, remaining_path.front());
   if (!current.valid) {
     return result;
   }
@@ -100,7 +103,8 @@ evaluatePathRawClearance(const OccupancyGrid2D& raw_grid,
       const Point2 point{start.x + (end.x - start.x) * ratio,
                          start.y + (end.y - start.y) * ratio};
       const double sample_distance_m = distance_m + segment_length_m * ratio;
-      const SampleClearance sample = sampleClearance(raw_grid, field, point);
+      const SampleClearance sample =
+          sampleClearance(prohibited_grid, physical_clearance, point);
       const bool below_trigger = sample.valid && sample.clearance_m + kTinyDistanceM <
                                                      config.trigger_clearance_m;
       if (!below_trigger) {
@@ -119,7 +123,7 @@ evaluatePathRawClearance(const OccupancyGrid2D& raw_grid,
           std::min(result.violation.min_clearance_m, sample.clearance_m);
       if (result.violation.length_m + kTinyDistanceM >= config.min_violation_length_m) {
         result.violation.detected = true;
-        populateNearestRawCell(raw_grid, entry_cell, config.trigger_clearance_m,
+        populateNearestRawCell(prohibited_grid, entry_cell, config.trigger_clearance_m,
                                result.violation);
         return result;
       }

@@ -21,32 +21,16 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-[[nodiscard]] bool rawClear(const OccupancyGrid2D& grid,
-                            std::span<const TrajectoryPointSample> samples,
-                            RolloutDiagnostics& diagnostics) {
-  for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
-    const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
-    const std::optional<GridIndex> end = grid.worldToCell(samples[index + 1U].point);
-    if (!start.has_value() || !end.has_value()) {
-      ++diagnostics.outside_grid_rejections;
-      return false;
-    }
-    for (const GridIndex cell : grid.cellsOnLine(*start, *end)) {
-      if (grid.isOccupied(cell)) {
-        ++diagnostics.raw_occupied_rejections;
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 [[nodiscard]] bool traversable(const OccupancyGrid2D& grid,
-                               std::span<const TrajectoryPointSample> samples) {
+                               std::span<const TrajectoryPointSample> samples,
+                               RolloutDiagnostics* const diagnostics = nullptr) {
   for (std::size_t index = 0U; index + 1U < samples.size(); ++index) {
     const std::optional<GridIndex> start = grid.worldToCell(samples[index].point);
     const std::optional<GridIndex> end = grid.worldToCell(samples[index + 1U].point);
     if (!start.has_value() || !end.has_value()) {
+      if (diagnostics != nullptr) {
+        ++diagnostics->outside_grid_rejections;
+      }
       return false;
     }
     if (std::ranges::any_of(
@@ -67,7 +51,7 @@ classifyTier(const RolloutInput& input,
   if (traversable(*input.prohibited_grid, samples)) {
     return RolloutTraversabilityTier::kRuntimeProhibited;
   }
-  return RolloutTraversabilityTier::kRawClear;
+  return RolloutTraversabilityTier::kRuntimeProhibited;
 }
 
 [[nodiscard]] double tierPenalty(const RolloutTraversabilityTier tier,
@@ -77,10 +61,8 @@ classifyTier(const RolloutInput& input,
       return 0.0;
     case RolloutTraversabilityTier::kRuntimeProhibited:
       return config.degraded_tier_penalty;
-    case RolloutTraversabilityTier::kRawClear:
-      return 2.0 * config.degraded_tier_penalty;
   }
-  return 2.0 * config.degraded_tier_penalty;
+  return config.degraded_tier_penalty;
 }
 
 } // namespace
@@ -119,8 +101,8 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
   result.generation = input.generation;
   result.grid_revision = input.grid_revision;
   if (!finitePoint(input.position) || !finitePoint(input.velocity) ||
-      !finitePoint(input.preferred_target) || input.raw_grid == nullptr ||
-      input.prohibited_grid == nullptr || input.planning_grid == nullptr) {
+      !finitePoint(input.preferred_target) || input.prohibited_grid == nullptr ||
+      input.planning_grid == nullptr) {
     result.reject_reason = RolloutRejectReason::kInvalidInput;
     return result;
   }
@@ -209,7 +191,9 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       }
       populateTrajectorySampleGeometry(candidate.samples);
       ++result.diagnostics.generated;
-      if (!rawClear(*input.raw_grid, candidate.samples, result.diagnostics)) {
+      if (!traversable(*input.prohibited_grid, candidate.samples,
+                       &result.diagnostics)) {
+        ++result.diagnostics.prohibited_rejections;
         continue;
       }
       candidate.tier = classifyTier(input, candidate.samples);
@@ -250,8 +234,6 @@ rolloutTraversabilityTierName(const RolloutTraversabilityTier tier) noexcept {
       return "planning_clearance";
     case RolloutTraversabilityTier::kRuntimeProhibited:
       return "runtime_prohibited";
-    case RolloutTraversabilityTier::kRawClear:
-      return "raw_clear";
   }
   return "unknown";
 }

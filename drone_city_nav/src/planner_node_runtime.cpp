@@ -386,11 +386,12 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     return awaiting_truncation_confirmation;
   }
 
-  if (safe_trajectory_truncation_enabled_ && planning_result.raw_grid.has_value() &&
+  if (safe_trajectory_truncation_enabled_ &&
+      planning_result.physical_clearance.has_value() &&
       !path_raw_clearance_triggered_) {
-    const PathRawClearanceEvaluation clearance =
-        evaluatePathRawClearance(*planning_result.raw_grid, decision.remaining_path,
-                                 path_raw_clearance_monitor_config_);
+    const PathRawClearanceEvaluation clearance = evaluatePathRawClearance(
+        grid, planning_result.physical_clearance.value(), decision.remaining_path,
+        path_raw_clearance_monitor_config_);
     if (clearance.valid && clearance.current_position_arms &&
         !path_raw_clearance_armed_) {
       path_raw_clearance_armed_ = true;
@@ -421,10 +422,10 @@ bool PlannerNode::keepCurrentPathIfStillClear(
       bool awaiting_truncation_confirmation = false;
       if (replan_blocker_pub_ != nullptr) {
         std::optional<BlockedSpan> blocked_span;
-        if (planning_result.raw_grid.has_value() &&
-            executable_trajectory_artifact_.path_id == last_published_path_id_) {
+        if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
           blocked_span = findFirstRawClearanceBlockedSpan(
-              *planning_result.raw_grid, executable_trajectory_artifact_.samples,
+              grid, planning_result.physical_clearance.value(),
+              executable_trajectory_artifact_.samples,
               executable_trajectory_artifact_.current_s_m,
               BlockedSpanScanConfig{
                   .sample_step_m = path_raw_clearance_monitor_config_.sample_step_m,

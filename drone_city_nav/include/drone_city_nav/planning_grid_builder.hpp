@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/clearance_field.hpp"
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
@@ -41,6 +42,7 @@ struct PlanningGridBuilderConfig {
   GridBounds fallback_bounds{};
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
+  double physical_clearance_max_distance_m{10.0};
 };
 
 struct PlanningGridCacheStats {
@@ -70,9 +72,9 @@ struct PlanningGridSources {
 
 struct PlanningGridBuildResult {
   PlanningGridStatus status{PlanningGridStatus::kNoReadySourceData};
-  std::optional<OccupancyGrid2D> raw_grid;
   std::optional<OccupancyGrid2D> grid;
   std::optional<OccupancyGrid2D> planning_grid;
+  std::optional<ClearanceField2D> physical_clearance;
   std::optional<OccupancyGrid2D> current_lidar_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};

@@ -14,7 +14,6 @@ struct PlanningGridVersion {
   std::uint64_t memory_sequence{0U};
   std::int64_t lidar_update_ns{0};
   std::uint64_t config_fingerprint{0U};
-  OccupancyGridFingerprint raw{};
   OccupancyGridFingerprint runtime_prohibited{};
   OccupancyGridFingerprint planning_clearance{};
 };
@@ -28,9 +27,9 @@ struct PlanningGridPreparationInput {
 };
 
 struct PreparedPlanningGridSnapshot {
-  OccupancyGrid2D raw_grid;
   OccupancyGrid2D runtime_prohibited_grid;
   OccupancyGrid2D planning_clearance_grid;
+  ClearanceField2D physical_clearance;
   ClearanceField2D runtime_clearance;
   ClearanceField2D planning_clearance;
   PlanningGridVersion version{};

@@ -20,16 +20,14 @@ void occupyWorldPoint(OccupancyGrid2D& grid, const Point2 point) {
 } // namespace
 
 TEST(RecedingHorizonTrajectoryPlanner, SelectsDirectOpenSpaceCandidate) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   const RecedingHorizonTrajectoryPlanner planner;
 
   const RolloutResult result =
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {2.0, 0.0},
                                 .preferred_target = {50.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
@@ -41,41 +39,37 @@ TEST(RecedingHorizonTrajectoryPlanner, SelectsDirectOpenSpaceCandidate) {
   EXPECT_LE(result.ranked_candidates.front().samples.back().point.x, 25.0);
 }
 
-TEST(RecedingHorizonTrajectoryPlanner, RejectsRawOccupiedCandidates) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
-  for (int y = 0; y < raw.height(); ++y) {
-    for (int x = 0; x < raw.width(); ++x) {
-      raw.setOccupied(GridIndex{x, y});
+TEST(RecedingHorizonTrajectoryPlanner, RejectsProhibitedCandidates) {
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
+  for (int y = 0; y < prohibited.height(); ++y) {
+    for (int x = 0; x < prohibited.width(); ++x) {
+      prohibited.setOccupied(GridIndex{x, y});
     }
   }
-  raw.setFree(GridIndex{40, 40});
+  prohibited.setFree(GridIndex{40, 40});
   const RecedingHorizonTrajectoryPlanner planner;
 
   const RolloutResult result =
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {2.0, 0.0},
                                 .preferred_target = {50.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
   EXPECT_TRUE(result.ranked_candidates.empty());
   EXPECT_EQ(result.reject_reason, RolloutRejectReason::kNoCandidate);
-  EXPECT_GT(result.diagnostics.raw_occupied_rejections, 0U);
+  EXPECT_GT(result.diagnostics.prohibited_rejections, 0U);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, UsesDeterministicTieBreak) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   const RecedingHorizonTrajectoryPlanner planner{
       RolloutPlannerConfig{.heading_samples = 3U, .max_heading_offset_rad = 0.5}};
   const RolloutInput input{.position = {0.0, 0.0},
                            .velocity = {0.0, 0.0},
                            .preferred_target = {30.0, 0.0},
-                           .raw_grid = &raw,
                            .prohibited_grid = &prohibited,
                            .planning_grid = &planning};
 
@@ -89,11 +83,10 @@ TEST(RecedingHorizonTrajectoryPlanner, UsesDeterministicTieBreak) {
   }
 }
 
-TEST(RecedingHorizonTrajectoryPlanner, RejectsRawObstacleBetweenSparseSamples) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
-  occupyWorldPoint(raw, Point2{1.5, 0.0});
+TEST(RecedingHorizonTrajectoryPlanner, RejectsProhibitedObstacleBetweenSparseSamples) {
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
+  occupyWorldPoint(prohibited, Point2{1.5, 0.0});
   const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
       .horizon_m = 6.0,
       .sample_step_m = 5.0,
@@ -107,20 +100,18 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsRawObstacleBetweenSparseSamples) {
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {2.0, 0.0},
                                 .preferred_target = {20.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
   EXPECT_TRUE(result.ranked_candidates.empty());
-  EXPECT_GT(result.diagnostics.raw_occupied_rejections, 0U);
+  EXPECT_GT(result.diagnostics.prohibited_rejections, 0U);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, FindsLeftOrRightAvoidanceCandidate) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   for (int y_index = -1; y_index <= 1; ++y_index) {
-    occupyWorldPoint(raw, Point2{5.0, 0.5 * static_cast<double>(y_index)});
+    occupyWorldPoint(prohibited, Point2{5.0, 0.5 * static_cast<double>(y_index)});
   }
   const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
       .horizon_m = 12.0,
@@ -135,7 +126,6 @@ TEST(RecedingHorizonTrajectoryPlanner, FindsLeftOrRightAvoidanceCandidate) {
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {4.0, 0.0},
                                 .preferred_target = {30.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
@@ -144,9 +134,8 @@ TEST(RecedingHorizonTrajectoryPlanner, FindsLeftOrRightAvoidanceCandidate) {
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, UsesDegradedTraversabilityTier) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   occupyWorldPoint(planning, Point2{3.0, 0.0});
   const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
       .heading_samples = 1U,
@@ -159,7 +148,6 @@ TEST(RecedingHorizonTrajectoryPlanner, UsesDegradedTraversabilityTier) {
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {2.0, 0.0},
                                 .preferred_target = {30.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
@@ -169,9 +157,8 @@ TEST(RecedingHorizonTrajectoryPlanner, UsesDegradedTraversabilityTier) {
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, RejectsDynamicLimitViolation) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
       .heading_samples = 1U,
       .speed_samples = 1U,
@@ -184,7 +171,6 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsDynamicLimitViolation) {
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {5.0, 0.0},
                                 .preferred_target = {0.0, 30.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 
@@ -193,15 +179,13 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsDynamicLimitViolation) {
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, StopsAtGoalInsideHorizon) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   const RecedingHorizonTrajectoryPlanner planner;
 
   const RolloutResult result = planner.plan(RolloutInput{.position = {0.0, 0.0},
                                                          .velocity = {2.0, 0.0},
                                                          .preferred_target = {4.0, 0.0},
-                                                         .raw_grid = &raw,
                                                          .prohibited_grid = &prohibited,
                                                          .planning_grid = &planning});
 
@@ -210,16 +194,14 @@ TEST(RecedingHorizonTrajectoryPlanner, StopsAtGoalInsideHorizon) {
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, HandlesZeroVelocityStart) {
-  OccupancyGrid2D raw = freeGrid();
-  OccupancyGrid2D prohibited = raw;
-  OccupancyGrid2D planning = raw;
+  OccupancyGrid2D prohibited = freeGrid();
+  OccupancyGrid2D planning = prohibited;
   const RecedingHorizonTrajectoryPlanner planner;
 
   const RolloutResult result =
       planner.plan(RolloutInput{.position = {0.0, 0.0},
                                 .velocity = {0.0, 0.0},
                                 .preferred_target = {20.0, 0.0},
-                                .raw_grid = &raw,
                                 .prohibited_grid = &prohibited,
                                 .planning_grid = &planning});
 

@@ -35,6 +35,7 @@ PlannerNode::preparePlanningGridSnapshot(const PlanningGridBuildResult& build_re
   hashValue(config_fingerprint, static_cast<std::uint64_t>(use_static_map_ ? 1U : 0U));
   hashValue(config_fingerprint, inflation_radius_m_);
   hashValue(config_fingerprint, planning_clearance_m_);
+  hashValue(config_fingerprint, planner_core_.config().clearance_diagnostic_radius_m);
   hashValue(config_fingerprint, local_inflation_relaxation_radius_m_);
   hashValue(config_fingerprint, fallback_grid_bounds_.origin_x);
   hashValue(config_fingerprint, fallback_grid_bounds_.origin_y);

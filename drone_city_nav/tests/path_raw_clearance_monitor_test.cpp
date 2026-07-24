@@ -21,6 +21,10 @@ namespace {
   return std::vector<Point2>{{0.0, 0.0}, {40.0, 0.0}};
 }
 
+[[nodiscard]] ClearanceField2D physicalClearance(const OccupancyGrid2D& grid) {
+  return ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
+}
+
 } // namespace
 
 TEST(PathRawClearanceMonitor, DetectsSustainedLowClearanceAhead) {
@@ -29,8 +33,9 @@ TEST(PathRawClearanceMonitor, DetectsSustainedLowClearanceAhead) {
     grid.setOccupied(GridIndex{x, 13});
   }
 
-  const PathRawClearanceEvaluation result =
-      evaluatePathRawClearance(grid, linePath(), PathRawClearanceMonitorConfig{});
+  const ClearanceField2D clearance = physicalClearance(grid);
+  const PathRawClearanceEvaluation result = evaluatePathRawClearance(
+      grid, clearance, linePath(), PathRawClearanceMonitorConfig{});
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(result.current_position_arms);
@@ -46,8 +51,9 @@ TEST(PathRawClearanceMonitor, IgnoresShortLowClearanceInterval) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{20, 13});
 
+  const ClearanceField2D clearance = physicalClearance(grid);
   const PathRawClearanceEvaluation result = evaluatePathRawClearance(
-      grid, linePath(),
+      grid, clearance, linePath(),
       PathRawClearanceMonitorConfig{.trigger_clearance_m = 5.0,
                                     .arm_clearance_m = 5.5,
                                     .min_violation_length_m = 8.0,
@@ -64,8 +70,9 @@ TEST(PathRawClearanceMonitor, DoesNotArmWhenPathStartsInsideClearanceBand) {
     grid.setOccupied(GridIndex{x, 13});
   }
 
-  const PathRawClearanceEvaluation result =
-      evaluatePathRawClearance(grid, linePath(), PathRawClearanceMonitorConfig{});
+  const ClearanceField2D clearance = physicalClearance(grid);
+  const PathRawClearanceEvaluation result = evaluatePathRawClearance(
+      grid, clearance, linePath(), PathRawClearanceMonitorConfig{});
 
   ASSERT_TRUE(result.valid);
   EXPECT_FALSE(result.current_position_arms);

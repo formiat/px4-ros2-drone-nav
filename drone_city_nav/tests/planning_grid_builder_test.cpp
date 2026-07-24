@@ -83,6 +83,7 @@ TEST(PlanningGridBuilder, StaticOnlyBuildsInflatedGrid) {
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   ASSERT_TRUE(result.grid.has_value());
   ASSERT_TRUE(result.planning_grid.has_value());
+  ASSERT_TRUE(result.physical_clearance.has_value());
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const OccupancyGrid2D& grid = result.grid.value();
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
@@ -90,8 +91,10 @@ TEST(PlanningGridBuilder, StaticOnlyBuildsInflatedGrid) {
   EXPECT_TRUE(result.static_source.used);
   EXPECT_TRUE(grid.isOccupied(GridIndex{3, 3}));
   EXPECT_TRUE(grid.isInflated(GridIndex{4, 3}));
+  EXPECT_TRUE(planning_grid.isInflated(GridIndex{4, 3}));
   EXPECT_TRUE(planning_grid.isInflated(GridIndex{5, 3}));
   EXPECT_FALSE(grid.isInflated(GridIndex{5, 3}));
+  EXPECT_DOUBLE_EQ(result.physical_clearance->distanceAt(GridIndex{4, 3}), 1.0);
 }
 
 TEST(PlanningGridBuilder, MemoryGeometryMismatchIsReportedAndSkipped) {
@@ -175,9 +178,9 @@ TEST(PlanningGridBuilder, StaleLidarDoesNotClaimAppliedIdentity) {
   const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
-  ASSERT_TRUE(result.raw_grid.has_value());
+  ASSERT_TRUE(result.grid.has_value());
   EXPECT_EQ(result.applied_lidar_update_ns, 0);
-  EXPECT_FALSE(result.raw_grid->isOccupied(GridIndex{5, 2}));
+  EXPECT_FALSE(result.grid->isOccupied(GridIndex{5, 2}));
 }
 
 TEST(PlanningGridBuilder, SourceUnionInflatesOnceAfterRawObstacleMerge) {

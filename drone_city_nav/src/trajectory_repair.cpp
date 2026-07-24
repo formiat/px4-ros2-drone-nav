@@ -242,21 +242,20 @@ findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
 }
 
 std::optional<BlockedSpan> findFirstRawClearanceBlockedSpan(
-    const OccupancyGrid2D& raw_grid,
+    const OccupancyGrid2D& prohibited_grid, const ClearanceField2D& physical_clearance,
     const std::span<const TrajectoryPointSample> trajectory, const double minimum_s_m,
     const BlockedSpanScanConfig& config) {
   const double trigger_m = std::max(0.0, config.raw_clearance_trigger_m);
-  const ClearanceField2D field =
-      ClearanceField2D::build(raw_grid, trigger_m, ClearanceSource::kOccupied);
   return findFirstSampledBlockedSpan(
-      raw_grid, trajectory, minimum_s_m, config.sample_step_m,
+      prohibited_grid, trajectory, minimum_s_m, config.sample_step_m,
       std::max(0.0, config.raw_min_violation_length_m),
       BlockedSpanTrigger::kRawClearance,
-      [&field, trigger_m](const TrajectoryPointSample&,
-                          const std::optional<GridIndex> cell) {
-        const double clearance_m = cell.has_value() && field.contains(*cell)
-                                       ? field.distanceAt(*cell)
-                                       : std::numeric_limits<double>::quiet_NaN();
+      [&physical_clearance, trigger_m](const TrajectoryPointSample&,
+                                       const std::optional<GridIndex> cell) {
+        const double clearance_m =
+            cell.has_value() && physical_clearance.contains(*cell)
+                ? physical_clearance.distanceAt(*cell)
+                : std::numeric_limits<double>::quiet_NaN();
         return std::pair{std::isnan(clearance_m) ||
                              clearance_m + kTinyDistanceM < trigger_m,
                          clearance_m};

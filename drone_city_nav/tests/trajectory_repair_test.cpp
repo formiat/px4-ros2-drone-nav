@@ -123,9 +123,11 @@ TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {
     grid.setOccupied(GridIndex{x, 13});
   }
   const std::vector<TrajectoryPointSample> samples = lineSamples(50.0);
+  const ClearanceField2D clearance =
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
 
   const auto span =
-      findFirstRawClearanceBlockedSpan(grid, samples, 0.0,
+      findFirstRawClearanceBlockedSpan(grid, clearance, samples, 0.0,
                                        BlockedSpanScanConfig{
                                            .sample_step_m = 0.25,
                                            .raw_clearance_trigger_m = 5.0,
@@ -141,9 +143,11 @@ TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {
 
 TEST(TrajectoryRepair, InfiniteClearanceInOpenGridIsSafe) {
   const OccupancyGrid2D grid = freeGrid();
+  const ClearanceField2D clearance =
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
 
   const auto span =
-      findFirstRawClearanceBlockedSpan(grid, lineSamples(50.0), 0.0,
+      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(50.0), 0.0,
                                        BlockedSpanScanConfig{
                                            .sample_step_m = 0.25,
                                            .raw_clearance_trigger_m = 5.0,
@@ -158,9 +162,11 @@ TEST(TrajectoryRepair, RawClearanceRunAtGoalEndsAtLastStation) {
   for (int x = 35; x <= 50; ++x) {
     grid.setOccupied(GridIndex{x, 13});
   }
+  const ClearanceField2D clearance =
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
 
   const auto span =
-      findFirstRawClearanceBlockedSpan(grid, lineSamples(50.0), 0.0,
+      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(50.0), 0.0,
                                        BlockedSpanScanConfig{
                                            .sample_step_m = 0.25,
                                            .raw_clearance_trigger_m = 5.0,
@@ -179,9 +185,11 @@ TEST(TrajectoryRepair, RawClearanceScannerReturnsFirstLongRun) {
   for (int x = 42; x <= 52; ++x) {
     grid.setOccupied(GridIndex{x, 13});
   }
+  const ClearanceField2D clearance =
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
 
   const auto span =
-      findFirstRawClearanceBlockedSpan(grid, lineSamples(70.0), 0.0,
+      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(70.0), 0.0,
                                        BlockedSpanScanConfig{
                                            .sample_step_m = 0.25,
                                            .raw_clearance_trigger_m = 5.0,
