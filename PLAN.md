@@ -44,18 +44,31 @@ Rollout и A* не конкурируют как независимые publishe
 - `drone_city_nav/src/planner_node_route_publication.cpp`: A* recovery route как guide,
   а не параллельная offboard-команда.
 - `drone_city_nav/src/planner_node_lifecycle.cpp:19-110`,
-  `planner_node.hpp`: worker snapshots, state machine и единственный publisher.
+  `drone_city_nav/src/planner_node.hpp`: worker snapshots, state machine и
+  единственный publisher.
 - `drone_city_nav/include/drone_city_nav/trajectory_planner.hpp:128-215`:
   downstream finalization победившего локального route.
 - `drone_city_nav/src/planning_grid_builder.cpp` и
   `planning_grid_snapshot.*`: immutable raw/prohibited/planning snapshots и revisions.
-- `drone_city_nav/msg/ExecutableTrajectory.msg`: явная семантика local horizon, если
-  её нельзя надёжно вывести из существующих полей.
-- `drone_city_nav/src/px4_offboard_node_*`: отсутствие terminal capture на
-  `LOCAL_HORIZON`, сохранение текущих mission-goal и temporary-hold семантик.
+- `drone_city_nav/msg/ExecutableTrajectory.msg`,
+  `drone_city_nav/src/planner_node_debug_publication.cpp:158-218`,
+  `drone_city_nav/src/px4_offboard_node_trajectory.cpp:415-475,900-930`:
+  wire contract, producer и consumer семантики local horizon.
+- `drone_city_nav/src/px4_offboard_node_control.cpp:166-211`,
+  `drone_city_nav/src/terminal_capture_state_machine.cpp`: отсутствие terminal
+  capture на `LOCAL_HORIZON`, сохранение mission-goal/temporary-hold семантик.
 - `drone_city_nav/src/planner_node_config.cpp`,
   `drone_city_nav/config/urban_mvp.yaml`: no-static-only rollout/recovery параметры.
-- Diagnostics и unit/integration tests в `drone_city_nav/tests`.
+- `drone_city_nav/CMakeLists.txt:23-34,70-137,185-202,625-650,652-681,757-767`:
+  регистрация message, новых core/node sources и каждого нового/изменённого gtest.
+- Конкретные tests:
+  `tests/receding_horizon_trajectory_planner_test.cpp`,
+  `tests/no_static_planner_orchestrator_test.cpp`,
+  `tests/trajectory_planner_test.cpp`,
+  `tests/known_passage_solid_validation_test.cpp`,
+  `tests/terminal_capture_state_machine_test.cpp`,
+  `tests/offboard_velocity_follower_terminal_capture_test.cpp`,
+  `tests/planner_node_config_test.cpp`, `tests/ros_conversions_test.cpp`.
 
 # Implementation steps
 
@@ -80,34 +93,96 @@ Rollout и A* не конкурируют как независимые publishe
    lateral deviation, heading change, curvature и continuity формируют score.
    Перебор выполняется tiers `planning -> prohibited -> raw-clear`, чтобы degraded
    физически свободный полёт оставался возможен.
+   Добавить `src/receding_horizon_trajectory_planner.cpp` в
+   `drone_city_nav_core` (`drone_city_nav/CMakeLists.txt:70-137`) и зарегистрировать
+   `receding_horizon_trajectory_planner_test` рядом с
+   `trajectory_planner_test` (`CMakeLists.txt:625-638`). Результат шага: pure C++
+   API генерирует и ранжирует bounded XY candidates без ROS/worker side effects.
 
-2. **Сделать кандидаты сразу динамически исполнимыми.**
+2. **Разделить дешёвый XY ranking и обязательную post-vertical 3D validation.**
    Использовать current XY velocity/tangent как начальные условия и параметрические
    дуги/короткие polynomial samples, а не запускать corridor/optimizer для каждого
-   candidate. Проверять полный sampled span по grids и known solid volumes.
-   Downstream `finalizeStitchedTrajectory()` вызывается один раз для победителя;
-   existing vertical/passages/speed stages не дублируются.
+   candidate. В `receding_horizon_trajectory_planner.cpp` pre-score проверяет только:
+   конечность/структуру XY samples, current dynamics, raw occupied hard collision,
+   traversability tiers и 2D clearance. Он **не** объявляет known-solid clear:
+   текущий обязательный 3D gate в
+   `trajectory_planner.cpp:111-130` работает только после
+   `applyVerticalProfile()`.
+
+   Ранжированный shortlist (recommended max `3`) последовательно передаётся в
+   `finalizeStitchedTrajectory()` (`trajectory_planner.cpp:740-769`). Для каждого
+   finalist existing `applyVerticalProfileStage()` назначает Z, затем
+   `validateTrajectoryAgainstKnownPassageSolids()` выполняет mandatory 3D check.
+   Если finalist отклонён по vertical/known-solid/passage contract, orchestration
+   пробует следующий ranked candidate в том же immutable snapshot; после исчерпания
+   bounded shortlist возвращает `kNoValidatedCandidate` и инициирует recovery/hold.
+
+   ```cpp
+   for (const RolloutCandidate& candidate : result.rankedShortlist(max_finalists)) {
+     TrajectoryPlannerResult finalized = finalizeStitchedTrajectory(...);
+     if (finalized.valid &&
+         finalized.stats.known_passage_solid_validation.valid) {
+       return finalized;
+     }
+   }
+   return noValidatedCandidate();
+   ```
+
+   Обновить `tests/trajectory_planner_test.cpp` и
+   `tests/known_passage_solid_validation_test.cpp`: лучший XY candidate с неверным
+   post-vertical Z отклоняется, второй ranked candidate принимается; все finalists
+   solid-invalid дают recovery, а не публикацию. Результат шага: bounded latency не
+   противоречит mandatory 3D validation.
 
 3. **Добавить no-static planner state machine и arbiter.**
-   В `planner_node.hpp`/новом `no_static_planner_orchestrator.*` ввести состояния
+   Создать
+   `include/drone_city_nav/no_static_planner_orchestrator.hpp` и
+   `src/no_static_planner_orchestrator.cpp`; в
+   `drone_city_nav/src/planner_node.hpp:150-180,421-582` хранить его state/snapshot.
+   Ввести состояния
    `kDirectGoalRollout`, `kAstarRecoveryRunning`, `kAstarGuidedRollout`,
    `kTemporaryHold`. Static branch продолжает существующий A* flow без изменения.
    Только arbiter может передать candidate в current publication path; generation
    и `PlanningGridVersion` блокируют stale results.
+   Подключить core source и новый `no_static_planner_orchestrator_test` в
+   `CMakeLists.txt:70-137` и test section. В
+   `planner_node_lifecycle.cpp:109` переиспользовать единственный `planning_worker_`;
+   не создавать второй publisher/thread. Результат: один типизированный decision
+   (`publish`, `keep`, `request_recovery`, `hold`) на planning generation.
 
 4. **Реализовать стабильный executable prefix и hysteresis.**
-   Проецировать current pose на опубликованную trajectory, сохранять configurable
+   В новом orchestrator использовать
+   `ExecutableTrajectoryArtifact`/`updateExecutableTrajectoryProgress()` из
+   `trajectory_repair.cpp:225` и текущий artifact в
+   `planner_node.hpp:560`. Проецировать current pose, сохранять configurable
    prefix на 1-2 секунды и заменять только suffix. Новый rollout принимается, если
    текущий suffix blocked/исчерпывается либо улучшение score превышает threshold.
-   Проверить stitch position/tangent/Z и пересчитать speed profile для итоговой
-   trajectory. Safe truncation остаётся fallback, если свежего suffix нет.
+   Сшивку выполнять через новый pure helper в
+   `no_static_planner_orchestrator.cpp`, финализацию — через
+   `finalizeStitchedTrajectory()`; position/tangent/Z и speed profile проверяются
+   до передачи в `publishTrajectoryPath()` в
+   `planner_node_debug_publication.cpp:172-218`. Safe truncation в
+   `planner_node_runtime.cpp:256-430` остаётся fallback.
+   Tests в `no_static_planner_orchestrator_test.cpp`: immutable prefix, hysteresis,
+   blocked-prefix bypass, stale generation/grid rejection.
 
 5. **Разделить terminal semantics.**
-   Добавить тип endpoint `MISSION_GOAL | LOCAL_HORIZON | TEMPORARY_REPLAN_HOLD`
-   в core/message contract и ROS conversion. В offboard `LOCAL_HORIZON` не запускает
-   terminal slowdown/final hold; buffer exhaustion без следующего suffix переводит
-   выполнение в существующий safe-truncation/temporary-hold flow. Настоящий goal и
-   temporary hold сохраняют текущую state-machine семантику.
+   Добавить constants и поле `uint8 endpoint_semantics` со значениями
+   `MISSION_GOAL | LOCAL_HORIZON | TEMPORARY_REPLAN_HOLD` в
+   `msg/ExecutableTrajectory.msg`; schema уже зарегистрирована в
+   `CMakeLists.txt:23-34`. Заполнять поле в обоих producer paths
+   `planner_node_debug_publication.cpp:158-161,204-218`, читать и валидировать в
+   `px4_offboard_node_trajectory.cpp:415-475`.
+
+   Сохранить active semantics в `px4_offboard_node.hpp:470-515` и передать флаг
+   terminal eligibility в `computeTerminalCaptureState()`:
+   `px4_offboard_node_control.cpp:172-201` /
+   `terminal_capture_state_machine.cpp`. `LOCAL_HORIZON` запрещает final terminal
+   capture; buffer exhaustion создаёт temporary hold через существующее hold
+   состояние, не mission success. Обновить `terminal_capture_state_machine_test`,
+   `offboard_velocity_follower_terminal_capture_test`, `ros_conversions_test` и
+   добавить message round-trip case. Результат: wire contract однозначен для всех
+   producer/consumer paths.
 
 6. **Понизить A* до recovery guide в no-static.**
    В `planner_node_runtime.cpp:239-386` заменить no-static immediate A* trigger на
@@ -117,15 +192,30 @@ Rollout и A* не конкурируют как независимые publishe
    lookahead point на guide, а не допускает вторую непосредственную публикацию.
    Existing partial repair применяется к blocked recovery guide; full A* остаётся
    fallback. Static flow не меняется.
+   Конкретно: mode dispatch добавить перед current
+   `planner_core_.evaluateStablePath()` в `planner_node_runtime.cpp:239`; A* result
+   из `planner_node_route_publication.cpp:560-602` в no-static записывать в
+   orchestrator как guide revision вместо непосредственной publication, а static
+   branch оставлять прежней. Tests:
+   `no_static_planner_orchestrator_test.cpp` (`NoProgressRequestsRecovery`,
+   `RecoveryGuideChangesPreferredTarget`, `StableProgressReturnsDirect`) и
+   `planner_runtime_state_test.cpp` (`StaticModeKeepsAStarAction`).
 
 7. **Добавить конфигурацию и диагностику.**
-   В `planner_node_config.cpp` и `urban_mvp.yaml` добавить no-static-only:
+   В `include/drone_city_nav/planner_node_config.hpp`,
+   `src/planner_node_config.cpp:370-405,676-705`,
+   `src/planner_node.hpp` и `config/urban_mvp.yaml:213-229` добавить no-static-only:
    enable flag, horizon, cycle period, heading/curvature/speed samples, scoring
    weights, prefix duration, hysteresis, progress timeout, recovery lookahead.
    Валидировать bounds. Логировать generation, mode, candidate counts/reject reasons,
    selected tier/score, planning duration, prefix/suffix lengths, recovery trigger,
    guide revision и transition. Расширить summary counters без изменения существующих
-   A* counters.
+   A* counters в `include/drone_city_nav/planner_diagnostics_format.hpp` /
+   `src/planner_diagnostics_format.cpp` и publication logging в
+   `src/planner_node_debug_publication.cpp`. Обновить
+   `tests/planner_node_config_test.cpp` (defaults, clamps, invalid shortlist) и
+   `tests/planner_diagnostics_format_test.cpp`. Результат: все knobs bounded, а
+   причины rollout/recovery измеримы.
 
 8. **Добавить Category 1 automated tests и ROS contract coverage.**
    Новый `receding_horizon_trajectory_planner_test.cpp`: прямой open-space candidate,
@@ -136,6 +226,13 @@ Rollout и A* не конкурируют как независимые publishe
    тормозит как mission goal; buffer exhaustion безопасно удерживается. Добавить
    integration test, доказывающий, что static mode продолжает выбирать A*, а
    no-static blocker сначала обрабатывается rollout.
+   Зарегистрировать **каждый** новый target в `drone_city_nav/CMakeLists.txt`:
+   `receding_horizon_trajectory_planner_test` и
+   `no_static_planner_orchestrator_test` link к `drone_city_nav_core`; существующие
+   ROS/config/offboard targets расширяются без создания дубликатов. Добавить новые
+   production `.cpp` в `drone_city_nav_core` и, только если orchestration останется
+   node-owned, `planner_node` source list (`CMakeLists.txt:185-202`). Результат:
+   новые production/test units реально входят в colcon/CTest build graph.
 
 # Verification plan
 
