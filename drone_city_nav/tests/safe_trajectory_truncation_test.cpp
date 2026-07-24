@@ -18,7 +18,7 @@ namespace {
   return samples;
 }
 
-[[nodiscard]] OccupancyGrid2D rawObstacleGrid() {
+[[nodiscard]] OccupancyGrid2D prohibitedGrid() {
   OccupancyGrid2D grid{GridBounds{-0.5, -10.5, 1.0, 102, 22}};
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
@@ -64,41 +64,61 @@ TEST(SafeTrajectoryTruncation, HoldsImmediatelyWhenMarginIsAlreadyPassed) {
   EXPECT_TRUE(result.samples.empty());
 }
 
-TEST(SafeTrajectoryTruncation, MovesTerminalBackwardToRawObstacleClearance) {
+TEST(SafeTrajectoryTruncation, MovesTerminalBackwardToProhibitedClearance) {
   const std::vector<TrajectoryPointSample> samples = lineSamples();
-  OccupancyGrid2D raw_grid = rawObstacleGrid();
-  raw_grid.setOccupied(GridIndex{60, 13});
+  OccupancyGrid2D prohibited_grid = prohibitedGrid();
+  prohibited_grid.setOccupied(GridIndex{60, 13});
 
   const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
       samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
                                                .blocker_path_distance_m = 55.0,
                                                .truncation_margin_m = 15.0,
-                                               .raw_obstacle_grid = &raw_grid,
-                                               .terminal_raw_clearance_m = 5.0});
+                                               .prohibited_grid = &prohibited_grid,
+                                               .terminal_prohibited_clearance_m = 5.0});
 
   ASSERT_TRUE(result.applied) << result.reason;
   EXPECT_FALSE(result.immediate_hold);
   EXPECT_TRUE(result.clearance_adjusted);
   EXPECT_NEAR(result.nominal_stop_s_m, 60.0, 1.0e-6);
   EXPECT_NEAR(result.stop_s_m, 56.0, 1.0e-6);
-  EXPECT_GE(result.terminal_raw_clearance_m, 5.0);
+  EXPECT_GE(result.terminal_prohibited_clearance_m, 5.0);
   ASSERT_FALSE(result.samples.empty());
   EXPECT_NEAR(result.samples.back().point.x, 56.0, 1.0e-6);
 }
 
+TEST(SafeTrajectoryTruncation, IncludesInflationInTerminalClearance) {
+  const std::vector<TrajectoryPointSample> samples = lineSamples();
+  OccupancyGrid2D prohibited_grid = prohibitedGrid();
+  prohibited_grid.setOccupied(GridIndex{60, 10});
+  prohibited_grid.rebuildInflation(2.0);
+
+  const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
+      samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
+                                               .blocker_path_distance_m = 55.0,
+                                               .truncation_margin_m = 15.0,
+                                               .prohibited_grid = &prohibited_grid,
+                                               .terminal_prohibited_clearance_m = 5.0});
+
+  ASSERT_TRUE(result.applied) << result.reason;
+  EXPECT_FALSE(result.immediate_hold);
+  EXPECT_TRUE(result.clearance_adjusted);
+  EXPECT_LE(result.stop_s_m, 53.0);
+  EXPECT_GE(result.terminal_prohibited_clearance_m, 5.0);
+}
+
 TEST(SafeTrajectoryTruncation, HoldsWhenNoClearTerminalExistsAhead) {
   const std::vector<TrajectoryPointSample> samples = lineSamples();
-  OccupancyGrid2D raw_grid = rawObstacleGrid();
+  OccupancyGrid2D prohibited_grid = prohibitedGrid();
   for (int x = 20; x <= 60; ++x) {
-    raw_grid.setOccupied(GridIndex{x, 12});
+    prohibited_grid.setOccupied(GridIndex{x, 12});
   }
 
   const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
       samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
                                                .blocker_path_distance_m = 55.0,
                                                .truncation_margin_m = 15.0,
-                                               .raw_obstacle_grid = &raw_grid,
-                                               .terminal_raw_clearance_m = 5.0});
+                                               .prohibited_grid = &prohibited_grid,
+                                               .terminal_prohibited_clearance_m = 5.0});
 
   EXPECT_TRUE(result.applied);
   EXPECT_TRUE(result.immediate_hold);

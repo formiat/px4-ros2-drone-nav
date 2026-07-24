@@ -17,7 +17,7 @@
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/no_static_planner_orchestrator.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
-#include "drone_city_nav/path_raw_clearance_monitor.hpp"
+#include "drone_city_nav/path_prohibited_clearance_monitor.hpp"
 #include "drone_city_nav/path_smoothing.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planner_diagnostics_format.hpp"
@@ -455,7 +455,7 @@ private:
   bool scan_seen_logged_{false};
   bool use_static_map_{true};
   bool safe_trajectory_truncation_enabled_{true};
-  PathRawClearanceMonitorConfig path_raw_clearance_monitor_config_{};
+  PathProhibitedClearanceMonitorConfig path_prohibited_clearance_monitor_config_{};
   PartialReplanConfig partial_replan_config_{};
   bool no_static_rollout_enabled_{true};
   double no_static_rollout_cycle_period_s_{0.2};
@@ -467,9 +467,9 @@ private:
   std::uint64_t active_rollout_path_id_{0U};
   double no_static_best_goal_distance_m_{std::numeric_limits<double>::infinity()};
   std::chrono::steady_clock::time_point no_static_last_progress_at_{};
-  std::uint64_t path_raw_clearance_monitor_path_id_{0U};
-  bool path_raw_clearance_armed_{false};
-  bool path_raw_clearance_triggered_{false};
+  std::uint64_t path_prohibited_clearance_monitor_path_id_{0U};
+  bool path_prohibited_clearance_armed_{false};
+  bool path_prohibited_clearance_triggered_{false};
   bool use_known_passages_{true};
   bool use_px4_heading_for_scan_{true};
   bool motion_compensate_lidar_pose_{true};

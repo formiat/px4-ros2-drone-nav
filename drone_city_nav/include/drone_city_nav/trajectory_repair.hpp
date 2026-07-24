@@ -14,7 +14,7 @@ namespace drone_city_nav {
 
 enum class BlockedSpanTrigger {
   kProhibited,
-  kRawClearance,
+  kProhibitedClearance,
 };
 
 struct BlockedSpan {
@@ -27,7 +27,7 @@ struct BlockedSpan {
   GridIndex last_cell{};
   bool first_cell_available{false};
   bool last_cell_available{false};
-  double min_raw_clearance_m{std::numeric_limits<double>::infinity()};
+  double min_prohibited_clearance_m{std::numeric_limits<double>::infinity()};
 };
 
 struct ExecutableTrajectoryArtifact {
@@ -40,8 +40,8 @@ struct ExecutableTrajectoryArtifact {
 
 struct BlockedSpanScanConfig {
   double sample_step_m{0.5};
-  double raw_clearance_trigger_m{5.0};
-  double raw_min_violation_length_m{2.0};
+  double prohibited_clearance_trigger_m{5.0};
+  double prohibited_min_violation_length_m{2.0};
 };
 
 struct ReconnectCandidate {
@@ -64,8 +64,9 @@ updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
     const OccupancyGrid2D& grid, std::span<const TrajectoryPointSample> trajectory,
     double minimum_s_m, const BlockedSpanScanConfig& config = {});
 
-[[nodiscard]] std::optional<BlockedSpan> findFirstRawClearanceBlockedSpan(
-    const OccupancyGrid2D& prohibited_grid, const ClearanceField2D& physical_clearance,
+[[nodiscard]] std::optional<BlockedSpan> findFirstProhibitedClearanceBlockedSpan(
+    const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D& prohibited_clearance,
     std::span<const TrajectoryPointSample> trajectory, double minimum_s_m,
     const BlockedSpanScanConfig& config = {});
 

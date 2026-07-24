@@ -84,14 +84,14 @@ void hashValue(std::uint64_t& hash, const double value) noexcept {
 
 [[nodiscard]] std::optional<double>
 selectClearTerminalStation(const std::span<const TrajectoryPointSample> samples,
-                           const OccupancyGrid2D& raw_obstacle_grid,
+                           const OccupancyGrid2D& prohibited_grid,
                            const double current_s_m, const double nominal_stop_s_m,
                            const double required_clearance_m,
                            double& selected_clearance_m) {
   const ClearanceField2D clearance_field = ClearanceField2D::build(
-      raw_obstacle_grid, required_clearance_m, ClearanceSource::kOccupied);
+      prohibited_grid, required_clearance_m, ClearanceSource::kProhibited);
   const double step_m = std::min(kMaximumClearanceSearchStepM,
-                                 std::max(0.1, raw_obstacle_grid.resolution()));
+                                 std::max(0.1, prohibited_grid.resolution()));
   const double minimum_stop_s_m = current_s_m + kMinimumExecutablePrefixM;
   const std::size_t search_steps = static_cast<std::size_t>(
       std::max(0.0, std::ceil((nominal_stop_s_m - minimum_stop_s_m) / step_m)));
@@ -99,9 +99,8 @@ selectClearTerminalStation(const std::span<const TrajectoryPointSample> samples,
     const double candidate_s_m =
         nominal_stop_s_m - static_cast<double>(step_index) * step_m;
     const TrajectoryPointSample candidate = sampleAtS(samples, candidate_s_m);
-    const std::optional<GridIndex> cell =
-        raw_obstacle_grid.worldToCell(candidate.point);
-    if (!cell.has_value() || raw_obstacle_grid.isOccupied(*cell) ||
+    const std::optional<GridIndex> cell = prohibited_grid.worldToCell(candidate.point);
+    if (!cell.has_value() || prohibited_grid.isProhibited(*cell) ||
         !clearance_field.contains(*cell)) {
       continue;
     }
@@ -129,8 +128,8 @@ truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> sam
       request.blocker_path_distance_m < 0.0 ||
       !std::isfinite(request.truncation_margin_m) ||
       request.truncation_margin_m < 0.0 ||
-      !std::isfinite(request.terminal_raw_clearance_m) ||
-      request.terminal_raw_clearance_m < 0.0) {
+      !std::isfinite(request.terminal_prohibited_clearance_m) ||
+      request.terminal_prohibited_clearance_m < 0.0) {
     result.reason = "request_invalid";
     return result;
   }
@@ -147,11 +146,12 @@ truncateTrajectoryBeforeBlocker(const std::span<const TrajectoryPointSample> sam
       std::min(samples.back().s_m, projection->s_m + request.blocker_path_distance_m);
   result.nominal_stop_s_m = result.blocker_s_m - request.truncation_margin_m;
   result.stop_s_m = result.nominal_stop_s_m;
-  if (request.raw_obstacle_grid != nullptr && request.terminal_raw_clearance_m > 0.0) {
+  if (request.prohibited_grid != nullptr &&
+      request.terminal_prohibited_clearance_m > 0.0) {
     const std::optional<double> clear_stop_s_m = selectClearTerminalStation(
-        samples, *request.raw_obstacle_grid, result.current_s_m,
-        result.nominal_stop_s_m, request.terminal_raw_clearance_m,
-        result.terminal_raw_clearance_m);
+        samples, *request.prohibited_grid, result.current_s_m, result.nominal_stop_s_m,
+        request.terminal_prohibited_clearance_m,
+        result.terminal_prohibited_clearance_m);
     if (!clear_stop_s_m.has_value()) {
       result.applied = true;
       result.immediate_hold = true;

@@ -189,27 +189,27 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
     return;
   }
 
-  const std::optional<OccupancyGrid2D> raw_obstacle_grid = currentRawObstacleGrid();
+  const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
   const SafeTrajectoryTruncationResult truncation = truncateTrajectoryBeforeBlocker(
       final_trajectory_samples_,
       SafeTrajectoryTruncationRequest{
           .current_position = current_position_,
           .blocker_path_distance_m = msg.blocker_path_distance_m,
           .truncation_margin_m = safe_trajectory_truncation_margin_m_,
-          .raw_obstacle_grid =
-              raw_obstacle_grid.has_value() ? &*raw_obstacle_grid : nullptr,
-          .terminal_raw_clearance_m = safe_trajectory_terminal_raw_clearance_m_,
+          .prohibited_grid = prohibited_grid.has_value() ? &*prohibited_grid : nullptr,
+          .terminal_prohibited_clearance_m =
+              safe_trajectory_terminal_prohibited_clearance_m_,
       });
   if (!truncation.applied) {
     RCLCPP_ERROR(get_logger(),
                  "SAFE_TRAJECTORY_TRUNCATION rejected blocker event: reason=%s "
                  "blocked_path_id=%" PRIu64
-                 " blocker_distance=%.2fm margin=%.2fm raw_grid=%s"
-                 " required_raw_clearance=%.2fm",
+                 " blocker_distance=%.2fm margin=%.2fm prohibited_grid=%s"
+                 " required_prohibited_clearance=%.2fm",
                  truncation.reason, msg.blocked_path_id, msg.blocker_path_distance_m,
                  safe_trajectory_truncation_margin_m_,
-                 raw_obstacle_grid.has_value() ? "available" : "unavailable",
-                 safe_trajectory_terminal_raw_clearance_m_);
+                 prohibited_grid.has_value() ? "available" : "unavailable",
+                 safe_trajectory_terminal_prohibited_clearance_m_);
     return;
   }
 
@@ -244,11 +244,11 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
         get_logger(),
         "SAFE_TRAJECTORY_TRUNCATION immediate_hold=true blocked_path_id=%" PRIu64
         " current_s=%.2f blocker_s=%.2f nominal_stop_s=%.2f stop_s=%.2f "
-        "raw_clearance=%.2fm clearance_adjusted=%s blocker=(%.2f, %.2f) "
+        "prohibited_clearance=%.2fm clearance_adjusted=%s blocker=(%.2f, %.2f) "
         "source='%s'",
         msg.blocked_path_id, truncation.current_s_m, truncation.blocker_s_m,
         truncation.nominal_stop_s_m, truncation.stop_s_m,
-        truncation.terminal_raw_clearance_m,
+        truncation.terminal_prohibited_clearance_m,
         truncation.clearance_adjusted ? "true" : "false", msg.blocker_position.x,
         msg.blocker_position.y, msg.source.c_str());
     return;
@@ -293,14 +293,15 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
       get_logger(),
       "SAFE_TRAJECTORY_TRUNCATION prefix_active=true blocked_path_id=%" PRIu64
       " blocker_distance=%.2fm margin=%.2fm current_s=%.2f blocker_s=%.2f "
-      "nominal_stop_s=%.2f stop_s=%.2f raw_clearance=%.2fm "
-      "required_raw_clearance=%.2fm clearance_adjusted=%s prefix_length=%.2fm "
+      "nominal_stop_s=%.2f stop_s=%.2f prohibited_clearance=%.2fm "
+      "required_prohibited_clearance=%.2fm clearance_adjusted=%s prefix_length=%.2fm "
       "target=(%.2f, %.2f) blocker=(%.2f, %.2f) "
       "memory_sequence=%" PRIu64 " source='%s'",
       msg.blocked_path_id, msg.blocker_path_distance_m,
       safe_trajectory_truncation_margin_m_, truncation.current_s_m,
       truncation.blocker_s_m, truncation.nominal_stop_s_m, truncation.stop_s_m,
-      truncation.terminal_raw_clearance_m, safe_trajectory_terminal_raw_clearance_m_,
+      truncation.terminal_prohibited_clearance_m,
+      safe_trajectory_terminal_prohibited_clearance_m_,
       truncation.clearance_adjusted ? "true" : "false", state.samples.back().s_m,
       trajectory_goal_.x, trajectory_goal_.y, msg.blocker_position.x,
       msg.blocker_position.y, msg.memory_snapshot_sequence, msg.source.c_str());

@@ -83,7 +83,7 @@ TEST(PlanningGridBuilder, StaticOnlyBuildsInflatedGrid) {
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   ASSERT_TRUE(result.grid.has_value());
   ASSERT_TRUE(result.planning_grid.has_value());
-  ASSERT_TRUE(result.physical_clearance.has_value());
+  ASSERT_TRUE(result.prohibited_clearance.has_value());
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
   const OccupancyGrid2D& grid = result.grid.value();
   // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by ASSERT_TRUE above.
@@ -94,7 +94,9 @@ TEST(PlanningGridBuilder, StaticOnlyBuildsInflatedGrid) {
   EXPECT_TRUE(planning_grid.isInflated(GridIndex{4, 3}));
   EXPECT_TRUE(planning_grid.isInflated(GridIndex{5, 3}));
   EXPECT_FALSE(grid.isInflated(GridIndex{5, 3}));
-  EXPECT_DOUBLE_EQ(result.physical_clearance->distanceAt(GridIndex{4, 3}), 1.0);
+  EXPECT_EQ(result.prohibited_clearance->source(), ClearanceSource::kProhibited);
+  EXPECT_DOUBLE_EQ(result.prohibited_clearance->distanceAt(GridIndex{4, 3}), 0.0);
+  EXPECT_DOUBLE_EQ(result.prohibited_clearance->distanceAt(GridIndex{5, 3}), 1.0);
 }
 
 TEST(PlanningGridBuilder, MemoryGeometryMismatchIsReportedAndSkipped) {

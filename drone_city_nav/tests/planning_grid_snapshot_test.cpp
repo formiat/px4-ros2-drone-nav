@@ -21,8 +21,8 @@ namespace {
   result.status = PlanningGridStatus::kReady;
   result.grid = std::move(runtime);
   result.planning_grid = std::move(planning);
-  result.physical_clearance =
-      ClearanceField2D::build(*result.grid, 10.0, ClearanceSource::kOccupied);
+  result.prohibited_clearance =
+      ClearanceField2D::build(*result.grid, 10.0, ClearanceSource::kProhibited);
   result.applied_memory_producer_instance_id = 17U;
   result.applied_memory_sequence = 42U;
   result.applied_lidar_update_ns = 123456;
@@ -145,7 +145,7 @@ TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {
             planning_before.inflated_hash);
   EXPECT_DOUBLE_EQ(prepared->runtime_clearance.distanceAt(GridIndex{4, 3}), 1.0);
   EXPECT_DOUBLE_EQ(prepared->planning_clearance.distanceAt(GridIndex{4, 3}), 1.0);
-  EXPECT_DOUBLE_EQ(prepared->physical_clearance.distanceAt(GridIndex{4, 3}), 1.0);
+  EXPECT_DOUBLE_EQ(prepared->prohibited_clearance.distanceAt(GridIndex{4, 3}), 1.0);
 }
 
 } // namespace drone_city_nav

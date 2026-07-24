@@ -5,7 +5,7 @@
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/no_static_planner_orchestrator.hpp"
-#include "drone_city_nav/path_raw_clearance_monitor.hpp"
+#include "drone_city_nav/path_prohibited_clearance_monitor.hpp"
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 #include "drone_city_nav/receding_horizon_trajectory_planner.hpp"
@@ -116,7 +116,7 @@ struct PlannerNodeConfig {
   double known_static_opening_boundary_tolerance_m{0.50};
   GroundLidarRejectionConfig ground_lidar_rejection{};
   bool safe_trajectory_truncation_enabled{true};
-  PathRawClearanceMonitorConfig path_raw_clearance_monitor{};
+  PathProhibitedClearanceMonitorConfig path_prohibited_clearance_monitor{};
   PartialReplanConfig partial_replan{};
   NoStaticRolloutConfig no_static_rollout{};
   PlannerTopics topics{};

@@ -230,10 +230,10 @@ bool PlannerNode::keepCurrentPathIfStillClear(
                                              current_pose_.position);
   }
 
-  if (path_raw_clearance_monitor_path_id_ != last_published_path_id_) {
-    path_raw_clearance_monitor_path_id_ = last_published_path_id_;
-    path_raw_clearance_armed_ = false;
-    path_raw_clearance_triggered_ = false;
+  if (path_prohibited_clearance_monitor_path_id_ != last_published_path_id_) {
+    path_prohibited_clearance_monitor_path_id_ = last_published_path_id_;
+    path_prohibited_clearance_armed_ = false;
+    path_prohibited_clearance_triggered_ = false;
   }
 
   const StablePathDecision decision = planner_core_.evaluateStablePath(
@@ -387,25 +387,27 @@ bool PlannerNode::keepCurrentPathIfStillClear(
   }
 
   if (safe_trajectory_truncation_enabled_ &&
-      planning_result.physical_clearance.has_value() &&
-      !path_raw_clearance_triggered_) {
-    const PathRawClearanceEvaluation clearance = evaluatePathRawClearance(
-        grid, planning_result.physical_clearance.value(), decision.remaining_path,
-        path_raw_clearance_monitor_config_);
+      planning_result.prohibited_clearance.has_value() &&
+      !path_prohibited_clearance_triggered_) {
+    const PathProhibitedClearanceEvaluation clearance = evaluatePathProhibitedClearance(
+        grid, planning_result.prohibited_clearance.value(), decision.remaining_path,
+        path_prohibited_clearance_monitor_config_);
     if (clearance.valid && clearance.current_position_arms &&
-        !path_raw_clearance_armed_) {
-      path_raw_clearance_armed_ = true;
+        !path_prohibited_clearance_armed_) {
+      path_prohibited_clearance_armed_ = true;
       RCLCPP_INFO(get_logger(),
-                  "PATH_RAW_CLEARANCE armed=true path_id=%" PRIu64
+                  "PATH_PROHIBITED_CLEARANCE armed=true path_id=%" PRIu64
                   " current_clearance=%.2fm arm_threshold=%.2fm",
                   last_published_path_id_, clearance.current_clearance_m,
-                  path_raw_clearance_monitor_config_.arm_clearance_m);
+                  path_prohibited_clearance_monitor_config_.arm_clearance_m);
     }
-    if (clearance.valid && path_raw_clearance_armed_ && clearance.violation.detected) {
+    if (clearance.valid && path_prohibited_clearance_armed_ &&
+        clearance.violation.detected) {
       const std::int64_t blocker_detected_stamp_ns = get_clock()->now().nanoseconds();
-      const Point2 blocker_position = clearance.violation.nearest_raw_cell_available
-                                          ? clearance.violation.nearest_raw_cell_center
-                                          : clearance.violation.entry_point;
+      const Point2 blocker_position =
+          clearance.violation.nearest_prohibited_cell_available
+              ? clearance.violation.nearest_prohibited_cell_center
+              : clearance.violation.entry_point;
       TrajectoryDeliveryDiagnostics delivery{
           .generation = trajectory_generation_ + 1U,
           .blocker_detected_stamp_ns =
@@ -423,38 +425,41 @@ bool PlannerNode::keepCurrentPathIfStillClear(
       if (replan_blocker_pub_ != nullptr) {
         std::optional<BlockedSpan> blocked_span;
         if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
-          blocked_span = findFirstRawClearanceBlockedSpan(
-              grid, planning_result.physical_clearance.value(),
+          blocked_span = findFirstProhibitedClearanceBlockedSpan(
+              grid, planning_result.prohibited_clearance.value(),
               executable_trajectory_artifact_.samples,
               executable_trajectory_artifact_.current_s_m,
               BlockedSpanScanConfig{
-                  .sample_step_m = path_raw_clearance_monitor_config_.sample_step_m,
-                  .raw_clearance_trigger_m =
-                      path_raw_clearance_monitor_config_.trigger_clearance_m,
-                  .raw_min_violation_length_m =
-                      path_raw_clearance_monitor_config_.min_violation_length_m,
+                  .sample_step_m =
+                      path_prohibited_clearance_monitor_config_.sample_step_m,
+                  .prohibited_clearance_trigger_m =
+                      path_prohibited_clearance_monitor_config_.trigger_clearance_m,
+                  .prohibited_min_violation_length_m =
+                      path_prohibited_clearance_monitor_config_.min_violation_length_m,
               });
         }
         if (!blocked_span.has_value()) {
           const double first_s = executable_trajectory_artifact_.current_s_m +
                                  std::max(0.0, clearance.violation.entry_distance_m);
           blocked_span = BlockedSpan{
-              .trigger = BlockedSpanTrigger::kRawClearance,
+              .trigger = BlockedSpanTrigger::kProhibitedClearance,
               .first_blocked_s_m = first_s,
               .last_blocked_s_m = first_s + clearance.violation.length_m,
               .first_point = clearance.violation.entry_point,
               .last_point = clearance.violation.entry_point,
-              .first_cell = clearance.violation.nearest_raw_cell,
-              .last_cell = clearance.violation.nearest_raw_cell,
-              .first_cell_available = clearance.violation.nearest_raw_cell_available,
-              .last_cell_available = clearance.violation.nearest_raw_cell_available,
-              .min_raw_clearance_m = clearance.violation.min_clearance_m,
+              .first_cell = clearance.violation.nearest_prohibited_cell,
+              .last_cell = clearance.violation.nearest_prohibited_cell,
+              .first_cell_available =
+                  clearance.violation.nearest_prohibited_cell_available,
+              .last_cell_available =
+                  clearance.violation.nearest_prohibited_cell_available,
+              .min_prohibited_clearance_m = clearance.violation.min_clearance_m,
           };
         }
         const std::optional<std::uint64_t> truncation_generation =
             beginTruncationReplan(last_published_path_id_, *blocked_span);
         if (truncation_generation.has_value()) {
-          path_raw_clearance_triggered_ = true;
+          path_prohibited_clearance_triggered_ = true;
           delivery.blocked_path_id = last_published_path_id_;
           delivery.truncation_generation = *truncation_generation;
           pending_replan_delivery_ = delivery;
@@ -477,14 +482,14 @@ bool PlannerNode::keepCurrentPathIfStillClear(
                                 executable_trajectory_artifact_.current_s_m);
           event.detection_velocity_valid = current_velocity_valid_;
           std::ostringstream source;
-          source << "path_raw_clearance[min=" << clearance.violation.min_clearance_m
-                 << "m trigger="
-                 << path_raw_clearance_monitor_config_.trigger_clearance_m
+          source << "path_prohibited_clearance[min="
+                 << clearance.violation.min_clearance_m << "m trigger="
+                 << path_prohibited_clearance_monitor_config_.trigger_clearance_m
                  << "m violation_length=" << clearance.violation.length_m
                  << "m nearest_cell=(";
-          if (clearance.violation.nearest_raw_cell_available) {
-            source << clearance.violation.nearest_raw_cell.x << ", "
-                   << clearance.violation.nearest_raw_cell.y;
+          if (clearance.violation.nearest_prohibited_cell_available) {
+            source << clearance.violation.nearest_prohibited_cell.x << ", "
+                   << clearance.violation.nearest_prohibited_cell.y;
           } else {
             source << "-1, -1";
           }
@@ -495,22 +500,23 @@ bool PlannerNode::keepCurrentPathIfStillClear(
           RCLCPP_WARN(
               get_logger(),
               "SAFE_TRAJECTORY_TRUNCATION event_published=true "
-              "trigger=path_raw_clearance path_id=%" PRIu64 " generation=%" PRIu64
+              "trigger=path_prohibited_clearance path_id=%" PRIu64
+              " generation=%" PRIu64
               " current_s=0.00 violation_entry_s=%.2f violation_length=%.2f "
-              "min_raw_clearance=%.2f nearest_raw_cell=(%d,%d) "
+              "min_prohibited_clearance=%.2f nearest_prohibited_cell=(%d,%d) "
               "distance_to_violation=%.2f clearance_armed=%s memory_sequence=%" PRIu64,
               event.blocked_path_id, event.truncation_generation,
               blocked_span->first_blocked_s_m,
               blocked_span->last_blocked_s_m - blocked_span->first_blocked_s_m,
               clearance.violation.min_clearance_m,
-              clearance.violation.nearest_raw_cell_available
-                  ? clearance.violation.nearest_raw_cell.x
+              clearance.violation.nearest_prohibited_cell_available
+                  ? clearance.violation.nearest_prohibited_cell.x
                   : -1,
-              clearance.violation.nearest_raw_cell_available
-                  ? clearance.violation.nearest_raw_cell.y
+              clearance.violation.nearest_prohibited_cell_available
+                  ? clearance.violation.nearest_prohibited_cell.y
                   : -1,
               event.blocker_path_distance_m,
-              path_raw_clearance_armed_ ? "true" : "false",
+              path_prohibited_clearance_armed_ ? "true" : "false",
               event.memory_snapshot_sequence);
         }
       }

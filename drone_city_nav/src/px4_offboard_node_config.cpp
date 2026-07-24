@@ -48,8 +48,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       config.trajectory_update_max_start_cross_track_m, 8.0, 0.0, 1000.0);
   config.safe_trajectory_truncation_margin_m = boundedFiniteDouble(
       config.safe_trajectory_truncation_margin_m, 15.0, 0.0, 1000.0);
-  config.safe_trajectory_terminal_raw_clearance_m = boundedFiniteDouble(
-      config.safe_trajectory_terminal_raw_clearance_m, 5.0, 0.0, 1000.0);
+  config.safe_trajectory_terminal_prohibited_clearance_m = boundedFiniteDouble(
+      config.safe_trajectory_terminal_prohibited_clearance_m, 5.0, 0.0, 1000.0);
   config.local_horizon_min_buffer_m =
       boundedFiniteDouble(config.local_horizon_min_buffer_m, 3.0, 0.0, 1000.0);
   config.local_horizon_successor_timeout_s =
@@ -393,9 +393,10 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
   config.safe_trajectory_truncation_margin_m = boundedFiniteDouble(
       node.declare_parameter<double>("safe_trajectory_truncation_margin_m", 15.0), 15.0,
       0.0, 1000.0);
-  config.safe_trajectory_terminal_raw_clearance_m = boundedFiniteDouble(
-      node.declare_parameter<double>("safe_trajectory_terminal_raw_clearance_m", 5.0),
-      5.0, 0.0, 1000.0);
+  config.safe_trajectory_terminal_prohibited_clearance_m =
+      boundedFiniteDouble(node.declare_parameter<double>(
+                              "safe_trajectory_terminal_prohibited_clearance_m", 5.0),
+                          5.0, 0.0, 1000.0);
   config.local_horizon_min_buffer_m = boundedFiniteDouble(
       node.declare_parameter<double>("local_horizon_min_buffer_m", 3.0), 3.0, 0.0,
       1000.0);

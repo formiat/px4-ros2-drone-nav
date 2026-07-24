@@ -1,4 +1,4 @@
-#include "drone_city_nav/path_raw_clearance_monitor.hpp"
+#include "drone_city_nav/path_prohibited_clearance_monitor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,16 +25,16 @@ struct SampleClearance {
   return SampleClearance{true, field.distanceAt(*cell), *cell};
 }
 
-void populateNearestRawCell(const OccupancyGrid2D& grid, const GridIndex query,
-                            const double search_radius_m,
-                            PathRawClearanceViolation& violation) {
+void populateNearestProhibitedCell(const OccupancyGrid2D& grid, const GridIndex query,
+                                   const double search_radius_m,
+                                   PathProhibitedClearanceViolation& violation) {
   const int radius_cells =
       static_cast<int>(std::ceil(std::max(0.0, search_radius_m) / grid.resolution()));
   double nearest_distance_sq = std::numeric_limits<double>::infinity();
   for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
     for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
       const GridIndex candidate{query.x + dx, query.y + dy};
-      if (!grid.contains(candidate) || !grid.isOccupied(candidate)) {
+      if (!grid.contains(candidate) || !grid.isProhibited(candidate)) {
         continue;
       }
       const double distance_sq =
@@ -43,31 +43,31 @@ void populateNearestRawCell(const OccupancyGrid2D& grid, const GridIndex query,
         continue;
       }
       nearest_distance_sq = distance_sq;
-      violation.nearest_raw_cell = candidate;
-      violation.nearest_raw_cell_center = grid.cellCenter(candidate);
-      violation.nearest_raw_cell_available = true;
+      violation.nearest_prohibited_cell = candidate;
+      violation.nearest_prohibited_cell_center = grid.cellCenter(candidate);
+      violation.nearest_prohibited_cell_available = true;
     }
   }
 }
 
 } // namespace
 
-PathRawClearanceEvaluation
-evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
-                         const ClearanceField2D& physical_clearance,
-                         const std::span<const Point2> remaining_path,
-                         const PathRawClearanceMonitorConfig& input_config) {
-  PathRawClearanceEvaluation result{};
+PathProhibitedClearanceEvaluation evaluatePathProhibitedClearance(
+    const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D& prohibited_clearance,
+    const std::span<const Point2> remaining_path,
+    const PathProhibitedClearanceMonitorConfig& input_config) {
+  PathProhibitedClearanceEvaluation result{};
   if (remaining_path.size() < 2U || !(prohibited_grid.resolution() > 0.0) ||
-      physical_clearance.source() != ClearanceSource::kOccupied ||
-      physical_clearance.bounds().origin_x != prohibited_grid.originX() ||
-      physical_clearance.bounds().origin_y != prohibited_grid.originY() ||
-      physical_clearance.bounds().resolution_m != prohibited_grid.resolution() ||
-      physical_clearance.bounds().width_cells != prohibited_grid.width() ||
-      physical_clearance.bounds().height_cells != prohibited_grid.height()) {
+      prohibited_clearance.source() != ClearanceSource::kProhibited ||
+      prohibited_clearance.bounds().origin_x != prohibited_grid.originX() ||
+      prohibited_clearance.bounds().origin_y != prohibited_grid.originY() ||
+      prohibited_clearance.bounds().resolution_m != prohibited_grid.resolution() ||
+      prohibited_clearance.bounds().width_cells != prohibited_grid.width() ||
+      prohibited_clearance.bounds().height_cells != prohibited_grid.height()) {
     return result;
   }
-  const PathRawClearanceMonitorConfig config{
+  const PathProhibitedClearanceMonitorConfig config{
       .trigger_clearance_m = std::max(0.0, input_config.trigger_clearance_m),
       .arm_clearance_m =
           std::max(input_config.trigger_clearance_m, input_config.arm_clearance_m),
@@ -75,7 +75,7 @@ evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
       .sample_step_m = std::clamp(input_config.sample_step_m, 0.1, 5.0),
   };
   const SampleClearance current =
-      sampleClearance(prohibited_grid, physical_clearance, remaining_path.front());
+      sampleClearance(prohibited_grid, prohibited_clearance, remaining_path.front());
   if (!current.valid) {
     return result;
   }
@@ -104,7 +104,7 @@ evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
                          start.y + (end.y - start.y) * ratio};
       const double sample_distance_m = distance_m + segment_length_m * ratio;
       const SampleClearance sample =
-          sampleClearance(prohibited_grid, physical_clearance, point);
+          sampleClearance(prohibited_grid, prohibited_clearance, point);
       const bool below_trigger = sample.valid && sample.clearance_m + kTinyDistanceM <
                                                      config.trigger_clearance_m;
       if (!below_trigger) {
@@ -123,8 +123,8 @@ evaluatePathRawClearance(const OccupancyGrid2D& prohibited_grid,
           std::min(result.violation.min_clearance_m, sample.clearance_m);
       if (result.violation.length_m + kTinyDistanceM >= config.min_violation_length_m) {
         result.violation.detected = true;
-        populateNearestRawCell(prohibited_grid, entry_cell, config.trigger_clearance_m,
-                               result.violation);
+        populateNearestProhibitedCell(prohibited_grid, entry_cell,
+                                      config.trigger_clearance_m, result.violation);
         return result;
       }
     }

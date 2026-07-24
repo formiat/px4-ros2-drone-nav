@@ -25,7 +25,7 @@ preparedBuildAvailable(const PlanningGridPreparationInput& input) noexcept {
          input.build_result->status == PlanningGridStatus::kReady &&
          input.build_result->grid.has_value() &&
          input.build_result->planning_grid.has_value() &&
-         input.build_result->physical_clearance.has_value() &&
+         input.build_result->prohibited_clearance.has_value() &&
          std::isfinite(input.relaxation_center.x) &&
          std::isfinite(input.relaxation_center.y) &&
          std::isfinite(input.relaxation_radius_m) && input.relaxation_radius_m >= 0.0 &&
@@ -54,9 +54,9 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   const LocalInflationRelaxationStats planning_relaxation =
       planning_grid.clearInflationWithinRadius(input.relaxation_center,
                                                input.relaxation_radius_m);
-  ClearanceField2D physical_clearance = build.physical_clearance.value();
-  ClearanceField2D runtime_clearance = ClearanceField2D::build(
+  ClearanceField2D prohibited_clearance = ClearanceField2D::build(
       runtime_grid, input.clearance_max_distance_m, ClearanceSource::kProhibited);
+  ClearanceField2D runtime_clearance = prohibited_clearance;
   ClearanceField2D planning_clearance = ClearanceField2D::build(
       planning_grid, input.clearance_max_distance_m, ClearanceSource::kProhibited);
 
@@ -73,7 +73,7 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   return PreparedPlanningGridSnapshot{
       .runtime_prohibited_grid = std::move(runtime_grid),
       .planning_clearance_grid = std::move(planning_grid),
-      .physical_clearance = std::move(physical_clearance),
+      .prohibited_clearance = std::move(prohibited_clearance),
       .runtime_clearance = std::move(runtime_clearance),
       .planning_clearance = std::move(planning_clearance),
       .version = version,

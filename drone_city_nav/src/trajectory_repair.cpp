@@ -52,7 +52,8 @@ findFirstSampledBlockedSpan(const OccupancyGrid2D& grid,
     if (blocked) {
       span.last_blocked_s_m = sample_s_m;
       span.last_point = sample.point;
-      span.min_raw_clearance_m = std::min(span.min_raw_clearance_m, clearance_m);
+      span.min_prohibited_clearance_m =
+          std::min(span.min_prohibited_clearance_m, clearance_m);
       if (cell.has_value()) {
         span.last_cell = *cell;
         span.last_cell_available = true;
@@ -241,20 +242,21 @@ findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
   return findFirstProhibitedCellSpan(grid, trajectory, minimum_s_m);
 }
 
-std::optional<BlockedSpan> findFirstRawClearanceBlockedSpan(
-    const OccupancyGrid2D& prohibited_grid, const ClearanceField2D& physical_clearance,
+std::optional<BlockedSpan> findFirstProhibitedClearanceBlockedSpan(
+    const OccupancyGrid2D& prohibited_grid,
+    const ClearanceField2D& prohibited_clearance,
     const std::span<const TrajectoryPointSample> trajectory, const double minimum_s_m,
     const BlockedSpanScanConfig& config) {
-  const double trigger_m = std::max(0.0, config.raw_clearance_trigger_m);
+  const double trigger_m = std::max(0.0, config.prohibited_clearance_trigger_m);
   return findFirstSampledBlockedSpan(
       prohibited_grid, trajectory, minimum_s_m, config.sample_step_m,
-      std::max(0.0, config.raw_min_violation_length_m),
-      BlockedSpanTrigger::kRawClearance,
-      [&physical_clearance, trigger_m](const TrajectoryPointSample&,
-                                       const std::optional<GridIndex> cell) {
+      std::max(0.0, config.prohibited_min_violation_length_m),
+      BlockedSpanTrigger::kProhibitedClearance,
+      [&prohibited_clearance, trigger_m](const TrajectoryPointSample&,
+                                         const std::optional<GridIndex> cell) {
         const double clearance_m =
-            cell.has_value() && physical_clearance.contains(*cell)
-                ? physical_clearance.distanceAt(*cell)
+            cell.has_value() && prohibited_clearance.contains(*cell)
+                ? prohibited_clearance.distanceAt(*cell)
                 : std::numeric_limits<double>::quiet_NaN();
         return std::pair{std::isnan(clearance_m) ||
                              clearance_m + kTinyDistanceM < trigger_m,
@@ -350,8 +352,8 @@ const char* blockedSpanTriggerName(const BlockedSpanTrigger trigger) noexcept {
   switch (trigger) {
     case BlockedSpanTrigger::kProhibited:
       return "prohibited";
-    case BlockedSpanTrigger::kRawClearance:
-      return "raw_clearance";
+    case BlockedSpanTrigger::kProhibitedClearance:
+      return "prohibited_clearance";
   }
   return "unknown";
 }

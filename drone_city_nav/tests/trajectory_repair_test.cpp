@@ -124,18 +124,18 @@ TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {
   }
   const std::vector<TrajectoryPointSample> samples = lineSamples(50.0);
   const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
 
-  const auto span =
-      findFirstRawClearanceBlockedSpan(grid, clearance, samples, 0.0,
-                                       BlockedSpanScanConfig{
-                                           .sample_step_m = 0.25,
-                                           .raw_clearance_trigger_m = 5.0,
-                                           .raw_min_violation_length_m = 12.0,
-                                       });
+  const auto span = findFirstProhibitedClearanceBlockedSpan(
+      grid, clearance, samples, 0.0,
+      BlockedSpanScanConfig{
+          .sample_step_m = 0.25,
+          .prohibited_clearance_trigger_m = 5.0,
+          .prohibited_min_violation_length_m = 12.0,
+      });
 
   ASSERT_TRUE(span.has_value());
-  EXPECT_EQ(span->trigger, BlockedSpanTrigger::kRawClearance);
+  EXPECT_EQ(span->trigger, BlockedSpanTrigger::kProhibitedClearance);
   EXPECT_GT(span->first_blocked_s_m, 15.0);
   EXPECT_GT(span->last_blocked_s_m - span->first_blocked_s_m, 12.0);
   EXPECT_GT(span->last_blocked_s_m, 35.0);
@@ -144,15 +144,15 @@ TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {
 TEST(TrajectoryRepair, InfiniteClearanceInOpenGridIsSafe) {
   const OccupancyGrid2D grid = freeGrid();
   const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
 
-  const auto span =
-      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(50.0), 0.0,
-                                       BlockedSpanScanConfig{
-                                           .sample_step_m = 0.25,
-                                           .raw_clearance_trigger_m = 5.0,
-                                           .raw_min_violation_length_m = 5.0,
-                                       });
+  const auto span = findFirstProhibitedClearanceBlockedSpan(
+      grid, clearance, lineSamples(50.0), 0.0,
+      BlockedSpanScanConfig{
+          .sample_step_m = 0.25,
+          .prohibited_clearance_trigger_m = 5.0,
+          .prohibited_min_violation_length_m = 5.0,
+      });
 
   EXPECT_FALSE(span.has_value());
 }
@@ -163,15 +163,15 @@ TEST(TrajectoryRepair, RawClearanceRunAtGoalEndsAtLastStation) {
     grid.setOccupied(GridIndex{x, 13});
   }
   const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
 
-  const auto span =
-      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(50.0), 0.0,
-                                       BlockedSpanScanConfig{
-                                           .sample_step_m = 0.25,
-                                           .raw_clearance_trigger_m = 5.0,
-                                           .raw_min_violation_length_m = 5.0,
-                                       });
+  const auto span = findFirstProhibitedClearanceBlockedSpan(
+      grid, clearance, lineSamples(50.0), 0.0,
+      BlockedSpanScanConfig{
+          .sample_step_m = 0.25,
+          .prohibited_clearance_trigger_m = 5.0,
+          .prohibited_min_violation_length_m = 5.0,
+      });
 
   ASSERT_TRUE(span.has_value());
   EXPECT_DOUBLE_EQ(span->last_blocked_s_m, 50.0);
@@ -186,15 +186,15 @@ TEST(TrajectoryRepair, RawClearanceScannerReturnsFirstLongRun) {
     grid.setOccupied(GridIndex{x, 13});
   }
   const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied);
+      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
 
-  const auto span =
-      findFirstRawClearanceBlockedSpan(grid, clearance, lineSamples(70.0), 0.0,
-                                       BlockedSpanScanConfig{
-                                           .sample_step_m = 0.25,
-                                           .raw_clearance_trigger_m = 5.0,
-                                           .raw_min_violation_length_m = 5.0,
-                                       });
+  const auto span = findFirstProhibitedClearanceBlockedSpan(
+      grid, clearance, lineSamples(70.0), 0.0,
+      BlockedSpanScanConfig{
+          .sample_step_m = 0.25,
+          .prohibited_clearance_trigger_m = 5.0,
+          .prohibited_min_violation_length_m = 5.0,
+      });
 
   ASSERT_TRUE(span.has_value());
   EXPECT_LT(span->first_blocked_s_m, 12.0);

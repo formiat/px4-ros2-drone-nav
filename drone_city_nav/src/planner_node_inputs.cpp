@@ -375,7 +375,7 @@ void PlannerNode::loadConfiguredKnownPassages() {
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
   config.planning_clearance_m = planning_clearance_m_;
-  config.physical_clearance_max_distance_m =
+  config.prohibited_clearance_max_distance_m =
       planner_core_.config().clearance_diagnostic_radius_m;
   return config;
 }
@@ -941,7 +941,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       "planning_path_clearance[raw=%.2f smoothed=%.2f] "
       "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f "
       "core_breakdown[grid_stats=%.1f raw_metrics=%.1f smoothed_metrics=%.1f "
-      "clearance_field=%.1f clearance_cache_hit=%s raw_clearance=%.1f "
+      "clearance_field=%.1f clearance_cache_hit=%s prohibited_clearance=%.1f "
       "smoothed_clearance=%.1f]]",
       current_pose_.position.x, current_pose_.position.y,
       distance(current_pose_.position, start_), distance(current_pose_.position, goal_),

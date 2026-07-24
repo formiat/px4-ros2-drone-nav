@@ -29,7 +29,7 @@ struct PlanningGridPreparationInput {
 struct PreparedPlanningGridSnapshot {
   OccupancyGrid2D runtime_prohibited_grid;
   OccupancyGrid2D planning_clearance_grid;
-  ClearanceField2D physical_clearance;
+  ClearanceField2D prohibited_clearance;
   ClearanceField2D runtime_clearance;
   ClearanceField2D planning_clearance;
   PlanningGridVersion version{};

@@ -103,10 +103,10 @@ planner_node:
     truncation_suffix_ack_topic: /drone_city_nav/truncation_suffix_ack
     executable_trajectory_topic: /drone_city_nav/executable_trajectory
     safe_trajectory_truncation_enabled: true
-    path_raw_clearance_trigger_m: 5.0
-    path_raw_clearance_arm_m: 5.5
-    path_raw_clearance_min_violation_length_m: 2.0
-    path_raw_clearance_sample_step_m: 0.5
+    path_prohibited_clearance_trigger_m: 5.0
+    path_prohibited_clearance_arm_m: 5.5
+    path_prohibited_clearance_min_violation_length_m: 2.0
+    path_prohibited_clearance_sample_step_m: 0.5
     partial_replan_enabled: true
     partial_replan_reconnect_margins_m:
       [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
@@ -384,7 +384,7 @@ px4_offboard_node:
     trajectory_update_max_start_cross_track_m: 8.0
     safe_trajectory_truncation_enabled: true
     safe_trajectory_truncation_margin_m: 15.0
-    safe_trajectory_terminal_raw_clearance_m: 5.0
+    safe_trajectory_terminal_prohibited_clearance_m: 5.0
     local_horizon_min_buffer_m: 3.0
     local_horizon_successor_timeout_s: 0.5
     trajectory_handover_enabled: true
