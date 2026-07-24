@@ -805,19 +805,18 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             grid_name, &published_path_id, &prepared->version,
             reaches_mission_goal ? TrajectoryEndpointSemantics::kMissionGoal
                                  : TrajectoryEndpointSemantics::kLocalHorizon,
-            &stage_timings);
+            &stage_timings, grid_attempt.grid);
         stage_timings.publication_total_ms = elapsedMilliseconds(cycle_started_at);
         RCLCPP_INFO(
             get_logger(),
             "NO_STATIC_ROLLOUT_TIMING generation=%" PRIu64 " grid_revision=%" PRIu64
             " finalist=%zu published=%s "
             "rollout_generation_ms=%.2f candidate_finalization_ms=%.2f "
-            "fresh_grid_build_ms=%.2f fresh_grid_prepare_ms=%.2f "
+            "fresh_grid_build_ms=not_run fresh_grid_prepare_ms=not_run "
             "final_validation_ms=%.2f publication_total_ms=%.2f",
             invalidation_generation, prepared->version.build_revision, finalist_index,
             published ? "true" : "false", stage_timings.rollout_generation_ms,
-            stage_timings.candidate_finalization_ms, stage_timings.fresh_grid_build_ms,
-            stage_timings.fresh_grid_prepare_ms, stage_timings.final_validation_ms,
+            stage_timings.candidate_finalization_ms, stage_timings.final_validation_ms,
             stage_timings.publication_total_ms);
         if (published) {
           active_rollout_score_ = finalist.score;

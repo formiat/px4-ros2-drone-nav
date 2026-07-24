@@ -309,7 +309,8 @@ private:
                           const PlanningGridVersion* source_grid_version = nullptr,
                           TrajectoryEndpointSemantics endpoint_semantics =
                               TrajectoryEndpointSemantics::kMissionGoal,
-                          TrajectoryPublicationStageTimings* stage_timings = nullptr);
+                          TrajectoryPublicationStageTimings* stage_timings = nullptr,
+                          const OccupancyGrid2D* source_validation_grid = nullptr);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,

@@ -209,10 +209,13 @@ bool PlannerNode::publishTrajectoryResult(
     std::uint64_t* published_path_id,
     const PlanningGridVersion* const source_grid_version,
     const TrajectoryEndpointSemantics endpoint_semantics,
-    TrajectoryPublicationStageTimings* const stage_timings) {
+    TrajectoryPublicationStageTimings* const stage_timings,
+    const OccupancyGrid2D* const source_validation_grid) {
+  const bool use_source_validation_grid =
+      std::string_view{source_label} == "no_static_rollout";
   const std::uint64_t latest_invalidation_generation =
       latestPlanningInvalidationGeneration();
-  if (std::string_view{source_label} == "no_static_rollout" &&
+  if (use_source_validation_grid &&
       !publicationGenerationIsCurrent(delivery.generation,
                                       latest_invalidation_generation)) {
     RCLCPP_WARN(get_logger(),
@@ -236,83 +239,95 @@ bool PlannerNode::publishTrajectoryResult(
     return false;
   }
   applyNavigationStateSnapshot(fresh_navigation);
-  applyPendingMemorySnapshot(now_ns);
-  applyLatestLidarInputSnapshot();
-  const auto fresh_grid_build_started_at = std::chrono::steady_clock::now();
-  std::optional<PlanningGridBuildResult> latest_planning_result =
-      buildPlanningGrid(now_ns);
-  if (stage_timings != nullptr) {
-    stage_timings->fresh_grid_build_ms =
-        elapsedMilliseconds(fresh_grid_build_started_at);
-  }
-  if (!latest_planning_result.has_value()) {
-    RCLCPP_WARN(get_logger(),
-                "%s trajectory candidate discarded before publication: "
-                "reason=latest_validation_grid_unavailable generation=%" PRIu64,
-                source_label, delivery.generation);
-    schedulePlanningCycle(PlanningWakeReason::kRetry);
-    return false;
-  }
-  const auto fresh_grid_prepare_started_at = std::chrono::steady_clock::now();
-  std::optional<PreparedPlanningGridSnapshot> latest_prepared =
-      preparePlanningGridSnapshot(*latest_planning_result,
-                                  fresh_navigation.pose.position);
-  if (stage_timings != nullptr) {
-    stage_timings->fresh_grid_prepare_ms =
-        elapsedMilliseconds(fresh_grid_prepare_started_at);
-  }
-  if (!latest_prepared.has_value()) {
-    RCLCPP_WARN(get_logger(),
-                "%s trajectory candidate discarded before publication: "
-                "reason=latest_prepared_grid_unavailable generation=%" PRIu64,
-                source_label, delivery.generation);
-    schedulePlanningCycle(PlanningWakeReason::kRetry);
-    return false;
-  }
-  if (source_grid_version != nullptr &&
-      latest_prepared->version.build_revision < source_grid_version->build_revision) {
-    RCLCPP_ERROR(get_logger(),
-                 "%s trajectory candidate discarded before publication: "
-                 "reason=grid_revision_regressed source_revision=%" PRIu64
-                 " fresh_revision=%" PRIu64,
-                 source_label, source_grid_version->build_revision,
-                 latest_prepared->version.build_revision);
-    schedulePlanningCycle(PlanningWakeReason::kRetry);
-    return false;
-  }
-  OccupancyGrid2D& latest_prohibited_grid = latest_prepared->runtime_prohibited_grid;
-  OccupancyGrid2D& latest_planning_grid = latest_prepared->planning_clearance_grid;
-  const LocalInflationRelaxationStats& latest_runtime_relaxation =
-      latest_prepared->runtime_relaxation;
-  const LocalInflationRelaxationStats& latest_planning_relaxation =
-      latest_prepared->planning_relaxation;
-  publishProhibitedGrid(latest_prohibited_grid);
-  const std::vector<TrajectoryGridCandidate> latest_grid_candidates{
-      TrajectoryGridCandidate{"planning_clearance", &latest_planning_grid, nullptr,
-                              false},
-  };
-  RCLCPP_INFO(get_logger(),
-              "LOCAL_INFLATION_RELAXATION stage=fresh_validation center=(%.2f,%.2f) "
-              "radius_m=%.2f runtime_cleared=%zu planning_cleared=%zu "
-              "runtime_occupied_preserved=%zu planning_occupied_preserved=%zu",
-              fresh_navigation.pose.position.x, fresh_navigation.pose.position.y,
-              local_inflation_relaxation_radius_m_,
-              latest_runtime_relaxation.inflated_cells_cleared,
-              latest_planning_relaxation.inflated_cells_cleared,
-              latest_runtime_relaxation.occupied_cells_preserved,
-              latest_planning_relaxation.occupied_cells_preserved);
-  if (source_grid_version != nullptr) {
-    RCLCPP_INFO(
-        get_logger(),
-        "REPAIR_RACE fresh_validation source_revision=%" PRIu64
-        " fresh_revision=%" PRIu64 " memory=%" PRIu64 "/%" PRIu64 "->%" PRIu64
-        "/%" PRIu64 " lidar_update_ns=%" PRId64 "->%" PRId64,
-        source_grid_version->build_revision, latest_prepared->version.build_revision,
-        source_grid_version->memory_producer_instance_id,
-        source_grid_version->memory_sequence,
-        latest_prepared->version.memory_producer_instance_id,
-        latest_prepared->version.memory_sequence, source_grid_version->lidar_update_ns,
-        latest_prepared->version.lidar_update_ns);
+  std::optional<PlanningGridBuildResult> latest_planning_result;
+  std::optional<PreparedPlanningGridSnapshot> latest_prepared;
+  std::vector<TrajectoryGridCandidate> latest_grid_candidates;
+  if (use_source_validation_grid) {
+    if (source_validation_grid == nullptr || source_grid_version == nullptr) {
+      RCLCPP_ERROR(get_logger(),
+                   "%s trajectory candidate discarded before publication: "
+                   "reason=source_validation_snapshot_unavailable generation=%" PRIu64,
+                   source_label, delivery.generation);
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
+      return false;
+    }
+    latest_grid_candidates.push_back(TrajectoryGridCandidate{
+        "planning_clearance", source_validation_grid, nullptr, false});
+  } else {
+    applyPendingMemorySnapshot(now_ns);
+    applyLatestLidarInputSnapshot();
+    const auto fresh_grid_build_started_at = std::chrono::steady_clock::now();
+    latest_planning_result = buildPlanningGrid(now_ns);
+    if (stage_timings != nullptr) {
+      stage_timings->fresh_grid_build_ms =
+          elapsedMilliseconds(fresh_grid_build_started_at);
+    }
+    if (!latest_planning_result.has_value()) {
+      RCLCPP_WARN(get_logger(),
+                  "%s trajectory candidate discarded before publication: "
+                  "reason=latest_validation_grid_unavailable generation=%" PRIu64,
+                  source_label, delivery.generation);
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
+      return false;
+    }
+    const auto fresh_grid_prepare_started_at = std::chrono::steady_clock::now();
+    latest_prepared = preparePlanningGridSnapshot(*latest_planning_result,
+                                                  fresh_navigation.pose.position);
+    if (stage_timings != nullptr) {
+      stage_timings->fresh_grid_prepare_ms =
+          elapsedMilliseconds(fresh_grid_prepare_started_at);
+    }
+    if (!latest_prepared.has_value()) {
+      RCLCPP_WARN(get_logger(),
+                  "%s trajectory candidate discarded before publication: "
+                  "reason=latest_prepared_grid_unavailable generation=%" PRIu64,
+                  source_label, delivery.generation);
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
+      return false;
+    }
+    if (source_grid_version != nullptr &&
+        latest_prepared->version.build_revision < source_grid_version->build_revision) {
+      RCLCPP_ERROR(get_logger(),
+                   "%s trajectory candidate discarded before publication: "
+                   "reason=grid_revision_regressed source_revision=%" PRIu64
+                   " fresh_revision=%" PRIu64,
+                   source_label, source_grid_version->build_revision,
+                   latest_prepared->version.build_revision);
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
+      return false;
+    }
+    publishProhibitedGrid(latest_prepared->runtime_prohibited_grid);
+    latest_grid_candidates.push_back(TrajectoryGridCandidate{
+        "planning_clearance", &latest_prepared->planning_clearance_grid, nullptr,
+        false});
+    const LocalInflationRelaxationStats& latest_runtime_relaxation =
+        latest_prepared->runtime_relaxation;
+    const LocalInflationRelaxationStats& latest_planning_relaxation =
+        latest_prepared->planning_relaxation;
+    RCLCPP_INFO(get_logger(),
+                "LOCAL_INFLATION_RELAXATION stage=fresh_validation center=(%.2f,%.2f) "
+                "radius_m=%.2f runtime_cleared=%zu planning_cleared=%zu "
+                "runtime_occupied_preserved=%zu planning_occupied_preserved=%zu",
+                fresh_navigation.pose.position.x, fresh_navigation.pose.position.y,
+                local_inflation_relaxation_radius_m_,
+                latest_runtime_relaxation.inflated_cells_cleared,
+                latest_planning_relaxation.inflated_cells_cleared,
+                latest_runtime_relaxation.occupied_cells_preserved,
+                latest_planning_relaxation.occupied_cells_preserved);
+    if (source_grid_version != nullptr) {
+      RCLCPP_INFO(get_logger(),
+                  "REPAIR_RACE fresh_validation source_revision=%" PRIu64
+                  " fresh_revision=%" PRIu64 " memory=%" PRIu64 "/%" PRIu64 "->%" PRIu64
+                  "/%" PRIu64 " lidar_update_ns=%" PRId64 "->%" PRId64,
+                  source_grid_version->build_revision,
+                  latest_prepared->version.build_revision,
+                  source_grid_version->memory_producer_instance_id,
+                  source_grid_version->memory_sequence,
+                  latest_prepared->version.memory_producer_instance_id,
+                  latest_prepared->version.memory_sequence,
+                  source_grid_version->lidar_update_ns,
+                  latest_prepared->version.lidar_update_ns);
+    }
   }
 
   std::string handover_grid_name{"not_required"};
