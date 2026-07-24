@@ -1,3 +1,5 @@
+#include "drone_city_nav/local_horizon_execution_state.hpp"
+#include "drone_city_nav/msg/executable_trajectory.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 
 #include <gtest/gtest.h>
@@ -39,6 +41,19 @@ TEST(RosConversions, RejectsInvalidOccupancyGridMetadata) {
     return;
   }
   EXPECT_EQ(*result.error, OccupancyGridFromRosError::kInvalidMetadata);
+}
+
+TEST(RosConversions, ExecutableTrajectoryEndpointSemanticsRoundTrip) {
+  for (const TrajectoryEndpointSemantics semantics :
+       {TrajectoryEndpointSemantics::kMissionGoal,
+        TrajectoryEndpointSemantics::kLocalHorizon,
+        TrajectoryEndpointSemantics::kTemporaryReplanHold}) {
+    msg::ExecutableTrajectory command;
+    command.endpoint_semantics = trajectoryEndpointSemanticsToWire(semantics);
+
+    EXPECT_EQ(trajectoryEndpointSemanticsFromWire(command.endpoint_semantics),
+              std::optional<TrajectoryEndpointSemantics>{semantics});
+  }
 }
 
 TEST(RosConversions, RejectsNonFiniteAndOversizedOccupancyGridMetadata) {
