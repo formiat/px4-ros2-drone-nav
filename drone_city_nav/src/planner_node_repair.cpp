@@ -25,11 +25,6 @@ bool PlannerNode::runConfirmedRepairRace(
       .grid = prepared.planning_clearance_grid,
       .clearance = prepared.planning_clearance,
   });
-  snapshot->grids.push_back(RepairGridSnapshot{
-      .name = "runtime_prohibited",
-      .grid = prepared.runtime_prohibited_grid,
-      .clearance = prepared.runtime_clearance,
-  });
   snapshot->old_trajectory = truncation_replan.old_trajectory;
   snapshot->anchor = trajectorySampleAtS(truncation_replan.old_trajectory.samples,
                                          truncation_replan.truncation_s_m);
@@ -235,8 +230,7 @@ void PlannerNode::handoffRepairRaceWinner(
 
   const bool published = publishTrajectoryResult(
       winner.trajectory, winner.route_points, "repair_race", winner.duration_ms,
-      delivery,
-      winner.source_grid_index == 0U ? "planning_clearance" : "runtime_prohibited",
+      delivery, "planning_clearance",
       winner.kind == RepairJobKind::kPartial ? "stitched_old_suffix" : "full_replan",
       nullptr, &winner.source_grid_version);
   RCLCPP_INFO(get_logger(),

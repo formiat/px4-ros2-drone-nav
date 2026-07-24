@@ -46,8 +46,7 @@ TEST(TrajectoryRepair, ProhibitedSpanEndsAtFirstSafeStation) {
   }
   const std::vector<TrajectoryPointSample> samples = lineSamples(40.0);
 
-  const auto span = findFirstProhibitedBlockedSpan(
-      grid, samples, 0.0, BlockedSpanScanConfig{.sample_step_m = 0.25});
+  const auto span = findFirstProhibitedBlockedSpan(grid, samples, 0.0);
 
   ASSERT_TRUE(span.has_value());
   EXPECT_EQ(span->trigger, BlockedSpanTrigger::kProhibited);
@@ -66,8 +65,7 @@ TEST(TrajectoryRepair, ProhibitedScannerReturnsFirstOfTwoSpans) {
     grid.setOccupied(GridIndex{x, 10});
   }
 
-  const auto span = findFirstProhibitedBlockedSpan(
-      grid, lineSamples(50.0), 5.0, BlockedSpanScanConfig{.sample_step_m = 0.25});
+  const auto span = findFirstProhibitedBlockedSpan(grid, lineSamples(50.0), 5.0);
 
   ASSERT_TRUE(span.has_value());
   EXPECT_LT(span->first_blocked_s_m, 16.0);
@@ -80,8 +78,7 @@ TEST(TrajectoryRepair, ProhibitedScannerKeepsExitOfBlockedEscapePrefix) {
     grid.setOccupied(GridIndex{x, 10});
   }
 
-  const auto span = findFirstProhibitedBlockedSpan(
-      grid, lineSamples(30.0), 4.0, BlockedSpanScanConfig{.sample_step_m = 0.25});
+  const auto span = findFirstProhibitedBlockedSpan(grid, lineSamples(30.0), 4.0);
 
   ASSERT_TRUE(span.has_value());
   EXPECT_NEAR(span->first_blocked_s_m, 4.0, 0.26);
@@ -104,8 +101,7 @@ TEST(TrajectoryRepair, ProhibitedScannerVisitsEveryRuntimeLineCell) {
       grid.cellsOnLine(start_cell.value(), end_cell.value());
   ASSERT_NE(std::ranges::find(runtime_cells, GridIndex{1, 4}), runtime_cells.end());
 
-  const auto span = findFirstProhibitedBlockedSpan(
-      grid, samples, 0.0, BlockedSpanScanConfig{.sample_step_m = 0.5});
+  const auto span = findFirstProhibitedBlockedSpan(grid, samples, 0.0);
 
   ASSERT_TRUE(span.has_value());
   const BlockedSpan& blocked = span.value();
@@ -114,91 +110,6 @@ TEST(TrajectoryRepair, ProhibitedScannerVisitsEveryRuntimeLineCell) {
   EXPECT_EQ(blocked.first_cell, (GridIndex{1, 4}));
   EXPECT_EQ(blocked.last_cell, (GridIndex{1, 5}));
   EXPECT_GT(blocked.last_blocked_s_m, blocked.first_blocked_s_m);
-}
-
-TEST(TrajectoryRepair, RawClearanceSkipsShortRunAndReturnsLongRunExit) {
-  OccupancyGrid2D grid = freeGrid();
-  grid.setOccupied(GridIndex{8, 13});
-  for (int x = 25; x <= 35; ++x) {
-    grid.setOccupied(GridIndex{x, 13});
-  }
-  const std::vector<TrajectoryPointSample> samples = lineSamples(50.0);
-  const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
-
-  const auto span = findFirstProhibitedClearanceBlockedSpan(
-      grid, clearance, samples, 0.0,
-      BlockedSpanScanConfig{
-          .sample_step_m = 0.25,
-          .prohibited_clearance_trigger_m = 5.0,
-          .prohibited_min_violation_length_m = 12.0,
-      });
-
-  ASSERT_TRUE(span.has_value());
-  EXPECT_EQ(span->trigger, BlockedSpanTrigger::kProhibitedClearance);
-  EXPECT_GT(span->first_blocked_s_m, 15.0);
-  EXPECT_GT(span->last_blocked_s_m - span->first_blocked_s_m, 12.0);
-  EXPECT_GT(span->last_blocked_s_m, 35.0);
-}
-
-TEST(TrajectoryRepair, InfiniteClearanceInOpenGridIsSafe) {
-  const OccupancyGrid2D grid = freeGrid();
-  const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
-
-  const auto span = findFirstProhibitedClearanceBlockedSpan(
-      grid, clearance, lineSamples(50.0), 0.0,
-      BlockedSpanScanConfig{
-          .sample_step_m = 0.25,
-          .prohibited_clearance_trigger_m = 5.0,
-          .prohibited_min_violation_length_m = 5.0,
-      });
-
-  EXPECT_FALSE(span.has_value());
-}
-
-TEST(TrajectoryRepair, RawClearanceRunAtGoalEndsAtLastStation) {
-  OccupancyGrid2D grid = freeGrid();
-  for (int x = 35; x <= 50; ++x) {
-    grid.setOccupied(GridIndex{x, 13});
-  }
-  const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
-
-  const auto span = findFirstProhibitedClearanceBlockedSpan(
-      grid, clearance, lineSamples(50.0), 0.0,
-      BlockedSpanScanConfig{
-          .sample_step_m = 0.25,
-          .prohibited_clearance_trigger_m = 5.0,
-          .prohibited_min_violation_length_m = 5.0,
-      });
-
-  ASSERT_TRUE(span.has_value());
-  EXPECT_DOUBLE_EQ(span->last_blocked_s_m, 50.0);
-}
-
-TEST(TrajectoryRepair, RawClearanceScannerReturnsFirstLongRun) {
-  OccupancyGrid2D grid = freeGrid();
-  for (int x = 12; x <= 22; ++x) {
-    grid.setOccupied(GridIndex{x, 13});
-  }
-  for (int x = 42; x <= 52; ++x) {
-    grid.setOccupied(GridIndex{x, 13});
-  }
-  const ClearanceField2D clearance =
-      ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited);
-
-  const auto span = findFirstProhibitedClearanceBlockedSpan(
-      grid, clearance, lineSamples(70.0), 0.0,
-      BlockedSpanScanConfig{
-          .sample_step_m = 0.25,
-          .prohibited_clearance_trigger_m = 5.0,
-          .prohibited_min_violation_length_m = 5.0,
-      });
-
-  ASSERT_TRUE(span.has_value());
-  EXPECT_LT(span->first_blocked_s_m, 12.0);
-  EXPECT_LT(span->last_blocked_s_m, 30.0);
 }
 
 TEST(TrajectoryRepair, ReconnectCandidatesUseBlockedSpanEndAndGridFallback) {

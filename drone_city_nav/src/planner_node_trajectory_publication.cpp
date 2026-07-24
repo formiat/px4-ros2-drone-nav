@@ -279,8 +279,6 @@ bool PlannerNode::publishTrajectoryResult(
   const std::vector<TrajectoryGridCandidate> latest_grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &latest_planning_grid, nullptr,
                               false},
-      TrajectoryGridCandidate{"runtime_prohibited", &latest_prohibited_grid, nullptr,
-                              false},
   };
   RCLCPP_INFO(get_logger(),
               "LOCAL_INFLATION_RELAXATION stage=fresh_validation center=(%.2f,%.2f) "

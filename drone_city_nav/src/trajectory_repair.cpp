@@ -11,82 +11,6 @@ namespace {
 
 constexpr double kTinyDistanceM = 1.0e-6;
 
-template<typename Predicate>
-[[nodiscard]] std::optional<BlockedSpan>
-findFirstSampledBlockedSpan(const OccupancyGrid2D& grid,
-                            const std::span<const TrajectoryPointSample> trajectory,
-                            const double minimum_s_m, const double requested_step_m,
-                            const double minimum_run_length_m,
-                            const BlockedSpanTrigger trigger, Predicate predicate) {
-  if (!trajectorySamplesAreUsable(trajectory) || !(grid.resolution() > 0.0)) {
-    return std::nullopt;
-  }
-  const double start_s_m = std::clamp(std::isfinite(minimum_s_m) ? minimum_s_m : 0.0,
-                                      0.0, trajectory.back().s_m);
-  const double step_m =
-      std::clamp(std::min(requested_step_m, 0.5 * grid.resolution()), 0.05, 5.0);
-  bool run_active = false;
-  BlockedSpan span{};
-  span.trigger = trigger;
-
-  const double remaining_length_m = trajectory.back().s_m - start_s_m;
-  const std::size_t probe_count =
-      static_cast<std::size_t>(std::ceil(remaining_length_m / step_m)) + 1U;
-  for (std::size_t probe_index = 0U; probe_index < probe_count; ++probe_index) {
-    const double sample_s_m = std::min(
-        start_s_m + static_cast<double>(probe_index) * step_m, trajectory.back().s_m);
-    const TrajectoryPointSample sample = trajectorySampleAtS(trajectory, sample_s_m);
-    const std::optional<GridIndex> cell = grid.worldToCell(sample.point);
-    const auto state = predicate(sample, cell);
-    const bool blocked = state.first;
-    const double clearance_m = state.second;
-    if (blocked && !run_active) {
-      run_active = true;
-      span.first_blocked_s_m = sample_s_m;
-      span.first_point = sample.point;
-      if (cell.has_value()) {
-        span.first_cell = *cell;
-        span.first_cell_available = true;
-      }
-    }
-    if (blocked) {
-      span.last_blocked_s_m = sample_s_m;
-      span.last_point = sample.point;
-      span.min_prohibited_clearance_m =
-          std::min(span.min_prohibited_clearance_m, clearance_m);
-      if (cell.has_value()) {
-        span.last_cell = *cell;
-        span.last_cell_available = true;
-      }
-    } else if (run_active) {
-      const double run_length_m = sample_s_m - span.first_blocked_s_m;
-      if (run_length_m + kTinyDistanceM >= minimum_run_length_m) {
-        span.last_blocked_s_m = sample_s_m;
-        span.last_point = sample.point;
-        if (cell.has_value()) {
-          span.last_cell = *cell;
-          span.last_cell_available = true;
-        }
-        return span;
-      }
-      run_active = false;
-      span = BlockedSpan{};
-      span.trigger = trigger;
-    }
-    if (sample_s_m >= trajectory.back().s_m) {
-      break;
-    }
-  }
-
-  if (run_active && trajectory.back().s_m - span.first_blocked_s_m + kTinyDistanceM >=
-                        minimum_run_length_m) {
-    span.last_blocked_s_m = trajectory.back().s_m;
-    span.last_point = trajectory.back().point;
-    return span;
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] double segmentProjectionT(const Point2 start, const Point2 end,
                                         const Point2 point) noexcept {
   const Point2 direction{end.x - start.x, end.y - start.y};
@@ -237,31 +161,8 @@ bool updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
 std::optional<BlockedSpan>
 findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
                                const std::span<const TrajectoryPointSample> trajectory,
-                               const double minimum_s_m,
-                               [[maybe_unused]] const BlockedSpanScanConfig& config) {
+                               const double minimum_s_m) {
   return findFirstProhibitedCellSpan(grid, trajectory, minimum_s_m);
-}
-
-std::optional<BlockedSpan> findFirstProhibitedClearanceBlockedSpan(
-    const OccupancyGrid2D& prohibited_grid,
-    const ClearanceField2D& prohibited_clearance,
-    const std::span<const TrajectoryPointSample> trajectory, const double minimum_s_m,
-    const BlockedSpanScanConfig& config) {
-  const double trigger_m = std::max(0.0, config.prohibited_clearance_trigger_m);
-  return findFirstSampledBlockedSpan(
-      prohibited_grid, trajectory, minimum_s_m, config.sample_step_m,
-      std::max(0.0, config.prohibited_min_violation_length_m),
-      BlockedSpanTrigger::kProhibitedClearance,
-      [&prohibited_clearance, trigger_m](const TrajectoryPointSample&,
-                                         const std::optional<GridIndex> cell) {
-        const double clearance_m =
-            cell.has_value() && prohibited_clearance.contains(*cell)
-                ? prohibited_clearance.distanceAt(*cell)
-                : std::numeric_limits<double>::quiet_NaN();
-        return std::pair{std::isnan(clearance_m) ||
-                             clearance_m + kTinyDistanceM < trigger_m,
-                         clearance_m};
-      });
 }
 
 std::vector<ReconnectCandidate>
@@ -352,8 +253,6 @@ const char* blockedSpanTriggerName(const BlockedSpanTrigger trigger) noexcept {
   switch (trigger) {
     case BlockedSpanTrigger::kProhibited:
       return "prohibited";
-    case BlockedSpanTrigger::kProhibitedClearance:
-      return "prohibited_clearance";
   }
   return "unknown";
 }

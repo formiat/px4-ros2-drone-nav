@@ -376,8 +376,6 @@ void PlannerNode::loadConfiguredKnownPassages() {
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
   config.planning_clearance_m = planning_clearance_m_;
-  config.prohibited_clearance_max_distance_m =
-      planner_core_.config().clearance_diagnostic_radius_m;
   return config;
 }
 
@@ -614,7 +612,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       truncation_replan.has_value() ? truncation_replan->generation : 0U);
   std::vector<TrajectoryGridCandidate> grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
-      TrajectoryGridCandidate{"runtime_prohibited", &prohibited_grid, nullptr, false},
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
           PlannerModePrimaryAction::kRollout &&

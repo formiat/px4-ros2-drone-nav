@@ -675,19 +675,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "current_waypoint_topic", "/drone_city_nav/current_waypoint");
   config.safe_trajectory_truncation_enabled =
       node.declare_parameter<bool>("safe_trajectory_truncation_enabled", true);
-  config.path_prohibited_clearance_monitor.trigger_clearance_m = boundedFiniteDouble(
-      node.declare_parameter<double>("path_prohibited_clearance_trigger_m", 5.0), 5.0,
-      0.0, 1000.0);
-  config.path_prohibited_clearance_monitor.arm_clearance_m = boundedFiniteDouble(
-      node.declare_parameter<double>("path_prohibited_clearance_arm_m", 5.5), 5.5,
-      config.path_prohibited_clearance_monitor.trigger_clearance_m, 1000.0);
-  config.path_prohibited_clearance_monitor.min_violation_length_m =
-      boundedFiniteDouble(node.declare_parameter<double>(
-                              "path_prohibited_clearance_min_violation_length_m", 2.0),
-                          2.0, 0.0, 1000.0);
-  config.path_prohibited_clearance_monitor.sample_step_m = boundedFiniteDouble(
-      node.declare_parameter<double>("path_prohibited_clearance_sample_step_m", 0.5),
-      0.5, 0.1, 5.0);
   config.partial_replan.enabled =
       node.declare_parameter<bool>("partial_replan_enabled", true);
   config.partial_replan.reconnect_margins_m =

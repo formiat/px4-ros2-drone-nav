@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/clearance_field.hpp"
+#include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
 #include <cstdint>
@@ -14,7 +14,6 @@ namespace drone_city_nav {
 
 enum class BlockedSpanTrigger {
   kProhibited,
-  kProhibitedClearance,
 };
 
 struct BlockedSpan {
@@ -27,7 +26,6 @@ struct BlockedSpan {
   GridIndex last_cell{};
   bool first_cell_available{false};
   bool last_cell_available{false};
-  double min_prohibited_clearance_m{std::numeric_limits<double>::infinity()};
 };
 
 struct ExecutableTrajectoryArtifact {
@@ -36,12 +34,6 @@ struct ExecutableTrajectoryArtifact {
   Point2 mission_goal{};
   std::vector<TrajectoryPointSample> samples;
   double current_s_m{0.0};
-};
-
-struct BlockedSpanScanConfig {
-  double sample_step_m{0.5};
-  double prohibited_clearance_trigger_m{5.0};
-  double prohibited_min_violation_length_m{2.0};
 };
 
 struct ReconnectCandidate {
@@ -60,15 +52,10 @@ struct TrajectoryRepairStitchResult {
 updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
                                    Point2 current_position);
 
-[[nodiscard]] std::optional<BlockedSpan> findFirstProhibitedBlockedSpan(
-    const OccupancyGrid2D& grid, std::span<const TrajectoryPointSample> trajectory,
-    double minimum_s_m, const BlockedSpanScanConfig& config = {});
-
-[[nodiscard]] std::optional<BlockedSpan> findFirstProhibitedClearanceBlockedSpan(
-    const OccupancyGrid2D& prohibited_grid,
-    const ClearanceField2D& prohibited_clearance,
-    std::span<const TrajectoryPointSample> trajectory, double minimum_s_m,
-    const BlockedSpanScanConfig& config = {});
+[[nodiscard]] std::optional<BlockedSpan>
+findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
+                               std::span<const TrajectoryPointSample> trajectory,
+                               double minimum_s_m);
 
 [[nodiscard]] std::vector<ReconnectCandidate>
 makeReconnectCandidates(const ExecutableTrajectoryArtifact& artifact,

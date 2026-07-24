@@ -42,7 +42,6 @@ struct PlanningGridBuilderConfig {
   GridBounds fallback_bounds{};
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
-  double prohibited_clearance_max_distance_m{10.0};
 };
 
 struct PlanningGridCacheStats {
@@ -74,7 +73,6 @@ struct PlanningGridBuildResult {
   PlanningGridStatus status{PlanningGridStatus::kNoReadySourceData};
   std::optional<OccupancyGrid2D> grid;
   std::optional<OccupancyGrid2D> planning_grid;
-  std::optional<ClearanceField2D> prohibited_clearance;
   std::optional<OccupancyGrid2D> current_lidar_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};

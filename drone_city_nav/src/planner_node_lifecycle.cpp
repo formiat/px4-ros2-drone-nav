@@ -148,13 +148,6 @@ PlannerNode::PlannerNode()
               config.topics.truncation_suffix_ack.c_str(),
               safe_trajectory_truncation_enabled_ ? "true" : "false");
   RCLCPP_INFO(get_logger(),
-              "Path raw-clearance monitor: trigger=%.2fm arm=%.2fm "
-              "min_violation_length=%.2fm sample_step=%.2fm",
-              path_prohibited_clearance_monitor_config_.trigger_clearance_m,
-              path_prohibited_clearance_monitor_config_.arm_clearance_m,
-              path_prohibited_clearance_monitor_config_.min_violation_length_m,
-              path_prohibited_clearance_monitor_config_.sample_step_m);
-  RCLCPP_INFO(get_logger(),
               "Planning grid contract: raw_sources=[static,memory,current_lidar] "
               "runtime_inflation=%.2fm planning_clearance=%.2fm "
               "planning_effective_inflation=%.2fm "
@@ -346,7 +339,6 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
       config.memory_snapshot_transport.min_apply_rate_hz;
   use_static_map_ = config.static_map.enabled;
   safe_trajectory_truncation_enabled_ = config.safe_trajectory_truncation_enabled;
-  path_prohibited_clearance_monitor_config_ = config.path_prohibited_clearance_monitor;
   partial_replan_config_ = config.partial_replan;
   no_static_rollout_enabled_ = config.no_static_rollout.enabled;
   no_static_rollout_cycle_period_s_ = config.no_static_rollout.cycle_period_s;

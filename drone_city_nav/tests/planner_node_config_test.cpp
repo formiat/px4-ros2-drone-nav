@@ -179,11 +179,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_EQ(config.topics.executable_trajectory,
             "/drone_city_nav/executable_trajectory");
   EXPECT_TRUE(config.safe_trajectory_truncation_enabled);
-  EXPECT_DOUBLE_EQ(config.path_prohibited_clearance_monitor.trigger_clearance_m, 5.0);
-  EXPECT_DOUBLE_EQ(config.path_prohibited_clearance_monitor.arm_clearance_m, 5.5);
-  EXPECT_DOUBLE_EQ(config.path_prohibited_clearance_monitor.min_violation_length_m,
-                   2.0);
-  EXPECT_DOUBLE_EQ(config.path_prohibited_clearance_monitor.sample_step_m, 0.5);
   EXPECT_TRUE(config.partial_replan.enabled);
   EXPECT_EQ(config.partial_replan.reconnect_margins_m,
             (std::vector<double>{10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0,
