@@ -45,9 +45,6 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   const PlanningGridBuildResult& build = *input.build_result;
   OccupancyGrid2D runtime_grid = build.grid.value();
   OccupancyGrid2D planning_grid = build.planning_grid.value();
-  if (!sameBounds(runtime_grid.bounds(), planning_grid.bounds())) {
-    return std::nullopt;
-  }
 
   DirectedInflationEscapeResult directed_escape =
       directed_escape_planner_.update(planning_grid, input.relaxation_center,

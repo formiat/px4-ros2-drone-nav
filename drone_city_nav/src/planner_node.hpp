@@ -493,6 +493,8 @@ private:
   double no_static_terminal_braking_margin_m_{2.0};
   double no_static_rollout_min_length_m_{7.0};
   double no_static_rollout_min_unrelaxed_tail_m_{2.0};
+  bool no_static_rollout_local_window_enabled_{true};
+  double no_static_rollout_local_window_extra_margin_m_{1.0};
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
   NoStaticPlannerOrchestrator no_static_orchestrator_{};
   std::optional<double> active_rollout_score_;

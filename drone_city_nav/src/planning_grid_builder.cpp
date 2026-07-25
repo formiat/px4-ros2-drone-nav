@@ -1,5 +1,7 @@
 #include "drone_city_nav/planning_grid_builder.hpp"
 
+#include "drone_city_nav/grid_config.hpp"
+
 #include <chrono>
 #include <cmath>
 #include <utility>
@@ -105,6 +107,79 @@ void overlayDynamicSources(OccupancyGrid2D& dynamic_grid,
   return occupied_cells;
 }
 
+[[nodiscard]] std::optional<GridBounds>
+clippedWindowBounds(const GridBounds& source, const GridBounds& requested) {
+  if (!gridBoundsUsable(source) || !gridBoundsUsable(requested) ||
+      source.resolution_m != requested.resolution_m) {
+    return std::nullopt;
+  }
+  const double source_max_x =
+      source.origin_x + source.resolution_m * static_cast<double>(source.width_cells);
+  const double source_max_y =
+      source.origin_y + source.resolution_m * static_cast<double>(source.height_cells);
+  const double requested_max_x =
+      requested.origin_x +
+      requested.resolution_m * static_cast<double>(requested.width_cells);
+  const double requested_max_y =
+      requested.origin_y +
+      requested.resolution_m * static_cast<double>(requested.height_cells);
+  const double min_x = std::max(source.origin_x, requested.origin_x);
+  const double min_y = std::max(source.origin_y, requested.origin_y);
+  const double max_x = std::min(source_max_x, requested_max_x);
+  const double max_y = std::min(source_max_y, requested_max_y);
+  if (max_x <= min_x || max_y <= min_y) {
+    return std::nullopt;
+  }
+
+  const int start_x = std::max(
+      0, static_cast<int>(std::floor((min_x - source.origin_x) / source.resolution_m)));
+  const int start_y = std::max(
+      0, static_cast<int>(std::floor((min_y - source.origin_y) / source.resolution_m)));
+  const int end_x = std::min(
+      source.width_cells,
+      static_cast<int>(std::ceil((max_x - source.origin_x) / source.resolution_m)));
+  const int end_y = std::min(
+      source.height_cells,
+      static_cast<int>(std::ceil((max_y - source.origin_y) / source.resolution_m)));
+  if (end_x <= start_x || end_y <= start_y) {
+    return std::nullopt;
+  }
+  return GridBounds{
+      .origin_x = source.origin_x + source.resolution_m * static_cast<double>(start_x),
+      .origin_y = source.origin_y + source.resolution_m * static_cast<double>(start_y),
+      .resolution_m = source.resolution_m,
+      .width_cells = end_x - start_x,
+      .height_cells = end_y - start_y,
+  };
+}
+
+[[nodiscard]] OccupancyGrid2D extractWindow(const OccupancyGrid2D& source,
+                                            const GridBounds& bounds) {
+  OccupancyGrid2D window{bounds};
+  for (int y = 0; y < window.height(); ++y) {
+    for (int x = 0; x < window.width(); ++x) {
+      const GridIndex destination{x, y};
+      const std::optional<GridIndex> source_cell =
+          source.worldToCell(window.cellCenter(destination));
+      if (!source_cell.has_value()) {
+        continue;
+      }
+      switch (source.state(*source_cell)) {
+        case CellState::kUnknown:
+          window.setUnknown(destination);
+          break;
+        case CellState::kFree:
+          window.setFree(destination);
+          break;
+        case CellState::kOccupied:
+          window.setOccupied(destination);
+          break;
+      }
+    }
+  }
+  return window;
+}
+
 [[nodiscard]] PlanningGridBuildResult
 buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
                           const PlanningGridSources& sources) {
@@ -146,18 +221,32 @@ buildPlanningGridUncached(const PlanningGridBuilderConfig& config,
   const double inflation_radius_m = sanitizedNonNegative(config.inflation_radius_m);
   const double planning_clearance_m = sanitizedNonNegative(config.planning_clearance_m);
 
-  const DistanceField2D occupied_distance_field = DistanceField2D::build(
-      raw_grid,
-      inflation_radius_m + planning_clearance_m + (0.5 * raw_grid.resolution()),
+  result.cache.global_cells = raw_grid.cellCount();
+  const DistanceField2D runtime_distance_field = DistanceField2D::build(
+      raw_grid, inflation_radius_m + (0.5 * raw_grid.resolution()),
       DistanceFieldSource::kOccupied);
 
   OccupancyGrid2D prohibited_grid = raw_grid;
-  prohibited_grid.applyInflationFromDistanceField(occupied_distance_field,
+  prohibited_grid.applyInflationFromDistanceField(runtime_distance_field,
                                                   inflation_radius_m);
 
-  OccupancyGrid2D planning_grid = prohibited_grid;
+  OccupancyGrid2D planning_raw = raw_grid;
+  if (config.local_planning_bounds.has_value()) {
+    if (const std::optional<GridBounds> clipped =
+            clippedWindowBounds(raw_grid.bounds(), *config.local_planning_bounds);
+        clipped.has_value()) {
+      planning_raw = extractWindow(raw_grid, *clipped);
+      result.cache.local_planning_window_applied = true;
+    }
+  }
+  result.cache.planning_cells = planning_raw.cellCount();
+  const DistanceField2D planning_distance_field = DistanceField2D::build(
+      planning_raw,
+      inflation_radius_m + planning_clearance_m + (0.5 * planning_raw.resolution()),
+      DistanceFieldSource::kOccupied);
+  OccupancyGrid2D planning_grid = planning_raw;
   planning_grid.applyInflationFromDistanceField(
-      occupied_distance_field, inflation_radius_m + planning_clearance_m);
+      planning_distance_field, inflation_radius_m + planning_clearance_m);
 
   result.status = PlanningGridStatus::kReady;
   result.grid = std::move(prohibited_grid);

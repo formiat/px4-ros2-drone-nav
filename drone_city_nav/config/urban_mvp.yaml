@@ -116,6 +116,8 @@ planner_node:
     no_static_rollout_terminal_braking_margin_m: 2.0
     no_static_rollout_min_length_m: 7.0
     no_static_rollout_min_unrelaxed_tail_m: 2.0
+    no_static_rollout_local_window_enabled: true
+    no_static_rollout_local_window_extra_margin_m: 1.0
     no_static_rollout_horizon_m: 25.0
     no_static_rollout_sample_step_m: 1.0
     no_static_rollout_heading_samples: 9

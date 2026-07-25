@@ -1,3 +1,5 @@
+#include "drone_city_nav/grid_config.hpp"
+
 #include <array>
 #include <memory>
 
@@ -413,6 +415,27 @@ void PlannerNode::loadConfiguredKnownPassages() {
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
   config.planning_clearance_m = planning_clearance_m_;
+  if (!use_static_map_ && no_static_rollout_enabled_ &&
+      no_static_rollout_local_window_enabled_ && finite2D(current_pose_.position)) {
+    const double horizon_m = rollout_planner_.config().horizon_m;
+    const double safety_halo_m = inflation_radius_m_ + planning_clearance_m_ +
+                                 planner_core_.config().clearance_diagnostic_radius_m +
+                                 no_static_rollout_local_window_extra_margin_m_;
+    const double half_extent_m = horizon_m + safety_halo_m;
+    Point2 direction{1.0, 0.0};
+    const Point2 goal_delta{goal_.x - current_pose_.position.x,
+                            goal_.y - current_pose_.position.y};
+    const double goal_distance_m = std::hypot(goal_delta.x, goal_delta.y);
+    if (goal_distance_m > 1.0e-6) {
+      direction =
+          Point2{goal_delta.x / goal_distance_m, goal_delta.y / goal_distance_m};
+    }
+    const Point2 center{current_pose_.position.x + horizon_m * direction.x,
+                        current_pose_.position.y + horizon_m * direction.y};
+    config.local_planning_bounds = boundedGridBounds(
+        center.x - half_extent_m, center.y - half_extent_m,
+        fallback_grid_bounds_.resolution_m, 2.0 * half_extent_m, 2.0 * half_extent_m);
+  }
   return config;
 }
 
@@ -618,13 +641,32 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     prepared = std::make_shared<const PreparedPlanningGridSnapshot>(
         std::move(*prepared_value));
   }
-  RCLCPP_INFO(get_logger(),
-              "PLANNING_GRID_TIMING cycle_sequence=%" PRIu64
-              " invalidation_generation=%" PRIu64 " grid_revision=%" PRIu64
-              " grid_build_ms=%.2f snapshot_reused=%s",
-              identity.cycle_sequence, invalidation_generation,
-              prepared->version.build_revision, planning_grid_duration_ms,
-              reuse_successor_snapshot ? "true" : "false");
+  RCLCPP_INFO(
+      get_logger(),
+      "PLANNING_GRID_TIMING cycle_sequence=%" PRIu64 " invalidation_generation=%" PRIu64
+      " grid_revision=%" PRIu64
+      " grid_build_ms=%.2f snapshot_reused=%s local_window=%s "
+      "runtime_grid=%dx%d planning_grid=%dx%d global_cells=%zu "
+      "planning_cells=%zu reduction=%.2fx",
+      identity.cycle_sequence, invalidation_generation,
+      prepared->version.build_revision, planning_grid_duration_ms,
+      reuse_successor_snapshot ? "true" : "false",
+      prepared->runtime_prohibited_grid.bounds().width_cells !=
+                  prepared->planning_clearance_grid.bounds().width_cells ||
+              prepared->runtime_prohibited_grid.bounds().height_cells !=
+                  prepared->planning_clearance_grid.bounds().height_cells
+          ? "true"
+          : "false",
+      prepared->runtime_prohibited_grid.width(),
+      prepared->runtime_prohibited_grid.height(),
+      prepared->planning_clearance_grid.width(),
+      prepared->planning_clearance_grid.height(),
+      prepared->runtime_prohibited_grid.cellCount(),
+      prepared->planning_clearance_grid.cellCount(),
+      prepared->planning_clearance_grid.cellCount() > 0U
+          ? static_cast<double>(prepared->runtime_prohibited_grid.cellCount()) /
+                static_cast<double>(prepared->planning_clearance_grid.cellCount())
+          : std::numeric_limits<double>::infinity());
   const OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
   const OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
   const LocalInflationRelaxationStats& runtime_relaxation =

@@ -40,6 +40,7 @@ struct MemorySourceStats {
 struct PlanningGridBuilderConfig {
   bool use_static_map{true};
   GridBounds fallback_bounds{};
+  std::optional<GridBounds> local_planning_bounds;
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
 };
@@ -54,6 +55,9 @@ struct PlanningGridCacheStats {
   double dynamic_inflation_mask_duration_ms{0.0};
   std::size_t static_distance_source_cells{0U};
   std::size_t dynamic_distance_source_cells{0U};
+  bool local_planning_window_applied{false};
+  std::size_t global_cells{0U};
+  std::size_t planning_cells{0U};
 };
 
 struct PlanningGridSources {

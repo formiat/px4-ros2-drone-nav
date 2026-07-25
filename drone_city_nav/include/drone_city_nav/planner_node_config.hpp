@@ -97,6 +97,8 @@ struct NoStaticRolloutConfig {
   double terminal_braking_margin_m{2.0};
   double minimum_length_m{7.0};
   double minimum_unrelaxed_tail_m{2.0};
+  bool local_planning_window_enabled{true};
+  double local_planning_window_extra_margin_m{1.0};
   RolloutPlannerConfig planner{};
   NoStaticPlannerOrchestratorConfig orchestrator{};
 };

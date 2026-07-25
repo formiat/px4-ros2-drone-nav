@@ -235,6 +235,43 @@ TEST(PlanningGridBuilder, SourceInflatedCellsAreNotReusedAsRawObstacles) {
   EXPECT_EQ(result.applied_memory_sequence, 29U);
 }
 
+TEST(PlanningGridBuilder, LocalWindowKeepsGlobalRuntimeAndCropsPlanningGrid) {
+  const GridBounds global_bounds{0.0, 0.0, 1.0, 20, 20};
+  PlanningGridBuilderConfig config = testConfig();
+  config.use_static_map = false;
+  config.fallback_bounds = global_bounds;
+  config.local_planning_bounds = GridBounds{4.0, 4.0, 1.0, 8, 8};
+  OccupancyGrid2D memory_grid{global_bounds};
+  memory_grid.setOccupied(GridIndex{7, 7});
+  memory_grid.setOccupied(GridIndex{15, 15});
+  PlanningGridSources sources{};
+  sources.memory_grid = &memory_grid;
+  sources.memory_producer_instance_id = 3U;
+  sources.memory_sequence = 9U;
+
+  const PlanningGridBuildResult result = buildPlanningGrid(config, sources);
+
+  ASSERT_EQ(result.status, PlanningGridStatus::kReady);
+  ASSERT_TRUE(result.grid.has_value());
+  ASSERT_TRUE(result.planning_grid.has_value());
+  const OccupancyGrid2D& runtime = result.grid.value();
+  const OccupancyGrid2D& planning = result.planning_grid.value();
+  EXPECT_EQ(runtime.width(), 20);
+  EXPECT_EQ(runtime.height(), 20);
+  EXPECT_TRUE(runtime.isOccupied(GridIndex{7, 7}));
+  EXPECT_TRUE(runtime.isOccupied(GridIndex{15, 15}));
+  EXPECT_EQ(planning.width(), 8);
+  EXPECT_EQ(planning.height(), 8);
+  const std::optional<GridIndex> local_obstacle =
+      planning.worldToCell(Point2{7.5, 7.5});
+  ASSERT_TRUE(local_obstacle.has_value());
+  EXPECT_TRUE(planning.isOccupied(*local_obstacle));
+  EXPECT_FALSE(planning.worldToCell(Point2{15.5, 15.5}).has_value());
+  EXPECT_TRUE(result.cache.local_planning_window_applied);
+  EXPECT_EQ(result.cache.global_cells, 400U);
+  EXPECT_EQ(result.cache.planning_cells, 64U);
+}
+
 TEST(PlanningGridBuilder, CurrentLidarOnlyUsesLidarBoundsWhenFallbackDiffers) {
   PlanningGridBuilderConfig config = testConfig();
   config.use_static_map = false;

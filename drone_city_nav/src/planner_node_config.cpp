@@ -742,6 +742,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.no_static_rollout.minimum_unrelaxed_tail_m = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_min_unrelaxed_tail_m", 2.0),
       2.0, 0.0, 30.0);
+  config.no_static_rollout.local_planning_window_enabled =
+      node.declare_parameter<bool>("no_static_rollout_local_window_enabled", true);
+  config.no_static_rollout.local_planning_window_extra_margin_m =
+      boundedFiniteDouble(node.declare_parameter<double>(
+                              "no_static_rollout_local_window_extra_margin_m", 1.0),
+                          1.0, 0.0, 50.0);
   config.no_static_rollout.planner.horizon_m = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_horizon_m", 25.0), 25.0, 5.0,
       30.0);

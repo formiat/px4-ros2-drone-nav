@@ -716,15 +716,16 @@ TEST_F(PlannerNodeConfigTest, CapsVerticalProfileSpeedByRuntimeSetpointLimit) {
 }
 
 TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
-  const auto node =
-      makeNode("planner_node_config_rollout_bounds",
-               {rclcpp::Parameter{"no_static_rollout_cycle_period_s", 0.001},
-                rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
-                rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
-                rclcpp::Parameter{"no_static_rollout_min_length_m", 1000.0},
-                rclcpp::Parameter{"no_static_rollout_min_unrelaxed_tail_m", -1.0},
-                rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
-                rclcpp::Parameter{"no_static_rollout_progress_weight", -1.0}});
+  const auto node = makeNode(
+      "planner_node_config_rollout_bounds",
+      {rclcpp::Parameter{"no_static_rollout_cycle_period_s", 0.001},
+       rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
+       rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
+       rclcpp::Parameter{"no_static_rollout_min_length_m", 1000.0},
+       rclcpp::Parameter{"no_static_rollout_min_unrelaxed_tail_m", -1.0},
+       rclcpp::Parameter{"no_static_rollout_local_window_extra_margin_m", 1000.0},
+       rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
+       rclcpp::Parameter{"no_static_rollout_progress_weight", -1.0}});
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
@@ -733,6 +734,8 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_length_m, 30.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_unrelaxed_tail_m, 0.0);
+  EXPECT_TRUE(config.no_static_rollout.local_planning_window_enabled);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.local_planning_window_extra_margin_m, 50.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 1U);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.progress_weight, 0.0);
 }
