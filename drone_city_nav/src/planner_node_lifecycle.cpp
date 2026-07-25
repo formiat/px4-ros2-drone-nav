@@ -120,11 +120,18 @@ PlannerNode::PlannerNode()
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
               "map_mode=%s runtime_inflation=%.2fm planning_clearance=%.2fm "
               "planning_effective_inflation=%.2fm "
-              "local_inflation_relaxation=%.2fm",
+              "local_inflation_relaxation=%.2fm "
+              "directed_escape[enabled=%s width=%.2fm max_length=%.2fm "
+              "exit_depth=%.2fm stable_cycles=%zu]",
               start_.x, start_.y, goal_.x, goal_.y,
               use_static_map_ ? "static" : "no_static", inflation_radius_m_,
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
-              local_inflation_relaxation_radius_m_);
+              local_inflation_relaxation_radius_m_,
+              directed_inflation_escape_config_.enabled ? "true" : "false",
+              directed_inflation_escape_config_.tunnel_width_m,
+              directed_inflation_escape_config_.max_length_m,
+              directed_inflation_escape_config_.exit_depth_m,
+              directed_inflation_escape_config_.stable_exit_cycles);
   RCLCPP_INFO(get_logger(),
               "Planner mode policy: primary=%s no_static_astar_recovery=%s",
               use_static_map_ || !no_static_rollout_enabled_ ? "astar" : "rollout",
@@ -328,6 +335,7 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   inflation_radius_m_ = config.inflation_radius_m;
   planning_clearance_m_ = config.planning_grid_builder.planning_clearance_m;
   local_inflation_relaxation_radius_m_ = config.local_inflation_relaxation_radius_m;
+  directed_inflation_escape_config_ = config.directed_inflation_escape;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
   memory_occupied_value_ = config.memory_grid.occupied_value;

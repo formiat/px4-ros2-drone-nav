@@ -58,6 +58,7 @@ add_library(
   src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
+  src/directed_inflation_escape.cpp
   src/distance_field.cpp
   src/final_trajectory_debug_io.cpp
   src/grid_config.cpp
@@ -379,6 +380,12 @@ if(BUILD_TESTING)
   target_compile_features(distance_field_test PRIVATE cxx_std_20)
   target_link_libraries(distance_field_test drone_city_nav_core)
   enable_project_warnings(distance_field_test)
+
+  ament_add_gtest(directed_inflation_escape_test
+                  tests/directed_inflation_escape_test.cpp)
+  target_compile_features(directed_inflation_escape_test PRIVATE cxx_std_20)
+  target_link_libraries(directed_inflation_escape_test drone_city_nav_core)
+  enable_project_warnings(directed_inflation_escape_test)
 
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)

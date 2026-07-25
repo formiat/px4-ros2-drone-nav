@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <utility>
 
 namespace drone_city_nav {
@@ -27,6 +28,7 @@ preparedBuildAvailable(const PlanningGridPreparationInput& input) noexcept {
          input.build_result->planning_grid.has_value() &&
          std::isfinite(input.relaxation_center.x) &&
          std::isfinite(input.relaxation_center.y) &&
+         std::isfinite(input.mission_goal.x) && std::isfinite(input.mission_goal.y) &&
          std::isfinite(input.relaxation_radius_m) && input.relaxation_radius_m >= 0.0 &&
          std::isfinite(input.clearance_max_distance_m) &&
          input.clearance_max_distance_m >= 0.0;
@@ -45,6 +47,29 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   OccupancyGrid2D planning_grid = build.planning_grid.value();
   if (!sameBounds(runtime_grid.bounds(), planning_grid.bounds())) {
     return std::nullopt;
+  }
+
+  DirectedInflationEscapeResult directed_escape =
+      directed_escape_planner_.update(planning_grid, input.relaxation_center,
+                                      input.mission_goal, input.directed_escape);
+  if (directed_escape.applied) {
+    OccupancyGrid2D escaped_planning_grid = planning_grid;
+    directed_escape.relaxation = applyDirectedInflationEscape(
+        escaped_planning_grid, directed_escape, input.directed_escape.tunnel_width_m);
+    directed_escape.connected =
+        !directed_escape.centerline.empty() &&
+        std::ranges::all_of(
+            directed_escape.centerline, [&escaped_planning_grid](const Point2 point) {
+              const std::optional<GridIndex> cell =
+                  escaped_planning_grid.worldToCell(point);
+              return cell.has_value() && !escaped_planning_grid.isProhibited(*cell);
+            });
+    if (directed_escape.connected) {
+      planning_grid = std::move(escaped_planning_grid);
+    } else {
+      directed_escape.applied = false;
+      directed_escape.state = DirectedInflationEscapeState::kFailed;
+    }
   }
 
   const LocalInflationRelaxationStats runtime_relaxation =
@@ -76,6 +101,7 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
       .version = version,
       .runtime_relaxation = runtime_relaxation,
       .planning_relaxation = planning_relaxation,
+      .directed_escape = std::move(directed_escape),
   };
 }
 

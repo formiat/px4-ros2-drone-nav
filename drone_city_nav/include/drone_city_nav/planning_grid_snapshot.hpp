@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/clearance_field.hpp"
+#include "drone_city_nav/directed_inflation_escape.hpp"
 #include "drone_city_nav/planning_grid_builder.hpp"
 
 #include <cstdint>
@@ -21,8 +22,10 @@ struct PlanningGridVersion {
 struct PlanningGridPreparationInput {
   const PlanningGridBuildResult* build_result{nullptr};
   Point2 relaxation_center{};
+  Point2 mission_goal{};
   double relaxation_radius_m{0.0};
   double clearance_max_distance_m{0.0};
+  DirectedInflationEscapeConfig directed_escape{.enabled = false};
   std::uint64_t config_fingerprint{0U};
 };
 
@@ -34,6 +37,7 @@ struct PreparedPlanningGridSnapshot {
   PlanningGridVersion version{};
   LocalInflationRelaxationStats runtime_relaxation{};
   LocalInflationRelaxationStats planning_relaxation{};
+  DirectedInflationEscapeResult directed_escape{};
 };
 
 class PlanningGridSnapshotBuilder {
@@ -45,6 +49,7 @@ public:
 
 private:
   std::uint64_t next_revision_{1U};
+  DirectedInflationEscapePlanner directed_escape_planner_{};
 };
 
 [[nodiscard]] bool planningGridVersionsEqual(const PlanningGridVersion& lhs,

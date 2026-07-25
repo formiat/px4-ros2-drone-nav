@@ -62,6 +62,29 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.local_inflation_relaxation_radius_m = std::clamp(
       node.declare_parameter<double>("local_inflation_relaxation_radius_m", 5.0), 0.0,
       1000.0);
+  config.directed_inflation_escape.enabled =
+      node.declare_parameter<bool>("directed_inflation_escape_enabled", true);
+  config.directed_inflation_escape.tunnel_width_m = std::clamp(
+      node.declare_parameter<double>("directed_inflation_escape_tunnel_width_m", 5.0),
+      0.1, 1000.0);
+  config.directed_inflation_escape.max_length_m = std::clamp(
+      node.declare_parameter<double>("directed_inflation_escape_max_length_m", 25.0),
+      0.1, 1000.0);
+  config.directed_inflation_escape.exit_depth_m = std::clamp(
+      node.declare_parameter<double>("directed_inflation_escape_exit_depth_m", 2.0),
+      0.0, 1000.0);
+  config.directed_inflation_escape.inflation_exposure_cost_weight =
+      std::clamp(node.declare_parameter<double>(
+                     "directed_inflation_escape_inflation_cost_weight", 1.0),
+                 0.0, 1.0e6);
+  config.directed_inflation_escape.occupied_clearance_cost_weight =
+      std::clamp(node.declare_parameter<double>(
+                     "directed_inflation_escape_occupied_clearance_cost_weight", 10.0),
+                 0.0, 1.0e6);
+  config.directed_inflation_escape.stable_exit_cycles = static_cast<std::size_t>(
+      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
+                                   "directed_inflation_escape_stable_exit_cycles", 3),
+                               1, 1000));
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(

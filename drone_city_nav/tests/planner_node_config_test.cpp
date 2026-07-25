@@ -58,6 +58,15 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
   EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
+  EXPECT_TRUE(config.directed_inflation_escape.enabled);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.tunnel_width_m, 5.0);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.max_length_m, 25.0);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.exit_depth_m, 2.0);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.inflation_exposure_cost_weight,
+                   1.0);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.occupied_clearance_cost_weight,
+                   10.0);
+  EXPECT_EQ(config.directed_inflation_escape.stable_exit_cycles, 3U);
   EXPECT_TRUE(config.no_static_rollout.enabled);
   EXPECT_FALSE(config.no_static_rollout.astar_recovery_enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.2);

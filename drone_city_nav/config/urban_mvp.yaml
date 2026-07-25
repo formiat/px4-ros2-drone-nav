@@ -150,6 +150,13 @@ planner_node:
     planning_clearance_m: 3.0
     no_static_planning_clearance_m: 5.0
     local_inflation_relaxation_radius_m: 5.0
+    directed_inflation_escape_enabled: true
+    directed_inflation_escape_tunnel_width_m: 5.0
+    directed_inflation_escape_max_length_m: 25.0
+    directed_inflation_escape_exit_depth_m: 2.0
+    directed_inflation_escape_inflation_cost_weight: 1.0
+    directed_inflation_escape_occupied_clearance_cost_weight: 10.0
+    directed_inflation_escape_stable_exit_cycles: 3
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100
     memory_free_value: 0

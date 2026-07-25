@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
+#include "drone_city_nav/directed_inflation_escape.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -105,6 +106,7 @@ struct PlannerNodeConfig {
   double planning_clearance_m{3.0};
   double no_static_planning_clearance_m{5.0};
   double local_inflation_relaxation_radius_m{5.0};
+  DirectedInflationEscapeConfig directed_inflation_escape{};
   PlannerCoreConfig planner_core{};
   TrajectoryPlannerConfig trajectory_planner{};
   PlanningGridBuilderConfig planning_grid_builder{};

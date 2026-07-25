@@ -145,4 +145,38 @@ TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {
   EXPECT_DOUBLE_EQ(prepared->planning_clearance.distanceAt(GridIndex{4, 3}), 1.0);
 }
 
+TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
+  PlanningGridSnapshotBuilder builder;
+  PlanningGridBuildResult ready = readyBuild();
+  ASSERT_TRUE(ready.grid.has_value());
+  ASSERT_TRUE(ready.planning_grid.has_value());
+  ASSERT_TRUE(ready.planning_grid->isInflated(GridIndex{5, 3}));
+  ASSERT_TRUE(ready.grid->isInflated(GridIndex{4, 3}));
+
+  const auto prepared = builder.prepare(PlanningGridPreparationInput{
+      .build_result = &ready,
+      .relaxation_center = Point2{5.5, 3.5},
+      .mission_goal = Point2{7.5, 3.5},
+      .relaxation_radius_m = 0.0,
+      .clearance_max_distance_m = 10.0,
+      .directed_escape =
+          DirectedInflationEscapeConfig{
+              .enabled = true,
+              .tunnel_width_m = 1.0,
+              .max_length_m = 5.0,
+              .exit_depth_m = 0.0,
+              .inflation_exposure_cost_weight = 0.0,
+              .occupied_clearance_cost_weight = 0.0,
+              .stable_exit_cycles = 3U,
+          },
+  });
+
+  ASSERT_TRUE(prepared.has_value());
+  ASSERT_TRUE(prepared->directed_escape.applied);
+  EXPECT_TRUE(prepared->directed_escape.connected);
+  EXPECT_FALSE(prepared->planning_clearance_grid.isInflated(GridIndex{5, 3}));
+  EXPECT_TRUE(prepared->runtime_prohibited_grid.isInflated(GridIndex{4, 3}));
+  EXPECT_TRUE(prepared->runtime_prohibited_grid.isOccupied(GridIndex{3, 3}));
+}
+
 } // namespace drone_city_nav

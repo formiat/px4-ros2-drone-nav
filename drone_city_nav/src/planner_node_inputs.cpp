@@ -607,6 +607,33 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       prepared->runtime_relaxation;
   const LocalInflationRelaxationStats& planning_relaxation =
       prepared->planning_relaxation;
+  const DirectedInflationEscapeResult& directed_escape = prepared->directed_escape;
+  if (directed_escape.state != DirectedInflationEscapeState::kInactive) {
+    RCLCPP_INFO(
+        get_logger(),
+        "DIRECTED_INFLATION_ESCAPE episode=%" PRIu64
+        " state=%.*s need=%.*s start=(%.2f,%.2f) target=(%.2f,%.2f) "
+        "centerline_length_m=%.2f centerline_points=%zu tunnel_width_m=%.2f "
+        "exit_depth_m=%.2f stable_exit_cycles=%zu cells_considered=%zu "
+        "inflated_cleared=%zu occupied_preserved=%zu connected=%s "
+        "centerline_blocked=%s applied=%s grid_revision=%" PRIu64,
+        directed_escape.episode_generation,
+        static_cast<int>(
+            directedInflationEscapeStateName(directed_escape.state).size()),
+        directedInflationEscapeStateName(directed_escape.state).data(),
+        static_cast<int>(inflationEscapeNeedName(directed_escape.need).size()),
+        inflationEscapeNeedName(directed_escape.need).data(), directed_escape.start.x,
+        directed_escape.start.y, directed_escape.target.x, directed_escape.target.y,
+        directed_escape.centerline_length_m, directed_escape.centerline.size(),
+        directed_inflation_escape_config_.tunnel_width_m,
+        directed_inflation_escape_config_.exit_depth_m,
+        directed_escape.stable_exit_cycles, directed_escape.cells_considered,
+        directed_escape.relaxation.inflated_cells_cleared,
+        directed_escape.relaxation.occupied_cells_preserved,
+        directed_escape.connected ? "true" : "false",
+        directed_escape.centerline_blocked ? "true" : "false",
+        directed_escape.applied ? "true" : "false", prepared->version.build_revision);
+  }
   if (runtime_relaxation.inflated_cells_cleared > 0U ||
       planning_relaxation.inflated_cells_cleared > 0U ||
       !runtime_relaxation.center_inside_bounds ||
