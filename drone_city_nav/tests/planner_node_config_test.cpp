@@ -721,6 +721,8 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
                {rclcpp::Parameter{"no_static_rollout_cycle_period_s", 0.001},
                 rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
                 rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
+                rclcpp::Parameter{"no_static_rollout_min_length_m", 1000.0},
+                rclcpp::Parameter{"no_static_rollout_min_unrelaxed_tail_m", -1.0},
                 rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
                 rclcpp::Parameter{"no_static_rollout_progress_weight", -1.0}});
 
@@ -729,6 +731,8 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
   EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.05);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_length_m, 30.0);
+  EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_unrelaxed_tail_m, 0.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 1U);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.planner.progress_weight, 0.0);
 }

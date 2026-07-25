@@ -95,6 +95,8 @@ struct NoStaticRolloutConfig {
   double recovery_lookahead_m{25.0};
   double terminal_braking_decel_mps2{4.0};
   double terminal_braking_margin_m{2.0};
+  double minimum_length_m{7.0};
+  double minimum_unrelaxed_tail_m{2.0};
   RolloutPlannerConfig planner{};
   NoStaticPlannerOrchestratorConfig orchestrator{};
 };

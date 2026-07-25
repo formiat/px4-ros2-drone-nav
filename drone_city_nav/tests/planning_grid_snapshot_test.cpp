@@ -144,6 +144,7 @@ TEST(PlanningGridSnapshot, DisabledEscapeDoesNotRelaxEitherGrid) {
             planning_before.inflated_hash);
   EXPECT_DOUBLE_EQ(prepared->runtime_clearance.distanceAt(neighboring_cell), 0.0);
   EXPECT_DOUBLE_EQ(prepared->planning_clearance.distanceAt(neighboring_cell), 0.0);
+  EXPECT_FALSE(prepared->unrelaxed_planning_clearance_grid.has_value());
 }
 
 TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
@@ -175,6 +176,8 @@ TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
   ASSERT_TRUE(prepared.has_value());
   ASSERT_TRUE(prepared->directed_escape.applied);
   EXPECT_TRUE(prepared->directed_escape.connected);
+  ASSERT_TRUE(prepared->unrelaxed_planning_clearance_grid.has_value());
+  EXPECT_TRUE(prepared->unrelaxed_planning_clearance_grid->isInflated(GridIndex{5, 3}));
   EXPECT_FALSE(prepared->planning_clearance_grid.isInflated(GridIndex{5, 3}));
   EXPECT_TRUE(prepared->runtime_prohibited_grid.isInflated(GridIndex{4, 3}));
   EXPECT_TRUE(prepared->runtime_prohibited_grid.isOccupied(GridIndex{3, 3}));

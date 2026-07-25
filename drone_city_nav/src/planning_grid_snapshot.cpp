@@ -52,6 +52,7 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   DirectedInflationEscapeResult directed_escape =
       directed_escape_planner_.update(planning_grid, input.relaxation_center,
                                       input.mission_goal, input.directed_escape);
+  std::optional<OccupancyGrid2D> unrelaxed_planning_grid;
   if (directed_escape.applied) {
     OccupancyGrid2D escaped_planning_grid = planning_grid;
     directed_escape.relaxation = applyDirectedInflationEscape(
@@ -65,6 +66,7 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
               return cell.has_value() && !escaped_planning_grid.isProhibited(*cell);
             });
     if (directed_escape.connected) {
+      unrelaxed_planning_grid = planning_grid;
       planning_grid = std::move(escaped_planning_grid);
     } else {
       directed_escape.applied = false;
@@ -95,6 +97,7 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
   return PreparedPlanningGridSnapshot{
       .runtime_prohibited_grid = std::move(runtime_grid),
       .planning_clearance_grid = std::move(planning_grid),
+      .unrelaxed_planning_clearance_grid = std::move(unrelaxed_planning_grid),
       .runtime_clearance = std::move(runtime_clearance),
       .planning_clearance = std::move(planning_clearance),
       .version = version,

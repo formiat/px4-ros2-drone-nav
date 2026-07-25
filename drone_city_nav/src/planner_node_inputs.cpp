@@ -16,6 +16,30 @@ namespace {
          std::max(0.0, std::isfinite(margin_m) ? margin_m : 0.0);
 }
 
+[[nodiscard]] bool
+unrelaxedTailIsTraversable(const OccupancyGrid2D& grid,
+                           const std::span<const TrajectoryPointSample> samples,
+                           const double required_tail_m) {
+  if (required_tail_m <= 0.0) {
+    return true;
+  }
+  if (!trajectorySamplesAreUsable(samples) ||
+      samples.back().s_m + 1.0e-6 < required_tail_m) {
+    return false;
+  }
+
+  const double tail_start_s_m = samples.back().s_m - required_tail_m;
+  std::vector<Point2> tail_points;
+  tail_points.reserve(samples.size() + 1U);
+  tail_points.push_back(trajectorySampleAtS(samples, tail_start_s_m).point);
+  for (const TrajectoryPointSample& sample : samples) {
+    if (sample.s_m > tail_start_s_m + 1.0e-6) {
+      tail_points.push_back(sample.point);
+    }
+  }
+  return pathIsTraversable(grid, tail_points);
+}
+
 } // namespace
 
 void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -864,6 +888,15 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     }
     const Point2 preferred_target = no_static_orchestrator_.recoveryPreferredTarget(
         planning_start, no_static_recovery_lookahead_m_, goal_);
+    const bool mission_goal_within_minimum_length =
+        distance(rollout_start, goal_) <= no_static_rollout_min_length_m_ + 1.0e-6;
+    const double required_rollout_length_m =
+        mission_goal_within_minimum_length
+            ? 0.0
+            : std::max(no_static_rollout_min_length_m_,
+                       stationary_restart ? 0.0 : terminal_braking_distance_m);
+    const bool blocked_replacement_context =
+        truncation_rollout || rollout_runtime.blocked;
     const auto rollout_started_at = std::chrono::steady_clock::now();
     ++rollout_cycles_;
     bool validated_candidate_seen = false;
@@ -898,7 +931,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           .velocity = rollout_velocity,
           .preferred_target = preferred_target,
           .grid = grid_attempt.grid,
-          .minimum_length_m = stationary_restart ? 0.0 : terminal_braking_distance_m,
+          .minimum_length_m = required_rollout_length_m,
           .stationary_restart = stationary_restart,
           .generation = invalidation_generation,
           .grid_revision = prepared->version.build_revision,
@@ -1059,19 +1092,43 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         const double candidate_remaining_m =
             finalized.samples.empty() ? 0.0 : finalized.samples.back().s_m;
         const bool terminal_length_sufficient =
-            stationary_restart ||
-            candidate_remaining_m + 1.0e-6 >= terminal_braking_distance_m;
+            candidate_remaining_m + 1.0e-6 >= required_rollout_length_m;
         if (!terminal_length_sufficient) {
           RCLCPP_WARN(
               get_logger(),
               "NO_STATIC_ROLLOUT terminal_length_rejected=true generation=%" PRIu64
-              " finalist=%zu remaining=%.2f required=%.2f speed=%.2f "
-              "active_blocked=%s action=%s",
+              " finalist=%zu remaining=%.2f required=%.2f minimum=%.2f "
+              "braking=%.2f stationary_restart=%s mission_goal_exception=%s "
+              "speed=%.2f active_blocked=%s action=%s",
               invalidation_generation, finalist_index, candidate_remaining_m,
-              terminal_braking_distance_m, navigation.speed_mps,
-              rollout_runtime.blocked ? "true" : "false",
-              rollout_runtime.blocked ? "safe_truncation_hold"
-                                      : "keep_clear_prefix_and_retry");
+              required_rollout_length_m, no_static_rollout_min_length_m_,
+              terminal_braking_distance_m, stationary_restart ? "true" : "false",
+              mission_goal_within_minimum_length ? "true" : "false",
+              navigation.speed_mps, blocked_replacement_context ? "true" : "false",
+              blocked_replacement_context ? "safe_truncation_hold"
+                                          : "keep_clear_prefix_and_retry");
+          continue;
+        }
+        const OccupancyGrid2D* unrelaxed_planning_grid =
+            prepared->unrelaxed_planning_clearance_grid.has_value()
+                ? &*prepared->unrelaxed_planning_clearance_grid
+                : nullptr;
+        const bool unrelaxed_tail_sufficient =
+            mission_goal_within_minimum_length || unrelaxed_planning_grid == nullptr ||
+            unrelaxedTailIsTraversable(*unrelaxed_planning_grid, finalized.samples,
+                                       no_static_rollout_min_unrelaxed_tail_m_);
+        if (!unrelaxed_tail_sufficient) {
+          RCLCPP_WARN(
+              get_logger(),
+              "NO_STATIC_ROLLOUT unrelaxed_tail_rejected=true generation=%" PRIu64
+              " finalist=%zu remaining=%.2f required_tail=%.2f "
+              "escape_episode=%" PRIu64 " active_blocked=%s action=%s",
+              invalidation_generation, finalist_index, candidate_remaining_m,
+              no_static_rollout_min_unrelaxed_tail_m_,
+              directed_escape.episode_generation,
+              blocked_replacement_context ? "true" : "false",
+              blocked_replacement_context ? "safe_truncation_hold"
+                                          : "keep_clear_prefix_and_retry");
           continue;
         }
         validated_candidate_seen = true;

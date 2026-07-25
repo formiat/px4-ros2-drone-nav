@@ -736,6 +736,12 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       boundedFiniteDouble(node.declare_parameter<double>(
                               "no_static_rollout_terminal_braking_margin_m", 2.0),
                           2.0, 0.0, 100.0);
+  config.no_static_rollout.minimum_length_m = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_min_length_m", 7.0), 7.0, 0.0,
+      30.0);
+  config.no_static_rollout.minimum_unrelaxed_tail_m = boundedFiniteDouble(
+      node.declare_parameter<double>("no_static_rollout_min_unrelaxed_tail_m", 2.0),
+      2.0, 0.0, 30.0);
   config.no_static_rollout.planner.horizon_m = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_horizon_m", 25.0), 25.0, 5.0,
       30.0);

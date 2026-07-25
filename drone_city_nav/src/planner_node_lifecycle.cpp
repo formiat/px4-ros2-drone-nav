@@ -141,6 +141,10 @@ PlannerNode::PlannerNode()
               use_static_map_ || !no_static_rollout_enabled_ ? "astar" : "rollout",
               no_static_astar_recovery_enabled_ ? "enabled" : "disabled");
   RCLCPP_INFO(get_logger(),
+              "No-static rollout acceptance: minimum_length=%.2fm "
+              "minimum_unrelaxed_tail=%.2fm",
+              no_static_rollout_min_length_m_, no_static_rollout_min_unrelaxed_tail_m_);
+  RCLCPP_INFO(get_logger(),
               "Planner subscriptions: obstacle_memory_snapshot='%s' "
               "local_position='%s' attitude='%s' timesync_status='%s'",
               config.topics.obstacle_memory_snapshot.c_str(),
@@ -365,6 +369,9 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
       config.no_static_rollout.terminal_braking_decel_mps2;
   no_static_terminal_braking_margin_m_ =
       config.no_static_rollout.terminal_braking_margin_m;
+  no_static_rollout_min_length_m_ = config.no_static_rollout.minimum_length_m;
+  no_static_rollout_min_unrelaxed_tail_m_ =
+      config.no_static_rollout.minimum_unrelaxed_tail_m;
   rollout_planner_ = RecedingHorizonTrajectoryPlanner{config.no_static_rollout.planner};
   no_static_orchestrator_ =
       NoStaticPlannerOrchestrator{config.no_static_rollout.orchestrator};
