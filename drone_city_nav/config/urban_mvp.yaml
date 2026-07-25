@@ -112,6 +112,7 @@ planner_node:
     no_static_rollout_cycle_period_s: 0.2
     no_static_rollout_prefix_duration_s: 1.0
     no_static_rollout_recovery_lookahead_m: 25.0
+    no_static_rollout_terminal_braking_margin_m: 2.0
     no_static_rollout_horizon_m: 25.0
     no_static_rollout_sample_step_m: 1.0
     no_static_rollout_heading_samples: 9

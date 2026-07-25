@@ -349,6 +349,10 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   no_static_rollout_cycle_period_s_ = config.no_static_rollout.cycle_period_s;
   no_static_prefix_duration_s_ = config.no_static_rollout.prefix_duration_s;
   no_static_recovery_lookahead_m_ = config.no_static_rollout.recovery_lookahead_m;
+  no_static_terminal_braking_decel_mps2_ =
+      config.no_static_rollout.terminal_braking_decel_mps2;
+  no_static_terminal_braking_margin_m_ =
+      config.no_static_rollout.terminal_braking_margin_m;
   rollout_planner_ = RecedingHorizonTrajectoryPlanner{config.no_static_rollout.planner};
   no_static_orchestrator_ =
       NoStaticPlannerOrchestrator{config.no_static_rollout.orchestrator};

@@ -47,6 +47,8 @@ struct RolloutInput {
   Point2 velocity{};
   Point2 preferred_target{};
   const OccupancyGrid2D* grid{nullptr};
+  double minimum_length_m{0.0};
+  bool stationary_restart{false};
   std::uint64_t generation{0U};
   std::uint64_t grid_revision{0U};
 };

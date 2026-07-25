@@ -90,6 +90,8 @@ struct NoStaticRolloutConfig {
   double cycle_period_s{0.2};
   double prefix_duration_s{1.0};
   double recovery_lookahead_m{25.0};
+  double terminal_braking_decel_mps2{4.0};
+  double terminal_braking_margin_m{2.0};
   RolloutPlannerConfig planner{};
   NoStaticPlannerOrchestratorConfig orchestrator{};
 };

@@ -15,6 +15,7 @@ PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id,
   }
   const std::uint64_t generation = next_truncation_generation_++;
   pending_truncation_runtime_trajectory_.reset();
+  pending_local_horizon_runtime_trajectory_.reset();
   const bool artifact_matches =
       executable_trajectory_artifact_.path_id == blocked_path_id &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples) &&
@@ -142,6 +143,56 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
                 static_cast<unsigned int>(message.decision));
     return;
   }
+  if (message.truncation_generation == 0U &&
+      message.temporary_prefix_fingerprint == 0U) {
+    std::optional<PendingTruncationRuntimeTrajectory> accepted;
+    {
+      std::scoped_lock lock{truncation_replan_mutex_};
+      if (!pending_local_horizon_runtime_trajectory_.has_value() ||
+          pending_local_horizon_runtime_trajectory_->identity.path_id !=
+              message.path_id) {
+        RCLCPP_WARN(get_logger(),
+                    "LOCAL_HORIZON ignored successor ACK: reason=identity_mismatch "
+                    "path_id=%" PRIu64 " decision=%s",
+                    message.path_id, truncationSuffixAckDecisionName(*decision));
+        return;
+      }
+      if (*decision == TruncationSuffixAckDecision::kAccepted) {
+        accepted = std::move(*pending_local_horizon_runtime_trajectory_);
+      }
+      if (*decision != TruncationSuffixAckDecision::kPending) {
+        pending_local_horizon_runtime_trajectory_.reset();
+      }
+    }
+    if (*decision == TruncationSuffixAckDecision::kPending) {
+      RCLCPP_INFO(get_logger(),
+                  "LOCAL_HORIZON successor ACK pending: path_id=%" PRIu64
+                  " reason='%s'",
+                  message.path_id, message.reason.c_str());
+      return;
+    }
+    if (!accepted.has_value()) {
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
+      return;
+    }
+    last_valid_path_points_ = std::move(accepted->path_points);
+    last_valid_trajectory_samples_ = std::move(accepted->trajectory_samples);
+    executable_trajectory_artifact_ = ExecutableTrajectoryArtifact{
+        .path_id = message.path_id,
+        .geometry_fingerprint =
+            trajectoryPrefixFingerprint(last_valid_trajectory_samples_),
+        .mission_goal = goal_,
+        .samples = last_valid_trajectory_samples_,
+        .current_s_m = 0.0,
+    };
+    active_rollout_path_id_ = message.path_id;
+    RCLCPP_INFO(get_logger(),
+                "LOCAL_HORIZON successor ACK accepted: path_id=%" PRIu64
+                " reason='%s' runtime_samples=%zu",
+                message.path_id, message.reason.c_str(),
+                last_valid_trajectory_samples_.size());
+    return;
+  }
 
   const TruncationSuffixIdentity received{
       .path_id = message.path_id,
@@ -244,6 +295,22 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     const std::span<const Point2> trajectory_points,
     const TrajectoryDeliveryDiagnostics& delivery, const char* source_label,
     const std::uint64_t path_id) {
+  if (!delivery.truncation_suffix && delivery.activate_after_terminal_hold) {
+    std::scoped_lock lock{truncation_replan_mutex_};
+    pending_local_horizon_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
+        .identity =
+            TruncationSuffixIdentity{
+                .path_id = path_id,
+                .generation = 0U,
+                .prefix_fingerprint = 0U,
+            },
+        .path_points =
+            std::vector<Point2>{trajectory_points.begin(), trajectory_points.end()},
+        .trajectory_samples =
+            std::vector<TrajectoryPointSample>{samples.begin(), samples.end()},
+    };
+    return true;
+  }
   if (!delivery.truncation_suffix) {
     last_valid_path_points_.assign(trajectory_points.begin(), trajectory_points.end());
     last_valid_trajectory_samples_.assign(samples.begin(), samples.end());

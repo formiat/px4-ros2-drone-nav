@@ -473,6 +473,8 @@ private:
   double no_static_rollout_cycle_period_s_{0.2};
   double no_static_prefix_duration_s_{1.0};
   double no_static_recovery_lookahead_m_{25.0};
+  double no_static_terminal_braking_decel_mps2_{4.0};
+  double no_static_terminal_braking_margin_m_{2.0};
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
   NoStaticPlannerOrchestrator no_static_orchestrator_{};
   std::optional<double> active_rollout_score_;
@@ -599,6 +601,8 @@ private:
   std::optional<TruncationReplanState> truncation_replan_state_;
   std::optional<PendingTruncationRuntimeTrajectory>
       pending_truncation_runtime_trajectory_;
+  std::optional<PendingTruncationRuntimeTrajectory>
+      pending_local_horizon_runtime_trajectory_;
   mutable std::mutex memory_snapshot_mutex_;
   mutable std::mutex navigation_state_mutex_;
   mutable std::mutex lidar_input_mutex_;

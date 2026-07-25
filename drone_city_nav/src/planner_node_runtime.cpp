@@ -223,7 +223,13 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
 bool PlannerNode::keepCurrentPathIfStillClear(
     const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
     const ExecutableSuffixDecision* const executable_suffix_decision) {
-  if (last_valid_path_points_.size() < 2U) {
+  const bool executable_artifact_matches =
+      trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
+  const std::uint64_t runtime_path_id =
+      executable_suffix_decision != nullptr && executable_artifact_matches
+          ? executable_trajectory_artifact_.path_id
+          : last_published_path_id_;
+  if (executable_suffix_decision == nullptr && last_valid_path_points_.size() < 2U) {
     return false;
   }
   if (executable_suffix_decision == nullptr &&
@@ -283,6 +289,26 @@ bool PlannerNode::keepCurrentPathIfStillClear(
   }
 
   if (decision.reason == StablePathDecisionReason::kProhibitedConfirmed) {
+    const BlockedSpan* handoff_blocked_span =
+        executable_suffix_decision != nullptr &&
+                executable_suffix_decision->blocked_span.has_value()
+            ? &*executable_suffix_decision->blocked_span
+            : nullptr;
+    RCLCPP_WARN(
+        get_logger(),
+        "ROLLOUT_BLOCKER_HANDOFF stage=detected path_id=%" PRIu64
+        " last_path_points=%zu artifact_matches=%s suffix_blocked=%s "
+        "blocked_span[first_s=%.2f last_s=%.2f] truncation_state_before=%s",
+        runtime_path_id, last_valid_path_points_.size(),
+        executable_artifact_matches ? "true" : "false",
+        executable_suffix_decision != nullptr && executable_suffix_decision->blocked
+            ? "true"
+            : "false",
+        handoff_blocked_span != nullptr ? handoff_blocked_span->first_blocked_s_m
+                                        : std::numeric_limits<double>::quiet_NaN(),
+        handoff_blocked_span != nullptr ? handoff_blocked_span->last_blocked_s_m
+                                        : std::numeric_limits<double>::quiet_NaN(),
+        truncationReplanState().has_value() ? "true" : "false");
     const Point2 prohibited_start =
         decision.prohibited_segment_index < decision.remaining_path.size()
             ? decision.remaining_path[decision.prohibited_segment_index]
@@ -318,7 +344,9 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     bool awaiting_truncation_confirmation = false;
     if (safe_trajectory_truncation_enabled_ && replan_blocker_pub_ != nullptr) {
       std::optional<BlockedSpan> blocked_span;
-      if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
+      if (handoff_blocked_span != nullptr) {
+        blocked_span = *handoff_blocked_span;
+      } else if (executable_artifact_matches) {
         blocked_span = findFirstProhibitedBlockedSpan(
             grid, executable_trajectory_artifact_.samples,
             executable_trajectory_artifact_.current_s_m);
@@ -339,14 +367,14 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         };
       }
       const std::optional<std::uint64_t> truncation_generation =
-          beginTruncationReplan(last_published_path_id_, *blocked_span);
+          beginTruncationReplan(runtime_path_id, *blocked_span);
       if (truncation_generation.has_value()) {
-        delivery.blocked_path_id = last_published_path_id_;
+        delivery.blocked_path_id = runtime_path_id;
         delivery.truncation_generation = *truncation_generation;
         pending_replan_delivery_ = delivery;
         msg::ReplanBlockerEvent event;
         event.header = makePlannerHeader();
-        event.blocked_path_id = last_published_path_id_;
+        event.blocked_path_id = runtime_path_id;
         event.truncation_generation = *truncation_generation;
         event.memory_snapshot_sequence = last_memory_snapshot_applied_sequence_;
         event.blocker_position.x = intersection.cell_center.x;
@@ -373,7 +401,28 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             event.blocked_path_id, event.truncation_generation,
             event.blocker_path_distance_m, event.blocker_position.x,
             event.blocker_position.y, event.memory_snapshot_sequence);
+        RCLCPP_WARN(get_logger(),
+                    "ROLLOUT_BLOCKER_HANDOFF stage=complete path_id=%" PRIu64
+                    " begin_result=accepted generation=%" PRIu64
+                    " truncation_state_after=true event_published=true",
+                    runtime_path_id, *truncation_generation);
+      } else {
+        RCLCPP_WARN(get_logger(),
+                    "ROLLOUT_BLOCKER_HANDOFF stage=complete path_id=%" PRIu64
+                    " begin_result=rejected truncation_state_after=%s "
+                    "event_published=false early_return_reason=truncation_not_started",
+                    runtime_path_id,
+                    truncationReplanState().has_value() ? "true" : "false");
       }
+    } else {
+      RCLCPP_WARN(get_logger(),
+                  "ROLLOUT_BLOCKER_HANDOFF stage=complete path_id=%" PRIu64
+                  " begin_result=not_attempted truncation_state_after=%s "
+                  "event_published=false early_return_reason=%s",
+                  runtime_path_id,
+                  truncationReplanState().has_value() ? "true" : "false",
+                  !safe_trajectory_truncation_enabled_ ? "feature_disabled"
+                                                       : "publisher_unavailable");
     }
     if (!awaiting_truncation_confirmation) {
       pending_replan_delivery_ = delivery;

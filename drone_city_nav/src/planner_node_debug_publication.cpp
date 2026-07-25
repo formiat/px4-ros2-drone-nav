@@ -210,6 +210,7 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   command.truncation_generation = delivery.truncation_generation;
   command.temporary_prefix_fingerprint = delivery.temporary_prefix_fingerprint;
   command.truncation_suffix = delivery.truncation_suffix;
+  command.activate_after_terminal_hold = delivery.activate_after_terminal_hold;
   command.endpoint_semantics = trajectoryEndpointSemanticsToWire(endpoint_semantics);
   command.truncation_suffix_activation_mode =
       delivery.truncation_suffix_activation_mode;

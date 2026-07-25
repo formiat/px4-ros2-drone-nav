@@ -111,9 +111,11 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
     return result;
   }
   const double target_heading = std::atan2(goal_delta.y, goal_delta.x);
-  const double speed = std::hypot(input.velocity.x, input.velocity.y);
-  const double initial_heading =
-      speed > 0.25 ? std::atan2(input.velocity.y, input.velocity.x) : target_heading;
+  const double speed =
+      input.stationary_restart ? 0.0 : std::hypot(input.velocity.x, input.velocity.y);
+  const double initial_heading = !input.stationary_restart && speed > 0.25
+                                     ? std::atan2(input.velocity.y, input.velocity.x)
+                                     : target_heading;
   const double base_heading_error = clampAngle(target_heading - initial_heading);
   for (std::size_t candidate_index = 0U; candidate_index < config_.heading_samples;
        ++candidate_index) {
@@ -144,7 +146,8 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       const double average_speed = 0.5 * (speed + requested_speed);
       const double rollout_length = std::min(
           {config_.horizon_m, goal_distance,
-           std::max(config_.sample_step_m, average_speed * config_.horizon_time_s)});
+           std::max({config_.sample_step_m, average_speed * config_.horizon_time_s,
+                     std::max(0.0, input.minimum_length_m)})});
       const double heading_delta = clampAngle(terminal_heading - initial_heading);
       const double curvature = heading_delta / rollout_length;
       if (std::abs(curvature) > config_.maximum_curvature_1pm) {

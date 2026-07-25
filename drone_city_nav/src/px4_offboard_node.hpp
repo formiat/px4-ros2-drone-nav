@@ -476,6 +476,7 @@ private:
   TrajectoryPlannerStats last_trajectory_planner_stats_{};
   std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
   std::optional<msg::ExecutableTrajectory> pending_truncation_suffix_;
+  std::optional<msg::ExecutableTrajectory> pending_local_horizon_successor_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};

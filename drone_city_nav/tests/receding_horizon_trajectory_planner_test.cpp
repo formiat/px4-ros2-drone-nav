@@ -209,4 +209,50 @@ TEST(RecedingHorizonTrajectoryPlanner, HandlesZeroVelocityStart) {
   EXPECT_GT(result.ranked_candidates.front().progress_m, 0.0);
 }
 
+TEST(RecedingHorizonTrajectoryPlanner, ExtendsCandidateToMinimumTerminalLength) {
+  OccupancyGrid2D prohibited = freeGrid();
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 25.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .horizon_time_s = 3.0,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {40.0, 0.0},
+                                .grid = &prohibited,
+                                .minimum_length_m = 15.0});
+
+  ASSERT_FALSE(result.ranked_candidates.empty());
+  EXPECT_GE(result.ranked_candidates.front().samples.back().s_m, 15.0);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, StationaryRestartIgnoresReturnVelocity) {
+  OccupancyGrid2D prohibited = freeGrid();
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 20.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .horizon_time_s = 3.0,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {-4.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &prohibited,
+                                .stationary_restart = true});
+
+  ASSERT_FALSE(result.ranked_candidates.empty());
+  EXPECT_GT(result.ranked_candidates.front().samples.back().point.x, 0.0);
+}
+
 } // namespace drone_city_nav

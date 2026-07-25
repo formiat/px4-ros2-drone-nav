@@ -336,6 +336,22 @@ void Px4OffboardNode::onExecutableTrajectory(const msg::ExecutableTrajectory& co
 }
 
 void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
+  if (pending_local_horizon_successor_.has_value() &&
+      !pending_truncation_suffix_.has_value()) {
+    if (!temporary_replan_hold_active_ || !localPositionFresh()) {
+      return;
+    }
+    msg::ExecutableTrajectory command = std::move(*pending_local_horizon_successor_);
+    pending_local_horizon_successor_.reset();
+    RCLCPP_INFO(get_logger(),
+                "LOCAL_HORIZON event=pending_successor_activated path_id=%" PRIu64
+                " current=(%.2f,%.2f) hold=(%.2f,%.2f) speed=%.2f",
+                command.path_id, current_position_.x, current_position_.y,
+                temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
+                current_speed_mps_);
+    processExecutableTrajectory(command, true);
+    return;
+  }
   if (!pending_truncation_suffix_.has_value()) {
     return;
   }
@@ -427,6 +443,18 @@ void Px4OffboardNode::processExecutableTrajectory(
   if (crashed_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Ignoring planner path after physical collision");
+    return;
+  }
+  if (command.activate_after_terminal_hold && !pending_retry &&
+      !temporary_replan_hold_active_) {
+    const bool replaced = pending_local_horizon_successor_.has_value();
+    pending_local_horizon_successor_ = command;
+    RCLCPP_INFO(get_logger(),
+                "LOCAL_HORIZON event=successor_pending path_id=%" PRIu64
+                " reason=waiting_for_terminal_hold replaced=%s",
+                command.path_id, replaced ? "true" : "false");
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
+                               "waiting_for_terminal_hold");
     return;
   }
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
@@ -755,6 +783,8 @@ void Px4OffboardNode::processExecutableTrajectory(
       }
       horizontal_handover.reason = "truncation_immediate_hold_release";
     }
+  } else if (command.activate_after_terminal_hold && pending_retry) {
+    horizontal_handover.reason = "local_horizon_stationary_restart";
   } else if (!trajectory_valid_) {
     horizontal_handover.reason = "current_trajectory_unavailable";
   } else if (!trajectorySamplesAreUsable(final_trajectory_samples_)) {
@@ -790,7 +820,8 @@ void Px4OffboardNode::processExecutableTrajectory(
     }
   }
   VerticalTrajectoryHandoverResult vertical_handover{};
-  if (!temporary_replan_truncation_active_ && trajectory_valid_ &&
+  if (!temporary_replan_truncation_active_ &&
+      !(command.activate_after_terminal_hold && pending_retry) && trajectory_valid_ &&
       trajectorySamplesAreUsable(final_trajectory_samples_) &&
       candidate_planner_stats != nullptr && localPositionFresh()) {
     vertical_handover = reanchorTrajectoryVerticalPrefix(
@@ -828,6 +859,9 @@ void Px4OffboardNode::processExecutableTrajectory(
     } else {
       continuity.reason = "truncation_suffix_join_valid";
     }
+  } else if (command.activate_after_terminal_hold && pending_retry) {
+    continuity.decision = TrajectoryContinuityDecision::kResetSmoother;
+    continuity.reason = "local_horizon_stationary_restart";
   } else {
     continuity = evaluateReceivedTrajectoryContinuity(candidate_state);
   }
@@ -913,6 +947,7 @@ void Px4OffboardNode::processExecutableTrajectory(
   active_truncation_generation_ = 0U;
   active_temporary_prefix_fingerprint_ = 0U;
   pending_truncation_suffix_.reset();
+  pending_local_horizon_successor_.reset();
   resetVerticalPreAlignment();
   no_path_hold_target_valid_ = false;
   std::vector<Point2> accepted_path_points;

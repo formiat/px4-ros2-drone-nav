@@ -4,6 +4,19 @@
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
+namespace {
+
+[[nodiscard]] double terminalBrakingDistanceM(const double speed_mps,
+                                              const double decel_mps2,
+                                              const double margin_m) noexcept {
+  const double speed = std::max(0.0, std::isfinite(speed_mps) ? speed_mps : 0.0);
+  const double decel =
+      std::max(1.0e-6, std::isfinite(decel_mps2) ? decel_mps2 : 1.0e-6);
+  return speed * speed / (2.0 * decel) +
+         std::max(0.0, std::isfinite(margin_m) ? margin_m : 0.0);
+}
+
+} // namespace
 
 void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
   const std::int64_t receive_stamp_ns = get_clock()->now().nanoseconds();
@@ -546,8 +559,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   std::optional<TruncationReplanState> truncation_replan = truncationReplanState();
   const bool artifact_matches_active_rollout =
       !use_static_map_ && no_static_rollout_enabled_ &&
-      active_rollout_path_id_ == last_published_path_id_ &&
-      executable_trajectory_artifact_.path_id == last_published_path_id_ &&
+      executable_trajectory_artifact_.path_id == active_rollout_path_id_ &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
   const double rollout_exhaustion_epsilon_m =
       std::max(0.5, prohibited_grid.resolution());
@@ -602,9 +614,17 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   const bool active_prefix_available = artifact_matches_active_rollout &&
                                        rollout_runtime.progress.valid &&
                                        !rollout_runtime.exhausted;
+  const double terminal_braking_distance_m = terminalBrakingDistanceM(
+      navigation.speed_mps, no_static_terminal_braking_decel_mps2_,
+      no_static_terminal_braking_margin_m_);
+  const double current_speed_mps =
+      std::max(0.0, std::isfinite(navigation.speed_mps) ? navigation.speed_mps : 0.0);
   const bool active_rollout_exhausting =
       active_prefix_available && !rollout_runtime.blocked &&
-      rollout_runtime.progress.remaining_m <= 0.4 * rollout_planner_.config().horizon_m;
+      rollout_runtime.progress.remaining_m <=
+          std::max(0.4 * rollout_planner_.config().horizon_m,
+                   terminal_braking_distance_m +
+                       no_static_prefix_duration_s_ * current_speed_mps);
   bool current_path_kept = false;
   if (!truncation_replan.has_value()) {
     current_path_kept = keepCurrentPathIfStillClear(
@@ -687,6 +707,12 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     Point2 rollout_start = planning_start;
     Point2 rollout_velocity =
         navigation.velocity_valid ? navigation.velocity : Point2{};
+    const bool stationary_restart = artifact_matches_active_rollout &&
+                                    rollout_runtime.exhausted &&
+                                    !rollout_runtime.blocked;
+    if (stationary_restart) {
+      rollout_velocity = Point2{};
+    }
     double stable_prefix_distance_m = 0.0;
     if (active_prefix_available) {
       stable_prefix_distance_m =
@@ -737,6 +763,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           .velocity = rollout_velocity,
           .preferred_target = preferred_target,
           .grid = grid_attempt.grid,
+          .minimum_length_m = stationary_restart ? 0.0 : terminal_braking_distance_m,
+          .stationary_restart = stationary_restart,
           .generation = invalidation_generation,
           .grid_revision = prepared->version.build_revision,
       });
@@ -884,6 +912,24 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         if (!finalized.valid) {
           continue;
         }
+        const double candidate_remaining_m =
+            finalized.samples.empty() ? 0.0 : finalized.samples.back().s_m;
+        const bool terminal_length_sufficient =
+            stationary_restart ||
+            candidate_remaining_m + 1.0e-6 >= terminal_braking_distance_m;
+        if (!terminal_length_sufficient) {
+          RCLCPP_WARN(
+              get_logger(),
+              "NO_STATIC_ROLLOUT terminal_length_rejected=true generation=%" PRIu64
+              " finalist=%zu remaining=%.2f required=%.2f speed=%.2f "
+              "active_blocked=%s action=%s",
+              invalidation_generation, finalist_index, candidate_remaining_m,
+              terminal_braking_distance_m, navigation.speed_mps,
+              rollout_runtime.blocked ? "true" : "false",
+              rollout_runtime.blocked ? "safe_truncation_hold"
+                                      : "keep_clear_prefix_and_retry");
+          continue;
+        }
         validated_candidate_seen = true;
         const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
         const std::uint64_t latest_grid_revision =
@@ -961,6 +1007,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             stable_path_goal_tolerance_m_;
         TrajectoryDeliveryDiagnostics rollout_delivery{
             .generation = invalidation_generation,
+            .activate_after_terminal_hold = stationary_restart,
         };
         std::uint64_t published_path_id = 0U;
         const std::vector<Point2> route_points =
@@ -991,7 +1038,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             stage_timings.publication_total_ms);
         if (published) {
           active_rollout_score_ = finalist.score;
-          active_rollout_path_id_ = published_path_id;
+          if (!stationary_restart) {
+            active_rollout_path_id_ = published_path_id;
+          }
           ++rollout_publications_;
           return;
         }
