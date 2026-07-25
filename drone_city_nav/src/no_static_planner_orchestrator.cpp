@@ -17,6 +17,27 @@ void appendDistinct(std::vector<TrajectoryPointSample>& samples,
 
 } // namespace
 
+NoStaticRolloutTargetSelection
+selectNoStaticRolloutTarget(const Point2 mission_or_recovery_target,
+                            const DirectedInflationEscapeResult& directed_escape) {
+  const bool escape_target_valid =
+      directed_escape.applied && directed_escape.connected &&
+      (directed_escape.state == DirectedInflationEscapeState::kStarted ||
+       directed_escape.state == DirectedInflationEscapeState::kActive) &&
+      std::isfinite(directed_escape.target.x) &&
+      std::isfinite(directed_escape.target.y);
+  if (escape_target_valid) {
+    return {
+        .target = directed_escape.target,
+        .source = NoStaticRolloutTargetSource::kDirectedEscape,
+    };
+  }
+  return {
+      .target = mission_or_recovery_target,
+      .source = NoStaticRolloutTargetSource::kMissionOrRecovery,
+  };
+}
+
 Point2 recoveryGuideLookahead(const std::span<const Point2> guide,
                               const Point2 current_position, const double lookahead_m,
                               const Point2 fallback) {
@@ -215,6 +236,17 @@ const char* noStaticPlannerActionName(const NoStaticPlannerAction action) noexce
       return "hold";
     case NoStaticPlannerAction::kRejectStale:
       return "reject_stale";
+  }
+  return "unknown";
+}
+
+const char*
+noStaticRolloutTargetSourceName(const NoStaticRolloutTargetSource source) noexcept {
+  switch (source) {
+    case NoStaticRolloutTargetSource::kMissionOrRecovery:
+      return "mission_or_recovery";
+    case NoStaticRolloutTargetSource::kDirectedEscape:
+      return "directed_escape";
   }
   return "unknown";
 }

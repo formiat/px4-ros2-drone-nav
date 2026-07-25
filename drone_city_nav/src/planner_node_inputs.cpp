@@ -928,12 +928,18 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       rollout_velocity =
           Point2{join.tangent.x * join_speed_mps, join.tangent.y * join_speed_mps};
     }
-    const Point2 preferred_target = no_static_orchestrator_.recoveryPreferredTarget(
-        planning_start, no_static_recovery_lookahead_m_, goal_);
+    const Point2 mission_or_recovery_target =
+        no_static_orchestrator_.recoveryPreferredTarget(
+            planning_start, no_static_recovery_lookahead_m_, goal_);
+    const NoStaticRolloutTargetSelection target_selection =
+        selectNoStaticRolloutTarget(mission_or_recovery_target, directed_escape);
+    const Point2 preferred_target = target_selection.target;
+    const bool directed_escape_phase =
+        target_selection.source == NoStaticRolloutTargetSource::kDirectedEscape;
     const bool mission_goal_within_minimum_length =
         distance(rollout_start, goal_) <= no_static_rollout_min_length_m_ + 1.0e-6;
     const double required_rollout_length_m =
-        mission_goal_within_minimum_length
+        mission_goal_within_minimum_length || directed_escape_phase
             ? 0.0
             : std::max(no_static_rollout_min_length_m_,
                        stationary_restart ? 0.0 : terminal_braking_distance_m);
@@ -953,6 +959,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " grid=%s start=(%.2f,%.2f) velocity=(%.2f,%.2f) speed=%.2f "
           "preferred_target=(%.2f,%.2f) target_distance=%.2f "
+          "target_source=%s escape_episode=%" PRIu64 " "
           "active_path=%s active_path_id=%" PRIu64 " active_s=%.2f "
           "active_remaining=%.2f stable_prefix_m=%.2f "
           "grid_size=%dx%d resolution=%.2f",
@@ -961,6 +968,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           rollout_velocity.x, rollout_velocity.y,
           std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
           preferred_target.y, distance(rollout_start, preferred_target),
+          noStaticRolloutTargetSourceName(target_selection.source),
+          directed_escape.episode_generation,
           rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
           artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
                                           : 0.0,
@@ -1141,12 +1150,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               "NO_STATIC_ROLLOUT terminal_length_rejected=true generation=%" PRIu64
               " finalist=%zu remaining=%.2f required=%.2f minimum=%.2f "
               "braking=%.2f stationary_restart=%s mission_goal_exception=%s "
-              "speed=%.2f active_blocked=%s action=%s",
+              "directed_escape_exception=%s speed=%.2f active_blocked=%s action=%s",
               invalidation_generation, finalist_index, candidate_remaining_m,
               required_rollout_length_m, no_static_rollout_min_length_m_,
               terminal_braking_distance_m, stationary_restart ? "true" : "false",
               mission_goal_within_minimum_length ? "true" : "false",
-              navigation.speed_mps, blocked_replacement_context ? "true" : "false",
+              directed_escape_phase ? "true" : "false", navigation.speed_mps,
+              blocked_replacement_context ? "true" : "false",
               blocked_replacement_context ? "safe_truncation_hold"
                                           : "keep_clear_prefix_and_retry");
           continue;
