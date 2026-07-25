@@ -81,6 +81,10 @@ PlannerNode::PlannerNode()
       config.topics.static_building_markers, rclcpp::QoS{1}.transient_local());
   known_passage_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       config.topics.known_passage_markers, rclcpp::QoS{1}.transient_local());
+  directed_inflation_escape_markers_pub_ =
+      create_publisher<visualization_msgs::msg::MarkerArray>(
+          config.topics.directed_inflation_escape_markers,
+          rclcpp::QoS{1}.transient_local());
   path_pub_ = create_publisher<nav_msgs::msg::Path>(config.topics.path,
                                                     rclcpp::QoS{1}.reliable());
   path_id_pub_ = create_publisher<std_msgs::msg::UInt64>(config.topics.path_id,

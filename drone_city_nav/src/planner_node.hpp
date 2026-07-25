@@ -2,6 +2,7 @@
 
 #include "drone_city_nav/corridor_samples_io.hpp"
 #include "drone_city_nav/current_lidar_overlay.hpp"
+#include "drone_city_nav/directed_inflation_escape_debug_markers.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/known_passage_debug_markers.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
@@ -652,6 +653,8 @@ private:
       static_building_markers_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       known_passage_markers_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+      directed_inflation_escape_markers_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;

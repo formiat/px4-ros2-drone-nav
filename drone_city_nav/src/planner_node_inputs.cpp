@@ -608,6 +608,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   const LocalInflationRelaxationStats& planning_relaxation =
       prepared->planning_relaxation;
   const DirectedInflationEscapeResult& directed_escape = prepared->directed_escape;
+  directed_inflation_escape_markers_pub_->publish(
+      buildDirectedInflationEscapeDebugMarkers(
+          makePlannerHeader(), directed_escape,
+          directed_inflation_escape_config_.tunnel_width_m));
   if (directed_escape.state != DirectedInflationEscapeState::kInactive) {
     RCLCPP_INFO(
         get_logger(),

@@ -674,6 +674,9 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "static_building_markers_topic", "/drone_city_nav/static_building_markers");
   config.topics.known_passage_markers = node.declare_parameter<std::string>(
       "known_passage_markers_topic", "/drone_city_nav/known_passage_markers");
+  config.topics.directed_inflation_escape_markers = node.declare_parameter<std::string>(
+      "directed_inflation_escape_markers_topic",
+      "/drone_city_nav/directed_inflation_escape_markers");
   config.timing.static_map_debug_publish_period_s = std::clamp(
       node.declare_parameter<double>("static_map_debug_publish_period_s", 1.0), 0.0,
       60.0);

@@ -156,6 +156,7 @@ enable_project_warnings(drone_contact_system)
 
 add_library(
   drone_city_nav_ros_adapters
+  src/directed_inflation_escape_debug_markers.cpp
   src/lidar_debug_node_config.cpp
   src/memory_provenance_audit_tracker.cpp
   src/offboard_debug_markers.cpp
@@ -386,6 +387,16 @@ if(BUILD_TESTING)
   target_compile_features(directed_inflation_escape_test PRIVATE cxx_std_20)
   target_link_libraries(directed_inflation_escape_test drone_city_nav_core)
   enable_project_warnings(directed_inflation_escape_test)
+
+  ament_add_gtest(directed_inflation_escape_debug_markers_test
+                  tests/directed_inflation_escape_debug_markers_test.cpp)
+  target_compile_features(directed_inflation_escape_debug_markers_test
+                          PRIVATE cxx_std_20)
+  target_link_libraries(directed_inflation_escape_debug_markers_test
+                        drone_city_nav_ros_adapters)
+  ament_target_dependencies(directed_inflation_escape_debug_markers_test
+                            geometry_msgs std_msgs visualization_msgs)
+  enable_project_warnings(directed_inflation_escape_debug_markers_test)
 
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
