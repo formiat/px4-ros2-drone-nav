@@ -32,6 +32,7 @@ struct DirectedInflationEscapeConfig {
   double exit_depth_m{2.0};
   double inflation_exposure_cost_weight{1.0};
   double occupied_clearance_cost_weight{10.0};
+  double mission_egress_distance_m{7.0};
   std::size_t stable_exit_cycles{3U};
 };
 
@@ -43,6 +44,7 @@ struct DirectedInflationEscapeResult {
   bool centerline_blocked{false};
   bool episode_off_centerline{false};
   bool episode_target_too_far{false};
+  bool mission_egress_available{false};
   std::uint64_t episode_generation{0U};
   Point2 start{};
   Point2 target{};

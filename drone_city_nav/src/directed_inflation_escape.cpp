@@ -64,7 +64,9 @@ constexpr std::array<GridIndex, 8U> kNeighborOffsets{
          std::isfinite(config.inflation_exposure_cost_weight) &&
          config.inflation_exposure_cost_weight >= 0.0 &&
          std::isfinite(config.occupied_clearance_cost_weight) &&
-         config.occupied_clearance_cost_weight >= 0.0 && config.stable_exit_cycles > 0U;
+         config.occupied_clearance_cost_weight >= 0.0 &&
+         finitePositive(config.mission_egress_distance_m) &&
+         config.stable_exit_cycles > 0U;
 }
 
 [[nodiscard]] double stepLength(const OccupancyGrid2D& grid,
@@ -78,6 +80,33 @@ constexpr std::array<GridIndex, 8U> kNeighborOffsets{
                                   const GridIndex cell, const double exit_depth_m) {
   return !grid.isProhibited(cell) &&
          prohibited_distance.distanceAt(cell) + kCostEpsilon >= exit_depth_m;
+}
+
+[[nodiscard]] bool missionEgressAvailable(const OccupancyGrid2D& grid,
+                                          const Point2 start, const Point2 mission_goal,
+                                          const double requested_distance_m) {
+  const double goal_distance_m = distance(start, mission_goal);
+  if (goal_distance_m <= kCostEpsilon) {
+    return true;
+  }
+  const double checked_distance_m = std::min(goal_distance_m, requested_distance_m);
+  const double step_m = std::max(0.25 * grid.resolution(), 0.05);
+  const std::size_t steps = std::max<std::size_t>(
+      1U, static_cast<std::size_t>(std::ceil(checked_distance_m / step_m)));
+  for (std::size_t index = 0U; index <= steps; ++index) {
+    const double ratio = static_cast<double>(index) / static_cast<double>(steps);
+    const Point2 point{
+        start.x +
+            ratio * checked_distance_m * (mission_goal.x - start.x) / goal_distance_m,
+        start.y +
+            ratio * checked_distance_m * (mission_goal.y - start.y) / goal_distance_m,
+    };
+    const std::optional<GridIndex> cell = grid.worldToCell(point);
+    if (!cell.has_value() || grid.isProhibited(*cell)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 [[nodiscard]] std::vector<Point2>
@@ -142,9 +171,12 @@ reconstructCenterline(const OccupancyGrid2D& grid, const GridIndex start,
       continue;
     }
     ++result.cells_considered;
+    const Point2 current_point = grid.cellCenter(current.cell);
     if (current.cell != *start &&
-        stableExitCell(grid, prohibited_distance, current.cell, config.exit_depth_m)) {
-      result.target = grid.cellCenter(current.cell);
+        stableExitCell(grid, prohibited_distance, current.cell, config.exit_depth_m) &&
+        missionEgressAvailable(grid, current_point, mission_goal,
+                               config.mission_egress_distance_m)) {
+      result.target = current_point;
       result.path_length_m = current.path_length_m;
       result.centerline = reconstructCenterline(grid, *start, current.cell, parent);
       if (result.centerline.empty()) {
@@ -259,7 +291,12 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
 
   if (!episode_.centerline.empty()) {
     const bool current_is_allowed = !original_grid.isInflated(*current_cell);
-    if (current_is_allowed) {
+    const bool mission_egress_available =
+        current_is_allowed &&
+        missionEgressAvailable(original_grid, current_position, mission_goal,
+                               config.mission_egress_distance_m);
+    result.mission_egress_available = mission_egress_available;
+    if (mission_egress_available) {
       ++episode_.stable_exit_cycles;
     } else {
       episode_.stable_exit_cycles = 0U;
@@ -270,6 +307,7 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
       result.episode_generation = episode_.generation;
       result.target = episode_.target;
       result.stable_exit_cycles = episode_.stable_exit_cycles;
+      result.mission_egress_available = true;
       episode_ = Episode{};
       return result;
     }

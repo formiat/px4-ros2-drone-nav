@@ -320,8 +320,9 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     const std::span<const TrajectoryPointSample> samples,
     const std::span<const Point2> trajectory_points,
     const TrajectoryDeliveryDiagnostics& delivery, const char* source_label,
-    const std::uint64_t path_id) {
-  if (!delivery.truncation_suffix && delivery.activate_after_terminal_hold) {
+    const std::uint64_t path_id, const TrajectoryEndpointSemantics endpoint_semantics) {
+  if (!delivery.truncation_suffix &&
+      endpoint_semantics == TrajectoryEndpointSemantics::kLocalHorizon) {
     std::scoped_lock lock{truncation_replan_mutex_};
     pending_local_horizon_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
         .identity =
@@ -439,6 +440,11 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
               delivery.temporary_prefix_fingerprint, path_id, publication_attempt,
               runtime_samples.size());
   return true;
+}
+
+bool PlannerNode::localHorizonAckPending() const {
+  std::scoped_lock lock{truncation_replan_mutex_};
+  return pending_local_horizon_runtime_trajectory_.has_value();
 }
 
 } // namespace drone_city_nav

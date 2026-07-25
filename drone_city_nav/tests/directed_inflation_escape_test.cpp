@@ -21,6 +21,7 @@ namespace {
       .exit_depth_m = 1.0,
       .inflation_exposure_cost_weight = 1.0,
       .occupied_clearance_cost_weight = 2.0,
+      .mission_egress_distance_m = 7.0,
       .stable_exit_cycles = 3U,
   };
 }
@@ -156,6 +157,28 @@ TEST(DirectedInflationEscape, CompletesAfterPassingTargetInAllowedSpace) {
             DirectedInflationEscapeState::kActive);
   EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
             DirectedInflationEscapeState::kCompleted);
+}
+
+TEST(DirectedInflationEscape, DoesNotCompleteWithoutMissionEgress) {
+  DirectedInflationEscapePlanner planner;
+  OccupancyGrid2D inflated = emptyGrid();
+  inflated.setOccupied(GridIndex{12, 12});
+  inflated.rebuildInflation(4.0);
+  const DirectedInflationEscapeConfig config = testConfig();
+
+  const DirectedInflationEscapeResult started =
+      planner.update(inflated, Point2{9.5, 12.5}, Point2{2.5, 12.5}, config);
+  ASSERT_TRUE(started.applied);
+
+  OccupancyGrid2D blocked_egress = emptyGrid();
+  blocked_egress.setOccupied(GridIndex{static_cast<int>(started.target.x) - 2,
+                                       static_cast<int>(started.target.y)});
+  for (std::size_t cycle = 0U; cycle < config.stable_exit_cycles + 1U; ++cycle) {
+    const DirectedInflationEscapeResult active =
+        planner.update(blocked_egress, started.target, Point2{2.5, 12.5}, config);
+    EXPECT_EQ(active.state, DirectedInflationEscapeState::kActive);
+    EXPECT_FALSE(active.mission_egress_available);
+  }
 }
 
 TEST(DirectedInflationEscape, KeepsTargetStableAcrossGridUpdates) {

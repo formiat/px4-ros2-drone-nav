@@ -180,7 +180,7 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   std::vector<Point2> points = trajectorySamplePoints(samples);
   const std::uint64_t path_id = next_path_id_;
   if (!prepareTrajectoryForRuntimeChecks(samples, points, delivery, source_label,
-                                         path_id)) {
+                                         path_id, endpoint_semantics)) {
     return 0U;
   }
   ++next_path_id_;

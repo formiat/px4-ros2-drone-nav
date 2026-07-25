@@ -126,7 +126,7 @@ PlannerNode::PlannerNode()
               "planning_effective_inflation=%.2fm "
               "local_inflation_relaxation=%.2fm "
               "directed_escape[enabled=%s width=%.2fm max_length=%.2fm "
-              "exit_depth=%.2fm stable_cycles=%zu]",
+              "exit_depth=%.2fm mission_egress=%.2fm stable_cycles=%zu]",
               start_.x, start_.y, goal_.x, goal_.y,
               use_static_map_ ? "static" : "no_static", inflation_radius_m_,
               planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
@@ -135,6 +135,7 @@ PlannerNode::PlannerNode()
               directed_inflation_escape_config_.tunnel_width_m,
               directed_inflation_escape_config_.max_length_m,
               directed_inflation_escape_config_.exit_depth_m,
+              directed_inflation_escape_config_.mission_egress_distance_m,
               directed_inflation_escape_config_.stable_exit_cycles);
   RCLCPP_INFO(get_logger(),
               "Planner mode policy: primary=%s no_static_astar_recovery=%s",

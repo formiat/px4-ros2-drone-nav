@@ -66,6 +66,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    1.0);
   EXPECT_DOUBLE_EQ(config.directed_inflation_escape.occupied_clearance_cost_weight,
                    10.0);
+  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.mission_egress_distance_m, 7.0);
   EXPECT_EQ(config.directed_inflation_escape.stable_exit_cycles, 3U);
   EXPECT_TRUE(config.no_static_rollout.enabled);
   EXPECT_FALSE(config.no_static_rollout.astar_recovery_enabled);

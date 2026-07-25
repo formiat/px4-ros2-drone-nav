@@ -161,6 +161,7 @@ planner_node:
     directed_inflation_escape_exit_depth_m: 2.0
     directed_inflation_escape_inflation_cost_weight: 1.0
     directed_inflation_escape_occupied_clearance_cost_weight: 10.0
+    directed_inflation_escape_mission_egress_distance_m: 7.0
     directed_inflation_escape_stable_exit_cycles: 3
     stable_path_goal_tolerance_m: 3.0
     memory_occupied_value: 100

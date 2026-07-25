@@ -5,7 +5,9 @@ namespace drone_city_nav {
 void Px4OffboardNode::publishTruncationSuffixAck(
     const msg::ExecutableTrajectory& command,
     const TruncationSuffixAckDecision decision, const std::string_view reason) {
-  if ((!command.truncation_suffix && !command.activate_after_terminal_hold) ||
+  if ((!command.truncation_suffix && !command.activate_after_terminal_hold &&
+       command.endpoint_semantics !=
+           msg::ExecutableTrajectory::ENDPOINT_LOCAL_HORIZON) ||
       !truncation_suffix_ack_pub_) {
     return;
   }

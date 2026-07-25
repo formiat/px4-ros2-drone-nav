@@ -686,6 +686,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "centerline_length_m=%.2f centerline_points=%zu tunnel_width_m=%.2f "
         "exit_depth_m=%.2f stable_exit_cycles=%zu cells_considered=%zu "
         "inflated_cleared=%zu occupied_preserved=%zu connected=%s "
+        "mission_egress_available=%s "
         "centerline_blocked=%s off_centerline=%s target_too_far=%s "
         "applied=%s grid_revision=%" PRIu64,
         directed_escape.episode_generation,
@@ -702,6 +703,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         directed_escape.relaxation.inflated_cells_cleared,
         directed_escape.relaxation.occupied_cells_preserved,
         directed_escape.connected ? "true" : "false",
+        directed_escape.mission_egress_available ? "true" : "false",
         directed_escape.centerline_blocked ? "true" : "false",
         directed_escape.episode_off_centerline ? "true" : "false",
         directed_escape.episode_target_too_far ? "true" : "false",
@@ -873,6 +875,12 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
       PlannerModePrimaryAction::kRollout) {
+    if (localHorizonAckPending()) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "LOCAL_HORIZON publication_coalesced=true reason=awaiting_offboard_ack");
+      return;
+    }
     const bool truncation_rollout = truncation_replan.has_value();
     const bool rollout_prefix_available =
         active_prefix_available && !truncation_rollout;
@@ -907,10 +915,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                        truncation_replan->tangent.y * join_speed_mps / tangent_norm}
               : Point2{};
     }
-    const bool stationary_restart =
-        truncation_rollout ? truncation_replan->immediate_hold
-                           : artifact_matches_active_rollout &&
-                                 rollout_runtime.exhausted && !rollout_runtime.blocked;
+    bool stationary_restart = truncation_rollout ? truncation_replan->immediate_hold
+                                                 : artifact_matches_active_rollout &&
+                                                       rollout_runtime.exhausted &&
+                                                       !rollout_runtime.blocked;
     if (stationary_restart) {
       rollout_velocity = Point2{};
     }
@@ -936,6 +944,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     const Point2 preferred_target = target_selection.target;
     const bool directed_escape_phase =
         target_selection.source == NoStaticRolloutTargetSource::kDirectedEscape;
+    const bool directed_escape_from_temporary_hold =
+        directed_escape_phase && !rollout_prefix_available &&
+        last_published_path_id_ != 0U && last_valid_path_points_.empty();
+    stationary_restart = stationary_restart || directed_escape_from_temporary_hold;
+    if (stationary_restart) {
+      rollout_velocity = Point2{};
+    }
     const bool mission_goal_within_minimum_length =
         distance(rollout_start, goal_) <= no_static_rollout_min_length_m_ + 1.0e-6;
     const double required_rollout_length_m =

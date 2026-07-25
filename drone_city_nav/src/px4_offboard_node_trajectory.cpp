@@ -459,6 +459,9 @@ void Px4OffboardNode::processExecutableTrajectory(
   }
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
                                                    path.poses.size()};
+  const bool local_horizon_stationary_release =
+      command.activate_after_terminal_hold &&
+      (pending_retry || temporary_replan_hold_active_);
   const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
   latest_planner_path_id_ = command.path_id;
@@ -783,7 +786,7 @@ void Px4OffboardNode::processExecutableTrajectory(
       }
       horizontal_handover.reason = "truncation_immediate_hold_release";
     }
-  } else if (command.activate_after_terminal_hold && pending_retry) {
+  } else if (local_horizon_stationary_release) {
     horizontal_handover.reason = "local_horizon_stationary_restart";
   } else if (!trajectory_valid_) {
     horizontal_handover.reason = "current_trajectory_unavailable";
@@ -820,9 +823,8 @@ void Px4OffboardNode::processExecutableTrajectory(
     }
   }
   VerticalTrajectoryHandoverResult vertical_handover{};
-  if (!temporary_replan_truncation_active_ &&
-      !(command.activate_after_terminal_hold && pending_retry) && trajectory_valid_ &&
-      trajectorySamplesAreUsable(final_trajectory_samples_) &&
+  if (!temporary_replan_truncation_active_ && !local_horizon_stationary_release &&
+      trajectory_valid_ && trajectorySamplesAreUsable(final_trajectory_samples_) &&
       candidate_planner_stats != nullptr && localPositionFresh()) {
     vertical_handover = reanchorTrajectoryVerticalPrefix(
         final_trajectory_samples_, candidate_state.samples, current_position_,
@@ -859,7 +861,7 @@ void Px4OffboardNode::processExecutableTrajectory(
     } else {
       continuity.reason = "truncation_suffix_join_valid";
     }
-  } else if (command.activate_after_terminal_hold && pending_retry) {
+  } else if (local_horizon_stationary_release) {
     continuity.decision = TrajectoryContinuityDecision::kResetSmoother;
     continuity.reason = "local_horizon_stationary_restart";
   } else {

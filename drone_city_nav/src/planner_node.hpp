@@ -232,7 +232,10 @@ private:
   prepareTrajectoryForRuntimeChecks(std::span<const TrajectoryPointSample> samples,
                                     std::span<const Point2> trajectory_points,
                                     const TrajectoryDeliveryDiagnostics& delivery,
-                                    const char* source_label, std::uint64_t path_id);
+                                    const char* source_label, std::uint64_t path_id,
+                                    TrajectoryEndpointSemantics endpoint_semantics);
+
+  [[nodiscard]] bool localHorizonAckPending() const;
 
   void applyPendingMemorySnapshot(std::int64_t now_ns);
 
