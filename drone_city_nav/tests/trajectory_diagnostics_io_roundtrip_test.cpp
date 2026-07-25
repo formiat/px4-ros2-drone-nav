@@ -18,6 +18,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       .replan_triggered = true,
       .truncation_suffix = true,
       .truncation_immediate_hold = true,
+      .planning_algorithm = PlanningAlgorithm::kPartialAStar,
       .blocker_position = Point2{12.5, 30.25},
       .blocker_detection_position = Point2{5.0, 6.0},
       .blocker_detection_velocity = Point2{10.0, -2.0},
@@ -51,6 +52,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_TRUE(parsed_value.delivery.replan_triggered);
   EXPECT_TRUE(parsed_value.delivery.truncation_suffix);
   EXPECT_TRUE(parsed_value.delivery.truncation_immediate_hold);
+  EXPECT_EQ(parsed_value.delivery.planning_algorithm, PlanningAlgorithm::kPartialAStar);
   EXPECT_EQ(parsed_value.delivery.blocked_path_id, 41U);
   EXPECT_EQ(parsed_value.delivery.truncation_generation, 9U);
   EXPECT_EQ(parsed_value.delivery.temporary_prefix_fingerprint, 123456U);

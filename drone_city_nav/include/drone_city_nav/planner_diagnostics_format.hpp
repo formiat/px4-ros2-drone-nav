@@ -13,6 +13,7 @@ struct PlannerCountersSnapshot {
   std::uint64_t astar_runs{0U};
   std::uint64_t astar_successes{0U};
   std::uint64_t astar_failures{0U};
+  std::uint64_t repair_astar_runs{0U};
   std::uint64_t prohibited_replans{0U};
   PathPublicationCounters publication{};
   std::uint64_t rollout_cycles{0U};
@@ -20,6 +21,7 @@ struct PlannerCountersSnapshot {
   std::uint64_t rollout_publications{0U};
   std::uint64_t rollout_recovery_requests{0U};
   std::uint64_t rollout_failures{0U};
+  std::uint64_t rollout_deadline_missed{0U};
   double rollout_duration_p50_ms{0.0};
   double rollout_duration_p95_ms{0.0};
 };

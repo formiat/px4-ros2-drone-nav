@@ -527,6 +527,12 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                  "completed grid build; keeping the last published path");
     return;
   }
+  RCLCPP_INFO(get_logger(),
+              "PLANNING_GRID_TIMING cycle_sequence=%" PRIu64
+              " invalidation_generation=%" PRIu64 " grid_revision=%" PRIu64
+              " grid_build_ms=%.2f",
+              identity.cycle_sequence, invalidation_generation,
+              prepared->version.build_revision, planning_grid_duration_ms);
   OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
   OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
   const LocalInflationRelaxationStats& runtime_relaxation =
@@ -1005,15 +1011,16 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         const bool reaches_mission_goal =
             distance(finalized.samples.back().point, goal_) <=
             stable_path_goal_tolerance_m_;
-        TrajectoryDeliveryDiagnostics rollout_delivery{
-            .generation = invalidation_generation,
-            .activate_after_terminal_hold = stationary_restart,
-        };
+        TrajectoryDeliveryDiagnostics rollout_delivery = replan_delivery;
+        rollout_delivery.generation = invalidation_generation;
+        rollout_delivery.activate_after_terminal_hold = stationary_restart;
+        rollout_delivery.planning_algorithm = PlanningAlgorithm::kRollout;
         std::uint64_t published_path_id = 0U;
         const std::vector<Point2> route_points =
             trajectorySamplePoints(finalized.samples);
         const std::string grid_name{grid_attempt.name};
         TrajectoryPublicationStageTimings stage_timings{
+            .grid_build_ms = planning_grid_duration_ms,
             .rollout_generation_ms = rollout_generation_ms,
             .candidate_finalization_ms = candidate_finalization_ms,
         };
@@ -1025,17 +1032,26 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                                  : TrajectoryEndpointSemantics::kLocalHorizon,
             &stage_timings, grid_attempt.grid);
         stage_timings.publication_total_ms = elapsedMilliseconds(cycle_started_at);
+        constexpr double kRolloutPublicationDeadlineMs{500.0};
+        const bool rollout_deadline_missed =
+            stage_timings.publication_total_ms > kRolloutPublicationDeadlineMs;
+        if (rollout_deadline_missed) {
+          ++rollout_deadline_missed_;
+        }
         RCLCPP_INFO(
             get_logger(),
             "NO_STATIC_ROLLOUT_TIMING generation=%" PRIu64 " grid_revision=%" PRIu64
             " finalist=%zu published=%s "
             "rollout_generation_ms=%.2f candidate_finalization_ms=%.2f "
-            "fresh_grid_build_ms=not_run fresh_grid_prepare_ms=not_run "
-            "final_validation_ms=%.2f publication_total_ms=%.2f",
+            "grid_build_ms=%.2f fresh_grid_build_ms=not_run "
+            "fresh_grid_prepare_ms=not_run final_validation_ms=%.2f "
+            "publication_total_ms=%.2f rollout_deadline_ms=%.2f "
+            "rollout_deadline_missed=%s",
             invalidation_generation, prepared->version.build_revision, finalist_index,
             published ? "true" : "false", stage_timings.rollout_generation_ms,
-            stage_timings.candidate_finalization_ms, stage_timings.final_validation_ms,
-            stage_timings.publication_total_ms);
+            stage_timings.candidate_finalization_ms, stage_timings.grid_build_ms,
+            stage_timings.final_validation_ms, stage_timings.publication_total_ms,
+            kRolloutPublicationDeadlineMs, rollout_deadline_missed ? "true" : "false");
         if (published) {
           active_rollout_score_ = finalist.score;
           if (!stationary_restart) {

@@ -336,6 +336,7 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishPathFromPathCells(
   const std::uint64_t generation = ++trajectory_generation_;
   const std::int64_t build_started_stamp_ns = get_clock()->now().nanoseconds();
   delivery.generation = generation;
+  delivery.planning_algorithm = PlanningAlgorithm::kFullAStar;
   delivery.trajectory_build_started_stamp_ns =
       build_started_stamp_ns > 0 ? static_cast<std::uint64_t>(build_started_stamp_ns)
                                  : 0U;
@@ -350,20 +351,20 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishPathFromPathCells(
         1.0e-6 * static_cast<double>(delivery.trajectory_build_started_stamp_ns -
                                      delivery.blocker_detected_stamp_ns);
   }
-  RCLCPP_INFO(get_logger(),
-              "REPLAN_DELIVERY event=trajectory_build_started generation=%" PRIu64
-              " replan_triggered=%s blocker_stamp_ns=%" PRIu64
-              " build_stamp_ns=%" PRIu64 " blocker_to_build_ms=%.1f "
-              "candidate_start=(%.2f, %.2f) planning_start=(%.2f, %.2f) "
-              "velocity=(%.2f, %.2f) velocity_valid=%s",
-              delivery.generation, delivery.replan_triggered ? "true" : "false",
-              delivery.blocker_detected_stamp_ns,
-              delivery.trajectory_build_started_stamp_ns,
-              delivery.blocker_to_build_start_ms, delivery.candidate_start_position.x,
-              delivery.candidate_start_position.y, delivery.planning_start_position.x,
-              delivery.planning_start_position.y, delivery.planning_start_velocity.x,
-              delivery.planning_start_velocity.y,
-              delivery.planning_start_velocity_valid ? "true" : "false");
+  RCLCPP_INFO(
+      get_logger(),
+      "REPLAN_DELIVERY event=trajectory_build_started generation=%" PRIu64
+      " planning_algorithm=%s replan_triggered=%s blocker_stamp_ns=%" PRIu64
+      " build_stamp_ns=%" PRIu64 " blocker_to_build_ms=%.1f "
+      "candidate_start=(%.2f, %.2f) planning_start=(%.2f, %.2f) "
+      "velocity=(%.2f, %.2f) velocity_valid=%s",
+      delivery.generation, planningAlgorithmName(delivery.planning_algorithm),
+      delivery.replan_triggered ? "true" : "false", delivery.blocker_detected_stamp_ns,
+      delivery.trajectory_build_started_stamp_ns, delivery.blocker_to_build_start_ms,
+      delivery.candidate_start_position.x, delivery.candidate_start_position.y,
+      delivery.planning_start_position.x, delivery.planning_start_position.y,
+      delivery.planning_start_velocity.x, delivery.planning_start_velocity.y,
+      delivery.planning_start_velocity_valid ? "true" : "false");
   const TrajectoryPlannerConfig trajectory_config =
       trajectoryPlannerConfigForCurrentAltitude(
           truncation_replan != nullptr

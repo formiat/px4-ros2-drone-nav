@@ -8,14 +8,20 @@
 namespace drone_city_nav {
 
 TEST(PlannerDiagnosticsFormat, FormatsCountersSummaryFields) {
-  const PlannerCountersSnapshot counters{3U, 2U, 1U, 4U,
-                                         PathPublicationCounters{5U, 6U, 7U, 8U}};
+  PlannerCountersSnapshot counters;
+  counters.astar_runs = 3U;
+  counters.astar_successes = 2U;
+  counters.astar_failures = 1U;
+  counters.repair_astar_runs = 9U;
+  counters.prohibited_replans = 4U;
+  counters.publication = PathPublicationCounters{5U, 6U, 7U, 8U};
 
   const std::string summary = plannerCountersSummary(counters);
 
   EXPECT_NE(summary.find("astar_runs=3"), std::string::npos);
   EXPECT_NE(summary.find("astar_successes=2"), std::string::npos);
   EXPECT_NE(summary.find("astar_failures=1"), std::string::npos);
+  EXPECT_NE(summary.find("repair_astar_runs=9"), std::string::npos);
   EXPECT_NE(summary.find("prohibited_replans=4"), std::string::npos);
   EXPECT_NE(summary.find("path_publications=5"), std::string::npos);
   EXPECT_NE(summary.find("non_empty_path_publications=6"), std::string::npos);
@@ -39,6 +45,7 @@ TEST(PlannerDiagnosticsFormat, FormatsRolloutSummaryAndPercentiles) {
   counters.rollout_publications = 5U;
   counters.rollout_recovery_requests = 2U;
   counters.rollout_failures = 1U;
+  counters.rollout_deadline_missed = 3U;
   counters.rollout_duration_p50_ms = 3.0;
   counters.rollout_duration_p95_ms = 8.0;
 
@@ -46,6 +53,7 @@ TEST(PlannerDiagnosticsFormat, FormatsRolloutSummaryAndPercentiles) {
 
   EXPECT_NE(summary.find("rollout_cycles=9"), std::string::npos);
   EXPECT_NE(summary.find("rollout_candidates=27"), std::string::npos);
+  EXPECT_NE(summary.find("rollout_deadline_missed=3"), std::string::npos);
   EXPECT_NE(summary.find("rollout_duration_p50_ms=3"), std::string::npos);
   EXPECT_NE(summary.find("rollout_duration_p95_ms=8"), std::string::npos);
   EXPECT_DOUBLE_EQ(percentile(std::vector<double>{1.0, 2.0, 3.0, 8.0}, 0.50), 2.0);

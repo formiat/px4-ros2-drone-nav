@@ -421,6 +421,10 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
                   envelope.delivery.build_start_to_publish_ms);
   parseJsonDouble(json, "delivery_blocker_to_publish_ms",
                   envelope.delivery.blocker_to_publish_ms);
+  std::size_t planning_algorithm{0U};
+  parseJsonSize(json, "delivery_planning_algorithm", planning_algorithm);
+  envelope.delivery.planning_algorithm =
+      static_cast<PlanningAlgorithm>(planning_algorithm);
   parseJsonDouble(json, "delivery_publication_prediction_error_m",
                   envelope.delivery.publication_prediction_error_m);
 

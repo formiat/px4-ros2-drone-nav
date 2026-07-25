@@ -64,6 +64,7 @@ struct RepairResult {
   TrajectoryPlannerResult trajectory;
   std::vector<Point2> route_points;
   std::string reason{"not_started"};
+  std::size_t astar_runs{0U};
   double duration_ms{0.0};
   bool valid{false};
   bool canceled{false};
@@ -74,6 +75,7 @@ struct RepairRaceSummary {
   std::size_t completions{0U};
   std::size_t invalid_results{0U};
   std::size_t canceled_results{0U};
+  std::size_t astar_runs{0U};
   bool winner_selected{false};
 };
 
@@ -85,6 +87,7 @@ struct RepairCompletionDiagnostic {
   TruncationSuffixActivationMode activation_mode{
       TruncationSuffixActivationMode::kMovingJoin};
   std::string reason;
+  std::size_t astar_runs{0U};
   double duration_ms{0.0};
   bool valid{false};
   bool canceled{false};

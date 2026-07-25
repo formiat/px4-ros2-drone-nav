@@ -93,13 +93,14 @@ struct RouteBuild {
 [[nodiscard]] std::optional<RouteBuild>
 computeRoute(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
              const Point2 start, const Point2 goal, const bool after_hold,
-             const std::stop_token stop_token) {
+             const std::stop_token stop_token, std::size_t& astar_runs) {
   for (std::size_t grid_index = 0U; grid_index < snapshot.grids.size(); ++grid_index) {
     if (stop_token.stop_requested()) {
       return std::nullopt;
     }
     const RepairGridSnapshot& grid = snapshot.grids[grid_index];
     PlannerCore core{config.planner_core};
+    ++astar_runs;
     const auto path = core.computePath(PathComputationInput{
         .grid = &grid.grid,
         .current_position = start,
@@ -208,9 +209,9 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
       result.reason = "canceled";
       break;
     }
-    const auto route =
-        computeRoute(snapshot, config, snapshot.anchor.point,
-                     reconnect.reconnect_sample.point, after_hold, stop_token);
+    const auto route = computeRoute(snapshot, config, snapshot.anchor.point,
+                                    reconnect.reconnect_sample.point, after_hold,
+                                    stop_token, result.astar_runs);
     if (!route.has_value()) {
       result.reason = "astar_failed";
       continue;
@@ -265,9 +266,9 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
       result.reason = "canceled";
       break;
     }
-    const auto route =
-        computeRoute(snapshot, config, snapshot.anchor.point,
-                     snapshot.old_trajectory.mission_goal, after_hold, stop_token);
+    const auto route = computeRoute(snapshot, config, snapshot.anchor.point,
+                                    snapshot.old_trajectory.mission_goal, after_hold,
+                                    stop_token, result.astar_runs);
     if (!route.has_value()) {
       result.reason = "astar_failed";
       continue;
@@ -405,6 +406,7 @@ RepairRaceOutcome runRepairJobs(std::shared_ptr<const RepairSnapshot> snapshot,
         .source_grid_index = result.source_grid_index,
         .activation_mode = result.activation_mode,
         .reason = result.reason,
+        .astar_runs = result.astar_runs,
         .duration_ms = result.duration_ms,
         .valid = result.valid,
         .canceled = result.canceled,
@@ -414,6 +416,7 @@ RepairRaceOutcome runRepairJobs(std::shared_ptr<const RepairSnapshot> snapshot,
     } else if (!result.valid) {
       ++outcome.summary.invalid_results;
     }
+    outcome.summary.astar_runs += result.astar_runs;
     if (!arbiter.consider(result)) {
       continue;
     }

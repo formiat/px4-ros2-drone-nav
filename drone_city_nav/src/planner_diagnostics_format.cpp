@@ -13,6 +13,7 @@ plannerCountersSummary(const PlannerCountersSnapshot& counters) {
   summary << "astar_runs=" << counters.astar_runs
           << " astar_successes=" << counters.astar_successes
           << " astar_failures=" << counters.astar_failures
+          << " repair_astar_runs=" << counters.repair_astar_runs
           << " prohibited_replans=" << counters.prohibited_replans
           << " path_publications=" << counters.publication.path_publications
           << " non_empty_path_publications="
@@ -25,6 +26,7 @@ plannerCountersSummary(const PlannerCountersSnapshot& counters) {
           << " rollout_publications=" << counters.rollout_publications
           << " rollout_recovery_requests=" << counters.rollout_recovery_requests
           << " rollout_failures=" << counters.rollout_failures
+          << " rollout_deadline_missed=" << counters.rollout_deadline_missed
           << " rollout_duration_p50_ms=" << counters.rollout_duration_p50_ms
           << " rollout_duration_p95_ms=" << counters.rollout_duration_p95_ms;
   return summary.str();

@@ -125,6 +125,8 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
                    delivery.build_start_to_publish_ms);
   appendJsonNumber(stream, "delivery_blocker_to_publish_ms",
                    delivery.blocker_to_publish_ms);
+  appendJsonSize(stream, "delivery_planning_algorithm",
+                 static_cast<std::size_t>(delivery.planning_algorithm));
   appendJsonNumber(stream, "delivery_publication_prediction_error_m",
                    delivery.publication_prediction_error_m);
   stream << ",\"trajectory_status\":\"" << trajectoryPlannerStatusName(stats.status)

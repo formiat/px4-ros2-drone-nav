@@ -542,11 +542,12 @@ void PlannerNode::recordPathPublication(const PathPublicationReason reason,
 
 [[nodiscard]] std::string PlannerNode::plannerCountersSummary() const {
   return drone_city_nav::plannerCountersSummary(PlannerCountersSnapshot{
-      astar_runs_, astar_successes_, astar_failures_, prohibited_replans_,
+      astar_runs_, astar_successes_, astar_failures_, repair_astar_runs_,
+      prohibited_replans_,
       PathPublicationCounters{path_publications_, non_empty_path_publications_,
                               hold_path_publications_, computed_path_publications_},
       rollout_cycles_, rollout_candidates_, rollout_publications_,
-      rollout_recovery_requests_, rollout_failures_,
+      rollout_recovery_requests_, rollout_failures_, rollout_deadline_missed_,
       percentile(rollout_durations_ms_, 0.50),
       percentile(rollout_durations_ms_, 0.95)});
 }

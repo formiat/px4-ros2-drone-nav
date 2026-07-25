@@ -13,6 +13,28 @@
 
 namespace drone_city_nav {
 
+enum class PlanningAlgorithm : std::uint8_t {
+  kUnknown = 0U,
+  kRollout = 1U,
+  kPartialAStar = 2U,
+  kFullAStar = 3U,
+};
+
+[[nodiscard]] constexpr const char*
+planningAlgorithmName(const PlanningAlgorithm algorithm) noexcept {
+  switch (algorithm) {
+    case PlanningAlgorithm::kRollout:
+      return "rollout";
+    case PlanningAlgorithm::kPartialAStar:
+      return "partial_astar";
+    case PlanningAlgorithm::kFullAStar:
+      return "full_astar";
+    case PlanningAlgorithm::kUnknown:
+      return "unknown";
+  }
+  return "unknown";
+}
+
 // Cross-node observability for one trajectory build. None of these values is
 // consumed by planning, handover construction, or trajectory acceptance.
 struct TrajectoryDeliveryDiagnostics {
@@ -28,6 +50,7 @@ struct TrajectoryDeliveryDiagnostics {
   bool truncation_immediate_hold{false};
   bool activate_after_terminal_hold{false};
   std::uint8_t truncation_suffix_activation_mode{0U};
+  PlanningAlgorithm planning_algorithm{PlanningAlgorithm::kUnknown};
   Point2 blocker_position{};
   Point2 blocker_detection_position{};
   Point2 blocker_detection_velocity{};

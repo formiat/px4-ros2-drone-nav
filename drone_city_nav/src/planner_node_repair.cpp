@@ -143,18 +143,19 @@ bool PlannerNode::runConfirmedRepairRace(
         handoffRepairRaceWinner(winner, snapshot, truncation_replan, delivery,
                                 completion_index, jobs_started);
       });
+  repair_astar_runs_ += outcome.summary.astar_runs;
   for (std::size_t index = 0U; index < outcome.completions.size(); ++index) {
     const RepairCompletionDiagnostic& completion = outcome.completions[index];
     RCLCPP_INFO(
         get_logger(),
         "REPAIR_RACE completion=%zu kind=%s margin=%.1f reconnect_s=%.2f "
         "grid_index=%zu activation=%s valid=%s canceled=%s reason=%s "
-        "duration_ms=%.1f",
+        "astar_runs=%zu duration_ms=%.1f",
         index + 1U, repairJobKindName(completion.kind), completion.reconnect_margin_m,
         completion.reconnect_s_m, completion.source_grid_index,
         truncationSuffixActivationModeName(completion.activation_mode),
         completion.valid ? "true" : "false", completion.canceled ? "true" : "false",
-        completion.reason.c_str(), completion.duration_ms);
+        completion.reason.c_str(), completion.astar_runs, completion.duration_ms);
   }
   if (!outcome.winner.has_value()) {
     RCLCPP_ERROR(get_logger(),
@@ -213,6 +214,9 @@ void PlannerNode::handoffRepairRaceWinner(
   delivery.truncation_immediate_hold = truncation_replan.immediate_hold;
   delivery.truncation_suffix_activation_mode =
       static_cast<std::uint8_t>(*activation_mode);
+  delivery.planning_algorithm = winner.kind == RepairJobKind::kPartial
+                                    ? PlanningAlgorithm::kPartialAStar
+                                    : PlanningAlgorithm::kFullAStar;
   delivery.candidate_start_position = winner.trajectory.samples.front().point;
   delivery.planning_start_position = snapshot->anchor.point;
   delivery.planning_start_velocity = current_velocity_;

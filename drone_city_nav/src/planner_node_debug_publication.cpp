@@ -231,18 +231,22 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   RCLCPP_INFO(
       get_logger(),
       "REPLAN_DELIVERY event=path_published generation=%" PRIu64 " path_id=%" PRIu64
-      " path_stamp_ns=%" PRIu64 " replan_triggered=%s blocker_to_build_ms=%.1f "
+      " path_stamp_ns=%" PRIu64 " planning_algorithm=%s replan_triggered=%s "
+      "blocker_to_build_ms=%.1f "
       "build_to_publish_ms=%.1f blocker_to_publish_ms=%.1f "
+      "blocker_to_successor_publish_ms=%.1f "
       "candidate_start=(%.2f, %.2f) planning_start=(%.2f, %.2f) "
       "velocity=(%.2f, %.2f) velocity_valid=%s "
       "predicted_publication=(%.2f, %.2f) predicted_valid=%s "
       "actual_publication=(%.2f, %.2f) actual_valid=%s prediction_error=%.2f",
       delivery.generation, path_id, path_stamp_ns,
+      planningAlgorithmName(delivery.planning_algorithm),
       delivery.replan_triggered ? "true" : "false", delivery.blocker_to_build_start_ms,
       delivery.build_start_to_publish_ms, delivery.blocker_to_publish_ms,
-      delivery.candidate_start_position.x, delivery.candidate_start_position.y,
-      delivery.planning_start_position.x, delivery.planning_start_position.y,
-      delivery.planning_start_velocity.x, delivery.planning_start_velocity.y,
+      delivery.blocker_to_publish_ms, delivery.candidate_start_position.x,
+      delivery.candidate_start_position.y, delivery.planning_start_position.x,
+      delivery.planning_start_position.y, delivery.planning_start_velocity.x,
+      delivery.planning_start_velocity.y,
       delivery.planning_start_velocity_valid ? "true" : "false",
       delivery.predicted_publication_position.x,
       delivery.predicted_publication_position.y,
