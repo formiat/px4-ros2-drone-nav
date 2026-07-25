@@ -149,6 +149,11 @@ PlannerModePrimaryAction plannerModePrimaryAction(const bool use_static_map,
                                             : PlannerModePrimaryAction::kAStar;
 }
 
+bool astarPlanningAllowed(const bool use_static_map,
+                          const bool no_static_astar_recovery_enabled) noexcept {
+  return use_static_map || no_static_astar_recovery_enabled;
+}
+
 bool publicationGenerationIsCurrent(const std::uint64_t candidate_generation,
                                     const std::uint64_t latest_generation) noexcept {
   return candidate_generation != 0U && candidate_generation == latest_generation;

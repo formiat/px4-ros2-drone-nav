@@ -114,6 +114,9 @@ stablePathRuntimeAction(StablePathDecisionReason reason) noexcept;
 [[nodiscard]] PlannerModePrimaryAction
 plannerModePrimaryAction(bool use_static_map, bool rollout_enabled) noexcept;
 
+[[nodiscard]] bool astarPlanningAllowed(bool use_static_map,
+                                        bool no_static_astar_recovery_enabled) noexcept;
+
 [[nodiscard]] bool
 publicationGenerationIsCurrent(std::uint64_t candidate_generation,
                                std::uint64_t latest_generation) noexcept;

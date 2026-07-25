@@ -664,9 +664,18 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   TrajectoryDeliveryDiagnostics replan_delivery =
       pending_replan_delivery_.value_or(TrajectoryDeliveryDiagnostics{});
   pending_replan_delivery_.reset();
-  if (truncation_replan.has_value() &&
+  const bool astar_planning_allowed =
+      astarPlanningAllowed(use_static_map_, no_static_astar_recovery_enabled_);
+  if (truncation_replan.has_value() && astar_planning_allowed &&
       runConfirmedRepairRace(*prepared, *truncation_replan, replan_delivery)) {
     return;
+  }
+  if (truncation_replan.has_value() && !astar_planning_allowed) {
+    RCLCPP_INFO(get_logger(),
+                "REPLAN_TRUNCATION repair_race_skipped=true "
+                "reason=no_static_astar_disabled generation=%" PRIu64
+                " action=rollout_successor",
+                truncation_replan->generation);
   }
 
   const Point2 planning_start =
@@ -690,8 +699,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
-          PlannerModePrimaryAction::kRollout &&
-      !truncation_replan.has_value()) {
+      PlannerModePrimaryAction::kRollout) {
+    const bool truncation_rollout = truncation_replan.has_value();
+    const bool rollout_prefix_available =
+        active_prefix_available && !truncation_rollout;
     const double current_goal_distance_m = distance(planning_start, goal_);
     if (!std::isfinite(no_static_best_goal_distance_m_) ||
         current_goal_distance_m + 0.5 < no_static_best_goal_distance_m_) {
@@ -713,14 +724,25 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     Point2 rollout_start = planning_start;
     Point2 rollout_velocity =
         navigation.velocity_valid ? navigation.velocity : Point2{};
-    const bool stationary_restart = artifact_matches_active_rollout &&
-                                    rollout_runtime.exhausted &&
-                                    !rollout_runtime.blocked;
+    if (truncation_rollout) {
+      const double tangent_norm =
+          std::hypot(truncation_replan->tangent.x, truncation_replan->tangent.y);
+      const double join_speed_mps = std::max(0.0, navigation.speed_mps);
+      rollout_velocity =
+          tangent_norm > 1.0e-6
+              ? Point2{truncation_replan->tangent.x * join_speed_mps / tangent_norm,
+                       truncation_replan->tangent.y * join_speed_mps / tangent_norm}
+              : Point2{};
+    }
+    const bool stationary_restart =
+        truncation_rollout ? truncation_replan->immediate_hold
+                           : artifact_matches_active_rollout &&
+                                 rollout_runtime.exhausted && !rollout_runtime.blocked;
     if (stationary_restart) {
       rollout_velocity = Point2{};
     }
     double stable_prefix_distance_m = 0.0;
-    if (active_prefix_available) {
+    if (rollout_prefix_available) {
       stable_prefix_distance_m =
           std::max(0.0, navigation.speed_mps * no_static_prefix_duration_s_);
       const double join_s_m = std::min(
@@ -757,7 +779,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           rollout_velocity.x, rollout_velocity.y,
           std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
           preferred_target.y, distance(rollout_start, preferred_target),
-          active_prefix_available ? "true" : "false", active_rollout_path_id_,
+          rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
           artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
                                           : 0.0,
           artifact_matches_active_rollout ? rollout_runtime.progress.remaining_m : 0.0,
@@ -822,7 +844,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
            rollout.rankedShortlist(rollout_planner_.config().max_finalists)) {
         ++finalist_index;
         std::vector<TrajectoryPointSample> geometry_samples = finalist.samples;
-        if (active_prefix_available) {
+        if (rollout_prefix_available) {
           const StablePrefixStitchResult stitch =
               stitchStableExecutablePrefix(executable_trajectory_artifact_.samples,
                                            executable_trajectory_artifact_.current_s_m,
@@ -851,9 +873,12 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           }
           geometry_samples = stitch.samples;
         }
-        assignTrajectorySampleAltitude(geometry_samples, navigation.altitude_valid
-                                                             ? navigation.altitude_m
-                                                             : initial_altitude_m_);
+        double rollout_start_altitude_m =
+            navigation.altitude_valid ? navigation.altitude_m : initial_altitude_m_;
+        if (truncation_rollout) {
+          rollout_start_altitude_m = truncation_replan->altitude_m;
+        }
+        assignTrajectorySampleAltitude(geometry_samples, rollout_start_altitude_m);
         const std::array<TrajectoryGridCandidate, 1U> finalization_grids{grid_attempt};
         const auto candidate_finalization_started_at = std::chrono::steady_clock::now();
         const TrajectoryPlannerResult finalized = finalizeStitchedTrajectory(
@@ -862,8 +887,14 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                 .known_passage_map =
                     known_passages_.has_value() ? &*known_passages_ : nullptr,
                 .grid_candidates = finalization_grids,
+                .start_mode = stationary_restart
+                                  ? PassageInsertionStartMode::kTerminalHoldRestart
+                                  : PassageInsertionStartMode::kMovingJoin,
             },
-            trajectoryPlannerConfigForCurrentAltitude());
+            trajectoryPlannerConfigForCurrentAltitude(
+                truncation_rollout
+                    ? std::optional<double>{truncation_replan->altitude_m}
+                    : std::nullopt));
         const double candidate_finalization_ms =
             elapsedMilliseconds(candidate_finalization_started_at);
         RCLCPP_INFO(
@@ -947,11 +978,11 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                 .grid_revision = prepared->version.build_revision,
                 .latest_grid_revision = latest_grid_revision,
                 .candidate_valid = true,
-                .active_prefix_available = active_prefix_available,
-                .active_suffix_blocked = rollout_runtime.blocked,
+                .active_prefix_available = rollout_prefix_available,
+                .active_suffix_blocked = truncation_rollout || rollout_runtime.blocked,
                 .active_suffix_exhausting = active_rollout_exhausting,
                 .temporary_hold_active =
-                    !active_prefix_available && last_valid_path_points_.empty(),
+                    !rollout_prefix_available && last_valid_path_points_.empty(),
                 .candidate_score = finalist.score,
                 .active_score = active_rollout_score_,
                 .seconds_since_progress = seconds_since_progress,
@@ -972,8 +1003,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             active_rollout_score_.has_value() ? "true" : "false",
             seconds_since_progress, rollout_runtime.blocked ? "true" : "false",
             active_rollout_exhausting ? "true" : "false",
-            !active_prefix_available && last_valid_path_points_.empty() ? "true"
-                                                                        : "false",
+            !rollout_prefix_available && last_valid_path_points_.empty() ? "true"
+                                                                         : "false",
             invalidation_generation, latest_generation,
             prepared->version.build_revision, latest_grid_revision);
         if (orchestration.action == NoStaticPlannerAction::kRejectStale) {
@@ -1015,6 +1046,20 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         rollout_delivery.generation = invalidation_generation;
         rollout_delivery.activate_after_terminal_hold = stationary_restart;
         rollout_delivery.planning_algorithm = PlanningAlgorithm::kRollout;
+        if (truncation_rollout) {
+          rollout_delivery.blocked_path_id = truncation_replan->blocked_path_id;
+          rollout_delivery.truncation_generation = truncation_replan->generation;
+          rollout_delivery.temporary_prefix_fingerprint =
+              truncation_replan->temporary_prefix_fingerprint;
+          rollout_delivery.truncation_suffix = true;
+          rollout_delivery.truncation_immediate_hold =
+              truncation_replan->immediate_hold;
+          rollout_delivery.truncation_suffix_activation_mode =
+              static_cast<std::uint8_t>(
+                  stationary_restart ? TruncationSuffixActivationMode::kAfterHold
+                                     : TruncationSuffixActivationMode::kMovingJoin);
+          rollout_delivery.planning_start_position = planning_start;
+        }
         std::uint64_t published_path_id = 0U;
         const std::vector<Point2> route_points =
             trajectorySamplePoints(finalized.samples);
@@ -1054,7 +1099,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             kRolloutPublicationDeadlineMs, rollout_deadline_missed ? "true" : "false");
         if (published) {
           active_rollout_score_ = finalist.score;
-          if (!stationary_restart) {
+          if (!stationary_restart && !truncation_rollout) {
             active_rollout_path_id_ = published_path_id;
           }
           ++rollout_publications_;
@@ -1103,9 +1148,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               .latest_grid_revision =
                   planning_grid_snapshot_builder_.nextRevision() - 1U,
               .candidate_valid = false,
-              .active_prefix_available = active_prefix_available,
+              .active_prefix_available = rollout_prefix_available,
               .temporary_hold_active =
-                  !active_prefix_available && last_valid_path_points_.empty(),
+                  !rollout_prefix_available && last_valid_path_points_.empty(),
               .active_score = active_rollout_score_,
               .seconds_since_progress = seconds_since_progress,
           });
@@ -1131,13 +1176,21 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         RCLCPP_WARN(get_logger(),
                     "NO_STATIC_ROLLOUT astar_recovery_disabled=true "
                     "no_validated_candidate=true action=%s generation=%" PRIu64,
-                    active_prefix_available ? "keep_active_prefix_and_retry"
-                                            : "restart_from_current_pose",
+                    rollout_prefix_available ? "keep_active_prefix_and_retry"
+                    : truncation_rollout     ? "retry_from_truncation_point"
+                                             : "restart_from_current_pose",
                     invalidation_generation);
         return;
       }
       ++rollout_recovery_requests_;
     }
+  }
+  if (!astar_planning_allowed) {
+    RCLCPP_WARN(get_logger(),
+                "A_STAR_SUPPRESSED map_mode=no_static recovery_enabled=false "
+                "truncation_generation=%" PRIu64 " action=keep_or_retry_rollout",
+                truncation_replan.has_value() ? truncation_replan->generation : 0U);
+    return;
   }
   std::optional<PathComputationResult> path_result;
   std::size_t astar_grid_index = 0U;

@@ -73,6 +73,13 @@ TEST(PlannerRuntimeState, PreservesStaticAStarAndSelectsNoStaticRollout) {
   EXPECT_EQ(plannerModePrimaryAction(false, true), PlannerModePrimaryAction::kRollout);
 }
 
+TEST(PlannerRuntimeState, AllowsAnyAStarOnlyForStaticOrExplicitNoStaticRecovery) {
+  EXPECT_TRUE(astarPlanningAllowed(true, false));
+  EXPECT_TRUE(astarPlanningAllowed(true, true));
+  EXPECT_TRUE(astarPlanningAllowed(false, true));
+  EXPECT_FALSE(astarPlanningAllowed(false, false));
+}
+
 TEST(PlannerRuntimeState, RejectsGenerationChangedAtPublicationBoundary) {
   EXPECT_TRUE(publicationGenerationIsCurrent(7U, 7U));
   EXPECT_FALSE(publicationGenerationIsCurrent(7U, 8U));
