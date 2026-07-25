@@ -620,7 +620,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "centerline_length_m=%.2f centerline_points=%zu tunnel_width_m=%.2f "
         "exit_depth_m=%.2f stable_exit_cycles=%zu cells_considered=%zu "
         "inflated_cleared=%zu occupied_preserved=%zu connected=%s "
-        "centerline_blocked=%s applied=%s grid_revision=%" PRIu64,
+        "centerline_blocked=%s off_centerline=%s target_too_far=%s "
+        "applied=%s grid_revision=%" PRIu64,
         directed_escape.episode_generation,
         static_cast<int>(
             directedInflationEscapeStateName(directed_escape.state).size()),
@@ -636,29 +637,29 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         directed_escape.relaxation.occupied_cells_preserved,
         directed_escape.connected ? "true" : "false",
         directed_escape.centerline_blocked ? "true" : "false",
+        directed_escape.episode_off_centerline ? "true" : "false",
+        directed_escape.episode_target_too_far ? "true" : "false",
         directed_escape.applied ? "true" : "false", prepared->version.build_revision);
   }
-  if (runtime_relaxation.inflated_cells_cleared > 0U ||
-      planning_relaxation.inflated_cells_cleared > 0U ||
-      !runtime_relaxation.center_inside_bounds ||
-      !planning_relaxation.center_inside_bounds) {
-    RCLCPP_INFO(get_logger(),
-                "LOCAL_INFLATION_RELAXATION center=(%.2f,%.2f) radius_m=%.2f "
-                "runtime[inside=%s considered=%zu cleared=%zu occupied_preserved=%zu "
-                "outside=%zu] planning[inside=%s considered=%zu cleared=%zu "
-                "occupied_preserved=%zu outside=%zu]",
-                navigation.pose.position.x, navigation.pose.position.y,
-                local_inflation_relaxation_radius_m_,
-                runtime_relaxation.center_inside_bounds ? "true" : "false",
-                runtime_relaxation.cells_considered,
-                runtime_relaxation.inflated_cells_cleared,
-                runtime_relaxation.occupied_cells_preserved,
-                runtime_relaxation.cells_outside_bounds,
-                planning_relaxation.center_inside_bounds ? "true" : "false",
-                planning_relaxation.cells_considered,
-                planning_relaxation.inflated_cells_cleared,
-                planning_relaxation.occupied_cells_preserved,
-                planning_relaxation.cells_outside_bounds);
+  if (directed_escape.applied) {
+    RCLCPP_INFO(
+        get_logger(),
+        "LOCAL_INFLATION_RELAXATION center=(%.2f,%.2f) radius_m=%.2f "
+        "escape_episode=%" PRIu64 " escape_only=true "
+        "runtime[inside=%s considered=%zu cleared=%zu occupied_preserved=%zu "
+        "outside=%zu] planning[inside=%s considered=%zu cleared=%zu "
+        "occupied_preserved=%zu outside=%zu]",
+        navigation.pose.position.x, navigation.pose.position.y,
+        local_inflation_relaxation_radius_m_, directed_escape.episode_generation,
+        runtime_relaxation.center_inside_bounds ? "true" : "false",
+        runtime_relaxation.cells_considered, runtime_relaxation.inflated_cells_cleared,
+        runtime_relaxation.occupied_cells_preserved,
+        runtime_relaxation.cells_outside_bounds,
+        planning_relaxation.center_inside_bounds ? "true" : "false",
+        planning_relaxation.cells_considered,
+        planning_relaxation.inflated_cells_cleared,
+        planning_relaxation.occupied_cells_preserved,
+        planning_relaxation.cells_outside_bounds);
   }
   publishProhibitedGrid(prohibited_grid);
   if (!reuse_successor_snapshot) {

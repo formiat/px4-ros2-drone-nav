@@ -199,6 +199,37 @@ reconstructCenterline(const OccupancyGrid2D& grid, const GridIndex start,
   });
 }
 
+[[nodiscard]] double pointToSegmentDistance(const Point2 point, const Point2 start,
+                                            const Point2 end) noexcept {
+  const double dx = end.x - start.x;
+  const double dy = end.y - start.y;
+  const double length_squared = (dx * dx) + (dy * dy);
+  if (length_squared <= kCostEpsilon) {
+    return distance(point, start);
+  }
+  const double projection = std::clamp(
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) / length_squared, 0.0, 1.0);
+  return distance(point, Point2{start.x + projection * dx, start.y + projection * dy});
+}
+
+[[nodiscard]] double
+distanceToCenterline(const Point2 point,
+                     const std::vector<Point2>& centerline) noexcept {
+  if (centerline.empty()) {
+    return kInfinity;
+  }
+  if (centerline.size() == 1U) {
+    return distance(point, centerline.front());
+  }
+  double minimum_distance = kInfinity;
+  for (std::size_t index = 1U; index < centerline.size(); ++index) {
+    minimum_distance =
+        std::min(minimum_distance, pointToSegmentDistance(point, centerline[index - 1U],
+                                                          centerline[index]));
+  }
+  return minimum_distance;
+}
+
 } // namespace
 
 DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
@@ -227,27 +258,36 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
   }
 
   if (!episode_.centerline.empty()) {
-    if (centerlineBlocked(original_grid, episode_.centerline)) {
-      episode_ = Episode{};
-      result.centerline_blocked = true;
+    const bool current_is_allowed = !original_grid.isInflated(*current_cell);
+    if (current_is_allowed) {
+      ++episode_.stable_exit_cycles;
     } else {
-      if (!original_grid.isInflated(*current_cell) &&
-          distance(current_position, episode_.target) <=
-              std::max(config.exit_depth_m, original_grid.resolution())) {
-        ++episode_.stable_exit_cycles;
-      } else {
-        episode_.stable_exit_cycles = 0U;
-      }
-      if (episode_.stable_exit_cycles >= config.stable_exit_cycles) {
-        result.need = InflationEscapeNeed::kNotNeeded;
-        result.state = DirectedInflationEscapeState::kCompleted;
-        result.episode_generation = episode_.generation;
-        result.target = episode_.target;
-        result.stable_exit_cycles = episode_.stable_exit_cycles;
-        episode_ = Episode{};
-        return result;
-      }
+      episode_.stable_exit_cycles = 0U;
+    }
+    if (episode_.stable_exit_cycles >= config.stable_exit_cycles) {
+      result.need = InflationEscapeNeed::kNotNeeded;
+      result.state = DirectedInflationEscapeState::kCompleted;
+      result.episode_generation = episode_.generation;
+      result.target = episode_.target;
+      result.stable_exit_cycles = episode_.stable_exit_cycles;
+      episode_ = Episode{};
+      return result;
+    }
 
+    const bool blocked = centerlineBlocked(original_grid, episode_.centerline);
+    const bool off_centerline =
+        !current_is_allowed &&
+        distanceToCenterline(current_position, episode_.centerline) >
+            0.5 * config.tunnel_width_m + kCostEpsilon;
+    const bool target_too_far =
+        !current_is_allowed && distance(current_position, episode_.target) >
+                                   config.max_length_m + kCostEpsilon;
+    if (blocked || off_centerline || target_too_far) {
+      episode_ = Episode{};
+      result.centerline_blocked = blocked;
+      result.episode_off_centerline = off_centerline;
+      result.episode_target_too_far = target_too_far;
+    } else {
       result.need = InflationEscapeNeed::kNeeded;
       result.state = DirectedInflationEscapeState::kActive;
       result.applied = true;
@@ -262,7 +302,8 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
 
   if (!original_grid.isInflated(*current_cell)) {
     result.need = InflationEscapeNeed::kNotNeeded;
-    if (result.centerline_blocked) {
+    if (result.centerline_blocked || result.episode_off_centerline ||
+        result.episode_target_too_far) {
       result.state = DirectedInflationEscapeState::kFailed;
     }
     return result;

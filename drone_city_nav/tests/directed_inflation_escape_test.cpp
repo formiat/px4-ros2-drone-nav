@@ -137,6 +137,27 @@ TEST(DirectedInflationEscape, KeepsEpisodeUntilStableExit) {
   EXPECT_EQ(third.episode_generation, started.episode_generation);
 }
 
+TEST(DirectedInflationEscape, CompletesAfterPassingTargetInAllowedSpace) {
+  DirectedInflationEscapePlanner planner;
+  OccupancyGrid2D inflated = emptyGrid();
+  inflated.setOccupied(GridIndex{12, 12});
+  inflated.rebuildInflation(4.0);
+  const DirectedInflationEscapeConfig config = testConfig();
+
+  const DirectedInflationEscapeResult started =
+      planner.update(inflated, Point2{9.5, 12.5}, Point2{2.5, 12.5}, config);
+  ASSERT_TRUE(started.applied);
+
+  OccupancyGrid2D clear = emptyGrid();
+  const Point2 past_target{started.target.x - 4.0, started.target.y};
+  EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
+            DirectedInflationEscapeState::kActive);
+  EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
+            DirectedInflationEscapeState::kActive);
+  EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
+            DirectedInflationEscapeState::kCompleted);
+}
+
 TEST(DirectedInflationEscape, KeepsTargetStableAcrossGridUpdates) {
   DirectedInflationEscapePlanner planner;
   OccupancyGrid2D grid = emptyGrid();
@@ -184,6 +205,26 @@ TEST(DirectedInflationEscape, RebuildsEpisodeWhenCenterlineBecomesOccupied) {
           return point.x == blocked_point.x && point.y == blocked_point.y;
         }));
   }
+}
+
+TEST(DirectedInflationEscape, RebuildsEpisodeAfterLeavingTunnelWhileInflated) {
+  DirectedInflationEscapePlanner planner;
+  OccupancyGrid2D grid = emptyGrid(40, 40);
+  grid.setOccupied(GridIndex{20, 20});
+  grid.rebuildInflation(12.0);
+  DirectedInflationEscapeConfig config = testConfig();
+  config.max_length_m = 30.0;
+
+  const DirectedInflationEscapeResult started =
+      planner.update(grid, Point2{10.5, 20.5}, Point2{2.5, 20.5}, config);
+  ASSERT_TRUE(started.applied);
+
+  const DirectedInflationEscapeResult rebuilt =
+      planner.update(grid, Point2{20.5, 10.5}, Point2{20.5, 2.5}, config);
+
+  EXPECT_TRUE(rebuilt.episode_off_centerline);
+  ASSERT_TRUE(rebuilt.applied);
+  EXPECT_GT(rebuilt.episode_generation, started.episode_generation);
 }
 
 } // namespace drone_city_nav

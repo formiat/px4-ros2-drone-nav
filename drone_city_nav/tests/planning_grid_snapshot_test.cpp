@@ -109,7 +109,7 @@ TEST(PlanningGridSnapshot, UsesOnlyAppliedSourceIdentityFromBuildResult) {
   EXPECT_EQ(prepared->version.config_fingerprint, 55U);
 }
 
-TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {
+TEST(PlanningGridSnapshot, DisabledEscapeDoesNotRelaxEitherGrid) {
   PlanningGridSnapshotBuilder builder;
   PlanningGridBuildResult ready = readyBuild();
   ASSERT_TRUE(ready.grid.has_value());
@@ -117,6 +117,7 @@ TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {
   const OccupancyGridFingerprint runtime_before = ready.grid->prohibitedFingerprint();
   const OccupancyGridFingerprint planning_before =
       ready.planning_grid->prohibitedFingerprint();
+  const GridIndex neighboring_cell{4, 3};
 
   const auto prepared = builder.prepare(
       PlanningGridPreparationInput{.build_result = &ready,
@@ -127,22 +128,22 @@ TEST(PlanningGridSnapshot, FingerprintsAndClearanceDescribeRelaxedGrids) {
   ASSERT_TRUE(prepared.has_value());
   EXPECT_TRUE(prepared->runtime_prohibited_grid.isOccupied(GridIndex{3, 3}));
   EXPECT_TRUE(prepared->planning_clearance_grid.isOccupied(GridIndex{3, 3}));
-  EXPECT_FALSE(prepared->runtime_prohibited_grid.isInflated(GridIndex{4, 3}));
-  EXPECT_FALSE(prepared->planning_clearance_grid.isInflated(GridIndex{4, 3}));
-  EXPECT_GT(prepared->runtime_relaxation.inflated_cells_cleared, 0U);
-  EXPECT_GT(prepared->planning_relaxation.inflated_cells_cleared, 0U);
+  EXPECT_TRUE(prepared->runtime_prohibited_grid.isInflated(GridIndex{4, 3}));
+  EXPECT_TRUE(prepared->planning_clearance_grid.isInflated(GridIndex{4, 3}));
+  EXPECT_EQ(prepared->runtime_relaxation.inflated_cells_cleared, 0U);
+  EXPECT_EQ(prepared->planning_relaxation.inflated_cells_cleared, 0U);
   EXPECT_TRUE(
       sameFingerprint(prepared->version.runtime_prohibited,
                       prepared->runtime_prohibited_grid.prohibitedFingerprint()));
   EXPECT_TRUE(
       sameFingerprint(prepared->version.planning_clearance,
                       prepared->planning_clearance_grid.prohibitedFingerprint()));
-  EXPECT_NE(prepared->version.runtime_prohibited.inflated_hash,
+  EXPECT_EQ(prepared->version.runtime_prohibited.inflated_hash,
             runtime_before.inflated_hash);
-  EXPECT_NE(prepared->version.planning_clearance.inflated_hash,
+  EXPECT_EQ(prepared->version.planning_clearance.inflated_hash,
             planning_before.inflated_hash);
-  EXPECT_DOUBLE_EQ(prepared->runtime_clearance.distanceAt(GridIndex{4, 3}), 1.0);
-  EXPECT_DOUBLE_EQ(prepared->planning_clearance.distanceAt(GridIndex{4, 3}), 1.0);
+  EXPECT_DOUBLE_EQ(prepared->runtime_clearance.distanceAt(neighboring_cell), 0.0);
+  EXPECT_DOUBLE_EQ(prepared->planning_clearance.distanceAt(neighboring_cell), 0.0);
 }
 
 TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
@@ -157,7 +158,7 @@ TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
       .build_result = &ready,
       .relaxation_center = Point2{5.5, 3.5},
       .mission_goal = Point2{7.5, 3.5},
-      .relaxation_radius_m = 0.0,
+      .relaxation_radius_m = 1.1,
       .clearance_max_distance_m = 10.0,
       .directed_escape =
           DirectedInflationEscapeConfig{
@@ -177,6 +178,8 @@ TEST(PlanningGridSnapshot, DirectedEscapeOnlyRelaxesPlanningGrid) {
   EXPECT_FALSE(prepared->planning_clearance_grid.isInflated(GridIndex{5, 3}));
   EXPECT_TRUE(prepared->runtime_prohibited_grid.isInflated(GridIndex{4, 3}));
   EXPECT_TRUE(prepared->runtime_prohibited_grid.isOccupied(GridIndex{3, 3}));
+  EXPECT_EQ(prepared->runtime_relaxation.inflated_cells_cleared, 0U);
+  EXPECT_GT(prepared->planning_relaxation.inflated_cells_cleared, 0U);
 }
 
 } // namespace drone_city_nav

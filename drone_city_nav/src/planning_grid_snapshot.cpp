@@ -72,12 +72,11 @@ PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) 
     }
   }
 
-  const LocalInflationRelaxationStats runtime_relaxation =
-      runtime_grid.clearInflationWithinRadius(input.relaxation_center,
-                                              input.relaxation_radius_m);
+  const LocalInflationRelaxationStats runtime_relaxation{};
   const LocalInflationRelaxationStats planning_relaxation =
-      planning_grid.clearInflationWithinRadius(input.relaxation_center,
-                                               input.relaxation_radius_m);
+      directed_escape.applied ? planning_grid.clearInflationWithinRadius(
+                                    input.relaxation_center, input.relaxation_radius_m)
+                              : LocalInflationRelaxationStats{};
   ClearanceField2D runtime_clearance = ClearanceField2D::build(
       runtime_grid, input.clearance_max_distance_m, ClearanceSource::kProhibited);
   ClearanceField2D planning_clearance = ClearanceField2D::build(

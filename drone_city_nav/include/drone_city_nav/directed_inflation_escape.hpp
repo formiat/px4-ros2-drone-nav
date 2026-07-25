@@ -41,6 +41,8 @@ struct DirectedInflationEscapeResult {
   bool applied{false};
   bool connected{false};
   bool centerline_blocked{false};
+  bool episode_off_centerline{false};
+  bool episode_target_too_far{false};
   std::uint64_t episode_generation{0U};
   Point2 start{};
   Point2 target{};
