@@ -221,17 +221,52 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
 }
 
 bool PlannerNode::keepCurrentPathIfStillClear(
-    const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result) {
+    const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
+    const ExecutableSuffixDecision* const executable_suffix_decision) {
   if (last_valid_path_points_.size() < 2U) {
     return false;
   }
-  if (executable_trajectory_artifact_.path_id == last_published_path_id_) {
+  if (executable_suffix_decision == nullptr &&
+      executable_trajectory_artifact_.path_id == last_published_path_id_) {
     (void)updateExecutableTrajectoryProgress(executable_trajectory_artifact_,
                                              current_pose_.position);
   }
 
-  const StablePathDecision decision = planner_core_.evaluateStablePath(
-      grid, last_valid_path_points_, current_pose_.position, goal_);
+  StablePathDecision decision{};
+  if (executable_suffix_decision != nullptr) {
+    const ExecutableSuffixDecision& suffix = *executable_suffix_decision;
+    decision.deviation_m = suffix.progress.cross_track_m;
+    if (!suffix.progress.valid) {
+      decision.reason = StablePathDecisionReason::kProjectionUnavailable;
+    } else if (!suffix.blocked || !suffix.blocked_span.has_value()) {
+      decision.keep_path = true;
+      decision.reason = StablePathDecisionReason::kClear;
+    } else {
+      const BlockedSpan& blocked = *suffix.blocked_span;
+      const Point2 suffix_start = suffix.progress.projected_point;
+      decision.remaining_path = {suffix_start, blocked.first_point, blocked.last_point};
+      decision.prohibited_segment_index = 0U;
+      PathProhibitedIntersection intersection{};
+      intersection.cell = blocked.first_cell;
+      intersection.cell_center = blocked.first_cell_available
+                                     ? grid.cellCenter(blocked.first_cell)
+                                     : blocked.first_point;
+      intersection.path_distance_m =
+          std::max(0.0, blocked.first_blocked_s_m - suffix.progress.projected_s_m);
+      intersection.occupied =
+          blocked.first_cell_available && grid.isOccupied(blocked.first_cell);
+      intersection.inflated =
+          blocked.first_cell_available && grid.isInflated(blocked.first_cell);
+      intersection.segment_start_prohibited =
+          blocked.first_blocked_s_m <= suffix.progress.projected_s_m + 1.0e-6;
+      intersection.segment_end_prohibited = true;
+      decision.prohibited_intersection = intersection;
+      decision.reason = StablePathDecisionReason::kProhibitedConfirmed;
+    }
+  } else {
+    decision = planner_core_.evaluateStablePath(grid, last_valid_path_points_,
+                                                current_pose_.position, goal_);
+  }
   if (stablePathRuntimeAction(decision.reason) == StablePathRuntimeAction::kRunAStar &&
       decision.reason != StablePathDecisionReason::kProhibitedConfirmed) {
     RCLCPP_INFO_THROTTLE(

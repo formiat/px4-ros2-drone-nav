@@ -130,8 +130,9 @@ NoStaticPlannerOrchestrator::decide(const NoStaticPlannerDecisionInput& input) {
   mode_ = recovery_guide_available_ ? NoStaticPlannerMode::kAstarGuidedRollout
                                     : NoStaticPlannerMode::kDirectGoalRollout;
   const bool replacement_required =
-      input.active_suffix_blocked || input.active_suffix_exhausting ||
-      input.temporary_hold_active || !input.active_score.has_value();
+      !input.active_prefix_available || input.active_suffix_blocked ||
+      input.active_suffix_exhausting || input.temporary_hold_active ||
+      !input.active_score.has_value();
   const bool materially_better =
       input.active_score.has_value() &&
       input.candidate_score + config_.minimum_score_improvement < *input.active_score;

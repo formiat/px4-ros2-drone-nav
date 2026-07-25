@@ -147,15 +147,50 @@ void appendDistinct(std::vector<TrajectoryPointSample>& samples,
 
 } // namespace
 
-bool updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
-                                        const Point2 current_position) {
+ExecutableTrajectoryProgress
+updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
+                                   const Point2 current_position,
+                                   const double max_cross_track_m) {
+  ExecutableTrajectoryProgress result{};
+  result.previous_s_m = artifact.current_s_m;
+  if (!trajectorySamplesAreUsable(artifact.samples)) {
+    return result;
+  }
+  result.terminal_distance_m =
+      distance(current_position, artifact.samples.back().point);
   const std::optional<TrajectoryProjection> projection = projectOnTrajectorySamples(
       artifact.samples, current_position, artifact.current_s_m);
   if (!projection.has_value()) {
-    return false;
+    return result;
+  }
+  result.projected_s_m = projection->s_m;
+  result.projected_point = projection->point;
+  result.cross_track_m = std::sqrt(std::max(0.0, projection->distance_sq));
+  result.remaining_m =
+      std::max(0.0, artifact.samples.back().s_m - result.projected_s_m);
+  result.diverged =
+      std::isfinite(max_cross_track_m) && result.cross_track_m > max_cross_track_m;
+  if (result.diverged) {
+    return result;
   }
   artifact.current_s_m = projection->s_m;
-  return true;
+  result.valid = true;
+  return result;
+}
+
+ExecutableSuffixDecision evaluateExecutableSuffix(
+    const OccupancyGrid2D& grid, const ExecutableTrajectoryArtifact& artifact,
+    const ExecutableTrajectoryProgress& progress, const double exhaustion_epsilon_m) {
+  ExecutableSuffixDecision decision{};
+  decision.progress = progress;
+  if (!progress.valid || !trajectorySamplesAreUsable(artifact.samples)) {
+    return decision;
+  }
+  decision.exhausted = progress.remaining_m <= std::max(0.0, exhaustion_epsilon_m);
+  decision.blocked_span =
+      findFirstProhibitedCellSpan(grid, artifact.samples, progress.projected_s_m);
+  decision.blocked = decision.blocked_span.has_value();
+  return decision;
 }
 
 std::optional<BlockedSpan>

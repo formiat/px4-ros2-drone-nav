@@ -37,6 +37,7 @@ struct NoStaticPlannerDecisionInput {
   std::uint64_t grid_revision{0U};
   std::uint64_t latest_grid_revision{0U};
   bool candidate_valid{false};
+  bool active_prefix_available{true};
   bool active_suffix_blocked{false};
   bool active_suffix_exhausting{false};
   bool temporary_hold_active{false};

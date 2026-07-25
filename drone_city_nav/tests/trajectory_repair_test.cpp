@@ -35,8 +35,82 @@ TEST(TrajectoryRepair, ProgressProjectionIsMonotonic) {
       .current_s_m = 20.0,
   };
 
-  ASSERT_TRUE(updateExecutableTrajectoryProgress(artifact, Point2{5.0, 5.0}));
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{5.0, 5.0});
+  ASSERT_TRUE(progress.valid);
   EXPECT_GE(artifact.current_s_m, 20.0);
+}
+
+TEST(TrajectoryRepair, ProgressDoesNotAdvanceWhenProjectionDiverged) {
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 5U,
+      .samples = lineSamples(20.0),
+      .current_s_m = 5.0,
+  };
+
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{20.0, 10.0}, 3.0);
+
+  EXPECT_FALSE(progress.valid);
+  EXPECT_TRUE(progress.diverged);
+  EXPECT_GT(progress.cross_track_m, 3.0);
+  EXPECT_DOUBLE_EQ(artifact.current_s_m, 5.0);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixIgnoresBlockerBehindProgress) {
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{5, 10});
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 7U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 10.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
+
+  const ExecutableSuffixDecision decision =
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+
+  EXPECT_TRUE(decision.progress.valid);
+  EXPECT_FALSE(decision.blocked);
+  EXPECT_FALSE(decision.exhausted);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixFindsBlockerAheadOfProgress) {
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{15, 10});
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 7U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 10.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
+
+  const ExecutableSuffixDecision decision =
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+
+  ASSERT_TRUE(decision.blocked);
+  ASSERT_TRUE(decision.blocked_span.has_value());
+  const BlockedSpan blocked = decision.blocked_span.value_or(BlockedSpan{});
+  EXPECT_GT(blocked.first_blocked_s_m, progress.projected_s_m);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixReportsExhaustedAtTerminal) {
+  OccupancyGrid2D grid = freeGrid();
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 7U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 29.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{30.0, 0.0}, 3.0);
+
+  const ExecutableSuffixDecision decision =
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+
+  EXPECT_TRUE(decision.exhausted);
+  EXPECT_FALSE(decision.blocked);
 }
 
 TEST(TrajectoryRepair, ProhibitedSpanEndsAtFirstSafeStation) {

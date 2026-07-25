@@ -36,6 +36,24 @@ struct ExecutableTrajectoryArtifact {
   double current_s_m{0.0};
 };
 
+struct ExecutableTrajectoryProgress {
+  bool valid{false};
+  bool diverged{false};
+  double previous_s_m{0.0};
+  double projected_s_m{0.0};
+  double cross_track_m{std::numeric_limits<double>::infinity()};
+  Point2 projected_point{};
+  double remaining_m{0.0};
+  double terminal_distance_m{std::numeric_limits<double>::infinity()};
+};
+
+struct ExecutableSuffixDecision {
+  ExecutableTrajectoryProgress progress{};
+  bool exhausted{false};
+  bool blocked{false};
+  std::optional<BlockedSpan> blocked_span;
+};
+
 struct ReconnectCandidate {
   double margin_m{0.0};
   double reconnect_s_m{0.0};
@@ -48,9 +66,13 @@ struct TrajectoryRepairStitchResult {
   std::vector<TrajectoryPointSample> samples;
 };
 
-[[nodiscard]] bool
-updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
-                                   Point2 current_position);
+[[nodiscard]] ExecutableTrajectoryProgress updateExecutableTrajectoryProgress(
+    ExecutableTrajectoryArtifact& artifact, Point2 current_position,
+    double max_cross_track_m = std::numeric_limits<double>::infinity());
+
+[[nodiscard]] ExecutableSuffixDecision evaluateExecutableSuffix(
+    const OccupancyGrid2D& grid, const ExecutableTrajectoryArtifact& artifact,
+    const ExecutableTrajectoryProgress& progress, double exhaustion_epsilon_m);
 
 [[nodiscard]] std::optional<BlockedSpan>
 findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,

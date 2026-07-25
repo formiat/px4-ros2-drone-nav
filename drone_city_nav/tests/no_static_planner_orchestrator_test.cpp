@@ -90,6 +90,22 @@ TEST(NoStaticPlannerOrchestrator, ExhaustingSuffixBypassesHysteresis) {
   EXPECT_EQ(decision.action, NoStaticPlannerAction::kPublish);
 }
 
+TEST(NoStaticPlannerOrchestrator, MissingActivePrefixBypassesHysteresis) {
+  NoStaticPlannerOrchestrator orchestrator;
+  const NoStaticPlannerDecision decision =
+      orchestrator.decide(NoStaticPlannerDecisionInput{
+          .generation = 3U,
+          .latest_generation = 3U,
+          .grid_revision = 4U,
+          .latest_grid_revision = 4U,
+          .candidate_valid = true,
+          .active_prefix_available = false,
+          .candidate_score = 200.0,
+          .active_score = 100.0,
+      });
+  EXPECT_EQ(decision.action, NoStaticPlannerAction::kPublish);
+}
+
 TEST(NoStaticPlannerOrchestrator, StablePrefixRemainsUnchanged) {
   const std::vector<TrajectoryPointSample> active = lineSamples(0.0, 10.0);
   const std::vector<TrajectoryPointSample> successor = lineSamples(5.0, 15.0);
