@@ -158,6 +158,16 @@ private:
     double callback_ms{std::numeric_limits<double>::quiet_NaN()};
   };
 
+  struct RolloutSuccessorSnapshot {
+    std::uint64_t truncation_generation{0U};
+    std::uint64_t blocked_path_id{0U};
+    std::uint64_t temporary_prefix_fingerprint{0U};
+    PlanningGridVersion grid_version{};
+    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid;
+    std::int64_t blocker_detected_stamp_ns{0};
+    BlockedSpan blocked_span{};
+  };
+
   struct TruncationReplanState {
     std::uint64_t blocked_path_id{0U};
     std::uint64_t generation{0U};
@@ -166,6 +176,7 @@ private:
     Point2 tangent{};
     double altitude_m{std::numeric_limits<double>::quiet_NaN()};
     BlockedSpan blocked_span{};
+    std::optional<RolloutSuccessorSnapshot> rollout_successor_snapshot;
     ExecutableTrajectoryArtifact old_trajectory{};
     double current_s_m{std::numeric_limits<double>::quiet_NaN()};
     double truncation_s_m{std::numeric_limits<double>::quiet_NaN()};
@@ -209,8 +220,10 @@ private:
 
   void onTruncationSuffixAck(const msg::TruncationSuffixAck& message);
 
-  [[nodiscard]] std::optional<std::uint64_t>
-  beginTruncationReplan(std::uint64_t blocked_path_id, const BlockedSpan& blocked_span);
+  [[nodiscard]] std::optional<std::uint64_t> beginTruncationReplan(
+      std::uint64_t blocked_path_id, const BlockedSpan& blocked_span,
+      std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+      std::int64_t blocker_detected_stamp_ns);
 
   [[nodiscard]] std::optional<TruncationReplanState> truncationReplanState() const;
 
@@ -425,6 +438,7 @@ private:
 
   bool keepCurrentPathIfStillClear(
       const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
+      std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
       const ExecutableSuffixDecision* executable_suffix_decision = nullptr);
 
   void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics,

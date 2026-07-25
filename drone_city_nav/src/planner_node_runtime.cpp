@@ -222,6 +222,7 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
 
 bool PlannerNode::keepCurrentPathIfStillClear(
     const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
+    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
     const ExecutableSuffixDecision* const executable_suffix_decision) {
   const bool executable_artifact_matches =
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
@@ -367,7 +368,8 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         };
       }
       const std::optional<std::uint64_t> truncation_generation =
-          beginTruncationReplan(runtime_path_id, *blocked_span);
+          beginTruncationReplan(runtime_path_id, *blocked_span,
+                                std::move(prepared_grid), blocker_detected_stamp_ns);
       if (truncation_generation.has_value()) {
         delivery.blocked_path_id = runtime_path_id;
         delivery.truncation_generation = *truncation_generation;

@@ -485,9 +485,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       planningWakeReasonName(identity.wake_reason), identity.coalesced_requests);
   const NavigationStateSnapshot navigation = navigationStateSnapshot();
   applyNavigationStateSnapshot(navigation);
-  applyLatestLidarInputSnapshot();
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
-  applyPendingMemorySnapshot(now_ns);
   const bool pose_fresh =
       timestampIsFresh(last_pose_update_ns_, now_ns, max_pose_staleness_ns_);
   const double pose_age_s = poseAgeSeconds(now_ns);
@@ -508,33 +506,103 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                          "keeping the last published path");
     return;
   }
-  const auto planning_grid_started_at = std::chrono::steady_clock::now();
-  auto planning_result = buildPlanningGrid(now_ns);
-  const double planning_grid_duration_ms =
-      elapsedMilliseconds(planning_grid_started_at);
-  if (!planning_result.has_value()) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Planner skipped path publication because the planning grid is "
-        "not ready; keeping the last published path");
+  std::optional<TruncationReplanState> truncation_replan = truncationReplanState();
+  if (truncation_replan.has_value() && !truncation_replan->confirmed) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                         "REPLAN_TRUNCATION planning_wait=true blocked_path_id=%" PRIu64
+                         " generation=%" PRIu64 " grid_build_skipped=true",
+                         truncation_replan->blocked_path_id,
+                         truncation_replan->generation);
     return;
   }
-  std::optional<PreparedPlanningGridSnapshot> prepared =
-      preparePlanningGridSnapshot(*planning_result, navigation.pose.position);
-  if (!prepared.has_value()) {
-    RCLCPP_ERROR(get_logger(),
-                 "Planner could not prepare an immutable grid snapshot from a "
-                 "completed grid build; keeping the last published path");
+  if (truncation_replan.has_value() && truncation_replan->awaiting_ack) {
+    RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "REPLAN_TRUNCATION planning_wait=true reason=awaiting_suffix_ack "
+        "blocked_path_id=%" PRIu64 " generation=%" PRIu64 " path_id=%" PRIu64
+        " attempt=%zu grid_build_skipped=true",
+        truncation_replan->blocked_path_id, truncation_replan->generation,
+        truncation_replan->published_suffix_path_id,
+        truncation_replan->publication_attempts);
     return;
+  }
+  const bool no_static_rollout_mode =
+      plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
+      PlannerModePrimaryAction::kRollout;
+  const RolloutSuccessorSnapshot* successor_snapshot =
+      truncation_replan.has_value() &&
+              truncation_replan->rollout_successor_snapshot.has_value()
+          ? &*truncation_replan->rollout_successor_snapshot
+          : nullptr;
+  const bool reuse_successor_snapshot =
+      no_static_rollout_mode && !no_static_astar_recovery_enabled_ &&
+      truncation_replan.has_value() && truncation_replan->confirmed &&
+      !truncation_replan->awaiting_ack && successor_snapshot != nullptr &&
+      successor_snapshot->prepared_grid != nullptr &&
+      successor_snapshot->blocked_path_id == truncation_replan->blocked_path_id &&
+      successor_snapshot->truncation_generation == truncation_replan->generation &&
+      successor_snapshot->temporary_prefix_fingerprint ==
+          truncation_replan->temporary_prefix_fingerprint &&
+      planningGridVersionsEqual(successor_snapshot->grid_version,
+                                successor_snapshot->prepared_grid->version);
+
+  std::optional<PlanningGridBuildResult> planning_result;
+  std::shared_ptr<const PreparedPlanningGridSnapshot> prepared;
+  double planning_grid_duration_ms{0.0};
+  if (reuse_successor_snapshot) {
+    prepared = successor_snapshot->prepared_grid;
+    const double snapshot_age_ms =
+        successor_snapshot->blocker_detected_stamp_ns > 0 &&
+                now_ns >= successor_snapshot->blocker_detected_stamp_ns
+            ? 1.0e-6 * static_cast<double>(
+                           now_ns - successor_snapshot->blocker_detected_stamp_ns)
+            : std::numeric_limits<double>::quiet_NaN();
+    RCLCPP_INFO(get_logger(),
+                "ROLLOUT_SUCCESSOR_SNAPSHOT generation=%" PRIu64
+                " blocked_path_id=%" PRIu64 " grid_revision=%" PRIu64
+                " snapshot_reused=true snapshot_age_ms=%.2f grid_build_ms=0.00 "
+                "clearance_build_ms=0.00",
+                truncation_replan->generation, truncation_replan->blocked_path_id,
+                prepared->version.build_revision, snapshot_age_ms);
+    if (std::isfinite(snapshot_age_ms) && snapshot_age_ms > 2000.0) {
+      RCLCPP_WARN(get_logger(),
+                  "ROLLOUT_SUCCESSOR_SNAPSHOT old_snapshot=true generation=%" PRIu64
+                  " snapshot_age_ms=%.2f action=continue_with_runtime_monitor",
+                  truncation_replan->generation, snapshot_age_ms);
+    }
+  } else {
+    applyLatestLidarInputSnapshot();
+    applyPendingMemorySnapshot(now_ns);
+    const auto planning_grid_started_at = std::chrono::steady_clock::now();
+    planning_result = buildPlanningGrid(now_ns);
+    planning_grid_duration_ms = elapsedMilliseconds(planning_grid_started_at);
+    if (!planning_result.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Planner skipped path publication because the planning grid is "
+          "not ready; keeping the last published path");
+      return;
+    }
+    std::optional<PreparedPlanningGridSnapshot> prepared_value =
+        preparePlanningGridSnapshot(*planning_result, navigation.pose.position);
+    if (!prepared_value.has_value()) {
+      RCLCPP_ERROR(get_logger(),
+                   "Planner could not prepare an immutable grid snapshot from a "
+                   "completed grid build; keeping the last published path");
+      return;
+    }
+    prepared = std::make_shared<const PreparedPlanningGridSnapshot>(
+        std::move(*prepared_value));
   }
   RCLCPP_INFO(get_logger(),
               "PLANNING_GRID_TIMING cycle_sequence=%" PRIu64
               " invalidation_generation=%" PRIu64 " grid_revision=%" PRIu64
-              " grid_build_ms=%.2f",
+              " grid_build_ms=%.2f snapshot_reused=%s",
               identity.cycle_sequence, invalidation_generation,
-              prepared->version.build_revision, planning_grid_duration_ms);
-  OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
-  OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
+              prepared->version.build_revision, planning_grid_duration_ms,
+              reuse_successor_snapshot ? "true" : "false");
+  const OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
+  const OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
   const LocalInflationRelaxationStats& runtime_relaxation =
       prepared->runtime_relaxation;
   const LocalInflationRelaxationStats& planning_relaxation =
@@ -562,7 +630,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                 planning_relaxation.cells_outside_bounds);
   }
   publishProhibitedGrid(prohibited_grid);
-  std::optional<TruncationReplanState> truncation_replan = truncationReplanState();
+  if (!reuse_successor_snapshot) {
+    truncation_replan = truncationReplanState();
+  }
   const bool artifact_matches_active_rollout =
       !use_static_map_ && no_static_rollout_enabled_ &&
       executable_trajectory_artifact_.path_id == active_rollout_path_id_ &&
@@ -633,8 +703,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                        no_static_prefix_duration_s_ * current_speed_mps);
   bool current_path_kept = false;
   if (!truncation_replan.has_value()) {
+    if (!planning_result.has_value()) {
+      RCLCPP_ERROR(get_logger(),
+                   "Planner runtime path check has no matching grid build result");
+      return;
+    }
     current_path_kept = keepCurrentPathIfStillClear(
-        prohibited_grid, *planning_result,
+        prohibited_grid, *planning_result, prepared,
         artifact_matches_active_rollout ? &rollout_runtime : nullptr);
     if (current_path_kept && !artifact_matches_active_rollout) {
       return;
@@ -970,7 +1045,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         validated_candidate_seen = true;
         const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
         const std::uint64_t latest_grid_revision =
-            planning_grid_snapshot_builder_.nextRevision() - 1U;
+            reuse_successor_snapshot
+                ? prepared->version.build_revision
+                : planning_grid_snapshot_builder_.nextRevision() - 1U;
         const NoStaticPlannerDecision orchestration =
             no_static_orchestrator_.decide(NoStaticPlannerDecisionInput{
                 .generation = invalidation_generation,
@@ -1077,9 +1154,22 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                                  : TrajectoryEndpointSemantics::kLocalHorizon,
             &stage_timings, grid_attempt.grid);
         stage_timings.publication_total_ms = elapsedMilliseconds(cycle_started_at);
+        const double blocker_to_successor_publish_ms =
+            truncation_rollout && successor_snapshot != nullptr &&
+                    successor_snapshot->blocker_detected_stamp_ns > 0 &&
+                    get_clock()->now().nanoseconds() >=
+                        successor_snapshot->blocker_detected_stamp_ns
+                ? 1.0e-6 *
+                      static_cast<double>(get_clock()->now().nanoseconds() -
+                                          successor_snapshot->blocker_detected_stamp_ns)
+                : std::numeric_limits<double>::quiet_NaN();
         constexpr double kRolloutPublicationDeadlineMs{500.0};
+        const double deadline_duration_ms =
+            std::isfinite(blocker_to_successor_publish_ms)
+                ? blocker_to_successor_publish_ms
+                : stage_timings.publication_total_ms;
         const bool rollout_deadline_missed =
-            stage_timings.publication_total_ms > kRolloutPublicationDeadlineMs;
+            deadline_duration_ms > kRolloutPublicationDeadlineMs;
         if (rollout_deadline_missed) {
           ++rollout_deadline_missed_;
         }
@@ -1097,6 +1187,22 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             stage_timings.candidate_finalization_ms, stage_timings.grid_build_ms,
             stage_timings.final_validation_ms, stage_timings.publication_total_ms,
             kRolloutPublicationDeadlineMs, rollout_deadline_missed ? "true" : "false");
+        if (truncation_rollout) {
+          RCLCPP_INFO(
+              get_logger(),
+              "ROLLOUT_SUCCESSOR_TIMING generation=%" PRIu64 " grid_revision=%" PRIu64
+              " snapshot_reused=%s snapshot_age_ms=%.2f grid_build_ms=%.2f "
+              "clearance_build_ms=0.00 rollout_generation_ms=%.2f "
+              "candidate_finalization_ms=%.2f final_validation_ms=%.2f "
+              "blocker_to_successor_publish_ms=%.2f rollout_deadline_missed=%s",
+              truncation_replan->generation, prepared->version.build_revision,
+              reuse_successor_snapshot ? "true" : "false",
+              blocker_to_successor_publish_ms, stage_timings.grid_build_ms,
+              stage_timings.rollout_generation_ms,
+              stage_timings.candidate_finalization_ms,
+              stage_timings.final_validation_ms, blocker_to_successor_publish_ms,
+              rollout_deadline_missed ? "true" : "false");
+        }
         if (published) {
           active_rollout_score_ = finalist.score;
           if (!stationary_restart && !truncation_rollout) {
@@ -1146,7 +1252,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               .latest_generation = latestPlanningInvalidationGeneration(),
               .grid_revision = prepared->version.build_revision,
               .latest_grid_revision =
-                  planning_grid_snapshot_builder_.nextRevision() - 1U,
+                  reuse_successor_snapshot
+                      ? prepared->version.build_revision
+                      : planning_grid_snapshot_builder_.nextRevision() - 1U,
               .candidate_valid = false,
               .active_prefix_available = rollout_prefix_available,
               .temporary_hold_active =

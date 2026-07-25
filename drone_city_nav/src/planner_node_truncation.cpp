@@ -2,10 +2,11 @@
 
 namespace drone_city_nav {
 
-std::optional<std::uint64_t>
-PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id,
-                                   const BlockedSpan& blocked_span) {
-  if (blocked_path_id == 0U) {
+std::optional<std::uint64_t> PlannerNode::beginTruncationReplan(
+    const std::uint64_t blocked_path_id, const BlockedSpan& blocked_span,
+    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+    const std::int64_t blocker_detected_stamp_ns) {
+  if (blocked_path_id == 0U || prepared_grid == nullptr) {
     return std::nullopt;
   }
   std::scoped_lock lock{truncation_replan_mutex_};
@@ -26,6 +27,15 @@ PlannerNode::beginTruncationReplan(const std::uint64_t blocked_path_id,
       .blocked_path_id = blocked_path_id,
       .generation = generation,
       .blocked_span = blocked_span,
+      .rollout_successor_snapshot =
+          RolloutSuccessorSnapshot{
+              .truncation_generation = generation,
+              .blocked_path_id = blocked_path_id,
+              .grid_version = prepared_grid->version,
+              .prepared_grid = std::move(prepared_grid),
+              .blocker_detected_stamp_ns = blocker_detected_stamp_ns,
+              .blocked_span = blocked_span,
+          },
       .old_trajectory = artifact_matches ? executable_trajectory_artifact_
                                          : ExecutableTrajectoryArtifact{},
       .current_s_m = artifact_matches ? executable_trajectory_artifact_.current_s_m
@@ -87,6 +97,21 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
     truncation_replan_state_->altitude_m = message.truncation_altitude_m;
     truncation_replan_state_->temporary_prefix_fingerprint =
         message.temporary_prefix_fingerprint;
+    if (truncation_replan_state_->rollout_successor_snapshot.has_value()) {
+      RolloutSuccessorSnapshot& successor =
+          *truncation_replan_state_->rollout_successor_snapshot;
+      const bool snapshot_identity_matches =
+          successor.blocked_path_id == message.blocked_path_id &&
+          successor.truncation_generation == message.truncation_generation &&
+          successor.prepared_grid != nullptr &&
+          planningGridVersionsEqual(successor.grid_version,
+                                    successor.prepared_grid->version);
+      if (snapshot_identity_matches) {
+        successor.temporary_prefix_fingerprint = message.temporary_prefix_fingerprint;
+      } else {
+        truncation_replan_state_->rollout_successor_snapshot.reset();
+      }
+    }
     truncation_replan_state_->published_suffix_path_id = 0U;
     truncation_replan_state_->confirmed = true;
     truncation_replan_state_->immediate_hold = message.immediate_hold;
@@ -240,6 +265,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         truncation_replan_state_.has_value()) {
       truncation_replan_state_->awaiting_ack = false;
       truncation_replan_state_->published_suffix_path_id = 0U;
+      truncation_replan_state_->rollout_successor_snapshot.reset();
       pending_truncation_runtime_trajectory_.reset();
     }
   }
@@ -367,18 +393,23 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
   std::size_t publication_attempt = 0U;
   {
     std::scoped_lock lock{truncation_replan_mutex_};
+    if (!truncation_replan_state_.has_value()) {
+      RCLCPP_ERROR(get_logger(),
+                   "%s truncation suffix discarded before publication: "
+                   "reason=state_missing path_id=%" PRIu64 " generation=%" PRIu64,
+                   source_label, path_id, delivery.truncation_generation);
+      return false;
+    }
+    TruncationReplanState& state = *truncation_replan_state_;
     const TruncationSuffixPublicationEvaluation publication =
-        truncation_replan_state_.has_value()
-            ? evaluateTruncationSuffixPublication(
-                  TruncationSuffixPublicationContext{
-                      .generation = truncation_replan_state_->generation,
-                      .prefix_fingerprint =
-                          truncation_replan_state_->temporary_prefix_fingerprint,
-                      .confirmed = truncation_replan_state_->confirmed,
-                      .awaiting_ack = truncation_replan_state_->awaiting_ack,
-                  },
-                  identity)
-            : TruncationSuffixPublicationEvaluation{false, "state_missing"};
+        evaluateTruncationSuffixPublication(
+            TruncationSuffixPublicationContext{
+                .generation = state.generation,
+                .prefix_fingerprint = state.temporary_prefix_fingerprint,
+                .confirmed = state.confirmed,
+                .awaiting_ack = state.awaiting_ack,
+            },
+            identity);
     if (!publication.allowed) {
       RCLCPP_ERROR(get_logger(),
                    "%s truncation suffix discarded before publication: "
@@ -387,9 +418,9 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
                    delivery.truncation_generation);
       return false;
     }
-    truncation_replan_state_->published_suffix_path_id = path_id;
-    truncation_replan_state_->awaiting_ack = true;
-    publication_attempt = ++truncation_replan_state_->publication_attempts;
+    state.published_suffix_path_id = path_id;
+    state.awaiting_ack = true;
+    publication_attempt = ++state.publication_attempts;
     pending_truncation_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
         .identity = identity,
         .path_points = runtime_points,
