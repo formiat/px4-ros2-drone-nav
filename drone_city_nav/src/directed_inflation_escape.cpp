@@ -302,6 +302,10 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
       episode_.stable_exit_cycles = 0U;
     }
     if (episode_.stable_exit_cycles >= config.stable_exit_cycles) {
+      episode_.awaiting_mission_continuation = true;
+    }
+    if (episode_.awaiting_mission_continuation &&
+        episode_.mission_continuation_confirmed) {
       result.need = InflationEscapeNeed::kNotNeeded;
       result.state = DirectedInflationEscapeState::kCompleted;
       result.episode_generation = episode_.generation;
@@ -333,6 +337,7 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
       result.target = episode_.target;
       result.centerline_length_m = episode_.centerline_length_m;
       result.stable_exit_cycles = episode_.stable_exit_cycles;
+      result.awaiting_mission_continuation = episode_.awaiting_mission_continuation;
       result.centerline = episode_.centerline;
       return result;
     }
@@ -371,6 +376,16 @@ DirectedInflationEscapeResult DirectedInflationEscapePlanner::update(
   result.centerline_length_m = episode_.centerline_length_m;
   result.centerline = episode_.centerline;
   return result;
+}
+
+bool DirectedInflationEscapePlanner::confirmMissionContinuation(
+    const std::uint64_t episode_generation) {
+  if (episode_generation == 0U || episode_.generation != episode_generation ||
+      !episode_.awaiting_mission_continuation) {
+    return false;
+  }
+  episode_.mission_continuation_confirmed = true;
+  return true;
 }
 
 void DirectedInflationEscapePlanner::reset() noexcept {

@@ -686,7 +686,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "centerline_length_m=%.2f centerline_points=%zu tunnel_width_m=%.2f "
         "exit_depth_m=%.2f stable_exit_cycles=%zu cells_considered=%zu "
         "inflated_cleared=%zu occupied_preserved=%zu connected=%s "
-        "mission_egress_available=%s "
+        "mission_egress_available=%s awaiting_mission_continuation=%s "
         "centerline_blocked=%s off_centerline=%s target_too_far=%s "
         "applied=%s grid_revision=%" PRIu64,
         directed_escape.episode_generation,
@@ -704,6 +704,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         directed_escape.relaxation.occupied_cells_preserved,
         directed_escape.connected ? "true" : "false",
         directed_escape.mission_egress_available ? "true" : "false",
+        directed_escape.awaiting_mission_continuation ? "true" : "false",
         directed_escape.centerline_blocked ? "true" : "false",
         directed_escape.episode_off_centerline ? "true" : "false",
         directed_escape.episode_target_too_far ? "true" : "false",
@@ -1157,18 +1158,22 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         }
         const double candidate_remaining_m =
             finalized.samples.empty() ? 0.0 : finalized.samples.back().s_m;
+        constexpr double kRolloutLengthToleranceM{0.5};
         const bool terminal_length_sufficient =
-            candidate_remaining_m + 1.0e-6 >= required_rollout_length_m;
+            candidate_remaining_m + kRolloutLengthToleranceM >=
+            required_rollout_length_m;
         if (!terminal_length_sufficient) {
           RCLCPP_WARN(
               get_logger(),
               "NO_STATIC_ROLLOUT terminal_length_rejected=true generation=%" PRIu64
               " finalist=%zu remaining=%.2f required=%.2f minimum=%.2f "
-              "braking=%.2f stationary_restart=%s mission_goal_exception=%s "
+              "braking=%.2f tolerance=%.2f stationary_restart=%s "
+              "mission_goal_exception=%s "
               "directed_escape_exception=%s speed=%.2f active_blocked=%s action=%s",
               invalidation_generation, finalist_index, candidate_remaining_m,
               required_rollout_length_m, no_static_rollout_min_length_m_,
-              terminal_braking_distance_m, stationary_restart ? "true" : "false",
+              terminal_braking_distance_m, kRolloutLengthToleranceM,
+              stationary_restart ? "true" : "false",
               mission_goal_within_minimum_length ? "true" : "false",
               directed_escape_phase ? "true" : "false", navigation.speed_mps,
               blocked_replacement_context ? "true" : "false",
@@ -1197,6 +1202,19 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               blocked_replacement_context ? "safe_truncation_hold"
                                           : "keep_clear_prefix_and_retry");
           continue;
+        }
+        if (directed_escape.awaiting_mission_continuation &&
+            target_selection.source ==
+                NoStaticRolloutTargetSource::kMissionOrRecovery) {
+          const bool confirmed =
+              planning_grid_snapshot_builder_.confirmDirectedEscapeMissionContinuation(
+                  directed_escape.episode_generation);
+          RCLCPP_INFO(get_logger(),
+                      "DIRECTED_INFLATION_ESCAPE episode=%" PRIu64
+                      " mission_continuation_candidate_valid=true confirmed=%s "
+                      "candidate_length_m=%.2f",
+                      directed_escape.episode_generation, confirmed ? "true" : "false",
+                      candidate_remaining_m);
         }
         validated_candidate_seen = true;
         const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
@@ -1392,6 +1410,16 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       rollout_durations_ms_.erase(rollout_durations_ms_.begin());
     }
     if (validated_candidate_seen && !rollout_recovery_requested) {
+      return;
+    }
+    if (truncation_rollout &&
+        noteTruncationSuccessorPlanningReject(truncation_replan->generation, 3U)) {
+      RCLCPP_WARN(get_logger(),
+                  "ROLLOUT_SUCCESSOR_SNAPSHOT generation=%" PRIu64
+                  " invalidated=true reason=repeated_planning_reject rejection_limit=3 "
+                  "action=rebuild_current_snapshot",
+                  truncation_replan->generation);
+      schedulePlanningCycle(PlanningWakeReason::kRetry);
       return;
     }
     if (!rollout_recovery_requested) {

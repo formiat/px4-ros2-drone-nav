@@ -447,4 +447,23 @@ bool PlannerNode::localHorizonAckPending() const {
   return pending_local_horizon_runtime_trajectory_.has_value();
 }
 
+bool PlannerNode::noteTruncationSuccessorPlanningReject(
+    const std::uint64_t generation, const std::size_t rejection_limit) {
+  std::scoped_lock lock{truncation_replan_mutex_};
+  if (!truncation_replan_state_.has_value() ||
+      truncation_replan_state_->generation != generation ||
+      !truncation_replan_state_->rollout_successor_snapshot.has_value()) {
+    return false;
+  }
+  TruncationReplanState& state = *truncation_replan_state_;
+  ++state.successor_planning_rejections;
+  if (state.successor_planning_rejections <
+      std::max<std::size_t>(1U, rejection_limit)) {
+    return false;
+  }
+  state.rollout_successor_snapshot.reset();
+  state.successor_planning_rejections = 0U;
+  return true;
+}
+
 } // namespace drone_city_nav

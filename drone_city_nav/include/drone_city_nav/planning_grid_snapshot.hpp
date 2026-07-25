@@ -48,6 +48,9 @@ public:
 
   [[nodiscard]] std::uint64_t nextRevision() const noexcept;
 
+  [[nodiscard]] bool
+  confirmDirectedEscapeMissionContinuation(std::uint64_t episode_generation);
+
 private:
   std::uint64_t next_revision_{1U};
   DirectedInflationEscapePlanner directed_escape_planner_{};

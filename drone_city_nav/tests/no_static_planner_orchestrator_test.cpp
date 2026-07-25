@@ -182,6 +182,22 @@ TEST(NoStaticPlannerOrchestrator, CompletedEscapeRestoresMissionTarget) {
   EXPECT_DOUBLE_EQ(selected.target.y, 200.0);
 }
 
+TEST(NoStaticPlannerOrchestrator, EscapeAwaitingContinuationUsesMissionTarget) {
+  DirectedInflationEscapeResult escape;
+  escape.state = DirectedInflationEscapeState::kActive;
+  escape.applied = true;
+  escape.connected = true;
+  escape.awaiting_mission_continuation = true;
+  escape.target = {12.0, -4.0};
+
+  const NoStaticRolloutTargetSelection selected =
+      selectNoStaticRolloutTarget({100.0, 200.0}, escape);
+
+  EXPECT_EQ(selected.source, NoStaticRolloutTargetSource::kMissionOrRecovery);
+  EXPECT_DOUBLE_EQ(selected.target.x, 100.0);
+  EXPECT_DOUBLE_EQ(selected.target.y, 200.0);
+}
+
 TEST(NoStaticPlannerOrchestrator, RepeatedDirectionSwitchRequestsRecovery) {
   NoStaticPlannerOrchestrator orchestrator{
       NoStaticPlannerOrchestratorConfig{.direction_switches_before_recovery = 2U}};

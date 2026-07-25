@@ -183,6 +183,7 @@ private:
     double truncation_s_m{std::numeric_limits<double>::quiet_NaN()};
     std::uint64_t published_suffix_path_id{0U};
     std::size_t publication_attempts{0U};
+    std::size_t successor_planning_rejections{0U};
     bool confirmed{false};
     bool immediate_hold{false};
     bool awaiting_ack{false};
@@ -236,6 +237,9 @@ private:
                                     TrajectoryEndpointSemantics endpoint_semantics);
 
   [[nodiscard]] bool localHorizonAckPending() const;
+
+  [[nodiscard]] bool noteTruncationSuccessorPlanningReject(std::uint64_t generation,
+                                                           std::size_t rejection_limit);
 
   void applyPendingMemorySnapshot(std::int64_t now_ns);
 

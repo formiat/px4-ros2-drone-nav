@@ -22,6 +22,7 @@ selectNoStaticRolloutTarget(const Point2 mission_or_recovery_target,
                             const DirectedInflationEscapeResult& directed_escape) {
   const bool escape_target_valid =
       directed_escape.applied && directed_escape.connected &&
+      !directed_escape.awaiting_mission_continuation &&
       (directed_escape.state == DirectedInflationEscapeState::kStarted ||
        directed_escape.state == DirectedInflationEscapeState::kActive) &&
       std::isfinite(directed_escape.target.x) &&

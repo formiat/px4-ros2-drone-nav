@@ -131,11 +131,16 @@ TEST(DirectedInflationEscape, KeepsEpisodeUntilStableExit) {
       planner.update(clear, started.target, Point2{2.5, 12.5}, config);
   const DirectedInflationEscapeResult third =
       planner.update(clear, started.target, Point2{2.5, 12.5}, config);
+  ASSERT_EQ(third.state, DirectedInflationEscapeState::kActive);
+  ASSERT_TRUE(third.awaiting_mission_continuation);
+  ASSERT_TRUE(planner.confirmMissionContinuation(started.episode_generation));
+  const DirectedInflationEscapeResult completed =
+      planner.update(clear, started.target, Point2{2.5, 12.5}, config);
 
   EXPECT_EQ(first.state, DirectedInflationEscapeState::kActive);
   EXPECT_EQ(second.state, DirectedInflationEscapeState::kActive);
-  EXPECT_EQ(third.state, DirectedInflationEscapeState::kCompleted);
-  EXPECT_EQ(third.episode_generation, started.episode_generation);
+  EXPECT_EQ(completed.state, DirectedInflationEscapeState::kCompleted);
+  EXPECT_EQ(completed.episode_generation, started.episode_generation);
 }
 
 TEST(DirectedInflationEscape, CompletesAfterPassingTargetInAllowedSpace) {
@@ -155,6 +160,11 @@ TEST(DirectedInflationEscape, CompletesAfterPassingTargetInAllowedSpace) {
             DirectedInflationEscapeState::kActive);
   EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
             DirectedInflationEscapeState::kActive);
+  const DirectedInflationEscapeResult awaiting =
+      planner.update(clear, past_target, Point2{2.5, 12.5}, config);
+  ASSERT_EQ(awaiting.state, DirectedInflationEscapeState::kActive);
+  ASSERT_TRUE(awaiting.awaiting_mission_continuation);
+  ASSERT_TRUE(planner.confirmMissionContinuation(started.episode_generation));
   EXPECT_EQ(planner.update(clear, past_target, Point2{2.5, 12.5}, config).state,
             DirectedInflationEscapeState::kCompleted);
 }

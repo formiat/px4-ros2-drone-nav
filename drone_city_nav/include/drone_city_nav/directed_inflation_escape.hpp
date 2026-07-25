@@ -45,6 +45,7 @@ struct DirectedInflationEscapeResult {
   bool episode_off_centerline{false};
   bool episode_target_too_far{false};
   bool mission_egress_available{false};
+  bool awaiting_mission_continuation{false};
   std::uint64_t episode_generation{0U};
   Point2 start{};
   Point2 target{};
@@ -61,6 +62,8 @@ public:
   update(const OccupancyGrid2D& original_grid, Point2 current_position,
          Point2 mission_goal, const DirectedInflationEscapeConfig& config);
 
+  [[nodiscard]] bool confirmMissionContinuation(std::uint64_t episode_generation);
+
   void reset() noexcept;
 
 private:
@@ -70,6 +73,8 @@ private:
     Point2 target{};
     double centerline_length_m{0.0};
     std::size_t stable_exit_cycles{0U};
+    bool awaiting_mission_continuation{false};
+    bool mission_continuation_confirmed{false};
     std::vector<Point2> centerline;
   };
 

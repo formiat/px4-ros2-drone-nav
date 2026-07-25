@@ -108,6 +108,11 @@ std::uint64_t PlanningGridSnapshotBuilder::nextRevision() const noexcept {
   return next_revision_;
 }
 
+bool PlanningGridSnapshotBuilder::confirmDirectedEscapeMissionContinuation(
+    const std::uint64_t episode_generation) {
+  return directed_escape_planner_.confirmMissionContinuation(episode_generation);
+}
+
 bool planningGridVersionsEqual(const PlanningGridVersion& lhs,
                                const PlanningGridVersion& rhs) noexcept {
   return lhs.build_revision == rhs.build_revision &&
