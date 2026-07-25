@@ -772,6 +772,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       truncation_replan.has_value() ? truncation_replan->generation : 0U);
   std::vector<TrajectoryGridCandidate> grid_candidates{
       TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
+      TrajectoryGridCandidate{"runtime_prohibited", &prohibited_grid, nullptr, false},
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
       PlannerModePrimaryAction::kRollout) {
