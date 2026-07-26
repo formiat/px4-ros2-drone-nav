@@ -52,7 +52,8 @@ ObstacleRiskSnapshotBuilder::prepare(const ObstacleRiskPreparationInput& input) 
   const ObstacleFieldBuildResult& build = *input.build_result;
   OccupancyGrid2D raw_occupancy = *build.raw_occupancy;
   ObstacleRiskField risk_field = ObstacleRiskField::build(
-      raw_occupancy, build.risk_policy, *build.evaluation_bounds);
+      raw_occupancy, build.risk_policy, *build.evaluation_bounds,
+      input.clearance_diagnostic_radius_m);
   RawObstacleVersion version{
       .build_revision = next_revision_,
       .memory_producer_instance_id = build.applied_memory_producer_instance_id,

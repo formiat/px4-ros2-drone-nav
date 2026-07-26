@@ -70,6 +70,7 @@ struct PathComputationResult {
 
 struct PathComputationInput {
   const OccupancyGrid2D* grid{nullptr};
+  const ObstacleRiskField* risk_field{nullptr};
   Point2 current_position{};
   Point2 goal{};
   AStarConfig astar{};

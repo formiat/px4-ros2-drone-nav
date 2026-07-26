@@ -97,6 +97,7 @@ computeRoute(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
   ++astar_runs;
   const auto path = core.computePath(PathComputationInput{
       .grid = &risk_snapshot.grid,
+      .risk_field = &risk_snapshot.risk,
       .current_position = start,
       .goal = goal,
       .astar = astarConfig(config, snapshot.anchor, after_hold),

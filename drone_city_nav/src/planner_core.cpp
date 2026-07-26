@@ -492,7 +492,11 @@ std::optional<PathComputationResult>
 PlannerCore::computePath(const OccupancyGrid2D& grid, const Point2 current_position,
                          const Point2 goal, const AStarConfig& astar_config) const {
   return computePath(PathComputationInput{
-      &grid, current_position, goal, astar_config, nullptr, false, {}});
+      .grid = &grid,
+      .current_position = current_position,
+      .goal = goal,
+      .astar = astar_config,
+  });
 }
 
 std::optional<PathComputationResult>
@@ -501,6 +505,16 @@ PlannerCore::computePath(const PathComputationInput& input) const {
     return std::nullopt;
   }
   const OccupancyGrid2D& grid = *input.grid;
+  std::shared_ptr<const ObstacleRiskField> owned_risk_field;
+  const ObstacleRiskField* effective_risk_field = input.risk_field;
+  if (input.risk_field == nullptr) {
+    owned_risk_field = std::make_shared<const ObstacleRiskField>(
+        ObstacleRiskField::build(grid, input.astar.risk_policy, grid.bounds(),
+                                 normalizedClearanceDiagnosticRadiusM(
+                                     config_.clearance_diagnostic_radius_m)));
+    effective_risk_field = owned_risk_field.get();
+  }
+  const ObstacleRiskField& risk_field = *effective_risk_field;
   const auto total_started_at = std::chrono::steady_clock::now();
   PathComputationResult result{};
   result.requested_start_cell = grid.worldToCell(input.current_position);
@@ -518,8 +532,8 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   }
 
   const auto astar_started_at = std::chrono::steady_clock::now();
-  result.astar = planner_.plan(grid, *result.start_cell, *result.goal_cell, input.astar,
-                               input.stop_token);
+  result.astar = planner_.plan(grid, *result.start_cell, *result.goal_cell, risk_field,
+                               input.astar, input.stop_token);
   result.astar_duration_ms = elapsedMilliseconds(astar_started_at);
   if (!result.astar.success) {
     return std::nullopt;
@@ -529,8 +543,6 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   }
 
   const auto smoothing_started_at = std::chrono::steady_clock::now();
-  const ObstacleRiskField risk_field =
-      ObstacleRiskField::build(grid, input.astar.risk_policy);
   const PathSmoothingResult smoothing =
       smoothPathWithStats(grid, risk_field, result.astar.path);
   result.smoothing_duration_ms = elapsedMilliseconds(smoothing_started_at);
@@ -556,11 +568,18 @@ PlannerCore::computePath(const PathComputationInput& input) const {
       normalizedClearanceDiagnosticRadiusM(config_.clearance_diagnostic_radius_m);
   const auto clearance_field_started_at = std::chrono::steady_clock::now();
   ClearanceFieldCacheLookup clearance_field{};
-  if (input.prohibited_clearance_field != nullptr &&
-      clearanceFieldCanCover(*input.prohibited_clearance_field, grid,
-                             clearance_radius_m)) {
-    clearance_field.field = input.prohibited_clearance_field;
-    clearance_field.cache_hit = input.prohibited_clearance_field_cache_hit;
+  const ClearanceField2D* supplied_clearance = input.prohibited_clearance_field;
+  bool supplied_from_risk_field = false;
+  if (supplied_clearance == nullptr) {
+    supplied_clearance = &risk_field.occupiedClearance();
+    supplied_from_risk_field = true;
+  }
+  if (supplied_clearance != nullptr &&
+      clearanceFieldCanCover(*supplied_clearance, grid, clearance_radius_m)) {
+    clearance_field.field = supplied_clearance;
+    clearance_field.cache_hit =
+        (supplied_from_risk_field && input.risk_field != nullptr) ||
+        input.prohibited_clearance_field_cache_hit;
   } else {
     clearance_field = prohibited_clearance_cache_.getOrBuild(
         grid, clearance_radius_m, ClearanceSource::kOccupied);
@@ -568,19 +587,25 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   result.prohibited_clearance_field_duration_ms =
       elapsedMilliseconds(clearance_field_started_at);
   result.prohibited_clearance_field_cache_hit = clearance_field.cache_hit;
-  result.prohibited_clearance_field = clearance_field.field;
-  if (clearance_field.field == nullptr) {
+  if (supplied_from_risk_field && owned_risk_field != nullptr) {
+    result.owned_prohibited_clearance_field = std::shared_ptr<const ClearanceField2D>(
+        std::move(owned_risk_field), clearance_field.field);
+    result.prohibited_clearance_field = result.owned_prohibited_clearance_field.get();
+  } else {
+    result.prohibited_clearance_field = clearance_field.field;
+  }
+  if (result.prohibited_clearance_field == nullptr) {
     return std::nullopt;
   }
 
   const auto raw_clearance_started_at = std::chrono::steady_clock::now();
   result.raw_path_clearance_m =
-      pathMinimumClearanceM(*clearance_field.field, result.astar.path);
+      pathMinimumClearanceM(*result.prohibited_clearance_field, result.astar.path);
   result.raw_path_clearance_duration_ms = elapsedMilliseconds(raw_clearance_started_at);
 
   const auto smoothed_clearance_started_at = std::chrono::steady_clock::now();
   result.smoothed_path_clearance_m =
-      pathMinimumClearanceM(*clearance_field.field, result.smoothed_cells);
+      pathMinimumClearanceM(*result.prohibited_clearance_field, result.smoothed_cells);
   result.smoothed_path_clearance_duration_ms =
       elapsedMilliseconds(smoothed_clearance_started_at);
   result.total_duration_ms = elapsedMilliseconds(total_started_at);

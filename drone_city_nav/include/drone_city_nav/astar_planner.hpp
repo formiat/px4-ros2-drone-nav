@@ -48,6 +48,10 @@ public:
   [[nodiscard]] AStarResult plan(const OccupancyGrid2D& grid, GridIndex start,
                                  GridIndex goal, const AStarConfig& config = {},
                                  std::stop_token stop_token = {}) const;
+  [[nodiscard]] AStarResult plan(const OccupancyGrid2D& grid, GridIndex start,
+                                 GridIndex goal, const ObstacleRiskField& risk_field,
+                                 const AStarConfig& config = {},
+                                 std::stop_token stop_token = {}) const;
 };
 
 } // namespace drone_city_nav

@@ -93,7 +93,15 @@ struct CompareOpenNode {
                    static_cast<int>(cell_index / width)};
 }
 
+[[nodiscard]] bool cellIsHardBlocked(const OccupancyGrid2D& grid,
+                                     const ObstacleRiskField& risk_field,
+                                     const GridIndex cell) {
+  return !grid.contains(cell) || grid.isOccupied(cell) ||
+         !risk_field.containsEvaluationPoint(grid.cellCenter(cell));
+}
+
 [[nodiscard]] bool diagonalMoveCutsRawCorner(const OccupancyGrid2D& grid,
+                                             const ObstacleRiskField& risk_field,
                                              const GridIndex from, const GridIndex to) {
   const int dx = to.x - from.x;
   const int dy = to.y - from.y;
@@ -103,7 +111,8 @@ struct CompareOpenNode {
 
   const GridIndex adjacent_x{from.x + dx, from.y};
   const GridIndex adjacent_y{from.x, from.y + dy};
-  return grid.isOccupied(adjacent_x) || grid.isOccupied(adjacent_y);
+  return cellIsHardBlocked(grid, risk_field, adjacent_x) ||
+         cellIsHardBlocked(grid, risk_field, adjacent_y);
 }
 
 [[nodiscard]] PathRiskScore startRisk(const ObstacleRiskField& field,
@@ -238,12 +247,27 @@ const char* astarStatusName(const AStarStatus status) noexcept {
 AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex start,
                                const GridIndex goal, const AStarConfig& config,
                                const std::stop_token stop_token) const {
+  const ObstacleRiskField risk_field =
+      ObstacleRiskField::build(grid, config.risk_policy);
+  return plan(grid, start, goal, risk_field, config, stop_token);
+}
+
+AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex start,
+                               const GridIndex goal,
+                               const ObstacleRiskField& risk_field,
+                               const AStarConfig& config,
+                               const std::stop_token stop_token) const {
   AStarResult result{};
   if (stop_token.stop_requested()) {
     result.status = AStarStatus::kCanceled;
     return result;
   }
   if (!grid.contains(start) || !grid.contains(goal)) {
+    result.status = AStarStatus::kInvalidStartOrGoal;
+    return result;
+  }
+  if (!risk_field.containsEvaluationPoint(grid.cellCenter(start)) ||
+      !risk_field.containsEvaluationPoint(grid.cellCenter(goal))) {
     result.status = AStarStatus::kInvalidStartOrGoal;
     return result;
   }
@@ -259,8 +283,6 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
   }
 
   const std::size_t state_count = grid.cellCount() * direction_states;
-  const ObstacleRiskField risk_field =
-      ObstacleRiskField::build(grid, config.risk_policy);
   std::vector<RankedPathCost> g_scores(
       state_count,
       RankedPathCost{
@@ -327,8 +349,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
          ++direction_index) {
       const GridIndex offset = kNeighborOffsets.at(direction_index);
       const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
-      if (!grid.contains(next) || grid.isOccupied(next) ||
-          diagonalMoveCutsRawCorner(grid, current.cell, next)) {
+      if (cellIsHardBlocked(grid, risk_field, next) ||
+          diagonalMoveCutsRawCorner(grid, risk_field, current.cell, next)) {
         continue;
       }
 

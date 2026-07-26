@@ -897,10 +897,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                            : current_speed_mps * no_static_terminal_response_delay_s_ +
                                  std::sqrt(0.5) * planning_grid.resolution();
     const double vehicle_clearance_envelope_m =
-        no_static_vehicle_clearance_m_ + std::sqrt(0.5) * planning_grid.resolution();
-    const double terminal_stopping_envelope_m = terminalBrakingDistanceM(
-        std::max(current_speed_mps, rollout_planner_.config().maximum_speed_mps),
-        no_static_terminal_braking_decel_mps2_, no_static_terminal_braking_margin_m_);
+        no_static_vehicle_clearance_m_ + no_static_tracking_error_margin_m_ +
+        std::sqrt(0.5) * planning_grid.resolution();
     const bool blocked_replacement_context =
         truncation_rollout || rollout_runtime.blocked;
     const auto rollout_started_at = std::chrono::steady_clock::now();
@@ -917,8 +915,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " grid=%s start=(%.2f,%.2f) velocity=(%.2f,%.2f) speed=%.2f "
           "preferred_target=(%.2f,%.2f) target_distance=%.2f "
-          "vehicle_clearance_envelope=%.2f terminal_response_clearance=%.2f "
-          "terminal_stopping_envelope=%.2f "
+          "vehicle_clearance_envelope=%.2f tracking_error_margin=%.2f "
+          "terminal_response_clearance=%.2f "
+          "terminal_braking_decel=%.2f terminal_braking_margin=%.2f "
           "target_source=mission_or_recovery "
           "active_path=%s active_path_id=%" PRIu64 " active_s=%.2f "
           "active_remaining=%.2f stable_prefix_m=%.2f "
@@ -928,9 +927,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           rollout_velocity.x, rollout_velocity.y,
           std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
           preferred_target.y, distance(rollout_start, preferred_target),
-          vehicle_clearance_envelope_m, terminal_response_clearance_m,
-          terminal_stopping_envelope_m, rollout_prefix_available ? "true" : "false",
-          active_rollout_path_id_,
+          vehicle_clearance_envelope_m, no_static_tracking_error_margin_m_,
+          terminal_response_clearance_m, no_static_terminal_braking_decel_mps2_,
+          no_static_terminal_braking_margin_m_,
+          rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
           artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
                                           : 0.0,
           artifact_matches_active_rollout ? rollout_runtime.progress.remaining_m : 0.0,
@@ -947,7 +947,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           .minimum_length_m = required_rollout_length_m,
           .minimum_path_clearance_m = vehicle_clearance_envelope_m,
           .minimum_terminal_clearance_m = terminal_response_clearance_m,
-          .minimum_terminal_stopping_distance_m = terminal_stopping_envelope_m,
+          .terminal_braking_deceleration_mps2 = no_static_terminal_braking_decel_mps2_,
+          .terminal_braking_margin_m = no_static_terminal_braking_margin_m_,
           .stationary_restart = stationary_restart,
           .generation = invalidation_generation,
           .grid_revision = prepared->version.build_revision,
@@ -1060,7 +1061,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             "score_parts[progress=%.3f lateral=%.3f heading=%.3f "
             "curvature=%.3f] progress=%.2fm candidate_index=%zu samples=%zu "
             "endpoint=(%.2f,%.2f) heading_offset_rad=%.3f target_speed=%.2f "
-            "curvature_1pm=%.4f valid=%s status=%.*s quality=%.*s "
+            "terminal_stopping_m=%.2f curvature_1pm=%.4f valid=%s "
+            "status=%.*s quality=%.*s "
             "finalization[vertical_valid=%s passage_valid=%s passage_reason=%s "
             "solid_valid=%s solid_reason=%s insertion_required=%s "
             "insertion_satisfied=%s insertion_reason=%s] generated=%zu "
@@ -1077,7 +1079,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             finalist.samples.empty() ? 0.0 : finalist.samples.back().point.x,
             finalist.samples.empty() ? 0.0 : finalist.samples.back().point.y,
             finalist.heading_offset_rad, finalist.target_speed_mps,
-            finalist.curvature_1pm, finalized.valid ? "true" : "false",
+            finalist.terminal_stopping_distance_m, finalist.curvature_1pm,
+            finalized.valid ? "true" : "false",
             static_cast<int>(
                 trajectoryPlannerStatusName(finalized.stats.status).size()),
             trajectoryPlannerStatusName(finalized.stats.status).data(),
@@ -1401,8 +1404,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   for (; astar_grid_index < risk_contexts.size(); ++astar_grid_index) {
     const TrajectoryRiskContext& candidate = risk_contexts[astar_grid_index];
     const std::string candidate_name{candidate.name};
-    path_result = computePathOnGrid(*candidate.raw_occupancy, candidate_name.c_str(),
-                                    planning_astar_config, planning_start);
+    path_result = computePathOnGrid(*candidate.raw_occupancy, *candidate.risk_field,
+                                    candidate_name.c_str(), planning_astar_config,
+                                    planning_start);
     if (path_result.has_value()) {
       break;
     }
@@ -1456,10 +1460,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     schedulePlanningCycle(PlanningWakeReason::kRecoveryGuideReady);
     return;
   }
-  risk_contexts[astar_grid_index].raw_clearance =
-      path_result->prohibited_clearance_field;
-  risk_contexts[astar_grid_index].raw_clearance_cache_hit =
-      path_result->prohibited_clearance_field_cache_hit;
   const std::string astar_grid_name{risk_contexts[astar_grid_index].name};
   RCLCPP_INFO(get_logger(),
               "GRID_STAGE_SELECTED stage=astar grid=%s attempt=%zu candidates=%zu",
@@ -1611,10 +1611,10 @@ PlannerNode::initialHeadingBiasActive(const AStarConfig& config) noexcept {
          speed_mps >= config.initial_heading_bias_min_speed_mps;
 }
 
-[[nodiscard]] std::optional<PathComputationResult>
-PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_label,
-                               const AStarConfig& astar_config,
-                               const Point2 planning_start) {
+[[nodiscard]] std::optional<PathComputationResult> PlannerNode::computePathOnGrid(
+    const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
+    const char* source_label, const AStarConfig& astar_config,
+    const Point2 planning_start) {
   const auto start_cell = grid.worldToCell(planning_start);
   const auto goal_cell = grid.worldToCell(goal_);
   if (!start_cell.has_value() || !goal_cell.has_value()) {
@@ -1638,16 +1638,14 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
   }
 
   const auto path_compute_started_at = std::chrono::steady_clock::now();
-  ClearanceField2D prebuilt_clearance_field = ClearanceField2D::build(
-      grid, planner_core_.config().clearance_diagnostic_radius_m,
-      ClearanceSource::kOccupied);
   auto result = planner_core_.computePath(PathComputationInput{
       .grid = &grid,
+      .risk_field = &risk_field,
       .current_position = planning_start,
       .goal = goal_,
       .astar = astar_config,
-      .prohibited_clearance_field = &prebuilt_clearance_field,
-      .prohibited_clearance_field_cache_hit = false,
+      .prohibited_clearance_field = &risk_field.occupiedClearance(),
+      .prohibited_clearance_field_cache_hit = true,
   });
   const double path_compute_duration_ms = elapsedMilliseconds(path_compute_started_at);
   ++astar_runs_;
@@ -1662,9 +1660,6 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
     return std::nullopt;
   }
 
-  result->owned_prohibited_clearance_field =
-      std::make_shared<ClearanceField2D>(std::move(prebuilt_clearance_field));
-  result->prohibited_clearance_field = result->owned_prohibited_clearance_field.get();
   ++astar_successes_;
   return result;
 }

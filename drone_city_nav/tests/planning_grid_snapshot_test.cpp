@@ -48,6 +48,7 @@ TEST(ObstacleRiskSnapshot, OwnsRawGridDistanceFieldAndIdentity) {
   const auto prepared = builder.prepare(ObstacleRiskPreparationInput{
       .build_result = &ready,
       .config_fingerprint = 99U,
+      .clearance_diagnostic_radius_m = 10.0,
   });
 
   ASSERT_TRUE(prepared.has_value());
@@ -58,6 +59,7 @@ TEST(ObstacleRiskSnapshot, OwnsRawGridDistanceFieldAndIdentity) {
   EXPECT_EQ(&snapshot.rawClearance(), &snapshot.risk_field.occupiedClearance());
   EXPECT_DOUBLE_EQ(snapshot.rawClearance().distanceAt(GridIndex{4, 3}),
                    snapshot.risk_field.occupiedClearance().distanceAt(GridIndex{4, 3}));
+  EXPECT_DOUBLE_EQ(snapshot.rawClearance().maxDistanceM(), 10.0);
   EXPECT_EQ(snapshot.version.memory_producer_instance_id, 17U);
   EXPECT_EQ(snapshot.version.memory_sequence, 42U);
   EXPECT_EQ(snapshot.version.lidar_update_ns, 123456);

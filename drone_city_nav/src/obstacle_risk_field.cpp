@@ -221,8 +221,17 @@ ObstacleRiskField ObstacleRiskField::build(const OccupancyGrid2D& raw_grid,
 ObstacleRiskField ObstacleRiskField::build(const OccupancyGrid2D& raw_grid,
                                            ObstacleRiskPolicy policy,
                                            const GridBounds& evaluation_bounds) {
+  return build(raw_grid, policy, evaluation_bounds,
+               policy.preferred_distance_m + raw_grid.resolution());
+}
+
+ObstacleRiskField ObstacleRiskField::build(const OccupancyGrid2D& raw_grid,
+                                           ObstacleRiskPolicy policy,
+                                           const GridBounds& evaluation_bounds,
+                                           const double maximum_distance_m) {
   if (!std::isfinite(policy.critical_distance_m) ||
-      !std::isfinite(policy.preferred_distance_m)) {
+      !std::isfinite(policy.preferred_distance_m) ||
+      !std::isfinite(maximum_distance_m)) {
     throw std::invalid_argument{"Obstacle risk distances must be finite"};
   }
   policy.critical_distance_m = std::max(0.0, policy.critical_distance_m);
@@ -233,7 +242,8 @@ ObstacleRiskField ObstacleRiskField::build(const OccupancyGrid2D& raw_grid,
   field.policy_ = policy;
   field.evaluation_bounds_ = evaluation_bounds;
   field.occupied_clearance_ = ClearanceField2D::build(
-      raw_grid, policy.preferred_distance_m + raw_grid.resolution(),
+      raw_grid,
+      std::max(maximum_distance_m, policy.preferred_distance_m + raw_grid.resolution()),
       ClearanceSource::kOccupied);
   return field;
 }
@@ -248,6 +258,10 @@ const GridBounds& ObstacleRiskField::evaluationBounds() const noexcept {
 
 const ClearanceField2D& ObstacleRiskField::occupiedClearance() const noexcept {
   return occupied_clearance_;
+}
+
+bool ObstacleRiskField::containsEvaluationPoint(const Point2 point) const noexcept {
+  return containsPoint(evaluation_bounds_, point);
 }
 
 ObstacleRiskTier ObstacleRiskField::tierAt(const GridIndex cell) const {

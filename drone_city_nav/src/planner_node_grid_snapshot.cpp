@@ -48,6 +48,8 @@ PlannerNode::preparePlanningGridSnapshot(const ObstacleFieldBuildResult& build_r
   return planning_grid_snapshot_builder_.prepare(ObstacleRiskPreparationInput{
       .build_result = &build_result,
       .config_fingerprint = config_fingerprint,
+      .clearance_diagnostic_radius_m =
+          planner_core_.config().clearance_diagnostic_radius_m,
   });
 }
 

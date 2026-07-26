@@ -61,10 +61,15 @@ public:
   [[nodiscard]] static ObstacleRiskField build(const OccupancyGrid2D& raw_grid,
                                                ObstacleRiskPolicy policy,
                                                const GridBounds& evaluation_bounds);
+  [[nodiscard]] static ObstacleRiskField build(const OccupancyGrid2D& raw_grid,
+                                               ObstacleRiskPolicy policy,
+                                               const GridBounds& evaluation_bounds,
+                                               double maximum_distance_m);
 
   [[nodiscard]] const ObstacleRiskPolicy& policy() const noexcept;
   [[nodiscard]] const GridBounds& evaluationBounds() const noexcept;
   [[nodiscard]] const ClearanceField2D& occupiedClearance() const noexcept;
+  [[nodiscard]] bool containsEvaluationPoint(Point2 point) const noexcept;
   [[nodiscard]] ObstacleRiskTier tierAt(GridIndex cell) const;
   [[nodiscard]] PathRiskScore evaluate(const OccupancyGrid2D& raw_grid,
                                        std::span<const Point2> points) const;

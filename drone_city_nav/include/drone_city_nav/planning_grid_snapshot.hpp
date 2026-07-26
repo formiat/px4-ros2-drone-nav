@@ -21,6 +21,7 @@ struct RawObstacleVersion {
 struct ObstacleRiskPreparationInput {
   const ObstacleFieldBuildResult* build_result{nullptr};
   std::uint64_t config_fingerprint{0U};
+  double clearance_diagnostic_radius_m{0.0};
 };
 
 struct PreparedObstacleRiskSnapshot {

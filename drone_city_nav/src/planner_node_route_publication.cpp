@@ -572,8 +572,9 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishTerminalHoldRestartSuffi
     const AStarConfig candidate_astar_config =
         astarConfigForRiskField(hold_restart_astar_config, *candidate.risk_field);
     const std::string candidate_name{candidate.name};
-    path_result = computePathOnGrid(*candidate.raw_occupancy, candidate_name.c_str(),
-                                    candidate_astar_config, planning_start);
+    path_result = computePathOnGrid(*candidate.raw_occupancy, *candidate.risk_field,
+                                    candidate_name.c_str(), candidate_astar_config,
+                                    planning_start);
     if (path_result.has_value()) {
       break;
     }
@@ -587,10 +588,6 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishTerminalHoldRestartSuffi
     return PathPublicationOutcome::kNotPublished;
   }
 
-  risk_contexts[astar_grid_index].raw_clearance =
-      path_result->prohibited_clearance_field;
-  risk_contexts[astar_grid_index].raw_clearance_cache_hit =
-      path_result->prohibited_clearance_field_cache_hit;
   const std::string grid_name{risk_contexts[astar_grid_index].name};
   RCLCPP_INFO(get_logger(),
               "REPLAN_TRUNCATION suffix_activation=after_hold astar_retry=true "

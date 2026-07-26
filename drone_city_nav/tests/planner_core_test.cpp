@@ -576,7 +576,7 @@ TEST(PlannerCore, ComputePathRejectsOutOfGridGoal) {
   EXPECT_FALSE(result.has_value());
 }
 
-TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
+TEST(PlannerCore, ComputePathUsesCanonicalRiskClearanceForDiagnostics) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{10, 6});
   PlannerCoreConfig config{};
@@ -593,7 +593,9 @@ TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
   const PathComputationResult& second_result =
       second.value(); // NOLINT(bugprone-unchecked-optional-access)
   EXPECT_FALSE(first_result.prohibited_clearance_field_cache_hit);
-  EXPECT_TRUE(second_result.prohibited_clearance_field_cache_hit);
+  EXPECT_FALSE(second_result.prohibited_clearance_field_cache_hit);
+  ASSERT_NE(first_result.prohibited_clearance_field, nullptr);
+  ASSERT_NE(second_result.prohibited_clearance_field, nullptr);
   EXPECT_DOUBLE_EQ(
       first_result.raw_path_clearance_m,
       pathMinimumProhibitedClearanceM(grid, first_result.astar.path,
@@ -635,6 +637,48 @@ TEST(PlannerCore, ComputePathAcceptsPrebuiltProhibitedClearanceField) {
       path_result.raw_path_clearance_m,
       pathMinimumProhibitedClearanceM(grid, path_result.astar.path,
                                       config.clearance_diagnostic_radius_m));
+}
+
+TEST(PlannerCore, ComputePathReusesSuppliedRiskFieldAndClearance) {
+  OccupancyGrid2D grid = makeGrid();
+  grid.setOccupied(GridIndex{10, 6});
+  PlannerCoreConfig config{};
+  config.clearance_diagnostic_radius_m = 5.0;
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, config.astar.risk_policy, grid.bounds(),
+                               config.clearance_diagnostic_radius_m);
+  PlannerCore core{config};
+
+  const auto result = core.computePath(PathComputationInput{
+      .grid = &grid,
+      .risk_field = &risk,
+      .current_position = Point2{1.5, 1.5},
+      .goal = Point2{18.5, 1.5},
+      .astar = config.astar,
+  });
+
+  ASSERT_TRUE(result.has_value());
+  const PathComputationResult& path_result =
+      result.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_EQ(path_result.prohibited_clearance_field, &risk.occupiedClearance());
+  EXPECT_TRUE(path_result.prohibited_clearance_field_cache_hit);
+}
+
+TEST(PlannerCore, ComputePathHonorsSuppliedRiskEvaluationBounds) {
+  OccupancyGrid2D grid = makeGrid();
+  const GridBounds evaluation_bounds{0.0, 0.0, 1.0, 10, 12};
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, evaluation_bounds, 5.0);
+  PlannerCore core;
+
+  const auto result = core.computePath(PathComputationInput{
+      .grid = &grid,
+      .risk_field = &risk,
+      .current_position = Point2{1.5, 1.5},
+      .goal = Point2{18.5, 1.5},
+  });
+
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST(PlannerCore, ComputePathRejectsTooSmallPrebuiltProhibitedClearanceField) {

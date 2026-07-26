@@ -54,7 +54,8 @@ struct RolloutInput {
   double minimum_length_m{0.0};
   double minimum_path_clearance_m{0.0};
   double minimum_terminal_clearance_m{0.0};
-  double minimum_terminal_stopping_distance_m{0.0};
+  double terminal_braking_deceleration_mps2{0.0};
+  double terminal_braking_margin_m{0.0};
   bool stationary_restart{false};
   std::uint64_t generation{0U};
   std::uint64_t grid_revision{0U};
@@ -66,6 +67,7 @@ struct RolloutCandidate {
   double progress_m{0.0};
   double heading_offset_rad{0.0};
   double target_speed_mps{0.0};
+  double terminal_stopping_distance_m{0.0};
   double curvature_1pm{0.0};
   double progress_cost{0.0};
   double lateral_deviation_cost{0.0};

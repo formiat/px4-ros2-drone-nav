@@ -22,6 +22,19 @@ namespace {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
+[[nodiscard]] double terminalStoppingDistanceM(const double terminal_speed_mps,
+                                               const double deceleration_mps2,
+                                               const double margin_m) noexcept {
+  if (!std::isfinite(deceleration_mps2) || deceleration_mps2 <= 0.0) {
+    return 0.0;
+  }
+  const double speed_mps =
+      std::max(0.0, std::isfinite(terminal_speed_mps) ? terminal_speed_mps : 0.0);
+  const double sanitized_margin_m =
+      std::max(0.0, std::isfinite(margin_m) ? margin_m : 0.0);
+  return speed_mps * speed_mps / (2.0 * deceleration_mps2) + sanitized_margin_m;
+}
+
 void recordHardRejection(const OccupancyGrid2D& grid,
                          std::span<const TrajectoryPointSample> samples,
                          const std::size_t deterministic_index,
@@ -172,11 +185,12 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
     return result;
   }
   std::optional<ObstacleRiskField> owned_risk;
+  const ObstacleRiskField* effective_risk_field = input.risk_field;
   if (input.risk_field == nullptr) {
-    owned_risk = ObstacleRiskField::build(*input.grid, ObstacleRiskPolicy{});
+    effective_risk_field = &owned_risk.emplace(
+        ObstacleRiskField::build(*input.grid, ObstacleRiskPolicy{}));
   }
-  const ObstacleRiskField& risk_field =
-      input.risk_field != nullptr ? *input.risk_field : owned_risk.value();
+  const ObstacleRiskField& risk_field = *effective_risk_field;
   const std::optional<GridIndex> start_cell = input.grid->worldToCell(input.position);
   const double requested_path_clearance_m =
       std::max(0.0, input.minimum_path_clearance_m);
@@ -243,7 +257,8 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
         ++result.diagnostics.curvature_rejections;
         continue;
       }
-      if (requested_speed * requested_speed * std::abs(curvature) >
+      const double transition_speed = std::max(speed, requested_speed);
+      if (transition_speed * transition_speed * std::abs(curvature) >
           config_.maximum_lateral_acceleration_mps2) {
         ++result.diagnostics.dynamic_limit_rejections;
         ++result.diagnostics.lateral_acceleration_rejections;
@@ -256,6 +271,10 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
       RolloutCandidate candidate;
       candidate.heading_offset_rad = offset;
       candidate.target_speed_mps = requested_speed;
+      const double terminal_entry_speed = std::max(speed, requested_speed);
+      candidate.terminal_stopping_distance_m = terminalStoppingDistanceM(
+          terminal_entry_speed, input.terminal_braking_deceleration_mps2,
+          input.terminal_braking_margin_m);
       candidate.curvature_1pm = curvature;
       candidate.deterministic_index =
           candidate_index * config_.speed_samples + speed_index;
@@ -325,7 +344,7 @@ RolloutResult RecedingHorizonTrajectoryPlanner::plan(const RolloutInput& input) 
         continue;
       }
       const double terminal_stopping_distance_m =
-          std::max(0.0, input.minimum_terminal_stopping_distance_m);
+          candidate.terminal_stopping_distance_m;
       if (terminal_stopping_distance_m > 0.0) {
         const TrajectoryPointSample& terminal = candidate.samples.back();
         std::array<TrajectoryPointSample, 2U> stopping_samples{terminal, terminal};

@@ -131,6 +131,27 @@ TEST(RecedingHorizonTrajectoryPlanner, FindsLeftOrRightAvoidanceCandidate) {
   EXPECT_NE(result.ranked_candidates.front().heading_offset_rad, 0.0);
 }
 
+TEST(RecedingHorizonTrajectoryPlanner, RejectsSlowTargetTurnThatIsUnsafeAtEntrySpeed) {
+  OccupancyGrid2D raw = freeGrid();
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 20.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+      .maximum_lateral_acceleration_mps2 = 4.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {10.0, 0.0},
+                                .preferred_target = {20.0, 20.0},
+                                .grid = &raw});
+
+  EXPECT_TRUE(result.ranked_candidates.empty());
+  EXPECT_EQ(result.diagnostics.lateral_acceleration_rejections, 1U);
+}
+
 TEST(RecedingHorizonTrajectoryPlanner, RiskTierDominatesDirectCandidateProgress) {
   OccupancyGrid2D raw = freeGrid();
   occupyWorldPoint(raw, Point2{7.0, 2.5});
@@ -321,13 +342,45 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsUnsafeTerminalStoppingEnvelope) {
                                 .preferred_target = {20.0, 0.0},
                                 .grid = &raw,
                                 .risk_field = &risk,
-                                .minimum_terminal_stopping_distance_m = 4.0});
+                                .terminal_braking_deceleration_mps2 = 1.0,
+                                .terminal_braking_margin_m = 2.0});
 
   ASSERT_FALSE(unguarded.ranked_candidates.empty());
   EXPECT_TRUE(guarded.ranked_candidates.empty());
   ASSERT_TRUE(guarded.diagnostics.first_grid_rejection.has_value());
   EXPECT_EQ(guarded.diagnostics.first_grid_rejection->reason,
             RolloutGridRejectReason::kTerminalStoppingEnvelope);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, UsesPerCandidateTerminalStoppingEnvelope) {
+  OccupancyGrid2D raw = freeGrid();
+  occupyWorldPoint(raw, Point2{11.0, 0.0});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 2U,
+      .horizon_time_s = 3.0,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 10.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {4.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .terminal_braking_deceleration_mps2 = 4.0,
+                                .terminal_braking_margin_m = 2.0});
+
+  ASSERT_EQ(result.ranked_candidates.size(), 1U);
+  EXPECT_DOUBLE_EQ(result.ranked_candidates.front().target_speed_mps, 2.0);
+  EXPECT_NEAR(result.ranked_candidates.front().terminal_stopping_distance_m, 4.0,
+              1.0e-9);
+  EXPECT_EQ(result.diagnostics.grid_rejections, 1U);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, RejectsVehicleFootprintClearanceViolation) {
@@ -364,6 +417,44 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsVehicleFootprintClearanceViolation
   EXPECT_TRUE(guarded.ranked_candidates.empty());
   ASSERT_TRUE(guarded.diagnostics.first_grid_rejection.has_value());
   EXPECT_EQ(guarded.diagnostics.first_grid_rejection->reason,
+            RolloutGridRejectReason::kVehicleClearanceEnvelope);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, RejectsTrackingSweepClearanceViolation) {
+  OccupancyGrid2D raw = freeGrid();
+  for (int x_index = 2; x_index <= 20; ++x_index) {
+    occupyWorldPoint(raw, Point2{0.5 * static_cast<double>(x_index), 2.5});
+  }
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 6.0,
+      .sample_step_m = 1.0,
+      .heading_samples = 1U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 2.0,
+      .maximum_speed_mps = 2.0,
+  }};
+
+  const RolloutResult centerline_only =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_path_clearance_m = 0.85});
+  const RolloutResult swept_envelope =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {2.0, 0.0},
+                                .preferred_target = {20.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk,
+                                .minimum_path_clearance_m = 2.85});
+
+  ASSERT_FALSE(centerline_only.ranked_candidates.empty());
+  EXPECT_TRUE(swept_envelope.ranked_candidates.empty());
+  ASSERT_TRUE(swept_envelope.diagnostics.first_grid_rejection.has_value());
+  EXPECT_EQ(swept_envelope.diagnostics.first_grid_rejection->reason,
             RolloutGridRejectReason::kVehicleClearanceEnvelope);
 }
 
