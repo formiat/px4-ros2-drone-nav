@@ -678,9 +678,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       !use_static_map_ && no_static_rollout_enabled_ &&
       executable_trajectory_artifact_.path_id == active_rollout_path_id_ &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
-  const double vehicle_clearance_envelope_m =
-      no_static_vehicle_clearance_m_ + no_static_tracking_error_margin_m_ +
-      std::sqrt(0.5) * planning_grid.resolution();
   const double rollout_exhaustion_epsilon_m =
       std::max(0.5, prohibited_grid.resolution());
   ExecutableSuffixDecision rollout_runtime{};
@@ -688,9 +685,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     const ExecutableTrajectoryProgress progress = updateExecutableTrajectoryProgress(
         executable_trajectory_artifact_, navigation.pose.position,
         stable_path_goal_tolerance_m_);
-    rollout_runtime = evaluateExecutableSuffix(
-        prohibited_grid, prepared->risk_field, executable_trajectory_artifact_,
-        progress, rollout_exhaustion_epsilon_m, vehicle_clearance_envelope_m);
+    rollout_runtime =
+        evaluateExecutableSuffix(prohibited_grid, executable_trajectory_artifact_,
+                                 progress, rollout_exhaustion_epsilon_m);
     const BlockedSpan* blocked_span = rollout_runtime.blocked_span.has_value()
                                           ? &*rollout_runtime.blocked_span
                                           : nullptr;
@@ -707,8 +704,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "ROLLOUT_RUNTIME_PATH_CHECK path_id=%" PRIu64
         " projection_valid=%s previous_s=%.2f current_s=%.2f remaining=%.2f "
         "cross_track=%.2f terminal_distance=%.2f checked_from_s=%.2f "
-        "blocked=%s trigger=%s required_tracking_clearance=%.2f "
-        "first_blocked_s=%.2f distance_to_blocker=%.2f "
+        "blocked=%s trigger=%s first_blocked_s=%.2f distance_to_blocker=%.2f "
         "cell=(%d,%d) active_prefix_available=%s exhaustion_reason=%s "
         "decision=%s",
         executable_trajectory_artifact_.path_id, progress.valid ? "true" : "false",
@@ -717,7 +713,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         rollout_runtime.blocked ? "true" : "false",
         blocked_span != nullptr ? blockedSpanTriggerName(blocked_span->trigger)
                                 : "none",
-        vehicle_clearance_envelope_m,
         blocked_span != nullptr ? blocked_span->first_blocked_s_m
                                 : std::numeric_limits<double>::quiet_NaN(),
         blocked_span != nullptr
@@ -733,9 +728,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         exhaustion_reason,
         !progress.valid           ? "projection_unavailable"
         : blocked_span == nullptr ? "clear"
-        : blocked_span->trigger == BlockedSpanTrigger::kRawOccupied
-            ? "raw_occupied_confirmed"
-            : "tracking_envelope_confirmed");
+                                  : "raw_occupied_confirmed");
   }
   const bool active_prefix_available = artifact_matches_active_rollout &&
                                        rollout_runtime.progress.valid &&
@@ -905,6 +898,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         stationary_restart ? 0.0
                            : current_speed_mps * no_static_terminal_response_delay_s_ +
                                  std::sqrt(0.5) * planning_grid.resolution();
+    const double vehicle_clearance_envelope_m =
+        no_static_vehicle_clearance_m_ + no_static_tracking_error_margin_m_ +
+        std::sqrt(0.5) * planning_grid.resolution();
     const bool blocked_replacement_context =
         truncation_rollout || rollout_runtime.blocked;
     const auto rollout_started_at = std::chrono::steady_clock::now();
@@ -1420,7 +1416,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     if (recovery_goal.has_value()) {
       astar_goal = *recovery_goal;
       RCLCPP_INFO(get_logger(),
-                  "NO_STATIC_ROLLOUT recovery_endpoint=bounded start=(%.2f,%.2f) "
+                  "NO_STATIC_ROLLOUT recovery_endpoint=bounded_reachable "
+                  "start=(%.2f,%.2f) "
                   "endpoint=(%.2f,%.2f) mission_goal=(%.2f,%.2f) "
                   "evaluation_origin=(%.2f,%.2f) evaluation_size=%dx%d",
                   planning_start.x, planning_start.y, astar_goal.x, astar_goal.y,

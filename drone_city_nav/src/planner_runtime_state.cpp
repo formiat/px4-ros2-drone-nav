@@ -1,10 +1,77 @@
 #include "drone_city_nav/planner_runtime_state.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <queue>
+#include <vector>
 
 namespace drone_city_nav {
+namespace {
+
+constexpr std::array<GridIndex, 8U> kRecoveryNeighborOffsets{{
+    {-1, -1},
+    {0, -1},
+    {1, -1},
+    {-1, 0},
+    {1, 0},
+    {-1, 1},
+    {0, 1},
+    {1, 1},
+}};
+
+[[nodiscard]] bool recoveryCellBlocked(const OccupancyGrid2D& grid,
+                                       const ObstacleRiskField& risk_field,
+                                       const GridIndex cell) {
+  return !grid.contains(cell) || grid.isOccupied(cell) ||
+         !risk_field.containsEvaluationPoint(grid.cellCenter(cell));
+}
+
+[[nodiscard]] bool recoveryMoveCutsRawCorner(const OccupancyGrid2D& grid,
+                                             const ObstacleRiskField& risk_field,
+                                             const GridIndex from, const GridIndex to) {
+  const int dx = to.x - from.x;
+  const int dy = to.y - from.y;
+  if (std::abs(dx) != 1 || std::abs(dy) != 1) {
+    return false;
+  }
+  return recoveryCellBlocked(grid, risk_field, GridIndex{from.x + dx, from.y}) ||
+         recoveryCellBlocked(grid, risk_field, GridIndex{from.x, from.y + dy});
+}
+
+[[nodiscard]] std::vector<std::uint8_t>
+recoveryReachableCells(const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
+                       const GridIndex start) {
+  std::vector<std::uint8_t> reachable(grid.cellCount(), 0U);
+  if (recoveryCellBlocked(grid, risk_field, start)) {
+    return reachable;
+  }
+
+  std::queue<GridIndex> pending;
+  reachable.at(grid.linearIndex(start)) = 1U;
+  pending.push(start);
+  while (!pending.empty()) {
+    const GridIndex current = pending.front();
+    pending.pop();
+    for (const GridIndex offset : kRecoveryNeighborOffsets) {
+      const GridIndex next{current.x + offset.x, current.y + offset.y};
+      if (recoveryCellBlocked(grid, risk_field, next) ||
+          recoveryMoveCutsRawCorner(grid, risk_field, current, next)) {
+        continue;
+      }
+      const std::size_t next_index = grid.linearIndex(next);
+      if (reachable.at(next_index) != 0U) {
+        continue;
+      }
+      reachable.at(next_index) = 1U;
+      pending.push(next);
+    }
+  }
+  return reachable;
+}
+
+} // namespace
 
 void PlanningRequestState::schedule(const PlanningWakeReason reason) noexcept {
   if (pending_) {
@@ -167,9 +234,12 @@ std::optional<Point2> boundedNoStaticRecoveryGoal(const OccupancyGrid2D& grid,
       !risk_field.containsEvaluationPoint(start)) {
     return std::nullopt;
   }
+  const std::vector<std::uint8_t> reachable =
+      recoveryReachableCells(grid, risk_field, *start_cell);
   if (const std::optional<GridIndex> mission_cell = grid.worldToCell(mission_goal);
       mission_cell.has_value() && !grid.isOccupied(*mission_cell) &&
-      risk_field.containsEvaluationPoint(mission_goal)) {
+      risk_field.containsEvaluationPoint(mission_goal) &&
+      reachable.at(grid.linearIndex(*mission_cell)) != 0U) {
     return mission_goal;
   }
 
@@ -216,7 +286,7 @@ std::optional<Point2> boundedNoStaticRecoveryGoal(const OccupancyGrid2D& grid,
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
-      if (grid.isOccupied(cell)) {
+      if (reachable.at(grid.linearIndex(cell)) == 0U) {
         continue;
       }
       const Point2 candidate = grid.cellCenter(cell);

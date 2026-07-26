@@ -124,6 +124,39 @@ TEST(PlannerRuntimeState, PreservesMissionGoalWhenItIsInsideRecoveryRoi) {
   EXPECT_DOUBLE_EQ(selected_goal.y, mission_goal.y);
 }
 
+TEST(PlannerRuntimeState, SelectsReachableRecoveryGoalBeforeSeparatingWall) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 40, 24}};
+  grid.reset(CellState::kFree);
+  for (int y = 0; y < grid.height(); ++y) {
+    grid.setOccupied(GridIndex{20, y});
+  }
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, grid.bounds(), 10.0);
+  const Point2 start{5.5, 10.5};
+
+  const std::optional<Point2> recovery_goal =
+      boundedNoStaticRecoveryGoal(grid, risk, start, Point2{100.0, 10.5});
+
+  ASSERT_TRUE(recovery_goal.has_value());
+  const Point2 selected_goal =
+      recovery_goal.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_LT(selected_goal.x, 20.0);
+  EXPECT_GT(selected_goal.x, 15.0);
+  EXPECT_NEAR(selected_goal.y, 10.5, 1.0);
+
+  PlannerCore core;
+  const auto guide = core.computePath(PathComputationInput{
+      .grid = &grid,
+      .risk_field = &risk,
+      .current_position = start,
+      .goal = selected_goal,
+  });
+  ASSERT_TRUE(guide.has_value());
+  const PathComputationResult& guide_result =
+      guide.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_FALSE(guide_result.astar.path.empty());
+}
+
 TEST(PlannerRuntimeState, RejectsGenerationChangedAtPublicationBoundary) {
   EXPECT_TRUE(publicationGenerationIsCurrent(7U, 7U));
   EXPECT_FALSE(publicationGenerationIsCurrent(7U, 8U));

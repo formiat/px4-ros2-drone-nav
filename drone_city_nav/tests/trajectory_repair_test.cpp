@@ -67,10 +67,8 @@ TEST(TrajectoryRepair, ExecutableSuffixIgnoresBlockerBehindProgress) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
-  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
-
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
 
   EXPECT_TRUE(decision.progress.valid);
   EXPECT_FALSE(decision.blocked);
@@ -87,10 +85,8 @@ TEST(TrajectoryRepair, ExecutableSuffixFindsBlockerAheadOfProgress) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
-  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
-
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
 
   ASSERT_TRUE(decision.blocked);
   ASSERT_TRUE(decision.blocked_span.has_value());
@@ -99,7 +95,7 @@ TEST(TrajectoryRepair, ExecutableSuffixFindsBlockerAheadOfProgress) {
   EXPECT_GT(blocked.first_blocked_s_m, progress.projected_s_m);
 }
 
-TEST(TrajectoryRepair, ExecutableSuffixDetectsTrackingEnvelopeBeforeRawCollision) {
+TEST(TrajectoryRepair, ExecutableSuffixKeepsSoftRiskPathExecutable) {
   OccupancyGrid2D grid = freeGrid();
   grid.setOccupied(GridIndex{20, 12});
   ExecutableTrajectoryArtifact artifact{
@@ -109,34 +105,8 @@ TEST(TrajectoryRepair, ExecutableSuffixDetectsTrackingEnvelopeBeforeRawCollision
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{5.0, 0.0}, 3.0);
-  const ObstacleRiskField risk =
-      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, grid.bounds(), 10.0);
-
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5, 3.5);
-
-  ASSERT_TRUE(decision.blocked);
-  ASSERT_TRUE(decision.blocked_span.has_value());
-  const BlockedSpan blocked = decision.blocked_span.value_or(BlockedSpan{});
-  EXPECT_EQ(blocked.trigger, BlockedSpanTrigger::kTrackingEnvelope);
-  EXPECT_LT(blocked.first_blocked_s_m, 20.0);
-}
-
-TEST(TrajectoryRepair, ExecutableSuffixKeepsRawClearPathOutsideTrackingEnvelope) {
-  OccupancyGrid2D grid = freeGrid();
-  grid.setOccupied(GridIndex{20, 16});
-  ExecutableTrajectoryArtifact artifact{
-      .path_id = 7U,
-      .samples = lineSamples(30.0),
-      .current_s_m = 5.0,
-  };
-  const ExecutableTrajectoryProgress progress =
-      updateExecutableTrajectoryProgress(artifact, Point2{5.0, 0.0}, 3.0);
-  const ObstacleRiskField risk =
-      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, grid.bounds(), 10.0);
-
-  const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5, 3.5);
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
 
   EXPECT_FALSE(decision.blocked);
 }
@@ -150,10 +120,8 @@ TEST(TrajectoryRepair, ExecutableSuffixReportsExhaustedAtTerminal) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{30.0, 0.0}, 3.0);
-  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
-
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
 
   EXPECT_TRUE(decision.exhausted);
   EXPECT_FALSE(decision.blocked);
