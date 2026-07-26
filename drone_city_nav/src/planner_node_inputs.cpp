@@ -829,15 +829,32 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     const bool rollout_prefix_available =
         active_prefix_available && !truncation_rollout;
     const double current_goal_distance_m = distance(planning_start, goal_);
-    if (!truncation_rollout &&
-        current_goal_distance_m <= stable_path_goal_tolerance_m_) {
+    const double active_endpoint_goal_distance_m =
+        active_rollout_artifact_available
+            ? distance(executable_trajectory_artifact_.samples.back().point, goal_)
+            : std::numeric_limits<double>::infinity();
+    const bool mission_goal_settled =
+        missionGoalSettlementOwned(MissionGoalSettlementInput{
+            .active_artifact_available = active_rollout_artifact_available,
+            .endpoint_semantics =
+                active_rollout_artifact_available
+                    ? executable_trajectory_artifact_.endpoint_semantics
+                    : TrajectoryEndpointSemantics::kLocalHorizon,
+            .current_goal_distance_m = current_goal_distance_m,
+            .endpoint_goal_distance_m = active_endpoint_goal_distance_m,
+            .tolerance_m = stable_path_goal_tolerance_m_,
+        });
+    if (!truncation_rollout && mission_goal_settled) {
       RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "ROLLOUT mission_goal_settled=true distance=%.2f tolerance=%.2f "
-          "active_path_id=%" PRIu64 " action=skip_successor_publication",
+          "active_path_id=%" PRIu64 " endpoint=%s endpoint_goal_distance=%.2f "
+          "action=skip_successor_publication",
           current_goal_distance_m, stable_path_goal_tolerance_m_,
-          active_rollout_artifact_available ? executable_trajectory_artifact_.path_id
-                                            : 0U);
+          executable_trajectory_artifact_.path_id,
+          trajectoryEndpointSemanticsName(
+              executable_trajectory_artifact_.endpoint_semantics),
+          active_endpoint_goal_distance_m);
       return;
     }
     if (!std::isfinite(no_static_best_goal_distance_m_) ||

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/local_horizon_execution_state.hpp"
 #include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
@@ -39,6 +40,8 @@ struct ExecutableTrajectoryArtifact {
   std::uint64_t path_id{0U};
   std::uint64_t geometry_fingerprint{0U};
   Point2 mission_goal{};
+  TrajectoryEndpointSemantics endpoint_semantics{
+      TrajectoryEndpointSemantics::kMissionGoal};
   std::vector<TrajectoryPointSample> samples;
   double current_s_m{0.0};
 };

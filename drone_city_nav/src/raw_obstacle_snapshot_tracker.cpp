@@ -131,6 +131,24 @@ const char* rawSnapshotRelationName(const RawSnapshotRelation relation) noexcept
   return "unknown";
 }
 
+RawSnapshotTrajectoryDisposition
+classifyRawSnapshotTrajectoryDisposition(const RawSnapshotRelation relation) noexcept {
+  switch (relation) {
+    case RawSnapshotRelation::kExact:
+    case RawSnapshotRelation::kRuntimeNewer:
+      return RawSnapshotTrajectoryDisposition::kValidate;
+    case RawSnapshotRelation::kRuntimeOlder:
+    case RawSnapshotRelation::kNoSnapshot:
+    case RawSnapshotRelation::kDifferentProducer:
+      return RawSnapshotTrajectoryDisposition::kWait;
+    case RawSnapshotRelation::kRetiredProducer:
+    case RawSnapshotRelation::kPolicyMismatch:
+    case RawSnapshotRelation::kMalformed:
+      return RawSnapshotTrajectoryDisposition::kReject;
+  }
+  return RawSnapshotTrajectoryDisposition::kReject;
+}
+
 std::uint64_t generateRawObstacleProducerInstanceId() noexcept {
   static std::atomic<std::uint64_t> sequence{0U};
   const auto system_ticks = static_cast<std::uint64_t>(

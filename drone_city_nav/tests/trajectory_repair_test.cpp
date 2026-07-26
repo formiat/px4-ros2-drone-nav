@@ -1,4 +1,5 @@
 #include "drone_city_nav/planner_core.hpp"
+#include "drone_city_nav/raw_obstacle_snapshot_tracker.hpp"
 #include "drone_city_nav/trajectory_repair.hpp"
 #include "drone_city_nav/truncation_suffix_protocol.hpp"
 
@@ -153,6 +154,25 @@ TEST(TrajectoryRepair,
             RuntimeBlockerHandoffAction::kBegin);
   EXPECT_EQ(classifyRuntimeBlockerHandoff(kMissionGoalPathId, kMissionGoalPathId),
             RuntimeBlockerHandoffAction::kAlreadyPending);
+}
+
+TEST(TrajectoryRepair, DefinitiveSnapshotRejectClearsMissionGoalPendingForRetry) {
+  constexpr std::uint64_t kPendingPathId{102U};
+  ASSERT_TRUE(trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+      .explicitly_required = true,
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+  }));
+
+  for (const RawSnapshotRelation relation :
+       {RawSnapshotRelation::kPolicyMismatch, RawSnapshotRelation::kRetiredProducer,
+        RawSnapshotRelation::kMalformed}) {
+    ASSERT_EQ(classifyRawSnapshotTrajectoryDisposition(relation),
+              RawSnapshotTrajectoryDisposition::kReject);
+    const TruncationSuffixAckEvaluation ack = evaluateOrdinaryTrajectoryAck(
+        kPendingPathId, kPendingPathId, TruncationSuffixAckDecision::kRejected);
+    EXPECT_EQ(ack.action, TruncationSuffixAckAction::kRetry);
+    EXPECT_TRUE(trajectoryAckClearsPending(ack.action));
+  }
 }
 
 TEST(TrajectoryRepair, ExecutableSuffixRiskIgnoresObstacleBehindProgress) {

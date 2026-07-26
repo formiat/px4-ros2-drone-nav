@@ -216,6 +216,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         .geometry_fingerprint =
             trajectoryPrefixFingerprint(last_valid_trajectory_samples_),
         .mission_goal = goal_,
+        .endpoint_semantics = accepted->endpoint_semantics,
         .samples = last_valid_trajectory_samples_,
         .current_s_m = 0.0,
     };
@@ -305,6 +306,7 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         .geometry_fingerprint =
             trajectoryPrefixFingerprint(last_valid_trajectory_samples_),
         .mission_goal = goal_,
+        .endpoint_semantics = accepted_trajectory->endpoint_semantics,
         .samples = last_valid_trajectory_samples_,
         .current_s_m = 0.0,
     };
@@ -331,7 +333,8 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     const std::span<const TrajectoryPointSample> samples,
     const std::span<const Point2> trajectory_points,
     const TrajectoryDeliveryDiagnostics& delivery, const char* source_label,
-    const std::uint64_t path_id, const std::optional<double> rollout_score) {
+    const std::uint64_t path_id, const TrajectoryEndpointSemantics endpoint_semantics,
+    const std::optional<double> rollout_score) {
   const bool no_static_rollout =
       source_label != nullptr && std::string_view{source_label} == "no_static_rollout";
   if (!delivery.truncation_suffix && no_static_rollout) {
@@ -347,6 +350,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
             std::vector<Point2>{trajectory_points.begin(), trajectory_points.end()},
         .trajectory_samples =
             std::vector<TrajectoryPointSample>{samples.begin(), samples.end()},
+        .endpoint_semantics = endpoint_semantics,
         .rollout_score = rollout_score,
     };
     return true;
@@ -358,6 +362,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
         .path_id = path_id,
         .geometry_fingerprint = trajectoryPrefixFingerprint(samples),
         .mission_goal = goal_,
+        .endpoint_semantics = endpoint_semantics,
         .samples = std::vector<TrajectoryPointSample>{samples.begin(), samples.end()},
         .current_s_m = 0.0,
     };
@@ -439,6 +444,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
         .identity = identity,
         .path_points = runtime_points,
         .trajectory_samples = runtime_samples,
+        .endpoint_semantics = endpoint_semantics,
         .rollout_score = rollout_score,
     };
   }

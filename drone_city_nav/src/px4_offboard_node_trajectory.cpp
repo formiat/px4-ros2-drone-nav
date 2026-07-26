@@ -359,8 +359,22 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
   }
   if (pending_stationary_rollout_successor_.has_value() &&
       !pending_truncation_suffix_.has_value()) {
-    if (!terminalHoldAllowsDeferredActivation(temporary_replan_hold_active_,
-                                              final_goal_hold_active_) ||
+    const DeferredTrajectoryActivationAction activation =
+        evaluateDeferredTrajectoryActivation(temporary_replan_hold_active_,
+                                             final_goal_hold_active_);
+    if (activation == DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold) {
+      msg::ExecutableTrajectory rejected =
+          std::move(*pending_stationary_rollout_successor_);
+      pending_stationary_rollout_successor_.reset();
+      RCLCPP_INFO(get_logger(),
+                  "ROLLOUT event=pending_successor_rejected path_id=%" PRIu64
+                  " reason=final_goal_hold_terminal",
+                  rejected.path_id);
+      publishTruncationSuffixAck(rejected, TruncationSuffixAckDecision::kRejected,
+                                 "final_goal_hold_terminal");
+      return;
+    }
+    if (activation != DeferredTrajectoryActivationAction::kActivateFromTemporaryHold ||
         !localPositionFresh()) {
       return;
     }
@@ -368,14 +382,12 @@ void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
         *pending_stationary_rollout_successor_); // NOLINT(bugprone-unchecked-optional-access):
                                                  // guarded above.
     pending_stationary_rollout_successor_.reset();
-    const Point2 hold_target = final_goal_hold_active_ ? final_goal_hold_target_
-                                                       : temporary_replan_hold_target_;
     RCLCPP_INFO(get_logger(),
                 "ROLLOUT event=pending_successor_activated path_id=%" PRIu64
-                " current=(%.2f,%.2f) hold=(%.2f,%.2f) hold_type=%s speed=%.2f",
+                " current=(%.2f,%.2f) hold=(%.2f,%.2f) "
+                "hold_type=temporary_replan speed=%.2f",
                 command.path_id, current_position_.x, current_position_.y,
-                hold_target.x, hold_target.y,
-                final_goal_hold_active_ ? "final_goal" : "temporary_replan",
+                temporary_replan_hold_target_.x, temporary_replan_hold_target_.y,
                 current_speed_mps_);
     processExecutableTrajectory(command, true);
     return;
@@ -468,11 +480,15 @@ void Px4OffboardNode::processExecutableTrajectory(
                 "Ignoring planner path with invalid endpoint semantics: value=%u "
                 "path_id=%" PRIu64,
                 command.endpoint_semantics, command.path_id);
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "invalid_endpoint_semantics");
     return;
   }
   if (crashed_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Ignoring planner path after physical collision");
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "physical_collision_latched");
     return;
   }
   if (!path.poses.empty()) {
@@ -483,9 +499,9 @@ void Px4OffboardNode::processExecutableTrajectory(
     };
     const RawSnapshotRelation snapshot_relation =
         raw_obstacle_snapshot_tracker_.relation(obstacle_identity);
-    if (snapshot_relation == RawSnapshotRelation::kRuntimeOlder ||
-        snapshot_relation == RawSnapshotRelation::kNoSnapshot ||
-        snapshot_relation == RawSnapshotRelation::kDifferentProducer) {
+    const RawSnapshotTrajectoryDisposition snapshot_disposition =
+        classifyRawSnapshotTrajectoryDisposition(snapshot_relation);
+    if (snapshot_disposition == RawSnapshotTrajectoryDisposition::kWait) {
       pending_raw_obstacle_snapshot_ = command;
       pending_raw_obstacle_snapshot_deadline_.startIfIdle(
           get_clock()->now().nanoseconds());
@@ -496,11 +512,11 @@ void Px4OffboardNode::processExecutableTrajectory(
                   command.path_id, rawSnapshotRelationName(snapshot_relation),
                   obstacle_identity.producer_instance_id, obstacle_identity.revision,
                   obstacle_identity.policy_fingerprint);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
+                                 "waiting_for_raw_obstacle_snapshot");
       return;
     }
-    if (snapshot_relation == RawSnapshotRelation::kPolicyMismatch ||
-        snapshot_relation == RawSnapshotRelation::kRetiredProducer ||
-        snapshot_relation == RawSnapshotRelation::kMalformed) {
+    if (snapshot_disposition == RawSnapshotTrajectoryDisposition::kReject) {
       RCLCPP_WARN(get_logger(),
                   "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
                   " relation=%s action=rejected producer=%" PRIu64 " revision=%" PRIu64
@@ -508,6 +524,8 @@ void Px4OffboardNode::processExecutableTrajectory(
                   command.path_id, rawSnapshotRelationName(snapshot_relation),
                   obstacle_identity.producer_instance_id, obstacle_identity.revision,
                   obstacle_identity.policy_fingerprint);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 rawSnapshotRelationName(snapshot_relation));
       return;
     }
     RCLCPP_INFO(get_logger(),
@@ -529,23 +547,39 @@ void Px4OffboardNode::processExecutableTrajectory(
     activation_risk_field =
         ObstacleRiskField::build(*activation_raw_grid, current_snapshot->policy);
   }
-  const bool terminal_hold_active = terminalHoldAllowsDeferredActivation(
-      temporary_replan_hold_active_, final_goal_hold_active_);
-  if (command.activate_after_terminal_hold && !pending_retry && !terminal_hold_active) {
-    const bool replaced = pending_stationary_rollout_successor_.has_value();
-    pending_stationary_rollout_successor_ = command;
-    RCLCPP_INFO(get_logger(),
-                "ROLLOUT event=successor_pending path_id=%" PRIu64
-                " reason=waiting_for_terminal_hold replaced=%s",
-                command.path_id, replaced ? "true" : "false");
-    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
-                               "waiting_for_terminal_hold");
-    return;
+  const DeferredTrajectoryActivationAction deferred_activation =
+      evaluateDeferredTrajectoryActivation(temporary_replan_hold_active_,
+                                           final_goal_hold_active_);
+  if (command.activate_after_terminal_hold) {
+    if (deferred_activation ==
+        DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold) {
+      RCLCPP_INFO(get_logger(),
+                  "ROLLOUT event=successor_rejected path_id=%" PRIu64
+                  " reason=final_goal_hold_terminal",
+                  command.path_id);
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                                 "final_goal_hold_terminal");
+      return;
+    }
+    if (deferred_activation ==
+        DeferredTrajectoryActivationAction::kWaitForTemporaryHold) {
+      const bool replaced = pending_stationary_rollout_successor_.has_value();
+      pending_stationary_rollout_successor_ = command;
+      RCLCPP_INFO(get_logger(),
+                  "ROLLOUT event=successor_pending path_id=%" PRIu64
+                  " reason=waiting_for_terminal_hold replaced=%s",
+                  command.path_id, replaced ? "true" : "false");
+      publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kPending,
+                                 "waiting_for_terminal_hold");
+      return;
+    }
   }
   ScopedOffboardCallbackDuration callback_duration{get_logger(), "path",
                                                    path.poses.size()};
   const bool local_horizon_stationary_release =
-      command.activate_after_terminal_hold && (pending_retry || terminal_hold_active);
+      command.activate_after_terminal_hold &&
+      deferred_activation ==
+          DeferredTrajectoryActivationAction::kActivateFromTemporaryHold;
   const std::int64_t path_receive_stamp_ns = get_clock()->now().nanoseconds();
   const std::uint64_t candidate_update_id = received_path_update_id_ + 1U;
   latest_planner_path_id_ = command.path_id;
@@ -618,6 +652,8 @@ void Px4OffboardNode::processExecutableTrajectory(
       }
       last_logged_path_size_ = 0U;
     }
+    publishTruncationSuffixAck(command, TruncationSuffixAckDecision::kRejected,
+                               "empty_trajectory");
     return;
   }
 

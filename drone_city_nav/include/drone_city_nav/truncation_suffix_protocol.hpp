@@ -56,6 +56,12 @@ struct TrajectoryActivationAckContract {
       TrajectoryEndpointSemantics::kMissionGoal};
 };
 
+enum class DeferredTrajectoryActivationAction {
+  kWaitForTemporaryHold,
+  kActivateFromTemporaryHold,
+  kRejectAtFinalGoalHold,
+};
+
 [[nodiscard]] std::optional<TruncationSuffixAckDecision>
 truncationSuffixAckDecisionFromValue(std::uint8_t value) noexcept;
 
@@ -88,8 +94,8 @@ evaluateOrdinaryTrajectoryAck(std::uint64_t expected_path_id,
 [[nodiscard]] bool
 trajectoryAckClearsPending(TruncationSuffixAckAction action) noexcept;
 
-[[nodiscard]] bool
-terminalHoldAllowsDeferredActivation(bool temporary_replan_hold_active,
+[[nodiscard]] DeferredTrajectoryActivationAction
+evaluateDeferredTrajectoryActivation(bool temporary_replan_hold_active,
                                      bool final_goal_hold_active) noexcept;
 
 [[nodiscard]] TruncationSuffixPublicationEvaluation

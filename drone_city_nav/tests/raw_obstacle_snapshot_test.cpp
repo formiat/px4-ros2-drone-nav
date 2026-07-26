@@ -68,6 +68,26 @@ TEST(RawObstacleSnapshotTracker, ClassifiesProducerAndPolicyMismatch) {
   EXPECT_EQ(tracker.relation({7U, 10U, 4U}), RawSnapshotRelation::kPolicyMismatch);
 }
 
+TEST(RawObstacleSnapshotTracker, MapsEveryRelationToTerminalOrPendingDisposition) {
+  EXPECT_EQ(classifyRawSnapshotTrajectoryDisposition(RawSnapshotRelation::kExact),
+            RawSnapshotTrajectoryDisposition::kValidate);
+  EXPECT_EQ(
+      classifyRawSnapshotTrajectoryDisposition(RawSnapshotRelation::kRuntimeNewer),
+      RawSnapshotTrajectoryDisposition::kValidate);
+  for (const RawSnapshotRelation relation :
+       {RawSnapshotRelation::kRuntimeOlder, RawSnapshotRelation::kNoSnapshot,
+        RawSnapshotRelation::kDifferentProducer}) {
+    EXPECT_EQ(classifyRawSnapshotTrajectoryDisposition(relation),
+              RawSnapshotTrajectoryDisposition::kWait);
+  }
+  for (const RawSnapshotRelation relation :
+       {RawSnapshotRelation::kRetiredProducer, RawSnapshotRelation::kPolicyMismatch,
+        RawSnapshotRelation::kMalformed}) {
+    EXPECT_EQ(classifyRawSnapshotTrajectoryDisposition(relation),
+              RawSnapshotTrajectoryDisposition::kReject);
+  }
+}
+
 TEST(RawObstacleSnapshotTracker, ProducerSwitchRetiresOldIdentity) {
   RawObstacleSnapshotTracker tracker;
   ASSERT_TRUE(tracker.accept(metadata(7U, 10U)));

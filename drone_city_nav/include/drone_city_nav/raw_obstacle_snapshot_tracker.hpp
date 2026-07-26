@@ -24,6 +24,12 @@ enum class RawSnapshotRelation {
   kMalformed,
 };
 
+enum class RawSnapshotTrajectoryDisposition {
+  kValidate,
+  kWait,
+  kReject,
+};
+
 struct RawObstacleSnapshotMetadata {
   RawObstacleSnapshotIdentity identity{};
   ObstacleRiskPolicy policy{};
@@ -57,6 +63,8 @@ private:
 
 [[nodiscard]] const char*
 rawSnapshotRelationName(RawSnapshotRelation relation) noexcept;
+[[nodiscard]] RawSnapshotTrajectoryDisposition
+classifyRawSnapshotTrajectoryDisposition(RawSnapshotRelation relation) noexcept;
 [[nodiscard]] std::uint64_t generateRawObstacleProducerInstanceId() noexcept;
 
 } // namespace drone_city_nav

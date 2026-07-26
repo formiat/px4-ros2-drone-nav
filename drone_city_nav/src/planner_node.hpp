@@ -194,6 +194,8 @@ private:
     TruncationSuffixIdentity identity{};
     std::vector<Point2> path_points;
     std::vector<TrajectoryPointSample> trajectory_samples;
+    TrajectoryEndpointSemantics endpoint_semantics{
+        TrajectoryEndpointSemantics::kMissionGoal};
     std::optional<double> rollout_score;
   };
 
@@ -235,6 +237,7 @@ private:
                                     std::span<const Point2> trajectory_points,
                                     const TrajectoryDeliveryDiagnostics& delivery,
                                     const char* source_label, std::uint64_t path_id,
+                                    TrajectoryEndpointSemantics endpoint_semantics,
                                     std::optional<double> rollout_score);
 
   [[nodiscard]] bool rolloutActivationAckPending() const;

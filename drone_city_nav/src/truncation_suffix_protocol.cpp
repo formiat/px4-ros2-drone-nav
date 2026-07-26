@@ -122,9 +122,16 @@ bool trajectoryAckClearsPending(const TruncationSuffixAckAction action) noexcept
          action == TruncationSuffixAckAction::kRetry;
 }
 
-bool terminalHoldAllowsDeferredActivation(const bool temporary_replan_hold_active,
-                                          const bool final_goal_hold_active) noexcept {
-  return temporary_replan_hold_active || final_goal_hold_active;
+DeferredTrajectoryActivationAction
+evaluateDeferredTrajectoryActivation(const bool temporary_replan_hold_active,
+                                     const bool final_goal_hold_active) noexcept {
+  if (final_goal_hold_active) {
+    return DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold;
+  }
+  if (temporary_replan_hold_active) {
+    return DeferredTrajectoryActivationAction::kActivateFromTemporaryHold;
+  }
+  return DeferredTrajectoryActivationAction::kWaitForTemporaryHold;
 }
 
 TruncationSuffixPublicationEvaluation evaluateTruncationSuffixPublication(

@@ -31,9 +31,21 @@ struct LocalHorizonExecutionDecision {
   bool mission_goal_eligible{false};
 };
 
+struct MissionGoalSettlementInput {
+  bool active_artifact_available{false};
+  TrajectoryEndpointSemantics endpoint_semantics{
+      TrajectoryEndpointSemantics::kLocalHorizon};
+  double current_goal_distance_m{0.0};
+  double endpoint_goal_distance_m{0.0};
+  double tolerance_m{0.0};
+};
+
 [[nodiscard]] LocalHorizonExecutionDecision
 evaluateLocalHorizonExecution(const LocalHorizonExecutionInput& input,
                               const LocalHorizonExecutionConfig& config = {});
+
+[[nodiscard]] bool
+missionGoalSettlementOwned(const MissionGoalSettlementInput& input) noexcept;
 
 [[nodiscard]] const char*
 trajectoryEndpointSemanticsName(TrajectoryEndpointSemantics semantics) noexcept;

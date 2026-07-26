@@ -7,14 +7,16 @@ void Px4OffboardNode::publishTruncationSuffixAck(
     const TruncationSuffixAckDecision decision, const std::string_view reason) {
   const std::optional<TrajectoryEndpointSemantics> endpoint_semantics =
       trajectoryEndpointSemanticsFromWire(command.endpoint_semantics);
-  if (!endpoint_semantics.has_value() ||
-      !trajectoryActivationAckRequired(TrajectoryActivationAckContract{
-          .explicitly_required = command.requires_activation_ack,
-          .truncation_suffix = command.truncation_suffix,
-          .activate_after_terminal_hold = command.activate_after_terminal_hold,
-          .endpoint_semantics = *endpoint_semantics,
-      }) ||
-      !truncation_suffix_ack_pub_) {
+  const bool explicitly_required = command.requires_activation_ack ||
+                                   command.truncation_suffix ||
+                                   command.activate_after_terminal_hold;
+  const bool ack_required =
+      explicitly_required ||
+      (endpoint_semantics.has_value() &&
+       trajectoryActivationAckRequired(TrajectoryActivationAckContract{
+           .endpoint_semantics = *endpoint_semantics,
+       }));
+  if (!ack_required || !truncation_suffix_ack_pub_) {
     return;
   }
   msg::TruncationSuffixAck ack;

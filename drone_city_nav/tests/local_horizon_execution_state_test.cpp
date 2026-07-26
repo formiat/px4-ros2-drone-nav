@@ -71,4 +71,31 @@ TEST(LocalHorizonExecutionState, ExplicitTemporaryHoldNeverCompletesMission) {
   EXPECT_FALSE(decision.mission_goal_eligible);
 }
 
+TEST(LocalHorizonExecutionState, GoalProximityWithoutAcceptedArtifactIsNotSettled) {
+  EXPECT_FALSE(missionGoalSettlementOwned(MissionGoalSettlementInput{
+      .active_artifact_available = false,
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+      .current_goal_distance_m = 0.5,
+      .endpoint_goal_distance_m = 0.0,
+      .tolerance_m = 3.0,
+  }));
+}
+
+TEST(LocalHorizonExecutionState, SettledRequiresOwnedMissionGoalEndpoint) {
+  MissionGoalSettlementInput input{
+      .active_artifact_available = true,
+      .endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal,
+      .current_goal_distance_m = 0.5,
+      .endpoint_goal_distance_m = 0.2,
+      .tolerance_m = 3.0,
+  };
+  EXPECT_TRUE(missionGoalSettlementOwned(input));
+
+  input.endpoint_semantics = TrajectoryEndpointSemantics::kLocalHorizon;
+  EXPECT_FALSE(missionGoalSettlementOwned(input));
+  input.endpoint_semantics = TrajectoryEndpointSemantics::kMissionGoal;
+  input.endpoint_goal_distance_m = 5.0;
+  EXPECT_FALSE(missionGoalSettlementOwned(input));
+}
+
 } // namespace drone_city_nav

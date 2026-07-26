@@ -1,3 +1,4 @@
+#include "drone_city_nav/terminal_capture_state_machine.hpp"
 #include "drone_city_nav/truncation_suffix_protocol.hpp"
 
 #include <gtest/gtest.h>
@@ -104,11 +105,35 @@ TEST(TruncationSuffixProtocol, OrdinaryMissionGoalAckControlsPendingOwnership) {
   EXPECT_FALSE(trajectoryAckClearsPending(stale.action));
 }
 
-TEST(TruncationSuffixProtocol, DeferredRolloutActivatesFromEitherTerminalHold) {
-  EXPECT_FALSE(terminalHoldAllowsDeferredActivation(false, false));
-  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(true, false));
-  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(false, true));
-  EXPECT_TRUE(terminalHoldAllowsDeferredActivation(true, true));
+TEST(TruncationSuffixProtocol, DeferredRolloutOnlyActivatesFromTemporaryHold) {
+  EXPECT_EQ(evaluateDeferredTrajectoryActivation(false, false),
+            DeferredTrajectoryActivationAction::kWaitForTemporaryHold);
+  EXPECT_EQ(evaluateDeferredTrajectoryActivation(true, false),
+            DeferredTrajectoryActivationAction::kActivateFromTemporaryHold);
+  EXPECT_EQ(evaluateDeferredTrajectoryActivation(false, true),
+            DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold);
+  EXPECT_EQ(evaluateDeferredTrajectoryActivation(true, true),
+            DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold);
+}
+
+TEST(TruncationSuffixProtocol, FinalGoalHoldRejectsDeferredOwnershipForRetry) {
+  constexpr std::uint64_t kDeferredPathId{103U};
+  ASSERT_EQ(evaluateDeferredTrajectoryActivation(false, true),
+            DeferredTrajectoryActivationAction::kRejectAtFinalGoalHold);
+
+  const TruncationSuffixAckEvaluation rejected = evaluateOrdinaryTrajectoryAck(
+      kDeferredPathId, kDeferredPathId, TruncationSuffixAckDecision::kRejected);
+  EXPECT_EQ(rejected.action, TruncationSuffixAckAction::kRetry);
+  EXPECT_TRUE(trajectoryAckClearsPending(rejected.action));
+
+  const TerminalStateMachineDecision control =
+      evaluateTerminalStateMachine(TerminalStateMachineInput{
+          .final_goal_hold_active = true,
+          .prerequisites_valid = true,
+          .current_speed_mps = 0.0,
+      });
+  EXPECT_EQ(control.state, TerminalFlightState::kFinalHold);
+  EXPECT_STREQ(control.reason, "final_hold");
 }
 
 TEST(TruncationSuffixProtocol, ParsesSuffixActivationModes) {

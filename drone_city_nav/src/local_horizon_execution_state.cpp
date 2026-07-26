@@ -1,6 +1,7 @@
 #include "drone_city_nav/local_horizon_execution_state.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace drone_city_nav {
 
@@ -29,6 +30,16 @@ evaluateLocalHorizonExecution(const LocalHorizonExecutionInput& input,
   result.terminal_capture_enabled = exhausted;
   result.latch_temporary_hold = exhausted && input.endpoint_captured;
   return result;
+}
+
+bool missionGoalSettlementOwned(const MissionGoalSettlementInput& input) noexcept {
+  return input.active_artifact_available &&
+         input.endpoint_semantics == TrajectoryEndpointSemantics::kMissionGoal &&
+         std::isfinite(input.current_goal_distance_m) &&
+         std::isfinite(input.endpoint_goal_distance_m) &&
+         std::isfinite(input.tolerance_m) && input.tolerance_m >= 0.0 &&
+         input.current_goal_distance_m <= input.tolerance_m &&
+         input.endpoint_goal_distance_m <= input.tolerance_m;
 }
 
 const char*
