@@ -84,6 +84,14 @@ production cutover делать только после перевода все�
 - Known lower/upper solid validation, vertical/speed profiles, terminal braking,
   truncation ACK/pending protocol и local rollout ROI не зависят концептуально
   от hard inflation и должны сохраниться.
+- Horizontal handover является отдельной post-finalization shape-changing
+  стадией: planner preflight и offboard consumer независимо вызывают
+  `buildHorizontalTrajectoryHandover()`, который строит Hermite bridge и сейчас
+  бинарно проверяет его по prohibited grid
+  (`drone_city_nav/src/planner_node_trajectory_publication.cpp:333-390`,
+  `drone_city_nav/src/px4_offboard_node_trajectory.cpp:806-828`,
+  `drone_city_nav/src/trajectory_horizontal_handover.cpp:149-342`). Поэтому
+  одного risk-aware planner finalization недостаточно.
 
 Notion и GitLab не читались: prompt не содержит Notion task, GitLab MR или
 review context; при `notion_policy=optional` удаленный контекст не нужен.
@@ -142,6 +150,7 @@ workflow:
    - `trajectory_optimizer*.cpp` и optimizer internal headers;
    - `turn_smoothing*.cpp`, `trajectory_shape_cleanup.cpp`;
    - `trajectory_passage_insertion.cpp`;
+   - `trajectory_horizontal_handover.hpp/.cpp`;
    - `trajectory_repair.hpp/.cpp`, `repair_race.hpp/.cpp`.
 
 4. **Planner orchestration/publication/runtime**
@@ -363,7 +372,75 @@ solid/structural invalidity. Soft-tier exposure записывается в diag
 Cutover должен быть общим для static/no-static. Нельзя оставить “временно A*
 hard-grid, rollout soft-risk” в публикуемой конфигурации.
 
-### 7. Удалить escape и inflation relaxation полностью
+### 7. Перевести post-finalization horizontal handover на тот же risk contract
+
+В `trajectory_horizontal_handover.hpp/.cpp`
+(`buildHorizontalTrajectoryHandover():149-342`) заменить
+`const OccupancyGrid2D* validation_grid` на обязательный
+`TrajectoryRiskContext`. Параметр `require_validation_grid` переименовать в
+`require_risk_context`.
+
+Builder должен:
+
+1. сохранить текущие projection, hard-window, join-distance и geometry limits;
+2. hard-reject любой bridge, пересекающий raw occupied или выходящий за
+   evaluation bounds;
+3. оценивать всю фактически сшитую trajectory тем же `PathRiskScore`;
+4. перебирать ограниченный детерминированный набор допустимых
+   `old_join/candidate_join/bridge_scale` layouts и выбирать
+   лексикографически лучший, а не первый geometric bridge;
+5. возвращать исходный и итоговый risk score и явное качество
+   `strict|degraded_handover`.
+
+```cpp
+struct HorizontalTrajectoryHandoverResult {
+  // existing geometry diagnostics
+  PathRiskScore candidate_risk;
+  PathRiskScore stitched_risk;
+  HandoverRiskQuality risk_quality;
+};
+```
+
+Strict bridge не ухудшает risk tuple относительно candidate на заменяемом
+интервале. Если из-за фактического offset дрона такого bridge нет, но есть
+raw-clear вариант, допускается только лексикографически лучший
+`degraded_handover`; ухудшение не скрывается, попадает в diagnostics и
+скоростной профиль. Это сохраняет идеологию “движение лучше стояния”, не
+возвращая prohibited band как hard gate.
+
+Оба call path обязаны использовать этот API:
+
+- planner preflight в
+  `planner_node_trajectory_publication.cpp:333-390` передает тот же immutable
+  `PreparedObstacleRiskSnapshot`, по которому был финализирован candidate, и
+  проверяет именно `preflight.samples`;
+- offboard в `px4_offboard_node_trajectory.cpp:806-828` строит актуальный
+  raw/risk context и после bridge повторно применяет hard/risk validation до
+  `buildOffboardTrajectoryState()`.
+
+Чтобы offboard не угадывал static/no-static policy, расширить
+`msg/ExecutableTrajectory.msg` полями policy identity:
+
+```text
+uint64 obstacle_snapshot_revision
+float64 risk_critical_distance_m
+float64 risk_preferred_distance_m
+```
+
+Offboard сверяет конечность/порядок thresholds, применяет их к текущему raw
+obstacle snapshot и логирует несовпадение revision как использование более
+свежих runtime данных, а не как повод принять bridge без проверки.
+
+Обновить `tests/trajectory_horizontal_handover_test.cpp`:
+
+- preferred bridge выбирается вместо более короткого critical bridge;
+- unavoidable critical bridge принимается как `degraded_handover`;
+- raw-occupied и outside-ROI bridge отклоняются;
+- returned `stitched_risk` совпадает с повторной независимой оценкой samples;
+- planner preflight и offboard consumer используют одинаковые thresholds;
+- hard-window metadata и существующие geometry limits сохраняются.
+
+### 8. Удалить escape и inflation relaxation полностью
 
 Удалить production/test targets и файлы:
 
@@ -394,7 +471,7 @@ hard-grid, rollout soft-risk” в публикуемой конфигураци
 удаления escape не несет самостоятельной логики, объединить его с rollout
 orchestration и удалить пустую abstraction.
 
-### 8. Сохранить safe truncation, но устранить конфликт с soft critical band
+### 9. Сохранить safe truncation, но устранить конфликт с soft critical band
 
 В `planner_node_runtime.cpp:242-405` и `trajectory_repair.cpp:181-200`
 заменить `findFirstProhibited...` на поиск первого raw-occupied span оставшейся
@@ -434,7 +511,7 @@ grid/occupied distance field и явно логировала both
 `terminal_clearance_beyond_critical_m=5.0` и
 `required_raw_clearance_m=6.0`.
 
-### 9. Обновить diagnostics, config и документацию
+### 10. Обновить diagnostics, config и документацию
 
 Удалить/переименовать поля:
 
@@ -451,6 +528,8 @@ grid/occupied distance field и явно логировала both
 - algorithm (`rollout|partial_astar|full_astar`);
 - risk score before/after каждого shape-changing stage;
 - safe trunc raw blocker и derived terminal clearance.
+- horizontal handover `candidate_risk`, `stitched_risk`,
+  `strict|degraded_handover` и raw/runtime snapshot revisions.
 
 В `trajectory_diagnostics_io_*` writer перейти на новые names. Parser
 рекомендуется оставить способным читать старые JSON/CSV fields как legacy
@@ -461,7 +540,7 @@ aliases, чтобы исторические run artifacts не перестал
 показывать raw occupied и при необходимости отдельную debug-визуализацию
 distance/risk tiers, которая не участвует в planning input.
 
-### 10. Обновить и расширить category-1 tests
+### 11. Обновить и расширить category-1 tests
 
 Кроме нового `obstacle_risk_field_test`, изменить существующие tests без
 добавления test-only production hooks:
@@ -475,6 +554,9 @@ distance/risk tiers, которая не участвует в planning input.
 - `path/corridor/trajectory_optimizer/turn_smoothing/trajectory_planner tests`:
   postprocessing не ухудшает risk tuple, narrow critical route остается
   executable, raw collision никогда не проходит.
+- `trajectory_horizontal_handover_test`: planner preflight/offboard bridge
+  hard-reject raw/outside, использует те же thresholds, возвращает наблюдаемый
+  risk score и выбирает лучший strict/degraded bridge без скрытого ухудшения.
 - `trajectory_repair_test` и `repair_race_test`: partial/global candidates
   сравниваются тем же score, anchors могут лежать в soft bands, raw anchors
   отклоняются.
@@ -489,7 +571,7 @@ distance/risk tiers, которая не участвует в planning input.
 - config/diagnostics/ROS conversion/offboard tests: новый topic/schema,
   отсутствие inflation values и legacy diagnostics parse.
 
-### 11. Очистить build graph и доказать отсутствие старой семантики
+### 12. Очистить build graph и доказать отсутствие старой семантики
 
 Удалить stale sources/tests из `CMakeLists.txt`, includes, topic wiring и config.
 В конце выполнить source-level guard:
@@ -518,7 +600,8 @@ trunc defaults не изменены.
      "make build && ctest --test-dir build/drone_city_nav --output-on-failure \
       -R 'obstacle_risk_field|planner_core|receding_horizon_trajectory_planner|\
 planning_grid_builder|planning_grid_snapshot|corridor|trajectory_optimizer|\
-turn_smoothing|trajectory_planner|trajectory_repair|repair_race|\
+turn_smoothing|trajectory_planner|trajectory_horizontal_handover|\
+trajectory_repair|repair_race|\
 safe_trajectory_truncation|planner_node_config|px4_offboard_node_config|\
 trajectory_diagnostics'"
    ```
@@ -568,14 +651,18 @@ trajectory_diagnostics'"
    deterministic shortlist; stationary restart.
 4. **Refinement invariants**: smoothing/optimizer/insertion не ухудшают risk
    tier/exposure незаметно и не создают raw collision.
-5. **All-mode orchestration**: static A*, no-static rollout, partial repair и
+5. **Horizontal handover**: Hermite bridge в planner preflight и offboard
+   hard-rejectится по raw/outside, оценивается общей policy, возвращает
+   observable before/after score и детерминированно выбирает лучший
+   strict/degraded layout.
+6. **All-mode orchestration**: static A*, no-static rollout, partial repair и
    explicit no-static A* recovery получают одинаковую policy и snapshot.
-6. **Snapshot/ROI**: obstacle in halo affects edge clearance; obstacle outside
+7. **Snapshot/ROI**: obstacle in halo affects edge clearance; obstacle outside
    halo does not leak; successor reuses exact immutable revision.
-7. **Runtime truncation**: raw intersection triggers; soft-band-only proximity
+8. **Runtime truncation**: raw intersection triggers; soft-band-only proximity
    does not; terminal station сохраняет `15/5` policy; stale generation/ACK
    behavior unchanged.
-8. **Removal contract**: config no longer declares escape/relaxation params,
+9. **Removal contract**: config no longer declares escape/relaxation params,
    CMake no longer builds removed targets, ROS raw topic conversion contains no
    inflated cells.
 
@@ -612,6 +699,11 @@ arbitrary smoothing. Для этого потребуется отдельный
    включать production path до перевода всех стадий. Рекомендуемый порядок:
    primitive/builder -> A*/rollout -> refinement/repair -> runtime/offboard ->
    removal/docs/tests.
+9. **Post-finalization geometry может обойти planner validation.** Horizontal
+   handover строится заново в offboard по более свежему pose/raw snapshot.
+   Поэтому policy identity должна передаваться в executable message, а
+   фактические stitched samples обязаны проходить shared evaluator перед
+   активацией; planner preflight сам по себе этого риска не закрывает.
 
 ## Open questions
 
@@ -684,5 +776,5 @@ soft-risk в production до ее завершения.
 неделим: partial conversion нарушит единый механизм, явно потребованный
 пользователем.
 
-**Confirmation:** source-level guard из шага 11 и all-mode integration tests не
+**Confirmation:** source-level guard из шага 12 и all-mode integration tests не
 должны находить ни одного hard inflation consumer.
