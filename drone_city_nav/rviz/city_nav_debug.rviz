@@ -19,9 +19,9 @@ Visualization Manager:
       Color Scheme: map
       Draw Behind: false
       Enabled: false
-      Name: Prohibited Grid
+      Name: Raw Obstacle Grid
       Topic:
-        Value: /drone_city_nav/prohibited_grid
+        Value: /drone_city_nav/raw_obstacle_grid
     - Alpha: 0.45
       Class: rviz_default_plugins/Map
       Color Scheme: map
@@ -71,13 +71,6 @@ Visualization Manager:
         trajectory_optimizer_corridor_right: true
       Topic:
         Value: /drone_city_nav/offboard_debug_markers
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: Directed Inflation Escape
-      Namespaces:
-        directed_inflation_escape: true
-      Topic:
-        Value: /drone_city_nav/directed_inflation_escape_markers
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: Known Passages

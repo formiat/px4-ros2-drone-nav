@@ -68,13 +68,13 @@ Inspect planner logs and offboard trajectory update logs.
 
 Check:
 
-- prohibited-grid intersection logs;
+- raw-occupied intersection logs;
 - raw obstacle sources;
 - current lidar overlay quality;
 - obstacle memory scoring;
-- inflation and planning clearance settings;
-- whether the drone is actually crossing the prohibited grid or only the
-  planning-clearance margin.
+- risk policy thresholds;
+- whether the drone actually crosses raw occupancy or only enters a soft risk
+  band.
 
 ## Gazebo Or PX4 Processes Remain After Closing GUI
 
@@ -176,11 +176,11 @@ inadequate effective apply rate.
 
 Check:
 
-- prohibited grid coverage;
+- raw obstacle snapshot coverage;
 - start and goal positions;
 - grid bounds;
 - static map path;
-- inflation and planning clearance;
+- risk policy thresholds and exposure diagnostics;
 - whether current lidar or memory creates a blocking wall.
 
 ## Trajectory Diagnostics Do Not Match
@@ -256,7 +256,7 @@ Check:
 - curvature-jump cost;
 - turn-smoothing detected and attempted corners;
 - rejected smoothing candidate reasons;
-- prohibited-grid intersections for nicer candidates.
+- raw-occupancy intersections for otherwise nicer candidates.
 
 If the corridor is narrow, the planner may not have space to create a large
 radius. If the corridor is wide, tune trajectory optimizer and turn-smoothing

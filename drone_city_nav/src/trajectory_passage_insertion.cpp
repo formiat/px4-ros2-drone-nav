@@ -258,7 +258,7 @@ firstNonTraversableSegment(const OccupancyGrid2D& grid,
     const std::vector<GridIndex> line_cells = grid.cellsOnLine(*start_cell, *end_cell);
     for (std::size_t cell_index = 0U; cell_index < line_cells.size(); ++cell_index) {
       const GridIndex cell = line_cells[cell_index];
-      if (!grid.isProhibited(cell)) {
+      if (!grid.isOccupied(cell)) {
         continue;
       }
       diagnostic.line_cell_index = cell_index;
@@ -267,7 +267,6 @@ firstNonTraversableSegment(const OccupancyGrid2D& grid,
       diagnostic.blocked_cell = cell;
       diagnostic.blocked_cell_center = grid.cellCenter(cell);
       diagnostic.occupied = grid.isOccupied(cell);
-      diagnostic.inflated = grid.isInflated(cell);
       return diagnostic;
     }
   }

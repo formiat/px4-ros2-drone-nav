@@ -404,7 +404,7 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
     } else {
       const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
       for (const GridIndex cell : cells) {
-        if (grid.isProhibited(cell)) {
+        if (grid.isOccupied(cell)) {
           ++evaluation.prohibited_cells;
           ++segment_prohibited_cells;
           segment_blocked = true;
@@ -462,7 +462,7 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
   ++misses;
   const bool traversable = std::ranges::all_of(
       grid.cellsOnLine(*start_cell, *end_cell),
-      [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
+      [&grid](const GridIndex cell) { return !grid.isOccupied(cell); });
   cache.values.emplace(key, traversable);
   return traversable;
 }
@@ -582,7 +582,7 @@ evaluateLocalPathWindowCached(const OccupancyGrid2D& grid,
           ++cache_misses;
           std::size_t computed = 0U;
           for (const GridIndex cell : grid.cellsOnLine(*start_cell, *end_cell)) {
-            if (grid.isProhibited(cell)) {
+            if (grid.isOccupied(cell)) {
               ++computed;
             }
           }

@@ -4,6 +4,45 @@ namespace drone_city_nav {
 
 using namespace trajectory_diagnostics_io_detail;
 
+namespace {
+
+void appendPathRiskJson(std::ostream& stream, const std::string_view prefix,
+                        const PathRiskScore& risk) {
+  appendJsonString(stream, std::string{prefix} + "worst_tier",
+                   obstacleRiskTierName(risk.worst_tier));
+  appendJsonBool(stream, std::string{prefix} + "outside_bounds", risk.outside_bounds);
+  appendJsonBool(stream, std::string{prefix} + "intersects_raw_occupied",
+                 risk.intersects_raw_occupied);
+  appendJsonNumber(stream, std::string{prefix} + "critical_exposure_m",
+                   risk.critical_exposure_m);
+  appendJsonNumber(stream, std::string{prefix} + "planning_exposure_m",
+                   risk.planning_exposure_m);
+  appendJsonNumber(stream, std::string{prefix} + "minimum_raw_clearance_m",
+                   risk.minimum_raw_clearance_m);
+}
+
+void appendTrajectoryRiskJson(std::ostream& stream,
+                              const TrajectoryPlannerStats& stats) {
+  appendPathRiskJson(stream, "final_risk_", stats.final_risk);
+  constexpr std::size_t kMaximumStageDiagnostics = 16U;
+  const std::size_t stage_count =
+      std::min(stats.stage_risk.size(), kMaximumStageDiagnostics);
+  appendJsonSize(stream, "stage_risk_count", stage_count);
+  appendJsonBool(stream, "stage_risk_truncated", stats.stage_risk.size() > stage_count);
+  for (std::size_t index = 0U; index < stage_count; ++index) {
+    const TrajectoryStageRiskDiagnostic& stage = stats.stage_risk[index];
+    const std::string prefix = "stage_risk" + std::to_string(index) + "_";
+    appendJsonString(stream, prefix + "stage", stage.stage);
+    appendPathRiskJson(stream, prefix + "before_", stage.before);
+    appendPathRiskJson(stream, prefix + "after_", stage.after);
+    appendJsonBool(stream, prefix + "changed", stage.changed);
+    appendJsonBool(stream, prefix + "accepted", stage.accepted);
+    appendJsonBool(stream, prefix + "degraded", stage.degraded);
+  }
+}
+
+} // namespace
+
 std::string
 finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                                       const TrajectoryShapeDiagnostics& shape) {
@@ -12,6 +51,7 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
   stream << "{" << trajectoryTimingDiagnosticsJsonFields(stats);
   stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(stats.quality)
          << "\"";
+  appendTrajectoryRiskJson(stream, stats);
   appendJsonSize(stream, "corridor_parallel_workers_used",
                  stats.corridor.parallel_workers_used);
   appendJsonBool(stream, "corridor_samples_reused", stats.corridor.samples_reused);
@@ -20,10 +60,8 @@ finalTrajectoryDiagnosticsSummaryJson(const TrajectoryPlannerStats& stats,
                    stats.corridor.route_fingerprint);
   appendJsonUint64(stream, "corridor_config_fingerprint",
                    stats.corridor.config_fingerprint);
-  appendJsonUint64(stream, "corridor_grid_cells_hash",
-                   stats.corridor.prohibited_grid_fingerprint.cells_hash);
-  appendJsonUint64(stream, "corridor_grid_inflated_hash",
-                   stats.corridor.prohibited_grid_fingerprint.inflated_hash);
+  appendJsonUint64(stream, "corridor_raw_cells_hash",
+                   stats.corridor.raw_occupancy_fingerprint.cells_hash);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",
@@ -75,6 +113,12 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
                    delivery.truncation_generation);
   appendJsonUint64(stream, "delivery_temporary_prefix_fingerprint",
                    delivery.temporary_prefix_fingerprint);
+  appendJsonUint64(stream, "delivery_obstacle_snapshot_producer_instance_id",
+                   delivery.obstacle_snapshot_producer_instance_id);
+  appendJsonUint64(stream, "delivery_obstacle_snapshot_revision",
+                   delivery.obstacle_snapshot_revision);
+  appendJsonUint64(stream, "delivery_risk_policy_fingerprint",
+                   delivery.risk_policy_fingerprint);
   appendJsonUint64(stream, "delivery_blocker_detected_stamp_ns",
                    delivery.blocker_detected_stamp_ns);
   appendJsonUint64(stream, "delivery_trajectory_build_started_stamp_ns",
@@ -133,6 +177,7 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
          << "\"";
   stream << ",\"trajectory_quality\":\"" << trajectoryQualityName(stats.quality)
          << "\"";
+  appendTrajectoryRiskJson(stream, stats);
   appendJsonSize(stream, "trajectory_input_points", stats.input_points);
   appendJsonSize(stream, "trajectory_compact_segments", stats.compact_segments);
   appendJsonSize(stream, "trajectory_line_segments", stats.line_segments);
@@ -197,10 +242,8 @@ trajectoryPlannerDiagnosticsJson(const std::uint64_t planner_path_id,
                    stats.corridor.route_fingerprint);
   appendJsonUint64(stream, "corridor_config_fingerprint",
                    stats.corridor.config_fingerprint);
-  appendJsonUint64(stream, "corridor_grid_cells_hash",
-                   stats.corridor.prohibited_grid_fingerprint.cells_hash);
-  appendJsonUint64(stream, "corridor_grid_inflated_hash",
-                   stats.corridor.prohibited_grid_fingerprint.inflated_hash);
+  appendJsonUint64(stream, "corridor_raw_cells_hash",
+                   stats.corridor.raw_occupancy_fingerprint.cells_hash);
   appendJsonNumber(stream, "corridor_sample_build_duration_ms",
                    stats.corridor.sample_build_duration_ms);
   appendJsonNumber(stream, "corridor_raycast_duration_ms",

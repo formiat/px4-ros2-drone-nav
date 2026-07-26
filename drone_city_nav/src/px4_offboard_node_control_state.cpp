@@ -55,16 +55,16 @@ Px4OffboardNode::motionPhaseName(const bool hold_position) const noexcept {
   return "path_following";
 }
 
-[[nodiscard]] bool Px4OffboardNode::prohibitedGridFresh() const {
-  if (!prohibited_grid_valid_ || last_prohibited_grid_update_ns_ <= 0) {
+[[nodiscard]] bool Px4OffboardNode::rawObstacleSnapshotFresh() const {
+  if (!raw_obstacle_grid_valid_ || last_raw_obstacle_grid_update_ns_ <= 0) {
     return false;
   }
   if (max_clearance_grid_staleness_ns_ <= 0) {
     return true;
   }
   const std::int64_t now_ns = get_clock()->now().nanoseconds();
-  return now_ns >= last_prohibited_grid_update_ns_ &&
-         now_ns - last_prohibited_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
+  return now_ns >= last_raw_obstacle_grid_update_ns_ &&
+         now_ns - last_raw_obstacle_grid_update_ns_ <= max_clearance_grid_staleness_ns_;
 }
 
 [[nodiscard]] bool Px4OffboardNode::localPositionFresh() const {
@@ -80,36 +80,37 @@ Px4OffboardNode::motionPhaseName(const bool hold_position) const noexcept {
 }
 
 [[nodiscard]] std::optional<OccupancyGrid2D>
-Px4OffboardNode::currentProhibitedGrid() const {
-  if (!prohibited_grid_valid_ || !(prohibited_grid_.info.resolution > 0.0F) ||
-      prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U ||
-      prohibited_grid_.info.width >
+Px4OffboardNode::currentRawObstacleGrid() const {
+  if (!raw_obstacle_grid_valid_ || !(raw_obstacle_grid_.info.resolution > 0.0F) ||
+      raw_obstacle_grid_.info.width == 0U || raw_obstacle_grid_.info.height == 0U ||
+      raw_obstacle_grid_.info.width >
           static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-      prohibited_grid_.info.height >
+      raw_obstacle_grid_.info.height >
           static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
     return std::nullopt;
   }
 
-  const auto width = static_cast<int>(prohibited_grid_.info.width);
-  const auto height = static_cast<int>(prohibited_grid_.info.height);
+  const auto width = static_cast<int>(raw_obstacle_grid_.info.width);
+  const auto height = static_cast<int>(raw_obstacle_grid_.info.height);
   const std::size_t expected_data_size =
       static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-  if (prohibited_grid_.data.size() != expected_data_size) {
+  if (raw_obstacle_grid_.data.size() != expected_data_size) {
     return std::nullopt;
   }
 
   OccupancyGrid2D grid{GridBounds{
-      prohibited_grid_.info.origin.position.x, prohibited_grid_.info.origin.position.y,
-      static_cast<double>(prohibited_grid_.info.resolution), width, height}};
+      raw_obstacle_grid_.info.origin.position.x,
+      raw_obstacle_grid_.info.origin.position.y,
+      static_cast<double>(raw_obstacle_grid_.info.resolution), width, height}};
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const GridIndex cell{x, y};
       const std::size_t index =
           static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
           static_cast<std::size_t>(x);
-      if (prohibited_grid_.data[index] >= kInflatedOccupancyValue) {
+      if (raw_obstacle_grid_.data[index] >= kRawOccupiedValue) {
         grid.setOccupied(cell);
-      } else if (prohibited_grid_.data[index] == 0) {
+      } else if (raw_obstacle_grid_.data[index] == 0) {
         grid.setFree(cell);
       }
     }

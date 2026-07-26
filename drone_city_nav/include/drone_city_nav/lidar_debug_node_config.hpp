@@ -16,7 +16,7 @@ namespace drone_city_nav {
 
 struct LidarDebugNodeTopics {
   std::string lidar{"/scan"};
-  std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
+  std::string raw_obstacle_grid{"/drone_city_nav/raw_obstacle_grid"};
   std::string memory_grid{"/drone_city_nav/obstacle_memory_grid"};
   std::string path{"/drone_city_nav/final_trajectory_path"};
   std::string pointcloud{"/drone_city_nav/lidar_debug_points"};

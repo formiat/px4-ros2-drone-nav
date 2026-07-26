@@ -14,7 +14,7 @@ namespace {
 void occupyWorldPoint(OccupancyGrid2D& grid, const Point2 point) {
   const std::optional<GridIndex> cell = grid.worldToCell(point);
   ASSERT_TRUE(cell.has_value());
-  grid.setOccupied(*cell);
+  grid.setOccupied(cell.value());
 }
 
 } // namespace
@@ -62,7 +62,7 @@ TEST(RecedingHorizonTrajectoryPlanner, RejectsProhibitedCandidates) {
   const RolloutGridRejectionDiagnostic first_grid_rejection =
       result.diagnostics.first_grid_rejection.value_or(
           RolloutGridRejectionDiagnostic{});
-  EXPECT_EQ(first_grid_rejection.reason, RolloutGridRejectReason::kProhibited);
+  EXPECT_EQ(first_grid_rejection.reason, RolloutGridRejectReason::kRawOccupied);
   EXPECT_TRUE(first_grid_rejection.cell.has_value());
 }
 
@@ -129,6 +129,34 @@ TEST(RecedingHorizonTrajectoryPlanner, FindsLeftOrRightAvoidanceCandidate) {
 
   ASSERT_FALSE(result.ranked_candidates.empty());
   EXPECT_NE(result.ranked_candidates.front().heading_offset_rad, 0.0);
+}
+
+TEST(RecedingHorizonTrajectoryPlanner, RiskTierDominatesDirectCandidateProgress) {
+  OccupancyGrid2D raw = freeGrid();
+  occupyWorldPoint(raw, Point2{7.0, 2.5});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      raw, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const RecedingHorizonTrajectoryPlanner planner{RolloutPlannerConfig{
+      .horizon_m = 12.0,
+      .heading_samples = 9U,
+      .speed_samples = 1U,
+      .minimum_speed_mps = 4.0,
+      .maximum_speed_mps = 4.0,
+      .maximum_lateral_acceleration_mps2 = 10.0,
+  }};
+
+  const RolloutResult result =
+      planner.plan(RolloutInput{.position = {0.0, 0.0},
+                                .velocity = {4.0, 0.0},
+                                .preferred_target = {30.0, 0.0},
+                                .grid = &raw,
+                                .risk_field = &risk});
+
+  ASSERT_FALSE(result.ranked_candidates.empty());
+  EXPECT_LT(result.ranked_candidates.front().heading_offset_rad, 0.0);
+  EXPECT_TRUE(result.ranked_candidates.front().risk.hardValid());
+  EXPECT_EQ(result.ranked_candidates.front().risk.worst_tier,
+            ObstacleRiskTier::kPreferred);
 }
 
 TEST(RecedingHorizonTrajectoryPlanner, EvaluatesOnlyTheRequestedGrid) {

@@ -239,31 +239,23 @@ known-static classification happens first for diagnostics, including beams
 whose endpoint is below `min_projected_lidar_altitude_m`, but an
 `altitude_rejected` beam still cannot mutate either grid.
 
-## Raw, Prohibited, And Planning Clearance
+## Raw Occupancy And Soft Risk
 
-Raw obstacles are direct evidence. The planner merges raw sources and produces:
-
-- prohibited grid: hard safety grid;
-- planning clearance: extra planner margin.
+Raw obstacles are direct evidence. The planner merges raw sources once and
+builds an occupied-distance field. It does not materialize prohibited or
+planning-clearance occupancy grids.
 
 The current default is:
 
 ```yaml
 inflation_radius_m: 1.0
 planning_clearance_m: 3.0
-local_inflation_relaxation_radius_m: 5.0
 ```
 
-The local inflation relaxation is applied only to temporary runtime and planning
-grid copies around the current physical vehicle position. It never removes raw
-occupied cells from static map, current lidar, or accumulated memory.
-
-Grid-dependent path and trajectory stages try those temporary copies in a fixed
-order: planning clearance first, then runtime prohibited. Each stage performs
-its own ordered attempts and validates its output against the grid for that
-attempt. The final executable trajectory is checked against freshly rebuilt
-copies in the same order before publication. `GRID_ATTEMPT_SELECTION` reports
-where the preferred clearance had to be relaxed.
+Raw occupied cells and evaluation bounds are hard rejects. The former 1 m
+inflation boundary is now the critical risk tier. The preferred boundary is
+4 m in static mode and 6 m in no-static mode. A shared lexicographic comparator
+orders A*, rollout, refinement, repair, handover, and final validation.
 
 ## Atomic Memory Transport
 
@@ -286,9 +278,8 @@ pair, and records both DDS sequence gaps and replacements in that pending slot.
 At the start of each planning check, the pair is moved into the active planner
 state. The active pair remains immutable for the rest of that planning cycle.
 
-The prohibited grid is published for validation and visualization. Planning
-clearance affects route/trajectory construction and should not be interpreted
-as a hard runtime failure by itself.
+The atomic raw obstacle snapshot is published for runtime validation. Its
+debug-only raw grid mirror is published for visualization.
 
 ## RViz Outputs
 
@@ -300,7 +291,8 @@ Useful visualization topics:
 - `/drone_city_nav/obstacle_memory_grid`
 - `/drone_city_nav/obstacle_memory_provenance`
 - `/drone_city_nav/obstacle_memory_snapshot`
-- `/drone_city_nav/prohibited_grid`
+- `/drone_city_nav/raw_obstacle_snapshot`
+- `/drone_city_nav/raw_obstacle_grid`
 - `/drone_city_nav/lidar_debug_points`
 - `/drone_city_nav/raw_lidar_hit_points_3d`
 - `/drone_city_nav/remembered_lidar_points`
@@ -312,11 +304,12 @@ Useful visualization topics:
 
 - If lidar hits are shifted, check PX4 origin, heading source, mount yaw, and
   attitude compensation.
-- If obstacles appear too wide, check inflation and planning clearance.
+- If routes run too close to obstacles, check critical and preferred risk
+  thresholds.
 - If memory contains stale obstacles, inspect hit/miss scoring and free-space
   clearing.
-- If the planner replans unexpectedly, compare raw sources, prohibited grid,
-  and the current executable trajectory.
+- If the planner replans unexpectedly, compare raw sources, the atomic raw
+  snapshot, and the current executable trajectory.
 
 ## Obstacle Evidence Contract
 
@@ -357,13 +350,13 @@ These sources are complementary:
 - static map gives persistent structure;
 - current lidar gives fresh evidence;
 - memory gives temporal continuity;
-- inflation turns merged evidence into safety space.
+- the occupied distance field turns merged evidence into risk tiers.
 
 Known-passage geometry is used consistently by both lidar ingestion paths. The
 optional classifier never filters static-map cells and never changes A* route
 selection. When enabled, it only prevents known physical masses from becoming
 new dynamic evidence; a real object before a wall or inside an opening still
-follows normal prohibited grid and replan behavior.
+follows normal raw obstacle snapshot and replan behavior.
 
 The ground provider follows the same shared decision path but does not add a 3D
 planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells
@@ -371,26 +364,16 @@ carry sparse diagnostic 3D provenance from the observation that created and
 last confirmed the cell; rejected ground observations are kept only in bounded
 counters/log samples and never become obstacle-memory provenance.
 
-## Inflation And Distance Fields
+## Risk And Distance Fields
 
-Inflation answers whether a cell is too close to obstacle evidence. Clearance
-answers how far the nearest obstacle evidence is. These two ideas can come
-from the same distance field:
+The planner builds one occupied distance field from merged raw occupancy.
+Distance below `inflation_radius_m` is the critical tier; distance below
+`inflation_radius_m + planning_clearance_m` is the planning tier. These tiers
+are soft lexicographic preferences, not materialized occupied grids.
 
-- cells with distance less than hard inflation become prohibited;
-- cells with distance less than hard inflation plus planning clearance become
-  planning-disfavored;
-- the raw distance can be reused for diagnostics, corridor clearance, and
-  scoring.
-
-The current architecture already treats clearance as a reusable artifact where
-possible. A future Euclidean Distance Transform implementation would make this
-relationship more direct: build one distance-to-obstacle field, threshold it
-for hard and planning grids, and reuse it for clearance diagnostics.
-
-The risk of changing inflation is boundary behavior. Two algorithms can differ
-by one cell near the radius threshold. Any replacement must be tested against
-expected hard safety behavior and RViz output.
+Raw occupied and outside-ROI remain hard rejects. The same field supplies
+corridor clearance and bounded diagnostics. Boundary behavior is covered by
+exact tier and segment-exposure tests.
 
 ## Motion Compensation Diagnostics
 
@@ -408,15 +391,15 @@ Symptoms of bad compensation:
 - obstacles appear to move relative to the world when the drone rolls or
   pitches.
 
-When debugging, compare current lidar points, obstacle memory, prohibited grid,
-and static map in RViz. The layers should agree in map coordinates even though
-they are produced by different stages.
+When debugging, compare current lidar points, obstacle memory, raw obstacle
+grid, and static map in RViz. The layers should agree in map coordinates even
+though they are produced by different stages.
 
 ## Mapping Diagnostics Checklist
 
 For an unexpected replan, inspect:
 
-1. Was the prohibited intersection caused by static map, memory, or current
+1. Was the raw occupied intersection caused by static map, memory, or current
    lidar?
 2. Did the raw evidence actually overlap the trajectory, or only the inflated
    margin?

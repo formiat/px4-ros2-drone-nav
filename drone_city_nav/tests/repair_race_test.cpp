@@ -12,8 +12,8 @@
 namespace drone_city_nav {
 namespace {
 
-[[nodiscard]] PlanningGridVersion version(const std::uint64_t revision = 1U) {
-  return PlanningGridVersion{
+[[nodiscard]] RawObstacleVersion version(const std::uint64_t revision = 1U) {
+  return RawObstacleVersion{
       .build_revision = revision,
       .memory_producer_instance_id = 7U,
       .memory_sequence = 19U,
@@ -53,11 +53,13 @@ namespace {
     }
   }
   RepairSnapshot value = snapshot();
-  value.grids.push_back(RepairGridSnapshot{
-      .name = "runtime_prohibited",
+  value.risk_snapshot = RepairRiskSnapshot{
+      .name = "raw_risk",
       .grid = grid,
-      .clearance = ClearanceField2D::build(grid, 10.0, ClearanceSource::kProhibited),
-  });
+      .risk = ObstacleRiskField::build(
+          grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0}),
+      .clearance = ClearanceField2D::build(grid, 10.0, ClearanceSource::kOccupied),
+  };
   value.old_trajectory = ExecutableTrajectoryArtifact{
       .path_id = value.blocked_path_id,
       .mission_goal = Point2{30.0, 0.0},
@@ -359,7 +361,7 @@ TEST(RepairRaceCoordinator, ProductionRaceHandsOffOneValidTrajectory) {
 
 TEST(RepairFreshValidation, NewRevisionWithSameGridAcceptsCandidate) {
   const RepairResult candidate = trajectoryResult();
-  PlanningGridVersion fresh_version = candidate.source_grid_version;
+  RawObstacleVersion fresh_version = candidate.source_grid_version;
   fresh_version.build_revision += 1U;
   const OccupancyGrid2D grid = validationGrid();
   const std::array prefix{Point2{0.0, 0.0}, Point2{1.0, 0.0}};
@@ -378,7 +380,7 @@ TEST(RepairFreshValidation, NewRevisionWithSameGridAcceptsCandidate) {
 
 TEST(RepairFreshValidation, NewLidarBlockerRejectsOnlyAffectedCandidate) {
   const RepairResult candidate = trajectoryResult();
-  PlanningGridVersion fresh_version = candidate.source_grid_version;
+  RawObstacleVersion fresh_version = candidate.source_grid_version;
   fresh_version.build_revision += 1U;
   fresh_version.lidar_update_ns += 100;
   OccupancyGrid2D blocked_grid = validationGrid();

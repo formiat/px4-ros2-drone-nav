@@ -12,7 +12,6 @@ namespace drone_city_nav {
 
 enum class ClearanceSource {
   kOccupied,
-  kProhibited,
 };
 
 class ClearanceField2D {
@@ -55,7 +54,6 @@ private:
   double max_distance_m_{0.0};
   ClearanceSource source_{ClearanceSource::kOccupied};
   std::uint64_t cells_hash_{0U};
-  std::uint64_t inflated_hash_{0U};
   std::optional<ClearanceField2D> field_;
 };
 

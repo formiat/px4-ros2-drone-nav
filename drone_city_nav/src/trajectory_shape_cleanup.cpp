@@ -57,7 +57,7 @@ isIsolatedCurvatureSpike(const std::span<const TrajectoryPointSample> samples,
   }
   return std::ranges::all_of(
       grid.cellsOnLine(*start_cell, *end_cell),
-      [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
+      [&grid](const GridIndex cell) { return !grid.isOccupied(cell); });
 }
 
 [[nodiscard]] bool localSpikeSmoothingTraversable(const OccupancyGrid2D& grid,

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace drone_city_nav {
@@ -144,14 +145,24 @@ geometryWithinLimits(const std::span<const TrajectoryPointSample> samples,
          max_sample_heading_delta_rad <= config.max_sample_heading_delta_rad;
 }
 
-} // namespace
+[[nodiscard]] int handoverFailureRank(const std::string_view reason) noexcept {
+  if (reason == "raw_occupied" || reason == "outside_risk_bounds" ||
+      reason == "candidate_raw_invalid") {
+    return 0;
+  }
+  if (reason == "geometry_limit_exceeded") {
+    return 1;
+  }
+  return 2;
+}
 
-HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
+HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandoverLayout(
     const std::span<const TrajectoryPointSample> current_samples,
     const std::span<const TrajectoryPointSample> candidate_samples,
     const HorizontalTrajectoryHandoverState& state,
     const HorizontalTrajectoryHandoverConfig& config,
-    const OccupancyGrid2D* const validation_grid) {
+    const TrajectoryRiskContext* const risk_context, const double lookahead_scale,
+    const double bridge_scale_factor) {
   HorizontalTrajectoryHandoverResult result{};
   result.attempted = true;
   if (!config.enabled) {
@@ -167,9 +178,18 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
     result.reason = "trajectory_invalid";
     return result;
   }
-  if (config.require_validation_grid && validation_grid == nullptr) {
-    result.reason = "validation_grid_unavailable";
+  if (config.require_risk_context &&
+      (risk_context == nullptr || !risk_context->valid())) {
+    result.reason = "risk_context_unavailable";
     return result;
+  }
+  if (risk_context != nullptr && risk_context->valid()) {
+    result.candidate_risk = risk_context->risk_field->evaluate(
+        *risk_context->raw_occupancy, candidate_samples);
+    if (!result.candidate_risk.hardValid()) {
+      result.reason = "candidate_raw_invalid";
+      return result;
+    }
   }
 
   const std::optional<TrajectoryProjection> old_projection =
@@ -190,6 +210,7 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
       (!std::isfinite(result.tangent_jump_rad) ||
        result.tangent_jump_rad <= config.trigger_tangent_jump_rad)) {
     result.reason = "already_compatible";
+    result.risk_quality = HandoverRiskQuality::kStrict;
     return result;
   }
 
@@ -236,9 +257,9 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
                  *hard_window_s - std::max(config.sample_step_m, kTinyDistanceM));
   }
   double candidate_join_s_m =
-      std::min(candidate_samples.back().s_m, candidate_projection->s_m +
-                                                 result.prefix_distance_m +
-                                                 config.candidate_lookahead_distance_m);
+      std::min(candidate_samples.back().s_m,
+               candidate_projection->s_m + result.prefix_distance_m +
+                   config.candidate_lookahead_distance_m * lookahead_scale);
   if (candidate_target.vertical_hard_window_active) {
     const std::optional<double> exit_s_m =
         hardWindowExitStation(candidate_samples, candidate_projection->s_m);
@@ -246,10 +267,10 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
       result.reason = "hard_window_prefix_not_reconnectable";
       return result;
     }
-    candidate_join_s_m =
-        std::min(candidate_samples.back().s_m,
-                 *exit_s_m + std::max(0.0, config.hard_window_exit_settle_distance_m) +
-                     std::max(0.0, config.candidate_lookahead_distance_m));
+    candidate_join_s_m = std::min(
+        candidate_samples.back().s_m,
+        *exit_s_m + std::max(0.0, config.hard_window_exit_settle_distance_m) +
+            std::max(0.0, config.candidate_lookahead_distance_m * lookahead_scale));
   } else if (const std::optional<double> hard_window_s = firstHardWindowStationAfter(
                  candidate_samples, candidate_projection->s_m);
              hard_window_s.has_value()) {
@@ -290,7 +311,7 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
   // The Hermite derivatives describe the bridge chord, not the full retained
   // prefixes. Scaling them by both prefix lengths can overshoot badly when a
   // protected hard-window prefix is long.
-  const double bridge_scale_m = result.join_distance_m;
+  const double bridge_scale_m = result.join_distance_m * bridge_scale_factor;
   const std::size_t bridge_steps = static_cast<std::size_t>(
       std::max(4.0, std::ceil(std::max(result.join_distance_m, bridge_scale_m) /
                               std::max(config.sample_step_m, 0.1))));
@@ -320,17 +341,17 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
     result.reason = "geometry_limit_exceeded";
     return result;
   }
-  if (validation_grid != nullptr) {
-    std::vector<Point2> points;
-    points.reserve(stitched.size());
-    for (const TrajectoryPointSample& sample : stitched) {
-      points.push_back(sample.point);
-    }
-    if (!pathIsTraversable(*validation_grid, points,
-                           &result.non_traversable_segment_index)) {
-      result.reason = "non_traversable";
+  if (risk_context != nullptr && risk_context->valid()) {
+    result.stitched_risk =
+        risk_context->risk_field->evaluate(*risk_context->raw_occupancy, stitched);
+    if (!result.stitched_risk.hardValid()) {
+      result.reason =
+          result.stitched_risk.outside_bounds ? "outside_risk_bounds" : "raw_occupied";
       return result;
     }
+    result.risk_quality = pathRiskLess(result.candidate_risk, result.stitched_risk)
+                              ? HandoverRiskQuality::kDegraded
+                              : HandoverRiskQuality::kStrict;
   }
 
   result.stitched_join_s_m = stitched[stitched_join_index].s_m;
@@ -340,6 +361,66 @@ HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
   result.applied = true;
   result.reason = "predicted_prefix_bridge";
   return result;
+}
+
+} // namespace
+
+HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
+    const std::span<const TrajectoryPointSample> current_samples,
+    const std::span<const TrajectoryPointSample> candidate_samples,
+    const HorizontalTrajectoryHandoverState& state,
+    const HorizontalTrajectoryHandoverConfig& config,
+    const TrajectoryRiskContext* const risk_context) {
+  HorizontalTrajectoryHandoverResult best{};
+  RankedPathCost best_cost{};
+  bool best_available = false;
+  int best_failure_rank = std::numeric_limits<int>::max();
+  std::size_t layout_index = 0U;
+  for (const double lookahead_scale : {0.75, 1.0, 1.25}) {
+    for (const double bridge_scale : {0.75, 1.0, 1.25}) {
+      HorizontalTrajectoryHandoverResult attempt =
+          buildHorizontalTrajectoryHandoverLayout(current_samples, candidate_samples,
+                                                  state, config, risk_context,
+                                                  lookahead_scale, bridge_scale);
+      ++layout_index;
+      if (std::string_view{attempt.reason} == "already_compatible") {
+        attempt.layouts_evaluated = layout_index;
+        return attempt;
+      }
+      if (!attempt.applied) {
+        const int failure_rank = handoverFailureRank(attempt.reason);
+        if (!best_available && failure_rank < best_failure_rank) {
+          best = std::move(attempt);
+          best_failure_rank = failure_rank;
+        }
+        continue;
+      }
+      const RankedPathCost cost{
+          .risk = attempt.stitched_risk,
+          .algorithm_cost = attempt.max_abs_curvature_1pm,
+          .deterministic_tiebreak = layout_index,
+      };
+      if (!best_available || rankedPathCostLess(cost, best_cost)) {
+        best = std::move(attempt);
+        best_cost = cost;
+        best_available = true;
+      }
+    }
+  }
+  best.layouts_evaluated = layout_index;
+  return best;
+}
+
+const char* handoverRiskQualityName(const HandoverRiskQuality quality) noexcept {
+  switch (quality) {
+    case HandoverRiskQuality::kUnknown:
+      return "unknown";
+    case HandoverRiskQuality::kStrict:
+      return "strict";
+    case HandoverRiskQuality::kDegraded:
+      return "degraded_handover";
+  }
+  return "unknown";
 }
 
 } // namespace drone_city_nav

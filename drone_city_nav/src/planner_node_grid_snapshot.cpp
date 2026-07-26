@@ -28,28 +28,14 @@ void hashValue(std::uint64_t& hash, const std::string_view value) noexcept {
 
 } // namespace
 
-std::optional<PreparedPlanningGridSnapshot>
-PlannerNode::preparePlanningGridSnapshot(const PlanningGridBuildResult& build_result,
-                                         const Point2 relaxation_center) {
+std::optional<PreparedObstacleRiskSnapshot>
+PlannerNode::preparePlanningGridSnapshot(const ObstacleFieldBuildResult& build_result,
+                                         const Point2 /*current_position*/) {
   std::uint64_t config_fingerprint = kFnvOffsetBasis;
   hashValue(config_fingerprint, static_cast<std::uint64_t>(use_static_map_ ? 1U : 0U));
   hashValue(config_fingerprint, inflation_radius_m_);
   hashValue(config_fingerprint, planning_clearance_m_);
   hashValue(config_fingerprint, planner_core_.config().clearance_diagnostic_radius_m);
-  hashValue(config_fingerprint, local_inflation_relaxation_radius_m_);
-  hashValue(
-      config_fingerprint,
-      static_cast<std::uint64_t>(directed_inflation_escape_config_.enabled ? 1U : 0U));
-  hashValue(config_fingerprint, directed_inflation_escape_config_.tunnel_width_m);
-  hashValue(config_fingerprint, directed_inflation_escape_config_.max_length_m);
-  hashValue(config_fingerprint, directed_inflation_escape_config_.exit_depth_m);
-  hashValue(config_fingerprint,
-            directed_inflation_escape_config_.inflation_exposure_cost_weight);
-  hashValue(config_fingerprint,
-            directed_inflation_escape_config_.occupied_clearance_cost_weight);
-  hashValue(
-      config_fingerprint,
-      static_cast<std::uint64_t>(directed_inflation_escape_config_.stable_exit_cycles));
   hashValue(config_fingerprint, fallback_grid_bounds_.origin_x);
   hashValue(config_fingerprint, fallback_grid_bounds_.origin_y);
   hashValue(config_fingerprint, fallback_grid_bounds_.resolution_m);
@@ -59,13 +45,8 @@ PlannerNode::preparePlanningGridSnapshot(const PlanningGridBuildResult& build_re
             static_cast<std::uint64_t>(fallback_grid_bounds_.height_cells));
   hashValue(config_fingerprint, static_map_resolved_path_.string());
 
-  return planning_grid_snapshot_builder_.prepare(PlanningGridPreparationInput{
+  return planning_grid_snapshot_builder_.prepare(ObstacleRiskPreparationInput{
       .build_result = &build_result,
-      .relaxation_center = relaxation_center,
-      .mission_goal = goal_,
-      .relaxation_radius_m = local_inflation_relaxation_radius_m_,
-      .clearance_max_distance_m = planner_core_.config().clearance_diagnostic_radius_m,
-      .directed_escape = directed_inflation_escape_config_,
       .config_fingerprint = config_fingerprint,
   });
 }

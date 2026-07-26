@@ -12,7 +12,6 @@ namespace {
   grid.setFree(GridIndex{0, 0});
   grid.setOccupied(GridIndex{1, 0});
   grid.setOccupied(GridIndex{2, 1});
-  grid.rebuildInflation(1.1);
   return grid;
 }
 

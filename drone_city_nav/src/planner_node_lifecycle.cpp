@@ -71,8 +71,10 @@ PlannerNode::PlannerNode()
       },
       pose_options);
 
-  prohibited_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-      config.topics.prohibited_grid, rclcpp::QoS{1}.transient_local());
+  raw_obstacle_snapshot_pub_ = create_publisher<msg::RawObstacleSnapshot>(
+      config.topics.raw_obstacle_snapshot, rclcpp::QoS{1}.reliable().transient_local());
+  raw_obstacle_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
+      config.topics.raw_obstacle_grid, rclcpp::QoS{1}.transient_local());
   static_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       config.topics.static_map_grid, rclcpp::QoS{1}.transient_local());
   static_map_points_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -81,10 +83,6 @@ PlannerNode::PlannerNode()
       config.topics.static_building_markers, rclcpp::QoS{1}.transient_local());
   known_passage_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       config.topics.known_passage_markers, rclcpp::QoS{1}.transient_local());
-  directed_inflation_escape_markers_pub_ =
-      create_publisher<visualization_msgs::msg::MarkerArray>(
-          config.topics.directed_inflation_escape_markers,
-          rclcpp::QoS{1}.transient_local());
   path_pub_ = create_publisher<nav_msgs::msg::Path>(config.topics.path,
                                                     rclcpp::QoS{1}.reliable());
   path_id_pub_ = create_publisher<std_msgs::msg::UInt64>(config.topics.path_id,
@@ -97,6 +95,8 @@ PlannerNode::PlannerNode()
       config.topics.executable_trajectory, rclcpp::QoS{1}.reliable());
   waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
+  raw_obstacle_producer_instance_id_ = static_cast<std::uint64_t>(
+      std::max<std::int64_t>(1, get_clock()->now().nanoseconds()));
 
   loadConfiguredStaticMap();
   loadConfiguredKnownPassages();
@@ -122,30 +122,19 @@ PlannerNode::PlannerNode()
 
   RCLCPP_INFO(get_logger(),
               "Planner ready: start=(%.1f, %.1f) goal=(%.1f, %.1f) "
-              "map_mode=%s runtime_inflation=%.2fm planning_clearance=%.2fm "
-              "planning_effective_inflation=%.2fm "
-              "local_inflation_relaxation=%.2fm "
-              "directed_escape[enabled=%s width=%.2fm max_length=%.2fm "
-              "exit_depth=%.2fm mission_egress=%.2fm stable_cycles=%zu]",
+              "map_mode=%s risk_critical=%.2fm risk_preferred=%.2fm",
               start_.x, start_.y, goal_.x, goal_.y,
               use_static_map_ ? "static" : "no_static", inflation_radius_m_,
-              planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
-              local_inflation_relaxation_radius_m_,
-              directed_inflation_escape_config_.enabled ? "true" : "false",
-              directed_inflation_escape_config_.tunnel_width_m,
-              directed_inflation_escape_config_.max_length_m,
-              directed_inflation_escape_config_.exit_depth_m,
-              directed_inflation_escape_config_.mission_egress_distance_m,
-              directed_inflation_escape_config_.stable_exit_cycles);
+              inflation_radius_m_ + planning_clearance_m_);
   RCLCPP_INFO(get_logger(),
               "Planner mode policy: primary=%s no_static_astar_recovery=%s",
               use_static_map_ || !no_static_rollout_enabled_ ? "astar" : "rollout",
               no_static_astar_recovery_enabled_ ? "enabled" : "disabled");
   RCLCPP_INFO(get_logger(),
               "No-static rollout acceptance: minimum_length=%.2fm "
-              "minimum_unrelaxed_tail=%.2fm local_window=%s "
+              "local_window=%s "
               "local_window_extra_margin=%.2fm",
-              no_static_rollout_min_length_m_, no_static_rollout_min_unrelaxed_tail_m_,
+              no_static_rollout_min_length_m_,
               no_static_rollout_local_window_enabled_ ? "enabled" : "disabled",
               no_static_rollout_local_window_extra_margin_m_);
   RCLCPP_INFO(get_logger(),
@@ -171,14 +160,11 @@ PlannerNode::PlannerNode()
               config.topics.truncation_suffix_ack.c_str(),
               safe_trajectory_truncation_enabled_ ? "true" : "false");
   RCLCPP_INFO(get_logger(),
-              "Planning grid contract: raw_sources=[static,memory,current_lidar] "
-              "runtime_inflation=%.2fm planning_clearance=%.2fm "
-              "planning_effective_inflation=%.2fm "
-              "local_inflation_relaxation=%.2fm prohibited_output='%s'",
-              inflation_radius_m_, planning_clearance_m_,
-              inflation_radius_m_ + planning_clearance_m_,
-              local_inflation_relaxation_radius_m_,
-              config.topics.prohibited_grid.c_str());
+              "Obstacle risk contract: raw_sources=[static,memory,current_lidar] "
+              "critical_distance=%.2fm preferred_distance=%.2fm "
+              "raw_snapshot_output='%s'",
+              inflation_radius_m_, inflation_radius_m_ + planning_clearance_m_,
+              config.topics.raw_obstacle_snapshot.c_str());
   RCLCPP_INFO(
       get_logger(),
       "Planner trajectory pipeline: output_path=final_optimized_trajectory "
@@ -346,8 +332,6 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   initial_altitude_m_ = config.initial_altitude_m;
   inflation_radius_m_ = config.inflation_radius_m;
   planning_clearance_m_ = config.planning_grid_builder.planning_clearance_m;
-  local_inflation_relaxation_radius_m_ = config.local_inflation_relaxation_radius_m;
-  directed_inflation_escape_config_ = config.directed_inflation_escape;
   max_pose_staleness_ns_ = config.timing.max_pose_staleness_ns;
   stable_path_goal_tolerance_m_ = config.planner_core.stable_path_goal_tolerance_m;
   memory_occupied_value_ = config.memory_grid.occupied_value;
@@ -374,8 +358,6 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   no_static_terminal_braking_margin_m_ =
       config.no_static_rollout.terminal_braking_margin_m;
   no_static_rollout_min_length_m_ = config.no_static_rollout.minimum_length_m;
-  no_static_rollout_min_unrelaxed_tail_m_ =
-      config.no_static_rollout.minimum_unrelaxed_tail_m;
   no_static_rollout_local_window_enabled_ =
       config.no_static_rollout.local_planning_window_enabled;
   no_static_rollout_local_window_extra_margin_m_ =

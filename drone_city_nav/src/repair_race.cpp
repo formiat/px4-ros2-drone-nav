@@ -3,6 +3,7 @@
 #include "drone_city_nav/path_smoothing.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -49,19 +50,14 @@ private:
   std::deque<RepairResult> results_;
 };
 
-[[nodiscard]] std::vector<TrajectoryGridCandidate>
-gridCandidates(const RepairSnapshot& snapshot) {
-  std::vector<TrajectoryGridCandidate> candidates;
-  candidates.reserve(snapshot.grids.size());
-  for (const RepairGridSnapshot& grid : snapshot.grids) {
-    candidates.push_back(TrajectoryGridCandidate{
-        .name = grid.name,
-        .grid = &grid.grid,
-        .clearance_field = &grid.clearance,
-        .clearance_field_cache_hit = true,
-    });
-  }
-  return candidates;
+[[nodiscard]] TrajectoryRiskContext repairRiskContext(const RepairSnapshot& snapshot) {
+  return TrajectoryRiskContext{
+      .name = snapshot.risk_snapshot.name,
+      .raw_occupancy = &snapshot.risk_snapshot.grid,
+      .risk_field = &snapshot.risk_snapshot.risk,
+      .raw_clearance = &snapshot.risk_snapshot.clearance,
+      .raw_clearance_cache_hit = true,
+  };
 }
 
 [[nodiscard]] AStarConfig astarConfig(const RepairRaceConfig& config,
@@ -87,54 +83,51 @@ gridCandidates(const RepairSnapshot& snapshot) {
 
 struct RouteBuild {
   std::vector<Point2> points;
-  std::size_t grid_index{0U};
 };
 
 [[nodiscard]] std::optional<RouteBuild>
 computeRoute(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
              const Point2 start, const Point2 goal, const bool after_hold,
              const std::stop_token stop_token, std::size_t& astar_runs) {
-  for (std::size_t grid_index = 0U; grid_index < snapshot.grids.size(); ++grid_index) {
-    if (stop_token.stop_requested()) {
-      return std::nullopt;
-    }
-    const RepairGridSnapshot& grid = snapshot.grids[grid_index];
-    PlannerCore core{config.planner_core};
-    ++astar_runs;
-    const auto path = core.computePath(PathComputationInput{
-        .grid = &grid.grid,
-        .current_position = start,
-        .goal = goal,
-        .astar = astarConfig(config, snapshot.anchor, after_hold),
-        .prohibited_clearance_field = &grid.clearance,
-        .prohibited_clearance_field_cache_hit = true,
-        .stop_token = stop_token,
-    });
-    if (!path.has_value()) {
-      continue;
-    }
-    const std::vector<GridIndex>& cells =
-        path->smoothed_cells.empty() ? path->astar.path : path->smoothed_cells;
-    std::vector<Point2> points = cellsToPoints(grid.grid, cells);
-    if (points.empty()) {
-      continue;
-    }
-    if (distance(start, points.front()) > 1.0e-6) {
-      points.insert(points.begin(), start);
-    } else {
-      points.front() = start;
-    }
-    if (distance(goal, points.back()) > 1.0e-6) {
-      points.push_back(goal);
-    } else {
-      points.back() = goal;
-    }
-    if (!pathIsTraversable(grid.grid, points)) {
-      continue;
-    }
-    return RouteBuild{.points = std::move(points), .grid_index = grid_index};
+  if (stop_token.stop_requested()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  const RepairRiskSnapshot& risk_snapshot = snapshot.risk_snapshot;
+  PlannerCore core{config.planner_core};
+  ++astar_runs;
+  const auto path = core.computePath(PathComputationInput{
+      .grid = &risk_snapshot.grid,
+      .current_position = start,
+      .goal = goal,
+      .astar = astarConfig(config, snapshot.anchor, after_hold),
+      .prohibited_clearance_field = &risk_snapshot.clearance,
+      .prohibited_clearance_field_cache_hit = true,
+      .stop_token = stop_token,
+  });
+  if (!path.has_value()) {
+    return std::nullopt;
+  }
+  const std::vector<GridIndex>& cells =
+      path->smoothed_cells.empty() ? path->astar.path : path->smoothed_cells;
+  std::vector<Point2> points = cellsToPoints(risk_snapshot.grid, cells);
+  if (points.empty()) {
+    return std::nullopt;
+  }
+  if (distance(start, points.front()) > 1.0e-6) {
+    points.insert(points.begin(), start);
+  } else {
+    points.front() = start;
+  }
+  if (distance(goal, points.back()) > 1.0e-6) {
+    points.push_back(goal);
+  } else {
+    points.back() = goal;
+  }
+  const PathRiskScore risk = risk_snapshot.risk.evaluate(risk_snapshot.grid, points);
+  if (!risk.hardValid()) {
+    return std::nullopt;
+  }
+  return RouteBuild{.points = std::move(points)};
 }
 
 [[nodiscard]] TrajectoryPlannerConfig
@@ -154,16 +147,17 @@ singleThreadConfig(const RepairRaceConfig& config) {
   geometry_config.vertical_profile.enabled = false;
   geometry_config.known_passage_validation.enabled = false;
   geometry_config.passage_insertion.enabled = false;
-  const std::vector<TrajectoryGridCandidate> grids = gridCandidates(snapshot);
+  const TrajectoryRiskContext risk_context = repairRiskContext(snapshot);
+  const std::array risk_contexts{risk_context};
   return planOptimizedTrajectory(
       TrajectoryPlannerInput{
           .route_points = route.points,
-          .prohibited_grid = &snapshot.grids[route.grid_index].grid,
-          .prohibited_clearance_field = &snapshot.grids[route.grid_index].clearance,
+          .prohibited_grid = &snapshot.risk_snapshot.grid,
+          .prohibited_clearance_field = &snapshot.risk_snapshot.clearance,
           .prohibited_clearance_field_cache_hit = true,
           .precomputed_corridor_samples = {},
           .known_passage_map = nullptr,
-          .grid_candidates = grids,
+          .risk_contexts = risk_contexts,
           .passage_insertion_start_mode =
               after_hold ? PassageInsertionStartMode::kTerminalHoldRestart
                          : PassageInsertionStartMode::kMovingJoin,
@@ -175,7 +169,8 @@ singleThreadConfig(const RepairRaceConfig& config) {
 [[nodiscard]] TrajectoryPlannerResult
 finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
          const std::span<const TrajectoryPointSample> samples, const bool after_hold) {
-  const std::vector<TrajectoryGridCandidate> grids = gridCandidates(snapshot);
+  const TrajectoryRiskContext risk_context = repairRiskContext(snapshot);
+  const std::array risk_contexts{risk_context};
   TrajectoryPlannerConfig trajectory_config = singleThreadConfig(config);
   trajectory_config.initial_altitude_m = snapshot.anchor.z_m;
   return finalizeStitchedTrajectory(
@@ -183,7 +178,7 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
           .geometry_samples = samples,
           .known_passage_map =
               snapshot.passages.has_value() ? &*snapshot.passages : nullptr,
-          .grid_candidates = grids,
+          .risk_contexts = risk_contexts,
           .start_mode = after_hold ? PassageInsertionStartMode::kTerminalHoldRestart
                                    : PassageInsertionStartMode::kMovingJoin,
       },
@@ -216,7 +211,7 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
       result.reason = "astar_failed";
       continue;
     }
-    result.source_grid_index = route->grid_index;
+    result.source_risk_context = snapshot.risk_snapshot.name;
     TrajectoryPlannerResult geometry =
         planGeometry(snapshot, config, *route, after_hold, stop_token);
     if (!geometry.valid) {
@@ -273,20 +268,21 @@ finalize(const RepairSnapshot& snapshot, const RepairRaceConfig& config,
       result.reason = "astar_failed";
       continue;
     }
-    result.source_grid_index = route->grid_index;
-    const std::vector<TrajectoryGridCandidate> grids = gridCandidates(snapshot);
+    result.source_risk_context = snapshot.risk_snapshot.name;
+    const TrajectoryRiskContext risk_context = repairRiskContext(snapshot);
+    const std::array risk_contexts{risk_context};
     TrajectoryPlannerConfig trajectory_config = singleThreadConfig(config);
     trajectory_config.initial_altitude_m = snapshot.anchor.z_m;
     result.trajectory = planOptimizedTrajectory(
         TrajectoryPlannerInput{
             .route_points = route->points,
-            .prohibited_grid = &snapshot.grids[route->grid_index].grid,
-            .prohibited_clearance_field = &snapshot.grids[route->grid_index].clearance,
+            .prohibited_grid = &snapshot.risk_snapshot.grid,
+            .prohibited_clearance_field = &snapshot.risk_snapshot.clearance,
             .prohibited_clearance_field_cache_hit = true,
             .precomputed_corridor_samples = {},
             .known_passage_map =
                 snapshot.passages.has_value() ? &*snapshot.passages : nullptr,
-            .grid_candidates = grids,
+            .risk_contexts = risk_contexts,
             .passage_insertion_start_mode =
                 after_hold ? PassageInsertionStartMode::kTerminalHoldRestart
                            : PassageInsertionStartMode::kMovingJoin,
@@ -324,7 +320,7 @@ bool RepairRaceArbiter::consider(const RepairResult& result) {
   if (winner_selected_ || !result.valid || result.generation != generation_ ||
       result.blocked_path_id != blocked_path_id_ ||
       result.temporary_prefix_fingerprint != temporary_prefix_fingerprint_ ||
-      !planningGridVersionsEqual(result.source_grid_version, grid_version_)) {
+      !obstacleRiskVersionsEqual(result.source_grid_version, grid_version_)) {
     return false;
   }
   winner_selected_ = true;
@@ -342,16 +338,14 @@ RepairRaceOutcome runRepairRace(std::shared_ptr<const RepairSnapshot> snapshot,
                                 const RepairWinnerHandoff& winner_handoff) {
   RepairRaceOutcome outcome{};
   if (snapshot == nullptr || snapshot->generation == 0U ||
-      snapshot->blocked_path_id == 0U || snapshot->grids.empty() ||
+      snapshot->blocked_path_id == 0U || snapshot->risk_snapshot.grid.width() <= 0 ||
+      snapshot->risk_snapshot.grid.height() <= 0 ||
       !trajectorySamplesAreUsable(snapshot->old_trajectory.samples)) {
     return outcome;
   }
 
-  std::vector<const OccupancyGrid2D*> endpoint_grids;
-  endpoint_grids.reserve(snapshot->grids.size());
-  for (const RepairGridSnapshot& grid : snapshot->grids) {
-    endpoint_grids.push_back(&grid.grid);
-  }
+  const std::array<const OccupancyGrid2D*, 1U> endpoint_grids{
+      &snapshot->risk_snapshot.grid};
   const std::vector<ReconnectCandidate> reconnects = makeReconnectCandidates(
       snapshot->old_trajectory, snapshot->blocked_span, snapshot->truncation_s_m,
       config.reconnect_margins_m, endpoint_grids);
@@ -403,7 +397,7 @@ RepairRaceOutcome runRepairJobs(std::shared_ptr<const RepairSnapshot> snapshot,
         .kind = result.kind,
         .reconnect_margin_m = result.reconnect_margin_m,
         .reconnect_s_m = result.reconnect_s_m,
-        .source_grid_index = result.source_grid_index,
+        .source_risk_context = result.source_risk_context,
         .activation_mode = result.activation_mode,
         .reason = result.reason,
         .astar_runs = result.astar_runs,

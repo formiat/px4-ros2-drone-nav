@@ -84,6 +84,11 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
 
   EXPECT_NE(json.find("\"trajectory_optimizer_final_estimated_time_s\":12.5"),
             std::string::npos);
+  EXPECT_NE(json.find("\"final_risk_worst_tier\":\"planning_band\""),
+            std::string::npos);
+  EXPECT_NE(json.find("\"final_risk_planning_exposure_m\":8.25"), std::string::npos);
+  EXPECT_NE(json.find("\"stage_risk_count\":1"), std::string::npos);
+  EXPECT_NE(json.find("\"stage_risk0_stage\":\"turn_smoothing\""), std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_final_min_speed_limit_mps\":1"),
             std::string::npos);
   EXPECT_NE(json.find("\"trajectory_optimizer_final_max_speed_limit_mps\":10"),
@@ -121,8 +126,7 @@ TEST(TrajectoryDiagnosticsIo, SummaryJsonContainsTraversalAndShapeMetrics) {
   EXPECT_NE(json.find("\"corridor_reused_samples\":42"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_route_fingerprint\":4660"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_config_fingerprint\":9029"), std::string::npos);
-  EXPECT_NE(json.find("\"corridor_grid_cells_hash\":22136"), std::string::npos);
-  EXPECT_NE(json.find("\"corridor_grid_inflated_hash\":39612"), std::string::npos);
+  EXPECT_NE(json.find("\"corridor_raw_cells_hash\":22136"), std::string::npos);
   EXPECT_NE(json.find("\"corridor_sample_build_duration_ms\":6.25"), std::string::npos);
   EXPECT_NE(json.find("\"clearance_field_reused_by_corridor\":true"),
             std::string::npos);

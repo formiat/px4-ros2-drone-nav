@@ -7,7 +7,7 @@
 namespace drone_city_nav {
 
 bool PlannerNode::runConfirmedRepairRace(
-    const PreparedPlanningGridSnapshot& prepared,
+    const PreparedObstacleRiskSnapshot& prepared,
     const TruncationReplanState& truncation_replan,
     const TrajectoryDeliveryDiagnostics& delivery) {
   if (!partial_replan_config_.enabled || !truncation_replan.repair_context_valid) {
@@ -20,11 +20,12 @@ bool PlannerNode::runConfirmedRepairRace(
   snapshot->temporary_prefix_fingerprint =
       truncation_replan.temporary_prefix_fingerprint;
   snapshot->grid_version = prepared.version;
-  snapshot->grids.push_back(RepairGridSnapshot{
-      .name = "planning_clearance",
-      .grid = prepared.planning_clearance_grid,
-      .clearance = prepared.planning_clearance,
-  });
+  snapshot->risk_snapshot = RepairRiskSnapshot{
+      .name = "raw_risk",
+      .grid = prepared.raw_occupancy,
+      .risk = prepared.risk_field,
+      .clearance = prepared.raw_clearance,
+  };
   snapshot->old_trajectory = truncation_replan.old_trajectory;
   snapshot->anchor = trajectorySampleAtS(truncation_replan.old_trajectory.samples,
                                          truncation_replan.truncation_s_m);
@@ -77,12 +78,12 @@ bool PlannerNode::runConfirmedRepairRace(
     applyNavigationStateSnapshot(navigation);
     applyPendingMemorySnapshot(now_ns);
     applyLatestLidarInputSnapshot();
-    const std::optional<PlanningGridBuildResult> latest_build =
-        buildPlanningGrid(now_ns);
+    const std::optional<ObstacleFieldBuildResult> latest_build =
+        buildObstacleField(now_ns);
     if (!latest_build.has_value()) {
       return false;
     }
-    const std::optional<PreparedPlanningGridSnapshot> latest =
+    const std::optional<PreparedObstacleRiskSnapshot> latest =
         preparePlanningGridSnapshot(*latest_build, navigation.pose.position);
     if (!latest.has_value()) {
       return false;
@@ -111,7 +112,7 @@ bool PlannerNode::runConfirmedRepairRace(
         validateRepairResultOnFreshGrid(RepairFreshValidationInput{
             .candidate = &candidate,
             .fresh_grid_version = &latest->version,
-            .fresh_runtime_grid = &latest->runtime_prohibited_grid,
+            .fresh_runtime_grid = &latest->raw_occupancy,
             .remaining_prefix = prefix_points,
         });
     if (!validation.valid) {
@@ -149,10 +150,10 @@ bool PlannerNode::runConfirmedRepairRace(
     RCLCPP_INFO(
         get_logger(),
         "REPAIR_RACE completion=%zu kind=%s margin=%.1f reconnect_s=%.2f "
-        "grid_index=%zu activation=%s valid=%s canceled=%s reason=%s "
+        "risk_context=%s activation=%s valid=%s canceled=%s reason=%s "
         "astar_runs=%zu duration_ms=%.1f",
         index + 1U, repairJobKindName(completion.kind), completion.reconnect_margin_m,
-        completion.reconnect_s_m, completion.source_grid_index,
+        completion.reconnect_s_m, completion.source_risk_context.c_str(),
         truncationSuffixActivationModeName(completion.activation_mode),
         completion.valid ? "true" : "false", completion.canceled ? "true" : "false",
         completion.reason.c_str(), completion.astar_runs, completion.duration_ms);
@@ -222,19 +223,19 @@ void PlannerNode::handoffRepairRaceWinner(
   delivery.planning_start_velocity = current_velocity_;
   delivery.planning_start_velocity_valid = current_velocity_valid_;
 
-  RCLCPP_WARN(get_logger(),
-              "REPAIR_RACE winner generation=%" PRIu64 " kind=%s margin=%.1f "
-              "reconnect_s=%.2f grid_index=%zu activation=%s duration_ms=%.1f "
-              "snapshot_revision=%" PRIu64 " completion=%zu/%zu",
-              winner.generation, repairJobKindName(winner.kind),
-              winner.reconnect_margin_m, winner.reconnect_s_m, winner.source_grid_index,
-              truncationSuffixActivationModeName(*activation_mode), winner.duration_ms,
-              winner.source_grid_version.build_revision, completion_index,
-              jobs_started);
+  RCLCPP_WARN(
+      get_logger(),
+      "REPAIR_RACE winner generation=%" PRIu64 " kind=%s margin=%.1f "
+      "reconnect_s=%.2f risk_context=%s activation=%s duration_ms=%.1f "
+      "snapshot_revision=%" PRIu64 " completion=%zu/%zu",
+      winner.generation, repairJobKindName(winner.kind), winner.reconnect_margin_m,
+      winner.reconnect_s_m, winner.source_risk_context.c_str(),
+      truncationSuffixActivationModeName(*activation_mode), winner.duration_ms,
+      winner.source_grid_version.build_revision, completion_index, jobs_started);
 
   const bool published = publishTrajectoryResult(
       winner.trajectory, winner.route_points, "repair_race", winner.duration_ms,
-      delivery, "planning_clearance",
+      delivery, "raw_risk",
       winner.kind == RepairJobKind::kPartial ? "stitched_old_suffix" : "full_replan",
       nullptr, &winner.source_grid_version);
   RCLCPP_INFO(get_logger(),

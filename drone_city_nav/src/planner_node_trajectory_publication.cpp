@@ -154,8 +154,7 @@ passageInsertionDiagnosticsSummary(const PassageInsertionStats& stats) {
              << blocked.blocked_cell.x << "," << blocked.blocked_cell.y << ")"
              << " cell_available="
              << (blocked.blocked_cell_available ? "true" : "false")
-             << " occupied=" << (blocked.occupied ? "true" : "false")
-             << " inflated=" << (blocked.inflated ? "true" : "false") << "]";
+             << " occupied=" << (blocked.occupied ? "true" : "false") << "]";
     }
     stream << "]";
   }
@@ -207,10 +206,18 @@ bool PlannerNode::publishTrajectoryResult(
     const double duration_ms, TrajectoryDeliveryDiagnostics delivery,
     std::string astar_grid_name, std::string route_grid_name,
     std::uint64_t* published_path_id,
-    const PlanningGridVersion* const source_grid_version,
+    const RawObstacleVersion* const source_grid_version,
     const TrajectoryEndpointSemantics endpoint_semantics,
     TrajectoryPublicationStageTimings* const stage_timings,
-    const OccupancyGrid2D* const source_validation_grid) {
+    const OccupancyGrid2D* const source_validation_grid,
+    const ObstacleRiskField* const source_validation_risk_field,
+    const ClearanceField2D* const source_validation_clearance) {
+  if (source_grid_version != nullptr) {
+    delivery.obstacle_snapshot_producer_instance_id =
+        raw_obstacle_producer_instance_id_;
+    delivery.obstacle_snapshot_revision = source_grid_version->build_revision;
+    delivery.risk_policy_fingerprint = source_grid_version->risk_policy_fingerprint;
+  }
   const bool use_source_validation_grid =
       std::string_view{source_label} == "no_static_rollout";
   const std::uint64_t latest_invalidation_generation =
@@ -239,11 +246,12 @@ bool PlannerNode::publishTrajectoryResult(
     return false;
   }
   applyNavigationStateSnapshot(fresh_navigation);
-  std::optional<PlanningGridBuildResult> latest_planning_result;
-  std::optional<PreparedPlanningGridSnapshot> latest_prepared;
-  std::vector<TrajectoryGridCandidate> latest_grid_candidates;
+  std::optional<ObstacleFieldBuildResult> latest_planning_result;
+  std::optional<PreparedObstacleRiskSnapshot> latest_prepared;
+  std::vector<TrajectoryRiskContext> latest_risk_contexts;
   if (use_source_validation_grid) {
-    if (source_validation_grid == nullptr || source_grid_version == nullptr) {
+    if (source_validation_grid == nullptr || source_validation_risk_field == nullptr ||
+        source_validation_clearance == nullptr || source_grid_version == nullptr) {
       RCLCPP_ERROR(get_logger(),
                    "%s trajectory candidate discarded before publication: "
                    "reason=source_validation_snapshot_unavailable generation=%" PRIu64,
@@ -251,13 +259,14 @@ bool PlannerNode::publishTrajectoryResult(
       schedulePlanningCycle(PlanningWakeReason::kRetry);
       return false;
     }
-    latest_grid_candidates.push_back(TrajectoryGridCandidate{
-        "planning_clearance", source_validation_grid, nullptr, false});
+    latest_risk_contexts.push_back(TrajectoryRiskContext{
+        "raw_risk", source_validation_grid, source_validation_risk_field,
+        source_validation_clearance, true});
   } else {
     applyPendingMemorySnapshot(now_ns);
     applyLatestLidarInputSnapshot();
     const auto fresh_grid_build_started_at = std::chrono::steady_clock::now();
-    latest_planning_result = buildPlanningGrid(now_ns);
+    latest_planning_result = buildObstacleField(now_ns);
     if (stage_timings != nullptr) {
       stage_timings->fresh_grid_build_ms =
           elapsedMilliseconds(fresh_grid_build_started_at);
@@ -296,24 +305,10 @@ bool PlannerNode::publishTrajectoryResult(
       schedulePlanningCycle(PlanningWakeReason::kRetry);
       return false;
     }
-    publishProhibitedGrid(latest_prepared->runtime_prohibited_grid);
-    latest_grid_candidates.push_back(TrajectoryGridCandidate{
-        "planning_clearance", &latest_prepared->planning_clearance_grid, nullptr,
-        false});
-    const LocalInflationRelaxationStats& latest_runtime_relaxation =
-        latest_prepared->runtime_relaxation;
-    const LocalInflationRelaxationStats& latest_planning_relaxation =
-        latest_prepared->planning_relaxation;
-    RCLCPP_INFO(get_logger(),
-                "LOCAL_INFLATION_RELAXATION stage=fresh_validation center=(%.2f,%.2f) "
-                "radius_m=%.2f runtime_cleared=%zu planning_cleared=%zu "
-                "runtime_occupied_preserved=%zu planning_occupied_preserved=%zu",
-                fresh_navigation.pose.position.x, fresh_navigation.pose.position.y,
-                local_inflation_relaxation_radius_m_,
-                latest_runtime_relaxation.inflated_cells_cleared,
-                latest_planning_relaxation.inflated_cells_cleared,
-                latest_runtime_relaxation.occupied_cells_preserved,
-                latest_planning_relaxation.occupied_cells_preserved);
+    publishRawObstacleSnapshot(*latest_prepared);
+    latest_risk_contexts.push_back(TrajectoryRiskContext{
+        "raw_risk", &latest_prepared->raw_occupancy, &latest_prepared->risk_field,
+        &latest_prepared->raw_clearance, true});
     if (source_grid_version != nullptr) {
       RCLCPP_INFO(get_logger(),
                   "REPAIR_RACE fresh_validation source_revision=%" PRIu64
@@ -344,7 +339,7 @@ bool PlannerNode::publishTrajectoryResult(
                                          : std::numeric_limits<double>::infinity();
     if (!(candidate_cross_track_m <= stable_path_goal_tolerance_m_)) {
       HorizontalTrajectoryHandoverResult preflight{};
-      for (const TrajectoryGridCandidate& candidate : latest_grid_candidates) {
+      for (const TrajectoryRiskContext& candidate : latest_risk_contexts) {
         preflight = buildHorizontalTrajectoryHandover(
             last_valid_trajectory_samples_, trajectory_result.samples,
             HorizontalTrajectoryHandoverState{
@@ -353,7 +348,7 @@ bool PlannerNode::publishTrajectoryResult(
                 .current_position_valid = true,
                 .current_horizontal_speed_valid = fresh_navigation.velocity_valid,
             },
-            HorizontalTrajectoryHandoverConfig{}, candidate.grid);
+            HorizontalTrajectoryHandoverConfig{}, &candidate);
         if (preflight.applied ||
             std::string_view{preflight.reason} == "already_compatible") {
           handover_grid_name = std::string{candidate.name};
@@ -411,14 +406,14 @@ bool PlannerNode::publishTrajectoryResult(
         "timing[total=%.1f corridor=%.1f trajectory_optimizer=%.1f "
         "turn_smoothing=%.1f passage_insertion=%.1f speed_profile=%.1f] "
         "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
-        "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
+        "route_fp=%" PRIu64 " raw_grid_cells=%" PRIu64
         " width_min=%.2f width_mean=%.2f] "
         "trajectory_optimizer[iterations=%zu evals=%zu collision_rejections=%zu] "
         "vertical_profile[%s] "
         "known_passage_validation[%s] "
         "known_passage_solid_validation[%s] "
         "passage_insertion_details[%s] "
-        "grid_attempts[corridor=%s(%zu) optimizer=%s(%zu) "
+        "risk_attempts[corridor=%s(%zu) optimizer=%s(%zu) "
         "turn_smoothing=%s(%zu) trajectory_validation=%s(%zu) "
         "shape_cleanup=%s(%zu) passage_insertion=%s(%zu)]",
         source_label,
@@ -431,10 +426,8 @@ bool PlannerNode::publishTrajectoryResult(
         stats.speed_profile_duration_ms, stats.corridor.samples,
         stats.corridor.samples_reused ? "true" : "false", stats.corridor.reused_samples,
         stats.corridor.route_fingerprint,
-        stats.corridor.prohibited_grid_fingerprint.cells_hash,
-        stats.corridor.prohibited_grid_fingerprint.inflated_hash,
-        stats.corridor.min_width_m, stats.corridor.mean_width_m,
-        stats.trajectory_optimizer.iterations,
+        stats.corridor.raw_occupancy_fingerprint.cells_hash, stats.corridor.min_width_m,
+        stats.corridor.mean_width_m, stats.trajectory_optimizer.iterations,
         stats.trajectory_optimizer.candidate_evaluations,
         stats.trajectory_optimizer.collision_rejections,
         vertical_profile_summary.c_str(), passage_validation_summary.c_str(),
@@ -463,11 +456,16 @@ bool PlannerNode::publishTrajectoryResult(
   const OccupancyGrid2D* final_validation_grid = nullptr;
   const auto grid_validation_started_at = std::chrono::steady_clock::now();
   if (trajectory_points.size() >= 2U) {
-    for (const TrajectoryGridCandidate& candidate : latest_grid_candidates) {
-      if (candidate.grid != nullptr &&
-          pathIsTraversable(*candidate.grid, trajectory_points)) {
+    for (const TrajectoryRiskContext& candidate : latest_risk_contexts) {
+      if (candidate.valid()) {
+        const PathRiskScore final_risk =
+            candidate.risk_field->evaluate(*candidate.raw_occupancy, trajectory_points);
+        if (!final_risk.hardValid()) {
+          continue;
+        }
         final_validation_grid_name = std::string{candidate.name};
-        final_validation_grid = candidate.grid;
+        final_validation_grid = candidate.raw_occupancy;
+        stats.final_risk = final_risk;
         break;
       }
     }
@@ -516,6 +514,14 @@ bool PlannerNode::publishTrajectoryResult(
       grid_stages.shape_cleanup_attempts, grid_stages.passage_insertion.c_str(),
       grid_stages.passage_insertion_attempts, handover_grid_name.c_str(),
       final_validation_grid_name.c_str());
+  RCLCPP_INFO(get_logger(),
+              "TRAJECTORY_RISK final_tier=%s critical_exposure_m=%.2f "
+              "planning_exposure_m=%.2f minimum_raw_clearance_m=%.2f "
+              "handover=%s",
+              obstacleRiskTierName(stats.final_risk.worst_tier),
+              stats.final_risk.critical_exposure_m,
+              stats.final_risk.planning_exposure_m,
+              stats.final_risk.minimum_raw_clearance_m, handover_grid_name.c_str());
 
   stats.known_passage_validation = trajectory_result.stats.known_passage_validation;
   const KnownPassageValidationSummary& passage_validation =
@@ -613,7 +619,7 @@ bool PlannerNode::publishTrajectoryResult(
       "turn_smoothing=%.1f passage_insertion=%.1f speed_profile=%.1f] "
       "length=%.2f samples=%zu "
       "corridor[samples=%zu samples_reused=%s reused_samples=%zu "
-      "route_fp=%" PRIu64 " grid_cells=%" PRIu64 " grid_inflated=%" PRIu64
+      "route_fp=%" PRIu64 " raw_grid_cells=%" PRIu64
       " width_min=%.2f width_mean=%.2f width_max=%.2f "
       "lateral_limited=%zu workers=%zu sample_build=%.1fms "
       "raycast=%.1fms lateral_limit=%.1fms clearance_build=%.1fms "
@@ -705,12 +711,11 @@ bool PlannerNode::publishTrajectoryResult(
       stats.speed_profile_duration_ms, stats.length_m, stats.samples,
       stats.corridor.samples, stats.corridor.samples_reused ? "true" : "false",
       stats.corridor.reused_samples, stats.corridor.route_fingerprint,
-      stats.corridor.prohibited_grid_fingerprint.cells_hash,
-      stats.corridor.prohibited_grid_fingerprint.inflated_hash,
-      stats.corridor.min_width_m, stats.corridor.mean_width_m,
-      stats.corridor.max_width_m, stats.corridor.lateral_limited_samples,
-      stats.corridor.parallel_workers_used, stats.corridor.sample_build_duration_ms,
-      stats.corridor.raycast_duration_ms, stats.corridor.lateral_limit_duration_ms,
+      stats.corridor.raw_occupancy_fingerprint.cells_hash, stats.corridor.min_width_m,
+      stats.corridor.mean_width_m, stats.corridor.max_width_m,
+      stats.corridor.lateral_limited_samples, stats.corridor.parallel_workers_used,
+      stats.corridor.sample_build_duration_ms, stats.corridor.raycast_duration_ms,
+      stats.corridor.lateral_limit_duration_ms,
       stats.corridor.clearance_field_build_duration_ms,
       stats.corridor.clearance_field_reused ? "true" : "false",
       stats.corridor.clearance_field_cache_hit ? "true" : "false",

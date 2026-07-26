@@ -32,7 +32,7 @@ TEST(PlannerRuntimeState, ClassifiesPoseReadiness) {
 }
 
 TEST(PlannerRuntimeState, ClassifiesPlanningGridReadinessAndMemoryMismatch) {
-  PlanningGridBuildResult result;
+  ObstacleFieldBuildResult result;
   result.status = PlanningGridStatus::kNoReadySourceData;
   result.memory.seen = true;
   result.memory.geometry_matches = false;
@@ -47,12 +47,7 @@ TEST(PlannerRuntimeState, ClassifiesPlanningGridReadinessAndMemoryMismatch) {
   EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kMissingGrid);
   EXPECT_FALSE(decision.ready);
 
-  result.grid.emplace(GridBounds{0.0, 0.0, 1.0, 2, 2});
-  decision = evaluatePlannerGridReadiness(result);
-  EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kMissingGrid);
-  EXPECT_FALSE(decision.ready);
-
-  result.planning_grid.emplace(GridBounds{0.0, 0.0, 1.0, 2, 2});
+  result.raw_occupancy.emplace(GridBounds{0.0, 0.0, 1.0, 2, 2});
   decision = evaluatePlannerGridReadiness(result);
   EXPECT_EQ(decision.reason, PlannerGridReadinessReason::kReady);
   EXPECT_TRUE(decision.ready);

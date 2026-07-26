@@ -237,22 +237,12 @@ Grid build is safety-critical and should be optimized carefully. Static map
 data is a natural cache candidate because buildings do not change during a run.
 Dynamic lidar and memory overlays change more often.
 
-A future optimized model can split:
+The current model caches merged static raw occupancy and builds one occupied
+distance field for the current immutable snapshot. Local rollout ROI uses a
+source halo large enough to preserve edge clearance.
 
-- static raw grid;
-- static inflated grid;
-- dynamic raw grid;
-- dynamic inflated grid;
-- final hard prohibited grid;
-- planning-clearance grid.
-
-The merge must be exact and invalidation must be conservative. A grid-cache bug
-can become a safety bug, so this is a medium-risk optimization even if the idea
-is straightforward.
-
-An EDT-based distance field can improve inflation and clearance reuse, but it
-can change boundary cells. It should be introduced with tests that compare
-expected prohibited cells near the radius threshold.
+The merge and cache invalidation must remain exact. Distance-field changes can
+alter risk-tier boundaries, so they require exact boundary and exposure tests.
 
 ## Local Repair Performance Target
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "drone_city_nav/directed_inflation_escape.hpp"
 #include "drone_city_nav/receding_horizon_trajectory_planner.hpp"
 
 #include <cstdint>
@@ -59,20 +58,6 @@ struct StablePrefixStitchResult {
   double join_s_m{0.0};
 };
 
-enum class NoStaticRolloutTargetSource {
-  kMissionOrRecovery,
-  kDirectedEscape,
-};
-
-struct NoStaticRolloutTargetSelection {
-  Point2 target{};
-  NoStaticRolloutTargetSource source{NoStaticRolloutTargetSource::kMissionOrRecovery};
-};
-
-[[nodiscard]] NoStaticRolloutTargetSelection
-selectNoStaticRolloutTarget(Point2 mission_or_recovery_target,
-                            const DirectedInflationEscapeResult& directed_escape);
-
 [[nodiscard]] StablePrefixStitchResult
 stitchStableExecutablePrefix(std::span<const TrajectoryPointSample> active_samples,
                              double current_s_m, double prefix_distance_m,
@@ -118,7 +103,4 @@ private:
 [[nodiscard]] const char* noStaticPlannerModeName(NoStaticPlannerMode mode) noexcept;
 [[nodiscard]] const char*
 noStaticPlannerActionName(NoStaticPlannerAction action) noexcept;
-[[nodiscard]] const char*
-noStaticRolloutTargetSourceName(NoStaticRolloutTargetSource source) noexcept;
-
 } // namespace drone_city_nav

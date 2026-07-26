@@ -141,7 +141,6 @@ TEST(RosConversions, SerializesRawGridWithoutInflationValues) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 3, 1}};
   grid.setFree(GridIndex{0, 0});
   grid.setOccupied(GridIndex{1, 0});
-  grid.rebuildInflation(1.1);
 
   std_msgs::msg::Header header;
   header.frame_id = "map";
@@ -154,22 +153,6 @@ TEST(RosConversions, SerializesRawGridWithoutInflationValues) {
   EXPECT_EQ(raw.info.map_load_time.sec, 42);
   EXPECT_EQ(raw.data[0], 0);
   EXPECT_EQ(raw.data[1], 100);
-}
-
-TEST(RosConversions, SerializesProhibitedGridWithInflationValues) {
-  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 3, 1}};
-  grid.setFree(GridIndex{0, 0});
-  grid.setOccupied(GridIndex{1, 0});
-  grid.rebuildInflation(1.1);
-
-  std_msgs::msg::Header header;
-  header.frame_id = "map";
-
-  nav_msgs::msg::OccupancyGrid prohibited =
-      prohibitedGridToRos(grid, ProhibitedGridToRosConfig{header});
-
-  EXPECT_EQ(prohibited.data[0], 80);
-  EXPECT_EQ(prohibited.data[1], 100);
 }
 
 TEST(RosConversions, ClearanceUsesOccupiedCellsAtThreshold) {

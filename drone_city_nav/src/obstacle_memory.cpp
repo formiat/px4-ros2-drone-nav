@@ -82,9 +82,6 @@ clipSegmentToGrid(const OccupancyGrid2D& grid, const Point2 start,
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
-      if (grid.isInflated(cell)) {
-        ++counts.inflated_cells;
-      }
       switch (grid.state(cell)) {
         case CellState::kUnknown:
           ++counts.unknown_cells;

@@ -1,4 +1,7 @@
 uint64 path_id
+uint64 obstacle_snapshot_producer_instance_id
+uint64 obstacle_snapshot_revision
+uint64 risk_policy_fingerprint
 uint64 truncation_generation
 uint64 temporary_prefix_fingerprint
 bool truncation_suffix

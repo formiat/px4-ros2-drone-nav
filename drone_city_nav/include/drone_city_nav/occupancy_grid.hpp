@@ -21,17 +21,6 @@ enum class CellState : std::int8_t {
 struct OccupancyGridFingerprint {
   GridBounds bounds{};
   std::uint64_t cells_hash{0U};
-  std::uint64_t inflated_hash{0U};
-};
-
-// Describes a transient planner-side relaxation of an inflation mask. Raw
-// occupied cells are intentionally never modified by this operation.
-struct LocalInflationRelaxationStats {
-  std::size_t cells_considered{0U};
-  std::size_t inflated_cells_cleared{0U};
-  std::size_t occupied_cells_preserved{0U};
-  std::size_t cells_outside_bounds{0U};
-  bool center_inside_bounds{false};
 };
 
 class OccupancyGrid2D {
@@ -53,22 +42,14 @@ public:
 
   [[nodiscard]] CellState state(GridIndex cell) const;
   [[nodiscard]] bool isOccupied(GridIndex cell) const;
-  [[nodiscard]] bool isInflated(GridIndex cell) const;
-  [[nodiscard]] bool isProhibited(GridIndex cell) const;
   [[nodiscard]] std::span<const CellState> cells() const noexcept;
-  [[nodiscard]] std::span<const std::uint8_t> inflatedCells() const noexcept;
-  [[nodiscard]] OccupancyGridFingerprint prohibitedFingerprint() const noexcept;
+  [[nodiscard]] OccupancyGridFingerprint rawFingerprint() const noexcept;
 
   void reset(CellState value = CellState::kUnknown);
   void setUnknown(GridIndex cell);
   void setFree(GridIndex cell);
   void setOccupied(GridIndex cell);
   void markRay(Point2 start, Point2 end, bool endpoint_occupied);
-  void rebuildInflation(double radius_m);
-  void applyInflationFromDistanceField(const DistanceField2D& field, double radius_m);
-  void mergeInflationFrom(const OccupancyGrid2D& source);
-  [[nodiscard]] LocalInflationRelaxationStats
-  clearInflationWithinRadius(Point2 center, double radius_m);
 
   [[nodiscard]] std::vector<GridIndex> cellsOnLine(GridIndex start,
                                                    GridIndex end) const;
@@ -76,7 +57,6 @@ public:
 private:
   GridBounds bounds_{};
   std::vector<CellState> cells_;
-  std::vector<std::uint8_t> inflated_;
 };
 
 } // namespace drone_city_nav

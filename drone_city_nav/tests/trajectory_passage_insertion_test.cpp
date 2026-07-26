@@ -349,32 +349,6 @@ TEST(TrajectoryPassageInsertion, RejectsCandidateThatCrossesProhibitedGrid) {
   EXPECT_EQ(diagnostic.blocked_segment.blocked_cell.x, blocked_cell.x);
   EXPECT_EQ(diagnostic.blocked_segment.blocked_cell.y, blocked_cell.y);
   EXPECT_TRUE(diagnostic.blocked_segment.occupied);
-  EXPECT_FALSE(diagnostic.blocked_segment.inflated);
-}
-
-TEST(TrajectoryPassageInsertion, CapturesInflationOnlyBlockedSegment) {
-  OccupancyGrid2D grid = makeGrid();
-  const GridIndex raw_obstacle_cell{30, 29};
-  ASSERT_TRUE(grid.contains(raw_obstacle_cell));
-  grid.setOccupied(raw_obstacle_cell);
-  grid.rebuildInflation(1.0);
-  const KnownPassageMap map = makeMap();
-  const std::vector<TrajectoryPointSample> samples = makeLineSamples(4.0);
-
-  const PassageInsertionResult result = insertLocalPassageSegments(
-      samples, grid, &map, KnownPassageValidationConfig{}, insertionConfig(), 10.0);
-
-  ASSERT_TRUE(result.valid);
-  EXPECT_FALSE(result.applied);
-  EXPECT_TRUE(result.repair_required);
-  EXPECT_FALSE(result.repair_satisfied);
-  ASSERT_FALSE(result.stats.diagnostics.empty());
-  const PassageInsertionDiagnostic& diagnostic = result.stats.diagnostics.front();
-  EXPECT_EQ(diagnostic.reason, PassageInsertionRejectReason::kNonTraversable);
-  ASSERT_TRUE(diagnostic.blocked_segment.available);
-  ASSERT_TRUE(diagnostic.blocked_segment.blocked_cell_available);
-  EXPECT_FALSE(diagnostic.blocked_segment.occupied);
-  EXPECT_TRUE(diagnostic.blocked_segment.inflated);
 }
 
 TEST(TrajectoryPassageInsertion, AcceptsJoinTangentExcessAsDegraded) {

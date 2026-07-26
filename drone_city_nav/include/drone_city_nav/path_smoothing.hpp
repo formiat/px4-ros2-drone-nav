@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 
 #include <cstddef>
 #include <span>
@@ -47,6 +47,9 @@ struct PathSmoothingResult {
                                                 const std::vector<GridIndex>& path);
 [[nodiscard]] PathSmoothingResult
 smoothPathWithStats(const OccupancyGrid2D& grid, const std::vector<GridIndex>& path);
+[[nodiscard]] PathSmoothingResult
+smoothPathWithStats(const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
+                    const std::vector<GridIndex>& path);
 [[nodiscard]] std::vector<Point2> cellsToPoints(const OccupancyGrid2D& grid,
                                                 const std::vector<GridIndex>& path);
 [[nodiscard]] std::vector<Point2>

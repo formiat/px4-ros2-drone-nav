@@ -156,6 +156,8 @@ void Px4OffboardNode::updateTemporaryReplanHold() {
 
 void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
   pending_local_horizon_successor_.reset();
+  pending_raw_obstacle_snapshot_.reset();
+  pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
   if (crashed_ || !safe_trajectory_truncation_enabled_) {
     return;
   }
@@ -194,27 +196,35 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
     return;
   }
 
-  const std::optional<OccupancyGrid2D> prohibited_grid = currentProhibitedGrid();
+  const std::optional<OccupancyGrid2D> raw_occupancy = currentRawObstacleGrid();
+  const RawObstacleSnapshotMetadata* raw_metadata =
+      raw_obstacle_snapshot_tracker_.current();
+  const double critical_band_width_m =
+      raw_metadata != nullptr ? raw_metadata->policy.critical_distance_m : 1.0;
   const SafeTrajectoryTruncationResult truncation = truncateTrajectoryBeforeBlocker(
       final_trajectory_samples_,
       SafeTrajectoryTruncationRequest{
           .current_position = current_position_,
           .blocker_path_distance_m = msg.blocker_path_distance_m,
           .truncation_margin_m = safe_trajectory_truncation_margin_m_,
-          .prohibited_grid = prohibited_grid.has_value() ? &*prohibited_grid : nullptr,
-          .terminal_prohibited_clearance_m =
+          .raw_occupancy = raw_occupancy.has_value() ? &*raw_occupancy : nullptr,
+          .critical_band_width_m = critical_band_width_m,
+          .terminal_clearance_beyond_critical_m =
               safe_trajectory_terminal_prohibited_clearance_m_,
       });
   if (!truncation.applied) {
     RCLCPP_ERROR(get_logger(),
                  "SAFE_TRAJECTORY_TRUNCATION rejected blocker event: reason=%s "
                  "blocked_path_id=%" PRIu64
-                 " blocker_distance=%.2fm margin=%.2fm prohibited_grid=%s"
-                 " required_prohibited_clearance=%.2fm",
+                 " blocker_distance=%.2fm margin=%.2fm raw_snapshot=%s"
+                 " terminal_clearance_beyond_critical_m=%.2fm "
+                 "required_raw_clearance_m=%.2fm",
                  truncation.reason, msg.blocked_path_id, msg.blocker_path_distance_m,
                  safe_trajectory_truncation_margin_m_,
-                 prohibited_grid.has_value() ? "available" : "unavailable",
-                 safe_trajectory_terminal_prohibited_clearance_m_);
+                 raw_occupancy.has_value() ? "available" : "unavailable",
+                 safe_trajectory_terminal_prohibited_clearance_m_,
+                 critical_band_width_m +
+                     safe_trajectory_terminal_prohibited_clearance_m_);
     return;
   }
 
@@ -253,7 +263,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
         "source='%s'",
         msg.blocked_path_id, truncation.current_s_m, truncation.blocker_s_m,
         truncation.nominal_stop_s_m, truncation.stop_s_m,
-        truncation.terminal_prohibited_clearance_m,
+        truncation.terminal_raw_clearance_m,
         truncation.clearance_adjusted ? "true" : "false", msg.blocker_position.x,
         msg.blocker_position.y, msg.source.c_str());
     return;
@@ -305,7 +315,7 @@ void Px4OffboardNode::onReplanBlocker(const msg::ReplanBlockerEvent& msg) {
       msg.blocked_path_id, msg.blocker_path_distance_m,
       safe_trajectory_truncation_margin_m_, truncation.current_s_m,
       truncation.blocker_s_m, truncation.nominal_stop_s_m, truncation.stop_s_m,
-      truncation.terminal_prohibited_clearance_m,
+      truncation.terminal_raw_clearance_m,
       safe_trajectory_terminal_prohibited_clearance_m_,
       truncation.clearance_adjusted ? "true" : "false", state.samples.back().s_m,
       trajectory_goal_.x, trajectory_goal_.y, msg.blocker_position.x,

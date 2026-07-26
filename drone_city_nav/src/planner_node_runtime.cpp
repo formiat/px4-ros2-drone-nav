@@ -125,7 +125,7 @@ void PlannerNode::invalidateCurrentPose() {
 
 std::string PlannerNode::describeProhibitedIntersectionSource(
     const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
-    const PlanningGridBuildResult& planning_result,
+    const ObstacleFieldBuildResult& planning_result,
     const double source_search_radius_m) {
   const OccupancyGrid2D* memory_source_grid = nullptr;
   if (memory_grid_) {
@@ -221,8 +221,8 @@ std::string PlannerNode::describeProhibitedIntersectionSource(
 }
 
 bool PlannerNode::keepCurrentPathIfStillClear(
-    const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
-    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+    const OccupancyGrid2D& grid, const ObstacleFieldBuildResult& planning_result,
+    std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared_grid,
     const ExecutableSuffixDecision* const executable_suffix_decision) {
   const bool executable_artifact_matches =
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
@@ -262,8 +262,6 @@ bool PlannerNode::keepCurrentPathIfStillClear(
           std::max(0.0, blocked.first_blocked_s_m - suffix.progress.projected_s_m);
       intersection.occupied =
           blocked.first_cell_available && grid.isOccupied(blocked.first_cell);
-      intersection.inflated =
-          blocked.first_cell_available && grid.isInflated(blocked.first_cell);
       intersection.segment_start_prohibited =
           blocked.first_blocked_s_m <= suffix.progress.projected_s_m + 1.0e-6;
       intersection.segment_end_prohibited = true;
@@ -429,30 +427,29 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     if (!awaiting_truncation_confirmation) {
       pending_replan_delivery_ = delivery;
     }
-    RCLCPP_WARN(get_logger(),
-                "Current path intersects newly available prohibited obstacle data; "
-                "%s: reason=%s "
-                "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
-                "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
-                "blocker[cell=(%d, %d) center=(%.2f, %.2f) occupied=%s inflated=%s "
-                "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
-                "path_distance=%.2fm segment_start_prohibited=%s "
-                "segment_end_prohibited=%s] %s",
-                awaiting_truncation_confirmation
-                    ? "waiting for confirmed truncation planning start"
-                    : "running A* from current pose",
-                stablePathDecisionReasonName(decision.reason),
-                decision.remaining_path.size(), decision.deviation_m,
-                decision.prohibited_segment_index, prohibited_start.x,
-                prohibited_start.y, prohibited_end.x, prohibited_end.y,
-                intersection.cell.x, intersection.cell.y, intersection.cell_center.x,
-                intersection.cell_center.y, intersection.occupied ? "true" : "false",
-                intersection.inflated ? "true" : "false", intersection.line_cell_index,
-                intersection.line_cell_count, intersection.segment_t,
-                intersection.segment_distance_m, intersection.path_distance_m,
-                intersection.segment_start_prohibited ? "true" : "false",
-                intersection.segment_end_prohibited ? "true" : "false",
-                source_diagnostic.c_str());
+    RCLCPP_WARN(
+        get_logger(),
+        "Current path intersects newly available prohibited obstacle data; "
+        "%s: reason=%s "
+        "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
+        "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "
+        "blocker[cell=(%d, %d) center=(%.2f, %.2f) raw_occupied=%s "
+        "line_cell=%zu/%zu segment_t=%.3f segment_distance=%.2fm "
+        "path_distance=%.2fm segment_start_prohibited=%s "
+        "segment_end_prohibited=%s] %s",
+        awaiting_truncation_confirmation
+            ? "waiting for confirmed truncation planning start"
+            : "running A* from current pose",
+        stablePathDecisionReasonName(decision.reason), decision.remaining_path.size(),
+        decision.deviation_m, decision.prohibited_segment_index, prohibited_start.x,
+        prohibited_start.y, prohibited_end.x, prohibited_end.y, intersection.cell.x,
+        intersection.cell.y, intersection.cell_center.x, intersection.cell_center.y,
+        intersection.occupied ? "true" : "false", intersection.line_cell_index,
+        intersection.line_cell_count, intersection.segment_t,
+        intersection.segment_distance_m, intersection.path_distance_m,
+        intersection.segment_start_prohibited ? "true" : "false",
+        intersection.segment_end_prohibited ? "true" : "false",
+        source_diagnostic.c_str());
     RCLCPP_INFO(
         get_logger(),
         "REPLAN_DELIVERY event=blocker_detected generation_hint=%" PRIu64

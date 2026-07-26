@@ -16,12 +16,6 @@ namespace {
 constexpr double kTinyDistanceM = 1.0e-6;
 constexpr std::size_t kTopSpeedConstraintCount = 5U;
 
-[[nodiscard]] std::string gridCandidateName(const TrajectoryGridCandidate& candidate,
-                                            const std::size_t index) {
-  return candidate.name.empty() ? "grid_" + std::to_string(index) + "_unnamed"
-                                : std::string{candidate.name};
-}
-
 void computeCurvatureStats(const std::span<const TrajectoryPointSample> samples,
                            TrajectoryPlannerStats& stats) {
   if (samples.empty()) {
@@ -97,7 +91,8 @@ void finalizeResult(TrajectoryPlannerResult& result,
   result.valid = trajectoryIsUsable(result.compact_segments) &&
                  trajectorySamplesAreUsable(result.samples) &&
                  result.speed_profile.valid && result.stats.vertical_profile.valid &&
-                 result.stats.known_passage_solid_validation.valid;
+                 result.stats.known_passage_solid_validation.valid &&
+                 result.stats.final_risk.hardValid();
   if (result.valid && (!result.stats.known_passage_validation.valid ||
                        result.stats.passage_insertion.quality ==
                            PassageInsertionQuality::kDegradedJoin)) {
@@ -197,8 +192,8 @@ corridorFromPrecomputedSamples(const std::span<const CorridorSample> samples,
   }
   if (source_stats->route_fingerprint != corridorRouteFingerprint(route_points) ||
       source_stats->config_fingerprint != corridorConfigFingerprint(config) ||
-      !occupancyGridFingerprintsEqual(source_stats->prohibited_grid_fingerprint,
-                                      prohibited_grid.prohibitedFingerprint())) {
+      !occupancyGridFingerprintsEqual(source_stats->raw_occupancy_fingerprint,
+                                      prohibited_grid.rawFingerprint())) {
     return false;
   }
   constexpr double kEndpointToleranceM = 1.0e-6;
@@ -233,7 +228,7 @@ baselineSamplesFromCorridor(const std::span<const CorridorSample> corridor_sampl
   }
   return std::ranges::all_of(
       grid.cellsOnLine(*start_cell, *end_cell),
-      [&grid](const GridIndex cell) { return !grid.isProhibited(cell); });
+      [&grid](const GridIndex cell) { return !grid.isOccupied(cell); });
 }
 
 [[nodiscard]] bool pathTraversable(const OccupancyGrid2D& grid,
@@ -271,6 +266,40 @@ trajectoryStageInvariantsHold(const std::span<const TrajectoryPointSample> sampl
   return std::isfinite(shape.max_heading_delta_rad) &&
          std::isfinite(shape.max_curvature_jump_1pm) &&
          std::isfinite(shape.max_segment_length_m);
+}
+
+[[nodiscard]] const TrajectoryRiskContext*
+primaryRiskContext(const std::span<const TrajectoryRiskContext> contexts) noexcept {
+  const auto found = std::ranges::find_if(
+      contexts, [](const TrajectoryRiskContext& context) { return context.valid(); });
+  return found != contexts.end() ? &*found : nullptr;
+}
+
+[[nodiscard]] PathRiskScore
+evaluateTrajectoryRisk(const TrajectoryRiskContext& context,
+                       const std::span<const TrajectoryPointSample> samples) {
+  return context.risk_field->evaluate(*context.raw_occupancy, samples);
+}
+
+[[nodiscard]] bool applyRiskGate(const char* const stage,
+                                 const TrajectoryRiskContext& context,
+                                 const std::span<const TrajectoryPointSample> before,
+                                 const std::span<const TrajectoryPointSample> after,
+                                 const bool allow_degraded,
+                                 TrajectoryPlannerStats& stats) {
+  const PathRiskScore before_risk = evaluateTrajectoryRisk(context, before);
+  const PathRiskScore after_risk = evaluateTrajectoryRisk(context, after);
+  const bool worsened = pathRiskLess(before_risk, after_risk);
+  const bool accepted = after_risk.hardValid() && (!worsened || allow_degraded);
+  stats.stage_risk.push_back(TrajectoryStageRiskDiagnostic{
+      .stage = stage,
+      .before = before_risk,
+      .after = after_risk,
+      .changed = !pathRiskEqual(before_risk, after_risk),
+      .accepted = accepted,
+      .degraded = accepted && worsened,
+  });
+  return accepted;
 }
 
 } // namespace
@@ -338,41 +367,22 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
-  const TrajectoryGridCandidate fallback_candidate{
-      "primary", input.prohibited_grid, input.prohibited_clearance_field,
-      input.prohibited_clearance_field_cache_hit};
-  const std::span<const TrajectoryGridCandidate> grid_candidates =
-      input.grid_candidates.empty()
-          ? std::span<const TrajectoryGridCandidate>{&fallback_candidate, 1U}
-          : input.grid_candidates;
-  if (std::ranges::none_of(grid_candidates, [](const auto& candidate) {
-        return candidate.grid != nullptr;
-      })) {
+  const TrajectoryRiskContext* const risk_context =
+      primaryRiskContext(input.risk_contexts);
+  if (risk_context == nullptr) {
     result.stats.status = TrajectoryPlannerStatus::kMissingGrid;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
-  CorridorResult corridor{};
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.corridor_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
-    }
-    CorridorResult attempt = buildCorridor(
-        CorridorInput{input.route_points, candidate.grid, candidate.clearance_field,
-                      candidate.clearance_field_cache_hit},
-        config.corridor);
-    result.stats.corridor = attempt.stats;
-    corridor = std::move(attempt);
-    if (!corridor.valid) {
-      continue;
-    }
-    result.stats.grid_stages.corridor = gridCandidateName(candidate, index);
-    break;
-  }
+  result.stats.grid_stages.corridor_attempts = 1U;
+  CorridorResult corridor = buildCorridor(
+      CorridorInput{input.route_points, risk_context->raw_occupancy,
+                    risk_context->raw_clearance, risk_context->raw_clearance_cache_hit},
+      config.corridor);
+  result.stats.grid_stages.corridor =
+      corridor.valid ? std::string{risk_context->name} : "none";
   result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
   result.corridor_samples = corridor.samples;
   result.stats.corridor = corridor.stats;
@@ -384,23 +394,19 @@ TrajectoryPlannerResult planBaselineTrajectory(const TrajectoryPlannerInput& inp
 
   result.stats.status = TrajectoryPlannerStatus::kOk;
   result.samples = baselineSamplesFromCorridor(corridor.samples);
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.trajectory_validation_attempts;
-    if (candidate.grid != nullptr &&
-        trajectoryStageInvariantsHold(result.samples, *candidate.grid,
-                                      input.route_points.front(),
-                                      input.route_points.back())) {
-      result.stats.grid_stages.trajectory_validation =
-          gridCandidateName(candidate, index);
-      break;
-    }
-  }
-  if (result.stats.grid_stages.trajectory_validation == "none") {
+  result.stats.grid_stages.trajectory_validation_attempts = 1U;
+  const PathRiskScore baseline_risk =
+      evaluateTrajectoryRisk(*risk_context, result.samples);
+  if (!baseline_risk.hardValid() ||
+      !trajectoryStageInvariantsHold(result.samples, *risk_context->raw_occupancy,
+                                     input.route_points.front(),
+                                     input.route_points.back())) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
+  result.stats.grid_stages.trajectory_validation = std::string{risk_context->name};
+  result.stats.final_risk = baseline_risk;
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   if (!applyVerticalProfileStage(result, input, config)) {
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
@@ -447,16 +453,9 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
-  const TrajectoryGridCandidate fallback_candidate{
-      "primary", input.prohibited_grid, input.prohibited_clearance_field,
-      input.prohibited_clearance_field_cache_hit};
-  const std::span<const TrajectoryGridCandidate> grid_candidates =
-      input.grid_candidates.empty()
-          ? std::span<const TrajectoryGridCandidate>{&fallback_candidate, 1U}
-          : input.grid_candidates;
-  if (std::ranges::none_of(grid_candidates, [](const auto& candidate) {
-        return candidate.grid != nullptr;
-      })) {
+  const TrajectoryRiskContext* const risk_context =
+      primaryRiskContext(input.risk_contexts);
+  if (risk_context == nullptr) {
     result.stats.status = TrajectoryPlannerStatus::kMissingGrid;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
@@ -468,32 +467,20 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
 
   const auto corridor_started_at = std::chrono::steady_clock::now();
-  CorridorResult corridor{};
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.corridor_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
-    }
-    CorridorResult attempt =
-        precomputedCorridorMatchesRoute(
-            input.precomputed_corridor_samples, input.precomputed_corridor_stats,
-            input.route_points, *candidate.grid, config.corridor)
-            ? corridorFromPrecomputedSamples(input.precomputed_corridor_samples,
-                                             input.precomputed_corridor_stats,
-                                             input.route_points.size())
-            : buildCorridor(CorridorInput{input.route_points, candidate.grid,
-                                          candidate.clearance_field,
-                                          candidate.clearance_field_cache_hit},
-                            config.corridor);
-    result.stats.corridor = attempt.stats;
-    corridor = std::move(attempt);
-    if (!corridor.valid) {
-      continue;
-    }
-    result.stats.grid_stages.corridor = gridCandidateName(candidate, index);
-    break;
-  }
+  result.stats.grid_stages.corridor_attempts = 1U;
+  CorridorResult corridor =
+      precomputedCorridorMatchesRoute(
+          input.precomputed_corridor_samples, input.precomputed_corridor_stats,
+          input.route_points, *risk_context->raw_occupancy, config.corridor)
+          ? corridorFromPrecomputedSamples(input.precomputed_corridor_samples,
+                                           input.precomputed_corridor_stats,
+                                           input.route_points.size())
+          : buildCorridor(CorridorInput{input.route_points, risk_context->raw_occupancy,
+                                        risk_context->raw_clearance,
+                                        risk_context->raw_clearance_cache_hit},
+                          config.corridor);
+  result.stats.grid_stages.corridor =
+      corridor.valid ? std::string{risk_context->name} : "none";
   result.stats.corridor_duration_ms = elapsedMilliseconds(corridor_started_at);
   result.corridor_samples = corridor.samples;
   if (input.stop_token.stop_requested()) {
@@ -509,23 +496,21 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   }
 
   const auto trajectory_optimizer_started_at = std::chrono::steady_clock::now();
-  TrajectoryOptimizerResult optimized_trajectory{};
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.optimizer_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
+  result.stats.grid_stages.optimizer_attempts = 1U;
+  TrajectoryOptimizerResult optimized_trajectory = optimizeTrajectory(
+      corridor.samples, *risk_context->raw_occupancy, config.trajectory_optimizer,
+      config.speed_profile, input.stop_token);
+  result.stats.trajectory_optimizer = optimized_trajectory.stats;
+  result.stats.grid_stages.optimizer =
+      optimized_trajectory.valid ? std::string{risk_context->name} : "none";
+  if (optimized_trajectory.valid) {
+    const std::vector<TrajectoryPointSample> centerline =
+        baselineSamplesFromCorridor(corridor.samples);
+    if (!applyRiskGate("optimizer", *risk_context, centerline,
+                       optimized_trajectory.samples, false, result.stats)) {
+      optimized_trajectory.samples = centerline;
+      optimized_trajectory.valid = trajectorySamplesAreUsable(centerline);
     }
-    TrajectoryOptimizerResult attempt = optimizeTrajectory(
-        corridor.samples, *candidate.grid, config.trajectory_optimizer,
-        config.speed_profile, input.stop_token);
-    result.stats.trajectory_optimizer = attempt.stats;
-    optimized_trajectory = std::move(attempt);
-    if (!optimized_trajectory.valid) {
-      continue;
-    }
-    result.stats.grid_stages.optimizer = gridCandidateName(candidate, index);
-    break;
   }
   result.stats.trajectory_optimizer_duration_ms =
       elapsedMilliseconds(trajectory_optimizer_started_at);
@@ -549,23 +534,19 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   result.stats.trajectory_optimizer = optimized_trajectory.stats;
   result.trajectory_optimizer_windows = optimized_trajectory.active_windows;
   const auto turn_smoothing_started_at = std::chrono::steady_clock::now();
-  TurnSmoothingResult turn_smoothing{};
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.turn_smoothing_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
-    }
-    TurnSmoothingResult attempt = smoothTrajectoryTurns(
-        optimized_trajectory.samples, corridor.samples, *candidate.grid,
-        config.turn_smoothing, config.speed_profile);
-    result.stats.turn_smoothing = attempt.stats;
-    turn_smoothing = std::move(attempt);
-    if (!turn_smoothing.valid) {
-      continue;
-    }
-    result.stats.grid_stages.turn_smoothing = gridCandidateName(candidate, index);
-    break;
+  result.stats.grid_stages.turn_smoothing_attempts = 1U;
+  TurnSmoothingResult turn_smoothing = smoothTrajectoryTurns(
+      optimized_trajectory.samples, corridor.samples, *risk_context->raw_occupancy,
+      config.turn_smoothing, config.speed_profile);
+  result.stats.turn_smoothing = turn_smoothing.stats;
+  result.stats.grid_stages.turn_smoothing =
+      turn_smoothing.valid ? std::string{risk_context->name} : "none";
+  if (turn_smoothing.valid &&
+      !applyRiskGate("turn_smoothing", *risk_context, optimized_trajectory.samples,
+                     turn_smoothing.samples, false, result.stats)) {
+    turn_smoothing.samples = optimized_trajectory.samples;
+    turn_smoothing.valid = trajectorySamplesAreUsable(turn_smoothing.samples);
+    turn_smoothing.changed = false;
   }
   result.stats.turn_smoothing_duration_ms =
       elapsedMilliseconds(turn_smoothing_started_at);
@@ -581,107 +562,85 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     return result;
   }
   result.samples = turn_smoothing.samples;
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.trajectory_validation_attempts;
-    if (candidate.grid != nullptr &&
-        trajectoryStageInvariantsHold(result.samples, *candidate.grid,
-                                      input.route_points.front(),
-                                      input.route_points.back())) {
-      result.stats.grid_stages.trajectory_validation =
-          gridCandidateName(candidate, index);
-      break;
-    }
-  }
-  if (result.stats.grid_stages.trajectory_validation == "none") {
+  result.stats.grid_stages.trajectory_validation_attempts = 1U;
+  const PathRiskScore initial_risk =
+      evaluateTrajectoryRisk(*risk_context, result.samples);
+  if (!initial_risk.hardValid() ||
+      !trajectoryStageInvariantsHold(result.samples, *risk_context->raw_occupancy,
+                                     input.route_points.front(),
+                                     input.route_points.back())) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
+  result.stats.grid_stages.trajectory_validation = std::string{risk_context->name};
   result.stats.isolated_curvature_spike_candidates =
       countIsolatedCurvatureSpikes(result.samples);
   result.stats.isolated_curvature_spike_max_before_1pm =
       maxIsolatedCurvatureSpike(result.samples);
-  std::vector<TrajectoryPointSample> shape_cleaned_samples;
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.shape_cleanup_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
-    }
-    std::vector<TrajectoryPointSample> attempt_samples = result.samples;
-    const std::size_t smoothed =
-        smoothIsolatedCurvatureSpikeGeometry(attempt_samples, *candidate.grid);
-    if (!trajectoryStageInvariantsHold(attempt_samples, *candidate.grid,
-                                       input.route_points.front(),
-                                       input.route_points.back())) {
-      continue;
-    }
-    result.stats.grid_stages.shape_cleanup = gridCandidateName(candidate, index);
-    result.stats.isolated_curvature_spikes_smoothed_geometry = smoothed;
-    shape_cleaned_samples = std::move(attempt_samples);
-    break;
-  }
-  if (shape_cleaned_samples.empty()) {
+  result.stats.grid_stages.shape_cleanup_attempts = 1U;
+  std::vector<TrajectoryPointSample> shape_cleaned_samples = result.samples;
+  const std::size_t smoothed = smoothIsolatedCurvatureSpikeGeometry(
+      shape_cleaned_samples, *risk_context->raw_occupancy);
+  if (!trajectoryStageInvariantsHold(
+          shape_cleaned_samples, *risk_context->raw_occupancy,
+          input.route_points.front(), input.route_points.back())) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
+  if (!applyRiskGate("shape_cleanup", *risk_context, result.samples,
+                     shape_cleaned_samples, false, result.stats)) {
+    shape_cleaned_samples = result.samples;
+    result.stats.isolated_curvature_spikes_smoothed_geometry = 0U;
+  } else {
+    result.stats.isolated_curvature_spikes_smoothed_geometry = smoothed;
+  }
+  result.stats.grid_stages.shape_cleanup = std::string{risk_context->name};
   result.samples = std::move(shape_cleaned_samples);
   result.stats.isolated_curvature_spike_max_after_1pm =
       maxIsolatedCurvatureSpike(result.samples);
   const auto passage_insertion_started_at = std::chrono::steady_clock::now();
   PassageInsertionResult passage_insertion{};
   std::vector<TrajectoryPointSample> passage_samples;
-  bool hold_restart_recommended = false;
-  for (std::size_t index = 0U; index < grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[index];
-    ++result.stats.grid_stages.passage_insertion_attempts;
-    if (candidate.grid == nullptr) {
-      continue;
-    }
-    PassageInsertionResult attempt = insertLocalPassageSegments(
-        result.samples, *candidate.grid, input.known_passage_map,
-        config.known_passage_validation, config.passage_insertion,
-        config.initial_altitude_m, input.passage_insertion_start_mode);
-    hold_restart_recommended =
-        hold_restart_recommended || attempt.hold_restart_recommended;
-    const std::string candidate_name = gridCandidateName(candidate, index);
-    for (PassageInsertionDiagnostic& diagnostic : attempt.stats.diagnostics) {
-      diagnostic.grid_name = candidate_name;
-    }
-    result.stats.passage_insertion = attempt.stats;
-    const std::span<const TrajectoryPointSample> attempt_samples =
-        attempt.applied ? std::span<const TrajectoryPointSample>{attempt.samples.data(),
-                                                                 attempt.samples.size()}
-                        : std::span<const TrajectoryPointSample>{result.samples.data(),
-                                                                 result.samples.size()};
-    const bool trajectory_invariants_hold =
-        attempt.valid && trajectoryStageInvariantsHold(attempt_samples, *candidate.grid,
-                                                       input.route_points.front(),
-                                                       input.route_points.back());
-    // Passage insertion is best-effort. An unrepaired passage is diagnostic data,
-    // not a reason to suppress an otherwise executable route.
-    const bool accepted = attempt.valid && trajectory_invariants_hold;
-    result.stats.passage_insertion_grid_attempts.push_back(PassageInsertionGridAttempt{
-        .grid_name = candidate_name,
-        .reason = attempt.stats.final_reason,
-        .valid = attempt.valid,
-        .repair_required = attempt.repair_required,
-        .repair_satisfied = attempt.repair_satisfied,
-        .applied = attempt.applied,
-        .trajectory_invariants_hold = trajectory_invariants_hold,
-        .accepted = accepted});
-    if (accepted) {
-      passage_samples.assign(attempt_samples.begin(), attempt_samples.end());
-    }
-    passage_insertion = std::move(attempt);
-    if (!accepted) {
-      continue;
-    }
-    result.stats.grid_stages.passage_insertion = candidate_name;
-    break;
+  result.stats.grid_stages.passage_insertion_attempts = 1U;
+  PassageInsertionResult attempt = insertLocalPassageSegments(
+      result.samples, *risk_context->raw_occupancy, input.known_passage_map,
+      config.known_passage_validation, config.passage_insertion,
+      config.initial_altitude_m, input.passage_insertion_start_mode);
+  const std::string candidate_name{risk_context->name};
+  for (PassageInsertionDiagnostic& diagnostic : attempt.stats.diagnostics) {
+    diagnostic.grid_name = candidate_name;
   }
+  result.stats.passage_insertion = attempt.stats;
+  const std::span<const TrajectoryPointSample> attempt_samples =
+      attempt.applied ? std::span<const TrajectoryPointSample>{attempt.samples}
+                      : std::span<const TrajectoryPointSample>{result.samples};
+  const bool trajectory_invariants_hold =
+      attempt.valid && trajectoryStageInvariantsHold(
+                           attempt_samples, *risk_context->raw_occupancy,
+                           input.route_points.front(), input.route_points.back());
+  const bool risk_accepted =
+      trajectory_invariants_hold &&
+      applyRiskGate("passage_insertion", *risk_context, result.samples, attempt_samples,
+                    true, result.stats);
+  // Passage insertion is best-effort. An unrepaired passage is diagnostic data,
+  // not a reason to suppress an otherwise executable route.
+  const bool accepted = attempt.valid && trajectory_invariants_hold && risk_accepted;
+  result.stats.passage_insertion_risk_attempts.push_back(PassageInsertionGridAttempt{
+      .grid_name = candidate_name,
+      .reason = attempt.stats.final_reason,
+      .valid = attempt.valid,
+      .repair_required = attempt.repair_required,
+      .repair_satisfied = attempt.repair_satisfied,
+      .applied = attempt.applied,
+      .trajectory_invariants_hold = trajectory_invariants_hold,
+      .accepted = accepted});
+  if (accepted) {
+    passage_samples.assign(attempt_samples.begin(), attempt_samples.end());
+    result.stats.grid_stages.passage_insertion = candidate_name;
+  }
+  passage_insertion = std::move(attempt);
   result.stats.passage_insertion_duration_ms =
       elapsedMilliseconds(passage_insertion_started_at);
   if (input.stop_token.stop_requested()) {
@@ -690,7 +649,8 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
     return result;
   }
   result.stats.passage_insertion = passage_insertion.stats;
-  result.stats.passage_insertion.hold_restart_recommended = hold_restart_recommended;
+  result.stats.passage_insertion.hold_restart_recommended =
+      passage_insertion.hold_restart_recommended;
   if (!passage_insertion.valid || passage_samples.empty()) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
@@ -707,6 +667,10 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
       buildTrajectorySpeedProfile(result.samples, config.speed_profile);
   result.stats.speed_profile_duration_ms =
       elapsedMilliseconds(speed_profile_started_at);
+  result.stats.final_risk = evaluateTrajectoryRisk(*risk_context, result.samples);
+  if (!result.stats.final_risk.hardValid()) {
+    result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
+  }
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
@@ -719,8 +683,9 @@ finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
   TrajectoryPlannerResult result{};
   result.stats.quality = TrajectoryQuality::kRefined;
   result.stats.input_points = input.geometry_samples.size();
-  if (!trajectorySamplesAreUsable(input.geometry_samples) ||
-      input.grid_candidates.empty()) {
+  const TrajectoryRiskContext* const risk_context =
+      primaryRiskContext(input.risk_contexts);
+  if (!trajectorySamplesAreUsable(input.geometry_samples) || risk_context == nullptr) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidRoute;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
@@ -728,31 +693,24 @@ finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
 
   result.samples.assign(input.geometry_samples.begin(), input.geometry_samples.end());
   populateTrajectorySampleGeometry(result.samples);
-  for (std::size_t index = 0U; index < input.grid_candidates.size(); ++index) {
-    const TrajectoryGridCandidate& candidate = input.grid_candidates[index];
-    ++result.stats.grid_stages.trajectory_validation_attempts;
-    if (candidate.grid == nullptr ||
-        !trajectoryStageInvariantsHold(result.samples, *candidate.grid,
-                                       result.samples.front().point,
-                                       result.samples.back().point)) {
-      continue;
-    }
-    result.stats.grid_stages.trajectory_validation =
-        gridCandidateName(candidate, index);
-    break;
-  }
-  if (result.stats.grid_stages.trajectory_validation == "none") {
+  result.stats.grid_stages.trajectory_validation_attempts = 1U;
+  result.stats.final_risk = evaluateTrajectoryRisk(*risk_context, result.samples);
+  if (!result.stats.final_risk.hardValid() ||
+      !trajectoryStageInvariantsHold(result.samples, *risk_context->raw_occupancy,
+                                     result.samples.front().point,
+                                     result.samples.back().point)) {
     result.stats.status = TrajectoryPlannerStatus::kInvalidTrajectory;
     result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
     return result;
   }
+  result.stats.grid_stages.trajectory_validation = std::string{risk_context->name};
 
   result.compact_segments = lineTrajectoryFromSamples(result.samples);
   const TrajectoryPlannerInput vertical_input{
       .route_points = {},
       .precomputed_corridor_samples = {},
       .known_passage_map = input.known_passage_map,
-      .grid_candidates = input.grid_candidates,
+      .risk_contexts = input.risk_contexts,
       .passage_insertion_start_mode = input.start_mode,
   };
   if (!applyVerticalProfileStage(result, vertical_input, config)) {
@@ -767,27 +725,6 @@ finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
   finalizeResult(result, config);
   result.stats.total_duration_ms = elapsedMilliseconds(total_started_at);
   return result;
-}
-
-TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
-    const std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
-    const ClearanceField2D* prohibited_clearance_field,
-    const bool prohibited_clearance_field_cache_hit,
-    const std::span<const CorridorSample> precomputed_corridor_samples,
-    const CorridorStats* precomputed_corridor_stats,
-    const KnownPassageMap* const known_passage_map,
-    const TrajectoryPlannerConfig& config) {
-  return planOptimizedTrajectory(
-      TrajectoryPlannerInput{
-          route_points,
-          &prohibited_grid,
-          prohibited_clearance_field,
-          prohibited_clearance_field_cache_hit,
-          precomputed_corridor_samples,
-          precomputed_corridor_stats,
-          known_passage_map,
-      },
-      config);
 }
 
 TrajectoryPlannerResult planTrajectory(const TrajectoryPlannerInput& input,

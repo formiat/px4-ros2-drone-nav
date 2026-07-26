@@ -99,8 +99,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
 
   config.topics.lidar =
       node.declare_parameter<std::string>("lidar_topic", config.topics.lidar);
-  config.topics.prohibited_grid = node.declare_parameter<std::string>(
-      "prohibited_grid_topic", config.topics.prohibited_grid);
+  config.topics.raw_obstacle_grid = node.declare_parameter<std::string>(
+      "raw_obstacle_grid_topic", config.topics.raw_obstacle_grid);
   config.topics.memory_grid = node.declare_parameter<std::string>(
       "memory_grid_topic", config.topics.memory_grid);
   config.topics.path =

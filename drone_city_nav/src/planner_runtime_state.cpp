@@ -107,16 +107,16 @@ evaluatePlannerRuntimeReadiness(const PlannerRuntimeReadinessInput& input) noexc
 }
 
 [[nodiscard]] PlannerGridReadinessDecision
-evaluatePlannerGridReadiness(const PlanningGridBuildResult& result) noexcept {
+evaluatePlannerGridReadiness(const ObstacleFieldBuildResult& result) noexcept {
   PlannerGridReadinessDecision decision{};
   decision.memory_geometry_mismatch =
       result.memory.seen && !result.memory.geometry_matches;
   switch (result.status) {
     case PlanningGridStatus::kReady:
-      decision.reason = result.grid.has_value() && result.planning_grid.has_value()
+      decision.reason = result.raw_occupancy.has_value()
                             ? PlannerGridReadinessReason::kReady
                             : PlannerGridReadinessReason::kMissingGrid;
-      decision.ready = result.grid.has_value() && result.planning_grid.has_value();
+      decision.ready = result.raw_occupancy.has_value();
       return decision;
     case PlanningGridStatus::kStaticMapEnabledButMissing:
       decision.reason = PlannerGridReadinessReason::kStaticMapMissing;

@@ -21,8 +21,8 @@ void Px4OffboardNode::logTelemetry() {
                                         ? distance(current_position_, trajectory_goal_)
                                         : std::numeric_limits<double>::quiet_NaN();
   const NearestProhibitedCellDiagnostic nearest_prohibited_cell =
-      nearestProhibitedCellDiagnostic(current_position_, kInflatedOccupancyValue);
-  const double prohibited_grid_clearance_m =
+      nearestProhibitedCellDiagnostic(current_position_, kRawOccupiedValue);
+  const double raw_obstacle_grid_clearance_m =
       nearest_prohibited_cell.valid
           ? nearest_prohibited_cell.clearance_m
           : estimateProhibitedGridClearanceM(current_position_);
@@ -50,7 +50,7 @@ void Px4OffboardNode::logTelemetry() {
       "target=(%.2f, %.2f) "
       "distance_to_target=%.2f distance_to_path_goal=%.2f "
       "distance_to_mission_goal=%.2f waypoint=%zu/%zu motion_phase=%s "
-      "final_trajectory_segment=%s prohibited_grid_clearance=%.2f "
+      "final_trajectory_segment=%s raw_obstacle_grid_clearance=%.2f "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.3f] "
       "final_goal_hold=%s",
       current_position_.x, current_position_.y, pose_fresh ? "true" : "false",
@@ -64,7 +64,7 @@ void Px4OffboardNode::logTelemetry() {
       target_distance, path_goal_distance, mission_goal_distance,
       path_valid_ ? waypoint_index_ + 1U : 0U, path_points_.size(),
       motionPhaseName(hold_position), pathSegmentTypeName(turn_angle_rad),
-      prohibited_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
+      raw_obstacle_grid_clearance_m, upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
       final_goal_hold_active_ ? "true" : "false");
@@ -282,7 +282,7 @@ void Px4OffboardNode::logTelemetry() {
       last_velocity_plan_.response_delay_distance_m);
   RCLCPP_INFO(get_logger(),
               "Drone obstacle diagnostics: nearest_prohibited_cell[valid=%s "
-              "prohibited_grid_clearance=%.2f "
+              "raw_obstacle_grid_clearance=%.2f "
               "bearing_map=%.3f bearing_body=%.3f bearing_body_deg=%.1f "
               "point=(%.2f, %.2f)]",
               nearest_prohibited_cell.valid ? "true" : "false",
@@ -292,7 +292,7 @@ void Px4OffboardNode::logTelemetry() {
               nearest_prohibited_cell.bearing_body_deg, nearest_prohibited_cell.point.x,
               nearest_prohibited_cell.point.y);
   writeFlightBlackbox(now_ns, target, target_distance, path_goal_distance,
-                      mission_goal_distance, prohibited_grid_clearance_m, pose_fresh,
+                      mission_goal_distance, raw_obstacle_grid_clearance_m, pose_fresh,
                       pose_age_s, attitude_age_s, upcoming_turn, hold_position,
                       path_tracking, nearest_prohibited_cell);
 }
@@ -300,7 +300,7 @@ void Px4OffboardNode::logTelemetry() {
 void Px4OffboardNode::writeFlightBlackbox(
     const std::int64_t now_ns, const Point2 target, const double target_distance_m,
     const double path_goal_distance_m, const double mission_goal_distance_m,
-    const double prohibited_grid_clearance_m, const bool pose_fresh,
+    const double raw_obstacle_grid_clearance_m, const bool pose_fresh,
     const double pose_age_s, const double attitude_age_s,
     const UpcomingTurn& upcoming_turn, const bool hold_position,
     const PathTrackingDiagnostics& path_tracking,
@@ -371,7 +371,7 @@ void Px4OffboardNode::writeFlightBlackbox(
       last_terminal_position_capture_activation_radius_m_,
       last_terminal_position_capture_max_entry_speed_mps_,
       last_terminal_position_capture_stuck_speed_mps_,
-      prohibited_grid_clearance_m,
+      raw_obstacle_grid_clearance_m,
       OffboardBlackboxNearestProhibitedCell{
           nearest_prohibited_cell.valid, nearest_prohibited_cell.clearance_m,
           nearest_prohibited_cell.bearing_map_rad,

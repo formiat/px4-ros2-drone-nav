@@ -5,13 +5,12 @@ the planner needs to build a path from updated state.
 
 ## Hard Replan Trigger
 
-The main hard trigger is intersection with the current prohibited grid. The
-prohibited grid is the hard-safety grid after raw obstacle sources are merged
-and inflated.
+The main hard trigger is intersection with the current raw obstacle snapshot.
+Raw occupied cells are the only 2D obstacle hard gate; leaving the evaluated
+planning ROI is also rejected.
 
-Planning clearance is different. It is an extra planner margin used to prefer
-safer trajectories. Entering the planning-clearance margin is not by itself a
-runtime replan reason.
+Critical and planning risk bands are distance-derived preferences. Entering
+either soft band is not by itself a runtime replan reason.
 
 When `known_static_lidar_hit_classifier_enabled=true`, known passage geometry
 is handled before a new lidar hit enters either dynamic source. A confident
@@ -20,15 +19,15 @@ detached from the solid or inside a free opening is retained immediately. A
 boundary, low ground candidate, or projection-uncertain hit performs no hit or
 free-space update until independent 3D viewpoints resolve its geometry. The
 optional classifier is independent of the current trajectory and never
-suppresses a static-map cell. Any retained hit that inflates into the current
-path remains a normal hard replan trigger.
+suppresses a static-map cell. Any retained hit that becomes raw occupied on the
+current path remains a normal hard replan trigger.
 
 ## Runtime Validation
 
 The planner periodically checks the current path/trajectory against updated
 obstacle data. Relevant diagnostics include:
 
-- prohibited intersection;
+- raw occupied intersection;
 - blocked spans;
 - grid bounds;
 - current projection on trajectory;
@@ -67,7 +66,8 @@ Before deferring an XY-discontinuous update, offboard attempts a continuity
 handover. It preserves a speed-dependent prefix of the accepted executable
 trajectory, joins it to a future station on the candidate, rebuilds geometry
 and speed constraints, and validates the complete stitch against the current
-prohibited grid. A failed geometry or grid check never bypasses the continuity
+raw obstacle snapshot and risk policy. A failed geometry or hard-risk check
+never bypasses the continuity
 gate.
 
 Every horizontal handover result records whether the builder was attempted and
@@ -105,13 +105,11 @@ avoids relying on cross-topic delivery ordering between `/path_id`,
 After safe truncation is confirmed, production replanning races ten local
 segment repairs against one full replan. All jobs read one immutable snapshot
 containing the accepted trajectory artifact, the absolute blocked span, known
-passages, and prepared planning/runtime grids. Local jobs reconnect at fixed
+passages, and one prepared raw/risk snapshot. Local jobs reconnect at fixed
 stations 10 through 100 metres after the actual blocked-span exit.
 
-Prohibited spans use the same ordered `cellsOnLine` and `isProhibited` traversal
-as runtime path checks, including diagonal segments. Raw-obstacle clearance
-spans remain station-sampled because their contract is a sustained metric run,
-not a discrete prohibited-cell intersection.
+Blocked spans use the same ordered `cellsOnLine` and raw-occupied traversal as
+runtime path checks, including diagonal segments.
 
 Each local job runs A*, corridor construction, optimization, and smoothing only
 from the confirmed truncation point to its reconnect station. It then appends
@@ -144,13 +142,13 @@ The first practical local-repair implementation should reuse the existing
 planning stack on a shorter window. The sequence is:
 
 1. project the drone onto the accepted executable trajectory;
-2. find blocked spans against the latest prohibited grid;
+2. find raw occupied spans against the latest obstacle snapshot;
 3. choose start and end anchors around the affected span;
 4. generate configured reconnect stations after the blocked-span exit;
 5. run A*, corridor, optimizer, and turn smoothing between anchors;
 6. stitch old prefix, repaired segment, and old suffix;
 7. rebuild the speed profile for the stitched full trajectory;
-8. validate runtime prohibited-grid safety and known solid geometry;
+8. validate raw-occupancy/ROI safety and known solid geometry;
 9. publish only if the stitched candidate passes the same acceptance gates as a
    full replan.
 
@@ -187,7 +185,7 @@ A stitched path must be treated as a new executable trajectory, not as a small
 patch that bypasses validation. It must pass:
 
 - finite geometry checks;
-- hard prohibited-grid validation;
+- hard raw-occupancy/ROI validation;
 - ordered planning-clearance/runtime-prohibited validation;
 - mandatory known-solid non-intersection;
 - maximum segment length checks;

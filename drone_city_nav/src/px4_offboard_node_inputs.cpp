@@ -128,37 +128,60 @@ void Px4OffboardNode::onVehicleStatus(const px4_msgs::msg::VehicleStatus& msg) {
   }
 }
 
-void Px4OffboardNode::onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg) {
-  if (!(msg.info.resolution > 0.0F) || msg.info.width == 0U || msg.info.height == 0U ||
-      msg.info.width > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
-      msg.info.height > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+void Px4OffboardNode::onRawObstacleSnapshot(const msg::RawObstacleSnapshot& snapshot) {
+  const nav_msgs::msg::OccupancyGrid& grid = snapshot.grid;
+  const bool raw_values_valid =
+      std::ranges::all_of(grid.data, [](const std::int8_t value) {
+        return value == -1 || value == 0 || value == kRawOccupiedValue;
+      });
+  const bool grid_valid =
+      grid.info.resolution > 0.0F && grid.info.width != 0U && grid.info.height != 0U &&
+      grid.info.width <= static_cast<std::uint32_t>(std::numeric_limits<int>::max()) &&
+      grid.info.height <= static_cast<std::uint32_t>(std::numeric_limits<int>::max()) &&
+      grid.data.size() == static_cast<std::size_t>(grid.info.width) *
+                              static_cast<std::size_t>(grid.info.height) &&
+      raw_values_valid;
+  const RawObstacleSnapshotMetadata metadata{
+      .identity =
+          RawObstacleSnapshotIdentity{
+              .producer_instance_id = snapshot.producer_instance_id,
+              .revision = snapshot.obstacle_snapshot_revision,
+              .policy_fingerprint = snapshot.risk_policy_fingerprint,
+          },
+      .policy =
+          ObstacleRiskPolicy{
+              .critical_distance_m = snapshot.risk_critical_distance_m,
+              .preferred_distance_m = snapshot.risk_preferred_distance_m,
+          },
+      .grid_valid = grid_valid,
+  };
+  if (!raw_obstacle_snapshot_tracker_.accept(metadata)) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-                         "Ignoring invalid offboard prohibited grid metadata");
+                         "Ignoring malformed or out-of-order raw obstacle snapshot "
+                         "producer=%" PRIu64 " revision=%" PRIu64,
+                         snapshot.producer_instance_id,
+                         snapshot.obstacle_snapshot_revision);
     return;
   }
 
-  const std::size_t expected_size = static_cast<std::size_t>(msg.info.width) *
-                                    static_cast<std::size_t>(msg.info.height);
-  if (msg.data.size() != expected_size) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Ignoring offboard prohibited grid with mismatched data size: expected=%zu "
-        "got=%zu",
-        expected_size, msg.data.size());
-    return;
-  }
-
-  prohibited_grid_ = msg;
-  prohibited_grid_valid_ = true;
-  last_prohibited_grid_update_ns_ = get_clock()->now().nanoseconds();
-  if (!prohibited_grid_seen_logged_) {
-    prohibited_grid_seen_logged_ = true;
+  raw_obstacle_grid_ = grid;
+  raw_obstacle_grid_valid_ = true;
+  last_raw_obstacle_grid_update_ns_ = get_clock()->now().nanoseconds();
+  if (!raw_obstacle_grid_seen_logged_) {
+    raw_obstacle_grid_seen_logged_ = true;
     RCLCPP_INFO(get_logger(),
-                "First offboard prohibited grid: size=%ux%u resolution=%.2f "
-                "origin=(%.2f, %.2f)",
-                msg.info.width, msg.info.height,
-                static_cast<double>(msg.info.resolution), msg.info.origin.position.x,
-                msg.info.origin.position.y);
+                "First raw obstacle snapshot: producer=%" PRIu64 " revision=%" PRIu64
+                " policy=%" PRIu64 " size=%ux%u resolution=%.2f origin=(%.2f, %.2f)",
+                snapshot.producer_instance_id, snapshot.obstacle_snapshot_revision,
+                snapshot.risk_policy_fingerprint, grid.info.width, grid.info.height,
+                static_cast<double>(grid.info.resolution), grid.info.origin.position.x,
+                grid.info.origin.position.y);
+  }
+  if (pending_raw_obstacle_snapshot_.has_value()) {
+    msg::ExecutableTrajectory command = std::move(*pending_raw_obstacle_snapshot_);
+    pending_raw_obstacle_snapshot_.reset();
+    pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    processExecutableTrajectory(command, true);
   }
 }
 

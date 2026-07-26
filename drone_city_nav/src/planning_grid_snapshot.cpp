@@ -1,12 +1,31 @@
 #include "drone_city_nav/planning_grid_snapshot.hpp"
 
-#include <algorithm>
+#include <bit>
 #include <cmath>
-#include <ranges>
+#include <cstdint>
 #include <utility>
 
 namespace drone_city_nav {
 namespace {
+
+constexpr std::uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+void hashUint64(std::uint64_t& hash, std::uint64_t value) noexcept {
+  for (int byte = 0; byte < 8; ++byte) {
+    hash ^= value & 0xffU;
+    hash *= kFnvPrime;
+    value >>= 8U;
+  }
+}
+
+[[nodiscard]] std::uint64_t
+riskPolicyFingerprint(const ObstacleRiskPolicy& policy) noexcept {
+  std::uint64_t hash = kFnvOffsetBasis;
+  hashUint64(hash, std::bit_cast<std::uint64_t>(policy.critical_distance_m));
+  hashUint64(hash, std::bit_cast<std::uint64_t>(policy.preferred_distance_m));
+  return hash;
+}
 
 [[nodiscard]] bool sameBounds(const GridBounds& lhs, const GridBounds& rhs) noexcept {
   return lhs.origin_x == rhs.origin_x && lhs.origin_y == rhs.origin_y &&
@@ -16,112 +35,59 @@ namespace {
 
 [[nodiscard]] bool sameFingerprint(const OccupancyGridFingerprint& lhs,
                                    const OccupancyGridFingerprint& rhs) noexcept {
-  return sameBounds(lhs.bounds, rhs.bounds) && lhs.cells_hash == rhs.cells_hash &&
-         lhs.inflated_hash == rhs.inflated_hash;
-}
-
-[[nodiscard]] bool
-preparedBuildAvailable(const PlanningGridPreparationInput& input) noexcept {
-  return input.build_result != nullptr &&
-         input.build_result->status == PlanningGridStatus::kReady &&
-         input.build_result->grid.has_value() &&
-         input.build_result->planning_grid.has_value() &&
-         std::isfinite(input.relaxation_center.x) &&
-         std::isfinite(input.relaxation_center.y) &&
-         std::isfinite(input.mission_goal.x) && std::isfinite(input.mission_goal.y) &&
-         std::isfinite(input.relaxation_radius_m) && input.relaxation_radius_m >= 0.0 &&
-         std::isfinite(input.clearance_max_distance_m) &&
-         input.clearance_max_distance_m >= 0.0;
+  return sameBounds(lhs.bounds, rhs.bounds) && lhs.cells_hash == rhs.cells_hash;
 }
 
 } // namespace
 
-std::optional<PreparedPlanningGridSnapshot>
-PlanningGridSnapshotBuilder::prepare(const PlanningGridPreparationInput& input) {
-  if (!preparedBuildAvailable(input)) {
+std::optional<PreparedObstacleRiskSnapshot>
+ObstacleRiskSnapshotBuilder::prepare(const ObstacleRiskPreparationInput& input) {
+  if (input.build_result == nullptr ||
+      input.build_result->status != PlanningGridStatus::kReady ||
+      !input.build_result->raw_occupancy.has_value() ||
+      !input.build_result->evaluation_bounds.has_value()) {
     return std::nullopt;
   }
 
-  const PlanningGridBuildResult& build = *input.build_result;
-  OccupancyGrid2D runtime_grid = build.grid.value();
-  OccupancyGrid2D planning_grid = build.planning_grid.value();
-
-  DirectedInflationEscapeResult directed_escape =
-      directed_escape_planner_.update(planning_grid, input.relaxation_center,
-                                      input.mission_goal, input.directed_escape);
-  std::optional<OccupancyGrid2D> unrelaxed_planning_grid;
-  if (directed_escape.applied) {
-    OccupancyGrid2D escaped_planning_grid = planning_grid;
-    directed_escape.relaxation = applyDirectedInflationEscape(
-        escaped_planning_grid, directed_escape, input.directed_escape.tunnel_width_m);
-    directed_escape.connected =
-        !directed_escape.centerline.empty() &&
-        std::ranges::all_of(
-            directed_escape.centerline, [&escaped_planning_grid](const Point2 point) {
-              const std::optional<GridIndex> cell =
-                  escaped_planning_grid.worldToCell(point);
-              return cell.has_value() && !escaped_planning_grid.isProhibited(*cell);
-            });
-    if (directed_escape.connected) {
-      unrelaxed_planning_grid = planning_grid;
-      planning_grid = std::move(escaped_planning_grid);
-    } else {
-      directed_escape.applied = false;
-      directed_escape.state = DirectedInflationEscapeState::kFailed;
-    }
-  }
-
-  const LocalInflationRelaxationStats runtime_relaxation{};
-  const LocalInflationRelaxationStats planning_relaxation =
-      directed_escape.applied ? planning_grid.clearInflationWithinRadius(
-                                    input.relaxation_center, input.relaxation_radius_m)
-                              : LocalInflationRelaxationStats{};
-  ClearanceField2D runtime_clearance = ClearanceField2D::build(
-      runtime_grid, input.clearance_max_distance_m, ClearanceSource::kProhibited);
-  ClearanceField2D planning_clearance = ClearanceField2D::build(
-      planning_grid, input.clearance_max_distance_m, ClearanceSource::kProhibited);
-
-  PlanningGridVersion version{
+  const ObstacleFieldBuildResult& build = *input.build_result;
+  OccupancyGrid2D raw_occupancy = *build.raw_occupancy;
+  ObstacleRiskField risk_field = ObstacleRiskField::build(
+      raw_occupancy, build.risk_policy, *build.evaluation_bounds);
+  ClearanceField2D raw_clearance =
+      ClearanceField2D::build(raw_occupancy, build.risk_policy.preferred_distance_m,
+                              ClearanceSource::kOccupied);
+  RawObstacleVersion version{
       .build_revision = next_revision_,
       .memory_producer_instance_id = build.applied_memory_producer_instance_id,
       .memory_sequence = build.applied_memory_sequence,
       .lidar_update_ns = build.applied_lidar_update_ns,
       .config_fingerprint = input.config_fingerprint,
-      .runtime_prohibited = runtime_grid.prohibitedFingerprint(),
-      .planning_clearance = planning_grid.prohibitedFingerprint(),
+      .raw_occupancy = raw_occupancy.rawFingerprint(),
+      .risk_policy_fingerprint = riskPolicyFingerprint(build.risk_policy),
   };
   ++next_revision_;
-  return PreparedPlanningGridSnapshot{
-      .runtime_prohibited_grid = std::move(runtime_grid),
-      .planning_clearance_grid = std::move(planning_grid),
-      .unrelaxed_planning_clearance_grid = std::move(unrelaxed_planning_grid),
-      .runtime_clearance = std::move(runtime_clearance),
-      .planning_clearance = std::move(planning_clearance),
+  return PreparedObstacleRiskSnapshot{
+      .raw_occupancy = std::move(raw_occupancy),
+      .risk_field = std::move(risk_field),
+      .raw_clearance = std::move(raw_clearance),
+      .evaluation_bounds = *build.evaluation_bounds,
       .version = version,
-      .runtime_relaxation = runtime_relaxation,
-      .planning_relaxation = planning_relaxation,
-      .directed_escape = std::move(directed_escape),
   };
 }
 
-std::uint64_t PlanningGridSnapshotBuilder::nextRevision() const noexcept {
+std::uint64_t ObstacleRiskSnapshotBuilder::nextRevision() const noexcept {
   return next_revision_;
 }
 
-bool PlanningGridSnapshotBuilder::confirmDirectedEscapeMissionContinuation(
-    const std::uint64_t episode_generation) {
-  return directed_escape_planner_.confirmMissionContinuation(episode_generation);
-}
-
-bool planningGridVersionsEqual(const PlanningGridVersion& lhs,
-                               const PlanningGridVersion& rhs) noexcept {
+bool obstacleRiskVersionsEqual(const RawObstacleVersion& lhs,
+                               const RawObstacleVersion& rhs) noexcept {
   return lhs.build_revision == rhs.build_revision &&
          lhs.memory_producer_instance_id == rhs.memory_producer_instance_id &&
          lhs.memory_sequence == rhs.memory_sequence &&
          lhs.lidar_update_ns == rhs.lidar_update_ns &&
          lhs.config_fingerprint == rhs.config_fingerprint &&
-         sameFingerprint(lhs.runtime_prohibited, rhs.runtime_prohibited) &&
-         sameFingerprint(lhs.planning_clearance, rhs.planning_clearance);
+         lhs.risk_policy_fingerprint == rhs.risk_policy_fingerprint &&
+         sameFingerprint(lhs.raw_occupancy, rhs.raw_occupancy);
 }
 
 } // namespace drone_city_nav

@@ -58,8 +58,8 @@ must not be applied to the control path consumed by offboard flight logic.
 - Static map: raw static obstacle source from the `.map2d` file.
 - Static building volumes: semi-transparent 3D CUBE markers built from the
   `.map2d` rectangle heights on `/drone_city_nav/static_building_markers`.
-- Prohibited grid: inflated hard-safety planner output on
-  `/drone_city_nav/prohibited_grid`.
+- Raw obstacle grid: direct merged obstacle evidence on the debug-only
+  `/drone_city_nav/raw_obstacle_grid` topic.
 - Raw Memory Cells: uninflated 2D obstacle-memory cell centers on the ground
   plane.
 - Raw Memory Hit Origins 3D: exact lidar trigger endpoints that first made the
@@ -180,10 +180,10 @@ Do not rely on color alone for root-cause analysis.
   failed rebuild publishes a hold/empty path.
 - A trajectory can look slightly wavy on straight-ish sections; this is not
   automatically a bug if curvature and control metrics are acceptable.
-- The prohibited grid includes safety inflation. It is expected to look wider
-  than raw obstacles.
-- The planning clearance is not a separate RViz hard-safety replan trigger; it
-  is an additional planner preference margin.
+- The raw obstacle grid contains only merged raw occupancy and no derived
+  inflation cells.
+- Critical and planning risk tiers are planner preferences derived from the
+  occupied distance field; the raw grid remains the runtime hard-trigger view.
 
 ## Useful Cross-Checks
 
@@ -213,10 +213,9 @@ clearance, or candidate rejection reason.
 Useful interpretation rules:
 
 - raw obstacle layers should align with visible static geometry;
-- prohibited grid should be wider than raw obstacles by the hard inflation
-  radius;
-- planning clearance can influence the route without appearing as a hard
-  replan boundary;
+- raw obstacle cells should align with merged obstacle evidence;
+- risk-tier exposure can influence the route without appearing as extra
+  occupied cells;
 - the final trajectory is the executable curve, not the rough route;
 - a slightly wavy final trajectory is acceptable if control metrics are stable;
 - a visually smooth curve can still be too fast or poorly tracked.
@@ -226,7 +225,7 @@ Useful interpretation rules:
 When a path looks wrong:
 
 1. Hide the final trajectory and inspect raw static and lidar layers.
-2. Enable the prohibited grid and confirm hard safety space.
+2. Enable the raw obstacle grid and confirm merged occupied evidence.
 3. Enable the corridor and check whether the desired smooth path had room.
 4. Enable the final trajectory and inspect whether it uses available corridor
    width.

@@ -14,8 +14,6 @@ distanceFieldSourceForClearance(const ClearanceSource source) noexcept {
   switch (source) {
     case ClearanceSource::kOccupied:
       return DistanceFieldSource::kOccupied;
-    case ClearanceSource::kProhibited:
-      return DistanceFieldSource::kProhibited;
   }
   return DistanceFieldSource::kOccupied;
 }
@@ -90,12 +88,11 @@ ClearanceFieldCache::getOrBuild(const OccupancyGrid2D& grid,
     return ClearanceFieldCacheLookup{&*field_, true};
   }
 
-  const OccupancyGridFingerprint fingerprint = grid.prohibitedFingerprint();
+  const OccupancyGridFingerprint fingerprint = grid.rawFingerprint();
   bounds_ = fingerprint.bounds;
   max_distance_m_ = std::max(0.0, max_distance_m);
   source_ = source;
   cells_hash_ = fingerprint.cells_hash;
-  inflated_hash_ = fingerprint.inflated_hash;
   field_ = ClearanceField2D::build(grid, max_distance_m_, source);
   return ClearanceFieldCacheLookup{&*field_, false};
 }
@@ -105,7 +102,6 @@ void ClearanceFieldCache::clear() noexcept {
   max_distance_m_ = 0.0;
   source_ = ClearanceSource::kOccupied;
   cells_hash_ = 0U;
-  inflated_hash_ = 0U;
   field_.reset();
 }
 
@@ -118,9 +114,8 @@ bool ClearanceFieldCache::matches(const OccupancyGrid2D& grid,
     return false;
   }
 
-  const OccupancyGridFingerprint fingerprint = grid.prohibitedFingerprint();
-  return cells_hash_ == fingerprint.cells_hash &&
-         inflated_hash_ == fingerprint.inflated_hash;
+  const OccupancyGridFingerprint fingerprint = grid.rawFingerprint();
+  return cells_hash_ == fingerprint.cells_hash;
 }
 
 } // namespace drone_city_nav

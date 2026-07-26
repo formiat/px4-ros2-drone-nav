@@ -467,7 +467,7 @@ TEST(ObstacleMemoryGrid, StoresRawMemoryWithoutInflation) {
   EXPECT_EQ(stats.hit_beams, 1U);
 
   EXPECT_TRUE(memory.rawGrid().isOccupied(GridIndex{9, 5}));
-  EXPECT_FALSE(memory.rawGrid().isProhibited(GridIndex{8, 5}));
+  EXPECT_FALSE(memory.rawGrid().isOccupied(GridIndex{8, 5}));
 }
 
 TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
@@ -497,7 +497,6 @@ TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
       Pose2{Point2{4.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
   EXPECT_EQ(stats.hit_beams, 1U);
   OccupancyGrid2D planning_grid = memory.rawGrid();
-  planning_grid.rebuildInflation(1.1);
 
   const GridIndex start{1, 5};
   const GridIndex goal{18, 5};
@@ -505,7 +504,7 @@ TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
 
   ASSERT_TRUE(result.success);
   for (const GridIndex cell : result.path) {
-    EXPECT_FALSE(planning_grid.isProhibited(cell));
+    EXPECT_FALSE(planning_grid.isOccupied(cell));
   }
 }
 

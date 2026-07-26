@@ -149,37 +149,6 @@ rawOccupancyGridToRos(const OccupancyGrid2D& grid,
   return msg;
 }
 
-nav_msgs::msg::OccupancyGrid
-prohibitedGridToRos(const OccupancyGrid2D& grid,
-                    const ProhibitedGridToRosConfig& config) {
-  nav_msgs::msg::OccupancyGrid msg;
-  msg.header = config.header;
-  msg.info.map_load_time = msg.header.stamp;
-  msg.info.resolution = static_cast<float>(grid.resolution());
-  msg.info.width = static_cast<std::uint32_t>(grid.width());
-  msg.info.height = static_cast<std::uint32_t>(grid.height());
-  msg.info.origin.position.x = grid.originX();
-  msg.info.origin.position.y = grid.originY();
-  msg.info.origin.orientation.w = 1.0;
-  msg.data.assign(grid.cellCount(), static_cast<std::int8_t>(-1));
-
-  for (int y = 0; y < grid.height(); ++y) {
-    for (int x = 0; x < grid.width(); ++x) {
-      const GridIndex cell{x, y};
-      const std::size_t index = grid.linearIndex(cell);
-      if (grid.isOccupied(cell)) {
-        msg.data[index] = static_cast<std::int8_t>(100);
-      } else if (grid.isInflated(cell)) {
-        msg.data[index] = static_cast<std::int8_t>(80);
-      } else if (grid.state(cell) == CellState::kFree) {
-        msg.data[index] = static_cast<std::int8_t>(0);
-      }
-    }
-  }
-
-  return msg;
-}
-
 double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
                                const Point2 point, const double search_radius_m,
                                const std::int8_t min_occupancy_value) {

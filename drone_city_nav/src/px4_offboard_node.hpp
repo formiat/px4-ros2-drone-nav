@@ -5,6 +5,7 @@
 #include "drone_city_nav/local_horizon_execution_state.hpp"
 #include "drone_city_nav/msg/crash_state.hpp"
 #include "drone_city_nav/msg/executable_trajectory.hpp"
+#include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/msg/replan_truncation.hpp"
 #include "drone_city_nav/msg/truncation_suffix_ack.hpp"
@@ -17,6 +18,7 @@
 #include "drone_city_nav/planner_core.hpp"
 #include "drone_city_nav/px4_offboard_node_config.hpp"
 #include "drone_city_nav/px4_offboard_setpoint_io.hpp"
+#include "drone_city_nav/raw_obstacle_snapshot_tracker.hpp"
 #include "drone_city_nav/ros_conversions.hpp"
 #include "drone_city_nav/route_diagnostics.hpp"
 #include "drone_city_nav/safe_trajectory_truncation.hpp"
@@ -76,7 +78,7 @@ namespace drone_city_nav {
 inline constexpr auto kControllerPeriod = std::chrono::milliseconds{50};
 inline constexpr double kTinyDistanceM = 1.0e-6;
 inline constexpr double kProhibitedGridClearanceDiagnosticRadiusM = 12.0;
-inline constexpr std::int8_t kInflatedOccupancyValue = 80;
+inline constexpr std::int8_t kRawOccupiedValue = 100;
 inline constexpr double kRvizGroundZ = 0.08;
 
 [[nodiscard]] inline double radiansToDegrees(const double radians) noexcept {
@@ -230,7 +232,7 @@ private:
 
   void handleCrashedVehicle();
 
-  void onProhibitedGrid(const nav_msgs::msg::OccupancyGrid& msg);
+  void onRawObstacleSnapshot(const msg::RawObstacleSnapshot& snapshot);
 
   void onTimer();
 
@@ -303,11 +305,11 @@ private:
 
   [[nodiscard]] const char* motionPhaseName(const bool hold_position) const noexcept;
 
-  [[nodiscard]] bool prohibitedGridFresh() const;
+  [[nodiscard]] bool rawObstacleSnapshotFresh() const;
 
   [[nodiscard]] bool localPositionFresh() const;
 
-  [[nodiscard]] std::optional<OccupancyGrid2D> currentProhibitedGrid() const;
+  [[nodiscard]] std::optional<OccupancyGrid2D> currentRawObstacleGrid() const;
 
   [[nodiscard]] double localPositionAgeSeconds() const;
 
@@ -349,7 +351,7 @@ private:
   writeFlightBlackbox(const std::int64_t now_ns, const Point2 target,
                       const double target_distance_m, const double path_goal_distance_m,
                       const double mission_goal_distance_m,
-                      const double prohibited_grid_clearance_m, const bool pose_fresh,
+                      const double raw_obstacle_grid_clearance_m, const bool pose_fresh,
                       const double pose_age_s, const double attitude_age_s,
                       const UpcomingTurn& upcoming_turn, const bool hold_position,
                       const PathTrackingDiagnostics& path_tracking,
@@ -357,7 +359,7 @@ private:
 
   [[nodiscard]] Point2 loggedTarget() const;
 
-  nav_msgs::msg::OccupancyGrid prohibited_grid_;
+  nav_msgs::msg::OccupancyGrid raw_obstacle_grid_;
   px4_msgs::msg::VehicleStatus vehicle_status_;
   AttitudeEuler current_attitude_{};
   Point2 current_position_{};
@@ -406,7 +408,7 @@ private:
   std::int64_t max_clearance_grid_staleness_ns_{1'500'000'000};
   std::int64_t max_pose_staleness_ns_{1'000'000'000};
   std::int64_t telemetry_log_period_ns_{500'000'000};
-  std::int64_t last_prohibited_grid_update_ns_{0};
+  std::int64_t last_raw_obstacle_grid_update_ns_{0};
   std::int64_t last_attitude_update_ns_{0};
   std::int64_t last_local_position_update_ns_{0};
   std::int64_t last_telemetry_log_ns_{0};
@@ -429,8 +431,8 @@ private:
   bool local_position_seen_{false};
   bool auto_arm_{true};
   bool auto_offboard_{true};
-  bool prohibited_grid_valid_{false};
-  bool prohibited_grid_seen_logged_{false};
+  bool raw_obstacle_grid_valid_{false};
+  bool raw_obstacle_grid_seen_logged_{false};
   bool current_velocity_valid_{false};
   bool current_vertical_velocity_valid_{false};
   bool no_path_hold_target_valid_{false};
@@ -477,6 +479,9 @@ private:
   std::optional<TrajectoryPlannerDiagnosticsEnvelope> latest_trajectory_diagnostics_;
   std::optional<msg::ExecutableTrajectory> pending_truncation_suffix_;
   std::optional<msg::ExecutableTrajectory> pending_local_horizon_successor_;
+  std::optional<msg::ExecutableTrajectory> pending_raw_obstacle_snapshot_;
+  rclcpp::Time pending_raw_obstacle_snapshot_received_time_{0, 0, RCL_ROS_TIME};
+  RawObstacleSnapshotTracker raw_obstacle_snapshot_tracker_;
   TrajectoryMetrics last_trajectory_metrics_{};
   TrajectoryShapeDiagnostics last_trajectory_shape_diagnostics_{};
   TrajectorySpeedProfile trajectory_speed_profile_{};
@@ -530,7 +535,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr vehicle_status_sub_;
   rclcpp::Subscription<msg::CrashState>::SharedPtr crash_state_sub_;
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_sub_;
+  rclcpp::Subscription<msg::RawObstacleSnapshot>::SharedPtr raw_obstacle_snapshot_sub_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr
       offboard_control_mode_pub_;
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr

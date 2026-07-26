@@ -152,52 +152,6 @@ TEST(NoStaticPlannerOrchestrator, RecoveryGuidePreservesPolylineLookahead) {
   EXPECT_DOUBLE_EQ(target.y, 10.0);
 }
 
-TEST(NoStaticPlannerOrchestrator, DirectedEscapeOverridesMissionTargetWhileActive) {
-  DirectedInflationEscapeResult escape;
-  escape.state = DirectedInflationEscapeState::kActive;
-  escape.applied = true;
-  escape.connected = true;
-  escape.target = {12.0, -4.0};
-
-  const NoStaticRolloutTargetSelection selected =
-      selectNoStaticRolloutTarget({100.0, 200.0}, escape);
-
-  EXPECT_EQ(selected.source, NoStaticRolloutTargetSource::kDirectedEscape);
-  EXPECT_DOUBLE_EQ(selected.target.x, 12.0);
-  EXPECT_DOUBLE_EQ(selected.target.y, -4.0);
-}
-
-TEST(NoStaticPlannerOrchestrator, CompletedEscapeRestoresMissionTarget) {
-  DirectedInflationEscapeResult escape;
-  escape.state = DirectedInflationEscapeState::kCompleted;
-  escape.applied = false;
-  escape.connected = true;
-  escape.target = {12.0, -4.0};
-
-  const NoStaticRolloutTargetSelection selected =
-      selectNoStaticRolloutTarget({100.0, 200.0}, escape);
-
-  EXPECT_EQ(selected.source, NoStaticRolloutTargetSource::kMissionOrRecovery);
-  EXPECT_DOUBLE_EQ(selected.target.x, 100.0);
-  EXPECT_DOUBLE_EQ(selected.target.y, 200.0);
-}
-
-TEST(NoStaticPlannerOrchestrator, EscapeAwaitingContinuationUsesMissionTarget) {
-  DirectedInflationEscapeResult escape;
-  escape.state = DirectedInflationEscapeState::kActive;
-  escape.applied = true;
-  escape.connected = true;
-  escape.awaiting_mission_continuation = true;
-  escape.target = {12.0, -4.0};
-
-  const NoStaticRolloutTargetSelection selected =
-      selectNoStaticRolloutTarget({100.0, 200.0}, escape);
-
-  EXPECT_EQ(selected.source, NoStaticRolloutTargetSource::kMissionOrRecovery);
-  EXPECT_DOUBLE_EQ(selected.target.x, 100.0);
-  EXPECT_DOUBLE_EQ(selected.target.y, 200.0);
-}
-
 TEST(NoStaticPlannerOrchestrator, RepeatedDirectionSwitchRequestsRecovery) {
   NoStaticPlannerOrchestrator orchestrator{
       NoStaticPlannerOrchestratorConfig{.direction_switches_before_recovery = 2U}};

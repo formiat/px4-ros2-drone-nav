@@ -24,9 +24,10 @@ enum class RepairJobKind {
   kFull,
 };
 
-struct RepairGridSnapshot {
+struct RepairRiskSnapshot {
   std::string name;
-  OccupancyGrid2D grid;
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 1, 1}};
+  ObstacleRiskField risk;
   ClearanceField2D clearance;
 };
 
@@ -34,8 +35,8 @@ struct RepairSnapshot {
   std::uint64_t generation{0U};
   std::uint64_t blocked_path_id{0U};
   std::uint64_t temporary_prefix_fingerprint{0U};
-  PlanningGridVersion grid_version{};
-  std::vector<RepairGridSnapshot> grids;
+  RawObstacleVersion grid_version{};
+  RepairRiskSnapshot risk_snapshot;
   ExecutableTrajectoryArtifact old_trajectory;
   TrajectoryPointSample anchor;
   double truncation_s_m{0.0};
@@ -55,10 +56,10 @@ struct RepairResult {
   std::uint64_t generation{0U};
   std::uint64_t blocked_path_id{0U};
   std::uint64_t temporary_prefix_fingerprint{0U};
-  PlanningGridVersion source_grid_version{};
+  RawObstacleVersion source_grid_version{};
   double reconnect_margin_m{0.0};
   double reconnect_s_m{0.0};
-  std::size_t source_grid_index{0U};
+  std::string source_risk_context;
   TruncationSuffixActivationMode activation_mode{
       TruncationSuffixActivationMode::kMovingJoin};
   TrajectoryPlannerResult trajectory;
@@ -83,7 +84,7 @@ struct RepairCompletionDiagnostic {
   RepairJobKind kind{RepairJobKind::kPartial};
   double reconnect_margin_m{0.0};
   double reconnect_s_m{0.0};
-  std::size_t source_grid_index{0U};
+  std::string source_risk_context;
   TruncationSuffixActivationMode activation_mode{
       TruncationSuffixActivationMode::kMovingJoin};
   std::string reason;
@@ -111,7 +112,7 @@ enum class RepairFreshValidationReason {
 
 struct RepairFreshValidationInput {
   const RepairResult* candidate{nullptr};
-  const PlanningGridVersion* fresh_grid_version{nullptr};
+  const RawObstacleVersion* fresh_grid_version{nullptr};
   const OccupancyGrid2D* fresh_runtime_grid{nullptr};
   std::span<const Point2> remaining_prefix;
 };
@@ -138,7 +139,7 @@ private:
   std::uint64_t generation_{0U};
   std::uint64_t blocked_path_id_{0U};
   std::uint64_t temporary_prefix_fingerprint_{0U};
-  PlanningGridVersion grid_version_{};
+  RawObstacleVersion grid_version_{};
   bool winner_selected_{false};
 };
 

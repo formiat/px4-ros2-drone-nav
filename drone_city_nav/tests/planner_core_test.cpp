@@ -72,24 +72,21 @@ TEST(OccupancyGrid2D, FreeRayClearsStaleOccupiedCells) {
   EXPECT_EQ(grid.state(GridIndex{5, 1}), CellState::kFree);
 }
 
-TEST(OccupancyGrid2D, InflationBlocksSafetyRadius) {
+TEST(OccupancyGrid2D, RawOccupancyDoesNotMaterializeSafetyBands) {
   OccupancyGrid2D grid = makeGrid();
-
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(1.1);
 
-  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 5}));
-  EXPECT_TRUE(grid.isProhibited(GridIndex{4, 5}));
-  EXPECT_TRUE(grid.isProhibited(GridIndex{6, 5}));
-  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 4}));
-  EXPECT_TRUE(grid.isProhibited(GridIndex{5, 6}));
-  EXPECT_FALSE(grid.isProhibited(GridIndex{8, 5}));
+  EXPECT_TRUE(grid.isOccupied(GridIndex{5, 5}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{4, 5}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{6, 5}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{5, 4}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{5, 6}));
+  EXPECT_FALSE(grid.isOccupied(GridIndex{8, 5}));
 }
 
-TEST(PathSafety, SegmentAllowedRejectsOccupiedAndInflatedCells) {
+TEST(PathSafety, SegmentAllowedRejectsRawOccupiedCells) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(1.1);
 
   EXPECT_FALSE(pathSegmentIsAllowed(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5}));
   EXPECT_TRUE(pathSegmentIsAllowed(grid, Point2{8.5, 5.5}, Point2{10.5, 5.5}));
@@ -98,8 +95,6 @@ TEST(PathSafety, SegmentAllowedRejectsOccupiedAndInflatedCells) {
 TEST(PathSafety, SegmentTraversableAllowsLeavingProhibitedPrefix) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(0.0);
-
   EXPECT_FALSE(pathSegmentIsAllowed(grid, Point2{5.5, 5.5}, Point2{8.5, 5.5}));
   EXPECT_TRUE(pathSegmentIsTraversable(grid, Point2{5.5, 5.5}, Point2{8.5, 5.5}));
 }
@@ -107,8 +102,6 @@ TEST(PathSafety, SegmentTraversableAllowsLeavingProhibitedPrefix) {
 TEST(PathSafety, SegmentTraversableRejectsEnteringProhibitedCells) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(0.0);
-
   EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, Point2{6.5, 5.5}));
   EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, Point2{5.5, 5.5}));
 }
@@ -117,18 +110,14 @@ TEST(PathSafety, SegmentTraversableRejectsReenteringProhibitedCells) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
   grid.setOccupied(GridIndex{8, 5});
-  grid.rebuildInflation(0.0);
-
   EXPECT_FALSE(pathSegmentIsTraversable(grid, Point2{5.5, 5.5}, Point2{10.5, 5.5}));
 }
 
-TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
+TEST(AStarPlanner, FindsRouteAroundRawBuildingWall) {
   OccupancyGrid2D grid = makeGrid();
   for (int y = 0; y < 10; ++y) {
     grid.setOccupied(GridIndex{9, y});
   }
-  grid.rebuildInflation(0.0);
-
   const GridIndex start{1, 5};
   const GridIndex goal{18, 5};
   const AStarResult result = AStarPlanner{}.plan(grid, start, goal);
@@ -138,14 +127,12 @@ TEST(AStarPlanner, FindsRouteAroundInflatedBuildingWall) {
   EXPECT_EQ(result.path.front(), start);
   EXPECT_EQ(result.path.back(), goal);
   for (const GridIndex cell : result.path) {
-    EXPECT_FALSE(grid.isProhibited(cell));
+    EXPECT_FALSE(grid.isOccupied(cell));
   }
 }
 
 TEST(AStarPlanner, UsesPhysicalDistanceForBasePathCost) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 2.0, 8, 8}};
-  grid.rebuildInflation(0.0);
-
   const AStarConfig config = plainAStarConfig();
   const AStarResult straight_result =
       AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 1}, config);
@@ -174,13 +161,33 @@ TEST(AStarPlanner, ReportsSuccessForStartEqualGoal) {
 TEST(AStarPlanner, ReportsProhibitedStartOrGoal) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{4, 4});
-  grid.rebuildInflation(0.0);
-
   const AStarResult result =
       AStarPlanner{}.plan(grid, GridIndex{1, 1}, GridIndex{4, 4});
 
   EXPECT_FALSE(result.success);
-  EXPECT_EQ(result.status, AStarStatus::kProhibitedStartOrGoal);
+  EXPECT_EQ(result.status, AStarStatus::kRawOccupiedStartOrGoal);
+}
+
+TEST(AStarPlanner, PreferredDetourDominatesShorterCriticalRoute) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 15, 11}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{7, 5});
+  AStarConfig config = plainAStarConfig();
+  config.risk_policy = {
+      .critical_distance_m = 1.1,
+      .preferred_distance_m = 2.1,
+  };
+
+  const AStarResult result =
+      AStarPlanner{}.plan(grid, GridIndex{1, 5}, GridIndex{13, 5}, config);
+
+  ASSERT_TRUE(result.success);
+  EXPECT_TRUE(result.risk.hardValid());
+  EXPECT_EQ(result.risk.worst_tier, ObstacleRiskTier::kPreferred);
+  EXPECT_DOUBLE_EQ(result.risk.critical_exposure_m, 0.0);
+  EXPECT_TRUE(std::ranges::none_of(result.path, [](const GridIndex cell) {
+    return std::abs(cell.x - 7) <= 1 && std::abs(cell.y - 5) <= 1;
+  }));
 }
 
 TEST(AStarPlanner, PreRequestedStopCancelsBeforeSearch) {
@@ -206,8 +213,6 @@ TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
 
   const GridOverlayStats overlay_stats =
       overlayOccupiedCells(planning_grid, static_grid);
-  planning_grid.rebuildInflation(0.0);
-
   const GridIndex start{1, 5};
   const GridIndex goal{18, 5};
   const AStarResult result = AStarPlanner{}.plan(planning_grid, start, goal);
@@ -216,7 +221,7 @@ TEST(AStarPlanner, AvoidsStaticOnlyObstacleAfterOverlay) {
   ASSERT_TRUE(result.success);
   for (const GridIndex cell : result.path) {
     EXPECT_FALSE(static_grid.isOccupied(cell));
-    EXPECT_FALSE(planning_grid.isProhibited(cell));
+    EXPECT_FALSE(planning_grid.isOccupied(cell));
   }
 }
 
@@ -226,8 +231,6 @@ TEST(AStarPlanner, FindsPathAcrossGeneratedCityMap) {
       "generated_city.map2d";
   const StaticCityMap static_map = loadStaticCityMap(map_path);
   OccupancyGrid2D grid = rasterizeStaticCityMap(static_map, 0.0);
-  grid.rebuildInflation(5.0);
-
   const auto start = grid.worldToCell(Point2{54.0, 54.0});
   const auto goal = grid.worldToCell(Point2{216.0, 378.0});
   if (!start.has_value() || !goal.has_value()) {
@@ -235,8 +238,8 @@ TEST(AStarPlanner, FindsPathAcrossGeneratedCityMap) {
   }
   const GridIndex start_cell = start.value();
   const GridIndex goal_cell = goal.value();
-  ASSERT_FALSE(grid.isProhibited(start_cell));
-  ASSERT_FALSE(grid.isProhibited(goal_cell));
+  ASSERT_FALSE(grid.isOccupied(start_cell));
+  ASSERT_FALSE(grid.isOccupied(goal_cell));
 
   AStarConfig config{};
   config.turn_cost_weight = 50.0;
@@ -255,8 +258,6 @@ TEST(AStarPlanner, HeuristicWeightKeepsGeneratedCityRouteReachable) {
       "generated_city.map2d";
   const StaticCityMap static_map = loadStaticCityMap(map_path);
   OccupancyGrid2D grid = rasterizeStaticCityMap(static_map, 0.0);
-  grid.rebuildInflation(5.0);
-
   const auto start = grid.worldToCell(Point2{54.0, 54.0});
   const auto goal = grid.worldToCell(Point2{216.0, 378.0});
   if (!start.has_value() || !goal.has_value()) {
@@ -291,15 +292,18 @@ TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
   for (const GridIndex cell : occupied_cells) {
     grid.setOccupied(cell);
   }
-  grid.rebuildInflation(0.0);
-
   const GridIndex start{1, 3};
   const GridIndex goal{10, 3};
-  const AStarConfig unpenalized_config = plainAStarConfig();
+  AStarConfig unpenalized_config = plainAStarConfig();
+  unpenalized_config.risk_policy = {
+      .critical_distance_m = 0.0,
+      .preferred_distance_m = 0.0,
+  };
   const AStarResult unpenalized_result =
       AStarPlanner{}.plan(grid, start, goal, unpenalized_config);
 
   AStarConfig turn_config = plainAStarConfig();
+  turn_config.risk_policy = unpenalized_config.risk_policy;
   turn_config.turn_cost_weight = 3.0;
   const AStarResult turn_penalized_result =
       AStarPlanner{}.plan(grid, start, goal, turn_config);
@@ -312,8 +316,6 @@ TEST(AStarPlanner, TurnCostPrefersFewerDirectionChanges) {
 
 TEST(AStarPlanner, EvasiveManeuveringPrefersDirectionChanges) {
   OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 10, 7}};
-  grid.rebuildInflation(0.0);
-
   const GridIndex start{1, 3};
   const GridIndex goal{8, 3};
   const AStarConfig normal_config = plainAStarConfig();
@@ -339,8 +341,6 @@ TEST(AStarPlanner, InitialHeadingBiasPrefersVelocityAlignedFirstStep) {
   for (int y = 1; y <= 5; ++y) {
     grid.setOccupied(GridIndex{3, y});
   }
-  grid.rebuildInflation(0.0);
-
   const GridIndex start{3, 6};
   const GridIndex goal{3, 0};
   AStarConfig config{};
@@ -412,8 +412,6 @@ TEST(PathSmoothing, ReportsOutsideGridLineOfSight) {
 TEST(PathSmoothing, ReportsProhibitedLineOfSight) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(0.0);
-
   const LineOfSightCheck check =
       checkLineOfSight(grid, GridIndex{1, 5}, GridIndex{8, 5});
 
@@ -428,8 +426,6 @@ TEST(PathSmoothing, KeepsCollisionFreeSegments) {
   for (int y = 0; y < 10; ++y) {
     grid.setOccupied(GridIndex{9, y});
   }
-  grid.rebuildInflation(0.0);
-
   const AStarResult result =
       AStarPlanner{}.plan(grid, GridIndex{1, 5}, GridIndex{18, 5});
   ASSERT_TRUE(result.success);
@@ -448,8 +444,6 @@ TEST(PathSmoothing, ReportsSmoothingDiagnostics) {
   for (int y = 0; y < 10; ++y) {
     grid.setOccupied(GridIndex{9, y});
   }
-  grid.rebuildInflation(0.0);
-
   const AStarResult astar =
       AStarPlanner{}.plan(grid, GridIndex{1, 5}, GridIndex{18, 5});
   ASSERT_TRUE(astar.success);
@@ -500,8 +494,6 @@ TEST(PathSmoothing, CollapseCollinearPathUsesLateralTolerance) {
 TEST(PlannerCore, ComputePathRejectsOccupiedStart) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{1, 1});
-  grid.rebuildInflation(0.0);
-
   PlannerCore core{};
 
   const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
@@ -509,12 +501,10 @@ TEST(PlannerCore, ComputePathRejectsOccupiedStart) {
   EXPECT_FALSE(result.has_value());
 }
 
-TEST(PlannerCore, ComputePathEscapesInflatedStart) {
+TEST(PlannerCore, ComputePathStartsNormallyInsideFormerCriticalBand) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 5});
-  grid.rebuildInflation(1.1);
   ASSERT_FALSE(grid.isOccupied(GridIndex{4, 5}));
-  ASSERT_TRUE(grid.isInflated(GridIndex{4, 5}));
 
   PlannerCore core{};
 
@@ -523,24 +513,17 @@ TEST(PlannerCore, ComputePathEscapesInflatedStart) {
   ASSERT_TRUE(result.has_value());
   const PathComputationResult& path_result =
       result.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_TRUE(path_result.start_escape_used);
   EXPECT_EQ(path_result.requested_start_cell, (GridIndex{4, 5}));
   ASSERT_TRUE(path_result.start_cell.has_value());
-  const GridIndex escape_start =
-      path_result.start_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_FALSE(grid.isProhibited(escape_start));
+  EXPECT_EQ(path_result.start_cell, path_result.requested_start_cell);
   ASSERT_FALSE(path_result.astar.path.empty());
-  EXPECT_EQ(path_result.astar.path.front(), escape_start);
+  EXPECT_EQ(path_result.astar.path.front(), (GridIndex{4, 5}));
   EXPECT_EQ(path_result.astar.path.back(), (GridIndex{18, 5}));
-  EXPECT_TRUE(
-      pathSegmentIsTraversable(grid, Point2{4.5, 5.5}, grid.cellCenter(escape_start)));
 }
 
 TEST(PlannerCore, ComputePathRejectsProhibitedGoal) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{18, 5});
-  grid.rebuildInflation(0.0);
-
   PlannerCore core{};
 
   const auto result = core.computePath(grid, Point2{1.5, 1.5}, Point2{18.5, 5.5});
@@ -560,7 +543,6 @@ TEST(PlannerCore, ComputePathRejectsOutOfGridGoal) {
 TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{10, 6});
-  grid.rebuildInflation(1.1);
   PlannerCoreConfig config{};
   config.clearance_diagnostic_radius_m = 5.0;
   PlannerCore core{config};
@@ -593,11 +575,10 @@ TEST(PlannerCore, ComputePathReusesProhibitedClearanceFieldDiagnostics) {
 TEST(PlannerCore, ComputePathAcceptsPrebuiltProhibitedClearanceField) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{10, 6});
-  grid.rebuildInflation(1.1);
   PlannerCoreConfig config{};
   config.clearance_diagnostic_radius_m = 5.0;
   const ClearanceField2D clearance = ClearanceField2D::build(
-      grid, config.clearance_diagnostic_radius_m, ClearanceSource::kProhibited);
+      grid, config.clearance_diagnostic_radius_m, ClearanceSource::kOccupied);
   PlannerCore core{config};
 
   const auto result = core.computePath(PathComputationInput{
@@ -623,11 +604,10 @@ TEST(PlannerCore, ComputePathAcceptsPrebuiltProhibitedClearanceField) {
 TEST(PlannerCore, ComputePathRejectsTooSmallPrebuiltProhibitedClearanceField) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{10, 6});
-  grid.rebuildInflation(1.1);
   PlannerCoreConfig config{};
   config.clearance_diagnostic_radius_m = 5.0;
   const ClearanceField2D too_small_clearance =
-      ClearanceField2D::build(grid, 1.0, ClearanceSource::kProhibited);
+      ClearanceField2D::build(grid, 1.0, ClearanceSource::kOccupied);
   PlannerCore core{config};
 
   const auto result = core.computePath(PathComputationInput{
@@ -668,7 +648,6 @@ TEST(PlannerCore, StablePathKeepsClearRemainingPath) {
 TEST(PlannerCore, StablePathRejectsProhibitedIntersectionImmediately) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
-  grid.rebuildInflation(0.0);
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   PlannerCore core{config};
@@ -687,19 +666,16 @@ TEST(PlannerCore, StablePathRejectsProhibitedIntersectionImmediately) {
   const GridIndex expected_occupied_blocker{5, 1};
   EXPECT_EQ(intersection.cell, expected_occupied_blocker);
   EXPECT_TRUE(intersection.occupied);
-  EXPECT_FALSE(intersection.inflated);
   EXPECT_NEAR(intersection.cell_center.x, 5.5, 1.0e-9);
   EXPECT_NEAR(intersection.cell_center.y, 1.5, 1.0e-9);
   EXPECT_NEAR(intersection.segment_t, 0.5, 1.0e-9);
   EXPECT_NEAR(intersection.path_distance_m, 3.0, 1.0e-9);
 }
 
-TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
+TEST(PlannerCore, StablePathDoesNotTreatSoftRiskBandAsBlocked) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{5, 1});
-  grid.rebuildInflation(2.0);
   ASSERT_FALSE(grid.isOccupied(GridIndex{5, 3}));
-  ASSERT_TRUE(grid.isInflated(GridIndex{5, 3}));
 
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
@@ -709,25 +685,14 @@ TEST(PlannerCore, StablePathTreatsInflationAsProhibited) {
   const StablePathDecision decision =
       core.evaluateStablePath(grid, path, Point2{2.5, 3.5}, Point2{8.5, 3.5});
 
-  EXPECT_FALSE(decision.keep_path);
-  EXPECT_EQ(decision.reason, StablePathDecisionReason::kProhibitedConfirmed);
-  EXPECT_EQ(decision.prohibited_segment_index, 0U);
-  ASSERT_TRUE(decision.prohibited_intersection.has_value());
-  const PathProhibitedIntersection intersection =
-      decision.prohibited_intersection.value_or(PathProhibitedIntersection{});
-  const GridIndex expected_inflated_blocker{4, 3};
-  EXPECT_EQ(intersection.cell, expected_inflated_blocker);
-  EXPECT_FALSE(intersection.occupied);
-  EXPECT_TRUE(intersection.inflated);
-  EXPECT_NEAR(intersection.cell_center.x, 4.5, 1.0e-9);
-  EXPECT_NEAR(intersection.cell_center.y, 3.5, 1.0e-9);
+  EXPECT_TRUE(decision.keep_path);
+  EXPECT_EQ(decision.reason, StablePathDecisionReason::kClear);
+  EXPECT_FALSE(decision.prohibited_intersection.has_value());
 }
 
 TEST(PlannerCore, StablePathAllowsEscapeFromProhibitedStart) {
   OccupancyGrid2D grid = makeGrid();
   grid.setOccupied(GridIndex{1, 1});
-  grid.rebuildInflation(0.0);
-
   PlannerCoreConfig config{};
   config.stable_path_goal_tolerance_m = 1.0;
   PlannerCore core{config};

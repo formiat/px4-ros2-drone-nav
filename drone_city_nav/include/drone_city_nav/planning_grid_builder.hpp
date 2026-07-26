@@ -4,6 +4,7 @@
 #include "drone_city_nav/current_lidar_overlay.hpp"
 #include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/planner_core.hpp"
 
 #include <cstddef>
@@ -37,7 +38,7 @@ struct MemorySourceStats {
   GridOverlayStats overlay{};
 };
 
-struct PlanningGridBuilderConfig {
+struct ObstacleFieldBuilderConfig {
   bool use_static_map{true};
   GridBounds fallback_bounds{};
   std::optional<GridBounds> local_planning_bounds;
@@ -49,12 +50,6 @@ struct PlanningGridCacheStats {
   bool static_cache_eligible{false};
   bool static_cache_hit{false};
   bool static_cache_rebuilt{false};
-  double static_distance_field_duration_ms{0.0};
-  double static_inflation_mask_duration_ms{0.0};
-  double dynamic_distance_field_duration_ms{0.0};
-  double dynamic_inflation_mask_duration_ms{0.0};
-  std::size_t static_distance_source_cells{0U};
-  std::size_t dynamic_distance_source_cells{0U};
   bool local_planning_window_applied{false};
   std::size_t global_cells{0U};
   std::size_t planning_cells{0U};
@@ -73,10 +68,11 @@ struct PlanningGridSources {
   CurrentLidarOverlayStats current_lidar{};
 };
 
-struct PlanningGridBuildResult {
+struct ObstacleFieldBuildResult {
   PlanningGridStatus status{PlanningGridStatus::kNoReadySourceData};
-  std::optional<OccupancyGrid2D> grid;
-  std::optional<OccupancyGrid2D> planning_grid;
+  std::optional<OccupancyGrid2D> raw_occupancy;
+  ObstacleRiskPolicy risk_policy{};
+  std::optional<GridBounds> evaluation_bounds;
   std::optional<OccupancyGrid2D> current_lidar_grid;
   StaticSourceStats static_source{};
   MemorySourceStats memory{};
@@ -87,23 +83,18 @@ struct PlanningGridBuildResult {
   std::int64_t applied_lidar_update_ns{0};
 };
 
-class PlanningGridBuilder {
+class ObstacleFieldBuilder {
 public:
-  [[nodiscard]] PlanningGridBuildResult build(const PlanningGridBuilderConfig& config,
-                                              const PlanningGridSources& sources);
+  [[nodiscard]] ObstacleFieldBuildResult build(const ObstacleFieldBuilderConfig& config,
+                                               const PlanningGridSources& sources);
 
   void clearCache() noexcept;
 
 private:
   struct StaticGridCache {
     OccupancyGridFingerprint fingerprint{};
-    double inflation_radius_m{0.0};
-    double planning_clearance_m{0.0};
     GridOverlayStats overlay{};
     OccupancyGrid2D raw_grid;
-    DistanceField2D occupied_distance_field;
-    OccupancyGrid2D prohibited_grid;
-    OccupancyGrid2D planning_grid;
 
     explicit StaticGridCache(const GridBounds& bounds);
   };
@@ -114,11 +105,11 @@ private:
 [[nodiscard]] const char* planningGridStatusName(PlanningGridStatus status) noexcept;
 
 [[nodiscard]] std::optional<GridBounds>
-selectPlanningGridBounds(const PlanningGridBuilderConfig& config,
+selectPlanningGridBounds(const ObstacleFieldBuilderConfig& config,
                          const PlanningGridSources& sources);
 
-[[nodiscard]] PlanningGridBuildResult
-buildPlanningGrid(const PlanningGridBuilderConfig& config,
-                  const PlanningGridSources& sources);
+[[nodiscard]] ObstacleFieldBuildResult
+buildObstacleField(const ObstacleFieldBuilderConfig& config,
+                   const PlanningGridSources& sources);
 
 } // namespace drone_city_nav

@@ -63,7 +63,7 @@ struct CorridorStats {
   std::size_t reused_samples{0U};
   std::uint64_t route_fingerprint{0U};
   std::uint64_t config_fingerprint{0U};
-  OccupancyGridFingerprint prohibited_grid_fingerprint{};
+  OccupancyGridFingerprint raw_occupancy_fingerprint{};
 };
 
 struct CorridorResult {

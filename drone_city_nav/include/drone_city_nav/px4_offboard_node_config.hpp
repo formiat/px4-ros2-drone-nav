@@ -28,7 +28,7 @@ struct Px4OffboardNodeTopics {
   std::string px4_local_position{"/fmu/out/vehicle_local_position"};
   std::string px4_vehicle_attitude{"/fmu/out/vehicle_attitude"};
   std::string px4_vehicle_status{"/fmu/out/vehicle_status"};
-  std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
+  std::string raw_obstacle_snapshot{"/drone_city_nav/raw_obstacle_snapshot"};
   std::string offboard_control_mode{"/fmu/in/offboard_control_mode"};
   std::string trajectory_setpoint{"/fmu/in/trajectory_setpoint"};
   std::string vehicle_command{"/fmu/in/vehicle_command"};

@@ -26,8 +26,6 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
   switch (source) {
     case DistanceFieldSource::kOccupied:
       return grid.isOccupied(cell);
-    case DistanceFieldSource::kProhibited:
-      return grid.isProhibited(cell);
   }
   return false;
 }

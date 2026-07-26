@@ -31,7 +31,7 @@ The current stack supports:
 - a known passage annotation map loaded from
   `drone_city_nav/worlds/known_passages.passages3d`;
 - current lidar obstacle overlay and accumulated obstacle memory;
-- runtime prohibited-grid construction with extra planning clearance;
+- atomic raw-obstacle fusion with distance-derived planning risk;
 - A* rough route planning;
 - corridor construction around the route;
 - smooth trajectory optimization inside the corridor;
@@ -96,11 +96,11 @@ profile, and constrain speed while an opening is traversed.
 
 - Raw obstacle source: direct obstacle evidence from a static map, lidar
   overlay, or memory grid. Raw sources must not contain safety inflation.
-- Prohibited grid: the runtime grid after raw sources are merged and inflated.
-  This is the hard safety grid used for validation and replan triggers.
-- Planning clearance: additional planner-only clearance applied while building
-  paths and trajectories. Entering the planning-clearance margin is not itself
-  a replan reason.
+- Raw obstacle snapshot: the atomic merged occupancy, producer identity,
+  revision, and risk-policy fingerprint used for runtime validation.
+- Critical/planning risk bands: soft distance-derived tiers used
+  lexicographically while building paths and trajectories. Entering a soft
+  band is not itself a replan reason.
 - Executable trajectory: the accepted path that the offboard controller tracks.
   Its global routing and curvature profile are XY-owned; each sample also
   carries `z_m`, and known passages can add local XY repair, vertical

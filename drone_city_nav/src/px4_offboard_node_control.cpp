@@ -73,7 +73,7 @@ void Px4OffboardNode::onTimer() {
         static_cast<int>(
             trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).size()),
         trajectoryPlannerStatusName(last_trajectory_planner_stats_.status).data(),
-        prohibited_grid_valid_ ? "true" : "false");
+        raw_obstacle_grid_valid_ ? "true" : "false");
     return;
   }
 
@@ -513,29 +513,29 @@ void Px4OffboardNode::advanceWaypointIfNeeded() {
 
 [[nodiscard]] double
 Px4OffboardNode::estimateProhibitedGridClearanceM(const Point2 point) const {
-  return estimateGridClearanceM(point, kInflatedOccupancyValue);
+  return estimateGridClearanceM(point, kRawOccupiedValue);
 }
 
 [[nodiscard]] NearestProhibitedCellDiagnostic
 Px4OffboardNode::nearestProhibitedCellDiagnostic(
     const Point2 point, const std::int8_t min_occupancy_value) const {
   NearestProhibitedCellDiagnostic diagnostic{};
-  if (!prohibitedGridFresh() || !(prohibited_grid_.info.resolution > 0.0F) ||
-      prohibited_grid_.info.width == 0U || prohibited_grid_.info.height == 0U) {
+  if (!rawObstacleSnapshotFresh() || !(raw_obstacle_grid_.info.resolution > 0.0F) ||
+      raw_obstacle_grid_.info.width == 0U || raw_obstacle_grid_.info.height == 0U) {
     return diagnostic;
   }
 
-  const auto width = static_cast<int>(prohibited_grid_.info.width);
-  const auto height = static_cast<int>(prohibited_grid_.info.height);
+  const auto width = static_cast<int>(raw_obstacle_grid_.info.width);
+  const auto height = static_cast<int>(raw_obstacle_grid_.info.height);
   const std::size_t expected_data_size =
       static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-  if (prohibited_grid_.data.size() != expected_data_size) {
+  if (raw_obstacle_grid_.data.size() != expected_data_size) {
     return diagnostic;
   }
 
-  const double resolution = static_cast<double>(prohibited_grid_.info.resolution);
-  const double origin_x = prohibited_grid_.info.origin.position.x;
-  const double origin_y = prohibited_grid_.info.origin.position.y;
+  const double resolution = static_cast<double>(raw_obstacle_grid_.info.resolution);
+  const double origin_x = raw_obstacle_grid_.info.origin.position.x;
+  const double origin_y = raw_obstacle_grid_.info.origin.position.y;
   const GridIndex center{
       static_cast<int>(std::floor((point.x - origin_x) / resolution)),
       static_cast<int>(std::floor((point.y - origin_y) / resolution))};
@@ -557,7 +557,7 @@ Px4OffboardNode::nearestProhibitedCellDiagnostic(
       const std::size_t data_index =
           static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
           static_cast<std::size_t>(x);
-      if (prohibited_grid_.data[data_index] < min_occupancy_value) {
+      if (raw_obstacle_grid_.data[data_index] < min_occupancy_value) {
         continue;
       }
       const Point2 cell_center{origin_x + (static_cast<double>(x) + 0.5) * resolution,
@@ -588,11 +588,11 @@ Px4OffboardNode::nearestProhibitedCellDiagnostic(
 [[nodiscard]] double
 Px4OffboardNode::estimateGridClearanceM(const Point2 point,
                                         const std::int8_t min_occupancy_value) const {
-  if (!prohibitedGridFresh()) {
+  if (!rawObstacleSnapshotFresh()) {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  return occupancyGridClearanceM(prohibited_grid_, point,
+  return occupancyGridClearanceM(raw_obstacle_grid_, point,
                                  kProhibitedGridClearanceDiagnosticRadiusM,
                                  min_occupancy_value);
 }
@@ -682,7 +682,7 @@ void Px4OffboardNode::logControlSummary() {
   const double path_goal_distance = local_position_valid_ && trajectoryGoalReady()
                                         ? distance(current_position_, trajectory_goal_)
                                         : std::numeric_limits<double>::quiet_NaN();
-  const double prohibited_grid_clearance_m =
+  const double raw_obstacle_grid_clearance_m =
       local_position_valid_ ? estimateProhibitedGridClearanceM(current_position_)
                             : std::numeric_limits<double>::quiet_NaN();
   const bool hold_position = shouldHoldPosition();
@@ -743,7 +743,7 @@ void Px4OffboardNode::logControlSummary() {
       "safe=[%.2f, %.2f] gate_z=%.2f safe_error=%.2f reason=%s] "
       "diagnostic_rough_route_turn[valid=%s index=%zu distance=%.2f angle=%.2f] "
       "final_goal_hold=%s "
-      "prohibited_grid_clearance=%.2f",
+      "raw_obstacle_grid_clearance=%.2f",
       local_position_valid_ ? "true" : "false", pose_fresh ? "true" : "false",
       pose_age_s, current_altitude_m_, navigationAllowed() ? "true" : "false",
       vehicle_status_valid_ ? "true" : "false", isArmed() ? "true" : "false",
@@ -864,7 +864,7 @@ void Px4OffboardNode::logControlSummary() {
       upcoming_turn.valid ? "true" : "false",
       upcoming_turn.valid ? upcoming_turn.waypoint_index + 1U : 0U,
       upcoming_turn.distance_to_turn_m, turn_angle_rad,
-      final_goal_hold_active_ ? "true" : "false", prohibited_grid_clearance_m);
+      final_goal_hold_active_ ? "true" : "false", raw_obstacle_grid_clearance_m);
 }
 
 } // namespace drone_city_nav

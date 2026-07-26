@@ -23,6 +23,29 @@ void expectContainsAll(const std::string& text,
 [[nodiscard]] inline TrajectoryPlannerStats populatedStats() {
   TrajectoryPlannerStats stats{};
   stats.quality = TrajectoryQuality::kRefined;
+  stats.final_risk = PathRiskScore{
+      .worst_tier = ObstacleRiskTier::kPlanningBand,
+      .critical_exposure_m = 0.0,
+      .planning_exposure_m = 8.25,
+      .minimum_raw_clearance_m = 2.5,
+  };
+  stats.stage_risk.push_back(TrajectoryStageRiskDiagnostic{
+      .stage = "turn_smoothing",
+      .before =
+          PathRiskScore{
+              .worst_tier = ObstacleRiskTier::kPlanningBand,
+              .planning_exposure_m = 8.25,
+              .minimum_raw_clearance_m = 2.5,
+          },
+      .after =
+          PathRiskScore{
+              .worst_tier = ObstacleRiskTier::kPlanningBand,
+              .planning_exposure_m = 7.0,
+              .minimum_raw_clearance_m = 2.75,
+          },
+      .changed = true,
+      .accepted = true,
+  });
   stats.trajectory_optimizer.estimated_time_s = 12.5;
   stats.trajectory_optimizer.min_speed_limit_mps = 1.0;
   stats.trajectory_optimizer.max_speed_limit_mps = 10.0;
@@ -250,8 +273,7 @@ void expectContainsAll(const std::string& text,
   stats.corridor.reused_samples = 42U;
   stats.corridor.route_fingerprint = 0x1234U;
   stats.corridor.config_fingerprint = 0x2345U;
-  stats.corridor.prohibited_grid_fingerprint.cells_hash = 0x5678U;
-  stats.corridor.prohibited_grid_fingerprint.inflated_hash = 0x9abcU;
+  stats.corridor.raw_occupancy_fingerprint.cells_hash = 0x5678U;
   stats.corridor.sample_build_duration_ms = 6.25;
   stats.corridor.raycast_duration_ms = 5.75;
   stats.corridor.lateral_limit_duration_ms = 1.5;

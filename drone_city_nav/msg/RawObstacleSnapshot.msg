@@ -1,0 +1,6 @@
+uint64 producer_instance_id
+uint64 obstacle_snapshot_revision
+uint64 risk_policy_fingerprint
+float64 risk_critical_distance_m
+float64 risk_preferred_distance_m
+nav_msgs/OccupancyGrid grid

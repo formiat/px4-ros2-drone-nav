@@ -32,17 +32,26 @@ constexpr std::array<GridIndex, kDirectionCount> kNeighborOffsets{{
 struct OpenNode {
   GridIndex cell{};
   int direction_state{kStartDirectionState};
-  double f_score{0.0};
-  double g_score{0.0};
+  RankedPathCost cost{};
+  double f_geometry{0.0};
 };
 
 struct CompareOpenNode {
   [[nodiscard]] bool operator()(const OpenNode& lhs,
                                 const OpenNode& rhs) const noexcept {
-    if (lhs.f_score == rhs.f_score) {
-      return lhs.g_score < rhs.g_score;
+    if (!pathRiskEqual(lhs.cost.risk, rhs.cost.risk)) {
+      return pathRiskLess(rhs.cost.risk, lhs.cost.risk);
     }
-    return lhs.f_score > rhs.f_score;
+    if (lhs.f_geometry < rhs.f_geometry) {
+      return false;
+    }
+    if (rhs.f_geometry < lhs.f_geometry) {
+      return true;
+    }
+    if (lhs.cost.algorithm_cost != rhs.cost.algorithm_cost) {
+      return lhs.cost.algorithm_cost < rhs.cost.algorithm_cost;
+    }
+    return lhs.cost.deterministic_tiebreak > rhs.cost.deterministic_tiebreak;
   }
 };
 
@@ -84,9 +93,8 @@ struct CompareOpenNode {
                    static_cast<int>(cell_index / width)};
 }
 
-[[nodiscard]] bool diagonalMoveCutsProhibitedCorner(const OccupancyGrid2D& grid,
-                                                    const GridIndex from,
-                                                    const GridIndex to) {
+[[nodiscard]] bool diagonalMoveCutsRawCorner(const OccupancyGrid2D& grid,
+                                             const GridIndex from, const GridIndex to) {
   const int dx = to.x - from.x;
   const int dy = to.y - from.y;
   if (std::abs(dx) != 1 || std::abs(dy) != 1) {
@@ -95,7 +103,34 @@ struct CompareOpenNode {
 
   const GridIndex adjacent_x{from.x + dx, from.y};
   const GridIndex adjacent_y{from.x, from.y + dy};
-  return grid.isProhibited(adjacent_x) || grid.isProhibited(adjacent_y);
+  return grid.isOccupied(adjacent_x) || grid.isOccupied(adjacent_y);
+}
+
+[[nodiscard]] PathRiskScore startRisk(const ObstacleRiskField& field,
+                                      const GridIndex cell) {
+  PathRiskScore risk{};
+  risk.worst_tier = field.tierAt(cell);
+  risk.minimum_raw_clearance_m = field.occupiedDistance().distanceAt(cell);
+  return risk;
+}
+
+[[nodiscard]] PathRiskScore extendRisk(const PathRiskScore& current,
+                                       const ObstacleRiskField& field,
+                                       const GridIndex cell,
+                                       const double step_distance_m) {
+  PathRiskScore next = current;
+  const ObstacleRiskTier tier = field.tierAt(cell);
+  if (static_cast<std::uint8_t>(tier) > static_cast<std::uint8_t>(next.worst_tier)) {
+    next.worst_tier = tier;
+  }
+  if (tier == ObstacleRiskTier::kCriticalBand) {
+    next.critical_exposure_m += step_distance_m;
+  } else if (tier == ObstacleRiskTier::kPlanningBand) {
+    next.planning_exposure_m += step_distance_m;
+  }
+  next.minimum_raw_clearance_m =
+      std::min(next.minimum_raw_clearance_m, field.occupiedDistance().distanceAt(cell));
+  return next;
 }
 
 [[nodiscard]] double directionPreferenceCost(const AStarConfig& config,
@@ -182,8 +217,8 @@ const char* astarStatusName(const AStarStatus status) noexcept {
       return "success";
     case AStarStatus::kInvalidStartOrGoal:
       return "invalid_start_or_goal";
-    case AStarStatus::kProhibitedStartOrGoal:
-      return "prohibited_start_or_goal";
+    case AStarStatus::kRawOccupiedStartOrGoal:
+      return "raw_occupied_start_or_goal";
     case AStarStatus::kUnreachable:
       return "unreachable";
     case AStarStatus::kStateSpaceTooLarge:
@@ -206,8 +241,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
     result.status = AStarStatus::kInvalidStartOrGoal;
     return result;
   }
-  if (grid.isProhibited(start) || grid.isProhibited(goal)) {
-    result.status = AStarStatus::kProhibitedStartOrGoal;
+  if (grid.isOccupied(start) || grid.isOccupied(goal)) {
+    result.status = AStarStatus::kRawOccupiedStartOrGoal;
     return result;
   }
 
@@ -218,15 +253,38 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
   }
 
   const std::size_t state_count = grid.cellCount() * direction_states;
-  std::vector<double> g_scores(state_count, std::numeric_limits<double>::infinity());
+  const ObstacleRiskField risk_field =
+      ObstacleRiskField::build(grid, config.risk_policy);
+  std::vector<RankedPathCost> g_scores(
+      state_count,
+      RankedPathCost{
+          .risk =
+              PathRiskScore{
+                  .outside_bounds = true,
+                  .intersects_raw_occupied = true,
+                  .worst_tier = ObstacleRiskTier::kCriticalBand,
+                  .critical_exposure_m = std::numeric_limits<double>::infinity(),
+                  .planning_exposure_m = std::numeric_limits<double>::infinity(),
+              },
+          .algorithm_cost = std::numeric_limits<double>::infinity(),
+          .deterministic_tiebreak = std::numeric_limits<std::uint64_t>::max(),
+      });
   std::vector<std::size_t> parents(state_count, kNoParent);
   std::vector<std::uint8_t> closed(state_count, 0U);
   std::priority_queue<OpenNode, std::vector<OpenNode>, CompareOpenNode> open;
 
   const std::size_t start_index = stateIndex(grid, start, kStartDirectionState);
-  g_scores[start_index] = 0.0;
-  open.push(OpenNode{start, kStartDirectionState,
-                     weightedHeuristic(start, goal, grid.resolution(), config), 0.0});
+  g_scores[start_index] = RankedPathCost{
+      .risk = startRisk(risk_field, start),
+      .algorithm_cost = 0.0,
+      .deterministic_tiebreak = 0U,
+  };
+  open.push(OpenNode{
+      .cell = start,
+      .direction_state = kStartDirectionState,
+      .cost = g_scores[start_index],
+      .f_geometry = weightedHeuristic(start, goal, grid.resolution(), config),
+  });
 
   while (!open.empty()) {
     if (stop_token.stop_requested()) {
@@ -249,7 +307,13 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       result.success = !result.path.empty();
       result.status =
           result.success ? AStarStatus::kSuccess : AStarStatus::kUnreachable;
-      result.total_cost = current.g_score;
+      result.total_cost = current.cost.algorithm_cost;
+      std::vector<Point2> path_points;
+      path_points.reserve(result.path.size());
+      for (const GridIndex cell : result.path) {
+        path_points.push_back(grid.cellCenter(cell));
+      }
+      result.risk = risk_field.evaluate(grid, path_points);
       return result;
     }
 
@@ -257,8 +321,8 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
          ++direction_index) {
       const GridIndex offset = kNeighborOffsets.at(direction_index);
       const GridIndex next{current.cell.x + offset.x, current.cell.y + offset.y};
-      if (!grid.contains(next) || grid.isProhibited(next) ||
-          diagonalMoveCutsProhibitedCorner(grid, current.cell, next)) {
+      if (!grid.contains(next) || grid.isOccupied(next) ||
+          diagonalMoveCutsRawCorner(grid, current.cell, next)) {
         continue;
       }
 
@@ -269,20 +333,27 @@ AStarResult AStarPlanner::plan(const OccupancyGrid2D& grid, const GridIndex star
       }
 
       const double step_distance_m = stepDistanceM(offset, grid.resolution());
-      const double tentative_g =
-          g_scores[current_index] + step_distance_m +
+      RankedPathCost tentative = g_scores[current_index];
+      tentative.risk = extendRisk(tentative.risk, risk_field, next, step_distance_m);
+      tentative.algorithm_cost +=
+          step_distance_m +
           directionPreferenceCost(config, current.direction_state,
                                   next_direction_state) +
           initialHeadingBiasCost(config, current.direction_state, offset);
-      if (tentative_g >= g_scores[next_index]) {
+      tentative.deterministic_tiebreak = static_cast<std::uint64_t>(next_index);
+      if (!rankedPathCostLess(tentative, g_scores[next_index])) {
         continue;
       }
 
       parents[next_index] = current_index;
-      g_scores[next_index] = tentative_g;
-      const double f_score =
-          tentative_g + weightedHeuristic(next, goal, grid.resolution(), config);
-      open.push(OpenNode{next, next_direction_state, f_score, tentative_g});
+      g_scores[next_index] = tentative;
+      open.push(OpenNode{
+          .cell = next,
+          .direction_state = next_direction_state,
+          .cost = tentative,
+          .f_geometry = tentative.algorithm_cost +
+                        weightedHeuristic(next, goal, grid.resolution(), config),
+      });
     }
   }
 

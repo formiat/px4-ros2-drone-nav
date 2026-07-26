@@ -26,7 +26,7 @@ lineSamples(const Point2 start, const Point2 end, const double altitude_m = 12.0
 }
 
 [[nodiscard]] OccupancyGrid2D freeGrid() {
-  OccupancyGrid2D grid{GridBounds{-20.0, -40.0, 0.5, 240, 160}};
+  OccupancyGrid2D grid{GridBounds{-20.0, -40.0, 0.5, 240, 240}};
   grid.reset(CellState::kFree);
   return grid;
 }
@@ -40,6 +40,18 @@ lineSamples(const Point2 start, const Point2 end, const double altitude_m = 12.0
   };
 }
 
+struct TestRiskContext {
+  explicit TestRiskContext(const OccupancyGrid2D& grid)
+      : risk{ObstacleRiskField::build(grid,
+                                      ObstacleRiskPolicy{.critical_distance_m = 1.0,
+                                                         .preferred_distance_m = 4.0})},
+        context{.name = "test_raw_risk", .raw_occupancy = &grid, .risk_field = &risk} {
+  }
+
+  ObstacleRiskField risk;
+  TrajectoryRiskContext context;
+};
+
 } // namespace
 
 TEST(TrajectoryHorizontalHandover, BuildsTraversablePredictedPrefixBridge) {
@@ -48,9 +60,10 @@ TEST(TrajectoryHorizontalHandover, BuildsTraversablePredictedPrefixBridge) {
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{0.0, 4.0}, Point2{80.0, 4.0});
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   ASSERT_TRUE(result.applied) << result.reason
                               << " heading=" << result.max_sample_heading_delta_rad
@@ -74,9 +87,10 @@ TEST(TrajectoryHorizontalHandover, DoesNotRewriteCompatibleUpdate) {
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{0.0, 0.5}, Point2{80.0, 0.5});
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   EXPECT_FALSE(result.applied);
   EXPECT_TRUE(result.attempted);
@@ -89,9 +103,10 @@ TEST(TrajectoryHorizontalHandover, RejectsDirectionChangeThatExceedsCurvatureLim
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{10.0, 0.0}, Point2{66.0, 56.0});
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   EXPECT_FALSE(result.applied);
   EXPECT_STREQ(result.reason, "geometry_limit_exceeded");
@@ -104,19 +119,20 @@ TEST(TrajectoryHorizontalHandover, RejectsBridgeBlockedByCurrentGrid) {
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{0.0, 4.0}, Point2{80.0, 4.0});
   OccupancyGrid2D grid = freeGrid();
-  const std::optional<GridIndex> blocker = grid.worldToCell(Point2{22.0, 2.0});
-  ASSERT_TRUE(blocker.has_value());
-  if (!blocker.has_value()) {
-    return;
+  const GridIndex first = grid.worldToCell(Point2{15.0, 0.5}).value();
+  const GridIndex last = grid.worldToCell(Point2{35.0, 3.5}).value();
+  for (int x = first.x; x <= last.x; ++x) {
+    for (int y = first.y; y <= last.y; ++y) {
+      grid.setOccupied(GridIndex{x, y});
+    }
   }
-  grid.setOccupied(blocker.value());
-  grid.rebuildInflation(1.0);
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   EXPECT_FALSE(result.applied);
-  EXPECT_STREQ(result.reason, "non_traversable");
+  EXPECT_STREQ(result.reason, "raw_occupied");
 }
 
 TEST(TrajectoryHorizontalHandover, RejectsDistantCandidate) {
@@ -125,15 +141,16 @@ TEST(TrajectoryHorizontalHandover, RejectsDistantCandidate) {
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{0.0, 30.0}, Point2{80.0, 30.0});
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   EXPECT_FALSE(result.applied);
   EXPECT_STREQ(result.reason, "join_distance_exceeded");
 }
 
-TEST(TrajectoryHorizontalHandover, RequiresValidationGridByDefault) {
+TEST(TrajectoryHorizontalHandover, RequiresRiskContextByDefault) {
   const std::vector<TrajectoryPointSample> current =
       lineSamples(Point2{0.0, 0.0}, Point2{80.0, 0.0});
   const std::vector<TrajectoryPointSample> candidate =
@@ -143,7 +160,7 @@ TEST(TrajectoryHorizontalHandover, RequiresValidationGridByDefault) {
       buildHorizontalTrajectoryHandover(current, candidate, movingState());
 
   EXPECT_FALSE(result.applied);
-  EXPECT_STREQ(result.reason, "validation_grid_unavailable");
+  EXPECT_STREQ(result.reason, "risk_context_unavailable");
 }
 
 TEST(TrajectoryHorizontalHandover, PreservesUpcomingHardWindowMetadata) {
@@ -161,9 +178,10 @@ TEST(TrajectoryHorizontalHandover, PreservesUpcomingHardWindowMetadata) {
     }
   }
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   ASSERT_TRUE(result.applied) << result.reason
                               << " heading=" << result.max_sample_heading_delta_rad
@@ -192,9 +210,10 @@ TEST(TrajectoryHorizontalHandover, PreservesActiveHardWindowBeforeBridge) {
     }
   }
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   ASSERT_TRUE(result.applied) << result.reason;
   EXPECT_TRUE(result.hard_window_prefix_preserved);
@@ -224,9 +243,10 @@ TEST(TrajectoryHorizontalHandover, RejectsDifferentActiveHardWindows) {
     }
   }
   const OccupancyGrid2D grid = freeGrid();
+  const TestRiskContext risk{grid};
 
-  const HorizontalTrajectoryHandoverResult result =
-      buildHorizontalTrajectoryHandover(current, candidate, movingState(), {}, &grid);
+  const HorizontalTrajectoryHandoverResult result = buildHorizontalTrajectoryHandover(
+      current, candidate, movingState(), {}, &risk.context);
 
   EXPECT_FALSE(result.applied);
   EXPECT_STREQ(result.reason, "hard_window_prefix_not_reconnectable");

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/types.hpp"
 
@@ -10,9 +10,15 @@
 
 namespace drone_city_nav {
 
+enum class HandoverRiskQuality {
+  kUnknown,
+  kStrict,
+  kDegraded,
+};
+
 struct HorizontalTrajectoryHandoverConfig {
   bool enabled{true};
-  bool require_validation_grid{true};
+  bool require_risk_context{true};
   double prefix_time_s{0.6};
   double min_prefix_distance_m{3.0};
   double max_prefix_distance_m{10.0};
@@ -52,6 +58,10 @@ struct HorizontalTrajectoryHandoverResult {
   double max_abs_curvature_1pm{0.0};
   std::size_t non_traversable_segment_index{0U};
   bool hard_window_prefix_preserved{false};
+  PathRiskScore candidate_risk{};
+  PathRiskScore stitched_risk{};
+  HandoverRiskQuality risk_quality{HandoverRiskQuality::kUnknown};
+  std::size_t layouts_evaluated{0U};
 };
 
 [[nodiscard]] HorizontalTrajectoryHandoverResult buildHorizontalTrajectoryHandover(
@@ -59,6 +69,8 @@ struct HorizontalTrajectoryHandoverResult {
     std::span<const TrajectoryPointSample> candidate_samples,
     const HorizontalTrajectoryHandoverState& state,
     const HorizontalTrajectoryHandoverConfig& config = {},
-    const OccupancyGrid2D* validation_grid = nullptr);
+    const TrajectoryRiskContext* risk_context = nullptr);
+
+[[nodiscard]] const char* handoverRiskQualityName(HandoverRiskQuality quality) noexcept;
 
 } // namespace drone_city_nav

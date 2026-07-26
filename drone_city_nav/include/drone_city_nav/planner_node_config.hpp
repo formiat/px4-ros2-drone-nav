@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/ambiguous_lidar_hit_tracker.hpp"
-#include "drone_city_nav/directed_inflation_escape.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
 #include "drone_city_nav/lidar_ingestion_decision.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
@@ -27,13 +26,12 @@ struct PlannerTopics {
   std::string local_position{"/fmu/out/vehicle_local_position"};
   std::string attitude{"/fmu/out/vehicle_attitude"};
   std::string timesync_status{"/fmu/out/timesync_status"};
-  std::string prohibited_grid{"/drone_city_nav/prohibited_grid"};
+  std::string raw_obstacle_snapshot{"/drone_city_nav/raw_obstacle_snapshot"};
+  std::string raw_obstacle_grid{"/drone_city_nav/raw_obstacle_grid"};
   std::string static_map_grid{"/drone_city_nav/static_map_grid"};
   std::string static_map_points{"/drone_city_nav/static_map_points"};
   std::string static_building_markers{"/drone_city_nav/static_building_markers"};
   std::string known_passage_markers{"/drone_city_nav/known_passage_markers"};
-  std::string directed_inflation_escape_markers{
-      "/drone_city_nav/directed_inflation_escape_markers"};
   std::string path{"/drone_city_nav/path"};
   std::string path_id{"/drone_city_nav/path_id"};
   std::string trajectory_diagnostics{"/drone_city_nav/trajectory_diagnostics"};
@@ -96,7 +94,6 @@ struct NoStaticRolloutConfig {
   double terminal_braking_decel_mps2{4.0};
   double terminal_braking_margin_m{2.0};
   double minimum_length_m{7.0};
-  double minimum_unrelaxed_tail_m{2.0};
   bool local_planning_window_enabled{true};
   double local_planning_window_extra_margin_m{1.0};
   RolloutPlannerConfig planner{};
@@ -111,11 +108,9 @@ struct PlannerNodeConfig {
   double inflation_radius_m{1.0};
   double planning_clearance_m{3.0};
   double no_static_planning_clearance_m{5.0};
-  double local_inflation_relaxation_radius_m{5.0};
-  DirectedInflationEscapeConfig directed_inflation_escape{};
   PlannerCoreConfig planner_core{};
   TrajectoryPlannerConfig trajectory_planner{};
-  PlanningGridBuilderConfig planning_grid_builder{};
+  ObstacleFieldBuilderConfig planning_grid_builder{};
   LidarProjectionConfig lidar_projection{};
   StaticMapSourceConfig static_map{};
   KnownPassageSourceConfig known_passages{};

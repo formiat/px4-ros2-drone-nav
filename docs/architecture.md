@@ -24,14 +24,15 @@ world assets, and Docker tooling around it.
 - receives and parses atomic memory snapshots in a dedicated callback group;
 - keeps only the newest parsed snapshot while planning is busy, then atomically
   adopts that grid/provenance pair before the next planning-grid build;
-- builds the prohibited planning grid;
+- builds one merged raw occupancy snapshot and its distance-derived risk field;
 - runs A* rough routing;
 - builds a corridor;
 - builds optimized executable trajectories;
 - publishes the authoritative `/drone_city_nav/executable_trajectory` command,
   plus `/drone_city_nav/path`, `/drone_city_nav/path_id`,
-  `/drone_city_nav/trajectory_diagnostics`, `/drone_city_nav/prohibited_grid`,
-  and static-map debug topics.
+  `/drone_city_nav/trajectory_diagnostics`,
+  `/drone_city_nav/raw_obstacle_snapshot`, the debug-only
+  `/drone_city_nav/raw_obstacle_grid`, and static-map debug topics.
 
 `px4_offboard_node`
 
@@ -44,7 +45,7 @@ world assets, and Docker tooling around it.
 
 `lidar_debug_node`
 
-- records lidar, memory, prohibited-grid, and trajectory debug snapshots;
+- records lidar, memory, raw-obstacle, and trajectory debug snapshots;
 - publishes point clouds for RViz;
 - writes image/JSON/CSV artifacts under `log/lidar_debug`.
 
@@ -77,7 +78,7 @@ Gazebo lidar
 
 /scan + memory + static map + PX4 pose
   -> planner_node
-  -> prohibited grid
+  -> raw obstacle snapshot + risk field
   -> A*
   -> corridor
   -> trajectory optimizer
@@ -101,7 +102,7 @@ Gazebo physics contact involving X500
 ```
 
 Physical collision and obstacle sensing have separate responsibilities. Lidar,
-memory, prohibited cells, and geometric clearance may affect planning or emit
+memory, raw occupied cells, and geometric clearance may affect planning or emit
 diagnostics, but they never declare a crash. Only a contact reported by Gazebo
 physics after takeoff latches the crash state. Once latched, offboard stops all
 trajectory setpoints, ignores later paths, disables automatic arming, and repeats
@@ -113,7 +114,7 @@ falls and moves according to normal Gazebo physics.
 Planner responsibilities:
 
 - obstacle source fusion;
-- prohibited grid construction;
+- raw occupancy fusion and risk-field construction;
 - route and trajectory generation;
 - geometry smoothing;
 - planning diagnostics;
@@ -169,10 +170,9 @@ them unless the dependency is explicitly named and tested. When a value is only
 diagnostic, the documentation and the parameter name should say so.
 
 The second design rule is that safety validation and planning preference are
-different concepts. The hard prohibited grid answers "must not cross". The
-planning clearance grid answers "prefer to stay farther away". Crossing the
-planning clearance should not by itself force a replan, because it is a
-planning preference rather than a collision condition.
+different concepts. Raw occupied and outside-ROI answer "must not cross".
+Distance-derived risk tiers answer "prefer to stay farther away". Crossing a
+soft risk boundary should not by itself force a replan.
 
 ## Layer Boundaries
 
@@ -190,7 +190,8 @@ sensor evidence
 
 Each boundary has a different failure policy:
 
-- sensor evidence can be incomplete or noisy, so it is merged and inflated;
+- sensor evidence can be incomplete or noisy, so it is merged into an atomic
+  raw snapshot and a distance-derived risk field;
 - planner output can be rejected, so the previous accepted trajectory remains
   active;
 - offboard setpoints must be continuous enough for PX4, so the smoother and
@@ -258,14 +259,14 @@ logs, but it is weaker than the path timestamp because it travels on a separate
 topic. The offboard node can update the accepted id from matching diagnostics
 when the diagnostic stamp proves the association.
 
-`/drone_city_nav/prohibited_grid` is a hard safety artifact. Consumers should
-treat it as the map of space that the drone trajectory must not intersect.
-Planning clearance is not published as the same concept because that would mix
-hard collision validation with route preference.
+`/drone_city_nav/raw_obstacle_snapshot` is the atomic hard-safety artifact.
+Raw occupied cells and evaluation bounds are hard constraints. Critical and
+planning bands are lexicographic route preferences derived from the included
+thresholds; they are not separate occupancy grids.
 
 ## State Ownership During Replanning
 
-When the current trajectory becomes invalid against the latest prohibited grid,
+When the current trajectory intersects raw occupancy in the latest snapshot,
 the planner first publishes a blocker event. Offboard truncates the executable
 trajectory and returns a generation-tagged stable join point. The planner builds
 the replacement suffix from that point. Until the suffix is accepted, offboard

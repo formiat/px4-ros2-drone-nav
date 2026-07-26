@@ -405,9 +405,9 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       0.0, 60.0);
   config.trajectory_handover.enabled = node.declare_parameter<bool>(
       "trajectory_handover_enabled", config.trajectory_handover.enabled);
-  config.trajectory_handover.require_validation_grid =
-      node.declare_parameter<bool>("trajectory_handover_require_validation_grid",
-                                   config.trajectory_handover.require_validation_grid);
+  config.trajectory_handover.require_risk_context =
+      node.declare_parameter<bool>("trajectory_handover_require_risk_context",
+                                   config.trajectory_handover.require_risk_context);
   config.trajectory_handover.prefix_time_s = node.declare_parameter<double>(
       "trajectory_handover_prefix_time_s", config.trajectory_handover.prefix_time_s);
   config.trajectory_handover.min_prefix_distance_m =
@@ -562,8 +562,8 @@ void sanitizePx4OffboardNodeConfig(Px4OffboardNodeConfig& config) {
       "px4_vehicle_attitude_topic", config.topics.px4_vehicle_attitude);
   config.topics.px4_vehicle_status = node.declare_parameter<std::string>(
       "px4_vehicle_status_topic", config.topics.px4_vehicle_status);
-  config.topics.prohibited_grid = node.declare_parameter<std::string>(
-      "prohibited_grid_topic", config.topics.prohibited_grid);
+  config.topics.raw_obstacle_snapshot = node.declare_parameter<std::string>(
+      "raw_obstacle_snapshot_topic", config.topics.raw_obstacle_snapshot);
   config.topics.offboard_control_mode = node.declare_parameter<std::string>(
       "offboard_control_mode_topic", config.topics.offboard_control_mode);
   config.topics.trajectory_setpoint = node.declare_parameter<std::string>(

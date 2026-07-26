@@ -31,64 +31,39 @@ detached in front of a mass and hits inside a free opening are retained
 immediately. The classifier is independent of trajectory/proximity, never
 filters static-map cells, and does not alter A* route preferences.
 
-Raw sources are merged before inflation. Raw sources must not contain safety
-inflation.
+Raw sources are merged before risk evaluation. Raw sources contain only direct
+obstacle evidence.
 
-## 2. Prohibited Grid
+## 2. Raw Occupancy And Risk Field
 
-The planner grid builder creates a hard-safety prohibited grid. Current
-defaults:
+The builder creates one raw occupancy snapshot and one occupied-distance field.
+Current risk boundaries are:
 
 ```yaml
 inflation_radius_m: 1.0
 planning_clearance_m: 3.0
-local_inflation_relaxation_radius_m: 5.0
 ```
 
-The prohibited grid is the hard validation grid. The extra planning clearance
-is used to bias planning away from obstacles and does not by itself cause a
-runtime replan.
+Raw occupied cells and local ROI bounds are hard rejects. Distances below
+`inflation_radius_m` form the critical tier; distances below
+`inflation_radius_m + planning_clearance_m` form the planning tier. A shared
+lexicographic comparator prefers lower tiers and shorter tier exposure before
+algorithm-specific geometry cost.
 
-Grid-dependent planning stages use an ordered fallback:
-
-```text
-planning_clearance -> runtime_prohibited
-```
-
-Each stage starts again with the stricter planning-clearance grid and uses the
-runtime prohibited grid only if that stage cannot produce a valid result. The
-ordered attempts cover A*, route connection, corridor construction, trajectory
-optimization, turn smoothing, shape cleanup, local passage insertion, handover
-preflight, and final trajectory validation. A stage result is accepted only
-after it is checked against the grid used for that attempt. This permits a
-route with the hard runtime safety margin when the preferred extra clearance is
-too restrictive, without weakening either grid or changing the underlying
-algorithms.
-
-For a confirmed safe-truncation replan, one prepared immutable copy of these
-two grids is shared by all partial and full race jobs. Local repair replaces
+For a confirmed safe-truncation replan, one immutable raw/risk snapshot is
+shared by all partial and full race jobs. Local repair replaces
 only the geometry between the confirmed truncation point and a reconnect
 station after the blocked span; the old suffix geometry remains unchanged.
 Vertical, passage, and speed metadata are rebuilt for the complete stitched
 trajectory before publication.
 
-Immediately before publication, final validation rebuilds fresh copies of both
-grids, reapplies local inflation relaxation, and again checks planning clearance
-before runtime prohibited space. The log entry `GRID_ATTEMPT_SELECTION` records
-the selected grid and attempt count for every stage.
-
-Before the planner publishes either grid or starts path construction, it
-transiently removes inflated cells whose centers are within
-`local_inflation_relaxation_radius_m` of the current physical vehicle position.
-Raw occupied cells are preserved. The mask is reconstructed from source data on
-every planning cycle, so it does not alter static map, current lidar, or
-accumulated obstacle-memory data.
-
-The published grid is:
+The authoritative runtime output is:
 
 ```text
-/drone_city_nav/prohibited_grid
+/drone_city_nav/raw_obstacle_snapshot
 ```
+
+`/drone_city_nav/raw_obstacle_grid` mirrors only raw cells for RViz.
 
 ## 3. A* Rough Route
 
@@ -110,10 +85,9 @@ trajectory generation.
 
 ## 5. Corridor Construction
 
-The corridor builder samples the route and finds lateral bounds. Its
-orchestration tries the planning-clearance grid first and the runtime prohibited
-grid second. The corridor algorithm itself is unchanged and can reuse clearance
-fields and previous samples when safe.
+The corridor builder samples the route and finds lateral bounds to raw occupied
+cells. It uses the same immutable raw/risk context as route generation and can
+reuse occupied-clearance fields and previous samples when safe.
 
 Important concepts:
 
@@ -157,7 +131,7 @@ preferred lateral margin. It builds a local smooth XY segment through the
 opening, stitches it back into the original trajectory, recomputes
 sample stationing/tangent/curvature, and accepts the result only if:
 
-- the full stitched trajectory remains traversable on the prohibited grid;
+- the full stitched trajectory avoids raw occupied cells and the ROI boundary;
 - mission start and goal endpoints stay anchored;
 - join tangent and curvature jumps stay within configured limits;
 - the known-passage XY match improves.
@@ -220,9 +194,10 @@ improve shape or timing, but it should not reinterpret the meaning of earlier
 artifacts.
 
 Raw obstacle sources mean "there is evidence of an obstacle here". They do not
-carry safety inflation. The grid builder owns inflation and planning
-clearance. A* owns connectivity. Corridor construction owns continuous lateral
-bounds. The trajectory optimizer owns smoothness inside those bounds. Turn
+carry derived safety state. The obstacle-field builder owns the occupied
+distance field and mode-specific risk policy. A* owns connectivity. Corridor
+construction owns continuous lateral bounds. The trajectory optimizer owns
+smoothness inside those bounds. Turn
 smoothing owns local corner repair. Local passage insertion owns optional
 known-passage XY repair. The speed profile owns scalar speed along the final
 geometry. Offboard owns the actual runtime command.
@@ -241,29 +216,23 @@ parameters. Examples:
 
 ## Hard Safety Versus Planning Preference
 
-The current default model uses hard inflation and additional planning
-clearance. The hard inflated grid is the prohibited grid. It defines where a
-trajectory must not go. The planning-clearance band is extra caution used for
-planning. It biases route search and trajectory construction away from
-obstacles, but it should not cause a runtime replan by itself.
+The current model materializes only merged raw occupancy. Raw occupied cells
+and points outside the evaluation ROI are hard rejects. The occupied distance
+field derives a critical band and a planning band. Candidate ordering is
+lexicographic: preferred space dominates planning-band exposure, which
+dominates critical-band exposure; geometry quality decides only after risk.
 
-This model lets the drone fly accurately without excessive replans. A route is
-planned with a generous margin. If the drone or controller drifts slightly
-toward the planning-clearance boundary, the system does not immediately throw
-away the path. If the trajectory crosses the hard prohibited grid, the system
-has a real reason to rebuild.
-
-The distinction must be visible in logs and RViz. If a developer cannot tell
-whether a decision came from hard prohibited space or planning clearance, the
-diagnostics are not sufficient.
+Soft-band exposure does not invalidate an accepted trajectory. A newly raw
+occupied span does. Diagnostics expose the worst tier, exposure lengths, and
+minimum raw clearance so this distinction is observable.
 
 ## Stage-By-Stage Failure Reading
 
 A useful analysis order for a failed or ugly run is:
 
 1. Confirm that raw obstacle sources are plausible in RViz.
-2. Confirm that prohibited inflation matches expected hard margin.
-3. Confirm that planning clearance does not close the route unnecessarily.
+2. Confirm that raw occupied cells and ROI bounds are correct.
+3. Confirm that critical/planning exposure ordering explains route selection.
 4. Inspect A* route topology and whether the route is forced through a narrow
    passage.
 5. Inspect corridor width and centerline blocked spans.

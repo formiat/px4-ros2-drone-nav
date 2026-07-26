@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
 #include <cstddef>
@@ -20,7 +20,7 @@ enum class RolloutRejectReason {
 
 enum class RolloutGridRejectReason {
   kOutsideGrid,
-  kProhibited,
+  kRawOccupied,
 };
 
 struct RolloutPlannerConfig {
@@ -47,6 +47,7 @@ struct RolloutInput {
   Point2 velocity{};
   Point2 preferred_target{};
   const OccupancyGrid2D* grid{nullptr};
+  const ObstacleRiskField* risk_field{nullptr};
   double minimum_length_m{0.0};
   bool stationary_restart{false};
   std::uint64_t generation{0U};
@@ -64,11 +65,12 @@ struct RolloutCandidate {
   double lateral_deviation_cost{0.0};
   double heading_change_cost{0.0};
   double curvature_cost{0.0};
+  PathRiskScore risk{};
   std::size_t deterministic_index{0U};
 };
 
 struct RolloutGridRejectionDiagnostic {
-  RolloutGridRejectReason reason{RolloutGridRejectReason::kProhibited};
+  RolloutGridRejectReason reason{RolloutGridRejectReason::kRawOccupied};
   std::size_t deterministic_index{0U};
   std::size_t segment_index{0U};
   Point2 position{};

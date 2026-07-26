@@ -342,6 +342,20 @@ void Px4OffboardNode::onExecutableTrajectory(const msg::ExecutableTrajectory& co
 }
 
 void Px4OffboardNode::tryActivatePendingTruncationSuffix() {
+  if (pending_raw_obstacle_snapshot_.has_value() &&
+      pending_raw_obstacle_snapshot_received_time_.nanoseconds() > 0 &&
+      (get_clock()->now() - pending_raw_obstacle_snapshot_received_time_).seconds() >=
+          local_horizon_execution_config_.successor_timeout_s) {
+    msg::ExecutableTrajectory expired = std::move(*pending_raw_obstacle_snapshot_);
+    pending_raw_obstacle_snapshot_.reset();
+    pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
+    RCLCPP_WARN(get_logger(),
+                "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
+                " action=rejected reason=snapshot_timeout timeout_s=%.2f",
+                expired.path_id, local_horizon_execution_config_.successor_timeout_s);
+    publishTruncationSuffixAck(expired, TruncationSuffixAckDecision::kRejected,
+                               "raw_obstacle_snapshot_timeout");
+  }
   if (pending_local_horizon_successor_.has_value() &&
       !pending_truncation_suffix_.has_value()) {
     if (!temporary_replan_hold_active_ || !localPositionFresh()) {
@@ -450,6 +464,44 @@ void Px4OffboardNode::processExecutableTrajectory(
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
                          "Ignoring planner path after physical collision");
     return;
+  }
+  if (!path.poses.empty()) {
+    const RawObstacleSnapshotIdentity obstacle_identity{
+        .producer_instance_id = command.obstacle_snapshot_producer_instance_id,
+        .revision = command.obstacle_snapshot_revision,
+        .policy_fingerprint = command.risk_policy_fingerprint,
+    };
+    const RawSnapshotRelation snapshot_relation =
+        raw_obstacle_snapshot_tracker_.relation(obstacle_identity);
+    if (snapshot_relation == RawSnapshotRelation::kRuntimeOlder ||
+        snapshot_relation == RawSnapshotRelation::kDifferentProducer) {
+      pending_raw_obstacle_snapshot_ = command;
+      pending_raw_obstacle_snapshot_received_time_ = get_clock()->now();
+      RCLCPP_INFO(get_logger(),
+                  "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
+                  " relation=%s action=pending producer=%" PRIu64 " revision=%" PRIu64
+                  " policy=%" PRIu64,
+                  command.path_id, rawSnapshotRelationName(snapshot_relation),
+                  obstacle_identity.producer_instance_id, obstacle_identity.revision,
+                  obstacle_identity.policy_fingerprint);
+      return;
+    }
+    if (snapshot_relation == RawSnapshotRelation::kPolicyMismatch ||
+        snapshot_relation == RawSnapshotRelation::kRetiredProducer ||
+        snapshot_relation == RawSnapshotRelation::kMalformed) {
+      RCLCPP_WARN(get_logger(),
+                  "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
+                  " relation=%s action=rejected producer=%" PRIu64 " revision=%" PRIu64
+                  " policy=%" PRIu64,
+                  command.path_id, rawSnapshotRelationName(snapshot_relation),
+                  obstacle_identity.producer_instance_id, obstacle_identity.revision,
+                  obstacle_identity.policy_fingerprint);
+      return;
+    }
+    RCLCPP_INFO(get_logger(),
+                "RAW_OBSTACLE_TRAJECTORY path_id=%" PRIu64
+                " relation=%s action=validate",
+                command.path_id, rawSnapshotRelationName(snapshot_relation));
   }
   if (command.activate_after_terminal_hold && !pending_retry &&
       !temporary_replan_hold_active_) {
@@ -809,8 +861,20 @@ void Px4OffboardNode::processExecutableTrajectory(
       horizontal_handover.reason = "continuity_already_compatible";
     } else {
       std::optional<OccupancyGrid2D> handover_grid;
-      if (prohibitedGridFresh()) {
-        handover_grid = currentProhibitedGrid();
+      std::optional<ObstacleRiskField> handover_risk;
+      std::optional<TrajectoryRiskContext> handover_context;
+      if (rawObstacleSnapshotFresh()) {
+        handover_grid = currentRawObstacleGrid();
+        const RawObstacleSnapshotMetadata* const snapshot =
+            raw_obstacle_snapshot_tracker_.current();
+        if (handover_grid.has_value() && snapshot != nullptr) {
+          handover_risk = ObstacleRiskField::build(*handover_grid, snapshot->policy);
+          handover_context = TrajectoryRiskContext{
+              .name = "runtime_raw_risk",
+              .raw_occupancy = &*handover_grid,
+              .risk_field = &*handover_risk,
+          };
+        }
       }
       horizontal_handover = buildHorizontalTrajectoryHandover(
           final_trajectory_samples_, candidate_state.samples,
@@ -821,7 +885,7 @@ void Px4OffboardNode::processExecutableTrajectory(
               .current_horizontal_speed_valid = current_velocity_valid_,
           },
           trajectory_handover_config_,
-          handover_grid.has_value() ? &*handover_grid : nullptr);
+          handover_context.has_value() ? &*handover_context : nullptr);
       if (horizontal_handover.applied) {
         candidate_state = buildOffboardTrajectoryState(horizontal_handover.samples,
                                                        velocity_follower_config_);

@@ -26,6 +26,7 @@ rosidl_generate_interfaces(
   "msg/ObstacleMemoryCellProvenance.msg"
   "msg/ObstacleMemoryProvenance.msg"
   "msg/ObstacleMemorySnapshot.msg"
+  "msg/RawObstacleSnapshot.msg"
   "msg/CrashState.msg"
   "msg/ReplanBlockerEvent.msg"
   "msg/ReplanTruncation.msg"
@@ -58,7 +59,6 @@ add_library(
   src/corridor.cpp
   src/current_lidar_overlay.cpp
   src/debug_image.cpp
-  src/directed_inflation_escape.cpp
   src/distance_field.cpp
   src/final_trajectory_debug_io.cpp
   src/grid_config.cpp
@@ -79,6 +79,7 @@ add_library(
   src/lidar_pose_history.cpp
   src/lidar_projection.cpp
   src/px4_ros_time_mapper.cpp
+  src/raw_obstacle_snapshot_tracker.cpp
   src/lidar_snapshot_writer.cpp
   src/local_horizon_execution_state.cpp
   src/navigation_pose.cpp
@@ -89,6 +90,7 @@ add_library(
   src/offboard_vertical_follower.cpp
   src/offboard_velocity_follower.cpp
   src/obstacle_memory.cpp
+  src/obstacle_risk_field.cpp
   src/occupancy_grid.cpp
   src/passage_traversal_monitor.cpp
   src/path_smoothing.cpp
@@ -156,7 +158,6 @@ enable_project_warnings(drone_contact_system)
 
 add_library(
   drone_city_nav_ros_adapters
-  src/directed_inflation_escape_debug_markers.cpp
   src/lidar_debug_node_config.cpp
   src/memory_provenance_audit_tracker.cpp
   src/offboard_debug_markers.cpp
@@ -382,22 +383,6 @@ if(BUILD_TESTING)
   target_link_libraries(distance_field_test drone_city_nav_core)
   enable_project_warnings(distance_field_test)
 
-  ament_add_gtest(directed_inflation_escape_test
-                  tests/directed_inflation_escape_test.cpp)
-  target_compile_features(directed_inflation_escape_test PRIVATE cxx_std_20)
-  target_link_libraries(directed_inflation_escape_test drone_city_nav_core)
-  enable_project_warnings(directed_inflation_escape_test)
-
-  ament_add_gtest(directed_inflation_escape_debug_markers_test
-                  tests/directed_inflation_escape_debug_markers_test.cpp)
-  target_compile_features(directed_inflation_escape_debug_markers_test
-                          PRIVATE cxx_std_20)
-  target_link_libraries(directed_inflation_escape_debug_markers_test
-                        drone_city_nav_ros_adapters)
-  ament_target_dependencies(directed_inflation_escape_debug_markers_test
-                            geometry_msgs std_msgs visualization_msgs)
-  enable_project_warnings(directed_inflation_escape_debug_markers_test)
-
   ament_add_gtest(planner_core_test tests/planner_core_test.cpp)
   target_compile_features(planner_core_test PRIVATE cxx_std_20)
   target_compile_definitions(
@@ -525,6 +510,17 @@ if(BUILD_TESTING)
   target_compile_features(obstacle_memory_test PRIVATE cxx_std_20)
   target_link_libraries(obstacle_memory_test drone_city_nav_core)
   enable_project_warnings(obstacle_memory_test)
+
+  ament_add_gtest(obstacle_risk_field_test tests/obstacle_risk_field_test.cpp)
+  target_compile_features(obstacle_risk_field_test PRIVATE cxx_std_20)
+  target_link_libraries(obstacle_risk_field_test drone_city_nav_core)
+  enable_project_warnings(obstacle_risk_field_test)
+
+  ament_add_gtest(raw_obstacle_snapshot_test
+                  tests/raw_obstacle_snapshot_test.cpp)
+  target_compile_features(raw_obstacle_snapshot_test PRIVATE cxx_std_20)
+  target_link_libraries(raw_obstacle_snapshot_test drone_city_nav_core)
+  enable_project_warnings(raw_obstacle_snapshot_test)
 
   ament_add_gtest(obstacle_memory_provenance_ros_test
                   tests/obstacle_memory_provenance_ros_test.cpp)

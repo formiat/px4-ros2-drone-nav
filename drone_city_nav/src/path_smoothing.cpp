@@ -1,6 +1,7 @@
 #include "drone_city_nav/path_smoothing.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -69,7 +70,7 @@ LineOfSightCheck checkLineOfSight(const OccupancyGrid2D& grid, const GridIndex s
   const auto line_cells = grid.cellsOnLine(start, end);
   result.checked_cells = line_cells.size();
   for (const GridIndex cell : line_cells) {
-    if (grid.isProhibited(cell)) {
+    if (grid.isOccupied(cell)) {
       ++result.prohibited_cells;
     }
   }
@@ -95,6 +96,14 @@ std::vector<GridIndex> smoothPath(const OccupancyGrid2D& grid,
 
 PathSmoothingResult smoothPathWithStats(const OccupancyGrid2D& grid,
                                         const std::vector<GridIndex>& path) {
+  const ObstacleRiskField risk_field =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
+  return smoothPathWithStats(grid, risk_field, path);
+}
+
+PathSmoothingResult smoothPathWithStats(const OccupancyGrid2D& grid,
+                                        const ObstacleRiskField& risk_field,
+                                        const std::vector<GridIndex>& path) {
   PathSmoothingResult result{};
   result.stats.input_points = path.size();
   if (path.size() <= 2U) {
@@ -116,7 +125,23 @@ PathSmoothingResult smoothPathWithStats(const OccupancyGrid2D& grid,
     std::size_t next = path.size() - 1U;
     LineOfSightCheck check = checkLineOfSight(grid, path[anchor], path[next]);
     ++result.stats.line_of_sight_checks;
-    while (next > anchor + 1U && !check.clear) {
+    while (next > anchor + 1U) {
+      bool risk_not_worse = false;
+      if (check.clear) {
+        const std::array<Point2, 2U> shortcut{grid.cellCenter(path[anchor]),
+                                              grid.cellCenter(path[next])};
+        std::vector<Point2> replaced;
+        replaced.reserve(next - anchor + 1U);
+        for (std::size_t index = anchor; index <= next; ++index) {
+          replaced.push_back(grid.cellCenter(path[index]));
+        }
+        const PathRiskScore shortcut_risk = risk_field.evaluate(grid, shortcut);
+        const PathRiskScore replaced_risk = risk_field.evaluate(grid, replaced);
+        risk_not_worse = !pathRiskLess(replaced_risk, shortcut_risk);
+      }
+      if (check.clear && risk_not_worse) {
+        break;
+      }
       recordRejectedLineOfSight(result.stats, check);
       --next;
       check = checkLineOfSight(grid, path[anchor], path[next]);

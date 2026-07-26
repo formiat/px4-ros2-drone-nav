@@ -51,10 +51,9 @@ TEST(GridOverlay, CurrentLidarOccupiedBlocksWithoutMemory) {
   EXPECT_EQ(stats.occupied_cells_applied, 1U);
 }
 
-TEST(GridOverlay, OccupiedOverlayDoesNotTreatInflationAsRawObstacle) {
+TEST(GridOverlay, OccupiedOverlayCopiesOnlyRawObstacleCells) {
   OccupancyGrid2D destination = makeOverlayGrid();
   destination.setOccupied(GridIndex{2, 2});
-  destination.rebuildInflation(1.1);
   OccupancyGrid2D current_lidar = makeOverlayGrid();
   current_lidar.setOccupied(GridIndex{3, 2});
   current_lidar.setOccupied(GridIndex{5, 5});
@@ -78,18 +77,17 @@ TEST(GridOverlay, EmptySourceDoesNotChangeDestination) {
   EXPECT_EQ(stats.occupied_cells_applied, 0U);
 }
 
-TEST(GridOverlay, InflationRunsAfterUnionOverlay) {
+TEST(GridOverlay, UnionOverlayDoesNotCreateDerivedObstacleCells) {
   OccupancyGrid2D destination = makeOverlayGrid();
   OccupancyGrid2D static_source = makeOverlayGrid();
   static_source.setOccupied(GridIndex{2, 2});
 
   const GridOverlayStats overlay_stats =
       overlayOccupiedCells(destination, static_source);
-  destination.rebuildInflation(1.1);
 
   EXPECT_EQ(overlay_stats.occupied_cells_applied, 1U);
-  EXPECT_TRUE(destination.isProhibited(GridIndex{2, 2}));
-  EXPECT_TRUE(destination.isProhibited(GridIndex{3, 2}));
+  EXPECT_TRUE(destination.isOccupied(GridIndex{2, 2}));
+  EXPECT_FALSE(destination.isOccupied(GridIndex{3, 2}));
 }
 
 TEST(GridOverlay, RejectsMismatchedGeometry) {

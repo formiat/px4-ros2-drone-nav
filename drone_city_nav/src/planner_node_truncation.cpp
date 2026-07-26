@@ -4,7 +4,7 @@ namespace drone_city_nav {
 
 std::optional<std::uint64_t> PlannerNode::beginTruncationReplan(
     const std::uint64_t blocked_path_id, const BlockedSpan& blocked_span,
-    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+    std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared_grid,
     const std::int64_t blocker_detected_stamp_ns) {
   if (blocked_path_id == 0U || prepared_grid == nullptr) {
     return std::nullopt;
@@ -104,7 +104,7 @@ void PlannerNode::onReplanTruncation(const msg::ReplanTruncation& message) {
           successor.blocked_path_id == message.blocked_path_id &&
           successor.truncation_generation == message.truncation_generation &&
           successor.prepared_grid != nullptr &&
-          planningGridVersionsEqual(successor.grid_version,
+          obstacleRiskVersionsEqual(successor.grid_version,
                                     successor.prepared_grid->version);
       if (snapshot_identity_matches) {
         successor.temporary_prefix_fingerprint = message.temporary_prefix_fingerprint;

@@ -106,7 +106,7 @@ enum class PlannerModePrimaryAction {
 evaluatePlannerRuntimeReadiness(const PlannerRuntimeReadinessInput& input) noexcept;
 
 [[nodiscard]] PlannerGridReadinessDecision
-evaluatePlannerGridReadiness(const PlanningGridBuildResult& result) noexcept;
+evaluatePlannerGridReadiness(const ObstacleFieldBuildResult& result) noexcept;
 
 [[nodiscard]] StablePathRuntimeAction
 stablePathRuntimeAction(StablePathDecisionReason reason) noexcept;

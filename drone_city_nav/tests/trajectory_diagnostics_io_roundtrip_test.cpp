@@ -15,6 +15,9 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
       .blocked_path_id = 41U,
       .truncation_generation = 9U,
       .temporary_prefix_fingerprint = 123456U,
+      .obstacle_snapshot_producer_instance_id = 71U,
+      .obstacle_snapshot_revision = 123U,
+      .risk_policy_fingerprint = 456U,
       .replan_triggered = true,
       .truncation_suffix = true,
       .truncation_immediate_hold = true,
@@ -56,6 +59,9 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.delivery.blocked_path_id, 41U);
   EXPECT_EQ(parsed_value.delivery.truncation_generation, 9U);
   EXPECT_EQ(parsed_value.delivery.temporary_prefix_fingerprint, 123456U);
+  EXPECT_EQ(parsed_value.delivery.obstacle_snapshot_producer_instance_id, 71U);
+  EXPECT_EQ(parsed_value.delivery.obstacle_snapshot_revision, 123U);
+  EXPECT_EQ(parsed_value.delivery.risk_policy_fingerprint, 456U);
   EXPECT_EQ(parsed_value.delivery.blocker_detected_stamp_ns, 1'000'000'000U);
   EXPECT_EQ(parsed_value.delivery.trajectory_build_started_stamp_ns, 1'100'000'000U);
   EXPECT_EQ(parsed_value.delivery.path_published_stamp_ns, 1'900'000'000U);
@@ -77,6 +83,11 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_DOUBLE_EQ(parsed_value.delivery.blocker_to_publish_ms, 900.0);
   EXPECT_DOUBLE_EQ(parsed_value.delivery.publication_prediction_error_m, 0.806);
   EXPECT_EQ(parsed_value.stats.quality, TrajectoryQuality::kRefined);
+  EXPECT_EQ(parsed_value.stats.final_risk.worst_tier, ObstacleRiskTier::kPlanningBand);
+  EXPECT_DOUBLE_EQ(parsed_value.stats.final_risk.planning_exposure_m, 8.25);
+  ASSERT_EQ(parsed_value.stats.stage_risk.size(), 1U);
+  EXPECT_EQ(parsed_value.stats.stage_risk.front().stage, "turn_smoothing");
+  EXPECT_TRUE(parsed_value.stats.stage_risk.front().accepted);
   EXPECT_EQ(parsed_value.stats.samples, 78U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.length_m, 412.25);
   EXPECT_EQ(parsed_value.stats.speed_profile_construction_config_fingerprint, 0x3456U);
@@ -176,10 +187,7 @@ TEST(TrajectoryDiagnosticsIo, PlannerDiagnosticsJsonRoundTripsRuntimeStats) {
   EXPECT_EQ(parsed_value.stats.corridor.reused_samples, 42U);
   EXPECT_EQ(parsed_value.stats.corridor.route_fingerprint, 0x1234U);
   EXPECT_EQ(parsed_value.stats.corridor.config_fingerprint, 0x2345U);
-  EXPECT_EQ(parsed_value.stats.corridor.prohibited_grid_fingerprint.cells_hash,
-            0x5678U);
-  EXPECT_EQ(parsed_value.stats.corridor.prohibited_grid_fingerprint.inflated_hash,
-            0x9abcU);
+  EXPECT_EQ(parsed_value.stats.corridor.raw_occupancy_fingerprint.cells_hash, 0x5678U);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.sample_build_duration_ms, 6.25);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.raycast_duration_ms, 5.75);
   EXPECT_DOUBLE_EQ(parsed_value.stats.corridor.lateral_limit_duration_ms, 1.5);

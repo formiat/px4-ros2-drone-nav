@@ -4,6 +4,36 @@ namespace drone_city_nav {
 
 using namespace trajectory_diagnostics_io_detail;
 
+namespace {
+
+[[nodiscard]] ObstacleRiskTier
+parseObstacleRiskTier(const std::string_view value) noexcept {
+  if (value == "critical_band") {
+    return ObstacleRiskTier::kCriticalBand;
+  }
+  if (value == "planning_band") {
+    return ObstacleRiskTier::kPlanningBand;
+  }
+  return ObstacleRiskTier::kPreferred;
+}
+
+void parsePathRisk(const std::string& json, const std::string& prefix,
+                   PathRiskScore& risk) {
+  if (const std::optional<std::string_view> tier =
+          jsonValueForKey(json, prefix + "worst_tier");
+      tier.has_value()) {
+    risk.worst_tier = parseObstacleRiskTier(*tier);
+  }
+  parseJsonBool(json, prefix + "outside_bounds", risk.outside_bounds);
+  parseJsonBool(json, prefix + "intersects_raw_occupied", risk.intersects_raw_occupied);
+  parseJsonDouble(json, prefix + "critical_exposure_m", risk.critical_exposure_m);
+  parseJsonDouble(json, prefix + "planning_exposure_m", risk.planning_exposure_m);
+  parseJsonDouble(json, prefix + "minimum_raw_clearance_m",
+                  risk.minimum_raw_clearance_m);
+}
+
+} // namespace
+
 std::optional<TrajectoryPlannerDiagnosticsEnvelope>
 parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   TrajectoryPlannerDiagnosticsEnvelope envelope{};
@@ -21,6 +51,27 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
           jsonValueForKey(json, "trajectory_quality");
       quality.has_value()) {
     envelope.stats.quality = parseTrajectoryQualityName(*quality);
+  }
+  parsePathRisk(json, "final_risk_", envelope.stats.final_risk);
+  std::size_t stage_risk_count = 0U;
+  parseJsonSize(json, "stage_risk_count", stage_risk_count);
+  stage_risk_count = std::min<std::size_t>(stage_risk_count, 16U);
+  envelope.stats.stage_risk.clear();
+  envelope.stats.stage_risk.reserve(stage_risk_count);
+  for (std::size_t index = 0U; index < stage_risk_count; ++index) {
+    const std::string prefix = "stage_risk" + std::to_string(index) + "_";
+    TrajectoryStageRiskDiagnostic stage{};
+    if (const std::optional<std::string_view> name =
+            jsonValueForKey(json, prefix + "stage");
+        name.has_value()) {
+      stage.stage = decodeJsonStringValue(*name);
+    }
+    parsePathRisk(json, prefix + "before_", stage.before);
+    parsePathRisk(json, prefix + "after_", stage.after);
+    parseJsonBool(json, prefix + "changed", stage.changed);
+    parseJsonBool(json, prefix + "accepted", stage.accepted);
+    parseJsonBool(json, prefix + "degraded", stage.degraded);
+    envelope.stats.stage_risk.push_back(std::move(stage));
   }
 
   parseJsonSize(json, "trajectory_input_points", envelope.stats.input_points);
@@ -65,6 +116,12 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
     (void)parseJsonUint64(json, "planning_runtime_velocity_config_fingerprint",
                           envelope.stats.runtime_velocity_control_config_fingerprint);
   }
+  (void)parseJsonUint64(json, "delivery_obstacle_snapshot_producer_instance_id",
+                        envelope.delivery.obstacle_snapshot_producer_instance_id);
+  (void)parseJsonUint64(json, "delivery_obstacle_snapshot_revision",
+                        envelope.delivery.obstacle_snapshot_revision);
+  (void)parseJsonUint64(json, "delivery_risk_policy_fingerprint",
+                        envelope.delivery.risk_policy_fingerprint);
   KnownPassageValidationSummary& passage_validation =
       envelope.stats.known_passage_validation;
   parseJsonBool(json, "known_passage_validation_enabled", passage_validation.enabled);
@@ -456,10 +513,11 @@ parseTrajectoryPlannerDiagnosticsJson(const std::string& json) {
   (void)parseJsonUint64(json, "corridor_route_fingerprint", corridor.route_fingerprint);
   (void)parseJsonUint64(json, "corridor_config_fingerprint",
                         corridor.config_fingerprint);
-  (void)parseJsonUint64(json, "corridor_grid_cells_hash",
-                        corridor.prohibited_grid_fingerprint.cells_hash);
-  (void)parseJsonUint64(json, "corridor_grid_inflated_hash",
-                        corridor.prohibited_grid_fingerprint.inflated_hash);
+  if (!parseJsonUint64(json, "corridor_raw_cells_hash",
+                       corridor.raw_occupancy_fingerprint.cells_hash)) {
+    (void)parseJsonUint64(json, "corridor_grid_cells_hash",
+                          corridor.raw_occupancy_fingerprint.cells_hash);
+  }
   parseJsonDouble(json, "corridor_sample_build_duration_ms",
                   corridor.sample_build_duration_ms);
   parseJsonDouble(json, "corridor_raycast_duration_ms", corridor.raycast_duration_ms);

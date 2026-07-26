@@ -94,7 +94,7 @@ The baseline navigation pipeline remains XY-owned:
 
 ```text
 static map + memory + current lidar
--> prohibited grid
+-> raw obstacle snapshot
 -> A*
 -> corridor
 -> trajectory optimizer

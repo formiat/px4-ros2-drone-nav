@@ -25,7 +25,7 @@ speed, and roll/pitch/yaw. The offboard node then logs:
 
 The mission monitor emits `MISSION_RESULT success=false
 reason='physical_collision'`. These records originate from Gazebo physics
-contacts. Lidar points, prohibited-grid cells, and negative diagnostic building
+contacts. Lidar points, raw occupied cells, and negative diagnostic building
 clearance cannot produce this crash state.
 
 ## Offboard Blackbox
@@ -347,7 +347,7 @@ it after the existing exact stamp, frame, grid geometry, and grid-content match.
 
 When enabled, the classifier is independent of the active trajectory and drone
 proximity to an opening. Opening and detached obstacles continue through normal
-prohibited grid and replan handling; unresolved static-attached evidence does
+raw obstacle snapshot and replan handling; unresolved static-attached evidence does
 not mutate a grid.
 
 ## Replan Diagnostics
@@ -521,7 +521,7 @@ A good replan diagnostic should answer:
 
 These fields are especially important for lidar-triggered replans because
 sensor evidence can be partial. A visually harmless scan artifact should not be
-confused with a hard collision unless the prohibited-grid intersection proves
+confused with a hard collision unless the raw-occupied intersection proves
 it.
 
 ## Terminal Diagnostics

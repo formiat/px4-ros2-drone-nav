@@ -59,36 +59,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.no_static_planning_clearance_m =
       std::clamp(node.declare_parameter<double>("no_static_planning_clearance_m", 5.0),
                  0.0, 1000.0);
-  config.local_inflation_relaxation_radius_m = std::clamp(
-      node.declare_parameter<double>("local_inflation_relaxation_radius_m", 5.0), 0.0,
-      1000.0);
-  config.directed_inflation_escape.enabled =
-      node.declare_parameter<bool>("directed_inflation_escape_enabled", true);
-  config.directed_inflation_escape.tunnel_width_m = std::clamp(
-      node.declare_parameter<double>("directed_inflation_escape_tunnel_width_m", 5.0),
-      0.1, 1000.0);
-  config.directed_inflation_escape.max_length_m = std::clamp(
-      node.declare_parameter<double>("directed_inflation_escape_max_length_m", 25.0),
-      0.1, 1000.0);
-  config.directed_inflation_escape.exit_depth_m = std::clamp(
-      node.declare_parameter<double>("directed_inflation_escape_exit_depth_m", 2.0),
-      0.0, 1000.0);
-  config.directed_inflation_escape.inflation_exposure_cost_weight =
-      std::clamp(node.declare_parameter<double>(
-                     "directed_inflation_escape_inflation_cost_weight", 1.0),
-                 0.0, 1.0e6);
-  config.directed_inflation_escape.occupied_clearance_cost_weight =
-      std::clamp(node.declare_parameter<double>(
-                     "directed_inflation_escape_occupied_clearance_cost_weight", 10.0),
-                 0.0, 1.0e6);
-  config.directed_inflation_escape.mission_egress_distance_m =
-      std::clamp(node.declare_parameter<double>(
-                     "directed_inflation_escape_mission_egress_distance_m", 7.0),
-                 0.1, 1000.0);
-  config.directed_inflation_escape.stable_exit_cycles = static_cast<std::size_t>(
-      std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
-                                   "directed_inflation_escape_stable_exit_cycles", 3),
-                               1, 1000));
   config.timing.max_pose_staleness_ns = secondsToNanoseconds(std::clamp<double>(
       node.declare_parameter<double>("max_pose_staleness_s", 1.0), 0.0, 3600.0));
   config.planner_core.stable_path_goal_tolerance_m = std::clamp(
@@ -670,8 +640,10 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "px4_local_position_topic", "/fmu/out/vehicle_local_position");
   config.topics.attitude = node.declare_parameter<std::string>(
       "px4_vehicle_attitude_topic", "/fmu/out/vehicle_attitude");
-  config.topics.prohibited_grid = node.declare_parameter<std::string>(
-      "prohibited_grid_topic", "/drone_city_nav/prohibited_grid");
+  config.topics.raw_obstacle_snapshot = node.declare_parameter<std::string>(
+      "raw_obstacle_snapshot_topic", "/drone_city_nav/raw_obstacle_snapshot");
+  config.topics.raw_obstacle_grid = node.declare_parameter<std::string>(
+      "raw_obstacle_grid_topic", "/drone_city_nav/raw_obstacle_grid");
   config.topics.static_map_grid = node.declare_parameter<std::string>(
       "static_map_grid_topic", "/drone_city_nav/static_map_grid");
   config.topics.static_map_points = node.declare_parameter<std::string>(
@@ -680,9 +652,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       "static_building_markers_topic", "/drone_city_nav/static_building_markers");
   config.topics.known_passage_markers = node.declare_parameter<std::string>(
       "known_passage_markers_topic", "/drone_city_nav/known_passage_markers");
-  config.topics.directed_inflation_escape_markers = node.declare_parameter<std::string>(
-      "directed_inflation_escape_markers_topic",
-      "/drone_city_nav/directed_inflation_escape_markers");
   config.timing.static_map_debug_publish_period_s = std::clamp(
       node.declare_parameter<double>("static_map_debug_publish_period_s", 1.0), 0.0,
       60.0);
@@ -745,9 +714,6 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
   config.no_static_rollout.minimum_length_m = boundedFiniteDouble(
       node.declare_parameter<double>("no_static_rollout_min_length_m", 7.0), 7.0, 0.0,
       30.0);
-  config.no_static_rollout.minimum_unrelaxed_tail_m = boundedFiniteDouble(
-      node.declare_parameter<double>("no_static_rollout_min_unrelaxed_tail_m", 2.0),
-      2.0, 0.0, 30.0);
   config.no_static_rollout.local_planning_window_enabled =
       node.declare_parameter<bool>("no_static_rollout_local_window_enabled", true);
   config.no_static_rollout.local_planning_window_extra_margin_m =

@@ -57,17 +57,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.inflation_radius_m, 1.0);
   EXPECT_DOUBLE_EQ(config.planning_clearance_m, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_planning_clearance_m, 5.0);
-  EXPECT_DOUBLE_EQ(config.local_inflation_relaxation_radius_m, 5.0);
-  EXPECT_TRUE(config.directed_inflation_escape.enabled);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.tunnel_width_m, 5.0);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.max_length_m, 25.0);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.exit_depth_m, 2.0);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.inflation_exposure_cost_weight,
-                   1.0);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.occupied_clearance_cost_weight,
-                   10.0);
-  EXPECT_DOUBLE_EQ(config.directed_inflation_escape.mission_egress_distance_m, 7.0);
-  EXPECT_EQ(config.directed_inflation_escape.stable_exit_cycles, 3U);
   EXPECT_TRUE(config.no_static_rollout.enabled);
   EXPECT_FALSE(config.no_static_rollout.astar_recovery_enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.cycle_period_s, 0.2);
@@ -169,7 +158,9 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
                    0.0);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_candidates, 24U);
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 8U);
-  EXPECT_EQ(config.topics.prohibited_grid, "/drone_city_nav/prohibited_grid");
+  EXPECT_EQ(config.topics.raw_obstacle_snapshot,
+            "/drone_city_nav/raw_obstacle_snapshot");
+  EXPECT_EQ(config.topics.raw_obstacle_grid, "/drone_city_nav/raw_obstacle_grid");
   EXPECT_EQ(config.topics.obstacle_memory_snapshot,
             "/drone_city_nav/obstacle_memory_snapshot");
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 5.0);
@@ -181,8 +172,6 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
             "/drone_city_nav/static_building_markers");
   EXPECT_EQ(config.topics.known_passage_markers,
             "/drone_city_nav/known_passage_markers");
-  EXPECT_EQ(config.topics.directed_inflation_escape_markers,
-            "/drone_city_nav/directed_inflation_escape_markers");
   EXPECT_EQ(config.topics.path, "/drone_city_nav/path");
   EXPECT_EQ(config.topics.trajectory_diagnostics,
             "/drone_city_nav/trajectory_diagnostics");
@@ -499,8 +488,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
        rclcpp::Parameter{"passage_insertion_max_diagnostics", 6},
        rclcpp::Parameter{"static_building_markers_topic", "/custom/static_buildings"},
        rclcpp::Parameter{"known_passage_markers_topic", "/custom/known_passages"},
-       rclcpp::Parameter{"directed_inflation_escape_markers_topic",
-                         "/custom/directed_escape"},
        rclcpp::Parameter{"known_passage_debug_publish_period_s", 0.25},
        rclcpp::Parameter{"path_prohibited_intersection_check_period_s", 0.25},
        rclcpp::Parameter{"trajectory_optimizer_weight_curvature", 125.0},
@@ -604,7 +591,6 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_EQ(config.trajectory_planner.passage_insertion.max_diagnostics, 6U);
   EXPECT_EQ(config.topics.static_building_markers, "/custom/static_buildings");
   EXPECT_EQ(config.topics.known_passage_markers, "/custom/known_passages");
-  EXPECT_EQ(config.topics.directed_inflation_escape_markers, "/custom/directed_escape");
   EXPECT_DOUBLE_EQ(config.timing.known_passage_debug_publish_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.timing.path_prohibited_intersection_check_period_s, 0.25);
   EXPECT_DOUBLE_EQ(config.trajectory_planner.trajectory_optimizer.weight_curvature,
@@ -646,7 +632,7 @@ TEST_F(PlannerNodeConfigTest, BuildsNestedCoreConfigs) {
   EXPECT_TRUE(config.lidar_projection.compensate_attitude);
 }
 
-TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
+TEST_F(PlannerNodeConfigTest, LoadsRawObstacleTopicContractParameters) {
   const auto node = makeNode(
       "planner_node_config_topic_contract",
       {rclcpp::Parameter{"obstacle_memory_snapshot_topic", "/custom/memory_snapshot"},
@@ -655,7 +641,8 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
        rclcpp::Parameter{"obstacle_memory_snapshot_max_callback_time_ms", 75.0},
        rclcpp::Parameter{"obstacle_memory_snapshot_max_apply_delay_ms", 125.0},
        rclcpp::Parameter{"obstacle_memory_snapshot_min_apply_rate_hz", 8.0},
-       rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited_grid"},
+       rclcpp::Parameter{"raw_obstacle_snapshot_topic", "/custom/raw_snapshot"},
+       rclcpp::Parameter{"raw_obstacle_grid_topic", "/custom/raw_grid"},
        rclcpp::Parameter{"trajectory_diagnostics_topic",
                          "/custom/trajectory_diagnostics"},
        rclcpp::Parameter{"replan_truncation_topic", "/custom/replan_truncation"},
@@ -666,7 +653,8 @@ TEST_F(PlannerNodeConfigTest, LoadsRawAndProhibitedTopicContractParameters) {
 
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
-  EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited_grid");
+  EXPECT_EQ(config.topics.raw_obstacle_snapshot, "/custom/raw_snapshot");
+  EXPECT_EQ(config.topics.raw_obstacle_grid, "/custom/raw_grid");
   EXPECT_EQ(config.topics.obstacle_memory_snapshot, "/custom/memory_snapshot");
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.diagnostic_period_s, 2.0);
   EXPECT_DOUBLE_EQ(config.memory_snapshot_transport.max_age_ms, 150.0);
@@ -724,7 +712,6 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
        rclcpp::Parameter{"no_static_rollout_prefix_duration_s", 100.0},
        rclcpp::Parameter{"no_static_rollout_recovery_lookahead_m", 1000.0},
        rclcpp::Parameter{"no_static_rollout_min_length_m", 1000.0},
-       rclcpp::Parameter{"no_static_rollout_min_unrelaxed_tail_m", -1.0},
        rclcpp::Parameter{"no_static_rollout_local_window_extra_margin_m", 1000.0},
        rclcpp::Parameter{"no_static_rollout_max_finalists", 0},
        rclcpp::Parameter{"no_static_rollout_progress_weight", -1.0}});
@@ -735,7 +722,6 @@ TEST_F(PlannerNodeConfigTest, BoundsNoStaticRolloutConfiguration) {
   EXPECT_DOUBLE_EQ(config.no_static_rollout.prefix_duration_s, 3.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.recovery_lookahead_m, 100.0);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_length_m, 30.0);
-  EXPECT_DOUBLE_EQ(config.no_static_rollout.minimum_unrelaxed_tail_m, 0.0);
   EXPECT_TRUE(config.no_static_rollout.local_planning_window_enabled);
   EXPECT_DOUBLE_EQ(config.no_static_rollout.local_planning_window_extra_margin_m, 50.0);
   EXPECT_EQ(config.no_static_rollout.planner.max_finalists, 1U);

@@ -95,10 +95,10 @@ Px4OffboardNode::Px4OffboardNode()
       "/drone_city_nav/crash_state",
       rclcpp::QoS{rclcpp::KeepLast{1}}.reliable().transient_local(),
       [this](const msg::CrashState::SharedPtr msg) { onCrashState(*msg); });
-  prohibited_grid_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      topics.prohibited_grid, rclcpp::QoS{1}.transient_local(),
-      [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
-        onProhibitedGrid(*msg);
+  raw_obstacle_snapshot_sub_ = create_subscription<msg::RawObstacleSnapshot>(
+      topics.raw_obstacle_snapshot, rclcpp::QoS{1}.reliable().transient_local(),
+      [this](const msg::RawObstacleSnapshot::SharedPtr msg) {
+        onRawObstacleSnapshot(*msg);
       });
 
   offboard_control_mode_pub_ = create_publisher<px4_msgs::msg::OffboardControlMode>(
@@ -243,7 +243,7 @@ Px4OffboardNode::Px4OffboardNode()
       "defer[min_speed=%.2fmps projection_jump=%.2fm tangent_jump=%.1fdeg "
       "command_jump=%.2fmps]",
       trajectory_handover_config_.enabled ? "true" : "false",
-      trajectory_handover_config_.require_validation_grid ? "true" : "false",
+      trajectory_handover_config_.require_risk_context ? "true" : "false",
       trajectory_handover_config_.prefix_time_s,
       trajectory_handover_config_.min_prefix_distance_m,
       trajectory_handover_config_.max_prefix_distance_m,
@@ -260,11 +260,11 @@ Px4OffboardNode::Px4OffboardNode()
   RCLCPP_INFO(get_logger(),
               "PX4 offboard subscriptions: executable_trajectory='%s' path_id='%s' "
               "local_position='%s' "
-              "attitude='%s' vehicle_status='%s' prohibited_grid='%s' "
+              "attitude='%s' vehicle_status='%s' raw_obstacle_snapshot='%s' "
               "replan_blocker='%s'",
               topics.executable_trajectory.c_str(), topics.path_id.c_str(),
               topics.px4_local_position.c_str(), topics.px4_vehicle_attitude.c_str(),
-              topics.px4_vehicle_status.c_str(), topics.prohibited_grid.c_str(),
+              topics.px4_vehicle_status.c_str(), topics.raw_obstacle_snapshot.c_str(),
               topics.replan_blocker.c_str());
 }
 

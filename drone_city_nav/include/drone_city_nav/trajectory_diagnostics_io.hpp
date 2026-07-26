@@ -45,6 +45,9 @@ struct TrajectoryDeliveryDiagnostics {
   std::uint64_t blocked_path_id{0U};
   std::uint64_t truncation_generation{0U};
   std::uint64_t temporary_prefix_fingerprint{0U};
+  std::uint64_t obstacle_snapshot_producer_instance_id{0U};
+  std::uint64_t obstacle_snapshot_revision{0U};
+  std::uint64_t risk_policy_fingerprint{0U};
   bool replan_triggered{false};
   bool truncation_suffix{false};
   bool truncation_immediate_hold{false};

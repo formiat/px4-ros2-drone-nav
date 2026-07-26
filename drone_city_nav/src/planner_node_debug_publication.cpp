@@ -125,9 +125,18 @@ void PlannerNode::republishKnownPassageDebug() {
   publishKnownPassageDebug(false);
 }
 
-void PlannerNode::publishProhibitedGrid(const OccupancyGrid2D& grid) {
-  prohibited_grid_pub_->publish(
-      prohibitedGridToRos(grid, ProhibitedGridToRosConfig{makePlannerHeader()}));
+void PlannerNode::publishRawObstacleSnapshot(
+    const PreparedObstacleRiskSnapshot& snapshot) {
+  msg::RawObstacleSnapshot message;
+  message.producer_instance_id = raw_obstacle_producer_instance_id_;
+  message.obstacle_snapshot_revision = snapshot.version.build_revision;
+  message.risk_policy_fingerprint = snapshot.version.risk_policy_fingerprint;
+  message.risk_critical_distance_m = snapshot.risk_field.policy().critical_distance_m;
+  message.risk_preferred_distance_m = snapshot.risk_field.policy().preferred_distance_m;
+  message.grid = rawOccupancyGridToRos(
+      snapshot.raw_occupancy, RawOccupancyGridToRosConfig{makePlannerHeader()});
+  raw_obstacle_snapshot_pub_->publish(message);
+  raw_obstacle_grid_pub_->publish(message.grid);
 }
 
 std::uint64_t
@@ -207,6 +216,10 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
   }
   msg::ExecutableTrajectory command;
   command.path_id = path_id;
+  command.obstacle_snapshot_producer_instance_id =
+      delivery.obstacle_snapshot_producer_instance_id;
+  command.obstacle_snapshot_revision = delivery.obstacle_snapshot_revision;
+  command.risk_policy_fingerprint = delivery.risk_policy_fingerprint;
   command.truncation_generation = delivery.truncation_generation;
   command.temporary_prefix_fingerprint = delivery.temporary_prefix_fingerprint;
   command.truncation_suffix = delivery.truncation_suffix;

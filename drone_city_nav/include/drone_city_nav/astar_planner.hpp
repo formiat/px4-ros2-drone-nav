@@ -1,6 +1,6 @@
 #pragma once
 
-#include "drone_city_nav/occupancy_grid.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 
 #include <cstddef>
 #include <stop_token>
@@ -18,12 +18,13 @@ struct AStarConfig {
   double initial_heading_bias_weight{50.0};
   double initial_heading_bias_velocity_x_mps{0.0};
   double initial_heading_bias_velocity_y_mps{0.0};
+  ObstacleRiskPolicy risk_policy{};
 };
 
 enum class AStarStatus {
   kSuccess,
   kInvalidStartOrGoal,
-  kProhibitedStartOrGoal,
+  kRawOccupiedStartOrGoal,
   kUnreachable,
   kStateSpaceTooLarge,
   kCanceled,
@@ -34,6 +35,7 @@ struct AStarResult {
   AStarStatus status{AStarStatus::kUnreachable};
   std::size_t expanded_cells{0};
   double total_cost{0.0};
+  PathRiskScore risk{};
   std::vector<GridIndex> path;
 };
 

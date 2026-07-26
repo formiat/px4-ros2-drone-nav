@@ -2,7 +2,6 @@
 
 #include "drone_city_nav/corridor_samples_io.hpp"
 #include "drone_city_nav/current_lidar_overlay.hpp"
-#include "drone_city_nav/directed_inflation_escape_debug_markers.hpp"
 #include "drone_city_nav/grid_overlay.hpp"
 #include "drone_city_nav/known_passage_debug_markers.hpp"
 #include "drone_city_nav/known_passage_map.hpp"
@@ -12,6 +11,7 @@
 #include "drone_city_nav/lidar_projection.hpp"
 #include "drone_city_nav/local_horizon_execution_state.hpp"
 #include "drone_city_nav/msg/executable_trajectory.hpp"
+#include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/msg/replan_blocker_event.hpp"
 #include "drone_city_nav/msg/replan_truncation.hpp"
 #include "drone_city_nav/msg/truncation_suffix_ack.hpp"
@@ -163,8 +163,8 @@ private:
     std::uint64_t truncation_generation{0U};
     std::uint64_t blocked_path_id{0U};
     std::uint64_t temporary_prefix_fingerprint{0U};
-    PlanningGridVersion grid_version{};
-    std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid;
+    RawObstacleVersion grid_version{};
+    std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared_grid;
     std::int64_t blocker_detected_stamp_ns{0};
     BlockedSpan blocked_span{};
   };
@@ -224,7 +224,7 @@ private:
 
   [[nodiscard]] std::optional<std::uint64_t> beginTruncationReplan(
       std::uint64_t blocked_path_id, const BlockedSpan& blocked_span,
-      std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+      std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared_grid,
       std::int64_t blocker_detected_stamp_ns);
 
   [[nodiscard]] std::optional<TruncationReplanState> truncationReplanState() const;
@@ -255,17 +255,17 @@ private:
 
   void loadConfiguredKnownPassages();
 
-  [[nodiscard]] PlanningGridBuilderConfig planningGridBuilderConfig() const;
+  [[nodiscard]] ObstacleFieldBuilderConfig planningGridBuilderConfig() const;
 
-  [[nodiscard]] std::optional<PlanningGridBuildResult>
-  buildPlanningGrid(const std::int64_t now_ns);
+  [[nodiscard]] std::optional<ObstacleFieldBuildResult>
+  buildObstacleField(const std::int64_t now_ns);
 
-  [[nodiscard]] std::optional<PreparedPlanningGridSnapshot>
-  preparePlanningGridSnapshot(const PlanningGridBuildResult& build_result,
+  [[nodiscard]] std::optional<PreparedObstacleRiskSnapshot>
+  preparePlanningGridSnapshot(const ObstacleFieldBuildResult& build_result,
                               Point2 relaxation_center);
 
   [[nodiscard]] bool
-  runConfirmedRepairRace(const PreparedPlanningGridSnapshot& prepared,
+  runConfirmedRepairRace(const PreparedObstacleRiskSnapshot& prepared,
                          const TruncationReplanState& truncation_replan,
                          const TrajectoryDeliveryDiagnostics& delivery);
 
@@ -306,8 +306,8 @@ private:
                     const AStarConfig& astar_config, Point2 planning_start);
 
   PathPublicationOutcome publishPathFromPathCells(
-      const PlanningGridBuildResult& planning_result,
-      std::span<const TrajectoryGridCandidate> grid_candidates,
+      const ObstacleFieldBuildResult& planning_result,
+      std::span<const TrajectoryRiskContext> risk_contexts,
       std::size_t astar_grid_index, const std::vector<GridIndex>& raw_cells,
       const std::vector<GridIndex>& smoothed_cells, const char* source_label,
       Point2 planning_start, TrajectoryDeliveryDiagnostics delivery,
@@ -315,24 +315,25 @@ private:
       const TruncationReplanState* truncation_replan = nullptr);
 
   PathPublicationOutcome
-  publishTerminalHoldRestartSuffix(const PlanningGridBuildResult& planning_result,
-                                   std::span<TrajectoryGridCandidate> grid_candidates,
+  publishTerminalHoldRestartSuffix(const ObstacleFieldBuildResult& planning_result,
+                                   std::span<TrajectoryRiskContext> risk_contexts,
                                    Point2 planning_start,
                                    const TruncationReplanState& truncation_replan,
                                    TrajectoryDeliveryDiagnostics delivery);
 
-  bool
-  publishTrajectoryResult(const TrajectoryPlannerResult& trajectory_result,
-                          std::span<const Point2> route_points,
-                          const char* source_label, double duration_ms,
-                          TrajectoryDeliveryDiagnostics delivery,
-                          std::string astar_grid_name, std::string route_grid_name,
-                          std::uint64_t* published_path_id = nullptr,
-                          const PlanningGridVersion* source_grid_version = nullptr,
-                          TrajectoryEndpointSemantics endpoint_semantics =
-                              TrajectoryEndpointSemantics::kMissionGoal,
-                          TrajectoryPublicationStageTimings* stage_timings = nullptr,
-                          const OccupancyGrid2D* source_validation_grid = nullptr);
+  bool publishTrajectoryResult(
+      const TrajectoryPlannerResult& trajectory_result,
+      std::span<const Point2> route_points, const char* source_label,
+      double duration_ms, TrajectoryDeliveryDiagnostics delivery,
+      std::string astar_grid_name, std::string route_grid_name,
+      std::uint64_t* published_path_id = nullptr,
+      const RawObstacleVersion* source_grid_version = nullptr,
+      TrajectoryEndpointSemantics endpoint_semantics =
+          TrajectoryEndpointSemantics::kMissionGoal,
+      TrajectoryPublicationStageTimings* stage_timings = nullptr,
+      const OccupancyGrid2D* source_validation_grid = nullptr,
+      const ObstacleRiskField* source_validation_risk_field = nullptr,
+      const ClearanceField2D* source_validation_clearance = nullptr);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
@@ -378,7 +379,7 @@ private:
 
   void republishKnownPassageDebug();
 
-  void publishProhibitedGrid(const OccupancyGrid2D& grid);
+  void publishRawObstacleSnapshot(const PreparedObstacleRiskSnapshot& snapshot);
 
   std::uint64_t publishPath(const std::vector<Point2>& points,
                             PathPublicationReason reason,
@@ -442,11 +443,11 @@ private:
 
   [[nodiscard]] std::string describeProhibitedIntersectionSource(
       const OccupancyGrid2D& grid, const PathProhibitedIntersection& intersection,
-      const PlanningGridBuildResult& planning_result, double source_search_radius_m);
+      const ObstacleFieldBuildResult& planning_result, double source_search_radius_m);
 
   bool keepCurrentPathIfStillClear(
-      const OccupancyGrid2D& grid, const PlanningGridBuildResult& planning_result,
-      std::shared_ptr<const PreparedPlanningGridSnapshot> prepared_grid,
+      const OccupancyGrid2D& grid, const ObstacleFieldBuildResult& planning_result,
+      std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared_grid,
       const ExecutableSuffixDecision* executable_suffix_decision = nullptr);
 
   void logPathUpdate(const nav_msgs::msg::Path& path, const PathMetrics& metrics,
@@ -464,8 +465,8 @@ private:
   std::optional<StaticCityMap> static_map_debug_;
   std::optional<KnownPassageMap> known_passages_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
-  PlanningGridBuilder planning_grid_builder_;
-  PlanningGridSnapshotBuilder planning_grid_snapshot_builder_;
+  ObstacleFieldBuilder planning_grid_builder_;
+  ObstacleRiskSnapshotBuilder planning_grid_snapshot_builder_;
   PlannerCore planner_core_;
   AStarConfig astar_config_{};
   TrajectoryPlannerConfig trajectory_planner_config_{};
@@ -499,7 +500,6 @@ private:
   double no_static_terminal_braking_decel_mps2_{4.0};
   double no_static_terminal_braking_margin_m_{2.0};
   double no_static_rollout_min_length_m_{7.0};
-  double no_static_rollout_min_unrelaxed_tail_m_{2.0};
   bool no_static_rollout_local_window_enabled_{true};
   double no_static_rollout_local_window_extra_margin_m_{1.0};
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
@@ -524,8 +524,6 @@ private:
   GridBounds fallback_grid_bounds_{-10.0, -10.0, 0.5, 230, 350};
   double inflation_radius_m_{1.0};
   double planning_clearance_m_{3.0};
-  double local_inflation_relaxation_radius_m_{5.0};
-  DirectedInflationEscapeConfig directed_inflation_escape_config_{};
   double initial_altitude_m_{12.0};
   double static_map_min_blocking_height_m_{0.0};
   double stable_path_goal_tolerance_m_{3.0};
@@ -658,15 +656,14 @@ private:
       local_position_sub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr attitude_sub_;
   rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr timesync_status_sub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr prohibited_grid_pub_;
+  rclcpp::Publisher<msg::RawObstacleSnapshot>::SharedPtr raw_obstacle_snapshot_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr raw_obstacle_grid_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr static_map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr static_map_points_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       static_building_markers_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       known_passage_markers_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
-      directed_inflation_escape_markers_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt64>::SharedPtr path_id_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr trajectory_diagnostics_pub_;
@@ -676,6 +673,7 @@ private:
   rclcpp::TimerBase::SharedPtr static_map_debug_timer_;
   rclcpp::TimerBase::SharedPtr known_passage_debug_timer_;
   rclcpp::TimerBase::SharedPtr timer_;
+  std::uint64_t raw_obstacle_producer_instance_id_{0U};
 };
 
 } // namespace drone_city_nav

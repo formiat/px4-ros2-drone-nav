@@ -1,6 +1,5 @@
 #include "drone_city_nav/occupancy_grid.hpp"
 
-#include "drone_city_nav/distance_field.hpp"
 #include "drone_city_nav/grid_config.hpp"
 
 #include <algorithm>
@@ -10,7 +9,6 @@
 #include <cstdlib>
 #include <limits>
 #include <optional>
-#include <queue>
 #include <stdexcept>
 
 namespace drone_city_nav {
@@ -75,7 +73,6 @@ OccupancyGrid2D::OccupancyGrid2D(const GridBounds& bounds)
 
   const std::size_t cell_count = gridBoundsCellCount(bounds_);
   cells_.assign(cell_count, CellState::kUnknown);
-  inflated_.assign(cell_count, 0U);
 }
 
 const GridBounds& OccupancyGrid2D::bounds() const noexcept {
@@ -149,23 +146,11 @@ bool OccupancyGrid2D::isOccupied(const GridIndex cell) const {
   return state(cell) == CellState::kOccupied;
 }
 
-bool OccupancyGrid2D::isInflated(const GridIndex cell) const {
-  return inflated_.at(linearIndex(cell)) != 0U;
-}
-
-bool OccupancyGrid2D::isProhibited(const GridIndex cell) const {
-  return isOccupied(cell) || isInflated(cell);
-}
-
 std::span<const CellState> OccupancyGrid2D::cells() const noexcept {
   return cells_;
 }
 
-std::span<const std::uint8_t> OccupancyGrid2D::inflatedCells() const noexcept {
-  return inflated_;
-}
-
-OccupancyGridFingerprint OccupancyGrid2D::prohibitedFingerprint() const noexcept {
+OccupancyGridFingerprint OccupancyGrid2D::rawFingerprint() const noexcept {
   OccupancyGridFingerprint fingerprint{};
   fingerprint.bounds = bounds_;
   fingerprint.cells_hash = hashBounds(bounds_);
@@ -173,16 +158,11 @@ OccupancyGridFingerprint OccupancyGrid2D::prohibitedFingerprint() const noexcept
     hashByte(fingerprint.cells_hash,
              static_cast<std::uint8_t>(static_cast<std::int8_t>(cell)));
   }
-  fingerprint.inflated_hash = hashBounds(bounds_);
-  for (const std::uint8_t inflated : inflated_) {
-    hashByte(fingerprint.inflated_hash, inflated);
-  }
   return fingerprint;
 }
 
 void OccupancyGrid2D::reset(const CellState value) {
   std::fill(cells_.begin(), cells_.end(), value);
-  std::fill(inflated_.begin(), inflated_.end(), 0U);
 }
 
 void OccupancyGrid2D::setUnknown(const GridIndex cell) {
@@ -229,101 +209,6 @@ void OccupancyGrid2D::markRay(const Point2 start, const Point2 end,
   if (endpoint_occupied) {
     setOccupied(ray_cells.back());
   }
-}
-
-void OccupancyGrid2D::rebuildInflation(const double radius_m) {
-  std::fill(inflated_.begin(), inflated_.end(), 0U);
-  if (radius_m <= 0.0) {
-    return;
-  }
-
-  const DistanceField2D field = DistanceField2D::build(
-      *this, radius_m + (0.5 * bounds_.resolution_m), DistanceFieldSource::kOccupied);
-  applyInflationFromDistanceField(field, radius_m);
-}
-
-void OccupancyGrid2D::applyInflationFromDistanceField(const DistanceField2D& field,
-                                                      const double radius_m) {
-  std::fill(inflated_.begin(), inflated_.end(), 0U);
-  if (radius_m <= 0.0) {
-    return;
-  }
-  if (bounds_.origin_x != field.bounds().origin_x ||
-      bounds_.origin_y != field.bounds().origin_y ||
-      bounds_.resolution_m != field.bounds().resolution_m ||
-      bounds_.width_cells != field.bounds().width_cells ||
-      bounds_.height_cells != field.bounds().height_cells ||
-      field.source() != DistanceFieldSource::kOccupied) {
-    throw std::invalid_argument{
-        "Inflation from distance field requires matching occupied-source grid bounds"};
-  }
-
-  // The margin maps a continuous safety radius to cell centers without
-  // under-inflating cells whose edges touch the requested radius.
-  const double radius_with_margin = radius_m + (0.5 * bounds_.resolution_m);
-  for (int y = 0; y < bounds_.height_cells; ++y) {
-    for (int x = 0; x < bounds_.width_cells; ++x) {
-      const GridIndex cell{x, y};
-      if (field.distanceAt(cell) <= radius_with_margin) {
-        inflated_[linearIndex(cell)] = 1U;
-      }
-    }
-  }
-}
-
-void OccupancyGrid2D::mergeInflationFrom(const OccupancyGrid2D& source) {
-  if (bounds_.origin_x != source.bounds_.origin_x ||
-      bounds_.origin_y != source.bounds_.origin_y ||
-      bounds_.resolution_m != source.bounds_.resolution_m ||
-      bounds_.width_cells != source.bounds_.width_cells ||
-      bounds_.height_cells != source.bounds_.height_cells) {
-    throw std::invalid_argument{"Inflation merge requires matching grid bounds"};
-  }
-  for (std::size_t i = 0U; i < inflated_.size(); ++i) {
-    inflated_[i] = inflated_[i] != 0U || source.inflated_[i] != 0U ? 1U : 0U;
-  }
-}
-
-LocalInflationRelaxationStats
-OccupancyGrid2D::clearInflationWithinRadius(const Point2 center,
-                                            const double radius_m) {
-  LocalInflationRelaxationStats stats{};
-  const std::optional<GridIndex> center_cell = worldToCell(center);
-  if (!center_cell.has_value()) {
-    return stats;
-  }
-  stats.center_inside_bounds = true;
-  if (!(std::isfinite(radius_m) && radius_m > 0.0)) {
-    return stats;
-  }
-
-  const int radius_cells =
-      std::max(0, static_cast<int>(std::ceil(radius_m / bounds_.resolution_m)));
-  const double radius_sq_m = radius_m * radius_m;
-  for (int y_offset = -radius_cells; y_offset <= radius_cells; ++y_offset) {
-    for (int x_offset = -radius_cells; x_offset <= radius_cells; ++x_offset) {
-      const GridIndex cell{center_cell->x + x_offset, center_cell->y + y_offset};
-      if (!contains(cell)) {
-        ++stats.cells_outside_bounds;
-        continue;
-      }
-      if (squaredDistance(center, cellCenter(cell)) > radius_sq_m) {
-        continue;
-      }
-
-      ++stats.cells_considered;
-      if (isOccupied(cell)) {
-        ++stats.occupied_cells_preserved;
-        continue;
-      }
-      const std::size_t index = linearIndex(cell);
-      if (inflated_[index] != 0U) {
-        inflated_[index] = 0U;
-        ++stats.inflated_cells_cleared;
-      }
-    }
-  }
-  return stats;
 }
 
 std::vector<GridIndex> OccupancyGrid2D::cellsOnLine(const GridIndex start,

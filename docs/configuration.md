@@ -43,16 +43,16 @@ Obstacle/grid:
 - `planning_clearance_m`
 - `no_static_planning_clearance_m` (used instead of `planning_clearance_m` when
   `use_static_map=false`)
-- `local_inflation_relaxation_radius_m`: transiently removes only inflation,
-  never raw occupied cells, around the current physical drone position before
-  planning and prohibited-grid publication. Set to `0.0` to disable it.
+- `raw_obstacle_snapshot_topic`: atomic raw occupancy, revision, producer, and
+  risk-policy thresholds consumed by offboard validation.
+- `raw_obstacle_grid_topic`: debug-only RViz view of raw occupancy.
 - `obstacle_memory_grid_topic`
 - `raw_memory_3d_pointcloud_topic`
 - `obstacle_memory_provenance_topic`
 - `obstacle_memory_snapshot_topic`
 - `executable_trajectory_topic`: authoritative planner-to-offboard command;
   atomically carries path id and safe-truncation correlation metadata.
-- `replan_blocker_topic`: planner-to-offboard prohibited-path event.
+- `replan_blocker_topic`: planner-to-offboard raw-collision event.
 - `replan_truncation_topic`: offboard-to-planner confirmed truncation join.
 - `truncation_suffix_ack_topic`: offboard-to-planner pending, accepted, or
   rejected result for a published truncation suffix.
@@ -543,14 +543,13 @@ Parameters should be grouped by physical meaning:
 - terminal parameters describe final state transitions;
 - diagnostic parameters describe logging and visualization only.
 
-## Hard Margins And Planning Margins
+## Risk Tier Distances
 
-Hard obstacle inflation and planning clearance must be tuned together but
-understood separately.
-
-Hard inflation is the safety margin around raw obstacle evidence. It defines
-the prohibited grid and can trigger replans when the accepted trajectory
-intersects it.
+`inflation_radius_m` now defines the critical soft-risk boundary.
+`inflation_radius_m + planning_clearance_m` defines the preferred-space
+boundary. Both influence lexicographic candidate ordering, but neither creates
+occupied cells or directly triggers safe truncation. Raw occupancy remains the
+hard runtime trigger.
 
 Partial repair race parameters are:
 
@@ -564,16 +563,16 @@ and strictly increasing. Invalid values fail planner configuration instead of
 being sorted, deduplicated, or replaced with defaults. Internal corridor and
 optimizer parallelism is fixed to one worker per external race job.
 
-Planning clearance is extra margin used during planning. It encourages A*,
-corridor construction, and trajectory generation to stay farther away from
-obstacles. It should not be treated as a runtime replan boundary.
+Planning clearance contributes to the preferred-space risk boundary. It
+encourages A*, corridor construction, and trajectory generation to stay farther
+away from obstacles, but it is not a runtime replan boundary.
 
 When changing margins, update both code defaults and YAML. Then verify in RViz
 that:
 
-- hard prohibited grid matches the intended collision margin;
-- planning-generated trajectories keep the intended extra clearance;
-- runtime replans still come only from hard prohibited intersections.
+- raw occupied cells match obstacle evidence;
+- planning-generated trajectories prefer the intended extra clearance;
+- runtime truncation still comes only from raw occupied intersections.
 
 ## Speed And Control Parameter Boundaries
 

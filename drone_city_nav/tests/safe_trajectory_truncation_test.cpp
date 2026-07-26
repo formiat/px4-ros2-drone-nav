@@ -110,40 +110,41 @@ TEST(SafeTrajectoryTruncation, MovesTerminalBackwardToProhibitedClearance) {
   prohibited_grid.setOccupied(GridIndex{60, 13});
 
   const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
-      samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
-                                               .blocker_path_distance_m = 55.0,
-                                               .truncation_margin_m = 15.0,
-                                               .prohibited_grid = &prohibited_grid,
-                                               .terminal_prohibited_clearance_m = 5.0});
+      samples,
+      SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
+                                      .blocker_path_distance_m = 55.0,
+                                      .truncation_margin_m = 15.0,
+                                      .raw_occupancy = &prohibited_grid,
+                                      .terminal_clearance_beyond_critical_m = 5.0});
 
   ASSERT_TRUE(result.applied) << result.reason;
   EXPECT_FALSE(result.immediate_hold);
   EXPECT_TRUE(result.clearance_adjusted);
   EXPECT_NEAR(result.nominal_stop_s_m, 60.0, 1.0e-6);
-  EXPECT_NEAR(result.stop_s_m, 56.0, 1.0e-6);
-  EXPECT_GE(result.terminal_prohibited_clearance_m, 5.0);
+  EXPECT_NEAR(result.stop_s_m, 54.0, 1.0e-6);
+  EXPECT_GE(result.terminal_raw_clearance_m, 6.0);
   ASSERT_FALSE(result.samples.empty());
-  EXPECT_NEAR(result.samples.back().point.x, 56.0, 1.0e-6);
+  EXPECT_NEAR(result.samples.back().point.x, 54.0, 1.0e-6);
 }
 
-TEST(SafeTrajectoryTruncation, IncludesInflationInTerminalClearance) {
+TEST(SafeTrajectoryTruncation, IncludesFormerCriticalBandInRawTerminalClearance) {
   const std::vector<TrajectoryPointSample> samples = lineSamples();
   OccupancyGrid2D prohibited_grid = prohibitedGrid();
   prohibited_grid.setOccupied(GridIndex{60, 10});
-  prohibited_grid.rebuildInflation(2.0);
 
   const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
-      samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
-                                               .blocker_path_distance_m = 55.0,
-                                               .truncation_margin_m = 15.0,
-                                               .prohibited_grid = &prohibited_grid,
-                                               .terminal_prohibited_clearance_m = 5.0});
+      samples,
+      SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
+                                      .blocker_path_distance_m = 55.0,
+                                      .truncation_margin_m = 15.0,
+                                      .raw_occupancy = &prohibited_grid,
+                                      .terminal_clearance_beyond_critical_m = 5.0});
 
   ASSERT_TRUE(result.applied) << result.reason;
   EXPECT_FALSE(result.immediate_hold);
   EXPECT_TRUE(result.clearance_adjusted);
-  EXPECT_LE(result.stop_s_m, 53.0);
-  EXPECT_GE(result.terminal_prohibited_clearance_m, 5.0);
+  EXPECT_LE(result.stop_s_m, 54.0);
+  EXPECT_GE(result.terminal_raw_clearance_m, 6.0);
 }
 
 TEST(SafeTrajectoryTruncation, HoldsWhenNoClearTerminalExistsAhead) {
@@ -154,11 +155,12 @@ TEST(SafeTrajectoryTruncation, HoldsWhenNoClearTerminalExistsAhead) {
   }
 
   const SafeTrajectoryTruncationResult result = truncateTrajectoryBeforeBlocker(
-      samples, SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
-                                               .blocker_path_distance_m = 55.0,
-                                               .truncation_margin_m = 15.0,
-                                               .prohibited_grid = &prohibited_grid,
-                                               .terminal_prohibited_clearance_m = 5.0});
+      samples,
+      SafeTrajectoryTruncationRequest{.current_position = Point2{20.0, 0.0},
+                                      .blocker_path_distance_m = 55.0,
+                                      .truncation_margin_m = 15.0,
+                                      .raw_occupancy = &prohibited_grid,
+                                      .terminal_clearance_beyond_critical_m = 5.0});
 
   EXPECT_TRUE(result.applied);
   EXPECT_TRUE(result.immediate_hold);

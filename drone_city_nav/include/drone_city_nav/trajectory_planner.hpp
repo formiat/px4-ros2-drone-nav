@@ -3,6 +3,7 @@
 #include "drone_city_nav/corridor.hpp"
 #include "drone_city_nav/known_passage_solid_validation.hpp"
 #include "drone_city_nav/known_passage_validation.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/trajectory_optimizer.hpp"
 #include "drone_city_nav/trajectory_passage_insertion.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
@@ -51,13 +52,6 @@ struct TrajectoryPlannerConfig {
   double initial_altitude_m{0.0};
 };
 
-struct TrajectoryGridCandidate {
-  std::string_view name;
-  const OccupancyGrid2D* grid{nullptr};
-  const ClearanceField2D* clearance_field{nullptr};
-  bool clearance_field_cache_hit{false};
-};
-
 struct TrajectoryGridStageSelections {
   std::string corridor{"none"};
   std::string optimizer{"none"};
@@ -82,6 +76,15 @@ struct PassageInsertionGridAttempt {
   bool applied{false};
   bool trajectory_invariants_hold{false};
   bool accepted{false};
+};
+
+struct TrajectoryStageRiskDiagnostic {
+  std::string stage;
+  PathRiskScore before{};
+  PathRiskScore after{};
+  bool changed{false};
+  bool accepted{false};
+  bool degraded{false};
 };
 
 struct TrajectoryPlannerStats {
@@ -110,7 +113,9 @@ struct TrajectoryPlannerStats {
   KnownPassageSolidValidationSummary known_passage_solid_validation{};
   VerticalProfileStats vertical_profile{};
   PassageInsertionStats passage_insertion{};
-  std::vector<PassageInsertionGridAttempt> passage_insertion_grid_attempts;
+  std::vector<PassageInsertionGridAttempt> passage_insertion_risk_attempts;
+  std::vector<TrajectoryStageRiskDiagnostic> stage_risk;
+  PathRiskScore final_risk{};
   double total_duration_ms{0.0};
   double corridor_duration_ms{0.0};
   double trajectory_optimizer_duration_ms{0.0};
@@ -133,7 +138,7 @@ struct TrajectoryPlannerInput {
   std::span<const CorridorSample> precomputed_corridor_samples;
   const CorridorStats* precomputed_corridor_stats{nullptr};
   const KnownPassageMap* known_passage_map{nullptr};
-  std::span<const TrajectoryGridCandidate> grid_candidates{};
+  std::span<const TrajectoryRiskContext> risk_contexts{};
   PassageInsertionStartMode passage_insertion_start_mode{
       PassageInsertionStartMode::kMovingJoin};
   std::stop_token stop_token{};
@@ -152,7 +157,7 @@ struct TrajectoryPlannerResult {
 struct StitchedTrajectoryFinalizationInput {
   std::span<const TrajectoryPointSample> geometry_samples;
   const KnownPassageMap* known_passage_map{nullptr};
-  std::span<const TrajectoryGridCandidate> grid_candidates;
+  std::span<const TrajectoryRiskContext> risk_contexts;
   PassageInsertionStartMode start_mode{PassageInsertionStartMode::kMovingJoin};
 };
 
@@ -205,14 +210,6 @@ planOptimizedTrajectory(const TrajectoryPlannerInput& input,
 [[nodiscard]] TrajectoryPlannerResult
 finalizeStitchedTrajectory(const StitchedTrajectoryFinalizationInput& input,
                            const TrajectoryPlannerConfig& config);
-
-[[nodiscard]] TrajectoryPlannerResult planOptimizedTrajectoryFromSnapshots(
-    std::span<const Point2> route_points, const OccupancyGrid2D& prohibited_grid,
-    const ClearanceField2D* prohibited_clearance_field,
-    bool prohibited_clearance_field_cache_hit,
-    std::span<const CorridorSample> precomputed_corridor_samples,
-    const CorridorStats* precomputed_corridor_stats,
-    const KnownPassageMap* known_passage_map, const TrajectoryPlannerConfig& config);
 
 [[nodiscard]] TrajectoryRefinementDecision
 evaluateTrajectoryRefinement(const TrajectoryRefinementDecisionInput& input);

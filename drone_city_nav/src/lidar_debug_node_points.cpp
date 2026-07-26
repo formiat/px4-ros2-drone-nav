@@ -49,7 +49,7 @@ LidarDebugNode::collectGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
   if (!grid_seen_) {
     return {};
   }
-  return collectGridPoints(last_grid_, 80, 99);
+  return collectGridPoints(last_grid_, 100, 100);
 }
 
 [[nodiscard]] std::vector<Point2> LidarDebugNode::collectOccupiedGridPoints(

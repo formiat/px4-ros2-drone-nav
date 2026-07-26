@@ -41,14 +41,6 @@ normalizedClearanceDiagnosticRadiusM(const double configured_radius_m) noexcept 
 }
 
 [[nodiscard]] double
-normalizedEscapeSearchRadiusM(const double configured_radius_m) noexcept {
-  if (std::isfinite(configured_radius_m) && configured_radius_m > 0.0) {
-    return configured_radius_m;
-  }
-  return 10.0;
-}
-
-[[nodiscard]] double
 elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
   return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
                                  std::chrono::steady_clock::now() - start)
@@ -134,9 +126,6 @@ GridStats collectGridStats(const OccupancyGrid2D& grid) {
   for (int y = 0; y < grid.height(); ++y) {
     for (int x = 0; x < grid.width(); ++x) {
       const GridIndex cell{x, y};
-      if (grid.isInflated(cell)) {
-        ++stats.inflated_cells;
-      }
       switch (grid.state(cell)) {
         case CellState::kUnknown:
           ++stats.unknown_cells;
@@ -196,7 +185,7 @@ double pathMinimumProhibitedClearanceM(const OccupancyGrid2D& grid,
                                        const double max_distance_m) {
   const ClearanceField2D clearance_field = ClearanceField2D::build(
       grid, normalizedClearanceDiagnosticRadiusM(max_distance_m),
-      ClearanceSource::kProhibited);
+      ClearanceSource::kOccupied);
   return pathMinimumClearanceM(clearance_field, path);
 }
 
@@ -217,7 +206,7 @@ double pathMinimumClearanceM(const ClearanceField2D& clearance_field,
                                           const OccupancyGrid2D& grid,
                                           const double max_distance_m) noexcept {
   return sameBounds(clearance_field.bounds(), grid.bounds()) &&
-         clearance_field.source() == ClearanceSource::kProhibited &&
+         clearance_field.source() == ClearanceSource::kOccupied &&
          clearance_field.maxDistanceM() + kTinyDistanceSqM >= max_distance_m;
 }
 
@@ -245,19 +234,19 @@ bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
     return false;
   }
 
-  const bool starts_prohibited = grid.isProhibited(line_cells.front());
+  const bool starts_prohibited = grid.isOccupied(line_cells.front());
   if (!starts_prohibited) {
     return std::ranges::none_of(
-        line_cells, [&grid](const GridIndex cell) { return grid.isProhibited(cell); });
+        line_cells, [&grid](const GridIndex cell) { return grid.isOccupied(cell); });
   }
 
-  if (grid.isProhibited(line_cells.back())) {
+  if (grid.isOccupied(line_cells.back())) {
     return false;
   }
 
   bool escaped_prohibited_prefix = false;
   for (const GridIndex cell : line_cells) {
-    const bool prohibited = grid.isProhibited(cell);
+    const bool prohibited = grid.isOccupied(cell);
     if (!prohibited) {
       escaped_prohibited_prefix = true;
       continue;
@@ -306,9 +295,8 @@ bool pathSegmentIsTraversable(const OccupancyGrid2D& grid, const Point2 start,
   intersection.path_distance_m =
       path_distance_before_segment_m + intersection.segment_distance_m;
   intersection.occupied = grid.isOccupied(cell);
-  intersection.inflated = grid.isInflated(cell);
-  intersection.segment_start_prohibited = grid.isProhibited(line_cells.front());
-  intersection.segment_end_prohibited = grid.isProhibited(line_cells.back());
+  intersection.segment_start_prohibited = grid.isOccupied(line_cells.front());
+  intersection.segment_end_prohibited = grid.isOccupied(line_cells.back());
   return intersection;
 }
 
@@ -328,10 +316,10 @@ pathSegmentProhibitedIntersection(const OccupancyGrid2D& grid,
     return std::nullopt;
   }
 
-  const bool starts_prohibited = grid.isProhibited(line_cells.front());
+  const bool starts_prohibited = grid.isOccupied(line_cells.front());
   if (!starts_prohibited) {
     for (std::size_t index = 0U; index < line_cells.size(); ++index) {
-      if (grid.isProhibited(line_cells[index])) {
+      if (grid.isOccupied(line_cells[index])) {
         return makePathProhibitedIntersection(
             grid, segment_index, segment_start, segment_end,
             path_distance_before_segment_m, line_cells, index);
@@ -340,7 +328,7 @@ pathSegmentProhibitedIntersection(const OccupancyGrid2D& grid,
     return std::nullopt;
   }
 
-  if (grid.isProhibited(line_cells.back())) {
+  if (grid.isOccupied(line_cells.back())) {
     return makePathProhibitedIntersection(grid, segment_index, segment_start,
                                           segment_end, path_distance_before_segment_m,
                                           line_cells, line_cells.size() - 1U);
@@ -348,7 +336,7 @@ pathSegmentProhibitedIntersection(const OccupancyGrid2D& grid,
 
   bool escaped_prohibited_prefix = false;
   for (std::size_t index = 0U; index < line_cells.size(); ++index) {
-    const bool prohibited = grid.isProhibited(line_cells[index]);
+    const bool prohibited = grid.isOccupied(line_cells[index]);
     if (!prohibited) {
       escaped_prohibited_prefix = true;
       continue;
@@ -361,54 +349,6 @@ pathSegmentProhibitedIntersection(const OccupancyGrid2D& grid,
   }
 
   return std::nullopt;
-}
-
-std::optional<GridIndex> nearestAllowedEscapeStartCell(
-    const OccupancyGrid2D& grid, const GridIndex prohibited_start_cell,
-    const Point2 current_position, const double max_search_radius_m) {
-  if (!grid.contains(prohibited_start_cell) || !finite2D(current_position) ||
-      !grid.isProhibited(prohibited_start_cell) ||
-      grid.isOccupied(prohibited_start_cell)) {
-    return std::nullopt;
-  }
-
-  const double resolution_m = grid.resolution();
-  if (!(resolution_m > 0.0)) {
-    return std::nullopt;
-  }
-
-  const double search_radius_m = normalizedEscapeSearchRadiusM(max_search_radius_m);
-  const int radius_cells =
-      std::max(1, static_cast<int>(std::ceil(search_radius_m / resolution_m)));
-  const double radius_sq_m = search_radius_m * search_radius_m;
-
-  std::optional<GridIndex> best_cell;
-  double best_distance_sq_m = std::numeric_limits<double>::infinity();
-  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
-    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
-      const GridIndex candidate{prohibited_start_cell.x + dx,
-                                prohibited_start_cell.y + dy};
-      if (!grid.contains(candidate) || grid.isProhibited(candidate)) {
-        continue;
-      }
-
-      const Point2 candidate_center = grid.cellCenter(candidate);
-      const double candidate_distance_sq_m =
-          squaredDistance(current_position, candidate_center);
-      if (candidate_distance_sq_m > radius_sq_m ||
-          candidate_distance_sq_m >= best_distance_sq_m) {
-        continue;
-      }
-      if (!pathSegmentIsTraversable(grid, current_position, candidate_center)) {
-        continue;
-      }
-
-      best_cell = candidate;
-      best_distance_sq_m = candidate_distance_sq_m;
-    }
-  }
-
-  return best_cell;
 }
 
 std::optional<PathProjection2D>
@@ -569,22 +509,12 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   if (!result.start_cell.has_value() || !result.goal_cell.has_value()) {
     return std::nullopt;
   }
-  if (grid.isProhibited(*result.goal_cell)) {
+  if (grid.isOccupied(*result.goal_cell)) {
     return std::nullopt;
   }
 
-  if (grid.isProhibited(*result.start_cell)) {
-    const std::optional<GridIndex> escape_start_cell =
-        nearestAllowedEscapeStartCell(grid, *result.start_cell, input.current_position,
-                                      config_.start_prohibited_escape_search_radius_m);
-    if (!escape_start_cell.has_value()) {
-      return std::nullopt;
-    }
-
-    result.start_escape_used = true;
-    result.start_escape_distance_m =
-        distance(input.current_position, grid.cellCenter(*escape_start_cell));
-    result.start_cell = *escape_start_cell;
+  if (grid.isOccupied(*result.start_cell)) {
+    return std::nullopt;
   }
 
   const auto astar_started_at = std::chrono::steady_clock::now();
@@ -599,7 +529,10 @@ PlannerCore::computePath(const PathComputationInput& input) const {
   }
 
   const auto smoothing_started_at = std::chrono::steady_clock::now();
-  const PathSmoothingResult smoothing = smoothPathWithStats(grid, result.astar.path);
+  const ObstacleRiskField risk_field =
+      ObstacleRiskField::build(grid, input.astar.risk_policy);
+  const PathSmoothingResult smoothing =
+      smoothPathWithStats(grid, risk_field, result.astar.path);
   result.smoothing_duration_ms = elapsedMilliseconds(smoothing_started_at);
   result.smoothed_cells = smoothing.path;
   result.smoothing_stats = smoothing.stats;
@@ -630,7 +563,7 @@ PlannerCore::computePath(const PathComputationInput& input) const {
     clearance_field.cache_hit = input.prohibited_clearance_field_cache_hit;
   } else {
     clearance_field = prohibited_clearance_cache_.getOrBuild(
-        grid, clearance_radius_m, ClearanceSource::kProhibited);
+        grid, clearance_radius_m, ClearanceSource::kOccupied);
   }
   result.prohibited_clearance_field_duration_ms =
       elapsedMilliseconds(clearance_field_started_at);

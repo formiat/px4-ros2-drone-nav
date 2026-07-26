@@ -150,7 +150,7 @@ TEST(Corridor, ReusesProvidedClearanceFieldWhenItCoversCorridorRadius) {
   const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
   const CorridorConfig config = testConfig();
   const ClearanceField2D clearance_field =
-      ClearanceField2D::build(grid, config.max_radius_m, ClearanceSource::kProhibited);
+      ClearanceField2D::build(grid, config.max_radius_m, ClearanceSource::kOccupied);
 
   const CorridorResult result =
       buildCorridor(CorridorInput{std::span<const Point2>{route.data(), route.size()},
@@ -168,24 +168,7 @@ TEST(Corridor, RebuildsProvidedClearanceFieldWhenItDoesNotCoverCorridorRadius) {
   const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
   const CorridorConfig config = testConfig();
   const ClearanceField2D clearance_field =
-      ClearanceField2D::build(grid, 1.0, ClearanceSource::kProhibited);
-
-  const CorridorResult result =
-      buildCorridor(CorridorInput{std::span<const Point2>{route.data(), route.size()},
-                                  &grid, &clearance_field, true},
-                    config);
-
-  ASSERT_TRUE(result.valid);
-  EXPECT_FALSE(result.stats.clearance_field_reused);
-  EXPECT_FALSE(result.stats.clearance_field_cache_hit);
-}
-
-TEST(Corridor, RebuildsProvidedClearanceFieldWhenSourceIsNotProhibited) {
-  const OccupancyGrid2D grid = corridorGrid();
-  const std::vector<Point2> route{{1.5, 5.5}, {18.5, 5.5}};
-  const CorridorConfig config = testConfig();
-  const ClearanceField2D clearance_field =
-      ClearanceField2D::build(grid, config.max_radius_m, ClearanceSource::kOccupied);
+      ClearanceField2D::build(grid, 1.0, ClearanceSource::kOccupied);
 
   const CorridorResult result =
       buildCorridor(CorridorInput{std::span<const Point2>{route.data(), route.size()},

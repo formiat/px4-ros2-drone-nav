@@ -219,7 +219,7 @@ After changing simulation assets or launch setup:
 
 1. Stop old Gazebo and PX4 processes.
 2. Start a clean GUI run and confirm model placement.
-3. Verify static map and prohibited grid in RViz.
+3. Verify static map and raw obstacle grid in RViz.
 4. Confirm lidar points align with visible obstacles.
 5. Confirm start and goal are valid.
 6. Run a headless smoke test.

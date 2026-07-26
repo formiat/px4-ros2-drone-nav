@@ -36,10 +36,6 @@ struct RawOccupancyGridToRosConfig {
   std_msgs::msg::Header header;
 };
 
-struct ProhibitedGridToRosConfig {
-  std_msgs::msg::Header header;
-};
-
 [[nodiscard]] nav_msgs::msg::OccupancyGrid
 rawOccupancyGridToRos(const OccupancyGrid2D& grid,
                       const RawOccupancyGridToRosConfig& config);
@@ -47,10 +43,6 @@ rawOccupancyGridToRos(const OccupancyGrid2D& grid,
 [[nodiscard]] RawOccupancyGridFromRosResult
 rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
                         const RawOccupancyGridFromRosConfig& config);
-
-[[nodiscard]] nav_msgs::msg::OccupancyGrid
-prohibitedGridToRos(const OccupancyGrid2D& grid,
-                    const ProhibitedGridToRosConfig& config);
 
 [[nodiscard]] double occupancyGridClearanceM(const nav_msgs::msg::OccupancyGrid& msg,
                                              Point2 point, double search_radius_m,

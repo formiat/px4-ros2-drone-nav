@@ -11,7 +11,6 @@ namespace drone_city_nav {
 
 enum class DistanceFieldSource {
   kOccupied,
-  kProhibited,
 };
 
 struct DistanceFieldBuildStats {

@@ -99,13 +99,13 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point started_at) {
                                           const OccupancyGrid2D& grid,
                                           const double max_radius_m) noexcept {
   return sameBounds(clearance_field.bounds(), grid.bounds()) &&
-         clearance_field.source() == ClearanceSource::kProhibited &&
+         clearance_field.source() == ClearanceSource::kOccupied &&
          clearance_field.maxDistanceM() + kTinyDistanceM >= max_radius_m;
 }
 
 [[nodiscard]] bool pointIsProhibited(const OccupancyGrid2D& grid, const Point2 point) {
   const std::optional<GridIndex> cell = grid.worldToCell(point);
-  return !cell.has_value() || grid.isProhibited(*cell);
+  return !cell.has_value() || grid.isOccupied(*cell);
 }
 
 [[nodiscard]] std::optional<Point2>
@@ -155,7 +155,7 @@ recoverCorridorCenter(const OccupancyGrid2D& grid, const Point2 center,
       ++stats.outside_grid_samples;
       return last_clear_distance;
     }
-    if (grid.isProhibited(*cell)) {
+    if (grid.isOccupied(*cell)) {
       return last_clear_distance;
     }
     last_clear_distance = distance_m;
@@ -345,7 +345,7 @@ bool occupancyGridFingerprintsEqual(const OccupancyGridFingerprint& lhs,
          lhs.bounds.resolution_m == rhs.bounds.resolution_m &&
          lhs.bounds.width_cells == rhs.bounds.width_cells &&
          lhs.bounds.height_cells == rhs.bounds.height_cells &&
-         lhs.cells_hash == rhs.cells_hash && lhs.inflated_hash == rhs.inflated_hash;
+         lhs.cells_hash == rhs.cells_hash;
 }
 
 CorridorResult buildCorridor(const std::span<const Point2> route_points,
@@ -364,7 +364,7 @@ CorridorResult buildCorridor(const CorridorInput& input, const CorridorConfig& c
   const OccupancyGrid2D& prohibited_grid = *input.prohibited_grid;
   result.stats.route_fingerprint = corridorRouteFingerprint(input.route_points);
   result.stats.config_fingerprint = corridorConfigFingerprint(config);
-  result.stats.prohibited_grid_fingerprint = prohibited_grid.prohibitedFingerprint();
+  result.stats.raw_occupancy_fingerprint = prohibited_grid.rawFingerprint();
 
   const std::vector<TrajectorySegment> route =
       lineTrajectoryFromPoints(input.route_points);
@@ -387,7 +387,7 @@ CorridorResult buildCorridor(const CorridorInput& input, const CorridorConfig& c
   } else {
     const auto clearance_started_at = std::chrono::steady_clock::now();
     owned_clearance_field = ClearanceField2D::build(prohibited_grid, max_radius,
-                                                    ClearanceSource::kProhibited);
+                                                    ClearanceSource::kOccupied);
     result.stats.clearance_field_build_duration_ms =
         elapsedMilliseconds(clearance_started_at);
     clearance_field = &*owned_clearance_field;

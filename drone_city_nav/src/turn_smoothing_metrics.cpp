@@ -24,7 +24,7 @@ maxAllowedCurvatureJumpAfter(const double before_curvature_jump_1pm) noexcept {
   }
   const std::vector<GridIndex> cells = grid.cellsOnLine(*start_cell, *end_cell);
   return std::ranges::none_of(
-      cells, [&grid](const GridIndex cell) { return grid.isProhibited(cell); });
+      cells, [&grid](const GridIndex cell) { return grid.isOccupied(cell); });
 }
 
 [[nodiscard]] SegmentCellKey orderedSegmentKey(GridIndex start,

@@ -18,30 +18,6 @@ namespace {
          std::max(0.0, std::isfinite(margin_m) ? margin_m : 0.0);
 }
 
-[[nodiscard]] bool
-unrelaxedTailIsTraversable(const OccupancyGrid2D& grid,
-                           const std::span<const TrajectoryPointSample> samples,
-                           const double required_tail_m) {
-  if (required_tail_m <= 0.0) {
-    return true;
-  }
-  if (!trajectorySamplesAreUsable(samples) ||
-      samples.back().s_m + 1.0e-6 < required_tail_m) {
-    return false;
-  }
-
-  const double tail_start_s_m = samples.back().s_m - required_tail_m;
-  std::vector<Point2> tail_points;
-  tail_points.reserve(samples.size() + 1U);
-  tail_points.push_back(trajectorySampleAtS(samples, tail_start_s_m).point);
-  for (const TrajectoryPointSample& sample : samples) {
-    if (sample.s_m > tail_start_s_m + 1.0e-6) {
-      tail_points.push_back(sample.point);
-    }
-  }
-  return pathIsTraversable(grid, tail_points);
-}
-
 } // namespace
 
 void PlannerNode::onLocalPosition(const px4_msgs::msg::VehicleLocalPosition& msg) {
@@ -412,8 +388,9 @@ void PlannerNode::loadConfiguredKnownPassages() {
   publishKnownPassageDebug(true);
 }
 
-[[nodiscard]] PlanningGridBuilderConfig PlannerNode::planningGridBuilderConfig() const {
-  PlanningGridBuilderConfig config{};
+[[nodiscard]] ObstacleFieldBuilderConfig
+PlannerNode::planningGridBuilderConfig() const {
+  ObstacleFieldBuilderConfig config{};
   config.use_static_map = use_static_map_;
   config.fallback_bounds = fallback_grid_bounds_;
   config.inflation_radius_m = inflation_radius_m_;
@@ -442,9 +419,9 @@ void PlannerNode::loadConfiguredKnownPassages() {
   return config;
 }
 
-[[nodiscard]] std::optional<PlanningGridBuildResult>
-PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
-  const PlanningGridBuilderConfig config = planningGridBuilderConfig();
+[[nodiscard]] std::optional<ObstacleFieldBuildResult>
+PlannerNode::buildObstacleField(const std::int64_t now_ns) {
+  const ObstacleFieldBuilderConfig config = planningGridBuilderConfig();
   PlanningGridSources sources{};
   sources.static_grid = static_grid_ ? &*static_grid_ : nullptr;
   sources.static_rectangles = static_map_rectangles_;
@@ -464,7 +441,7 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
     sources.current_lidar = overlayCurrentLidarHits(*current_lidar_grid, now_ns);
     sources.current_lidar_grid = &*current_lidar_grid;
   }
-  PlanningGridBuildResult result = planning_grid_builder_.build(config, sources);
+  ObstacleFieldBuildResult result = planning_grid_builder_.build(config, sources);
   if (current_lidar_grid.has_value()) {
     result.current_lidar_grid = std::move(current_lidar_grid);
   }
@@ -476,7 +453,8 @@ PlannerNode::buildPlanningGrid(const std::int64_t now_ns) {
              !result.memory.geometry_matches) {
     const OccupancyGrid2D& memory_grid = *memory_grid_;
     std::optional<OccupancyGrid2D> diagnostic_grid;
-    const OccupancyGrid2D* planning_grid = result.grid ? &*result.grid : nullptr;
+    const OccupancyGrid2D* planning_grid =
+        result.raw_occupancy ? &*result.raw_occupancy : nullptr;
     if (planning_grid == nullptr) {
       if (const std::optional<GridBounds> bounds =
               selectPlanningGridBounds(config, sources);
@@ -593,11 +571,11 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       successor_snapshot->truncation_generation == truncation_replan->generation &&
       successor_snapshot->temporary_prefix_fingerprint ==
           truncation_replan->temporary_prefix_fingerprint &&
-      planningGridVersionsEqual(successor_snapshot->grid_version,
+      obstacleRiskVersionsEqual(successor_snapshot->grid_version,
                                 successor_snapshot->prepared_grid->version);
 
-  std::optional<PlanningGridBuildResult> planning_result;
-  std::shared_ptr<const PreparedPlanningGridSnapshot> prepared;
+  std::optional<ObstacleFieldBuildResult> planning_result;
+  std::shared_ptr<const PreparedObstacleRiskSnapshot> prepared;
   double planning_grid_duration_ms{0.0};
   if (reuse_successor_snapshot) {
     prepared = successor_snapshot->prepared_grid;
@@ -624,7 +602,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     applyLatestLidarInputSnapshot();
     applyPendingMemorySnapshot(now_ns);
     const auto planning_grid_started_at = std::chrono::steady_clock::now();
-    planning_result = buildPlanningGrid(now_ns);
+    planning_result = buildObstacleField(now_ns);
     planning_grid_duration_ms = elapsedMilliseconds(planning_grid_started_at);
     if (!planning_result.has_value()) {
       RCLCPP_WARN_THROTTLE(
@@ -633,7 +611,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           "not ready; keeping the last published path");
       return;
     }
-    std::optional<PreparedPlanningGridSnapshot> prepared_value =
+    std::optional<PreparedObstacleRiskSnapshot> prepared_value =
         preparePlanningGridSnapshot(*planning_result, navigation.pose.position);
     if (!prepared_value.has_value()) {
       RCLCPP_ERROR(get_logger(),
@@ -641,7 +619,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                    "completed grid build; keeping the last published path");
       return;
     }
-    prepared = std::make_shared<const PreparedPlanningGridSnapshot>(
+    prepared = std::make_shared<const PreparedObstacleRiskSnapshot>(
         std::move(*prepared_value));
   }
   RCLCPP_INFO(
@@ -649,91 +627,28 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       "PLANNING_GRID_TIMING cycle_sequence=%" PRIu64 " invalidation_generation=%" PRIu64
       " grid_revision=%" PRIu64
       " grid_build_ms=%.2f snapshot_reused=%s local_window=%s "
-      "runtime_grid=%dx%d planning_grid=%dx%d global_cells=%zu "
-      "planning_cells=%zu reduction=%.2fx",
+      "raw_grid=%dx%d evaluation_grid=%dx%d source_cells=%zu "
+      "evaluation_cells=%zu reduction=%.2fx",
       identity.cycle_sequence, invalidation_generation,
       prepared->version.build_revision, planning_grid_duration_ms,
       reuse_successor_snapshot ? "true" : "false",
-      prepared->runtime_prohibited_grid.bounds().width_cells !=
-                  prepared->planning_clearance_grid.bounds().width_cells ||
-              prepared->runtime_prohibited_grid.bounds().height_cells !=
-                  prepared->planning_clearance_grid.bounds().height_cells
+      prepared->raw_occupancy.bounds().width_cells !=
+                  prepared->evaluation_bounds.width_cells ||
+              prepared->raw_occupancy.bounds().height_cells !=
+                  prepared->evaluation_bounds.height_cells
           ? "true"
           : "false",
-      prepared->runtime_prohibited_grid.width(),
-      prepared->runtime_prohibited_grid.height(),
-      prepared->planning_clearance_grid.width(),
-      prepared->planning_clearance_grid.height(),
-      prepared->runtime_prohibited_grid.cellCount(),
-      prepared->planning_clearance_grid.cellCount(),
-      prepared->planning_clearance_grid.cellCount() > 0U
-          ? static_cast<double>(prepared->runtime_prohibited_grid.cellCount()) /
-                static_cast<double>(prepared->planning_clearance_grid.cellCount())
+      prepared->raw_occupancy.width(), prepared->raw_occupancy.height(),
+      prepared->evaluation_bounds.width_cells, prepared->evaluation_bounds.height_cells,
+      prepared->raw_occupancy.cellCount(),
+      gridBoundsCellCount(prepared->evaluation_bounds),
+      gridBoundsCellCount(prepared->evaluation_bounds) > 0U
+          ? static_cast<double>(prepared->raw_occupancy.cellCount()) /
+                static_cast<double>(gridBoundsCellCount(prepared->evaluation_bounds))
           : std::numeric_limits<double>::infinity());
-  const OccupancyGrid2D& prohibited_grid = prepared->runtime_prohibited_grid;
-  const OccupancyGrid2D& planning_grid = prepared->planning_clearance_grid;
-  const LocalInflationRelaxationStats& runtime_relaxation =
-      prepared->runtime_relaxation;
-  const LocalInflationRelaxationStats& planning_relaxation =
-      prepared->planning_relaxation;
-  const DirectedInflationEscapeResult& directed_escape = prepared->directed_escape;
-  directed_inflation_escape_markers_pub_->publish(
-      buildDirectedInflationEscapeDebugMarkers(
-          makePlannerHeader(), directed_escape,
-          directed_inflation_escape_config_.tunnel_width_m));
-  if (directed_escape.state != DirectedInflationEscapeState::kInactive) {
-    RCLCPP_INFO(
-        get_logger(),
-        "DIRECTED_INFLATION_ESCAPE episode=%" PRIu64
-        " state=%.*s need=%.*s start=(%.2f,%.2f) target=(%.2f,%.2f) "
-        "centerline_length_m=%.2f centerline_points=%zu tunnel_width_m=%.2f "
-        "exit_depth_m=%.2f stable_exit_cycles=%zu cells_considered=%zu "
-        "inflated_cleared=%zu occupied_preserved=%zu connected=%s "
-        "mission_egress_available=%s awaiting_mission_continuation=%s "
-        "centerline_blocked=%s off_centerline=%s target_too_far=%s "
-        "applied=%s grid_revision=%" PRIu64,
-        directed_escape.episode_generation,
-        static_cast<int>(
-            directedInflationEscapeStateName(directed_escape.state).size()),
-        directedInflationEscapeStateName(directed_escape.state).data(),
-        static_cast<int>(inflationEscapeNeedName(directed_escape.need).size()),
-        inflationEscapeNeedName(directed_escape.need).data(), directed_escape.start.x,
-        directed_escape.start.y, directed_escape.target.x, directed_escape.target.y,
-        directed_escape.centerline_length_m, directed_escape.centerline.size(),
-        directed_inflation_escape_config_.tunnel_width_m,
-        directed_inflation_escape_config_.exit_depth_m,
-        directed_escape.stable_exit_cycles, directed_escape.cells_considered,
-        directed_escape.relaxation.inflated_cells_cleared,
-        directed_escape.relaxation.occupied_cells_preserved,
-        directed_escape.connected ? "true" : "false",
-        directed_escape.mission_egress_available ? "true" : "false",
-        directed_escape.awaiting_mission_continuation ? "true" : "false",
-        directed_escape.centerline_blocked ? "true" : "false",
-        directed_escape.episode_off_centerline ? "true" : "false",
-        directed_escape.episode_target_too_far ? "true" : "false",
-        directed_escape.applied ? "true" : "false", prepared->version.build_revision);
-  }
-  if (directed_escape.applied) {
-    RCLCPP_INFO(
-        get_logger(),
-        "LOCAL_INFLATION_RELAXATION center=(%.2f,%.2f) radius_m=%.2f "
-        "escape_episode=%" PRIu64 " escape_only=true "
-        "runtime[inside=%s considered=%zu cleared=%zu occupied_preserved=%zu "
-        "outside=%zu] planning[inside=%s considered=%zu cleared=%zu "
-        "occupied_preserved=%zu outside=%zu]",
-        navigation.pose.position.x, navigation.pose.position.y,
-        local_inflation_relaxation_radius_m_, directed_escape.episode_generation,
-        runtime_relaxation.center_inside_bounds ? "true" : "false",
-        runtime_relaxation.cells_considered, runtime_relaxation.inflated_cells_cleared,
-        runtime_relaxation.occupied_cells_preserved,
-        runtime_relaxation.cells_outside_bounds,
-        planning_relaxation.center_inside_bounds ? "true" : "false",
-        planning_relaxation.cells_considered,
-        planning_relaxation.inflated_cells_cleared,
-        planning_relaxation.occupied_cells_preserved,
-        planning_relaxation.cells_outside_bounds);
-  }
-  publishProhibitedGrid(prohibited_grid);
+  const OccupancyGrid2D& prohibited_grid = prepared->raw_occupancy;
+  const OccupancyGrid2D& planning_grid = prepared->raw_occupancy;
+  publishRawObstacleSnapshot(*prepared);
   if (!reuse_successor_snapshot) {
     truncation_replan = truncationReplanState();
   }
@@ -874,8 +789,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       navigation.velocity_valid ? "true" : "false",
       truncation_replan.has_value() ? "confirmed_truncation" : "current_pose",
       truncation_replan.has_value() ? truncation_replan->generation : 0U);
-  std::vector<TrajectoryGridCandidate> grid_candidates{
-      TrajectoryGridCandidate{"planning_clearance", &planning_grid, nullptr, false},
+  std::vector<TrajectoryRiskContext> risk_contexts{
+      TrajectoryRiskContext{"raw_risk", &planning_grid, &prepared->risk_field,
+                            &prepared->raw_clearance, true},
   };
   if (plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
       PlannerModePrimaryAction::kRollout) {
@@ -943,22 +859,14 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     const Point2 mission_or_recovery_target =
         no_static_orchestrator_.recoveryPreferredTarget(
             planning_start, no_static_recovery_lookahead_m_, goal_);
-    const NoStaticRolloutTargetSelection target_selection =
-        selectNoStaticRolloutTarget(mission_or_recovery_target, directed_escape);
-    const Point2 preferred_target = target_selection.target;
-    const bool directed_escape_phase =
-        target_selection.source == NoStaticRolloutTargetSource::kDirectedEscape;
-    const bool directed_escape_from_temporary_hold =
-        directed_escape_phase && !rollout_prefix_available &&
-        last_published_path_id_ != 0U && last_valid_path_points_.empty();
-    stationary_restart = stationary_restart || directed_escape_from_temporary_hold;
+    const Point2 preferred_target = mission_or_recovery_target;
     if (stationary_restart) {
       rollout_velocity = Point2{};
     }
     const bool mission_goal_within_minimum_length =
         distance(rollout_start, goal_) <= no_static_rollout_min_length_m_ + 1.0e-6;
     const double required_rollout_length_m =
-        mission_goal_within_minimum_length || directed_escape_phase
+        mission_goal_within_minimum_length
             ? 0.0
             : std::max(no_static_rollout_min_length_m_,
                        stationary_restart ? 0.0 : terminal_braking_distance_m);
@@ -970,37 +878,37 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     bool rollout_recovery_requested = false;
     RolloutRejectReason last_rollout_reject = RolloutRejectReason::kNoCandidate;
     std::size_t total_rollout_candidates = 0U;
-    for (std::size_t grid_attempt_index = 0U;
-         grid_attempt_index < grid_candidates.size(); ++grid_attempt_index) {
-      const TrajectoryGridCandidate& grid_attempt = grid_candidates[grid_attempt_index];
+    for (std::size_t risk_attempt_index = 0U; risk_attempt_index < risk_contexts.size();
+         ++risk_attempt_index) {
+      const TrajectoryRiskContext& risk_attempt = risk_contexts[risk_attempt_index];
       RCLCPP_INFO(
           get_logger(),
           "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
           " grid=%s start=(%.2f,%.2f) velocity=(%.2f,%.2f) speed=%.2f "
           "preferred_target=(%.2f,%.2f) target_distance=%.2f "
-          "target_source=%s escape_episode=%" PRIu64 " "
+          "target_source=mission_or_recovery "
           "active_path=%s active_path_id=%" PRIu64 " active_s=%.2f "
           "active_remaining=%.2f stable_prefix_m=%.2f "
           "grid_size=%dx%d resolution=%.2f",
           invalidation_generation, prepared->version.build_revision,
-          std::string{grid_attempt.name}.c_str(), rollout_start.x, rollout_start.y,
+          std::string{risk_attempt.name}.c_str(), rollout_start.x, rollout_start.y,
           rollout_velocity.x, rollout_velocity.y,
           std::hypot(rollout_velocity.x, rollout_velocity.y), preferred_target.x,
           preferred_target.y, distance(rollout_start, preferred_target),
-          noStaticRolloutTargetSourceName(target_selection.source),
-          directed_escape.episode_generation,
           rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
           artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
                                           : 0.0,
           artifact_matches_active_rollout ? rollout_runtime.progress.remaining_m : 0.0,
-          stable_prefix_distance_m, grid_attempt.grid->width(),
-          grid_attempt.grid->height(), grid_attempt.grid->resolution());
+          stable_prefix_distance_m, risk_attempt.raw_occupancy->width(),
+          risk_attempt.raw_occupancy->height(),
+          risk_attempt.raw_occupancy->resolution());
       const auto rollout_generation_started_at = std::chrono::steady_clock::now();
       const RolloutResult rollout = rollout_planner_.plan(RolloutInput{
           .position = rollout_start,
           .velocity = rollout_velocity,
           .preferred_target = preferred_target,
-          .grid = grid_attempt.grid,
+          .grid = risk_attempt.raw_occupancy,
+          .risk_field = &prepared->risk_field,
           .minimum_length_m = required_rollout_length_m,
           .stationary_restart = stationary_restart,
           .generation = invalidation_generation,
@@ -1089,14 +997,14 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           rollout_start_altitude_m = truncation_replan->altitude_m;
         }
         assignTrajectorySampleAltitude(geometry_samples, rollout_start_altitude_m);
-        const std::array<TrajectoryGridCandidate, 1U> finalization_grids{grid_attempt};
+        const std::array<TrajectoryRiskContext, 1U> finalization_grids{risk_attempt};
         const auto candidate_finalization_started_at = std::chrono::steady_clock::now();
         const TrajectoryPlannerResult finalized = finalizeStitchedTrajectory(
             StitchedTrajectoryFinalizationInput{
                 .geometry_samples = geometry_samples,
                 .known_passage_map =
                     known_passages_.has_value() ? &*known_passages_ : nullptr,
-                .grid_candidates = finalization_grids,
+                .risk_contexts = finalization_grids,
                 .start_mode = stationary_restart
                                   ? PassageInsertionStartMode::kTerminalHoldRestart
                                   : PassageInsertionStartMode::kMovingJoin,
@@ -1110,7 +1018,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         RCLCPP_INFO(
             get_logger(),
             "NO_STATIC_ROLLOUT generation=%" PRIu64 " grid_revision=%" PRIu64
-            " grid_attempt=%zu/%zu grid=%s finalist=%zu/%zu score=%.3f "
+            " risk_attempt=%zu/%zu grid=%s finalist=%zu/%zu score=%.3f "
             "score_parts[progress=%.3f lateral=%.3f heading=%.3f "
             "curvature=%.3f] progress=%.2fm candidate_index=%zu samples=%zu "
             "endpoint=(%.2f,%.2f) heading_offset_rad=%.3f target_speed=%.2f "
@@ -1122,8 +1030,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             "mode=%s prefix_m=%.2f suffix_m=%.2f guide_revision=%" PRIu64
             " rollout_generation_ms=%.2f candidate_finalization_ms=%.2f",
             invalidation_generation, prepared->version.build_revision,
-            grid_attempt_index + 1U, grid_candidates.size(),
-            std::string{grid_attempt.name}.c_str(), finalist_index,
+            risk_attempt_index + 1U, risk_contexts.size(),
+            std::string{risk_attempt.name}.c_str(), finalist_index,
             rollout.rankedShortlist(rollout_planner_.config().max_finalists).size(),
             finalist.score, finalist.progress_cost, finalist.lateral_deviation_cost,
             finalist.heading_change_cost, finalist.curvature_cost, finalist.progress_m,
@@ -1171,53 +1079,16 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               "NO_STATIC_ROLLOUT terminal_length_rejected=true generation=%" PRIu64
               " finalist=%zu remaining=%.2f required=%.2f minimum=%.2f "
               "braking=%.2f tolerance=%.2f stationary_restart=%s "
-              "mission_goal_exception=%s "
-              "directed_escape_exception=%s speed=%.2f active_blocked=%s action=%s",
+              "mission_goal_exception=%s speed=%.2f active_blocked=%s action=%s",
               invalidation_generation, finalist_index, candidate_remaining_m,
               required_rollout_length_m, no_static_rollout_min_length_m_,
               terminal_braking_distance_m, kRolloutLengthToleranceM,
               stationary_restart ? "true" : "false",
               mission_goal_within_minimum_length ? "true" : "false",
-              directed_escape_phase ? "true" : "false", navigation.speed_mps,
-              blocked_replacement_context ? "true" : "false",
+              navigation.speed_mps, blocked_replacement_context ? "true" : "false",
               blocked_replacement_context ? "safe_truncation_hold"
                                           : "keep_clear_prefix_and_retry");
           continue;
-        }
-        const OccupancyGrid2D* unrelaxed_planning_grid =
-            prepared->unrelaxed_planning_clearance_grid.has_value()
-                ? &*prepared->unrelaxed_planning_clearance_grid
-                : nullptr;
-        const bool unrelaxed_tail_sufficient =
-            mission_goal_within_minimum_length || unrelaxed_planning_grid == nullptr ||
-            unrelaxedTailIsTraversable(*unrelaxed_planning_grid, finalized.samples,
-                                       no_static_rollout_min_unrelaxed_tail_m_);
-        if (!unrelaxed_tail_sufficient) {
-          RCLCPP_WARN(
-              get_logger(),
-              "NO_STATIC_ROLLOUT unrelaxed_tail_rejected=true generation=%" PRIu64
-              " finalist=%zu remaining=%.2f required_tail=%.2f "
-              "escape_episode=%" PRIu64 " active_blocked=%s action=%s",
-              invalidation_generation, finalist_index, candidate_remaining_m,
-              no_static_rollout_min_unrelaxed_tail_m_,
-              directed_escape.episode_generation,
-              blocked_replacement_context ? "true" : "false",
-              blocked_replacement_context ? "safe_truncation_hold"
-                                          : "keep_clear_prefix_and_retry");
-          continue;
-        }
-        if (directed_escape.awaiting_mission_continuation &&
-            target_selection.source ==
-                NoStaticRolloutTargetSource::kMissionOrRecovery) {
-          const bool confirmed =
-              planning_grid_snapshot_builder_.confirmDirectedEscapeMissionContinuation(
-                  directed_escape.episode_generation);
-          RCLCPP_INFO(get_logger(),
-                      "DIRECTED_INFLATION_ESCAPE episode=%" PRIu64
-                      " mission_continuation_candidate_valid=true confirmed=%s "
-                      "candidate_length_m=%.2f",
-                      directed_escape.episode_generation, confirmed ? "true" : "false",
-                      candidate_remaining_m);
         }
         validated_candidate_seen = true;
         const std::uint64_t latest_generation = latestPlanningInvalidationGeneration();
@@ -1317,7 +1188,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         std::uint64_t published_path_id = 0U;
         const std::vector<Point2> route_points =
             trajectorySamplePoints(finalized.samples);
-        const std::string grid_name{grid_attempt.name};
+        const std::string grid_name{risk_attempt.name};
         TrajectoryPublicationStageTimings stage_timings{
             .grid_build_ms = planning_grid_duration_ms,
             .rollout_generation_ms = rollout_generation_ms,
@@ -1329,7 +1200,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             grid_name, &published_path_id, &prepared->version,
             reaches_mission_goal ? TrajectoryEndpointSemantics::kMissionGoal
                                  : TrajectoryEndpointSemantics::kLocalHorizon,
-            &stage_timings, grid_attempt.grid);
+            &stage_timings, risk_attempt.raw_occupancy, risk_attempt.risk_field,
+            risk_attempt.raw_clearance);
         stage_timings.publication_total_ms = elapsedMilliseconds(cycle_started_at);
         const double blocker_to_successor_publish_ms =
             truncation_rollout && successor_snapshot != nullptr &&
@@ -1392,20 +1264,19 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       if (validated_candidate_seen || rollout_recovery_requested) {
         break;
       }
-      RCLCPP_INFO(
-          get_logger(),
-          "NO_STATIC_ROLLOUT grid_attempt_exhausted=true "
-          "generation=%" PRIu64 " grid_revision=%" PRIu64
-          " grid_attempt=%zu/%zu grid=%s reject=%s candidates=%zu "
-          "fallback=%s",
-          invalidation_generation, prepared->version.build_revision,
-          grid_attempt_index + 1U, grid_candidates.size(),
-          std::string{grid_attempt.name}.c_str(),
-          rolloutRejectReasonName(rollout.reject_reason),
-          rollout.ranked_candidates.size(),
-          grid_attempt_index + 1U < grid_candidates.size()
-              ? std::string{grid_candidates[grid_attempt_index + 1U].name}.c_str()
-              : "none");
+      RCLCPP_INFO(get_logger(),
+                  "NO_STATIC_ROLLOUT risk_attempt_exhausted=true "
+                  "generation=%" PRIu64 " grid_revision=%" PRIu64
+                  " risk_attempt=%zu/%zu grid=%s reject=%s candidates=%zu "
+                  "fallback=%s",
+                  invalidation_generation, prepared->version.build_revision,
+                  risk_attempt_index + 1U, risk_contexts.size(),
+                  std::string{risk_attempt.name}.c_str(),
+                  rolloutRejectReasonName(rollout.reject_reason),
+                  rollout.ranked_candidates.size(),
+                  risk_attempt_index + 1U < risk_contexts.size()
+                      ? std::string{risk_contexts[risk_attempt_index + 1U].name}.c_str()
+                      : "none");
     }
     rollout_durations_ms_.push_back(elapsedMilliseconds(rollout_started_at));
     constexpr std::size_t kMaximumRolloutDurationSamples{256U};
@@ -1489,10 +1360,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   }
   std::optional<PathComputationResult> path_result;
   std::size_t astar_grid_index = 0U;
-  for (; astar_grid_index < grid_candidates.size(); ++astar_grid_index) {
-    const TrajectoryGridCandidate& candidate = grid_candidates[astar_grid_index];
+  for (; astar_grid_index < risk_contexts.size(); ++astar_grid_index) {
+    const TrajectoryRiskContext& candidate = risk_contexts[astar_grid_index];
     const std::string candidate_name{candidate.name};
-    path_result = computePathOnGrid(*candidate.grid, candidate_name.c_str(),
+    path_result = computePathOnGrid(*candidate.raw_occupancy, candidate_name.c_str(),
                                     planning_astar_config, planning_start);
     if (path_result.has_value()) {
       break;
@@ -1532,7 +1403,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     guide.reserve(std::min(guide_cells.size(), kMaximumRecoveryGuidePoints));
     for (const GridIndex cell : std::span<const GridIndex>{guide_cells}.first(
              std::min(guide_cells.size(), kMaximumRecoveryGuidePoints))) {
-      guide.push_back(grid_candidates[astar_grid_index].grid->cellCenter(cell));
+      guide.push_back(risk_contexts[astar_grid_index].raw_occupancy->cellCenter(cell));
     }
     no_static_orchestrator_.setRecoveryGuide(guide, prepared->version.build_revision);
     const Point2 guide_target = no_static_orchestrator_.recoveryPreferredTarget(
@@ -1547,171 +1418,47 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     schedulePlanningCycle(PlanningWakeReason::kRecoveryGuideReady);
     return;
   }
-  grid_candidates[astar_grid_index].clearance_field =
+  risk_contexts[astar_grid_index].raw_clearance =
       path_result->prohibited_clearance_field;
-  grid_candidates[astar_grid_index].clearance_field_cache_hit =
+  risk_contexts[astar_grid_index].raw_clearance_cache_hit =
       path_result->prohibited_clearance_field_cache_hit;
-  const std::string astar_grid_name{grid_candidates[astar_grid_index].name};
+  const std::string astar_grid_name{risk_contexts[astar_grid_index].name};
   RCLCPP_INFO(get_logger(),
               "GRID_STAGE_SELECTED stage=astar grid=%s attempt=%zu candidates=%zu",
-              astar_grid_name.c_str(), astar_grid_index + 1U, grid_candidates.size());
-  const GridStats prohibited_grid_stats = collectGridStats(prohibited_grid);
-  const GridStats planning_grid_stats = collectGridStats(planning_grid);
+              astar_grid_name.c_str(), astar_grid_index + 1U, risk_contexts.size());
+  const GridStats raw_grid_stats = collectGridStats(prepared->raw_occupancy);
   RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Planning summary: pose=(%.2f, %.2f) distance_to_start=%.2f "
-      "distance_to_goal=%.2f raw_static=%zu raw_memory=%zu "
-      "raw_current_lidar=%zu "
-      "runtime_prohibited[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
-      "unknown=%zu inflation_radius_m=%.2f] "
-      "planning_grid[prohibited=%zu occupied=%zu inflated=%zu free=%zu "
-      "unknown=%zu planning_clearance_m=%.2f effective_inflation_m=%.2f] "
-      "local_inflation_relaxation[runtime_cleared=%zu runtime_occupied_preserved=%zu "
-      "planning_cleared=%zu planning_occupied_preserved=%zu radius_m=%.2f] "
-      "inflation_owner=planner "
-      "static_grid_cache[eligible=%s hit=%s rebuilt=%s "
-      "static_distance=%.1fms static_masks=%.1fms dynamic_distance=%.1fms "
-      "dynamic_masks=%.1fms static_sources=%zu dynamic_sources=%zu] "
-      "static[enabled=%s loaded=%s used=%s rectangles=%zu occupied_cells=%zu "
-      "path='%s'] "
-      "memory[enabled=%s seen=%s used=%s geometry_matches=%s occupied=%zu free=%zu "
-      "unknown=%zu overlay_occupied=%zu overlay_free=%zu] "
-      "current_lidar[enabled=%s used=%s fresh=%s processed=%zu aligned=%zu hits=%zu "
-      "altitude_rejected=%zu occupied_cells=%zu overlay_applied=%zu "
-      "overlay_preserved=%zu outside=%zu "
-      "known_static[ignored=%zu endpoint_fallback=%zu unexpected=%zu "
-      "ambiguous=%zu pending=%zu confirmed=%zu "
-      "parts[left=%zu right=%zu lower=%zu upper=%zu] "
-      "first_ignored=%s/%s/%s delta=%.3f "
-      "first_ambiguous=%s/%s/%s delta=%.3f]] "
+      "distance_to_goal=%.2f raw[occupied=%zu free=%zu unknown=%zu] "
+      "sources[static=%zu memory=%zu current_lidar=%zu] "
+      "risk_policy[critical=%.2f preferred=%.2f] "
+      "snapshot[producer=%" PRIu64 " revision=%" PRIu64 " policy=%" PRIu64 "] "
       "source=%s astar_status=%s heuristic_weight=%.2f expanded=%zu "
       "cost=%.2f raw_path=%zu smoothed_path=%zu "
-      "initial_heading_bias[enabled=%s active=%s speed=%.2f min_speed=%.2f "
-      "weight=%.2f velocity=(%.2f, %.2f)] "
-      "path_metrics[raw_segments=%zu raw_straight_segments=%zu raw_turns=%zu "
-      "raw_length=%.2f smoothed_segments=%zu smoothed_straight_segments=%zu "
-      "smoothed_turns=%zu smoothed_length=%.2f] "
-      "planning_path_clearance[raw=%.2f smoothed=%.2f] "
-      "timing[grid=%.1f path_total=%.1f astar=%.1f smoothing=%.1f "
-      "core_breakdown[grid_stats=%.1f raw_metrics=%.1f smoothed_metrics=%.1f "
-      "clearance_field=%.1f clearance_cache_hit=%s prohibited_clearance=%.1f "
-      "smoothed_clearance=%.1f]]",
+      "path_risk[tier=%s critical_exposure=%.2f planning_exposure=%.2f "
+      "min_raw_clearance=%.2f] "
+      "timing[risk_snapshot=%.1f path_total=%.1f astar=%.1f smoothing=%.1f]",
       current_pose_.position.x, current_pose_.position.y,
       distance(current_pose_.position, start_), distance(current_pose_.position, goal_),
-      planning_result->static_source.occupied_cells,
+      raw_grid_stats.occupied_cells, raw_grid_stats.free_cells,
+      raw_grid_stats.unknown_cells, planning_result->static_source.occupied_cells,
       planning_result->memory.source_counts.occupied_cells,
       planning_result->current_lidar.occupied_cells,
-      prohibited_grid_stats.occupied_cells + prohibited_grid_stats.inflated_cells,
-      prohibited_grid_stats.occupied_cells, prohibited_grid_stats.inflated_cells,
-      prohibited_grid_stats.free_cells, prohibited_grid_stats.unknown_cells,
-      inflation_radius_m_,
-      planning_grid_stats.occupied_cells + planning_grid_stats.inflated_cells,
-      planning_grid_stats.occupied_cells, planning_grid_stats.inflated_cells,
-      planning_grid_stats.free_cells, planning_grid_stats.unknown_cells,
-      planning_clearance_m_, inflation_radius_m_ + planning_clearance_m_,
-      runtime_relaxation.inflated_cells_cleared,
-      runtime_relaxation.occupied_cells_preserved,
-      planning_relaxation.inflated_cells_cleared,
-      planning_relaxation.occupied_cells_preserved,
-      local_inflation_relaxation_radius_m_,
-      planning_result->cache.static_cache_eligible ? "true" : "false",
-      planning_result->cache.static_cache_hit ? "true" : "false",
-      planning_result->cache.static_cache_rebuilt ? "true" : "false",
-      planning_result->cache.static_distance_field_duration_ms,
-      planning_result->cache.static_inflation_mask_duration_ms,
-      planning_result->cache.dynamic_distance_field_duration_ms,
-      planning_result->cache.dynamic_inflation_mask_duration_ms,
-      planning_result->cache.static_distance_source_cells,
-      planning_result->cache.dynamic_distance_source_cells,
-      planning_result->static_source.enabled ? "true" : "false",
-      planning_result->static_source.loaded ? "true" : "false",
-      planning_result->static_source.used ? "true" : "false",
-      planning_result->static_source.rectangles,
-      planning_result->static_source.occupied_cells,
-      planning_result->static_source.path.c_str(),
-      planning_result->memory.enabled ? "true" : "false",
-      planning_result->memory.seen ? "true" : "false",
-      planning_result->memory.used ? "true" : "false",
-      planning_result->memory.geometry_matches ? "true" : "false",
-      planning_result->memory.source_counts.occupied_cells,
-      planning_result->memory.source_counts.free_cells,
-      planning_result->memory.source_counts.unknown_cells,
-      planning_result->memory.overlay.occupied_cells_applied,
-      planning_result->memory.overlay.free_cells_applied,
-      planning_result->current_lidar.enabled ? "true" : "false",
-      planning_result->current_lidar.used ? "true" : "false",
-      planning_result->current_lidar.fresh ? "true" : "false",
-      planning_result->current_lidar.processed_beams,
-      planning_result->current_lidar.timestamp_aligned_beams,
-      planning_result->current_lidar.hit_beams,
-      planning_result->current_lidar.altitude_rejected_beams,
-      planning_result->current_lidar.occupied_cells,
-      planning_result->current_lidar.overlay_occupied_cells_applied,
-      planning_result->current_lidar.overlay_occupied_cells_preserved,
-      planning_result->current_lidar.outside_hits,
-      planning_result->current_lidar.known_static_lidar.expected_static_hits_ignored,
-      planning_result->current_lidar.known_static_lidar
-          .endpoint_volume_fallback_hits_ignored,
-      planning_result->current_lidar.known_static_lidar.unexpected_hits_kept,
-      planning_result->current_lidar.known_static_lidar.ambiguous_hits_kept,
-      planning_result->current_lidar.ambiguous_hits_pending_confirmation,
-      planning_result->current_lidar.ambiguous_hits_confirmed,
-      planning_result->current_lidar.known_static_lidar.expected_static_by_part.left,
-      planning_result->current_lidar.known_static_lidar.expected_static_by_part.right,
-      planning_result->current_lidar.known_static_lidar.expected_static_by_part.lower,
-      planning_result->current_lidar.known_static_lidar.expected_static_by_part.upper,
-      planning_result->current_lidar.known_static_lidar.first_ignored.available
-          ? planning_result->current_lidar.known_static_lidar.first_ignored.structure_id
-                .c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ignored.available
-          ? planning_result->current_lidar.known_static_lidar.first_ignored.opening_id
-                .c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ignored.available
-          ? planning_result->current_lidar.known_static_lidar.first_ignored.part_id
-                .c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ignored.range_delta_m,
-      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
-          ? planning_result->current_lidar.known_static_lidar.first_ambiguous
-                .structure_id.c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
-          ? planning_result->current_lidar.known_static_lidar.first_ambiguous.opening_id
-                .c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ambiguous.available
-          ? planning_result->current_lidar.known_static_lidar.first_ambiguous.part_id
-                .c_str()
-          : "<none>",
-      planning_result->current_lidar.known_static_lidar.first_ambiguous.range_delta_m,
-      astar_grid_name.c_str(), astarStatusName(path_result->astar.status),
+      prepared->risk_field.policy().critical_distance_m,
+      prepared->risk_field.policy().preferred_distance_m,
+      raw_obstacle_producer_instance_id_, prepared->version.build_revision,
+      prepared->version.risk_policy_fingerprint, astar_grid_name.c_str(),
+      astarStatusName(path_result->astar.status),
       planning_astar_config.heuristic_weight, path_result->astar.expanded_cells,
       path_result->astar.total_cost, path_result->raw_path_metrics.points,
       path_result->smoothed_path_metrics.points,
-      planning_astar_config.initial_heading_bias_enabled ? "true" : "false",
-      initialHeadingBiasActive(planning_astar_config) ? "true" : "false",
-      current_speed_mps_, planning_astar_config.initial_heading_bias_min_speed_mps,
-      planning_astar_config.initial_heading_bias_weight,
-      planning_astar_config.initial_heading_bias_velocity_x_mps,
-      planning_astar_config.initial_heading_bias_velocity_y_mps,
-      path_result->raw_path_metrics.segments,
-      path_result->raw_path_metrics.straight_segments,
-      path_result->raw_path_metrics.turns, path_result->raw_path_metrics.length_m,
-      path_result->smoothed_path_metrics.segments,
-      path_result->smoothed_path_metrics.straight_segments,
-      path_result->smoothed_path_metrics.turns,
-      path_result->smoothed_path_metrics.length_m, path_result->raw_path_clearance_m,
-      path_result->smoothed_path_clearance_m, planning_grid_duration_ms,
+      obstacleRiskTierName(path_result->astar.risk.worst_tier),
+      path_result->astar.risk.critical_exposure_m,
+      path_result->astar.risk.planning_exposure_m,
+      path_result->astar.risk.minimum_raw_clearance_m, planning_grid_duration_ms,
       path_result->total_duration_ms, path_result->astar_duration_ms,
-      path_result->smoothing_duration_ms, path_result->grid_stats_duration_ms,
-      path_result->raw_path_metrics_duration_ms,
-      path_result->smoothed_path_metrics_duration_ms,
-      path_result->prohibited_clearance_field_duration_ms,
-      path_result->prohibited_clearance_field_cache_hit ? "true" : "false",
-      path_result->raw_path_clearance_duration_ms,
-      path_result->smoothed_path_clearance_duration_ms);
+      path_result->smoothing_duration_ms);
   const LidarIngestionDecisionStats& lidar_decisions =
       planning_result->current_lidar.ingestion_decisions;
   const std::string lidar_decision_summary =
@@ -1772,14 +1519,14 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                 path_result->astar.path.size());
   }
   PathPublicationOutcome publication_outcome = publishPathFromPathCells(
-      *planning_result, grid_candidates, astar_grid_index, path_result->astar.path,
+      *planning_result, risk_contexts, astar_grid_index, path_result->astar.path,
       path_result->smoothed_cells, astar_grid_name.c_str(), planning_start,
       replan_delivery, PassageInsertionStartMode::kMovingJoin,
       truncation_replan.has_value() ? &*truncation_replan : nullptr);
   if (publication_outcome == PathPublicationOutcome::kRetryAfterTerminalHold &&
       truncation_replan.has_value()) {
     publication_outcome = publishTerminalHoldRestartSuffix(
-        *planning_result, grid_candidates, planning_start, *truncation_replan,
+        *planning_result, risk_contexts, planning_start, *truncation_replan,
         replan_delivery);
     if (publication_outcome != PathPublicationOutcome::kPublished) {
       publishPlanningFailureHold();
@@ -1798,6 +1545,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
 [[nodiscard]] AStarConfig PlannerNode::astarConfigForCurrentVelocity(
     const std::optional<Point2> initial_tangent) const {
   AStarConfig config = astar_config_;
+  config.risk_policy = {
+      .critical_distance_m = inflation_radius_m_,
+      .preferred_distance_m = inflation_radius_m_ + planning_clearance_m_,
+  };
   if (initial_tangent.has_value()) {
     const double tangent_norm = std::hypot(initial_tangent->x, initial_tangent->y);
     if (std::isfinite(tangent_norm) && tangent_norm > 1.0e-6) {
@@ -1841,35 +1592,22 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
                           goal_.y);
     return std::nullopt;
   }
-  const bool start_prohibited = grid.isProhibited(*start_cell);
-  const bool goal_prohibited = grid.isProhibited(*goal_cell);
-  if (goal_prohibited || grid.isOccupied(*start_cell)) {
+  const bool start_occupied = grid.isOccupied(*start_cell);
+  const bool goal_occupied = grid.isOccupied(*goal_cell);
+  if (goal_occupied || start_occupied) {
     RCLCPP_ERROR_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Start or goal is not plannable on %s grid; refusing to move planning "
-        "endpoints: start_cell=(%d,%d) occupied=%s inflated=%s prohibited=%s "
-        "goal_cell=(%d,%d) occupied=%s inflated=%s prohibited=%s",
-        source_label, start_cell->x, start_cell->y,
-        grid.isOccupied(*start_cell) ? "true" : "false",
-        grid.isInflated(*start_cell) ? "true" : "false",
-        start_prohibited ? "true" : "false", goal_cell->x, goal_cell->y,
-        grid.isOccupied(*goal_cell) ? "true" : "false",
-        grid.isInflated(*goal_cell) ? "true" : "false",
-        goal_prohibited ? "true" : "false");
+        "Start or goal is raw occupied on %s grid: start_cell=(%d,%d) "
+        "raw_occupied=%s goal_cell=(%d,%d) raw_occupied=%s",
+        source_label, start_cell->x, start_cell->y, start_occupied ? "true" : "false",
+        goal_cell->x, goal_cell->y, goal_occupied ? "true" : "false");
     return std::nullopt;
-  }
-  if (start_prohibited) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "Start is inside inflated prohibited space on %s grid; attempting "
-        "escape-start planning: start_cell=(%d,%d)",
-        source_label, start_cell->x, start_cell->y);
   }
 
   const auto path_compute_started_at = std::chrono::steady_clock::now();
   ClearanceField2D prebuilt_clearance_field = ClearanceField2D::build(
       grid, planner_core_.config().clearance_diagnostic_radius_m,
-      ClearanceSource::kProhibited);
+      ClearanceSource::kOccupied);
   auto result = planner_core_.computePath(PathComputationInput{
       .grid = &grid,
       .current_position = planning_start,
@@ -1895,46 +1633,6 @@ PlannerNode::computePathOnGrid(const OccupancyGrid2D& grid, const char* source_l
       std::make_shared<ClearanceField2D>(std::move(prebuilt_clearance_field));
   result->prohibited_clearance_field = result->owned_prohibited_clearance_field.get();
   ++astar_successes_;
-  if (result->start_escape_used && result->requested_start_cell.has_value() &&
-      result->start_cell.has_value()) {
-    const Point2 escape_point = grid.cellCenter(*result->start_cell);
-    const std::vector<GridIndex> escape_line =
-        grid.cellsOnLine(*result->requested_start_cell, *result->start_cell);
-    std::size_t prohibited_prefix_cells = 0U;
-    bool reached_free_cell = false;
-    bool reentered_prohibited = false;
-    for (const GridIndex cell : escape_line) {
-      if (grid.isProhibited(cell)) {
-        if (reached_free_cell) {
-          reentered_prohibited = true;
-        } else {
-          ++prohibited_prefix_cells;
-        }
-      } else {
-        reached_free_cell = true;
-      }
-    }
-    RCLCPP_WARN(get_logger(),
-                "A_STAR_START_ESCAPE source=%s requested_start=(%d,%d) "
-                "requested_center=(%.2f,%.2f) requested[occupied=%s inflated=%s "
-                "prohibited=%s] escape_start=(%d,%d) escape_center=(%.2f,%.2f) "
-                "escape[occupied=%s inflated=%s prohibited=%s] distance=%.2fm "
-                "prefix[cells=%zu prohibited_prefix=%zu reentered_prohibited=%s "
-                "traversable=%s]",
-                source_label, result->requested_start_cell->x,
-                result->requested_start_cell->y, planning_start.x, planning_start.y,
-                grid.isOccupied(*result->requested_start_cell) ? "true" : "false",
-                grid.isInflated(*result->requested_start_cell) ? "true" : "false",
-                grid.isProhibited(*result->requested_start_cell) ? "true" : "false",
-                result->start_cell->x, result->start_cell->y, escape_point.x,
-                escape_point.y, grid.isOccupied(*result->start_cell) ? "true" : "false",
-                grid.isInflated(*result->start_cell) ? "true" : "false",
-                grid.isProhibited(*result->start_cell) ? "true" : "false",
-                result->start_escape_distance_m, escape_line.size(),
-                prohibited_prefix_cells, reentered_prohibited ? "true" : "false",
-                pathSegmentIsTraversable(grid, planning_start, escape_point) ? "true"
-                                                                             : "false");
-  }
   return result;
 }
 

@@ -84,7 +84,6 @@ struct PassageInsertionBlockedSegmentDiagnostic {
   GridIndex blocked_cell{};
   Point2 blocked_cell_center{};
   bool occupied{false};
-  bool inflated{false};
 };
 
 struct PassageInsertionDiagnostic {

@@ -84,8 +84,8 @@ struct GridScenario {
   return scenario;
 }
 
-[[nodiscard]] PlanningGridBuildResult buildResult(const GridScenario& scenario) {
-  PlanningGridBuilderConfig config{};
+[[nodiscard]] ObstacleFieldBuildResult buildResult(const GridScenario& scenario) {
+  ObstacleFieldBuilderConfig config{};
   config.use_static_map = false;
   config.fallback_bounds = scenario.memory.rawGrid().bounds();
   config.inflation_radius_m = 1.0;
@@ -94,23 +94,23 @@ struct GridScenario {
   sources.memory_grid = &scenario.memory.rawGrid();
   sources.current_lidar_grid = &scenario.current_lidar_grid;
   sources.current_lidar = scenario.current_lidar_stats;
-  return buildPlanningGrid(config, sources);
+  return buildObstacleField(config, sources);
 }
 
-void expectEndpointProhibited(const PlanningGridBuildResult& result,
+void expectEndpointProhibited(const ObstacleFieldBuildResult& result,
                               const Point2 endpoint, const bool expected) {
-  ASSERT_TRUE(result.grid.has_value());
-  ASSERT_TRUE(result.planning_grid.has_value());
+  ASSERT_TRUE(result.raw_occupancy.has_value());
+  ASSERT_TRUE(result.raw_occupancy.has_value());
   const OccupancyGrid2D& grid =
-      result.grid.value(); // NOLINT(bugprone-unchecked-optional-access)
+      result.raw_occupancy.value(); // NOLINT(bugprone-unchecked-optional-access)
   const OccupancyGrid2D& planning_grid =
-      result.planning_grid.value(); // NOLINT(bugprone-unchecked-optional-access)
+      result.raw_occupancy.value(); // NOLINT(bugprone-unchecked-optional-access)
   const auto endpoint_cell = grid.worldToCell(endpoint);
   ASSERT_TRUE(endpoint_cell.has_value());
   const GridIndex cell =
       endpoint_cell.value(); // NOLINT(bugprone-unchecked-optional-access)
-  EXPECT_EQ(grid.isProhibited(cell), expected);
-  EXPECT_EQ(planning_grid.isProhibited(cell), expected);
+  EXPECT_EQ(grid.isOccupied(cell), expected);
+  EXPECT_EQ(planning_grid.isOccupied(cell), expected);
 }
 
 } // namespace
@@ -121,7 +121,7 @@ TEST(KnownStaticLidarPlanningGridIntegration,
       knownPassageSolidVolumes(connector2223())};
   const GridScenario scenario = ingest(classifier, 13.8, 23.0F);
 
-  const PlanningGridBuildResult result = buildResult(scenario);
+  const ObstacleFieldBuildResult result = buildResult(scenario);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   EXPECT_EQ(
@@ -136,7 +136,7 @@ TEST(KnownStaticLidarPlanningGridIntegration,
       knownPassageSolidVolumes(connector2223())};
   const GridScenario scenario = ingest(classifier, 13.8, 20.0F);
 
-  const PlanningGridBuildResult result = buildResult(scenario);
+  const ObstacleFieldBuildResult result = buildResult(scenario);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   EXPECT_EQ(scenario.current_lidar_stats.known_static_lidar.unexpected_hits_kept, 1U);
@@ -150,7 +150,7 @@ TEST(KnownStaticLidarPlanningGridIntegration,
       knownPassageSolidVolumes(connector2223())};
   const GridScenario scenario = ingest(classifier, 5.0, 24.0F);
 
-  const PlanningGridBuildResult result = buildResult(scenario);
+  const ObstacleFieldBuildResult result = buildResult(scenario);
 
   ASSERT_EQ(result.status, PlanningGridStatus::kReady);
   EXPECT_EQ(scenario.current_lidar_stats.ingestion_decisions

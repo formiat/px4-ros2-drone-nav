@@ -19,7 +19,6 @@ struct GridStats {
   std::size_t unknown_cells{0U};
   std::size_t free_cells{0U};
   std::size_t occupied_cells{0U};
-  std::size_t inflated_cells{0U};
 };
 
 struct PathMetrics {
@@ -40,7 +39,6 @@ struct PlannerCoreConfig {
   AStarConfig astar{};
   double clearance_diagnostic_radius_m{10.0};
   double stable_path_goal_tolerance_m{3.0};
-  double start_prohibited_escape_search_radius_m{10.0};
 };
 
 struct PathComputationResult {
@@ -55,8 +53,6 @@ struct PathComputationResult {
   std::optional<GridIndex> start_cell;
   std::optional<GridIndex> requested_start_cell;
   std::optional<GridIndex> goal_cell;
-  bool start_escape_used{false};
-  double start_escape_distance_m{0.0};
   bool smoothing_returned_empty_path{false};
   double total_duration_ms{0.0};
   double astar_duration_ms{0.0};
@@ -99,7 +95,6 @@ struct PathProhibitedIntersection {
   double segment_distance_m{0.0};
   double path_distance_m{0.0};
   bool occupied{false};
-  bool inflated{false};
   bool segment_start_prohibited{false};
   bool segment_end_prohibited{false};
 };

@@ -102,7 +102,7 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
       "lidar_debug_node_config_custom",
       {rclcpp::Parameter{"output_dir", "log/custom_lidar"},
        rclcpp::Parameter{"lidar_topic", "/custom/scan"},
-       rclcpp::Parameter{"prohibited_grid_topic", "/custom/prohibited"},
+       rclcpp::Parameter{"raw_obstacle_grid_topic", "/custom/raw_obstacle_grid"},
        rclcpp::Parameter{"memory_grid_topic", "/custom/memory"},
        rclcpp::Parameter{"path_topic", "/custom/path"},
        rclcpp::Parameter{"pointcloud_topic", "/custom/current_points"},
@@ -123,7 +123,7 @@ TEST_F(LidarDebugNodeConfigTest, LoadsCustomTopicsAndProjectionParams) {
 
   EXPECT_EQ(config.output_dir, "log/custom_lidar");
   EXPECT_EQ(config.topics.lidar, "/custom/scan");
-  EXPECT_EQ(config.topics.prohibited_grid, "/custom/prohibited");
+  EXPECT_EQ(config.topics.raw_obstacle_grid, "/custom/raw_obstacle_grid");
   EXPECT_EQ(config.topics.memory_grid, "/custom/memory");
   EXPECT_EQ(config.topics.path, "/custom/path");
   EXPECT_EQ(config.topics.pointcloud, "/custom/current_points");

@@ -109,7 +109,7 @@ findFirstProhibitedCellSpan(const OccupancyGrid2D& grid,
           segment_start_s_m + segment_t * (original_end.s_m - segment_start_s_m));
       previous_station_m = station_m;
       const Point2 point = trajectorySampleAtS(trajectory, station_m).point;
-      if (observe(station_m, point, cell, grid.isProhibited(cell))) {
+      if (observe(station_m, point, cell, grid.isOccupied(cell))) {
         return span;
       }
     }
@@ -131,7 +131,7 @@ endpointAllowed(const TrajectoryPointSample& sample,
       return false;
     }
     const std::optional<GridIndex> cell = grid->worldToCell(sample.point);
-    return cell.has_value() && !grid->isProhibited(*cell);
+    return cell.has_value() && !grid->isOccupied(*cell);
   });
 }
 
