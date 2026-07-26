@@ -75,6 +75,55 @@ TEST(PlannerRuntimeState, AllowsAnyAStarOnlyForStaticOrExplicitNoStaticRecovery)
   EXPECT_FALSE(astarPlanningAllowed(false, false));
 }
 
+TEST(PlannerRuntimeState, SelectsBoundedNoStaticRecoveryGoalForFarMission) {
+  OccupancyGrid2D grid{GridBounds{-20.0, -20.0, 1.0, 80, 80}};
+  grid.reset(CellState::kFree);
+  const GridBounds evaluation{-5.0, -5.0, 1.0, 30, 30};
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, evaluation, 10.0);
+
+  const std::optional<Point2> recovery_goal =
+      boundedNoStaticRecoveryGoal(grid, risk, Point2{0.5, 0.5}, Point2{200.0, 0.5});
+
+  ASSERT_TRUE(recovery_goal.has_value());
+  const Point2 selected_goal =
+      recovery_goal.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_TRUE(risk.containsEvaluationPoint(selected_goal));
+  EXPECT_LT(selected_goal.x, 25.0);
+  EXPECT_GT(selected_goal.x, 20.0);
+  EXPECT_NEAR(selected_goal.y, 0.5, 1.0);
+
+  PlannerCore core;
+  const auto guide = core.computePath(PathComputationInput{
+      .grid = &grid,
+      .risk_field = &risk,
+      .current_position = Point2{0.5, 0.5},
+      .goal = selected_goal,
+  });
+  ASSERT_TRUE(guide.has_value());
+  const PathComputationResult& guide_result =
+      guide.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_FALSE(guide_result.astar.path.empty());
+}
+
+TEST(PlannerRuntimeState, PreservesMissionGoalWhenItIsInsideRecoveryRoi) {
+  OccupancyGrid2D grid{GridBounds{-20.0, -20.0, 1.0, 80, 80}};
+  grid.reset(CellState::kFree);
+  const GridBounds evaluation{-5.0, -5.0, 1.0, 30, 30};
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, evaluation, 10.0);
+  const Point2 mission_goal{10.5, 4.5};
+
+  const std::optional<Point2> recovery_goal =
+      boundedNoStaticRecoveryGoal(grid, risk, Point2{0.5, 0.5}, mission_goal);
+
+  ASSERT_TRUE(recovery_goal.has_value());
+  const Point2 selected_goal =
+      recovery_goal.value(); // NOLINT(bugprone-unchecked-optional-access)
+  EXPECT_DOUBLE_EQ(selected_goal.x, mission_goal.x);
+  EXPECT_DOUBLE_EQ(selected_goal.y, mission_goal.y);
+}
+
 TEST(PlannerRuntimeState, RejectsGenerationChangedAtPublicationBoundary) {
   EXPECT_TRUE(publicationGenerationIsCurrent(7U, 7U));
   EXPECT_FALSE(publicationGenerationIsCurrent(7U, 8U));

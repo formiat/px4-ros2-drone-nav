@@ -304,7 +304,7 @@ private:
   [[nodiscard]] std::optional<PathComputationResult>
   computePathOnGrid(const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
                     const char* source_label, const AStarConfig& astar_config,
-                    Point2 planning_start);
+                    Point2 planning_start, Point2 planning_goal);
 
   PathPublicationOutcome publishPathFromPathCells(
       const ObstacleFieldBuildResult& planning_result,
@@ -502,7 +502,7 @@ private:
   double no_static_terminal_braking_margin_m_{2.0};
   double no_static_terminal_response_delay_s_{0.35};
   double no_static_vehicle_clearance_m_{0.5};
-  double no_static_tracking_error_margin_m_{2.0};
+  double no_static_tracking_error_margin_m_{3.5};
   double no_static_rollout_min_length_m_{7.0};
   bool no_static_rollout_local_window_enabled_{true};
   double no_static_rollout_local_window_extra_margin_m_{1.0};

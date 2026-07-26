@@ -678,6 +678,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
       !use_static_map_ && no_static_rollout_enabled_ &&
       executable_trajectory_artifact_.path_id == active_rollout_path_id_ &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
+  const double vehicle_clearance_envelope_m =
+      no_static_vehicle_clearance_m_ + no_static_tracking_error_margin_m_ +
+      std::sqrt(0.5) * planning_grid.resolution();
   const double rollout_exhaustion_epsilon_m =
       std::max(0.5, prohibited_grid.resolution());
   ExecutableSuffixDecision rollout_runtime{};
@@ -685,9 +688,9 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     const ExecutableTrajectoryProgress progress = updateExecutableTrajectoryProgress(
         executable_trajectory_artifact_, navigation.pose.position,
         stable_path_goal_tolerance_m_);
-    rollout_runtime =
-        evaluateExecutableSuffix(prohibited_grid, executable_trajectory_artifact_,
-                                 progress, rollout_exhaustion_epsilon_m);
+    rollout_runtime = evaluateExecutableSuffix(
+        prohibited_grid, prepared->risk_field, executable_trajectory_artifact_,
+        progress, rollout_exhaustion_epsilon_m, vehicle_clearance_envelope_m);
     const BlockedSpan* blocked_span = rollout_runtime.blocked_span.has_value()
                                           ? &*rollout_runtime.blocked_span
                                           : nullptr;
@@ -704,13 +707,17 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "ROLLOUT_RUNTIME_PATH_CHECK path_id=%" PRIu64
         " projection_valid=%s previous_s=%.2f current_s=%.2f remaining=%.2f "
         "cross_track=%.2f terminal_distance=%.2f checked_from_s=%.2f "
-        "blocked=%s first_blocked_s=%.2f distance_to_blocker=%.2f "
+        "blocked=%s trigger=%s required_tracking_clearance=%.2f "
+        "first_blocked_s=%.2f distance_to_blocker=%.2f "
         "cell=(%d,%d) active_prefix_available=%s exhaustion_reason=%s "
         "decision=%s",
         executable_trajectory_artifact_.path_id, progress.valid ? "true" : "false",
         progress.previous_s_m, progress.projected_s_m, progress.remaining_m,
         progress.cross_track_m, progress.terminal_distance_m, progress.projected_s_m,
         rollout_runtime.blocked ? "true" : "false",
+        blocked_span != nullptr ? blockedSpanTriggerName(blocked_span->trigger)
+                                : "none",
+        vehicle_clearance_envelope_m,
         blocked_span != nullptr ? blocked_span->first_blocked_s_m
                                 : std::numeric_limits<double>::quiet_NaN(),
         blocked_span != nullptr
@@ -725,8 +732,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         progress.valid && !rollout_runtime.exhausted ? "true" : "false",
         exhaustion_reason,
         !progress.valid           ? "projection_unavailable"
-        : rollout_runtime.blocked ? "prohibited_confirmed"
-                                  : "clear");
+        : blocked_span == nullptr ? "clear"
+        : blocked_span->trigger == BlockedSpanTrigger::kRawOccupied
+            ? "raw_occupied_confirmed"
+            : "tracking_envelope_confirmed");
   }
   const bool active_prefix_available = artifact_matches_active_rollout &&
                                        rollout_runtime.progress.valid &&
@@ -896,9 +905,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         stationary_restart ? 0.0
                            : current_speed_mps * no_static_terminal_response_delay_s_ +
                                  std::sqrt(0.5) * planning_grid.resolution();
-    const double vehicle_clearance_envelope_m =
-        no_static_vehicle_clearance_m_ + no_static_tracking_error_margin_m_ +
-        std::sqrt(0.5) * planning_grid.resolution();
     const bool blocked_replacement_context =
         truncation_rollout || rollout_runtime.blocked;
     const auto rollout_started_at = std::chrono::steady_clock::now();
@@ -1401,14 +1407,44 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   }
   std::optional<PathComputationResult> path_result;
   std::size_t astar_grid_index = 0U;
-  for (; astar_grid_index < risk_contexts.size(); ++astar_grid_index) {
-    const TrajectoryRiskContext& candidate = risk_contexts[astar_grid_index];
-    const std::string candidate_name{candidate.name};
-    path_result = computePathOnGrid(*candidate.raw_occupancy, *candidate.risk_field,
-                                    candidate_name.c_str(), planning_astar_config,
-                                    planning_start);
-    if (path_result.has_value()) {
-      break;
+  Point2 astar_goal = goal_;
+  const bool bounded_no_static_recovery =
+      plannerModePrimaryAction(use_static_map_, no_static_rollout_enabled_) ==
+          PlannerModePrimaryAction::kRollout &&
+      !truncation_replan.has_value();
+  bool recovery_goal_available = true;
+  if (bounded_no_static_recovery) {
+    const std::optional<Point2> recovery_goal = boundedNoStaticRecoveryGoal(
+        planning_grid, prepared->risk_field, planning_start, goal_);
+    recovery_goal_available = recovery_goal.has_value();
+    if (recovery_goal.has_value()) {
+      astar_goal = *recovery_goal;
+      RCLCPP_INFO(get_logger(),
+                  "NO_STATIC_ROLLOUT recovery_endpoint=bounded start=(%.2f,%.2f) "
+                  "endpoint=(%.2f,%.2f) mission_goal=(%.2f,%.2f) "
+                  "evaluation_origin=(%.2f,%.2f) evaluation_size=%dx%d",
+                  planning_start.x, planning_start.y, astar_goal.x, astar_goal.y,
+                  goal_.x, goal_.y, prepared->evaluation_bounds.origin_x,
+                  prepared->evaluation_bounds.origin_y,
+                  prepared->evaluation_bounds.width_cells,
+                  prepared->evaluation_bounds.height_cells);
+    } else {
+      RCLCPP_WARN(get_logger(),
+                  "NO_STATIC_ROLLOUT recovery_endpoint_unavailable=true "
+                  "start=(%.2f,%.2f) mission_goal=(%.2f,%.2f)",
+                  planning_start.x, planning_start.y, goal_.x, goal_.y);
+    }
+  }
+  if (recovery_goal_available) {
+    for (; astar_grid_index < risk_contexts.size(); ++astar_grid_index) {
+      const TrajectoryRiskContext& candidate = risk_contexts[astar_grid_index];
+      const std::string candidate_name{candidate.name};
+      path_result = computePathOnGrid(*candidate.raw_occupancy, *candidate.risk_field,
+                                      candidate_name.c_str(), planning_astar_config,
+                                      planning_start, astar_goal);
+      if (path_result.has_value()) {
+        break;
+      }
     }
   }
   if (!path_result.has_value()) {
@@ -1614,15 +1650,15 @@ PlannerNode::initialHeadingBiasActive(const AStarConfig& config) noexcept {
 [[nodiscard]] std::optional<PathComputationResult> PlannerNode::computePathOnGrid(
     const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
     const char* source_label, const AStarConfig& astar_config,
-    const Point2 planning_start) {
+    const Point2 planning_start, const Point2 planning_goal) {
   const auto start_cell = grid.worldToCell(planning_start);
-  const auto goal_cell = grid.worldToCell(goal_);
+  const auto goal_cell = grid.worldToCell(planning_goal);
   if (!start_cell.has_value() || !goal_cell.has_value()) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
                           "Start or goal is outside the %s planning grid: "
                           "start=(%.2f, %.2f) goal=(%.2f, %.2f)",
-                          source_label, planning_start.x, planning_start.y, goal_.x,
-                          goal_.y);
+                          source_label, planning_start.x, planning_start.y,
+                          planning_goal.x, planning_goal.y);
     return std::nullopt;
   }
   const bool start_occupied = grid.isOccupied(*start_cell);
@@ -1642,7 +1678,7 @@ PlannerNode::initialHeadingBiasActive(const AStarConfig& config) noexcept {
       .grid = &grid,
       .risk_field = &risk_field,
       .current_position = planning_start,
-      .goal = goal_,
+      .goal = planning_goal,
       .astar = astar_config,
       .prohibited_clearance_field = &risk_field.occupiedClearance(),
       .prohibited_clearance_field_cache_hit = true,

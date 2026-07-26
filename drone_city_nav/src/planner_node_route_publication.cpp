@@ -574,7 +574,7 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishTerminalHoldRestartSuffi
     const std::string candidate_name{candidate.name};
     path_result = computePathOnGrid(*candidate.raw_occupancy, *candidate.risk_field,
                                     candidate_name.c_str(), candidate_astar_config,
-                                    planning_start);
+                                    planning_start, goal_);
     if (path_result.has_value()) {
       break;
     }

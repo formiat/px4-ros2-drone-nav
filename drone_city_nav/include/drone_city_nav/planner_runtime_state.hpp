@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace drone_city_nav {
 
@@ -116,6 +117,11 @@ plannerModePrimaryAction(bool use_static_map, bool rollout_enabled) noexcept;
 
 [[nodiscard]] bool astarPlanningAllowed(bool use_static_map,
                                         bool no_static_astar_recovery_enabled) noexcept;
+
+[[nodiscard]] std::optional<Point2>
+boundedNoStaticRecoveryGoal(const OccupancyGrid2D& grid,
+                            const ObstacleRiskField& risk_field, Point2 start,
+                            Point2 mission_goal);
 
 [[nodiscard]] bool
 publicationGenerationIsCurrent(std::uint64_t candidate_generation,

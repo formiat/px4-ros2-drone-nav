@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
@@ -13,11 +14,12 @@
 namespace drone_city_nav {
 
 enum class BlockedSpanTrigger {
-  kProhibited,
+  kRawOccupied,
+  kTrackingEnvelope,
 };
 
 struct BlockedSpan {
-  BlockedSpanTrigger trigger{BlockedSpanTrigger::kProhibited};
+  BlockedSpanTrigger trigger{BlockedSpanTrigger::kRawOccupied};
   double first_blocked_s_m{std::numeric_limits<double>::quiet_NaN()};
   double last_blocked_s_m{std::numeric_limits<double>::quiet_NaN()};
   Point2 first_point{};
@@ -71,13 +73,21 @@ struct TrajectoryRepairStitchResult {
     double max_cross_track_m = std::numeric_limits<double>::infinity());
 
 [[nodiscard]] ExecutableSuffixDecision evaluateExecutableSuffix(
-    const OccupancyGrid2D& grid, const ExecutableTrajectoryArtifact& artifact,
-    const ExecutableTrajectoryProgress& progress, double exhaustion_epsilon_m);
+    const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
+    const ExecutableTrajectoryArtifact& artifact,
+    const ExecutableTrajectoryProgress& progress, double exhaustion_epsilon_m,
+    double minimum_tracking_clearance_m = 0.0);
 
 [[nodiscard]] std::optional<BlockedSpan>
-findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
-                               std::span<const TrajectoryPointSample> trajectory,
-                               double minimum_s_m);
+findFirstRawOccupiedBlockedSpan(const OccupancyGrid2D& grid,
+                                std::span<const TrajectoryPointSample> trajectory,
+                                double minimum_s_m);
+
+[[nodiscard]] std::optional<BlockedSpan>
+findFirstTrackingEnvelopeBlockedSpan(const OccupancyGrid2D& grid,
+                                     const ClearanceField2D& raw_clearance,
+                                     std::span<const TrajectoryPointSample> trajectory,
+                                     double minimum_s_m, double minimum_clearance_m);
 
 [[nodiscard]] std::vector<ReconnectCandidate>
 makeReconnectCandidates(const ExecutableTrajectoryArtifact& artifact,

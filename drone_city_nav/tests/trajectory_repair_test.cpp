@@ -67,9 +67,10 @@ TEST(TrajectoryRepair, ExecutableSuffixIgnoresBlockerBehindProgress) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
+  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
 
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
 
   EXPECT_TRUE(decision.progress.valid);
   EXPECT_FALSE(decision.blocked);
@@ -86,14 +87,58 @@ TEST(TrajectoryRepair, ExecutableSuffixFindsBlockerAheadOfProgress) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
+  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
 
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
 
   ASSERT_TRUE(decision.blocked);
   ASSERT_TRUE(decision.blocked_span.has_value());
   const BlockedSpan blocked = decision.blocked_span.value_or(BlockedSpan{});
+  EXPECT_EQ(blocked.trigger, BlockedSpanTrigger::kRawOccupied);
   EXPECT_GT(blocked.first_blocked_s_m, progress.projected_s_m);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixDetectsTrackingEnvelopeBeforeRawCollision) {
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{20, 12});
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 7U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 5.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{5.0, 0.0}, 3.0);
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, grid.bounds(), 10.0);
+
+  const ExecutableSuffixDecision decision =
+      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5, 3.5);
+
+  ASSERT_TRUE(decision.blocked);
+  ASSERT_TRUE(decision.blocked_span.has_value());
+  const BlockedSpan blocked = decision.blocked_span.value_or(BlockedSpan{});
+  EXPECT_EQ(blocked.trigger, BlockedSpanTrigger::kTrackingEnvelope);
+  EXPECT_LT(blocked.first_blocked_s_m, 20.0);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixKeepsRawClearPathOutsideTrackingEnvelope) {
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{20, 16});
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 7U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 5.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{5.0, 0.0}, 3.0);
+  const ObstacleRiskField risk =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{}, grid.bounds(), 10.0);
+
+  const ExecutableSuffixDecision decision =
+      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5, 3.5);
+
+  EXPECT_FALSE(decision.blocked);
 }
 
 TEST(TrajectoryRepair, ExecutableSuffixReportsExhaustedAtTerminal) {
@@ -105,9 +150,10 @@ TEST(TrajectoryRepair, ExecutableSuffixReportsExhaustedAtTerminal) {
   };
   const ExecutableTrajectoryProgress progress =
       updateExecutableTrajectoryProgress(artifact, Point2{30.0, 0.0}, 3.0);
+  const ObstacleRiskField risk = ObstacleRiskField::build(grid, ObstacleRiskPolicy{});
 
   const ExecutableSuffixDecision decision =
-      evaluateExecutableSuffix(grid, artifact, progress, 0.5);
+      evaluateExecutableSuffix(grid, risk, artifact, progress, 0.5);
 
   EXPECT_TRUE(decision.exhausted);
   EXPECT_FALSE(decision.blocked);
@@ -120,10 +166,10 @@ TEST(TrajectoryRepair, ProhibitedSpanEndsAtFirstSafeStation) {
   }
   const std::vector<TrajectoryPointSample> samples = lineSamples(40.0);
 
-  const auto span = findFirstProhibitedBlockedSpan(grid, samples, 0.0);
+  const auto span = findFirstRawOccupiedBlockedSpan(grid, samples, 0.0);
 
   ASSERT_TRUE(span.has_value());
-  EXPECT_EQ(span->trigger, BlockedSpanTrigger::kProhibited);
+  EXPECT_EQ(span->trigger, BlockedSpanTrigger::kRawOccupied);
   EXPECT_GE(span->first_blocked_s_m, 9.0);
   EXPECT_LE(span->first_blocked_s_m, 10.5);
   EXPECT_GT(span->last_blocked_s_m, 15.0);
@@ -139,7 +185,7 @@ TEST(TrajectoryRepair, ProhibitedScannerReturnsFirstOfTwoSpans) {
     grid.setOccupied(GridIndex{x, 10});
   }
 
-  const auto span = findFirstProhibitedBlockedSpan(grid, lineSamples(50.0), 5.0);
+  const auto span = findFirstRawOccupiedBlockedSpan(grid, lineSamples(50.0), 5.0);
 
   ASSERT_TRUE(span.has_value());
   EXPECT_LT(span->first_blocked_s_m, 16.0);
@@ -152,7 +198,7 @@ TEST(TrajectoryRepair, ProhibitedScannerKeepsExitOfBlockedEscapePrefix) {
     grid.setOccupied(GridIndex{x, 10});
   }
 
-  const auto span = findFirstProhibitedBlockedSpan(grid, lineSamples(30.0), 4.0);
+  const auto span = findFirstRawOccupiedBlockedSpan(grid, lineSamples(30.0), 4.0);
 
   ASSERT_TRUE(span.has_value());
   EXPECT_NEAR(span->first_blocked_s_m, 4.0, 0.26);
@@ -175,7 +221,7 @@ TEST(TrajectoryRepair, ProhibitedScannerVisitsEveryRuntimeLineCell) {
       grid.cellsOnLine(start_cell.value(), end_cell.value());
   ASSERT_NE(std::ranges::find(runtime_cells, GridIndex{1, 4}), runtime_cells.end());
 
-  const auto span = findFirstProhibitedBlockedSpan(grid, samples, 0.0);
+  const auto span = findFirstRawOccupiedBlockedSpan(grid, samples, 0.0);
 
   ASSERT_TRUE(span.has_value());
   const BlockedSpan& blocked = span.value();

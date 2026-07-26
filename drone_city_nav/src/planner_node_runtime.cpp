@@ -297,12 +297,16 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         get_logger(),
         "ROLLOUT_BLOCKER_HANDOFF stage=detected path_id=%" PRIu64
         " last_path_points=%zu artifact_matches=%s suffix_blocked=%s "
-        "blocked_span[first_s=%.2f last_s=%.2f] truncation_state_before=%s",
+        "trigger=%s blocked_span[first_s=%.2f last_s=%.2f] "
+        "truncation_state_before=%s",
         runtime_path_id, last_valid_path_points_.size(),
         executable_artifact_matches ? "true" : "false",
         executable_suffix_decision != nullptr && executable_suffix_decision->blocked
             ? "true"
             : "false",
+        handoff_blocked_span != nullptr
+            ? blockedSpanTriggerName(handoff_blocked_span->trigger)
+            : "legacy_global_path",
         handoff_blocked_span != nullptr ? handoff_blocked_span->first_blocked_s_m
                                         : std::numeric_limits<double>::quiet_NaN(),
         handoff_blocked_span != nullptr ? handoff_blocked_span->last_blocked_s_m
@@ -346,7 +350,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
       if (handoff_blocked_span != nullptr) {
         blocked_span = *handoff_blocked_span;
       } else if (executable_artifact_matches) {
-        blocked_span = findFirstProhibitedBlockedSpan(
+        blocked_span = findFirstRawOccupiedBlockedSpan(
             grid, executable_trajectory_artifact_.samples,
             executable_trajectory_artifact_.current_s_m);
       }
@@ -354,7 +358,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
         const double first_s = executable_trajectory_artifact_.current_s_m +
                                std::max(0.0, intersection.path_distance_m);
         blocked_span = BlockedSpan{
-            .trigger = BlockedSpanTrigger::kProhibited,
+            .trigger = BlockedSpanTrigger::kRawOccupied,
             .first_blocked_s_m = first_s,
             .last_blocked_s_m = first_s,
             .first_point = intersection.cell_center,
@@ -390,15 +394,18 @@ bool PlannerNode::keepCurrentPathIfStillClear(
             std::max(0.0, blocked_span->first_blocked_s_m -
                               executable_trajectory_artifact_.current_s_m);
         event.detection_velocity_valid = current_velocity_valid_;
-        event.source = source_diagnostic;
+        event.source = std::string{"trigger="} +
+                       blockedSpanTriggerName(blocked_span->trigger) + " " +
+                       source_diagnostic;
         replan_blocker_pub_->publish(event);
         awaiting_truncation_confirmation = true;
         RCLCPP_WARN(
             get_logger(),
             "SAFE_TRAJECTORY_TRUNCATION event_published=true blocked_path_id=%" PRIu64
-            " generation=%" PRIu64 " blocker_path_distance=%.2fm blocker=(%.2f, %.2f) "
-            "memory_sequence=%" PRIu64,
+            " generation=%" PRIu64 " trigger=%s blocker_path_distance=%.2fm "
+            "blocker=(%.2f, %.2f) memory_sequence=%" PRIu64,
             event.blocked_path_id, event.truncation_generation,
+            blockedSpanTriggerName(blocked_span->trigger),
             event.blocker_path_distance_m, event.blocker_position.x,
             event.blocker_position.y, event.memory_snapshot_sequence);
         RCLCPP_WARN(get_logger(),
@@ -429,7 +436,7 @@ bool PlannerNode::keepCurrentPathIfStillClear(
     }
     RCLCPP_WARN(
         get_logger(),
-        "Current path intersects newly available prohibited obstacle data; "
+        "Current path violates the active executable safety contract; "
         "%s: reason=%s "
         "remaining_waypoints=%zu deviation=%.2fm prohibited_segment=%zu "
         "segment_start=(%.2f, %.2f) segment_end=(%.2f, %.2f) "

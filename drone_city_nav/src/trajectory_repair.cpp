@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <ranges>
+#include <type_traits>
 #include <utility>
 
 namespace drone_city_nav {
@@ -24,10 +25,13 @@ constexpr double kTinyDistanceM = 1.0e-6;
       0.0, 1.0);
 }
 
+template<typename BlockedPredicate>
 [[nodiscard]] std::optional<BlockedSpan>
-findFirstProhibitedCellSpan(const OccupancyGrid2D& grid,
-                            const std::span<const TrajectoryPointSample> trajectory,
-                            const double minimum_s_m) {
+findFirstBlockedCellSpan(const OccupancyGrid2D& grid,
+                         const std::span<const TrajectoryPointSample> trajectory,
+                         const double minimum_s_m, const BlockedSpanTrigger trigger,
+                         BlockedPredicate cell_blocked) {
+  static_assert(std::is_invocable_r_v<bool, BlockedPredicate, GridIndex>);
   if (!trajectorySamplesAreUsable(trajectory) || !(grid.resolution() > 0.0)) {
     return std::nullopt;
   }
@@ -36,7 +40,7 @@ findFirstProhibitedCellSpan(const OccupancyGrid2D& grid,
                                       0.0, trajectory.back().s_m);
   bool run_active = false;
   BlockedSpan span{};
-  span.trigger = BlockedSpanTrigger::kProhibited;
+  span.trigger = trigger;
 
   auto observe = [&](const double station_m, const Point2 point,
                      const std::optional<GridIndex> cell, const bool blocked) -> bool {
@@ -109,7 +113,7 @@ findFirstProhibitedCellSpan(const OccupancyGrid2D& grid,
           segment_start_s_m + segment_t * (original_end.s_m - segment_start_s_m));
       previous_station_m = station_m;
       const Point2 point = trajectorySampleAtS(trajectory, station_m).point;
-      if (observe(station_m, point, cell, grid.isOccupied(cell))) {
+      if (observe(station_m, point, cell, cell_blocked(cell))) {
         return span;
       }
     }
@@ -179,25 +183,55 @@ updateExecutableTrajectoryProgress(ExecutableTrajectoryArtifact& artifact,
 }
 
 ExecutableSuffixDecision evaluateExecutableSuffix(
-    const OccupancyGrid2D& grid, const ExecutableTrajectoryArtifact& artifact,
-    const ExecutableTrajectoryProgress& progress, const double exhaustion_epsilon_m) {
+    const OccupancyGrid2D& grid, const ObstacleRiskField& risk_field,
+    const ExecutableTrajectoryArtifact& artifact,
+    const ExecutableTrajectoryProgress& progress, const double exhaustion_epsilon_m,
+    const double minimum_tracking_clearance_m) {
   ExecutableSuffixDecision decision{};
   decision.progress = progress;
   if (!progress.valid || !trajectorySamplesAreUsable(artifact.samples)) {
     return decision;
   }
   decision.exhausted = progress.remaining_m <= std::max(0.0, exhaustion_epsilon_m);
-  decision.blocked_span =
-      findFirstProhibitedCellSpan(grid, artifact.samples, progress.projected_s_m);
+  const std::optional<BlockedSpan> raw_blocked =
+      findFirstRawOccupiedBlockedSpan(grid, artifact.samples, progress.projected_s_m);
+  const std::optional<BlockedSpan> tracking_blocked =
+      findFirstTrackingEnvelopeBlockedSpan(grid, risk_field.occupiedClearance(),
+                                           artifact.samples, progress.projected_s_m,
+                                           minimum_tracking_clearance_m);
+  if (raw_blocked.has_value() &&
+      (!tracking_blocked.has_value() ||
+       raw_blocked->first_blocked_s_m <=
+           tracking_blocked->first_blocked_s_m + kTinyDistanceM)) {
+    decision.blocked_span = raw_blocked;
+  } else {
+    decision.blocked_span = tracking_blocked;
+  }
   decision.blocked = decision.blocked_span.has_value();
   return decision;
 }
 
 std::optional<BlockedSpan>
-findFirstProhibitedBlockedSpan(const OccupancyGrid2D& grid,
-                               const std::span<const TrajectoryPointSample> trajectory,
-                               const double minimum_s_m) {
-  return findFirstProhibitedCellSpan(grid, trajectory, minimum_s_m);
+findFirstRawOccupiedBlockedSpan(const OccupancyGrid2D& grid,
+                                const std::span<const TrajectoryPointSample> trajectory,
+                                const double minimum_s_m) {
+  return findFirstBlockedCellSpan(
+      grid, trajectory, minimum_s_m, BlockedSpanTrigger::kRawOccupied,
+      [&grid](const GridIndex cell) { return grid.isOccupied(cell); });
+}
+
+std::optional<BlockedSpan> findFirstTrackingEnvelopeBlockedSpan(
+    const OccupancyGrid2D& grid, const ClearanceField2D& raw_clearance,
+    const std::span<const TrajectoryPointSample> trajectory, const double minimum_s_m,
+    const double minimum_clearance_m) {
+  if (!std::isfinite(minimum_clearance_m) || minimum_clearance_m <= 0.0) {
+    return std::nullopt;
+  }
+  return findFirstBlockedCellSpan(
+      grid, trajectory, minimum_s_m, BlockedSpanTrigger::kTrackingEnvelope,
+      [&raw_clearance, minimum_clearance_m](const GridIndex cell) {
+        return raw_clearance.distanceAt(cell) + kTinyDistanceM < minimum_clearance_m;
+      });
 }
 
 std::vector<ReconnectCandidate>
@@ -286,8 +320,10 @@ stitchTrajectoryRepair(const std::span<const TrajectoryPointSample> repaired_seg
 
 const char* blockedSpanTriggerName(const BlockedSpanTrigger trigger) noexcept {
   switch (trigger) {
-    case BlockedSpanTrigger::kProhibited:
-      return "prohibited";
+    case BlockedSpanTrigger::kRawOccupied:
+      return "raw_occupied";
+    case BlockedSpanTrigger::kTrackingEnvelope:
+      return "tracking_envelope";
   }
   return "unknown";
 }

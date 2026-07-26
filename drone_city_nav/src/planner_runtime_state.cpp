@@ -1,5 +1,9 @@
 #include "drone_city_nav/planner_runtime_state.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 namespace drone_city_nav {
 
 void PlanningRequestState::schedule(const PlanningWakeReason reason) noexcept {
@@ -152,6 +156,89 @@ PlannerModePrimaryAction plannerModePrimaryAction(const bool use_static_map,
 bool astarPlanningAllowed(const bool use_static_map,
                           const bool no_static_astar_recovery_enabled) noexcept {
   return use_static_map || no_static_astar_recovery_enabled;
+}
+
+std::optional<Point2> boundedNoStaticRecoveryGoal(const OccupancyGrid2D& grid,
+                                                  const ObstacleRiskField& risk_field,
+                                                  const Point2 start,
+                                                  const Point2 mission_goal) {
+  const std::optional<GridIndex> start_cell = grid.worldToCell(start);
+  if (!start_cell.has_value() || grid.isOccupied(*start_cell) ||
+      !risk_field.containsEvaluationPoint(start)) {
+    return std::nullopt;
+  }
+  if (const std::optional<GridIndex> mission_cell = grid.worldToCell(mission_goal);
+      mission_cell.has_value() && !grid.isOccupied(*mission_cell) &&
+      risk_field.containsEvaluationPoint(mission_goal)) {
+    return mission_goal;
+  }
+
+  const Point2 goal_delta{mission_goal.x - start.x, mission_goal.y - start.y};
+  const double goal_distance_m = std::hypot(goal_delta.x, goal_delta.y);
+  if (!(goal_distance_m > grid.resolution()) || !std::isfinite(goal_distance_m)) {
+    return std::nullopt;
+  }
+  const Point2 direction{goal_delta.x / goal_distance_m,
+                         goal_delta.y / goal_distance_m};
+  const GridBounds& evaluation = risk_field.evaluationBounds();
+  const double half_cell_m = 0.5 * evaluation.resolution_m;
+  const double min_x = evaluation.origin_x + half_cell_m;
+  const double min_y = evaluation.origin_y + half_cell_m;
+  const double max_x =
+      evaluation.origin_x +
+      evaluation.resolution_m * static_cast<double>(evaluation.width_cells) -
+      half_cell_m;
+  const double max_y =
+      evaluation.origin_y +
+      evaluation.resolution_m * static_cast<double>(evaluation.height_cells) -
+      half_cell_m;
+
+  double ray_limit_m = goal_distance_m;
+  const auto limit_axis = [&ray_limit_m](const double origin, const double component,
+                                         const double minimum, const double maximum) {
+    if (component > 1.0e-9) {
+      ray_limit_m = std::min(ray_limit_m, (maximum - origin) / component);
+    } else if (component < -1.0e-9) {
+      ray_limit_m = std::min(ray_limit_m, (minimum - origin) / component);
+    }
+  };
+  limit_axis(start.x, direction.x, min_x, max_x);
+  limit_axis(start.y, direction.y, min_y, max_y);
+  if (!(ray_limit_m > grid.resolution()) || !std::isfinite(ray_limit_m)) {
+    return std::nullopt;
+  }
+  const Point2 ideal{start.x + direction.x * ray_limit_m,
+                     start.y + direction.y * ray_limit_m};
+
+  std::optional<Point2> best;
+  double best_distance_sq = std::numeric_limits<double>::infinity();
+  double best_forward_m = -std::numeric_limits<double>::infinity();
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      const GridIndex cell{x, y};
+      if (grid.isOccupied(cell)) {
+        continue;
+      }
+      const Point2 candidate = grid.cellCenter(cell);
+      if (!risk_field.containsEvaluationPoint(candidate)) {
+        continue;
+      }
+      const Point2 offset{candidate.x - start.x, candidate.y - start.y};
+      const double forward_m = offset.x * direction.x + offset.y * direction.y;
+      if (forward_m < grid.resolution()) {
+        continue;
+      }
+      const double candidate_distance_sq = squaredDistance(candidate, ideal);
+      if (candidate_distance_sq + 1.0e-9 < best_distance_sq ||
+          (std::abs(candidate_distance_sq - best_distance_sq) <= 1.0e-9 &&
+           forward_m > best_forward_m)) {
+        best = candidate;
+        best_distance_sq = candidate_distance_sq;
+        best_forward_m = forward_m;
+      }
+    }
+  }
+  return best;
 }
 
 bool publicationGenerationIsCurrent(const std::uint64_t candidate_generation,
