@@ -12,6 +12,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WRAPPER_SDF = REPO_ROOT / "drone_city_nav/models/x500_lidar_2d/model.sdf"
 LIDAR_SDF = REPO_ROOT / "drone_city_nav/models/lidar_2d_v2/model.sdf"
 NAV_CONFIG = REPO_ROOT / "drone_city_nav/config/urban_mvp.yaml"
+WORLD_SDF = REPO_ROOT / "drone_city_nav/worlds/generated_city.sdf"
+
+GZ_VISIBILITY_ALL = 0x0FFFFFFF
+PASSAGE_MASS_VISIBILITY_FLAG = 0x08000000
+LIDAR_VISIBILITY_MASK = GZ_VISIBILITY_ALL & ~PASSAGE_MASS_VISIBILITY_FLAG
 
 
 def parse_sdf(path: Path) -> ET.Element:
@@ -76,6 +81,56 @@ class DroneModelSdfContractTest(unittest.TestCase):
             any(name.startswith("yellow_") for name in visuals),
             f"lidar model must not own drone visibility visuals: {sorted(visuals)}",
         )
+
+    def test_gpu_lidar_ignores_only_physical_connector_mass_visuals(self) -> None:
+        lidar_root = parse_sdf(LIDAR_SDF)
+        world_root = parse_sdf(WORLD_SDF)
+        sensor = next(
+            element
+            for element in lidar_root.iter("sensor")
+            if element.attrib.get("name") == "lidar_2d_v2"
+        )
+        lidar_mask = int(sensor.findtext("ray/visibility_mask", ""))
+
+        self.assertEqual(LIDAR_VISIBILITY_MASK, lidar_mask)
+        self.assertEqual(0, lidar_mask & PASSAGE_MASS_VISIBILITY_FLAG)
+
+        flagged_visuals = [
+            visual
+            for visual in world_root.iter("visual")
+            if int(visual.findtext("visibility_flags", "0"))
+            & PASSAGE_MASS_VISIBILITY_FLAG
+        ]
+        self.assertEqual(6, len(flagged_visuals))
+
+        connector_models = [
+            model
+            for model in world_root.iter("model")
+            if model.attrib.get("name", "").startswith(
+                "physical_building_connector_"
+            )
+        ]
+        self.assertEqual(3, len(connector_models))
+
+        for model in connector_models:
+            for mass_name in ("lower_mass", "upper_mass"):
+                with self.subTest(
+                    connector=model.attrib["name"],
+                    mass=mass_name,
+                ):
+                    link = next(
+                        link
+                        for link in model.findall("link")
+                        if link.attrib.get("name") == mass_name
+                    )
+                    visual = link.find("visual")
+                    collision = link.find("collision")
+
+                    self.assertIsNotNone(visual)
+                    self.assertIsNotNone(collision)
+                    visual_flags = int(visual.findtext("visibility_flags", ""))
+                    self.assertEqual(PASSAGE_MASS_VISIBILITY_FLAG, visual_flags)
+                    self.assertEqual(0, lidar_mask & visual_flags)
 
     def test_lidar_sensor_pose_matches_configured_full_extrinsic(self) -> None:
         wrapper_root = parse_sdf(WRAPPER_SDF)
