@@ -1,4 +1,5 @@
 #include "drone_city_nav/offboard_trajectory_state.hpp"
+#include "drone_city_nav/raw_obstacle_snapshot_tracker.hpp"
 
 #include <nav_msgs/msg/path.hpp>
 
@@ -286,11 +287,14 @@ TEST(OffboardTrajectoryState, MatchesAndMergesPlannerDiagnostics) {
 TEST(OffboardTrajectoryState, ShiftsVerticalDiagnosticsAfterHorizontalHandover) {
   VerticalProfileStats vertical_profile;
   vertical_profile.diagnostics.push_back(VerticalProfilePassageDiagnostic{
+      .structure_id = "",
+      .opening_id = "",
       .entry_s_m = 40.0,
       .exit_s_m = 50.0,
       .approach_start_s_m = 25.0,
       .gate_hold_start_s_m = 35.0,
       .exit_end_s_m = 55.0,
+      .reason = "",
   });
 
   shiftVerticalProfileStations(vertical_profile, -12.5);
@@ -303,6 +307,59 @@ TEST(OffboardTrajectoryState, ShiftsVerticalDiagnosticsAfterHorizontalHandover) 
   EXPECT_DOUBLE_EQ(diagnostic.approach_start_s_m, 12.5);
   EXPECT_DOUBLE_EQ(diagnostic.gate_hold_start_s_m, 22.5);
   EXPECT_DOUBLE_EQ(diagnostic.exit_end_s_m, 42.5);
+}
+
+TEST(OffboardTrajectoryState, FinalActivationValidatesInitialCompatibleCandidate) {
+  OccupancyGrid2D grid{GridBounds{-5.0, -5.0, 1.0, 20, 20}};
+  grid.reset(CellState::kFree);
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const OffboardTrajectoryState candidate = buildOffboardTrajectoryState(
+      std::vector<Point2>{{0.0, 0.0}, {4.0, 0.0}}, VelocityFollowerConfig{});
+
+  const PathRiskScore score = evaluateOffboardTrajectoryActivationRisk(
+      candidate, TrajectoryRiskContext{"runtime", &grid, &risk});
+
+  EXPECT_TRUE(score.hardValid());
+}
+
+TEST(OffboardTrajectoryState, FinalActivationRejectsPostStitchMutation) {
+  OccupancyGrid2D grid{GridBounds{-5.0, -5.0, 1.0, 20, 20}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{7, 5});
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const OffboardTrajectoryState mutated_candidate = buildOffboardTrajectoryState(
+      std::vector<Point2>{{0.0, 0.0}, {4.0, 0.0}}, VelocityFollowerConfig{});
+
+  const PathRiskScore score = evaluateOffboardTrajectoryActivationRisk(
+      mutated_candidate, TrajectoryRiskContext{"runtime_newer", &grid, &risk});
+
+  EXPECT_FALSE(score.hardValid());
+  EXPECT_TRUE(score.intersects_raw_occupied);
+}
+
+TEST(OffboardTrajectoryState, RuntimeNewerSnapshotBlocksFinalActivation) {
+  RawObstacleSnapshotTracker tracker;
+  ASSERT_TRUE(tracker.accept(RawObstacleSnapshotMetadata{
+      .identity = {7U, 11U, 3U},
+      .policy = {.critical_distance_m = 1.0, .preferred_distance_m = 4.0},
+      .grid_valid = true,
+  }));
+  ASSERT_EQ(tracker.relation({7U, 10U, 3U}), RawSnapshotRelation::kRuntimeNewer);
+  OccupancyGrid2D runtime_grid{GridBounds{-5.0, -5.0, 1.0, 20, 20}};
+  runtime_grid.reset(CellState::kFree);
+  runtime_grid.setOccupied(GridIndex{7, 5});
+  const ObstacleRiskField runtime_risk =
+      ObstacleRiskField::build(runtime_grid, tracker.current()->policy);
+  const OffboardTrajectoryState candidate = buildOffboardTrajectoryState(
+      std::vector<Point2>{{0.0, 0.0}, {4.0, 0.0}}, VelocityFollowerConfig{});
+
+  const PathRiskScore score = evaluateOffboardTrajectoryActivationRisk(
+      candidate, TrajectoryRiskContext{"runtime_newer", &runtime_grid, &runtime_risk});
+
+  EXPECT_FALSE(score.hardValid());
+  EXPECT_TRUE(score.intersects_raw_occupied);
 }
 
 } // namespace drone_city_nav

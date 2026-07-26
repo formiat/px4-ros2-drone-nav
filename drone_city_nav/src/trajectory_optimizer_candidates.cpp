@@ -5,9 +5,10 @@ namespace drone_city_nav::trajectory_optimizer_detail {
 [[nodiscard]] bool updateBestCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> candidate_offsets,
-    const std::span<const Point2> candidate_points,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
+    const std::span<const Point2> candidate_points, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, const std::uint64_t risk_context_fingerprint,
+    const TrajectoryOptimizerConfig& config, double& best_cost,
+    std::vector<double>& offsets, std::vector<Point2>& best_points,
     CandidateScore& best_score, double& best_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples,
     SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats,
@@ -18,8 +19,9 @@ namespace drone_city_nav::trajectory_optimizer_detail {
   const auto evaluation_started_at = std::chrono::steady_clock::now();
   std::size_t cache_hits = 0U;
   std::size_t cache_misses = 0U;
+  bindRiskContext(segment_cache, risk_context_fingerprint);
   const PathEvaluation evaluation = evaluatePathCached(
-      prohibited_grid, candidate_points, segment_cache, cache_hits, cache_misses);
+      raw_grid, candidate_points, segment_cache, cache_hits, cache_misses);
   const double path_evaluation_duration_ms = elapsedMilliseconds(evaluation_started_at);
   stats.full_path_segment_cache_hits += cache_hits;
   stats.full_path_segment_cache_misses += cache_misses;
@@ -28,13 +30,13 @@ namespace drone_city_nav::trajectory_optimizer_detail {
     ++stats.collision_rejections;
   }
   const auto score_started_at = std::chrono::steady_clock::now();
-  const CandidateScore candidate_score =
-      scoreForCandidate(corridor_samples, candidate_points, candidate_offsets,
-                        evaluation, config, scratch_samples, stats, nullptr);
+  const CandidateScore candidate_score = scoreForCandidate(
+      corridor_samples, candidate_points, candidate_offsets, evaluation, raw_grid,
+      risk_field, config, scratch_samples, stats, nullptr);
   const double score_duration_ms = elapsedMilliseconds(score_started_at);
   stats.candidate_score_duration_ms += score_duration_ms;
   stats.full_candidate_score_duration_ms += score_duration_ms;
-  const bool accepted = candidate_score.score + 1.0e-9 < best_cost;
+  const bool accepted = candidateScoreLess(candidate_score, best_score);
   if (diagnostic != nullptr) {
     populateCandidateDiagnosticFromScore(
         *diagnostic, candidate_score, evaluation, incumbent_score, accepted, 0.0,
@@ -57,7 +59,9 @@ namespace drone_city_nav::trajectory_optimizer_detail {
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const std::size_t center_index, const double delta_m,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    const OccupancyGrid2D& raw_grid, const ObstacleRiskField& risk_field,
+    const std::uint64_t risk_context_fingerprint,
+    const TrajectoryOptimizerConfig& config,
     const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
     CandidateWorkBuffer& buffer) {
   EvaluatedCandidate result{};
@@ -82,9 +86,11 @@ namespace drone_city_nav::trajectory_optimizer_detail {
   }
 
   result.local_evaluated = true;
+  bindRiskContext(buffer.candidate_segment_cache, risk_context_fingerprint);
+  bindRiskContext(buffer.full_path_segment_cache, risk_context_fingerprint);
   LocalCandidateScore local_score = evaluateLocalOffsetPath(
-      corridor_samples, base_points, base_offsets, buffer.offsets, prohibited_grid,
-      base_score, base_length_m, center_index, buffer);
+      corridor_samples, base_points, base_offsets, buffer.offsets, raw_grid, base_score,
+      base_length_m, center_index, buffer);
   result.point_build_duration_ms = local_score.point_build_duration_ms;
   result.path_evaluation_duration_ms = local_score.path_evaluation_duration_ms;
   result.score_duration_ms = local_score.score_duration_ms;
@@ -117,7 +123,7 @@ namespace drone_city_nav::trajectory_optimizer_detail {
         elapsedMilliseconds(geometry_started_at);
     result.score =
         scoreForCandidate(corridor_samples, buffer.points, buffer.offsets, result.path,
-                          config, buffer.samples, local_stats,
+                          raw_grid, risk_field, config, buffer.samples, local_stats,
                           incremental_geometry ? &*incremental_geometry : nullptr);
     populateShadowSegmentScoreDiagnostics(
         result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,
@@ -143,7 +149,7 @@ namespace drone_city_nav::trajectory_optimizer_detail {
   result.point_build_duration_ms += elapsedMilliseconds(points_started_at);
   const auto full_evaluation_started_at = std::chrono::steady_clock::now();
   result.path = evaluatePathCached(
-      prohibited_grid, buffer.points, buffer.full_path_segment_cache,
+      raw_grid, buffer.points, buffer.full_path_segment_cache,
       result.full_path_segment_cache_hits, result.full_path_segment_cache_misses);
   result.path_evaluation_duration_ms += elapsedMilliseconds(full_evaluation_started_at);
   const auto score_started_at = std::chrono::steady_clock::now();
@@ -156,7 +162,7 @@ namespace drone_city_nav::trajectory_optimizer_detail {
       elapsedMilliseconds(geometry_started_at);
   result.score =
       scoreForCandidate(corridor_samples, buffer.points, buffer.offsets, result.path,
-                        config, buffer.samples, local_stats,
+                        raw_grid, risk_field, config, buffer.samples, local_stats,
                         incremental_geometry ? &*incremental_geometry : nullptr);
   populateShadowSegmentScoreDiagnostics(
       result, base_score, base_points, base_offsets, buffer.points, buffer.offsets,

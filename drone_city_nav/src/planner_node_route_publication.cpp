@@ -566,9 +566,14 @@ PlannerNode::PathPublicationOutcome PlannerNode::publishTerminalHoldRestartSuffi
   std::size_t astar_grid_index = 0U;
   for (; astar_grid_index < risk_contexts.size(); ++astar_grid_index) {
     const TrajectoryRiskContext& candidate = risk_contexts[astar_grid_index];
+    if (!candidate.valid()) {
+      continue;
+    }
+    const AStarConfig candidate_astar_config =
+        astarConfigForRiskField(hold_restart_astar_config, *candidate.risk_field);
     const std::string candidate_name{candidate.name};
     path_result = computePathOnGrid(*candidate.raw_occupancy, candidate_name.c_str(),
-                                    hold_restart_astar_config, planning_start);
+                                    candidate_astar_config, planning_start);
     if (path_result.has_value()) {
       break;
     }

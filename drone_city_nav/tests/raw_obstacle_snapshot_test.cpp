@@ -35,6 +35,22 @@ TEST(RawObstacleSnapshotTracker, ClassifiesExactNewerAndPending) {
   EXPECT_EQ(tracker.relation({7U, 11U, 3U}), RawSnapshotRelation::kRuntimeOlder);
 }
 
+TEST(RawObstacleSnapshotTracker, ValidTrajectoryWaitsForFirstSnapshotThenRetries) {
+  RawObstacleSnapshotTracker tracker;
+  const RawObstacleSnapshotIdentity trajectory{7U, 10U, 3U};
+
+  EXPECT_EQ(tracker.relation(trajectory), RawSnapshotRelation::kNoSnapshot);
+  ASSERT_TRUE(tracker.accept(metadata(7U, 10U)));
+  EXPECT_EQ(tracker.relation(trajectory), RawSnapshotRelation::kExact);
+}
+
+TEST(RawObstacleSnapshotTracker, ZeroTrajectoryIdentityIsMalformedWithoutSnapshot) {
+  RawObstacleSnapshotTracker tracker;
+
+  EXPECT_EQ(tracker.relation({}), RawSnapshotRelation::kMalformed);
+  EXPECT_EQ(tracker.relation({7U, 0U, 3U}), RawSnapshotRelation::kMalformed);
+}
+
 TEST(RawObstacleSnapshotTracker, RejectsOutOfOrderAndMalformedSnapshots) {
   RawObstacleSnapshotTracker tracker;
   ASSERT_TRUE(tracker.accept(metadata(7U, 10U)));
@@ -62,6 +78,15 @@ TEST(RawObstacleSnapshotTracker, ProducerSwitchRetiresOldIdentity) {
   EXPECT_FALSE(tracker.accept(metadata(7U, 11U)));
   ASSERT_NE(tracker.current(), nullptr);
   EXPECT_EQ(tracker.current()->identity.producer_instance_id, 8U);
+}
+
+TEST(RawObstacleSnapshotTracker, ProcessInstanceIdentityDoesNotDependOnRosTime) {
+  const std::uint64_t first = generateRawObstacleProducerInstanceId();
+  const std::uint64_t second = generateRawObstacleProducerInstanceId();
+
+  EXPECT_NE(first, 0U);
+  EXPECT_NE(second, 0U);
+  EXPECT_NE(first, second);
 }
 
 } // namespace drone_city_nav

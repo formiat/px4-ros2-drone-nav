@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_diagnostics.hpp"
 #include "drone_city_nav/trajectory_diagnostics_io.hpp"
@@ -79,5 +80,9 @@ buildOffboardTrajectoryState(std::span<const TrajectoryPointSample> path_samples
     bool local_position_fresh,
     double current_altitude_m = std::numeric_limits<double>::quiet_NaN(),
     bool altitude_valid = false, const TrajectoryContinuityThresholds& thresholds = {});
+
+[[nodiscard]] PathRiskScore
+evaluateOffboardTrajectoryActivationRisk(const OffboardTrajectoryState& candidate_state,
+                                         const TrajectoryRiskContext& risk_context);
 
 } // namespace drone_city_nav

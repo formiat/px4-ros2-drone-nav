@@ -190,6 +190,42 @@ TEST(AStarPlanner, PreferredDetourDominatesShorterCriticalRoute) {
   }));
 }
 
+TEST(AStarPlanner, HoldRestartConfigUsesPreparedModeRiskPolicy) {
+  OccupancyGrid2D grid{GridBounds{0.0, 0.0, 1.0, 31, 25}};
+  grid.reset(CellState::kFree);
+  grid.setOccupied(GridIndex{15, 12});
+  const ObstacleRiskField no_static_risk = ObstacleRiskField::build(
+      grid, {.critical_distance_m = 1.0, .preferred_distance_m = 6.0});
+  AStarConfig base = plainAStarConfig();
+  base.risk_policy = {
+      .critical_distance_m = 1.0,
+      .preferred_distance_m = 4.0,
+  };
+
+  const AStarConfig hold_restart = astarConfigForRiskField(base, no_static_risk);
+  const AStarResult static_result =
+      AStarPlanner{}.plan(grid, GridIndex{2, 12}, GridIndex{28, 12}, base);
+  const AStarResult hold_restart_result =
+      AStarPlanner{}.plan(grid, GridIndex{2, 12}, GridIndex{28, 12}, hold_restart);
+  ASSERT_TRUE(static_result.success);
+  ASSERT_TRUE(hold_restart_result.success);
+  std::vector<Point2> static_points;
+  static_points.reserve(static_result.path.size());
+  for (const GridIndex cell : static_result.path) {
+    static_points.push_back(grid.cellCenter(cell));
+  }
+  const PathRiskScore static_route_under_no_static_policy =
+      no_static_risk.evaluate(grid, static_points);
+
+  EXPECT_DOUBLE_EQ(hold_restart.risk_policy.critical_distance_m, 1.0);
+  EXPECT_DOUBLE_EQ(hold_restart.risk_policy.preferred_distance_m, 6.0);
+  EXPECT_FALSE(hold_restart.initial_heading_bias_enabled);
+  EXPECT_EQ(static_route_under_no_static_policy.worst_tier,
+            ObstacleRiskTier::kPlanningBand);
+  EXPECT_EQ(hold_restart_result.risk.worst_tier, ObstacleRiskTier::kPreferred);
+  EXPECT_GT(hold_restart_result.total_cost, static_result.total_cost);
+}
+
 TEST(AStarPlanner, PreRequestedStopCancelsBeforeSearch) {
   OccupancyGrid2D grid = makeGrid();
   std::stop_source stop_source;

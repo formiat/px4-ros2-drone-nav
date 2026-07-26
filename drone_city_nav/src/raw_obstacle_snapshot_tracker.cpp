@@ -1,7 +1,12 @@
 #include "drone_city_nav/raw_obstacle_snapshot_tracker.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <functional>
+#include <thread>
+#include <unistd.h>
 
 namespace drone_city_nav {
 namespace {
@@ -14,6 +19,13 @@ namespace {
          std::isfinite(snapshot.policy.preferred_distance_m) &&
          snapshot.policy.critical_distance_m >= 0.0 &&
          snapshot.policy.preferred_distance_m >= snapshot.policy.critical_distance_m;
+}
+
+[[nodiscard]] std::uint64_t mixIdentity(std::uint64_t value) noexcept {
+  value += 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31U);
 }
 
 } // namespace
@@ -46,9 +58,12 @@ bool RawObstacleSnapshotTracker::accept(const RawObstacleSnapshotMetadata& snaps
 
 RawSnapshotRelation RawObstacleSnapshotTracker::relation(
     const RawObstacleSnapshotIdentity& trajectory) const noexcept {
-  if (!current_valid_ || trajectory.producer_instance_id == 0U ||
-      trajectory.revision == 0U || trajectory.policy_fingerprint == 0U) {
+  if (trajectory.producer_instance_id == 0U || trajectory.revision == 0U ||
+      trajectory.policy_fingerprint == 0U) {
     return RawSnapshotRelation::kMalformed;
+  }
+  if (!current_valid_) {
+    return RawSnapshotRelation::kNoSnapshot;
   }
   if (trajectory.producer_instance_id != current_.identity.producer_instance_id) {
     if (std::ranges::find(retired_producers_, trajectory.producer_instance_id) !=
@@ -81,6 +96,8 @@ const char* rawSnapshotRelationName(const RawSnapshotRelation relation) noexcept
       return "runtime_newer";
     case RawSnapshotRelation::kRuntimeOlder:
       return "runtime_older";
+    case RawSnapshotRelation::kNoSnapshot:
+      return "no_snapshot";
     case RawSnapshotRelation::kDifferentProducer:
       return "different_producer";
     case RawSnapshotRelation::kRetiredProducer:
@@ -91,6 +108,23 @@ const char* rawSnapshotRelationName(const RawSnapshotRelation relation) noexcept
       return "malformed";
   }
   return "unknown";
+}
+
+std::uint64_t generateRawObstacleProducerInstanceId() noexcept {
+  static std::atomic<std::uint64_t> sequence{0U};
+  const auto system_ticks = static_cast<std::uint64_t>(
+      std::chrono::system_clock::now().time_since_epoch().count());
+  const auto steady_ticks = static_cast<std::uint64_t>(
+      std::chrono::steady_clock::now().time_since_epoch().count());
+  const auto process_id = static_cast<std::uint64_t>(::getpid());
+  const auto thread_id = static_cast<std::uint64_t>(
+      std::hash<std::thread::id>{}(std::this_thread::get_id()));
+  const std::uint64_t ordinal = sequence.fetch_add(1U, std::memory_order_relaxed) + 1U;
+  const std::uint64_t mixed = mixIdentity(system_ticks) ^ mixIdentity(steady_ticks) ^
+                              mixIdentity(process_id << 32U) ^ mixIdentity(thread_id) ^
+                              mixIdentity(ordinal);
+  const std::uint64_t identity = mixIdentity(mixed);
+  return identity != 0U ? identity : ordinal;
 }
 
 } // namespace drone_city_nav

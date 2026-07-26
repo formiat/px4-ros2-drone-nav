@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drone_city_nav/corridor.hpp"
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/trajectory_speed_planner.hpp"
@@ -263,8 +264,8 @@ struct TrajectoryOptimizerResult {
 };
 
 [[nodiscard]] TrajectoryOptimizerResult optimizeTrajectory(
-    std::span<const CorridorSample> corridor_samples,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    std::span<const CorridorSample> corridor_samples, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, const TrajectoryOptimizerConfig& config,
     const VelocityFollowerConfig& speed_config, std::stop_token stop_token = {});
 
 } // namespace drone_city_nav

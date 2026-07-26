@@ -4,10 +4,12 @@ namespace drone_city_nav {
 
 using namespace trajectory_optimizer_detail;
 
-TrajectoryOptimizerResult optimizeTrajectory(
-    const std::span<const CorridorSample> corridor_samples,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    const VelocityFollowerConfig& speed_config, const std::stop_token stop_token) {
+TrajectoryOptimizerResult
+optimizeTrajectory(const std::span<const CorridorSample> corridor_samples,
+                   const OccupancyGrid2D& raw_grid, const ObstacleRiskField& risk_field,
+                   const TrajectoryOptimizerConfig& config,
+                   const VelocityFollowerConfig& speed_config,
+                   const std::stop_token stop_token) {
   TrajectoryOptimizerResult result{};
   result.stats.input_samples = corridor_samples.size();
   if (corridor_samples.size() < 2U) {
@@ -23,7 +25,7 @@ TrajectoryOptimizerResult optimizeTrajectory(
       pointsFromOffsets(optimizer_samples, zero_offsets);
   result.stats.centerline_length_m = pathLength(centerline);
   const std::vector<ActiveWindow> active_windows = detectActiveWindows(
-      optimizer_samples, centerline, prohibited_grid, config, result.stats);
+      optimizer_samples, centerline, raw_grid, config, result.stats);
   result.active_windows = windowMetadata(active_windows, optimizer_samples);
   std::vector<std::uint8_t> mutable_indices;
   const std::vector<std::size_t> control_indices =
@@ -41,6 +43,9 @@ TrajectoryOptimizerResult optimizeTrajectory(
       control_indices.size() * 2U * max_iterations + active_windows.size() + 8U);
 
   TrajectoryOptimizerScratch scratch{};
+  const std::uint64_t risk_context_fingerprint =
+      obstacleRiskContextFingerprint(raw_grid, risk_field);
+  bindRiskContext(scratch.full_path_segment_cache, risk_context_fingerprint);
   scratch.candidate_offsets.reserve(sample_count);
   scratch.accepted_offsets.reserve(sample_count);
   scratch.iteration_best_offsets.reserve(sample_count);
@@ -79,9 +84,9 @@ TrajectoryOptimizerResult optimizeTrajectory(
     diagnostic.local_full_score_reason = "none";
     (void)updateBestCandidate(
         optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
-        prohibited_grid, config, best_cost, offsets, best_points, best_score,
-        best_length_m, scratch.candidate_samples, scratch.full_path_segment_cache,
-        result.stats, &diagnostic);
+        raw_grid, risk_field, risk_context_fingerprint, config, best_cost, offsets,
+        best_points, best_score, best_length_m, scratch.candidate_samples,
+        scratch.full_path_segment_cache, result.stats, &diagnostic);
     result.stats.candidate_diagnostics.push_back(std::move(diagnostic));
   }
   if (offsets.empty()) {
@@ -104,9 +109,9 @@ TrajectoryOptimizerResult optimizeTrajectory(
     const double fine_radius =
         sanitizedPositive(config.dp_fine_radius_m, 1.5, 0.05, 5000.0);
     const bool coarse_ok = buildDpSeedForWindow(
-        optimizer_samples, window, prohibited_grid, config, coarse_step, offsets, {},
-        std::numeric_limits<double>::infinity(), scratch.accepted_offsets,
-        result.stats);
+        optimizer_samples, window, raw_grid, risk_field, risk_context_fingerprint,
+        config, coarse_step, offsets, {}, std::numeric_limits<double>::infinity(),
+        scratch.accepted_offsets, result.stats);
     result.stats.dp_coarse_states += result.stats.dp_states - states_before;
     result.stats.dp_coarse_transitions +=
         result.stats.dp_transitions - transitions_before;
@@ -114,20 +119,21 @@ TrajectoryOptimizerResult optimizeTrajectory(
     if (coarse_ok) {
       const std::size_t fine_states_before = result.stats.dp_states;
       const std::size_t fine_transitions_before = result.stats.dp_transitions;
-      dp_ok =
-          buildDpSeedForWindow(optimizer_samples, window, prohibited_grid, config,
-                               fine_step, offsets, scratch.accepted_offsets,
-                               fine_radius, scratch.candidate_offsets, result.stats);
+      dp_ok = buildDpSeedForWindow(optimizer_samples, window, raw_grid, risk_field,
+                                   risk_context_fingerprint, config, fine_step, offsets,
+                                   scratch.accepted_offsets, fine_radius,
+                                   scratch.candidate_offsets, result.stats);
       result.stats.dp_fine_states += result.stats.dp_states - fine_states_before;
       result.stats.dp_fine_transitions +=
           result.stats.dp_transitions - fine_transitions_before;
       result.stats.dp_coarse_to_fine_used =
           result.stats.dp_coarse_to_fine_used || dp_ok;
     }
-    if (!dp_ok && !buildDpSeedForWindow(optimizer_samples, window, prohibited_grid,
-                                        config, config.dp_offset_step_m, offsets, {},
-                                        std::numeric_limits<double>::infinity(),
-                                        scratch.candidate_offsets, result.stats)) {
+    if (!dp_ok &&
+        !buildDpSeedForWindow(optimizer_samples, window, raw_grid, risk_field,
+                              risk_context_fingerprint, config, config.dp_offset_step_m,
+                              offsets, {}, std::numeric_limits<double>::infinity(),
+                              scratch.candidate_offsets, result.stats)) {
       continue;
     }
     const bool used_fallback_dp = !dp_ok;
@@ -147,9 +153,9 @@ TrajectoryOptimizerResult optimizeTrajectory(
     diagnostic.local_full_score_reason = "none";
     const bool accepted = updateBestCandidate(
         optimizer_samples, scratch.candidate_offsets, scratch.candidate_points,
-        prohibited_grid, config, best_cost, offsets, best_points, best_score,
-        best_length_m, scratch.candidate_samples, scratch.full_path_segment_cache,
-        result.stats, &diagnostic);
+        raw_grid, risk_field, risk_context_fingerprint, config, best_cost, offsets,
+        best_points, best_score, best_length_m, scratch.candidate_samples,
+        scratch.full_path_segment_cache, result.stats, &diagnostic);
     result.stats.candidate_diagnostics.push_back(std::move(diagnostic));
     if (accepted) {
       result.stats.initial_cost = best_cost;
@@ -186,7 +192,8 @@ TrajectoryOptimizerResult optimizeTrajectory(
     ++result.stats.candidate_chunks;
     const std::span<const CandidateBatchResult> candidates = evaluateCandidateBatch(
         tasks, optimizer_samples, offsets, best_points, best_score, best_length_m,
-        prohibited_grid, config, mutable_indices, best_cost, candidate_workspace,
+        raw_grid, risk_field, risk_context_fingerprint, config, mutable_indices,
+        best_cost, candidate_workspace,
         candidate_worker_pool.has_value() ? &candidate_worker_pool.value() : nullptr,
         result.stats, candidate_worker_count);
 
@@ -194,7 +201,7 @@ TrajectoryOptimizerResult optimizeTrajectory(
     const EvaluatedCandidate* iteration_winner = nullptr;
     std::optional<std::size_t> iteration_winner_order;
     std::optional<std::size_t> shadow_segment_score_winner_order;
-    double best_estimated_score = best_cost;
+    CandidateScore best_iteration_score = best_score;
     double best_shadow_segment_score = best_cost;
     for (const CandidateBatchResult& batch_result : candidates) {
       const EvaluatedCandidate& candidate = batch_result.candidate;
@@ -218,12 +225,10 @@ TrajectoryOptimizerResult optimizeTrajectory(
       if (!candidate.full_score_used) {
         continue;
       }
-      if (candidate.score.score + 1.0e-9 < best_cost) {
-        if (candidate.score.score + 1.0e-9 < best_estimated_score) {
-          best_estimated_score = candidate.score.score;
-          iteration_winner = &candidate;
-          iteration_winner_order = batch_result.order;
-        }
+      if (candidateScoreLess(candidate.score, best_iteration_score)) {
+        best_iteration_score = candidate.score;
+        iteration_winner = &candidate;
+        iteration_winner_order = batch_result.order;
       }
     }
     if (shadow_segment_score_winner_order.has_value() &&
@@ -287,7 +292,7 @@ TrajectoryOptimizerResult optimizeTrajectory(
     std::size_t cache_hits = 0U;
     std::size_t cache_misses = 0U;
     const PathEvaluation candidate_evaluation =
-        evaluatePathCached(prohibited_grid, scratch.candidate_points,
+        evaluatePathCached(raw_grid, scratch.candidate_points,
                            scratch.full_path_segment_cache, cache_hits, cache_misses);
     result.stats.full_path_segment_cache_hits += cache_hits;
     result.stats.full_path_segment_cache_misses += cache_misses;
@@ -303,8 +308,12 @@ TrajectoryOptimizerResult optimizeTrajectory(
         elapsedMilliseconds(sample_started_at);
     const TrajectoryShapeDiagnostics candidate_diagnostics =
         computeTrajectoryShapeDiagnostics(scratch.candidate_samples);
-    if (candidate_diagnostics.max_curvature_jump_1pm + 1.0e-9 >=
-        pre_diagnostics.max_curvature_jump_1pm) {
+    const PathRiskScore candidate_risk =
+        risk_field.evaluate(raw_grid, scratch.candidate_points);
+    const PathRiskScore current_risk = risk_field.evaluate(raw_grid, final_points);
+    if (!candidate_risk.hardValid() || pathRiskLess(current_risk, candidate_risk) ||
+        candidate_diagnostics.max_curvature_jump_1pm + 1.0e-9 >=
+            pre_diagnostics.max_curvature_jump_1pm) {
       break;
     }
     final_offsets = scratch.smoothed_offsets;
@@ -321,7 +330,7 @@ TrajectoryOptimizerResult optimizeTrajectory(
   std::size_t final_cache_hits = 0U;
   std::size_t final_cache_misses = 0U;
   const PathEvaluation final_evaluation =
-      evaluatePathCached(prohibited_grid, final_points, scratch.full_path_segment_cache,
+      evaluatePathCached(raw_grid, final_points, scratch.full_path_segment_cache,
                          final_cache_hits, final_cache_misses);
   result.stats.full_path_segment_cache_hits += final_cache_hits;
   result.stats.full_path_segment_cache_misses += final_cache_misses;
@@ -331,10 +340,14 @@ TrajectoryOptimizerResult optimizeTrajectory(
   }
   const auto final_score_started_at = std::chrono::steady_clock::now();
   const CandidateScore final_score = scoreForCandidate(
-      optimizer_samples, final_points, final_offsets, final_evaluation, config,
-      scratch.candidate_samples, result.stats, nullptr);
+      optimizer_samples, final_points, final_offsets, final_evaluation, raw_grid,
+      risk_field, config, scratch.candidate_samples, result.stats, nullptr);
   result.stats.full_final_score_duration_ms =
       elapsedMilliseconds(final_score_started_at);
+  if (!final_score.risk.hardValid()) {
+    ++result.stats.collision_rejections;
+    return result;
+  }
 
   result.samples.reserve(sample_count);
   for (std::size_t i = 0U; i < sample_count; ++i) {

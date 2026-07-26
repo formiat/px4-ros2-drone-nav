@@ -1,3 +1,5 @@
+#include "drone_city_nav/raw_obstacle_snapshot_tracker.hpp"
+
 #include "planner_node.hpp"
 
 namespace drone_city_nav {
@@ -95,8 +97,7 @@ PlannerNode::PlannerNode()
       config.topics.executable_trajectory, rclcpp::QoS{1}.reliable());
   waypoint_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       config.topics.current_waypoint, rclcpp::QoS{1}.reliable());
-  raw_obstacle_producer_instance_id_ = static_cast<std::uint64_t>(
-      std::max<std::int64_t>(1, get_clock()->now().nanoseconds()));
+  raw_obstacle_producer_instance_id_ = generateRawObstacleProducerInstanceId();
 
   loadConfiguredStaticMap();
   loadConfiguredKnownPassages();

@@ -345,4 +345,17 @@ TrajectoryContinuityResult evaluateOffboardTrajectoryUpdateContinuity(
                                         .altitude_valid = altitude_valid});
 }
 
+PathRiskScore
+evaluateOffboardTrajectoryActivationRisk(const OffboardTrajectoryState& candidate_state,
+                                         const TrajectoryRiskContext& risk_context) {
+  if (!candidate_state.valid || !trajectorySamplesAreUsable(candidate_state.samples) ||
+      !risk_context.valid()) {
+    PathRiskScore invalid{};
+    invalid.outside_bounds = true;
+    return invalid;
+  }
+  return risk_context.risk_field->evaluate(*risk_context.raw_occupancy,
+                                           candidate_state.samples);
+}
+
 } // namespace drone_city_nav

@@ -77,6 +77,7 @@ struct CostBreakdown {
 };
 
 struct CandidateScore {
+  PathRiskScore risk{.outside_bounds = true};
   double score{std::numeric_limits<double>::infinity()};
   CostBreakdown breakdown{};
 };
@@ -174,10 +175,12 @@ struct SegmentCellKeyHash {
 };
 
 struct SegmentTraversabilityCache {
+  std::uint64_t risk_context_fingerprint{0U};
   std::unordered_map<SegmentCellKey, bool, SegmentCellKeyHash> values;
 };
 
 struct SegmentProhibitedCountCache {
+  std::uint64_t risk_context_fingerprint{0U};
   std::unordered_map<SegmentCellKey, std::size_t, SegmentCellKeyHash> values;
 };
 
@@ -440,6 +443,13 @@ void offsetsFromSeed(const std::span<const CorridorSample> corridor_samples,
 optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
                          const TrajectoryOptimizerConfig& config);
 [[nodiscard]] double pathLength(const std::span<const Point2> points);
+[[nodiscard]] bool candidateScoreLess(const CandidateScore& lhs,
+                                      const CandidateScore& rhs) noexcept;
+void appendPathRisk(PathRiskScore& destination, const PathRiskScore& segment) noexcept;
+void bindRiskContext(SegmentTraversabilityCache& cache,
+                     std::uint64_t risk_context_fingerprint);
+void bindRiskContext(SegmentProhibitedCountCache& cache,
+                     std::uint64_t risk_context_fingerprint);
 [[nodiscard]] double headingDeltaRad(const Point2 lhs, const Point2 rhs) noexcept;
 [[nodiscard]] double discreteCurvature(const Point2 previous, const Point2 current,
                                        const Point2 next);
@@ -549,7 +559,8 @@ void populateShadowSegmentScoreDiagnostics(
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
-    const PathEvaluation& evaluation, const TrajectoryOptimizerConfig& config,
+    const PathEvaluation& evaluation, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, const TrajectoryOptimizerConfig& config,
     std::vector<TrajectoryPointSample>& scratch_samples,
     TrajectoryOptimizerStats& stats, const CostBreakdown* geometry_breakdown_override);
 void populateSampleGeometry(std::vector<TrajectoryPointSample>& samples);
@@ -571,9 +582,10 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
 [[nodiscard]] bool updateBestCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> candidate_offsets,
-    const std::span<const Point2> candidate_points,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    double& best_cost, std::vector<double>& offsets, std::vector<Point2>& best_points,
+    const std::span<const Point2> candidate_points, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, std::uint64_t risk_context_fingerprint,
+    const TrajectoryOptimizerConfig& config, double& best_cost,
+    std::vector<double>& offsets, std::vector<Point2>& best_points,
     CandidateScore& best_score, double& best_length_m,
     std::vector<TrajectoryPointSample>& scratch_samples,
     SegmentProhibitedCountCache& segment_cache, TrajectoryOptimizerStats& stats,
@@ -583,7 +595,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
     const double base_length_m, const std::size_t center_index, const double delta_m,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    const OccupancyGrid2D& raw_grid, const ObstacleRiskField& risk_field,
+    std::uint64_t risk_context_fingerprint, const TrajectoryOptimizerConfig& config,
     const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
     CandidateWorkBuffer& buffer);
 [[nodiscard]] std::vector<double> offsetCandidatesForSample(
@@ -592,7 +605,8 @@ void updateEdgeMarginStats(const std::span<const TrajectoryPointSample> samples,
     const double radius_m = std::numeric_limits<double>::infinity());
 [[nodiscard]] bool buildDpSeedForWindow(
     const std::span<const CorridorSample> corridor_samples, const ActiveWindow& window,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
+    const OccupancyGrid2D& raw_grid, const ObstacleRiskField& risk_field,
+    std::uint64_t risk_context_fingerprint, const TrajectoryOptimizerConfig& config,
     const double requested_step_m, const std::span<const double> base_offsets,
     const std::span<const double> guide_offsets, const double guide_radius_m,
     std::vector<double>& output_offsets, TrajectoryOptimizerStats& stats);
@@ -607,7 +621,8 @@ candidateTasksForStep(const std::span<const std::size_t> control_indices,
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
-    const double base_length_m, const OccupancyGrid2D& prohibited_grid,
+    const double base_length_m, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, std::uint64_t risk_context_fingerprint,
     const TrajectoryOptimizerConfig& config,
     const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
     CandidateBatchWorkspace& workspace, TrajectoryOptimizerCandidateWorkerPool* pool,

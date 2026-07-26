@@ -17,6 +17,7 @@ enum class RawSnapshotRelation {
   kExact,
   kRuntimeNewer,
   kRuntimeOlder,
+  kNoSnapshot,
   kDifferentProducer,
   kRetiredProducer,
   kPolicyMismatch,
@@ -44,5 +45,6 @@ private:
 
 [[nodiscard]] const char*
 rawSnapshotRelationName(RawSnapshotRelation relation) noexcept;
+[[nodiscard]] std::uint64_t generateRawObstacleProducerInstanceId() noexcept;
 
 } // namespace drone_city_nav

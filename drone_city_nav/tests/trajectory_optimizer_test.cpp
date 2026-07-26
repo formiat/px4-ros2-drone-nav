@@ -156,6 +156,16 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
   return config;
 }
 
+[[nodiscard]] TrajectoryOptimizerResult
+optimizeForTest(const std::vector<CorridorSample>& corridor,
+                const OccupancyGrid2D& grid, const TrajectoryOptimizerConfig& config,
+                const VelocityFollowerConfig& speed_config,
+                const std::stop_token stop_token = {}) {
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  return optimizeTrajectory(corridor, grid, risk, config, speed_config, stop_token);
+}
+
 [[nodiscard]] double maxOffsetDelta(const std::vector<TrajectoryPointSample>& samples) {
   double max_delta = 0.0;
   for (std::size_t i = 1U; i < samples.size(); ++i) {
@@ -170,7 +180,7 @@ straightCorridorWithBlockedCenterline(const double left_bound_m,
 TEST(TrajectoryOptimizer, WideCornerProducesTraversableSmoothLine) {
   const OccupancyGrid2D grid = openGrid();
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
+      optimizeForTest(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.samples.size(), wideLeftTurnCorridor().size());
@@ -190,8 +200,8 @@ TEST(TrajectoryOptimizer, PreRequestedStopCancelsBeforeIterations) {
   stop_source.request_stop();
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(wideLeftTurnCorridor(), grid, testConfig(), speedConfig(),
-                         stop_source.get_token());
+      optimizeForTest(wideLeftTurnCorridor(), grid, testConfig(), speedConfig(),
+                      stop_source.get_token());
 
   EXPECT_FALSE(result.valid);
   EXPECT_TRUE(result.stats.canceled);
@@ -201,7 +211,7 @@ TEST(TrajectoryOptimizer, PreRequestedStopCancelsBeforeIterations) {
 TEST(TrajectoryOptimizer, PenalizesOffsetSpikes) {
   const OccupancyGrid2D grid = openGrid();
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
+      optimizeForTest(wideLeftTurnCorridor(), grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_LE(maxOffsetDelta(result.samples), 2.5);
@@ -211,9 +221,9 @@ TEST(TrajectoryOptimizer, ResultIsDeterministic) {
   const OccupancyGrid2D grid = openGrid();
   const auto corridor = wideLeftTurnCorridor();
   const TrajectoryOptimizerResult first =
-      optimizeTrajectory(corridor, grid, testConfig(), speedConfig());
+      optimizeForTest(corridor, grid, testConfig(), speedConfig());
   const TrajectoryOptimizerResult second =
-      optimizeTrajectory(corridor, grid, testConfig(), speedConfig());
+      optimizeForTest(corridor, grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(first.valid);
   ASSERT_TRUE(second.valid);
@@ -243,9 +253,9 @@ TEST(TrajectoryOptimizer, DefaultParallelCandidateEvaluationMatchesSingleWorkerR
   parallel_config.parallel_workers = 4U;
 
   const TrajectoryOptimizerResult sequential =
-      optimizeTrajectory(corridor, grid, single_worker_config, speedConfig());
+      optimizeForTest(corridor, grid, single_worker_config, speedConfig());
   const TrajectoryOptimizerResult parallel =
-      optimizeTrajectory(corridor, grid, parallel_config, speedConfig());
+      optimizeForTest(corridor, grid, parallel_config, speedConfig());
 
   ASSERT_TRUE(sequential.valid);
   ASSERT_TRUE(parallel.valid);
@@ -300,7 +310,7 @@ TEST(TrajectoryOptimizer, LocalCandidateScoringKeepsFullObjectiveScoring) {
   config.max_iterations = 8U;
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(longLeftTurnCorridor(), grid, config, speedConfig());
+      optimizeForTest(longLeftTurnCorridor(), grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   ASSERT_GT(result.stats.local_candidate_evaluations, 0U);
@@ -332,7 +342,7 @@ TEST(TrajectoryOptimizer, ProhibitedCenterlineCanUseLateralCorridorSeed) {
       straightCorridorWithBlockedCenterline(5.0, 1.0);
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(corridor, grid, testConfig(), speedConfig());
+      optimizeForTest(corridor, grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_GT(result.stats.collision_rejections, 0U);
@@ -340,6 +350,28 @@ TEST(TrajectoryOptimizer, ProhibitedCenterlineCanUseLateralCorridorSeed) {
   EXPECT_EQ(result.stats.active_window_count, 1U);
   EXPECT_GT(result.stats.dp_states, 0U);
   EXPECT_GT(result.stats.dp_segment_cache_misses, 0U);
+}
+
+TEST(TrajectoryOptimizer, RiskFirstOrderingKeepsSaferLateralAlternative) {
+  OccupancyGrid2D grid{GridBounds{-10.0, -10.0, 1.0, 50, 30}};
+  grid.reset(CellState::kFree);
+  for (int x = 10; x <= 30; ++x) {
+    grid.setOccupied(GridIndex{x, 12});
+  }
+  const std::vector<CorridorSample> corridor =
+      straightCorridorWithBlockedCenterline(4.0, 4.0);
+  const ObstacleRiskField risk = ObstacleRiskField::build(
+      grid, {.critical_distance_m = 1.0, .preferred_distance_m = 4.0});
+  const std::vector<Point2> centerline{
+      {0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}, {15.0, 0.0}, {20.0, 0.0}};
+  const PathRiskScore centerline_risk = risk.evaluate(grid, centerline);
+
+  const TrajectoryOptimizerResult result =
+      optimizeTrajectory(corridor, grid, risk, testConfig(), speedConfig());
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_GT(result.stats.max_abs_offset_m, 2.0);
+  EXPECT_TRUE(pathRiskLess(risk.evaluate(grid, result.samples), centerline_risk));
 }
 
 TEST(TrajectoryOptimizer, ProhibitedCenterlineUsesLocalBlockedSpanWindows) {
@@ -359,7 +391,7 @@ TEST(TrajectoryOptimizer, ProhibitedCenterlineUsesLocalBlockedSpanWindows) {
   config.window_min_width_asymmetry_m = 100.0;
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(corridor, grid, config, speedConfig());
+      optimizeForTest(corridor, grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.active_window_centerline_blocked, 1U);
@@ -386,7 +418,7 @@ TEST(TrajectoryOptimizer, ProhibitedCenterlineWithoutLateralRoomReturnsInvalidRe
       straightCorridorWithBlockedCenterline(0.0, 0.0);
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(corridor, grid, testConfig(), speedConfig());
+      optimizeForTest(corridor, grid, testConfig(), speedConfig());
 
   EXPECT_FALSE(result.valid);
   EXPECT_GT(result.stats.collision_rejections, 0U);
@@ -410,7 +442,7 @@ TEST(TrajectoryOptimizer, OptimizerSampleStepUsesCoarseCorridor) {
   config.optimizer_sample_step_m = 5.0;
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(corridor, grid, config, speedConfig());
+      optimizeForTest(corridor, grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.input_samples, corridor.size());
@@ -426,7 +458,7 @@ TEST(TrajectoryOptimizer, StraightOpenCorridorSkipsWindowOptimization) {
       straightCorridorWithBlockedCenterline(4.0, 4.0);
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(corridor, grid, testConfig(), speedConfig());
+      optimizeForTest(corridor, grid, testConfig(), speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_EQ(result.stats.window_count, 0U);
@@ -448,7 +480,7 @@ TEST(TrajectoryOptimizer, HeadingSpanActivatesGradualBendWindow) {
   config.max_iterations = 1U;
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(gradualBendCorridor(), grid, config, speedConfig());
+      optimizeForTest(gradualBendCorridor(), grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_GT(result.stats.active_window_count, 0U);
@@ -461,7 +493,7 @@ TEST(TrajectoryOptimizer, ReportsFinalTraversalTimeAndRegularizationStats) {
   config.regularization_iterations = 2U;
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(wideLeftTurnCorridor(), grid, config, speedConfig());
+      optimizeForTest(wideLeftTurnCorridor(), grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(std::isfinite(result.stats.estimated_time_s));
@@ -478,7 +510,7 @@ TEST(TrajectoryOptimizer, ReportsGeometryCostBreakdownAndEdgeMarginDiagnostics) 
   TrajectoryOptimizerConfig config = testConfig();
 
   const TrajectoryOptimizerResult result =
-      optimizeTrajectory(wideLeftTurnCorridor(), grid, config, speedConfig());
+      optimizeForTest(wideLeftTurnCorridor(), grid, config, speedConfig());
 
   ASSERT_TRUE(result.valid);
   EXPECT_TRUE(std::isfinite(result.stats.final_length_ratio));

@@ -180,7 +180,6 @@ void Px4OffboardNode::onRawObstacleSnapshot(const msg::RawObstacleSnapshot& snap
   if (pending_raw_obstacle_snapshot_.has_value()) {
     msg::ExecutableTrajectory command = std::move(*pending_raw_obstacle_snapshot_);
     pending_raw_obstacle_snapshot_.reset();
-    pending_raw_obstacle_snapshot_received_time_ = rclcpp::Time{0, 0, RCL_ROS_TIME};
     processExecutableTrajectory(command, true);
   }
 }

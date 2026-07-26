@@ -77,7 +77,8 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const double> base_offsets,
     const std::span<const Point2> base_points, const CandidateScore& base_score,
-    const double base_length_m, const OccupancyGrid2D& prohibited_grid,
+    const double base_length_m, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, const std::uint64_t risk_context_fingerprint,
     const TrajectoryOptimizerConfig& config,
     const std::span<const std::uint8_t> mutable_indices, const double incumbent_score,
     CandidateBatchWorkspace& workspace, TrajectoryOptimizerCandidateWorkerPool* pool,
@@ -102,8 +103,8 @@ elapsedMilliseconds(const std::chrono::steady_clock::time_point start) {
     workspace.results[task_index].delta_m = task.delta_m;
     workspace.results[task_index].candidate = evaluateCandidateSnapshot(
         corridor_samples, base_offsets, base_points, base_score, base_length_m,
-        task.center_index, task.delta_m, prohibited_grid, config, mutable_indices,
-        incumbent_score, buffer);
+        task.center_index, task.delta_m, raw_grid, risk_field, risk_context_fingerprint,
+        config, mutable_indices, incumbent_score, buffer);
   };
 
   if (resolved_workers == 1U || pool == nullptr) {

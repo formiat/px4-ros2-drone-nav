@@ -346,6 +346,46 @@ optimizerCorridorSamples(const std::span<const CorridorSample> corridor_samples,
   return length;
 }
 
+[[nodiscard]] bool candidateScoreLess(const CandidateScore& lhs,
+                                      const CandidateScore& rhs) noexcept {
+  if (!pathRiskEqual(lhs.risk, rhs.risk)) {
+    return pathRiskLess(lhs.risk, rhs.risk);
+  }
+  return lhs.score + 1.0e-9 < rhs.score;
+}
+
+void appendPathRisk(PathRiskScore& destination, const PathRiskScore& segment) noexcept {
+  destination.outside_bounds = destination.outside_bounds || segment.outside_bounds;
+  destination.intersects_raw_occupied =
+      destination.intersects_raw_occupied || segment.intersects_raw_occupied;
+  if (static_cast<std::uint8_t>(segment.worst_tier) >
+      static_cast<std::uint8_t>(destination.worst_tier)) {
+    destination.worst_tier = segment.worst_tier;
+  }
+  destination.critical_exposure_m += segment.critical_exposure_m;
+  destination.planning_exposure_m += segment.planning_exposure_m;
+  destination.minimum_raw_clearance_m =
+      std::min(destination.minimum_raw_clearance_m, segment.minimum_raw_clearance_m);
+}
+
+void bindRiskContext(SegmentTraversabilityCache& cache,
+                     const std::uint64_t risk_context_fingerprint) {
+  if (cache.risk_context_fingerprint == risk_context_fingerprint) {
+    return;
+  }
+  cache.values.clear();
+  cache.risk_context_fingerprint = risk_context_fingerprint;
+}
+
+void bindRiskContext(SegmentProhibitedCountCache& cache,
+                     const std::uint64_t risk_context_fingerprint) {
+  if (cache.risk_context_fingerprint == risk_context_fingerprint) {
+    return;
+  }
+  cache.values.clear();
+  cache.risk_context_fingerprint = risk_context_fingerprint;
+}
+
 [[nodiscard]] double headingDeltaRad(const Point2 lhs, const Point2 rhs) noexcept {
   const double lhs_norm = norm(lhs);
   const double rhs_norm = norm(rhs);

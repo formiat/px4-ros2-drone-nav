@@ -382,10 +382,12 @@ void populateShadowSegmentScoreDiagnostics(
 [[nodiscard]] CandidateScore scoreForCandidate(
     const std::span<const CorridorSample> corridor_samples,
     const std::span<const Point2> points, const std::span<const double> offsets,
-    const PathEvaluation& evaluation, const TrajectoryOptimizerConfig& config,
+    const PathEvaluation& evaluation, const OccupancyGrid2D& raw_grid,
+    const ObstacleRiskField& risk_field, const TrajectoryOptimizerConfig& config,
     std::vector<TrajectoryPointSample>& scratch_samples,
     TrajectoryOptimizerStats& stats, const CostBreakdown* geometry_breakdown_override) {
   CandidateScore result{};
+  result.risk = risk_field.evaluate(raw_grid, points);
   const auto cost_started_at = std::chrono::steady_clock::now();
   if (geometry_breakdown_override != nullptr) {
     result.breakdown = *geometry_breakdown_override;

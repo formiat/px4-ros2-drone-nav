@@ -498,20 +498,11 @@ TrajectoryPlannerResult planOptimizedTrajectory(const TrajectoryPlannerInput& in
   const auto trajectory_optimizer_started_at = std::chrono::steady_clock::now();
   result.stats.grid_stages.optimizer_attempts = 1U;
   TrajectoryOptimizerResult optimized_trajectory = optimizeTrajectory(
-      corridor.samples, *risk_context->raw_occupancy, config.trajectory_optimizer,
-      config.speed_profile, input.stop_token);
+      corridor.samples, *risk_context->raw_occupancy, *risk_context->risk_field,
+      config.trajectory_optimizer, config.speed_profile, input.stop_token);
   result.stats.trajectory_optimizer = optimized_trajectory.stats;
   result.stats.grid_stages.optimizer =
       optimized_trajectory.valid ? std::string{risk_context->name} : "none";
-  if (optimized_trajectory.valid) {
-    const std::vector<TrajectoryPointSample> centerline =
-        baselineSamplesFromCorridor(corridor.samples);
-    if (!applyRiskGate("optimizer", *risk_context, centerline,
-                       optimized_trajectory.samples, false, result.stats)) {
-      optimized_trajectory.samples = centerline;
-      optimized_trajectory.valid = trajectorySamplesAreUsable(centerline);
-    }
-  }
   result.stats.trajectory_optimizer_duration_ms =
       elapsedMilliseconds(trajectory_optimizer_started_at);
   if (input.stop_token.stop_requested() || optimized_trajectory.stats.canceled) {

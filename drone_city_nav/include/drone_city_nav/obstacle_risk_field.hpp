@@ -85,6 +85,9 @@ private:
                                  const PathRiskScore& rhs) noexcept;
 [[nodiscard]] bool rankedPathCostLess(const RankedPathCost& lhs,
                                       const RankedPathCost& rhs) noexcept;
+[[nodiscard]] std::uint64_t
+obstacleRiskContextFingerprint(const OccupancyGrid2D& raw_grid,
+                               const ObstacleRiskField& risk_field) noexcept;
 [[nodiscard]] const char* obstacleRiskTierName(ObstacleRiskTier tier) noexcept;
 
 } // namespace drone_city_nav

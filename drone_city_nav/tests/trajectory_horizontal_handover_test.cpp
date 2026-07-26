@@ -119,10 +119,14 @@ TEST(TrajectoryHorizontalHandover, RejectsBridgeBlockedByCurrentGrid) {
   const std::vector<TrajectoryPointSample> candidate =
       lineSamples(Point2{0.0, 4.0}, Point2{80.0, 4.0});
   OccupancyGrid2D grid = freeGrid();
-  const GridIndex first = grid.worldToCell(Point2{15.0, 0.5}).value();
-  const GridIndex last = grid.worldToCell(Point2{35.0, 3.5}).value();
-  for (int x = first.x; x <= last.x; ++x) {
-    for (int y = first.y; y <= last.y; ++y) {
+  const std::optional<GridIndex> first = grid.worldToCell(Point2{15.0, 0.5});
+  const std::optional<GridIndex> last = grid.worldToCell(Point2{35.0, 3.0});
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(last.has_value());
+  const GridIndex first_cell = first.value_or(GridIndex{});
+  const GridIndex last_cell = last.value_or(GridIndex{});
+  for (int x = first_cell.x; x <= last_cell.x; ++x) {
+    for (int y = first_cell.y; y <= last_cell.y; ++y) {
       grid.setOccupied(GridIndex{x, y});
     }
   }

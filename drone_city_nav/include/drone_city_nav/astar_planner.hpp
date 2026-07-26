@@ -39,6 +39,8 @@ struct AStarResult {
   std::vector<GridIndex> path;
 };
 
+[[nodiscard]] AStarConfig astarConfigForRiskField(AStarConfig base,
+                                                  const ObstacleRiskField& risk_field);
 [[nodiscard]] const char* astarStatusName(AStarStatus status) noexcept;
 
 class AStarPlanner {

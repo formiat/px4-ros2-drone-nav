@@ -211,6 +211,12 @@ reconstructPath(const OccupancyGrid2D& grid, const std::vector<std::size_t>& par
 
 } // namespace
 
+AStarConfig astarConfigForRiskField(AStarConfig base,
+                                    const ObstacleRiskField& risk_field) {
+  base.risk_policy = risk_field.policy();
+  return base;
+}
+
 const char* astarStatusName(const AStarStatus status) noexcept {
   switch (status) {
     case AStarStatus::kSuccess:

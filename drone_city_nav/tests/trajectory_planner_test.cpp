@@ -266,6 +266,7 @@ TEST(TrajectoryPlanner,
       TrajectoryRiskContext{"runtime_prohibited", &runtime_grid},
   };
   TrajectoryPlannerConfig config = testConfig();
+  config.corridor.max_radius_m = 0.1;
   config.initial_altitude_m = 10.0;
   config.vertical_profile.enabled = false;
   config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;
@@ -279,7 +280,13 @@ TEST(TrajectoryPlanner,
 
   const TrajectoryPlannerResult result = planOptimizedTrajectoryWithRisk(input, config);
 
-  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.valid) << "status=" << static_cast<int>(result.stats.status)
+                            << " optimizer_inputs="
+                            << result.stats.trajectory_optimizer.input_samples
+                            << " optimizer_outputs="
+                            << result.stats.trajectory_optimizer.output_samples
+                            << " collision_rejections="
+                            << result.stats.trajectory_optimizer.collision_rejections;
   EXPECT_EQ(result.stats.grid_stages.passage_insertion, "raw_risk");
   ASSERT_EQ(result.stats.passage_insertion_risk_attempts.size(), 1U);
   const PassageInsertionGridAttempt& strict_attempt =
@@ -305,6 +312,7 @@ TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsKeepsBaseTrajectory) {
       TrajectoryRiskContext{"runtime_prohibited", &runtime_grid},
   };
   TrajectoryPlannerConfig config = testConfig();
+  config.corridor.max_radius_m = 0.1;
   config.initial_altitude_m = 10.0;
   config.vertical_profile.enabled = false;
   config.passage_insertion.max_join_tangent_delta_rad = std::numbers::pi;
@@ -318,7 +326,13 @@ TEST(TrajectoryPlanner, PassageInsertionFailureOnAllGridsKeepsBaseTrajectory) {
 
   const TrajectoryPlannerResult result = planOptimizedTrajectoryWithRisk(input, config);
 
-  ASSERT_TRUE(result.valid);
+  EXPECT_TRUE(result.valid) << "status=" << static_cast<int>(result.stats.status)
+                            << " optimizer_inputs="
+                            << result.stats.trajectory_optimizer.input_samples
+                            << " optimizer_outputs="
+                            << result.stats.trajectory_optimizer.output_samples
+                            << " collision_rejections="
+                            << result.stats.trajectory_optimizer.collision_rejections;
   EXPECT_EQ(result.stats.status, TrajectoryPlannerStatus::kOk);
   EXPECT_EQ(result.stats.grid_stages.passage_insertion, "raw_risk");
   ASSERT_EQ(result.stats.passage_insertion_risk_attempts.size(), 1U);

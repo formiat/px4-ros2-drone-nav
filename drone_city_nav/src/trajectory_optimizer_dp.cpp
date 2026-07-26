@@ -1,11 +1,55 @@
 #include "trajectory_optimizer_internal.hpp"
 
 namespace drone_city_nav::trajectory_optimizer_detail {
+namespace {
+
+struct DpPathCost {
+  PathRiskScore risk{};
+  double geometry_cost{std::numeric_limits<double>::infinity()};
+  bool valid{false};
+};
+
+[[nodiscard]] bool dpPathCostLess(const DpPathCost& lhs,
+                                  const DpPathCost& rhs) noexcept {
+  if (lhs.valid != rhs.valid) {
+    return lhs.valid;
+  }
+  if (!lhs.valid) {
+    return false;
+  }
+  if (!pathRiskEqual(lhs.risk, rhs.risk)) {
+    return pathRiskLess(lhs.risk, rhs.risk);
+  }
+  return lhs.geometry_cost + 1.0e-9 < rhs.geometry_cost;
+}
+
+[[nodiscard]] DpPathCost extendDpPathCost(const DpPathCost& prefix,
+                                          const PathRiskScore& segment_risk,
+                                          const double geometry_increment) noexcept {
+  if (!prefix.valid || !segment_risk.hardValid()) {
+    return {};
+  }
+  DpPathCost result = prefix;
+  appendPathRisk(result.risk, segment_risk);
+  result.geometry_cost += geometry_increment;
+  return result;
+}
+
+[[nodiscard]] PathRiskScore segmentRisk(const OccupancyGrid2D& raw_grid,
+                                        const ObstacleRiskField& risk_field,
+                                        const Point2 start, const Point2 end) {
+  const std::array<Point2, 2U> points{start, end};
+  return risk_field.evaluate(raw_grid, points);
+}
+
+} // namespace
 
 [[nodiscard]] bool buildDpSeedForWindow(
     const std::span<const CorridorSample> corridor_samples, const ActiveWindow& window,
-    const OccupancyGrid2D& prohibited_grid, const TrajectoryOptimizerConfig& config,
-    const double requested_step_m, const std::span<const double> base_offsets,
+    const OccupancyGrid2D& raw_grid, const ObstacleRiskField& risk_field,
+    const std::uint64_t risk_context_fingerprint,
+    const TrajectoryOptimizerConfig& config, const double requested_step_m,
+    const std::span<const double> base_offsets,
     const std::span<const double> guide_offsets, const double guide_radius_m,
     std::vector<double>& output_offsets, TrajectoryOptimizerStats& stats) {
   if (window.end_index <= window.begin_index + 1U ||
@@ -37,11 +81,10 @@ namespace drone_city_nav::trajectory_optimizer_detail {
     stats.dp_states += offset_candidates.back().size();
   }
 
-  constexpr double kDpInfinity = std::numeric_limits<double>::infinity();
-  std::vector<std::vector<double>> cost(offset_candidates.size());
+  std::vector<std::vector<DpPathCost>> cost(offset_candidates.size());
   std::vector<std::vector<std::size_t>> parent(offset_candidates.size());
   for (std::size_t row = 0U; row < offset_candidates.size(); ++row) {
-    cost[row].assign(offset_candidates[row].size(), kDpInfinity);
+    cost[row].resize(offset_candidates[row].size());
     parent[row].assign(offset_candidates[row].size(), 0U);
   }
 
@@ -50,6 +93,7 @@ namespace drone_city_nav::trajectory_optimizer_detail {
            corridor_samples[sample_index].normal * offset;
   };
   SegmentTraversabilityCache segment_cache{};
+  bindRiskContext(segment_cache, risk_context_fingerprint);
   const Point2 window_start =
       point_for(window.begin_index, base_offsets[window.begin_index]);
   const Point2 window_end = point_for(window.end_index, base_offsets[window.end_index]);
@@ -60,13 +104,21 @@ namespace drone_city_nav::trajectory_optimizer_detail {
        candidate_index < offset_candidates.front().size(); ++candidate_index) {
     const double offset = offset_candidates.front()[candidate_index];
     const Point2 point = point_for(indices.front(), offset);
-    if (!cachedSegmentTraversable(prohibited_grid, window_start, point, segment_cache,
+    if (!cachedSegmentTraversable(raw_grid, window_start, point, segment_cache,
                                   stats.dp_segment_cache_hits,
                                   stats.dp_segment_cache_misses)) {
       continue;
     }
+    const PathRiskScore risk = segmentRisk(raw_grid, risk_field, window_start, point);
+    if (!risk.hardValid()) {
+      continue;
+    }
     const double offset_delta = offset - base_offsets[window.begin_index];
-    cost.front()[candidate_index] = weight_offset_change * offset_delta * offset_delta;
+    cost.front()[candidate_index] = DpPathCost{
+        .risk = risk,
+        .geometry_cost = weight_offset_change * offset_delta * offset_delta,
+        .valid = true,
+    };
   }
 
   for (std::size_t row = 1U; row < offset_candidates.size(); ++row) {
@@ -80,22 +132,23 @@ namespace drone_city_nav::trajectory_optimizer_detail {
            previous_candidate_index < offset_candidates[row - 1U].size();
            ++previous_candidate_index) {
         ++stats.dp_transitions;
-        if (!std::isfinite(cost[row - 1U][previous_candidate_index])) {
+        if (!cost[row - 1U][previous_candidate_index].valid) {
           continue;
         }
         const double previous_offset =
             offset_candidates[row - 1U][previous_candidate_index];
         const Point2 previous_point = point_for(previous_sample_index, previous_offset);
-        if (!cachedSegmentTraversable(prohibited_grid, previous_point, point,
-                                      segment_cache, stats.dp_segment_cache_hits,
+        if (!cachedSegmentTraversable(raw_grid, previous_point, point, segment_cache,
+                                      stats.dp_segment_cache_hits,
                                       stats.dp_segment_cache_misses)) {
           continue;
         }
         const double offset_delta = offset - previous_offset;
-        const double candidate_cost =
-            cost[row - 1U][previous_candidate_index] +
-            weight_offset_change * offset_delta * offset_delta;
-        if (candidate_cost + 1.0e-9 < cost[row][candidate_index]) {
+        const DpPathCost candidate_cost =
+            extendDpPathCost(cost[row - 1U][previous_candidate_index],
+                             segmentRisk(raw_grid, risk_field, previous_point, point),
+                             weight_offset_change * offset_delta * offset_delta);
+        if (dpPathCostLess(candidate_cost, cost[row][candidate_index])) {
           cost[row][candidate_index] = candidate_cost;
           parent[row][candidate_index] = previous_candidate_index;
         }
@@ -104,31 +157,33 @@ namespace drone_city_nav::trajectory_optimizer_detail {
   }
 
   std::size_t best_index = 0U;
-  double best_cost = kDpInfinity;
+  DpPathCost best_cost{};
   const std::size_t last_row = offset_candidates.size() - 1U;
   const std::size_t last_sample_index = indices.back();
   for (std::size_t candidate_index = 0U;
        candidate_index < offset_candidates[last_row].size(); ++candidate_index) {
-    if (!std::isfinite(cost[last_row][candidate_index])) {
+    if (!cost[last_row][candidate_index].valid) {
       continue;
     }
     const double offset = offset_candidates[last_row][candidate_index];
     const Point2 point = point_for(last_sample_index, offset);
-    if (!cachedSegmentTraversable(prohibited_grid, point, window_end, segment_cache,
+    if (!cachedSegmentTraversable(raw_grid, point, window_end, segment_cache,
                                   stats.dp_segment_cache_hits,
                                   stats.dp_segment_cache_misses)) {
       continue;
     }
     const double offset_delta = base_offsets[window.end_index] - offset;
-    const double candidate_cost = cost[last_row][candidate_index] +
-                                  weight_offset_change * offset_delta * offset_delta;
-    if (candidate_cost + 1.0e-9 < best_cost) {
+    const DpPathCost candidate_cost =
+        extendDpPathCost(cost[last_row][candidate_index],
+                         segmentRisk(raw_grid, risk_field, point, window_end),
+                         weight_offset_change * offset_delta * offset_delta);
+    if (dpPathCostLess(candidate_cost, best_cost)) {
       best_cost = candidate_cost;
       best_index = candidate_index;
     }
   }
 
-  if (!std::isfinite(best_cost)) {
+  if (!best_cost.valid) {
     stats.dp_duration_ms += elapsedMilliseconds(started_at);
     return false;
   }
