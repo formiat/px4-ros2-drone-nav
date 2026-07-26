@@ -3,6 +3,23 @@ project(drone_city_nav VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(DRONE_CITY_NAV_ENABLE_CUDA_MPPI
+       "Build the isolated CUDA MPPI benchmark" OFF)
+set(DRONE_CITY_NAV_CUDA_ARCHITECTURES
+    "75;86"
+    CACHE STRING "CUDA architectures for the isolated MPPI benchmark")
+
+if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if(NOT CMAKE_CUDA_COMPILER)
+    message(FATAL_ERROR
+            "DRONE_CITY_NAV_ENABLE_CUDA_MPPI requires a CUDA compiler")
+  endif()
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+endif()
+
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(builtin_interfaces REQUIRED)
@@ -48,6 +65,29 @@ function(enable_project_warnings target_name)
       -Wshadow
       -Wold-style-cast)
 endfunction()
+
+if(DRONE_CITY_NAV_ENABLE_CUDA_MPPI)
+  add_executable(
+    mppi_cuda_benchmark
+    tools/mppi_cuda_benchmark.cpp
+    src/mppi/mppi_cuda.cu
+    src/mppi/mppi_cuda_host.cpp
+    src/mppi/mppi_reference.cpp)
+  target_compile_features(mppi_cuda_benchmark PRIVATE cxx_std_20)
+  set_target_properties(
+    mppi_cuda_benchmark
+    PROPERTIES CUDA_ARCHITECTURES "${DRONE_CITY_NAV_CUDA_ARCHITECTURES}"
+               CUDA_STANDARD 20
+               CUDA_STANDARD_REQUIRED ON)
+  target_include_directories(mppi_cuda_benchmark PRIVATE include)
+  target_link_libraries(mppi_cuda_benchmark PRIVATE CUDA::cudart)
+  target_compile_options(
+    mppi_cuda_benchmark
+    PRIVATE
+      "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wconversion;-Wsign-conversion;-Wshadow;-Wold-style-cast>"
+      $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
+  install(TARGETS mppi_cuda_benchmark DESTINATION lib/${PROJECT_NAME})
+endif()
 
 add_library(
   drone_city_nav_core
@@ -324,6 +364,12 @@ install(DIRECTORY config launch models rviz worlds DESTINATION share/${PROJECT_N
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(mppi_reference_test tests/mppi_reference_test.cpp
+                  src/mppi/mppi_reference.cpp)
+  target_compile_features(mppi_reference_test PRIVATE cxx_std_20)
+  target_include_directories(mppi_reference_test PRIVATE include)
+  enable_project_warnings(mppi_reference_test)
 
   ament_add_gtest(ambiguous_lidar_hit_tracker_test
                   tests/ambiguous_lidar_hit_tracker_test.cpp)

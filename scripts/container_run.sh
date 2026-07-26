@@ -16,6 +16,12 @@ if getent group video >/dev/null; then
   group_args+=(--group-add "$(getent group video | cut -d: -f3)")
 fi
 
+gpu_args=()
+if command -v nvidia-smi >/dev/null 2>&1 &&
+    docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+  gpu_args+=(--gpus all)
+fi
+
 tty_args=(-i)
 if [[ -t 0 && -t 1 ]]; then
   tty_args=(-it)
@@ -94,6 +100,8 @@ source_setup_file() {
 
 mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}"
 chmod 700 "${XDG_RUNTIME_DIR}"
+export PATH="/usr/local/cuda/bin:${PATH}"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 source_setup_file "${ROS_SETUP_FILE:-/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash}"
 source_setup_file "${PX4_MSGS_SETUP_FILE:-/opt/px4_msgs_ws/install/setup.bash}"
@@ -109,6 +117,7 @@ docker run --rm "${tty_args[@]}" \
   --privileged \
   --network host \
   --user "${user_uid}:${user_gid}" \
+  "${gpu_args[@]}" \
   "${group_args[@]}" \
   "${env_args[@]}" \
   --volume "${repo_root}:/workspace:rw" \

@@ -54,6 +54,9 @@ fuel/
 .ros/
 rosbag2_*/
 
+# Local CUDA MPPI benchmark results
+/artifacts/mppi_benchmark/
+
 # Python cache produced by ROS 2 launch and tooling
 __pycache__/
 *.py[cod]

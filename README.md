@@ -45,6 +45,17 @@ make sim-gui
 make sim-headless
 ```
 
+Build and run the isolated CUDA MPPI benchmark:
+
+```bash
+make mppi-benchmark \
+  MPPI_BENCHMARK_ARGS="--scenario urban_blocks --rollouts 8192 --steps 80"
+```
+
+The benchmark target is opt-in and does not add CUDA to the normal ROS runtime
+targets. It requires the NVIDIA container runtime; `scripts/container_run.sh`
+passes the host GPU through automatically when that runtime is available.
+
 The shared container entrypoint sources the supported ROS 2 and PX4 message
 workspaces automatically before running any command. Do not manually source ROS
 or `px4_msgs` setup files for the normal workflow. For a custom image or

@@ -60,6 +60,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-xacro \
     && rm -rf /var/lib/apt/lists/*
 
+RUN curl -fsSL -o /tmp/cuda-keyring.deb \
+        https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i /tmp/cuda-keyring.deb \
+    && rm /tmp/cuda-keyring.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        cuda-compiler-12-6 \
+        cuda-cudart-dev-12-6 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /opt/px4_msgs_ws/src \
     && git clone --depth 1 --branch "${PX4_MSGS_BRANCH}" https://github.com/PX4/px4_msgs.git /opt/px4_msgs_ws/src/px4_msgs \
     && source "/opt/ros/${ROS_DISTRO}/setup.bash" \

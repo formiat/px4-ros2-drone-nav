@@ -8,6 +8,14 @@ COLCON_LOG_BASE ?= log
 build:
 	colcon --log-base $(COLCON_LOG_BASE) build --packages-select drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
+.PHONY: mppi-benchmark-build
+mppi-benchmark-build:
+	colcon --log-base $(COLCON_LOG_BASE) build --packages-select drone_city_nav --symlink-install --build-base $(COLCON_BUILD_BASE) --install-base $(COLCON_INSTALL_BASE) --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DDRONE_CITY_NAV_ENABLE_CUDA_MPPI=ON
+
+.PHONY: mppi-benchmark
+mppi-benchmark: mppi-benchmark-build
+	./$(COLCON_BUILD_BASE)/drone_city_nav/mppi_cuda_benchmark $(MPPI_BENCHMARK_ARGS)
+
 .PHONY: test
 test: build
 	ctest --test-dir $(COLCON_BUILD_BASE)/drone_city_nav --output-on-failure
