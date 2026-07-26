@@ -95,6 +95,68 @@ TEST(TrajectoryRepair, ExecutableSuffixFindsBlockerAheadOfProgress) {
   EXPECT_GT(blocked.first_blocked_s_m, progress.projected_s_m);
 }
 
+TEST(TrajectoryRepair,
+     PublishedSuccessorMismatchKeepsAcceptedExecutableSuffixProtectedOnce) {
+  constexpr std::uint64_t kAcceptedPathId{60U};
+  constexpr std::uint64_t kPublishedPendingPathId{74U};
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{15, 10});
+  ExecutableTrajectoryArtifact accepted_artifact{
+      .path_id = kAcceptedPathId,
+      .samples = lineSamples(30.0),
+      .current_s_m = 10.0,
+  };
+
+  ASSERT_NE(accepted_artifact.path_id, kPublishedPendingPathId);
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(accepted_artifact, Point2{10.0, 0.0}, 3.0);
+  const ExecutableSuffixDecision suffix =
+      evaluateExecutableSuffix(grid, accepted_artifact, progress, 0.5);
+
+  ASSERT_TRUE(suffix.blocked);
+  const BlockedSpan blocked_span = suffix.blocked_span.value_or(BlockedSpan{});
+  EXPECT_EQ(blocked_span.trigger, BlockedSpanTrigger::kRawOccupied);
+  EXPECT_EQ(classifyRuntimeBlockerHandoff(accepted_artifact.path_id, std::nullopt),
+            RuntimeBlockerHandoffAction::kBegin);
+  EXPECT_EQ(classifyRuntimeBlockerHandoff(accepted_artifact.path_id,
+                                          accepted_artifact.path_id),
+            RuntimeBlockerHandoffAction::kAlreadyPending);
+}
+
+TEST(TrajectoryRepair, ExecutableSuffixRiskIgnoresObstacleBehindProgress) {
+  OccupancyGrid2D grid = freeGrid();
+  grid.setOccupied(GridIndex{5, 10});
+  const ObstacleRiskField risk_field =
+      ObstacleRiskField::build(grid, ObstacleRiskPolicy{1.0, 4.0});
+  ExecutableTrajectoryArtifact artifact{
+      .path_id = 60U,
+      .samples = lineSamples(30.0),
+      .current_s_m = 10.0,
+  };
+  const ExecutableTrajectoryProgress progress =
+      updateExecutableTrajectoryProgress(artifact, Point2{10.0, 0.0}, 3.0);
+
+  const PathRiskScore full_risk = risk_field.evaluate(grid, artifact.samples);
+  const std::optional<PathRiskScore> suffix_risk =
+      evaluateExecutableSuffixRisk(grid, risk_field, artifact, progress);
+
+  ASSERT_TRUE(suffix_risk.has_value());
+  const PathRiskScore observed_suffix_risk =
+      suffix_risk.value_or(PathRiskScore{.outside_bounds = true});
+  EXPECT_TRUE(full_risk.intersects_raw_occupied);
+  EXPECT_TRUE(observed_suffix_risk.hardValid());
+  EXPECT_EQ(observed_suffix_risk.worst_tier, ObstacleRiskTier::kPreferred);
+}
+
+TEST(TrajectoryRepair, TruncationHoldCaptureRequiresPositionAndSpeed) {
+  EXPECT_TRUE(
+      truncationHoldCaptured(Point2{10.2, 20.1}, 0.3, Point2{10.0, 20.0}, 1.0, 0.5));
+  EXPECT_FALSE(
+      truncationHoldCaptured(Point2{11.1, 20.0}, 0.3, Point2{10.0, 20.0}, 1.0, 0.5));
+  EXPECT_FALSE(
+      truncationHoldCaptured(Point2{10.2, 20.1}, 0.6, Point2{10.0, 20.0}, 1.0, 0.5));
+}
+
 TEST(TrajectoryRepair, ExecutableSuffixKeepsSoftRiskPathExecutable) {
   OccupancyGrid2D grid = freeGrid();
   grid.setOccupied(GridIndex{20, 12});

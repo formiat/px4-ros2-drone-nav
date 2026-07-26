@@ -194,6 +194,7 @@ private:
     TruncationSuffixIdentity identity{};
     std::vector<Point2> path_points;
     std::vector<TrajectoryPointSample> trajectory_samples;
+    std::optional<double> rollout_score;
   };
 
   enum class PathPublicationOutcome {
@@ -234,7 +235,7 @@ private:
                                     std::span<const Point2> trajectory_points,
                                     const TrajectoryDeliveryDiagnostics& delivery,
                                     const char* source_label, std::uint64_t path_id,
-                                    TrajectoryEndpointSemantics endpoint_semantics);
+                                    std::optional<double> rollout_score);
 
   [[nodiscard]] bool localHorizonAckPending() const;
 
@@ -334,7 +335,8 @@ private:
       TrajectoryPublicationStageTimings* stage_timings = nullptr,
       const OccupancyGrid2D* source_validation_grid = nullptr,
       const ObstacleRiskField* source_validation_risk_field = nullptr,
-      const ClearanceField2D* source_validation_clearance = nullptr);
+      const ClearanceField2D* source_validation_clearance = nullptr,
+      std::optional<double> rollout_score = std::nullopt);
 
   [[nodiscard]] bool
   keepCurrentPathAfterInvalidReplacement(const char* source_label,
@@ -388,13 +390,13 @@ private:
                             TrajectoryEndpointSemantics endpoint_semantics =
                                 TrajectoryEndpointSemantics::kMissionGoal);
 
-  std::uint64_t publishTrajectoryPath(std::span<const TrajectoryPointSample> samples,
-                                      PathPublicationReason reason,
-                                      const TrajectoryPlannerStats* trajectory_stats,
-                                      TrajectoryDeliveryDiagnostics delivery,
-                                      const char* source_label,
-                                      TrajectoryEndpointSemantics endpoint_semantics =
-                                          TrajectoryEndpointSemantics::kMissionGoal);
+  std::uint64_t publishTrajectoryPath(
+      std::span<const TrajectoryPointSample> samples, PathPublicationReason reason,
+      const TrajectoryPlannerStats* trajectory_stats,
+      TrajectoryDeliveryDiagnostics delivery, const char* source_label,
+      TrajectoryEndpointSemantics endpoint_semantics =
+          TrajectoryEndpointSemantics::kMissionGoal,
+      std::optional<double> rollout_score = std::nullopt);
 
   void
   publishTrajectoryDiagnostics(const std::uint64_t path_id,
@@ -509,7 +511,6 @@ private:
   RecedingHorizonTrajectoryPlanner rollout_planner_{};
   NoStaticPlannerOrchestrator no_static_orchestrator_{};
   std::optional<double> active_rollout_score_;
-  std::uint64_t active_rollout_path_id_{0U};
   double no_static_best_goal_distance_m_{std::numeric_limits<double>::infinity()};
   std::chrono::steady_clock::time_point no_static_last_progress_at_{};
   bool use_known_passages_{true};

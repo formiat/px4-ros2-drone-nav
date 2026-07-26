@@ -185,11 +185,12 @@ std::uint64_t PlannerNode::publishTrajectoryPath(
     const std::span<const TrajectoryPointSample> samples,
     const PathPublicationReason reason, const TrajectoryPlannerStats* trajectory_stats,
     TrajectoryDeliveryDiagnostics delivery, const char* source_label,
-    const TrajectoryEndpointSemantics endpoint_semantics) {
+    const TrajectoryEndpointSemantics endpoint_semantics,
+    const std::optional<double> rollout_score) {
   std::vector<Point2> points = trajectorySamplePoints(samples);
   const std::uint64_t path_id = next_path_id_;
   if (!prepareTrajectoryForRuntimeChecks(samples, points, delivery, source_label,
-                                         path_id, endpoint_semantics)) {
+                                         path_id, rollout_score)) {
     return 0U;
   }
   ++next_path_id_;

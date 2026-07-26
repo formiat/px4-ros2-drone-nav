@@ -10,8 +10,12 @@ std::optional<std::uint64_t> PlannerNode::beginTruncationReplan(
     return std::nullopt;
   }
   std::scoped_lock lock{truncation_replan_mutex_};
-  if (truncation_replan_state_.has_value() &&
-      truncation_replan_state_->blocked_path_id == blocked_path_id) {
+  const std::optional<std::uint64_t> pending_blocked_path_id =
+      truncation_replan_state_.has_value()
+          ? std::optional<std::uint64_t>{truncation_replan_state_->blocked_path_id}
+          : std::nullopt;
+  if (classifyRuntimeBlockerHandoff(blocked_path_id, pending_blocked_path_id) !=
+      RuntimeBlockerHandoffAction::kBegin) {
     return std::nullopt;
   }
   const std::uint64_t generation = next_truncation_generation_++;
@@ -210,12 +214,13 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         .samples = last_valid_trajectory_samples_,
         .current_s_m = 0.0,
     };
-    active_rollout_path_id_ = message.path_id;
-    RCLCPP_INFO(get_logger(),
-                "LOCAL_HORIZON successor ACK accepted: path_id=%" PRIu64
-                " reason='%s' runtime_samples=%zu",
-                message.path_id, message.reason.c_str(),
-                last_valid_trajectory_samples_.size());
+    active_rollout_score_ = accepted->rollout_score;
+    RCLCPP_INFO(
+        get_logger(),
+        "LOCAL_HORIZON successor ACK accepted: path_id=%" PRIu64
+        " reason='%s' runtime_samples=%zu rollout_score=%.3f",
+        message.path_id, message.reason.c_str(), last_valid_trajectory_samples_.size(),
+        active_rollout_score_.value_or(std::numeric_limits<double>::quiet_NaN()));
     return;
   }
 
@@ -298,6 +303,9 @@ void PlannerNode::onTruncationSuffixAck(const msg::TruncationSuffixAck& message)
         .samples = last_valid_trajectory_samples_,
         .current_s_m = 0.0,
     };
+    if (accepted_trajectory->rollout_score.has_value()) {
+      active_rollout_score_ = accepted_trajectory->rollout_score;
+    }
     RCLCPP_INFO(get_logger(),
                 "REPLAN_TRUNCATION suffix ACK accepted: path_id=%" PRIu64
                 " generation=%" PRIu64 " reason='%s' attempt=%zu "
@@ -320,9 +328,10 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
     const std::span<const TrajectoryPointSample> samples,
     const std::span<const Point2> trajectory_points,
     const TrajectoryDeliveryDiagnostics& delivery, const char* source_label,
-    const std::uint64_t path_id, const TrajectoryEndpointSemantics endpoint_semantics) {
-  if (!delivery.truncation_suffix &&
-      endpoint_semantics == TrajectoryEndpointSemantics::kLocalHorizon) {
+    const std::uint64_t path_id, const std::optional<double> rollout_score) {
+  const bool no_static_rollout =
+      source_label != nullptr && std::string_view{source_label} == "no_static_rollout";
+  if (!delivery.truncation_suffix && no_static_rollout) {
     std::scoped_lock lock{truncation_replan_mutex_};
     pending_local_horizon_runtime_trajectory_ = PendingTruncationRuntimeTrajectory{
         .identity =
@@ -335,6 +344,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
             std::vector<Point2>{trajectory_points.begin(), trajectory_points.end()},
         .trajectory_samples =
             std::vector<TrajectoryPointSample>{samples.begin(), samples.end()},
+        .rollout_score = rollout_score,
     };
     return true;
   }
@@ -426,6 +436,7 @@ bool PlannerNode::prepareTrajectoryForRuntimeChecks(
         .identity = identity,
         .path_points = runtime_points,
         .trajectory_samples = runtime_samples,
+        .rollout_score = rollout_score,
     };
   }
   RCLCPP_INFO(get_logger(),

@@ -43,6 +43,8 @@ struct NoStaticPlannerDecisionInput {
   bool temporary_hold_active{false};
   double candidate_score{0.0};
   std::optional<double> active_score;
+  PathRiskScore candidate_risk{};
+  std::optional<PathRiskScore> active_risk{};
   double seconds_since_progress{0.0};
   double candidate_heading_offset_rad{0.0};
 };

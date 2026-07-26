@@ -46,6 +46,32 @@ TEST(NoStaticPlannerOrchestrator, HysteresisKeepsCurrentCandidate) {
   EXPECT_EQ(decision.action, NoStaticPlannerAction::kKeep);
 }
 
+TEST(NoStaticPlannerOrchestrator, PublishesLexicographicallySaferRollout) {
+  NoStaticPlannerOrchestrator orchestrator;
+  PathRiskScore active_risk;
+  active_risk.worst_tier = ObstacleRiskTier::kCriticalBand;
+  active_risk.critical_exposure_m = 2.0;
+  PathRiskScore candidate_risk;
+  candidate_risk.worst_tier = ObstacleRiskTier::kPlanningBand;
+  candidate_risk.planning_exposure_m = 8.0;
+
+  const NoStaticPlannerDecision decision =
+      orchestrator.decide(NoStaticPlannerDecisionInput{
+          .generation = 1U,
+          .latest_generation = 1U,
+          .grid_revision = 1U,
+          .latest_grid_revision = 1U,
+          .candidate_valid = true,
+          .active_prefix_available = true,
+          .candidate_score = 100.0,
+          .active_score = -100.0,
+          .candidate_risk = candidate_risk,
+          .active_risk = active_risk,
+      });
+
+  EXPECT_EQ(decision.action, NoStaticPlannerAction::kPublish);
+}
+
 TEST(NoStaticPlannerOrchestrator, BlockedSuffixBypassesHysteresis) {
   NoStaticPlannerOrchestrator orchestrator;
   const NoStaticPlannerDecision decision =

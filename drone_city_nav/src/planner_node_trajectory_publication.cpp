@@ -211,7 +211,8 @@ bool PlannerNode::publishTrajectoryResult(
     TrajectoryPublicationStageTimings* const stage_timings,
     const OccupancyGrid2D* const source_validation_grid,
     const ObstacleRiskField* const source_validation_risk_field,
-    const ClearanceField2D* const source_validation_clearance) {
+    const ClearanceField2D* const source_validation_clearance,
+    const std::optional<double> rollout_score) {
   const bool use_source_validation_grid =
       std::string_view{source_label} == "no_static_rollout";
   const std::uint64_t latest_invalidation_generation =
@@ -952,14 +953,14 @@ bool PlannerNode::publishTrajectoryResult(
     stale_at_publication_boundary = !publicationGenerationIsCurrent(
         delivery.generation, latest_generation_at_publication);
     if (!stale_at_publication_boundary) {
-      path_id = publishTrajectoryPath(trajectory_result.samples,
-                                      PathPublicationReason::kComputedPath, &stats,
-                                      delivery, source_label, endpoint_semantics);
+      path_id = publishTrajectoryPath(
+          trajectory_result.samples, PathPublicationReason::kComputedPath, &stats,
+          delivery, source_label, endpoint_semantics, rollout_score);
     }
   } else {
-    path_id = publishTrajectoryPath(trajectory_result.samples,
-                                    PathPublicationReason::kComputedPath, &stats,
-                                    delivery, source_label, endpoint_semantics);
+    path_id = publishTrajectoryPath(
+        trajectory_result.samples, PathPublicationReason::kComputedPath, &stats,
+        delivery, source_label, endpoint_semantics, rollout_score);
   }
   if (stale_at_publication_boundary) {
     RCLCPP_WARN(get_logger(),

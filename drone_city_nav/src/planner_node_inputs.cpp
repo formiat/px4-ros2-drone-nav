@@ -674,14 +674,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
   if (!reuse_successor_snapshot) {
     truncation_replan = truncationReplanState();
   }
-  const bool artifact_matches_active_rollout =
+  const bool active_rollout_artifact_available =
       !use_static_map_ && no_static_rollout_enabled_ &&
-      executable_trajectory_artifact_.path_id == active_rollout_path_id_ &&
       trajectorySamplesAreUsable(executable_trajectory_artifact_.samples);
   const double rollout_exhaustion_epsilon_m =
       std::max(0.5, prohibited_grid.resolution());
   ExecutableSuffixDecision rollout_runtime{};
-  if (artifact_matches_active_rollout) {
+  if (active_rollout_artifact_available) {
     const ExecutableTrajectoryProgress progress = updateExecutableTrajectoryProgress(
         executable_trajectory_artifact_, navigation.pose.position,
         stable_path_goal_tolerance_m_);
@@ -706,7 +705,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         "cross_track=%.2f terminal_distance=%.2f checked_from_s=%.2f "
         "blocked=%s trigger=%s first_blocked_s=%.2f distance_to_blocker=%.2f "
         "cell=(%d,%d) active_prefix_available=%s exhaustion_reason=%s "
-        "decision=%s",
+        "decision=%s planner_last_published_path_id=%" PRIu64 " activation_pending=%s",
         executable_trajectory_artifact_.path_id, progress.valid ? "true" : "false",
         progress.previous_s_m, progress.projected_s_m, progress.remaining_m,
         progress.cross_track_m, progress.terminal_distance_m, progress.projected_s_m,
@@ -728,9 +727,10 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
         exhaustion_reason,
         !progress.valid           ? "projection_unavailable"
         : blocked_span == nullptr ? "clear"
-                                  : "raw_occupied_confirmed");
+                                  : "raw_occupied_confirmed",
+        last_published_path_id_, localHorizonAckPending() ? "true" : "false");
   }
-  const bool active_prefix_available = artifact_matches_active_rollout &&
+  const bool active_prefix_available = active_rollout_artifact_available &&
                                        rollout_runtime.progress.valid &&
                                        !rollout_runtime.exhausted;
   const double terminal_braking_distance_m = terminalBrakingDistanceM(
@@ -753,8 +753,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     }
     current_path_kept = keepCurrentPathIfStillClear(
         prohibited_grid, *planning_result, prepared,
-        artifact_matches_active_rollout ? &rollout_runtime : nullptr);
-    if (current_path_kept && !artifact_matches_active_rollout) {
+        active_rollout_artifact_available ? &rollout_runtime : nullptr);
+    if (current_path_kept && !active_rollout_artifact_available) {
       return;
     }
     truncation_replan = truncationReplanState();
@@ -859,10 +859,30 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                        truncation_replan->tangent.y * join_speed_mps / tangent_norm}
               : Point2{};
     }
-    bool stationary_restart = truncation_rollout ? truncation_replan->immediate_hold
-                                                 : artifact_matches_active_rollout &&
-                                                       rollout_runtime.exhausted &&
-                                                       !rollout_runtime.blocked;
+    constexpr double kTruncationHoldPositionToleranceM{1.0};
+    constexpr double kTruncationHoldSpeedToleranceMps{0.5};
+    const bool truncation_hold_captured =
+        truncation_rollout &&
+        truncationHoldCaptured(
+            navigation.pose.position, navigation.speed_mps,
+            Point2{truncation_replan->position.x, truncation_replan->position.y},
+            kTruncationHoldPositionToleranceM, kTruncationHoldSpeedToleranceMps);
+    bool stationary_restart =
+        truncation_rollout
+            ? truncation_replan->immediate_hold || truncation_hold_captured
+            : active_rollout_artifact_available && rollout_runtime.exhausted &&
+                  !rollout_runtime.blocked;
+    if (truncation_hold_captured) {
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "REPLAN_TRUNCATION stationary_restart=true generation=%" PRIu64
+          " distance=%.2f speed=%.2f position_tolerance=%.2f speed_tolerance=%.2f",
+          truncation_replan->generation,
+          distance(navigation.pose.position, Point2{truncation_replan->position.x,
+                                                    truncation_replan->position.y}),
+          navigation.speed_mps, kTruncationHoldPositionToleranceM,
+          kTruncationHoldSpeedToleranceMps);
+    }
     if (stationary_restart) {
       rollout_velocity = Point2{};
     }
@@ -912,6 +932,12 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
     for (std::size_t risk_attempt_index = 0U; risk_attempt_index < risk_contexts.size();
          ++risk_attempt_index) {
       const TrajectoryRiskContext& risk_attempt = risk_contexts[risk_attempt_index];
+      const std::optional<PathRiskScore> active_suffix_risk =
+          active_prefix_available
+              ? evaluateExecutableSuffixRisk(
+                    *risk_attempt.raw_occupancy, *risk_attempt.risk_field,
+                    executable_trajectory_artifact_, rollout_runtime.progress)
+              : std::nullopt;
       RCLCPP_INFO(
           get_logger(),
           "ROLLOUT_INPUT generation=%" PRIu64 " grid_revision=%" PRIu64
@@ -932,10 +958,14 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
           vehicle_clearance_envelope_m, no_static_tracking_error_margin_m_,
           terminal_response_clearance_m, no_static_terminal_braking_decel_mps2_,
           no_static_terminal_braking_margin_m_,
-          rollout_prefix_available ? "true" : "false", active_rollout_path_id_,
-          artifact_matches_active_rollout ? executable_trajectory_artifact_.current_s_m
-                                          : 0.0,
-          artifact_matches_active_rollout ? rollout_runtime.progress.remaining_m : 0.0,
+          rollout_prefix_available ? "true" : "false",
+          active_rollout_artifact_available ? executable_trajectory_artifact_.path_id
+                                            : 0U,
+          active_rollout_artifact_available
+              ? executable_trajectory_artifact_.current_s_m
+              : 0.0,
+          active_rollout_artifact_available ? rollout_runtime.progress.remaining_m
+                                            : 0.0,
           stable_prefix_distance_m, risk_attempt.raw_occupancy->width(),
           risk_attempt.raw_occupancy->height(),
           risk_attempt.raw_occupancy->resolution());
@@ -1153,6 +1183,8 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
                     !rollout_prefix_available && last_valid_path_points_.empty(),
                 .candidate_score = finalist.score,
                 .active_score = active_rollout_score_,
+                .candidate_risk = finalized.stats.final_risk,
+                .active_risk = active_suffix_risk,
                 .seconds_since_progress = seconds_since_progress,
                 .candidate_heading_offset_rad = finalist.heading_offset_rad,
             });
@@ -1161,6 +1193,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             "ROLLOUT_DECISION generation=%" PRIu64 " finalist=%zu "
             "candidate_index=%zu action=%s mode=%s candidate_score=%.3f "
             "active_score=%.3f active_score_valid=%s seconds_since_progress=%.2f "
+            "candidate_risk=%s active_risk=%s active_risk_valid=%s "
             "active_blocked=%s active_exhausting=%s temporary_hold=%s "
             "candidate_generation=%" PRIu64 " latest_generation=%" PRIu64
             " candidate_grid_revision=%" PRIu64 " latest_grid_revision=%" PRIu64,
@@ -1169,7 +1202,13 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             noStaticPlannerModeName(orchestration.mode), finalist.score,
             active_rollout_score_.value_or(0.0),
             active_rollout_score_.has_value() ? "true" : "false",
-            seconds_since_progress, rollout_runtime.blocked ? "true" : "false",
+            seconds_since_progress,
+            obstacleRiskTierName(finalized.stats.final_risk.worst_tier),
+            active_suffix_risk.has_value()
+                ? obstacleRiskTierName(active_suffix_risk->worst_tier)
+                : "none",
+            active_suffix_risk.has_value() ? "true" : "false",
+            rollout_runtime.blocked ? "true" : "false",
             active_rollout_exhausting ? "true" : "false",
             !rollout_prefix_available && last_valid_path_points_.empty() ? "true"
                                                                          : "false",
@@ -1244,7 +1283,7 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
             reaches_mission_goal ? TrajectoryEndpointSemantics::kMissionGoal
                                  : TrajectoryEndpointSemantics::kLocalHorizon,
             &stage_timings, risk_attempt.raw_occupancy, risk_attempt.risk_field,
-            risk_attempt.raw_clearance);
+            risk_attempt.raw_clearance, finalist.score);
         stage_timings.publication_total_ms = elapsedMilliseconds(cycle_started_at);
         const double blocker_to_successor_publish_ms =
             truncation_rollout && successor_snapshot != nullptr &&
@@ -1296,10 +1335,6 @@ void PlannerNode::runPlanningCycle(const PlanningJobIdentity& identity) {
               rollout_deadline_missed ? "true" : "false");
         }
         if (published) {
-          active_rollout_score_ = finalist.score;
-          if (!stationary_restart && !truncation_rollout) {
-            active_rollout_path_id_ = published_path_id;
-          }
           ++rollout_publications_;
           return;
         }

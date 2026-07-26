@@ -193,6 +193,49 @@ ExecutableSuffixDecision evaluateExecutableSuffix(
   return decision;
 }
 
+std::optional<PathRiskScore>
+evaluateExecutableSuffixRisk(const OccupancyGrid2D& grid,
+                             const ObstacleRiskField& risk_field,
+                             const ExecutableTrajectoryArtifact& artifact,
+                             const ExecutableTrajectoryProgress& progress) {
+  if (!progress.valid || !trajectorySamplesAreUsable(artifact.samples)) {
+    return std::nullopt;
+  }
+
+  std::vector<Point2> suffix_points;
+  suffix_points.reserve(artifact.samples.size() + 1U);
+  suffix_points.push_back(
+      trajectorySampleAtS(artifact.samples, progress.projected_s_m).point);
+  for (const TrajectoryPointSample& sample : artifact.samples) {
+    if (sample.s_m > progress.projected_s_m + kTinyDistanceM) {
+      suffix_points.push_back(sample.point);
+    }
+  }
+  return risk_field.evaluate(grid, suffix_points);
+}
+
+RuntimeBlockerHandoffAction classifyRuntimeBlockerHandoff(
+    const std::uint64_t blocked_path_id,
+    const std::optional<std::uint64_t> pending_blocked_path_id) noexcept {
+  if (blocked_path_id == 0U) {
+    return RuntimeBlockerHandoffAction::kRejectInvalid;
+  }
+  if (pending_blocked_path_id == blocked_path_id) {
+    return RuntimeBlockerHandoffAction::kAlreadyPending;
+  }
+  return RuntimeBlockerHandoffAction::kBegin;
+}
+
+bool truncationHoldCaptured(const Point2 current_position, const double speed_mps,
+                            const Point2 truncation_point,
+                            const double position_tolerance_m,
+                            const double speed_tolerance_m) noexcept {
+  return std::isfinite(speed_mps) && speed_mps >= 0.0 &&
+         distance(current_position, truncation_point) <=
+             std::max(0.0, position_tolerance_m) &&
+         speed_mps <= std::max(0.0, speed_tolerance_m);
+}
+
 std::optional<BlockedSpan>
 findFirstRawOccupiedBlockedSpan(const OccupancyGrid2D& grid,
                                 const std::span<const TrajectoryPointSample> trajectory,

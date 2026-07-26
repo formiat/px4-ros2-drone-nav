@@ -133,11 +133,16 @@ NoStaticPlannerOrchestrator::decide(const NoStaticPlannerDecisionInput& input) {
       !input.active_prefix_available || input.active_suffix_blocked ||
       input.active_suffix_exhausting || input.temporary_hold_active ||
       !input.active_score.has_value();
+  const bool risk_improved = input.active_risk.has_value() &&
+                             pathRiskLess(input.candidate_risk, *input.active_risk);
+  const bool risk_equal = !input.active_risk.has_value() ||
+                          pathRiskEqual(input.candidate_risk, *input.active_risk);
   const bool materially_better =
-      input.active_score.has_value() &&
+      risk_equal && input.active_score.has_value() &&
       input.candidate_score + config_.minimum_score_improvement < *input.active_score;
-  return {replacement_required || materially_better ? NoStaticPlannerAction::kPublish
-                                                    : NoStaticPlannerAction::kKeep,
+  return {replacement_required || risk_improved || materially_better
+              ? NoStaticPlannerAction::kPublish
+              : NoStaticPlannerAction::kKeep,
           mode_};
 }
 

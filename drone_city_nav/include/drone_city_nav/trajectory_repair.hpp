@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drone_city_nav/obstacle_risk_field.hpp"
 #include "drone_city_nav/occupancy_grid.hpp"
 #include "drone_city_nav/trajectory.hpp"
 
@@ -14,6 +15,12 @@ namespace drone_city_nav {
 
 enum class BlockedSpanTrigger {
   kRawOccupied,
+};
+
+enum class RuntimeBlockerHandoffAction {
+  kRejectInvalid,
+  kBegin,
+  kAlreadyPending,
 };
 
 struct BlockedSpan {
@@ -73,6 +80,21 @@ struct TrajectoryRepairStitchResult {
 [[nodiscard]] ExecutableSuffixDecision evaluateExecutableSuffix(
     const OccupancyGrid2D& grid, const ExecutableTrajectoryArtifact& artifact,
     const ExecutableTrajectoryProgress& progress, double exhaustion_epsilon_m);
+
+[[nodiscard]] std::optional<PathRiskScore>
+evaluateExecutableSuffixRisk(const OccupancyGrid2D& grid,
+                             const ObstacleRiskField& risk_field,
+                             const ExecutableTrajectoryArtifact& artifact,
+                             const ExecutableTrajectoryProgress& progress);
+
+[[nodiscard]] RuntimeBlockerHandoffAction classifyRuntimeBlockerHandoff(
+    std::uint64_t blocked_path_id,
+    std::optional<std::uint64_t> pending_blocked_path_id) noexcept;
+
+[[nodiscard]] bool truncationHoldCaptured(Point2 current_position, double speed_mps,
+                                          Point2 truncation_point,
+                                          double position_tolerance_m,
+                                          double speed_tolerance_m) noexcept;
 
 [[nodiscard]] std::optional<BlockedSpan>
 findFirstRawOccupiedBlockedSpan(const OccupancyGrid2D& grid,
