@@ -329,12 +329,15 @@ void PlannerNode::loadConfiguredKnownPassages() {
                                staticMapPackageShareDirectory(), frame_id_});
   known_passages_resolved_path_ = result.resolved_path;
   const auto log_classifier = [this]() {
+    const char* status = "disabled";
+    if (known_static_lidar_hit_classifier_enabled_) {
+      status = known_static_lidar_classifier_.has_value() ? "ready" : "fail_open";
+    }
     RCLCPP_INFO(get_logger(),
                 "Known static lidar classifier: node=planner status=%s path='%s' "
                 "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
                 "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
-                known_static_lidar_classifier_.has_value() ? "ready" : "fail_open",
-                known_passages_resolved_path_.string().c_str(),
+                status, known_passages_resolved_path_.string().c_str(),
                 known_static_lidar_classifier_.has_value()
                     ? known_static_lidar_classifier_->volumeCount()
                     : 0U,
@@ -379,7 +382,7 @@ void PlannerNode::loadConfiguredKnownPassages() {
   known_passages_ = result.map;
   known_passage_structures_ = result.structures;
   known_passage_openings_ = result.openings;
-  if (result.frame_matches) {
+  if (known_static_lidar_hit_classifier_enabled_ && result.frame_matches) {
     std::vector<KnownPassageSolidVolume> volumes =
         knownPassageSolidVolumes(*known_passages_);
     if (!volumes.empty()) {

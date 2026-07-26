@@ -139,6 +139,8 @@ PlannerNodeConfig loadPlannerNodeConfig(rclcpp::Node& node) {
       std::clamp<std::int64_t>(node.declare_parameter<std::int64_t>(
                                    "known_passage_validation_max_diagnostics", 8),
                                0, 100));
+  config.known_static_lidar_hit_classifier_enabled =
+      node.declare_parameter<bool>("known_static_lidar_hit_classifier_enabled", false);
   config.known_static_lidar_hit_closer_range_tolerance_m =
       std::clamp(node.declare_parameter<double>(
                      "known_static_lidar_hit_closer_range_tolerance_m", 0.5),

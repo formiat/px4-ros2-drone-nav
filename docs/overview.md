@@ -82,15 +82,15 @@ Known 3D passages are loaded as annotations. Architectural passage structures,
 opening frames, opening centers, approach arrows, and exit arrows are published
 for RViz/debugging. The planner validates whether the final trajectory crosses a
 known structure footprint through an allowed opening volume. The same
-annotations also define known physical solids for the always-on 3D
-lidar classifier. It combines range residuals with the endpoint's 3D relation
-to known solids and free opening volumes. Confident known-static returns are
-suppressed, geometrically ambiguous static-attached returns remain pending
-without mutating either grid, and detached or inside-opening returns remain
-dynamic obstacles. The classifier does not detect passages, filter static-map
-cells, or change A* route preferences. The separate annotated-passage stages can locally
-repair final XY geometry, add a vertical profile, and constrain speed while an
-opening is traversed.
+annotations can provide known physical solids to an optional 3D lidar fallback
+classifier, disabled by default. When enabled, it combines range residuals with
+the endpoint's 3D relation to known solids and free opening volumes. Confident
+known-static returns are suppressed, geometrically ambiguous static-attached
+returns remain pending without mutating either grid, and detached or
+inside-opening returns remain dynamic obstacles. The classifier does not detect
+passages, filter static-map cells, or change A* route preferences. The separate
+annotated-passage stages can locally repair final XY geometry, add a vertical
+profile, and constrain speed while an opening is traversed.
 
 ## Important Terms
 

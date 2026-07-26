@@ -45,6 +45,7 @@ obstacle_memory_node:
     range_hit_epsilon_m: 0.05
     known_passages_enabled: true
     known_passages_path: worlds/known_passages.passages3d
+    known_static_lidar_hit_classifier_enabled: false
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
     known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75
@@ -176,6 +177,7 @@ planner_node:
     known_passage_validation_min_opening_depth_fraction: 0.75
     known_passage_validation_clearance_margin_m: 0.5
     known_passage_validation_max_diagnostics: 8
+    known_static_lidar_hit_classifier_enabled: false
     known_static_lidar_hit_closer_range_tolerance_m: 0.5
     known_static_lidar_hit_farther_range_tolerance_m: 1.5
     known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75

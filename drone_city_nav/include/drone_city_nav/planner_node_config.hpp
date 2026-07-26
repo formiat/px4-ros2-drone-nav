@@ -120,6 +120,7 @@ struct PlannerNodeConfig {
   StaticMapSourceConfig static_map{};
   KnownPassageSourceConfig known_passages{};
   KnownPassageValidationConfig known_passage_validation{};
+  bool known_static_lidar_hit_classifier_enabled{false};
   double known_static_lidar_hit_closer_range_tolerance_m{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m{1.5};
   double known_static_lidar_hit_endpoint_volume_tolerance_m{0.75};

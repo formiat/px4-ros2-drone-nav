@@ -40,6 +40,7 @@ struct KnownStaticLidarSetup {
   std::optional<KnownPassageMap> passage_map;
   std::optional<KnownStaticLidarHitClassifier> classifier;
   std::filesystem::path resolved_path;
+  bool classifier_enabled{false};
   double closer_range_tolerance_m{0.5};
   double farther_range_tolerance_m{1.5};
   double endpoint_volume_tolerance_m{0.75};

@@ -209,10 +209,14 @@ initial altitude.
 ## Lidar And Obstacle Memory
 
 The lidar is not disabled near an opening. It remains an ordinary dynamic
-safety sensor, but known static passage masses are prevented from becoming
-false dynamic obstacles.
+safety sensor. In the simulation model, the GPU lidar visibility mask excludes
+the annotated `lower_mass` and `upper_mass` visuals while their Gazebo visuals
+and physical collisions remain active.
 
-For every usable lidar return, both ingestion paths perform the same process:
+An optional geometric fallback is controlled by
+`known_static_lidar_hit_classifier_enabled` in both lidar ingestion nodes and
+is disabled by default. When enabled, both ingestion paths perform the same
+process for every usable lidar return:
 
 1. project the measurement as a map-frame 3D ray using vehicle position,
    roll, pitch, yaw, lidar mount orientation, and lidar offset;
@@ -257,11 +261,12 @@ three consistently detached observations confirm an obstacle. Mixed evidence
 stays pending and expires. Static-attached and pending classes perform neither
 endpoint-hit integration nor 2D free-space clearing.
 
-This classifier operates for every new scan, independent of the active route
-or distance to an opening. It never edits static-map cells, never changes A*
-preferences, and never removes arbitrary cells from obstacle memory. If known
-passage geometry changes, obstacle memory is reset so existing 2D evidence and
-its sparse 3D provenance cannot survive under a different geometry contract.
+When enabled, this classifier operates for every new scan, independent of the
+active route or distance to an opening. It never edits static-map cells, never
+changes A* preferences, and never removes arbitrary cells from obstacle memory.
+If known passage geometry changes, obstacle memory is reset so existing 2D
+evidence and its sparse 3D provenance cannot survive under a different
+geometry contract.
 
 The flat-ground provider is independent of passage annotations. Expected and
 ambiguous ground-facing beams create neither occupied evidence nor free-space

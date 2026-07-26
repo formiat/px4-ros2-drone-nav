@@ -31,20 +31,28 @@ def make_ros_log(
     static_map: bool = True,
     mission_success: bool = True,
     current_lidar_used_summary: bool = False,
+    known_static_classifier_enabled: bool = False,
 ) -> str:
+    classifier_status = (
+        "ready" if known_static_classifier_enabled else "disabled"
+    )
+    classifier_volumes = 12 if known_static_classifier_enabled else 0
+    known_static_ignored = 3 if known_static_classifier_enabled else 0
     lines = [
         "[planner_node]: First valid PX4 local position: x=0.0 y=0.0 z=0.0",
         (
             "[obstacle_memory_node]: Known static lidar classifier: "
-            "node=obstacle_memory status=ready "
+            f"node=obstacle_memory status={classifier_status} "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m"
+            f"volumes={classifier_volumes} "
+            "closer_tolerance=0.500m farther_tolerance=1.500m"
         ),
         (
             "[planner_node]: Known static lidar classifier: node=planner "
-            "status=ready "
+            f"status={classifier_status} "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
-            "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m"
+            f"volumes={classifier_volumes} "
+            "closer_tolerance=0.500m farther_tolerance=1.500m"
         ),
         (
             "[obstacle_memory_node]: Ground lidar classifier: "
@@ -94,7 +102,8 @@ def make_ros_log(
                 "[planner_node]: First obstacle memory grid: size=230x350",
                 (
                     "[obstacle_memory_node]: Obstacle memory update: hits=42 "
-                    "known_static[ignored=3 unexpected=39 ambiguous=0]"
+                    f"known_static[ignored={known_static_ignored} "
+                    "unexpected=39 ambiguous=0]"
                 ),
                 (
                     "[obstacle_memory_node]: Obstacle memory lidar decisions: "
@@ -159,7 +168,7 @@ def make_ros_log(
 
 class DroneNavHeadlessValidatorTest(unittest.TestCase):
     def test_classifier_effective_config_mismatch_fails(self) -> None:
-        ros_log = make_ros_log().replace(
+        ros_log = make_ros_log(known_static_classifier_enabled=True).replace(
             "node=planner status=ready "
             "path='/workspace/install/share/drone_city_nav/worlds/known_passages.passages3d' "
             "volumes=12 closer_tolerance=0.500m farther_tolerance=1.500m",
@@ -183,6 +192,77 @@ class DroneNavHeadlessValidatorTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn(
             "FAIL: known-static classifier effective configs match", result.errors
+        )
+
+    def test_disabled_known_static_classifier_is_valid_default(self) -> None:
+        result = validator.validate_logs(
+            ros_log=make_ros_log(),
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertIn(
+            "OK: known-static classifier is disabled in both nodes",
+            result.messages,
+        )
+        self.assertIn(
+            "SKIP: known-static classifier ignores physical passage masses: "
+            "classifier disabled by config",
+            result.messages,
+        )
+
+    def test_enabled_known_static_classifier_remains_supported(self) -> None:
+        result = validator.validate_logs(
+            ros_log=make_ros_log(known_static_classifier_enabled=True),
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertIn(
+            "OK: known-static classifier is enabled in both nodes",
+            result.messages,
+        )
+        self.assertIn(
+            "OK: known-static classifier ignores physical passage masses",
+            result.messages,
+        )
+
+    def test_classifier_enabled_state_mismatch_fails(self) -> None:
+        ros_log = make_ros_log().replace(
+            "node=planner status=disabled",
+            "node=planner status=ready",
+        )
+        result = validator.validate_logs(
+            ros_log=ros_log,
+            px4_log=PX4_OK_LOG,
+            options=validator.ValidationOptions(
+                expected_static=True,
+                expected_memory=True,
+                expected_current_lidar=True,
+                enable_lidar_debug=True,
+                mission_check=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            "FAIL: known-static classifier has matching ready or disabled status "
+            "in both nodes",
+            result.errors,
         )
 
     def test_missing_ground_classifier_config_fails(self) -> None:

@@ -35,14 +35,15 @@ Important parameters:
 - `range_hit_epsilon_m`
 - lidar pose latency and attitude compensation settings.
 
-Before a current lidar hit is written into the overlay, the always-on 3D known
-static classifier compares its map-frame ray, measured range, and endpoint XYZ
-with the known passage-building solids and opening volumes. A confident
+When `known_static_lidar_hit_classifier_enabled=true`, the optional 3D
+known-static fallback classifier runs before a current lidar hit is written
+into the overlay. It compares the map-frame ray, measured range, and endpoint
+XYZ with the known passage-building solids and opening volumes. A confident
 physical-solid hit is suppressed. A hit clearly separated from the solid or
-inside a free opening remains in the overlay immediately. A near-surface,
-edge, or otherwise ambiguous known-static hit remains pending and does not
-change the overlay until independent viewpoints resolve its geometry. This
-decision is independent of the current trajectory and distance to a passage.
+inside a free opening remains in the overlay immediately. A near-surface, edge,
+or otherwise ambiguous known-static hit remains pending and does not change the
+overlay until independent viewpoints resolve its geometry. This decision is
+independent of the current trajectory and distance to a passage.
 
 The same decision is applied before a hit changes obstacle-memory scores. It is
 not a blanket spatial exclusion around an opening, so an unknown object clearly
@@ -229,9 +230,9 @@ creating a replan blocker.
 Provider failures are isolated. Disabling ground rejection is reported as
 `disabled`; invalid ground parameters or missing required 3D attitude geometry
 are reported as `unavailable`. In either case known-static classification still
-runs. When multiple expected surfaces have effectively equal nearest ranges, a
-hit is retained only if it is clearly before every tied candidate; otherwise no
-grid update is applied.
+runs when independently enabled. When multiple expected surfaces have
+effectively equal nearest ranges, a hit is retained only if it is clearly
+before every tied candidate; otherwise no grid update is applied.
 
 The projected-altitude filter remains a final non-mutating veto. Ground and
 known-static classification happens first for diagnostics, including beams
@@ -344,11 +345,12 @@ recently observed obstacles available after they leave the instantaneous scan.
 Memory is especially important when the drone turns away from an obstacle but
 the planner still needs to avoid it.
 
-The same known-static classifier is applied before a hit changes obstacle-memory
-scores. It suppresses only new confident physical-solid hits; it does not remove
-older cells selectively or create a temporary memory copy. When classifier
-geometry is installed or changed, obstacle memory and its associated provenance
-are reset together so no cell survives under a different geometry contract.
+When enabled, the same known-static classifier is applied before a hit changes
+obstacle-memory scores. It suppresses only new confident physical-solid hits;
+it does not remove older cells selectively or create a temporary memory copy.
+When classifier geometry is installed or changed, obstacle memory and its
+associated provenance are reset together so no cell survives under a different
+geometry contract.
 
 These sources are complementary:
 
@@ -358,10 +360,10 @@ These sources are complementary:
 - inflation turns merged evidence into safety space.
 
 Known-passage geometry is used consistently by both lidar ingestion paths. The
-classifier never filters static-map cells and never changes A* route selection.
-It only prevents known physical masses from becoming new dynamic evidence; a
-real object before a wall or inside an opening still follows normal prohibited
-grid and replan behavior.
+optional classifier never filters static-map cells and never changes A* route
+selection. When enabled, it only prevents known physical masses from becoming
+new dynamic evidence; a real object before a wall or inside an opening still
+follows normal prohibited grid and replan behavior.
 
 The ground provider follows the same shared decision path but does not add a 3D
 planning layer. Obstacle memory remains a 2D scored grid. Accepted occupied cells

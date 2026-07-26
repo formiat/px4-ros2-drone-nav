@@ -169,8 +169,8 @@ and curvature metrics, rejection reason, and whether the candidate was accepted.
 These fields are intended for headless debugging when a known-passage XY repair
 is possible but not selected.
 
-The obstacle-memory update and planner summary report the always-on 3D known
-static lidar classifier:
+The obstacle-memory update and planner summary report the optional 3D
+known-static lidar fallback classifier, including its `disabled` state:
 
 - `expected_static_hits_ignored` / `ignored`;
 - `unexpected_hits_kept` / `unexpected`;
@@ -345,10 +345,10 @@ range delta. `ObstacleMemoryProvenance` schema version 2 carries this snapshot
 with both the occupancy trigger and last accepted hit. The planner only applies
 it after the existing exact stamp, frame, grid geometry, and grid-content match.
 
-The classifier is independent of the active trajectory and drone proximity to
-an opening. Opening and detached obstacles continue through normal prohibited
-grid and replan handling; unresolved static-attached evidence does not mutate a
-grid.
+When enabled, the classifier is independent of the active trajectory and drone
+proximity to an opening. Opening and detached obstacles continue through normal
+prohibited grid and replan handling; unresolved static-attached evidence does
+not mutate a grid.
 
 ## Replan Diagnostics
 

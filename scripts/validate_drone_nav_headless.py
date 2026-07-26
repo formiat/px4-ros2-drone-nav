@@ -98,7 +98,7 @@ def require_source_value(
 
 def validate_known_static_classifier_contract(
     result: ValidationResult, ros_log: str
-) -> None:
+) -> bool | None:
     matches = re.findall(
         r"Known static lidar classifier: node=(obstacle_memory|planner) "
         r"status=(\S+) path='([^']*)' volumes=(\d+) "
@@ -109,21 +109,32 @@ def validate_known_static_classifier_contract(
         node: (status, path, int(volumes), float(closer), float(farther))
         for node, status, path, volumes, closer, farther in matches
     }
+    classifier_enabled: bool | None = None
     if "obstacle_memory" not in by_node or "planner" not in by_node:
         result.fail("known-static classifier effective config is logged by both nodes")
-        return
-    result.ok_message("known-static classifier effective config is logged by both nodes")
+    else:
+        result.ok_message(
+            "known-static classifier effective config is logged by both nodes"
+        )
 
-    obstacle_memory = by_node["obstacle_memory"]
-    planner = by_node["planner"]
-    if obstacle_memory[0] != "ready" or planner[0] != "ready":
-        result.fail("known-static classifier is ready in both nodes")
-    else:
-        result.ok_message("known-static classifier is ready in both nodes")
-    if obstacle_memory[1:] != planner[1:]:
-        result.fail("known-static classifier effective configs match")
-    else:
-        result.ok_message("known-static classifier effective configs match")
+        obstacle_memory = by_node["obstacle_memory"]
+        planner = by_node["planner"]
+        statuses = {obstacle_memory[0], planner[0]}
+        if statuses == {"ready"}:
+            classifier_enabled = True
+            result.ok_message("known-static classifier is enabled in both nodes")
+        elif statuses == {"disabled"}:
+            classifier_enabled = False
+            result.ok_message("known-static classifier is disabled in both nodes")
+        else:
+            result.fail(
+                "known-static classifier has matching ready or disabled status "
+                "in both nodes"
+            )
+        if obstacle_memory[1:] != planner[1:]:
+            result.fail("known-static classifier effective configs match")
+        else:
+            result.ok_message("known-static classifier effective configs match")
 
     ground_matches = re.findall(
         r"Ground lidar classifier: node=(obstacle_memory|planner) "
@@ -137,16 +148,18 @@ def validate_known_static_classifier_contract(
     }
     if "obstacle_memory" not in ground_by_node or "planner" not in ground_by_node:
         result.fail("ground classifier effective config is logged by both nodes")
-        return
-    result.ok_message("ground classifier effective config is logged by both nodes")
-    if any(config[0] != "ready" for config in ground_by_node.values()):
-        result.fail("ground classifier is ready in both nodes")
     else:
-        result.ok_message("ground classifier is ready in both nodes")
-    if ground_by_node["obstacle_memory"] != ground_by_node["planner"]:
-        result.fail("ground classifier effective configs match")
-    else:
-        result.ok_message("ground classifier effective configs match")
+        result.ok_message("ground classifier effective config is logged by both nodes")
+        if any(config[0] != "ready" for config in ground_by_node.values()):
+            result.fail("ground classifier is ready in both nodes")
+        else:
+            result.ok_message("ground classifier is ready in both nodes")
+        if ground_by_node["obstacle_memory"] != ground_by_node["planner"]:
+            result.fail("ground classifier effective configs match")
+        else:
+            result.ok_message("ground classifier effective configs match")
+
+    return classifier_enabled
 
 
 def require_lidar_decision_summary(
@@ -171,8 +184,11 @@ def validate_logs(
 ) -> ValidationResult:
     result = ValidationResult()
 
+    known_static_classifier_enabled: bool | None = None
     if options.expected_memory is True and options.expected_current_lidar is True:
-        validate_known_static_classifier_contract(result, ros_log)
+        known_static_classifier_enabled = validate_known_static_classifier_contract(
+            result, ros_log
+        )
 
     result.require("Gazebo world is ready", px4_log, r"Gazebo world is ready")
     result.require(
@@ -387,11 +403,17 @@ def validate_logs(
                 options.expected_memory is True
                 or options.expected_current_lidar is True
             ):
-                result.require(
-                    "known-static classifier ignores physical passage masses",
-                    ros_log,
-                    r"known_static\[ignored=[1-9][0-9]*",
-                )
+                if known_static_classifier_enabled is True:
+                    result.require(
+                        "known-static classifier ignores physical passage masses",
+                        ros_log,
+                        r"known_static\[ignored=[1-9][0-9]*",
+                    )
+                elif known_static_classifier_enabled is False:
+                    result.skip(
+                        "known-static classifier ignores physical passage masses",
+                        "classifier disabled by config",
+                    )
 
     if CRITICAL_PX4_PATTERN.search(px4_log):
         if not options.allow_mission_failure:

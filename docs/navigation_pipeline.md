@@ -22,13 +22,14 @@ diagnostics.
 See `known_passages.md` for the physical-world, lidar, local XY repair, and
 vertical-profile contracts for these annotations.
 
-Known passages also provide physical-solid geometry to the always-on 3D lidar
-classifier. Before current lidar or accumulated memory records a new hit, the
-classifier combines the range match with signed 3D endpoint distance. Hits
-attached to a known mass are suppressed or held as non-mutating pending
-evidence; hits clearly detached in front of a mass and hits inside a free
-opening are retained immediately. The classifier is independent of trajectory/proximity, never filters
-static-map cells, and does not alter A* route preferences.
+Known passages can also provide physical-solid geometry to the optional 3D
+lidar fallback classifier. It is disabled by default. When enabled, the
+classifier combines the range match with signed 3D endpoint distance before
+current lidar or accumulated memory records a new hit. Hits attached to a known
+mass are suppressed or held as non-mutating pending evidence; hits clearly
+detached in front of a mass and hits inside a free opening are retained
+immediately. The classifier is independent of trajectory/proximity, never
+filters static-map cells, and does not alter A* route preferences.
 
 Raw sources are merged before inflation. Raw sources must not contain safety
 inflation.
@@ -205,12 +206,12 @@ The `/drone_city_nav/path` debug mirror and
 Known passage markers are RViz/debug artifacts. Architectural structure volumes,
 opening frames, opening centers, approach arrows, and exit arrows help verify
 annotation geometry. The same annotations feed the no-over-building validator
-and the always-on known-static lidar classifier. Known-passage validation is a
-planner acceptance guard: a trajectory that intersects an annotated structure
-outside its opening is not published. It is not collision or crash detection;
-physical contacts remain Gazebo's responsibility. Classifier decisions apply
-only to new dynamic lidar evidence and are not tied to an active trajectory
-passage span.
+and, when enabled, the known-static lidar fallback classifier. Known-passage
+validation is a planner acceptance guard: a trajectory that intersects an
+annotated structure outside its opening is not published. It is not collision
+or crash detection; physical contacts remain Gazebo's responsibility.
+Classifier decisions apply only to new dynamic lidar evidence and are not tied
+to an active trajectory passage span.
 
 ## Pipeline Contracts
 

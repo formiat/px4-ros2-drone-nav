@@ -110,6 +110,8 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
   const bool enabled = node.declare_parameter<bool>("known_passages_enabled", true);
   const std::string source_path = node.declare_parameter<std::string>(
       "known_passages_path", "worlds/known_passages.passages3d");
+  setup.classifier_enabled =
+      node.declare_parameter<bool>("known_static_lidar_hit_classifier_enabled", false);
   setup.closer_range_tolerance_m =
       std::clamp(node.declare_parameter<double>(
                      "known_static_lidar_hit_closer_range_tolerance_m", 0.5),
@@ -145,7 +147,7 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
     setup.passage_map = *source.map;
     std::vector<KnownPassageSolidVolume> volumes =
         knownPassageSolidVolumes(*setup.passage_map);
-    if (!volumes.empty()) {
+    if (setup.classifier_enabled && !volumes.empty()) {
       setup.classifier.emplace(
           std::move(volumes),
           KnownStaticLidarHitClassifierConfig{
@@ -167,12 +169,15 @@ KnownStaticLidarSetup declareKnownStaticLidarSetup(rclcpp::Node& node,
                  frame_id.c_str());
   }
 
+  const char* classifier_status = "disabled";
+  if (setup.classifier_enabled) {
+    classifier_status = setup.classifier.has_value() ? "ready" : "fail_open";
+  }
   RCLCPP_INFO(node.get_logger(),
               "Known static lidar classifier: node=obstacle_memory status=%s path='%s' "
               "volumes=%zu closer_tolerance=%.3fm farther_tolerance=%.3fm "
               "endpoint_volume_tolerance=%.3fm opening_boundary_tolerance=%.3fm",
-              setup.classifier.has_value() ? "ready" : "fail_open",
-              setup.resolved_path.string().c_str(),
+              classifier_status, setup.resolved_path.string().c_str(),
               setup.classifier.has_value() ? setup.classifier->volumeCount() : 0U,
               setup.closer_range_tolerance_m, setup.farther_range_tolerance_m,
               setup.endpoint_volume_tolerance_m, setup.opening_boundary_tolerance_m);

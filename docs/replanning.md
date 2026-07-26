@@ -13,16 +13,15 @@ Planning clearance is different. It is an extra planner margin used to prefer
 safer trajectories. Entering the planning-clearance margin is not by itself a
 runtime replan reason.
 
-Known passage geometry is handled before a new lidar hit enters either dynamic
-source. A confident range/geometry match to a known physical solid is
-suppressed. A hit clearly detached from the solid or inside a free opening is
-retained immediately. A boundary, low ground candidate, or projection-uncertain
-hit performs no hit or free-space update until independent 3D viewpoints
-resolve its geometry.
-This is always active when valid 3D pose and known geometry are
-available, is independent of the current trajectory, and never suppresses a
-static-map cell. Any retained hit that inflates into the current path remains a
-normal hard replan trigger.
+When `known_static_lidar_hit_classifier_enabled=true`, known passage geometry
+is handled before a new lidar hit enters either dynamic source. A confident
+range/geometry match to a known physical solid is suppressed. A hit clearly
+detached from the solid or inside a free opening is retained immediately. A
+boundary, low ground candidate, or projection-uncertain hit performs no hit or
+free-space update until independent 3D viewpoints resolve its geometry. The
+optional classifier is independent of the current trajectory and never
+suppresses a static-map cell. Any retained hit that inflates into the current
+path remains a normal hard replan trigger.
 
 ## Runtime Validation
 

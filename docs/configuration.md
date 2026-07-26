@@ -94,6 +94,7 @@ Known passages:
 - `known_passage_validation_min_opening_depth_fraction`
 - `known_passage_validation_clearance_margin_m`
 - `known_passage_validation_max_diagnostics`
+- `known_static_lidar_hit_classifier_enabled`
 - `known_static_lidar_hit_closer_range_tolerance_m`
 - `known_static_lidar_hit_farther_range_tolerance_m`
 - `known_static_lidar_hit_endpoint_volume_tolerance_m`
@@ -146,9 +147,15 @@ Known passages:
 - `passage_insertion_max_candidates`
 - `passage_insertion_max_diagnostics`
 
-The closer and farther tolerances are configured identically for the planner
-and obstacle-memory nodes. The always-on 3D classifier compares each measured
-hit range and endpoint XYZ with the nearest known passage-building solid. A hit
+`known_static_lidar_hit_classifier_enabled` controls the optional geometric
+fallback classifier in both the planner and obstacle-memory nodes. It is
+disabled by default. The simulation's GPU lidar visibility mask excludes the
+annotated lower and upper passage masses at the sensor level while leaving
+their visuals and collisions intact.
+
+When explicitly enabled, the classifier compares each measured hit range and
+endpoint XYZ with the nearest known passage-building solid. Its closer and
+farther tolerances must be configured identically for both nodes. A hit
 materially closer and spatially detached from the solid remains immediate
 obstacle evidence. A closer endpoint inside or near the solid becomes
 non-mutating ambiguous evidence instead of an obstacle. Opening-interior hits
@@ -172,8 +179,8 @@ limit.
 
 Known passages describe pre-annotated passage structures and openings. They
 publish RViz markers, validate whether the final executable trajectory crosses a
-known structure footprint through an allowed opening volume, and provide the
-known-solid geometry for the lidar classifier.
+known structure footprint through an allowed opening volume, and provide
+known-solid geometry to the optional lidar classifier when it is enabled.
 
 See `known_passages.md` for the complete physical-world, trajectory, runtime,
 and diagnostic contract.
@@ -183,13 +190,13 @@ blocking cells. The 2D planner must be able to route through the footprint when
 a valid 3D opening is annotated; RViz shows those volumes through
 `/drone_city_nav/known_passage_markers` instead.
 
-The validation layer does not reject trajectories by itself. The lidar
-classifier does not detect passages, does not modify static map cells, and does
-not create a trajectory-dependent working copy of lidar or memory data. It
-suppresses a new hit explained by a known physical solid. Hits through the free
-opening and clearly detached hits remain dynamic obstacle evidence. Boundary
-or static-attached ambiguous hits remain pending without changing memory or
-the current-lidar overlay.
+The validation layer does not reject trajectories by itself. When enabled, the
+lidar classifier does not detect passages, does not modify static map cells,
+and does not create a trajectory-dependent working copy of lidar or memory
+data. It suppresses a new hit explained by a known physical solid. Hits through
+the free opening and clearly detached hits remain dynamic obstacle evidence.
+Boundary or static-attached ambiguous hits remain pending without changing
+memory or the current-lidar overlay.
 
 The default file format is line-based and versioned:
 
@@ -221,6 +228,8 @@ building collision volumes:
   `opening_volume_miss` when its lateral/vertical clearance is below this
   margin.
 - `known_passage_validation_max_diagnostics` caps per-span JSON/log detail.
+- `known_static_lidar_hit_classifier_enabled` enables the optional known-solid
+  source classifier. The default is `false` in both lidar ingestion nodes.
 - `known_static_lidar_hit_closer_range_tolerance_m` bounds how much closer a
   hit may be before it is retained as an unknown object in front of the known
   solid.
@@ -266,9 +275,11 @@ farther tolerance `1.5` m, candidate altitude tolerance `1.5` m, and attached
 altitude tolerance `0.3` m. The uncertainty policy defaults to enabled, requires
 source-timestamp alignment for immediate unknown hits, and reserves `0.5` m at
 the range limit. Headless validation requires the effective logged
-configuration to match. A deliberately disabled provider is reported as
-`disabled`; invalid numeric configuration is `unavailable` and does not disable
-the independent known-static provider.
+configuration to match. The known-static fallback must also have the same
+enabled state and tolerances in both nodes; its default state is `disabled`.
+A deliberately disabled ground provider is reported as `disabled`; invalid
+numeric ground configuration is `unavailable` and does not alter the
+independent known-static setting.
 - `obstacle_memory_debug_publish_period_s` limits only the standalone raw-grid
   and provenance debug topics. `0` publishes them with every atomic update;
   the default `1.0 s` avoids tripling the large per-scan transport payload.

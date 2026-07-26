@@ -538,6 +538,7 @@ private:
   KnownPassageValidationConfig known_passage_validation_config_{};
   GroundLidarRejectionConfig ground_lidar_rejection_config_{};
   LidarIngestionConfidenceConfig lidar_ingestion_confidence_config_{};
+  bool known_static_lidar_hit_classifier_enabled_{false};
   double known_static_lidar_hit_closer_range_tolerance_m_{0.5};
   double known_static_lidar_hit_farther_range_tolerance_m_{1.5};
   double known_static_lidar_hit_endpoint_volume_tolerance_m_{0.75};

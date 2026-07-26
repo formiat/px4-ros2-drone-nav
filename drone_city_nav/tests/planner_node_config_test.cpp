@@ -95,6 +95,7 @@ TEST_F(PlannerNodeConfigTest, UsesDocumentedDefaults) {
   EXPECT_DOUBLE_EQ(config.known_passage_validation.min_opening_depth_fraction, 0.75);
   EXPECT_DOUBLE_EQ(config.known_passage_validation.clearance_margin_m, 0.5);
   EXPECT_EQ(config.known_passage_validation.max_diagnostics, 8U);
+  EXPECT_FALSE(config.known_static_lidar_hit_classifier_enabled);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_closer_range_tolerance_m, 0.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_farther_range_tolerance_m, 1.5);
   EXPECT_DOUBLE_EQ(config.known_static_lidar_hit_endpoint_volume_tolerance_m, 0.75);
@@ -749,6 +750,16 @@ TEST_F(PlannerNodeConfigTest, AllowsNoStaticAStarRecoveryOverride) {
   const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
 
   EXPECT_TRUE(config.no_static_rollout.astar_recovery_enabled);
+}
+
+TEST_F(PlannerNodeConfigTest, AllowsKnownStaticLidarHitClassifierOverride) {
+  const auto node =
+      makeNode("planner_node_config_known_static_lidar_classifier",
+               {rclcpp::Parameter{"known_static_lidar_hit_classifier_enabled", true}});
+
+  const PlannerNodeConfig config = loadPlannerNodeConfig(*node);
+
+  EXPECT_TRUE(config.known_static_lidar_hit_classifier_enabled);
 }
 
 } // namespace drone_city_nav

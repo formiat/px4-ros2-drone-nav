@@ -112,6 +112,11 @@ class TopicContractTest(unittest.TestCase):
             yaml_text,
             re.M,
         )
+        classifier_enabled = re.findall(
+            r"^\s+known_static_lidar_hit_classifier_enabled:\s*(true|false)\s*$",
+            yaml_text,
+            re.M,
+        )
         ground_enabled = re.findall(
             r"^\s+ground_lidar_rejection_enabled:\s*(true|false)\s*$",
             yaml_text,
@@ -133,10 +138,19 @@ class TopicContractTest(unittest.TestCase):
 
         self.assertEqual(closer_tolerances, ["0.5", "0.5"])
         self.assertEqual(farther_tolerances, ["1.5", "1.5"])
+        self.assertEqual(classifier_enabled, ["false", "false"])
         self.assertEqual(ground_enabled, ["true", "true"])
         self.assertEqual(ground_altitudes, ["0.05", "0.05"])
         self.assertEqual(ground_closer, ["0.5", "0.5"])
         self.assertEqual(ground_farther, ["1.5", "1.5"])
+        source_paths = sorted((REPO_ROOT / "drone_city_nav" / "src").glob("*.cpp"))
+        source_text = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
+        declarations = re.findall(
+            r'declare_parameter<bool>\(\s*"known_static_lidar_hit_classifier_enabled"'
+            r"\s*,\s*false\s*\)",
+            source_text,
+        )
+        self.assertEqual(len(declarations), 2)
         self.assertNotIn("lidar_mapping_tilt_cutoff", yaml_text)
         self.assertNotIn("known_static_lidar_hit_range_tolerance_m", yaml_text)
         self.assertNotIn("passage_traversal_sensor_policy", yaml_text)

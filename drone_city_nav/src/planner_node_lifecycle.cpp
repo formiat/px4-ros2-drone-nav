@@ -388,6 +388,8 @@ void PlannerNode::applyConfig(const PlannerNodeConfig& config) {
   use_known_passages_ = config.known_passages.enabled;
   known_passages_path_param_ = config.known_passages.configured_path.string();
   known_passage_validation_config_ = config.known_passage_validation;
+  known_static_lidar_hit_classifier_enabled_ =
+      config.known_static_lidar_hit_classifier_enabled;
   known_static_lidar_hit_closer_range_tolerance_m_ =
       config.known_static_lidar_hit_closer_range_tolerance_m;
   known_static_lidar_hit_farther_range_tolerance_m_ =
