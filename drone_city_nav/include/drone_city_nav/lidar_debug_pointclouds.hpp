@@ -20,9 +20,6 @@ collectOccupancyGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
                            std::uint8_t min_value, std::uint8_t max_value);
 
 [[nodiscard]] std::vector<Point2>
-collectProhibitedGridPoints(const nav_msgs::msg::OccupancyGrid& grid);
-
-[[nodiscard]] std::vector<Point2>
 collectOccupiedGridPoints(const nav_msgs::msg::OccupancyGrid& grid);
 
 [[nodiscard]] sensor_msgs::msg::PointCloud2

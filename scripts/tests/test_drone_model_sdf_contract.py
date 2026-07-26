@@ -152,13 +152,13 @@ class DroneModelSdfContractTest(unittest.TestCase):
         self.assertEqual([0.0, 0.0, 0.055], sensor_pose[:3])
         config_text = NAV_CONFIG.read_text(encoding="utf-8")
         self.assertEqual(
-            3,
+            2,
             config_text.count(
                 "lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]"
             ),
         )
         self.assertEqual(
-            3,
+            2,
             config_text.count(
                 "lidar_extrinsic_quaternion_lidar_flu_to_body_frd: "
                 "[0.0, 1.0, 0.0, 0.0]"

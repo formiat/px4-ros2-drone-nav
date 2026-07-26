@@ -45,7 +45,7 @@ LidarDebugNode::collectGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
   return collectOccupancyGridPoints(grid, min_value, max_value);
 }
 
-[[nodiscard]] std::vector<Point2> LidarDebugNode::collectProhibitedGridPoints() const {
+[[nodiscard]] std::vector<Point2> LidarDebugNode::collectOccupiedGridPoints() const {
   if (!grid_seen_) {
     return {};
   }
@@ -57,9 +57,9 @@ LidarDebugNode::collectGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
   return collectGridPoints(grid, 100, 100);
 }
 
-void LidarDebugNode::publishProhibitedPointCloud() {
-  publishPointCloud(collectProhibitedGridPoints(), prohibited_pointcloud_z_m_,
-                    prohibited_pointcloud_pub_);
+void LidarDebugNode::publishOccupiedPointCloud() {
+  publishPointCloud(collectOccupiedGridPoints(), occupied_pointcloud_z_m_,
+                    occupied_pointcloud_pub_);
 }
 
 [[nodiscard]] std::pair<int, int>

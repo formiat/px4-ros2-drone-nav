@@ -1,444 +1,45 @@
 #!/usr/bin/env python3
-"""Validate deterministic log markers for the drone navigation headless run."""
+"""Validate the production MPPI headless navigation contract."""
 
 from __future__ import annotations
 
 import argparse
 import re
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 
 CRITICAL_PX4_PATTERN = re.compile(
-    r"Sensor [0-9]+ missing"
-    r"|Accel Sensor [0-9]+ missing"
-    r"|Gyro Sensor [0-9]+ missing"
-    r"|barometer [0-9]+ missing"
-    r"|Found 0 compass"
-    r"|Timed out waiting for Gazebo world"
-    r"|gz_bridge failed"
-    r"|Attitude failure",
+    r"(?:ERROR \[|Critical failure|Segmentation fault)",
     re.IGNORECASE,
 )
 
 
-@dataclass(frozen=True)
-class ValidationOptions:
-    expected_static: bool | None = None
-    expected_memory: bool | None = None
-    expected_current_lidar: bool | None = None
-    enable_lidar_debug: bool = True
-    mission_check: bool = False
-    allow_mission_failure: bool = False
-
-
-@dataclass
-class ValidationResult:
-    messages: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        return not self.errors
-
-    def ok_message(self, label: str) -> None:
-        self.messages.append(f"OK: {label}")
-
-    def skip(self, label: str, reason: str) -> None:
-        self.messages.append(f"SKIP: {label}: {reason}")
-
-    def warn(self, message: str) -> None:
-        self.messages.append(f"WARN: {message}")
-
-    def fail(self, label: str) -> None:
-        self.errors.append(f"FAIL: {label}")
-
-    def require(self, label: str, text: str, pattern: str) -> None:
-        if re.search(pattern, text, flags=re.MULTILINE):
-            self.ok_message(label)
-            return
-        self.fail(label)
-
-
-def parse_bool(value: str | None) -> bool | None:
-    if value is None or value == "":
+def parse_bool(value: str) -> bool | None:
+    normalized = value.strip().lower()
+    if not normalized:
         return None
-    normalized = value.lower()
     if normalized in {"1", "true", "yes", "on"}:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    return None
+    raise ValueError(f"invalid boolean value: {value}")
 
 
-def source_value_pattern(source_name: str, expected_value: bool) -> str:
-    enabled_values = r"(?:true|always|enabled|on)"
-    disabled_values = r"(?:false|never|disabled|off)"
-    expected_pattern = enabled_values if expected_value else disabled_values
-    return (
-        rf"Planner obstacle sources: .*{re.escape(source_name)}="
-        rf"{expected_pattern}\b"
-    )
-
-
-def require_source_value(
-    result: ValidationResult,
-    label: str,
-    source_name: str,
-    expected_value: bool | None,
-    ros_log: str,
-) -> None:
-    if expected_value is None:
-        result.skip(label, "source value comes from custom params file")
-        return
-
-    result.require(label, ros_log, source_value_pattern(source_name, expected_value))
-
-
-def validate_known_static_classifier_contract(
-    result: ValidationResult, ros_log: str
-) -> bool | None:
-    matches = re.findall(
-        r"Known static lidar classifier: node=(obstacle_memory|planner) "
-        r"status=(\S+) path='([^']*)' volumes=(\d+) "
-        r"closer_tolerance=([0-9.]+)m farther_tolerance=([0-9.]+)m",
-        ros_log,
-    )
-    by_node = {
-        node: (status, path, int(volumes), float(closer), float(farther))
-        for node, status, path, volumes, closer, farther in matches
-    }
-    classifier_enabled: bool | None = None
-    if "obstacle_memory" not in by_node or "planner" not in by_node:
-        result.fail("known-static classifier effective config is logged by both nodes")
+def require(label: str, text: str, pattern: str, errors: list[str]) -> None:
+    if re.search(pattern, text):
+        print(f"OK: {label}")
     else:
-        result.ok_message(
-            "known-static classifier effective config is logged by both nodes"
-        )
-
-        obstacle_memory = by_node["obstacle_memory"]
-        planner = by_node["planner"]
-        statuses = {obstacle_memory[0], planner[0]}
-        if statuses == {"ready"}:
-            classifier_enabled = True
-            result.ok_message("known-static classifier is enabled in both nodes")
-        elif statuses == {"disabled"}:
-            classifier_enabled = False
-            result.ok_message("known-static classifier is disabled in both nodes")
-        else:
-            result.fail(
-                "known-static classifier has matching ready or disabled status "
-                "in both nodes"
-            )
-        if obstacle_memory[1:] != planner[1:]:
-            result.fail("known-static classifier effective configs match")
-        else:
-            result.ok_message("known-static classifier effective configs match")
-
-    ground_matches = re.findall(
-        r"Ground lidar classifier: node=(obstacle_memory|planner) "
-        r"status=(\S+) ground_altitude=([-0-9.]+)m "
-        r"closer_tolerance=([0-9.]+)m farther_tolerance=([0-9.]+)m",
-        ros_log,
-    )
-    ground_by_node = {
-        node: (status, float(altitude), float(closer), float(farther))
-        for node, status, altitude, closer, farther in ground_matches
-    }
-    if "obstacle_memory" not in ground_by_node or "planner" not in ground_by_node:
-        result.fail("ground classifier effective config is logged by both nodes")
-    else:
-        result.ok_message("ground classifier effective config is logged by both nodes")
-        if any(config[0] != "ready" for config in ground_by_node.values()):
-            result.fail("ground classifier is ready in both nodes")
-        else:
-            result.ok_message("ground classifier is ready in both nodes")
-        if ground_by_node["obstacle_memory"] != ground_by_node["planner"]:
-            result.fail("ground classifier effective configs match")
-        else:
-            result.ok_message("ground classifier effective configs match")
-
-    return classifier_enabled
-
-
-def require_lidar_decision_summary(
-    result: ValidationResult, label: str, prefix: str, ros_log: str
-) -> None:
-    result.require(
-        label,
-        ros_log,
-        rf"{re.escape(prefix)}: expected_ground=\d+ closer_retained=\d+ "
-        r"ground\[ambiguous=\d+ pending=\d+ surface=\d+ obstacle=\d+ "
-        r"unavailable=\d+ disabled=\d+\] "
-        r"projection\[pending=\d+ obstacle=\d+\] "
-        r"non_ground_altitude_rejected=\d+[^\n]* diagnostics=\d+",
-    )
-
-
-def validate_logs(
-    *,
-    ros_log: str,
-    px4_log: str,
-    options: ValidationOptions,
-) -> ValidationResult:
-    result = ValidationResult()
-
-    known_static_classifier_enabled: bool | None = None
-    if options.expected_memory is True and options.expected_current_lidar is True:
-        known_static_classifier_enabled = validate_known_static_classifier_contract(
-            result, ros_log
-        )
-
-    result.require("Gazebo world is ready", px4_log, r"Gazebo world is ready")
-    result.require(
-        "PX4 local position is valid",
-        ros_log,
-        r"First valid PX4 local position",
-    )
-
-    if options.expected_memory is True:
-        result.require(
-            "lidar scans are received by obstacle memory",
-            ros_log,
-            r"First lidar scan",
-        )
-    elif options.expected_current_lidar is True:
-        result.require(
-            "lidar scans are received by planner",
-            ros_log,
-            r"First planner lidar scan",
-        )
-    elif (
-        options.expected_memory is False
-        and options.expected_current_lidar is False
-    ):
-        result.skip(
-            "lidar scans are received",
-            "static-only source configuration does not require lidar data",
-        )
-    else:
-        result.require(
-            "lidar scans are received",
-            ros_log,
-            r"First lidar scan|First planner lidar scan|LIDAR_DEBUG snapshot=",
-        )
-
-    if options.expected_memory is True:
-        result.require(
-            "obstacle memory receives lidar",
-            ros_log,
-            r"Obstacle memory update:",
-        )
-        result.require(
-            "obstacle memory is available to planner",
-            ros_log,
-            r"First obstacle memory grid|memory\[enabled=true .*has_memory=true",
-        )
-        require_lidar_decision_summary(
-            result,
-            "obstacle memory lidar decision summary is logged",
-            "Obstacle memory lidar decisions",
-            ros_log,
-        )
-    elif options.expected_memory is False:
-        result.require(
-            "obstacle memory source is disabled",
-            ros_log,
-            r"Obstacle memory mapping is disabled|Obstacle memory ready: enabled=false",
-        )
-        result.require(
-            "obstacle memory is disabled in planning",
-            ros_log,
-            r"memory\[enabled=false|Planner obstacle sources: .*memory=false",
-        )
-    else:
-        result.skip(
-            "obstacle memory source state",
-            "source value comes from custom params file",
-        )
-
-    result.require(
-        "planner obstacle sources are logged",
-        ros_log,
-        r"Planner obstacle sources:",
-    )
-    require_source_value(
-        result,
-        "static source value is logged",
-        "static",
-        options.expected_static,
-        ros_log,
-    )
-    require_source_value(
-        result,
-        "memory source value is logged",
-        "memory",
-        options.expected_memory,
-        ros_log,
-    )
-    require_source_value(
-        result,
-        "current lidar source value is logged",
-        "current_lidar",
-        options.expected_current_lidar,
-        ros_log,
-    )
-
-    if options.expected_static is True:
-        result.require(
-            "static city map is loaded",
-            ros_log,
-            r"Static city map loaded:",
-        )
-        result.require(
-            "static map contributes to planning",
-            ros_log,
-            r"static\[enabled=true loaded=true used=true|Planner obstacle sources: static=true",
-        )
-    elif options.expected_static is False:
-        result.require(
-            "static map is disabled in planning",
-            ros_log,
-            r"static\[enabled=false",
-        )
-    else:
-        result.skip(
-            "static map source state",
-            "source value comes from custom params file",
-        )
-
-    if options.expected_current_lidar is True:
-        result.require(
-            "current lidar is available to planner",
-            ros_log,
-            r"First planner lidar scan|current_lidar\[enabled=true used=true",
-        )
-        require_lidar_decision_summary(
-            result,
-            "planner current lidar decision summary is logged",
-            "Planner current lidar decisions",
-            ros_log,
-        )
-    elif options.expected_current_lidar is False:
-        result.require(
-            "current lidar is disabled in planning",
-            ros_log,
-            r"current_lidar\[enabled=false used=false|Planner obstacle sources: .*current_lidar=false",
-        )
-    else:
-        result.skip(
-            "current lidar source state",
-            "source value comes from custom params file",
-        )
-
-    result.require(
-        "planner publishes a path",
-        ros_log,
-        r"Published path:.*\bwaypoints=[1-9]\d*",
-    )
-    result.require(
-        "offboard command is sent",
-        ros_log,
-        r"Sent PX4 command: VEHICLE_CMD_DO_SET_MODE",
-    )
-    result.require(
-        "arm command is sent",
-        ros_log,
-        r"Sent PX4 command: VEHICLE_CMD_COMPONENT_ARM_DISARM",
-    )
-    result.require(
-        "vehicle reaches armed offboard state",
-        ros_log,
-        r"Offboard summary: .*armed=true.*offboard=true",
-    )
-
-    if options.enable_lidar_debug:
-        result.require(
-            "lidar debug snapshots are written",
-            ros_log,
-            r"LIDAR_DEBUG snapshot=",
-        )
-
-    if re.search(r"MISSION_RESULT success=false", ros_log):
-        if not options.allow_mission_failure:
-            result.fail("mission monitor reported failure")
-        else:
-            result.warn(
-                "mission monitor reported failure "
-                "(allowed by ALLOW_MISSION_FAILURE=true)"
-            )
-
-    if options.mission_check:
-        if options.allow_mission_failure and re.search(
-            r"MISSION_RESULT success=false", ros_log
-        ):
-            result.warn(
-                "mission monitor did not verify complete A-to-B flight "
-                "(allowed by ALLOW_MISSION_FAILURE=true)"
-            )
-        else:
-            result.require(
-                "mission monitor verifies complete A-to-B flight",
-                ros_log,
-                r"MISSION_RESULT success=true",
-            )
-            passage_counts = re.search(
-                r"MISSION_RESULT success=true.*actual_passage_openings_entered=(\d+) "
-                r"actual_passage_traversals_completed=(\d+) "
-                r"known_passage_openings=(\d+)",
-                ros_log,
-            )
-            if passage_counts is None:
-                result.fail("mission result reports passage traversal counts")
-            elif passage_counts.group(1) != passage_counts.group(3):
-                result.fail("all known passage openings are entered")
-            elif passage_counts.group(2) != passage_counts.group(3):
-                result.fail("all known passage traversals are completed")
-            else:
-                result.ok_message("mission result reports passage traversal counts")
-                result.ok_message("all known passage openings are entered")
-                result.ok_message("all known passage traversals are completed")
-            if (
-                options.expected_memory is True
-                or options.expected_current_lidar is True
-            ):
-                if known_static_classifier_enabled is True:
-                    result.require(
-                        "known-static classifier ignores physical passage masses",
-                        ros_log,
-                        r"known_static\[ignored=[1-9][0-9]*",
-                    )
-                elif known_static_classifier_enabled is False:
-                    result.skip(
-                        "known-static classifier ignores physical passage masses",
-                        "classifier disabled by config",
-                    )
-
-    if CRITICAL_PX4_PATTERN.search(px4_log):
-        if not options.allow_mission_failure:
-            result.fail("PX4 log contains critical simulator/preflight errors")
-        else:
-            result.warn(
-                "PX4 log contains critical simulator/preflight errors "
-                "(allowed by ALLOW_MISSION_FAILURE=true)"
-            )
-    else:
-        result.ok_message("no critical PX4 simulator/preflight errors found")
-
-    return result
+        errors.append(f"FAIL: {label}")
 
 
 def read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise RuntimeError(f"cannot read log file '{path}': {exc}") from exc
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate drone navigation headless run logs."
+        description="Validate production MPPI headless run logs."
     )
     parser.add_argument("--ros-log", required=True, type=Path)
     parser.add_argument("--px4-log", required=True, type=Path)
@@ -448,35 +49,109 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-lidar-debug", default="true")
     parser.add_argument("--mission-check", action="store_true")
     parser.add_argument("--allow-mission-failure", action="store_true")
-    return parser
+    args = parser.parse_args()
 
+    ros_log = read_text(args.ros_log)
+    px4_log = read_text(args.px4_log)
+    expected_static = parse_bool(args.expected_static)
+    enable_lidar_debug = parse_bool(args.enable_lidar_debug) is not False
+    errors: list[str] = []
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
-    options = ValidationOptions(
-        expected_static=parse_bool(args.expected_static),
-        expected_memory=parse_bool(args.expected_memory),
-        expected_current_lidar=parse_bool(args.expected_current_lidar),
-        enable_lidar_debug=parse_bool(args.enable_lidar_debug) is not False,
-        mission_check=args.mission_check,
-        allow_mission_failure=args.allow_mission_failure,
+    require("Gazebo world is ready", px4_log, r"Gazebo world is ready", errors)
+    require(
+        "obstacle memory receives lidar",
+        ros_log,
+        r"First lidar scan|Obstacle memory update:",
+        errors,
     )
-    try:
-        result = validate_logs(
-            ros_log=read_text(args.ros_log),
-            px4_log=read_text(args.px4_log),
-            options=options,
+    require(
+        "raw obstacle snapshots are published",
+        ros_log,
+        r"Raw obstacle snapshot|raw obstacle snapshot|raw_revision=",
+        errors,
+    )
+    require(
+        "production MPPI is ready",
+        ros_log,
+        r"Production MPPI ready:",
+        errors,
+    )
+    require(
+        "ESDF and global guide are available",
+        ros_log,
+        r"PRODUCTION_MPPI_ESDF .*guide_(?:points|valid)=",
+        errors,
+    )
+    require(
+        "production MPPI publishes collision-free horizons",
+        ros_log,
+        r"PRODUCTION_MPPI_TICK .*raw_collision=false "
+        r".*known_solid_collision=false",
+        errors,
+    )
+    require(
+        "production offboard is ready",
+        ros_log,
+        r"Production MPPI offboard ready:",
+        errors,
+    )
+    require(
+        "vehicle is armed by production offboard",
+        px4_log,
+        r"Armed by external command",
+        errors,
+    )
+    require(
+        "vehicle takes off under production MPPI",
+        px4_log,
+        r"Takeoff detected",
+        errors,
+    )
+
+    if expected_static is True:
+        require(
+            "static map contributes to raw occupancy",
+            ros_log,
+            r"Static city map loaded:|use_static_map=true",
+            errors,
         )
-    except RuntimeError as exc:
-        print(f"FAIL: {exc}", file=sys.stderr)
-        return 1
+    elif expected_static is False and re.search(r"use_static_map=true", ros_log):
+        errors.append("FAIL: static map is disabled")
+    else:
+        print("OK: static map source contract")
 
-    for message in result.messages:
-        print(message)
-    for error in result.errors:
+    if enable_lidar_debug:
+        require(
+            "lidar debug snapshots are written",
+            ros_log,
+            r"LIDAR_DEBUG snapshot=",
+            errors,
+        )
+
+    if re.search(r"CRASH_EVENT|crashed=true", ros_log):
+        errors.append("FAIL: crash was reported")
+    else:
+        print("OK: no crash was reported")
+
+    mission_failed = re.search(r"MISSION_RESULT success=false", ros_log) is not None
+    if args.mission_check and not args.allow_mission_failure:
+        require(
+            "mission monitor verifies complete flight",
+            ros_log,
+            r"MISSION_RESULT success=true",
+            errors,
+        )
+    elif mission_failed:
+        print("WARN: mission failure was allowed")
+
+    if CRITICAL_PX4_PATTERN.search(px4_log):
+        errors.append("FAIL: PX4 log contains critical simulator errors")
+    else:
+        print("OK: no critical PX4 simulator errors found")
+
+    for error in errors:
         print(error, file=sys.stderr)
-
-    return 0 if result.ok else 1
+    return 0 if not errors else 1
 
 
 if __name__ == "__main__":

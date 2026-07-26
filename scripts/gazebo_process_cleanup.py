@@ -26,8 +26,8 @@ PROJECT_NODE_EXECUTABLES = {
     "lidar_debug_node",
     "mission_monitor_node",
     "obstacle_memory_node",
-    "planner_node",
-    "px4_offboard_node",
+    "production_mppi_node",
+    "mppi_offboard_node",
 }
 
 

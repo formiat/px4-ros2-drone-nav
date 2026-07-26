@@ -40,6 +40,7 @@ struct PassageConstraint {
   float center_y_m{0.0F};
   float normal_x{1.0F};
   float normal_y{0.0F};
+  float half_depth_m{0.0F};
   float min_z_m{0.0F};
   float max_z_m{0.0F};
   float preferred_z_m{0.0F};

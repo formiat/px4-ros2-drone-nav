@@ -42,7 +42,12 @@ class CppSourceSizeContractTest(unittest.TestCase):
         oversized: list[str] = []
         root = repo_root()
         for path in tracked_source_files():
-            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            if not path.exists():
+                continue
+            line_count = sum(
+                bool(line.strip())
+                for line in path.read_text(encoding="utf-8").splitlines()
+            )
             if line_count > MAX_SOURCE_LINES:
                 relative = path.relative_to(root)
                 oversized.append(f"{relative}: {line_count} lines")

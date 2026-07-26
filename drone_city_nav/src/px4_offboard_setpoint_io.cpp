@@ -86,6 +86,28 @@ buildPositionTrajectorySetpoint(const std::uint64_t timestamp_us,
   return msg;
 }
 
+px4_msgs::msg::TrajectorySetpoint
+buildMppiTrajectorySetpoint(const std::uint64_t timestamp_us, const Point2 velocity_xy,
+                            const double vertical_velocity_up_mps,
+                            const Point2 acceleration_xy,
+                            const double vertical_acceleration_up_mps2,
+                            const double yaw_rad, const double yaw_rate_radps) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  px4_msgs::msg::TrajectorySetpoint msg;
+  msg.timestamp = timestamp_us;
+  msg.position = std::array<float, 3>{nan, nan, nan};
+  msg.velocity = std::array<float, 3>{static_cast<float>(velocity_xy.x),
+                                      static_cast<float>(velocity_xy.y),
+                                      static_cast<float>(-vertical_velocity_up_mps)};
+  msg.acceleration = std::array<float, 3>{
+      static_cast<float>(acceleration_xy.x), static_cast<float>(acceleration_xy.y),
+      static_cast<float>(-vertical_acceleration_up_mps2)};
+  msg.jerk = std::array<float, 3>{nan, nan, nan};
+  msg.yaw = static_cast<float>(yaw_rad);
+  msg.yawspeed = static_cast<float>(yaw_rate_radps);
+  return msg;
+}
+
 [[nodiscard]] px4_msgs::msg::VehicleCommand
 buildVehicleCommand(const std::uint64_t timestamp_us, const std::uint32_t command,
                     const float param1, const float param2,

@@ -9,6 +9,12 @@ obstacle_memory_node:
     raw_memory_3d_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points_3d
     obstacle_memory_provenance_topic: /drone_city_nav/obstacle_memory_provenance
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
+    raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
+    use_static_map: true
+    static_map_path: worlds/generated_city.map2d
+    static_map_min_blocking_height_m: 0.0
+    risk_critical_distance_m: 1.0
+    risk_preferred_distance_m: 6.0
     obstacle_memory_debug_publish_period_s: 1.0
     obstacle_memory_snapshot_diagnostic_period_s: 5.0
     obstacle_memory_snapshot_max_serialized_bytes: 4500000
@@ -76,19 +82,18 @@ obstacle_memory_node:
     occupied_score: 3
     free_score: -1
 
-shadow_mppi_node:
+production_mppi_node:
   ros__parameters:
-    enabled: false
     frame_id: map
     tick_rate_hz: 50.0
     rviz_rate_hz: 10.0
     rollouts: 8192
     steps: 80
     dt_s: 0.05
+    maximum_vertical_speed_mps: 5.0
     deadline_ms: 20.0
     maximum_pose_age_ms: 150.0
     maximum_esdf_age_ms: 1000.0
-    target_mode: active_route_guide
     guide_lookahead_m: 30.0
     passage_activation_distance_m: 45.0
     raw_collision_radius_m: 0.5
@@ -105,367 +110,37 @@ shadow_mppi_node:
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
     obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
     raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
-    active_path_topic: /drone_city_nav/final_trajectory_path
-    shadow_path_topic: /drone_city_nav/shadow_mppi/path
-    shadow_markers_topic: /drone_city_nav/shadow_mppi/markers
-    shadow_status_topic: /drone_city_nav/shadow_mppi/status
-    diagnostics_output_dir: log/shadow_mppi
+    path_topic: /drone_city_nav/mppi/path
+    markers_topic: /drone_city_nav/mppi/markers
+    status_topic: /drone_city_nav/mppi/status
+    diagnostics_output_dir: log/mppi
+    execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
+    safety_reaction_latency_s: 0.10
+    safety_maximum_braking_acceleration_mps2: 8.0
+    safety_minimum_time_to_collision_s: 0.50
+    safety_fallback_duration_s: 2.0
+    global_lattice_heading_bins: 16
+    global_lattice_primitive_length_m: 4.0
+    global_lattice_receding_goal_distance_m: 60.0
+    global_lattice_maximum_expansions: 60000
 
-planner_node:
+mppi_offboard_node:
   ros__parameters:
-    frame_id: map
     px4_local_position_topic: /fmu/out/vehicle_local_position_v1
-    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
-    px4_timesync_status_topic: /fmu/out/timesync_status
-    lidar_topic: /scan
-    obstacle_memory_snapshot_topic: /drone_city_nav/obstacle_memory_snapshot
-    obstacle_memory_snapshot_diagnostic_period_s: 5.0
-    obstacle_memory_snapshot_max_age_ms: 350.0
-    obstacle_memory_snapshot_max_callback_time_ms: 100.0
-    obstacle_memory_snapshot_max_apply_delay_ms: 300.0
-    obstacle_memory_snapshot_min_apply_rate_hz: 1.0
-    raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
-    raw_obstacle_grid_topic: /drone_city_nav/raw_obstacle_grid
-    static_map_grid_topic: /drone_city_nav/static_map_grid
-    static_map_points_topic: /drone_city_nav/static_map_points
-    static_building_markers_topic: /drone_city_nav/static_building_markers
-    static_map_debug_publish_period_s: 1.0
-    known_passage_markers_topic: /drone_city_nav/known_passage_markers
-    known_passage_debug_publish_period_s: 1.0
-    path_topic: /drone_city_nav/path
-    path_id_topic: /drone_city_nav/path_id
-    trajectory_diagnostics_topic: /drone_city_nav/trajectory_diagnostics
-    replan_blocker_topic: /drone_city_nav/replan_blocker
-    replan_truncation_topic: /drone_city_nav/replan_truncation
-    truncation_suffix_ack_topic: /drone_city_nav/truncation_suffix_ack
-    executable_trajectory_topic: /drone_city_nav/executable_trajectory
-    safe_trajectory_truncation_enabled: true
-    partial_replan_enabled: true
-    partial_replan_reconnect_margins_m:
-      [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
-    partial_replan_internal_parallel_workers: 1
-    no_static_rollout_enabled: true
-    no_static_astar_recovery_enabled: false
-    no_static_rollout_cycle_period_s: 0.2
-    no_static_rollout_prefix_duration_s: 1.0
-    no_static_rollout_recovery_lookahead_m: 25.0
-    no_static_rollout_terminal_braking_margin_m: 2.0
-    no_static_rollout_terminal_response_delay_s: 0.35
-    no_static_rollout_vehicle_clearance_m: 0.5
-    no_static_rollout_tracking_error_margin_m: 2.0
-    no_static_rollout_min_length_m: 7.0
-    no_static_rollout_local_window_enabled: true
-    no_static_rollout_local_window_extra_margin_m: 1.0
-    no_static_rollout_horizon_m: 25.0
-    no_static_rollout_sample_step_m: 1.0
-    no_static_rollout_heading_samples: 9
-    no_static_rollout_speed_samples: 3
-    no_static_rollout_max_heading_offset_rad: 0.9
-    no_static_rollout_horizon_time_s: 3.0
-    no_static_rollout_min_speed_mps: 2.0
-    no_static_rollout_max_speed_mps: 10.0
-    no_static_rollout_max_acceleration_mps2: 4.0
-    no_static_rollout_max_curvature_1pm: 0.20
-    no_static_rollout_max_lateral_acceleration_mps2: 4.0
-    no_static_rollout_max_finalists: 3
-    no_static_rollout_progress_weight: 4.0
-    no_static_rollout_lateral_weight: 0.08
-    no_static_rollout_heading_weight: 2.0
-    no_static_rollout_curvature_weight: 8.0
-    no_static_rollout_failures_before_recovery: 3
-    no_static_rollout_progress_timeout_s: 2.0
-    no_static_rollout_score_hysteresis: 5.0
-    no_static_rollout_direction_switches_before_recovery: 3
-    current_waypoint_topic: /drone_city_nav/current_waypoint
-    start_x_m: 54.0
-    start_y_m: 54.0
-    initial_x_m: 54.0
-    initial_y_m: 54.0
-    initial_heading_rad: 0.0
-    px4_local_origin_x_m: 54.0
-    px4_local_origin_y_m: 54.0
-    use_initial_pose_until_px4: true
-    max_pose_staleness_s: 3.0
-    goal_x_m: 216.0
-    goal_y_m: 378.0
-    initial_altitude_m: 18.0
-    inflation_radius_m: 1.0
-    planning_clearance_m: 3.0
-    no_static_planning_clearance_m: 5.0
-    stable_path_goal_tolerance_m: 3.0
-    memory_occupied_value: 100
-    memory_free_value: 0
-    use_static_map: true
-    static_map_path: worlds/generated_city.map2d
-    static_map_min_blocking_height_m: 0.0
-    known_passages_enabled: true
-    known_passages_path: worlds/known_passages.passages3d
-    known_passage_validation_enabled: true
-    known_passage_validation_min_opening_overlap_m: 0.5
-    known_passage_validation_min_opening_depth_fraction: 0.75
-    known_passage_validation_clearance_margin_m: 0.5
-    known_passage_validation_max_diagnostics: 8
-    known_static_lidar_hit_classifier_enabled: false
-    known_static_lidar_hit_closer_range_tolerance_m: 0.5
-    known_static_lidar_hit_farther_range_tolerance_m: 1.5
-    known_static_lidar_hit_endpoint_volume_tolerance_m: 0.75
-    known_static_opening_boundary_tolerance_m: 0.50
-    ambiguous_lidar_hit_required_independent_scans: 3
-    ambiguous_lidar_hit_max_scan_gap_ms: 500.0
-    ambiguous_lidar_hit_retention_ms: 2000.0
-    ambiguous_lidar_hit_voxel_size_m: 0.5
-    ambiguous_lidar_hit_min_viewpoint_shift_m: 0.5
-    ambiguous_lidar_hit_min_viewpoint_angle_deg: 4.0
-    ground_lidar_rejection_enabled: true
-    ground_lidar_altitude_m: 0.05
-    ground_lidar_closer_range_tolerance_m: 0.5
-    ground_lidar_farther_range_tolerance_m: 1.5
-    ground_lidar_candidate_endpoint_altitude_tolerance_m: 1.5
-    ground_lidar_attached_endpoint_altitude_tolerance_m: 0.3
-    lidar_uncertain_hit_confirmation_enabled: true
-    lidar_uncertain_unknown_require_source_timestamp_alignment: true
-    lidar_uncertain_unknown_reliable_range_margin_m: 0.5
-    vertical_profile_enabled: true
-    vertical_profile_gate_clearance_margin_m: 1.0
-    vertical_profile_preferred_gate_clearance_margin_m: 2.0
-    vertical_setpoint_max_climb_speed_mps: 4.0
-    vertical_setpoint_max_descent_speed_mps: 4.0
-    vertical_profile_max_climb_speed_mps: 3.2
-    vertical_profile_max_descent_speed_mps: 3.2
-    vertical_profile_max_vertical_accel_mps2: 3.0
-    vertical_profile_max_vertical_jerk_mps3: 9.0
-    vertical_profile_max_climb_angle_deg: 35.0
-    vertical_profile_min_transition_distance_m: 6.0
-    vertical_profile_max_transition_distance_m: 80.0
-    vertical_profile_pre_gate_hold_time_s: 1.0
-    vertical_profile_pre_gate_hold_min_distance_m: 15.0
-    vertical_profile_pre_gate_hold_max_distance_m: 80.0
-    vertical_profile_max_diagnostics: 8
-    passage_insertion_enabled: true
-    passage_insertion_sample_step_m: 1.0
-    passage_insertion_min_anchor_margin_m: 8.0
-    passage_insertion_max_anchor_margin_m: 60.0
-    passage_insertion_opening_lateral_target_margin_m: 2.0
-    passage_insertion_repair_clearance_margin_m: 2.0
-    passage_insertion_max_lateral_shift_m: 80.0
-    passage_insertion_max_join_tangent_delta_deg: 20.0
-    passage_insertion_max_join_curvature_jump_1pm: 0.08
-    passage_insertion_min_inserted_radius_m: 0.0
-    passage_insertion_max_candidates: 24
-    passage_insertion_max_diagnostics: 8
-    planning_grid_resolution_m: 0.5
-    planning_grid_width_m: 345.0
-    planning_grid_height_m: 525.0
-    planning_grid_origin_x: -30.0
-    planning_grid_origin_y: -30.0
-    max_current_lidar_staleness_s: 0.75
-    max_lidar_range_m: 35.0
-    range_hit_epsilon_m: 0.05
-    scan_yaw_offset_rad: 0.0
-    use_px4_heading_for_scan: true
-    motion_compensate_lidar_pose: true
-    lidar_pose_latency_s: 0.05
-    compensate_lidar_attitude: true
-    lidar_mount_roll_rad: 0.0
-    lidar_mount_pitch_rad: 0.0
-    lidar_mount_yaw_rad: 0.0
-    lidar_z_offset_m: 0.315
-    use_full_lidar_extrinsic: true
-    lidar_extrinsic_translation_body_frd_m: [0.12, 0.0, -0.315]
-    lidar_extrinsic_quaternion_lidar_flu_to_body_frd: [0.0, 1.0, 0.0, 0.0]
-    min_projected_lidar_altitude_m: 1.0
-    max_projected_lidar_altitude_m: 40.0
-    astar_heuristic_weight: 2.0
-    astar_turn_cost_weight: 50.0
-    astar_evasive_maneuvering_enabled: false
-    astar_evasive_maneuvering_straight_cost_weight: 50.0
-    astar_initial_heading_bias_enabled: true
-    astar_initial_heading_bias_min_speed_mps: 0.5
-    astar_initial_heading_bias_weight: 50.0
-    path_prohibited_intersection_check_period_s: 0.5
-    cruise_speed_mps: 22.0
-    min_turn_speed_mps: 1.5
-    known_passage_traversal_speed_limit_mps: 10.0
-    speed_profile_accel_mps2: 7.0
-    turn_speed_lateral_accel_mps2: 5.0
-    speed_profile_decel_mps2: 2.0
-    no_static_max_speed_mps: 10.0
-    no_static_passage_speed_limit_mps: 5.0
-    no_static_braking_decel_mps2: 4.0
-    speed_profile_sample_step_m: 0.5
-    speed_profile_lookahead_time_s: 1.0
-    speed_profile_lookahead_min_m: 5.0
-    speed_profile_lookahead_max_m: 35.0
-    corridor_max_radius_m: 40.0
-    corridor_sample_step_m: 1.0
-    corridor_ray_step_m: 0.0
-    corridor_center_recovery_max_m: 3.0
-    corridor_lateral_limit_window_m: 20.0
-    corridor_lateral_limit_ratio: 1.25
-    corridor_lateral_limit_margin_m: 1.0
-    corridor_parallel_workers: 0
-    trajectory_optimizer_max_iterations: 80
-    trajectory_optimizer_optimizer_sample_step_m: 5.0
-    trajectory_optimizer_initial_offset_step_m: 2.0
-    trajectory_optimizer_min_offset_step_m: 0.1
-    trajectory_optimizer_cooling_ratio: 0.5
-    trajectory_optimizer_weight_curvature: 300.0
-    trajectory_optimizer_weight_curvature_change: 220.0
-    trajectory_optimizer_preferred_min_radius_m: 30.0
-    trajectory_optimizer_weight_radius_shortfall: 70.0
-    trajectory_optimizer_weight_offset_change: 0.5
-    trajectory_optimizer_weight_offset_second_change: 6.5
-    trajectory_optimizer_weight_offset_slope: 100.0
-    trajectory_optimizer_max_offset_slope_per_m: 0.32
-    trajectory_optimizer_regularization_iterations: 2
-    trajectory_optimizer_parallel_workers: 0
-    trajectory_optimizer_window_pre_margin_m: 25.0
-    trajectory_optimizer_window_post_margin_m: 25.0
-    trajectory_optimizer_window_heading_threshold_deg: 10.0
-    trajectory_optimizer_window_width_change_threshold_m: 2.0
-    trajectory_optimizer_window_min_heading_span_deg: 10.0
-    trajectory_optimizer_window_min_curvature_1pm: 0.01
-    trajectory_optimizer_window_min_width_asymmetry_m: 1.0
-    trajectory_optimizer_dp_offset_step_m: 1.5
-    trajectory_optimizer_dp_coarse_offset_step_m: 2.0
-    trajectory_optimizer_dp_fine_offset_step_m: 0.75
-    trajectory_optimizer_dp_fine_radius_m: 1.5
-    turn_smoothing_trigger_heading_delta_deg: 37.0
-    turn_smoothing_trigger_min_radius_m: 16.0
-    turn_smoothing_trigger_speed_limit_mps: 12.0
-    turn_smoothing_entry_distance_m: 45.0
-    turn_smoothing_exit_distance_m: 45.0
-    turn_smoothing_sample_step_m: 1.0
-    turn_smoothing_outer_bias_ratio: 0.45
-    turn_smoothing_min_outer_shift_m: 2.0
-    turn_smoothing_max_outer_shift_m: 12.0
-    turn_smoothing_min_heading_improvement_deg: 3.0
-    turn_smoothing_max_passes: 8
-    final_trajectory_debug_sample_step_m: 1.0
-
-px4_offboard_node:
-  ros__parameters:
-    path_topic: /drone_city_nav/path
-    path_id_topic: /drone_city_nav/path_id
-    trajectory_diagnostics_topic: /drone_city_nav/trajectory_diagnostics
-    replan_blocker_topic: /drone_city_nav/replan_blocker
-    replan_truncation_topic: /drone_city_nav/replan_truncation
-    truncation_suffix_ack_topic: /drone_city_nav/truncation_suffix_ack
-    executable_trajectory_topic: /drone_city_nav/executable_trajectory
-    px4_local_position_topic: /fmu/out/vehicle_local_position_v1
-    px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     px4_vehicle_status_topic: /fmu/out/vehicle_status_v1
+    mppi_execution_horizon_topic: /drone_city_nav/mppi/execution_horizon
+    mppi_horizon_max_receive_age_s: 0.20
+    mppi_control_lookahead_s: 0.05
+    mppi_fallback_braking_acceleration_mps2: 8.0
+    initial_altitude_m: 18.0
     offboard_control_mode_topic: /fmu/in/offboard_control_mode
     trajectory_setpoint_topic: /fmu/in/trajectory_setpoint
     vehicle_command_topic: /fmu/in/vehicle_command
-    raw_obstacle_snapshot_topic: /drone_city_nav/raw_obstacle_snapshot
-    initial_altitude_m: 18.0
-    min_navigation_altitude_m: 17.0
     takeoff_hover_s: 2.0
-    acceptance_radius_m: 1.0
-    diagnostic_turn_preview_distance_m: 90.0
-    cruise_speed_mps: 22.0
-    min_turn_speed_mps: 1.5
-    known_passage_traversal_speed_limit_mps: 10.0
-    speed_profile_accel_mps2: 7.0
-    setpoint_forward_accel_mps2: 7.0
-    setpoint_forward_decel_mps2: 20.0
-    turn_speed_lateral_accel_mps2: 5.0
-    speed_profile_decel_mps2: 2.0
-    no_static_speed_policy_enabled: false
-    no_static_max_speed_mps: 10.0
-    no_static_passage_speed_limit_mps: 5.0
-    no_static_braking_decel_mps2: 4.0
-    speed_profile_sample_step_m: 0.5
-    speed_profile_lookahead_time_s: 1.0
-    speed_profile_lookahead_min_m: 5.0
-    speed_profile_lookahead_max_m: 35.0
-    vertical_profile_max_climb_speed_mps: 3.2
-    vertical_profile_max_descent_speed_mps: 3.2
-    vertical_profile_max_vertical_accel_mps2: 3.0
-    vertical_profile_max_vertical_jerk_mps3: 9.0
-    vertical_profile_max_climb_angle_deg: 35.0
-    vertical_trackability_altitude_tolerance_m: 0.4
-    vertical_trackability_response_time_s: 0.4
-    vertical_trackability_min_speed_mps: 1.0
-    final_hold_max_speed_mps: 0.8
-    terminal_capture_radius_m: 8.0
-    terminal_capture_gain_1ps: 1.0
-    terminal_capture_max_speed_mps: 8.0
-    terminal_capture_decel_mps2: 4.0
-    terminal_capture_braking_margin_m: 2.0
-    terminal_position_capture_max_entry_speed_mps: 3.0
-    terminal_stuck_speed_mps: 0.5
-    cross_track_gain: 0.5
-    cross_track_derivative_gain: 0.5
-    cross_track_p_gain_schedule_start_m: 0.0
-    cross_track_p_gain_schedule_full_m: 2.5
-    cross_track_p_gain_schedule_min_factor: 0.5
-    cross_track_p_gain_schedule_max_factor: 1.3
-    tracking_prediction_horizon_s: 0.35
-    max_lateral_control_angle_deg: 55.0
-    setpoint_lateral_response_accel_mps2: 8.0
-    curvature_feedforward_time_s: 0.25
-    curvature_feedforward_deadband_angle_deg: 2.0
-    curvature_feedforward_full_angle_deg: 8.0
-    max_curvature_feedforward_angle_deg: 30.0
-    max_velocity_jerk_mps3: 12.0
-    max_lateral_velocity_jerk_mps3: 22.0
-    cross_track_d_gain_schedule_min_speed_mps: 8.0
-    cross_track_d_gain_schedule_full_speed_mps: 20.0
-    cross_track_d_gain_schedule_max_factor: 2.0
-    control_tangent_smoothing_back_m: 8.0
-    control_tangent_smoothing_forward_m: 18.0
-    control_tangent_smoothing_max_heading_span_deg: 12.0
-    control_tangent_smoothing_max_abs_curvature_1pm: 0.015
-    control_curve_smoothing_back_m: 2.0
-    control_curve_smoothing_forward_m: 6.0
-    control_curve_smoothing_max_heading_span_deg: 45.0
-    trajectory_update_max_start_cross_track_m: 8.0
-    safe_trajectory_truncation_enabled: true
-    safe_trajectory_truncation_margin_m: 15.0
-    safe_trajectory_terminal_prohibited_clearance_m: 5.0
-    local_horizon_min_buffer_m: 3.0
-    local_horizon_successor_timeout_s: 0.5
-    trajectory_handover_enabled: true
-    trajectory_handover_require_risk_context: true
-    trajectory_handover_prefix_time_s: 0.6
-    trajectory_handover_min_prefix_distance_m: 3.0
-    trajectory_handover_max_prefix_distance_m: 10.0
-    trajectory_handover_candidate_lookahead_distance_m: 12.0
-    trajectory_handover_hard_window_exit_settle_distance_m: 3.0
-    trajectory_handover_sample_step_m: 0.5
-    trajectory_handover_max_join_distance_m: 15.0
-    trajectory_handover_max_sample_heading_delta_deg: 20.0
-    trajectory_handover_max_abs_curvature_1pm: 0.15
-    trajectory_continuity_defer_min_speed_mps: 5.0
-    trajectory_continuity_defer_projection_jump_m: 3.0
-    trajectory_continuity_defer_tangent_jump_deg: 30.0
-    trajectory_continuity_defer_command_jump_mps: 8.0
-    final_trajectory_debug_topic: /drone_city_nav/final_trajectory_path
-    final_trajectory_debug_sample_step_m: 1.0
-    offboard_debug_marker_topic: /drone_city_nav/offboard_debug_markers
-    altitude_hold_kp: 0.5
-    altitude_feedback_kp_1ps: 0.5
-    vertical_setpoint_max_climb_speed_mps: 4.0
-    vertical_setpoint_max_descent_speed_mps: 4.0
-    vertical_setpoint_max_accel_mps2: 3.5
-    vertical_setpoint_max_jerk_mps3: 10.0
-    vertical_target_vz_feedforward_scale: 1.0
-    max_clearance_grid_staleness_s: 1.5
-    telemetry_log_period_s: 0.1
-    flight_blackbox_enabled: true
-    flight_blackbox_path: log/offboard_blackbox.jsonl
     warmup_setpoints: 20
     command_resend_period_s: 2.0
     auto_arm: true
     auto_offboard: true
-    goal_x_m: 216.0
-    goal_y_m: 378.0
-    hold_x_m: 54.0
-    hold_y_m: 54.0
-    px4_local_origin_x_m: 54.0
-    px4_local_origin_y_m: 54.0
     target_system: 1
     target_component: 1
     source_system: 1
@@ -487,15 +162,15 @@ lidar_debug_node:
     px4_vehicle_attitude_topic: /fmu/out/vehicle_attitude
     raw_obstacle_grid_topic: /drone_city_nav/raw_obstacle_grid
     memory_grid_topic: /drone_city_nav/obstacle_memory_grid
-    path_topic: /drone_city_nav/final_trajectory_path
+    path_topic: /drone_city_nav/mppi/path
     pointcloud_topic: /drone_city_nav/lidar_debug_points
     raw_lidar_3d_pointcloud_topic: /drone_city_nav/raw_lidar_hit_points_3d
     remembered_pointcloud_topic: /drone_city_nav/remembered_lidar_points
-    prohibited_pointcloud_topic: /drone_city_nav/prohibited_obstacle_points
+    occupied_pointcloud_topic: /drone_city_nav/prohibited_obstacle_points
     raw_memory_pointcloud_topic: /drone_city_nav/raw_memory_obstacle_points
     current_lidar_pointcloud_z_m: 0.05
     remembered_lidar_pointcloud_z_m: 0.05
-    prohibited_pointcloud_z_m: 0.05
+    occupied_pointcloud_z_m: 0.05
     raw_memory_pointcloud_z_m: 0.05
     hit_memory_resolution_m: 0.25
     min_remember_altitude_m: 10.0

@@ -111,12 +111,12 @@ private:
   collectGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
                     const std::uint8_t min_value, const std::uint8_t max_value) const;
 
-  [[nodiscard]] std::vector<Point2> collectProhibitedGridPoints() const;
+  [[nodiscard]] std::vector<Point2> collectOccupiedGridPoints() const;
 
   [[nodiscard]] std::vector<Point2>
   collectOccupiedGridPoints(const nav_msgs::msg::OccupancyGrid& grid) const;
 
-  void publishProhibitedPointCloud();
+  void publishOccupiedPointCloud();
 
   [[nodiscard]] std::pair<int, int> hitMemoryKey(const Point2 point) const;
 
@@ -140,7 +140,7 @@ private:
   std::string pointcloud_topic_;
   std::string raw_lidar_3d_pointcloud_topic_;
   std::string remembered_pointcloud_topic_;
-  std::string prohibited_pointcloud_topic_;
+  std::string occupied_pointcloud_topic_;
   std::string raw_memory_pointcloud_topic_;
   std::filesystem::path summary_path_;
   std::ofstream summary_stream_;
@@ -177,7 +177,7 @@ private:
   double max_projected_lidar_altitude_m_{100000.0};
   double current_pointcloud_z_m_{kGroundDebugZ};
   double remembered_pointcloud_z_m_{kGroundDebugZ};
-  double prohibited_pointcloud_z_m_{kGroundDebugZ};
+  double occupied_pointcloud_z_m_{kGroundDebugZ};
   double raw_memory_pointcloud_z_m_{kGroundDebugZ};
   int image_size_px_{900};
   std::size_t beam_csv_stride_{1U};
@@ -244,8 +244,7 @@ private:
       raw_lidar_3d_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       remembered_pointcloud_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-      prohibited_pointcloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr occupied_pointcloud_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
       raw_memory_pointcloud_pub_;
   rclcpp::TimerBase::SharedPtr timer_;

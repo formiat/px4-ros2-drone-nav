@@ -1,8 +1,8 @@
 #include "drone_city_nav/static_map_source.hpp"
 
-#include "drone_city_nav/planner_core.hpp"
-
+#include <algorithm>
 #include <exception>
+#include <ranges>
 
 namespace drone_city_nav {
 
@@ -51,8 +51,8 @@ StaticMapSourceResult loadStaticMapSource(const StaticMapSourceConfig& config) {
     result.rectangles = static_map.rectangles.size();
     result.grid = rasterizeStaticCityMap(static_map, config.min_blocking_height_m);
     result.map = static_map;
-    const GridStats stats = collectGridStats(*result.grid);
-    result.occupied_cells = stats.occupied_cells;
+    result.occupied_cells = static_cast<std::size_t>(
+        std::ranges::count(result.grid->cells(), CellState::kOccupied));
     result.status = StaticMapSourceStatus::kLoaded;
   } catch (const std::exception& error) {
     result.status = StaticMapSourceStatus::kLoadFailed;

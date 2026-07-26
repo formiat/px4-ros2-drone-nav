@@ -13,17 +13,14 @@ ros2 bag record \
   /drone_city_nav/remembered_lidar_points \
   /drone_city_nav/raw_memory_obstacle_points \
   /drone_city_nav/raw_memory_obstacle_points_3d \
-  /drone_city_nav/prohibited_obstacle_points \
   /drone_city_nav/static_building_markers \
   /drone_city_nav/known_passage_markers \
   /drone_city_nav/obstacle_memory_grid \
   /drone_city_nav/obstacle_memory_provenance \
   /drone_city_nav/obstacle_memory_snapshot \
-  /drone_city_nav/executable_trajectory \
-  /drone_city_nav/replan_blocker \
-  /drone_city_nav/replan_truncation \
-  /drone_city_nav/prohibited_grid \
-  /drone_city_nav/path \
-  /drone_city_nav/current_waypoint \
+  /drone_city_nav/raw_obstacle_snapshot \
+  /drone_city_nav/mppi/execution_horizon \
+  /drone_city_nav/mppi/status \
+  /drone_city_nav/mppi/path \
   /fmu/out/vehicle_local_position_v1 \
   /fmu/out/vehicle_status_v1

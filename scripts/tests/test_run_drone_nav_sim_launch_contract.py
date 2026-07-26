@@ -78,20 +78,6 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn('lidar_memory_hit_dump_path:=', self.text)
         self.assertIn("lidar_memory_hit_dump_path", self.launch_text)
 
-    def test_evasive_maneuvering_can_be_overridden_from_environment(self) -> None:
-        self.assertIn("ENABLE_EVASIVE_MANEUVERING", self.text)
-        self.assertIn("EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT", self.text)
-        self.assertIn('ros_launch_args+=(evasive_maneuvering:="', self.text)
-        self.assertIn(
-            'evasive_maneuvering_straight_cost_weight:="',
-            self.text,
-        )
-
-    def test_no_static_astar_recovery_can_be_overridden_from_environment(self) -> None:
-        self.assertIn("ENABLE_NO_STATIC_ASTAR_RECOVERY", self.text)
-        self.assertIn('ros_launch_args+=(\n    no_static_astar_recovery:="', self.text)
-        self.assertIn("no_static_astar_recovery", self.launch_text)
-
     def test_rviz_follow_camera_defaults_on_and_can_be_disabled(self) -> None:
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA:-true", self.text)
         self.assertIn("city_nav_debug.rviz", self.text)
@@ -100,11 +86,11 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
         self.assertIn("ENABLE_RVIZ_FOLLOW_CAMERA", self.container_text)
 
     def test_launch_uses_offboard_flight_control_backend(self) -> None:
-        self.assertIn('executable="px4_offboard_node"', self.launch_text)
-        self.assertIn("px4_offboard,", self.launch_text)
+        self.assertIn('executable="mppi_offboard_node"', self.launch_text)
+        self.assertIn("mppi_offboard,", self.launch_text)
+        self.assertIn('executable="production_mppi_node"', self.launch_text)
 
     def test_navigation_nodes_use_gazebo_simulation_clock(self) -> None:
-        self.assertIn('planner_overrides = {"use_sim_time": True}', self.launch_text)
         self.assertIn(
             'obstacle_memory_overrides = {"use_sim_time": True}', self.launch_text
         )
@@ -113,11 +99,7 @@ class RunDroneNavSimLaunchContractTest(unittest.TestCase):
     def test_px4_vertical_velocity_limits_follow_active_ros_config(self) -> None:
         self.assertIn("read_ros_float_parameter()", self.text)
         self.assertIn(
-            "vertical_setpoint_max_climb_speed_mps",
-            self.text,
-        )
-        self.assertIn(
-            "vertical_setpoint_max_descent_speed_mps",
+            "production_mppi_node maximum_vertical_speed_mps",
             self.text,
         )
         self.assertIn(

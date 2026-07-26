@@ -111,8 +111,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "raw_lidar_3d_pointcloud_topic", config.topics.raw_lidar_3d_pointcloud);
   config.topics.remembered_pointcloud = node.declare_parameter<std::string>(
       "remembered_pointcloud_topic", config.topics.remembered_pointcloud);
-  config.topics.prohibited_pointcloud = node.declare_parameter<std::string>(
-      "prohibited_pointcloud_topic", config.topics.prohibited_pointcloud);
+  config.topics.occupied_pointcloud = node.declare_parameter<std::string>(
+      "occupied_pointcloud_topic", config.topics.occupied_pointcloud);
   config.topics.raw_memory_pointcloud = node.declare_parameter<std::string>(
       "raw_memory_pointcloud_topic", config.topics.raw_memory_pointcloud);
   config.hit_memory_resolution_m = node.declare_parameter<double>(
@@ -128,8 +128,8 @@ void sanitizeLidarDebugNodeConfig(LidarDebugNodeConfig& config) {
       "current_lidar_pointcloud_z_m", config.current_pointcloud_z_m);
   config.remembered_pointcloud_z_m = node.declare_parameter<double>(
       "remembered_lidar_pointcloud_z_m", config.remembered_pointcloud_z_m);
-  config.prohibited_pointcloud_z_m = node.declare_parameter<double>(
-      "prohibited_pointcloud_z_m", config.prohibited_pointcloud_z_m);
+  config.occupied_pointcloud_z_m = node.declare_parameter<double>(
+      "occupied_pointcloud_z_m", config.occupied_pointcloud_z_m);
   config.raw_memory_pointcloud_z_m = node.declare_parameter<double>(
       "raw_memory_pointcloud_z_m", config.raw_memory_pointcloud_z_m);
   config.topics.px4_local_position = node.declare_parameter<std::string>(

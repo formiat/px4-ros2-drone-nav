@@ -353,6 +353,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   float acceleration_cost = 0.0F;
   float jerk_cost = 0.0F;
   float yaw_cost = 0.0F;
+  float altitude_cost = 0.0F;
   float critical_m = 0.0F;
   float planning_m = 0.0F;
   float minimum_clearance_m = kInfinity;
@@ -382,7 +383,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
           passage_dx * passage.normal_x + passage_dy * passage.normal_y;
       const bool inside_passage_window = longitudinal >= -passage.approach_distance_m &&
                                          longitudinal <= passage.exit_distance_m;
-      if (inside_passage_window &&
+      const bool inside_opening = fabsf(longitudinal) <= passage.half_depth_m;
+      if (inside_opening &&
           (state.z < passage.min_z_m || state.z > passage.max_z_m)) {
         solid_hit = true;
       }
@@ -411,6 +413,8 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
     const float guide_length =
         fmaxf(1.0F, hypotf(target.x - initial.x, target.y - initial.y));
     guide_cost += (guide_cross / guide_length) * (guide_cross / guide_length);
+    const float altitude_error = state.z - target.z;
+    altitude_cost += altitude_error * altitude_error;
     acceleration_cost +=
         control.ax * control.ax + control.ay * control.ay + control.az * control.az;
     jerk_cost += (control.ax - previous.ax) * (control.ax - previous.ax) +
@@ -425,6 +429,7 @@ simulate(const float* noise_ax, const float* noise_ay, const float* noise_az,
   const float terminal_distance = hypotf(target.x - state.x, target.y - state.y);
   soft_cost[rollout] = costs.progress_weight * -(initial_distance - terminal_distance) +
                        costs.guide_deviation_weight * dynamics.dt_s * guide_cost +
+                       costs.altitude_tracking_weight * dynamics.dt_s * altitude_cost +
                        costs.acceleration_weight * dynamics.dt_s * acceleration_cost +
                        costs.jerk_weight * jerk_cost +
                        costs.yaw_change_weight * yaw_cost +
@@ -566,6 +571,33 @@ __global__ void updateControls(const Control* nominal, Control* updated,
   updated[step] = Control{
       nominal[step].ax + ax / denominator, nominal[step].ay + ay / denominator,
       nominal[step].az + az / denominator, nominal[step].yaw_accel + yaw / denominator};
+}
+
+__global__ void limitControls(Control* controls, std::size_t steps,
+                              DynamicsConfig dynamics) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+  Control previous{};
+  const float maximum_delta = dynamics.maximum_control_jerk_mps3 * dynamics.dt_s;
+  for (std::size_t step = 0U; step < steps; ++step) {
+    Control control = controls[step];
+    clampHorizontal(control.ax, control.ay,
+                    dynamics.maximum_horizontal_acceleration_mps2);
+    control.az = clampValue(control.az, -dynamics.maximum_vertical_acceleration_mps2,
+                            dynamics.maximum_vertical_acceleration_mps2);
+    control.yaw_accel =
+        clampValue(control.yaw_accel, -dynamics.maximum_yaw_acceleration_radps2,
+                   dynamics.maximum_yaw_acceleration_radps2);
+    control.ax = clampValue(control.ax, previous.ax - maximum_delta,
+                            previous.ax + maximum_delta);
+    control.ay = clampValue(control.ay, previous.ay - maximum_delta,
+                            previous.ay + maximum_delta);
+    control.az = clampValue(control.az, previous.az - maximum_delta,
+                            previous.az + maximum_delta);
+    controls[step] = control;
+    previous = control;
+  }
 }
 
 __global__ void warmStart(Control* nominal, const Control* updated, std::size_t steps) {
@@ -718,6 +750,8 @@ public:
         buffers_.noise_ay.get(), buffers_.noise_az.get(), buffers_.noise_yaw.get(),
         buffers_.weights.get(), buffers_.weight_sum.get(), config_.rollouts,
         config_.steps);
+    limitControls<<<1, 1, 0U, stream_>>>(buffers_.updated.get(), config_.steps,
+                                         config_.dynamics);
     update_done_.record(stream_);
     checkCuda(cudaMemcpyAsync(updated_.data(), buffers_.updated.get(),
                               updated_.size() * sizeof(Control), cudaMemcpyDeviceToHost,

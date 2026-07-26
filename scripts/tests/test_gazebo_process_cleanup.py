@@ -87,12 +87,12 @@ class GazeboProcessCleanupTest(unittest.TestCase):
                     "20 10 20 bash ./scripts/run_drone_nav_sim.sh",
                     (
                         "30 20 20 /workspace/install/drone_city_nav/lib/"
-                        "drone_city_nav/planner_node"
+                        "drone_city_nav/production_mppi_node"
                     ),
                     "40 1 40 bash ./scripts/run_drone_nav_sim.sh",
                     (
                         "50 40 40 /workspace/install/drone_city_nav/lib/"
-                        "drone_city_nav/planner_node"
+                        "drone_city_nav/production_mppi_node"
                     ),
                 ]
             )

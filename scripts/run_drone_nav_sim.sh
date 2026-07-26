@@ -74,33 +74,12 @@ lidar_memory_hit_dump_path="${LIDAR_MEMORY_HIT_DUMP_PATH:-${run_log_dir}/lidar_m
 default_city_nav_params_file="${repo_root}/drone_city_nav/config/urban_mvp.yaml"
 city_nav_params_file="${CITY_NAV_PARAMS_FILE:-${default_city_nav_params_file}}"
 enable_lidar_debug="$(normalize_bool "${ENABLE_LIDAR_DEBUG:-true}")"
-enable_shadow_mppi="$(normalize_bool "${ENABLE_SHADOW_MPPI:-false}")"
 enable_gz_scene_diagnostics="$(
   normalize_bool "${ENABLE_GZ_SCENE_DIAGNOSTICS:-true}"
 )"
 enable_static_map_override=""
-no_static_speed_policy_enabled="false"
-no_static_astar_recovery_override=""
-evasive_maneuvering_override=""
-evasive_maneuvering_straight_cost_weight_override=""
 if [[ -n "${ENABLE_STATIC_MAP+x}" ]]; then
   enable_static_map_override="$(normalize_bool "${ENABLE_STATIC_MAP}")"
-  if ! bool_is_true "${enable_static_map_override}"; then
-    no_static_speed_policy_enabled="true"
-  fi
-fi
-if [[ -n "${ENABLE_EVASIVE_MANEUVERING+x}" ]]; then
-  evasive_maneuvering_override="$(normalize_bool "${ENABLE_EVASIVE_MANEUVERING}")"
-fi
-if [[ -n "${ENABLE_NO_STATIC_ASTAR_RECOVERY+x}" ]]; then
-  no_static_astar_recovery_override="$(
-    normalize_bool "${ENABLE_NO_STATIC_ASTAR_RECOVERY}"
-  )"
-fi
-if [[ -n "${EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT+x}" ]]; then
-  evasive_maneuvering_straight_cost_weight_override="$(
-    printf '%s' "${EVASIVE_MANEUVERING_STRAIGHT_COST_WEIGHT}"
-  )"
 fi
 static_city_map_path="${STATIC_CITY_MAP_PATH:-${repo_root}/drone_city_nav/worlds/${world_name}.map2d}"
 static_city_map_path_override=false
@@ -201,11 +180,9 @@ PY
 }
 
 px4_max_climb_speed_mps="$(
-  read_ros_float_parameter px4_offboard_node vertical_setpoint_max_climb_speed_mps
+    read_ros_float_parameter production_mppi_node maximum_vertical_speed_mps
 )"
-px4_max_descent_speed_mps="$(
-  read_ros_float_parameter px4_offboard_node vertical_setpoint_max_descent_speed_mps
-)"
+px4_max_descent_speed_mps="${px4_max_climb_speed_mps}"
 
 format_override_value() {
   local value="$1"
@@ -408,13 +385,6 @@ drone_city_nav_plugin_dir="${colcon_install_base}/drone_city_nav/lib"
 export GZ_SIM_SYSTEM_PLUGIN_PATH="${drone_city_nav_plugin_dir}:${PX4_GZ_PLUGINS}:${GZ_SIM_SYSTEM_PLUGIN_PATH:-}"
 export GZ_SIM_SERVER_CONFIG_PATH="${PX4_GZ_SERVER_CONFIG}"
 
-formatted_evasive_maneuvering_override="$(
-  format_override_value "${evasive_maneuvering_override}"
-)"
-formatted_evasive_maneuvering_weight_override="$(
-  format_override_value "${evasive_maneuvering_straight_cost_weight_override}"
-)"
-
 echo "Gazebo log: ${gz_log_file}"
 echo "Gazebo GUI log: ${gz_gui_log_file}"
 echo "Gazebo scene diagnostics: enabled=${enable_gz_scene_diagnostics} dir=${gz_scene_diagnostics_dir}"
@@ -426,8 +396,6 @@ echo "Gazebo world unpause wait: ${gazebo_world_unpause_wait_s}s"
 echo "Gazebo stale cleanup: enabled=${clean_stale_gazebo_processes_enabled} dry_run=${clean_stale_gazebo_processes_dry_run}"
 echo "City navigation params: ${city_nav_params_file}"
 echo "Obstacle source overrides: static=$(format_override_value "${enable_static_map_override}") memory=always current_lidar=always"
-echo "No-static A* recovery override: $(format_override_value "${no_static_astar_recovery_override}")"
-echo "A* evasive maneuvering overrides: enabled=${formatted_evasive_maneuvering_override} straight_cost_weight=${formatted_evasive_maneuvering_weight_override}"
 echo "Expected obstacle sources for checks: static=$(format_override_value "${expected_static_map}") memory=$(format_override_value "${expected_obstacle_memory}") current_lidar=$(format_override_value "${expected_current_lidar}")"
 echo "Static city map: ${static_city_map_path}"
 echo "Gazebo resources: ${runtime_dir}"
@@ -557,30 +525,15 @@ ros_launch_args=(
   enable_gazebo_bridge:=true
   enable_mission_monitor:=true
   enable_lidar_debug:="${enable_lidar_debug}"
-  enable_shadow_mppi:="${enable_shadow_mppi}"
   enable_rviz:="${enable_rviz}"
   rviz_config:="${rviz_config_file}"
   rviz_drone_follow_tf_enabled:="${rviz_drone_follow_tf_enabled}"
-  no_static_speed_policy_enabled:="${no_static_speed_policy_enabled}"
 )
 if [[ -n "${enable_static_map_override}" ]]; then
   ros_launch_args+=(use_static_map:="${enable_static_map_override}")
 fi
-if [[ -n "${no_static_astar_recovery_override}" ]]; then
-  ros_launch_args+=(
-    no_static_astar_recovery:="${no_static_astar_recovery_override}"
-  )
-fi
 if [[ "${static_city_map_path_override}" == "true" ]]; then
   ros_launch_args+=(static_map_path:="${static_city_map_path}")
-fi
-if [[ -n "${evasive_maneuvering_override}" ]]; then
-  ros_launch_args+=(evasive_maneuvering:="${evasive_maneuvering_override}")
-fi
-if [[ -n "${evasive_maneuvering_straight_cost_weight_override}" ]]; then
-  ros_launch_args+=(
-    evasive_maneuvering_straight_cost_weight:="${evasive_maneuvering_straight_cost_weight_override}"
-  )
 fi
 echo "ROS launch log: ${ros_log_file}"
 echo "Lidar memory-hit diagnostics: ${lidar_memory_hit_dump_path}"

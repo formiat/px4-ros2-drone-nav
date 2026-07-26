@@ -1,0 +1,10 @@
+std_msgs/Header header
+uint64 sequence
+builtin_interfaces/Time valid_from
+builtin_interfaces/Time valid_until
+uint64 pose_revision
+uint64 obstacle_revision
+uint8 risk_tier
+bool emergency_braking
+bool passage_constrained
+MppiHorizonPoint[] points

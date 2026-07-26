@@ -90,7 +90,7 @@ serializedObstacleMemorySnapshotSize(const msg::ObstacleMemorySnapshot& message)
 [[nodiscard]] MemoryProvenanceParseResult
 parseObstacleMemoryProvenanceMessage(const msg::ObstacleMemoryProvenance& message);
 
-// The planner consumes this atomic pair. A snapshot is accepted only when the
+// The world model consumes this atomic pair. A snapshot is accepted only when the
 // nested provenance describes the exact grid carried by the same ROS message.
 [[nodiscard]] MemoryProvenanceParseResult
 parseObstacleMemorySnapshotMessage(const msg::ObstacleMemorySnapshot& message);

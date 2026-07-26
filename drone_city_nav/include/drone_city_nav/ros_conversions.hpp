@@ -1,7 +1,6 @@
 #pragma once
 
 #include "drone_city_nav/occupancy_grid.hpp"
-#include "drone_city_nav/trajectory.hpp"
 #include "drone_city_nav/types.hpp"
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -51,9 +50,5 @@ rawOccupancyGridFromRos(const nav_msgs::msg::OccupancyGrid& msg,
 [[nodiscard]] nav_msgs::msg::Path pathToRos(std::span<const Point2> points,
                                             const std_msgs::msg::Header& header,
                                             double altitude_m);
-
-[[nodiscard]] nav_msgs::msg::Path
-pathToRos(std::span<const TrajectoryPointSample> samples,
-          const std_msgs::msg::Header& header);
 
 } // namespace drone_city_nav

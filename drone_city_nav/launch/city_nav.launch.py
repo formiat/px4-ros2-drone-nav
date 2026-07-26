@@ -25,19 +25,6 @@ def optional_bool_override(context, launch_config, argument_name):
     )
 
 
-def optional_float_override(context, launch_config, argument_name):
-    value = launch_config.perform(context).strip()
-    if not value:
-        return None
-
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Launch argument '{argument_name}' must be a float or empty, got '{value}'"
-        ) from exc
-
-
 def generate_launch_description():
     package_share = Path(get_package_share_directory("drone_city_nav"))
     default_params_file = package_share / "config" / "urban_mvp.yaml"
@@ -55,21 +42,12 @@ def generate_launch_description():
     enable_gazebo_bridge = LaunchConfiguration("enable_gazebo_bridge")
     enable_mission_monitor = LaunchConfiguration("enable_mission_monitor")
     enable_lidar_debug = LaunchConfiguration("enable_lidar_debug")
-    enable_shadow_mppi = LaunchConfiguration("enable_shadow_mppi")
     enable_rviz = LaunchConfiguration("enable_rviz")
     rviz_drone_follow_tf_enabled = LaunchConfiguration(
         "rviz_drone_follow_tf_enabled"
     )
-    no_static_speed_policy_enabled = LaunchConfiguration(
-        "no_static_speed_policy_enabled"
-    )
-    no_static_astar_recovery = LaunchConfiguration("no_static_astar_recovery")
     use_static_map = LaunchConfiguration("use_static_map")
     static_map_path = LaunchConfiguration("static_map_path")
-    evasive_maneuvering = LaunchConfiguration("evasive_maneuvering")
-    evasive_maneuvering_straight_cost_weight = LaunchConfiguration(
-        "evasive_maneuvering_straight_cost_weight"
-    )
     scan_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -90,7 +68,6 @@ def generate_launch_description():
     )
 
     def source_nodes(context, *args, **kwargs):
-        planner_overrides = {"use_sim_time": True}
         obstacle_memory_overrides = {"use_sim_time": True}
 
         memory_hit_dump_path_override = (
@@ -105,41 +82,11 @@ def generate_launch_description():
             context, use_static_map, "use_static_map"
         )
         if static_map_override is not None:
-            planner_overrides["use_static_map"] = static_map_override
+            obstacle_memory_overrides["use_static_map"] = static_map_override
 
         static_map_path_override = static_map_path.perform(context).strip()
         if static_map_path_override:
-            planner_overrides["static_map_path"] = static_map_path_override
-
-        no_static_astar_recovery_override = optional_bool_override(
-            context, no_static_astar_recovery, "no_static_astar_recovery"
-        )
-        if no_static_astar_recovery_override is not None:
-            planner_overrides["no_static_astar_recovery_enabled"] = (
-                no_static_astar_recovery_override
-            )
-
-        evasive_maneuvering_override = optional_bool_override(
-            context, evasive_maneuvering, "evasive_maneuvering"
-        )
-        if evasive_maneuvering_override is not None:
-            planner_overrides["astar_evasive_maneuvering_enabled"] = (
-                evasive_maneuvering_override
-            )
-
-        evasive_maneuvering_straight_weight_override = optional_float_override(
-            context,
-            evasive_maneuvering_straight_cost_weight,
-            "evasive_maneuvering_straight_cost_weight",
-        )
-        if evasive_maneuvering_straight_weight_override is not None:
-            planner_overrides["astar_evasive_maneuvering_straight_cost_weight"] = (
-                evasive_maneuvering_straight_weight_override
-            )
-
-        planner_parameters = [params_file.perform(context)]
-        if planner_overrides:
-            planner_parameters.append(planner_overrides)
+            obstacle_memory_overrides["static_map_path"] = static_map_path_override
         obstacle_memory_parameters = [params_file.perform(context)]
         if obstacle_memory_overrides:
             obstacle_memory_parameters.append(obstacle_memory_overrides)
@@ -151,19 +98,12 @@ def generate_launch_description():
                 output="screen",
                 parameters=obstacle_memory_parameters,
             ),
-            Node(
-                package="drone_city_nav",
-                executable="planner_node",
-                name="planner_node",
-                output="screen",
-                parameters=planner_parameters,
-            ),
         ]
 
-    px4_offboard = Node(
+    mppi_offboard = Node(
         package="drone_city_nav",
-        executable="px4_offboard_node",
-        name="px4_offboard_node",
+        executable="mppi_offboard_node",
+        name="mppi_offboard_node",
         output="screen",
         parameters=[
             params_file,
@@ -171,9 +111,6 @@ def generate_launch_description():
                 "use_sim_time": True,
                 "rviz_drone_follow_tf_enabled": ParameterValue(
                     rviz_drone_follow_tf_enabled, value_type=bool
-                ),
-                "no_static_speed_policy_enabled": ParameterValue(
-                    no_static_speed_policy_enabled, value_type=bool
                 ),
             },
         ],
@@ -211,17 +148,15 @@ def generate_launch_description():
         ],
     )
 
-    shadow_mppi = Node(
+    production_mppi = Node(
         package="drone_city_nav",
-        executable="shadow_mppi_node",
-        name="shadow_mppi_node",
+        executable="production_mppi_node",
+        name="production_mppi_node",
         output="screen",
-        condition=IfCondition(enable_shadow_mppi),
         parameters=[
             params_file,
             {
                 "use_sim_time": True,
-                "enabled": True,
             },
         ],
     )
@@ -282,7 +217,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "params_file",
                 default_value=str(default_params_file),
-                description="ROS parameter file for planner and offboard nodes.",
+                description="ROS parameter file for navigation nodes.",
             ),
             DeclareLaunchArgument(
                 "lidar_debug_output_dir",
@@ -314,22 +249,6 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
-                "no_static_speed_policy_enabled",
-                default_value="false",
-                description=(
-                    "Enable the conservative lidar-only speed policy. The "
-                    "simulator runner enables it when ENABLE_STATIC_MAP=false."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "no_static_astar_recovery",
-                default_value="",
-                description=(
-                    "Optional override for no-static A* recovery. Leave empty "
-                    "to use params_file; the default simulation params disable it."
-                ),
-            ),
-            DeclareLaunchArgument(
                 "enable_gazebo_bridge",
                 default_value="true",
                 description="Start the Gazebo LaserScan bridge for simulation.",
@@ -343,14 +262,6 @@ def generate_launch_description():
                 "enable_lidar_debug",
                 default_value="true",
                 description="Record lidar/grid/path snapshots for debugging.",
-            ),
-            DeclareLaunchArgument(
-                "enable_shadow_mppi",
-                default_value="false",
-                description=(
-                    "Run CUDA MPPI in diagnostic-only shadow mode. The node "
-                    "does not publish executable trajectories or commands."
-                ),
             ),
             DeclareLaunchArgument(
                 "enable_rviz",
@@ -373,29 +284,13 @@ def generate_launch_description():
                     "params_file."
                 ),
             ),
-            DeclareLaunchArgument(
-                "evasive_maneuvering",
-                default_value="",
-                description=(
-                    "Optional override for A* evasive maneuvering. Leave empty "
-                    "to use params_file; the default simulation params keep it off."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "evasive_maneuvering_straight_cost_weight",
-                default_value="",
-                description=(
-                    "Optional override for the A* evasive maneuvering straight "
-                    "segment penalty. Leave empty to use params_file."
-                ),
-            ),
             scan_bridge,
             OpaqueFunction(function=source_nodes),
             collision_crash,
-            px4_offboard,
+            mppi_offboard,
             mission_monitor,
             lidar_debug,
-            shadow_mppi,
+            production_mppi,
             gazebo_aligned_map_tf,
             rviz,
         ]

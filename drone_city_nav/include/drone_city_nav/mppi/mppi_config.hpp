@@ -17,6 +17,7 @@ struct DynamicsConfig {
   float maximum_vertical_speed_mps{5.0F};
   float maximum_yaw_acceleration_radps2{2.0F};
   float maximum_yaw_rate_radps{1.5F};
+  float maximum_control_jerk_mps3{20.0F};
 };
 
 struct NoiseConfig {
@@ -35,6 +36,7 @@ struct RiskConfig {
 
 struct CostConfig {
   float guide_deviation_weight{1.0F};
+  float altitude_tracking_weight{4.0F};
   float progress_weight{4.0F};
   float acceleration_weight{0.03F};
   float jerk_weight{0.02F};

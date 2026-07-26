@@ -44,7 +44,7 @@ void LidarDebugNode::writeSnapshot() {
   publishPointCloud(last_scan_hit_points_, current_pointcloud_z_m_, pointcloud_pub_);
   publishPointCloud(remembered_hit_points_, remembered_pointcloud_z_m_,
                     remembered_pointcloud_pub_);
-  publishProhibitedPointCloud();
+  publishOccupiedPointCloud();
 
   writeSummary(prefix, image_path, csv_path, stats, image_ok);
   const std::int64_t now_ns = get_clock()->now().nanoseconds();

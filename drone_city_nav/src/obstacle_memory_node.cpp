@@ -6,6 +6,7 @@
 #include "drone_city_nav/lidar_motion_compensation.hpp"
 #include "drone_city_nav/lidar_pose_history.hpp"
 #include "drone_city_nav/lidar_projection.hpp"
+#include "drone_city_nav/msg/raw_obstacle_snapshot.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
 #include "drone_city_nav/obstacle_memory_provenance_ros.hpp"
@@ -20,6 +21,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <algorithm>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <array>
 #include <chrono>
 #include <cinttypes>
@@ -34,6 +36,7 @@
 #include <vector>
 
 #include "obstacle_memory_node_helpers.hpp"
+#include "raw_world_snapshot.hpp"
 
 namespace drone_city_nav {
 namespace {
@@ -54,6 +57,13 @@ public:
         origin_x, origin_y, requested_resolution_m, width_m, height_m);
     memory_ = std::make_unique<ObstacleMemoryGrid>(memory_bounds);
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
+    risk_critical_distance_m_ =
+        declare_parameter<double>("risk_critical_distance_m", 1.0);
+    risk_preferred_distance_m_ =
+        declare_parameter<double>("risk_preferred_distance_m", 6.0);
+    const auto package_share = std::filesystem::path{
+        ament_index_cpp::get_package_share_directory("drone_city_nav")};
+    static_grid_ = declareStaticRawWorldGrid(*this, frame_id_, package_share);
     use_px4_heading_for_scan_ =
         declare_parameter<bool>("use_px4_heading_for_scan", true);
     motion_compensate_lidar_pose_ =
@@ -201,6 +211,10 @@ public:
     snapshot_pub_ = create_publisher<msg::ObstacleMemorySnapshot>(
         declare_parameter<std::string>("obstacle_memory_snapshot_topic",
                                        "/drone_city_nav/obstacle_memory_snapshot"),
+        rclcpp::QoS{1}.reliable().transient_local());
+    raw_obstacle_snapshot_pub_ = create_publisher<msg::RawObstacleSnapshot>(
+        declare_parameter<std::string>("raw_obstacle_snapshot_topic",
+                                       "/drone_city_nav/raw_obstacle_snapshot"),
         rclcpp::QoS{1}.reliable().transient_local());
 
     const auto sensor_qos = rclcpp::SensorDataQoS{};
@@ -797,6 +811,7 @@ private:
     snapshot_max_publish_interval_since_report_ms_ =
         std::max(snapshot_max_publish_interval_since_report_ms_, publish_interval_ms);
     snapshot_pub_->publish(snapshot_message);
+    publishRawWorldSnapshot(snapshot_message);
 
     const bool publish_debug =
         snapshot_debug_publish_period_s_ <= 0.0 || last_debug_publish_stamp_ns_ <= 0 ||
@@ -892,7 +907,20 @@ private:
         snapshot_message.provenance.cells.size(), invalid_z_count);
   }
 
+  void publishRawWorldSnapshot(const msg::ObstacleMemorySnapshot& memory_snapshot) {
+    const std::optional<msg::RawObstacleSnapshot> message = composeRawObstacleSnapshot(
+        memory_snapshot, static_grid_, risk_critical_distance_m_,
+        risk_preferred_distance_m_);
+    if (!message.has_value()) {
+      RCLCPP_ERROR(get_logger(),
+                   "RAW_WORLD_SNAPSHOT rejected reason=invalid_grid_composition");
+      return;
+    }
+    raw_obstacle_snapshot_pub_->publish(*message);
+  }
+
   std::unique_ptr<ObstacleMemoryGrid> memory_;
+  std::optional<OccupancyGrid2D> static_grid_;
   std::optional<KnownPassageMap> known_passage_map_;
   std::optional<KnownStaticLidarHitClassifier> known_static_lidar_classifier_;
   ObstacleMemoryConfig memory_config_{};
@@ -932,6 +960,8 @@ private:
   double snapshot_max_publish_interval_ms_{400.0};
   double snapshot_max_assembly_since_report_ms_{0.0};
   double snapshot_max_publish_interval_since_report_ms_{0.0};
+  double risk_critical_distance_m_{1.0};
+  double risk_preferred_distance_m_{6.0};
   std::size_t snapshot_max_serialized_bytes_{4'500'000U};
   std::uint64_t snapshot_sequence_{0U};
   std::uint64_t snapshot_producer_instance_id_{0U};
@@ -964,6 +994,7 @@ private:
       raw_memory_3d_pointcloud_pub_;
   rclcpp::Publisher<msg::ObstacleMemoryProvenance>::SharedPtr provenance_pub_;
   rclcpp::Publisher<msg::ObstacleMemorySnapshot>::SharedPtr snapshot_pub_;
+  rclcpp::Publisher<msg::RawObstacleSnapshot>::SharedPtr raw_obstacle_snapshot_pub_;
 };
 
 } // namespace drone_city_nav

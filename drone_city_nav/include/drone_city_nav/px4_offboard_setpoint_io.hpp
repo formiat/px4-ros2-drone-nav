@@ -40,6 +40,12 @@ buildOffboardControlMode(std::uint64_t timestamp_us, OffboardSetpointMode mode);
 buildVelocityTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
                                 double vertical_velocity_ned_mps, double yaw_rad);
 
+[[nodiscard]] px4_msgs::msg::TrajectorySetpoint
+buildMppiTrajectorySetpoint(std::uint64_t timestamp_us, Point2 velocity_xy,
+                            double vertical_velocity_up_mps, Point2 acceleration_xy,
+                            double vertical_acceleration_up_mps2, double yaw_rad,
+                            double yaw_rate_radps);
+
 [[nodiscard]] px4_msgs::msg::VehicleCommand
 buildVehicleCommand(std::uint64_t timestamp_us, std::uint32_t command, float param1,
                     float param2, const VehicleCommandEndpoint& endpoint);

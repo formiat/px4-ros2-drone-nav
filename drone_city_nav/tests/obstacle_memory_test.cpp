@@ -1,4 +1,3 @@
-#include "drone_city_nav/astar_planner.hpp"
 #include "drone_city_nav/grid_config.hpp"
 #include "drone_city_nav/navigation_pose.hpp"
 #include "drone_city_nav/obstacle_memory.hpp"
@@ -487,25 +486,6 @@ TEST(ObstacleMemoryGrid, ResetClearsScoresAndRawStates) {
   EXPECT_EQ(counts.free_cells, 0U);
   EXPECT_EQ(counts.unknown_cells, memory.rawGrid().cellCount());
   EXPECT_TRUE(memory.activeProvenance().empty());
-}
-
-TEST(PlannerOnMemory, AStarAvoidsRememberedAndInflatedObstacle) {
-  ObstacleMemoryGrid memory = makeMemory();
-  const std::vector<float> ranges{5.0F};
-
-  const ObstacleMemoryStats stats = memory.integrateScan(
-      Pose2{Point2{4.5, 5.5}, 0.0}, makeScan(ranges), acceptedHitConfig());
-  EXPECT_EQ(stats.hit_beams, 1U);
-  OccupancyGrid2D planning_grid = memory.rawGrid();
-
-  const GridIndex start{1, 5};
-  const GridIndex goal{18, 5};
-  const AStarResult result = AStarPlanner{}.plan(planning_grid, start, goal);
-
-  ASSERT_TRUE(result.success);
-  for (const GridIndex cell : result.path) {
-    EXPECT_FALSE(planning_grid.isOccupied(cell));
-  }
 }
 
 } // namespace drone_city_nav

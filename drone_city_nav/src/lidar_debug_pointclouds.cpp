@@ -101,11 +101,6 @@ collectOccupancyGridPoints(const nav_msgs::msg::OccupancyGrid& grid,
 }
 
 [[nodiscard]] std::vector<Point2>
-collectProhibitedGridPoints(const nav_msgs::msg::OccupancyGrid& grid) {
-  return collectOccupancyGridPoints(grid, 80, 99);
-}
-
-[[nodiscard]] std::vector<Point2>
 collectOccupiedGridPoints(const nav_msgs::msg::OccupancyGrid& grid) {
   return collectOccupancyGridPoints(grid, 100, 100);
 }
